@@ -1,4 +1,4 @@
-async function handler() {
+  async function handler() {
   const session = getSession();
 
   if (!session?.user?.id) {

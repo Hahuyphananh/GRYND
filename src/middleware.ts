@@ -1,19 +1,25 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
-// Define protected routes (all others will be public)
-const isProtectedRoute = createRouteMatcher([
-  '/(.*)',  // Protect all dashboard routes
-  '/profile(.*)'
+const isPublicRoute = createRouteMatcher([
+  '/',
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+  '/api/webhooks(.*)',
+  '/api/reset-user-tokens'
 ]);
 
-export default clerkMiddleware((auth, req) => {
-  if (isProtectedRoute(req)) {
-    (async () => {
-      const authObject = await auth();
-    })();
+export default clerkMiddleware(async (auth, req) => {
+  if (isPublicRoute(req)) {
+    return;
+  }
+  
+  // Await the auth() call before using protect()
+  const authObject = await auth();
+  if (!authObject.sessionId) {
+    throw new Error('Unauthorized access: No active session found.');
   }
 });
 
 export const config = {
-  matcher: ['/((?!.*\\..*|_next).*)', '/', '/(api|trpc)(.*)'],
+  matcher: ['/((?!.+\\.[\\w]+$|_next).*)', '/', '/(api|trpc)(.*)'],
 };

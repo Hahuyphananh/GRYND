@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 
-function ProfilePage() {
+export default function ProfilePage() {
   const { isSignedIn, isLoaded, user } = useUser();
   const [userTokens, setUserTokens] = useState(null);
   const [bets, setBets] = useState([]);
@@ -12,78 +12,74 @@ function ProfilePage() {
   useEffect(() => {
     if (!isSignedIn || !user) return;
 
-    const initializeAndFetchTokens = async () => {
+    const fetchTokensAndBets = async () => {
       try {
-        const getResponse = await fetch("/api/get-user-tokens", {
+        const tokensResponse = await fetch("/api/get-user-tokens", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
         });
 
-        const getData = await getResponse.json();
+        const tokensData = await tokensResponse.json();
 
-        if (!getData.success || !getData.data) {
-          const initResponse = await fetch("/api/initialize-user-tokens", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-          });
-
-          const finalResponse = await fetch("/api/get-user-tokens", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-          });
-
-          const finalData = await finalResponse.json();
-          if (finalData.success) {
-            setUserTokens(finalData.data.balance);
-          }
-        } else {
-          setUserTokens(getData.data.balance);
+        if (tokensData.success && tokensData.data) {
+          setUserTokens(tokensData.data.balance);
         }
-      } catch (error) {
-        console.error("Error managing tokens:", error);
-        setError("Impossible de gérer vos tokens");
+
+        const betsResponse = await fetch("/api/bets", {
+          credentials: "include",
+        });
+
+        const betsData = await betsResponse.json();
+        setBets(betsData || []);
+      } catch (err) {
+        console.error("Erreur:", err);
+        setError("Erreur lors du chargement des données");
       }
     };
 
-    const fetchBets = async () => {
-      try {
-        const response = await fetch("/api/bets");
-        if (!response.ok) throw new Error("Failed to fetch bets");
-        const data = await response.json();
-        setBets(data);
-      } catch (error) {
-        console.error(error);
-      }
-    };
-
-    initializeAndFetchTokens();
-    fetchBets();
+    fetchTokensAndBets();
   }, [isSignedIn, user]);
 
   const handleResetTokens = async () => {
-    if (!confirm("Êtes-vous sûr de vouloir réinitialiser vos tokens à 1000 ?")) return;
-
+    const confirmed = confirm("Êtes-vous sûr de vouloir réinitialiser vos tokens à 1000 ?");
+    if (!confirmed) return;
+  
     setIsResetting(true);
+    setError(null);
+  
     try {
       const response = await fetch("/api/reset-user-tokens", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include", // ✅ OBLIGATOIRE pour envoyer les cookies Clerk
       });
-
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-
-      setUserTokens(data.balance);
-    } catch (error) {
-      setError(error.message);
+  
+      const text = await response.text();
+  
+      let data;
+      try {
+        data = JSON.parse(text); // 🧪 sécurise la lecture JSON
+      } catch (e) {
+        console.error("Réponse non JSON :", text);
+        throw new Error("Réponse invalide du serveur");
+      }
+  
+      if (!response.ok) {
+        throw new Error(data.error || "Erreur serveur");
+      }
+  
+      setUserTokens(data.balance); // ✅ update tokens
+    } catch (err) {
+      console.error("Erreur reset:", err);
+      setError(err.message);
     } finally {
       setIsResetting(false);
     }
   };
+  
 
   if (!isLoaded) {
     return (
@@ -126,12 +122,12 @@ function ProfilePage() {
         </div>
 
         <div className="mx-auto max-w-7xl space-y-8 py-8">
-          {/* Personal Info */}
+          {/* Informations personnelles */}
           <div className="grid gap-8 md:grid-cols-2">
             <div className="rounded-lg border border-[#FFD700] bg-[#003366] p-6">
               <h2 className="mb-4 text-xl font-bold text-[#FFD700]">Informations Personnelles</h2>
               <div className="space-y-4 text-gray-300">
-                <p><span className="text-[#FFD700]">Email:</span> {user.emailAddresses[0].emailAddress}</p>
+                <p><span className="text-[#FFD700]">Email:</span> {user.emailAddresses?.[0]?.emailAddress}</p>
                 <p><span className="text-[#FFD700]">Membre depuis:</span> {new Date(user.createdAt).toLocaleDateString()}</p>
               </div>
             </div>
@@ -140,40 +136,37 @@ function ProfilePage() {
               <h2 className="mb-4 text-xl font-bold text-[#FFD700]">État du Portefeuille</h2>
               <div className="text-center">
                 <p className="text-sm text-gray-300">Solde actuel</p>
-                <p className="text-4xl font-bold text-[#FFD700]">{userTokens || 0}€</p>
+                <p className="text-4xl font-bold text-[#FFD700]">{userTokens ?? 0}€</p>
               </div>
             </div>
           </div>
 
-          {/* Bet Stats */}
+          {/* Statistiques */}
           <div className="rounded-lg border border-[#FFD700] bg-[#003366] p-6">
             <h2 className="mb-6 text-xl font-bold text-[#FFD700]">Statistiques des Paris</h2>
             <div className="grid gap-4 md:grid-cols-3">
               <div className="rounded-lg bg-[#003366] p-4 text-center">
                 <p className="text-sm text-gray-300">Paris Gagnés</p>
                 <p className="text-3xl font-bold text-[#FFD700]">
-                  {bets.filter((bet) => bet.status === "won").length}
+                  {bets.filter((b) => b.status === "won").length}
                 </p>
               </div>
               <div className="rounded-lg bg-[#003366] p-4 text-center">
                 <p className="text-sm text-gray-300">Paris Perdus</p>
                 <p className="text-3xl font-bold text-[#FFD700]">
-                  {bets.filter((bet) => bet.status === "lost").length}
+                  {bets.filter((b) => b.status === "lost").length}
                 </p>
               </div>
               <div className="rounded-lg bg-[#003366] p-4 text-center">
                 <p className="text-sm text-gray-300">Gains Totaux</p>
                 <p className="text-3xl font-bold text-[#FFD700]">
-                  {bets.reduce(
-                    (acc, bet) => acc + (bet.status === "won" ? bet.winnings : 0),
-                    0
-                  )}€
+                  {bets.reduce((acc, b) => acc + (b.status === "won" ? b.winnings : 0), 0)}€
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Bet History */}
+          {/* Historique des paris */}
           <div className="rounded-lg border border-[#FFD700] bg-[#003366] p-6">
             <h2 className="mb-6 text-xl font-bold text-[#FFD700]">Historique des Paris</h2>
             <div className="overflow-x-auto">
@@ -210,28 +203,29 @@ function ProfilePage() {
             </div>
           </div>
 
-          {/* Token Reset */}
+          {/* Reset Tokens */}
           <div className="bg-[#003366] p-6">
-            <div className="rounded-lg border border-[#FFD700] bg-[#003366] p-6">
+            <div className="rounded-lg border border-[#FFD700] bg-[#003366] p-6 text-center">
               <h2 className="mb-4 text-xl font-bold text-[#FFD700]">Tokens</h2>
-              <div className="text-center">
-                <p className="text-sm text-gray-300">Solde actuel en tokens</p>
-                <p className="text-4xl font-bold text-[#FFD700] mb-4">
-                  {userTokens || 0} tokens
-                </p>
-                <button
-                  onClick={handleResetTokens}
-                  disabled={isResetting}
-                  className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600 disabled:opacity-50"
-                >
-                  {isResetting ? (
-                    <span><i className="fas fa-spinner fa-spin mr-2"></i> Réinitialisation...</span>
-                  ) : (
-                    "Réinitialiser les tokens"
-                  )}
-                </button>
-                {error && <p className="mt-2 text-red-500">{error}</p>}
-              </div>
+              <p className="text-sm text-gray-300 mb-2">Solde actuel en tokens</p>
+              <p className="text-4xl font-bold text-[#FFD700] mb-4">
+                {userTokens ?? 0} tokens
+              </p>
+              <button
+                onClick={handleResetTokens}
+                disabled={isResetting}
+                className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600 disabled:opacity-50"
+              >
+                {isResetting ? (
+                  <>
+                    <i className="fas fa-spinner fa-spin mr-2"></i>
+                    Réinitialisation...
+                  </>
+                ) : (
+                  "Réinitialiser les tokens"
+                )}
+              </button>
+              {error && <p className="mt-2 text-red-500">{error}</p>}
             </div>
           </div>
         </div>
@@ -239,5 +233,3 @@ function ProfilePage() {
     </div>
   );
 }
-
-export default ProfilePage;
