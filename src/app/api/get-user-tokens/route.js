@@ -1,38 +1,64 @@
-  async function handler() {
-  const session = getSession();
+import { getSession } from '@clerk/nextjs/server';
+import { sql } from '@vercel/postgres'; // ou votre client SQL
 
-  if (!session?.user?.id) {
-    return {
-      success: false,
-      error: "Utilisateur non authentifié",
-    };
-  }
-
+export async function POST(request) {
   try {
-    const result = await sql`
-      SELECT * FROM user_tokens 
-      WHERE user_id = ${session.user.id}
-    `;
-
-    if (result.length === 0) {
-      return {
-        success: false,
-        error: "Aucun token trouvé pour cet utilisateur",
-      };
+    const session = await getSession(request);
+    
+    if (!session?.userId) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: "Utilisateur non authentifié" 
+        }),
+        { 
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
     }
 
-    return {
-      success: true,
-      data: result[0],
-    };
+    const result = await sql`
+      SELECT * FROM user_tokens 
+      WHERE user_id = ${session.userId}
+    `;
+
+    if (result.rows.length === 0) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: "Aucun token trouvé",
+          shouldInitialize: true 
+        }),
+        { 
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        data: result.rows[0] 
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+
   } catch (error) {
-    console.error("Error fetching user tokens:", error);
-    return {
-      success: false,
-      error: "Erreur lors de la récupération des tokens",
-    };
+    console.error("Error in get-user-tokens:", error);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: "Erreur serveur" 
+      }),
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
   }
-}
-export async function POST(request) {
-  return handler(await request.json());
 }
