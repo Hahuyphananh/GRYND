@@ -4,9 +4,14 @@ import NavigationBar from "../components/navigation-bar";
 import BetSlip from "../components/bet-slip";
 import { useUser } from '@clerk/nextjs'
 import { useState, useEffect  } from "react";
+import Image from "next/image";
+import Img1 from '../../images/roulette.jpg';
+import Img2 from '../../images/blackjack.jpg';
+import Img3 from '../../images/poker.jpg';
+import Img4 from '../../images/plinko.jpg';
 
 function MainComponent() {
-  const { user } = useUser()
+  const { data: user } = useUser();
   const [selectedBet, setSelectedBet] = useState(null);
   const [selectedOdds, setSelectedOdds] = useState(null);
   const [sports, setSports] = useState([]);
@@ -198,7 +203,7 @@ function MainComponent() {
       console.error("Error placing bet:", error);
       showNotification(
         error.message || "Erreur lors du placement du pari",
-        "error"
+        "error",
       );
     } finally {
       setBetInProgress(false);
@@ -254,7 +259,85 @@ function MainComponent() {
         </div>
       )}
 
-      <div className="relative mx-auto max-w-7xl px-4 py-12">
+      <div className="mx-auto max-w-7xl px-4 py-8">
+        <section className="mb-16">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl font-bold text-[#FFD700]">
+              Casino en Ligne
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
+            <a
+              href="/roulette"
+              className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+            >
+              <div className="mb-4 h-48 overflow-hidden rounded-lg">
+                <Image
+                  src={Img1}
+                  alt="Table de roulette avec jetons"
+                  className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                />
+              </div>
+              <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Roulette</h3>
+              <p className="text-gray-300">
+                Placez vos paris sur les numéros, couleurs ou sections
+              </p>
+            </a>
+
+            <a
+              href="/casino/blackjack"
+              className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+            >
+              <div className="mb-4 h-48 overflow-hidden rounded-lg">
+                <Image
+                  src={Img2}
+                  alt="Table de blackjack avec cartes"
+                  className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                />
+              </div>
+              <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Blackjack</h3>
+              <p className="text-gray-300">
+                Affrontez le croupier dans ce jeu de cartes classique
+              </p>
+            </a>
+
+            <a
+              href="/casino/poker"
+              className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+            >
+              <div className="mb-4 h-48 overflow-hidden rounded-lg">
+                <Image
+                  src={Img3}
+                  alt="Table de poker avec cartes et jetons"
+                  className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                />
+              </div>
+              <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Poker</h3>
+              <p className="text-gray-300">
+                Affrontez l'IA ou d'autres joueurs dans des parties passionnantes
+              </p>
+            </a>
+
+            <a
+              href="/casino/plinko"
+              className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+            >
+              <div className="mb-4 h-48 overflow-hidden rounded-lg">
+                <Image
+                  src={Img4}
+                  alt="Jeu Plinko avec des jetons qui tombent"
+                  className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                />
+              </div>
+              <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Plinko</h3>
+              <p className="text-gray-300">
+                Regardez tomber votre jeton et multipliez vos gains
+              </p>
+            </a>
+          </div>
+        </section>
+
         <div className="mb-16">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-2xl font-bold text-[#FFD700]">
@@ -381,11 +464,7 @@ function MainComponent() {
       </div>
 
       {notification && (
-        <div
-          className={`fixed bottom-4 right-4 p-4 rounded-lg ${
-            notification.type === "success" ? "bg-green-500" : "bg-red-500"
-          } text-white`}
-        >
+        <div className={`fixed bottom-4 right-4 p-4 rounded-lg ${notification.type === "success" ? "bg-green-500" : "bg-red-500"} text-white`}>
           {notification.message}
         </div>
       )}
@@ -415,5 +494,6 @@ function MainComponent() {
     </div>
   );
 }
+
 
 export default MainComponent;
