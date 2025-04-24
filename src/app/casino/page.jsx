@@ -1,11 +1,11 @@
 "use client";
 import NavigationBar from "../../components/navigation-bar";
-import { useUser } from '@clerk/nextjs'
-import { useState, React  } from "react";
-import Img1 from '../../images/roulette.jpg';
-import Img2 from '../../images/blackjack.jpg';
-import Img3 from '../../images/poker.jpg';
-import Img4 from '../../images/plinko.jpg';
+import { useUser } from "@clerk/nextjs";
+import { useState, React } from "react";
+import Img1 from "../images/roulette.jpg";
+import Img2 from "../images/blackjack.jpg";
+import Img3 from "../images/poker.jpg";
+import Img4 from "../images/plinko.jpg";
 import Image from "next/image";
 
 function MainComponent() {
@@ -138,10 +138,18 @@ function MainComponent() {
           animation: fadeIn 0.5s ease-out forwards;
         }
 
-        .grid > *:nth-child(1) { animation-delay: 0.1s; }
-        .grid > *:nth-child(2) { animation-delay: 0.2s; }
-        .grid > *:nth-child(3) { animation-delay: 0.3s; }
-        .grid > *:nth-child(4) { animation-delay: 0.4s; }
+        .grid > *:nth-child(1) {
+          animation-delay: 0.1s;
+        }
+        .grid > *:nth-child(2) {
+          animation-delay: 0.2s;
+        }
+        .grid > *:nth-child(3) {
+          animation-delay: 0.3s;
+        }
+        .grid > *:nth-child(4) {
+          animation-delay: 0.4s;
+        }
       `}</style>
     </div>
   );
