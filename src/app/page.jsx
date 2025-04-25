@@ -5,10 +5,10 @@ import BetSlip from "../components/bet-slip";
 import { useUser } from '@clerk/nextjs'
 import { useState, useEffect  } from "react";
 import Image from "next/image";
-import Img1 from '../../images/roulette.jpg';
-import Img2 from '../../images/blackjack.jpg';
-import Img3 from '../../images/poker.jpg';
-import Img4 from '../../images/plinko.jpg';
+import Img1 from '../images/roulette.jpg';
+import Img2 from '../images/blackjack.jpg';
+import Img3 from '../images/poker.jpg';
+import Img4 from '../images/plinko.jpg';
 
 function MainComponent() {
   const { data: user } = useUser();
