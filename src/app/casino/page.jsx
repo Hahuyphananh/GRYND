@@ -7,6 +7,7 @@ import Img2 from "../../images/blackjack.jpg";
 import Img3 from "../../images/poker.jpg";
 import Img4 from "../../images/plinko.jpg";
 import Img5 from "../../images/mines.jpg";
+import Img6 from "../../images/crash.jpg";
 import Image from "next/image";
 
 function MainComponent() {
@@ -136,6 +137,29 @@ function MainComponent() {
   <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Mines</h3>
   <p className="text-gray-300">
     Évitez les bombes et trouvez les diamants pour multiplier vos gains !
+  </p>
+  <div className="mt-4 flex items-center text-[#FFD700]">
+    <span>Jouer maintenant</span>
+    <i className="fas fa-arrow-right ml-2"></i>
+  </div>
+</a>
+
+<a
+  href="/casino/crash"
+  className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+>
+  <div className="mb-4 h-48 overflow-hidden rounded-lg">
+    <Image
+      src={Img6}
+      alt="Jeu de Crash"
+      width={500}
+      height={300}
+      className="h-full w-full object-cover transition-transform group-hover:scale-110"
+    />
+  </div>
+  <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Crash</h3>
+  <p className="text-gray-300">
+    Posez vos paris et essayez de cash out avant que la fusée Crash!
   </p>
   <div className="mt-4 flex items-center text-[#FFD700]">
     <span>Jouer maintenant</span>

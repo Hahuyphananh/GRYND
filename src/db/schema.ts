@@ -1,8 +1,126 @@
-import { integer, pgTable, varchar } from "drizzle-orm/pg-core";
+// src/db/schema.ts
+import { pgTable, serial, varchar, integer, numeric, timestamp } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 
-export const usersTable = pgTable("users", {
-  id: integer().primaryKey().generatedAlwaysAsIdentity(),
-  name: varchar({ length: 255 }).notNull(),
-  age: integer().notNull(),
-  email: varchar({ length: 255 }).notNull().unique(),
+// USERS TABLE
+export const users = pgTable('users', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  email: varchar('email', { length: 255 }).notNull().unique(),
+  password: varchar('password', { length: 255 }).notNull(),
+  age: integer('age'),
+  balance: numeric('balance', { precision: 10, scale: 2 }).default('1000.00').notNull(),
+  gamesWon: integer('games_won').default(0),
+  gamesLost: integer('games_lost').default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 });
+
+// GAMES TABLES
+export const rouletteGames = pgTable('roulette_games', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
+  result: varchar('result', { length: 10 }).notNull(),
+  payout: numeric('payout', { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const crashGames = pgTable('crash_games', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
+  cashedOutAt: numeric('cashed_out_at', { precision: 10, scale: 2 }),
+  payout: numeric('payout', { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const pokerGames = pgTable('poker_games', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
+  result: varchar('result', { length: 10 }).notNull(),
+  payout: numeric('payout', { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const blackjackGames = pgTable('blackjack_games', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
+  result: varchar('result', { length: 10 }).notNull(),
+  payout: numeric('payout', { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const minesGames = pgTable('mines_games', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
+  tilesRevealed: integer('tiles_revealed').default(0),
+  payout: numeric('payout', { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const plinkoGames = pgTable('plinko_games', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
+  resultMultiplier: numeric('result_multiplier', { precision: 10, scale: 2 }).notNull(),
+  payout: numeric('payout', { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+//
+// RELATIONS
+//
+
+export const usersRelations = relations(users, ({ many }) => ({
+  rouletteGames: many(rouletteGames),
+  crashGames: many(crashGames),
+  pokerGames: many(pokerGames),
+  blackjackGames: many(blackjackGames),
+  minesGames: many(minesGames),
+  plinkoGames: many(plinkoGames),
+}));
+
+export const rouletteGamesRelations = relations(rouletteGames, ({ one }) => ({
+  user: one(users, {
+    fields: [rouletteGames.userId],
+    references: [users.id],
+  }),
+}));
+
+export const crashGamesRelations = relations(crashGames, ({ one }) => ({
+  user: one(users, {
+    fields: [crashGames.userId],
+    references: [users.id],
+  }),
+}));
+
+export const pokerGamesRelations = relations(pokerGames, ({ one }) => ({
+  user: one(users, {
+    fields: [pokerGames.userId],
+    references: [users.id],
+  }),
+}));
+
+export const blackjackGamesRelations = relations(blackjackGames, ({ one }) => ({
+  user: one(users, {
+    fields: [blackjackGames.userId],
+    references: [users.id],
+  }),
+}));
+
+export const minesGamesRelations = relations(minesGames, ({ one }) => ({
+  user: one(users, {
+    fields: [minesGames.userId],
+    references: [users.id],
+  }),
+}));
+
+export const plinkoGamesRelations = relations(plinkoGames, ({ one }) => ({
+  user: one(users, {
+    fields: [plinkoGames.userId],
+    references: [users.id],
+  }),
+}));
