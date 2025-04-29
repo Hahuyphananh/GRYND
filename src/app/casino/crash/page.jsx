@@ -152,7 +152,30 @@ export default function Page() {
   }
 
   return (
+
+    
     <div className="min-h-screen bg-[#0e0e0e] text-white flex flex-col items-center p-4">
+      <div className="mb-6">
+        <a
+          href="/casino"
+          className="inline-flex items-center text-yellow-400 hover:text-yellow-300"
+        >
+          <svg
+            className="w-6 h-6 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M10 19l-7-7m0 0l7-7m-7 7h18"
+            />
+          </svg>
+          Retour au Casino
+        </a>
+      </div>
       {/* Top Section */}
       <div className="flex flex-col lg:flex-row w-full max-w-7xl gap-4">
         

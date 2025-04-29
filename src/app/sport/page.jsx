@@ -1,10 +1,12 @@
 "use client";
 import React from "react";
 import NavigationBar from "../../components/navigation-bar";
+import Link from "next/link"; // make sure this is imported at the top
 import { useUser } from '@clerk/nextjs'
 import { useState, useEffect  } from "react";
 import EventCard from "../../components/event-card";
 import BetSlip from "../../components/bet-slip";
+
 
 function MainComponent() {
   const { data: user } = useUser();
@@ -111,45 +113,51 @@ function MainComponent() {
                 </button>
               </div>
 
-              <div className="grid gap-6">
-                <div className="rounded-lg bg-[#003366] border border-[#FFD700] p-4">
-                  <EventCard
-                    team1="PSG"
-                    team2="Marseille"
-                    date="15 Mars 2025"
-                    time="20:45"
-                    odds1="1.95"
-                    oddsDraw="3.40"
-                    odds2="3.80"
-                    onBetSelect={handleBetSelection}
-                  />
-                </div>
-                <div className="rounded-lg bg-[#003366] border border-[#FFD700] p-4">
-                  <EventCard
-                    team1="Lyon"
-                    team2="Monaco"
-                    date="15 Mars 2025"
-                    time="21:00"
-                    odds1="2.10"
-                    oddsDraw="3.30"
-                    odds2="3.50"
-                    onBetSelect={handleBetSelection}
-                  />
-                </div>
-                <div className="rounded-lg bg-[#003366] border border-[#FFD700] p-4">
-                  <EventCard
-                    team1="Lens"
-                    team2="Lille"
-                    date="16 Mars 2025"
-                    time="17:00"
-                    odds1="2.40"
-                    oddsDraw="3.20"
-                    odds2="2.90"
-                    onBetSelect={handleBetSelection}
-                  />
-                </div>
+            <Link href="/sports/match/psg-vs-marseille">
+              <div className="rounded-lg bg-[#003366] border border-[#FFD700] p-4 hover:bg-[#004080] transition-colors">
+                <EventCard
+                  team1="PSG"
+                  team2="Marseille"
+                  date="15 Mars 2025"
+                  time="20:45"
+                  odds1="1.95"
+                  oddsDraw="3.40"
+                  odds2="3.80"
+                  onBetSelect={handleBetSelection}
+                />
               </div>
-            </div>
+            </Link>
+
+            <Link href="/sports/match/lyon-vs-monaco">
+              <div className="rounded-lg bg-[#003366] border border-[#FFD700] p-4 hover:bg-[#004080] transition-colors">
+                <EventCard
+                  team1="Lyon"
+                  team2="Monaco"
+                  date="15 Mars 2025"
+                  time="21:00"
+                  odds1="2.10"
+                  oddsDraw="3.30"
+                  odds2="3.50"
+                  onBetSelect={handleBetSelection}
+                />
+              </div>
+            </Link>
+
+            <Link href="/sports/match/lens-vs-lille">
+              <div className="rounded-lg bg-[#003366] border border-[#FFD700] p-4 hover:bg-[#004080] transition-colors">
+                <EventCard
+                  team1="Lens"
+                  team2="Lille"
+                  date="16 Mars 2025"
+                  time="17:00"
+                  odds1="2.40"
+                  oddsDraw="3.20"
+                  odds2="2.90"
+                  onBetSelect={handleBetSelection}
+                />
+              </div>
+            </Link>
+
 
             <div className="sticky top-24 mt-8 w-full md:mt-0 md:w-[400px]">
               <div className="rounded-lg bg-[#003366] border border-[#FFD700] p-4">
