@@ -8,7 +8,7 @@ import EventCard from "../../components/event-card";
 import BetSlip from "../../components/bet-slip";
 
 
-function MainComponent() {
+const MainComponent = () => {
   const { data: user } = useUser();
   const [selectedSport, setSelectedSport] = useState("football");
   const [selectedBet, setSelectedBet] = useState(null);
