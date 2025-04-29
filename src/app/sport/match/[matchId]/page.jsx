@@ -8,23 +8,30 @@ export default function MatchPage() {
   const router = useRouter();
   const { isSignedIn, user } = useUser();
 
+  const [event, setEvent] = useState(null);
   const [userTokens, setUserTokens] = useState(null);
   const [selected, setSelected] = useState(null);
   const [betAmount, setBetAmount] = useState("");
   const [countdown, setCountdown] = useState(300);
   const [message, setMessage] = useState("");
 
-  const teams = matchId.replace(/-/g, " ").split(" vs ");
-  const [teamA, teamB] = teams;
-
-  const odds = {
-    [teamA]: "1.85",
-    draw: "3.60",
-    [teamB]: "3.20",
-  };
-
-  // Replace this with actual event lookup later
-  const eventId = 1;
+  // Load event data by slug
+  useEffect(() => {
+    const fetchEvent = async () => {
+      const res = await fetch("/api/get-match-by-slug", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: matchId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEvent(data.event);
+      } else {
+        setMessage(data.error || "Match introuvable.");
+      }
+    };
+    fetchEvent();
+  }, [matchId]);
 
   useEffect(() => {
     if (!user) return;
@@ -54,39 +61,48 @@ export default function MatchPage() {
   const handleBet = async () => {
     setMessage("");
 
-    if (!selected) {
-      setMessage("Veuillez sélectionner une équipe.");
-      return;
-    }
-    if (!betAmount || isNaN(betAmount) || Number(betAmount) <= 0) {
-      setMessage("Montant de pari invalide.");
-      return;
-    }
+    if (!selected) return setMessage("Sélectionnez une option.");
+    if (!betAmount || isNaN(betAmount) || Number(betAmount) <= 0)
+      return setMessage("Montant invalide.");
 
     try {
       const res = await fetch("/api/place-sports-bet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          eventId,
+          eventId: event.id,
           betAmount: Number(betAmount),
           choice: selected,
-          odds: parseFloat(odds[selected]),
+          odds: parseFloat(event.odds_map[selected]),
         }),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Une erreur est survenue");
+      if (!res.ok) throw new Error(data.error || "Erreur");
 
       setUserTokens(data.newBalance);
-      setMessage(`✅ Pari placé sur "${selected}" à ${odds[selected]}x`);
+      setMessage(`✅ Pari placé sur ${selected} à ${event.odds_map[selected]}x`);
       setSelected(null);
       setBetAmount("");
     } catch (err) {
-      console.error(err);
       setMessage(`❌ ${err.message}`);
     }
   };
+
+  if (!event) {
+    return (
+      <div className="min-h-screen bg-[#003366] text-white p-6 flex justify-center items-center">
+        <p className="text-yellow-400 text-lg">{message || "Chargement..."}</p>
+      </div>
+    );
+  }
+
+  const oddsMap = {
+    [event.team_a]: event.odds_a,
+    draw: event.odds_draw,
+    [event.team_b]: event.odds_b,
+  };
+  event.odds_map = oddsMap; // attach for reuse
 
   return (
     <div className="min-h-screen bg-[#003366] text-white px-6 py-16">
@@ -100,25 +116,30 @@ export default function MatchPage() {
 
         <div className="text-center">
           <h1 className="text-4xl font-bold text-[#FFD700] mb-2">
-            {teamA} vs {teamB}
+            {event.team_a} vs {event.team_b}
           </h1>
-          <p className="text-gray-300">Débute dans {formatTime(countdown)}</p>
+          <p className="text-gray-300">
+            Débute dans {formatTime(countdown)} —{" "}
+            {new Date(event.start_time).toLocaleString("fr-FR")}
+          </p>
         </div>
 
         <div className="flex justify-center gap-6 mt-8">
-          {Object.entries(odds).map(([team, odd]) => (
-            <button
-              key={team}
-              onClick={() => setSelected(team)}
-              className={`px-6 py-3 rounded-lg text-lg font-semibold transition ${
-                selected === team
-                  ? "bg-yellow-500 text-[#003366]"
-                  : "bg-gray-700 text-white hover:bg-gray-600"
-              }`}
-            >
-              {team.toUpperCase()} ({odd})
-            </button>
-          ))}
+          {Object.entries(oddsMap).map(([key, value]) =>
+            value ? (
+              <button
+                key={key}
+                onClick={() => setSelected(key)}
+                className={`px-6 py-3 rounded-lg text-lg font-semibold transition ${
+                  selected === key
+                    ? "bg-yellow-500 text-[#003366]"
+                    : "bg-gray-700 text-white hover:bg-gray-600"
+                }`}
+              >
+                {key.toUpperCase()} ({value})
+              </button>
+            ) : null
+          )}
         </div>
 
         <div className="flex justify-center mt-6">
@@ -138,7 +159,9 @@ export default function MatchPage() {
         </div>
 
         {message && (
-          <div className="text-center text-yellow-400 mt-4 font-medium">{message}</div>
+          <div className="text-center text-yellow-400 mt-4 font-medium">
+            {message}
+          </div>
         )}
 
         {isSignedIn && (
