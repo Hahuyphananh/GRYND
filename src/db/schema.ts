@@ -70,6 +70,18 @@ export const plinkoGames = pgTable('plinko_games', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+export const chessGames = pgTable('chess_games', {
+  id: serial('id').primaryKey(),
+  playerWhiteId: integer('player_white_id').notNull(),
+  playerBlackId: integer('player_black_id'),
+  betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
+  winnerId: integer('winner_id'),
+  result: varchar('result', { length: 20 }), // win, loss, draw
+  payout: numeric('payout', { precision: 10, scale: 2 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+
 //
 // RELATIONS
 //
@@ -124,6 +136,24 @@ export const plinkoGamesRelations = relations(plinkoGames, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export const chessGamesRelations = relations(chessGames, ({ one }) => ({
+  playerWhite: one(users, {
+    fields: [chessGames.playerWhiteId],
+    references: [users.id],
+    relationName: "playerWhite",
+  }),
+  playerBlack: one(users, {
+    fields: [chessGames.playerBlackId],
+    references: [users.id],
+    relationName: "playerBlack",
+  }),
+  winner: one(users, {
+    fields: [chessGames.winnerId],
+    references: [users.id],
+  }),
+}));
+
 
 // SPORTS (football, basketball, etc.)
 export const sports = pgTable('sports', {
