@@ -1,0 +1,15 @@
+INSERT INTO sports (name) VALUES
+('Basketball'),
+('Chess'),
+('Football'),
+('Hockey'),
+('American Football'),
+('MMA'),
+('Boxing'),
+('Baseball'),
+('Horse Racing'),
+('Tennis'),
+('Badminton'),
+('Cricket'),
+('Golf'),
+('Table Tennis');

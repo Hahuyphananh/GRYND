@@ -1,10 +1,11 @@
-import {config} from 'dotenv'
-import { drizzle } from 'drizzle-orm/neon-http';
-import { neon } from "@neondatabase/serverless"
+"use server";
+import { config } from "dotenv";
+config({ path: ".env.local" }); // Load .env first
 
-const sql = neon(process.env.DATABASE_URL!)
-const db = drizzle(sql)
-config({path: 'env.local'})
+import { drizzle } from "drizzle-orm/neon-http";
+import { neon } from "@neondatabase/serverless";
 
-export { db }
+const sql = neon(process.env.DATABASE_URL!); // Assert it's defined
+const db = drizzle(sql);
 
+export { db };
