@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+"use client";
+import React, { useState } from "react";
 
 const fruitIcons = [
-  🍓,
-  🍊,
-  🍌,
-  🫐,
-  🍋,
-  🥑,
-  🍐
-  🍒,
+  <span style="font-size:100px;">&#127827;</span>,
+  <span style="font-size:100px;">&#127818;</span>,
+  <span style="font-size:100px;">&#127820;</span>,
+  <span style="font-size:100px;">&#127815;</span>,
+  <span style="font-size:100px;">&#127819;</span>,
+  <span style="font-size:100px;">&#129361;</span>,
+  <span style="font-size:100px;">&#127824;</span>,
+  <span style="font-size:100px;">&#129389;</span>,
 ];
 
 const getRandomFruit = () => {
@@ -18,7 +19,9 @@ const getRandomFruit = () => {
 
 const SlotMachine = () => {
   const [reels, setReels] = useState(
-    Array.from({ length: 5 }, () => Array(3).fill('/fruits/question.png'))
+    Array.from({ length: 5 }, () =>
+      Array(3).fill(<span style="font-size:100px;">&#128176;</span>)
+    )
   );
 
   const spin = () => {
@@ -33,7 +36,10 @@ const SlotMachine = () => {
       {/* Reels */}
       <div className="flex border-8 border-yellow-400 rounded-xl bg-purple-700 p-4 mb-6">
         {reels.map((column, colIdx) => (
-          <div key={colIdx} className="flex flex-col items-center mx-1 bg-purple-900 p-2 rounded-lg">
+          <div
+            key={colIdx}
+            className="flex flex-col items-center mx-1 bg-purple-900 p-2 rounded-lg"
+          >
             {column.map((fruit, rowIdx) => (
               <img
                 key={rowIdx}

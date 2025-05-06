@@ -123,74 +123,97 @@ function MainComponent() {
             </div>
           </a>
           <a
-  href="/casino/mines"
-  className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
->
-  <div className="mb-4 h-48 overflow-hidden rounded-lg">
-    <Image
-      src={Img5}
-      alt="Jeu de Mines avec des diamants"
-      width={500}
-      height={300}
-      className="h-full w-full object-cover transition-transform group-hover:scale-110"
-    />
-  </div>
-  <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Mines</h3>
-  <p className="text-gray-300">
-    Évitez les bombes et trouvez les diamants pour multiplier vos gains !
-  </p>
-  <div className="mt-4 flex items-center text-[#FFD700]">
-    <span>Jouer maintenant</span>
-    <i className="fas fa-arrow-right ml-2"></i>
-  </div>
-</a>
+            href="/casino/mines"
+            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+          >
+            <div className="mb-4 h-48 overflow-hidden rounded-lg">
+              <Image
+                src={Img5}
+                alt="Jeu de Mines avec des diamants"
+                width={500}
+                height={300}
+                className="h-full w-full object-cover transition-transform group-hover:scale-110"
+              />
+            </div>
+            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Mines</h3>
+            <p className="text-gray-300">
+              Évitez les bombes et trouvez les diamants pour multiplier vos
+              gains !
+            </p>
+            <div className="mt-4 flex items-center text-[#FFD700]">
+              <span>Jouer maintenant</span>
+              <i className="fas fa-arrow-right ml-2"></i>
+            </div>
+          </a>
 
-<a
-  href="/casino/crash"
-  className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
->
-  <div className="mb-4 h-48 overflow-hidden rounded-lg">
-    <Image
-      src={Img6}
-      alt="Jeu de Crash"
-      width={500}
-      height={300}
-      className="h-full w-full object-cover transition-transform group-hover:scale-110"
-    />
-  </div>
-  <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Crash</h3>
-  <p className="text-gray-300">
-    Posez vos paris et essayez de cash out avant que la fusée Crash!
-  </p>
-  <div className="mt-4 flex items-center text-[#FFD700]">
-    <span>Jouer maintenant</span>
-    <i className="fas fa-arrow-right ml-2"></i>
-  </div>
-</a>
+          <a
+            href="/casino/crash"
+            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+          >
+            <div className="mb-4 h-48 overflow-hidden rounded-lg">
+              <Image
+                src={Img6}
+                alt="Jeu de Crash"
+                width={500}
+                height={300}
+                className="h-full w-full object-cover transition-transform group-hover:scale-110"
+              />
+            </div>
+            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Crash</h3>
+            <p className="text-gray-300">
+              Posez vos paris et essayez de cash out avant que la fusée Crash!
+            </p>
+            <div className="mt-4 flex items-center text-[#FFD700]">
+              <span>Jouer maintenant</span>
+              <i className="fas fa-arrow-right ml-2"></i>
+            </div>
+          </a>
 
-<a
-  href="/casino/chess"
-  className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
->
-  <div className="mb-4 h-48 overflow-hidden rounded-lg">
-    <Image
-      src={Img7}
-      alt="Échecs"
-      width={500}
-      height={300}
-      className="h-full w-full object-cover transition-transform group-hover:scale-110"
-    />
-  </div>
-  <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Échecs</h3>
-  <p className="text-gray-300">
-    Posez vos paris et affrontez des gens dans un match d'échecs!
-  </p>
-  <div className="mt-4 flex items-center text-[#FFD700]">
-    <span>Jouer maintenant</span>
-    <i className="fas fa-arrow-right ml-2"></i>
-  </div>
-</a>
+          <a
+            href="/casino/chess"
+            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+          >
+            <div className="mb-4 h-48 overflow-hidden rounded-lg">
+              <Image
+                src={Img7}
+                alt="Échecs"
+                width={500}
+                height={300}
+                className="h-full w-full object-cover transition-transform group-hover:scale-110"
+              />
+            </div>
+            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Échecs</h3>
+            <p className="text-gray-300">
+              Posez vos paris et affrontez des gens dans un match d'échecs!
+            </p>
+            <div className="mt-4 flex items-center text-[#FFD700]">
+              <span>Jouer maintenant</span>
+              <i className="fas fa-arrow-right ml-2"></i>
+            </div>
+          </a>
 
+          <a
+            href="/casino/slots"
+            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+          >
+            <div className="mb-4 h-48 overflow-hidden rounded-lg">
+              <Image
+                src={Img7}
+                alt="Échecs"
+                width={500}
+                height={300}
+                className="h-full w-full object-cover transition-transform group-hover:scale-110"
+              />
+            </div>
+            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Slots</h3>
+            <p className="text-gray-300">
+              Pariez votre chance dans les jeu de slots!
+            </p>
+            <div className="mt-4 flex items-center text-[#FFD700]">
+              <span>Jouer maintenant</span>
+              <i className="fas fa-arrow-right ml-2"></i>
+            </div>
+          </a>
         </div>
       </div>
 
