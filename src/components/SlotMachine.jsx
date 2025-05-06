@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 
 const fruitIcons = [
-  '/fruits/strawberry.png',
-  '/fruits/orange.png',
-  '/fruits/banana.png',
-  '/fruits/blueberry.png',
-  '/fruits/lemon.png',
-  '/fruits/plum.png',
-  '/fruits/pear.png',
-  '/fruits/cherry.png',
+  🍓,
+  🍊,
+  🍌,
+  🫐,
+  🍋,
+  🥑,
+  🍐
+  🍒,
 ];
 
 const getRandomFruit = () => {
