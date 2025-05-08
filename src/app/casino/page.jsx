@@ -9,6 +9,8 @@ import Img4 from "../../images/plinko.jpg";
 import Img5 from "../../images/mines.jpg";
 import Img6 from "../../images/crash.jpg";
 import Img7 from "../../images/chess.jpg";
+import Img8 from "../../images/slots.jpg";
+import Img9 from "../../images/coin-flip.png";
 import Image from "next/image";
 
 function MainComponent() {
@@ -198,7 +200,7 @@ function MainComponent() {
           >
             <div className="mb-4 h-48 overflow-hidden rounded-lg">
               <Image
-                src={Img7}
+                src={Img8}
                 alt="Échecs"
                 width={500}
                 height={300}
@@ -208,6 +210,29 @@ function MainComponent() {
             <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Slots</h3>
             <p className="text-gray-300">
               Pariez votre chance dans les jeu de slots!
+            </p>
+            <div className="mt-4 flex items-center text-[#FFD700]">
+              <span>Jouer maintenant</span>
+              <i className="fas fa-arrow-right ml-2"></i>
+            </div>
+          </a>
+
+          <a
+            href="/casino/coin-flip"
+            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+          >
+            <div className="mb-4 h-48 overflow-hidden rounded-lg">
+              <Image
+                src={Img9}
+                alt="Coin Flip"
+                width={500}
+                height={300}
+                className="h-full w-full object-cover transition-transform group-hover:scale-110"
+              />
+            </div>
+            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Coin Flip</h3>
+            <p className="text-gray-300">
+              Faite tourner votre chance et la pièce dans le jeu de coin-flip!
             </p>
             <div className="mt-4 flex items-center text-[#FFD700]">
               <span>Jouer maintenant</span>
