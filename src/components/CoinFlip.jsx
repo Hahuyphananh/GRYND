@@ -1,11 +1,11 @@
 "use client";
 import { useState } from "react";
 
-const HOUSE_EDGE = 0.98; // 2% house edge
-const FEE = 0.02; // 2% casino cut
+const HOUSE_EDGE = 0.98;
+const FEE = 0.02;
 
 export default function CoinFlipPage() {
-  const [mode, setMode] = useState("solo"); // solo or pvp
+  const [mode, setMode] = useState("solo");
 
   return (
     <div className="max-w-2xl mx-auto mt-10 p-6 bg-gray-800 text-white rounded shadow-lg">
@@ -35,7 +35,6 @@ export default function CoinFlipPage() {
   );
 }
 
-// ------------------- Solo Coin Flip ------------------- //
 function SoloCoinFlip() {
   const [bet, setBet] = useState(10);
   const [choice, setChoice] = useState("heads");
@@ -103,15 +102,22 @@ function SoloCoinFlip() {
         {flipping ? "Flipping..." : "Flip Coin"}
       </button>
 
-      {result && (
-        <p className="mt-4 text-center text-xl capitalize">Result: {result}</p>
-      )}
+      <div className="flex justify-center mt-4 h-24">
+        {flipping && (
+          <div className="animate-spin-slow text-6xl">🪙</div>
+        )}
+        {!flipping && result && (
+          <div className="text-6xl">{result === "heads" ? "🪙" : "🪙"}</div>
+        )}
+      </div>
+
       {message && <p className="text-center mt-2 text-blue-300">{message}</p>}
     </>
   );
 }
 
 // ------------------- PvP Coin Flip ------------------- //
+
 function PvPCoinFlip() {
   const [player1, setPlayer1] = useState("");
   const [player2, setPlayer2] = useState("");
@@ -175,9 +181,15 @@ function PvPCoinFlip() {
         {flipping ? "Flipping..." : "Start PvP Match"}
       </button>
 
-      {result && (
-        <p className="mt-4 text-center text-xl">Winner: {result}</p>
-      )}
+      <div className="flex justify-center mt-4 h-24">
+        {flipping && (
+          <div className="animate-spin-slow text-6xl">🪙</div>
+        )}
+        {!flipping && result && (
+          <div className="text-6xl">🪙</div>
+        )}
+      </div>
+
       {message && <p className="text-center mt-2 text-blue-300">{message}</p>}
     </>
   );
