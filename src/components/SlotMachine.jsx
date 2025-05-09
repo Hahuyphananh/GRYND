@@ -1,7 +1,12 @@
 "use client";
 import React, { useState, useRef } from "react";
 
+// Use emoji strings directly for reliable rendering
 const fruitIcons = [
+<<<<<<< HEAD
+  "🍓", "🍇", "🍉", "🍋", "🍊", "🍍", "🍌", "🍒", "🥝", "🍐",
+  "🍏", "🍎", "🍈", "🥥", "🍅", "🥭", "🍆", "🌽", "🥕", "🥔"
+=======
   "🍉", // Watermelon
   "🍌", // Banana
   "🍍", // Pineapple
@@ -22,6 +27,7 @@ const fruitIcons = [
   "🍆", // Eggplant (unconventional, but fruit by botany)
   "🌽", // Corn (a fruit by science, optional)
   "🍠"  // Sweet Potato (technically tuber, but visually fun)
+>>>>>>> aea723a795af0a8e5c0ce12cefdedcdaf5a4130e
 ];
 
 
@@ -105,10 +111,17 @@ const SlotMachine = () => {
             {column.map((fruit, rowIdx) => (
               <div
                 key={rowIdx}
+<<<<<<< HEAD
+                className="w-16 h-16 my-1 text-5xl flex items-center justify-center rounded bg-purple-800 animate-[spinIn_0.3s_ease]"
+              >
+                {fruit}
+              </div>
+=======
                 className="w-16 h-16 text-4xl flex items-center justify-center my-1 bg-purple-800 rounded"
               >
                 {fruit}
               </div>
+>>>>>>> aea723a795af0a8e5c0ce12cefdedcdaf5a4130e
             ))}
           </div>
         ))}
