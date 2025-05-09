@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react';
-import GameBoard from '../components/GameBoard';
+import GameBoard from '../../../components/GameBoard';
 import { useRouter } from 'next/router';
 
 export default function GamePage() {

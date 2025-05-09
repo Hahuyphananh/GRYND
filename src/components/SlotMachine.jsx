@@ -1,35 +1,22 @@
 "use client";
 import React, { useState, useRef } from "react";
 
-// Use emoji strings directly for reliable rendering
-const fruitIcons = [
-<<<<<<< HEAD
-  "🍓", "🍇", "🍉", "🍋", "🍊", "🍍", "🍌", "🍒", "🥝", "🍐",
-  "🍏", "🍎", "🍈", "🥥", "🍅", "🥭", "🍆", "🌽", "🥕", "🥔"
-=======
-  "🍉", // Watermelon
-  "🍌", // Banana
-  "🍍", // Pineapple
-  "🍏", // Green Apple
-  "🍓", // Strawberry
-  "🥭", // Mango
-  "🍈", // Melon
-  "🍇", // Grapes
-  "🍒", // Cherries
-  "🍎", // Red Apple
-  "🍊", // Orange
-  "🍋", // Lemon
-  "🥝", // Kiwi
-  "🍐", // Pear
-  "🍑", // Peach
-  "🥥", // Coconut
-  "🍅", // Tomato (debated, but often used)
-  "🍆", // Eggplant (unconventional, but fruit by botany)
-  "🌽", // Corn (a fruit by science, optional)
-  "🍠"  // Sweet Potato (technically tuber, but visually fun)
->>>>>>> aea723a795af0a8e5c0ce12cefdedcdaf5a4130e
-];
+// 🎵 Optional: simple browser beep generator
+const playSound = (freq = 880) => {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.frequency.value = freq;
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
+};
 
+const fruitIcons = [
+  "🍉", "🍌", "🍍", "🍏", "🍓", "🥭", "🍈", "🍇", "🍒", "🍎",
+  "🍊", "🍋", "🥝", "🍐", "🍑", "🥥", "🍅", "🍆", "🌽", "🍠"
+];
 
 const getRandomFruit = () => {
   const index = Math.floor(Math.random() * fruitIcons.length);
@@ -38,9 +25,7 @@ const getRandomFruit = () => {
 
 const SlotMachine = () => {
   const [reels, setReels] = useState(
-    Array.from({ length: 5 }, () =>
-      Array(3).fill("💰")
-    )
+    Array.from({ length: 5 }, () => Array(3).fill("💰"))
   );
   const [balance, setBalance] = useState(1000);
   const [bet, setBet] = useState(100);
@@ -60,6 +45,7 @@ const SlotMachine = () => {
       Array.from({ length: 3 }, () => getRandomFruit())
     );
     setReels(newReels);
+    playSound(700); // Sound on spin
 
     const allSymbols = newReels.flat();
     const symbolCounts = {};
@@ -73,9 +59,11 @@ const SlotMachine = () => {
     if (maxCount >= 5) {
       winnings = bet * 5;
       setLastResult("🎉 JACKPOT! You won 5x your bet.");
+      playSound(1200); // Big win sound
     } else if (maxCount >= 3) {
       winnings = bet * 2;
       setLastResult("✅ Match! You won 2x your bet.");
+      playSound(1000); // Small win sound
     } else {
       setLastResult("❌ No match. You lost.");
     }
@@ -89,9 +77,7 @@ const SlotMachine = () => {
   const startAutoSpin = () => {
     if (autoSpinning) return;
     setAutoSpinning(true);
-    autoSpinRef.current = setInterval(() => {
-      spin();
-    }, 1000);
+    autoSpinRef.current = setInterval(spin, 1000);
   };
 
   const stopAutoSpin = () => {
@@ -108,21 +94,16 @@ const SlotMachine = () => {
             key={colIdx}
             className="flex flex-col items-center mx-1 bg-purple-900 p-2 rounded-lg"
           >
-            {column.map((fruit, rowIdx) => (
-              <div
-                key={rowIdx}
-<<<<<<< HEAD
-                className="w-16 h-16 my-1 text-5xl flex items-center justify-center rounded bg-purple-800 animate-[spinIn_0.3s_ease]"
-              >
-                {fruit}
-              </div>
-=======
-                className="w-16 h-16 text-4xl flex items-center justify-center my-1 bg-purple-800 rounded"
-              >
-                {fruit}
-              </div>
->>>>>>> aea723a795af0a8e5c0ce12cefdedcdaf5a4130e
-            ))}
+         {column.map((fruit, rowIdx) => (
+  <div
+    key={`${fruit}-${Date.now()}-${rowIdx}`} // triggers re-animation on each spin
+    className="w-16 h-16 text-4xl flex items-center justify-center my-1 bg-purple-800 rounded animate-spinReel"
+    style={{ animationDelay: `${colIdx * 0.05}s` }}
+  >
+    {fruit}
+  </div>
+))}
+
           </div>
         ))}
       </div>
@@ -151,7 +132,7 @@ const SlotMachine = () => {
           </button>
         )}
         <button
-          onClick={() => setBet(prev => (prev < balance ? prev + 100 : prev))}
+          onClick={() => setBet(prev => (prev + 100 <= balance ? prev + 100 : prev))}
           className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded shadow"
         >
           MAX BET

@@ -13,17 +13,13 @@ export default function CoinFlipPage() {
 
       <div className="flex justify-center space-x-4 mb-6">
         <button
-          className={`px-4 py-2 rounded ${
-            mode === "solo" ? "bg-blue-600" : "bg-gray-600"
-          }`}
+          className={`px-4 py-2 rounded ${mode === "solo" ? "bg-blue-600" : "bg-gray-600"}`}
           onClick={() => setMode("solo")}
         >
           Solo vs House
         </button>
         <button
-          className={`px-4 py-2 rounded ${
-            mode === "pvp" ? "bg-blue-600" : "bg-gray-600"
-          }`}
+          className={`px-4 py-2 rounded ${mode === "pvp" ? "bg-blue-600" : "bg-gray-600"}`}
           onClick={() => setMode("pvp")}
         >
           PvP
@@ -35,6 +31,7 @@ export default function CoinFlipPage() {
   );
 }
 
+// ------------------- Solo Coin Flip ------------------- //
 function SoloCoinFlip() {
   const [bet, setBet] = useState(10);
   const [choice, setChoice] = useState("heads");
@@ -45,18 +42,20 @@ function SoloCoinFlip() {
   const flip = () => {
     if (bet <= 0) return setMessage("Enter a valid bet");
 
+    const audio = new Audio("/coin-flip.mp3");
+    audio.play();
+
     setFlipping(true);
     setMessage("Flipping...");
-
     setTimeout(() => {
       const outcome = Math.random() < 0.5 ? "heads" : "tails";
       setResult(outcome);
 
       if (outcome === choice) {
         const winnings = bet * HOUSE_EDGE;
-        setMessage(`You won $${winnings.toFixed(2)} 🎉`);
+        setMessage(`✅ You won $${winnings.toFixed(2)}!`);
       } else {
-        setMessage("You lost 💸");
+        setMessage("❌ You lost.");
       }
 
       setFlipping(false);
@@ -78,17 +77,13 @@ function SoloCoinFlip() {
       <div className="flex justify-between mb-4">
         <button
           onClick={() => setChoice("heads")}
-          className={`w-full mr-2 p-2 rounded ${
-            choice === "heads" ? "bg-green-600" : "bg-gray-600"
-          }`}
+          className={`w-full mr-2 p-2 rounded ${choice === "heads" ? "bg-green-600" : "bg-gray-600"}`}
         >
           Heads
         </button>
         <button
           onClick={() => setChoice("tails")}
-          className={`w-full ml-2 p-2 rounded ${
-            choice === "tails" ? "bg-green-600" : "bg-gray-600"
-          }`}
+          className={`w-full ml-2 p-2 rounded ${choice === "tails" ? "bg-green-600" : "bg-gray-600"}`}
         >
           Tails
         </button>
@@ -102,22 +97,24 @@ function SoloCoinFlip() {
         {flipping ? "Flipping..." : "Flip Coin"}
       </button>
 
-      <div className="flex justify-center mt-4 h-24">
-        {flipping && (
-          <div className="animate-spin-slow text-6xl">🪙</div>
-        )}
-        {!flipping && result && (
-          <div className="text-6xl">{result === "heads" ? "🪙" : "🪙"}</div>
-        )}
+      <div className="flex justify-center mt-6 h-28">
+        <div className="relative w-24 h-24 perspective">
+          <div
+            className={`w-full h-full rounded-full text-4xl flex items-center justify-center bg-yellow-300 text-black font-bold transition-transform duration-700 ease-in-out ${
+              flipping ? "animate-coin-flip" : ""
+            }`}
+          >
+            {result === "heads" ? "H" : result === "tails" ? "T" : "?"}
+          </div>
+        </div>
       </div>
 
-      {message && <p className="text-center mt-2 text-blue-300">{message}</p>}
+      {message && <p className="text-center mt-4 text-blue-300">{message}</p>}
     </>
   );
 }
 
 // ------------------- PvP Coin Flip ------------------- //
-
 function PvPCoinFlip() {
   const [player1, setPlayer1] = useState("");
   const [player2, setPlayer2] = useState("");
@@ -128,8 +125,11 @@ function PvPCoinFlip() {
 
   const startMatch = () => {
     if (!player1 || !player2 || bet <= 0 || player1 === player2) {
-      return setMessage("Please enter valid, different player names and bet");
+      return setMessage("Enter valid player names and bet.");
     }
+
+    const audio = new Audio("/coin-flip.mp3");
+    audio.play();
 
     setFlipping(true);
     setMessage("Flipping...");
@@ -181,16 +181,19 @@ function PvPCoinFlip() {
         {flipping ? "Flipping..." : "Start PvP Match"}
       </button>
 
-      <div className="flex justify-center mt-4 h-24">
-        {flipping && (
-          <div className="animate-spin-slow text-6xl">🪙</div>
-        )}
-        {!flipping && result && (
-          <div className="text-6xl">🪙</div>
-        )}
+      <div className="flex justify-center mt-6 h-28">
+        <div className="relative w-24 h-24 perspective">
+          <div
+            className={`w-full h-full rounded-full text-4xl flex items-center justify-center bg-yellow-300 text-black font-bold transition-transform duration-700 ease-in-out ${
+              flipping ? "animate-coin-flip" : ""
+            }`}
+          >
+            ?
+          </div>
+        </div>
       </div>
 
-      {message && <p className="text-center mt-2 text-blue-300">{message}</p>}
+      {message && <p className="text-center mt-4 text-blue-300">{message}</p>}
     </>
   );
 }
