@@ -28,6 +28,7 @@
     "react": "19.1.0",
     "react-chessboard": "^4.7.3",
     "react-dom": "19.1.0",
+    "svix": "^1.65.0",
     "swr": "^2.3.3"
   },
   "devDependencies": {
