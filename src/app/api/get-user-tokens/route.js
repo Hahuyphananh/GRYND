@@ -1,11 +1,11 @@
-import { getSession } from '@clerk/nextjs/server';
-import { sql } from '@vercel/postgres'; // ou votre client SQL
+import { auth } from '@clerk/nextjs/server';
+import { sql } from '@vercel/postgres'; // or your SQL client
 
-export async function POST(request) {
+export async function POST() {
   try {
-    const session = await getSession(request);
-    
-    if (!session?.userId) {
+    const { userId } = auth(); // replaces getSession
+
+    if (!userId) {
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -20,7 +20,7 @@ export async function POST(request) {
 
     const result = await sql`
       SELECT * FROM user_tokens 
-      WHERE user_id = ${session.userId}
+      WHERE user_id = ${userId}
     `;
 
     if (result.rows.length === 0) {

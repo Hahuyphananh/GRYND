@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { usersTable } from "../../../../db/schema"; // adjust the import if needed
+import { users } from "../../../../db/schema"; // adjust the import if needed
 
 // Setup Drizzle DB
 const db = drizzle(process.env.DATABASE_URL || "");
