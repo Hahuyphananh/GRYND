@@ -1,51 +1,72 @@
-async function handler({ amount }) {
-  const session = getSession();
-  if (!session?.user?.id) {
-    return { error: "User not authenticated" };
+import { auth } from "@clerk/nextjs";
+import { sql } from "@vercel/postgres";
+
+export async function POST(request) {
+  const { userId } = auth();
+
+  if (!userId) {
+    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
+  const { amount } = await request.json();
+
   if (!amount || amount <= 0) {
-    return { error: "Invalid bet amount" };
+    return new Response(JSON.stringify({ success: false, error: "Invalid amount" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
-    const result = await sql.transaction(async (sql) => {
-      const [userTokens] = await sql`
-        SELECT balance 
-        FROM user_tokens 
-        WHERE user_id = ${session.user.id}
-        FOR UPDATE
-      `;
+    const { rows } = await sql`
+      SELECT id, balance FROM users WHERE clerk_id = ${userId}
+    `;
+    const user = rows[0];
 
-      if (!userTokens || userTokens.balance < amount) {
-        throw new Error("Insufficient balance");
+    if (!user || user.balance < amount) {
+      return new Response(JSON.stringify({ success: false, error: "Insufficient balance" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const { rows: updatedRows } = await sql`
+      UPDATE users SET balance = balance - ${amount}
+      WHERE clerk_id = ${userId}
+      RETURNING balance
+    `;
+    const updatedUser = updatedRows[0];
+
+    await sql`
+      INSERT INTO transactions (user_id, type, amount, balance_after, status)
+      VALUES (${user.id}, 'blackjack_bet', ${amount}, ${updatedUser.balance}, 'completed')
+    `;
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          newBalance: updatedUser.balance,
+          betAmount: amount,
+          action: "bet placed",
+        },
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
       }
-
-      const [updatedTokens] = await sql`
-        UPDATE user_tokens 
-        SET balance = balance - ${amount}
-        WHERE user_id = ${session.user.id}
-        RETURNING balance
-      `;
-
-      await sql`
-        INSERT INTO transactions 
-        (user_id, type, amount, balance_after, status)
-        VALUES 
-        (${session.user.id}, 'blackjack_bet', ${amount}, ${updatedTokens.balance}, 'completed')
-      `;
-
-      return {
-        newBalance: updatedTokens.balance,
-        betAmount: amount,
-      };
-    });
-
-    return result;
-  } catch (error) {
-    return { error: error.message };
+    );
+  } catch (err) {
+    console.error("❌ Blackjack bet error:", err);
+    return new Response(
+      JSON.stringify({ success: false, error: err.message }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
-}
-export async function POST(request) {
-  return handler(await request.json());
 }

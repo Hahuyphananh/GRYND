@@ -5,6 +5,7 @@ import { relations } from "drizzle-orm";
 // USERS TABLE
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
+  clerkId: varchar('clerk_id', { length: 255 }).unique(),
   name: varchar('name', { length: 255 }).notNull(),
   email: varchar('email', { length: 255 }).notNull().unique(),
   password: varchar('password', { length: 255 }).notNull(),
@@ -14,6 +15,7 @@ export const users = pgTable('users', {
   gamesLost: integer('games_lost').default(0),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
+
 
 // GAMES TABLES
 export const rouletteGames = pgTable('roulette_games', {

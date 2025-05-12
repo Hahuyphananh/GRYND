@@ -1,7 +1,14 @@
+import { auth } from "@clerk/nextjs/server";
+import { sql } from "@vercel/postgres";
+
 async function handler({ betId, result }) {
-  const session = getSession();
-  if (!session?.user?.id) {
-    return { error: "Unauthorized" };
+  const { userId } = auth();
+
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
@@ -11,31 +18,35 @@ async function handler({ betId, result }) {
       JOIN selections s ON b.selection_id = s.id
       JOIN user_tokens ut ON b.user_id = ut.user_id
       WHERE b.id = ${betId} 
-      AND b.user_id = ${session.user.id}
+      AND b.user_id = ${userId}
       AND b.status = 'pending'
     `;
 
     if (!bet) {
-      return { error: "Bet not found or already settled" };
+      return new Response(
+        JSON.stringify({ error: "Bet not found or already settled" }),
+        {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
     const winAmount = result === "won" ? bet.potential_win : 0;
     const newBalance = bet.balance + winAmount;
 
-    const results = await sql.transaction([
+    await sql.transaction([
       sql`
         UPDATE bets 
         SET status = ${result}, 
             settled_at = CURRENT_TIMESTAMP 
         WHERE id = ${betId}
       `,
-
       sql`
         UPDATE user_tokens 
         SET balance = ${newBalance}
-        WHERE user_id = ${session.user.id}
+        WHERE user_id = ${userId}
       `,
-
       sql`
         UPDATE user_stats 
         SET 
@@ -46,24 +57,36 @@ async function handler({ betId, result }) {
           total_won = total_won + ${winAmount},
           win_rate = CASE 
             WHEN (wins + ${result === "won" ? 1 : 0}) = 0 THEN 0
-            ELSE ROUND(((wins + ${
-              result === "won" ? 1 : 0
-            })::numeric / (total_bets + 1) * 100), 2)
+            ELSE ROUND(((wins + ${result === "won" ? 1 : 0})::numeric / (total_bets + 1) * 100), 2)
           END
-        WHERE user_id = ${session.user.id}
+        WHERE user_id = ${userId}
       `,
     ]);
 
-    return {
-      success: true,
-      newBalance,
-      result,
-    };
+    return new Response(
+      JSON.stringify({
+        success: true,
+        newBalance,
+        result,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   } catch (error) {
     console.error("Error settling bet:", error);
-    return { error: "Failed to settle bet" };
+    return new Response(
+      JSON.stringify({ error: "Failed to settle bet" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 }
+
 export async function POST(request) {
-  return handler(await request.json());
+  const body = await request.json();
+  return handler(body);
 }
