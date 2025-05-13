@@ -3,7 +3,7 @@ import { sql } from "@vercel/postgres";
 
 // Explicitly annotate request type and return type
 export async function POST(request: Request): Promise<Response> {
-  const { userId } = await auth();
+  const { userId } = auth();
 
   if (!userId) {
     return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
