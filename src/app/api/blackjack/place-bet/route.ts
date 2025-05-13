@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 
-export async function POST(request) {
-  const { userId } = auth();
+// Explicitly annotate request type and return type
+export async function POST(request: Request): Promise<Response> {
+  const { userId } = await auth();
 
   if (!userId) {
     return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
@@ -11,7 +12,8 @@ export async function POST(request) {
     });
   }
 
-  const { amount } = await request.json();
+  const body = await request.json();
+  const amount = body?.amount;
 
   if (!amount || amount <= 0) {
     return new Response(JSON.stringify({ success: false, error: "Invalid amount" }), {
@@ -45,28 +47,32 @@ export async function POST(request) {
       VALUES (${user.id}, 'blackjack_bet', ${amount}, ${updatedUser.balance}, 'completed')
     `;
 
-    const response = {
-      success: true,
-      data: {
-        newBalance: updatedUser.balance,
-        betAmount: amount,
-        action: "bet placed",
-      },
-    };
-
-    return new Response(JSON.stringify(response), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          newBalance: updatedUser.balance,
+          betAmount: amount,
+          action: "bet placed",
+        },
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   } catch (err) {
     console.error("❌ Blackjack bet error:", err);
 
-    return new Response(JSON.stringify({
-      success: false,
-      error: "Server error",
-    }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Server error",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 }
