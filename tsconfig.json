@@ -30,7 +30,7 @@
     "**/*.tsx",
     "src/app/layout.jsx",
     "src/middleware.ts"
-  ],
+, ".next/types/app/api/casino/blackjack/place-bet/route.js"  ],
   "exclude": [
     "node_modules"
   ]

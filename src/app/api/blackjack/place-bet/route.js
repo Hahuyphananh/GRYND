@@ -1,9 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 
-// Explicitly annotate request type and return type
-export async function POST(request: Request): Promise<Response> {
-  const { userId } = auth();
+/**
+ * @param {Request} request
+ * @returns {Promise<Response>}
+ */
+export async function POST(request) {
+  const { userId } = await auth();
 
   if (!userId) {
     return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
