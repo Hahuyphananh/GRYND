@@ -1,43 +1,70 @@
-async function handler({ amount }) {
-  try {
-    if (!amount) {
-      return {
-        success: false,
-        error: "Le montant est requis",
-      };
-    }
+import { auth } from "@clerk/nextjs/server";
+import { sql } from "@vercel/postgres";
 
-    const session = getSession();
-    if (!session?.user?.id) {
-      return {
+/**
+ * @param {Request} request
+ * @returns {Promise<Response>}
+ */
+export async function POST(request) {
+  const { userId } = auth();
+
+  if (!userId) {
+    return new Response(
+      JSON.stringify({
         success: false,
         error: "Utilisateur non authentifié",
-      };
+      }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  try {
+    const { amount } = await request.json();
+
+    if (typeof amount !== "number" || isNaN(amount)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Le montant est requis et doit être un nombre",
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
-    // Récupérer le solde actuel
-    const result = await sql`
+    const { rows: userRows } = await sql`
       SELECT balance 
       FROM user_tokens 
-      WHERE user_id = ${session.user.id}
+      WHERE user_id = ${userId}
     `;
 
-    if (result.length === 0) {
-      return {
-        success: false,
-        error: "Compte de tokens non trouvé",
-      };
+    if (userRows.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Compte de tokens non trouvé",
+        }),
+        {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
-    // Mettre à jour le solde
-    const updateResult = await sql`
+    const { rows: updateRows } = await sql`
       UPDATE user_tokens 
       SET balance = balance + ${amount}
-      WHERE user_id = ${session.user.id}
+      WHERE user_id = ${userId}
       RETURNING balance
     `;
 
-    // Enregistrer la transaction
+    const newBalance = updateRows[0].balance;
+
     await sql`
       INSERT INTO transactions (
         user_id,
@@ -46,28 +73,36 @@ async function handler({ amount }) {
         balance_after,
         status
       ) VALUES (
-        ${session.user.id},
+        ${userId},
         ${amount > 0 ? "win" : "loss"},
         ${Math.abs(amount)},
-        ${updateResult[0].balance},
+        ${newBalance},
         'completed'
       )
     `;
 
-    return {
-      success: true,
-      data: {
-        balance: updateResult[0].balance,
-      },
-    };
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: { balance: newBalance },
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   } catch (error) {
-    console.error("Error updating token balance:", error);
-    return {
-      success: false,
-      error: "Erreur lors de la mise à jour du solde",
-    };
+    console.error("❌ Error updating token balance:", error);
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Erreur lors de la mise à jour du solde",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
-}
-export async function POST(request) {
-  return handler(await request.json());
 }

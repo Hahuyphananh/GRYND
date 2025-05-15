@@ -1,17 +1,35 @@
-async function handler() {
-  const session = getSession();
+import { auth } from "@clerk/nextjs/server";
+import { sql } from "@vercel/postgres";
 
-  if (!session?.user?.id) {
-    return { error: "Non authentifié" };
+/**
+ * @param {Request} request
+ * @returns {Promise<Response>}
+ */
+export async function POST(request) {
+  const { userId } = auth();
+
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "Non authentifié" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  const wallets = await sql`
-    SELECT * FROM wallets 
-    WHERE user_id = ${session.user.id}
-  `;
+  try {
+    const { rows } = await sql`
+      SELECT * FROM wallets 
+      WHERE user_id = ${userId}
+    `;
 
-  return wallets[0] || null;
-}
-export async function POST(request) {
-  return handler(await request.json());
+    return new Response(JSON.stringify({ wallet: rows[0] || null }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("❌ Failed to fetch wallet:", error);
+    return new Response(JSON.stringify({ error: "Erreur serveur lors de la récupération du portefeuille" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 }

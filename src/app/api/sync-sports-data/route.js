@@ -1,59 +1,70 @@
-async function handler({ retryCount = 0 } = {}) {
-  const MAX_RETRIES = 3;
-  const session = getSession();
+import { auth } from "@clerk/nextjs/server";
+import { sql } from "@vercel/postgres";
+import cheerio from "cheerio";
 
-  if (!session?.user?.id) {
-    throw new Error("Unauthorized");
+const MAX_RETRIES = 3;
+
+/**
+ * Fetch and sync sports data from ESPN
+ * @param {number} retryCount
+ * @returns {Promise<Response>}
+ */
+async function syncSportsData(retryCount = 0) {
+  const { userId } = auth();
+
+  if (!userId) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: "Utilisateur non authentifié",
+    }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  try {
-    const sports = [
-      {
-        name: "Football",
-        url: "https://www.espn.com/soccer/fixtures",
-        icon_name: "football",
-      },
-      {
-        name: "Basketball",
-        url: "https://www.espn.com/nba/schedule",
-        icon_name: "basketball",
-      },
-      {
-        name: "Tennis",
-        url: "https://www.espn.com/tennis/schedule",
-        icon_name: "tennis",
-      },
-    ];
+  const sports = [
+    {
+      name: "Football",
+      url: "https://www.espn.com/soccer/fixtures",
+      icon_name: "football",
+    },
+    {
+      name: "Basketball",
+      url: "https://www.espn.com/nba/schedule",
+      icon_name: "basketball",
+    },
+    {
+      name: "Tennis",
+      url: "https://www.espn.com/tennis/schedule",
+      icon_name: "tennis",
+    },
+  ];
 
+  try {
     for (const sport of sports) {
       try {
-        const existingSport = await sql(
-          "SELECT id FROM sports WHERE name = $1",
-          [sport.name]
-        );
+        const { rows: existingSport } = await sql`
+          SELECT id FROM sports WHERE name = ${sport.name}
+        `;
 
         const sportId = existingSport.length
           ? existingSport[0].id
           : (
-              await sql(
-                "INSERT INTO sports (name, icon_name, is_active) VALUES ($1, $2, $3) RETURNING id",
-                [sport.name, sport.icon_name, true]
-              )
+              await sql`
+                INSERT INTO sports (name, icon_name, is_active)
+                VALUES (${sport.name}, ${sport.icon_name}, true)
+                RETURNING id
+              `
             )[0].id;
 
         const response = await fetch("/integrations/web-scraping/post", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: sport.url,
-            getText: false,
-          }),
+          body: JSON.stringify({ url: sport.url, getText: false }),
         });
 
         if (!response.ok) {
-          throw new Error(
-            `Failed to fetch ${sport.name} data: ${response.status}`
-          );
+          throw new Error(`Failed to fetch ${sport.name} (${response.status})`);
         }
 
         const html = await response.text();
@@ -70,50 +81,69 @@ async function handler({ retryCount = 0 } = {}) {
               $(row).find("td:nth-child(2)").attr("data-date")
             );
 
-            if (homeTeam && awayTeam && startTime) {
+            if (homeTeam && awayTeam && !isNaN(startTime)) {
               events.push({ competition, homeTeam, awayTeam, startTime });
             }
           }
         });
 
         for (const event of events) {
-          const existingEvent = await sql(
-            "SELECT id FROM events WHERE home_team = $1 AND away_team = $2 AND start_time = $3",
-            [event.homeTeam, event.awayTeam, event.startTime]
-          );
+          const { rows: existing } = await sql`
+            SELECT id FROM events 
+            WHERE home_team = ${event.homeTeam} 
+              AND away_team = ${event.awayTeam}
+              AND start_time = ${event.startTime}
+          `;
 
-          if (!existingEvent.length) {
-            await sql.transaction([
-              sql`
-                INSERT INTO events (sport_id, competition, home_team, away_team, start_time)
-                VALUES (${sportId}, ${event.competition}, ${event.homeTeam}, ${event.awayTeam}, ${event.startTime})
-              `,
-            ]);
+          if (!existing.length) {
+            await sql`
+              INSERT INTO events (sport_id, competition, home_team, away_team, start_time)
+              VALUES (
+                ${sportId}, 
+                ${event.competition}, 
+                ${event.homeTeam}, 
+                ${event.awayTeam}, 
+                ${event.startTime}
+              )
+            `;
           }
         }
-      } catch (sportError) {
-        console.error(`Error processing ${sport.name}:`, sportError);
-
+      } catch (err) {
+        console.error(`❌ Error processing ${sport.name}:`, err);
         if (retryCount < MAX_RETRIES) {
-          return handler({ retryCount: retryCount + 1 });
+          return syncSportsData(retryCount + 1);
         }
-        throw sportError;
+        throw err;
       }
     }
 
-    return {
+    return new Response(JSON.stringify({
       success: true,
       message: "Sports data synchronized successfully",
       retryCount,
-    };
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
   } catch (error) {
-    return {
+    console.error("❌ Sync failure:", error);
+    return new Response(JSON.stringify({
       success: false,
       error: `Failed to sync sports data: ${error.message}`,
       retryCount,
-    };
+    }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }
+
+/**
+ * Route entry
+ * @param {Request} request
+ * @returns {Promise<Response>}
+ */
 export async function POST(request) {
-  return handler(await request.json());
+  return syncSportsData();
 }

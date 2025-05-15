@@ -1,25 +1,34 @@
-async function handler({ userId, betAmount, isWin }) {
+import { auth } from "@clerk/nextjs/server";
+import { sql } from "@vercel/postgres";
+
+/**
+ * @param {Request} request
+ * @returns {Promise<Response>}
+ */
+export async function POST(request) {
+  const { userId } = auth();
+
   if (!userId) {
-    return { error: "User ID is required" };
+    return new Response(JSON.stringify({ error: "Utilisateur non authentifié" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
-    const result = await sql.transaction([
-      // Get current stats
-      sql`
-        SELECT * FROM user_stats 
-        WHERE user_id = ${userId}
-      `,
-      // Update stats
-      sql`
+    const { betAmount, isWin } = await request.json();
+
+    if (typeof betAmount !== "number" || isNaN(betAmount)) {
+      return new Response(JSON.stringify({ error: "Montant de mise invalide" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const updated = await sql.begin(async (tx) => {
+      return await tx`
         INSERT INTO user_stats (
-          user_id, 
-          total_bets,
-          wins,
-          losses,
-          total_wagered,
-          total_won,
-          win_rate
+          user_id, total_bets, wins, losses, total_wagered, total_won, win_rate
         )
         VALUES (
           ${userId},
@@ -43,15 +52,26 @@ async function handler({ userId, betAmount, isWin }) {
             2
           )
         RETURNING *
-      `,
-    ]);
+      `;
+    });
 
-    const updatedStats = result[1][0];
-    return { success: true, stats: updatedStats };
+    return new Response(JSON.stringify({
+      success: true,
+      stats: updated[0],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
   } catch (error) {
-    return { error: "Failed to update user stats" };
+    console.error("❌ Failed to update user stats:", error);
+
+    return new Response(JSON.stringify({
+      success: false,
+      error: "Erreur lors de la mise à jour des statistiques",
+    }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-}
-export async function POST(request) {
-  return handler(await request.json());
 }

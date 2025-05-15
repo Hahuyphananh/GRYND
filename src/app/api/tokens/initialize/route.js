@@ -1,51 +1,60 @@
-async function handler() {
-  const session = getSession();
+import { auth } from "@clerk/nextjs/server";
+import { sql } from "@vercel/postgres";
 
-  if (!session?.user?.id) {
-    return {
-      success: false,
-      error: "Utilisateur non authentifié",
-    };
+/**
+ * @param {Request} request
+ * @returns {Promise<Response>}
+ */
+export async function POST(request) {
+  const { userId } = auth();
+
+  if (!userId) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Utilisateur non authentifié",
+      }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 
   try {
-    // Vérifie si l'utilisateur a déjà des tokens
-    const checkResult = await sql`
-      SELECT * FROM user_tokens 
-      WHERE user_id = ${session.user.id}
+    const { rows: existing } = await sql`
+      SELECT * FROM user_tokens WHERE user_id = ${userId}
     `;
 
-    if (checkResult.length === 0) {
-      // Crée une nouvelle entrée avec 1000 tokens
-      const result = await sql.transaction(async (sql) => {
-        const tokens = await sql`
-          INSERT INTO user_tokens (user_id, balance)
-          VALUES (${session.user.id}, 1000)
-          RETURNING *
-        `;
-
-        return tokens[0];
+    if (existing.length > 0) {
+      return new Response(JSON.stringify({ success: true, data: existing[0] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
       });
-
-      return {
-        success: true,
-        data: result,
-      };
     }
 
-    // Retourne les tokens existants
-    return {
-      success: true,
-      data: checkResult[0],
-    };
-  } catch (error) {
-    console.error("Error initializing user tokens:", error);
-    return {
-      success: false,
-      error: "Erreur lors de l'initialisation des tokens",
-    };
+    const { rows: inserted } = await sql`
+      INSERT INTO user_tokens (user_id, balance)
+      VALUES (${userId}, 1000)
+      RETURNING *
+    `;
+
+    return new Response(JSON.stringify({ success: true, data: inserted[0] }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("❌ Error initializing user tokens:", err);
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Erreur lors de l'initialisation des tokens",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
-}
-export async function POST(request) {
-  return handler(await request.json());
 }
