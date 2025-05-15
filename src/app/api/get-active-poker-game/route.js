@@ -1,31 +1,37 @@
-async function handler({ userId }) {
-  if (!userId) {
-    return { error: "Utilisateur non spécifié" };
-  }
+import { auth } from "@clerk/nextjs/server";
+import { sql } from "@vercel/postgres";
 
-  const [game] = await sql`
-    SELECT * FROM poker_games 
-    WHERE player_id = ${userId}
-    AND status = 'active'
-    ORDER BY created_at DESC 
-    LIMIT 1
-  `;
-
-  if (!game) {
-    return { game: null };
-  }
-
-  const positions = await sql`
-    SELECT * FROM poker_player_positions 
-    WHERE game_id = ${game.id}
-    ORDER BY position
-  `;
-
-  return {
-    game,
-    positions,
-  };
-}
+/**
+ * @param {Request} request
+ * @returns {Promise<Response>}
+ */
 export async function POST(request) {
-  return handler(await request.json());
+  const { userId } = auth();
+
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "Utilisateur non authentifié" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  try {
+    const { rows: games } = await sql`
+      SELECT * FROM poker_games
+      WHERE user_id = ${userId}
+      AND result = 'active'
+      ORDER BY created_at DESC
+    `;
+
+    return new Response(JSON.stringify({ games }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("❌ Error fetching poker games:", err);
+    return new Response(JSON.stringify({ error: "Erreur serveur" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 }

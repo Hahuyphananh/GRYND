@@ -1,6 +1,27 @@
-async function handler({ player_hand, ai_hand, community_cards, game_id }) {
+import { auth } from "@clerk/nextjs/server";
+import { sql } from "@vercel/postgres";
+
+/**
+ * @param {Request} request
+ * @returns {Promise<Response>}
+ */
+export async function POST(request) {
+  const { userId } = auth();
+
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const { player_hand, ai_hand, community_cards, game_id } = await request.json();
+
   if (!player_hand || !ai_hand || !community_cards || !game_id) {
-    return { error: "Missing required parameters" };
+    return new Response(JSON.stringify({ error: "Missing required parameters" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   const allCards = [...player_hand, ...community_cards];
@@ -115,18 +136,29 @@ async function handler({ player_hand, ai_hand, community_cards, game_id }) {
       playerHandResult.highCard > aiHandResult.highCard ? "player" : "ai";
   }
 
-  await sql`
-    UPDATE poker_games 
-    SET status = 'completed'
-    WHERE id = ${game_id}
-  `;
+  try {
+    await sql`
+      UPDATE poker_games 
+      SET status = 'completed'
+      WHERE id = ${game_id}
+    `;
 
-  return {
-    winner,
-    player_hand: playerHandResult,
-    ai_hand: aiHandResult,
-  };
-}
-export async function POST(request) {
-  return handler(await request.json());
+    return new Response(
+      JSON.stringify({
+        winner,
+        player_hand: playerHandResult,
+        ai_hand: aiHandResult,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  } catch (err) {
+    console.error("❌ Error updating poker game status:", err);
+    return new Response(JSON.stringify({ error: "Failed to update game status" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 }

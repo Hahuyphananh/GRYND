@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 
 export async function POST(req) {
