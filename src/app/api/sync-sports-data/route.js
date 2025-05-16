@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
-import cheerio from "cheerio";
+import * as cheerio from "cheerio";
 
 const MAX_RETRIES = 3;
 

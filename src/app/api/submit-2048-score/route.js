@@ -1,32 +1,52 @@
-// Define or simulate in-memory game state
-const games = global.games || (global.games = {});
+// In-memory game store for dev mode
+const globalGames = globalThis;
+if (!globalGames.games) globalGames.games = {};
+const games = globalGames.games;
 
 /**
- * @param {import("next").NextApiRequest} req
- * @param {import("next").NextApiResponse} res
+ * POST /api/submit-2048-score
+ * Submits a score for a player in a specific game.
  */
-export default function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+export async function POST(request) {
+  try {
+    const { gameId, playerId, score } = await request.json();
+
+    if (!gameId || !playerId || typeof score !== 'number') {
+      return new Response(JSON.stringify({
+        error: 'Missing or invalid gameId, playerId, or score',
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const game = games[gameId];
+    if (!game) {
+      return new Response(JSON.stringify({ error: 'Game not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!game.scores) {
+      game.scores = {};
+    }
+
+    game.scores[playerId] = score;
+
+    return new Response(JSON.stringify({
+      message: 'Score submitted',
+      scores: game.scores,
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  } catch (err) {
+    console.error('❌ Score submission error:', err);
+    return new Response(JSON.stringify({ error: 'Server error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
-
-  const { gameId, playerId, score } = req.body;
-
-  if (!gameId || !playerId || typeof score !== "number") {
-    return res.status(400).json({ message: 'Missing or invalid gameId, playerId, or score' });
-  }
-
-  const game = games[gameId];
-
-  if (!game) {
-    return res.status(404).json({ message: 'Game not found' });
-  }
-
-  if (!game.scores) {
-    game.scores = {};
-  }
-
-  game.scores[playerId] = score;
-
-  return res.status(200).json({ message: 'Score submitted', scores: game.scores });
 }

@@ -17,6 +17,7 @@
     "@neondatabase/serverless": "^1.0.0",
     "@vercel/postgres": "^0.10.0",
     "bcrypt": "^5.1.1",
+    "cheerio": "^1.0.0",
     "chess.js": "^1.2.0",
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.42.0",
@@ -29,9 +30,7 @@
     "react-chessboard": "^4.7.3",
     "react-dom": "19.1.0",
     "svix": "^1.65.0",
-    "swr": "^2.3.3",
-    "cheerio": "^1.0.0-rc.12"
-
+    "swr": "^2.3.3"
   },
   "devDependencies": {
     "@types/node": "22.14.1",
