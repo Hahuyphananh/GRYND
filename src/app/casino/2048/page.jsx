@@ -1,7 +1,8 @@
-'use client'
+'use client';
+
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation'; // ✅ FIXED
 import GameBoard from '../../../components/GameBoard';
-import { useRouter } from 'next/router';
 
 export default function GamePage() {
   const [betAmount, setBetAmount] = useState(10);
@@ -10,7 +11,6 @@ export default function GamePage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Calculate moves based on bet amount
     setMovesLeft(betAmount * 10);
   }, [betAmount]);
 
