@@ -15,7 +15,7 @@ export default function GamePage() {
   }, [betAmount]);
 
   const handleStartGame = async () => {
-    const res = await fetch('/api/game/create', {
+    const res = await fetch('/api/create-2048-game', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ betAmount }),
