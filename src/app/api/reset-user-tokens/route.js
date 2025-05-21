@@ -1,8 +1,8 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs"; // ✅ utilise le bon auth pour App Router
 import { sql } from "@vercel/postgres";
 
 export async function POST() {
-  const { userId } = auth(); // 🔐 récupère l'utilisateur connecté via session Clerk
+  const { userId } = auth(); // 🔐 récupère l'utilisateur connecté via Clerk
 
   if (!userId) {
     return new Response(JSON.stringify({ error: "Non autorisé" }), {
@@ -11,7 +11,6 @@ export async function POST() {
     });
   }
 
-  // 🎯 même logique qu'avant...
   const existing = await sql`
     SELECT id FROM user_tokens WHERE user_id = ${userId}
   `;
