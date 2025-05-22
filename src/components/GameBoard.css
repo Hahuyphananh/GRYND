@@ -1,0 +1,4 @@
+.tile {
+  transition: all 0.15s ease-in-out;
+  will-change: transform;
+}

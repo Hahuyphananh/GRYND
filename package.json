@@ -21,6 +21,7 @@
     "chess.js": "^1.2.0",
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.42.0",
+    "framer-motion": "^12.12.1",
     "next": "15.3.1",
     "next-auth": "^4.24.11",
     "nextjs": "^0.0.3",
