@@ -1,6 +1,6 @@
 "use client";
 
-import { SignUp } from "@clerk/nextjs";
+import { SignIn } from "@clerk/nextjs";
 import { useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 
@@ -19,7 +19,7 @@ export default function Page() {
     }
   }, [isLoaded, isSignedIn]);
 
-  return <SignUp
-  afterSignUpUrl="/api/sync-user"
+  return <SignIn 
+  afterSignInUrl="/api/sync-user"
   />;
 }

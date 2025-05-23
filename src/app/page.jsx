@@ -3,7 +3,7 @@ import React from "react";
 import NavigationBar from "../components/navigation-bar";
 import BetSlip from "../components/bet-slip";
 import { useUser } from '@clerk/nextjs'
-import { useState, useEffect  } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Img1 from '../images/roulette.jpg';
 import Img2 from '../images/blackjack.jpg';
@@ -160,6 +160,23 @@ function MainComponent() {
       fetchUserTokens();
     }
   }, [user]);
+
+    useEffect(() => {
+    const syncUser = async () => {
+      try {
+        await fetch("/api/sync-user", {
+          method: "POST",
+        });
+      } catch (err) {
+        console.error("Failed to sync user:", err);
+      }
+    };
+
+    if (user) {
+      syncUser();
+    }
+  }, [user]);
+
 
   const handleBetSelect = (team, odds) => {
     setSelectedBet(team);

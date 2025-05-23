@@ -1,42 +1,51 @@
-// app/api/sync-user/route.js
-
-import { auth } from "@clerk/nextjs/server";
-import { db } from "../../../db/index";
-import { users } from "../../../db/schema";
-import { eq } from "drizzle-orm";
+// /app/api/sync-user/route.ts
+import { auth } from "@clerk/nextjs";
+import { NextResponse } from "next/server";
+import { sql } from "@vercel/postgres";
 
 export async function POST() {
   try {
     const { userId } = auth();
 
     if (!userId) {
-      return new Response("Unauthorized", { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const email = `${userId}@clerk.user`; // Replace with actual email retrieval logic
-    const name = "Unnamed"; // Replace with actual name retrieval logic
+    // Fetch user data from Clerk
+    const response = await fetch(`https://api.clerk.com/v1/users/${userId}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
+      },
+    });
 
-    const existing = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
+    const clerkUser = await response.json();
 
-    if (!existing.length) {
-      await db.insert(users).values({
-        name,
-        email,
-        password: "clerk-oauth",
-        balance: "1000.00",
-        gamesWon: 0,
-        gamesLost: 0,
-        createdAt: new Date(),
-      });
+    const email = clerkUser.email_addresses?.[0]?.email_address ?? null;
+    const firstName = clerkUser.first_name ?? null;
+    const lastName = clerkUser.last_name ?? null;
+    const username = clerkUser.username ?? null;
+    const imageUrl = clerkUser.image_url ?? null;
+
+    if (!email) {
+      return NextResponse.json({ success: false, error: "Missing email from Clerk" }, { status: 400 });
     }
 
-    return new Response("User synced", { status: 200 });
+    // Insert or update user
+    await sql`
+      INSERT INTO users (id, email, username, first_name, last_name, image_url)
+      VALUES (${userId}, ${email}, ${username}, ${firstName}, ${lastName}, ${imageUrl})
+      ON CONFLICT (id) DO UPDATE SET
+        email = EXCLUDED.email,
+        username = EXCLUDED.username,
+        first_name = EXCLUDED.first_name,
+        last_name = EXCLUDED.last_name,
+        image_url = EXCLUDED.image_url,
+        updated_at = NOW();
+    `;
+
+    return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("❌ sync-user error:", err);
-    return new Response("Internal Server Error", { status: 500 });
+    console.error("Sync user error:", err);
+    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
   }
 }
