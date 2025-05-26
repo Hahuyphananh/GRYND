@@ -16,7 +16,7 @@ export default function ProfilePage() {
 
     const fetchData = async () => {
       try {
-        const tokensResponse = await fetch("/api/get-user-tokens", {
+        const tokensResponse = fetch("/api/get-user-tokens", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -26,7 +26,7 @@ export default function ProfilePage() {
           setUserTokens(tokensData.data.balance);
         }
 
-        const betsResponse = await fetch("/api/bets", {
+        const betsResponse = fetch("/api/bets", {
           credentials: "include",
         });
         const betsData = await betsResponse.json();
@@ -47,7 +47,7 @@ export default function ProfilePage() {
     setError(null);
   
     try {
-      const response = await fetch("/api/reset-user-tokens", {
+      const response = fetch("/api/reset-user-tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include", // 🔥 pour Clerk

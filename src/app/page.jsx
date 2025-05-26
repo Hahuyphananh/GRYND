@@ -27,9 +27,9 @@ function MainComponent() {
   const [notification, setNotification] = useState(null);
 
   useEffect(() => {
-    const syncData = async () => {
+    const syncData = async () => {mo
       try {
-        const response = await fetch("/api/sync-sports-data", {
+        const response = fetch("/api/sync-sports-data", {
           method: "POST",
         });
         if (!response.ok) {
@@ -48,7 +48,7 @@ function MainComponent() {
     const fetchSports = async () => {
       try {
         setLoadingSports(true);
-        const response = await fetch("/api/list-sports", {
+        const response = fetch("/api/list-sports", {
           method: "POST",
           body: JSON.stringify({}),
         });
@@ -71,7 +71,7 @@ function MainComponent() {
     const fetchEvents = async (sportId = null) => {
       try {
         setLoadingEvents(true);
-        const response = await fetch("/api/get-events", {
+        const response = fetch("/api/get-events", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -100,7 +100,7 @@ function MainComponent() {
     setError(null);
 
     try {
-      const getResponse = await fetch("/api/get-user-tokens", {
+      const getResponse = fetch("/api/get-user-tokens", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -115,7 +115,7 @@ function MainComponent() {
       const getData = await getResponse.json();
 
       if (!getData.success || !getData.data) {
-        const initResponse = await fetch("/api/initialize-user-tokens", {
+        const initResponse = fetch("/api/initialize-user-tokens", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -127,7 +127,7 @@ function MainComponent() {
           throw new Error(`Erreur HTTP: ${initResponse.status}`);
         }
 
-        const finalResponse = await fetch("/api/get-user-tokens", {
+        const finalResponse = fetch("/api/get-user-tokens", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -198,7 +198,7 @@ function MainComponent() {
     setError(null);
 
     try {
-      const response = await fetch("/api/bets/place", {
+      const response = fetch("/api/bets/place", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
