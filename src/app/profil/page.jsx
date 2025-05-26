@@ -6,9 +6,9 @@ export default function ProfilePage() {
   const { isSignedIn, isLoaded, user } = useUser();
   const { getToken } = useAuth();
 
-  const [userTokens, setUserTokens] = useState<number | null>(null);
-  const [bets, setBets] = useState<any[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [userTokens, setUserTokens] = useState(null);
+  const [bets, setBets] = useState([]);
+  const [error, setError] = useState(null);
   const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
@@ -16,31 +16,22 @@ export default function ProfilePage() {
 
     const fetchData = async () => {
       try {
-        // ✅ Get token balance
         const tokensResponse = await fetch("/api/get-user-tokens", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
         });
         const tokensData = await tokensResponse.json();
-        if (tokensResponse.ok && tokensData.success && tokensData.data) {
+        if (tokensData.success && tokensData.data) {
           setUserTokens(tokensData.data.balance);
-        } else {
-          throw new Error(tokensData.error || "Échec du chargement du solde");
         }
 
-        // ✅ Get bets
         const betsResponse = await fetch("/api/bets", {
           credentials: "include",
         });
         const betsData = await betsResponse.json();
-        if (betsResponse.ok) {
-          setBets(betsData || []);
-        } else {
-          throw new Error("Échec du chargement des paris");
-        }
+        setBets(betsData || []);
       } catch (err) {
-        console.error("Erreur fetchData:", err);
         setError("Erreur lors du chargement des données");
       }
     };
@@ -51,29 +42,29 @@ export default function ProfilePage() {
   const handleResetTokens = async () => {
     const confirmed = window.confirm("Réinitialiser vos tokens à 1000 ?");
     if (!confirmed) return;
-
+  
     setIsResetting(true);
     setError(null);
-
+  
     try {
       const response = await fetch("/api/reset-user-tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        credentials: "include", // 🔥 pour Clerk
       });
-
+  
       const text = await response.text();
       let data;
       try {
         data = JSON.parse(text);
       } catch {
-        throw new Error("Réponse invalide du serveur");
+        throw new Error("Réponse vide ou invalide du serveur");
       }
-
-      if (!response.ok || !data.balance) {
+  
+      if (!response.ok) {
         throw new Error(data.error || `Erreur ${response.status}`);
       }
-
+  
       setUserTokens(data.balance);
     } catch (err) {
       console.error("[RESET_TOKENS_ERROR]", err);
@@ -82,6 +73,7 @@ export default function ProfilePage() {
       setIsResetting(false);
     }
   };
+  
 
   if (!isLoaded) {
     return (
@@ -110,6 +102,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-[#003366] text-white">
       <div className="container mx-auto px-4 pt-24">
+        {/* ✅ Bouton retour au casino */}
         <div className="mb-6 flex justify-between items-center">
           <a
             href="/casino"
@@ -123,14 +116,12 @@ export default function ProfilePage() {
         <h1 className="text-3xl font-bold text-[#FFD700] mb-6">Profil</h1>
 
         <div className="grid gap-8 md:grid-cols-2">
-          {/* ✅ Infos personnelles */}
           <div className="border border-[#FFD700] rounded-lg p-6">
             <h2 className="text-xl text-[#FFD700] mb-2">Infos Personnelles</h2>
             <p>Email : {user.emailAddresses?.[0]?.emailAddress}</p>
             <p>Membre depuis : {new Date(user.createdAt).toLocaleDateString()}</p>
           </div>
 
-          {/* ✅ Solde de tokens */}
           <div className="border border-[#FFD700] rounded-lg p-6 text-center">
             <h2 className="text-xl text-[#FFD700] mb-2">Solde de Tokens</h2>
             <p className="text-3xl font-bold">{userTokens ?? 0} tokens</p>
@@ -145,7 +136,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* ✅ Historique des paris */}
         <div className="mt-12 border border-[#FFD700] rounded-lg p-6">
           <h2 className="text-xl text-[#FFD700] mb-4">Historique des Paris</h2>
           <div className="overflow-x-auto">
@@ -159,38 +149,24 @@ export default function ProfilePage() {
                 </tr>
               </thead>
               <tbody>
-                {bets.length > 0 ? (
-                  bets.map((bet, idx) => (
-                    <tr key={idx} className="border-b border-[#FFD700]/20">
-                      <td className="px-4 py-2">{new Date(bet.date).toLocaleDateString()}</td>
-                      <td className="px-4 py-2">{bet.event}</td>
-                      <td className="px-4 py-2">{bet.amount}€</td>
-                      <td className="px-4 py-2">
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs ${
-                            bet.status === "won"
-                              ? "bg-green-600/20 text-green-400"
-                              : bet.status === "lost"
-                              ? "bg-red-600/20 text-red-400"
-                              : "bg-gray-500/20 text-gray-300"
-                          }`}
-                        >
-                          {bet.status === "won"
-                            ? "Gagné"
-                            : bet.status === "lost"
-                            ? "Perdu"
-                            : "En cours"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-4 text-center text-gray-300">
-                      Aucun pari pour le moment.
+                {bets.map((bet, idx) => (
+                  <tr key={idx} className="border-b border-[#FFD700]/20">
+                    <td className="px-4 py-2">{new Date(bet.date).toLocaleDateString()}</td>
+                    <td className="px-4 py-2">{bet.event}</td>
+                    <td className="px-4 py-2">{bet.amount}€</td>
+                    <td className="px-4 py-2">
+                      <span className={`px-2 py-1 rounded-full text-xs ${
+                        bet.status === "won"
+                          ? "bg-green-600/20 text-green-400"
+                          : bet.status === "lost"
+                          ? "bg-red-600/20 text-red-400"
+                          : "bg-gray-500/20 text-gray-300"
+                      }`}>
+                        {bet.status === "won" ? "Gagné" : bet.status === "lost" ? "Perdu" : "En cours"}
+                      </span>
                     </td>
                   </tr>
-                )}
+                ))}
               </tbody>
             </table>
           </div>
