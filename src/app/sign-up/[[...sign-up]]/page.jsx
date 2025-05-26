@@ -19,7 +19,7 @@ export default function Page() {
     }
   }, [isLoaded, isSignedIn]);
 
-  return <SignUp
-  afterSignUpUrl="/api/sync-user"
-  />;
+  return (
+    <SignUp afterSignUpUrl="/" />
+  );
 }
