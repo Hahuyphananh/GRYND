@@ -1,7 +1,10 @@
 "use client";
+
 import NavigationBar from "../../components/navigation-bar";
 import { useUser } from "@clerk/nextjs";
-import { useState, React } from "react";
+import { useEffect, useState } from "react";
+import Image from "next/image";
+
 import Img1 from "../../images/roulette.jpg";
 import Img2 from "../../images/blackjack.jpg";
 import Img3 from "../../images/poker.jpg";
@@ -12,17 +15,34 @@ import Img7 from "../../images/chess.jpg";
 import Img8 from "../../images/slots.jpg";
 import Img9 from "../../images/coin-flip.png";
 import Img10 from "../../images/2048.jpg";
-import Image from "next/image";
 
 function MainComponent() {
-  const { data: user } = useUser();
-  const [selectedGame, setSelectedGame] = useState(null);
-  const [error, setError] = useState(null);
+  const { isLoaded, isSignedIn } = useUser();
+  const [error, setError] = useState<string | null>(null);
+  const [userTokens, setUserTokens] = useState<any>(null);
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      fetch("/api/get-user-tokens", {
+        method: "POST",
+      })
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || "Erreur inconnue");
+          }
+          setUserTokens(data.data);
+        })
+        .catch((err) => {
+          console.error("❌ Erreur API:", err.message);
+          setError(err.message);
+        });
+    }
+  }, [isLoaded, isSignedIn]);
 
   return (
     <div className="min-h-screen bg-[#003366] pt-20">
       <NavigationBar currentPath="/casino" />
-
       <div className="mx-auto max-w-7xl px-4 py-12">
         <section className="mb-16 text-center">
           <h1 className="mb-4 text-4xl font-bold text-[#FFD700] md:text-6xl">
@@ -36,266 +56,41 @@ function MainComponent() {
               {error}
             </div>
           )}
-          {user && <></>}
+          {userTokens && (
+            <div className="mx-auto mb-4 max-w-md rounded-lg bg-green-500/10 p-3 text-sm text-green-500">
+              Jetons disponibles : {userTokens.tokens}
+            </div>
+          )}
         </section>
 
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
-          <a
-            href="/roulette"
-            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
-          >
-            <div className="mb-4 h-48 overflow-hidden rounded-lg">
+        <div className="grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4">
+          {[
+            { name: "Roulette", img: Img1, link: "/roulette" },
+            { name: "Blackjack", img: Img2, link: "/blackjack" },
+            { name: "Poker", img: Img3, link: "/poker" },
+            { name: "Plinko", img: Img4, link: "/plinko" },
+            { name: "Mines", img: Img5, link: "/mines" },
+            { name: "Crash", img: Img6, link: "/crash" },
+            { name: "Échecs", img: Img7, link: "/chess" },
+            { name: "Machines à sous", img: Img8, link: "/slots" },
+            { name: "Pile ou face", img: Img9, link: "/coin-flip" },
+            { name: "2048", img: Img10, link: "/2048" },
+          ].map((game, i) => (
+            <a
+              href={game.link}
+              key={i}
+              className="overflow-hidden rounded-2xl bg-white/5 shadow-lg transition-transform hover:scale-105"
+            >
               <Image
-                src={Img1}
-                alt="Table de roulette avec jetons"
-                className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                src={game.img}
+                alt={game.name}
+                className="w-full object-cover"
               />
-            </div>
-            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Roulette</h3>
-            <p className="text-gray-300">
-              Placez vos paris sur les numéros, couleurs ou sections
-            </p>
-            <div className="mt-4 flex items-center text-[#FFD700]">
-              <span>Jouer maintenant</span>
-              <i className="fas fa-arrow-right ml-2"></i>
-            </div>
-          </a>
-
-          <a
-            href="/casino/blackjack"
-            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
-          >
-            <div className="mb-4 h-48 overflow-hidden rounded-lg">
-              <Image
-                src={Img2}
-                alt="Table de blackjack avec cartes"
-                className="h-full w-full object-cover transition-transform group-hover:scale-110"
-              />
-            </div>
-            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Blackjack</h3>
-            <p className="text-gray-300">
-              Affrontez le croupier dans ce jeu de cartes classique. Obtenez 21
-              points ou approchez-vous en sans dépasser !
-            </p>
-            <div className="mt-4 flex items-center text-[#FFD700]">
-              <span>Jouer maintenant</span>
-              <i className="fas fa-arrow-right ml-2"></i>
-            </div>
-          </a>
-
-          <a
-            href="/casino/poker"
-            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
-          >
-            <div className="mb-4 h-48 overflow-hidden rounded-lg">
-              <Image
-                src={Img3}
-                alt="Table de poker avec cartes et jetons"
-                className="h-full w-full object-cover transition-transform group-hover:scale-110"
-              />
-            </div>
-            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Poker</h3>
-            <p className="text-gray-300">
-              Affrontez l'IA ou d'autres joueurs dans des parties de Texas
-              Hold'em passionnantes !
-            </p>
-            <div className="mt-4 flex items-center text-[#FFD700]">
-              <span>Jouer maintenant</span>
-              <i className="fas fa-arrow-right ml-2"></i>
-            </div>
-          </a>
-
-          <a
-            href="/casino/plinko"
-            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
-          >
-            <div className="mb-4 h-48 overflow-hidden rounded-lg">
-              <Image
-                src={Img4}
-                alt="Jeu Plinko avec des jetons qui tombent"
-                className="h-full w-full object-cover transition-transform group-hover:scale-110"
-              />
-            </div>
-            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Plinko</h3>
-            <p className="text-gray-300">
-              Regardez tomber votre jeton et multipliez vos gains !
-            </p>
-            <div className="mt-4 flex items-center text-[#FFD700]">
-              <span>Jouer maintenant</span>
-              <i className="fas fa-arrow-right ml-2"></i>
-            </div>
-          </a>
-          <a
-            href="/casino/mines"
-            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
-          >
-            <div className="mb-4 h-48 overflow-hidden rounded-lg">
-              <Image
-                src={Img5}
-                alt="Jeu de Mines avec des diamants"
-                width={500}
-                height={300}
-                className="h-full w-full object-cover transition-transform group-hover:scale-110"
-              />
-            </div>
-            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Mines</h3>
-            <p className="text-gray-300">
-              Évitez les bombes et trouvez les diamants pour multiplier vos
-              gains !
-            </p>
-            <div className="mt-4 flex items-center text-[#FFD700]">
-              <span>Jouer maintenant</span>
-              <i className="fas fa-arrow-right ml-2"></i>
-            </div>
-          </a>
-
-          <a
-            href="/casino/crash"
-            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
-          >
-            <div className="mb-4 h-48 overflow-hidden rounded-lg">
-              <Image
-                src={Img6}
-                alt="Jeu de Crash"
-                width={500}
-                height={300}
-                className="h-full w-full object-cover transition-transform group-hover:scale-110"
-              />
-            </div>
-            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Crash</h3>
-            <p className="text-gray-300">
-              Posez vos paris et essayez de cash out avant que la fusée Crash!
-            </p>
-            <div className="mt-4 flex items-center text-[#FFD700]">
-              <span>Jouer maintenant</span>
-              <i className="fas fa-arrow-right ml-2"></i>
-            </div>
-          </a>
-
-          <a
-            href="/casino/chess"
-            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
-          >
-            <div className="mb-4 h-48 overflow-hidden rounded-lg">
-              <Image
-                src={Img7}
-                alt="Échecs"
-                width={500}
-                height={300}
-                className="h-full w-full object-cover transition-transform group-hover:scale-110"
-              />
-            </div>
-            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Échecs</h3>
-            <p className="text-gray-300">
-              Posez vos paris et affrontez des gens dans un match d'échecs!
-            </p>
-            <div className="mt-4 flex items-center text-[#FFD700]">
-              <span>Jouer maintenant</span>
-              <i className="fas fa-arrow-right ml-2"></i>
-            </div>
-          </a>
-
-          <a
-            href="/casino/slots"
-            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
-          >
-            <div className="mb-4 h-48 overflow-hidden rounded-lg">
-              <Image
-                src={Img8}
-                alt="Échecs"
-                width={500}
-                height={300}
-                className="h-full w-full object-cover transition-transform group-hover:scale-110"
-              />
-            </div>
-            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Slots</h3>
-            <p className="text-gray-300">
-              Pariez votre chance dans les jeu de slots!
-            </p>
-            <div className="mt-4 flex items-center text-[#FFD700]">
-              <span>Jouer maintenant</span>
-              <i className="fas fa-arrow-right ml-2"></i>
-            </div>
-          </a>
-
-          <a
-            href="/casino/coin-flip"
-            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
-          >
-            <div className="mb-4 h-48 overflow-hidden rounded-lg">
-              <Image
-                src={Img9}
-                alt="Coin Flip"
-                width={500}
-                height={300}
-                className="h-full w-full object-cover transition-transform group-hover:scale-110"
-              />
-            </div>
-            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Coin Flip</h3>
-            <p className="text-gray-300">
-              Faite tourner votre chance et la pièce dans le jeu de coin-flip!
-            </p>
-            <div className="mt-4 flex items-center text-[#FFD700]">
-              <span>Jouer maintenant</span>
-              <i className="fas fa-arrow-right ml-2"></i>
-            </div>
-          </a>
-
-          
-          <a
-            href="/casino/2048"
-            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
-          >
-            <div className="mb-4 h-48 overflow-hidden rounded-lg">
-              <Image
-                src={Img10}
-                alt="2048"
-                width={500}
-                height={300}
-                className="h-full w-full object-cover transition-transform group-hover:scale-110"
-              />
-            </div>
-            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">2048</h3>
-            <p className="text-gray-300">
-             Essayez de faire le plus de point que vôtre adversaire en faisant le moins de tours.
-            </p>
-            <div className="mt-4 flex items-center text-[#FFD700]">
-              <span>Jouer maintenant</span>
-              <i className="fas fa-arrow-right ml-2"></i>
-            </div>
-          </a>
+              <div className="p-3 text-center text-white">{game.name}</div>
+            </a>
+          ))}
         </div>
       </div>
-
-      <style jsx global>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .grid > * {
-          animation: fadeIn 0.5s ease-out forwards;
-        }
-
-        .grid > *:nth-child(1) {
-          animation-delay: 0.1s;
-        }
-        .grid > *:nth-child(2) {
-          animation-delay: 0.2s;
-        }
-        .grid > *:nth-child(3) {
-          animation-delay: 0.3s;
-        }
-        .grid > *:nth-child(4) {
-          animation-delay: 0.4s;
-        }
-      `}</style>
     </div>
   );
 }

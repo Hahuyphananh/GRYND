@@ -2,7 +2,7 @@
 import React from "react";
 import NavigationBar from "../components/navigation-bar";
 import BetSlip from "../components/bet-slip";
-import { useUser } from '@clerk/nextjs'
+import { useUser, useAuth } from '@clerk/nextjs'
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Img1 from '../images/roulette.jpg';
@@ -21,28 +21,22 @@ function MainComponent() {
   const [errorSports, setErrorSports] = useState(null);
   const [errorEvents, setErrorEvents] = useState(null);
   const [userTokens, setUserTokens] = useState(null);
+  const { getToken, isSignedIn } = useAuth();
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [betInProgress, setBetInProgress] = useState(false);
   const [notification, setNotification] = useState(null);
 
-  useEffect(() => {
-    const syncData = async () => {
-      try {
-        const response = await fetch("/api/sync-sports-data", {
-          method: "POST",
-        });
-        if (!response.ok) {
-          throw new Error(`Error syncing data: ${response.status}`);
-        }
-      } catch (error) {
-        console.error("Failed to sync sports data:", error);
-      }
-    };
-    syncData();
-    const interval = setInterval(syncData, 300000);
-    return () => clearInterval(interval);
-  }, []);
+ useEffect(() => {
+  const fetchJwt = async () => {
+    if (isSignedIn) {
+      const token = await getToken();
+      setJwt(token);
+    }
+  };
+
+  fetchJwt();
+}, [isSignedIn]);
 
   useEffect(() => {
     const fetchSports = async () => {
@@ -100,13 +94,15 @@ function MainComponent() {
     setError(null);
 
     try {
-      const getResponse = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-      });
+     const getResponse = await fetch("/api/get-user-tokens", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${jwt}`,
+  },
+  credentials: "include",
+});
+
 
       if (!getResponse.ok) {
         throw new Error(`Erreur HTTP: ${getResponse.status}`);
@@ -115,13 +111,15 @@ function MainComponent() {
       const getData = await getResponse.json();
 
       if (!getData.success || !getData.data) {
-        const initResponse = await fetch("/api/initialize-user-tokens", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-        });
+       const initResponse = await fetch("/api/initialize-user-tokens", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${jwt}`,
+  },
+  credentials: "include",
+});
+
 
         if (!initResponse.ok) {
           throw new Error(`Erreur HTTP: ${initResponse.status}`);
@@ -131,6 +129,7 @@ function MainComponent() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+             Authorization: `Bearer ${jwt}`,
           },
           credentials: "include",
         });
@@ -186,8 +185,10 @@ function MainComponent() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+           Authorization: `Bearer ${jwt}`,
         },
         body: JSON.stringify(betData),
+        credentials: "include",
       });
 
       const data = await response.json();

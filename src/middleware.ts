@@ -5,13 +5,16 @@ const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/api/sync-user',
+  '/',
+  '/casino'
 ]);
 
 export default clerkMiddleware((auth, req) => {
   // Protect all routes except the ones defined above
   if (!isPublicRoute(req)) {
-    auth.protect(); 
+    return;  //Allow public routes
   }
+  auth.protect();
 });
 
 export const config = {
