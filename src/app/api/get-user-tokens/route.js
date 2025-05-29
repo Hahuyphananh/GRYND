@@ -1,124 +1,57 @@
-"use client";
-import React, { useEffect, useState } from "react";
-import { useUser, useAuth, SignOutButton } from '@clerk/nextjs';
-import Link from 'next/link';
+import { verifyToken } from '@clerk/backend';
+import { sql } from '@vercel/postgres';
 
-function NavigationBar({ currentPath }) {
-  const { isLoaded, isSignedIn, user } = useUser();
-  const { getToken } = useAuth(); // Récupère le JWT Clerk
-  const [balance, setBalance] = useState(null);
-  const [error, setError] = useState(null);
+export async function POST(req) {
+  try {
+    const authHeader = req.headers.get('authorization');
 
-  const fetchBalance = async () => {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Jeton manquant' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim();
+
+    let payload;
     try {
-      const token = await getToken(); // JWT
-
-      const response = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`, // 🔒 envoie du JWT
-        },
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setBalance(data.data.balance);
-      } else if (data.shouldInitialize) {
-        // Initialisation si nécessaire
-        await fetch("/api/tokens/initialize", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`, // également ici
-          },
-        });
-        fetchBalance(); // Retry après init
-      } else {
-        setError(data.error || "Erreur inconnue");
-      }
+      const { payload: verifiedPayload } = await verifyToken(token);
+      payload = verifiedPayload;
     } catch (err) {
-      console.error("Erreur de fetchBalance:", err);
-      setError("Erreur de chargement");
+      return new Response(
+        JSON.stringify({ success: false, error: 'Jeton invalide' }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } }
+      );
     }
-  };
 
-  useEffect(() => {
-    if (isSignedIn) {
-      fetchBalance();
+    const userId = payload.sub;
+
+    const result = await sql`
+      SELECT * FROM user_tokens 
+      WHERE user_id = ${userId}
+    `;
+
+    if (result.rows.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Aucun token trouvé',
+          shouldInitialize: true,
+        }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } }
+      );
     }
-  }, [isSignedIn]);
 
-  const isCasinoPath = currentPath.startsWith("/casino");
-
-  return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-[#002347]">
-      <div className="mx-auto max-w-7xl px-4">
-        <div className="flex h-16 items-center justify-between">
-          <div className="flex items-center">
-            <Link href="/" className="text-xl font-bold text-[#FFD700]">
-              BetSim
-            </Link>
-          </div>
-
-          {/* Liens au centre */}
-          <div className="hidden md:flex items-center space-x-4">
-            {["/", "/sport", "/casino", "/rankings"].map((path) => (
-              <Link
-                key={path}
-                href={path}
-                className={`px-3 py-2 text-sm font-medium ${
-                  currentPath === path || (path === "/casino" && isCasinoPath)
-                    ? "text-[#FFD700]"
-                    : "text-white hover:text-[#FFD700]"
-                }`}
-              >
-                {path === "/" ? "Accueil" : path.slice(1).charAt(0).toUpperCase() + path.slice(2)}
-              </Link>
-            ))}
-          </div>
-
-          {/* Droite */}
-          <div className="flex items-center space-x-4">
-            {isLoaded && isSignedIn ? (
-              <>
-                <div className="hidden sm:flex items-center space-x-4">
-                  <span className="text-[#FFD700]">
-                    {error
-                      ? "Erreur"
-                      : balance !== null
-                      ? `${balance} tokens`
-                      : "Chargement..."}
-                  </span>
-                  <Link
-                    href="/profil"
-                    className={`px-3 py-2 text-sm font-medium ${
-                      currentPath === "/profil" ? "text-[#FFD700]" : "text-white hover:text-[#FFD700]"
-                    }`}
-                  >
-                    Profil
-                  </Link>
-                </div>
-                <SignOutButton>
-                  <button className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80">
-                    Déconnexion
-                  </button>
-                </SignOutButton>
-              </>
-            ) : (
-              <Link
-                href="/sign-up"
-                className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
-              >
-                Connexion
-              </Link>
-            )}
-          </div>
-        </div>
-      </div>
-    </nav>
-  );
+    return new Response(
+      JSON.stringify({ success: true, data: result.rows[0] }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Erreur dans get-user-tokens:', error);
+    return new Response(
+      JSON.stringify({ success: false, error: 'Erreur serveur' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
 }
-
-export default NavigationBar;

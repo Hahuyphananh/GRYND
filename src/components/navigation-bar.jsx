@@ -1,45 +1,46 @@
 "use client";
-
 import React, { useEffect, useState } from "react";
-import { useUser, SignOutButton } from "@clerk/nextjs";
-import Link from "next/link";
+import { useUser, useAuth, SignOutButton } from '@clerk/nextjs';
+import Link from 'next/link';
 
 function NavigationBar({ currentPath }) {
-  const { isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn, user } = useUser();
+  const { getToken } = useAuth(); // Récupère le JWT Clerk
   const [balance, setBalance] = useState(null);
   const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
 
   const fetchBalance = async () => {
     try {
-      setLoading(true);
+      const token = await getToken(); // JWT
+
       const response = await fetch("/api/get-user-tokens", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`, // 🔒 envoie du JWT
+        },
       });
 
       const data = await response.json();
 
       if (data.success) {
         setBalance(data.data.balance);
-        setError(null);
       } else if (data.shouldInitialize) {
-        // Initialiser les tokens s'ils n'existent pas encore
+        // Initialisation si nécessaire
         await fetch("/api/tokens/initialize", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`, // également ici
+          },
         });
-        fetchBalance(); // Relancer après initialisation
+        fetchBalance(); // Retry après init
       } else {
-        setError("Erreur : " + data.error);
+        setError(data.error || "Erreur inconnue");
       }
     } catch (err) {
-      console.error("Erreur lors de la récupération des tokens :", err);
-      setError("Erreur réseau");
-    } finally {
-      setLoading(false);
+      console.error("Erreur de fetchBalance:", err);
+      setError("Erreur de chargement");
     }
   };
 
@@ -49,7 +50,7 @@ function NavigationBar({ currentPath }) {
     }
   }, [isSignedIn]);
 
-  const isCasinoPath = currentPath?.startsWith("/casino");
+  const isCasinoPath = currentPath.startsWith("/casino");
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-[#002347]">
@@ -61,46 +62,39 @@ function NavigationBar({ currentPath }) {
             </Link>
           </div>
 
-          {/* Center Navigation */}
+          {/* Liens au centre */}
           <div className="hidden md:flex items-center space-x-4">
-            {[
-              { href: "/", label: "Accueil" },
-              { href: "/sport", label: "Sport" },
-              { href: "/casino", label: "Casino", check: isCasinoPath },
-              { href: "/rankings", label: "Classement" },
-            ].map(({ href, label, check }) => (
+            {["/", "/sport", "/casino", "/rankings"].map((path) => (
               <Link
-                key={href}
-                href={href}
+                key={path}
+                href={path}
                 className={`px-3 py-2 text-sm font-medium ${
-                  (check ?? currentPath === href)
+                  currentPath === path || (path === "/casino" && isCasinoPath)
                     ? "text-[#FFD700]"
                     : "text-white hover:text-[#FFD700]"
                 }`}
               >
-                {label}
+                {path === "/" ? "Accueil" : path.slice(1).charAt(0).toUpperCase() + path.slice(2)}
               </Link>
             ))}
           </div>
 
-          {/* Right Side */}
+          {/* Droite */}
           <div className="flex items-center space-x-4">
             {isLoaded && isSignedIn ? (
               <>
                 <div className="hidden sm:flex items-center space-x-4">
-                  <span className="text-[#FFD700] text-sm">
-                    {loading
-                      ? "Chargement..."
-                      : error
-                      ? error
-                      : `${balance ?? 0} tokens`}
+                  <span className="text-[#FFD700]">
+                    {error
+                      ? "Erreur"
+                      : balance !== null
+                      ? `${balance} tokens`
+                      : "Chargement..."}
                   </span>
                   <Link
                     href="/profil"
                     className={`px-3 py-2 text-sm font-medium ${
-                      currentPath === "/profil"
-                        ? "text-[#FFD700]"
-                        : "text-white hover:text-[#FFD700]"
+                      currentPath === "/profil" ? "text-[#FFD700]" : "text-white hover:text-[#FFD700]"
                     }`}
                   >
                     Profil
