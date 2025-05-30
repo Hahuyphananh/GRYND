@@ -26,6 +26,8 @@ function MainComponent() {
   const [loading, setLoading] = useState(false);
   const [betInProgress, setBetInProgress] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [jwt, setJwt] = useState(null);
+
 
  useEffect(() => {
   const fetchJwt = async () => {
