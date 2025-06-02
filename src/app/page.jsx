@@ -32,7 +32,12 @@ function MainComponent() {
  useEffect(() => {
   const fetchJwt = async () => {
     if (isSignedIn) {
-      const token = await getToken();
+      const token = await getToken({ template: 'app_token' });
+      if (!token) {
+  setError("Token manquant");
+  return;
+}
+
       setJwt(token);
     }
   };

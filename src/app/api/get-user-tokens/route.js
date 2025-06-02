@@ -1,7 +1,7 @@
 import { verifyToken } from '@clerk/backend';
 import { sql } from '@vercel/postgres';
 
-export async function POST(req) {
+export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get('authorization');
 
@@ -14,18 +14,13 @@ export async function POST(req) {
 
     const token = authHeader.replace('Bearer ', '').trim();
 
-    let payload;
-    try {
-      const { payload: verifiedPayload } = await verifyToken(token);
-      payload = verifiedPayload;
-    } catch (err) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Jeton invalide' }),
-        { status: 403, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
+    // Verify the JWT from Clerk using your custom template and audience
+    const { payload } = await verifyToken(token, {
+      template: 'app_token',
+      audience: 'betsim-app',
+    });
 
-    const userId = payload.sub;
+    const userId = payload.user_id; // comes from your custom claim
 
     const result = await sql`
       SELECT * FROM user_tokens 

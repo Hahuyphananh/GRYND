@@ -4,43 +4,58 @@ import { useUser, useAuth, SignOutButton } from '@clerk/nextjs';
 import Link from 'next/link';
 
 function NavigationBar({ currentPath }) {
-  const { isLoaded, isSignedIn, user } = useUser();
-  const { getToken } = useAuth(); // Récupère le JWT Clerk
+  const { isLoaded, isSignedIn } = useUser();
+  const { getToken } = useAuth();
   const [balance, setBalance] = useState(null);
   const [error, setError] = useState(null);
 
   const fetchBalance = async () => {
     try {
-      const token = await getToken(); // JWT
+      const token = await getToken({ template: 'app_token' });
+
+      if (!token) {
+        console.error("Token JWT manquant.");
+        setError("Token manquant");
+        return;
+      }
 
       const response = await fetch("/api/get-user-tokens", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`, // 🔒 envoie du JWT
+          "Authorization": `Bearer ${token}`,
         },
       });
 
       const data = await response.json();
 
+      if (response.status === 403) {
+        setError("Jeton invalide ou expiré.");
+        return;
+      }
+
       if (data.success) {
         setBalance(data.data.balance);
       } else if (data.shouldInitialize) {
-        // Initialisation si nécessaire
-        await fetch("/api/tokens/initialize", {
+        const initResponse = await fetch("/api/tokens/initialize", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`, // également ici
+            "Authorization": `Bearer ${token}`,
           },
         });
-        fetchBalance(); // Retry après init
+
+        if (initResponse.ok) {
+          fetchBalance(); // Retry
+        } else {
+          setError("Échec de l'initialisation");
+        }
       } else {
         setError(data.error || "Erreur inconnue");
       }
     } catch (err) {
-      console.error("Erreur de fetchBalance:", err);
-      setError("Erreur de chargement");
+      console.error("Erreur dans fetchBalance:", err);
+      setError("Erreur réseau");
     }
   };
 
@@ -56,13 +71,10 @@ function NavigationBar({ currentPath }) {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-[#002347]">
       <div className="mx-auto max-w-7xl px-4">
         <div className="flex h-16 items-center justify-between">
-          <div className="flex items-center">
-            <Link href="/" className="text-xl font-bold text-[#FFD700]">
-              BetSim
-            </Link>
-          </div>
+          <Link href="/" className="text-xl font-bold text-[#FFD700]">
+            BetSim
+          </Link>
 
-          {/* Liens au centre */}
           <div className="hidden md:flex items-center space-x-4">
             {["/", "/sport", "/casino", "/rankings"].map((path) => (
               <Link
@@ -79,14 +91,13 @@ function NavigationBar({ currentPath }) {
             ))}
           </div>
 
-          {/* Droite */}
           <div className="flex items-center space-x-4">
             {isLoaded && isSignedIn ? (
               <>
                 <div className="hidden sm:flex items-center space-x-4">
                   <span className="text-[#FFD700]">
                     {error
-                      ? "Erreur"
+                      ? `Erreur: ${error}`
                       : balance !== null
                       ? `${balance} tokens`
                       : "Chargement..."}
@@ -94,7 +105,9 @@ function NavigationBar({ currentPath }) {
                   <Link
                     href="/profil"
                     className={`px-3 py-2 text-sm font-medium ${
-                      currentPath === "/profil" ? "text-[#FFD700]" : "text-white hover:text-[#FFD700]"
+                      currentPath === "/profil"
+                        ? "text-[#FFD700]"
+                        : "text-white hover:text-[#FFD700]"
                     }`}
                   >
                     Profil
