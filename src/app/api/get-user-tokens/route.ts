@@ -15,7 +15,8 @@ export async function POST(req: Request) {
     const token = authHeader.replace('Bearer ', '').trim();
 
     // Verify the JWT from Clerk using your custom template
-   const { payload } = await verifyToken(token);
+const { payload } = await verifyToken(token, {});
+
 
 
     const userId = payload.user_id; // comes from your custom claim
