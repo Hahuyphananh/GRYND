@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs"; // ✅ utilise le bon auth pour App Router
+import { auth } from "@clerk/nextjs/server"; // ✅ utilise le bon auth pour App Router
 import { sql } from "@vercel/postgres";
 
 export async function POST() {
