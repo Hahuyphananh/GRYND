@@ -1,6 +1,11 @@
 import { verifyToken } from '@clerk/backend';
 import { sql } from '@vercel/postgres';
 
+// Define the expected structure of the JWT payload
+interface TokenPayload {
+  user_id: string;
+}
+
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get('authorization');
@@ -14,17 +19,15 @@ export async function POST(req: Request) {
 
     const token = authHeader.replace('Bearer ', '').trim();
 
-    // Verify the JWT from Clerk using your custom template
-const { payload } = await verifyToken(token, {});
-const { user_id } = payload as TokenPayload;
+    // Verify the JWT from Clerk
+    const { payload } = await verifyToken(token, {});
 
-
-
-    const userId = payload.user_id; // comes from your custom claim
+    // Cast payload to expected type
+    const { user_id } = payload as TokenPayload;
 
     const result = await sql`
       SELECT * FROM user_tokens 
-      WHERE user_id = ${userId}
+      WHERE user_id = ${user_id}
     `;
 
     if (result.rows.length === 0) {
