@@ -1,5 +1,5 @@
 import { verifyToken } from '@clerk/backend';
-import { sql } from '@vercel/postgres';
+import { sql } from '../../../db/action';
 
 export async function POST(req) {
   try {
