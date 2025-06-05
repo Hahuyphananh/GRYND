@@ -13,11 +13,13 @@ export default function Page() {
         .then((res) => {
           if (!res.ok) {
             console.error("❌ Failed to sync user");
+          } else {
+            console.log("✅ sync-user complete");
           }
         })
         .catch((err) => console.error("❌ Sync-user error:", err));
     }
   }, [isLoaded, isSignedIn]);
 
-  return <SignIn afterSignInUrl="/"/>;
+  return <SignIn afterSignInUrl="/" />;
 }
