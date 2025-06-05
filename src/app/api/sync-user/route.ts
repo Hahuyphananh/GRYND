@@ -1,5 +1,5 @@
 import { verifyToken } from '@clerk/backend';
-import { sql } from '../../../db/action';
+import { sql } from '../../../db/client';
 
 export async function POST(req) {
   try {
@@ -16,7 +16,7 @@ export async function POST(req) {
 
     let payload;
     try {
-      const { payload: verifiedPayload } = await verifyToken(token);
+      const { payload: verifiedPayload } = await verifyToken(token, {});
       payload = verifiedPayload;
     } catch (err) {
       return new Response(
@@ -30,11 +30,11 @@ export async function POST(req) {
     const email = payload.email;
 
     // Check if user already exists
-    const { rows } = await sql`
+    const users = await sql`
       SELECT * FROM users WHERE clerk_id = ${clerkId}
     `;
 
-    if (rows.length > 0) {
+    if (users.length > 0) {
       return new Response(
         JSON.stringify({ success: true, message: 'Utilisateur déjà synchronisé' }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
