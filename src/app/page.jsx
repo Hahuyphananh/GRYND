@@ -21,7 +21,7 @@ function MainComponent() {
   const [errorSports, setErrorSports] = useState(null);
   const [errorEvents, setErrorEvents] = useState(null);
   const [userTokens, setUserTokens] = useState(null);
-  const { getToken, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [betInProgress, setBetInProgress] = useState(false);
