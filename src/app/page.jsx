@@ -29,21 +29,21 @@ function MainComponent() {
   const [jwt, setJwt] = useState(null);
 
 
- useEffect(() => {
-  const fetchJwt = async () => {
-    if (isSignedIn) {
-      const token = await getToken({ template: 'app_token' });
-      if (!token) {
-  setError("Token manquant");
-  return;
-}
+  useEffect(() => {
+    if (typeof window !== "undefined" && isLoaded && isSignedIn) {
+      console.log("🟡 Home: calling /api/sync-user");
 
-      setJwt(token);
+      fetch("/api/sync-user", { method: "POST" })
+        .then((res) => {
+          if (!res.ok) {
+            console.error("❌ Failed to sync user");
+          } else {
+            console.log("✅ sync-user complete");
+          }
+        })
+        .catch((err) => console.error("❌ Sync-user error:", err));
     }
-  };
-
-  fetchJwt();
-}, [isSignedIn]);
+  }, [isLoaded, isSignedIn]);
 
   useEffect(() => {
     const fetchSports = async () => {

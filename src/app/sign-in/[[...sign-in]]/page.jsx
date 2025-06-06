@@ -9,7 +9,6 @@ export default function Page() {
 
   useEffect(() => {
   if (typeof window !== "undefined" && isLoaded && isSignedIn) {
-    console.log("🟡 useEffect triggered: calling /api/sync-user");
 
     fetch("/api/sync-user", { method: "POST" })
       .then((res) => {
