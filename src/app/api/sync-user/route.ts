@@ -14,17 +14,20 @@ export async function POST(req: Request) {
     let payload;
     try {
       const { payload: verifiedPayload } = await verifyToken(token, {
-  authorizedParties: ['betsim-app'], // 👈 sets the audience
-});
+        audience: 'betsim-app',        // 👈 Must match audience in your template config
+      });
       payload = verifiedPayload;
     } catch (err) {
-      console.error('Invalid token:', err);
+      console.error('❌ Invalid token:', err);
       return new Response(JSON.stringify({ error: 'Invalid token' }), { status: 403 });
     }
 
     const clerkId = payload.sub;
     const name = payload.name || '';
     const email = payload.email;
+
+    // Optional: Log payload for debugging
+    console.log('✅ Verified payload:', payload);
 
     const existing = await sql`
       SELECT * FROM users WHERE clerk_id = ${clerkId}
@@ -41,7 +44,7 @@ export async function POST(req: Request) {
 
     return new Response(JSON.stringify({ message: 'User synced' }), { status: 201 });
   } catch (error) {
-    console.error('Server error:', error);
+    console.error('❌ Server error:', error);
     return new Response(JSON.stringify({ error: 'Server error' }), { status: 500 });
   }
 }
