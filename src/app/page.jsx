@@ -1,17 +1,20 @@
 "use client";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import NavigationBar from "../components/navigation-bar";
 import BetSlip from "../components/bet-slip";
-import { useUser, useAuth } from '@clerk/nextjs'
-import { useState, useEffect, useRef } from "react";
+import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
-import Img1 from '../images/roulette.jpg';
-import Img2 from '../images/blackjack.jpg';
-import Img3 from '../images/poker.jpg';
-import Img4 from '../images/plinko.jpg';
+import Img1 from "../images/roulette.jpg";
+import Img2 from "../images/blackjack.jpg";
+import Img3 from "../images/poker.jpg";
+import Img4 from "../images/plinko.jpg";
+import SportCard from "../components/sport-card";
+import EventCard from "../components/event-card";
 
 function MainComponent() {
-  const { data: user } = useUser();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { user } = useUser();
+
   const [selectedBet, setSelectedBet] = useState(null);
   const [selectedOdds, setSelectedOdds] = useState(null);
   const [sports, setSports] = useState([]);
@@ -21,42 +24,50 @@ function MainComponent() {
   const [errorSports, setErrorSports] = useState(null);
   const [errorEvents, setErrorEvents] = useState(null);
   const [userTokens, setUserTokens] = useState(null);
-  const { isLoaded, isSignedIn } = useAuth();
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [betInProgress, setBetInProgress] = useState(false);
   const [notification, setNotification] = useState(null);
   const [jwt, setJwt] = useState(null);
 
-
   useEffect(() => {
-    if (typeof window !== "undefined" && isLoaded && isSignedIn) {
+    const syncUser = async () => {
+      if (typeof window === "undefined" || !isLoaded || !isSignedIn) return;
+
       console.log("🟡 Home: calling /api/sync-user");
 
-      fetch("/api/sync-user", { method: "POST" })
-        .then((res) => {
-          if (!res.ok) {
-            console.error("❌ Failed to sync user");
-          } else {
-            console.log("✅ sync-user complete");
-          }
-        })
-        .catch((err) => console.error("❌ Sync-user error:", err));
-    }
+      try {
+        const token = await getToken();
+        setJwt(token);
+
+        const res = await fetch("/api/sync-user", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          console.error("❌ Failed to sync user");
+        } else {
+          console.log("✅ sync-user complete");
+        }
+      } catch (err) {
+        console.error("❌ Sync-user error:", err);
+      }
+    };
+
+    syncUser();
   }, [isLoaded, isSignedIn]);
 
   useEffect(() => {
     const fetchSports = async () => {
       try {
         setLoadingSports(true);
-        const response = await fetch("/api/list-sports", {
-          method: "POST",
-          body: JSON.stringify({}),
-        });
-        if (!response.ok) {
-          throw new Error(`Error fetching sports: ${response.status}`);
-        }
-        const data = await response.json();
+        const res = await fetch("/api/list-sports", { method: "POST", body: JSON.stringify({}) });
+        if (!res.ok) throw new Error(`Error fetching sports: ${res.status}`);
+        const data = await res.json();
         setSports(data.sports);
       } catch (error) {
         setErrorSports("Failed to load sports");
@@ -65,95 +76,81 @@ function MainComponent() {
         setLoadingSports(false);
       }
     };
+
     fetchSports();
   }, []);
 
+  const fetchEvents = async (sportId = null) => {
+    try {
+      setLoadingEvents(true);
+      const res = await fetch("/api/get-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sportId }),
+      });
+      if (!res.ok) throw new Error(`Error fetching events: ${res.status}`);
+      const data = await res.json();
+      setEvents(data);
+    } catch (error) {
+      setErrorEvents("Failed to load events");
+      console.error(error);
+    } finally {
+      setLoadingEvents(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchEvents = async (sportId = null) => {
-      try {
-        setLoadingEvents(true);
-        const response = await fetch("/api/get-events", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ sportId }),
-        });
-        if (!response.ok) {
-          throw new Error(`Error fetching events: ${response.status}`);
-        }
-        const data = await response.json();
-        setEvents(data);
-      } catch (error) {
-        setErrorEvents("Failed to load events");
-        console.error(error);
-      } finally {
-        setLoadingEvents(false);
-      }
-    };
     fetchEvents();
   }, []);
 
   const fetchUserTokens = async () => {
-    if (!user) return;
+    if (!user || !jwt) return;
 
     setLoading(true);
     setError(null);
 
     try {
-     const getResponse = await fetch("/api/get-user-tokens", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${jwt}`,
-  },
-  credentials: "include",
-});
+      const res = await fetch("/api/get-user-tokens", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwt}`,
+        },
+        credentials: "include",
+      });
 
+      if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+      const data = await res.json();
 
-      if (!getResponse.ok) {
-        throw new Error(`Erreur HTTP: ${getResponse.status}`);
-      }
-
-      const getData = await getResponse.json();
-
-      if (!getData.success || !getData.data) {
-       const initResponse = await fetch("/api/initialize-user-tokens", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${jwt}`,
-  },
-  credentials: "include",
-});
-
-
-        if (!initResponse.ok) {
-          throw new Error(`Erreur HTTP: ${initResponse.status}`);
-        }
-
-        const finalResponse = await fetch("/api/get-user-tokens", {
+      if (!data.success || !data.data) {
+        const initRes = await fetch("/api/initialize-user-tokens", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-             Authorization: `Bearer ${jwt}`,
+            Authorization: `Bearer ${jwt}`,
+          },
+          credentials: "include",
+        });
+        if (!initRes.ok) throw new Error(`Init failed: ${initRes.status}`);
+
+        const finalRes = await fetch("/api/get-user-tokens", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${jwt}`,
           },
           credentials: "include",
         });
 
-        if (!finalResponse.ok) {
-          throw new Error(`Erreur HTTP: ${finalResponse.status}`);
-        }
-
-        const finalData = await finalResponse.json();
+        const finalData = await finalRes.json();
         if (finalData.success) {
           setUserTokens(finalData.data.balance);
         }
       } else {
-        setUserTokens(getData.data.balance);
+        setUserTokens(data.data.balance);
       }
-    } catch (error) {
-      console.error("Error managing tokens:", error);
+    } catch (err) {
+      console.error("Token fetch error:", err);
       setError("Impossible de gérer vos tokens");
       setUserTokens(null);
     } finally {
@@ -162,11 +159,8 @@ function MainComponent() {
   };
 
   useEffect(() => {
-    if (user) {
-      fetchUserTokens();
-    }
-  }, [user]);
-  
+    if (user && jwt) fetchUserTokens();
+  }, [user, jwt]);
 
   const handleBetSelect = (team, odds) => {
     setSelectedBet(team);
@@ -188,19 +182,18 @@ function MainComponent() {
     setError(null);
 
     try {
-      const response = await fetch("/api/bets/place", {
+      const res = await fetch("/api/bets/place", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-           Authorization: `Bearer ${jwt}`,
+          Authorization: `Bearer ${jwt}`,
         },
         body: JSON.stringify(betData),
         credentials: "include",
       });
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
+      const data = await res.json();
+      if (!res.ok || !data.success) {
         throw new Error(data.error || "Erreur lors du placement du pari");
       }
 
@@ -208,12 +201,9 @@ function MainComponent() {
       setSelectedOdds(null);
       setUserTokens(data.data.newBalance);
       showNotification("Pari placé avec succès!", "success");
-    } catch (error) {
-      console.error("Error placing bet:", error);
-      showNotification(
-        error.message || "Erreur lors du placement du pari",
-        "error",
-      );
+    } catch (err) {
+      console.error("Bet error:", err);
+      showNotification(err.message || "Erreur lors du placement du pari", "error");
     } finally {
       setBetInProgress(false);
     }
