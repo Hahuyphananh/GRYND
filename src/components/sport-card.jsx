@@ -63,9 +63,9 @@ export default function Index() {
       );
     }
   
-    return <StoryComponent />;
   }
 }
+return <StoryComponent />;
 
 function StoryComponent() {
   return (
@@ -118,4 +118,3 @@ function StoryComponent() {
   );
 }
 
-return <StoryComponent />;
