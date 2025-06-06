@@ -1,61 +1,47 @@
 import { verifyToken } from '@clerk/backend';
 import { sql } from '../../../db/client';
 
-export async function POST(req) {
+export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get('authorization');
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Jeton manquant' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Missing token' }), { status: 401 });
     }
 
     const token = authHeader.replace('Bearer ', '').trim();
 
     let payload;
     try {
-      const { payload: verifiedPayload } = await verifyToken(token, {});
+      const { payload: verifiedPayload } = await verifyToken(token, {
+  authorizedParties: ['betsim-app'], // 👈 sets the audience
+});
       payload = verifiedPayload;
     } catch (err) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Jeton invalide' }),
-        { status: 403, headers: { 'Content-Type': 'application/json' } }
-      );
+      console.error('Invalid token:', err);
+      return new Response(JSON.stringify({ error: 'Invalid token' }), { status: 403 });
     }
 
     const clerkId = payload.sub;
     const name = payload.name || '';
     const email = payload.email;
 
-    // Check if user already exists
-    const users = await sql`
+    const existing = await sql`
       SELECT * FROM users WHERE clerk_id = ${clerkId}
     `;
 
-    if (users.length > 0) {
-      return new Response(
-        JSON.stringify({ success: true, message: 'Utilisateur déjà synchronisé' }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
+    if (existing.length > 0) {
+      return new Response(JSON.stringify({ message: 'User already synced' }), { status: 200 });
     }
 
-    // Insert new user
     await sql`
       INSERT INTO users (clerk_id, name, email, password)
       VALUES (${clerkId}, ${name}, ${email}, 'placeholder-password')
     `;
 
-    return new Response(
-      JSON.stringify({ success: true, message: 'Utilisateur synchronisé' }),
-      { status: 201, headers: { 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ message: 'User synced' }), { status: 201 });
   } catch (error) {
-    console.error('Erreur dans sync-user:', error);
-    return new Response(
-      JSON.stringify({ success: false, error: 'Erreur serveur' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    console.error('Server error:', error);
+    return new Response(JSON.stringify({ error: 'Server error' }), { status: 500 });
   }
 }

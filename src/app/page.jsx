@@ -37,7 +37,8 @@ function MainComponent() {
       console.log("🟡 Home: calling /api/sync-user");
 
       try {
-        const token = await getToken();
+        const token = await getToken({ template: 'app_token' });
+        console.log("🟢 Token received:", token);
         setJwt(token);
 
         const res = await fetch("/api/sync-user", {
@@ -46,6 +47,7 @@ function MainComponent() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
+          credentials: "include",
         });
 
         if (!res.ok) {
