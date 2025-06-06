@@ -120,12 +120,17 @@ function NavigationBar({ currentPath }) {
                 </SignOutButton>
               </>
             ) : (
-              <Link
-                href="/sign-up"
-                className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
-              >
-                Connexion
-              </Link>
+              <><Link
+                  href="/sign-up"
+                  className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
+                >
+                  Créer un compte
+                </Link><Link
+                  href="/sign-in"
+                  className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
+                >
+                    Connexion
+                  </Link></>
             )}
           </div>
         </div>

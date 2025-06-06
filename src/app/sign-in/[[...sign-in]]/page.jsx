@@ -8,18 +8,21 @@ export default function Page() {
   const { isLoaded, isSignedIn } = useUser();
 
   useEffect(() => {
-    if (typeof window !== "undefined" && isLoaded && isSignedIn) {
-      fetch("/api/sync-user", { method: "POST" })
-        .then((res) => {
-          if (!res.ok) {
-            console.error("❌ Failed to sync user");
-          } else {
-            console.log("✅ sync-user complete");
-          }
-        })
-        .catch((err) => console.error("❌ Sync-user error:", err));
-    }
-  }, [isLoaded, isSignedIn]);
+  if (typeof window !== "undefined" && isLoaded && isSignedIn) {
+    console.log("🟡 useEffect triggered: calling /api/sync-user");
+
+    fetch("/api/sync-user", { method: "POST" })
+      .then((res) => {
+        if (!res.ok) {
+          console.error("❌ Failed to sync user");
+        } else {
+          console.log("✅ sync-user complete");
+        }
+      })
+      .catch((err) => console.error("❌ Sync-user error:", err));
+  }
+}, [isLoaded, isSignedIn]);
+
 
   return <SignIn afterSignInUrl="/" />;
 }
