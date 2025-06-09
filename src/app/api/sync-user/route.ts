@@ -1,7 +1,9 @@
 import { auth } from '@clerk/nextjs/server';
-import { sql } from '../../../db/client';
+import { db } from '../../../db/client'; // Drizzle DB client
+import { users } from '../../../db/schema'; // Your Drizzle schema for the users table
+import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
-import { users } from '@clerk/clerk-sdk-node';
+import { users as clerkUsers } from '@clerk/clerk-sdk-node';
 
 export async function POST(req: Request) {
   try {
@@ -16,7 +18,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Fetch user from Clerk
-    const user = await users.getUser(clerkId);
+    const user = await clerkUsers.getUser(clerkId);
     const firstName = user.firstName || '';
     const lastName = user.lastName || '';
     const emailAddresses = user.emailAddresses || [];
@@ -28,10 +30,12 @@ export async function POST(req: Request) {
 
     console.log('✅ Clerk session verified:', { clerkId, name, email });
 
-    // 3. Check if user exists in your DB
-    const existingUser = await sql`
-      SELECT * FROM users WHERE clerk_id = ${clerkId} LIMIT 1
-    `;
+    // 3. Check if user exists in DB
+    const existingUser = await db
+      .select()
+      .from(users)
+      .where(eq(users.clerkId, clerkId))
+      .limit(1);
 
     if (existingUser.length > 0) {
       return NextResponse.json(
@@ -40,38 +44,39 @@ export async function POST(req: Request) {
       );
     }
 
-    // OPTIONAL: Read password from request body if you're collecting one
+    // 4. Optionally read password from body (not mandatory)
     const body = await req.json();
     const password = body?.password;
 
-    // 4. Optionally update user's password if a password is provided
     if (password) {
       try {
-        await users.updateUser(clerkId, {
+        await clerkUsers.updateUser(clerkId, {
           password,
         });
         console.log('🔐 Password updated for user:', clerkId);
       } catch (err) {
-        console.warn('⚠️ Failed to update password (may be OAuth-only user):', err);
-        // We do not fail here — we proceed with DB insert
+        console.warn('⚠️ Failed to update password (likely OAuth-only user):', err);
       }
     }
 
-    // 5. Insert new user into your database
-    const newUser = await sql`
-      INSERT INTO users (clerk_id, name, email, balance)
-      VALUES (${clerkId}, ${name}, ${email}, 1000.00)
-      RETURNING *
-    `;
+    // 5. Insert new user into DB
+    const inserted = await db
+      .insert(users)
+      .values({
+        clerkId,
+        name,
+        email,
+        balance: 1000.0,
+      })
+      .returning();
 
     return NextResponse.json(
       {
         message: 'User synced successfully',
-        user: newUser[0],
+        user: inserted[0],
       },
       { status: 201 }
     );
-
   } catch (error) {
     console.error('❌ Error in user sync:', error);
     return NextResponse.json(
