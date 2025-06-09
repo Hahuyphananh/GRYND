@@ -1,50 +1,85 @@
-import { verifyToken } from '@clerk/backend';
+import { auth } from '@clerk/nextjs/server';
 import { sql } from '../../../db/client';
+import { NextResponse } from 'next/server';
+import { users } from '@clerk/clerk-sdk-node';
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get('authorization');
+    // 1. Authenticate user via Clerk session
+    const { userId: clerkId } = await auth();
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Missing token' }), { status: 401 });
+    if (!clerkId) {
+      return NextResponse.json(
+        { error: 'Unauthorized - No active session' },
+        { status: 401 }
+      );
     }
 
-    const token = authHeader.replace('Bearer ', '').trim();
+    // 2. Fetch user from Clerk
+    const user = await users.getUser(clerkId);
+    const firstName = user.firstName || '';
+    const lastName = user.lastName || '';
+    const emailAddresses = user.emailAddresses || [];
+    const name = `${firstName} ${lastName}`.trim();
+    const email =
+      Array.isArray(emailAddresses) && emailAddresses.length > 0
+        ? emailAddresses[0].emailAddress
+        : '';
 
-    let payload;
-    try {
-      const { payload: verifiedPayload } = await verifyToken(token, {
-        audience: 'betsim-app',        // 👈 Must match audience in your template config
-      });
-      payload = verifiedPayload;
-    } catch (err) {
-      console.error('❌ Invalid token:', err);
-      return new Response(JSON.stringify({ error: 'Invalid token' }), { status: 403 });
-    }
+    console.log('✅ Clerk session verified:', { clerkId, name, email });
 
-    const clerkId = payload.sub;
-    const name = payload.name || '';
-    const email = payload.email;
-
-    // Optional: Log payload for debugging
-    console.log('✅ Verified payload:', payload);
-
-    const existing = await sql`
-      SELECT * FROM users WHERE clerk_id = ${clerkId}
+    // 3. Check if user exists in your DB
+    const existingUser = await sql`
+      SELECT * FROM users WHERE clerk_id = ${clerkId} LIMIT 1
     `;
 
-    if (existing.length > 0) {
-      return new Response(JSON.stringify({ message: 'User already synced' }), { status: 200 });
+    if (existingUser.length > 0) {
+      return NextResponse.json(
+        { message: 'User already exists' },
+        { status: 200 }
+      );
     }
 
-    await sql`
-      INSERT INTO users (clerk_id, name, email, password)
-      VALUES (${clerkId}, ${name}, ${email}, 'placeholder-password')
+    // OPTIONAL: Read password from request body if you're collecting one
+    const body = await req.json();
+    const password = body?.password;
+
+    // 4. Optionally update user's password if a password is provided
+    if (password) {
+      try {
+        await users.updateUser(clerkId, {
+          password,
+        });
+        console.log('🔐 Password updated for user:', clerkId);
+      } catch (err) {
+        console.warn('⚠️ Failed to update password (may be OAuth-only user):', err);
+        // We do not fail here — we proceed with DB insert
+      }
+    }
+
+    // 5. Insert new user into your database
+    const newUser = await sql`
+      INSERT INTO users (clerk_id, name, email, balance)
+      VALUES (${clerkId}, ${name}, ${email}, 1000.00)
+      RETURNING *
     `;
 
-    return new Response(JSON.stringify({ message: 'User synced' }), { status: 201 });
+    return NextResponse.json(
+      {
+        message: 'User synced successfully',
+        user: newUser[0],
+      },
+      { status: 201 }
+    );
+
   } catch (error) {
-    console.error('❌ Server error:', error);
-    return new Response(JSON.stringify({ error: 'Server error' }), { status: 500 });
+    console.error('❌ Error in user sync:', error);
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
   }
 }

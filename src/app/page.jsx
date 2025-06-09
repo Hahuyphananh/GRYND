@@ -31,39 +31,6 @@ function MainComponent() {
   const [jwt, setJwt] = useState(null);
 
   useEffect(() => {
-    const syncUser = async () => {
-      if (typeof window === "undefined" || !isLoaded || !isSignedIn) return;
-
-      console.log("🟡 Home: calling /api/sync-user");
-
-      try {
-        const token = await getToken({ template: 'app_token' });
-        console.log("🟢 Token received:", token);
-        setJwt(token);
-
-        const res = await fetch("/api/sync-user", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          credentials: "include",
-        });
-
-        if (!res.ok) {
-          console.error("❌ Failed to sync user");
-        } else {
-          console.log("✅ sync-user complete");
-        }
-      } catch (err) {
-        console.error("❌ Sync-user error:", err);
-      }
-    };
-
-    syncUser();
-  }, [isLoaded, isSignedIn]);
-
-  useEffect(() => {
     const fetchSports = async () => {
       try {
         setLoadingSports(true);
