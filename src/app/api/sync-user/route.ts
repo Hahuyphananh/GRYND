@@ -63,12 +63,16 @@ export async function POST(req: Request) {
    const inserted = await db
   .insert(users)
   .values({
-    clerkId,
+    clerk_id,
+    id,
     name,
+    age,
     email,
     password: "oauth-placeholder", // 👈 REQUIRED
     balance: 1000.0,
-  })
+    games_won,
+    games_lost,
+  createdAt })
   .returning();
 
 
