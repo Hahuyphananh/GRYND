@@ -60,15 +60,17 @@ export async function POST(req: Request) {
     }
 
     // 5. Insert new user into DB
-    const inserted = await db
-      .insert(users)
-      .values({
-        clerkId,
-        name,
-        email,
-        balance: 1000.0,
-      })
-      .returning();
+   const inserted = await db
+  .insert(users)
+  .values({
+    clerkId,
+    name,
+    email,
+    password: "oauth-placeholder", // 👈 REQUIRED
+    balance: 1000.0,
+  })
+  .returning();
+
 
     return NextResponse.json(
       {
