@@ -1,55 +1,49 @@
-import { verifyToken } from '@clerk/backend';
-import { sql } from '@vercel/postgres';
-
-// Define the expected structure of the JWT payload
-interface TokenPayload {
-  user_id: string;
-}
+import { auth } from '@clerk/nextjs/server';
+import { db } from '../../../db/client'; // adjust path as needed
+import { userTokens } from '../../../db/schema'; // assumes your table is named `userTokens`
+import { eq } from 'drizzle-orm';
+import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get('authorization');
+    // Authenticate via Clerk
+    const { userId: clerkId } = await auth();
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Jeton manquant' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
+    if (!clerkId) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const token = authHeader.replace('Bearer ', '').trim();
+    // Fetch user tokens from the DB
+    const tokens = await db
+      .select()
+      .from(userTokens)
+      .where(eq(userTokens.clerkId, clerkId)) // assumes your schema has clerkId as FK
+      .limit(1);
 
-    // Verify the JWT from Clerk
-    const { payload } = await verifyToken(token, {});
-
-    // Cast payload to expected type
-    const { user_id } = payload as TokenPayload;
-
-    const result = await sql`
-      SELECT * FROM user_tokens 
-      WHERE user_id = ${user_id}
-    `;
-
-    if (result.rows.length === 0) {
-      return new Response(
-        JSON.stringify({
+    if (tokens.length === 0) {
+      return NextResponse.json(
+        {
           success: false,
           error: 'Aucun token trouvé',
           shouldInitialize: true,
-        }),
-        { status: 404, headers: { 'Content-Type': 'application/json' } }
+        },
+        { status: 404 }
       );
     }
 
-    return new Response(
-      JSON.stringify({ success: true, data: result.rows[0] }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    return NextResponse.json(
+      { success: true, data: tokens[0] },
+      { status: 200 }
     );
   } catch (error) {
-    console.error('Erreur dans get-user-tokens:', error);
-    return new Response(
-      JSON.stringify({ success: false, error: 'Erreur serveur' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    console.error('❌ Erreur dans get-user-tokens:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Erreur serveur',
+        details: error instanceof Error ? error.message : 'Unknown',
+      },
+      { status: 500 }
     );
   }
 }
