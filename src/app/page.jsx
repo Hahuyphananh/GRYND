@@ -237,7 +237,7 @@ function MainComponent() {
 
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
             <a
-              href="/roulette"
+              href="/casino/roulette"
               className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">

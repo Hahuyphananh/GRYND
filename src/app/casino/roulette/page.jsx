@@ -5,9 +5,10 @@ import { useUser } from "@clerk/nextjs";
 
 function MainComponent() {
   const { data: user, isLoaded: userLoaded } = useUser();
+
+  // State declarations
   const [balance, setBalance] = useState(0);
   const [balanceLoading, setBalanceLoading] = useState(true);
-  const [activeGame, setActiveGame] = useState("roulette");
   const [betAmount, setBetAmount] = useState(10);
   const [betType, setBetType] = useState("red");
   const [selectedNumber, setSelectedNumber] = useState(0);
@@ -16,7 +17,6 @@ function MainComponent() {
   const [error, setError] = useState(null);
   const [history, setHistory] = useState([]);
   const [highlightedNumbers, setHighlightedNumbers] = useState([]);
-  const [currentSpinIndex, setCurrentSpinIndex] = useState(0);
   const [previousBalance, setPreviousBalance] = useState(null);
   const [balanceChangeVisible, setBalanceChangeVisible] = useState(false);
   const [stats, setStats] = useState({
@@ -24,6 +24,7 @@ function MainComponent() {
     totalBets: 0,
     totalWins: 0,
   });
+  const [spinningNumbers, setSpinningNumbers] = useState([]);
 
   const rouletteNumbers = [
     0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5,
@@ -34,9 +35,9 @@ function MainComponent() {
     1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36,
   ];
 
-  const [spinningNumbers, setSpinningNumbers] = useState([]);
   const spinDuration = 3000;
 
+  // Roulette wheel animation simulation
   const animateRouletteWheel = (finalNumber) => {
     const animationSteps = 20;
     const stepDuration = spinDuration / animationSteps;
@@ -54,6 +55,7 @@ function MainComponent() {
     }, stepDuration);
   };
 
+  // Fetch user balance on load or user change
   useEffect(() => {
     const fetchBalance = async () => {
       if (!userLoaded || !user) return;
@@ -93,8 +95,21 @@ function MainComponent() {
     fetchBalance();
   }, [user, userLoaded]);
 
+  // Optional: hide balance change indicator after a short time
+  useEffect(() => {
+    if (balanceChangeVisible) {
+      const timeout = setTimeout(() => setBalanceChangeVisible(false), 3000);
+      return () => clearTimeout(timeout);
+    }
+  }, [balanceChangeVisible]);
+
+   // Early return to avoid rendering before user data loaded
+  if (!userLoaded) return null;
+
+  // Handle spin button click
   const handleSpin = async () => {
     if (spinning || balanceLoading || !user) return;
+
     if (betAmount <= 0 || betAmount > balance) {
       setError("Montant de mise invalide");
       return;
@@ -136,18 +151,10 @@ function MainComponent() {
       } else if (betType === "green" && spinResult === 0) {
         win = true;
         winAmount = betAmount * 35;
-      } else if (
-        betType === "even" &&
-        spinResult !== 0 &&
-        spinResult % 2 === 0
-      ) {
+      } else if (betType === "even" && spinResult !== 0 && spinResult % 2 === 0) {
         win = true;
         winAmount = betAmount * 2;
-      } else if (
-        betType === "odd" &&
-        spinResult !== 0 &&
-        spinResult % 2 !== 0
-      ) {
+      } else if (betType === "odd" && spinResult !== 0 && spinResult % 2 !== 0) {
         win = true;
         winAmount = betAmount * 2;
       } else if (betType === "number" && spinResult === selectedNumber) {
