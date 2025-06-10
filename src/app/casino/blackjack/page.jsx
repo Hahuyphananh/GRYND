@@ -95,7 +95,7 @@ export default function BlackjackPage() {
     }
 
     try {
-      const betResponse = await fetch("/api/place-blackjack-bet", {
+      const betResponse = await fetch("/api/blackjack/place-bet", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
