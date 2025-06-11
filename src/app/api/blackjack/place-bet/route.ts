@@ -45,15 +45,12 @@ export async function POST(request: Request) {
 
 
       // Insert blackjack game record
-     const insertData = {
-      userId: user.id,
-      betAmount: amount,
-      result: "pending",
-      payout: 0,
-    };
-
-await tx.insert(blackjackGames).values(insertData as any);
-
+ await tx.insert(blackjackGames).values({
+  userId: user.id,
+  betAmount: amount.toString(), // 👈 numeric expects string!
+  result: "pending",
+  payout: "0",                  // 👈 also a string!
+});
 
     return new Response(
       JSON.stringify({  

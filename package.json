@@ -15,7 +15,7 @@
     "@clerk/clerk-react": "^5.28.2",
     "@clerk/clerk-sdk-node": "^4.13.23",
     "@clerk/nextjs": "^6.16.0",
-    "@neondatabase/serverless": "^1.0.0",
+    "@neondatabase/serverless": "^1.0.1",
     "@vercel/postgres": "^0.10.0",
     "bcrypt": "^5.1.1",
     "cheerio": "^1.0.0",
