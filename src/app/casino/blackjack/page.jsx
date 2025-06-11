@@ -209,7 +209,9 @@ export default function BlackjackPage() {
     <div className="min-h-screen bg-[#003366] pt-20">
       <div className="mx-auto max-w-4xl px-4 py-8">
         <div className="mb-8 flex items-center justify-between">
-          <a href="/casino" className="text-[#FFD700]">Retour au Casino</a>
+          <a href="/casino" className="text-[#FFD700]">
+            Retour au Casino
+          </a>
           <h1 className="text-4xl font-bold text-[#FFD700]">Blackjack</h1>
           <div className="flex items-center gap-2 text-[#FFD700]">
             <i className="fas fa-coins" />
@@ -218,14 +220,12 @@ export default function BlackjackPage() {
         </div>
 
         {error && (
-          <div className="mb-4 rounded bg-red-500/10 p-3 text-red-500">
-            {error}
-          </div>
+          <div className="mb-4 rounded bg-red-500/10 p-3 text-red-500">{error}</div>
         )}
 
         <div className="rounded-lg bg-[#0e6b0e] p-6 border-[10px] border-[#5c3b15] shadow-inner">
           <h2 className="text-xl text-[#FFD700] mb-4">Dealer</h2>
-          <div className="flex gap-4 mb-4">
+          <div className="flex justify-center gap-4 mb-4">
             {dealerCards.map((card, i) => (
               <div
                 key={i}
@@ -240,7 +240,7 @@ export default function BlackjackPage() {
           </div>
 
           <h2 className="text-xl text-[#FFD700] mb-4">Vos cartes</h2>
-          <div className="flex gap-4 mb-2">
+          <div className="flex justify-center gap-4 mb-2">
             {playerCards.map((card, i) => (
               <div
                 key={i}
@@ -261,25 +261,46 @@ export default function BlackjackPage() {
             )}
           </div>
 
-          {message && <div className="text-center text-xl text-[#FFD700] mb-4">{message}</div>}
+          {message && (
+            <div className="text-center text-xl text-[#FFD700] mb-4">{message}</div>
+          )}
 
           {gameState === "betting" ? (
             <div className="flex flex-col items-center space-y-4">
               <div className="flex items-center gap-4">
-                <button onClick={() => setBet(Math.max(10, bet - 10))} className="bg-[#FFD700] px-4 py-2 rounded text-[#003366]">-</button>
+                <button
+                  onClick={() => setBet(Math.max(10, bet - 10))}
+                  className="bg-[#FFD700] px-4 py-2 rounded text-[#003366]"
+                >
+                  -
+                </button>
                 <span className="text-xl text-[#FFD700]">{bet}</span>
-                <button onClick={() => setBet(bet + 10)} className="bg-[#FFD700] px-4 py-2 rounded text-[#003366]">+</button>
+                <button
+                  onClick={() => setBet(bet + 10)}
+                  className="bg-[#FFD700] px-4 py-2 rounded text-[#003366]"
+                >
+                  +
+                </button>
               </div>
-              <button onClick={startGame} className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold">
+              <button
+                onClick={startGame}
+                className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold"
+              >
                 Miser
               </button>
             </div>
           ) : (
             <div className="flex justify-center gap-4 mt-4">
-              <button onClick={hit} className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold">
+              <button
+                onClick={hit}
+                className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold"
+              >
                 Carte
               </button>
-              <button onClick={stand} className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold">
+              <button
+                onClick={stand}
+                className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold"
+              >
                 Rester
               </button>
             </div>
