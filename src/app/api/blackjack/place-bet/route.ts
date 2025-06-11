@@ -1,10 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
-import { db } from "../../../db";
-import { users, } from "../../../db/schema";
+import { db } from "../../../../db/client";
+import { users, blackjackGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 
 export async function POST(request: Request) {
-  const { userId } = auth();
+  const { userId } = await auth();
 
   if (!userId) {
     return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const amount = body?.amount;
+  const amount = parseFloat(body?.amount);
 
   if (!amount || amount <= 0) {
     return new Response(JSON.stringify({ success: false, error: "Invalid amount" }), {
@@ -28,32 +28,35 @@ export async function POST(request: Request) {
       where: eq(users.clerkId, userId),
     });
 
-    if (!user || user.balance < amount) {
+    if (!user || parseFloat(user.balance) < amount) {
       return new Response(JSON.stringify({ success: false, error: "Insufficient balance" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    const newBalance = user.balance - amount;
+    const newBalance = parseFloat(user.balance) - amount;
 
     await db.transaction(async (tx) => {
-      await tx
-        .update(users)
-        .set({ balance: newBalance })
-        .where(eq(users.clerkId, userId));
+      // Update user's balance
+     await tx.update(users).set({
+  [users.balance.name]: newBalance, // if you want to dynamically reference it
+}).where(eq(users.clerkId, userId));
 
-      await tx.insert(transactions).values({
-        userId: user.id,
-        type: "blackjack_bet",
-        amount,
-        balanceAfter: newBalance,
-        status: "completed",
-      });
-    });
+
+      // Insert blackjack game record
+     const insertData = {
+      userId: user.id,
+      betAmount: amount,
+      result: "pending",
+      payout: 0,
+    };
+
+await tx.insert(blackjackGames).values(insertData as any);
+
 
     return new Response(
-      JSON.stringify({
+      JSON.stringify({  
         success: true,
         data: {
           newBalance,
@@ -66,6 +69,7 @@ export async function POST(request: Request) {
         headers: { "Content-Type": "application/json" },
       }
     );
+    });
   } catch (err) {
     console.error("❌ Blackjack bet error:", err);
     return new Response(JSON.stringify({ success: false, error: "Server error" }), {
