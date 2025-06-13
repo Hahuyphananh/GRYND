@@ -188,18 +188,18 @@ export default function BlackjackPage() {
         }),
       });
 
-      if (winAmount > 0) {
-        await fetch("/api/tokens/update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount: winAmount }),
-        });
-        await fetchUserTokens();
+        if (winAmount > 0) {
+          await fetch("/api/tokens/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ amount: winAmount }),
+          });
+          await fetchUserTokens();
+        }
+      } catch (err) {
+        console.error("Error ending game:", err);
+        setError("Une erreur est survenue lors de la fin de la partie");
       }
-    } catch (err) {
-      console.error("Error ending game:", err);
-      setError("Une erreur est survenue lors de la fin de la partie");
-    }
 
     setMessage(message);
     setGameState("betting");

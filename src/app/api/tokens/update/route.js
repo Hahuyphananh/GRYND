@@ -1,108 +1,61 @@
-import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
+import { auth } from '@clerk/nextjs/server';
+import { db } from '../../../../db/client';
+import { users } from '../../../../db/schema';
+import { eq } from 'drizzle-orm';
+import { NextResponse } from 'next/server';
 
-/**
- * @param {Request} request
- * @returns {Promise<Response>}
- */
-export async function POST(request) {
-  const { userId } = auth();
-
-  if (!userId) {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: "Utilisateur non authentifié",
-      }),
-      {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-  }
-
+export async function POST(req) {
   try {
-    const { amount } = await request.json();
+    const { userId } = await auth();
 
-    if (typeof amount !== "number" || isNaN(amount)) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Le montant est requis et doit être un nombre",
-        }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
       );
     }
 
-    const { rows: userRows } = await sql`
-      SELECT balance 
-      FROM user_tokens 
-      WHERE user_id = ${userId}
-    `;
+    const body = await req.json();
+    const amount = body.amount;
 
-    if (userRows.length === 0) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Compte de tokens non trouvé",
-        }),
-        {
-          status: 404,
-          headers: { "Content-Type": "application/json" },
-        }
+    if (typeof amount !== 'number' || isNaN(amount)) {
+      return NextResponse.json(
+        { success: false, error: 'Le montant est requis et doit être un nombre' },
+        { status: 400 }
       );
     }
 
-    const { rows: updateRows } = await sql`
-      UPDATE user_tokens 
-      SET balance = balance + ${amount}
-      WHERE user_id = ${userId}
-      RETURNING balance
-    `;
+    const userData = await db
+      .select()
+      .from(users)
+      .where(eq(users.clerkId, userId))
+      .limit(1);
 
-    const newBalance = updateRows[0].balance;
+    if (userData.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      );
+    }
 
-    await sql`
-      INSERT INTO transactions (
-        user_id,
-        type,
-        amount,
-        balance_after,
-        status
-      ) VALUES (
-        ${userId},
-        ${amount > 0 ? "win" : "loss"},
-        ${Math.abs(amount)},
-        ${newBalance},
-        'completed'
-      )
-    `;
+    const user = userData[0];
+    const newBalance = parseFloat(user.balance) + amount;
 
-    return new Response(
-      JSON.stringify({
+    // ✅ CORRECTION : pas besoin de crochets
+    await db
+      .update(users)
+      .set({ balance: newBalance })
+      .where(eq(users.clerkId, userId));
+
+    return NextResponse.json(
+      {
         success: true,
-        data: { balance: newBalance },
-      }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }
+        data: { balance: newBalance }
+      },
+      { status: 200 }
     );
-  } catch (error) {
-    console.error("❌ Error updating token balance:", error);
-
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: "Erreur lors de la mise à jour du solde",
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+  } catch (err) {
+    console.error("Erreur dans /api/tokens/update:", err);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
