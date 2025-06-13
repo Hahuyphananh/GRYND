@@ -15,6 +15,8 @@ export default function MinesGamePage() {
   const [autoCashoutAt, setAutoCashoutAt] = useState(2.0);
   const [autoplaySpeed, setAutoplaySpeed] = useState(500);
   const [autoplaySettings, setAutoplaySettings] = useState(false);
+  const [userTokens, setUserTokens] = useState(0); // user tokens balance
+  const [loading, setLoading] = useState(false);
   
   // Autoplay references
   const autoplayTimerRef = useRef(null);
@@ -23,6 +25,32 @@ export default function MinesGamePage() {
   const gameOverRef = useRef(gameOver);
   const multiplierRef = useRef(multiplier);
   const revealedCountRef = useRef(revealedCount);
+//fetch user tokens
+ useEffect(() => {
+    async function fetchTokens() {
+      setLoading(true);
+      try {
+        const response = await fetch("/api/get-user-tokens", {
+          method: "POST",
+        });
+        const data = await response.json();
+        if (data.success) {
+          setUserTokens(data.data.balance);
+        } else {
+          throw new Error(data.error || "Unknown error");
+        }
+      } catch (error) {
+        console.error("Error fetching tokens:", error);
+        setError("Impossible de récupérer votre solde de tokens");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchTokens();
+  }, []);
+
+
 
   // Update refs when state changes
   useEffect(() => {
@@ -200,43 +228,90 @@ export default function MinesGamePage() {
     return cells;
   }
 
-  function handleClick(index) {
-    if (revealed[index] || gameOver) return false;
+async function handleClick(index) {
+  if (revealed[index] || gameOver) return false;
 
-    const updated = [...revealed];
-    updated[index] = true;
-    setRevealed(updated);
-    
-    const newRevealedCount = revealedCount + 1;
-    setRevealedCount(newRevealedCount);
+  const updated = [...revealed];
+  updated[index] = true;
+  setRevealed(updated);
+  
+  const newRevealedCount = revealedCount + 1;
+  setRevealedCount(newRevealedCount);
 
-    if (grid[index] === "mine") {
-      setGameOver(true);
-      setMultiplier(0);
-      setShowAllMines(true);
-      setAutoplayEnabled(false);
-      return true;
-    } else {
-      const newMultiplier = calculateMultiplier(totalMines, newRevealedCount);
-      setMultiplier(newMultiplier);
-      
-      const safeCells = GRID_SIZE * GRID_SIZE - totalMines;
-      if (newRevealedCount >= safeCells) {
-        setHasWon(true);
-        setGameOver(true);
-        setShowAllMines(true);
-        setAutoplayEnabled(false);
-      }
-      return false;
-    }
-  }
-
-  function handleCashOut() {
-    setHasWon(true);
+  if (grid[index] === "mine") {
     setGameOver(true);
+    setMultiplier(0);
     setShowAllMines(true);
     setAutoplayEnabled(false);
+
+    // 🔁 Call settle API for LOSS
+    try {
+      const res = await fetch("/api/mines/settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          betAmount: 1,
+          mines: totalMines,
+          revealedCount,
+          gameWon: false,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setUserTokens(data.data.newBalance);
+      } else {
+        console.error("Error updating balance (loss):", data.error);
+      }
+    } catch (err) {
+      console.error("Network error on loss:", err);
+    }
+
+    return true;
+  } else {
+    const newMultiplier = calculateMultiplier(totalMines, newRevealedCount);
+    setMultiplier(newMultiplier);
+    
+    const safeCells = GRID_SIZE * GRID_SIZE - totalMines;
+    if (newRevealedCount >= safeCells) {
+      setHasWon(true);
+      setGameOver(true);
+      setShowAllMines(true);
+      setAutoplayEnabled(false);
+    }
+    return false;
   }
+}
+
+ async function handleCashOut() {
+  setHasWon(true);
+  setGameOver(true);
+  setShowAllMines(true);
+  setAutoplayEnabled(false);
+
+  // 🔁 Call settle API for WIN
+  try {
+    const res = await fetch("/api/mines/settle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        betAmount: 1, // You can make this a state later if needed
+        mines: totalMines,
+        revealedCount,
+        gameWon: true,
+      }),
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      setUserTokens(data.data.newBalance);
+    } else {
+      console.error("Error updating balance (win):", data.error);
+    }
+  } catch (err) {
+    console.error("Network error on win:", err);
+  }
+}
 
   function handleReset() {
     setGrid(generateGrid(totalMines));
@@ -300,12 +375,12 @@ export default function MinesGamePage() {
  
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
+    <><p className="text-lg font-semibold">🪙 Tokens: {userTokens}</p><div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
       <div className={`bg-gray-800 rounded-lg p-8 w-full max-w-6xl min-w-[80%] ${gameOver ? "relative" : ""}`}>
         {gameOver && (
           <div className="absolute inset-0 bg-black bg-opacity-10 rounded-lg pointer-events-none"></div>
         )}
-        
+
         {/* Main game area with side panels */}
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Left sidebar */}
@@ -319,15 +394,15 @@ export default function MinesGamePage() {
                     key={mineCount}
                     onClick={() => handleMineChange(mineCount)}
                     disabled={autoplayEnabled}
-                    className={`py-2 px-1 rounded text-sm ${totalMines === mineCount 
-                      ? 'bg-blue-600 text-white' 
+                    className={`py-2 px-1 rounded text-sm ${totalMines === mineCount
+                      ? 'bg-blue-600 text-white'
                       : 'bg-gray-600 text-gray-300'} ${gameOver || autoplayEnabled ? 'opacity-70' : ''}`}
                   >
                     {mineCount}
                   </button>
                 ))}
               </div>
-              
+
               {/* Custom mine input */}
               <form onSubmit={handleCustomMineInput} className="mt-4 flex gap-2">
                 <input
@@ -337,8 +412,7 @@ export default function MinesGamePage() {
                   max={GRID_SIZE * GRID_SIZE - 1}
                   placeholder="Custom"
                   className="bg-gray-600 text-white rounded px-2 py-1 w-full text-sm"
-                  disabled={gameOver || autoplayEnabled}
-                />
+                  disabled={gameOver || autoplayEnabled} />
                 <button
                   type="submit"
                   className={`px-2 py-1 rounded text-sm bg-blue-600 text-white
@@ -433,8 +507,8 @@ export default function MinesGamePage() {
             {/* Game status */}
             {gameOver && (
               <div className={`p-3 text-center rounded-lg text-lg ${hasWon ? 'bg-green-900' : 'bg-red-900'}`}>
-                {hasWon 
-                  ? `You won ${multiplier.toFixed(2)}x your bet!` 
+                {hasWon
+                  ? `You won ${multiplier.toFixed(2)}x your bet!`
                   : "Game Over! You hit a mine."}
               </div>
             )}
@@ -445,7 +519,7 @@ export default function MinesGamePage() {
         {autoplaySettings && !gameOver && (
           <div className="absolute inset-0 bg-gray-900 bg-opacity-95 rounded-lg flex flex-col justify-center items-center z-30 p-6">
             <h3 className="text-2xl font-bold mb-6">Autoplay Settings</h3>
-            
+
             <div className="w-full mb-6">
               <label className="block text-lg mb-2">Auto-cashout at:</label>
               <div className="flex items-center gap-3">
@@ -456,12 +530,11 @@ export default function MinesGamePage() {
                   step="0.1"
                   value={autoCashoutAt}
                   onChange={(e) => setAutoCashoutAt(parseFloat(e.target.value))}
-                  className="w-full h-3"
-                />
+                  className="w-full h-3" />
                 <span className="text-green-400 font-bold text-xl min-w-[60px]">{autoCashoutAt.toFixed(1)}x</span>
               </div>
             </div>
-            
+
             <div className="w-full mb-8">
               <label className="block text-lg mb-2">Speed:</label>
               <div className="flex items-center gap-3">
@@ -472,12 +545,11 @@ export default function MinesGamePage() {
                   step="100"
                   value={autoplaySpeed}
                   onChange={(e) => setAutoplaySpeed(parseInt(e.target.value))}
-                  className="w-full h-3"
-                />
+                  className="w-full h-3" />
                 <span className="text-xl min-w-[60px]">{(autoplaySpeed / 1000).toFixed(1)}s</span>
               </div>
             </div>
-            
+
             <div className="flex gap-3 w-full">
               <button
                 onClick={() => setAutoplaySettings(false)}
@@ -495,6 +567,6 @@ export default function MinesGamePage() {
           </div>
         )}
       </div>
-    </div>
+    </div></>
   );
 }
