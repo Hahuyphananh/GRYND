@@ -17,6 +17,8 @@ export default function Page() {
   const [finalMultiplier, setFinalMultiplier] = useState(null);
   const [countdown, setCountdown] = useState(0);
   const [isCountingDown, setIsCountingDown] = useState(false);
+  const [refreshCounter, setRefreshCounter] = useState(0);
+
   const intervalRef = useRef(null);
   const countdownRef = useRef(null);
   const canvasRef = useRef(null);
@@ -24,7 +26,9 @@ export default function Page() {
   useEffect(() => {
     if (gameRunning && !isCrashed) {
       intervalRef.current = setInterval(() => {
-        setMultiplier(prev => parseFloat((prev + 0.01 * Math.pow(prev, 1.05)).toFixed(2)));
+        setMultiplier((prev) =>
+          parseFloat((prev + 0.01 * Math.pow(prev, 1.05)).toFixed(2))
+        );
       }, 50);
     }
     return () => clearInterval(intervalRef.current);
@@ -40,27 +44,23 @@ export default function Page() {
     drawTrail();
   }, [multiplier]);
 
-  // Countdown effect
   useEffect(() => {
     if (isCountingDown && countdown > 0) {
       countdownRef.current = setTimeout(() => {
-        setCountdown(prev => prev - 1);
+        setCountdown((prev) => prev - 1);
       }, 1000);
     } else if (isCountingDown && countdown === 0) {
       setIsCountingDown(false);
       actuallyStartGame();
     }
-
     return () => clearTimeout(countdownRef.current);
   }, [isCountingDown, countdown]);
 
   function initiateCountdown() {
-    // Check if bet has been placed
     if (!hasBet || !betAmount || betAmount === "0") {
       alert("You must place a bet before starting the game!");
       return;
     }
-    
     setCountdown(5);
     setIsCountingDown(true);
   }
@@ -73,7 +73,6 @@ export default function Page() {
     setCashedOut(false);
     setFinalMultiplier(null);
 
-    // Clear canvas when starting new game
     if (canvasRef.current) {
       const ctx = canvasRef.current.getContext("2d");
       if (ctx) {
@@ -83,24 +82,40 @@ export default function Page() {
   }
 
   function startGame() {
-    // Start the countdown instead of immediately starting the game
     initiateCountdown();
   }
 
   function resetBet() {
-    // Reset bet after game ends
     setBetAmount("");
     setHasBet(false);
   }
 
-  function crash() {
+  async function crash() {
     setIsCrashed(true);
     clearInterval(intervalRef.current);
     setGameRunning(false);
-    setCrashHistory(prev => [parseFloat(multiplier.toFixed(2)), ...prev.slice(0, 10)]);
-    setFinalMultiplier(parseFloat(multiplier.toFixed(2)));
-    
-    // Reset bet after crash
+
+    const lossMultiplier = parseFloat(multiplier.toFixed(2));
+    setCrashHistory((prev) => [lossMultiplier, ...prev.slice(0, 10)]);
+    setFinalMultiplier(lossMultiplier);
+
+    try {
+      const res = await fetch("/api/crash/settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          betAmount: parseFloat(betAmount),
+          multiplier: lossMultiplier,
+          gameWon: false,
+        }),
+      });
+
+      await res.json(); // even if not used, consume the response
+    } catch (err) {
+      console.error("Crash loss network error:", err);
+    }
+
+    setRefreshCounter((prev) => prev + 1); // 🔁 trigger BetPanel to refresh
     resetBet();
   }
 
@@ -111,20 +126,38 @@ export default function Page() {
     setCashedOut(false);
   }
 
-  function cashOut() {
+  async function cashOut() {
     if (!gameRunning || isCrashed || cashedOut) return;
+
     setCashedOut(true);
-    setFinalMultiplier(parseFloat(multiplier.toFixed(2)));
+    const winMultiplier = parseFloat(multiplier.toFixed(2));
+    setFinalMultiplier(winMultiplier);
     clearInterval(intervalRef.current);
     setGameRunning(false);
-    alert(`You cashed out at ${multiplier.toFixed(2)}x!`);
-    
-    // Reset bet after cash out
+
+    try {
+      const res = await fetch("/api/crash/settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          betAmount: parseFloat(betAmount),
+          multiplier: winMultiplier,
+          gameWon: true,
+        }),
+      });
+
+      await res.json();
+    } catch (err) {
+      console.error("Crash win network error:", err);
+    }
+
+    setRefreshCounter((prev) => prev + 1);
     resetBet();
+    alert(`You cashed out at ${winMultiplier}x!`);
   }
 
   function generateCrashPoint() {
-    let r = Math.random();
+    const r = Math.random();
     if (r < 0.01) return (Math.random() * 50 + 10).toFixed(2);
     if (r < 0.1) return (Math.random() * 5 + 2).toFixed(2);
     return (Math.random() * 2 + 1).toFixed(2);
@@ -152,44 +185,30 @@ export default function Page() {
   }
 
   return (
-
-    
     <div className="min-h-screen bg-[#0e0e0e] text-white flex flex-col items-center p-4">
       <div className="mb-6">
         <a
           href="/casino"
           className="inline-flex items-center text-yellow-400 hover:text-yellow-300"
         >
-          <svg
-            className="w-6 h-6 mr-2"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10 19l-7-7m0 0l7-7m-7 7h18"
-            />
+          <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
           Retour au Casino
         </a>
       </div>
-      {/* Top Section */}
+
       <div className="flex flex-col lg:flex-row w-full max-w-7xl gap-4">
-        
         {/* Left Panel - BetPanel + Crash History */}
         <div className="bg-[#1f1f1f] p-4 rounded-lg w-full lg:w-1/4 flex flex-col">
-          {/* BetPanel */}
           <BetPanel
             placeBet={placeBet}
             hasBet={hasBet}
             gameRunning={gameRunning || isCountingDown}
             isCrashed={isCrashed}
+            refreshTrigger={refreshCounter}
           />
-          
-          {/* Crash History moved from bottom to left panel */}
+
           <div className="mt-6 pt-4 border-t border-gray-700">
             <h3 className="text-lg font-bold mb-3">Recent Crashes</h3>
             <div className="flex flex-wrap gap-2">
@@ -210,26 +229,16 @@ export default function Page() {
           </div>
         </div>
 
-        {/* Center - Rocket + Multiplier + Ladder */}
+        {/* Center */}
         <div className="relative bg-[#1f1f1f] p-4 rounded-lg w-full lg:w-2/4 h-[600px] overflow-hidden flex items-center justify-center">
-          {/* Countdown overlay */}
           {isCountingDown && (
             <div className="absolute inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center">
-              <div className="text-8xl font-bold text-white animate-pulse">
-                {countdown}
-              </div>
+              <div className="text-8xl font-bold text-white animate-pulse">{countdown}</div>
             </div>
           )}
-          
-          {/* Canvas Trail */}
-          <canvas
-            ref={canvasRef}
-            width={800}
-            height={600}
-            className="absolute bottom-0 left-0 z-0"
-          />
 
-          {/* Ladder on left side */}
+          <canvas ref={canvasRef} width={800} height={600} className="absolute bottom-0 left-0 z-0" />
+
           <div className="absolute right-2 top-0 bottom-0 flex flex-col justify-between z-10 py-6">
             {[100, 50, 20, 10, 5, 2, 1].map((value) => (
               <div key={value} className="text-sm text-gray-400">
@@ -238,7 +247,7 @@ export default function Page() {
             ))}
           </div>
 
-          {/* Rocket with opacity change when crashed or cashed out */}
+          {/* Rocket trail */}
           {gameRunning && !isCrashed && (
             <div
               className="absolute z-20"
@@ -247,14 +256,13 @@ export default function Page() {
                 bottom: `${Math.min(multiplier * 5, 80)}%`,
                 transform: `translate(-50%, 50%) scale(${1 + multiplier / 20})`,
                 transition: "left 0.2s linear, bottom 0.2s linear, transform 0.2s linear",
-                opacity: 1
+                opacity: 1,
               }}
             >
               <div className="text-6xl">🚀</div>
             </div>
           )}
 
-          {/* Faded rocket if cashed out or crashed */}
           {(isCrashed || cashedOut) && (
             <div
               className="absolute z-20"
@@ -262,7 +270,7 @@ export default function Page() {
                 left: `${Math.min((finalMultiplier || multiplier) * 5, 80)}%`,
                 bottom: `${Math.min((finalMultiplier || multiplier) * 5, 80)}%`,
                 transform: `translate(-50%, 50%) scale(${1 + (finalMultiplier || multiplier) / 20})`,
-                opacity: 0.4
+                opacity: 0.4,
               }}
             >
               <div className="text-6xl">🚀</div>
@@ -272,22 +280,15 @@ export default function Page() {
             </div>
           )}
 
-          {/* Explosion if crashed */}
-          {isCrashed && (
-            <div className="absolute top-20 text-6xl">
-              💥
-            </div>
-          )}
+          {isCrashed && <div className="absolute top-20 text-6xl">💥</div>}
 
-          {/* Center Multiplier Number */}
           <div className="text-5xl font-bold z-30 mt-12">
             {isCrashed ? "CRASHED!" : `${multiplier.toFixed(2)}x`}
           </div>
         </div>
 
-        {/* Right Panel - PlayerList + Game Controls */}
+        {/* Right Panel */}
         <div className="bg-[#1f1f1f] p-4 rounded-lg w-full lg:w-1/4 flex flex-col">
-          {/* Game Controls */}
           <div className="mb-6 flex flex-col gap-3">
             {!gameRunning && !isCountingDown && (
               <button
@@ -302,8 +303,8 @@ export default function Page() {
                 {!hasBet || !betAmount || betAmount === "0"
                   ? "Place Bet First"
                   : isCrashed
-                    ? "Start New Game"
-                    : "Start Game"}
+                  ? "Start New Game"
+                  : "Start Game"}
               </button>
             )}
             {isCountingDown && (
@@ -322,19 +323,19 @@ export default function Page() {
                 💰 Cash Out
               </button>
             )}
-            
-            {/* Return to Casino Button */}
-            <Link href="/casino" className="bg-blue-500 hover:bg-blue-600 px-4 py-3 rounded-lg font-bold text-lg text-center">
+            <Link
+              href="/casino"
+              className="bg-blue-500 hover:bg-blue-600 px-4 py-3 rounded-lg font-bold text-lg text-center"
+            >
               Return to Casino
             </Link>
           </div>
-          
-          {/* Player List */}
+
           <PlayerList
             hasBet={hasBet}
             betAmount={betAmount}
             cashedOut={cashedOut}
-            multiplier={multiplier} 
+            multiplier={multiplier}
           />
         </div>
       </div>

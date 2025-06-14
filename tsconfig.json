@@ -30,7 +30,7 @@
     "**/*.tsx",
     "src/app/layout.tsx",
     "src/middleware.ts"
-, ".next/types/app/api/casino/blackjack/place-bet/route.js", "src/app/casino/roulette/page.jsx", "src/app/api/tokens/update/route.js", "src/app/api/mines/settle/route.js"  ],
+, ".next/types/app/api/casino/blackjack/place-bet/route.js", "src/app/casino/roulette/page.jsx", "src/app/api/tokens/update/route.js", "src/app/api/mines/settle/route.js", "src/app/api/crash/settle/route.js"  ],
   "exclude": [
     "node_modules"
   ]
