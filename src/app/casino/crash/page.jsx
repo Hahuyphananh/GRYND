@@ -119,12 +119,32 @@ export default function Page() {
     resetBet();
   }
 
-  function placeBet(amount, autoCashoutValue) {
-    setBetAmount(amount.toString());
-    setAutoCashout(autoCashoutValue);
-    setHasBet(true);
-    setCashedOut(false);
+ async function placeBet(amount, autoCashoutValue) {
+  setBetAmount(amount.toString());
+  setAutoCashout(autoCashoutValue);
+  setHasBet(true);
+  setCashedOut(false);
+
+  try {
+    const res = await fetch("/api/crash/settle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        betAmount: amount,
+        multiplier: 0,
+        gameWon: false,
+        immediateDeduct: true
+      }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setRefreshCounter(prev => prev + 1);
+    }
+  } catch (err) {
+    console.error("Error deducting on bet:", err);
   }
+}
+
 
   async function cashOut() {
     if (!gameRunning || isCrashed || cashedOut) return;

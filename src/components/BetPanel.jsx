@@ -69,13 +69,14 @@ export default function BetPanel({
         className="bg-gray-700 p-3 rounded text-white"
         disabled={gameRunning || hasBet}
       />
-      <button
-        onClick={handlePlaceBet}
-        disabled={gameRunning || hasBet}
-        className="bg-yellow-500 hover:bg-yellow-600 py-3 rounded-lg font-bold"
-      >
-        {hasBet ? "Bet Placed" : "Place Bet"}
-      </button>
+     <button
+      onClick={handlePlaceBet}
+      disabled={gameRunning || hasBet || amount > userTokens}
+      className="bg-yellow-500 hover:bg-yellow-600 py-3 rounded-lg font-bold"
+    >
+      {hasBet ? "Bet Placed" : amount > userTokens ? "Insufficient Balance" : "Place Bet"}
+    </button>
+
     </div>
   );
 }

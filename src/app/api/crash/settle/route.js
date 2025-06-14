@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { db } from '../../../../db/client';
-import { users } from '../../../../db/schema';
+import { users, crashGames } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 
@@ -11,8 +11,7 @@ export async function POST(req) {
     if (!userId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-
-    const { betAmount, multiplier, gameWon } = await req.json();
+const { betAmount, multiplier, gameWon, immediateDeduct } = await req.json();
 
     if (
       typeof betAmount !== 'number' ||
@@ -37,10 +36,27 @@ export async function POST(req) {
       newBalance += payout;
     }
 
+
+if (immediateDeduct) {
+  newBalance -= betAmount;
+} else if (gameWon) {
+  newBalance += betAmount * multiplier;
+}
+
+// After updating user balance
     await db
       .update(users)
       .set({ balance: newBalance }) // Ensure 'balance' exists in your users schema
       .where(eq(users.clerkId, userId));
+
+// Record game in crashGames table
+    await db.insert(crashGames).values({
+      userId: users.id, // assuming `user` is fetched from DB earlier
+      betAmount: betAmount.toFixed(2),
+      cashedOutAt: gameWon ? multiplier.toFixed(2) : null,
+      payout: gameWon ? (betAmount * multiplier).toFixed(2) : '0.00',
+    });
+
 
     return NextResponse.json({
       success: true,
