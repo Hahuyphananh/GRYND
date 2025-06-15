@@ -4,7 +4,7 @@ import { useUser } from '@clerk/nextjs'
 import { useState, useEffect  } from "react";
 
 function MainComponent() {
-  const { data: user } = useUser();
+  const { isSignedIn, user } = useUser();
   const [betAmount, setBetAmount] = useState(1);
   const [activeBalls, setActiveBalls] = useState([]);
   const [gameResults, setGameResults] = useState([]);
@@ -19,12 +19,13 @@ function MainComponent() {
   const multipliers = [
     10, 5, 3, 2, 1.5, 1.2, 1, 0.6, 0.4, 0.2, 0.4, 0.6, 1, 1.2, 1.5, 2, 3, 5, 10,
   ];
+  const slotWidth = 500 / multipliers.length;
 
-  useEffect(() => {
-    if (user) {
+useEffect(() => {
+    if (isSignedIn && user) {
       fetchUserTokens();
     }
-  }, [user]);
+  }, [isSignedIn, user]);
 
   useEffect(() => {
     const animationFrameIds = new Map();
@@ -224,88 +225,97 @@ function MainComponent() {
     if (multiplier >= 2) return "#4CAF50";
     return "#2196F3";
   };
+const handleDrop = async () => {
+  if (!isSignedIn) {
+    setError("Vous devez être connecté pour jouer.");
+    return;
+  }
 
-  const handleDrop = async () => {
-    if (!user) {
-      window.location.href = "/account/signin?callbackUrl=/casino/plinko";
-      return;
-    }
+  if (userTokens < betAmount) {
+    setError("Solde insuffisant");
+    return;
+  }
 
-    if (userTokens < betAmount) {
-      setError("Solde insuffisant");
-      return;
-    }
+  setError(null);
+  setShowResult(false);
+  setIsProcessing(true);
 
-    setError(null);
-    setShowResult(false);
-
-    const startPosition = 7;
-    const initialBallPosition = { x: 250 + (Math.random() * 100 - 50), y: 30 };
-    const initialPath = [
-      { x: initialBallPosition.x, y: initialBallPosition.y },
-      { x: 250, y: 50 },
-    ];
-
-    const tempBallId = Date.now() + Math.random();
-    const tempBall = {
-      id: tempBallId,
-      position: initialBallPosition,
-      path: initialPath,
-      currentPathIndex: 0,
-      startTime: performance.now(),
-      opacity: 1,
-      isTemp: true,
-    };
-
-    setActiveBalls((prev) => [...prev, tempBall]);
-
-    try {
-      const response = await fetch("/api/play-plinko", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          startPosition,
-          betAmount,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Erreur lors du lancement du jeu");
-      }
-
-      const data = await response.json();
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      setGameResults((prev) => [...prev, data.winAmount]);
-      setGameMultipliers((prev) => [...prev, data.multiplier]);
-      setLastMultiplier(data.multiplier);
-      fetchUserTokens();
-
-      setActiveBalls((prev) =>
-        prev.map((ball) =>
-          ball.id === tempBallId
-            ? {
-                ...ball,
-                isTemp: false,
-                fullPath: data.path,
-                path: data.path,
-                currentPathIndex: 0,
-                startTime: performance.now(),
-                winAmount: data.winAmount,
-                multiplier: data.multiplier,
-                hasShownResult: false,
-              }
-            : ball
-        )
-      );
-    } catch (error) {
-      console.error(error);
-    }
+  // Create initial ball with temporary path
+  const tempBallId = Date.now() + Math.random();
+  const tempBall = {
+    id: tempBallId,
+    position: { x: 250, y: 30 }, // Always start at center top
+    path: [
+      { x: 250, y: 30 }, // Start position
+      { x: 250, y: 50 }  // Initial drop
+    ],
+    currentPathIndex: 0,
+    startTime: performance.now(),
+    isTemp: true,
+    opacity: 1
   };
+
+  setActiveBalls((prev) => [...prev, tempBall]);
+
+  try {
+    const response = await fetch("/api/play-plinko", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ betAmount }),
+    });
+
+
+    if (!response.ok) {
+      throw new Error("Network response was not ok");
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || "Game error");
+    }
+
+    const { path, winAmount, multiplier, newBalance, finalPosition } = data.data;
+
+    // Update game state
+    setGameResults((prev) => [...prev, winAmount]);
+    setGameMultipliers((prev) => [...prev, multiplier]);
+    setUserTokens(newBalance);
+    setLastMultiplier(multiplier);
+
+    // Update the ball with the exact path from backend
+    setActiveBalls((prev) =>
+      prev.map((ball) =>
+        ball.id === tempBallId
+          ? {
+              ...ball,
+              isTemp: false,
+              fullPath: path,
+              path: path,
+              finalPosition, // Add exact final position
+              currentPathIndex: 0,
+              startTime: performance.now(),
+              winAmount,
+              multiplier,
+              hasShownResult: false,
+            }
+          : ball
+      )
+    );
+
+    // Show result after animation completes
+    setTimeout(() => setShowResult(true), 3000);
+  } catch (error) {
+    console.error("Plinko error:", error);
+    setError(error.message || "Erreur lors du lancement du jeu");
+    // Remove the temporary ball on error
+    setActiveBalls((prev) => prev.filter((b) => b.id !== tempBallId));
+  } finally {
+    setIsProcessing(false);
+  }
+};
+
+    
+// (Removed misplaced code block that caused syntax error)
 
   const totalWinAmount = gameResults.reduce((sum, amount) => sum + amount, 0);
 
@@ -406,129 +416,134 @@ function MainComponent() {
 
             <div className="flex-1">
               <div className="relative aspect-square max-w-3xl rounded-lg bg-[#1A1B1F] p-8">
-                <svg viewBox="0 0 500 500" className="h-full w-full">
-                  {Array.from({ length: 19 }).map((_, row) =>
-                    Array.from({ length: row + 2 }).map((_, col) => (
-                      <g key={`pin-${row}-${col}`}>
-                        <circle
-                          cx={250 - (row + 1) * 12 + col * 24}
-                          cy={50 + row * 22}
-                          r={4}
-                          fill="url(#pinGlow)"
-                          className="pin"
-                        />
-                        <circle
-                          cx={250 - (row + 1) * 12 + col * 24}
-                          cy={50 + row * 22}
-                          r={2}
-                          fill="#FFD700"
-                          className="pin"
-                        />
-                      </g>
-                    ))
-                  )}
+               <svg viewBox="0 0 500 500" className="h-full w-full">
+  {/* Pegs */}
+  {Array.from({ length: 19 }).map((_, row) =>
+    Array.from({ length: row + 2 }).map((_, col) => (
+      <g key={`pin-${row}-${col}`}>
+        <circle
+          cx={250 - (row + 1) * 12 + col * 24}
+          cy={50 + row * 22}
+          r={4}
+          fill="url(#pinGlow)"
+          className="pin"
+        />
+        <circle
+          cx={250 - (row + 1) * 12 + col * 24}
+          cy={50 + row * 22}
+          r={2}
+          fill="#FFD700"
+          className="pin"
+        />
+      </g>
+    ))
+  )}
 
-                  {multipliers.map((multiplier, i) => {
-                    const totalWidth = (multipliers.length - 1) * 24;
-                    const startX = 250 - totalWidth / 2;
-                    const x = startX + i * 24;
+  {/* Multiplier slots - now matching backend calculation */}
+  {multipliers.map((multiplier, i) => {
+    const slotWidth = 500 / multipliers.length;
+    const x = i * slotWidth + slotWidth / 2; // Center of each slot
+    
+    return (
+      <g key={`multiplier-${i}`}>
+        <rect
+          x={i * slotWidth}
+          y={460}
+          width={slotWidth}
+          height={30}
+          fill={getMultiplierColor(multiplier)}
+          className="multiplier-slot"
+        />
+        <text
+          x={x}
+          y={480}
+          textAnchor="middle"
+          fill="white"
+          fontSize="10"
+          className="multiplier-text"
+        >
+          {multiplier}x
+        </text>
+      </g>
+    );
+  })}
 
-                    return (
-                      <g key={`multiplier-${i}`}>
-                        <rect
-                          x={x - 10}
-                          y={460}
-                          width={20}
-                          height={30}
-                          rx={2}
-                          fill={getMultiplierColor(multiplier)}
-                          className="multiplier-slot"
-                        />
-                        <text
-                          x={x}
-                          y={480}
-                          textAnchor="middle"
-                          fill="white"
-                          fontSize="10"
-                          className="multiplier-text"
-                        >
-                          {multiplier}x
-                        </text>
-                      </g>
-                    );
-                  })}
+  {/* Active balls with exact final position */}
+  {activeBalls.map((ball) => (
+    <g key={ball.id} className="ball-container">
+      {/* Ball shadow */}
+      <circle
+        cx={ball.position.x}
+        cy={ball.position.y + 3}
+        r={8}
+        fill="rgba(0,0,0,0.3)"
+        className="ball-shadow"
+      />
+      
+      {/* Ball graphics */}
+      <circle
+        cx={ball.position.x}
+        cy={ball.position.y}
+        r={8}
+        fill="url(#ballGlow)"
+        className="ball-glow"
+        style={{ opacity: ball.opacity || 1 }}
+      />
+      <circle
+        cx={ball.position.x}
+        cy={ball.position.y}
+        r={6}
+        fill="url(#ballGradient)"
+        className="ball"
+        style={{ opacity: ball.opacity || 1 }}
+      />
+      <circle
+        cx={ball.position.x - 2}
+        cy={ball.position.y - 2}
+        r={2}
+        fill="rgba(255,255,255,0.8)"
+        className="ball-highlight"
+      />
 
-                  {activeBalls.map((ball, index) => (
-                    <g key={index} className="ball-container">
-                      <circle
-                        cx={ball.position.x}
-                        cy={ball.position.y + 3}
-                        r={8}
-                        fill="rgba(0,0,0,0.3)"
-                        className="ball-shadow"
-                      />
-                      <circle
-                        cx={ball.position.x}
-                        cy={ball.position.y}
-                        r={8}
-                        fill="url(#ballGlow)"
-                        className="ball-glow"
-                        style={{
-                          opacity: ball.opacity || 1,
-                        }}
-                      />
-                      <circle
-                        cx={ball.position.x}
-                        cy={ball.position.y}
-                        r={6}
-                        fill="url(#ballGradient)"
-                        className="ball"
-                        style={{
-                          opacity: ball.opacity || 1,
-                        }}
-                      />
-                      <circle
-                        cx={ball.position.x - 2}
-                        cy={ball.position.y - 2}
-                        r={2}
-                        fill="rgba(255,255,255,0.8)"
-                        className="ball-highlight"
-                      />
-                    </g>
-                  ))}
+      {/* Visual indicator of calculated landing position */}
+      {ball.finalPosition && (
+        <circle
+          cx={ball.finalPosition.x}
+          cy={ball.finalPosition.y}
+          r={10}
+          fill="none"
+          stroke="rgba(0,255,0,0.5)"
+          strokeWidth="2"
+          strokeDasharray="5,5"
+          className="landing-indicator"
+        />
+      )}
+    </g>
+  ))}
 
-                  <defs>
-                    <radialGradient id="pinGlow">
-                      <stop offset="0%" stopColor="#FFD700" stopOpacity="0.3" />
-                      <stop offset="100%" stopColor="#FFD700" stopOpacity="0" />
-                    </radialGradient>
+  <defs>
+    <radialGradient id="pinGlow">
+      <stop offset="0%" stopColor="#FFD700" stopOpacity="0.3" />
+      <stop offset="100%" stopColor="#FFD700" stopOpacity="0" />
+    </radialGradient>
 
-                    <radialGradient id="ballGradient">
-                      <stop offset="0%" stopColor="#FFD700" />
-                      <stop offset="70%" stopColor="#FFA500" />
-                      <stop offset="100%" stopColor="#FF8C00" />
-                    </radialGradient>
+    <radialGradient id="ballGradient">
+      <stop offset="0%" stopColor="#FFD700" />
+      <stop offset="70%" stopColor="#FFA500" />
+      <stop offset="100%" stopColor="#FF8C00" />
+    </radialGradient>
 
-                    <filter id="ballGlow">
-                      <feGaussianBlur stdDeviation="2" result="coloredBlur" />
-                      <feFlood
-                        floodColor="#FFD700"
-                        floodOpacity="0.5"
-                        result="glowColor"
-                      />
-                      <feComposite
-                        in="glowColor"
-                        in2="coloredBlur"
-                        operator="in"
-                        result="softGlow"
-                      />
-                      <feMerge>
-                        <feMergeNode in="softGlow" />
-                        <feMergeNode in="SourceGraphic" />
-                      </feMerge>
-                    </filter>
-                  </defs>
-                </svg>
+    <filter id="ballGlow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+      <feFlood floodColor="#FFD700" floodOpacity="0.5" result="glowColor" />
+      <feComposite in="glowColor" in2="coloredBlur" operator="in" result="softGlow" />
+      <feMerge>
+        <feMergeNode in="softGlow" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+</svg>
               </div>
             </div>
           </div>
