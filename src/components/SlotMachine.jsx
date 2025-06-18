@@ -1,7 +1,6 @@
 "use client";
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 
-// 🎵 Optional: simple browser beep generator
 const playSound = (freq = 880) => {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   const osc = ctx.createOscillator();
@@ -13,21 +12,11 @@ const playSound = (freq = 880) => {
   gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
 };
 
-const fruitIcons = [
-  "🍉", "🍌", "🍍", "🍏", "🍓", "🥭", "🍈", "🍇", "🍒", "🍎",
-  "🍊", "🍋", "🥝", "🍐", "🍑", "🥥", "🍅", "🍆", "🌽", "🍠"
-];
-
-const getRandomFruit = () => {
-  const index = Math.floor(Math.random() * fruitIcons.length);
-  return fruitIcons[index];
-};
-
 const SlotMachine = () => {
   const [reels, setReels] = useState(
     Array.from({ length: 5 }, () => Array(3).fill("💰"))
   );
-  const [balance, setBalance] = useState(1000);
+  const [balance, setBalance] = useState(0);
   const [bet, setBet] = useState(100);
   const [lastResult, setLastResult] = useState("");
   const [totalWin, setTotalWin] = useState(0);
@@ -35,49 +24,72 @@ const SlotMachine = () => {
   const [autoSpinning, setAutoSpinning] = useState(false);
   const autoSpinRef = useRef(null);
 
-  const spin = () => {
+  // Load token balance from backend
+  useEffect(() => {
+    const fetchTokens = async () => {
+      try {
+        const res = await fetch("/api/get-user-tokens", { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+          setBalance(parseFloat(data.data.balance));
+        }
+      } catch (err) {
+        console.error("Error fetching tokens:", err);
+        setLastResult("❌ Failed to load balance");
+      }
+    };
+
+    fetchTokens();
+  }, []);
+
+  const handleBetChange = (e) => {
+    const value = parseInt(e.target.value);
+    if (!isNaN(value) && value > 0) {
+      setBet(Math.min(value, balance));
+    }
+  };
+
+  const handleSpin = async () => {
     if (balance < bet) {
       setLastResult("❌ Not enough balance.");
       return;
     }
 
-    const newReels = Array.from({ length: 5 }, () =>
-      Array.from({ length: 3 }, () => getRandomFruit())
-    );
-    setReels(newReels);
-    playSound(700); // Sound on spin
+    try {
+      const res = await fetch("/api/slots/play", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bet }),
+      });
 
-    const allSymbols = newReels.flat();
-    const symbolCounts = {};
-    allSymbols.forEach(symbol => {
-      symbolCounts[symbol] = (symbolCounts[symbol] || 0) + 1;
-    });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
 
-    const maxCount = Math.max(...Object.values(symbolCounts));
-    let winnings = 0;
+      const { reels: newReels, winAmount, newBalance } = json.data;
+      setReels(newReels);
+      playSound(winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700);
 
-    if (maxCount >= 5) {
-      winnings = bet * 5;
-      setLastResult("🎉 JACKPOT! You won 5x your bet.");
-      playSound(1200); // Big win sound
-    } else if (maxCount >= 3) {
-      winnings = bet * 2;
-      setLastResult("✅ Match! You won 2x your bet.");
-      playSound(1000); // Small win sound
-    } else {
-      setLastResult("❌ No match. You lost.");
+      setLastResult(
+        winAmount >= bet * 5
+          ? "🎉 JACKPOT!"
+          : winAmount >= bet * 2
+          ? "✅ Match!"
+          : "❌ No match."
+      );
+
+      setBalance(newBalance);
+      setTotalWin(prev => prev + winAmount);
+      if (winAmount === 0) setTotalLoss(prev => prev + bet);
+    } catch (err) {
+      console.error("Slot error:", err);
+      setLastResult("❌ Error playing slot");
     }
-
-    const newBalance = balance - bet + winnings;
-    setBalance(newBalance);
-    setTotalWin(prev => prev + winnings);
-    if (winnings === 0) setTotalLoss(prev => prev + bet);
   };
 
   const startAutoSpin = () => {
     if (autoSpinning) return;
     setAutoSpinning(true);
-    autoSpinRef.current = setInterval(spin, 1000);
+    autoSpinRef.current = setInterval(handleSpin, 1200);
   };
 
   const stopAutoSpin = () => {
@@ -85,33 +97,34 @@ const SlotMachine = () => {
     clearInterval(autoSpinRef.current);
   };
 
+  const setMaxBet = () => {
+    setBet(Math.min(1000, balance)); // You can adjust the max bet limit (1000 here)
+  };
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-900 to-indigo-900 p-4 text-white">
-      {/* Reels */}
       <div className="flex border-8 border-yellow-400 rounded-xl bg-purple-700 p-4 mb-6">
         {reels.map((column, colIdx) => (
           <div
             key={colIdx}
             className="flex flex-col items-center mx-1 bg-purple-900 p-2 rounded-lg"
           >
-         {column.map((fruit, rowIdx) => (
-  <div
-    key={`${fruit}-${Date.now()}-${rowIdx}`} // triggers re-animation on each spin
-    className="w-16 h-16 text-4xl flex items-center justify-center my-1 bg-purple-800 rounded animate-spinReel"
-    style={{ animationDelay: `${colIdx * 0.05}s` }}
-  >
-    {fruit}
-  </div>
-))}
-
+            {column.map((fruit, rowIdx) => (
+              <div
+                key={`${fruit}-${Date.now()}-${rowIdx}`}
+                className="w-16 h-16 text-4xl flex items-center justify-center my-1 bg-purple-800 rounded animate-spinReel"
+                style={{ animationDelay: `${colIdx * 0.05}s` }}
+              >
+                {fruit}
+              </div>
+            ))}
           </div>
         ))}
       </div>
 
-      {/* Controls */}
       <div className="flex items-center gap-4 mb-6">
         <button
-          onClick={spin}
+          onClick={handleSpin}
           className="bg-red-500 hover:bg-red-600 text-white text-xl font-bold py-3 px-8 rounded-full shadow-lg transition"
         >
           SPIN
@@ -132,22 +145,42 @@ const SlotMachine = () => {
           </button>
         )}
         <button
-          onClick={() => setBet(prev => (prev + 100 <= balance ? prev + 100 : prev))}
+          onClick={setMaxBet}
           className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded shadow"
         >
           MAX BET
         </button>
       </div>
 
-      {/* Bet Panel */}
       <div className="bg-black bg-opacity-30 p-6 rounded-lg w-full max-w-xl text-white space-y-2">
+        <div className="flex justify-between items-center">
+          <span>Bet Amount:</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="1"
+              max={balance}
+              value={bet}
+              onChange={handleBetChange}
+              className="w-24 px-2 py-1 rounded text-black text-right"
+            />
+            <button 
+              onClick={() => setBet(prev => Math.max(1, prev - 10))}
+              className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
+            >
+              -
+            </button>
+            <button 
+              onClick={() => setBet(prev => Math.min(balance, prev + 10))}
+              className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
+            >
+              +
+            </button>
+          </div>
+        </div>
         <div className="flex justify-between">
           <span>Balance:</span>
           <span className="font-bold text-green-400">${balance.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Bet:</span>
-          <span className="font-bold text-yellow-300">${bet}</span>
         </div>
         <div className="flex justify-between">
           <span>Total Won:</span>

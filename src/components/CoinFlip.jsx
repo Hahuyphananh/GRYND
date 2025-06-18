@@ -27,6 +27,27 @@ export default function CoinFlipPage() {
       </div>
 
       {mode === "solo" ? <SoloCoinFlip /> : <PvPCoinFlip />}
+
+      <style jsx global>{`
+        .perspective {
+          perspective: 1000px;
+        }
+
+        @keyframes coin-flip {
+          0% {
+            transform: rotateY(0deg) rotateX(0deg);
+          }
+          100% {
+            transform: rotateY(1440deg) rotateX(720deg);
+          }
+        }
+
+        .animate-coin-flip {
+          animation: coin-flip 1s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+          transform-style: preserve-3d;
+          backface-visibility: hidden;
+        }
+      `}</style>
     </div>
   );
 }
@@ -39,7 +60,7 @@ function SoloCoinFlip() {
   const [message, setMessage] = useState("");
   const [flipping, setFlipping] = useState(false);
   const [userTokens, setUserTokens] = useState(null);
-  const [error, setError] = useState("");
+  const [flipKey, setFlipKey] = useState(0);
 
   useEffect(() => {
     fetchTokens();
@@ -50,23 +71,25 @@ function SoloCoinFlip() {
       const res = await fetch("/api/get-user-tokens", { method: "POST" });
       const json = await res.json();
       if (json.success) setUserTokens(parseFloat(json.data.balance));
-    } catch (err) {
-      setError("Error fetching balance");
+    } catch {
+      setMessage("Failed to load balance");
     }
   };
 
   const flip = async () => {
-    setMessage("");
     if (bet <= 0 || !["heads", "tails"].includes(choice)) {
       return setMessage("Enter a valid bet and choice.");
     }
     if (userTokens === null || userTokens < bet) {
-      return setMessage("Insufficient balance."); 
+      return setMessage("Insufficient balance.");
     }
 
     setFlipping(true);
+    setResult(null);
+    setFlipKey(prev => prev + 1);
+
     const audio = new Audio("/sounds/coin-flip.mp3");
-    audio.play().catch(console.error);;
+    audio.play().catch(console.error);
 
     try {
       const res = await fetch("/api/coin-flip/solo", {
@@ -76,17 +99,18 @@ function SoloCoinFlip() {
       });
 
       const json = await res.json();
-      setFlipping(false);
-
-      if (!json.success) {
-        return setMessage(json.error || "Error occurred");
-      }
+      if (!json.success) throw new Error(json.error || "Error occurred");
 
       const { outcome, won, payout, newBalance } = json.data;
-      setResult(outcome);
-      setUserTokens(parseFloat(newBalance));
-      setMessage(won ? `✅ You won $${payout.toFixed(2)}!` : "❌ You lost.");
-    } catch (err) {
+
+      // Wait for animation to complete
+      setTimeout(() => {
+        setFlipping(false);
+        setResult(outcome);
+        setUserTokens(parseFloat(newBalance));
+        setMessage(won ? `✅ You won $${payout.toFixed(2)}!` : "❌ You lost.");
+      }, 500);
+    } catch {
       setFlipping(false);
       setMessage("Server error during flip.");
     }
@@ -133,7 +157,8 @@ function SoloCoinFlip() {
       <div className="flex justify-center mt-6 h-28">
         <div className="relative w-24 h-24 perspective">
           <div
-            className={`w-full h-full rounded-full text-4xl flex items-center justify-center bg-yellow-300 text-black font-bold transition-transform duration-700 ease-in-out ${
+            key={flipKey}
+            className={`w-full h-full rounded-full text-4xl flex items-center justify-center bg-yellow-300 text-black font-bold ${
               flipping ? "animate-coin-flip" : ""
             }`}
           >
@@ -155,17 +180,19 @@ function PvPCoinFlip() {
   const [result, setResult] = useState("");
   const [message, setMessage] = useState("");
   const [flipping, setFlipping] = useState(false);
+  const [flipKey, setFlipKey] = useState(0);
 
   const startMatch = () => {
     if (!player1 || !player2 || bet <= 0 || player1 === player2) {
       return setMessage("Enter valid player names and bet.");
     }
 
-    const audio = new Audio("/coin-flip.mp3");
-    audio.play();
-
     setFlipping(true);
-    setMessage("Flipping...");
+    setResult(null);
+    setFlipKey(prev => prev + 1);
+
+    const audio = new Audio("/sounds/coin-flip.mp3");
+    audio.play();
 
     setTimeout(() => {
       const winner = Math.random() < 0.5 ? player1 : player2;
@@ -175,7 +202,7 @@ function PvPCoinFlip() {
       setResult(winner);
       setMessage(`🏆 ${winner} wins $${winnings.toFixed(2)} (after 2% fee)`);
       setFlipping(false);
-    }, 1300);
+    }, 3000);
   };
 
   return (
@@ -217,7 +244,8 @@ function PvPCoinFlip() {
       <div className="flex justify-center mt-6 h-28">
         <div className="relative w-24 h-24 perspective">
           <div
-            className={`w-full h-full rounded-full text-4xl flex items-center justify-center bg-yellow-300 text-black font-bold transition-transform duration-700 ease-in-out ${
+            key={flipKey}
+            className={`w-full h-full rounded-full text-4xl flex items-center justify-center bg-yellow-300 text-black font-bold ${
               flipping ? "animate-coin-flip" : ""
             }`}
           >
@@ -229,16 +257,4 @@ function PvPCoinFlip() {
       {message && <p className="text-center mt-4 text-blue-300">{message}</p>}
     </>
   );
-  
 }
-<style jsx global>{`
-  @keyframes coin-flip {
-    0%   { transform: rotateY(0deg); }
-    100% { transform: rotateY(1440deg); } /* 4 full flips */
-  }
-
-  .animate-coin-flip {
-    animation: coin-flip 1s ease-in-out forwards;
-  }
-`}</style>
-
