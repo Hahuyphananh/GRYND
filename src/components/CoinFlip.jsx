@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const HOUSE_EDGE = 0.98;
 const FEE = 0.02;
@@ -38,33 +38,66 @@ function SoloCoinFlip() {
   const [result, setResult] = useState(null);
   const [message, setMessage] = useState("");
   const [flipping, setFlipping] = useState(false);
+  const [userTokens, setUserTokens] = useState(null);
+  const [error, setError] = useState("");
 
-  const flip = () => {
-    if (bet <= 0) return setMessage("Enter a valid bet");
+  useEffect(() => {
+    fetchTokens();
+  }, []);
 
-    const audio = new Audio("/coin-flip.mp3");
-    audio.play();
+  const fetchTokens = async () => {
+    try {
+      const res = await fetch("/api/get-user-tokens", { method: "POST" });
+      const json = await res.json();
+      if (json.success) setUserTokens(parseFloat(json.data.balance));
+    } catch (err) {
+      setError("Error fetching balance");
+    }
+  };
+
+  const flip = async () => {
+    setMessage("");
+    if (bet <= 0 || !["heads", "tails"].includes(choice)) {
+      return setMessage("Enter a valid bet and choice.");
+    }
+    if (userTokens === null || userTokens < bet) {
+      return setMessage("Insufficient balance."); 
+    }
 
     setFlipping(true);
-    setMessage("Flipping...");
-    setTimeout(() => {
-      const outcome = Math.random() < 0.5 ? "heads" : "tails";
-      setResult(outcome);
+    const audio = new Audio("/sounds/coin-flip.mp3");
+    audio.play().catch(console.error);;
 
-      if (outcome === choice) {
-        const winnings = bet * HOUSE_EDGE;
-        setMessage(`✅ You won $${winnings.toFixed(2)}!`);
-      } else {
-        setMessage("❌ You lost.");
+    try {
+      const res = await fetch("/api/coin-flip/solo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bet, choice }),
+      });
+
+      const json = await res.json();
+      setFlipping(false);
+
+      if (!json.success) {
+        return setMessage(json.error || "Error occurred");
       }
 
+      const { outcome, won, payout, newBalance } = json.data;
+      setResult(outcome);
+      setUserTokens(parseFloat(newBalance));
+      setMessage(won ? `✅ You won $${payout.toFixed(2)}!` : "❌ You lost.");
+    } catch (err) {
       setFlipping(false);
-    }, 1200);
+      setMessage("Server error during flip.");
+    }
   };
 
   return (
     <>
       <div className="mb-4">
+        <p className="text-yellow-400 font-bold mb-2">
+          Balance: {userTokens !== null ? `${userTokens.toFixed(2)} 🪙` : "..."}
+        </p>
         <label className="block mb-1">Bet Amount ($)</label>
         <input
           type="number"
@@ -114,7 +147,7 @@ function SoloCoinFlip() {
   );
 }
 
-// ------------------- PvP Coin Flip ------------------- //
+// ------------------- PvP Coin Flip (Demo Only) ------------------- //
 function PvPCoinFlip() {
   const [player1, setPlayer1] = useState("");
   const [player2, setPlayer2] = useState("");
@@ -196,4 +229,16 @@ function PvPCoinFlip() {
       {message && <p className="text-center mt-4 text-blue-300">{message}</p>}
     </>
   );
+  
 }
+<style jsx global>{`
+  @keyframes coin-flip {
+    0%   { transform: rotateY(0deg); }
+    100% { transform: rotateY(1440deg); } /* 4 full flips */
+  }
+
+  .animate-coin-flip {
+    animation: coin-flip 1s ease-in-out forwards;
+  }
+`}</style>
+
