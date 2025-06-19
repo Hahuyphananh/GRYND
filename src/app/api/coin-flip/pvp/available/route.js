@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { db } from "@/db/client";
-import { coinFlipGames, users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { db } from "../../../../../db/client";
+import { coinFlipGames, users } from "../../../../../db/schema";
+import { eq, sql } from "drizzle-orm";
 
 export async function GET() {
   const games = await db
