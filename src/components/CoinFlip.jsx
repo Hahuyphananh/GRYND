@@ -172,89 +172,73 @@ function SoloCoinFlip() {
   );
 }
 
-// ------------------- PvP Coin Flip (Demo Only) ------------------- //
+// ------------------- PvP Coin Flip ------------------- //
 function PvPCoinFlip() {
-  const [player1, setPlayer1] = useState("");
-  const [player2, setPlayer2] = useState("");
-  const [bet, setBet] = useState(10);
-  const [result, setResult] = useState("");
-  const [message, setMessage] = useState("");
-  const [flipping, setFlipping] = useState(false);
-  const [flipKey, setFlipKey] = useState(0);
+  const [bet, setBet] = useState(10), [choice, setChoice] = useState("heads");
+  const [flipping, setFlipping] = useState(false), [message, setMessage] = useState("");
+  const [result, setResult] = useState(null), [flipKey, setFlipKey] = useState(0);
+  const [games, setGames] = useState([]), [myGameId, setMyGameId] = useState(null);
 
-  const startMatch = () => {
-    if (!player1 || !player2 || bet <= 0 || player1 === player2) {
-      return setMessage("Enter valid player names and bet.");
+  useEffect(() => {
+    async function fetchGames() {
+      const res = await fetch("/api/coin-flip/pvp/available", { method: "POST" });
+      const json = await res.json();
+      if (json.success) setGames(json.data.games);
     }
+    fetchGames();
+  }, []);
 
-    setFlipping(true);
-    setResult(null);
-    setFlipKey(prev => prev + 1);
+  const createGame = async () => {
+    setMessage("Creating...");
+    const res = await fetch("/api/coin-flip/pvp/create", {
+      method: "POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ betAmount: bet, choice })
+    });
+    const json = await res.json();
+    if (json.success) {
+      setMyGameId(json.data.gameId);
+      setGames(prev => [...prev, json.data]);
+      setMessage("Game created.");
+    } else setMessage(json.error);
+  };
 
-    const audio = new Audio("/sounds/coin-flip.mp3");
-    audio.play();
-
-    setTimeout(() => {
-      const winner = Math.random() < 0.5 ? player1 : player2;
-      const pot = bet * 2;
-      const winnings = pot * (1 - FEE);
-
-      setResult(winner);
-      setMessage(`🏆 ${winner} wins $${winnings.toFixed(2)} (after 2% fee)`);
-      setFlipping(false);
-    }, 3000);
+  const joinGame = async (gameId) => {
+    setFlipping(true); setMessage("Flipping...");
+    const res = await fetch("/api/coin-flip/pvp/join", {
+      method: "POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ gameId, choice })
+    });
+    const json = await res.json();
+    setFlipping(false);
+    if (json.success) {
+      setResult(json.data.outcome);
+      setMessage(json.data.winner === "you" ? "✅ You won!" : "❌ You lost.");
+      setGames(prev => prev.filter(g => g.gameId !== gameId));
+      setMyGameId(null);
+      setFlipKey(k => k + 1);
+    } else setMessage(json.error);
   };
 
   return (
     <>
-      <div className="mb-3">
-        <label className="block">Player 1</label>
-        <input
-          className="w-full p-2 bg-gray-700 rounded"
-          value={player1}
-          onChange={(e) => setPlayer1(e.target.value)}
-        />
-      </div>
-      <div className="mb-3">
-        <label className="block">Player 2</label>
-        <input
-          className="w-full p-2 bg-gray-700 rounded"
-          value={player2}
-          onChange={(e) => setPlayer2(e.target.value)}
-        />
-      </div>
-      <div className="mb-3">
-        <label className="block">Bet Amount ($)</label>
-        <input
-          type="number"
-          className="w-full p-2 bg-gray-700 rounded"
-          value={bet}
-          onChange={(e) => setBet(parseFloat(e.target.value))}
-        />
-      </div>
-
-      <button
-        onClick={startMatch}
-        disabled={flipping}
-        className="w-full p-3 bg-purple-600 rounded font-bold"
-      >
-        {flipping ? "Flipping..." : "Start PvP Match"}
-      </button>
-
-      <div className="flex justify-center mt-6 h-28">
-        <div className="relative w-24 h-24 perspective">
-          <div
-            key={flipKey}
-            className={`w-full h-full rounded-full text-4xl flex items-center justify-center bg-yellow-300 text-black font-bold ${
-              flipping ? "animate-coin-flip" : ""
-            }`}
-          >
-            ?
-          </div>
+      {/* Input controls */}
+      {!myGameId ? (
+        <button onClick={createGame}>Create Game</button>
+      ) : (
+        <div>
+          {games.filter(g=>g.gameId===myGameId).map(g=>(
+            <button key={g.gameId} onClick={()=>joinGame(g.gameId)}>
+              Join Game #{g.gameId}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="perspective">
+        <div key={flipKey} className={`... ${flipping?"animate-coin-flip":""}`}>
+          {result==="heads"?"H":result==="tails"?"T":"?"}
         </div>
       </div>
-
-      {message && <p className="text-center mt-4 text-blue-300">{message}</p>}
+      {message && <p>{message}</p>}
     </>
   );
 }

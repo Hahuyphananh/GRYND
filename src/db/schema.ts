@@ -83,6 +83,18 @@ export const chessGames = pgTable('chess_games', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+export const coinFlipGames = pgTable("coin_flip_games", {
+  id: serial("id").primaryKey(),
+  player1Id: varchar("player1_id", { length: 255 }).notNull(),
+  player2Id: varchar("player2_id", { length: 255 }),
+  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
+  player1Choice: varchar("player1_choice", { length: 10 }).notNull(), // "heads" or "tails"
+  outcome: varchar("outcome", { length: 10 }),
+  winnerId: varchar("winner_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+
 
 //
 // RELATIONS
