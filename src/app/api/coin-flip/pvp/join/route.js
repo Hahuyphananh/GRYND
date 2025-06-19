@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "@/db/client";
-import { coinFlipGames, users } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { db } from "../../../../../db/client";
+import { coinFlipGames, users } from "../../../../../db/schema";
+import { eq, sql } from "drizzle-orm";
 
 export async function POST(req) {
   const { userId } = auth();
