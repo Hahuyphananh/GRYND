@@ -1,54 +1,38 @@
+// /api/get-events/route.js
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
 
-/**
- * @param {Request} request
- * @returns {Promise<Response>}
- */
-export async function POST(request) {
+export async function POST(req) {
   const { userId } = auth();
-
   if (!userId) {
-    return new Response(JSON.stringify({ error: "Utilisateur non authentifié" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ error: "Not authenticated" }), { status: 401 });
   }
 
-  let { sportId } = await request.json();
+  const { sportId } = await req.json();
+  if (!sportId) {
+    return new Response(JSON.stringify({ error: "sportId is required" }), { status: 400 });
+  }
 
   try {
-    const baseQuery = `
-      SELECT 
-        e.id,
-        e.home_team AS team1,
-        e.away_team AS team2,
-        e.start_time AS date,
-        s1.odds AS odds1,
-        s2.odds AS odds2,
-        m.id AS market_id
-      FROM events e
-      JOIN markets m ON m.event_id = e.id AND m.name = 'Match Winner'
-      JOIN selections s1 ON s1.market_id = m.id AND s1.name = e.home_team
-      JOIN selections s2 ON s2.market_id = m.id AND s2.name = e.away_team
-      WHERE e.status = 'scheduled'
-      ${sportId ? "AND e.sport_id = $1" : ""}
-      ORDER BY e.start_time ASC
-      LIMIT 10
-    `;
+    const response = await fetch(
+      `https://api.the-odds-api.com/v4/sports/${sportId}/odds/?regions=eu&markets=h2h&apiKey=${process.env.ODDS_API_KEY}`
+    );
+    const data = await response.json();
 
-    const queryParams = sportId ? [sportId] : [];
-    const { rows: events } = await sql(baseQuery, queryParams);
+    const events = data.map(event => ({
+      id: event.id,
+      team1: event.bookmakers?.[0]?.markets?.[0]?.outcomes?.[0]?.name || "Team A",
+      team2: event.bookmakers?.[0]?.markets?.[0]?.outcomes?.[1]?.name || "Team B",
+      odds1: event.bookmakers?.[0]?.markets?.[0]?.outcomes?.[0]?.price || 0,
+      odds2: event.bookmakers?.[0]?.markets?.[0]?.outcomes?.[1]?.price || 0,
+      date: event.commence_time,
+    }));
 
     return new Response(JSON.stringify({ events }), {
-      status: 200,
       headers: { "Content-Type": "application/json" },
+      status: 200,
     });
   } catch (err) {
-    console.error("❌ Error fetching matches:", err);
-    return new Response(JSON.stringify({ error: "Erreur serveur" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.error("OddsAPI events error:", err);
+    return new Response(JSON.stringify({ error: "Server error fetching events" }), { status: 500 });
   }
 }
