@@ -1,38 +1,28 @@
+// /api/list-sports/route.js (or .ts if using TypeScript)
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
 
-/**
- * @param {Request} request
- * @returns {Promise<Response>}
- */
-export async function POST(request) {
+export async function POST(req) {
   const { userId } = auth();
-
   if (!userId) {
-    return new Response(JSON.stringify({ error: "Utilisateur non authentifié" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ error: "Not authenticated" }), { status: 401 });
   }
 
   try {
-    const { rows: sports } = await sql`
-      SELECT id, name, icon_name 
-      FROM sports 
-      WHERE is_active = true 
-      ORDER BY name ASC
-    `;
+    const response = await fetch(`https://api.the-odds-api.com/v4/sports/?apiKey=${process.env.ODDS_API_KEY}`);
+    const data = await response.json();
+
+    const sports = data.map(sport => ({
+      id: sport.key,
+      name: sport.title,
+      icon_name: "futbol", // default icon or based on sport.key
+    }));
 
     return new Response(JSON.stringify({ sports }), {
+      headers: { "Content-Type": "application/json" },
       status: 200,
-      headers: { "Content-Type": "application/json" },
     });
-
   } catch (err) {
-    console.error("❌ Error fetching sports:", err);
-    return new Response(JSON.stringify({ error: "Erreur serveur" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.error("OddsAPI sports error:", err);
+    return new Response(JSON.stringify({ error: "Server error fetching sports" }), { status: 500 });
   }
 }
