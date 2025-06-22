@@ -1,28 +1,27 @@
-// /api/list-sports/route.js (or .ts if using TypeScript)
-import { auth } from "@clerk/nextjs/server";
-
-export async function POST(req) {
-  const { userId } = auth();
-  if (!userId) {
-    return new Response(JSON.stringify({ error: "Not authenticated" }), { status: 401 });
-  }
-
+export async function POST() {
   try {
-    const response = await fetch(`https://api.the-odds-api.com/v4/sports/?apiKey=${process.env.ODDS_API_KEY}`);
-    const data = await response.json();
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/odds/fetch`, {
+      method: "POST",
+    });
 
-    const sports = data.map(sport => ({
+    const json = await res.json();
+    if (!json.success) throw new Error("Failed to fetch sports");
+
+    // Map and transform data if needed
+    const sports = json.data.map(sport => ({
       id: sport.key,
       name: sport.title,
-      icon_name: "futbol", // default icon or based on sport.key
+      icon_name: "futbol", // Optional: map by sport.key
     }));
 
     return new Response(JSON.stringify({ sports }), {
-      headers: { "Content-Type": "application/json" },
       status: 200,
+      headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("OddsAPI sports error:", err);
-    return new Response(JSON.stringify({ error: "Server error fetching sports" }), { status: 500 });
+    return new Response(JSON.stringify({ error: "Erreur serveur" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }

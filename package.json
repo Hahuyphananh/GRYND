@@ -17,6 +17,7 @@
     "@clerk/nextjs": "^6.16.0",
     "@neondatabase/serverless": "^1.0.1",
     "@vercel/postgres": "^0.10.0",
+    "axios": "^1.10.0",
     "bcrypt": "^5.1.1",
     "cheerio": "^1.0.0",
     "chess.js": "^1.2.0",
