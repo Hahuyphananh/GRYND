@@ -1,196 +1,203 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useUser } from "@clerk/nextjs";
 
-function MainComponent() {
-  const { isLoaded, isSignedIn, user } = useUser();
-
-  const [game, setGame] = useState(null);
-  const [error, setError] = useState(null);
-  const [playerPosition, setPlayerPosition] = useState(null);
-  const [raiseAmount, setRaiseAmount] = useState(0);
+function PokerPage() {
+  const [userTokens, setUserTokens] = useState(0);
   const [loading, setLoading] = useState(true);
-
-  const tables = [
-    { name: "Débutant", minBuy: 100, smallBlind: 0.5, bigBlind: 1 },
-    { name: "Amateur", minBuy: 500, smallBlind: 2.5, bigBlind: 5 },
-    { name: "Intermédiaire", minBuy: 1000, smallBlind: 5, bigBlind: 10 },
-    { name: "Semi-Pro", minBuy: 5000, smallBlind: 25, bigBlind: 50 },
-    { name: "Professionnel", minBuy: 10000, smallBlind: 50, bigBlind: 100 },
-    { name: "High Roller", minBuy: 50000, smallBlind: 250, bigBlind: 500 },
-    { name: "Elite", minBuy: 100000, smallBlind: 500, bigBlind: 1000 },
-  ];
+  const [error, setError] = useState(null);
+  const [game, setGame] = useState(null);
+  const [raiseAmount, setRaiseAmount] = useState(0);
+  const [result, setResult] = useState(null);
+  const [stats, setStats] = useState({ biggestWin: 0, totalHands: 0, totalWins: 0 });
+  const [opponentHand, setOpponentHand] = useState([]);
+  const [playerHand, setPlayerHand] = useState([]);
+  const [pot, setPot] = useState(0);
 
   useEffect(() => {
-    if (isLoaded && isSignedIn && user) {
-      checkExistingGame();
-    }
-  }, [isLoaded, isSignedIn, user]);
+    fetchTokens();
+  }, []);
 
-  const checkExistingGame = async () => {
+  const fetchTokens = async () => {
     try {
-      setLoading(true);
-      const response = await fetch("/api/get-active-poker-game", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
-      });
-
-      if (!response.ok) throw new Error("Erreur lors de la vérification du jeu");
-
-      const data = await response.json();
-      if (data.game) {
-        setGame(data.game);
-        setPlayerPosition(data.positions.find((p) => p.player_id === user.id));
+      const res = await fetch("/api/get-user-tokens", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setUserTokens(data.data.balance);
+      } else {
+        throw new Error(data.error || "Erreur inconnue");
       }
-    } catch (error) {
-      console.error("Erreur:", error);
+    } catch (e) {
+      setError("Impossible de charger les tokens.");
     } finally {
       setLoading(false);
     }
   };
 
-  const initializeGame = async (tableIndex) => {
+  const initializeGame = async () => {
     try {
       setLoading(true);
-      setError(null);
-      const selectedTable = tables[tableIndex];
-
-      const response = await fetch("/api/initialize-poker-game", {
+      const res = await fetch("/api/initialize-poker-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.id,
-          smallBlind: selectedTable.smallBlind,
-          bigBlind: selectedTable.bigBlind,
-          minBuy: selectedTable.minBuy,
-        }),
+        body: JSON.stringify({ smallBlind: 5, bigBlind: 10, minBuy: 1000 })
       });
-
-      const data = await response.json();
-      if (!response.ok || data.error) {
-        setError(data.error || "Erreur lors de l'initialisation du jeu");
-        return;
-      }
-
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error);
       setGame(data.game);
-      setPlayerPosition(data.positions.find((p) => p.player_id === user.id));
-    } catch (error) {
-      setError("Impossible de démarrer une nouvelle partie");
-      console.error("Erreur:", error);
+      setPlayerHand(data.playerHand);
+      setOpponentHand(["?", "?"]); // initially hidden
+      setPot(data.pot);
+      setResult(null);
+    } catch (e) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAction = async (action, amount = null) => {
+  const handleAction = async (action) => {
+    if (!game) return;
+    setError(null);
     try {
-      setError(null);
-      const response = await fetch("/api/handle-poker-action", {
+      const res = await fetch("/api/handle-poker-action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gameId: game.id,
           action,
-          amount,
-          userId: user.id,
-        }),
+          amount: action === "raise" ? raiseAmount : null,
+        })
       });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error);
 
-      const data = await response.json();
-      if (!response.ok || data.error) {
-        setError(data.error || "Erreur lors de l'action");
-        return;
-      }
-
-      setGame(data.game);
-      setPlayerPosition(data.positions.find((p) => p.player_id === user.id));
-      setRaiseAmount(0);
-    } catch (error) {
-      setError("Erreur lors de l'action");
-      console.error("Erreur:", error);
-    }
-  };
-
-  const endGame = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await fetch("/api/end-poker-game", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gameId: game.id,
-          userId: user.id,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok || data.error) {
-        setError(data.error || "Erreur lors de la fin de partie");
-        return;
-      }
-
+      setPot(data.pot);
+      setPlayerHand(data.playerHand);
+      setOpponentHand(data.opponentHand);
+      setResult(data.result);
+      setStats(prev => ({
+        biggestWin: Math.max(prev.biggestWin, data.result.winAmount || 0),
+        totalHands: prev.totalHands + 1,
+        totalWins: data.result.won ? prev.totalWins + 1 : prev.totalWins,
+      }));
+      setUserTokens(prev => prev + (data.result.winAmount || 0) - (data.result.bet || 0));
       setGame(null);
-      setPlayerPosition(null);
-    } catch (error) {
-      setError("Impossible de terminer la partie");
-      console.error("Erreur:", error);
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      setError(e.message);
     }
   };
 
-  const renderCard = (card) => {
-    if (!card) return null;
-    const suitSymbols = {
-      hearts: "♥",
-      diamonds: "♦",
-      clubs: "♣",
-      spades: "♠",
-    };
-    const suitColor =
-      card.suit === "hearts" || card.suit === "diamonds"
-        ? "text-red-500"
-        : "text-black";
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-8">
+      <div className="max-w-4xl mx-auto shadow-lg border border-yellow-400/30 rounded-2xl p-8 bg-[#0a1e3a]">
+        <h1 className="text-4xl font-bold text-center text-yellow-400 mb-6">♠️ Poker Royale</h1>
+        <p className="text-lg font-semibold">🪙 Tokens: {userTokens}</p>
 
-    return (
-      <div className="flex items-center justify-center w-12 h-16 bg-white rounded-lg shadow-md m-1">
-        <span className={suitColor}>
-          {card.value}
-          {suitSymbols[card.suit]}
-        </span>
-      </div>
-    );
-  };
+        {error && <p className="text-red-400 text-center mt-4">{error}</p>}
 
-  if (!isLoaded) return null;
+        {!game && (
+          <div className="text-center mt-8">
+            <button
+              onClick={initializeGame}
+              className="bg-yellow-400 hover:bg-yellow-300 text-black px-6 py-3 rounded-full font-bold"
+            >
+              Nouvelle Partie
+            </button>
+          </div>
+        )}
 
-  if (!isSignedIn) {
-    return (
-      <div className="min-h-screen bg-[#003366] text-white p-8">
-        <div className="text-center">
-          <p>Veuillez vous connecter pour jouer au poker</p>
-          <a
-            href="/account/signin?callbackUrl=/casino/poker"
-            className="mt-4 inline-block bg-[#FFD700] text-black px-6 py-2 rounded hover:bg-[#FFD700]/80"
-          >
-            Se connecter
-          </a>
+        {game && (
+          <div className="mt-8">
+            <div className="flex justify-center gap-4 mb-4">
+              <div>
+                <h3 className="text-yellow-300 text-center">Votre main</h3>
+                <div className="flex gap-2 justify-center mt-2">
+                  {playerHand.map((card, i) => (
+                    <div
+                      key={i}
+                      className="w-12 h-16 bg-white text-black flex items-center justify-center rounded shadow"
+                    >
+                      {card}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h3 className="text-yellow-300 text-center">Main AI</h3>
+                <div className="flex gap-2 justify-center mt-2">
+                  {opponentHand.map((card, i) => (
+                    <div
+                      key={i}
+                      className="w-12 h-16 bg-white text-black flex items-center justify-center rounded shadow"
+                    >
+                      {card}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="text-center text-yellow-300 font-semibold text-lg mb-2">
+              Pot actuel: {pot} tokens
+            </div>
+
+            <div className="flex flex-wrap gap-4 justify-center items-center">
+              <button
+                onClick={() => handleAction("fold")}
+                className="bg-red-600 hover:bg-red-700 px-5 py-2 rounded-full font-bold"
+              >
+                Fold
+              </button>
+              <button
+                onClick={() => handleAction("call")}
+                className="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-full font-bold"
+              >
+                Call
+              </button>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={raiseAmount}
+                  onChange={(e) => setRaiseAmount(Number(e.target.value))}
+                  className="w-24 px-2 py-1 rounded text-black"
+                />
+                <button
+                  onClick={() => handleAction("raise")}
+                  className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-full font-bold"
+                >
+                  Raise
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {result && (
+          <div className="mt-6 text-center">
+            <p className="text-xl font-bold">
+              {result.message} {result.won && `+${result.winAmount} tokens! 🎉`}
+            </p>
+          </div>
+        )}
+
+        <div className="mt-10 grid grid-cols-3 gap-6 text-white text-center">
+          <div>
+            <p className="font-semibold text-yellow-300">Plus gros gain</p>
+            <p>{stats.biggestWin} tokens</p>
+          </div>
+          <div>
+            <p className="font-semibold text-yellow-300">Mains jouées</p>
+            <p>{stats.totalHands}</p>
+          </div>
+          <div>
+            <p className="font-semibold text-yellow-300">Victoires</p>
+            <p>{stats.totalWins}</p>
+          </div>
         </div>
       </div>
-    );
-  }
-
-  // ✅ Render your game UI here, as you already have in your version (not duplicated below for brevity)
-  // Just include this fixed structure with the updated imports and `useUser` handling.
-  return (
-    <div className="min-h-screen bg-[#003366] text-white">
-      {/* ... your original UI rendering code (game board, actions, buttons, etc.) ... */}
-      {/* Ensure it's placed after the check for `isLoaded && isSignedIn` */}
     </div>
   );
 }
 
-export default MainComponent;
+export default PokerPage;

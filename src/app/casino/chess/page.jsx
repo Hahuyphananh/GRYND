@@ -17,6 +17,12 @@ export default function ChessLobby() {
             ${amount} Table
           </Link>
         ))}
+        <Link
+          href="/casino/chess/ai"
+          className="bg-green-500 text-white px-6 py-4 rounded-lg text-xl font-semibold hover:bg-green-400"
+        >
+          Play vs AI 🤖
+        </Link>
       </div>
     </div>
   );

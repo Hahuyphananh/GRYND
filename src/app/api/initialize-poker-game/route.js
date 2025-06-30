@@ -1,9 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 
-/**
- * Generates and shuffles a deck of 52 playing cards.
- */
 function generateShuffledDeck() {
   const suits = ["hearts", "diamonds", "clubs", "spades"];
   const values = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
@@ -23,12 +20,8 @@ function generateShuffledDeck() {
   return deck;
 }
 
-/**
- * @param {Request} request
- * @returns {Promise<Response>}
- */
 export async function POST(request) {
-  const { userId } = auth();
+  const { userId } = await auth();
 
   if (!userId) {
     return new Response(JSON.stringify({ error: "User not authenticated" }), {
@@ -50,15 +43,15 @@ export async function POST(request) {
       });
     }
 
-    // Initialize game state
     const deck = generateShuffledDeck();
     const playerHand = [deck.pop(), deck.pop()];
     const aiHand = [deck.pop(), deck.pop()];
     const pot = 3.0;
     const smallBlind = 1.0;
     const bigBlind = 2.0;
+    const playerStack = 99.0;
+    const aiStack = 98.0;
 
-    // Insert poker game and positions atomically
     const result = await sql.begin(async (tx) => {
       const { rows: gameRows } = await tx`
         INSERT INTO poker_games (
@@ -86,37 +79,40 @@ export async function POST(request) {
           ${1},
           ${bigBlind}
         )
-        RETURNING id
+        RETURNING *
       `;
 
-      const gameId = gameRows[0].id;
+      const game = gameRows[0];
 
       await tx`
         INSERT INTO poker_player_positions (
           game_id, player_id, position, stack, current_bet
         ) VALUES
-        (${gameId}, ${userId}, 0, 100.0, ${smallBlind}),
-        (${gameId}, NULL, 1, 100.0, ${bigBlind})
+        (${game.id}, ${userId}, 0, ${playerStack}, ${smallBlind}),
+        (${game.id}, NULL, 1, ${aiStack}, ${bigBlind})
       `;
 
       await tx`
         UPDATE user_tokens
-        SET balance = balance - ${smallBlind}
+        SET balance = balance - ${smallBlind + bigBlind}
         WHERE user_id = ${userId}
       `;
 
-      return gameId;
+      return {
+        id: game.id,
+        pot: game.pot,
+        minBet: game.min_bet,
+        smallBlind: game.small_blind,
+        bigBlind: game.big_blind,
+        playerHand,
+        aiHand,
+        playerStack,
+        aiStack,
+        currentPosition: game.current_player_position,
+      };
     });
 
-    return new Response(JSON.stringify({
-      gameId: result,
-      playerHand,
-      currentPosition: 1,
-      pot,
-      minBet: bigBlind,
-      playerStack: 99.0,
-      aiStack: 98.0,
-    }), {
+    return new Response(JSON.stringify({ success: true, game: result }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
