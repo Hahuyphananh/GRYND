@@ -1,5 +1,8 @@
-"use server"
+// drizzle.config.ts
 import { defineConfig } from 'drizzle-kit';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: '.env.local' }); // ⬅️ Explicitly load env vars from .env.local
 
 export default defineConfig({
   out: './src/db/migrations',

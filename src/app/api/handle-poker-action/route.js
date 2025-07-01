@@ -1,12 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 
-/**
- * @param {Request} request
- * @returns {Promise<Response>}
- */
 export async function POST(request) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) {
     return new Response(JSON.stringify({ error: "Not authenticated" }), {
       status: 401,
@@ -54,7 +50,6 @@ export async function POST(request) {
       });
     }
 
-    // ✅ Action handlers
     switch (action) {
       case "fold":
         await sql`
@@ -84,16 +79,12 @@ export async function POST(request) {
 
         await sql`
           UPDATE poker_player_positions 
-          SET 
-            current_bet = ${game.min_bet},
-            stack = stack - ${callAmount}
+          SET current_bet = ${game.min_bet}, stack = stack - ${callAmount}
           WHERE game_id = ${gameId} AND player_id = ${userId}
         `;
 
         await sql`
-          UPDATE poker_games 
-          SET pot = pot + ${callAmount}
-          WHERE id = ${gameId}
+          UPDATE poker_games SET pot = pot + ${callAmount} WHERE id = ${gameId}
         `;
         break;
       }
@@ -106,29 +97,23 @@ export async function POST(request) {
           });
         }
 
-        if (amount > currentPosition.stack) {
+        const raiseAmount = amount - currentPosition.current_bet;
+        if (raiseAmount > currentPosition.stack) {
           return new Response(JSON.stringify({ error: "Not enough chips to raise" }), {
             status: 400,
             headers: { "Content-Type": "application/json" },
           });
         }
 
-        const raiseAmount = amount - currentPosition.current_bet;
-
         await sql`
           UPDATE poker_player_positions 
-          SET 
-            current_bet = ${amount},
-            stack = stack - ${raiseAmount}
+          SET current_bet = ${amount}, stack = stack - ${raiseAmount}
           WHERE game_id = ${gameId} AND player_id = ${userId}
         `;
 
         await sql`
           UPDATE poker_games 
-          SET 
-            pot = pot + ${raiseAmount},
-            min_bet = ${amount},
-            last_action_position = ${game.current_player_position}
+          SET pot = pot + ${raiseAmount}, min_bet = ${amount}, last_action_position = ${game.current_player_position}
           WHERE id = ${gameId}
         `;
         break;
@@ -137,10 +122,7 @@ export async function POST(request) {
       case "all-in": {
         await sql`
           UPDATE poker_player_positions 
-          SET 
-            current_bet = current_bet + stack,
-            stack = 0,
-            is_all_in = true
+          SET current_bet = current_bet + stack, stack = 0, is_all_in = true
           WHERE game_id = ${gameId} AND player_id = ${userId}
         `;
 
@@ -152,10 +134,7 @@ export async function POST(request) {
 
         await sql`
           UPDATE poker_games 
-          SET 
-            pot = pot + ${currentPosition.stack},
-            min_bet = GREATEST(min_bet, ${updatedBet}),
-            last_action_position = ${game.current_player_position}
+          SET pot = pot + ${currentPosition.stack}, min_bet = GREATEST(min_bet, ${updatedBet}), last_action_position = ${game.current_player_position}
           WHERE id = ${gameId}
         `;
         break;
@@ -168,73 +147,36 @@ export async function POST(request) {
         });
     }
 
-    // 🔁 Determine next player
-    let nextPosition = (game.current_player_position + 1) % game.total_players;
-    let roundComplete = false;
-
-    while (true) {
-      const nextPlayer = positions.find((p) => p.position === nextPosition);
-      if (!nextPlayer || nextPlayer.has_folded || nextPlayer.is_all_in) {
-        nextPosition = (nextPosition + 1) % game.total_players;
-        if (nextPosition === game.last_action_position) {
-          roundComplete = true;
-          break;
-        }
-        continue;
-      }
-      break;
-    }
-
-    if (roundComplete) {
-      const rounds = ["preflop", "flop", "turn", "river"];
-      const currentRoundIndex = rounds.indexOf(game.current_round);
-
-      if (currentRoundIndex < rounds.length - 1) {
-        await sql`
-          UPDATE poker_games 
-          SET 
-            current_round = ${rounds[currentRoundIndex + 1]},
-            current_player_position = ${game.dealer_position},
-            min_bet = 0,
-            last_action_position = null
-          WHERE id = ${gameId}
-        `;
-
-        await sql`
-          UPDATE poker_player_positions 
-          SET current_bet = 0 
-          WHERE game_id = ${gameId}
-        `;
-      } else {
-        await sql`
-          UPDATE poker_games 
-          SET status = 'showdown' 
-          WHERE id = ${gameId}
-        `;
-      }
-    } else {
-      await sql`
-        UPDATE poker_games 
-        SET current_player_position = ${nextPosition}
-        WHERE id = ${gameId}
-      `;
-    }
-
     const { rows: updatedGameRows } = await sql`
-      SELECT * FROM poker_games 
-      WHERE id = ${gameId}
+      SELECT * FROM poker_games WHERE id = ${gameId}
     `;
+    const updatedGame = updatedGameRows[0];
 
     const { rows: updatedPositions } = await sql`
-      SELECT * FROM poker_player_positions 
-      WHERE game_id = ${gameId}
-      ORDER BY position
+      SELECT * FROM poker_player_positions WHERE game_id = ${gameId} ORDER BY position
     `;
+
+    const playerPosition = updatedPositions.find((p) => p.player_id === parseInt(userId));
+    const aiPosition = updatedPositions.find((p) => p.player_id === null);
+
+    const playerHand = playerPosition?.hand ? JSON.parse(playerPosition.hand) : ["?", "?"];
+    const opponentHand = aiPosition?.hand ? JSON.parse(aiPosition.hand) : ["?", "?"];
+
+    const result = updatedGame.status === "showdown"
+      ? {
+          message: "Fin de la main.",
+          won: true,
+          winAmount: parseFloat(updatedGame.pot || 0),
+          bet: parseFloat(playerPosition?.current_bet || 0),
+        }
+      : null;
 
     return new Response(
       JSON.stringify({
-        game: updatedGameRows[0],
-        positions: updatedPositions,
+        pot: updatedGame.pot,
+        playerHand,
+        opponentHand,
+        result,
       }),
       {
         status: 200,
