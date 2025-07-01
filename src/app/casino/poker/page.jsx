@@ -1,8 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useUser } from "@clerk/nextjs";  // <-- Import here
 
 function PokerPage() {
+  const { user } = useUser();  // <-- Use inside component
+
   const [userTokens, setUserTokens] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -56,37 +59,101 @@ function PokerPage() {
     }
   };
 
-  const handleAction = async (action) => {
+  const initializeAiGame = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+
+    const response = await fetch("/api/initialize-poker-vs-ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      setError(data.error || "Erreur lors de l'initialisation contre l'IA");
+      return;
+    }
+
+    setGame(data.data.gameId);
+    setPlayerHand(data.data.playerHand);
+    setOpponentHand(["?", "?"]); // Hide AI cards
+    setPot(100); // equal to betAmount
+    setUserTokens(data.data.newBalance);
+    setResult(null);
+  } catch (error) {
+    setError("Impossible de démarrer la partie contre l’IA");
+    console.error("Erreur:", error);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+
+ const handleAction = async (action) => {
     if (!game) return;
+    if (!user) {
+      setError("User not logged in");
+      return;
+    }
+
     setError(null);
     try {
+      const payload = {
+        gameId: game.id,
+        action,
+        amount: action === "raise" ? raiseAmount : null,
+      };
+
+      console.log("Sending action:", payload);
+
       const res = await fetch("/api/handle-poker-action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gameId: game.id,
-          action,
-          amount: action === "raise" ? raiseAmount : null,
-        })
+        body: JSON.stringify(payload),
       });
+
       const data = await res.json();
+      console.log("Received data:", data);
+
       if (!res.ok || data.error) throw new Error(data.error);
 
-      setPot(data.pot);
-      setPlayerHand(data.playerHand);
-      setOpponentHand(data.opponentHand);
-      setResult(data.result);
-      setStats(prev => ({
-        biggestWin: Math.max(prev.biggestWin, data.result.winAmount || 0),
+      const updatedGame = data.game;
+      const positions = data.positions;
+
+      setPot(updatedGame.pot);
+
+      // Find player and AI positions using real user ID (Clerk's user id or numeric ID your backend uses)
+      const userId = user.id || user.primaryEmailAddressId; // adjust this to match your backend's user id type
+
+      // If your DB stores numeric IDs, convert user.id accordingly
+      // For example, if backend expects integer user IDs but Clerk user.id is a string UUID,
+      // you may need a mapping or to send clerkId directly and adjust backend queries.
+
+      const playerPosition = positions.find((p) => p.player_id === userId || p.clerk_id === userId);
+      const aiPosition = positions.find((p) => p.player_id === null); // AI has no player_id
+
+      setPlayerHand(playerPosition?.hand ? JSON.parse(playerPosition.hand) : ["?", "?"]);
+      setOpponentHand(aiPosition?.hand ? JSON.parse(aiPosition.hand) : ["?", "?"]);
+
+      setResult(updatedGame.result || null);
+
+      setStats((prev) => ({
+        biggestWin: Math.max(prev.biggestWin, updatedGame.winAmount || 0),
         totalHands: prev.totalHands + 1,
-        totalWins: data.result.won ? prev.totalWins + 1 : prev.totalWins,
+        totalWins: updatedGame.result === "win" ? prev.totalWins + 1 : prev.totalWins,
       }));
-      setUserTokens(prev => prev + (data.result.winAmount || 0) - (data.result.bet || 0));
-      setGame(null);
+
+      setUserTokens((prev) => prev + (updatedGame.winAmount || 0) - (updatedGame.betAmount || 0));
+
+      setGame(updatedGame);
     } catch (e) {
+      console.error("Error in handleAction:", e);
       setError(e.message);
     }
-  };
+};
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-8">
@@ -96,16 +163,27 @@ function PokerPage() {
 
         {error && <p className="text-red-400 text-center mt-4">{error}</p>}
 
-        {!game && (
-          <div className="text-center mt-8">
-            <button
-              onClick={initializeGame}
-              className="bg-yellow-400 hover:bg-yellow-300 text-black px-6 py-3 rounded-full font-bold"
-            >
-              Nouvelle Partie
-            </button>
-          </div>
-        )}
+{!game && (
+  <>
+    <div className="text-center mt-8">
+      <button
+        onClick={initializeGame}
+        className="bg-yellow-400 hover:bg-yellow-300 text-black px-6 py-3 rounded-full font-bold"
+      >
+        Nouvelle Partie
+      </button>
+    </div>
+
+    <div className="text-center mb-6">
+      <button
+        onClick={initializeAiGame}
+        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded shadow"
+      >
+        Jouer contre l’IA ♠️
+      </button>
+    </div>
+  </>
+)}
 
         {game && (
           <div className="mt-8">

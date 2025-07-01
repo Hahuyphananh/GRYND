@@ -31,11 +31,11 @@ export async function POST(request) {
   }
 
   try {
-    const { rows: tokenRows } = await sql`
-      SELECT balance FROM user_tokens WHERE user_id = ${userId}
+    const { rows: userRows } = await sql`
+      SELECT balance FROM users WHERE clerk_id = ${userId}
     `;
 
-    const balance = tokenRows[0]?.balance ?? 0;
+    const balance = parseFloat(userRows[0]?.balance ?? 0);
     if (balance < 100) {
       return new Response(JSON.stringify({ error: "Insufficient balance for minimum buy-in" }), {
         status: 400,
@@ -49,70 +49,64 @@ export async function POST(request) {
     const pot = 3.0;
     const smallBlind = 1.0;
     const bigBlind = 2.0;
-    const playerStack = 99.0;
-    const aiStack = 98.0;
 
-    const result = await sql.begin(async (tx) => {
-      const { rows: gameRows } = await tx`
-        INSERT INTO poker_games (
-          player_id,
-          status,
-          pot,
-          player_hand,
-          ai_hand,
-          deck,
-          dealer_position,
-          small_blind,
-          big_blind,
-          current_player_position,
-          min_bet
-        ) VALUES (
-          ${userId},
-          'active',
-          ${pot},
-          ${JSON.stringify(playerHand)},
-          ${JSON.stringify(aiHand)},
-          ${JSON.stringify(deck)},
-          ${0},
-          ${smallBlind},
-          ${bigBlind},
-          ${1},
-          ${bigBlind}
-        )
-        RETURNING *
-      `;
+    // Step 1: Insert into poker_games
+    const { rows: gameRows } = await sql`
+      INSERT INTO poker_games (
+        player_id,
+        status,
+        pot,
+        player_hand,
+        ai_hand,
+        deck,
+        dealer_position,
+        small_blind,
+        big_blind,
+        current_player_position,
+        min_bet
+      ) VALUES (
+        ${userId},
+        'active',
+        ${pot},
+        ${JSON.stringify(playerHand)},
+        ${JSON.stringify(aiHand)},
+        ${JSON.stringify(deck)},
+        ${0},
+        ${smallBlind},
+        ${bigBlind},
+        ${1},
+        ${bigBlind}
+      )
+      RETURNING id
+    `;
 
-      const game = gameRows[0];
+    const gameId = gameRows[0].id;
 
-      await tx`
-        INSERT INTO poker_player_positions (
-          game_id, player_id, position, stack, current_bet
-        ) VALUES
-        (${game.id}, ${userId}, 0, ${playerStack}, ${smallBlind}),
-        (${game.id}, NULL, 1, ${aiStack}, ${bigBlind})
-      `;
+    // Step 2: Insert into poker_player_positions
+    await sql`
+      INSERT INTO poker_player_positions (
+        game_id, player_id, position, stack, current_bet
+      ) VALUES
+      (${gameId}, ${userId}, 0, 100.0, ${smallBlind}),
+      (${gameId}, NULL, 1, 100.0, ${bigBlind})
+    `;
 
-      await tx`
-        UPDATE user_tokens
-        SET balance = balance - ${smallBlind + bigBlind}
-        WHERE user_id = ${userId}
-      `;
+    // Step 3: Deduct small blind from user balance
+    await sql`
+      UPDATE users
+      SET balance = balance - ${smallBlind}
+      WHERE clerk_id = ${userId}
+    `;
 
-      return {
-        id: game.id,
-        pot: game.pot,
-        minBet: game.min_bet,
-        smallBlind: game.small_blind,
-        bigBlind: game.big_blind,
-        playerHand,
-        aiHand,
-        playerStack,
-        aiStack,
-        currentPosition: game.current_player_position,
-      };
-    });
-
-    return new Response(JSON.stringify({ success: true, game: result }), {
+    return new Response(JSON.stringify({
+      gameId,
+      playerHand,
+      currentPosition: 1,
+      pot,
+      minBet: bigBlind,
+      playerStack: 99.0,
+      aiStack: 98.0,
+    }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
