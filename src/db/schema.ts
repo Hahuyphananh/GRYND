@@ -1,5 +1,5 @@
 // src/db/schema.ts
-import { pgTable, serial, varchar, integer, numeric, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, integer, numeric, timestamp, jsonb, text, json } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 // USERS TABLE
@@ -118,6 +118,20 @@ export const coinFlipGames = pgTable("coin_flip_games", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const unoGames = pgTable("uno_games", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  betAmount: text("bet_amount").notNull(), // stored as string to match other tables
+  pot: text("pot").notNull(), // total pot
+  result: text("result").notNull(), // 'win' | 'lose' | 'draw' | 'pending'
+  payout: text("payout").notNull(), // string format of number
+  playerHand: json("player_hand").notNull(),
+  aiHand: json("ai_hand").notNull(),
+  deck: json("deck").notNull(),
+  discardPile: json("discard_pile").notNull(),
+  turn: text("turn").notNull(), // 'player' or 'ai'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 
 //

@@ -14,7 +14,7 @@ function generateCardDeck() {
     }
   }
 
-  // Shuffle
+  // Shuffle the deck
   for (let i = deck.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [deck[i], deck[j]] = [deck[j], deck[i]];
@@ -44,7 +44,7 @@ export async function POST(request) {
       );
     }
 
-    const betAmount = 100;
+    const betAmount = 10;
     const balance = parseFloat(user.balance);
 
     if (balance < betAmount) {
@@ -58,20 +58,29 @@ export async function POST(request) {
     const playerHand = [deck.pop(), deck.pop()];
     const aiHand = [deck.pop(), deck.pop()];
     const payout = "0.00";
+    const pot = betAmount * 2; // 10 from player + 10 from AI
 
     const result = await db.transaction(async (tx) => {
       await tx.update(users)
         .set({ balance: (balance - betAmount).toString() })
         .where(eq(users.clerkId, userId));
 
-      const inserted = await tx.insert(pokerGames).values({
+      const [insertedGame] = await tx.insert(pokerGames).values({
         userId: user.id,
         betAmount: betAmount.toString(),
         result: "pending",
         payout,
+        playerHand: JSON.stringify(playerHand),
+        aiHand: JSON.stringify(aiHand),
+        pot,
+        status: "active",
+        playerBet: betAmount,
+        aiBet: betAmount,
+        stage: "preflop",
+        communityCards: JSON.stringify([]),
       }).returning();
 
-      return inserted[0];
+      return insertedGame;
     });
 
     return new Response(
@@ -81,7 +90,8 @@ export async function POST(request) {
           gameId: result.id,
           newBalance: balance - betAmount,
           playerHand,
-          aiHand, // if you want to reveal later, just use ["?", "?"] in frontend
+          aiHand: ["?", "?"], // Hide AI hand at start
+          pot, // ✅ Include pot here so frontend can use it
         },
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
