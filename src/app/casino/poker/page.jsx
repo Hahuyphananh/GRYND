@@ -75,10 +75,15 @@ function PokerPage() {
       return;
     }
 
-    setGame(data.data.gameId);
+    setGame({ id: data.data.gameId });
+    console.log("🟢 Set game:", { id: data.data.gameId });
+
     setPlayerHand(data.data.playerHand);
     setOpponentHand(["?", "?"]); // Hide AI cards
-    setPot(100); // equal to betAmount
+
+    // ✅ use pot from backend if available, otherwise fallback to 20
+    setPot(data.data.pot ?? 20);
+
     setUserTokens(data.data.newBalance);
     setResult(null);
   } catch (error) {
@@ -92,68 +97,77 @@ function PokerPage() {
 
 
  const handleAction = async (action) => {
-    if (!game) return;
-    if (!user) {
-      setError("User not logged in");
-      return;
+  if (!game) return;
+  if (!user) {
+    setError("User not logged in");
+    return;
+  }
+
+  setError(null);
+  try {
+    const payload = {
+      gameId: game.id,
+      action,
+      amount: action === "raise" ? raiseAmount : null,
+    };
+
+    console.log("Sending action:", payload);
+
+    const res = await fetch("/api/handle-poker-action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    console.log("Received data:", data);
+
+    if (!res.ok || data.error) throw new Error(data.error);
+
+    const updatedGame = data.game;
+    const positions = data.positions || [];
+
+    setPot(updatedGame.pot || 0);
+
+    const userId = user.id || user.primaryEmailAddressId;
+
+    const playerPosition = positions.find(
+      (p) => p.player_id === user.id || p.clerk_id === userId
+    );
+    const aiPosition = positions.find((p) => p.player_id === null); // AI has no player_id
+
+    const isGameOver = data.result !== null;
+
+    // Only update hands if game is over; otherwise keep current hands
+    if (isGameOver) {
+      setPlayerHand(
+        playerPosition?.hand ? JSON.parse(playerPosition.hand) : ["?", "?"]
+      );
+      setOpponentHand(
+        aiPosition?.hand ? JSON.parse(aiPosition.hand) : ["?", "?"]
+      );
     }
 
-    setError(null);
-    try {
-      const payload = {
-        gameId: game.id,
-        action,
-        amount: action === "raise" ? raiseAmount : null,
-      };
+    setResult(data.result || null);
 
-      console.log("Sending action:", payload);
+    setStats((prev) => ({
+      biggestWin: Math.max(prev.biggestWin, data.result?.winAmount || 0),
+      totalHands: prev.totalHands + 1,
+      totalWins: data.result?.won ? prev.totalWins + 1 : prev.totalWins,
+    }));
 
-      const res = await fetch("/api/handle-poker-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    setUserTokens((prev) => {
+      const winAmount = data.result?.winAmount || 0;
+      const bet = data.result?.bet || 0;
+      return prev + winAmount - bet;
+    });
 
-      const data = await res.json();
-      console.log("Received data:", data);
-
-      if (!res.ok || data.error) throw new Error(data.error);
-
-      const updatedGame = data.game;
-      const positions = data.positions;
-
-      setPot(updatedGame.pot);
-
-      // Find player and AI positions using real user ID (Clerk's user id or numeric ID your backend uses)
-      const userId = user.id || user.primaryEmailAddressId; // adjust this to match your backend's user id type
-
-      // If your DB stores numeric IDs, convert user.id accordingly
-      // For example, if backend expects integer user IDs but Clerk user.id is a string UUID,
-      // you may need a mapping or to send clerkId directly and adjust backend queries.
-
-      const playerPosition = positions.find((p) => p.player_id === userId || p.clerk_id === userId);
-      const aiPosition = positions.find((p) => p.player_id === null); // AI has no player_id
-
-      setPlayerHand(playerPosition?.hand ? JSON.parse(playerPosition.hand) : ["?", "?"]);
-      setOpponentHand(aiPosition?.hand ? JSON.parse(aiPosition.hand) : ["?", "?"]);
-
-      setResult(updatedGame.result || null);
-
-      setStats((prev) => ({
-        biggestWin: Math.max(prev.biggestWin, updatedGame.winAmount || 0),
-        totalHands: prev.totalHands + 1,
-        totalWins: updatedGame.result === "win" ? prev.totalWins + 1 : prev.totalWins,
-      }));
-
-      setUserTokens((prev) => prev + (updatedGame.winAmount || 0) - (updatedGame.betAmount || 0));
-
-      setGame(updatedGame);
-    } catch (e) {
-      console.error("Error in handleAction:", e);
-      setError(e.message);
-    }
+    setGame(updatedGame);
+  } catch (e) {
+    console.error("Error in handleAction:", e);
+    setError(e.message);
+  }
 };
-
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-8">
