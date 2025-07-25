@@ -2,27 +2,39 @@ import { db } from "../../db/client";
 import { users, unoGames } from "../../db/schema";
 import { eq } from "drizzle-orm";
 
+// Generates a new shuffled UNO deck
 function generateUnoDeck() {
-  const colors = ["red","yellow","green","blue"];
+  const colors = ["red", "yellow", "green", "blue"];
   const values = [...Array(10).keys()].map(n => n.toString())
-    .concat(["skip","reverse","+2","wild","+4"]);
+    .concat(["skip", "reverse", "+2", "wild", "+4"]);
+
   let deck = [];
-  colors.forEach(color => values.forEach(value => {
-    const count = value === "0" || value.startsWith("+4") ? 1 : 2;
-    for (let i = 0; i < count; i++) deck.push({ color, value });
-  }));
+  colors.forEach(color => {
+    values.forEach(value => {
+      const count = value === "0" || value.startsWith("+4") ? 1 : 2;
+      for (let i = 0; i < count; i++) {
+        deck.push({ color, value });
+      }
+    });
+  });
+
+  // Add extra +4 wilds just in case
   deck = deck.concat(Array(4).fill({ color: "wild", value: "+4" }));
+
+  // Shuffle
   deck = deck.sort(() => Math.random() - 0.5);
   return deck;
 }
 
+// ✅ Create a new game
 export async function createUnoGame(userId, betAmount) {
   const deck = generateUnoDeck();
   const playerHand = deck.splice(0, 7);
   const aiHand = deck.splice(0, 7);
   const topCard = deck.shift();
 
-  const newBalance = (await db.query.users.findFirst({ where: eq(users.id, userId) })).balance - betAmount;
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  const newBalance = user.balance - betAmount;
 
   const [inserted] = await db.transaction(async tx => {
     await tx.update(users).set({ balance: newBalance.toString() }).where(eq(users.id, userId));
@@ -47,3 +59,33 @@ export async function createUnoGame(userId, betAmount) {
     topCard
   };
 }
+
+// ✅ Get an existing game by ID
+export async function getUnoGameById(gameId) {
+  const game = await db.query.unoGames.findFirst({
+    where: eq(unoGames.id, gameId)
+  });
+  return game;
+}
+
+//draw-card
+export function drawUnoCard(game) {
+  const deck = typeof game.deck === "string" ? JSON.parse(game.deck) : game.deck;
+  const card = deck.shift();
+  game.deck = deck;
+  return card;
+}
+
+export async function updateUnoGameState(gameId, updatedGame) {
+  await db
+    .update(unoGames)
+    .set({
+      deck: JSON.stringify(updatedGame.deck),
+      playerHand: JSON.stringify(updatedGame.playerHand),
+      aiHand: JSON.stringify(updatedGame.aiHand),
+      topCard: JSON.stringify(updatedGame.topCard),
+      isPlayerTurn: updatedGame.isPlayerTurn,
+    })
+    .where(eq(unoGames.id, gameId));
+}
+
