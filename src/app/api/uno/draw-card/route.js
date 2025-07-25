@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getUnoGameById, updateUnoGameState, drawUnoCard } from "@/lib/unoGameUtils";
+import { getUnoGameById, updateUnoGameState, drawUnoCard } from "../../../lib/unogameutils";
 
 export async function POST(request) {
   try {
@@ -10,11 +10,24 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: "Game not found" }, { status: 404 });
     }
 
-    const newCard = drawUnoCard(game); // Draw from deck
+    // 🛠️ Safely parse deck and playerHand if needed
+    game.deck = typeof game.deck === "string" ? JSON.parse(game.deck) : game.deck;
+    game.playerHand = typeof game.playerHand === "string" ? JSON.parse(game.playerHand) : game.playerHand;
+
+    // ✅ Draw a card
+    const newCard = drawUnoCard(game);
     game.playerHand.push(newCard);
 
-    game.isPlayerTurn = false; // Turn ends after drawing
-    await updateUnoGameState(gameId, game);
+    // 🌀 Turn ends after drawing
+    game.isPlayerTurn = false;
+
+    // 💾 Save back updated game state
+    await updateUnoGameState(gameId, {
+      ...game,
+      deck: JSON.stringify(game.deck),
+      playerHand: JSON.stringify(game.playerHand),
+      isPlayerTurn: game.isPlayerTurn
+    });
 
     return NextResponse.json({
       success: true,

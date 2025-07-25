@@ -99,22 +99,23 @@ export async function POST(request) {
       return inserted[0];
     });
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data: {
-          gameId: result.id,
-          newBalance: (balance - betAmount).toFixed(2),
-          playerHand,
-          aiHand: ["?", "?", "?", "?", "?", "?", "?"], // hidden
-          discardPile,
-          topCard, // Optional, if frontend uses this separately
-          turn: "player",
-          pot,
-        },
-      }),
-      { status: 200 }
-    );
+   return new Response(
+  JSON.stringify({
+    success: true,
+    data: {
+      id: result.id, // 👈 correct key
+      newBalance: (balance - betAmount).toFixed(2),
+      playerHand,
+      aiHand: ["?", "?", "?", "?", "?", "?", "?"], // hidden
+      discardPile,
+      topCard,
+      turn: "player",
+      pot,
+    },
+  }),
+  { status: 200 }
+);
+
   } catch (err) {
     console.error("UNO AI init error:", err);
     return new Response(JSON.stringify({ success: false, error: "Server error" }), {
