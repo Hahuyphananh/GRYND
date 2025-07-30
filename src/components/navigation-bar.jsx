@@ -2,12 +2,14 @@
 import React, { useEffect, useState } from "react";
 import { useUser, useAuth, SignOutButton } from '@clerk/nextjs';
 import Link from 'next/link';
+import AddFundsModal from './AddFundsModal';
 
 function NavigationBar({ currentPath }) {
   const { isLoaded, isSignedIn } = useUser();
   const { getToken } = useAuth();
   const [balance, setBalance] = useState(null);
   const [error, setError] = useState(null);
+  const [showAddFunds, setShowAddFunds] = useState(false);
 
   const fetchBalance = async () => {
     try {
@@ -59,6 +61,10 @@ function NavigationBar({ currentPath }) {
     }
   };
 
+  const handleAddFundsSuccess = (newBalance) => {
+    setBalance(newBalance);
+  };
+
   useEffect(() => {
     if (isSignedIn) {
       fetchBalance();
@@ -68,74 +74,82 @@ function NavigationBar({ currentPath }) {
   const isCasinoPath = currentPath.startsWith("/casino");
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-[#002347]">
-      <div className="mx-auto max-w-7xl px-4">
-        <div className="flex h-16 items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-[#FFD700]">
-            BetSim
-          </Link>
+    <>
+      <nav className="fixed top-0 left-0 right-0 z-40 bg-[#003366] border-b border-[#FFD700]/20">
+        <div className="mx-auto max-w-7xl px-4">
+          <div className="flex h-16 items-center justify-between">
+            <Link href="/" className="text-xl font-bold text-[#FFD700]">
+              BetSim
+            </Link>
 
-          <div className="hidden md:flex items-center space-x-4">
-            {["/", "/sport", "/casino", "/rankings"].map((path) => (
-              <Link
-                key={path}
-                href={path}
-                className={`px-3 py-2 text-sm font-medium ${
-                  currentPath === path || (path === "/casino" && isCasinoPath)
-                    ? "text-[#FFD700]"
-                    : "text-white hover:text-[#FFD700]"
-                }`}
-              >
-                {path === "/" ? "Accueil" : path.slice(1).charAt(0).toUpperCase() + path.slice(2)}
-              </Link>
-            ))}
-          </div>
+            <div className="hidden md:flex items-center space-x-4">
+              {["/", "/sport", "/casino", "/rankings"].map((path) => (
+                <Link
+                  key={path}
+                  href={path}
+                  className={`px-3 py-2 text-sm font-medium ${
+                    currentPath === path || (path === "/casino" && isCasinoPath)
+                      ? "text-[#FFD700]"
+                      : "text-white hover:text-[#FFD700]"
+                  }`}
+                >
+                  {path === "/" ? "Accueil" : path.slice(1).charAt(0).toUpperCase() + path.slice(2)}
+                </Link>
+              ))}
+            </div>
 
-          <div className="flex items-center space-x-4">
-            {isLoaded && isSignedIn ? (
-              <>
-                <div className="hidden sm:flex items-center space-x-4">
-                  <span className="text-[#FFD700]">
-                    {error
-                      ? `Erreur: ${error}`
-                      : balance !== null
-                      ? `${balance} tokens`
-                      : "Chargement..."}
-                  </span>
-                  <Link
-                    href="/profil"
-                    className={`px-3 py-2 text-sm font-medium ${
-                      currentPath === "/profil"
-                        ? "text-[#FFD700]"
-                        : "text-white hover:text-[#FFD700]"
-                    }`}
+            <div className="flex items-center space-x-4">
+              {isLoaded && isSignedIn ? (
+                <>
+                  <div className="hidden sm:flex items-center space-x-4">
+                    <span className="text-[#FFD700]">
+                      {error
+                        ? `Erreur: ${error}`
+                        : balance !== null
+                        ? `${balance} tokens`
+                        : "Chargement..."}
+                    </span>
+                    <Link
+                      href="/profil"
+                      className={`px-3 py-2 text-sm font-medium ${
+                        currentPath === "/profil"
+                          ? "text-[#FFD700]"
+                          : "text-white hover:text-[#FFD700]"
+                      }`}
+                    >
+                      Profil
+                    </Link>
+                  </div>
+                  <SignOutButton>
+                    <button className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80">
+                      Déconnexion
+                    </button>
+                  </SignOutButton>
+                </>
+              ) : (
+                <><Link
+                    href="/sign-up"
+                    className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
                   >
-                    Profil
-                  </Link>
-                </div>
-                <SignOutButton>
-                  <button className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80">
-                    Déconnexion
-                  </button>
-                </SignOutButton>
-              </>
-            ) : (
-              <><Link
-                  href="/sign-up"
-                  className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
-                >
-                  Créer un compte
-                </Link><Link
-                  href="/sign-in"
-                  className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
-                >
-                    Connexion
-                  </Link></>
-            )}
+                    Créer un compte
+                  </Link><Link
+                    href="/sign-in"
+                    className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
+                  >
+                      Connexion
+                    </Link></>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </nav>
+      </nav>
+
+      <AddFundsModal
+        isOpen={showAddFunds}
+        onClose={() => setShowAddFunds(false)}
+        onSuccess={handleAddFundsSuccess}
+      />
+    </>
   );
 }
 
