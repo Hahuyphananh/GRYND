@@ -12,7 +12,7 @@ const playSound = (freq = 880) => {
   gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
 };
 
-const SlotMachine = () => {
+export default function SlotMachine() {
   const [reels, setReels] = useState(
     Array.from({ length: 5 }, () => Array(3).fill("💰"))
   );
@@ -22,6 +22,9 @@ const SlotMachine = () => {
   const [totalWin, setTotalWin] = useState(0);
   const [totalLoss, setTotalLoss] = useState(0);
   const [autoSpinning, setAutoSpinning] = useState(false);
+  const [spinning, setSpinning] = useState(false);
+  const [animatingReels, setAnimatingReels] = useState(Array(5).fill(false));
+  const [flashWin, setFlashWin] = useState(false);
   const autoSpinRef = useRef(null);
 
   // Load token balance from backend
@@ -30,15 +33,12 @@ const SlotMachine = () => {
       try {
         const res = await fetch("/api/get-user-tokens", { method: "POST" });
         const data = await res.json();
-        if (data.success) {
-          setBalance(parseFloat(data.data.balance));
-        }
+        if (data.success) setBalance(parseFloat(data.data.balance));
       } catch (err) {
         console.error("Error fetching tokens:", err);
         setLastResult("❌ Failed to load balance");
       }
     };
-
     fetchTokens();
   }, []);
 
@@ -50,10 +50,14 @@ const SlotMachine = () => {
   };
 
   const handleSpin = async () => {
-    if (balance < bet) {
-      setLastResult("❌ Not enough balance.");
+    if (balance < bet || spinning) {
+      setLastResult("❌ Not enough balance or already spinning.");
       return;
     }
+
+    setSpinning(true);
+    setFlashWin(false);
+    setAnimatingReels(Array(5).fill(true));
 
     try {
       const res = await fetch("/api/slots/play", {
@@ -66,30 +70,55 @@ const SlotMachine = () => {
       if (!json.success) throw new Error(json.error);
 
       const { reels: newReels, winAmount, newBalance } = json.data;
-      setReels(newReels);
-      playSound(winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700);
 
-      setLastResult(
-        winAmount >= bet * 5
-          ? "🎉 JACKPOT!"
-          : winAmount >= bet * 2
-          ? "✅ Match!"
-          : "❌ No match."
-      );
+      // Stagger reel stopping for realism
+      newReels.forEach((reel, idx) => {
+        setTimeout(() => {
+          setAnimatingReels((prev) => {
+            const copy = [...prev];
+            copy[idx] = false;
+            return copy;
+          });
+          setReels((prev) => {
+            const updated = [...prev];
+            updated[idx] = reel;
+            return updated;
+          });
+        }, idx * 400 + 800);
+      });
 
-      setBalance(newBalance);
-      setTotalWin(prev => prev + winAmount);
-      if (winAmount === 0) setTotalLoss(prev => prev + bet);
+      // Final update after last reel stops
+      setTimeout(() => {
+        playSound(winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700);
+        setLastResult(
+          winAmount >= bet * 5
+            ? "🎉 JACKPOT!"
+            : winAmount >= bet * 2
+            ? "✅ Match!"
+            : "❌ No match."
+        );
+        setBalance(newBalance);
+        setTotalWin((prev) => prev + winAmount);
+        if (winAmount === 0) setTotalLoss((prev) => prev + bet);
+
+        if (winAmount > 0) {
+          setFlashWin(true);
+          setTimeout(() => setFlashWin(false), 1500);
+        }
+
+        setSpinning(false);
+      }, 3000);
     } catch (err) {
       console.error("Slot error:", err);
       setLastResult("❌ Error playing slot");
+      setSpinning(false);
     }
   };
 
   const startAutoSpin = () => {
     if (autoSpinning) return;
     setAutoSpinning(true);
-    autoSpinRef.current = setInterval(handleSpin, 1200);
+    autoSpinRef.current = setInterval(handleSpin, 3500);
   };
 
   const stopAutoSpin = () => {
@@ -98,48 +127,75 @@ const SlotMachine = () => {
   };
 
   const setMaxBet = () => {
-    setBet(Math.min(1000, balance)); // You can adjust the max bet limit (1000 here)
+    setBet(Math.min(1000, balance));
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-900 to-indigo-900 p-4 text-white">
-      <div className="flex border-8 border-yellow-400 rounded-xl bg-purple-700 p-4 mb-6">
-        {reels.map((column, colIdx) => (
-          <div
-            key={colIdx}
-            className="flex flex-col items-center mx-1 bg-purple-900 p-2 rounded-lg"
-          >
-            {column.map((fruit, rowIdx) => (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-green-900 to-green-700 p-4 text-white relative">
+      
+      {/* Title */}
+      <h1 className="text-4xl font-extrabold text-yellow-400 mb-6 drop-shadow-[0_0_10px_gold] animate-pulse">
+        FORTUNE SPIN SLOTS
+      </h1>
+
+      {/* Slot Frame */}
+      <div className="relative flex border-8 border-yellow-500 rounded-2xl bg-green-800 p-4 mb-6 shadow-[0_0_30px_gold] overflow-hidden">
+        
+        {flashWin && (
+          <div className="absolute inset-0 bg-yellow-400 bg-opacity-30 animate-flash pointer-events-none"></div>
+        )}
+
+        {reels.map((column, colIdx) => {
+          const symbols = animatingReels[colIdx]
+            ? [...column, ...column, ...column]
+            : column;
+
+          return (
+            <div
+              key={colIdx}
+              className="flex flex-col items-center mx-1 bg-green-900 p-2 rounded-lg border-4 border-yellow-400 shadow-lg overflow-hidden h-[240px]"
+            >
               <div
-                key={`${fruit}-${Date.now()}-${rowIdx}`}
-                className="w-16 h-16 text-4xl flex items-center justify-center my-1 bg-purple-800 rounded animate-spinReel"
-                style={{ animationDelay: `${colIdx * 0.05}s` }}
+                className={`flex flex-col ${
+                  animatingReels[colIdx]
+                    ? "animate-[scrollReel_0.3s_linear_infinite]"
+                    : ""
+                }`}
               >
-                {fruit}
+                {symbols.map((fruit, rowIdx) => (
+                  <div
+                    key={`${fruit}-${colIdx}-${rowIdx}`}
+                    className="w-16 h-16 text-4xl flex items-center justify-center my-1 bg-green-700 rounded-lg border-2 border-yellow-300"
+                  >
+                    {fruit}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        ))}
+            </div>
+          );
+        })}
       </div>
 
+      {/* Buttons */}
       <div className="flex items-center gap-4 mb-6">
         <button
           onClick={handleSpin}
-          className="bg-red-500 hover:bg-red-600 text-white text-xl font-bold py-3 px-8 rounded-full shadow-lg transition"
+          disabled={spinning}
+          className="bg-yellow-400 hover:bg-yellow-500 text-black text-xl font-bold py-3 px-8 rounded-full shadow-lg transition animate-pulse disabled:opacity-50"
         >
           SPIN
         </button>
         {!autoSpinning ? (
           <button
             onClick={startAutoSpin}
-            className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-6 rounded shadow"
+            className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-6 rounded shadow"
           >
             AUTO SPIN
           </button>
         ) : (
           <button
             onClick={stopAutoSpin}
-            className="bg-yellow-700 hover:bg-yellow-800 text-white font-semibold py-2 px-6 rounded shadow"
+            className="bg-red-700 hover:bg-red-800 text-white font-semibold py-2 px-6 rounded shadow"
           >
             STOP AUTO
           </button>
@@ -152,7 +208,8 @@ const SlotMachine = () => {
         </button>
       </div>
 
-      <div className="bg-black bg-opacity-30 p-6 rounded-lg w-full max-w-xl text-white space-y-2">
+      {/* Stats */}
+      <div className="bg-black bg-opacity-40 p-6 rounded-lg w-full max-w-xl text-white space-y-2 border-2 border-yellow-500">
         <div className="flex justify-between items-center">
           <span>Bet Amount:</span>
           <div className="flex items-center gap-2">
@@ -164,18 +221,6 @@ const SlotMachine = () => {
               onChange={handleBetChange}
               className="w-24 px-2 py-1 rounded text-black text-right"
             />
-            <button 
-              onClick={() => setBet(prev => Math.max(1, prev - 10))}
-              className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
-            >
-              -
-            </button>
-            <button 
-              onClick={() => setBet(prev => Math.min(balance, prev + 10))}
-              className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
-            >
-              +
-            </button>
           </div>
         </div>
         <div className="flex justify-between">
@@ -194,8 +239,21 @@ const SlotMachine = () => {
           {lastResult && <p className="text-xl">{lastResult}</p>}
         </div>
       </div>
+
+      {/* Animations */}
+      <style jsx>{`
+        @keyframes scrollReel {
+          0% { transform: translateY(0); }
+          100% { transform: translateY(-33.33%); }
+        }
+        @keyframes flash {
+          0%, 100% { opacity: 0; }
+          50% { opacity: 1; }
+        }
+        .animate-flash {
+          animation: flash 0.3s ease-in-out 4;
+        }
+      `}</style>
     </div>
   );
-};
-
-export default SlotMachine;
+}
