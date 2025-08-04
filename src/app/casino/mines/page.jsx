@@ -372,201 +372,159 @@ async function handleClick(index) {
 
   const maxMultiplier = calculateMultiplier(totalMines, GRID_SIZE * GRID_SIZE - totalMines - 1);
 
- 
+return (
+  <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center justify-center p-4 relative">
+    {/* Return to Casino Button */}
+    <a
+      href="/casino"
+      className="absolute top-4 left-4 bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-2 px-4 rounded-lg shadow-lg transition-all duration-300"
+    >
+      ⬅ Return to Casino
+    </a>
 
-  return (
-    <><p className="text-lg font-semibold">🪙 Tokens: {userTokens}</p><div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
-      <div className={`bg-gray-800 rounded-lg p-8 w-full max-w-6xl min-w-[80%] ${gameOver ? "relative" : ""}`}>
-        {gameOver && (
-          <div className="absolute inset-0 bg-black bg-opacity-10 rounded-lg pointer-events-none"></div>
-        )}
+    <div className={`bg-[#004080] rounded-lg p-8 w-full max-w-6xl min-w-[80%] ${gameOver ? "relative" : ""}`}>
+      {gameOver && (
+        <div className="absolute inset-0 bg-black bg-opacity-10 rounded-lg pointer-events-none"></div>
+      )}
 
-        {/* Main game area with side panels */}
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Left sidebar */}
-          <div className="w-full lg:w-1/4 flex flex-col gap-4">
-            {/* Mine selection */}
-            <div className="bg-gray-700 rounded-lg p-4">
-              <p className="text-lg mb-3 text-center">Select Mines</p>
-              <div className="grid grid-cols-3 gap-2">
-                {[1, 3, 5, 10, 15, 20].map(mineCount => (
-                  <button
-                    key={mineCount}
-                    onClick={() => handleMineChange(mineCount)}
-                    disabled={autoplayEnabled}
-                    className={`py-2 px-1 rounded text-sm ${totalMines === mineCount
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-600 text-gray-300'} ${gameOver || autoplayEnabled ? 'opacity-70' : ''}`}
-                  >
-                    {mineCount}
-                  </button>
-                ))}
-              </div>
-
-              {/* Custom mine input */}
-              <form onSubmit={handleCustomMineInput} className="mt-4 flex gap-2">
-                <input
-                  id="custom-mine-input"
-                  type="number"
-                  min="1"
-                  max={GRID_SIZE * GRID_SIZE - 1}
-                  placeholder="Custom"
-                  className="bg-gray-600 text-white rounded px-2 py-1 w-full text-sm"
-                  disabled={gameOver || autoplayEnabled} />
+      {/* Main game area with side panels */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Left sidebar */}
+        <div className="w-full lg:w-1/4 flex flex-col gap-4">
+          {/* Mine selection */}
+          <div className="bg-[#0055aa] rounded-lg p-4">
+            <p className="text-lg mb-3 text-center">Select Mines</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[1, 3, 5, 10, 15, 20].map((mineCount) => (
                 <button
-                  type="submit"
-                  className={`px-2 py-1 rounded text-sm bg-blue-600 text-white
-                    ${(gameOver || autoplayEnabled) ? 'opacity-70 cursor-not-allowed' : ''}`}
-                  disabled={gameOver || autoplayEnabled}
+                  key={mineCount}
+                  onClick={() => handleMineChange(mineCount)}
+                  disabled={autoplayEnabled}
+                  className={`py-2 px-1 rounded text-sm ${
+                    totalMines === mineCount
+                      ? "bg-#1e3f5a-600 text-white"
+                      : "bg-[#004080] text-gray-300"
+                  } ${gameOver || autoplayEnabled ? "opacity-70" : ""}`}
                 >
-                  Set
-                </button>
-              </form>
-            </div>
-
-            {/* Game stats */}
-            <div className="bg-gray-700 rounded-lg p-4">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-bold">Diamonds:</span>
-                <span className="flex items-center">
-                  <span className="text-green-400 mr-1">💎</span>
-                  {25 - totalMines}
-                </span>
-              </div>
-              <div className="flex justify-between items-center mb-4">
-                <span className="font-bold">Mines:</span>
-                <span className="flex items-center">
-                  <span className="text-purple-500 mr-1">☢️</span>
-                  {totalMines}
-                </span>
-              </div>
-              <div className="bg-gray-900 rounded p-3 text-center mb-2">
-                <span className="text-yellow-500 mr-2">🪙</span>
-                <span>0.00000000</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Main game grid */}
-          <div className="w-full lg:w-2/4">
-            <div className="grid grid-cols-5 gap-3">
-              {grid.map((cell, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleClick(i)}
-                  disabled={gameOver || (showAllMines && cell === "mine") || autoplayEnabled}
-                  className={`w-full aspect-square rounded-lg flex items-center justify-center transition-all duration-300 text-3xl
-                    ${getCellStyle(cell, i)} ${autoplayEnabled ? "cursor-not-allowed" : ""}`}
-                >
-                  {getCellContent(cell, i)}
+                  {mineCount}
                 </button>
               ))}
             </div>
-          </div>
 
-          {/* Right sidebar */}
-          <div className="w-full lg:w-1/4 flex flex-col gap-4">
-            {/* Multiplier display */}
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <div className="text-3xl font-bold text-green-400 mb-1">
-                {multiplier.toFixed(2)}x
-              </div>
-              <div className="text-sm text-gray-400">
-                Max: {maxMultiplier.toFixed(2)}x
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="bg-gray-700 rounded-lg p-4 flex flex-col gap-3">
+            {/* Custom mine input */}
+            <form onSubmit={handleCustomMineInput} className="mt-4 flex gap-2">
+              <input
+                id="custom-mine-input"
+                type="number"
+                min="1"
+                max={GRID_SIZE * GRID_SIZE - 1}
+                placeholder="Custom"
+                className="bg-[#004080] text-white rounded px-2 py-1 w-full text-sm"
+                disabled={gameOver || autoplayEnabled}
+              />
               <button
-                onClick={handleCashOut}
-                className={`bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 px-4 rounded-lg text-lg
-                  ${(gameOver || autoplayEnabled) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                type="submit"
+                className={`px-2 py-1 rounded text-sm bg-blue-600 text-white
+                  ${gameOver || autoplayEnabled ? "opacity-70 cursor-not-allowed" : ""}`}
                 disabled={gameOver || autoplayEnabled}
               >
-                CASHOUT
+                Set
               </button>
-              <button
-                onClick={toggleAutoplay}
-                className={`${autoplayEnabled ? 'bg-yellow-600' : 'bg-gray-600'} hover:bg-gray-500 text-white 
-                  font-bold py-3 px-4 rounded-lg text-lg ${gameOver ? 'opacity-70 cursor-not-allowed' : ''}`}
-                disabled={gameOver}
-              >
-                {autoplayEnabled ? 'STOP AUTO' : 'AUTO PLAY'}
-              </button>
-              <button
-                onClick={handleReset}
-                className={`bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg text-lg
-                  ${autoplayEnabled ? 'opacity-70 cursor-not-allowed' : ''}`}
-                disabled={autoplayEnabled}
-              >
-                NEW GAME
-              </button>
-            </div>
+            </form>
+          </div>
 
-            {/* Game status */}
-            {gameOver && (
-              <div className={`p-3 text-center rounded-lg text-lg ${hasWon ? 'bg-green-900' : 'bg-red-900'}`}>
-                {hasWon
-                  ? `You won ${multiplier.toFixed(2)}x your bet!`
-                  : "Game Over! You hit a mine."}
-              </div>
-            )}
+          {/* Game stats */}
+          <div className="bg-[#0055aa] rounded-lg p-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="font-bold">Diamonds:</span>
+              <span className="flex items-center">
+                <span className="text-green-400 mr-1">💎</span>
+                {25 - totalMines}
+              </span>
+            </div>
+            <div className="flex justify-between items-center mb-4">
+              <span className="font-bold">Mines:</span>
+              <span className="flex items-center">
+                <span className="text-purple-500 mr-1">☢️</span>
+                {totalMines}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Autoplay Settings Modal */}
-        {autoplaySettings && !gameOver && (
-          <div className="absolute inset-0 bg-gray-900 bg-opacity-95 rounded-lg flex flex-col justify-center items-center z-30 p-6">
-            <h3 className="text-2xl font-bold mb-6">Autoplay Settings</h3>
-
-            <div className="w-full mb-6">
-              <label className="block text-lg mb-2">Auto-cashout at:</label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min="1.1"
-                  max="10"
-                  step="0.1"
-                  value={autoCashoutAt}
-                  onChange={(e) => setAutoCashoutAt(parseFloat(e.target.value))}
-                  className="w-full h-3" />
-                <span className="text-green-400 font-bold text-xl min-w-[60px]">{autoCashoutAt.toFixed(1)}x</span>
-              </div>
-            </div>
-
-            <div className="w-full mb-8">
-              <label className="block text-lg mb-2">Speed:</label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min="100"
-                  max="2000"
-                  step="100"
-                  value={autoplaySpeed}
-                  onChange={(e) => setAutoplaySpeed(parseInt(e.target.value))}
-                  className="w-full h-3" />
-                <span className="text-xl min-w-[60px]">{(autoplaySpeed / 1000).toFixed(1)}s</span>
-              </div>
-            </div>
-
-            <div className="flex gap-3 w-full">
+        {/* Main game grid */}
+        <div className="w-full lg:w-2/4">
+          <div className="grid grid-cols-5 gap-3">
+            {grid.map((cell, i) => (
               <button
-                onClick={() => setAutoplaySettings(false)}
-                className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg text-lg w-1/2"
+                key={i}
+                onClick={() => handleClick(i)}
+                disabled={gameOver || (showAllMines && cell === "mine") || autoplayEnabled}
+                className={`w-full aspect-square rounded-lg flex items-center justify-center transition-all duration-300 text-3xl
+                  ${getCellStyle(cell, i)} ${autoplayEnabled ? "cursor-not-allowed" : ""}`}
               >
-                Cancel
+                {getCellContent(cell, i)}
               </button>
-              <button
-                onClick={startAutoplayWithSettings}
-                className="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 px-6 rounded-lg text-lg w-1/2"
-              >
-                Start
-              </button>
-            </div>
+            ))}
           </div>
-        )}
+        </div>
+
+        {/* Right sidebar */}
+        <div className="w-full lg:w-1/4 flex flex-col gap-4">
+          {/* Tokens */}
+          <div className="bg-[#0055aa] rounded-lg p-4 text-center">
+            <p className="text-lg font-semibold mb-1">🪙 Tokens</p>
+            <p className="text-yellow-400 text-xl font-bold">{userTokens}</p>
+          </div>
+
+          {/* Multiplier display */}
+          <div className="bg-[#0055aa] rounded-lg p-4 text-center">
+            <div className="text-3xl font-bold text-green-400 mb-1">
+              {multiplier.toFixed(2)}x
+            </div>
+            <div className="text-sm text-gray-300">Max: {maxMultiplier.toFixed(2)}x</div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="bg-[#0055aa] rounded-lg p-4 flex flex-col gap-3">
+            <button
+              onClick={handleCashOut}
+              className={`bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 px-4 rounded-lg text-lg
+                ${(gameOver || autoplayEnabled) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={gameOver || autoplayEnabled}
+            >
+              CASHOUT
+            </button>
+            <button
+              onClick={toggleAutoplay}
+              className={`${autoplayEnabled ? 'bg-yellow-600' : 'bg-gray-600'} hover:bg-gray-500 text-white 
+                font-bold py-3 px-4 rounded-lg text-lg ${gameOver ? 'opacity-70 cursor-not-allowed' : ''}`}
+              disabled={gameOver}
+            >
+              {autoplayEnabled ? 'STOP AUTO' : 'AUTO PLAY'}
+            </button>
+            <button
+              onClick={handleReset}
+              className={`bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg text-lg
+                ${autoplayEnabled ? 'opacity-70 cursor-not-allowed' : ''}`}
+              disabled={autoplayEnabled}
+            >
+              NEW GAME
+            </button>
+          </div>
+
+          {/* Game status */}
+          {gameOver && (
+            <div className={`p-3 text-center rounded-lg text-lg ${hasWon ? 'bg-green-900' : 'bg-red-900'}`}>
+              {hasWon
+                ? `You won ${multiplier.toFixed(2)}x your bet!`
+                : "Game Over! You hit a mine."}
+            </div>
+          )}
+        </div>
       </div>
-    </div></>
-  );
+    </div>
+  </div>
+);
+
 }

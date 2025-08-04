@@ -16,37 +16,25 @@ export default function UnoGamePage() {
 
   const router = useRouter();
 
-  // ✅ Charger les tokens à l’arrivée sur la page
-useEffect(() => {
-  const fetchTokens = async () => {
-    console.log("Calling /api/get-user-tokens...");
-    try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST", // ✅ MUST be GET to match your API route
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-      });
-
-      console.log("Response status:", res.status);
-
-      const data = await res.json();
-      console.log("Token fetch response:", data);
-
-      if (data.success) {
-        setTokens(data.data);
-      } else {
-        console.warn("Token fetch failed:", data.error);
+  // ✅ Load tokens on page mount
+  useEffect(() => {
+    const fetchTokens = async () => {
+      try {
+        const res = await fetch("/api/get-user-tokens", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (data.success) {
+          setTokens({ balance: data.data.balance });
+        }
+      } catch (err) {
+        console.error("Erreur lors du chargement des tokens:", err);
       }
-    } catch (err) {
-      console.error("Erreur lors du chargement des tokens:", err);
-    }
-  };
-
-  fetchTokens();
-}, []);
-
+    };
+    fetchTokens();
+  }, []);
 
   const initializeGame = async () => {
     setLoading(true);
@@ -64,11 +52,31 @@ useEffect(() => {
       setTopCard(data.data.topCard);
       setIsPlayerTurn(true);
       setMessage("À ton tour !");
-      setTokens(data.data.newBalance); // mettre à jour les tokens
+      setTokens({ balance: data.data.newBalance }); // ✅ update tokens
     } else {
       setMessage("Erreur d'initialisation");
     }
     setLoading(false);
+  };
+
+  const handleAITurn = async (gameId) => {
+    try {
+      const res = await fetch("/api/uno/ai-turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAiHandCount(data.data.aiHandCount);
+        setTopCard(data.data.topCard);
+        setIsPlayerTurn(true);
+        setMessage(data.data.message || "À ton tour !");
+        setTokens({ balance: data.data.newBalance });
+      }
+    } catch (err) {
+      console.error("Erreur IA:", err);
+    }
   };
 
   const playCard = async (card) => {
@@ -76,16 +84,20 @@ useEffect(() => {
     setLoading(true);
     const res = await fetch("/api/uno/play-card", {
       method: "POST",
-      body: JSON.stringify({ gameId: game.id, card }),
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gameId: game.id, card }),
     });
+
     const data = await res.json();
     if (data.success) {
       setPlayerHand(data.data.playerHand);
       setTopCard(data.data.topCard);
       setAiHandCount(data.data.aiHandCount);
-      setIsPlayerTurn(data.data.isPlayerTurn);
-      setMessage(data.data.message);
+      setIsPlayerTurn(false);
+      setMessage("L'IA joue...");
+
+      // Trigger AI turn
+      setTimeout(() => handleAITurn(game.id), 1000);
     } else {
       setMessage(data.error);
     }
@@ -97,14 +109,18 @@ useEffect(() => {
     setLoading(true);
     const res = await fetch("/api/uno/draw-card", {
       method: "POST",
-      body: JSON.stringify({ gameId: game.id }),
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gameId: game.id }),
     });
+
     const data = await res.json();
     if (data.success) {
       setPlayerHand(data.data.playerHand);
-      setMessage(data.data.message);
-      setIsPlayerTurn(data.data.isPlayerTurn);
+      setIsPlayerTurn(false);
+      setMessage("L'IA joue...");
+
+      // Trigger AI turn
+      setTimeout(() => handleAITurn(game.id), 1000);
     } else {
       setMessage(data.error);
     }
@@ -124,9 +140,11 @@ useEffect(() => {
 
       <h1 className="text-3xl mb-2 font-bold">UNO vs IA</h1>
 
-      {/* ✅ Affichage des tokens */}
-      {tokens !== null && (
-        <p className="text-yellow-300 mb-4 text-lg">💰 Tokens : {tokens.balance}</p>
+      {/* ✅ Always display token balance */}
+      {tokens && (
+        <p className="text-yellow-300 mb-4 text-lg">
+          💰 Tokens : {tokens.balance}
+        </p>
       )}
 
       {!game ? (
