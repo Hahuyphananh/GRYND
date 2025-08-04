@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useUser } from "@clerk/nextjs";  // <-- Import here
+import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 
-function PokerPage() {
-  const { user } = useUser();  // <-- Use inside component
+export default function PokerPage() {
+  const { user } = useUser();
+  const router = useRouter();
 
   const [userTokens, setUserTokens] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -16,6 +18,16 @@ function PokerPage() {
   const [opponentHand, setOpponentHand] = useState([]);
   const [playerHand, setPlayerHand] = useState([]);
   const [pot, setPot] = useState(0);
+
+  // --- SAME CARD GENERATOR AS BLACKJACK ---
+  const getRandomCard = () => {
+    const suits = ["♠", "♥", "♦", "♣"];
+    const values = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
+    return {
+      suit: suits[Math.floor(Math.random() * suits.length)],
+      value: values[Math.floor(Math.random() * values.length)],
+    };
+  };
 
   useEffect(() => {
     fetchTokens();
@@ -43,14 +55,19 @@ function PokerPage() {
       const res = await fetch("/api/initialize-poker-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ smallBlind: 5, bigBlind: 10, minBuy: 1000 })
+        body: JSON.stringify({ smallBlind: 5, bigBlind: 10, minBuy: 1000 }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error);
+
+      // --- Use card objects ---
+      const playerCards = [getRandomCard(), getRandomCard()];
+      const aiCards = [{ value: "?", suit: "?" }, { value: "?", suit: "?" }];
+
       setGame(data.game);
-      setPlayerHand(data.playerHand);
-      setOpponentHand(["?", "?"]); // initially hidden
-      setPot(data.pot);
+      setPlayerHand(playerCards);
+      setOpponentHand(aiCards);
+      setPot(data.pot || 20);
       setResult(null);
     } catch (e) {
       setError(e.message);
@@ -60,177 +77,146 @@ function PokerPage() {
   };
 
   const initializeAiGame = async () => {
-  try {
-    setLoading(true);
-    setError(null);
+    try {
+      setLoading(true);
+      setError(null);
 
-    const response = await fetch("/api/initialize-poker-vs-ai", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
+      const response = await fetch("/api/initialize-poker-vs-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
 
-    const data = await response.json();
-    if (!response.ok || !data.success) {
-      setError(data.error || "Erreur lors de l'initialisation contre l'IA");
-      return;
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        setError(data.error || "Erreur lors de l'initialisation contre l'IA");
+        return;
+      }
+
+      setGame({ id: data.data.gameId });
+
+      // --- Use card objects like Blackjack ---
+      const playerCards = [getRandomCard(), getRandomCard()];
+      const aiCards = [{ value: "?", suit: "?" }, { value: "?", suit: "?" }];
+
+      setPlayerHand(playerCards);
+      setOpponentHand(aiCards);
+      setPot(data.data.pot ?? 20);
+      setUserTokens(data.data.newBalance);
+      setResult(null);
+    } catch (error) {
+      setError("Impossible de démarrer la partie contre l’IA");
+      console.error("Erreur:", error);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    setGame({ id: data.data.gameId });
-    console.log("🟢 Set game:", { id: data.data.gameId });
+  const handleAction = async (action) => {
+    if (!game) return;
 
-    setPlayerHand(data.data.playerHand);
-    setOpponentHand(["?", "?"]); // Hide AI cards
+    try {
+      const payload = {
+        gameId: game.id,
+        action,
+        amount: action === "raise" ? raiseAmount : null,
+      };
 
-    // ✅ use pot from backend if available, otherwise fallback to 20
-    setPot(data.data.pot ?? 20);
+      const res = await fetch("/api/handle-poker-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    setUserTokens(data.data.newBalance);
-    setResult(null);
-  } catch (error) {
-    setError("Impossible de démarrer la partie contre l’IA");
-    console.error("Erreur:", error);
-  } finally {
-    setLoading(false);
-  }
-};
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error);
 
+      // ✅ Update player state
+      setGame(data.game);
+      setPot(data.game.pot || 0);
 
-
- const handleAction = async (action) => {
-  if (!game) return;
-  if (!user) {
-    setError("User not logged in");
-    return;
-  }
-
-  setError(null);
-  try {
-    const payload = {
-      gameId: game.id,
-      action,
-      amount: action === "raise" ? raiseAmount : null,
-    };
-
-    console.log("Sending action:", payload);
-
-    const res = await fetch("/api/handle-poker-action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await res.json();
-    console.log("Received data:", data);
-
-    if (!res.ok || data.error) throw new Error(data.error);
-
-    const updatedGame = data.game;
-    const positions = data.positions || [];
-
-    setPot(updatedGame.pot || 0);
-
-    const userId = user.id || user.primaryEmailAddressId;
-
-    const playerPosition = positions.find(
-      (p) => p.player_id === user.id || p.clerk_id === userId
-    );
-    const aiPosition = positions.find((p) => p.player_id === null); // AI has no player_id
-
-    const isGameOver = data.result !== null;
-
-    // Only update hands if game is over; otherwise keep current hands
-    if (isGameOver) {
-      setPlayerHand(
-        playerPosition?.hand ? JSON.parse(playerPosition.hand) : ["?", "?"]
-      );
-      setOpponentHand(
-        aiPosition?.hand ? JSON.parse(aiPosition.hand) : ["?", "?"]
-      );
+      // ✅ Trigger AI turn after a short delay
+      setTimeout(async () => {
+        const aiRes = await fetch("/api/poker/ai-turn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ gameId: game.id }),
+        });
+        const aiData = await aiRes.json();
+        if (aiData.success) {
+          console.log("AI action:", aiData.data);
+          setPot(aiData.data.pot);
+        }
+      }, 1000);
+    } catch (e) {
+      console.error("Error in handleAction:", e);
+      setError(e.message);
     }
+  };
 
-    setResult(data.result || null);
-
-    setStats((prev) => ({
-      biggestWin: Math.max(prev.biggestWin, data.result?.winAmount || 0),
-      totalHands: prev.totalHands + 1,
-      totalWins: data.result?.won ? prev.totalWins + 1 : prev.totalWins,
-    }));
-
-    setUserTokens((prev) => {
-      const winAmount = data.result?.winAmount || 0;
-      const bet = data.result?.bet || 0;
-      return prev + winAmount - bet;
-    });
-
-    setGame(updatedGame);
-  } catch (e) {
-    console.error("Error in handleAction:", e);
-    setError(e.message);
-  }
-};
+  // --- Card Renderer identical to Blackjack ---
+  const renderCard = (card, i) => (
+    <div
+      key={i}
+      className="h-32 w-24 bg-white text-xl flex items-center justify-center rounded shadow"
+      style={{
+        color: ["♥", "♦"].includes(card.suit) ? "red" : "black",
+      }}
+    >
+      {card.value === "?" ? "?" : `${card.value}${card.suit}`}
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-8">
-      <div className="max-w-4xl mx-auto shadow-lg border border-yellow-400/30 rounded-2xl p-8 bg-[#0a1e3a]">
-        <h1 className="text-4xl font-bold text-center text-yellow-400 mb-6">♠️ Poker Royale</h1>
-        <p className="text-lg font-semibold">🪙 Tokens: {userTokens}</p>
-
-        {error && <p className="text-red-400 text-center mt-4">{error}</p>}
-
-{!game && (
-  <>
-    <div className="text-center mt-8">
+    <div className="min-h-screen bg-[#003366] pt-20">
+      {/* ✅ Return to Casino Button */}
       <button
-        onClick={initializeGame}
-        className="bg-yellow-400 hover:bg-yellow-300 text-black px-6 py-3 rounded-full font-bold"
+        onClick={() => router.push("/casino")}
+        className="absolute top-4 left-4 bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded shadow"
       >
-        Nouvelle Partie
+        ⬅ Return to Casino
       </button>
-    </div>
 
-    <div className="text-center mb-6">
-      <button
-        onClick={initializeAiGame}
-        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded shadow"
-      >
-        Jouer contre l’IA ♠️
-      </button>
-    </div>
-  </>
-)}
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <h1 className="text-4xl font-bold text-[#FFD700] text-center mb-6">
+          ♠️ Poker Royale
+        </h1>
+        <p className="text-lg font-semibold text-[#FFD700] text-center">
+          🪙 Tokens: {userTokens}
+        </p>
+
+        {error && <div className="mb-4 rounded bg-red-500/10 p-3 text-red-500">{error}</div>}
+
+        {!game && (
+          <div className="text-center mt-8 space-y-4">
+            <button
+              onClick={initializeGame}
+              className="bg-yellow-400 hover:bg-yellow-300 text-black px-6 py-3 rounded-full font-bold"
+            >
+              Nouvelle Partie
+            </button>
+            <button
+              onClick={initializeAiGame}
+              className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded shadow"
+            >
+              Jouer contre l’IA ♠️
+            </button>
+          </div>
+        )}
 
         {game && (
-          <div className="mt-8">
-            <div className="flex justify-center gap-4 mb-4">
+          <div className="mt-8 rounded-lg bg-[#0e6b0e] p-6 border-[10px] border-[#5c3b15] shadow-inner">
+            <div className="flex justify-center gap-8 mb-4">
               <div>
-                <h3 className="text-yellow-300 text-center">Votre main</h3>
-                <div className="flex gap-2 justify-center mt-2">
-                  {playerHand.map((card, i) => (
-                    <div
-                      key={i}
-                      className="w-12 h-16 bg-white text-black flex items-center justify-center rounded shadow"
-                    >
-                      {card}
-                    </div>
-                  ))}
-                </div>
+                <h3 className="text-[#FFD700] text-center mb-2">Votre main</h3>
+                <div className="flex gap-2 justify-center">{playerHand.map(renderCard)}</div>
               </div>
               <div>
-                <h3 className="text-yellow-300 text-center">Main AI</h3>
-                <div className="flex gap-2 justify-center mt-2">
-                  {opponentHand.map((card, i) => (
-                    <div
-                      key={i}
-                      className="w-12 h-16 bg-white text-black flex items-center justify-center rounded shadow"
-                    >
-                      {card}
-                    </div>
-                  ))}
-                </div>
+                <h3 className="text-[#FFD700] text-center mb-2">Main AI</h3>
+                <div className="flex gap-2 justify-center">{opponentHand.map(renderCard)}</div>
               </div>
             </div>
 
-            <div className="text-center text-yellow-300 font-semibold text-lg mb-2">
+            <div className="text-center text-[#FFD700] font-semibold text-lg mb-4">
               Pot actuel: {pot} tokens
             </div>
 
@@ -267,7 +253,7 @@ function PokerPage() {
 
         {result && (
           <div className="mt-6 text-center">
-            <p className="text-xl font-bold">
+            <p className="text-xl font-bold text-[#FFD700]">
               {result.message} {result.won && `+${result.winAmount} tokens! 🎉`}
             </p>
           </div>
@@ -275,15 +261,15 @@ function PokerPage() {
 
         <div className="mt-10 grid grid-cols-3 gap-6 text-white text-center">
           <div>
-            <p className="font-semibold text-yellow-300">Plus gros gain</p>
+            <p className="font-semibold text-[#FFD700]">Plus gros gain</p>
             <p>{stats.biggestWin} tokens</p>
           </div>
           <div>
-            <p className="font-semibold text-yellow-300">Mains jouées</p>
+            <p className="font-semibold text-[#FFD700]">Mains jouées</p>
             <p>{stats.totalHands}</p>
           </div>
           <div>
-            <p className="font-semibold text-yellow-300">Victoires</p>
+            <p className="font-semibold text-[#FFD700]">Victoires</p>
             <p>{stats.totalWins}</p>
           </div>
         </div>
@@ -291,5 +277,3 @@ function PokerPage() {
     </div>
   );
 }
-
-export default PokerPage;

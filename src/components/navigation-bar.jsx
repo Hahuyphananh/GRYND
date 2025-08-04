@@ -79,7 +79,7 @@ function NavigationBar({ currentPath }) {
         <div className="mx-auto max-w-7xl px-4">
           <div className="flex h-16 items-center justify-between">
             <Link href="/" className="text-xl font-bold text-[#FFD700]">
-              BetSim
+              GoonBet
             </Link>
 
             <div className="hidden md:flex items-center space-x-4">

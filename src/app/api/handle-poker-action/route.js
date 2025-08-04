@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../db/client";
 import { users, pokerGames } from "../../../db/schema";
 import { eq } from "drizzle-orm";
-import { performAiAction } from "../../../lib/ailogic";
+import { performAiAction } from "../../lib/ailogic";
 
 export async function POST(request) {
   const { userId } = await auth();
