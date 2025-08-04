@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useState, useRef, useEffect } from "react";
 
 const playSound = (freq = 880) => {
@@ -23,9 +24,10 @@ export default function SlotMachine() {
   const [totalLoss, setTotalLoss] = useState(0);
   const [autoSpinning, setAutoSpinning] = useState(false);
   const [spinning, setSpinning] = useState(false);
-  const [animatingReels, setAnimatingReels] = useState(Array(5).fill(false));
   const [flashWin, setFlashWin] = useState(false);
   const autoSpinRef = useRef(null);
+
+  const [animatingReels, setAnimatingReels] = useState(Array(5).fill(false));
 
   // Load token balance from backend
   useEffect(() => {
@@ -33,12 +35,15 @@ export default function SlotMachine() {
       try {
         const res = await fetch("/api/get-user-tokens", { method: "POST" });
         const data = await res.json();
-        if (data.success) setBalance(parseFloat(data.data.balance));
+        if (data.success) {
+          setBalance(parseFloat(data.data.balance));
+        }
       } catch (err) {
         console.error("Error fetching tokens:", err);
         setLastResult("❌ Failed to load balance");
       }
     };
+
     fetchTokens();
   }, []);
 
@@ -50,13 +55,12 @@ export default function SlotMachine() {
   };
 
   const handleSpin = async () => {
-    if (balance < bet || spinning) {
-      setLastResult("❌ Not enough balance or already spinning.");
+    if (balance < bet) {
+      setLastResult("❌ Not enough balance.");
       return;
     }
 
     setSpinning(true);
-    setFlashWin(false);
     setAnimatingReels(Array(5).fill(true));
 
     try {
@@ -71,25 +75,19 @@ export default function SlotMachine() {
 
       const { reels: newReels, winAmount, newBalance } = json.data;
 
-      // Stagger reel stopping for realism
-      newReels.forEach((reel, idx) => {
-        setTimeout(() => {
-          setAnimatingReels((prev) => {
-            const copy = [...prev];
-            copy[idx] = false;
-            return copy;
-          });
-          setReels((prev) => {
-            const updated = [...prev];
-            updated[idx] = reel;
-            return updated;
-          });
-        }, idx * 400 + 800);
-      });
-
-      // Final update after last reel stops
+      // Simulate spin time
       setTimeout(() => {
-        playSound(winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700);
+        setAnimatingReels(Array(5).fill(false));
+        setReels(newReels);
+        playSound(
+          winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700
+        );
+
+        if (winAmount > 0) {
+          setFlashWin(true);
+          setTimeout(() => setFlashWin(false), 800);
+        }
+
         setLastResult(
           winAmount >= bet * 5
             ? "🎉 JACKPOT!"
@@ -97,17 +95,13 @@ export default function SlotMachine() {
             ? "✅ Match!"
             : "❌ No match."
         );
+
         setBalance(newBalance);
         setTotalWin((prev) => prev + winAmount);
         if (winAmount === 0) setTotalLoss((prev) => prev + bet);
 
-        if (winAmount > 0) {
-          setFlashWin(true);
-          setTimeout(() => setFlashWin(false), 1500);
-        }
-
         setSpinning(false);
-      }, 3000);
+      }, 1500);
     } catch (err) {
       console.error("Slot error:", err);
       setLastResult("❌ Error playing slot");
@@ -118,7 +112,7 @@ export default function SlotMachine() {
   const startAutoSpin = () => {
     if (autoSpinning) return;
     setAutoSpinning(true);
-    autoSpinRef.current = setInterval(handleSpin, 3500);
+    autoSpinRef.current = setInterval(handleSpin, 2000);
   };
 
   const stopAutoSpin = () => {
@@ -127,20 +121,19 @@ export default function SlotMachine() {
   };
 
   const setMaxBet = () => {
-    setBet(Math.min(1000, balance));
+    setBet(Math.min(1000, balance)); // Max bet limit
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-green-900 to-green-700 p-4 text-white relative">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-[#001A33] to-[#002B5B] p-4 text-white relative">
       
       {/* Title */}
       <h1 className="text-4xl font-extrabold text-yellow-400 mb-6 drop-shadow-[0_0_10px_gold] animate-pulse">
-        FORTUNE SPIN SLOTS
+        🎰 FORTUNE SPIN SLOTS 🎰
       </h1>
 
       {/* Slot Frame */}
-      <div className="relative flex border-8 border-yellow-500 rounded-2xl bg-green-800 p-4 mb-6 shadow-[0_0_30px_gold] overflow-hidden">
-        
+      <div className="relative flex border-8 border-yellow-500 rounded-2xl bg-[#003366] p-4 mb-6 shadow-[0_0_30px_gold] overflow-hidden">
         {flashWin && (
           <div className="absolute inset-0 bg-yellow-400 bg-opacity-30 animate-flash pointer-events-none"></div>
         )}
@@ -153,7 +146,7 @@ export default function SlotMachine() {
           return (
             <div
               key={colIdx}
-              className="flex flex-col items-center mx-1 bg-green-900 p-2 rounded-lg border-4 border-yellow-400 shadow-lg overflow-hidden h-[240px]"
+              className="flex flex-col items-center mx-1 bg-[#002B5B] p-2 rounded-lg border-4 border-yellow-400 shadow-lg overflow-hidden h-[240px]"
             >
               <div
                 className={`flex flex-col ${
@@ -165,7 +158,7 @@ export default function SlotMachine() {
                 {symbols.map((fruit, rowIdx) => (
                   <div
                     key={`${fruit}-${colIdx}-${rowIdx}`}
-                    className="w-16 h-16 text-4xl flex items-center justify-center my-1 bg-green-700 rounded-lg border-2 border-yellow-300"
+                    className="w-16 h-16 text-4xl flex items-center justify-center my-1 bg-[#004080] rounded-lg border-2 border-yellow-300"
                   >
                     {fruit}
                   </div>
@@ -239,6 +232,14 @@ export default function SlotMachine() {
           {lastResult && <p className="text-xl">{lastResult}</p>}
         </div>
       </div>
+
+      {/* Return to Casino Button */}
+      <button
+        onClick={() => (window.location.href = "/casino")}
+        className="mt-6 bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-300 hover:to-orange-400 text-black font-bold py-3 px-8 rounded-full shadow-lg transition animate-bounce"
+      >
+        ⬅ Return to Casino
+      </button>
 
       {/* Animations */}
       <style jsx>{`

@@ -1,53 +1,67 @@
-"use client";
+"use client"; 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation"; // ✅ For navigation
 
 const HOUSE_EDGE = 0.98;
 const FEE = 0.02;
 
 export default function CoinFlipPage() {
   const [mode, setMode] = useState("solo");
+  const router = useRouter();
 
   return (
-    <div className="max-w-2xl mx-auto mt-10 p-6 bg-gray-800 text-white rounded shadow-lg">
-      <h1 className="text-3xl font-bold text-center mb-6">🪙 Coin Flip</h1>
+    <div className="min-h-screen flex flex-col items-center justify-start p-6 text-white relative"
+         style={{ backgroundColor: "#1e3f5a" }}> {/* ✅ Marine blue bg */}
 
-      <div className="flex justify-center space-x-4 mb-6">
-        <button
-          className={`px-4 py-2 rounded ${mode === "solo" ? "bg-blue-600" : "bg-gray-600"}`}
-          onClick={() => setMode("solo")}
-        >
-          Solo vs House
-        </button>
-        <button
-          className={`px-4 py-2 rounded ${mode === "pvp" ? "bg-blue-600" : "bg-gray-600"}`}
-          onClick={() => setMode("pvp")}
-        >
-          PvP
-        </button>
+      {/* ✅ Return to Casino Button */}
+      <button
+        onClick={() => router.push("/casino")}
+        className="absolute top-4 left-4 bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded shadow"
+      >
+        ⬅ Return to Casino
+      </button>
+
+      <div className="max-w-2xl w-full mt-16 p-6 bg-gray-800 text-white rounded shadow-lg">
+        <h1 className="text-3xl font-bold text-center mb-6">Coin Flip</h1>
+
+        <div className="flex justify-center space-x-4 mb-6">
+          <button
+            className={`px-4 py-2 rounded ${mode === "solo" ? "bg-blue-600" : "bg-gray-600"}`}
+            onClick={() => setMode("solo")}
+          >
+            Solo vs House
+          </button>
+          <button
+            className={`px-4 py-2 rounded ${mode === "pvp" ? "bg-blue-600" : "bg-gray-600"}`}
+            onClick={() => setMode("pvp")}
+          >
+            PvP
+          </button>
+        </div>
+
+        {mode === "solo" ? <SoloCoinFlip /> : <PvPCoinFlip />}
+
+        <style jsx global>{`
+          .perspective {
+            perspective: 1000px;
+          }
+
+          @keyframes coin-flip {
+            0% {
+              transform: rotateY(0deg) rotateX(0deg);
+            }
+            100% {
+              transform: rotateY(1440deg) rotateX(720deg);
+            }
+          }
+
+          .animate-coin-flip {
+            animation: coin-flip 1s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+            transform-style: preserve-3d;
+            backface-visibility: hidden;
+          }
+        `}</style>
       </div>
-
-      {mode === "solo" ? <SoloCoinFlip /> : <PvPCoinFlip />}
-
-      <style jsx global>{`
-        .perspective {
-          perspective: 1000px;
-        }
-
-        @keyframes coin-flip {
-          0% {
-            transform: rotateY(0deg) rotateX(0deg);
-          }
-          100% {
-            transform: rotateY(1440deg) rotateX(720deg);
-          }
-        }
-
-        .animate-coin-flip {
-          animation: coin-flip 1s cubic-bezier(0.19, 1, 0.22, 1) forwards;
-          transform-style: preserve-3d;
-          backface-visibility: hidden;
-        }
-      `}</style>
     </div>
   );
 }
@@ -86,7 +100,7 @@ function SoloCoinFlip() {
 
     setFlipping(true);
     setResult(null);
-    setFlipKey(prev => prev + 1);
+    setFlipKey((prev) => prev + 1);
 
     const audio = new Audio("/sounds/coin-flip.mp3");
     audio.play().catch(console.error);
@@ -134,13 +148,17 @@ function SoloCoinFlip() {
       <div className="flex justify-between mb-4">
         <button
           onClick={() => setChoice("heads")}
-          className={`w-full mr-2 p-2 rounded ${choice === "heads" ? "bg-green-600" : "bg-gray-600"}`}
+          className={`w-full mr-2 p-2 rounded ${
+            choice === "heads" ? "bg-green-600" : "bg-gray-600"
+          }`}
         >
           Heads
         </button>
         <button
           onClick={() => setChoice("tails")}
-          className={`w-full ml-2 p-2 rounded ${choice === "tails" ? "bg-green-600" : "bg-gray-600"}`}
+          className={`w-full ml-2 p-2 rounded ${
+            choice === "tails" ? "bg-green-600" : "bg-gray-600"
+          }`}
         >
           Tails
         </button>
@@ -221,7 +239,6 @@ function PvPCoinFlip() {
 
   return (
     <>
-      {/* Input controls */}
       {!myGameId ? (
         <button onClick={createGame}>Create Game</button>
       ) : (
@@ -234,7 +251,7 @@ function PvPCoinFlip() {
         </div>
       )}
       <div className="perspective">
-        <div key={flipKey} className={`... ${flipping?"animate-coin-flip":""}`}>
+        <div key={flipKey} className={`w-24 h-24 rounded-full flex items-center justify-center bg-yellow-300 text-black text-4xl font-bold ${flipping?"animate-coin-flip":""}`}>
           {result==="heads"?"H":result==="tails"?"T":"?"}
         </div>
       </div>

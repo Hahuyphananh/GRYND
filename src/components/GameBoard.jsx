@@ -1,11 +1,10 @@
 'use client';
-import { useState, useEffect } from 'react';
-import './GameBoard.css'; // Import du fichier CSS
+import { useEffect, useState } from 'react';
+import './GameBoard.css';
 
-export default function GameBoard({ gameId, movesLeft }) {
+export default function GameBoard({ gameId, movesLeft, setMovesLeft }) {
   const [board, setBoard] = useState(() => generateInitialBoard());
   const [score, setScore] = useState(0);
-  const [moves, setMoves] = useState(movesLeft);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -59,16 +58,16 @@ export default function GameBoard({ gameId, movesLeft }) {
         newBoard = transpose(transposed);
       }
 
-      if (moved) {
+      if (moved && movesLeft > 0) {
         addRandomTile(newBoard);
         setBoard(newBoard);
-        setMoves((m) => m - 1);
+        setMovesLeft((prev) => prev - 1); // 🔹 Update parent state
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [board]);
+  }, [board, movesLeft, setMovesLeft]);
 
   function generateInitialBoard() {
     const newBoard = Array(4)
@@ -123,7 +122,7 @@ export default function GameBoard({ gameId, movesLeft }) {
       </div>
       <div className="mt-4 text-center">
         <p className="text-lg font-semibold">Score: {score}</p>
-        <p className="text-md text-gray-700">Moves Left: {moves}</p>
+        <p className="text-md text-gray-700">Moves Left: {movesLeft}</p>
       </div>
     </div>
   );
