@@ -12,7 +12,7 @@ export default function Page() {
         height: "100vh",
       }}
     >
-      <SignUp afterSignUpUrl="/sync" />
+      <SignUp afterSignUpUrl="/complete-profile" />
     </div>
   );
 }
