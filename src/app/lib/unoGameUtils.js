@@ -89,3 +89,31 @@ export async function updateUnoGameState(gameId, updatedGame) {
     .where(eq(unoGames.id, gameId));
 }
 
+export function applyUnoCard(game, card, player) {
+  // `game` is the current game state object
+  // `card` is the card played { color, value }
+  // `player` is "player" or "ai"
+
+  // Remove the card from the player's hand
+  if (player === "player") {
+    game.playerHand = game.playerHand.filter(
+      c => !(c.color === card.color && c.value === card.value)
+    );
+  } else {
+    game.aiHand = game.aiHand.filter(
+      c => !(c.color === card.color && c.value === card.value)
+    );
+  }
+
+  // Set the top card to the played card
+  game.topCard = card;
+
+  // Apply effects depending on the card value (e.g., skip, reverse, +2, +4)
+  // You need to implement the game logic here accordingly
+
+  // Switch turn
+  game.isPlayerTurn = !game.isPlayerTurn;
+
+  return game;
+}
+
