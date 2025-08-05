@@ -1,5 +1,5 @@
 import { db } from "../../../../db/client";
-import { getUnoGameById, drawUnoCard, updateUnoGameState } from "../../../lib/unogameutils";
+import { getUnoGameById, drawUnoCard, updateUnoGameState } from "../../../lib/unoGameUtils";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getUnoGameById, updateUnoGameState } from "../../../lib/unogameutils"; // game state management
+import { getUnoGameById, updateUnoGameState } from "../../../lib/unoGameUtils"; // game state management
 import { applyUnoCard } from "../../../lib/unoLogic"; // Function to apply card effects
 
 function safeParse(data) {
