@@ -1,26 +1,27 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
 
-// ✅ Liste des routes publiques
 const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/api/(.*)',
-  '/',                 
-  '/casino',           
-  '/casino/poker',     
-  '/casino/blackjack', 
-  '/casino/roulette',  
-  '/casino/uno',       
+  '/',
+  '/casino',
+  '/casino/poker',
+  '/casino/blackjack',
+  '/casino/roulette',
+  '/casino/uno',
   '/access-denied',
-  '/complete-profile'
+  '/complete-profile',
 ]);
 
 export default clerkMiddleware((auth, req) => {
-  // ✅ Autorise immédiatement les routes publiques
-  if (isPublicRoute(req)) return;
+  if (isPublicRoute(req)) {
+    return NextResponse.next(); // ✅ Always return a response
+  }
 
-  // ✅ Protège seulement les pages privées
   auth.protect();
+  return NextResponse.next(); // ✅ Also return for protected routes
 });
 
 export const config = {
