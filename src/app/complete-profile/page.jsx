@@ -50,7 +50,7 @@ if (!result.success) {
 
 console.log("Updated successfully.");
 
-      router.push("/");
+      router.push("/sync");
     } catch (err) {
       setError("Failed to update profile. Please try again.");
       setIsSubmitting(false);
