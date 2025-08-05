@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getUnoGameById, updateUnoGameState, drawUnoCard } from "../../../lib/unogameutils";
+import { getUnoGameById, updateUnoGameState, drawUnoCard } from "../../../lib/unoGameUtils";
 
 export async function POST(request) {
   try {
