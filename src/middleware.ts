@@ -4,28 +4,35 @@ import { users } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 
+// ✅ Liste des routes publiques
 const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/api/(.*)',
-  '/',
+
+  '/',                 // Page d'accueil
+  '/casino',           // Page Casino
+  '/casino/poker',     // Poker
+  '/casino/blackjack', // Blackjack
+  '/casino/roulette',  // Roulette (si tu en as une)
+  '/casino/uno',       // Uno (si tu en as une)
+
   '/access-denied',
   '/complete-profile'
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  // Allow public routes
+  // ✅ Autorise les routes publiques
   if (isPublicRoute(req)) return;
 
   const { userId } = await auth();
 
   if (!userId) {
-    // Protect page if no user
-    auth.protect();
+    auth.protect(); // Redirige vers sign-in si page protégée
     return;
   }
 
-  // 🔹 Check age in DB
+  // 🔹 Vérifie l’âge dans la DB
   const user = await db.query.users.findFirst({
     where: eq(users.clerkId, userId),
   });
@@ -38,7 +45,7 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(new URL('/access-denied', req.url));
   }
 
-  // Allow access
+  // ✅ Autorise les routes protégées
   auth.protect();
 });
 
