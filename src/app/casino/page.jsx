@@ -13,6 +13,7 @@ import Img8 from "../../images/slots.jpg";
 import Img9 from "../../images/coin-flip.png";
 import Img10 from "../../images/2048.jpg";
 import Img11 from "../../images/Uno.jpg";
+import Img12 from "../../images/Rps.png";
 import Image from "next/image";
 
 function MainComponent() {
@@ -281,13 +282,38 @@ function MainComponent() {
             </div>
             <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Uno</h3>
             <p className="text-gray-300">
-             UNO est un jeu de cartes amusant et rapide où les joueurs doivent se débarrasser de toutes leurs cartes en suivant les couleurs ou les chiffres, tout en utilisant des cartes spéciales pour gêner leurs adversaires.
+             Défie l’IA au UNO, un jeu de cartes rapide où stratégie et cartes spéciales te permettront de gagner des jetons.
             </p>
             <div className="mt-4 flex items-center text-[#FFD700]">
               <span>Jouer maintenant</span>
               <i className="fas fa-arrow-right ml-2"></i>
             </div>
           </a>
+
+           <a
+            href="/casino/rps"
+            className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+          >
+            <div className="mb-4 h-48 overflow-hidden rounded-lg">
+              <Image
+                src={Img12}
+                alt="rps"
+                width={500}
+                height={300}
+                className="h-full w-full object-cover transition-transform group-hover:scale-110"
+              />
+            </div>
+            <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Roche-Papier-Ciseaux</h3>
+            <p className="text-gray-300">
+             Parie tes jetons et défie l’IA dans un jeu rapide et stratégique de Roche-Papier-Ciseaux.
+            </p>
+            <div className="mt-4 flex items-center text-[#FFD700]">
+              <span>Jouer maintenant</span>
+              <i className="fas fa-arrow-right ml-2"></i>
+            </div>
+          </a>
+
+
         </div>
       </div>
 

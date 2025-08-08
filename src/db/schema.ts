@@ -133,6 +133,16 @@ export const unoGames = pgTable("uno_games", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const rpsGames = pgTable("rps_games", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  betAmount: numeric("bet_amount").notNull(),
+  choice: varchar("choice", { length: 20 }).notNull(), // rock, paper, scissors
+  aiChoice: varchar("ai_choice", { length: 20 }).notNull(),
+  result: varchar("result", { length: 20 }).notNull(), // win, lose, draw
+  payout: numeric("payout").default("0"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
 
 //
 // RELATIONS
