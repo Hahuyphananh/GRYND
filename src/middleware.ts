@@ -8,6 +8,10 @@ const isPublicRoute = createRouteMatcher([
 
   '/',                  // Homepage
   '/casino',
+  '/sport',
+  '/sync',
+  '/rankings',
+  '/profil',
   '/casino/poker',
   '/casino/blackjack',
   '/casino/roulette',
