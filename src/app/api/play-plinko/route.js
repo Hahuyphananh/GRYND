@@ -69,7 +69,11 @@ export async function POST(req) {
 }
 
 function calculatePlinkoResult() {
-  const multipliers = [0.2, 0.4, 0.6, 1, 1.2, 1.5, 2, 3, 5, 10];
+  const multipliers = [
+  10, 5, 3, 2, 1.5, 1.2, 1, 0.6, 0.4, 0.2, 
+  0.4, 0.6, 1, 1.2, 1.5, 2, 3, 5, 10
+];
+
   const slotWidth = 500 / multipliers.length;
   const path = [];
   const rows = 18;

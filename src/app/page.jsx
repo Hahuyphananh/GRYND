@@ -178,7 +178,7 @@ function MainComponent() {
     <div className="min-h-screen bg-[#003366]">
       <NavigationBar currentPath="/" />
 
-      <section className="bg-gradient-to-r from-[#003366] to-[#004080] px-4 py-20">
+      <section className="bg-gradient-to-r from-[#003366] to-[#004080] px-4 py-20 mt-8">
         <div className="mx-auto max-w-7xl text-center">
           <h1 className="mb-4 text-4xl font-bold text-[#FFD700] md:text-6xl">
             Pariez sur vos Sports Préférés et Jouez au Casino
