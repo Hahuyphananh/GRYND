@@ -13,6 +13,7 @@ export default function RoulettePage() {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({ biggestWin: 0, totalBets: 0, totalWins: 0 });
   const [autoBet, setAutoBet] = useState({ enabled: false, mode: "finite", spinsLeft: 0 });
+  const [bets, setBets] = useState({});
 
   const canvasRef = useRef(null);
   const autoBetRef = useRef(autoBet);
@@ -82,10 +83,7 @@ const drawWheel = (angleOffset = 0) => {
   ctx.restore();
 };
 
-
-
-
-  useEffect(() => {
+useEffect(() => {
     drawWheel();
     const onResize = () => drawWheel();
     window.addEventListener("resize", onResize);
@@ -99,7 +97,10 @@ const drawWheel = (angleOffset = 0) => {
       const segmentAngle = (2 * Math.PI) / totalSegments;
 
       // Fixed final angle aligned to center of target segment (no randomness)
-      const finalAngle = (totalSegments - finalIndex - 0.5) * segmentAngle;
+      const initialSegment0Offset = Math.PI / 2; // 90 degrees in radians
+
+const finalAngle = (totalSegments - finalIndex - 0.5) * segmentAngle - initialSegment0Offset;
+
 
       const totalAngle = fullRotations * 2 * Math.PI + finalAngle;
       const duration = 4000;
@@ -124,11 +125,13 @@ const drawWheel = (angleOffset = 0) => {
   };
 
   const handleSpin = async () => {
-    if (spinning || selectedBets.length === 0) return;
-    if (betAmount > userTokens) {
-      setError("Solde insuffisant pour cette mise");
-      return;
-    }
+   const totalBetAmount = Object.values(bets).reduce((a, b) => a + b, 0);
+if (spinning || totalBetAmount === 0) return;
+if (totalBetAmount > userTokens) {
+  setError("Solde insuffisant pour cette mise");
+  return;
+}
+
     setSpinning(true);
     setError(null);
 
@@ -139,70 +142,75 @@ const drawWheel = (angleOffset = 0) => {
     let win = false;
     let winAmount = 0;
 
-    selectedBets.forEach((bet) => {
-      if (typeof bet === "number" && bet === spinResult) {
-        win = true;
-        winAmount += betAmount * 35;
-      }
-      if (bet === "red" && redNumbers.includes(spinResult)) {
-        win = true;
-        winAmount += betAmount * 2;
-      }
-      if (bet === "black" && spinResult !== 0 && !redNumbers.includes(spinResult)) {
-        win = true;
-        winAmount += betAmount * 2;
-      }
-      if (bet === "green" && spinResult === 0) {
-        win = true;
-        winAmount += betAmount * 35;
-      }
-      if (bet === "even" && spinResult % 2 === 0 && spinResult !== 0) {
-        win = true;
-        winAmount += betAmount * 2;
-      }
-      if (bet === "odd" && spinResult % 2 === 1) {
-        win = true;
-        winAmount += betAmount * 2;
-      }
-      if (bet === "1-12" && spinResult >= 1 && spinResult <= 12) {
-        win = true;
-        winAmount += betAmount * 3;
-      }
-      if (bet === "13-24" && spinResult >= 13 && spinResult <= 24) {
-        win = true;
-        winAmount += betAmount * 3;
-      }
-      if (bet === "25-36" && spinResult >= 25 && spinResult <= 36) {
-        win = true;
-        winAmount += betAmount * 3;
-      }
-      if (bet === "1-18" && spinResult >= 1 && spinResult <= 18) {
-        win = true;
-        winAmount += betAmount * 2;
-      }
-      if (bet === "19-36" && spinResult >= 19 && spinResult <= 36) {
-        win = true;
-        winAmount += betAmount * 2;
-      }
-    });
+   Object.keys(bets).forEach((bet) => {
+  const amount = bets[bet];
+  const betKey = isNaN(bet) ? bet : Number(bet);
 
-    // Deduct bet cost
-    await fetch("/api/tokens/update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: -betAmount * selectedBets.length }),
-    });
-    setUserTokens((prev) => prev - betAmount * selectedBets.length);
+  if (typeof betKey === "number" && betKey === spinResult) {
+    win = true;
+    winAmount += amount * 35;
+  }
+  if (betKey === "red" && redNumbers.includes(spinResult)) {
+    win = true;
+    winAmount += amount * 2;
+  }
+  if (betKey === "black" && spinResult !== 0 && !redNumbers.includes(spinResult)) {
+    win = true;
+    winAmount += amount * 2;
+  }
+  if (betKey === "green" && spinResult === 0) {
+    win = true;
+    winAmount += amount * 35;
+  }
+  if (betKey === "even" && spinResult % 2 === 0 && spinResult !== 0) {
+    win = true;
+    winAmount += amount * 2;
+  }
+  if (betKey === "odd" && spinResult % 2 === 1) {
+    win = true;
+    winAmount += amount * 2;
+  }
+  if (betKey === "1-12" && spinResult >= 1 && spinResult <= 12) {
+    win = true;
+    winAmount += amount * 3;
+  }
+  if (betKey === "13-24" && spinResult >= 13 && spinResult <= 24) {
+    win = true;
+    winAmount += amount * 3;
+  }
+  if (betKey === "25-36" && spinResult >= 25 && spinResult <= 36) {
+    win = true;
+    winAmount += amount * 3;
+  }
+  if (betKey === "1-18" && spinResult >= 1 && spinResult <= 18) {
+    win = true;
+    winAmount += amount * 2;
+  }
+  if (betKey === "19-36" && spinResult >= 19 && spinResult <= 36) {
+    win = true;
+    winAmount += amount * 2;
+  }
+});
 
-    // Credit win if any
-    if (win) {
-      await fetch("/api/tokens/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: winAmount }),
-      });
-      setUserTokens((prev) => prev + winAmount);
-    }
+
+   // Deduct total bet amount
+await fetch("/api/tokens/update", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ amount: -totalBetAmount }),
+});
+setUserTokens((prev) => prev - totalBetAmount);
+
+// Credit win amount if any
+if (win) {
+  await fetch("/api/tokens/update", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount: winAmount }),
+  });
+  setUserTokens((prev) => prev + winAmount);
+}
+
 
     setResult({ number: spinResult, win, amount: winAmount });
     setHistory((prev) => [spinResult, ...prev].slice(0, 10));
@@ -211,6 +219,8 @@ const drawWheel = (angleOffset = 0) => {
       totalBets: prev.totalBets + 1,
       totalWins: win ? prev.totalWins + 1 : prev.totalWins,
     }));
+setBets({});
+setSelectedBets([]);
 
     setSpinning(false);
 
@@ -230,110 +240,235 @@ const drawWheel = (angleOffset = 0) => {
     }
   };
 
-  const renderNumberGrid = () => {
-    const rows = [[], [], []];
-    for (let i = 1; i <= 36; i++) {
-      rows[(i - 1) % 3].push(i);
-    }
-    return (
-      <div className="space-y-2">
-        {rows.map((row, idx) => (
-          <div key={idx} className="flex gap-1 justify-center">
-            {row.map((num) => (
-              <div
-                key={num}
-                onClick={() => handleBetClick(num)}
-                className={`w-10 h-10 flex items-center justify-center rounded cursor-pointer border border-yellow-400 font-bold text-sm
-                  ${num === 0 ? "bg-green-500" : redNumbers.includes(num) ? "bg-red-600" : "bg-black"}
-                  ${selectedBets.includes(num) ? "ring-2 ring-yellow-300" : ""}`}
-              >
-                {num}
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    );
-  };
+  const placeBet = (target) => {
+  const amount = betAmount || 1; // Use current bet input as coin value
+  setBets((prev) => ({
+    ...prev,
+    [target]: (prev[target] || 0) + amount
+  }));
+};
 
+const resetBets = () => {
+  setBets({});
+  setSelectedBets([]);
+  setError(null); // optionally clear errors on reset
+};
+
+
+const renderNumberGrid = () => {
+  const rows = [[], [], []];
+  for (let i = 1; i <= 36; i++) {
+    rows[(i - 1) % 3].push(i);
+  }
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
-      <div className="container mx-auto py-6 px-4">
-        <div className="grid grid-cols-3 items-center mb-6">
-          <div>
-            <a
-              href="/casino"
-              className="inline-flex items-center text-yellow-400 hover:text-yellow-300 transition"
-            >
-              <svg
-                className="w-6 h-6 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+    <div className="space-y-2">
+      {rows.map((row, idx) => (
+        <div key={idx} className="flex gap-1 justify-center">
+          {row.map((num) => {
+            const isRed = redNumbers.includes(num);
+            const isBlack = !isRed; // for roulette numbers 1-36, black if not red
+            return (
+              <div key={num} className="relative">
+                <button
+                  onClick={() => placeBet(num)}
+                  className={`w-10 h-10 flex items-center justify-center rounded border border-yellow-400
+                    ${isRed ? "bg-red-600 text-white" : "bg-black text-yellow-400"}`}
+                >
+                  {num}
+                </button>
+                {bets[num] && (
+                  <span className="absolute -top-2 -right-2 bg-yellow-400 text-black text-xs font-bold px-1.5 py-0.5 rounded-full border border-yellow-500 shadow-lg">
+                    {bets[num]}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+
+return (
+  <div className="min-h-screen flex bg-gradient-to-br from-[#001933] to-[#000d1a] text-white overflow-hidden">
+    {/* Container with horizontal flex and padding */}
+    <div className="flex gap-10 p-6 w-full max-w-[1200px] mx-auto">
+      
+      {/* Left sidebar */}
+      <div className="flex flex-col items-start gap-6 w-[280px] flex-shrink-0">
+        {/* Retour au Casino button */}
+        <a
+          href="/casino"
+          className="inline-flex items-center text-yellow-400 hover:text-yellow-300 transition"
+        >
+          <svg
+            className="w-6 h-6 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M10 19l-7-7m0 0l7-7m-7 7h18"
+            />
+          </svg>
+          Retour au Casino
+        </a>
+  {/* Title below Retour au Casino */}
+  <h1 className="text-3xl font-bold text-yellow-400 text-center w-full">
+    🎰 Roulette Royale
+  </h1>
+        {/* Tokens display */}
+        <span className="inline-block bg-gradient-to-r from-yellow-400 via-yellow-300 to-yellow-500 text-black px-6 py-2 rounded-full font-extrabold shadow-lg text-lg border-2 border-yellow-400">
+          Tokens: {userTokens}
+        </span>
+
+        {/* AutoBet controls */}
+        <div className="bg-[#0a1e3a] p-4 rounded-lg border border-yellow-400 w-full">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={autoBet.enabled}
+              onChange={(e) =>
+                setAutoBet((prev) => ({ ...prev, enabled: e.target.checked }))
+              }
+            />
+            Auto Bet
+          </label>
+
+          {autoBet.enabled && (
+            <div className="mt-3 flex items-center gap-3 flex-wrap">
+              <select
+                value={autoBet.mode}
+                onChange={(e) =>
+                  setAutoBet((prev) => ({ ...prev, mode: e.target.value }))
+                }
+                className="px-2 py-1 rounded border border-yellow-400 bg-[#102542]"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                <option value="finite">Finite</option>
+                <option value="infinite">Infinite</option>
+              </select>
+
+              {autoBet.mode === "finite" && (
+                <input
+                  type="number"
+                  min="1"
+                  value={autoBet.spinsLeft}
+                  onChange={(e) =>
+                    setAutoBet((prev) => ({
+                      ...prev,
+                      spinsLeft: Number(e.target.value),
+                    }))
+                  }
+                  className="w-36 px-2 py-1 rounded border border-yellow-400 bg-[#102542] text-white"
+                  placeholder="Number of spins"
                 />
-              </svg>
-              Retour au Casino
-            </a>
-          </div>
+              )}
 
-          <h1 className="text-3xl font-bold text-yellow-400 text-center">
-            🎰 Roulette Royale
-          </h1>
-
-          <div className="flex justify-end">
-            <span className="inline-block bg-gradient-to-r from-yellow-400 via-yellow-300 to-yellow-500 text-black px-6 py-2 rounded-full font-extrabold shadow-lg text-lg border-2 border-yellow-400">
-              Tokens: {userTokens}
-            </span>
-          </div>
+              <button
+                onClick={() => setAutoBet((prev) => ({ ...prev, enabled: true }))}
+                className="px-4 py-1 rounded bg-yellow-400 text-black font-bold"
+              >
+                Start
+              </button>
+              <button
+                onClick={() => setAutoBet((prev) => ({ ...prev, enabled: false }))}
+                className="px-4 py-1 rounded bg-red-500 text-white font-bold"
+              >
+                Stop
+              </button>
+            </div>
+          )}
         </div>
 
-       <div style={{ position: "relative", width: 360, height: 400, margin: "0 auto" }}>
-  <canvas
-    ref={canvasRef}
-    width={360}
-    height={360}
-    className="rounded-full"
-  />
-  
-  {/* SVG pointer above the wheel */}
-  <svg
-    width="40"
-    height="20"
-    viewBox="0 0 40 20"
-    style={{
-      position: "absolute",
-      top: -20,  // 20px above the canvas top edge
-      left: "50%",
-      transform: "translateX(-50%)",
-      pointerEvents: "none", // allows clicks to pass through
-      zIndex: 10,
-    }}
-  >
-    <defs>
-      <linearGradient id="goldGradient" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#FFD700" />
-        <stop offset="100%" stopColor="#B8860B" />
-      </linearGradient>
-    </defs>
-    <polygon
-      points="20,20 40,0 0,0"
-      fill="url(#goldGradient)"
-      stroke="#B8860B"
-      strokeWidth="1"
-    />
-  </svg>
-</div>
+        {/* Bet amount input and Spin button stacked vertically */}
+        <div className="flex flex-col gap-2 w-full">
+          Montant
+          <input
+            type="number"
+            min="1"
+            value={betAmount}
+            onChange={(e) => setBetAmount(Number(e.target.value))}
+            className="w-full rounded border-2 border-yellow-400 bg-[#102542] text-white px-2 py-1"
+          />
+          <button
+  onClick={handleSpin}
+  disabled={spinning}
+  className={`px-6 py-2 rounded-full font-bold border-2 border-yellow-400 ${
+    spinning
+      ? "bg-gray-600"
+      : "bg-yellow-400 text-black hover:bg-yellow-300"
+  }`}
+>
+  {spinning ? "La roue tourne..." : "Tourner la Roue!"}
+</button>
 
+<button
+  onClick={resetBets}
+  disabled={spinning}
+  className="mt-2 px-6 py-2 rounded-full font-bold border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition"
+>
+  Réinitialiser les mises
+</button>
 
-        {renderNumberGrid()}
+        </div>
 
-        <div className="mt-4 flex flex-wrap gap-2 justify-center">
+        {/* Result message */}
+        {result && (
+          <div className="mt-4 w-full bg-[#0a1e3a] p-3 rounded border border-yellow-400 text-center text-yellow-300 font-bold">
+            Résultat: <span className="text-yellow-300 font-extrabold">{result.number}</span>
+            {result.win ? ` - Gagné ${result.amount} tokens! 🎉` : " - Perdu"}
+          </div>
+        )}
+      </div>
+
+      {/* Right side (roulette + numbers + betting zones) */}
+      <div className="flex flex-col items-center w-[680px] flex-shrink-0">
+
+        <div style={{ position: "relative", width: 360, height: 400, margin: "0 auto", marginTop: 20 }}>
+          <canvas
+            ref={canvasRef}
+            width={360}
+            height={360}
+            className="rounded-full"
+          />
+
+          {/* SVG pointer above the wheel */}
+          <svg
+            width="40"
+            height="20"
+            viewBox="0 0 40 20"
+            style={{
+              position: "absolute",
+              top: -20,
+              left: "50%",
+              transform: "translateX(-50%)",
+              pointerEvents: "none",
+              zIndex: 10,
+            }}
+          >
+            <defs>
+              <linearGradient id="goldGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#FFD700" />
+                <stop offset="100%" stopColor="#B8860B" />
+              </linearGradient>
+            </defs>
+            <polygon
+              points="20,20 40,0 0,0"
+              fill="url(#goldGradient)"
+              stroke="#B8860B"
+              strokeWidth="1"
+            />
+          </svg>
+        </div>
+
+        <div className="mt- w-full">{renderNumberGrid()}</div>
+
+        <div className="mt-6 flex flex-wrap gap-2 justify-center w-full">
           {[
             "1-12",
             "13-24",
@@ -347,113 +482,28 @@ const drawWheel = (angleOffset = 0) => {
             "green",
           ].map((zone) => (
             <button
-              key={zone}
-              onClick={() => handleBetClick(zone)}
-              className={`px-3 py-2 rounded border border-yellow-400 text-sm font-bold capitalize
-                ${
-                  zone === "red"
-                    ? "bg-red-600"
-                    : zone === "black"
-                    ? "bg-black"
-                    : zone === "green"
-                    ? "bg-green-500"
-                    : "bg-[#102542]"
-                }
-                ${selectedBets.includes(zone) ? "ring-2 ring-yellow-300" : ""}`}
-            >
-              {zone}
-            </button>
+  key={zone}
+  onClick={() => placeBet(zone)}
+  className={`relative px-3 py-2 rounded border border-yellow-400 text-sm font-bold capitalize
+    ${zone === "red" ? "bg-red-600" :
+     zone === "black" ? "bg-black" :
+     zone === "green" ? "bg-green-500" :
+     "bg-[#102542]"}
+    ${bets[zone] ? "ring-2 ring-yellow-300" : ""}`}
+>
+  {zone}
+  {bets[zone] && (
+    <span className="absolute -top-2 -right-2 bg-yellow-400 text-black text-xs font-bold px-1.5 py-0.5 rounded-full border border-yellow-500 shadow-lg">
+      {bets[zone]}
+    </span>
+  )}
+</button>
+
           ))}
         </div>
-
-        <div className="mt-6 flex gap-4 justify-center items-center">
-          <input
-            type="number"
-            min="1"
-            value={betAmount}
-            onChange={(e) => setBetAmount(Number(e.target.value))}
-            className="w-24 rounded border-2 border-yellow-400 bg-[#102542] text-white px-2 py-1"
-          />
-          <button
-            onClick={handleSpin}
-            disabled={spinning}
-            className={`px-6 py-2 rounded-full font-bold border-2 border-yellow-400 ${
-              spinning
-                ? "bg-gray-600"
-                : "bg-yellow-400 text-black hover:bg-yellow-300"
-            }`}
-          >
-            {spinning ? "La roue tourne..." : "Tourner la Roue!"}
-          </button>
-        </div>
-
-        <div className="mt-6 flex justify-center">
-          <div className="bg-[#0a1e3a] p-4 rounded-lg border border-yellow-400">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={autoBet.enabled}
-                onChange={(e) =>
-                  setAutoBet((prev) => ({ ...prev, enabled: e.target.checked }))
-                }
-              />
-              Auto Bet
-            </label>
-
-            {autoBet.enabled && (
-              <div className="mt-3 flex items-center gap-3">
-                <select
-                  value={autoBet.mode}
-                  onChange={(e) =>
-                    setAutoBet((prev) => ({ ...prev, mode: e.target.value }))
-                  }
-                  className="px-2 py-1 rounded border border-yellow-400 bg-[#102542]"
-                >
-                  <option value="finite">Finite</option>
-                  <option value="infinite">Infinite</option>
-                </select>
-
-                {autoBet.mode === "finite" && (
-                  <input
-                    type="number"
-                    min="1"
-                    value={autoBet.spinsLeft}
-                    onChange={(e) =>
-                      setAutoBet((prev) => ({
-                        ...prev,
-                        spinsLeft: Number(e.target.value),
-                      }))
-                    }
-                    className="w-36 px-2 py-1 rounded border border-yellow-400 bg-[#102542] text-white"
-                    placeholder="Number of spins"
-                  />
-                )}
-
-                <button
-                  onClick={() => setAutoBet((prev) => ({ ...prev, enabled: true }))}
-                  className="px-4 py-1 rounded bg-yellow-400 text-black font-bold"
-                >
-                  Start
-                </button>
-                <button
-                  onClick={() => setAutoBet((prev) => ({ ...prev, enabled: false }))}
-                  className="px-4 py-1 rounded bg-red-500 text-white font-bold"
-                >
-                  Stop
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {result && (
-          <div className="mt-4 text-center">
-            Résultat:{" "}
-            <span className="text-yellow-300 font-bold">{result.number}</span>
-            {result.win ? ` - Gagné ${result.amount} tokens! 🎉` : " - Perdu"}
-          </div>
-        )}
       </div>
     </div>
-  );
+  </div>
+);
+
 }
