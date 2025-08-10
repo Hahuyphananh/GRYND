@@ -76,9 +76,22 @@ function SoloCoinFlip() {
   const [userTokens, setUserTokens] = useState(null);
   const [flipKey, setFlipKey] = useState(0);
 
+  const [autoBet, setAutoBet] = useState(false);
+  const [autoDelay, setAutoDelay] = useState(1000); // ms
+
   useEffect(() => {
     fetchTokens();
   }, []);
+
+  useEffect(() => {
+    let interval;
+    if (autoBet && userTokens >= bet) {
+      interval = setInterval(() => {
+        flip(true);
+      }, autoDelay);
+    }
+    return () => clearInterval(interval);
+  }, [autoBet, autoDelay, bet, choice, userTokens]);
 
   const fetchTokens = async () => {
     try {
@@ -90,17 +103,19 @@ function SoloCoinFlip() {
     }
   };
 
-  const flip = async () => {
+  const flip = async (isAuto = false) => {
     if (bet <= 0 || !["heads", "tails"].includes(choice)) {
       return setMessage("Enter a valid bet and choice.");
     }
     if (userTokens === null || userTokens < bet) {
+      if (isAuto) setAutoBet(false);
       return setMessage("Insufficient balance.");
     }
 
     setFlipping(true);
     setResult(null);
     setFlipKey((prev) => prev + 1);
+    setUserTokens((prev) => prev - bet); // Deduct bet instantly
 
     const audio = new Audio("/sounds/coin-flip.mp3");
     audio.play().catch(console.error);
@@ -117,13 +132,10 @@ function SoloCoinFlip() {
 
       const { outcome, won, payout, newBalance } = json.data;
 
-      // Wait for animation to complete
-      setTimeout(() => {
-        setFlipping(false);
-        setResult(outcome);
-        setUserTokens(parseFloat(newBalance));
-        setMessage(won ? `✅ You won $${payout.toFixed(2)}!` : "❌ You lost.");
-      }, 500);
+      setFlipping(false);
+      setResult(outcome);
+      setUserTokens(parseFloat(newBalance));
+      setMessage(won ? `✅ You won $${payout.toFixed(2)}!` : "❌ You lost.");
     } catch {
       setFlipping(false);
       setMessage("Server error during flip.");
@@ -132,18 +144,29 @@ function SoloCoinFlip() {
 
   return (
     <>
-      <div className="mb-4">
-        <p className="text-yellow-400 font-bold mb-2">
+      <div className="mb-4 flex justify-between items-center">
+        <p className="text-yellow-400 font-bold">
           Balance: {userTokens !== null ? `${userTokens.toFixed(2)} 🪙` : "..."}
         </p>
-        <label className="block mb-1">Bet Amount ($)</label>
-        <input
-          type="number"
-          className="w-full bg-gray-700 p-2 rounded"
-          value={bet}
-          onChange={(e) => setBet(parseFloat(e.target.value))}
-        />
+        <div className="flex items-center gap-2">
+          <label>Auto Delay (ms):</label>
+          <input
+            type="number"
+            min="100"
+            className="w-20 bg-gray-700 p-1 rounded"
+            value={autoDelay}
+            onChange={(e) => setAutoDelay(parseInt(e.target.value))}
+          />
+        </div>
       </div>
+
+      <label className="block mb-1">Bet Amount ($)</label>
+      <input
+        type="number"
+        className="w-full bg-gray-700 p-2 rounded mb-4"
+        value={bet}
+        onChange={(e) => setBet(parseFloat(e.target.value))}
+      />
 
       <div className="flex justify-between mb-4">
         <button
@@ -164,13 +187,23 @@ function SoloCoinFlip() {
         </button>
       </div>
 
-      <button
-        onClick={flip}
-        disabled={flipping}
-        className="w-full p-3 bg-yellow-500 rounded font-bold"
-      >
-        {flipping ? "Flipping..." : "Flip Coin"}
-      </button>
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => flip(false)}
+          disabled={flipping}
+          className="w-full p-3 bg-yellow-500 rounded font-bold"
+        >
+          {flipping ? "Flipping..." : "Flip Coin"}
+        </button>
+        <button
+          onClick={() => setAutoBet((prev) => !prev)}
+          className={`w-full p-3 rounded font-bold ${
+            autoBet ? "bg-red-500" : "bg-blue-500"
+          }`}
+        >
+          {autoBet ? "Stop Auto" : "Start Auto"}
+        </button>
+      </div>
 
       <div className="flex justify-center mt-6 h-28">
         <div className="relative w-24 h-24 perspective">
@@ -189,6 +222,7 @@ function SoloCoinFlip() {
     </>
   );
 }
+
 
 // ------------------- PvP Coin Flip ------------------- //
 function PvPCoinFlip() {
