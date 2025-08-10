@@ -4,9 +4,6 @@ import { db } from "../../../../db/client";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 
-// Tiered multipliers for win streaks
-const streakMultipliers = [1.96, 3, 4.5, 7, 11, 15];
-
 // Random AI choice
 function getAIChoice() {
   const choices = ["rock", "paper", "scissors"];
@@ -26,11 +23,8 @@ function getResult(player, ai) {
   return "lose";
 }
 
-// Calculate multiplier based on streak
-function calculateMultiplier(streak) {
-  if (streak <= 0) return 1;
-  return streakMultipliers[Math.min(streak - 1, streakMultipliers.length - 1)];
-}
+// Fixed multiplier
+const FIXED_MULTIPLIER = 1.9;
 
 export async function POST(req) {
   try {
@@ -61,8 +55,7 @@ export async function POST(req) {
     let newStreak = result === "win" ? winStreak + 1 : 0;
 
     if (result === "win") {
-      const multiplier = calculateMultiplier(newStreak);
-      payout = betAmount * multiplier;
+      payout = betAmount * FIXED_MULTIPLIER;
       newBalance += payout;
     } else if (result === "lose") {
       newBalance -= betAmount;
@@ -81,7 +74,7 @@ export async function POST(req) {
       newBalance,
       payout: payout.toFixed(2),
       winStreak: newStreak,
-      multiplier: calculateMultiplier(newStreak).toFixed(2),
+      multiplier: FIXED_MULTIPLIER.toFixed(2),
     });
   } catch (err) {
     console.error("RPS API Error:", err);
