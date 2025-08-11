@@ -22,7 +22,7 @@ const isPublicRoute = createRouteMatcher([
   '/casino/chess',
   '/casino/slots',
   '/casino/coin-flip',
-  '/casino/2048',
+  '/casino/keno',
   '/casino/rps',
   '/access-denied',
   '/complete-profile',

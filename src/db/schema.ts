@@ -144,6 +144,19 @@ export const rpsGames = pgTable("rps_games", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const keno_games = pgTable("keno_games", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull(),
+  bet_amount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
+  numbers_picked: jsonb("numbers_picked").notNull(), // store array of numbers as JSON
+  numbers_drawn: jsonb("numbers_drawn").notNull(),
+  hits: integer("hits").notNull(),
+  payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
+  multiplier: numeric("multiplier", { precision: 5, scale: 2 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
 //
 // RELATIONS
 //
