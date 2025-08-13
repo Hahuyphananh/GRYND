@@ -91,3 +91,77 @@ export function getNextTurn(
   }
   return current === "player" ? "ai" : "player";
 }
+
+export function applyUnoCard(game, card, currentPlayer) {
+  const {
+    playerHand,
+    aiHand,
+    deck,
+    discardPile = [],
+    turn,
+  } = game;
+
+  const newDiscardPile = [...discardPile, card];
+  let newPlayerHand = [...playerHand];
+  let newAiHand = [...aiHand];
+  let nextTurn = turn;
+
+  const switchTurn = () => {
+    nextTurn = currentPlayer === "player" ? "ai" : "player";
+  };
+
+  switch (card.value) {
+    case "Skip":
+    case "Reverse":
+      // Skip opponent's turn: current player plays again
+      nextTurn = currentPlayer;
+      break;
+
+    case "Draw Two":
+      if (currentPlayer === "player") {
+        // AI draws 2 cards and loses turn
+        const drawnCards = deck.splice(0, 2);
+        newAiHand = [...newAiHand, ...drawnCards];
+        nextTurn = currentPlayer; // Player plays again (skip AI)
+      } else {
+        // Player draws 2 cards and loses turn
+        const drawnCards = deck.splice(0, 2);
+        newPlayerHand = [...newPlayerHand, ...drawnCards];
+        nextTurn = currentPlayer; // AI plays again (skip Player)
+      }
+      break;
+
+    case "Wild":
+      // Just switch turn normally
+      switchTurn();
+      break;
+
+    case "Wild Draw Four":
+      if (currentPlayer === "player") {
+        // AI draws 4 cards and loses turn
+        const drawnCards = deck.splice(0, 4);
+        newAiHand = [...newAiHand, ...drawnCards];
+        nextTurn = currentPlayer; // Player plays again (skip AI)
+      } else {
+        // Player draws 4 cards and loses turn
+        const drawnCards = deck.splice(0, 4);
+        newPlayerHand = [...newPlayerHand, ...drawnCards];
+        nextTurn = currentPlayer; // AI plays again (skip Player)
+      }
+      break;
+
+    default:
+      // Normal cards just switch turn
+      switchTurn();
+      break;
+  }
+
+  return {
+    ...game,
+    playerHand: newPlayerHand,
+    aiHand: newAiHand,
+    deck,
+    discardPile: newDiscardPile,
+    turn: nextTurn,
+  };
+}

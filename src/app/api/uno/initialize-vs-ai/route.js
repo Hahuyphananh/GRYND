@@ -93,6 +93,7 @@ export async function POST(request) {
         aiHand,
         deck,
         discardPile,
+        topCard,
         turn: "player",
       }).returning();
 

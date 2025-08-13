@@ -36,6 +36,24 @@ export default function UnoGamePage() {
     fetchTokens();
   }, []);
 
+  // ✅ Winner check helper
+  const checkForWinner = async (gameId) => {
+    try {
+      const res = await fetch("/api/uno/determine-winner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId }),
+      });
+      const data = await res.json();
+      if (data.winner) {
+        setMessage(`🎉 ${data.winner} a gagné la partie !`);
+        setIsPlayerTurn(false);
+      }
+    } catch (err) {
+      console.error("Erreur lors de la vérification du gagnant:", err);
+    }
+  };
+
   const initializeGame = async () => {
     setLoading(true);
     const res = await fetch("/api/uno/initialize-vs-ai", {
@@ -68,18 +86,23 @@ export default function UnoGamePage() {
       });
       const data = await res.json();
       if (data.success) {
-        setAiHandCount(data.data.aiHandCount);
-        setTopCard(data.data.topCard);
-        setIsPlayerTurn(true);
-        setMessage(data.data.message || "À ton tour !");
-        setTokens({ balance: data.data.newBalance });
-      }
+  setPlayerHand(data.data.playerHand);
+  setAiHandCount(data.data.aiHandCount);
+  setTopCard(data.data.topCard);  // <-- update top card here exactly
+  setIsPlayerTurn(data.data.isPlayerTurn);
+  setMessage(data.data.message || "À ton tour !");
+  setTokens({ balance: data.data.newBalance });
+  await checkForWinner(gameId);
+}
+
+
     } catch (err) {
       console.error("Erreur IA:", err);
     }
   };
 
   const playCard = async (card) => {
+    console.log("Playing card:", card);
     if (!isPlayerTurn || loading) return;
     setLoading(true);
     const res = await fetch("/api/uno/play-card", {
@@ -95,6 +118,8 @@ export default function UnoGamePage() {
       setAiHandCount(data.data.aiHandCount);
       setIsPlayerTurn(false);
       setMessage("L'IA joue...");
+
+      await checkForWinner(game.id); // ✅ check after player move
 
       // Trigger AI turn
       setTimeout(() => handleAITurn(game.id), 1000);
@@ -119,6 +144,8 @@ export default function UnoGamePage() {
       setIsPlayerTurn(false);
       setMessage("L'IA joue...");
 
+      await checkForWinner(game.id); // ✅ check after drawing
+
       // Trigger AI turn
       setTimeout(() => handleAITurn(game.id), 1000);
     } else {
@@ -140,7 +167,6 @@ export default function UnoGamePage() {
 
       <h1 className="text-3xl mb-2 font-bold">UNO vs IA</h1>
 
-      {/* ✅ Always display token balance */}
       {tokens && (
         <p className="text-yellow-300 mb-4 text-lg">
           💰 Tokens : {tokens.balance}
