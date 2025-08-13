@@ -121,6 +121,15 @@ const [pendingCard, setPendingCard] = useState(null);
 
 const sendPlayCard = async (card, chosenColor = null) => {
   setLoading(true);
+
+  // Only ask for color if it's wild AND no color has been chosen yet
+  if ((card.color === "wild" || card.color === "black") && !chosenColor) {
+    setPendingCard(card);
+    setShowColorPicker(true);
+    setLoading(false);
+    return;
+  }
+
   const res = await fetch("/api/uno/play-card", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -128,12 +137,22 @@ const sendPlayCard = async (card, chosenColor = null) => {
   });
 
   const data = await res.json();
+
   if (data.success) {
+    if (data.needsColorChoice) {
+      setPendingCard(data.card);
+      setShowColorPicker(true);
+      setLoading(false);
+      return;
+    }
+
     setPlayerHand(data.data.playerHand);
     setTopCard(data.data.topCard);
     setAiHandCount(data.data.aiHandCount);
     setIsPlayerTurn(data.data.isPlayerTurn);
     setMessage(data.data.message || "À ton tour !");
+    setPendingCard(null);       // ✅ clear pending card
+    setShowColorPicker(false);  // ✅ make sure popup closes
     await checkForWinner(game.id);
 
     if (!data.data.isPlayerTurn) {
@@ -142,12 +161,13 @@ const sendPlayCard = async (card, chosenColor = null) => {
   } else {
     setMessage(data.error);
   }
+
   setLoading(false);
 };
 
 
 
-  const drawCard = async () => {
+const drawCard = async () => {
     if (!isPlayerTurn || loading) return;
     setLoading(true);
     const res = await fetch("/api/uno/draw-card", {
@@ -256,41 +276,70 @@ else {
     <div className="bg-white p-6 rounded shadow-lg text-black">
       <h2 className="mb-4 font-bold">Choisis une couleur :</h2>
       <div className="flex gap-4">
-        {["red", "yellow", "green", "blue"].map((color) => (
-          <button
-            key={color}
-            onClick={() => {
-              setShowColorPicker(false);
-              if (pendingCard) {
-                sendPlayCard({ ...pendingCard, chosenColor: color });
-                setPendingCard(null);
-              }
-            }}
-            className={`px-4 py-2 rounded font-bold ${
-              color === "red"
-                ? "bg-red-500"
-                : color === "yellow"
-                ? "bg-yellow-400"
-                : color === "green"
-                ? "bg-green-500"
-                : "bg-blue-500"
-            }`}
-          >
-            {color.toUpperCase()}
-          </button>
-        ))}
+      {["red", "yellow", "green", "blue"].map((color) => (
+  <button
+    key={color}
+    onClick={() => {
+      setShowColorPicker(false);
+      if (pendingCard) {
+        // Pass chosenColor as second argument
+        sendPlayCard(pendingCard, color);
+        setPendingCard(null);
+      }
+    }}
+    className={`px-4 py-2 rounded font-bold ${
+      color === "red"
+        ? "bg-red-500"
+        : color === "yellow"
+        ? "bg-yellow-400"
+        : color === "green"
+        ? "bg-green-500"
+        : "bg-blue-500"
+    }`}
+  >
+    {color.toUpperCase()}
+  </button>
+))}
+
       </div>
     </div>
   </div>
 )}
 
+<div className="flex flex-col items-center mt-4">
+  {/* Draw card button */}
+  <button
+    onClick={drawCard}
+    className="mb-2 bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded"
+  >
+    Piocher une carte
+  </button>
 
-          <button
-            onClick={drawCard}
-            className="mt-4 bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded"
-          >
-            Piocher une carte
-          </button>
+  {/* Replay button if game is finished */}
+  {!isPlayerTurn && game && message.includes("a gagné") && (
+    <button
+      onClick={() => {
+        // Reset state immediately
+        setGame(null);
+        setPlayerHand([]);
+        setAiHandCount(0);
+        setTopCard(null);
+        setIsPlayerTurn(true);
+        setMessage("");
+        setPendingCard(null);
+        setShowColorPicker(false);
+
+        // Start new game
+        initializeGame();
+      }}
+      disabled={loading}
+      className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded"
+    >
+      {loading ? "Chargement..." : "Rejouer"}
+    </button>
+  )}
+</div>
+
         </>
       )}
     </div>

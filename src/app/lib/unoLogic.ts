@@ -115,8 +115,10 @@ export function applyUnoCard(game, card, currentPlayer, chosenColor = null) {
 
   switch (card.value) {
     case "Skip":
+      skipTurn(); // skip next player
+      break;
     case "Reverse":
-      skipTurn();
+      switchTurn(); // just reverse turn
       break;
     case "Draw Two":
       if (currentPlayer === "player") newAiHand.push(...deck.splice(0, 2));
