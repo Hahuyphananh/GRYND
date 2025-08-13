@@ -25,6 +25,19 @@ export async function POST(req) {
       return NextResponse.json({ error: "Game not found" }, { status: 404 });
     }
 
+    // ✅ Prevent double payout if winner already exists
+    if (game.winner) {
+      const user = await db.query.users.findFirst({
+        where: eq(users.clerkId, userId),
+      });
+      return NextResponse.json({
+        success: true,
+        winner: game.winner,
+        newBalance: parseFloat(user.balance),
+        message: "Winner already determined — no balance change.",
+      });
+    }
+
     // Safely parse hands
     const playerCards = game.playerHand
       ? typeof game.playerHand === "string"
@@ -56,7 +69,6 @@ export async function POST(req) {
       newBalance += taxedProfit;
     } else if (aiCards.length === 0) {
       winner = "ai";
-      newBalance -= parseFloat(game.betAmount);
     } else {
       // If neither has 0 cards, just return current game state without winner
       return NextResponse.json({
@@ -67,11 +79,16 @@ export async function POST(req) {
       });
     }
 
-    // Update user balance if game finished
-    await db
-      .update(users)
-      .set({ balance: newBalance.toFixed(2) })
-      .where(eq(users.clerkId, userId));
+    // ✅ Save winner in DB to prevent double payout
+    await db.update(unoGames).set({ winner }).where(eq(unoGames.id, gameId));
+
+    // Update user balance if player won
+    if (winner === "player") {
+      await db
+        .update(users)
+        .set({ balance: newBalance.toFixed(2) })
+        .where(eq(users.clerkId, userId));
+    }
 
     return NextResponse.json({
       success: true,
