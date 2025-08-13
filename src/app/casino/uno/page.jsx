@@ -13,6 +13,10 @@ export default function UnoGamePage() {
   const [message, setMessage] = useState("");
   const [betAmount, setBetAmount] = useState(100);
   const [tokens, setTokens] = useState(null);
+  const [colorChoice, setColorChoice] = useState(null);
+const [showColorPicker, setShowColorPicker] = useState(false);
+const [pendingCard, setPendingCard] = useState(null);
+
 
   const router = useRouter();
 
@@ -101,33 +105,47 @@ export default function UnoGamePage() {
     }
   };
 
-  const playCard = async (card) => {
-    console.log("Playing card:", card);
-    if (!isPlayerTurn || loading) return;
-    setLoading(true);
-    const res = await fetch("/api/uno/play-card", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gameId: game.id, card }),
-    });
+ const playCard = async (card) => {
+  if (!isPlayerTurn || loading) return;
 
-    const data = await res.json();
-    if (data.success) {
-      setPlayerHand(data.data.playerHand);
-      setTopCard(data.data.topCard);
-      setAiHandCount(data.data.aiHandCount);
-      setIsPlayerTurn(false);
-      setMessage("L'IA joue...");
+  // If it's a wild or black card, ask for color first
+  if (card.color === "wild" || card.color === "black") {
+    setPendingCard(card);
+    setShowColorPicker(true);
+    return;
+  }
 
-      await checkForWinner(game.id); // ✅ check after player move
+  // Otherwise play as usual
+  await sendPlayCard(card);
+};
 
-      // Trigger AI turn
+const sendPlayCard = async (card, chosenColor = null) => {
+  setLoading(true);
+  const res = await fetch("/api/uno/play-card", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ gameId: game.id, card, chosenColor }),
+  });
+
+  const data = await res.json();
+  if (data.success) {
+    setPlayerHand(data.data.playerHand);
+    setTopCard(data.data.topCard);
+    setAiHandCount(data.data.aiHandCount);
+    setIsPlayerTurn(data.data.isPlayerTurn);
+    setMessage(data.data.message || "À ton tour !");
+    await checkForWinner(game.id);
+
+    if (!data.data.isPlayerTurn) {
       setTimeout(() => handleAITurn(game.id), 1000);
-    } else {
-      setMessage(data.error);
     }
-    setLoading(false);
-  };
+  } else {
+    setMessage(data.error);
+  }
+  setLoading(false);
+};
+
+
 
   const drawCard = async () => {
     if (!isPlayerTurn || loading) return;
@@ -140,15 +158,15 @@ export default function UnoGamePage() {
 
     const data = await res.json();
     if (data.success) {
-      setPlayerHand(data.data.playerHand);
-      setIsPlayerTurn(false);
-      setMessage("L'IA joue...");
+  setPlayerHand(data.data.playerHand);
+  setTopCard(data.data.topCard);  // ✅ update top card immediately
+  setIsPlayerTurn(false);
+  setMessage("L'IA joue...");
+  await checkForWinner(game.id);
 
-      await checkForWinner(game.id); // ✅ check after drawing
-
-      // Trigger AI turn
-      setTimeout(() => handleAITurn(game.id), 1000);
-    } else {
+  setTimeout(() => handleAITurn(game.id), 1000);
+}
+else {
       setMessage(data.error);
     }
     setLoading(false);
@@ -200,11 +218,14 @@ export default function UnoGamePage() {
       ) : (
         <>
           <div className="mb-4">
-            Carte actuelle :
-            <span className="font-bold ml-2">
-              {topCard ? `${topCard.color} ${topCard.value}` : "?"}
-            </span>
-          </div>
+  Carte actuelle :
+  <span className="font-bold ml-2">
+    {topCard
+      ? `${topCard.chosenColor || topCard.color} ${topCard.value}`
+      : "?"}
+  </span>
+</div>
+
 
           <div className="mb-6">
             <h2 className="text-lg">Main de l’IA : {aiHandCount} cartes</h2>
@@ -230,6 +251,39 @@ export default function UnoGamePage() {
               </button>
             ))}
           </div>
+          {showColorPicker && (
+  <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center">
+    <div className="bg-white p-6 rounded shadow-lg text-black">
+      <h2 className="mb-4 font-bold">Choisis une couleur :</h2>
+      <div className="flex gap-4">
+        {["red", "yellow", "green", "blue"].map((color) => (
+          <button
+            key={color}
+            onClick={() => {
+              setShowColorPicker(false);
+              if (pendingCard) {
+                sendPlayCard({ ...pendingCard, chosenColor: color });
+                setPendingCard(null);
+              }
+            }}
+            className={`px-4 py-2 rounded font-bold ${
+              color === "red"
+                ? "bg-red-500"
+                : color === "yellow"
+                ? "bg-yellow-400"
+                : color === "green"
+                ? "bg-green-500"
+                : "bg-blue-500"
+            }`}
+          >
+            {color.toUpperCase()}
+          </button>
+        ))}
+      </div>
+    </div>
+  </div>
+)}
+
 
           <button
             onClick={drawCard}

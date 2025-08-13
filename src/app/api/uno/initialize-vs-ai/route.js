@@ -5,22 +5,19 @@ import { eq } from "drizzle-orm";
 
 function generateDeck() {
   const colors = ["red", "yellow", "green", "blue"];
-  const values = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Skip", "Reverse", "Draw Two"];
-  const wilds = ["Wild", "Wild Draw Four"];
-
+  const values = ["0","1","2","3","4","5","6","7","8","9","Skip","Reverse","Draw Two"];
+  const wilds = ["Wild","Wild Draw Four"];
   const deck = [];
 
   for (const color of colors) {
     for (const value of values) {
       deck.push({ color, value });
-      if (value !== "0") deck.push({ color, value }); // each card (except 0) appears twice
+      if (value !== "0") deck.push({ color, value });
     }
   }
 
   for (let i = 0; i < 4; i++) {
-    for (const wild of wilds) {
-      deck.push({ color: "black", value: wild });
-    }
+    for (const wild of wilds) deck.push({ color: "black", value: wild });
   }
 
   // Shuffle
@@ -34,54 +31,34 @@ function generateDeck() {
 
 export async function POST(request) {
   const { userId } = await auth();
-  if (!userId) {
-    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-      status: 401,
-    });
-  }
+  if (!userId) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
 
   const { betAmount } = await request.json();
   if (!betAmount || isNaN(betAmount) || betAmount <= 0 || betAmount > 1000) {
-    return new Response(JSON.stringify({ success: false, error: "Invalid bet amount" }), {
-      status: 400,
-    });
+    return new Response(JSON.stringify({ success: false, error: "Invalid bet amount" }), { status: 400 });
   }
 
   try {
-    const user = await db.query.users.findFirst({
-      where: eq(users.clerkId, userId),
-    });
-
-    if (!user) {
-      return new Response(JSON.stringify({ success: false, error: "User not found" }), {
-        status: 404,
-      });
-    }
+    const user = await db.query.users.findFirst({ where: eq(users.clerkId, userId) });
+    if (!user) return new Response(JSON.stringify({ success: false, error: "User not found" }), { status: 404 });
 
     const balance = parseFloat(user.balance);
-    if (balance < betAmount) {
-      return new Response(JSON.stringify({ success: false, error: "Insufficient balance" }), {
-        status: 400,
-      });
-    }
+    if (balance < betAmount) return new Response(JSON.stringify({ success: false, error: "Insufficient balance" }), { status: 400 });
 
     const deck = generateDeck();
     const playerHand = deck.splice(0, 7);
     const aiHand = deck.splice(0, 7);
 
-    // Get a non-wild starting card
+    // Pick a non-wild starting card
     let topCard;
-    do {
-      topCard = deck.pop();
-    } while (topCard.value === "Wild" || topCard.value === "Wild Draw Four");
+    do { topCard = deck.pop(); } while (topCard.value === "Wild" || topCard.value === "Wild Draw Four");
 
     const discardPile = [topCard];
-    const pot = (betAmount * 2).toFixed(2); // 2x pot
+    const currentColor = topCard.color; // ✅ track current color
+    const pot = (betAmount * 2).toFixed(2);
 
     const result = await db.transaction(async (tx) => {
-      await tx.update(users)
-        .set({ balance: (balance - betAmount).toFixed(2) })
-        .where(eq(users.clerkId, userId));
+      await tx.update(users).set({ balance: (balance - betAmount).toFixed(2) }).where(eq(users.clerkId, userId));
 
       const inserted = await tx.insert(unoGames).values({
         userId: user.id,
@@ -94,33 +71,30 @@ export async function POST(request) {
         deck,
         discardPile,
         topCard,
+        currentColor, // ✅ store currentColor in DB
         turn: "player",
       }).returning();
 
       return inserted[0];
     });
 
-   return new Response(
-  JSON.stringify({
-    success: true,
-    data: {
-      id: result.id, // 👈 correct key
-      newBalance: (balance - betAmount).toFixed(2),
-      playerHand,
-      aiHand: ["?", "?", "?", "?", "?", "?", "?"], // hidden
-      discardPile,
-      topCard,
-      turn: "player",
-      pot,
-    },
-  }),
-  { status: 200 }
-);
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        id: result.id,
+        newBalance: (balance - betAmount).toFixed(2),
+        playerHand,
+        aiHand: ["?", "?", "?", "?", "?", "?", "?"],
+        discardPile,
+        topCard,
+        currentColor, // ✅ send currentColor to frontend
+        turn: "player",
+        pot,
+      }
+    }), { status: 200 });
 
   } catch (err) {
     console.error("UNO AI init error:", err);
-    return new Response(JSON.stringify({ success: false, error: "Server error" }), {
-      status: 500,
-    });
+    return new Response(JSON.stringify({ success: false, error: "Server error" }), { status: 500 });
   }
 }
