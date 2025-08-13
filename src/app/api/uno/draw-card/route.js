@@ -1,44 +1,27 @@
 import { NextResponse } from "next/server";
 import { getUnoGameById, updateUnoGameState, drawUnoCard } from "../../../lib/unoGameUtils";
 
-export async function POST(request) {
+export async function POST(req) {
   try {
-    const { gameId } = await request.json();
-
+    const { gameId } = await req.json();
     const game = await getUnoGameById(gameId);
-    if (!game) {
-      return NextResponse.json({ success: false, error: "Game not found" }, { status: 404 });
-    }
+    if (!game) return NextResponse.json({ success: false, error: "Game not found" }, { status: 404 });
 
-    // 🛠️ Safely parse deck and playerHand if needed
-    game.deck = typeof game.deck === "string" ? JSON.parse(game.deck) : game.deck;
-    game.playerHand = typeof game.playerHand === "string" ? JSON.parse(game.playerHand) : game.playerHand;
+    const deck = typeof game.deck === "string" ? JSON.parse(game.deck) : game.deck;
+    const playerHand = typeof game.playerHand === "string" ? JSON.parse(game.playerHand) : game.playerHand;
 
-    // ✅ Draw a card
-    const newCard = drawUnoCard(game);
-    game.playerHand.push(newCard);
+    const newCard = drawUnoCard({ deck });
+    playerHand.push(newCard);
 
-    // 🌀 Turn ends after drawing
-    game.isPlayerTurn = false;
-
-    // 💾 Save back updated game state
-    await updateUnoGameState(gameId, {
-      ...game,
-      deck: JSON.stringify(game.deck),
-      playerHand: JSON.stringify(game.playerHand),
-      isPlayerTurn: game.isPlayerTurn
-    });
+    const updatedGame = { ...game, deck, playerHand, turn: "ai" };
+    await updateUnoGameState(gameId, updatedGame);
 
     return NextResponse.json({
       success: true,
-      data: {
-        playerHand: game.playerHand,
-        message: `Tu as pioché une carte.`,
-        isPlayerTurn: false
-      }
+      data: { playerHand, message: "Tu as pioché une carte.", isPlayerTurn: false, currentColor: game.currentColor }
     });
-  } catch (error) {
-    console.error("Error in /api/uno/draw-card:", error);
+  } catch (err) {
+    console.error("Error in draw-card:", err);
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }

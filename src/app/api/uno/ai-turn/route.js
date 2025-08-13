@@ -4,123 +4,108 @@ import { applyUnoCard } from "../../../lib/unoLogic";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 
-// ✅ Parse JSON only if it's a string
 function safeParse(data) {
   if (!data) return null;
   if (typeof data === "string") {
-    try {
-      return JSON.parse(data);
-    } catch {
-      return null;
-    }
+    try { return JSON.parse(data); } catch { return null; }
   }
-  return data; // already an object
+  return data;
+}
+
+function aiChooseColor(aiHand) {
+  const colorCount = { red: 0, blue: 0, green: 0, yellow: 0 };
+  for (const card of aiHand) {
+    if (colorCount.hasOwnProperty(card.color)) colorCount[card.color]++;
+  }
+  return Object.keys(colorCount).reduce((a, b) => colorCount[a] > colorCount[b] ? a : b);
 }
 
 export async function POST(req) {
   try {
     const { gameId } = await req.json();
-    if (!gameId) {
-      return Response.json({ success: false, error: "Missing gameId" }, { status: 400 });
-    }
+    if (!gameId) return Response.json({ success: false, error: "Missing gameId" }, { status: 400 });
 
-    // 1️⃣ Get the game from DB
     const game = await getUnoGameById(gameId);
-    if (!game) {
-      return Response.json({ success: false, error: "Game not found" }, { status: 404 });
-    }
+    if (!game) return Response.json({ success: false, error: "Game not found" }, { status: 404 });
 
-    // 2️⃣ Parse all necessary fields safely
     let deck = safeParse(game.deck) || [];
     let aiHand = safeParse(game.aiHand) || [];
     let playerHand = safeParse(game.playerHand) || [];
     let discardPile = safeParse(game.discardPile) || [];
-    let topCard = discardPile.length ? discardPile[discardPile.length - 1] : null;
+    let topCard = discardPile[discardPile.length - 1] || null;
+    let currentColor = game.currentColor || topCard?.color;
 
     let message = "";
-    let isPlayerTurn = false; // AI will start playing
+    let isPlayerTurn = false;
 
-    // Loop AI turn while AI has playable cards and it's AI's turn
     while (!isPlayerTurn) {
-      // Find playable card for AI
-      const playableIndex = aiHand.findIndex(
-        (card) =>
-          card.color === topCard.color ||
-          card.value === topCard.value ||
-          card.color === "wild" ||
-          card.color === "black"
-      );
+      // Find playable card
+      const playableIndex = aiHand.findIndex(card => card.color === "black" || card.color === currentColor || card.value === topCard.value);
 
       if (playableIndex >= 0) {
-        // AI plays the card
-        const playedCard = aiHand.splice(playableIndex, 1)[0];
+        let playedCard = aiHand.splice(playableIndex, 1)[0];
 
-        // Apply the Uno card effects
-        const updatedGame = applyUnoCard(
-          {
-            deck,
-            playerHand,
-            aiHand,
-            discardPile,
-            topCard,
-            turn: "ai",
-          },
-          playedCard,
-          "ai"
-        );
-
-        // Update game state from the result of applyUnoCard
-        deck = updatedGame.deck;
-        aiHand = updatedGame.aiHand;
-        playerHand = updatedGame.playerHand;
-        discardPile = updatedGame.discardPile;
-
-        topCard = discardPile[discardPile.length - 1] || null;
-
-        // Update isPlayerTurn flag based on updated turn
-        isPlayerTurn = updatedGame.turn === "player";
-
-        message = `IA joue ${playedCard.color} ${playedCard.value}`;
-
-        // If AI turn continues, loop again automatically
-        if (!isPlayerTurn) {
-          message += " et rejoue.";
+        // If Wild, choose color
+        if (playedCard.color === "black") {
+          const chosenColor = aiChooseColor(aiHand) || "red";
+          playedCard.color = chosenColor;
+          currentColor = chosenColor;
+          message = `IA joue ${playedCard.value} et choisit ${chosenColor}`;
+          // applyUnoCard updates currentColor internally too
+          const updatedGame = applyUnoCard(
+            { deck, playerHand, aiHand, discardPile, currentColor, turn: "ai" },
+            playedCard,
+            "ai",
+            chosenColor
+          );
+          deck = updatedGame.deck;
+          aiHand = updatedGame.aiHand;
+          playerHand = updatedGame.playerHand;
+          discardPile = updatedGame.discardPile;
+          currentColor = updatedGame.currentColor;
+          topCard = discardPile[discardPile.length - 1];
+          isPlayerTurn = updatedGame.turn === "player";
+        } else {
+          // Normal card
+          message = `IA joue ${playedCard.color} ${playedCard.value}`;
+          const updatedGame = applyUnoCard(
+            { deck, playerHand, aiHand, discardPile, currentColor, turn: "ai" },
+            playedCard,
+            "ai"
+          );
+          deck = updatedGame.deck;
+          aiHand = updatedGame.aiHand;
+          playerHand = updatedGame.playerHand;
+          discardPile = updatedGame.discardPile;
+          currentColor = updatedGame.currentColor;
+          topCard = discardPile[discardPile.length - 1];
+          isPlayerTurn = updatedGame.turn === "player";
         }
       } else {
-        // No playable card, AI draws one and ends turn
-        const newCard = drawUnoCard({ deck });
+        // Draw a card if none playable
+        const newCard = drawUnoCard(deck);
         aiHand.push(newCard);
-        message = `IA pioche une carte`;
-        isPlayerTurn = true; // AI ends turn after drawing
+        message = "IA pioche une carte";
+        isPlayerTurn = true; // end turn after draw
       }
     }
 
-    // 4️⃣ Save updated game state in DB
-    const updatedGameState = {
-      deck,
-      playerHand,
-      aiHand,
-      discardPile,
-      topCard,
-      isPlayerTurn,
-    };
-
+    const updatedGameState = { deck, playerHand, aiHand, discardPile, topCard, currentColor, isPlayerTurn };
     await updateUnoGameState(gameId, updatedGameState);
 
-    // 5️⃣ Get updated user balance
     const user = await db.query.users.findFirst({ where: eq(users.id, game.userId) });
 
-    // 6️⃣ Return updated game state to frontend
     return Response.json({
       success: true,
       data: {
         topCard,
-        playerHand,           // updated player hand (includes drawn cards if any)
+        playerHand,
         aiHandCount: aiHand.length,
         newBalance: parseFloat(user.balance),
         message,
         isPlayerTurn,
-      },
+        currentColor
+      }
     });
   } catch (err) {
     console.error("AI Turn Error:", err);

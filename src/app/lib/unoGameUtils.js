@@ -18,11 +18,11 @@ function generateUnoDeck() {
     });
   });
 
-  // Add extra +4 wilds just in case
-  deck = deck.concat(Array(4).fill({ color: "wild", value: "+4" }));
+  // Add extra +4 wilds
+  deck.push(...Array(4).fill({ color: "wild", value: "+4" }));
 
   // Shuffle
-  deck = deck.sort(() => Math.random() - 0.5);
+  deck.sort(() => Math.random() - 0.5);
   return deck;
 }
 
@@ -34,6 +34,7 @@ export async function createUnoGame(userId, betAmount) {
   const topCard = deck.shift();
 
   const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user) throw new Error("User not found");
   const newBalance = user.balance - betAmount;
 
   const [inserted] = await db.transaction(async tx => {
@@ -51,69 +52,32 @@ export async function createUnoGame(userId, betAmount) {
     }).returning();
   });
 
-  return {
-    gameId: inserted.id,
-    newBalance,
-    playerHand,
-    aiHand,
-    topCard
-  };
+  return { gameId: inserted.id, newBalance, playerHand, aiHand, topCard };
 }
 
 // ✅ Get an existing game by ID
 export async function getUnoGameById(gameId) {
-  const game = await db.query.unoGames.findFirst({
-    where: eq(unoGames.id, gameId)
-  });
-  return game;
+  const game = await db.query.unoGames.findFirst({ where: eq(unoGames.id, gameId) });
+  return game || null;
 }
 
-//draw-card
+// Draw a card from the deck without affecting the topCard
 export function drawUnoCard(game) {
   const deck = typeof game.deck === "string" ? JSON.parse(game.deck) : game.deck;
+  if (deck.length === 0) throw new Error("Deck empty");
   const card = deck.shift();
   game.deck = deck;
   return card;
 }
-
+// ✅ Update game state in DB
 export async function updateUnoGameState(gameId, updatedGame) {
-  await db
-    .update(unoGames)
-    .set({
-      deck: JSON.stringify(updatedGame.deck),
-      playerHand: JSON.stringify(updatedGame.playerHand),
-      aiHand: JSON.stringify(updatedGame.aiHand),
-      topCard: JSON.stringify(updatedGame.topCard),
-      isPlayerTurn: updatedGame.isPlayerTurn,
-    })
-    .where(eq(unoGames.id, gameId));
+  await db.update(unoGames).set({
+    deck: JSON.stringify(updatedGame.deck),
+    playerHand: JSON.stringify(updatedGame.playerHand),
+    aiHand: JSON.stringify(updatedGame.aiHand),
+    discardPile: JSON.stringify(updatedGame.discardPile),
+    currentColor: updatedGame.currentColor,
+    topCard: JSON.stringify(updatedGame.discardPile[updatedGame.discardPile.length - 1]),
+    isPlayerTurn: updatedGame.isPlayerTurn,
+  }).where(eq(unoGames.id, gameId));
 }
-
-export function applyUnoCard(game, card, player) {
-  // `game` is the current game state object
-  // `card` is the card played { color, value }
-  // `player` is "player" or "ai"
-
-  // Remove the card from the player's hand
-  if (player === "player") {
-    game.playerHand = game.playerHand.filter(
-      c => !(c.color === card.color && c.value === card.value)
-    );
-  } else {
-    game.aiHand = game.aiHand.filter(
-      c => !(c.color === card.color && c.value === card.value)
-    );
-  }
-
-  // Set the top card to the played card
-  game.topCard = card;
-
-  // Apply effects depending on the card value (e.g., skip, reverse, +2, +4)
-  // You need to implement the game logic here accordingly
-
-  // Switch turn
-  game.isPlayerTurn = !game.isPlayerTurn;
-
-  return game;
-}
-

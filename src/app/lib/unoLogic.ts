@@ -92,76 +92,49 @@ export function getNextTurn(
   return current === "player" ? "ai" : "player";
 }
 
-export function applyUnoCard(game, card, currentPlayer) {
-  const {
-    playerHand,
-    aiHand,
-    deck,
-    discardPile = [],
-    turn,
-  } = game;
+export function applyUnoCard(game, card, currentPlayer, chosenColor = null) {
+  let { playerHand, aiHand, deck, discardPile = [], turn, currentColor } = game;
 
-  const newDiscardPile = [...discardPile, card];
+  const newDiscardPile = [...discardPile];
   let newPlayerHand = [...playerHand];
   let newAiHand = [...aiHand];
   let nextTurn = turn;
 
-  const switchTurn = () => {
-    nextTurn = currentPlayer === "player" ? "ai" : "player";
-  };
+  const switchTurn = () => nextTurn = currentPlayer === "player" ? "ai" : "player";
+  const skipTurn = () => { switchTurn(); switchTurn(); };
+
+  let playedCard = { ...card };
+  if (card.value === "Wild" || card.value === "Wild Draw Four") {
+    playedCard.color = chosenColor;
+    currentColor = chosenColor;
+  } else {
+    currentColor = card.color;
+  }
+
+  newDiscardPile.push(playedCard);
 
   switch (card.value) {
     case "Skip":
     case "Reverse":
-      // Skip opponent's turn: current player plays again
-      nextTurn = currentPlayer;
+      skipTurn();
       break;
-
     case "Draw Two":
-      if (currentPlayer === "player") {
-        // AI draws 2 cards and loses turn
-        const drawnCards = deck.splice(0, 2);
-        newAiHand = [...newAiHand, ...drawnCards];
-        nextTurn = currentPlayer; // Player plays again (skip AI)
-      } else {
-        // Player draws 2 cards and loses turn
-        const drawnCards = deck.splice(0, 2);
-        newPlayerHand = [...newPlayerHand, ...drawnCards];
-        nextTurn = currentPlayer; // AI plays again (skip Player)
-      }
+      if (currentPlayer === "player") newAiHand.push(...deck.splice(0, 2));
+      else newPlayerHand.push(...deck.splice(0, 2));
+      skipTurn();
       break;
-
     case "Wild":
-      // Just switch turn normally
       switchTurn();
       break;
-
     case "Wild Draw Four":
-      if (currentPlayer === "player") {
-        // AI draws 4 cards and loses turn
-        const drawnCards = deck.splice(0, 4);
-        newAiHand = [...newAiHand, ...drawnCards];
-        nextTurn = currentPlayer; // Player plays again (skip AI)
-      } else {
-        // Player draws 4 cards and loses turn
-        const drawnCards = deck.splice(0, 4);
-        newPlayerHand = [...newPlayerHand, ...drawnCards];
-        nextTurn = currentPlayer; // AI plays again (skip Player)
-      }
+      if (currentPlayer === "player") newAiHand.push(...deck.splice(0, 4));
+      else newPlayerHand.push(...deck.splice(0, 4));
+      skipTurn();
       break;
-
     default:
-      // Normal cards just switch turn
       switchTurn();
       break;
   }
 
-  return {
-    ...game,
-    playerHand: newPlayerHand,
-    aiHand: newAiHand,
-    deck,
-    discardPile: newDiscardPile,
-    turn: nextTurn,
-  };
+  return { ...game, playerHand: newPlayerHand, aiHand: newAiHand, deck, discardPile: newDiscardPile, turn: nextTurn, currentColor };
 }
