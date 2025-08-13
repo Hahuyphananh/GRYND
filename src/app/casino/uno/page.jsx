@@ -316,22 +316,22 @@ else {
   </button>
 
   {/* Replay button if game is finished */}
-  {!isPlayerTurn && game && message.includes("a gagné") && (
-    <button
-      onClick={() => {
-        // Reset state immediately
-        setGame(null);
-        setPlayerHand([]);
-        setAiHandCount(0);
-        setTopCard(null);
-        setIsPlayerTurn(true);
-        setMessage("");
-        setPendingCard(null);
-        setShowColorPicker(false);
+{!isPlayerTurn && game && message.includes("a gagné") && (
+  <button
+    onClick={async () => {
+      // Reset frontend state
+      setMessage("");
+      setGame(null);
+      setPlayerHand([]);
+      setAiHandCount(0);
+      setTopCard(null);
+      setIsPlayerTurn(true);
+      setPendingCard(null);
+      setShowColorPicker(false);
 
-        // Start new game
-        initializeGame();
-      }}
+      // Start a new game safely
+      await initializeGame();
+    }}
       disabled={loading}
       className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded"
     >

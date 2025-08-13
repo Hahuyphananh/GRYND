@@ -131,6 +131,7 @@ export const unoGames = pgTable("uno_games", {
   discardPile: json("discard_pile").notNull(),
   turn: text("turn").notNull(), // 'player' or 'ai'
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  winner: text("winner").notNull(), // stores "player" or "ai" after game ends
 });
 
 export const rpsGames = pgTable("rps_games", {
