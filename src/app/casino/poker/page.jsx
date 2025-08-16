@@ -193,28 +193,54 @@ const evaluateHand = (hand) => {
 
 
 
-  // --- Card Renderer identical to Blackjack ---
-const renderCard = (card, i) => {
+ // renderCard now takes in highlightValues too
+const renderCard = (card, i, highlight = { values: [], color: "yellow" }) => {
   const suitSymbols = { hearts: "♥", diamonds: "♦", clubs: "♣", spades: "♠" };
-  const symbol = suitSymbols[card.suit] || card.suit; // converts backend suit to symbol
+  const symbol = suitSymbols[card.suit] || card.suit;
+
+  const isHighlighted = highlight.values.includes(card.value);
 
   return (
-    <div
-      key={i}
-      className="h-32 w-24 bg-white text-xl flex items-center justify-center rounded shadow"
-      style={{
-        color: ["♥", "♦"].includes(symbol) ? "red" : "black",
-      }}
-    >
-      {`${card.value}${symbol}`}
-    </div>
+   <div
+  key={i}
+  className={`h-32 w-24 bg-white text-xl flex items-center justify-center rounded shadow ${
+    isHighlighted ? "border-4 border-yellow-500" : ""
+  }`}
+  style={{
+    color: ["♥", "♦"].includes(symbol) ? "red" : "black",
+    boxShadow: "none" // remove neon glow
+  }}
+>
+  {`${card.value}${symbol}`}
+</div>
+
   );
 };
 
+// highlight pairs/trips/quads; otherwise highlight highest card in YELLOW
+const getHighlightValues = (hand) => {
+  if (!hand || hand.length === 0) return { values: [], color: "yellow" };
 
+  // Ignore hidden AI cards
+  const visibleHand = hand.filter(c => c.value !== "?");
+  if (visibleHand.length === 0) return { values: [], color: "yellow" };
 
+  const valuesOrder = { "2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,"J":11,"Q":12,"K":13,"A":14 };
+  const valueCounts = {};
+  visibleHand.forEach(c => valueCounts[c.value] = (valueCounts[c.value] || 0) + 1);
 
-  return (
+  // Highlight pairs/trips/quads
+  const highlightPairs = Object.keys(valueCounts).filter(v => valueCounts[v] > 1);
+  if (highlightPairs.length > 0) {
+    return { values: highlightPairs, color: "yellow" }; // use normal yellow, not lime
+  }
+
+  // Otherwise, highlight highest card
+  const sorted = [...visibleHand].sort((a, b) => valuesOrder[b.value] - valuesOrder[a.value]);
+  return { values: [sorted[0].value], color: "yellow" };
+};
+
+return (
     <div className="min-h-screen bg-[#003366] pt-20">
         <NavigationBar currentPath="/casino" />
 
@@ -265,7 +291,9 @@ const renderCard = (card, i) => {
   <div className="flex justify-center flex-wrap gap-4 mb-4">
     <div>
       <h3 className="text-[#FFD700] text-center mb-2">Votre main</h3>
-      <div className="flex gap-2 justify-center">{playerHand.map(renderCard)}</div>
+      <div className="flex gap-2 justify-center">
+  {playerHand.map((c, i) => renderCard(c, i, getHighlightValues(playerHand)))}
+</div>
         {playerHand.length === 5 && (
     <div className="text-center mt-2 text-lg font-bold text-[#FFD700]">
       Votre main: {evaluateHand(playerHand)}
@@ -274,7 +302,9 @@ const renderCard = (card, i) => {
     </div>
     <div>
       <h3 className="text-[#FFD700] text-center mb-2">Main AI</h3>
-      <div className="flex gap-2 justify-center">{opponentHand.map(renderCard)}</div>
+    <div className="flex gap-2 justify-center">
+  {opponentHand.map((c, i) => renderCard(c, i, getHighlightValues(opponentHand)))}
+</div>
        {opponentHand.length === 5 && !opponentHand.some(c => c.value === "?") && (
     <div className="text-center mt-2 text-lg font-bold text-[#FFD700]">
       Main AI: {evaluateHand(opponentHand)}
