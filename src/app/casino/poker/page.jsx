@@ -78,15 +78,15 @@ export default function PokerPage() {
     }
   };
 
-  const initializeAiGame = async () => {
+const initializeAiGame = async () => {
   try {
     setLoading(true);
     setError(null);
 
     const response = await fetch("/api/initialize-poker-vs-ai", {
-       method: "POST",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ betAmount }) // send user-chosen bet
+      body: JSON.stringify({ betAmount }),
     });
 
     const data = await response.json();
@@ -97,12 +97,12 @@ export default function PokerPage() {
 
     setGame({ id: data.data.gameId });
 
-    // --- Deal hole cards ---
-    const playerCards = [getRandomCard(), getRandomCard()];
-    const aiCards = [{ value: "?", suit: "?" }, { value: "?", suit: "?" }];
+    // --- Use full 5-card hands from backend ---
+    const playerCards = data.data.playerHand; // real player cards
+    const aiCards = data.data.aiHand.map(() => ({ value: "?", suit: "?" })); // hidden AI cards
 
     setPlayerHand(playerCards);
-    setOpponentHand(aiCards);
+    setOpponentHand(aiCards); // show ? for AI initially
     setPot(data.data.pot ?? 20);
     setUserTokens(data.data.newBalance);
     setResult(null);
@@ -136,22 +136,22 @@ const handleAction = async (action) => {
     setPot(data.game.pot || 0);
 
     if (data.result) {
-      setResult(data.result);
+  setResult(data.result);
 
-      // --- Map suits to symbols for AI hand before revealing ---
-      const suitSymbols = {
-        hearts: "♥",
-        diamonds: "♦",
-        clubs: "♣",
-        spades: "♠",
-      };
+  // Map AI hand suits to symbols
+  const suitSymbols = { hearts: "♥", diamonds: "♦", clubs: "♣", spades: "♠" };
+  const revealedAiHand = data.game.aiHand.map(c => ({
+    value: c.value,
+    suit: suitSymbols[c.suit] || c.suit, // convert suit to symbol
+  }));
 
-      const revealedAiHand = data.game.aiHand.map(c => ({
-        value: c.value,
-        suit: suitSymbols[c.suit] || c.suit,
-      }));
+  setOpponentHand(revealedAiHand);
+}
 
-      setOpponentHand(revealedAiHand); // Reveal AI hand with proper symbols
+
+    // --- Update token balance immediately ---
+    if (data.newBalance !== undefined) {
+      setUserTokens(data.newBalance);
     }
 
   } catch (e) {
@@ -160,20 +160,57 @@ const handleAction = async (action) => {
   }
 };
 
+// Evaluates a 5-card hand and returns the hand name
+const evaluateHand = (hand) => {
+  if (!hand || hand.length !== 5) return "";
+
+  const valuesOrder = { "2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,"J":11,"Q":12,"K":13,"A":14 };
+  const valueCounts = {};
+  const suits = hand.map(c => c.suit);
+  const valueNums = hand.map(c => valuesOrder[c.value]).sort((a,b) => a-b);
+
+  hand.forEach(c => valueCounts[c.value] = (valueCounts[c.value] || 0) + 1);
+
+  const counts = Object.values(valueCounts).sort((a,b)=>b-a); // highest first
+  const isFlush = new Set(suits).size === 1;
+  const isStraight = valueNums.every((v,i) => i===0 || v === valueNums[i-1]+1) ||
+                     (valueNums.toString() === "2,3,4,5,14"); // Ace-low straight
+
+  // Royal Flush
+  if (isFlush && isStraight && Math.min(...valueNums) === 10) return "Royal Flush";
+  if (isFlush && isStraight) return "Straight Flush";
+  if (counts[0] === 4) return "Four of a Kind";
+  if (counts[0] === 3 && counts[1] === 2) return "Full House";
+  if (isFlush) return "Flush";
+  if (isStraight) return "Straight";
+  if (counts[0] === 3) return "Three of a Kind";
+  if (counts[0] === 2 && counts[1] === 2) return "Two Pair";
+  if (counts[0] === 2) return "One Pair";
+  return "High Card";
+};
+
+
 
 
   // --- Card Renderer identical to Blackjack ---
- const renderCard = (card, i) => (
-  <div
-    key={i}
-    className="h-32 w-24 bg-white text-xl flex items-center justify-center rounded shadow"
-    style={{
-      color: ["♥", "♦"].includes(card.suit) ? "red" : "black",
-    }}
-  >
-    {`${card.value}${card.suit}`}
-  </div>
-);
+const renderCard = (card, i) => {
+  const suitSymbols = { hearts: "♥", diamonds: "♦", clubs: "♣", spades: "♠" };
+  const symbol = suitSymbols[card.suit] || card.suit; // converts backend suit to symbol
+
+  return (
+    <div
+      key={i}
+      className="h-32 w-24 bg-white text-xl flex items-center justify-center rounded shadow"
+      style={{
+        color: ["♥", "♦"].includes(symbol) ? "red" : "black",
+      }}
+    >
+      {`${card.value}${symbol}`}
+    </div>
+  );
+};
+
+
 
 
   return (
@@ -227,44 +264,53 @@ const handleAction = async (action) => {
   </div>
 )}
 
+
         {game && (
-          <div className="mt-8 rounded-lg bg-[#0e6b0e] p-6 border-[10px] border-[#5c3b15] shadow-inner">
-            <div className="flex justify-center gap-8 mb-4">
-              <div>
-                <h3 className="text-[#FFD700] text-center mb-2">Votre main</h3>
-                <div className="flex gap-2 justify-center">{playerHand.map(renderCard)}</div>
-              </div>
-              <div>
-                <h3 className="text-[#FFD700] text-center mb-2">Main AI</h3>
-                <div className="flex gap-2 justify-center">{opponentHand.map(renderCard)}</div>
-              </div>
-            </div>
+       <div className="mt-8 rounded-lg bg-[#0e6b0e] p-8 border-[10px] border-[#5c3b15] shadow-inner w-full max-w-6xl mx-auto">
+  <div className="flex justify-center flex-wrap gap-4 mb-4">
+    <div>
+      <h3 className="text-[#FFD700] text-center mb-2">Votre main</h3>
+      <div className="flex gap-2 justify-center">{playerHand.map(renderCard)}</div>
+        {playerHand.length === 5 && (
+    <div className="text-center mt-2 text-lg font-bold text-[#FFD700]">
+      Votre main: {evaluateHand(playerHand)}
+    </div>
+  )}
+    </div>
+    <div>
+      <h3 className="text-[#FFD700] text-center mb-2">Main AI</h3>
+      <div className="flex gap-2 justify-center">{opponentHand.map(renderCard)}</div>
+       {opponentHand.length === 5 && !opponentHand.some(c => c.value === "?") && (
+    <div className="text-center mt-2 text-lg font-bold text-[#FFD700]">
+      Main AI: {evaluateHand(opponentHand)}
+    </div>
+  )}
+    </div>
+  </div>
 
-            <div className="text-center text-[#FFD700] font-semibold text-lg mb-4">
-              Pot actuel: {pot} tokens
-            </div>
+  <div className="text-center text-[#FFD700] font-semibold text-lg mb-4">
+    Pot actuel: {pot} tokens
+  </div>
 
-  
-<div className="flex flex-wrap gap-4 justify-center items-center">
-  <button
-    onClick={() => handleAction("fold")}
-    className="bg-red-600 hover:bg-red-700 px-5 py-2 rounded-full font-bold"
-  >
-    Fold
-  </button>
-  <button
-    onClick={() => {
-      // In Casino Hold'em, "Play" = fixed raise (usually 2x ante)
-      setRaiseAmount(pot / 10 * 2); // example: ante = pot/10, play bet = 2x ante
-      handleAction("play");
-    }}
-    className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-full font-bold"
-  >
-    Play
-  </button>
+  <div className="flex flex-wrap gap-4 justify-center items-center">
+    <button
+      onClick={() => handleAction("fold")}
+      className="bg-red-600 hover:bg-red-700 px-5 py-2 rounded-full font-bold"
+    >
+      Fold
+    </button>
+    <button
+      onClick={() => {
+        setRaiseAmount(pot / 10 * 2);
+        handleAction("play");
+      }}
+      className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-full font-bold"
+    >
+      Play
+    </button>
+  </div>
 </div>
 
-          </div>
         )}
 
         {result && (
@@ -288,21 +334,22 @@ const handleAction = async (action) => {
   </div>
 )}
 
-
-        <div className="mt-10 grid grid-cols-3 gap-6 text-white text-center">
-          <div>
-            <p className="font-semibold text-[#FFD700]">Plus gros gain</p>
-            <p>{stats.biggestWin} tokens</p>
-          </div>
-          <div>
-            <p className="font-semibold text-[#FFD700]">Mains jouées</p>
-            <p>{stats.totalHands}</p>
-          </div>
-          <div>
-            <p className="font-semibold text-[#FFD700]">Victoires</p>
-            <p>{stats.totalWins}</p>
-          </div>
-        </div>
+{/* Poker Hand Rankings Legend */}
+<div className="mt-6 w-full bg-[#222] text-white p-4 rounded shadow">
+  <h3 className="text-[#FFD700] font-bold mb-2 text-center">Poker Hands (Probabilities)</h3>
+  <ul className="flex flex-wrap justify-center gap-6 text-sm">
+    <li>Royal Flush (0.0001%)</li>
+    <li>Straight Flush (0.001%)</li>
+    <li>Four of a Kind (0.02%)</li>
+    <li>Full House (0.1%)</li>
+    <li>Flush (0.2%)</li>
+    <li>Straight (0.4%)</li>
+    <li>Three of a Kind (2.11%)</li>
+    <li>Two Pair (4.75%)</li>
+    <li>One Pair (42.26%)</li>
+    <li>High Card (50.12%)</li>
+  </ul>
+</div>
       </div>
     </div>
   );

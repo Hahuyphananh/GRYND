@@ -46,46 +46,26 @@ export async function performAiAction(gameId) {
 }
 
 // Deal community cards
-export function dealCommunityCards(currentCards = [], playerHand = [], aiHand = []) {
-  const suits = ["hearts", "diamonds", "clubs", "spades"];
-  const values = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
-
-  const deck = [];
-  for (const suit of suits) {
-    for (const value of values) {
-      deck.push({ value, suit });
-    }
-  }
-
-  const dealtCards = [...currentCards, ...playerHand, ...aiHand];
-  const remainingDeck = deck.filter(
-    c => !dealtCards.some(dc => dc.value === c.value && dc.suit === c.suit)
-  );
-
-  for (let i = remainingDeck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [remainingDeck[i], remainingDeck[j]] = [remainingDeck[j], remainingDeck[i]];
-  }
-
+export function dealCommunityCards(currentCards = [], playerHand = [], aiHand = [], deck = []) {
   const needed = 5 - currentCards.length;
-  return [...currentCards, ...remainingDeck.slice(0, needed)];
+  const newCards = deck.slice(0, needed);
+  const remainingDeck = deck.slice(needed);
+  return { newCommunity: [...currentCards, ...newCards], updatedDeck: remainingDeck };
 }
 
 // Compare hands: returns "player", "dealer", or "tie"
-export function compareHands(playerHand, dealerHand, communityCards) {
+export function compareHands(playerHand, dealerHand) {
   const valueRank = {
     "2": 2, "3": 3, "4": 4, "5": 5, "6": 6,
     "7": 7, "8": 8, "9": 9, "10": 10,
     "J": 11, "Q": 12, "K": 13, "A": 14
   };
 
-  const allPlayer = [...playerHand, ...communityCards].map(c => valueRank[c.value]);
-  const allDealer = [...dealerHand, ...communityCards].map(c => valueRank[c.value]);
-
-  const playerMax = Math.max(...allPlayer);
-  const dealerMax = Math.max(...allDealer);
+  const playerMax = Math.max(...playerHand.map(c => valueRank[c.value]));
+  const dealerMax = Math.max(...dealerHand.map(c => valueRank[c.value]));
 
   if (playerMax > dealerMax) return "player";
   if (dealerMax > playerMax) return "dealer";
   return "tie";
 }
+
