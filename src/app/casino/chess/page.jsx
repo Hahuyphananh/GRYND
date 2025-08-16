@@ -1,12 +1,14 @@
 "use client";
 import Link from "next/link";
+import NavigationBar from "../../../components/navigation-bar";
 
 export default function ChessLobby() {
   const tables = [1, 5, 10, 20, 50, 100];
 
   return (
     <div className="min-h-screen bg-[#003366] text-white p-6 text-center">
-      <h1 className="text-4xl font-bold text-[#FFD700] mb-8">♟️ Chess Tables</h1>
+ <NavigationBar currentPath="/casino" />
+      <h1 className="text-4xl font-bold text-[#FFD700] mb-8 mt-12">♟️ Chess Tables</h1>
       <div className="flex flex-wrap justify-center gap-4">
         {tables.map(amount => (
           <Link

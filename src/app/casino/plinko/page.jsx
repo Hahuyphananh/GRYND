@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
+import NavigationBar from "../../../components/navigation-bar";
 
 function MainComponent() {
   const { isSignedIn, user } = useUser();
@@ -341,22 +342,22 @@ useEffect(() => {
   };
 }, []);
 
+const scaledBoardSize = {
+  width: boardSize.width * 0.95,   // 90% of original width
+  height: boardSize.height * 0.95  // 90% of original height
+};
+
+
 return (
   <div className="h-screen flex bg-[#003366]">
+    <NavigationBar currentPath="/casino" />
     {/* Sidebar */}
     <aside
       ref={sidebarRef}
       className="flex flex-col w-64 p-6 bg-[#004B7C] text-white h-full"
     >
-      <a
-        href="/casino"
-        className="inline-flex items-center rounded bg-[#2A2B30] px-4 py-2 mb-6 text-white hover:bg-[#3A3B40]"
-      >
-        <i className="fas fa-arrow-left mr-2"></i>
-        Retour au Casino
-      </a>
 
-      <h1 className="mb-8 text-3xl font-bold">Plinko</h1>
+      <h1 className="mb-8 text-3xl font-bold mt-12">Plinko</h1>
 
       {/* Risk Level Selector */}
       <div className="mb-4">
@@ -448,9 +449,13 @@ return (
         style={{ height: "100vh" }}
       >
         <div
-          style={{ width: `${boardSize.width}px`, height: `${boardSize.height}px` }}
-          className="relative flex-grow"
-        >
+  style={{
+    width: `${scaledBoardSize.width}px`,
+    height: `${scaledBoardSize.height}px`
+  }}
+  className="relative flex-grow"
+>
+
           <svg
             ref={svgRef}
             viewBox="0 0 500 500"

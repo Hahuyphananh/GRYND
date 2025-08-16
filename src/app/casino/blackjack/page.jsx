@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
+import NavigationBar from "../../../components/navigation-bar";
 
 export default function BlackjackPage() {
   const { isSignedIn, user } = useUser();
@@ -207,15 +208,16 @@ export default function BlackjackPage() {
 
   return (
     <div className="min-h-screen bg-[#003366] pt-20">
+      <NavigationBar currentPath="/casino" />
       <div className="mx-auto max-w-4xl px-4 py-8">
         <div className="mb-8 flex items-center justify-between">
-          <a href="/casino" className="text-[#FFD700]">
-            Retour au Casino
-          </a>
           <h1 className="text-4xl font-bold text-[#FFD700]">Blackjack</h1>
           <div className="flex items-center gap-2 text-[#FFD700]">
             <i className="fas fa-coins" />
-            <span>{userTokens !== null ? userTokens : "..."}</span>
+            <span className="w-auto h-auto text-xl font-semibold">
+  Tokens: {userTokens !== null ? userTokens : "..."}
+</span>
+
           </div>
         </div>
 

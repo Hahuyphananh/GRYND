@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
+import NavigationBar from "../../../components/navigation-bar";
 
 export default function KenoGame() {
   const router = useRouter();
@@ -117,18 +118,13 @@ const fetchUserBalance = async () => {
 
   return (
     <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center p-6 relative">
-      <button
-        onClick={() => router.push('/casino')}
-        className="absolute top-4 left-4 bg-gray-700 hover:bg-gray-800 px-4 py-2 rounded"
-      >
-        ⬅ Return to Casino
-      </button>
+<NavigationBar currentPath="/casino" />
 
       <div className="absolute top-4 right-4 bg-[#0055aa] px-4 py-2 rounded-lg shadow text-yellow-400 font-bold">
         🪙 Balance: {userBalance ?? '...'}
       </div>
 
-      <h1 className="text-3xl font-bold mb-6 text-yellow-400">🎯 Keno</h1>
+      <h1 className="text-3xl font-bold mb-6 text-yellow-400 mt-12">🎯 Keno</h1>
 
       {error && (
         <div className="bg-red-500/20 text-red-300 px-4 py-2 rounded mb-4">

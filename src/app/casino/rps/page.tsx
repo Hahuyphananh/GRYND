@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import NavigationBar from "../../../components/navigation-bar";
 
 export default function RPSGame() {
   const [tokens, setTokens] = useState(0);
@@ -131,18 +132,13 @@ const placeBet = async () => {
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
+       <NavigationBar currentPath="/casino" />
+
       {/* Left Sidebar */}
       <div className="w-full max-w-[380px] md:max-w-[380px] bg-[#002b55] rounded-xl p-6 flex flex-col gap-6 shadow-lg mx-auto md:mx-0 mb-6 md:mb-0">
-        {/* Return to Casino */}
-        <button
-          onClick={() => router.push("/casino")}
-          className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded shadow font-semibold flex items-center justify-center gap-2"
-        >
-          ⬅ Return to Casino
-        </button>
 
         {/* Title */}
-        <h1 className="text-3xl font-bold text-yellow-400 text-center whitespace-nowrap">
+        <h1 className="text-3xl font-bold text-yellow-400 text-center whitespace-nowrap mt-20">
           ✊ Rock Paper Scissors
         </h1>
 

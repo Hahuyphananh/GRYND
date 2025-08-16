@@ -1,5 +1,5 @@
 "use client";
-
+import NavigationBar from "../components/navigation-bar";
 import React, { useState, useRef, useEffect } from "react";
 
 const playSound = (freq = 880) => {
@@ -126,9 +126,9 @@ export default function SlotMachine() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-[#001A33] to-[#002B5B] p-4 text-white relative">
-      
+      <NavigationBar currentPath="/casino" />
       {/* Title */}
-      <h1 className="text-4xl font-extrabold text-yellow-400 mb-6 drop-shadow-[0_0_10px_gold] animate-pulse">
+      <h1 className="text-4xl font-extrabold text-yellow-400 mb-6 drop-shadow-[0_0_10px_gold] animate-pulse mt-20">
         🎰 FORTUNE SPIN SLOTS 🎰
       </h1>
 
@@ -232,14 +232,6 @@ export default function SlotMachine() {
           {lastResult && <p className="text-xl">{lastResult}</p>}
         </div>
       </div>
-
-      {/* Return to Casino Button */}
-      <button
-        onClick={() => (window.location.href = "/casino")}
-        className="mt-6 bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-300 hover:to-orange-400 text-black font-bold py-3 px-8 rounded-full shadow-lg transition animate-bounce"
-      >
-        ⬅ Return to Casino
-      </button>
 
       {/* Animations */}
       <style jsx>{`
