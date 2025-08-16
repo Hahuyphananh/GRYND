@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
+import NavigationBar from "../../../components/navigation-bar";
 
 export default function MinesGamePage() {
   const GRID_SIZE = 5;
@@ -377,15 +378,9 @@ async function handleClick(index) {
 
 return (
   <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center justify-center p-4 relative">
-    {/* Return to Casino Button */}
-    <a
-      href="/casino"
-      className="absolute top-4 left-4 bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-2 px-4 rounded-lg shadow-lg transition-all duration-300"
-    >
-      ⬅ Return to Casino
-    </a>
-
-    <div className={`bg-[#004080] rounded-lg p-8 w-full max-w-6xl min-w-[80%] ${gameOver ? "relative" : ""}`}>
+    <NavigationBar currentPath="/casino" />
+  
+   <div className={`bg-[#004080] rounded-lg p-8 w-full max-w-6xl min-w-[80%] ${gameOver ? "relative" : ""}`}>
       {gameOver && (
         <div className="absolute inset-0 bg-black bg-opacity-10 rounded-lg pointer-events-none"></div>
       )}
@@ -395,6 +390,9 @@ return (
         {/* Left sidebar */}
         <div className="w-full lg:w-1/4 flex flex-col gap-4">
           {/* Your new input container */}
+           <h1 className="text-3xl font-bold text-yellow-400 text-center w-full mt-3">
+            Mines
+          </h1>
   <div className="bg-[#0055aa] rounded-lg p-4">
     <label htmlFor="bet-input" className="block mb-2 text-center font-semibold">
       Bet Amount

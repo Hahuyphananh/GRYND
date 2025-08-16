@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import { useRouter } from "next/navigation";
+import NavigationBar from "../../../../components/navigation-bar";
 
 export default function ChessAIPage() {
   const [game, setGame] = useState(new Chess());
@@ -128,28 +129,21 @@ export default function ChessAIPage() {
 
   return (
     <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center justify-start p-6 relative">
+       <NavigationBar currentPath="/casino" />
       {/* Title */}
-      <h1 className="text-4xl font-bold text-[#FFD700] mb-6">
+      <h1 className="text-4xl font-bold text-[#FFD700] mb-6 mt-12">
         ♟️ AI Chess Arena
       </h1>
 
       {/* Buttons and Controls */}
       <div className="flex gap-4 mb-4">
         <button
-          onClick={() => router.push("/casino")}
-          className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded shadow"
-        >
-          ⬅ Return to Casino
-        </button>
-        <button
           onClick={handleResign}
           className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded shadow"
         >
           Resign
         </button>
-      </div>
-
-      {/* AI Level Selector */}
+        {/* AI Level Selector */}
       <div className="mb-6 text-center">
         <label className="mr-2 font-semibold">AI Level:</label>
         <select
@@ -163,6 +157,7 @@ export default function ChessAIPage() {
             </option>
           ))}
         </select>
+      </div>
       </div>
 
       {/* Chessboard */}

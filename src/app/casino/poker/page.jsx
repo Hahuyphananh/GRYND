@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
+import NavigationBar from "../../../components/navigation-bar";
 
 export default function PokerPage() {
   const { user } = useUser();
@@ -215,13 +216,7 @@ const renderCard = (card, i) => {
 
   return (
     <div className="min-h-screen bg-[#003366] pt-20">
-      {/* ✅ Return to Casino Button */}
-      <button
-        onClick={() => router.push("/casino")}
-        className="absolute top-4 left-4 bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded shadow"
-      >
-        ⬅ Return to Casino
-      </button>
+        <NavigationBar currentPath="/casino" />
 
       <div className="mx-auto max-w-4xl px-4 py-8">
         <h1 className="text-4xl font-bold text-[#FFD700] text-center mb-6">

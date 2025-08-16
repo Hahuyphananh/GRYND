@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import UnoCard from "../../../components/UnoCard"; 
 import UnoBack from "../../../components/UnoBack"; 
+import NavigationBar from "../../../components/navigation-bar";
 
 export default function UnoGamePage() {
   const [game, setGame] = useState(null);
@@ -196,15 +197,7 @@ else {
 
 return (
   <div className="bg-[#003366] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8">
-    <div className="absolute top-4 left-4">
-      <button
-        onClick={() => router.push("/casino")}
-        className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded"
-      >
-        ⬅ Retour au casino
-      </button>
-    </div>
-
+ <NavigationBar currentPath="/casino" />
     <h1 className="text-3xl mb-2 font-bold">UNO vs IA</h1>
 
     {tokens && (

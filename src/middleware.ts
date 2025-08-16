@@ -26,6 +26,7 @@ const isPublicRoute = createRouteMatcher([
   '/casino/rps',
   '/access-denied',
   '/complete-profile',
+  "/casino/chess/ai",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

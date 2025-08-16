@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import NavigationBar from "../../../components/navigation-bar";
 
 export default function RoulettePage() {
   const [betAmount, setBetAmount] = useState(10);
@@ -290,32 +291,13 @@ export default function RoulettePage() {
 
   return (
     <div className="min-h-screen flex bg-gradient-to-br from-[#001933] to-[#000d1a] text-white overflow-hidden">
+      <NavigationBar currentPath="/casino" />
       {/* Container with responsive flex */}
-      <div className="flex flex-col sm:flex-row gap-10 p-6 w-full max-w-[1200px] mx-auto">
+      <div className="flex flex-col sm:flex-row gap-10 p-6 w-full max-w-[1200px] mx-auto mt-12">
         {/* Left sidebar */}
         <div className="flex flex-col items-start gap-6 w-full sm:w-[280px] flex-shrink-0">
-          {/* Retour au Casino button */}
-          <a
-            href="/casino"
-            className="inline-flex items-center text-yellow-400 hover:text-yellow-300 transition"
-          >
-            <svg
-              className="w-6 h-6 mr-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10 19l-7-7m0 0l7-7m-7 7h18"
-              />
-            </svg>
-            Retour au Casino
-          </a>
           {/* Title below Retour au Casino */}
-          <h1 className="text-3xl font-bold text-yellow-400 text-center w-full">
+          <h1 className="text-3xl font-bold text-yellow-400 text-center w-full mt-3">
             🎰 Roulette Royale
           </h1>
           {/* Tokens display */}
@@ -461,9 +443,9 @@ export default function RoulettePage() {
             </svg>
           </div>
 
-          <div className="mt-6 w-full px-2">{renderNumberGrid()}</div>
+          <div className="w-full px-2">{renderNumberGrid()}</div>
 
-          <div className="mt-6 flex flex-wrap gap-2 justify-center w-full px-2">
+          <div className=" mt-3 flex flex-wrap gap-2 justify-center w-full px-2">
             {[
               "1-12",
               "13-24",
