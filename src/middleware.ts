@@ -28,6 +28,7 @@ const isPublicRoute = createRouteMatcher([
   '/access-denied',
   '/complete-profile',
   "/casino/chess/ai",
+  "/casino/poker/multi",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
