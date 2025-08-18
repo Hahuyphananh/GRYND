@@ -51,34 +51,6 @@ export default function PokerPage() {
     }
   };
 
-  const initializeGame = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch("/api/initialize-poker-game", {
-        method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ betAmount }) // send user-chosen bet
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error);
-
-      // --- Use card objects ---
-      const playerCards = [getRandomCard(), getRandomCard()];
-      const aiCards = [getRandomCard(), getRandomCard()]; // real cards, same as player
-
-
-      setGame(data.game);
-      setPlayerHand(playerCards);
-      setOpponentHand(aiCards);
-      setPot(data.pot || 20);
-      setResult(null);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
 const initializeAiGame = async () => {
   try {
     setLoading(true);
@@ -269,13 +241,13 @@ return (
         className="w-24 px-2 py-1 rounded text-black"
       />
     </div>
+<button
+  onClick={() => router.push("/casino/poker/multi")}
+  className="bg-yellow-400 hover:bg-yellow-300 text-black px-6 py-3 rounded-full font-bold"
+>
+  Nouvelle Partie (3+)
+</button>
 
-    <button
-      onClick={() => initializeGame(betAmount)}
-      className="bg-yellow-400 hover:bg-yellow-300 text-black px-6 py-3 rounded-full font-bold"
-    >
-      Nouvelle Partie
-    </button>
     <button
       onClick={() => initializeAiGame(betAmount)}
       className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded shadow"

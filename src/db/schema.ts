@@ -1,5 +1,5 @@
 // src/db/schema.ts
-import { pgTable, serial, varchar, integer, numeric, timestamp, jsonb, text, json } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, integer, numeric, timestamp, jsonb, text, json, boolean } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 // USERS TABLE
@@ -38,13 +38,11 @@ export const crashGames = pgTable('crash_games', {
 
 export const pokerGames = pgTable('poker_games', {
   id: serial('id').primaryKey(),
-  userId: integer('user_id').notNull(), // Player user ID
+  userId: varchar('user_id', { length: 50 }).notNull(), // change integer -> varchar
   betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
-  result: varchar('result', { length: 10 }).notNull(), // "win", "lose", "pending"
+  result: varchar('result', { length: 10 }).notNull(), 
   payout: numeric('payout', { precision: 10, scale: 2 }).notNull(),
-
-  // Gameplay-specific columns
-  status: varchar('status', { length: 20 }).notNull().default('active'), // active, showdown, completed
+  status: varchar('status', { length: 20 }).notNull().default('active'),
   pot: numeric('pot', { precision: 10, scale: 2 }).notNull().default('0.00'),
   minBet: numeric('min_bet', { precision: 10, scale: 2 }).notNull().default('0.00'),
   playerHand: jsonb('player_hand').notNull().default([]),
@@ -52,21 +50,31 @@ export const pokerGames = pgTable('poker_games', {
   deck: jsonb('deck').notNull().default([]),
   currentPlayerPosition: integer('current_player_position').notNull().default(0),
   dealerPosition: integer('dealer_position').notNull().default(0),
-  currentRound: varchar('current_round', { length: 10 }).notNull().default('preflop'), // preflop, flop, turn, river
-
+  currentRound: varchar('current_round', { length: 10 }).notNull().default('preflop'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+
 export const pokerPlayerPositions = pgTable('poker_player_positions', {
   id: serial('id').primaryKey(),
+
   gameId: integer('game_id').notNull().references(() => pokerGames.id),
-  playerId: integer('player_id'), // NULL for AI
+
+  playerId: varchar('player_id', { length: 50 }), // NULL for AI, Clerk IDs are strings
+
   position: integer('position').notNull(), // 0 = dealer, 1 = big blind, etc.
+
   stack: numeric('stack', { precision: 10, scale: 2 }).notNull().default('0.00'),
   currentBet: numeric('current_bet', { precision: 10, scale: 2 }).notNull().default('0.00'),
-  hasFolded: varchar('has_folded', { length: 5 }).notNull().default('false'),
-  isAllIn: varchar('is_all_in', { length: 5 }).notNull().default('false'),
+
+  hasFolded: boolean('has_folded').notNull().default(false),
+  isAllIn: boolean('is_all_in').notNull().default(false),
+
+  isAI: boolean('is_ai').notNull().default(false), // NEW column to mark AI players
+  hand: jsonb('hand').notNull().default([]),       // store player’s cards
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 });
+
 
 
 export const blackjackGames = pgTable('blackjack_games', {
