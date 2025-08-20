@@ -70,10 +70,15 @@ export const pokerPlayerPositions = pgTable('poker_player_positions', {
   hasFolded: boolean('has_folded').notNull().default(false),
   isAllIn: boolean('is_all_in').notNull().default(false),
 
-  isAI: boolean('is_ai').notNull().default(false), // NEW column to mark AI players
+  isAI: boolean('is_ai').notNull().default(false), // mark AI players
   hand: jsonb('hand').notNull().default([]),       // store player’s cards
+
+  isTurn: boolean('is_turn').notNull().default(false), // track if it’s this player’s turn
+  lastAction: varchar('last_action', { length: 20 }).notNull().default(''), // track last action
+
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
+
 
 
 
