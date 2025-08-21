@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 
 export async function GET(
   req: Request,
-  { params }: { params: { sport: string } }
+  context: { params: { sport: string } }
 ) {
-  const { sport } = params;
+  const { sport } = context.params; // ✅ use context
 
   try {
     const res = await fetch(
-      `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=us&markets=h2h&oddsFormat=decimal`
+      `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=us&markets=h2h&oddsFormat=decimal`,
+      { cache: "no-store" } // optional: avoids stale caching
     );
 
     if (!res.ok) throw new Error("Failed to fetch odds");
