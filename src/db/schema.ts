@@ -36,22 +36,46 @@ export const crashGames = pgTable('crash_games', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
-export const pokerGames = pgTable('poker_games', {
-  id: serial('id').primaryKey(),
-  userId: varchar('user_id', { length: 50 }).notNull(), // change integer -> varchar
-  betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
-  result: varchar('result', { length: 10 }).notNull(), 
-  payout: numeric('payout', { precision: 10, scale: 2 }).notNull(),
-  status: varchar('status', { length: 20 }).notNull().default('active'),
-  pot: numeric('pot', { precision: 10, scale: 2 }).notNull().default('0.00'),
-  minBet: numeric('min_bet', { precision: 10, scale: 2 }).notNull().default('0.00'),
-  playerHand: jsonb('player_hand').notNull().default([]),
-  aiHand: jsonb('ai_hand').notNull().default([]),
-  deck: jsonb('deck').notNull().default([]),
-  currentPlayerPosition: integer('current_player_position').notNull().default(0),
-  dealerPosition: integer('dealer_position').notNull().default(0),
-  currentRound: varchar('current_round', { length: 10 }).notNull().default('preflop'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
+export const pokerGames = pgTable("poker_games", {
+  id: serial("id").primaryKey(),
+
+  // ✅ Matches VARCHAR(50)
+  userId: varchar("user_id", { length: 50 }).notNull(),
+
+  // ✅ Matches NUMERIC(10,2)
+  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+
+  // ✅ Matches VARCHAR(10) NULLABLE in Neon (remove .notNull())
+  result: varchar("result", { length: 10 }),
+
+  // ✅ Matches NUMERIC(10,2) DEFAULT 0
+  payout: numeric("payout", { precision: 10, scale: 2 }).default("0"),
+
+  // ✅ Matches VARCHAR(20) DEFAULT 'active'
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+
+  // ✅ Matches NUMERIC(10,2) DEFAULT 0
+  pot: numeric("pot", { precision: 10, scale: 2 }).notNull().default("0"),
+
+  // ✅ Matches NUMERIC(10,2) DEFAULT 0
+  minBet: numeric("min_bet", { precision: 10, scale: 2 }).notNull().default("0"),
+
+  // ✅ Matches JSONB DEFAULT '[]'
+  playerHand: jsonb("player_hand").notNull().default([]),
+  aiHand: jsonb("ai_hand").notNull().default([]),
+  communityCards: jsonb("community_cards").notNull().default([]),
+  deck: jsonb("deck").notNull().default([]),
+
+  // ✅ Matches INT DEFAULT 0
+  currentPlayerPosition: integer("current_player_position").notNull().default(0),
+  dealerPosition: integer("dealer_position").notNull().default(0),
+
+  // ✅ Matches VARCHAR(20) DEFAULT 'preflop'
+  currentRound: varchar("current_round", { length: 20 }).notNull().default("preflop"),
+  stage: varchar("stage", { length: 20 }).notNull().default("preflop"),
+
+  // ✅ Matches TIMESTAMP DEFAULT NOW()
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 
