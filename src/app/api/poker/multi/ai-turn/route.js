@@ -178,6 +178,8 @@ export async function POST(req) {
         .every(p => Number(p.current_bet || 0) === highestUpdated);
 
     let roundEnded = false;
+    let cardsRevealed = [];
+
 
     if (allMatched) {
       roundEnded = true;
@@ -185,30 +187,49 @@ export async function POST(req) {
       // Reset current bets
       await sql`UPDATE poker_player_positions SET current_bet = 0 WHERE game_id = ${gameId};`;
 
-      // Advance stage and deal community cards
-      if (stage === "preflop") {
-        // Burn + flop (we’re skipping burns for simplicity)
-        const flop = [deck.shift(), deck.shift(), deck.shift()];
-        community = [...community, ...flop];
-        stage = "flop";
-      } else if (stage === "flop") {
-        community = [...community, deck.shift()];
-        stage = "turn";
-      } else if (stage === "turn") {
-        community = [...community, deck.shift()];
-        stage = "river";
+// Advance stage and deal community cards
+if (stage === "preflop") {
+  const flop = [deck.shift(), deck.shift(), deck.shift()];
+  community = [...community, ...flop];
+  stage = "flop";
+  cardsRevealed = ["flop"];
+} else if (stage === "flop") {
+  community = [...community, deck.shift()];
+  stage = "turn";
+  cardsRevealed = ["turn"];
+} else if (stage === "turn") {
+  community = [...community, deck.shift()];
+  stage = "river";
+  cardsRevealed = ["river"];
+} else if (stage === "river") {
+  stage = "showdown";
+  cardsRevealed = [];
+
+
+// ✅ Update game state after revealing
+await sql`
+  UPDATE poker_games
+  SET stage = ${stage},
+      deck = ${JSON.stringify(deck)},
+      community_cards = ${JSON.stringify(community)}
+  WHERE id = ${gameId};
+`;
+
       } else if (stage === "river") {
         stage = "showdown";
       }
 
-      // Update game with stage/deck/community
-      await sql`
-        UPDATE poker_games
-        SET stage = ${stage},
-            deck = ${JSON.stringify(deck)},
-            community_cards = ${JSON.stringify(community)}
-        WHERE id = ${gameId};
-      `;
+      // Update game with stage/deck/community (except for the explicit turn above)
+      if (stage !== "turn") {
+        await sql`
+          UPDATE poker_games
+          SET stage = ${stage},
+              deck = ${JSON.stringify(deck)},
+              community_cards = ${JSON.stringify(community)}
+          WHERE id = ${gameId};
+        `;
+      }
+
 
       // Clear all turns
       await sql`UPDATE poker_player_positions SET is_turn = FALSE WHERE game_id = ${gameId};`;
@@ -249,40 +270,45 @@ export async function POST(req) {
       }
     }
 
-    // --- Return final, updated snapshot
-    const { rows: finalPlayers } = await sql`
-      SELECT id, player_id, position, stack, current_bet, is_ai, has_folded, is_turn, last_action
-      FROM poker_player_positions
-      WHERE game_id = ${gameId}
-      ORDER BY position ASC;
-    `;
-    const { rows: finalGameRows } = await sql`
-      SELECT id, stage, community_cards, pot
-      FROM poker_games
-      WHERE id = ${gameId}
-      LIMIT 1;
-    `;
-    const finalGame = finalGameRows[0] || {};
-    const finalCommunity = parseMaybeJSON(finalGame.community_cards, []);
+  // --- Return final, updated snapshot
+const { rows: finalPlayers } = await sql`
+  SELECT p.id, p.player_id, p.position, p.stack, p.current_bet, p.is_ai,
+         p.has_folded, p.is_turn, p.last_action, g.player_hand
+  FROM poker_player_positions p
+  JOIN poker_games g ON g.id = p.game_id
+  WHERE p.game_id = ${gameId}
+  ORDER BY p.position ASC;
+`;
 
-    return NextResponse.json({
-      gameId,
-      pot: Number(finalGame.pot || 0),
-      stage: finalGame.stage || stage,
-      communityCards: finalCommunity, // frontend can ignore if not showing yet
-      roundEnded,
-      players: finalPlayers.map(p => ({
-        id: p.id,
-        playerId: p.player_id,
-        tokens: Number(p.stack || 0),
-        currentBet: Number(p.current_bet || 0),
-        isAI: p.is_ai,
-        position: p.position,
-        isTurn: p.is_turn,
-        has_folded: p.has_folded,
-        lastAction: p.last_action,
-      })),
-    });
+const { rows: finalGameRows } = await sql`
+  SELECT id, stage, community_cards, pot
+  FROM poker_games
+  WHERE id = ${gameId}
+  LIMIT 1;
+`;
+const finalGame = finalGameRows[0] || {};
+const finalCommunity = parseMaybeJSON(finalGame.community_cards, []);
+
+return NextResponse.json({
+  gameId,
+  pot: Number(finalGame.pot || 0),
+  stage: finalGame.stage || stage,
+  communityCards: finalCommunity,
+  roundEnded,
+  players: finalPlayers.map(p => ({
+    id: p.id,
+    playerId: p.player_id,
+    tokens: Number(p.stack || 0),
+    currentBet: Number(p.current_bet || 0),
+    isAI: p.is_ai,
+    position: p.position,
+    isTurn: p.is_turn,
+    has_folded: p.has_folded,
+    lastAction: p.last_action,
+    hand: p.player_hand, // 👈 add this so frontend can render cards
+  })),
+});
+
   } catch (err) {
     console.error("❌ AI turn error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

@@ -112,44 +112,45 @@ if (activeRows.length <= 1) {
       `;
     }
 
-    // 4) Return a rich game state (frontend needs has_folded & lastAction & numeric id)
-    const { rows: players } = await sql`
-      SELECT
-        id,
-        player_id,
-        stack,
-        current_bet,
-        is_ai,
-        position,
-        is_turn,
-        has_folded,
-        last_action
-      FROM poker_player_positions
-      WHERE game_id = ${gameId}
-      ORDER BY position
-    `;
+// --- 4) Return a rich game state (frontend needs has_folded & lastAction & numeric id)
+const { rows: players } = await sql`
+  SELECT
+    p.id,
+    p.player_id,
+    p.stack,
+    p.current_bet,
+    p.is_ai,
+    p.position,
+    p.is_turn,
+    p.has_folded,
+    p.last_action,
+    g.pot,
+    g.player_hand
+  FROM poker_player_positions p
+  JOIN poker_games g ON g.id = p.game_id
+  WHERE p.game_id = ${gameId}
+  ORDER BY p.position
+`;
 
-    const { rows: gameRows } = await sql`
-      SELECT id AS "gameId", pot
-      FROM poker_games
-      WHERE id = ${gameId}
-    `;
+return NextResponse.json({
+  gameId,                  // use the requested gameId
+  pot: players[0]?.pot ?? 0,
+  players: players.map((p) => ({
+    id: p.id,
+    playerId: p.player_id,
+    stack: p.stack,
+    tokens: p.stack,
+    currentBet: p.current_bet,
+    isAI: p.is_ai,
+    position: p.position,
+    isTurn: p.is_turn,
+    has_folded: p.has_folded,
+    lastAction: p.last_action,
+    hand: p.player_hand, // 👈 send cards to frontend
+  })),
+});
 
-    return NextResponse.json({
-      ...gameRows[0],
-      players: players.map((p) => ({
-        id: p.id,                 // numeric row id (use this when calling /ai-turn)
-        playerId: p.player_id,    // external id for the human (if any)
-        stack: p.stack,
-        tokens: p.stack,          // keep old field for UI compatibility
-        currentBet: p.current_bet,
-        isAI: p.is_ai,
-        position: p.position,
-        isTurn: p.is_turn,
-        has_folded: p.has_folded,
-        lastAction: p.last_action,
-      })),
-    });
+
   } catch (err) {
     console.error("❌ Poker action error:", err);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
