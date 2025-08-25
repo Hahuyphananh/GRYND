@@ -55,17 +55,48 @@ export function dealCommunityCards(currentCards = [], playerHand = [], aiHand = 
 
 // Compare hands: returns "player", "dealer", or "tie"
 export function compareHands(playerHand, dealerHand) {
-  const valueRank = {
+  const valueRank = { 
     "2": 2, "3": 3, "4": 4, "5": 5, "6": 6,
     "7": 7, "8": 8, "9": 9, "10": 10,
     "J": 11, "Q": 12, "K": 13, "A": 14
   };
 
-  const playerMax = Math.max(...playerHand.map(c => valueRank[c.value]));
-  const dealerMax = Math.max(...dealerHand.map(c => valueRank[c.value]));
+  function getHandRank(hand) {
+    const values = hand.map(c => valueRank[c.value]).sort((a,b) => a-b);
+    const suits = hand.map(c => c.suit);
 
-  if (playerMax > dealerMax) return "player";
-  if (dealerMax > playerMax) return "dealer";
+    const isFlush = suits.every(s => s === suits[0]);
+    const isStraight = values.every((v,i) => i === 0 || v === values[i-1]+1) || (JSON.stringify(values) === JSON.stringify([2,3,4,5,14])); // A-2-3-4-5 straight
+
+    const counts = {};
+    values.forEach(v => counts[v] = (counts[v] || 0) + 1);
+    const countValues = Object.values(counts).sort((a,b) => b-a); // e.g., [3,2] for full house
+
+    if (isFlush && isStraight && Math.max(...values) === 14) return { rank: 10, tiebreaker: values }; // Royal Flush
+    if (isFlush && isStraight) return { rank: 9, tiebreaker: values }; // Straight Flush
+    if (countValues[0] === 4) return { rank: 8, tiebreaker: Object.keys(counts).map(Number).sort((a,b)=>b-a) }; // Four of a Kind
+    if (countValues[0] === 3 && countValues[1] === 2) return { rank: 7, tiebreaker: Object.keys(counts).map(Number).sort((a,b)=>b-a) }; // Full House
+    if (isFlush) return { rank: 6, tiebreaker: values }; // Flush
+    if (isStraight) return { rank: 5, tiebreaker: values }; // Straight
+    if (countValues[0] === 3) return { rank: 4, tiebreaker: Object.keys(counts).map(Number).sort((a,b)=>b-a) }; // Three of a Kind
+    if (countValues[0] === 2 && countValues[1] === 2) return { rank: 3, tiebreaker: Object.keys(counts).map(Number).sort((a,b)=>b-a) }; // Two Pair
+    if (countValues[0] === 2) return { rank: 2, tiebreaker: Object.keys(counts).map(Number).sort((a,b)=>b-a) }; // One Pair
+    return { rank: 1, tiebreaker: values.reverse() }; // High Card
+  }
+
+  const player = getHandRank(playerHand);
+  const dealer = getHandRank(dealerHand);
+
+  if (player.rank > dealer.rank) return "player";
+  if (dealer.rank > player.rank) return "dealer";
+
+  // Same rank → compare tiebreakers
+  for (let i = 0; i < player.tiebreaker.length; i++) {
+    if (player.tiebreaker[i] > dealer.tiebreaker[i]) return "player";
+    if (dealer.tiebreaker[i] > player.tiebreaker[i]) return "dealer";
+  }
+
   return "tie";
 }
+
 

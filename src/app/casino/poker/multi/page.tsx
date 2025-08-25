@@ -177,36 +177,37 @@ if (!firstRoundComplete) {
 };
 
 // --- Poker card renderer ---
-  const renderCard = (card: any, i: number) => {
-    const suitSymbols: Record<string, string> = { hearts: "♥", diamonds: "♦", clubs: "♣", spades: "♠" };
-    const symbol = suitSymbols[card.suit] || card.suit;
-    return (
-      <div
-        key={i}
-        className="h-20 w-14 md:h-32 md:w-24 bg-white text-xl flex items-center justify-center rounded shadow"
-        style={{
-          color: ["♥", "♦"].includes(symbol) ? "red" : "black",
-          boxShadow: "none",
-        }}
-      >
-        {card.value}
-        {symbol}
-      </div>
-    );
-  };
+const renderCard = (card: any, i: number, size = "h-20 w-14 md:h-32 md:w-24") => {
+  const suitSymbols: Record<string, string> = { hearts: "♥", diamonds: "♦", clubs: "♣", spades: "♠" };
+  const symbol = suitSymbols[card.suit] || card.suit;
+  return (
+    <div
+      key={i}
+      className={`${size} bg-white text-xl flex items-center justify-center rounded shadow`}
+      style={{
+        color: ["♥", "♦"].includes(symbol) ? "red" : "black",
+        boxShadow: "none",
+      }}
+    >
+      {card.value}
+      {symbol}
+    </div>
+  );
+};
+
 
   return (
     <div className="min-h-screen bg-[#003366] pt-20">
       <NavigationBar currentPath="/casino" />
       <div className="mx-auto max-w-4xl px-4 py-8 text-center">
         <h1 className="text-4xl font-bold text-[#FFD700] mb-6">
-          ♣️ Multi-Table Poker (3+ Players)
+          ♠️ Poker — You vs AI
         </h1>
 
         {!game ? (
           <>
             <p className="text-lg text-[#FFD700] mb-6">
-              Bienvenue au mode multijoueur! Cliquez ci-dessous pour commencer.
+              Bienvenue au mode Poker! Cliquez ci-dessous pour commencer.
             </p>
 
             <div className="flex items-center justify-center gap-3 mb-4">
@@ -227,69 +228,81 @@ if (!firstRoundComplete) {
               disabled={loading}
               className="bg-yellow-400 hover:bg-yellow-300 text-black px-6 py-3 rounded-full font-bold disabled:opacity-50"
             >
-              {loading ? "🔄 Création en cours..." : "🎮 Rejoindre une Table"}
+              {loading ? "🔄 Création en cours..." : "🎮 Jouer"}
             </button>
           </>
         ) : (
           <div className="relative bg-green-700 rounded-full shadow-2xl mx-auto w-[800px] h-[500px] flex items-center justify-center border-8 border-yellow-600">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-[#FFD700]">
-              <h2 className="text-2xl font-bold">
-  Pot: {firstRoundComplete ? game.pot : "???"} tokens
-</h2>
 
+            {/* Pot Info */}
+            <div className="absolute top-6 left-1/2 -translate-x-1/2 text-center text-[#FFD700]">
+              <h2 className="text-2xl font-bold">
+                Pot: {firstRoundComplete ? game.pot : "???"} tokens
+              </h2>
               <p className="text-sm opacity-80">Game ID: {game.gameId}</p>
             </div>
 
-            {game.players.map((p: any, idx: number) => {
-              const positions = [
-                "top-4 left-1/2 -translate-x-1/2",
-                "left-4 top-1/2 -translate-y-1/2",
-                "right-4 top-1/2 -translate-y-1/2",
-                "bottom-20 left-1/2 -translate-x-1/2",
-              ];
-              return (
-                <div
-                  key={idx}
-                  className={`absolute ${positions[idx] || ""} bg-black/60 p-3 rounded-lg shadow-md text-center w-40`}
-                >
-                  <p className="font-bold text-[#FFD700]">
-                    {p.name || (p.isAI ? `AI ${idx}` : "You")}
-                  </p>
-                  <p className="text-sm text-white">
-                    Bankroll: {p.isAI ? 500 : (p.stack ?? p.tokens ?? 0)} tokens
-                  </p>
-                  <p className="text-xs text-gray-300">
-                    Last Action: {p.lastAction || "—"}
-                  </p>
-                  {p.hand && (
-                    <div className="flex gap-2 justify-center mt-2">
-                      {p.isAI ? (
-                        <>
-                          <div className="h-20 w-14 bg-gray-800 rounded shadow flex items-center justify-center text-white text-xl">
-                            ?
-                          </div>
-                          <div className="h-20 w-14 bg-gray-800 rounded shadow flex items-center justify-center text-white text-xl">
-                            ?
-                          </div>
-                        </>
-                      ) : (
-                        p.hand.map((c: any, i: number) => renderCard(c, i))
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+   {/* Community Cards */}
+<div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-2">
+  {/* Top row: first 3 cards */}
+  <div className="flex gap-2">
+    {game?.communityCards?.slice(0, 3).map((c: any, i: number) =>
+      renderCard(c, i, "w-12 h-16") // 👈 smaller card size
+    )}
+  </div>
 
+  {/* Bottom row: last 2 cards */}
+  <div className="flex gap-2">
+    {game?.communityCards?.slice(3, 5).map((c: any, i: number) =>
+      renderCard(c, i + 3, "w-12 h-16") // 👈 smaller card size
+    )}
+  </div>
+</div>
+
+
+
+            {/* Player (You) — Left */}
+            <div className="absolute left-8 top-1/2 -translate-y-1/2 bg-black/60 p-3 rounded-lg shadow-md text-center w-40">
+              <p className="font-bold text-[#FFD700]">You</p>
+              <p className="text-sm text-white">
+                Bankroll: {game.players[0]?.stack ?? 0} tokens
+              </p>
+              <p className="text-xs text-gray-300">
+                Last Action: {game.players[0]?.lastAction || "—"}
+              </p>
+              <div className="flex gap-2 justify-center mt-2">
+                {game.players[0]?.hand?.map((c: any, i: number) => renderCard(c, i))}
+              </div>
+            </div>
+
+            {/* AI — Right */}
+            <div className="absolute right-8 top-1/2 -translate-y-1/2 bg-black/60 p-3 rounded-lg shadow-md text-center w-40">
+              <p className="font-bold text-[#FFD700]">AI</p>
+              <p className="text-sm text-white">
+                Bankroll: {game.players[1]?.stack ?? 0} tokens
+              </p>
+              <p className="text-xs text-gray-300">
+                Last Action: {game.players[1]?.lastAction || "—"}
+              </p>
+              <div className="flex gap-2 justify-center mt-2">
+                <div className="h-20 w-14 bg-gray-800 rounded shadow flex items-center justify-center text-white text-xl">
+                  ?
+                </div>
+                <div className="h-20 w-14 bg-gray-800 rounded shadow flex items-center justify-center text-white text-xl">
+                  ?
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-4">
               <button
-  onClick={handlePlayerFold}
-  disabled={actionLoading}
-  className="bg-red-500 hover:bg-red-400 text-white px-6 py-2 rounded-full font-bold"
->
-  Fold
-</button>
-
+                onClick={handlePlayerFold}
+                disabled={actionLoading}
+                className="bg-red-500 hover:bg-red-400 text-white px-6 py-2 rounded-full font-bold"
+              >
+                Fold
+              </button>
               <button
                 onClick={() => handleAction("call")}
                 disabled={actionLoading}
@@ -320,4 +333,5 @@ if (!firstRoundComplete) {
       </div>
     </div>
   );
+
 }

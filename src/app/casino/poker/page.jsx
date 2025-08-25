@@ -245,14 +245,14 @@ return (
   onClick={() => router.push("/casino/poker/multi")}
   className="bg-yellow-400 hover:bg-yellow-300 text-black px-6 py-3 rounded-full font-bold"
 >
-  Nouvelle Partie (3+)
+  Jouer au Texas Holdem ♦️
 </button>
 
     <button
       onClick={() => initializeAiGame(betAmount)}
       className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded shadow"
     >
-      Jouer contre l’IA ♠️
+      Jouer aux mains ♠️
     </button>
   </div>
 )}

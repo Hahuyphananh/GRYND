@@ -31,92 +31,89 @@ export async function POST(request) {
     const betAmount = parseFloat(game.betAmount || 10);
 
     // --- Fold action ---
-if (action === "fold") {
-  const resultMessage = "You folded. Dealer wins.";
+    if (action === "fold") {
+      const resultMessage = "You folded. Dealer wins.";
 
-  // Update DB
-  await db.transaction(async (tx) => {
-    await tx.update(pokerGames).set({ result: "lose" }).where(eq(pokerGames.id, gameId));
-    // Player already paid ante; balance stays the same
-  });
+      await db.transaction(async (tx) => {
+        await tx.update(pokerGames).set({ result: "lose" }).where(eq(pokerGames.id, gameId));
+      });
 
-  const userBalance = parseFloat(user.balance);
+      const userBalance = parseFloat(user.balance);
 
-  return new Response(JSON.stringify({
-    success: true,
-    game: { ...game, result: "lose" },
-    positions: [
-      { player_id: user.id, hand: game.playerHand }, // no JSON.parse needed
-      { player_id: null, hand: ["?", "?"] },
-    ],
-    result: {
-      message: resultMessage,
-      won: false,
-      winAmount: 0,
-      bet: parseFloat(game.betAmount || 10),
-    },
-    newBalance: userBalance,
-  }), { status: 200, headers: { "Content-Type": "application/json" } });
-}
-
+      return new Response(JSON.stringify({
+        success: true,
+        game: { ...game, result: "lose" },
+        positions: [
+          { player_id: user.id, hand: game.playerHand },
+          { player_id: null, hand: ["?", "?"] },
+        ],
+        result: {
+          message: resultMessage,
+          won: false,
+          winAmount: 0,
+          bet: parseFloat(game.betAmount || 10),
+        },
+        newBalance: userBalance,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
 
     // --- Play action ---
-if (action === "play") {
-  const playBet = betAmount * 2;
-  if (userBalance < playBet) throw new Error("Not enough tokens");
+    if (action === "play") {
+      const playBet = betAmount * 2;
+      if (userBalance < playBet) throw new Error("Not enough tokens");
 
-  // Deduct immediately
-  userBalance -= playBet;
-  pot += playBet;
+      userBalance -= playBet;
+      pot += playBet;
 
-  // game.playerHand and game.aiHand are already objects, no JSON.parse needed
-  const playerHand = game.playerHand;
-  const aiHand = game.aiHand;
+      const playerHand = game.playerHand;
+      const aiHand = game.aiHand;
 
-  const communityCards = dealCommunityCards(
-    game.communityCards || [],
-    playerHand,
-    aiHand
-  );
+      // --- UPDATED: Deal community cards and combine hands for comparison ---
+      const communityCards = dealCommunityCards(
+        game.communityCards || [],
+        playerHand,
+        aiHand
+      );
 
-  const winner = compareHands(playerHand, aiHand, communityCards);
-  const result = winner === "player" ? "win" : winner === "dealer" ? "lose" : "tie";
+      const fullPlayerHand = [...playerHand, ...communityCards.newCommunity];
+      const fullAiHand = [...aiHand, ...communityCards.newCommunity];
 
-  let winAmount = 0;
-  if (result === "win") {
-    winAmount = pot;
-    userBalance += winAmount;
-  }
+      const winner = compareHands(fullPlayerHand, fullAiHand);
+      const result = winner === "player" ? "win" : winner === "dealer" ? "lose" : "tie";
 
-  // Update DB
-  await db.transaction(async (tx) => {
-    await tx.update(pokerGames).set({
-      pot,
-      result,
-      communityCards,
-      aiHand
-    }).where(eq(pokerGames.id, gameId));
+      let winAmount = 0;
+      if (result === "win") {
+        winAmount = pot;
+        userBalance += winAmount;
+      }
 
-    await tx.update(users).set({ balance: userBalance }).where(eq(users.clerkId, userId));
-  });
+      await db.transaction(async (tx) => {
+        await tx.update(pokerGames).set({
+          pot,
+          result,
+          communityCards: communityCards.newCommunity,
+          aiHand
+        }).where(eq(pokerGames.id, gameId));
 
-  return new Response(JSON.stringify({
-    success: true,
-    game: { ...game, pot, result, communityCards, aiHand },
-    positions: [
-      { player_id: user.id, hand: playerHand },
-      { player_id: null, hand: aiHand },
-    ],
-    result: {
-      message: `Hand over. ${result === "win" ? "You won!" : result === "lose" ? "Dealer wins!" : "It's a tie."}`,
-      won: result === "win",
-      winAmount,
-      bet: playBet,
-    },
-    newBalance: userBalance,
-  }), { status: 200, headers: { "Content-Type": "application/json" } });
-}
+        await tx.update(users).set({ balance: userBalance }).where(eq(users.clerkId, userId));
+      });
 
+      return new Response(JSON.stringify({
+        success: true,
+        game: { ...game, pot, result, communityCards: communityCards.newCommunity, aiHand },
+        positions: [
+          { player_id: user.id, hand: playerHand },
+          { player_id: null, hand: aiHand },
+        ],
+        result: {
+          message: `Hand over. ${result === "win" ? "You won!" : result === "lose" ? "Dealer wins!" : "It's a tie."}`,
+          won: result === "win",
+          winAmount,
+          bet: playBet,
+        },
+        newBalance: userBalance,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
 
     throw new Error("Invalid action");
 
@@ -128,3 +125,4 @@ if (action === "play") {
     });
   }
 }
+
