@@ -133,22 +133,23 @@ const { rows: players } = await sql`
 `;
 
 return NextResponse.json({
-  gameId,                  // use the requested gameId
+  gameId,
   pot: players[0]?.pot ?? 0,
   players: players.map((p) => ({
     id: p.id,
     playerId: p.player_id,
-    stack: p.stack,
-    tokens: p.stack,
+    stack: p.stack,          // stack at the table
+    bankroll: p.stack,       // 👈 temporary alias so frontend shows “bankroll” correctly
     currentBet: p.current_bet,
     isAI: p.is_ai,
     position: p.position,
     isTurn: p.is_turn,
     has_folded: p.has_folded,
     lastAction: p.last_action,
-    hand: p.player_hand, // 👈 send cards to frontend
+    hand: p.player_hand,
   })),
 });
+
 
 
   } catch (err) {

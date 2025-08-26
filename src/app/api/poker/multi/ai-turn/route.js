@@ -109,36 +109,40 @@ export async function POST(req) {
     if (action === "call") amount = Math.min(amount, Number(ai.stack || 0));
     if (action === "raise") amount = Math.min(amount, Number(ai.stack || 0));
 
-    // --- Apply AI action
-    if (action === "fold") {
-      await sql`
-        UPDATE poker_player_positions
-        SET has_folded = TRUE, last_action = 'fold', is_turn = FALSE
-        WHERE id = ${aiId} AND game_id = ${gameId};
-      `;
-    } else if (action === "check") {
-      await sql`
-        UPDATE poker_player_positions
-        SET last_action = 'check', is_turn = FALSE
-        WHERE id = ${aiId} AND game_id = ${gameId};
-      `;
-    } else {
-      // call or raise → increase current_bet and pot
-      await sql`
-        UPDATE poker_player_positions
-        SET stack = stack - ${amount},
-            current_bet = current_bet + ${amount},
-            last_action = ${action},
-            is_turn = FALSE
-        WHERE id = ${aiId} AND game_id = ${gameId};
-      `;
-      pot += amount;
-      await sql`
-        UPDATE poker_games
-        SET pot = ${pot}
-        WHERE id = ${gameId};
-      `;
-    }
+  // --- Apply AI action
+if (action === "fold") {
+  await sql`
+    UPDATE poker_player_positions
+    SET has_folded = TRUE, last_action = 'fold', is_turn = FALSE
+    WHERE id = ${aiId} AND game_id = ${gameId};
+  `;
+} else if (action === "check") {
+  await sql`
+    UPDATE poker_player_positions
+    SET last_action = 'check', is_turn = FALSE
+    WHERE id = ${aiId} AND game_id = ${gameId};
+  `;
+} else {
+  // calculate net chips the AI is actually adding
+  const netAmount = Math.max(0, amount - Number(ai.current_bet || 0));
+
+  await sql`
+    UPDATE poker_player_positions
+    SET stack = stack - ${netAmount},
+        current_bet = ${amount},
+        last_action = ${action},
+        is_turn = FALSE
+    WHERE id = ${aiId} AND game_id = ${gameId};
+  `;
+
+  pot += netAmount;
+  await sql`
+    UPDATE poker_games
+    SET pot = ${pot}
+    WHERE id = ${gameId};
+  `;
+}
+
 
     // --- Reload players after action
     const { rows: updatedPlayers } = await sql`
@@ -181,54 +185,78 @@ export async function POST(req) {
     let cardsRevealed = [];
 
 
-    if (allMatched) {
-      roundEnded = true;
+if (allMatched) {
+  roundEnded = true;
 
-      // Reset current bets
-      await sql`UPDATE poker_player_positions SET current_bet = 0 WHERE game_id = ${gameId};`;
+  // --- Move all current_bet into the pot at once
+  const { rows: betSumRows } = await sql`
+    SELECT COALESCE(SUM(current_bet), 0) AS total_current
+    FROM poker_player_positions
+    WHERE game_id = ${gameId}
+  `;
+  const totalCurrent = Number(betSumRows[0]?.total_current ?? 0);
 
-// Advance stage and deal community cards
-if (stage === "preflop") {
-  const flop = [deck.shift(), deck.shift(), deck.shift()];
-  community = [...community, ...flop];
-  stage = "flop";
-  cardsRevealed = ["flop"];
-} else if (stage === "flop") {
-  community = [...community, deck.shift()];
-  stage = "turn";
-  cardsRevealed = ["turn"];
-} else if (stage === "turn") {
-  community = [...community, deck.shift()];
-  stage = "river";
-  cardsRevealed = ["river"];
-} else if (stage === "river") {
-  stage = "showdown";
-  cardsRevealed = [];
+  pot += totalCurrent;
 
+  // Reset current bets for all players
+  await sql`
+    UPDATE poker_player_positions
+    SET current_bet = 0
+    WHERE game_id = ${gameId}
+  `;
 
-// ✅ Update game state after revealing
-await sql`
-  UPDATE poker_games
-  SET stage = ${stage},
-      deck = ${JSON.stringify(deck)},
-      community_cards = ${JSON.stringify(community)}
-  WHERE id = ${gameId};
-`;
+  // --- Advance stage and deal community cards consistently with deck.pop()
+  if (stage === "preflop") {
+    // Reveal flop (3 cards)
+    const flop = [deck.pop(), deck.pop(), deck.pop()].filter(Boolean);
+    community = [...community, ...flop];
+    stage = "flop";
+    cardsRevealed = ["flop"];
+  } else if (stage === "flop") {
+    const turn = deck.pop();
+    if (turn) community.push(turn);
+    stage = "turn";
+    cardsRevealed = ["turn"];
+  } else if (stage === "turn") {
+    const river = deck.pop();
+    if (river) community.push(river);
+    stage = "river";
+    cardsRevealed = ["river"];
+  } else if (stage === "river") {
+    stage = "showdown";
+    cardsRevealed = [];
+  }
 
-      } else if (stage === "river") {
-        stage = "showdown";
-      }
+  // --- Persist updated game state (deck, community, pot, stage)
+  await sql`
+    UPDATE poker_games
+    SET stage = ${stage},
+        deck = ${JSON.stringify(deck)},
+        community_cards = ${JSON.stringify(community)},
+        pot = ${pot}
+    WHERE id = ${gameId};
+  `;
 
-      // Update game with stage/deck/community (except for the explicit turn above)
-      if (stage !== "turn") {
-        await sql`
-          UPDATE poker_games
-          SET stage = ${stage},
-              deck = ${JSON.stringify(deck)},
-              community_cards = ${JSON.stringify(community)}
-          WHERE id = ${gameId};
-        `;
-      }
+  // --- Clear all turns
+  await sql`UPDATE poker_player_positions SET is_turn = FALSE WHERE game_id = ${gameId};`;
+
+  // --- Decide first to act for next round (postflop: seat after dealer)
+  if (stage !== "showdown") {
+    const starter = firstToActPostflop(updatedPlayers, game.dealer_position);
+    if (starter) {
+      await sql`
+        UPDATE poker_player_positions
+        SET is_turn = TRUE
+        WHERE id = ${starter.id} AND game_id = ${gameId};
+      `;
+      await sql`
+        UPDATE poker_games
+        SET current_player_position = ${starter.position}
+        WHERE id = ${gameId};
+      `;
+    }
+  }
+      
 
 
       // Clear all turns
@@ -252,22 +280,26 @@ await sql`
       }
     } else {
       // --- Continue same round: set next player after the acting AI
-      const idxNow = updatedPlayers.findIndex(p => p.id === aiId);
-      const nextP = getNextActive(updatedPlayers, idxNow);
+const idxNow = updatedPlayers.findIndex(p => p.id === aiId);
+const nextP = getNextActive(updatedPlayers, idxNow);
 
-      await sql`UPDATE poker_player_positions SET is_turn = FALSE WHERE game_id = ${gameId};`;
-      if (nextP) {
-        await sql`
-          UPDATE poker_player_positions
-          SET is_turn = TRUE
-          WHERE id = ${nextP.id} AND game_id = ${gameId};
-        `;
-        await sql`
-          UPDATE poker_games
-          SET current_player_position = ${nextP.position}
-          WHERE id = ${gameId};
-        `;
-      }
+// Clear all turns first
+await sql`UPDATE poker_player_positions SET is_turn = FALSE WHERE game_id = ${gameId};`;
+
+// ✅ Only give turn back if the next player is NOT AI (so → always the human)
+if (nextP && !nextP.is_ai) {
+  await sql`
+    UPDATE poker_player_positions
+    SET is_turn = TRUE
+    WHERE id = ${nextP.id} AND game_id = ${gameId};
+  `;
+  await sql`
+    UPDATE poker_games
+    SET current_player_position = ${nextP.position}
+    WHERE id = ${gameId};
+  `;
+}
+
     }
 
   // --- Return final, updated snapshot

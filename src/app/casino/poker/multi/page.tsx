@@ -8,6 +8,8 @@ export default function PokerMultiPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [buyIn, setBuyIn] = useState(10);
   const [firstRoundComplete, setFirstRoundComplete] = useState(false);
+  const [bankroll, setBankroll] = useState(0);
+const [players, setPlayers] = useState([]);
 
 
   const handleJoinGame = async () => {
@@ -16,7 +18,7 @@ export default function PokerMultiPage() {
       const res = await fetch("/api/initialize-poker-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ numPlayers: 3, buyIn }),
+        body: JSON.stringify({ numPlayers: 2, buyIn }),
       });
       if (!res.ok) {
         const error = await res.json();
@@ -25,6 +27,7 @@ export default function PokerMultiPage() {
       }
       const data = await res.json();
       setGame(data);
+      setBankroll(data.bankroll);
     } catch (err) {
       console.error("❌ Error joining game:", err);
       alert("Erreur serveur.");
@@ -264,9 +267,10 @@ const renderCard = (card: any, i: number, size = "h-20 w-14 md:h-32 md:w-24") =>
             {/* Player (You) — Left */}
             <div className="absolute left-8 top-1/2 -translate-y-1/2 bg-black/60 p-3 rounded-lg shadow-md text-center w-40">
               <p className="font-bold text-[#FFD700]">You</p>
-              <p className="text-sm text-white">
-                Bankroll: {game.players[0]?.stack ?? 0} tokens
-              </p>
+      <p className="text-sm text-white">
+  Stack: {game.players[0]?.stack ?? 0} tokens
+</p>
+
               <p className="text-xs text-gray-300">
                 Last Action: {game.players[0]?.lastAction || "—"}
               </p>
@@ -278,9 +282,11 @@ const renderCard = (card: any, i: number, size = "h-20 w-14 md:h-32 md:w-24") =>
             {/* AI — Right */}
             <div className="absolute right-8 top-1/2 -translate-y-1/2 bg-black/60 p-3 rounded-lg shadow-md text-center w-40">
               <p className="font-bold text-[#FFD700]">AI</p>
-              <p className="text-sm text-white">
-                Bankroll: {game.players[1]?.stack ?? 0} tokens
-              </p>
+      <p className="text-sm text-white">
+  Stack: {game.players[0]?.stack ?? 0} tokens
+</p>
+
+
               <p className="text-xs text-gray-300">
                 Last Action: {game.players[1]?.lastAction || "—"}
               </p>

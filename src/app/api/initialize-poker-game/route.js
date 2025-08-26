@@ -142,22 +142,24 @@ for (const p of players) {
     )
   `;
 }
-
-
+const { rows: updatedUser } = await sql`
+  SELECT balance FROM users WHERE clerk_id = ${userId}
+`;
 
     // ✅ Response (include names + stack to match your UI)
     return new Response(
-      JSON.stringify({
-        gameId,
-        nPlayers,
-        players,
-        pot,
-        minBet: bigBlind,
-        currentPosition: nextPos,
-        dealerPos,
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
-    );
+  JSON.stringify({
+    gameId,
+    nPlayers,
+    players,
+    pot,
+    minBet: bigBlind,
+    currentPosition: nextPos,
+    dealerPos,
+    balance: parseFloat(updatedUser[0].balance), // 👈 send updated bankroll
+  }),
+  { status: 200, headers: { "Content-Type": "application/json" } }
+);
   } catch (err) {
     console.error("❌ Error starting poker game:", err);
     return new Response(
