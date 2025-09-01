@@ -106,7 +106,7 @@ function NavigationBar({ currentPath }) {
                       {error
                         ? `Erreur: ${error}`
                         : balance !== null
-                        ? `${balance} tokens`
+                        ? `$${balance}`
                         : "Chargement..."}
                     </span>
                     <Link
