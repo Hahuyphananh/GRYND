@@ -1,343 +1,334 @@
 "use client";
-import React, { useState } from "react";
-import NavigationBar from "../../../../components/navigation-bar";
 
-export default function PokerMultiPage() {
-  const [loading, setLoading] = useState(false);
-  const [game, setGame] = useState<any>(null);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [buyIn, setBuyIn] = useState(10);
-  const [firstRoundComplete, setFirstRoundComplete] = useState(false);
-  const [bankroll, setBankroll] = useState(0);
-const [players, setPlayers] = useState([]);
+import { useState, useEffect } from "react";
+import { Card, evaluateHand } from "../../../lib/handEval";
 
+type Player = {
+  id: string;
+  name: string;
+  stack: number;
+  hand: Card[];
+  isAI?: boolean;
+  hasFolded?: boolean;
+  lastAction?: string;
+  currentBet: number;
+};
 
-  const handleJoinGame = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch("/api/initialize-poker-game", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ numPlayers: 2, buyIn }),
-      });
-      if (!res.ok) {
-        const error = await res.json();
-        alert(error.error || "Erreur lors de la création de la partie.");
-        return;
-      }
-      const data = await res.json();
-      setGame(data);
-      setBankroll(data.bankroll);
-    } catch (err) {
-      console.error("❌ Error joining game:", err);
-      alert("Erreur serveur.");
-    } finally {
-      setLoading(false);
-    }
-  };
+type Game = {
+  players: Player[];
+  community: Card[];
+  deck: Card[];
+  pot: number;
+  currentTurn: number;
+  stage: "pre-flop" | "flop" | "turn" | "river" | "showdown";
+  smallBlind: number;
+  bigBlind: number;
+  winnerId?: string;
+  replayVisible: boolean;
+  dealerIndex: number;
+};
 
-  // 👇 NEW: handle player folding
-  const handlePlayerFold = async () => {
-    if (!game) return;
-    setActionLoading(true);
-    try {
-      const res = await fetch("/api/poker/multi/action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId: game.gameId, action: "fold" }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Erreur lors de l’action.");
-        return;
-      }
-      setGame(data);
+const SUITS = ["♠", "♥", "♦", "♣"];
+const VALUES = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
 
-      // Optionally, trigger AI turn if next player is AI
-      const nextPlayer = data.players.find((p: any) => p.isTurn);
-      if (nextPlayer?.isAI) {
-        setTimeout(() => handleAITurn(nextPlayer.id), 800);
-      }
-    } catch (err) {
-      console.error("❌ Fold error:", err);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleEndHand = async () => {
-    if (!game) return;
-    setActionLoading(true);
-
-    try {
-      const res = await fetch("/api/poker/multi/end", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId: game.gameId }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Erreur lors de la fin de la main.");
-        return;
-      }
-
-      alert(
-        `${data.winner.isAI ? `AI` : "You"} won the hand! 🏆\nPot awarded: ${data.potAwarded} tokens`
-      );
-
-      // Refresh with updated game state
-      setGame(data.updatedGame);
-    } catch (err) {
-      console.error("❌ End hand error:", err);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleAction = async (action: string, amount = 0) => {
-  if (!game) return;
-  setActionLoading(true);
-  try {
-    const res = await fetch("/api/poker/multi/action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gameId: game.gameId, action, amount }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      alert(data.error || "Erreur lors de l’action.");
-      return;
-    }
-    setGame(data);
-
-    // ✅ Check if first round is complete
-if (!firstRoundComplete) {
-  const allActiveActed = data.players
-    .filter((p: any) => !p.has_folded)
-    .every((p: any) => p.lastAction !== null && p.lastAction !== undefined);
-  if (allActiveActed) setFirstRoundComplete(true);
+function createDeck(): Card[] {
+  return SUITS.flatMap(suit => VALUES.map(value => ({ suit, value })));
+}
+function shuffle(deck: Card[]): Card[] {
+  return deck.sort(()=>Math.random()-0.5);
 }
 
-    const remainingPlayers = data.players.filter((p: any) => !p.has_folded);
-    if (remainingPlayers.length <= 1) {
-      await handleEndHand();
-      return;
+export default function PokerPage() {
+  const [name,setName]=useState("");
+  const [tempName,setTempName]=useState("");
+  const [game,setGame]=useState<Game|null>(null);
+  const [aiCount,setAiCount]=useState(2);
+  const [raiseAmount,setRaiseAmount] = useState(50);
+
+  const maxCurrentBet = (players: Player[]) => Math.max(...players.map(p => p.currentBet || 0));
+
+  // ======== Create Game =========
+  function createGame(dealerIndex = 0) {
+    if(!name.trim()) return alert("Enter your name first");
+    const deck = shuffle(createDeck());
+
+    const players: Player[] = [{ id:"player", name, stack:1000, hand:[], currentBet:0 }];
+
+    for(let i=0;i<aiCount;i++){
+      players.push({ id:`ai${i}`, name:`AI ${i+1}`, stack:1000, hand:[], isAI:true, currentBet:0 });
     }
 
-    // ✅ Trigger only the next AI
-    const nextPlayer = data.players.find((p: any) => p.isTurn);
-    if (nextPlayer?.isAI) {
-      setTimeout(() => handleAITurn(nextPlayer.id), 800);
-    }
-  } catch (err) {
-    console.error("❌ Action error:", err);
-  } finally {
-    setActionLoading(false);
-  }
-};
+    const sb = 10, bb = 20;
+    const sbIndex = (dealerIndex + 1) % players.length;
+    const bbIndex = (dealerIndex + 2) % players.length;
 
+    players.forEach(p => { p.hand=[]; p.hasFolded=false; p.lastAction=""; p.currentBet=0; });
 
-  const handleAITurn = async (aiId: string) => {
-  if (!game) return;
-  setActionLoading(true);
-  try {
-    const res = await fetch("/api/poker/multi/ai-turn", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gameId: game.gameId, aiId }),
+    players[sbIndex].stack -= sb; players[sbIndex].currentBet = sb; players[sbIndex].lastAction="Small Blind";
+    players[bbIndex].stack -= bb; players[bbIndex].currentBet = bb; players[bbIndex].lastAction="Big Blind";
+
+    setGame({
+      players,
+      community: [],
+      deck,
+      pot: sb + bb,
+      currentTurn: (bbIndex+1) % players.length,
+      stage: "pre-flop",
+      smallBlind: sb,
+      bigBlind: bb,
+      replayVisible: false,
+      dealerIndex
     });
-    const aiData = await res.json();
-    if (!res.ok) {
-      console.error(aiData.error || "AI turn error.");
-      return;
-    }
-    setGame(aiData);
 
-    if (!firstRoundComplete) {
-  const allActiveActed = aiData.players
-    .filter((p: any) => !p.has_folded)
-    .every((p: any) => p.lastAction !== null && p.lastAction !== undefined);
-  if (allActiveActed) setFirstRoundComplete(true);
-}
-
-    const remainingPlayers = aiData.players.filter((p: any) => !p.has_folded);
-    if (remainingPlayers.length <= 1) {
-      await handleEndHand();
-      return;
-    }
-
-    // ✅ Only trigger the next AI turn
-    const nextPlayer = aiData.players.find((p: any) => p.isTurn);
-    if (nextPlayer?.isAI) {
-      setTimeout(() => handleAITurn(nextPlayer.id), 800);
-    }
-  } catch (err) {
-    console.error("❌ AI turn error:", err);
-  } finally {
-    setActionLoading(false);
+    // Animate hole cards dealing
+    dealHoleCards(players, deck);
   }
-};
 
-// --- Poker card renderer ---
-const renderCard = (card: any, i: number, size = "h-20 w-14 md:h-32 md:w-24") => {
-  const suitSymbols: Record<string, string> = { hearts: "♥", diamonds: "♦", clubs: "♣", spades: "♠" };
-  const symbol = suitSymbols[card.suit] || card.suit;
-  return (
-    <div
-      key={i}
-      className={`${size} bg-white text-xl flex items-center justify-center rounded shadow`}
-      style={{
-        color: ["♥", "♦"].includes(symbol) ? "red" : "black",
-        boxShadow: "none",
-      }}
-    >
-      {card.value}
-      {symbol}
-    </div>
-  );
-};
+  async function dealHoleCards(players: Player[], deck: Card[]) {
+    for (let r=0;r<2;r++){
+      for (let i=0;i<players.length;i++){
+        await new Promise(res=>setTimeout(res,400));
+        players[i].hand.push(deck.pop()!);
+        setGame(g=>g?{...g, players:[...players], deck:[...deck]}:g);
+      }
+    }
+  }
 
+  // ======== AI Turn Logic =======
+  useEffect(() => {
+    if(!game) return;
+    if (game.stage === "showdown") return;
 
-  return (
-    <div className="min-h-screen bg-[#003366] pt-20">
-      <NavigationBar currentPath="/casino" />
-      <div className="mx-auto max-w-4xl px-4 py-8 text-center">
-        <h1 className="text-4xl font-bold text-[#FFD700] mb-6">
-          ♠️ Poker — You vs AI
-        </h1>
+    const current = game.players[game.currentTurn];
+    if (!current || current.hasFolded) return;
 
-        {!game ? (
-          <>
-            <p className="text-lg text-[#FFD700] mb-6">
-              Bienvenue au mode Poker! Cliquez ci-dessous pour commencer.
-            </p>
+    if (current.isAI) {
+      const hs = evaluateHand(current.hand, game.community);
+      let action: "check"|"call"|"raise"|"fold" = "check";
 
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <label className="text-[#FFD700] font-semibold">Buy-in:</label>
-              <input
-                type="number"
-                min={20}
-                max={2000}
-                value={buyIn}
-                onChange={(e) => setBuyIn(parseInt(e.target.value || "0", 10))}
-                className="w-28 px-3 py-2 rounded text-black"
-              />
-              <span className="text-[#FFD700]">tokens</span>
-            </div>
+      if (hs.includes("Three") || hs.includes("Straight") || hs.includes("Flush")) action = "raise";
+      else if (hs.includes("Pair") || hs.includes("Two Pair")) action = "call";
+      else if (Math.random()<0.2) action="fold";
+      else action="call";
 
-            <button
-              onClick={handleJoinGame}
-              disabled={loading}
-              className="bg-yellow-400 hover:bg-yellow-300 text-black px-6 py-3 rounded-full font-bold disabled:opacity-50"
-            >
-              {loading ? "🔄 Création en cours..." : "🎮 Jouer"}
-            </button>
-          </>
-        ) : (
-          <div className="relative bg-green-700 rounded-full shadow-2xl mx-auto w-[800px] h-[500px] flex items-center justify-center border-8 border-yellow-600">
+      const t = setTimeout(()=>performAction(action,true),800+Math.random()*500);
+      return ()=>clearTimeout(t);
+    }
+  }, [game?.currentTurn, game?.stage]);
 
-            {/* Pot Info */}
-            <div className="absolute top-6 left-1/2 -translate-x-1/2 text-center text-[#FFD700]">
-              <h2 className="text-2xl font-bold">
-                Pot: {firstRoundComplete ? game.pot : "???"} tokens
-              </h2>
-              <p className="text-sm opacity-80">Game ID: {game.gameId}</p>
-            </div>
+  // ======== Actions =========
+  function performAction(action: "check"|"call"|"raise"|"fold", isAI=false) {
+    if(!game) return;
+    const players = game.players.map(p=>({...p}));
+    const current = players[game.currentTurn];
+    if(!current) return;
 
-   {/* Community Cards */}
-<div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-2">
-  {/* Top row: first 3 cards */}
-  <div className="flex gap-2">
-    {game?.communityCards?.slice(0, 3).map((c: any, i: number) =>
-      renderCard(c, i, "w-12 h-16") // 👈 smaller card size
-    )}
-  </div>
+    const highest = maxCurrentBet(players);
 
-  {/* Bottom row: last 2 cards */}
-  <div className="flex gap-2">
-    {game?.communityCards?.slice(3, 5).map((c: any, i: number) =>
-      renderCard(c, i + 3, "w-12 h-16") // 👈 smaller card size
-    )}
-  </div>
-</div>
+    if (action==="fold") {
+      current.hasFolded=true;
+      current.lastAction="Folded";
+    } else if (action==="call") {
+      const toCall = highest - current.currentBet;
+      if(toCall>0){
+        const actual = Math.min(toCall,current.stack);
+        current.stack -= actual;
+        current.currentBet += actual;
+        game.pot += actual;
+        current.lastAction=`Called ${actual}`;
+      } else {
+        current.lastAction="Check";
+      }
+    } else if (action==="raise") {
+      const toCall = highest - current.currentBet;
+      const totalPut = toCall + raiseAmount;
+      const actual = Math.min(totalPut, current.stack);
+      current.stack -= actual;
+      current.currentBet += actual;
+      game.pot += actual;
+      current.lastAction=`Raised ${raiseAmount}`;
+    } else if (action==="check") {
+      if (highest>current.currentBet) {
+        const toCall = highest-current.currentBet;
+        const actual = Math.min(toCall,current.stack);
+        current.stack -= actual;
+        current.currentBet += actual;
+        game.pot += actual;
+        current.lastAction=`Called ${actual}`;
+      } else {
+        current.lastAction="Check";
+      }
+    }
 
+    setGame(g=>g?{...g, players, pot: game.pot}:g);
+    nextTurn();
+  }
 
+  function nextTurn() {
+    if(!game) return;
+    const players=[...game.players];
+    let next=(game.currentTurn+1)%players.length;
+    let safety=0;
+    while(players[next].hasFolded && safety<players.length){
+      next=(next+1)%players.length;
+      safety++;
+    }
+    if(next=== (game.dealerIndex+1)%players.length){ // full rotation done
+      advanceStage();
+    } else {
+      setGame({...game, currentTurn: next});
+    }
+  }
 
-            {/* Player (You) — Left */}
-            <div className="absolute left-8 top-1/2 -translate-y-1/2 bg-black/60 p-3 rounded-lg shadow-md text-center w-40">
-              <p className="font-bold text-[#FFD700]">You</p>
-      <p className="text-sm text-white">
-  Stack: {game.players[0]?.stack ?? 0} tokens
-</p>
+  async function advanceStage() {
+    if(!game) return;
+    const deck=[...game.deck];
+    const comm=[...game.community];
+    // reset bets
+    const playersReset = game.players.map(p=>({...p,currentBet:0}));
 
-              <p className="text-xs text-gray-300">
-                Last Action: {game.players[0]?.lastAction || "—"}
-              </p>
-              <div className="flex gap-2 justify-center mt-2">
-                {game.players[0]?.hand?.map((c: any, i: number) => renderCard(c, i))}
-              </div>
-            </div>
+    if(game.stage==="pre-flop"){
+      for(let i=0;i<3;i++){await new Promise(res=>setTimeout(res,500)); comm.push(deck.pop()!);}
+      setGame({...game,deck,community:comm,stage:"flop",players:playersReset,currentTurn:(game.dealerIndex+1)%playersReset.length});
+      return;
+    }
+    if(game.stage==="flop"){
+      await new Promise(res=>setTimeout(res,500)); comm.push(deck.pop()!);
+      setGame({...game,deck,community:comm,stage:"turn",players:playersReset,currentTurn:(game.dealerIndex+1)%playersReset.length});
+      return;
+    }
+    if(game.stage==="turn"){
+      await new Promise(res=>setTimeout(res,500)); comm.push(deck.pop()!);
+      setGame({...game,deck,community:comm,stage:"river",players:playersReset,currentTurn:(game.dealerIndex+1)%playersReset.length});
+      return;
+    }
+    if(game.stage==="river"){ showdown(); }
+  }
 
-            {/* AI — Right */}
-            <div className="absolute right-8 top-1/2 -translate-y-1/2 bg-black/60 p-3 rounded-lg shadow-md text-center w-40">
-              <p className="font-bold text-[#FFD700]">AI</p>
-      <p className="text-sm text-white">
-  Stack: {game.players[0]?.stack ?? 0} tokens
-</p>
+  function showdown() {
+    if(!game) return;
+    const active=game.players.filter(p=>!p.hasFolded);
+    let winner=active[0], best=-1;
+    active.forEach(p=>{
+      const label=evaluateHand(p.hand,game.community);
+      let score=1;
+      if(label.includes("Royal")) score=10;
+      else if(label.includes("Straight Flush")) score=9;
+      else if(label.includes("Four")) score=8;
+      else if(label.includes("Full")) score=7;
+      else if(label.includes("Flush")) score=6;
+      else if(label.includes("Straight")) score=5;
+      else if(label.includes("Three")) score=4;
+      else if(label.includes("Two Pair")) score=3;
+      else if(label.includes("Pair")) score=2;
+      if(score>best){best=score;winner=p;}
+    });
+    const updated=game.players.map(p=>p.id===winner.id?{...p,stack:p.stack+game.pot}:p);
+    setGame({...game,players:updated,winnerId:winner.id,pot:0,stage:"showdown",replayVisible:true});
+  }
 
+  function replayHand() {
+    if(!game) return;
+    const nextDealer=(game.dealerIndex+1)%game.players.length;
+    createGame(nextDealer);
+  }
 
-              <p className="text-xs text-gray-300">
-                Last Action: {game.players[1]?.lastAction || "—"}
-              </p>
-              <div className="flex gap-2 justify-center mt-2">
-                <div className="h-20 w-14 bg-gray-800 rounded shadow flex items-center justify-center text-white text-xl">
-                  ?
-                </div>
-                <div className="h-20 w-14 bg-gray-800 rounded shadow flex items-center justify-center text-white text-xl">
-                  ?
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-4">
-              <button
-                onClick={handlePlayerFold}
-                disabled={actionLoading}
-                className="bg-red-500 hover:bg-red-400 text-white px-6 py-2 rounded-full font-bold"
-              >
-                Fold
-              </button>
-              <button
-                onClick={() => handleAction("call")}
-                disabled={actionLoading}
-                className="bg-green-500 hover:bg-green-400 text-white px-6 py-2 rounded-full font-bold"
-              >
-                Call
-              </button>
-              <button
-                onClick={() => {
-                  const raiseAmount = prompt("Raise by how many tokens?");
-                  if (raiseAmount) handleAction("raise", parseInt(raiseAmount, 10));
-                }}
-                disabled={actionLoading}
-                className="bg-blue-500 hover:bg-blue-400 text-white px-6 py-2 rounded-full font-bold"
-              >
-                Raise
-              </button>
-              <button
-                onClick={handleEndHand}
-                disabled={actionLoading}
-                className="absolute top-6 right-6 bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-2 rounded-full font-bold"
-              >
-                End Hand
-              </button>
-            </div>
-          </div>
-        )}
+  // ======== RENDER ========
+  if(!name){
+    return(
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+        <div className="p-8 bg-slate-800 rounded shadow w-96 text-center">
+          <h1 className="text-2xl font-bold mb-4">Enter your name</h1>
+          <form onSubmit={e=>{e.preventDefault();if(tempName.trim())setName(tempName.trim());}}>
+            <input className="border p-2 w-full rounded mb-4 text-black" value={tempName} onChange={e=>setTempName(e.target.value)}/>
+            <button className="bg-green-500 px-4 py-2 rounded w-full font-bold">Enter</button>
+          </form>
+        </div>
       </div>
+    );
+  }
+
+  if(!game){
+    return(
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+        <div className="p-6 bg-slate-800 rounded shadow w-96 text-center mb-4">
+          <h1 className="text-2xl mb-4">Create Game</h1>
+          <label className="block mb-2">Number of AI players:</label>
+          <input type="number" min={0} max={5} value={aiCount} onChange={e=>setAiCount(Number(e.target.value))} className="border p-2 rounded mb-4 w-full text-black"/>
+          <button onClick={()=>createGame()} className="bg-green-500 px-4 py-2 rounded w-full font-bold">Create Game</button>
+        </div>
+      </div>
+    );
+  }
+
+  const centerX=350, centerY=200, rx=280, ry=140;
+  const totalPlayers=game.players.length;
+  const aiCountReal=totalPlayers-1;
+
+  return(
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6">
+      <h1 className="text-3xl mb-4">Texas Hold'em</h1>
+      <div className="relative w-[700px] h-[400px] bg-green-700 rounded-full border-8 border-yellow-800 flex items-center justify-center mb-6">
+        {/* Pot + Community */}
+        <div className="absolute top-[45%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
+          <div className="mb-2 font-bold">Pot: {game.pot}</div>
+          <div className="flex gap-2">
+            {game.community.map((c,i)=>(
+              <div key={i} className="w-16 h-24 bg-white text-black flex items-center justify-center rounded shadow">{c.value}{c.suit}</div>
+            ))}
+          </div>
+        </div>
+
+        {/* Players */}
+        {game.players.map((p,idx)=>{
+          let left=centerX,top=centerY;
+          if(p.id==="player"){ left=centerX; top=centerY+ry-20; }
+          else{
+            const aiIndex=idx-1;
+            const angle=-Math.PI/2+(aiIndex+0.5)*(2*Math.PI/aiCountReal);
+            const x=Math.cos(angle)*rx, y=Math.sin(angle)*ry;
+            left=centerX+x; top=centerY+y-10;
+          }
+          return(
+            <div key={p.id}
+              className={`absolute w-32 p-2 rounded text-center ${p.id==="player"?"bg-yellow-500 text-black":"bg-slate-700"} 
+              ${p.hasFolded?"opacity-50":""} ${game.winnerId===p.id?"border-2 border-yellow-400":""}`}
+              style={{left,top,transform:"translate(-50%,-50%)"}}
+            >
+              <div className="font-semibold">{p.name}</div>
+              <div className="text-sm">Stack: {p.stack}</div>
+              {p.currentBet>0 && (
+                <div className="mt-2 flex justify-center">
+                  <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center text-white font-bold">{p.currentBet}</div>
+                </div>
+              )}
+              <div className="mt-2 flex justify-center gap-1">
+                {p.id==="player"
+                  ? p.hand.map((c,i)=><div key={i} className="px-1 py-0.5 border rounded bg-white text-black">{c.value}{c.suit}</div>)
+                  : game.stage!=="showdown"
+                    ? (<><div className="w-12 h-16 bg-gray-800 rounded"></div><div className="w-12 h-16 bg-gray-800 rounded"></div></>)
+                    : p.hand.map((c,i)=><div key={i} className="px-1 py-0.5 border rounded bg-white text-black">{c.value}{c.suit}</div>)
+                }
+              </div>
+              {p.lastAction && <div className="text-xs mt-1 italic">{p.lastAction}</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mb-4">Your Best Hand: {evaluateHand(game.players.find(p=>p.id==="player")!.hand, game.community)}</div>
+
+      {game.stage!=="showdown" && (
+        <div className="flex gap-2 mb-4 items-center">
+          <button onClick={()=>performAction("fold")} className="bg-red-600 px-4 py-2 rounded">Fold</button>
+          <button onClick={()=>performAction("check")} className="bg-yellow-500 px-4 py-2 rounded text-black">Check</button>
+          <button onClick={()=>performAction("call")} className="bg-blue-600 px-4 py-2 rounded">Call</button>
+          <input type="number" min={10} max={game.players[0].stack} value={raiseAmount} onChange={e=>setRaiseAmount(Number(e.target.value))} className="w-20 text-black px-2 py-1 rounded"/>
+          <button onClick={()=>performAction("raise")} className="bg-green-600 px-4 py-2 rounded">Raise</button>
+        </div>
+      )}
+
+      {game.replayVisible && <button onClick={replayHand} className="bg-purple-600 px-6 py-2 rounded font-bold">Replay Hand</button>}
     </div>
   );
-
 }
