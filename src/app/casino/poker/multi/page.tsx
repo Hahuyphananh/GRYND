@@ -20,6 +20,7 @@ type Game = {
   deck: Card[];
   pot: number;
   currentTurn: number;
+  roundStarter?: number;
   stage: "pre-flop" | "flop" | "turn" | "river" | "showdown";
   smallBlind: number;
   bigBlind: number;
@@ -36,6 +37,16 @@ function createDeck(): Card[] {
 }
 function shuffle(deck: Card[]): Card[] {
   return deck.sort(()=>Math.random()-0.5);
+}
+
+function nextActive(start: number, players: Player[]): number {
+  let i = start;
+  let safety = 0;
+  while (players[i].hasFolded && safety < players.length) {
+    i = (i + 1) % players.length;
+    safety++;
+  }
+  return i;
 }
 
 export default function PokerPage() {
@@ -67,12 +78,15 @@ export default function PokerPage() {
     players[sbIndex].stack -= sb; players[sbIndex].currentBet = sb; players[sbIndex].lastAction="Small Blind";
     players[bbIndex].stack -= bb; players[bbIndex].currentBet = bb; players[bbIndex].lastAction="Big Blind";
 
+    const firstToAct = (bbIndex+1) % players.length;
+
     setGame({
       players,
       community: [],
       deck,
       pot: sb + bb,
-      currentTurn: (bbIndex+1) % players.length,
+      currentTurn: firstToAct,
+      roundStarter: firstToAct,
       stage: "pre-flop",
       smallBlind: sb,
       bigBlind: bb,
@@ -117,93 +131,104 @@ export default function PokerPage() {
   }, [game?.currentTurn, game?.stage]);
 
   // ======== Actions =========
-  function performAction(action: "check"|"call"|"raise"|"fold", isAI=false) {
-    if(!game) return;
-    const players = game.players.map(p=>({...p}));
-    const current = players[game.currentTurn];
-    if(!current) return;
+  function performAction(action: "check" | "call" | "raise" | "fold", isAI = false) {
+    if (!game) return;
+
+    const players = game.players.map(p => ({ ...p }));
+    const currentIndex = game.currentTurn;
+    const current = players[currentIndex];
+    if (!current || current.hasFolded) return;
 
     const highest = maxCurrentBet(players);
+    let potNew = game.pot;
 
-    if (action==="fold") {
-      current.hasFolded=true;
-      current.lastAction="Folded";
-    } else if (action==="call") {
-      const toCall = highest - current.currentBet;
-      if(toCall>0){
-        const actual = Math.min(toCall,current.stack);
+    if (action === "fold") {
+      current.hasFolded = true;
+      current.lastAction = "Folded";
+    } else if (action === "call") {
+      const toCall = Math.max(0, highest - (current.currentBet || 0));
+      if (toCall > 0) {
+        const actual = Math.min(toCall, current.stack);
         current.stack -= actual;
         current.currentBet += actual;
-        game.pot += actual;
-        current.lastAction=`Called ${actual}`;
+        potNew += actual;
+        current.lastAction = `Called ${actual}`;
       } else {
-        current.lastAction="Check";
+        current.lastAction = "Check";
       }
-    } else if (action==="raise") {
-      const toCall = highest - current.currentBet;
+    } else if (action === "raise") {
+      const toCall = Math.max(0, highest - (current.currentBet || 0));
       const totalPut = toCall + raiseAmount;
       const actual = Math.min(totalPut, current.stack);
       current.stack -= actual;
       current.currentBet += actual;
-      game.pot += actual;
-      current.lastAction=`Raised ${raiseAmount}`;
-    } else if (action==="check") {
-      if (highest>current.currentBet) {
-        const toCall = highest-current.currentBet;
-        const actual = Math.min(toCall,current.stack);
+      potNew += actual;
+      current.lastAction = `Raised ${raiseAmount}`;
+    } else if (action === "check") {
+      if (highest > (current.currentBet || 0)) {
+        const toCall = highest - (current.currentBet || 0);
+        const actual = Math.min(toCall, current.stack);
         current.stack -= actual;
         current.currentBet += actual;
-        game.pot += actual;
-        current.lastAction=`Called ${actual}`;
+        potNew += actual;
+        current.lastAction = `Called ${actual}`;
       } else {
-        current.lastAction="Check";
+        current.lastAction = "Check";
       }
     }
 
-    setGame(g=>g?{...g, players, pot: game.pot}:g);
-    nextTurn();
-  }
+    let next = nextActive((currentIndex + 1) % players.length, players);
+    const wrappedBack = next === game.roundStarter;
 
-  function nextTurn() {
-    if(!game) return;
-    const players=[...game.players];
-    let next=(game.currentTurn+1)%players.length;
-    let safety=0;
-    while(players[next].hasFolded && safety<players.length){
-      next=(next+1)%players.length;
-      safety++;
-    }
-    if(next=== (game.dealerIndex+1)%players.length){ // full rotation done
+    if (wrappedBack) {
+      setGame(g => g ? { ...g, players, pot: potNew } : g);
       advanceStage();
     } else {
-      setGame({...game, currentTurn: next});
+      setGame(g => g ? { ...g, players, pot: potNew, currentTurn: next } : g);
     }
   }
 
-  async function advanceStage() {
-    if(!game) return;
-    const deck=[...game.deck];
-    const comm=[...game.community];
-    // reset bets
-    const playersReset = game.players.map(p=>({...p,currentBet:0}));
+async function advanceStage() {
+  if (!game) return;
+  const deck = [...game.deck];
+  const comm = [...game.community];
+  // reset bets
+  const playersReset = game.players.map(p => ({ ...p, currentBet: 0 }));
 
-    if(game.stage==="pre-flop"){
-      for(let i=0;i<3;i++){await new Promise(res=>setTimeout(res,500)); comm.push(deck.pop()!);}
-      setGame({...game,deck,community:comm,stage:"flop",players:playersReset,currentTurn:(game.dealerIndex+1)%playersReset.length});
-      return;
+  let nextStage: Game["stage"] = game.stage;
+
+  if (game.stage === "pre-flop") {
+    for (let i = 0; i < 3; i++) {
+      await new Promise(res => setTimeout(res, 500));
+      comm.push(deck.pop()!);
     }
-    if(game.stage==="flop"){
-      await new Promise(res=>setTimeout(res,500)); comm.push(deck.pop()!);
-      setGame({...game,deck,community:comm,stage:"turn",players:playersReset,currentTurn:(game.dealerIndex+1)%playersReset.length});
-      return;
-    }
-    if(game.stage==="turn"){
-      await new Promise(res=>setTimeout(res,500)); comm.push(deck.pop()!);
-      setGame({...game,deck,community:comm,stage:"river",players:playersReset,currentTurn:(game.dealerIndex+1)%playersReset.length});
-      return;
-    }
-    if(game.stage==="river"){ showdown(); }
+    nextStage = "flop";
+  } else if (game.stage === "flop") {
+    await new Promise(res => setTimeout(res, 500));
+    comm.push(deck.pop()!);
+    nextStage = "turn";
+  } else if (game.stage === "turn") {
+    await new Promise(res => setTimeout(res, 500));
+    comm.push(deck.pop()!);
+    nextStage = "river";
+  } else if (game.stage === "river") {
+    showdown();
+    return;
   }
+
+  // ✅ always set player as first to act each new stage
+  const playerIndex = playersReset.findIndex(p => p.id === "player");
+
+  setGame({
+    ...game,
+    deck,
+    community: comm,
+    stage: nextStage,
+    players: playersReset,
+    currentTurn: playerIndex, // <--- force player first
+  });
+}
+
 
   function showdown() {
     if(!game) return;
