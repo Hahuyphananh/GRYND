@@ -55,8 +55,23 @@ export default function PokerPage() {
   const [game,setGame]=useState<Game|null>(null);
   const [aiCount,setAiCount]=useState(2);
   const [raiseAmount,setRaiseAmount] = useState(50);
+  const [balance, setBalance] = useState<number>(0); // ✅ player balance synced
 
   const maxCurrentBet = (players: Player[]) => Math.max(...players.map(p => p.currentBet || 0));
+
+  // ✅ fetch tokens from existing API
+  useEffect(() => {
+    const fetchBalance = async () => {
+      try {
+        const res = await fetch("/api/get-user-tokens");
+        const data = await res.json();
+        if (data?.balance) setBalance(parseFloat(data.balance));
+      } catch (err) {
+        console.error("Failed to fetch balance", err);
+      }
+    };
+    fetchBalance();
+  }, []);
 
   // ======== Create Game =========
   function createGame(dealerIndex = 0) {
@@ -153,6 +168,10 @@ export default function PokerPage() {
         current.currentBet += actual;
         potNew += actual;
         current.lastAction = `Called ${actual}`;
+
+        if (current.id === "player") {
+          setBalance(prev => Math.max(prev - actual, 0)); // ✅ deduct from DB balance
+        }
       } else {
         current.lastAction = "Check";
       }
@@ -164,16 +183,9 @@ export default function PokerPage() {
       current.currentBet += actual;
       potNew += actual;
       current.lastAction = `Raised ${raiseAmount}`;
-    } else if (action === "check") {
-      if (highest > (current.currentBet || 0)) {
-        const toCall = highest - (current.currentBet || 0);
-        const actual = Math.min(toCall, current.stack);
-        current.stack -= actual;
-        current.currentBet += actual;
-        potNew += actual;
-        current.lastAction = `Called ${actual}`;
-      } else {
-        current.lastAction = "Check";
+
+      if (current.id === "player") {
+        setBalance(prev => Math.max(prev - actual, 0)); // ✅ deduct on raise
       }
     }
 
@@ -188,47 +200,44 @@ export default function PokerPage() {
     }
   }
 
-async function advanceStage() {
-  if (!game) return;
-  const deck = [...game.deck];
-  const comm = [...game.community];
-  // reset bets
-  const playersReset = game.players.map(p => ({ ...p, currentBet: 0 }));
+  async function advanceStage() {
+    if (!game) return;
+    const deck = [...game.deck];
+    const comm = [...game.community];
+    const playersReset = game.players.map(p => ({ ...p, currentBet: 0 }));
 
-  let nextStage: Game["stage"] = game.stage;
+    let nextStage: Game["stage"] = game.stage;
 
-  if (game.stage === "pre-flop") {
-    for (let i = 0; i < 3; i++) {
+    if (game.stage === "pre-flop") {
+      for (let i = 0; i < 3; i++) {
+        await new Promise(res => setTimeout(res, 500));
+        comm.push(deck.pop()!);
+      }
+      nextStage = "flop";
+    } else if (game.stage === "flop") {
       await new Promise(res => setTimeout(res, 500));
       comm.push(deck.pop()!);
+      nextStage = "turn";
+    } else if (game.stage === "turn") {
+      await new Promise(res => setTimeout(res, 500));
+      comm.push(deck.pop()!);
+      nextStage = "river";
+    } else if (game.stage === "river") {
+      showdown();
+      return;
     }
-    nextStage = "flop";
-  } else if (game.stage === "flop") {
-    await new Promise(res => setTimeout(res, 500));
-    comm.push(deck.pop()!);
-    nextStage = "turn";
-  } else if (game.stage === "turn") {
-    await new Promise(res => setTimeout(res, 500));
-    comm.push(deck.pop()!);
-    nextStage = "river";
-  } else if (game.stage === "river") {
-    showdown();
-    return;
+
+    const playerIndex = playersReset.findIndex(p => p.id === "player");
+
+    setGame({
+      ...game,
+      deck,
+      community: comm,
+      stage: nextStage,
+      players: playersReset,
+      currentTurn: playerIndex,
+    });
   }
-
-  // ✅ always set player as first to act each new stage
-  const playerIndex = playersReset.findIndex(p => p.id === "player");
-
-  setGame({
-    ...game,
-    deck,
-    community: comm,
-    stage: nextStage,
-    players: playersReset,
-    currentTurn: playerIndex, // <--- force player first
-  });
-}
-
 
   function showdown() {
     if(!game) return;
@@ -248,7 +257,14 @@ async function advanceStage() {
       else if(label.includes("Pair")) score=2;
       if(score>best){best=score;winner=p;}
     });
+
     const updated=game.players.map(p=>p.id===winner.id?{...p,stack:p.stack+game.pot}:p);
+
+    // ✅ add winnings back to balance if player wins
+    if (winner.id === "player") {
+      setBalance(prev => prev + game.pot);
+    }
+
     setGame({...game,players:updated,winnerId:winner.id,pot:0,stage:"showdown",replayVisible:true});
   }
 
@@ -278,6 +294,7 @@ async function advanceStage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
         <div className="p-6 bg-slate-800 rounded shadow w-96 text-center mb-4">
           <h1 className="text-2xl mb-4">Create Game</h1>
+          <div className="mb-2">Balance: {balance}</div>
           <label className="block mb-2">Number of AI players:</label>
           <input type="number" min={0} max={5} value={aiCount} onChange={e=>setAiCount(Number(e.target.value))} className="border p-2 rounded mb-4 w-full text-black"/>
           <button onClick={()=>createGame()} className="bg-green-500 px-4 py-2 rounded w-full font-bold">Create Game</button>
@@ -293,6 +310,7 @@ async function advanceStage() {
   return(
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6">
       <h1 className="text-3xl mb-4">Texas Hold'em</h1>
+      <div className="mb-2 font-bold">Balance: {balance}</div>
       <div className="relative w-[700px] h-[400px] bg-green-700 rounded-full border-8 border-yellow-800 flex items-center justify-center mb-6">
         {/* Pot + Community */}
         <div className="absolute top-[45%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
