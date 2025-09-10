@@ -59,19 +59,31 @@ export default function PokerPage() {
 
   const maxCurrentBet = (players: Player[]) => Math.max(...players.map(p => p.currentBet || 0));
 
+  const fetchUserTokens = async () => {
+  try {
+    const res = await fetch("/api/get-user-tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+    const data = await res.json();
+    if (data.success) {
+      setBalance(parseFloat(data.data.balance));
+    } else {
+      console.error("Failed to fetch tokens:", data.error);
+    }
+  } catch (err) {
+    console.error("Error fetching tokens:", err);
+  }
+};
+
+
   // ✅ fetch tokens from existing API
   useEffect(() => {
-    const fetchBalance = async () => {
-      try {
-        const res = await fetch("/api/get-user-tokens");
-        const data = await res.json();
-        if (data?.balance) setBalance(parseFloat(data.balance));
-      } catch (err) {
-        console.error("Failed to fetch balance", err);
-      }
-    };
-    fetchBalance();
-  }, []);
+  fetchUserTokens();
+}, []);
+
+
 
   // ======== Create Game =========
   function createGame(dealerIndex = 0) {
@@ -171,6 +183,7 @@ export default function PokerPage() {
 
         if (current.id === "player") {
           setBalance(prev => Math.max(prev - actual, 0)); // ✅ deduct from DB balance
+          fetchUserTokens(); // ✅ refresh after action
         }
       } else {
         current.lastAction = "Check";
@@ -263,6 +276,7 @@ export default function PokerPage() {
     // ✅ add winnings back to balance if player wins
     if (winner.id === "player") {
       setBalance(prev => prev + game.pot);
+      fetchUserTokens(); // ✅ refresh after showdown
     }
 
     setGame({...game,players:updated,winnerId:winner.id,pot:0,stage:"showdown",replayVisible:true});
