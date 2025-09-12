@@ -36,75 +36,12 @@ export const crashGames = pgTable('crash_games', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
-export const pokerGames = pgTable("poker_games", {
-  id: serial("id").primaryKey(),
-
-  // ✅ Matches VARCHAR(50)
-  userId: varchar("user_id", { length: 50 }).notNull(),
-
-  // ✅ Matches NUMERIC(10,2)
-  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull().default("0"),
-
-  // ✅ Matches VARCHAR(10) NULLABLE in Neon (remove .notNull())
-  result: varchar("result", { length: 10 }),
-
-  // ✅ Matches NUMERIC(10,2) DEFAULT 0
-  payout: numeric("payout", { precision: 10, scale: 2 }).default("0"),
-
-  // ✅ Matches VARCHAR(20) DEFAULT 'active'
-  status: varchar("status", { length: 20 }).notNull().default("active"),
-
-  // ✅ Matches NUMERIC(10,2) DEFAULT 0
-  pot: numeric("pot", { precision: 10, scale: 2 }).notNull().default("0"),
-
-  // ✅ Matches NUMERIC(10,2) DEFAULT 0
-  minBet: numeric("min_bet", { precision: 10, scale: 2 }).notNull().default("0"),
-
-  // ✅ Matches JSONB DEFAULT '[]'
-  playerHand: jsonb("player_hand").notNull().default([]),
-  aiHand: jsonb("ai_hand").notNull().default([]),
-  communityCards: jsonb("community_cards").notNull().default([]),
-  deck: jsonb("deck").notNull().default([]),
-
-  // ✅ Matches INT DEFAULT 0
-  currentPlayerPosition: integer("current_player_position").notNull().default(0),
-  dealerPosition: integer("dealer_position").notNull().default(0),
-
-  // ✅ Matches VARCHAR(20) DEFAULT 'preflop'
-  currentRound: varchar("current_round", { length: 20 }).notNull().default("preflop"),
-  stage: varchar("stage", { length: 20 }).notNull().default("preflop"),
-
-  // ✅ Matches TIMESTAMP DEFAULT NOW()
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  inviteCode: varchar("invite_code", { length: 10 }),
-maxPlayers: integer("max_players").default(6),
-isPrivate: boolean("is_private").default(false),
-
-});
-
-
-export const pokerPlayerPositions = pgTable('poker_player_positions', {
+export const pokerGames = pgTable('poker_games', {
   id: serial('id').primaryKey(),
-
-  gameId: integer('game_id').notNull().references(() => pokerGames.id),
-  playerId: varchar('player_id', { length: 50 }),
-  position: integer('position').notNull(),
-
-  stack: numeric('stack', { precision: 10, scale: 2 }).default('0.00'),
-  currentBet: numeric('current_bet', { precision: 10, scale: 2 }).default('0.00'),
-
-  hasFolded: boolean('has_folded').default(false),
-  isAllIn: boolean('is_all_in').default(false),
-
-  isAI: boolean('is_ai').default(false),
-  hand: jsonb('hand').default([]),
-
-  isTurn: boolean('is_turn').default(false),
-  lastAction: varchar('last_action', { length: 20 }).default(''),
-
-  isReady: boolean('is_ready').notNull().default(false),
-
-  createdAt: timestamp('created_at').defaultNow(),
+  gameCode: varchar('game_code', { length: 10 }).notNull().unique().default("substr(md5((random())::text), 1, 10)"),
+  maxPlayers: integer('max_players').notNull().default(6),
+  isPrivate: boolean('is_private').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
 
@@ -220,13 +157,6 @@ export const rouletteGamesRelations = relations(rouletteGames, ({ one }) => ({
 export const crashGamesRelations = relations(crashGames, ({ one }) => ({
   user: one(users, {
     fields: [crashGames.userId],
-    references: [users.id],
-  }),
-}));
-
-export const pokerGamesRelations = relations(pokerGames, ({ one }) => ({
-  user: one(users, {
-    fields: [pokerGames.userId],
     references: [users.id],
   }),
 }));

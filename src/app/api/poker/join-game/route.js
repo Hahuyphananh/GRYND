@@ -19,37 +19,59 @@ export async function GET(req) {
     }
 
     // 2️⃣ Count current players
-    const players = await db.select().from(pokerPlayerPositions).where(eq(pokerPlayerPositions.gameId, game.id));
-    if (players.length >= game.maxPlayers) {
+    const playersDb = await db.select().from(pokerPlayerPositions).where(eq(pokerPlayerPositions.gameId, game.id));
+    if (playersDb.length >= game.maxPlayers) {
       return NextResponse.json({ error: "Game is full" }, { status: 400 });
     }
 
     // 3️⃣ Add the joining player
-    // Replace with Clerk user ID or temp ID if not logged in
     const playerId = `player-${Date.now()}`;
+    const playerName = "You"; // or get from Clerk if logged in
 
-await db.insert(pokerPlayerPositions).values({
-  gameId: game.id,        // ✅ number
-  playerId,               // ✅ string | null
-  position: players.length, 
-  stack: "1000.00",       // ✅ MUST be string
-  currentBet: "0.00",     // ✅ MUST be string
-  hasFolded: false,
-  isAllIn: false,
-  isAI: false,
-  hand: [],
-  isTurn: false,
-  lastAction: "",
-  isReady: false,
-});
+    await db.insert(pokerPlayerPositions).values({
+      gameId: game.id,
+      playerId,
+      position: playersDb.length,
+      stack: "1000.00",     // string
+      currentBet: "0.00",   // string
+      hasFolded: false,
+      isAllIn: false,
+      isAI: false,
+      hand: [],
+      isTurn: false,
+      lastAction: "",
+      isReady: false,
+    });
 
+    // 4️⃣ Return game info + existing players, formatted for frontend
+    const players = playersDb.map(p => ({
+      id: p.playerId,
+      name: p.name || "AI",
+      stack: parseFloat(p.stack),
+      hand: p.hand || [],
+      isAI: p.isAI,
+      hasFolded: p.hasFolded,
+      currentBet: parseFloat(p.currentBet),
+      lastAction: p.lastAction,
+    }));
 
-    // Return game info + existing players
+    // add joining player
+    players.push({
+      id: playerId,
+      name: playerName,
+      stack: 1000,
+      hand: [],
+      isAI: false,
+      hasFolded: false,
+      currentBet: 0,
+      lastAction: "",
+    });
+
     return NextResponse.json({
       success: true,
       game: {
         ...game,
-        players: [...players, { playerId, stack: 1000, isAI: false }],
+        players,
       },
     });
   } catch (err) {
