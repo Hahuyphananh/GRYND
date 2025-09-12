@@ -1,5 +1,3 @@
-"use client";
-
 import { SignUp } from "@clerk/nextjs";
 
 export default function Page() {
@@ -12,7 +10,7 @@ export default function Page() {
         height: "100vh",
       }}
     >
-      <SignUp afterSignUpUrl="/complete-profile" />
+      <SignUp afterSignUpUrl="/sync" />
     </div>
   );
 }
