@@ -89,10 +89,10 @@ const [joiningGame, setJoiningGame] = useState(false);
 
 
   // ======== Create Game =========
-  function createGame(dealerIndex = 0) {
+  async function createGame(dealerIndex = 0) {
   if (!name.trim()) return alert("Enter your name first");
-  const deck = shuffle(createDeck());
 
+  const deck = shuffle(createDeck());
   const players: Player[] = [{ id: "player", name, stack: 1000, hand: [], currentBet: 0 }];
 
   for (let i = 0; i < aiCount; i++) {
@@ -104,44 +104,119 @@ const [joiningGame, setJoiningGame] = useState(false);
   const bbIndex = (dealerIndex + 2) % players.length;
 
   players.forEach(p => { p.hand = []; p.hasFolded = false; p.lastAction = ""; p.currentBet = 0; });
-
   players[sbIndex].stack -= sb; players[sbIndex].currentBet = sb; players[sbIndex].lastAction = "Small Blind";
   players[bbIndex].stack -= bb; players[bbIndex].currentBet = bb; players[bbIndex].lastAction = "Big Blind";
 
   const firstToAct = (bbIndex + 1) % players.length;
 
-  // ✅ Generate unique invite code (shareable)
-  const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+  // ✅ Call backend
+  try {
+    const res = await fetch("/api/poker/create-game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ maxPlayers: aiCount + 1, isPrivate: false }),
+    });
 
-  setGame({
-    players,
-    community: [],
-    deck,
-    pot: sb + bb,
-    currentTurn: firstToAct,
-    roundStarter: firstToAct,
-    stage: "pre-flop",
-    smallBlind: sb,
-    bigBlind: bb,
-    replayVisible: false,
-    dealerIndex,
-    inviteCode, // ✅ save invite code in game state
-  });
+    if (!res.ok) return alert("Failed to create game on server");
+    const data = await res.json();
 
-  // Animate hole cards dealing
-  dealHoleCards(players, deck);
+    setGame({
+      players,
+      community: [],
+      deck,
+      pot: sb + bb,
+      currentTurn: firstToAct,
+      roundStarter: firstToAct,
+      stage: "pre-flop",
+      smallBlind: sb,
+      bigBlind: bb,
+      replayVisible: false,
+      dealerIndex,
+      inviteCode: data.inviteCode,
+    });
+
+    dealHoleCards(players, deck);
+
+  } catch (err) {
+    console.error("Error creating game:", err);
+    alert("Error creating game. Check console.");
+  }
 }
 
-
-  async function dealHoleCards(players: Player[], deck: Card[]) {
-    for (let r=0;r<2;r++){
-      for (let i=0;i<players.length;i++){
-        await new Promise(res=>setTimeout(res,400));
-        players[i].hand.push(deck.pop()!);
-        setGame(g=>g?{...g, players:[...players], deck:[...deck]}:g);
-      }
-    }
+// Deals two cards to each player from the deck
+function dealHoleCards(players: Player[], deck: Card[]) {
+  for (let i = 0; i < players.length; i++) {
+    players[i].hand = [deck.pop()!, deck.pop()!];
   }
+}
+// ======== JOIN GAME =========
+async function joinGame() {
+  if (!inviteCode.trim()) return alert("Enter invite code!");
+
+  setJoiningGame(true);
+
+  try {
+    const res = await fetch(`/api/poker/join?code=${inviteCode.trim()}`);
+    if (!res.ok) {
+      const err = await res.json();
+      return alert(err?.error || "Failed to join game");
+    }
+
+    const data = await res.json();
+    const serverGame = data.game as Game;
+
+    // Add the local player (you) + optional AI if needed
+    const players: Player[] = [serverGame.players[0]]; // the joined player
+
+    // Optionally add AI players if you want consistent AI count
+    for (let i = 0; i < aiCount; i++) {
+      players.push({
+        id: `ai${i}`,
+        name: `AI ${i + 1}`,
+        stack: 1000,
+        hand: [],
+        isAI: true,
+        currentBet: 0,
+      });
+    }
+
+    // Initialize game state
+    const deck = shuffle(createDeck());
+    dealHoleCards(players, deck);
+
+    const sb = 10, bb = 20;
+    const dealerIndex = 0;
+    const sbIndex = (dealerIndex + 1) % players.length;
+    const bbIndex = (dealerIndex + 2) % players.length;
+
+    players[sbIndex].stack -= sb; players[sbIndex].currentBet = sb; players[sbIndex].lastAction = "Small Blind";
+    players[bbIndex].stack -= bb; players[bbIndex].currentBet = bb; players[bbIndex].lastAction = "Big Blind";
+
+    const firstToAct = (bbIndex + 1) % players.length;
+
+    setGame({
+      players,
+      community: [],
+      deck,
+      pot: sb + bb,
+      currentTurn: firstToAct,
+      roundStarter: firstToAct,
+      stage: "pre-flop",
+      smallBlind: sb,
+      bigBlind: bb,
+      replayVisible: false,
+      dealerIndex,
+      inviteCode: serverGame.inviteCode,
+    });
+
+    setJoiningGame(false);
+  } catch (err) {
+    console.error("Join game error:", err);
+    alert("Failed to join game. See console.");
+    setJoiningGame(false);
+  }
+}
+
 
   // ======== AI Turn Logic =======
   useEffect(() => {
@@ -336,12 +411,13 @@ if (!game) {
             >
               Create Game
             </button>
-            <button
-              onClick={() => setJoiningGame(true)}
-              className="bg-blue-500 px-4 py-2 rounded w-full font-bold"
-            >
-              Join Existing Game
-            </button>
+        <button
+  onClick={joinGame}
+  className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
+>
+  Join Game
+</button>
+
           </>
         ) : (
          <>
