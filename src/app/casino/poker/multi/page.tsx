@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
+import { useSearchParams } from "next/navigation"; // ✅ add at top
 
 type Player = {
   id: string;
@@ -27,6 +28,7 @@ type Game = {
   winnerId?: string;
   replayVisible: boolean;
   dealerIndex: number;
+  inviteCode?: string;
 };
 
 const SUITS = ["♠", "♥", "♦", "♣"];
@@ -56,6 +58,9 @@ export default function PokerPage() {
   const [aiCount,setAiCount]=useState(2);
   const [raiseAmount,setRaiseAmount] = useState(50);
   const [balance, setBalance] = useState<number>(0); // ✅ player balance synced
+  const [inviteCode, setInviteCode] = useState("");
+const [joiningGame, setJoiningGame] = useState(false);
+
 
   const maxCurrentBet = (players: Player[]) => Math.max(...players.map(p => p.currentBet || 0));
 
@@ -83,47 +88,72 @@ export default function PokerPage() {
   fetchUserTokens();
 }, []);
 
+const searchParams = useSearchParams();
 
+useEffect(() => {
+  const code = searchParams.get("invite");
+  if (code) {
+    setJoiningGame(true);
+    setInviteCode(code);
+    // Optional: auto-join right away
+    // (Uncomment this block if you want instant join without button click)
+    /*
+    fetch(`/api/poker/join?code=${code}`).then(async res => {
+      if (res.ok) {
+        const data = await res.json();
+        setGame(data.game);
+      } else {
+        alert("Game not found!");
+      }
+    });
+    */
+  }
+}, [searchParams]);
 
   // ======== Create Game =========
   function createGame(dealerIndex = 0) {
-    if(!name.trim()) return alert("Enter your name first");
-    const deck = shuffle(createDeck());
+  if (!name.trim()) return alert("Enter your name first");
+  const deck = shuffle(createDeck());
 
-    const players: Player[] = [{ id:"player", name, stack:1000, hand:[], currentBet:0 }];
+  const players: Player[] = [{ id: "player", name, stack: 1000, hand: [], currentBet: 0 }];
 
-    for(let i=0;i<aiCount;i++){
-      players.push({ id:`ai${i}`, name:`AI ${i+1}`, stack:1000, hand:[], isAI:true, currentBet:0 });
-    }
-
-    const sb = 10, bb = 20;
-    const sbIndex = (dealerIndex + 1) % players.length;
-    const bbIndex = (dealerIndex + 2) % players.length;
-
-    players.forEach(p => { p.hand=[]; p.hasFolded=false; p.lastAction=""; p.currentBet=0; });
-
-    players[sbIndex].stack -= sb; players[sbIndex].currentBet = sb; players[sbIndex].lastAction="Small Blind";
-    players[bbIndex].stack -= bb; players[bbIndex].currentBet = bb; players[bbIndex].lastAction="Big Blind";
-
-    const firstToAct = (bbIndex+1) % players.length;
-
-    setGame({
-      players,
-      community: [],
-      deck,
-      pot: sb + bb,
-      currentTurn: firstToAct,
-      roundStarter: firstToAct,
-      stage: "pre-flop",
-      smallBlind: sb,
-      bigBlind: bb,
-      replayVisible: false,
-      dealerIndex
-    });
-
-    // Animate hole cards dealing
-    dealHoleCards(players, deck);
+  for (let i = 0; i < aiCount; i++) {
+    players.push({ id: `ai${i}`, name: `AI ${i + 1}`, stack: 1000, hand: [], isAI: true, currentBet: 0 });
   }
+
+  const sb = 10, bb = 20;
+  const sbIndex = (dealerIndex + 1) % players.length;
+  const bbIndex = (dealerIndex + 2) % players.length;
+
+  players.forEach(p => { p.hand = []; p.hasFolded = false; p.lastAction = ""; p.currentBet = 0; });
+
+  players[sbIndex].stack -= sb; players[sbIndex].currentBet = sb; players[sbIndex].lastAction = "Small Blind";
+  players[bbIndex].stack -= bb; players[bbIndex].currentBet = bb; players[bbIndex].lastAction = "Big Blind";
+
+  const firstToAct = (bbIndex + 1) % players.length;
+
+  // ✅ Generate unique invite code (shareable)
+  const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+  setGame({
+    players,
+    community: [],
+    deck,
+    pot: sb + bb,
+    currentTurn: firstToAct,
+    roundStarter: firstToAct,
+    stage: "pre-flop",
+    smallBlind: sb,
+    bigBlind: bb,
+    replayVisible: false,
+    dealerIndex,
+    inviteCode, // ✅ save invite code in game state
+  });
+
+  // Animate hole cards dealing
+  dealHoleCards(players, deck);
+}
+
 
   async function dealHoleCards(players: Player[], deck: Card[]) {
     for (let r=0;r<2;r++){
@@ -302,20 +332,94 @@ export default function PokerPage() {
       </div>
     );
   }
+  
 
-  if(!game){
-    return(
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
-        <div className="p-6 bg-slate-800 rounded shadow w-96 text-center mb-4">
-          <h1 className="text-2xl mb-4">Create Game</h1>
-          <div className="mb-2">Balance: {balance}</div>
-          <label className="block mb-2">Number of AI players:</label>
-          <input type="number" min={0} max={5} value={aiCount} onChange={e=>setAiCount(Number(e.target.value))} className="border p-2 rounded mb-4 w-full text-black"/>
-          <button onClick={()=>createGame()} className="bg-green-500 px-4 py-2 rounded w-full font-bold">Create Game</button>
-        </div>
+if (!game) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+      <div className="p-6 bg-slate-800 rounded shadow w-96 text-center mb-4">
+        <h1 className="text-2xl mb-4">{joiningGame ? "Join Game" : "Create Game"}</h1>
+        <div className="mb-2">Balance: {balance}</div>
+
+        {!joiningGame ? (
+          <>
+            <label className="block mb-2">Number of AI players:</label>
+            <input
+              type="number"
+              min={0}
+              max={5}
+              value={aiCount}
+              onChange={(e) => setAiCount(Number(e.target.value))}
+              className="border p-2 rounded mb-4 w-full text-black"
+            />
+            <button
+              onClick={() => createGame()}
+              className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
+            >
+              Create Game
+            </button>
+            <button
+              onClick={() => setJoiningGame(true)}
+              className="bg-blue-500 px-4 py-2 rounded w-full font-bold"
+            >
+              Join Existing Game
+            </button>
+          </>
+        ) : (
+         <>
+  <input
+    placeholder="Enter Invite Code"
+    value={inviteCode}
+    onChange={(e) => setInviteCode(e.target.value)}
+    className="border p-2 w-full rounded mb-4 text-black"
+  />
+
+  {/* ✅ Paste from clipboard button */}
+  <button
+    onClick={async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text.trim()) setInviteCode(text.trim());
+      } catch {
+        alert("Unable to access clipboard.");
+      }
+    }}
+    className="bg-yellow-400 px-3 py-1 rounded w-full font-bold mb-2 text-black"
+  >
+    Paste from Clipboard
+  </button>
+
+  <button
+    onClick={async () => {
+      if (!inviteCode.trim()) return alert("Enter invite code!");
+      // 🔗 Call your future backend route to join
+      const res = await fetch(`/api/poker/join?code=${inviteCode}`);
+      if (res.ok) {
+        const data = await res.json();
+        setGame(data.game); // hydrate with server state
+      } else {
+        alert("Game not found!");
+      }
+    }}
+    className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
+  >
+    Join Game
+  </button>
+
+  <button
+    onClick={() => setJoiningGame(false)}
+    className="bg-gray-500 px-4 py-2 rounded w-full font-bold"
+  >
+    Back
+  </button>
+</>
+
+        )}
       </div>
-    );
-  }
+    </div>
+  );
+}
+
 
   const centerX=350, centerY=200, rx=280, ry=140;
   const totalPlayers=game.players.length;
@@ -324,6 +428,22 @@ export default function PokerPage() {
   return(
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6">
       <h1 className="text-3xl mb-4">Texas Hold'em</h1>
+{game.inviteCode && (
+  <div className="mb-4 text-center">
+    <span className="font-bold">Invite Code:</span>{" "}
+    <span className="bg-yellow-300 text-black px-2 py-1 rounded">{game.inviteCode}</span>
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(game.inviteCode || "");
+        alert("Invite code copied!");
+      }}
+      className="ml-2 bg-blue-500 px-3 py-1 rounded text-sm"
+    >
+      Copy
+    </button>
+  </div>
+)}
+
       <div className="mb-2 font-bold">Balance: {balance}</div>
       <div className="relative w-[700px] h-[400px] bg-green-700 rounded-full border-8 border-yellow-800 flex items-center justify-center mb-6">
         {/* Pot + Community */}
