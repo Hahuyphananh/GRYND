@@ -331,7 +331,14 @@ export default function PokerPage() {
           <div className="mb-2 font-bold">Pot: {game.pot}</div>
           <div className="flex gap-2">
             {game.community.map((c,i)=>(
-              <div key={i} className="w-16 h-24 bg-white text-black flex items-center justify-center rounded shadow">{c.value}{c.suit}</div>
+            <div
+  key={i}
+  className={`w-16 h-24 bg-white flex items-center justify-center rounded shadow 
+  ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
+>
+  {c.value}{c.suit}
+</div>
+
             ))}
           </div>
         </div>
@@ -361,10 +368,24 @@ export default function PokerPage() {
               )}
               <div className="mt-2 flex justify-center gap-1">
                 {p.id==="player"
-                  ? p.hand.map((c,i)=><div key={i} className="px-1 py-0.5 border rounded bg-white text-black">{c.value}{c.suit}</div>)
+                  ? p.hand.map((c,i)=><div
+  key={i}
+  className={`px-1 py-0.5 border rounded bg-white 
+  ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
+>
+  {c.value}{c.suit}
+</div>
+)
                   : game.stage!=="showdown"
                     ? (<><div className="w-12 h-16 bg-gray-800 rounded"></div><div className="w-12 h-16 bg-gray-800 rounded"></div></>)
-                    : p.hand.map((c,i)=><div key={i} className="px-1 py-0.5 border rounded bg-white text-black">{c.value}{c.suit}</div>)
+                    : p.hand.map((c,i)=><div
+  key={i}
+  className={`px-1 py-0.5 border rounded bg-white 
+  ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
+>
+  {c.value}{c.suit}
+</div>
+)
                 }
               </div>
               {p.lastAction && <div className="text-xs mt-1 italic">{p.lastAction}</div>}
