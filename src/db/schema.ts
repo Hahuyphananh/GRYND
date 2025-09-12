@@ -76,6 +76,10 @@ export const pokerGames = pgTable("poker_games", {
 
   // ✅ Matches TIMESTAMP DEFAULT NOW()
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  inviteCode: varchar("invite_code", { length: 10 }),
+maxPlayers: integer("max_players").default(6),
+isPrivate: boolean("is_private").default(false),
+
 });
 
 
@@ -83,27 +87,25 @@ export const pokerPlayerPositions = pgTable('poker_player_positions', {
   id: serial('id').primaryKey(),
 
   gameId: integer('game_id').notNull().references(() => pokerGames.id),
+  playerId: varchar('player_id', { length: 50 }),
+  position: integer('position').notNull(),
 
-  playerId: varchar('player_id', { length: 50 }), // NULL for AI, Clerk IDs are strings
+  stack: numeric('stack', { precision: 10, scale: 2 }).default('0.00'),
+  currentBet: numeric('current_bet', { precision: 10, scale: 2 }).default('0.00'),
 
-  position: integer('position').notNull(), // 0 = dealer, 1 = big blind, etc.
+  hasFolded: boolean('has_folded').default(false),
+  isAllIn: boolean('is_all_in').default(false),
 
-  stack: numeric('stack', { precision: 10, scale: 2 }).notNull().default('0.00'),
-  currentBet: numeric('current_bet', { precision: 10, scale: 2 }).notNull().default('0.00'),
+  isAI: boolean('is_ai').default(false),
+  hand: jsonb('hand').default([]),
 
-  hasFolded: boolean('has_folded').notNull().default(false),
-  isAllIn: boolean('is_all_in').notNull().default(false),
+  isTurn: boolean('is_turn').default(false),
+  lastAction: varchar('last_action', { length: 20 }).default(''),
 
-  isAI: boolean('is_ai').notNull().default(false), // mark AI players
-  hand: jsonb('hand').notNull().default([]),       // store player’s cards
+  isReady: boolean('is_ready').notNull().default(false),
 
-  isTurn: boolean('is_turn').notNull().default(false), // track if it’s this player’s turn
-  lastAction: varchar('last_action', { length: 20 }).notNull().default(''), // track last action
-
-  createdAt: timestamp('created_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').defaultNow(),
 });
-
-
 
 
 export const blackjackGames = pgTable('blackjack_games', {
