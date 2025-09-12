@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
-import { useSearchParams } from "next/navigation"; // ✅ add at top
 
 type Player = {
   id: string;
@@ -88,27 +87,6 @@ const [joiningGame, setJoiningGame] = useState(false);
   fetchUserTokens();
 }, []);
 
-const searchParams = useSearchParams();
-
-useEffect(() => {
-  const code = searchParams.get("invite");
-  if (code) {
-    setJoiningGame(true);
-    setInviteCode(code);
-    // Optional: auto-join right away
-    // (Uncomment this block if you want instant join without button click)
-    /*
-    fetch(`/api/poker/join?code=${code}`).then(async res => {
-      if (res.ok) {
-        const data = await res.json();
-        setGame(data.game);
-      } else {
-        alert("Game not found!");
-      }
-    });
-    */
-  }
-}, [searchParams]);
 
   // ======== Create Game =========
   function createGame(dealerIndex = 0) {
