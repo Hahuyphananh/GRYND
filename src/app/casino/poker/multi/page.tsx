@@ -156,7 +156,7 @@ async function joinGame() {
   setJoiningGame(true);
 
   try {
-    const res = await fetch(`/api/poker/join?code=${inviteCode.trim()}`);
+    const res = await fetch(`/api/poker/join-game?code=${inviteCode.trim()}`);
     if (!res.ok) {
       const err = await res.json();
       return alert(err?.error || "Failed to join game");
