@@ -394,81 +394,70 @@ if (!game) {
         <h1 className="text-2xl mb-4">{joiningGame ? "Join Game" : "Create Game"}</h1>
         <div className="mb-2">Balance: {balance}</div>
 
-        {!joiningGame ? (
-          <>
-            <label className="block mb-2">Number of AI players:</label>
-            <input
-              type="number"
-              min={0}
-              max={5}
-              value={aiCount}
-              onChange={(e) => setAiCount(Number(e.target.value))}
-              className="border p-2 rounded mb-4 w-full text-black"
-            />
-            <button
-              onClick={() => createGame()}
-              className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
-            >
-              Create Game
-            </button>
-        <button
-  onClick={joinGame}
-  className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
->
-  Join Game
-</button>
+{!joiningGame ? (
+  <>
+    <label className="block mb-2">Number of AI players:</label>
+    <input
+      type="number"
+      min={0}
+      max={5}
+      value={aiCount}
+      onChange={(e) => setAiCount(Number(e.target.value))}
+      className="border p-2 rounded mb-4 w-full text-black"
+    />
+    <button
+      onClick={() => createGame()}
+      className="bg-yellow-500 px-4 py-2 rounded w-full font-bold mb-2"
+    >
+      Create Game
+    </button>
 
-          </>
-        ) : (
-         <>
-  <input
-    placeholder="Enter Invite Code"
-    value={inviteCode}
-    onChange={(e) => setInviteCode(e.target.value)}
-    className="border p-2 w-full rounded mb-4 text-black"
-  />
+    <button
+      onClick={() => setJoiningGame(true)} // ✅ toggle to join form
+      className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
+    >
+      Join Game
+    </button>
+  </>
+) : (
+  <>
+    <input
+      placeholder="Enter Invite Code"
+      value={inviteCode}
+      onChange={(e) => setInviteCode(e.target.value)}
+      className="border p-2 w-full rounded mb-4 text-black"
+    />
 
-  {/* ✅ Paste from clipboard button */}
-  <button
-    onClick={async () => {
-      try {
-        const text = await navigator.clipboard.readText();
-        if (text.trim()) setInviteCode(text.trim());
-      } catch {
-        alert("Unable to access clipboard.");
-      }
-    }}
-    className="bg-yellow-400 px-3 py-1 rounded w-full font-bold mb-2 text-black"
-  >
-    Paste from Clipboard
-  </button>
+    <button
+      onClick={async () => {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text.trim()) setInviteCode(text.trim());
+        } catch {
+          alert("Unable to access clipboard.");
+        }
+      }}
+      className="bg-yellow-400 px-3 py-1 rounded w-full font-bold mb-2 text-black"
+    >
+      Paste from Clipboard
+    </button>
 
-  <button
-    onClick={async () => {
-      if (!inviteCode.trim()) return alert("Enter invite code!");
-      // 🔗 Call your future backend route to join
-      const res = await fetch(`/api/poker/join?code=${inviteCode}`);
-      if (res.ok) {
-        const data = await res.json();
-        setGame(data.game); // hydrate with server state
-      } else {
-        alert("Game not found!");
-      }
-    }}
-    className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
-  >
-    Join Game
-  </button>
+    <button
+      onClick={joinGame} // ✅ uses your joinGame function
+      className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
+    >
+      Join Game
+    </button>
 
-  <button
-    onClick={() => setJoiningGame(false)}
-    className="bg-gray-500 px-4 py-2 rounded w-full font-bold"
-  >
-    Back
-  </button>
-</>
+    <button
+      onClick={() => setJoiningGame(false)} // ✅ back to initial panel
+      className="bg-gray-500 px-4 py-2 rounded w-full font-bold"
+    >
+      Back
+    </button>
+  </>
+)}
 
-        )}
       </div>
     </div>
   );
