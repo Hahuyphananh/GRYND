@@ -1,46 +1,37 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
-import { eq } from "drizzle-orm";
 
-export async function GET(req) {
+export async function POST(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const code = searchParams.get("code");
+    const body = await req.json();
+    const maxPlayers = body.maxPlayers ?? 5;
+    const isPrivate = body.isPrivate ?? false;
 
-    if (!code) {
-      return NextResponse.json({ error: "Missing invite code" }, { status: 400 });
-    }
+    // 1️⃣ Generate game code
+    const gameCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    // 1️⃣ Find game by invite_code
-    const [game] = await db.select().from(pokerGames).where(eq(pokerGames.inviteCode, code));
-    if (!game) {
-      return NextResponse.json({ error: "Game not found" }, { status: 404 });
-    }
+    // 2️⃣ Insert into DB using correct column name
+    const [newGame] = await db
+      .insert(pokerGames)
+      .values({
+        maxPlayers,
+        isPrivate,
+        game_code: gameCode, // ✅ match your Neon column
+        pot: 0,
+        stage: "pre-flop",
+        community: [],
+      })
+      .returning();
 
-    // 2️⃣ Create a temporary joining player
-    const playerId = `player-${Date.now()}`;
-    const player = {
-      id: playerId,
-      name: "You",         // or get from Clerk if logged in
-      stack: 1000,
-      hand: [],
-      isAI: false,
-      hasFolded: false,
-      currentBet: 0,
-      lastAction: "",
-    };
-
-    // 3️⃣ Return the game + the new player
+    // 3️⃣ Return to frontend using the same variable name
     return NextResponse.json({
       success: true,
-      game: {
-        ...game,
-        players: [player], // frontend can merge with existing players if needed
-      },
+      game: newGame,
+      inviteCode: newGame.gameCode, // frontend can keep using inviteCode
     });
   } catch (err) {
-    console.error("JOIN GAME ERROR", err);
+    console.error("CREATE GAME ERROR", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
