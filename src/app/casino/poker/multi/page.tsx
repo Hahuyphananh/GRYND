@@ -165,10 +165,21 @@ async function joinGame() {
     const data = await res.json();
     const serverGame = data.game as Game;
 
-    // Add the local player (you) + optional AI if needed
-    const players: Player[] = [serverGame.players[0]]; // the joined player
+    // Assign a consistent ID "player" so your frontend works
+    const localPlayer: Player = {
+      id: "player",
+      name,
+      stack: 1000,
+      hand: [], // assign empty hand first
+      currentBet: 0,
+      hasFolded: false,
+      lastAction: "",
+      isAI: false,
+    };
 
-    // Optionally add AI players if you want consistent AI count
+    const players: Player[] = [localPlayer];
+
+    // Add AI players
     for (let i = 0; i < aiCount; i++) {
       players.push({
         id: `ai${i}`,
@@ -177,10 +188,12 @@ async function joinGame() {
         hand: [],
         isAI: true,
         currentBet: 0,
+        hasFolded: false,
+        lastAction: "",
       });
     }
 
-    // Initialize game state
+    // Initialize deck and deal hole cards
     const deck = shuffle(createDeck());
     dealHoleCards(players, deck);
 
@@ -189,8 +202,13 @@ async function joinGame() {
     const sbIndex = (dealerIndex + 1) % players.length;
     const bbIndex = (dealerIndex + 2) % players.length;
 
-    players[sbIndex].stack -= sb; players[sbIndex].currentBet = sb; players[sbIndex].lastAction = "Small Blind";
-    players[bbIndex].stack -= bb; players[bbIndex].currentBet = bb; players[bbIndex].lastAction = "Big Blind";
+    players[sbIndex].stack -= sb;
+    players[sbIndex].currentBet = sb;
+    players[sbIndex].lastAction = "Small Blind";
+
+    players[bbIndex].stack -= bb;
+    players[bbIndex].currentBet = bb;
+    players[bbIndex].lastAction = "Big Blind";
 
     const firstToAct = (bbIndex + 1) % players.length;
 
@@ -216,6 +234,7 @@ async function joinGame() {
     setJoiningGame(false);
   }
 }
+
 
 
   // ======== AI Turn Logic =======
