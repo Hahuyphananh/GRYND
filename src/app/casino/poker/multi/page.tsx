@@ -89,7 +89,7 @@ const [joiningGame, setJoiningGame] = useState(false);
 
 
   // ======== Create Game =========
-  async function createGame(dealerIndex = 0) {
+async function createGame(dealerIndex = 0) {
   if (!name.trim()) return alert("Enter your name first");
 
   const deck = shuffle(createDeck());
@@ -109,18 +109,18 @@ const [joiningGame, setJoiningGame] = useState(false);
 
   const firstToAct = (bbIndex + 1) % players.length;
 
-  // ✅ Call backend
   try {
     const res = await fetch("/api/poker/create-game", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ maxPlayers: aiCount + 1, isPrivate: false }),
+      body: JSON.stringify({ maxPlayers: aiCount + 1, isPrivate: false, playerName: name }),
     });
 
     if (!res.ok) return alert("Failed to create game on server");
     const data = await res.json();
 
-    setGame({
+    // ✅ First set game state with correct gameCode
+    const newGame: Game = {
       players,
       community: [],
       deck,
@@ -132,10 +132,12 @@ const [joiningGame, setJoiningGame] = useState(false);
       bigBlind: bb,
       replayVisible: false,
       dealerIndex,
-      inviteCode: data.inviteCode,
-    });
+      inviteCode: data.gameCode, // ✅ we return gameCode from backend
+    };
+    setGame(newGame);
 
-    dealHoleCards(players, deck);
+    // ✅ Then deal cards using correct gameCode
+    dealHoleCards(players, deck, data.gameCode);
 
   } catch (err) {
     console.error("Error creating game:", err);
@@ -143,12 +145,37 @@ const [joiningGame, setJoiningGame] = useState(false);
   }
 }
 
+
 // Deals two cards to each player from the deck
-function dealHoleCards(players: Player[], deck: Card[]) {
+async function dealHoleCards(players: Player[], deck: Card[], gameCode: string) {
   for (let i = 0; i < players.length; i++) {
     players[i].hand = [deck.pop()!, deck.pop()!];
   }
+
+  const player = players.find(p => p.id === "player");
+  if (player) {
+    try {
+      const res = await fetch("/api/poker/update-hand", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gameCode,           // ✅ guaranteed not undefined now
+          playerId: player.id,
+          hand: player.hand,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        console.error("Failed to update hand:", err);
+      }
+    } catch (error) {
+      console.error("Error sending PATCH request:", error);
+    }
+  }
 }
+
+
 // ======== JOIN GAME =========
 async function joinGame() {
   if (!inviteCode.trim()) return alert("Enter invite code!");
@@ -195,7 +222,8 @@ async function joinGame() {
 
     // Initialize deck and deal hole cards
     const deck = shuffle(createDeck());
-    dealHoleCards(players, deck);
+    const gameCodeToUse = serverGame.inviteCode || inviteCode.trim();
+dealHoleCards(players, deck, gameCodeToUse);
 
     const sb = 10, bb = 20;
     const dealerIndex = 0;

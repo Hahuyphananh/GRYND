@@ -1,6 +1,6 @@
 // src/db/schema.ts
 import { pgTable, serial, varchar, integer, numeric, timestamp, jsonb, text, json, boolean } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // USERS TABLE
 export const users = pgTable('users', {
@@ -42,6 +42,7 @@ export const pokerGames = pgTable('poker_games', {
   maxPlayers: integer('max_players').notNull().default(6),
   isPrivate: boolean('is_private').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
+  players: jsonb("players").notNull().default(sql`'[]'::jsonb`),
 });
 
 
