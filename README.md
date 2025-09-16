@@ -1,28 +1,46 @@
-This project was generated from [create.xyz](https://create.xyz/).
+# 🎰 GoonBet — The Next-Gen Online Casino  
 
-It is a [Next.js](https://nextjs.org/) project built on React and TailwindCSS.
+Welcome to **GoonBet**, a modern online casino and sports betting platform where users can play with **tokens or real money** in a fun, fair, and engaging way.  
 
-## Getting Started
+Our platform is designed to combine classic casino games with a smooth, interactive experience that works on desktop and mobile.  
 
-First, run the development server:
+---
+
+## 🚀 Features
+
+- 🎲 **Casino Games** — Blackjack, Poker, Roulette, and Keno (token-based & real-money modes)  
+- 📊 **Sports Betting** — Soccer, Basketball, MMA, E-Sports, and more  
+- 🏆 **Token System** — Play-for-fun mode so users can practice without losing real money  
+- 🔑 **Clerk Authentication** — Secure user sign-up and login  
+- 💰 **Wallet & Token Management** — Seamless token balance updates via secure API routes  
+- 📱 **Mobile-Friendly UI** — Optimized for a smooth experience on any device  
+- 🛡 **Security First** — SQL injection protection, CSRF tokens, rate limiting, and TLS  
+
+---
+
+## 🖼️ Preview  
+![Casino Screenshot](./public/demo-preview.png)  
+_A preview of the main lobby interface (Roulette + Blackjack shown)_
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer            | Technology |
+|-----------------|------------|
+| **Frontend**    | Next.js 14, React, TailwindCSS |
+| **Backend**     | Next.js API Routes, Neon Postgres |
+| **Auth**        | Clerk (JWTs + OAuth) |
+| **Database**    | Postgres + Drizzle ORM |
+| **Hosting**     | Vercel |
+
+---
+
+## 🏗️ Installation
+
+Clone the repository and install dependencies:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the code in `src`. The page auto-updates as you edit the file.
-
-To learn more, take a look at the following resources:
-
-- [React Documentation](https://react.dev/) - learn about React
-- [TailwindCSS Documentation](https://tailwindcss.com/) - learn about TailwindCSS
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+git clone https://github.com/yourusername/goonbet.git
+cd goonbet
+npm install
