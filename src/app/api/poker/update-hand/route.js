@@ -16,31 +16,42 @@ export async function PATCH(req) {
       return NextResponse.json({ error: "Missing data" }, { status: 400 });
     }
 
-    // 1️⃣ Fetch the game from DB
-    const [game] = await db
-      .select()
-      .from(pokerGames)
-      .where(eq(pokerGames.gameCode, gameCode));
+  const [game] = await db
+  .select()
+  .from(pokerGames)
+  .where(eq(pokerGames.gameCode, gameCode));
 
-    if (!game) {
-      console.warn("PATCH failed: game not found for code:", gameCode);
-      return NextResponse.json({ error: "Game not found" }, { status: 404 });
-    }
+if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
-    console.log(`Updating hand for player ${playerId}:`, JSON.stringify(hand));
+const players = Array.isArray(game.players) ? game.players : [];
 
-    // 2️⃣ Update player's hand in players array
-    const players = Array.isArray(game.players) ? game.players : [];
-    const updatedPlayers = players.map((p) =>
-      p.id === playerId ? { ...p, hand } : p
-    );
+// Merge or add player
+const updatedPlayers = players.map(p =>
+  p.id === playerId ? { ...p, hand } : p
+);
 
-    // 3️⃣ Save back to DB
-    const [updatedGame] = await db
-      .update(pokerGames)
-      .set({ players: updatedPlayers })
-      .where(eq(pokerGames.gameCode, gameCode))
-      .returning();
+if (!updatedPlayers.find(p => p.id === playerId)) {
+  // Append new player if not exists
+  updatedPlayers.push({
+    id: playerId,
+    hand,
+    isAI: false,
+    stack: 1000,
+    hasFolded: false,
+    currentBet: 0,
+    lastAction: "",
+    name: body.name || "Unknown",
+    isReady: false,
+  });
+}
+
+// Save updated array
+const [updatedGame] = await db
+  .update(pokerGames)
+  .set({ players: updatedPlayers })
+  .where(eq(pokerGames.gameCode, gameCode))
+  .returning();
+
 
     console.log("PATCH update success:", updatedGame);
 

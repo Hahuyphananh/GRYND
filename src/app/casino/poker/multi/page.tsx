@@ -88,17 +88,20 @@ const [joiningGame, setJoiningGame] = useState(false);
 }, []);
 
 
-  // ======== Create Game =========
+ // ======== CREATE GAME =========
 async function createGame(dealerIndex = 0) {
   if (!name.trim()) return alert("Enter your name first");
 
+  // 1️⃣ Create a single shuffled deck
   const deck = shuffle(createDeck());
-  const players: Player[] = [{ id: "player", name, stack: 1000, hand: [], currentBet: 0 }];
 
+  // 2️⃣ Create players array (human + AI)
+  const players: Player[] = [{ id: "player", name, stack: 1000, hand: [], currentBet: 0 }];
   for (let i = 0; i < aiCount; i++) {
     players.push({ id: `ai${i}`, name: `AI ${i + 1}`, stack: 1000, hand: [], isAI: true, currentBet: 0 });
   }
 
+  // 3️⃣ Setup blinds
   const sb = 10, bb = 20;
   const sbIndex = (dealerIndex + 1) % players.length;
   const bbIndex = (dealerIndex + 2) % players.length;
@@ -119,7 +122,19 @@ async function createGame(dealerIndex = 0) {
     if (!res.ok) return alert("Failed to create game on server");
     const data = await res.json();
 
-    // ✅ First set game state with correct gameCode
+    // 4️⃣ Deal all hands from the same deck
+    players.forEach(p => {
+      p.hand = [deck.pop()!, deck.pop()!];
+    });
+
+    // Only send human hand to backend
+    await fetch("/api/poker/update-hand", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gameCode: data.gameCode, playerId: "player", hand: players[0].hand, name }),
+    });
+
+    // 5️⃣ Set initial game state
     const newGame: Game = {
       players,
       community: [],
@@ -132,12 +147,9 @@ async function createGame(dealerIndex = 0) {
       bigBlind: bb,
       replayVisible: false,
       dealerIndex,
-      inviteCode: data.gameCode, // ✅ we return gameCode from backend
+      inviteCode: data.gameCode,
     };
     setGame(newGame);
-
-    // ✅ Then deal cards using correct gameCode
-    dealHoleCards(players, deck, data.gameCode);
 
   } catch (err) {
     console.error("Error creating game:", err);
@@ -145,41 +157,9 @@ async function createGame(dealerIndex = 0) {
   }
 }
 
-
-// Deals two cards to each player from the deck
-async function dealHoleCards(players: Player[], deck: Card[], gameCode: string) {
-  for (let i = 0; i < players.length; i++) {
-    players[i].hand = [deck.pop()!, deck.pop()!];
-  }
-
-  const player = players.find(p => p.id === "player");
-  if (player) {
-    try {
-      const res = await fetch("/api/poker/update-hand", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gameCode,           // ✅ guaranteed not undefined now
-          playerId: player.id,
-          hand: player.hand,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        console.error("Failed to update hand:", err);
-      }
-    } catch (error) {
-      console.error("Error sending PATCH request:", error);
-    }
-  }
-}
-
-
 // ======== JOIN GAME =========
 async function joinGame() {
   if (!inviteCode.trim()) return alert("Enter invite code!");
-
   setJoiningGame(true);
 
   try {
@@ -192,68 +172,44 @@ async function joinGame() {
     const data = await res.json();
     const serverGame = data.game as Game;
 
-    // Assign a consistent ID "player" so your frontend works
-    const localPlayer: Player = {
-      id: "player",
-      name,
-      stack: 1000,
-      hand: [], // assign empty hand first
-      currentBet: 0,
-      hasFolded: false,
-      lastAction: "",
-      isAI: false,
-    };
+    // Map players safely, don't add new AI
+    const players: Player[] = (serverGame.players || []).map(p => ({
+      ...p,
+      currentBet: p.currentBet || 0,
+      hasFolded: p.hasFolded || false,
+      lastAction: p.lastAction || "",
+      hand: p.hand || [],
+    }));
 
-    const players: Player[] = [localPlayer];
+    // Only set blinds if they are missing
+    if (!players.some(p => p.lastAction === "Small Blind")) {
+      const sb = 10, bb = 20;
+      const dealerIndex = serverGame.dealerIndex || 0;
+      const sbIndex = (dealerIndex + 1) % players.length;
+      const bbIndex = (dealerIndex + 2) % players.length;
 
-    // Add AI players
-    for (let i = 0; i < aiCount; i++) {
-      players.push({
-        id: `ai${i}`,
-        name: `AI ${i + 1}`,
-        stack: 1000,
-        hand: [],
-        isAI: true,
-        currentBet: 0,
-        hasFolded: false,
-        lastAction: "",
-      });
+      players[sbIndex].stack -= sb;
+      players[sbIndex].currentBet = sb;
+      players[sbIndex].lastAction = "Small Blind";
+
+      players[bbIndex].stack -= bb;
+      players[bbIndex].currentBet = bb;
+      players[bbIndex].lastAction = "Big Blind";
     }
 
-    // Initialize deck and deal hole cards
-    const deck = shuffle(createDeck());
-    const gameCodeToUse = serverGame.inviteCode || inviteCode.trim();
-dealHoleCards(players, deck, gameCodeToUse);
-
-    const sb = 10, bb = 20;
-    const dealerIndex = 0;
-    const sbIndex = (dealerIndex + 1) % players.length;
-    const bbIndex = (dealerIndex + 2) % players.length;
-
-    players[sbIndex].stack -= sb;
-    players[sbIndex].currentBet = sb;
-    players[sbIndex].lastAction = "Small Blind";
-
-    players[bbIndex].stack -= bb;
-    players[bbIndex].currentBet = bb;
-    players[bbIndex].lastAction = "Big Blind";
-
-    const firstToAct = (bbIndex + 1) % players.length;
+    const firstToAct = (players.findIndex(p => p.lastAction === "Big Blind") + 1) % players.length;
 
     setGame({
+      ...serverGame,
       players,
-      community: [],
-      deck,
-      pot: sb + bb,
+      pot: players.reduce((sum, p) => sum + (p.currentBet || 0), 0),
       currentTurn: firstToAct,
       roundStarter: firstToAct,
-      stage: "pre-flop",
-      smallBlind: sb,
-      bigBlind: bb,
-      replayVisible: false,
-      dealerIndex,
-      inviteCode: serverGame.inviteCode,
     });
+
+    // Update human balance
+    const joiningHuman = players.find(p => !p.isAI);
+    if (joiningHuman) setBalance(joiningHuman.stack);
 
     setJoiningGame(false);
   } catch (err) {
@@ -262,8 +218,6 @@ dealHoleCards(players, deck, gameCodeToUse);
     setJoiningGame(false);
   }
 }
-
-
 
   // ======== AI Turn Logic =======
   useEffect(() => {
@@ -515,108 +469,137 @@ if (!game) {
   const totalPlayers=game.players.length;
   const aiCountReal=totalPlayers-1;
 
-  return(
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6">
-      <h1 className="text-3xl mb-4">Texas Hold'em</h1>
-{game.inviteCode && (
-  <div className="mb-4 text-center">
-    <span className="font-bold">Invite Code:</span>{" "}
-    <span className="bg-yellow-300 text-black px-2 py-1 rounded">{game.inviteCode}</span>
-    <button
-      onClick={() => {
-        navigator.clipboard.writeText(game.inviteCode || "");
-        alert("Invite code copied!");
-      }}
-      className="ml-2 bg-blue-500 px-3 py-1 rounded text-sm"
-    >
-      Copy
-    </button>
-  </div>
-)}
+  return (
+  <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6">
+    <h1 className="text-3xl mb-4">Texas Hold'em</h1>
 
-      <div className="mb-2 font-bold">Balance: {balance}</div>
-      <div className="relative w-[700px] h-[400px] bg-green-700 rounded-full border-8 border-yellow-800 flex items-center justify-center mb-6">
-        {/* Pot + Community */}
-        <div className="absolute top-[45%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-          <div className="mb-2 font-bold">Pot: {game.pot}</div>
-          <div className="flex gap-2">
-            {game.community.map((c,i)=>(
+    {game?.inviteCode && (
+      <div className="mb-4 text-center">
+        <span className="font-bold">Invite Code:</span>{" "}
+        <span className="bg-yellow-300 text-black px-2 py-1 rounded">{game.inviteCode}</span>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(game.inviteCode || "");
+            alert("Invite code copied!");
+          }}
+          className="ml-2 bg-blue-500 px-3 py-1 rounded text-sm"
+        >
+          Copy
+        </button>
+      </div>
+    )}
+
+    <div className="mb-2 font-bold">Balance: {balance}</div>
+
+    <div className="relative w-[700px] h-[400px] bg-green-700 rounded-full border-8 border-yellow-800 flex items-center justify-center mb-6">
+      {/* Pot + Community */}
+      <div className="absolute top-[45%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
+        <div className="mb-2 font-bold">Pot: {game?.pot ?? 0}</div>
+        <div className="flex gap-2">
+          {(game?.community || []).map((c, i) => (
             <div
-  key={i}
-  className={`w-16 h-24 bg-white flex items-center justify-center rounded shadow 
-  ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
->
-  {c.value}{c.suit}
-</div>
-
-            ))}
-          </div>
-        </div>
-
-        {/* Players */}
-        {game.players.map((p,idx)=>{
-          let left=centerX,top=centerY;
-          if(p.id==="player"){ left=centerX; top=centerY+ry-20; }
-          else{
-            const aiIndex=idx-1;
-            const angle=-Math.PI/2+(aiIndex+0.5)*(2*Math.PI/aiCountReal);
-            const x=Math.cos(angle)*rx, y=Math.sin(angle)*ry;
-            left=centerX+x; top=centerY+y-10;
-          }
-          return(
-            <div key={p.id}
-              className={`absolute w-32 p-2 rounded text-center ${p.id==="player"?"bg-yellow-500 text-black":"bg-slate-700"} 
-              ${p.hasFolded?"opacity-50":""} ${game.winnerId===p.id?"border-2 border-yellow-400":""}`}
-              style={{left,top,transform:"translate(-50%,-50%)"}}
+              key={i}
+              className={`w-16 h-24 bg-white flex items-center justify-center rounded shadow 
+              ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
             >
-              <div className="font-semibold">{p.name}</div>
-              <div className="text-sm">Stack: {p.stack}</div>
-              {p.currentBet>0 && (
-                <div className="mt-2 flex justify-center">
-                  <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center text-white font-bold">{p.currentBet}</div>
-                </div>
-              )}
-              <div className="mt-2 flex justify-center gap-1">
-                {p.id==="player"
-                  ? p.hand.map((c,i)=><div
-  key={i}
-  className={`px-1 py-0.5 border rounded bg-white 
-  ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
->
-  {c.value}{c.suit}
-</div>
-)
-                  : game.stage!=="showdown"
-                    ? (<><div className="w-12 h-16 bg-gray-800 rounded"></div><div className="w-12 h-16 bg-gray-800 rounded"></div></>)
-                    : p.hand.map((c,i)=><div
-  key={i}
-  className={`px-1 py-0.5 border rounded bg-white 
-  ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
->
-  {c.value}{c.suit}
-</div>
-)
-                }
-              </div>
-              {p.lastAction && <div className="text-xs mt-1 italic">{p.lastAction}</div>}
+              {c.value}{c.suit}
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
 
-      <div className="mb-4">Your Best Hand: {evaluateHand(game.players.find(p=>p.id==="player")!.hand, game.community)}</div>
+      {/* Players */}
+      {(game?.players || []).map((p, idx) => {
+        let left = 350, top = 200;
+        const totalPlayers = game?.players?.length ?? 1;
+        const aiCountReal = Math.max(totalPlayers - 1, 1);
 
-      {game.stage!=="showdown" && (
-        <div className="flex gap-2 mb-4 items-center">
-          <button onClick={()=>performAction("fold")} className="bg-red-600 px-4 py-2 rounded">Fold</button>
-          <button onClick={()=>performAction("check")} className="bg-yellow-500 px-4 py-2 rounded text-black">Check</button>
-          <button onClick={()=>performAction("call")} className="bg-blue-600 px-4 py-2 rounded">Call</button>
-          <input type="number" min={10} max={game.players[0].stack} value={raiseAmount} onChange={e=>setRaiseAmount(Number(e.target.value))} className="w-20 text-black px-2 py-1 rounded"/>
-          <button onClick={()=>performAction("raise")} className="bg-green-600 px-4 py-2 rounded">Raise</button>
-        </div>
-      )}
+        if (p.id === "player") {
+          left = 350;
+          top = 200 + 140 - 20;
+        } else {
+          const aiIndex = idx - 1;
+          const angle = -Math.PI / 2 + (aiIndex + 0.5) * (2 * Math.PI / aiCountReal);
+          left = 350 + Math.cos(angle) * 280;
+          top = 200 + Math.sin(angle) * 140 - 10;
+        }
 
-      {game.replayVisible && <button onClick={replayHand} className="bg-purple-600 px-6 py-2 rounded font-bold">Replay Hand</button>}
+        return (
+          <div
+            key={p.id}
+            className={`absolute w-32 p-2 rounded text-center ${p.id === "player" ? "bg-yellow-500 text-black" : "bg-slate-700"} 
+            ${p.hasFolded ? "opacity-50" : ""} ${game?.winnerId === p.id ? "border-2 border-yellow-400" : ""}`}
+            style={{ left, top, transform: "translate(-50%,-50%)" }}
+          >
+            <div className="font-semibold">{p.name}</div>
+            <div className="text-sm">Stack: {p.stack ?? 0}</div>
+
+            {p.currentBet && p.currentBet > 0 && (
+              <div className="mt-2 flex justify-center">
+                <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center text-white font-bold">{p.currentBet}</div>
+              </div>
+            )}
+
+            <div className="mt-2 flex justify-center gap-1">
+              {p.id === "player"
+                ? (p.hand || []).map((c, i) => (
+                  <div
+                    key={i}
+                    className={`px-1 py-0.5 border rounded bg-white 
+                    ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
+                  >
+                    {c.value}{c.suit}
+                  </div>
+                ))
+                : game?.stage !== "showdown"
+                  ? (
+                    <>
+                      <div className="w-12 h-16 bg-gray-800 rounded"></div>
+                      <div className="w-12 h-16 bg-gray-800 rounded"></div>
+                    </>
+                  )
+                  : (p.hand || []).map((c, i) => (
+                    <div
+                      key={i}
+                      className={`px-1 py-0.5 border rounded bg-white 
+                      ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
+                    >
+                      {c.value}{c.suit}
+                    </div>
+                  ))
+              }
+            </div>
+
+            {p.lastAction && <div className="text-xs mt-1 italic">{p.lastAction}</div>}
+          </div>
+        );
+      })}
     </div>
-  );
+
+    <div className="mb-4">
+      Your Best Hand: {evaluateHand(game?.players?.find(p => p.id === "player")?.hand || [], game?.community || [])}
+    </div>
+
+    {game?.stage !== "showdown" && (
+      <div className="flex gap-2 mb-4 items-center">
+        <button onClick={() => performAction("fold")} className="bg-red-600 px-4 py-2 rounded">Fold</button>
+        <button onClick={() => performAction("check")} className="bg-yellow-500 px-4 py-2 rounded text-black">Check</button>
+        <button onClick={() => performAction("call")} className="bg-blue-600 px-4 py-2 rounded">Call</button>
+        <input
+          type="number"
+          min={10}
+          max={game?.players?.[0]?.stack ?? 1000}
+          value={raiseAmount}
+          onChange={e => setRaiseAmount(Number(e.target.value))}
+          className="w-20 text-black px-2 py-1 rounded"
+        />
+        <button onClick={() => performAction("raise")} className="bg-green-600 px-4 py-2 rounded">Raise</button>
+      </div>
+    )}
+
+    {game?.replayVisible && (
+      <button onClick={replayHand} className="bg-purple-600 px-6 py-2 rounded font-bold">Replay Hand</button>
+    )}
+  </div>
+);
 }
