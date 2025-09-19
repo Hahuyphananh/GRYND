@@ -28,6 +28,7 @@ type Game = {
   replayVisible: boolean;
   dealerIndex: number;
   inviteCode?: string;
+   waiting?: boolean; // ✅ ADD THIS
 };
 
 const SUITS = ["♠", "♥", "♦", "♣"];
@@ -92,25 +93,11 @@ const [joiningGame, setJoiningGame] = useState(false);
 async function createGame(dealerIndex = 0) {
   if (!name.trim()) return alert("Enter your name first");
 
-  // 1️⃣ Create a single shuffled deck
   const deck = shuffle(createDeck());
-
-  // 2️⃣ Create players array (human + AI)
   const players: Player[] = [{ id: "player", name, stack: 1000, hand: [], currentBet: 0 }];
   for (let i = 0; i < aiCount; i++) {
     players.push({ id: `ai${i}`, name: `AI ${i + 1}`, stack: 1000, hand: [], isAI: true, currentBet: 0 });
   }
-
-  // 3️⃣ Setup blinds
-  const sb = 10, bb = 20;
-  const sbIndex = (dealerIndex + 1) % players.length;
-  const bbIndex = (dealerIndex + 2) % players.length;
-
-  players.forEach(p => { p.hand = []; p.hasFolded = false; p.lastAction = ""; p.currentBet = 0; });
-  players[sbIndex].stack -= sb; players[sbIndex].currentBet = sb; players[sbIndex].lastAction = "Small Blind";
-  players[bbIndex].stack -= bb; players[bbIndex].currentBet = bb; players[bbIndex].lastAction = "Big Blind";
-
-  const firstToAct = (bbIndex + 1) % players.length;
 
   try {
     const res = await fetch("/api/poker/create-game", {
@@ -122,40 +109,62 @@ async function createGame(dealerIndex = 0) {
     if (!res.ok) return alert("Failed to create game on server");
     const data = await res.json();
 
-    // 4️⃣ Deal all hands from the same deck
-    players.forEach(p => {
-      p.hand = [deck.pop()!, deck.pop()!];
-    });
-
-    // Only send human hand to backend
-    await fetch("/api/poker/update-hand", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gameCode: data.gameCode, playerId: "player", hand: players[0].hand, name }),
-    });
-
-    // 5️⃣ Set initial game state
-    const newGame: Game = {
+    setGame({
       players,
       community: [],
       deck,
-      pot: sb + bb,
-      currentTurn: firstToAct,
-      roundStarter: firstToAct,
+      pot: 0,
+      currentTurn: 0,
       stage: "pre-flop",
-      smallBlind: sb,
-      bigBlind: bb,
+      smallBlind: 10,
+      bigBlind: 20,
       replayVisible: false,
       dealerIndex,
       inviteCode: data.gameCode,
-    };
-    setGame(newGame);
+      waiting: true, // ✅ LOBBY MODE
+    });
 
   } catch (err) {
     console.error("Error creating game:", err);
     alert("Error creating game. Check console.");
   }
 }
+function startGame() {
+  if (!game) return;
+
+  const newDeck = [...game.deck];
+  const players = game.players.map(p => ({
+    ...p,
+    hand: [newDeck.pop()!, newDeck.pop()!],
+    hasFolded: false,
+    lastAction: "",
+    currentBet: 0,
+  }));
+
+  // Setup blinds
+  const sbIndex = (game.dealerIndex + 1) % players.length;
+  const bbIndex = (game.dealerIndex + 2) % players.length;
+  players[sbIndex].stack -= game.smallBlind;
+  players[sbIndex].currentBet = game.smallBlind;
+  players[sbIndex].lastAction = "Small Blind";
+
+  players[bbIndex].stack -= game.bigBlind;
+  players[bbIndex].currentBet = game.bigBlind;
+  players[bbIndex].lastAction = "Big Blind";
+
+  const firstToAct = (bbIndex + 1) % players.length;
+
+  setGame({
+    ...game,
+    players,
+    deck: newDeck,
+    pot: game.smallBlind + game.bigBlind,
+    currentTurn: firstToAct,
+    roundStarter: firstToAct,
+    waiting: false, // ✅ GAME STARTED
+  });
+}
+
 
 // ======== JOIN GAME =========
 async function joinGame() {
@@ -241,6 +250,34 @@ async function joinGame() {
     }
   }, [game?.currentTurn, game?.stage]);
 
+  function checkForWinner(players: Player[], pot: number) {
+  const activePlayers = players.filter(p => !p.hasFolded);
+  if (activePlayers.length === 1) {
+    const winner = activePlayers[0];
+    const updatedPlayers = players.map(p =>
+      p.id === winner.id ? { ...p, stack: p.stack + pot } : p
+    );
+
+    // ✅ If human player wins, update balance too
+    if (winner.id === "player") {
+      setBalance(prev => prev + pot);
+      fetchUserTokens();
+    }
+
+    setGame(g => g ? ({
+      ...g,
+      players: updatedPlayers,
+      winnerId: winner.id,
+      pot: 0,
+      stage: "showdown",
+      replayVisible: true,
+    }) : g);
+
+    return true;
+  }
+  return false;
+}
+
   // ======== Actions =========
   function performAction(action: "check" | "call" | "raise" | "fold", isAI = false) {
     if (!game) return;
@@ -256,6 +293,8 @@ async function joinGame() {
     if (action === "fold") {
       current.hasFolded = true;
       current.lastAction = "Folded";
+       // ✅ Check if this ends the hand
+  if (checkForWinner(players, potNew)) return;
     } else if (action === "call") {
       const toCall = Math.max(0, highest - (current.currentBet || 0));
       if (toCall > 0) {
@@ -264,6 +303,7 @@ async function joinGame() {
         current.currentBet += actual;
         potNew += actual;
         current.lastAction = `Called ${actual}`;
+         if (checkForWinner(players, potNew)) return;
 
         if (current.id === "player") {
           setBalance(prev => Math.max(prev - actual, 0)); // ✅ deduct from DB balance
@@ -575,12 +615,20 @@ if (!game) {
         );
       })}
     </div>
+{game?.waiting && (
+  <button
+    onClick={startGame}
+    className="mb-4 bg-green-600 px-6 py-2 rounded font-bold"
+  >
+    Start Game
+  </button>
+)}
 
     <div className="mb-4">
       Your Best Hand: {evaluateHand(game?.players?.find(p => p.id === "player")?.hand || [], game?.community || [])}
     </div>
 
-    {game?.stage !== "showdown" && (
+    {!game?.waiting && game?.stage !== "showdown" && (
       <div className="flex gap-2 mb-4 items-center">
         <button onClick={() => performAction("fold")} className="bg-red-600 px-4 py-2 rounded">Fold</button>
         <button onClick={() => performAction("check")} className="bg-yellow-500 px-4 py-2 rounded text-black">Check</button>
