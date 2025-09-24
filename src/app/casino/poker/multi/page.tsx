@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
+import { number } from "framer-motion";
 
 type Player = {
   id: string;
@@ -60,6 +61,7 @@ export default function PokerPage() {
   const [balance, setBalance] = useState<number>(0); // ✅ player balance synced
   const [inviteCode, setInviteCode] = useState("");
 const [joiningGame, setJoiningGame] = useState(false);
+const [isPrivate, setIsPrivate] = useState(true); // ✅ default to private
 
 
   const maxCurrentBet = (players: Player[]) => Math.max(...players.map(p => p.currentBet || 0));
@@ -103,7 +105,7 @@ async function createGame(dealerIndex = 0) {
     const res = await fetch("/api/poker/create-game", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ maxPlayers: aiCount + 1, isPrivate: false, playerName: name }),
+      body: JSON.stringify({ maxPlayers: aiCount + 1, isPrivate, playerName: name }),
     });
 
     if (!res.ok) return alert("Failed to create game on server");
@@ -406,11 +408,49 @@ async function joinGame() {
     setGame({...game,players:updated,winnerId:winner.id,pot:0,stage:"showdown",replayVisible:true});
   }
 
-  function replayHand() {
-    if(!game) return;
-    const nextDealer=(game.dealerIndex+1)%game.players.length;
-    createGame(nextDealer);
-  }
+ function replayHand() {
+  if (!game) return;
+
+  // Rotate dealer
+  const nextDealer = (game.dealerIndex + 1) % game.players.length;
+
+  // Optionally increase blinds every X hands
+  const handsPlayed = (game as any).handsPlayed ?? 0;
+  const newSmallBlind = handsPlayed > 0 && handsPlayed % 3 === 0
+    ? game.smallBlind * 2
+    : game.smallBlind;
+  const newBigBlind = handsPlayed > 0 && handsPlayed % 3 === 0
+    ? game.bigBlind * 2
+    : game.bigBlind;
+
+  // Reset deck & hands
+  const newDeck = shuffle(createDeck());
+  const resetPlayers = game.players.map(p => ({
+    ...p,
+    hand: [],
+    currentBet: 0,
+    hasFolded: false,
+    lastAction: "",
+  }));
+
+  setGame({
+    ...game,
+    dealerIndex: nextDealer,
+    players: resetPlayers,
+    deck: newDeck,
+    community: [],
+    pot: 0,
+    currentTurn: 0,
+    roundStarter: undefined,
+    stage: "pre-flop",
+    winnerId: undefined,
+    replayVisible: false,
+    smallBlind: newSmallBlind,
+    bigBlind: newBigBlind,
+    waiting: true,
+  });
+}
+
 
   // ======== RENDER ========
   if(!name){
@@ -446,6 +486,16 @@ if (!game) {
       onChange={(e) => setAiCount(Number(e.target.value))}
       className="border p-2 rounded mb-4 w-full text-black"
     />
+    <label className="block mb-2">Private Game:</label>
+<select
+  value={isPrivate ? "true" : "false"}
+  onChange={(e) => setIsPrivate(e.target.value === "true")}
+  className="border p-2 rounded mb-4 w-full text-black"
+>
+  <option value="true">Private</option>
+  <option value="false">Public</option>
+</select>
+
     <button
       onClick={() => createGame()}
       className="bg-yellow-500 px-4 py-2 rounded w-full font-bold mb-2"

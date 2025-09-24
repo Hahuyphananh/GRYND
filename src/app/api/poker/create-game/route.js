@@ -6,7 +6,7 @@ export async function POST(req) {
   try {
     const body = await req.json();
     const maxPlayers = body.maxPlayers ?? 5;
-    const isPrivate = body.isPrivate ?? false;
+    const isPrivate = body.isPrivate ?? true;
     const playerName = body.playerName ?? "Player";
 
     // 1️⃣ Generate game code
