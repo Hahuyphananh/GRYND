@@ -54,7 +54,6 @@ function nextActive(start: number, players: Player[]): number {
 
 export default function PokerPage() {
   const [name,setName]=useState("");
-  const [tempName,setTempName]=useState("");
   const [game,setGame]=useState<Game|null>(null);
   const [aiCount,setAiCount]=useState(2);
   const [raiseAmount,setRaiseAmount] = useState(50);
@@ -76,6 +75,7 @@ const [isPrivate, setIsPrivate] = useState(true); // ✅ default to private
     const data = await res.json();
     if (data.success) {
       setBalance(parseFloat(data.data.balance));
+      setName(data.data.name); // ✅ use name from DB
     } else {
       console.error("Failed to fetch tokens:", data.error);
     }
@@ -83,6 +83,7 @@ const [isPrivate, setIsPrivate] = useState(true); // ✅ default to private
     console.error("Error fetching tokens:", err);
   }
 };
+
 
 
   // ✅ fetch tokens from existing API
@@ -229,6 +230,65 @@ async function joinGame() {
     setJoiningGame(false);
   }
 }
+async function joinPublicGame() {
+  setJoiningGame(true);
+  try {
+    const res = await fetch("/api/poker/join-public", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playerName: name }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || "No public games available");
+
+    const serverGame = data.game as Game;
+
+    // Normalize player objects
+    const players: Player[] = (serverGame.players || []).map(p => ({
+      ...p,
+      currentBet: p.currentBet || 0,
+      hasFolded: p.hasFolded || false,
+      lastAction: p.lastAction || "",
+      hand: p.hand || [],
+    }));
+
+    // Set blinds if missing
+    if (!players.some(p => p.lastAction === "Small Blind")) {
+      const sb = 10, bb = 20;
+      const dealerIndex = serverGame.dealerIndex || 0;
+      const sbIndex = (dealerIndex + 1) % players.length;
+      const bbIndex = (dealerIndex + 2) % players.length;
+      players[sbIndex].stack -= sb;
+      players[sbIndex].currentBet = sb;
+      players[sbIndex].lastAction = "Small Blind";
+      players[bbIndex].stack -= bb;
+      players[bbIndex].currentBet = bb;
+      players[bbIndex].lastAction = "Big Blind";
+    }
+
+    const firstToAct = (players.findIndex(p => p.lastAction === "Big Blind") + 1) % players.length;
+
+    setGame({
+      ...serverGame,
+      players,
+      pot: players.reduce((sum, p) => sum + (p.currentBet || 0), 0),
+      currentTurn: firstToAct,
+      roundStarter: firstToAct,
+    });
+
+    // Update balance for the human player
+    const human = players.find(p => !p.isAI);
+    if (human) setBalance(human.stack);
+
+  } catch (err) {
+    console.error("Join public game error:", err);
+    alert("Failed to join public game. See console.");
+  } finally {
+    setJoiningGame(false);
+  }
+}
+
 
   // ======== AI Turn Logic =======
   useEffect(() => {
@@ -453,21 +513,6 @@ async function joinGame() {
 
 
   // ======== RENDER ========
-  if(!name){
-    return(
-      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
-        <div className="p-8 bg-slate-800 rounded shadow w-96 text-center">
-          <h1 className="text-2xl font-bold mb-4">Enter your name</h1>
-          <form onSubmit={e=>{e.preventDefault();if(tempName.trim())setName(tempName.trim());}}>
-            <input className="border p-2 w-full rounded mb-4 text-black" value={tempName} onChange={e=>setTempName(e.target.value)}/>
-            <button className="bg-green-500 px-4 py-2 rounded w-full font-bold">Enter</button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-  
-
 if (!game) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
@@ -509,6 +554,13 @@ if (!game) {
     >
       Join Game
     </button>
+    <button
+  onClick={joinPublicGame}
+  className="bg-blue-500 px-4 py-2 rounded w-full font-bold mb-2"
+>
+  Join Public Game
+</button>
+
   </>
 ) : (
   <>
