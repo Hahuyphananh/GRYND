@@ -87,10 +87,12 @@ export function getNextTurn(
   cardPlayed: UnoCard
 ): "player" | "ai" {
   if (cardPlayed.value === "Skip" || cardPlayed.value === "Reverse") {
-    return current; // Same player plays again
+    // Skip or Reverse: opponent loses their turn, current player plays again
+    return current;
   }
   return current === "player" ? "ai" : "player";
 }
+
 
 export function applyUnoCard(game, card, currentPlayer, chosenColor = null) {
   let { playerHand, aiHand, deck, discardPile = [], turn, currentColor } = game;
@@ -100,25 +102,34 @@ export function applyUnoCard(game, card, currentPlayer, chosenColor = null) {
   let newAiHand = [...aiHand];
   let nextTurn = turn;
 
-  const switchTurn = () => nextTurn = currentPlayer === "player" ? "ai" : "player";
-  const skipTurn = () => { switchTurn(); switchTurn(); };
+  const switchTurn = () =>
+    (nextTurn = currentPlayer === "player" ? "ai" : "player");
+  const skipTurn = () => {
+    switchTurn();
+    switchTurn();
+  };
 
   let playedCard = { ...card };
+
+  // ✅ Wilds must have a chosen color
   if (card.value === "Wild" || card.value === "Wild Draw Four") {
-    playedCard.color = chosenColor;
-    currentColor = chosenColor;
+    if (!chosenColor) {
+      throw new Error("Wild cards must have a chosen color!");
+    }
+    playedCard.color = chosenColor.toLowerCase();
+    currentColor = playedCard.color;
   } else {
-    currentColor = card.color;
+    currentColor = card.color.toLowerCase();
   }
 
   newDiscardPile.push(playedCard);
 
   switch (card.value) {
     case "Skip":
-      skipTurn(); // skip next player
+      nextTurn = currentPlayer; // opponent loses turn
       break;
     case "Reverse":
-      switchTurn(); // just reverse turn
+      nextTurn = currentPlayer; // 2-player: Reverse = Skip
       break;
     case "Draw Two":
       if (currentPlayer === "player") newAiHand.push(...deck.splice(0, 2));
@@ -138,5 +149,13 @@ export function applyUnoCard(game, card, currentPlayer, chosenColor = null) {
       break;
   }
 
-  return { ...game, playerHand: newPlayerHand, aiHand: newAiHand, deck, discardPile: newDiscardPile, turn: nextTurn, currentColor };
+  return {
+    ...game,
+    playerHand: newPlayerHand,
+    aiHand: newAiHand,
+    deck,
+    discardPile: newDiscardPile,
+    turn: nextTurn,
+    currentColor,
+  };
 }

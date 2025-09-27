@@ -196,6 +196,7 @@ else {
   };
 
 return (
+
   <div className="bg-[#003366] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8">
  <NavigationBar currentPath="/casino" />
     <h1 className="text-3xl mb-2 font-bold">UNO vs IA</h1>
@@ -207,138 +208,135 @@ return (
     )}
 
     {!game ? (
-      <>
-        <label className="mb-4">
-          Mise :
-          <input
-            type="number"
-            value={betAmount}
-            onChange={(e) => setBetAmount(Number(e.target.value))}
-            className="ml-2 text-black px-2 py-1 rounded"
-            min={1}
-            max={1000}
-          />
-        </label>
+  <div className="w-full max-w-4xl aspect-[2/1] bg-green-700 rounded-full flex flex-col items-center justify-center shadow-2xl border-8 border-green-900 p-8 text-center">
+    <h2 className="text-2xl font-bold mb-6 text-white">Prépare ta partie</h2>
 
-        <button
-          onClick={initializeGame}
-          disabled={loading}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded"
-        >
-          {loading ? "Chargement..." : "Commencer une partie"}
-        </button>
+    <label className="mb-6 text-lg font-semibold flex flex-col items-center">
+      <span className="mb-2">Mise :</span>
+      <input
+        type="number"
+        value={betAmount}
+        onChange={(e) => setBetAmount(Number(e.target.value))}
+        className="text-black px-3 py-1 rounded text-center w-32"
+        min={1}
+        max={1000}
+      />
+    </label>
 
-        {message && <p className="mt-4 text-yellow-300">{message}</p>}
-      </>
-    ) : (
-      <>
-        <div className="mb-4">
-  Carte actuelle :
-  {topCard ? (
-    <UnoCard
-      color={topCard.chosenColor || topCard.color}
-      value={topCard.value}
-      onClick={() => {}}
-    />
-  ) : (
-    <span className="font-bold ml-2">?</span>
-  )}
-</div>
+    <button
+      onClick={initializeGame}
+      disabled={loading}
+      className="bg-yellow-500 hover:bg-yellow-600 text-black px-8 py-3 rounded-full font-bold shadow-lg transition"
+    >
+      {loading ? "Chargement..." : "Commencer une partie"}
+    </button>
 
+    {message && (
+      <p className="mt-6 text-yellow-300 text-lg font-medium">{message}</p>
+    )}
+  </div>
+) : (
+  <div className="w-full max-w-5xl aspect-[2/1] bg-green-700 rounded-full flex flex-col justify-between items-center shadow-2xl border-8 border-green-900 p-6 relative">
+    {/* AI hand */}
+    Main de l'IA:
+    <div className="flex justify-center gap-2">
+      {Array(aiHandCount)
+        .fill(0)
+        .map((_, i) => (
+          <UnoBack key={i} />
+        ))}
+    </div>
 
+{showColorPicker && (
+  <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+    <div className="bg-white p-8 rounded-2xl shadow-xl text-black flex flex-col items-center gap-6">
+      <h2 className="text-xl font-bold mb-2">Choisis une couleur 🎨</h2>
+      <div className="grid grid-cols-2 gap-4">
+        {[
+          { color: "red", label: "Rouge" },
+          { color: "blue", label: "Bleu" },
+          { color: "green", label: "Vert" },
+          { color: "yellow", label: "Jaune" },
+        ].map(({ color, label }) => (
+          <button
+            key={color}
+            onClick={() => {
+              setShowColorPicker(false);
+              sendPlayCard(pendingCard, color); // ✅ send chosen color
+            }}
+            className="flex flex-col items-center justify-center w-24 h-24 rounded-xl font-bold text-white shadow-lg hover:scale-105 transition-transform"
+            style={{ backgroundColor: color }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  </div>
+)}
 
-        <div className="mb-6">
-          <h2 className="text-lg">Main de l’IA : {aiHandCount} cartes</h2>
-          <div className="flex gap-2">
-  {Array(aiHandCount)
-    .fill(0)
-    .map((_, i) => (
-      <UnoBack key={i} />
-    ))}
-</div>
-
-        </div>
-
-        <div className="text-center mb-6">{message}</div>
-
-        <div className="flex flex-wrap gap-2 justify-center">
-          {playerHand.map((card, i) => (
-       <UnoCard
-  key={i}
-  color={card.color}
-  value={card.value} // <-- keep original string
-  onClick={() => playCard(card)}
+    {/* Center with current card + message */}
+    <div className="flex flex-col items-center">
+      <div className="mb-4">
+        Carte actuelle :
+        {topCard ? (
+          <UnoCard
+  color={topCard.color}
+  value={topCard.value}
+  onClick={() => {}}
 />
 
-
-          ))}
-        </div>
-
-        {showColorPicker && (
-          <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center">
-            <div className="bg-white p-6 rounded shadow-lg text-black">
-              <h2 className="mb-4 font-bold">Choisis une couleur :</h2>
-              <div className="flex gap-4">
-                {["red", "yellow", "green", "blue"].map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => {
-                      setShowColorPicker(false);
-                      if (pendingCard) {
-                        sendPlayCard(pendingCard, color);
-                        setPendingCard(null);
-                      }
-                    }}
-                    className={`px-4 py-2 rounded font-bold ${
-                      color === "red"
-                        ? "bg-red-500"
-                        : color === "yellow"
-                        ? "bg-yellow-400"
-                        : color === "green"
-                        ? "bg-green-500"
-                        : "bg-blue-500"
-                    }`}
-                  >
-                    {color.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+        ) : (
+          <span className="font-bold ml-2">?</span>
         )}
+      </div>
+      <div className="text-center mb-2">{message}</div>
+    </div>
 
-        <div className="flex flex-col items-center mt-4">
-          {/* Draw card button */}
-          <button
-            onClick={drawCard}
-            className="mb-2 bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded"
-          >
-            Piocher une carte
-          </button>
+    {/* Player hand */}
+    <div className="flex flex-wrap gap-2 justify-center">
+      {playerHand.map((card, i) => (
+        <UnoCard
+          key={i}
+          color={card.color}
+          value={card.value}
+          onClick={() => playCard(card)}
+        />
+      ))}
+    </div>
 
-          {/* Replay button if game is finished */}
-          {!isPlayerTurn && game && message.includes("a gagné") && (
-            <button
-              onClick={async () => {
-                setMessage("");
-                setGame(null);
-                setPlayerHand([]);
-                setAiHandCount(0);
-                setTopCard(null);
-                setIsPlayerTurn(true);
-                setPendingCard(null);
-                setShowColorPicker(false);
-                await initializeGame();
-              }}
-              disabled={loading}
-              className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded"
-            >
-              {loading ? "Chargement..." : "Rejouer"}
-            </button>
-          )}
-        </div>
-      </>
-    )}
+    {/* Draw & replay buttons */}
+    <div className="flex flex-col items-center mt-4">
+      <button
+        onClick={drawCard}
+        className="mb-2 bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded"
+      >
+        Piocher une carte
+      </button>
+
+      {!isPlayerTurn && game && message.includes("a gagné") && (
+        <button
+          onClick={async () => {
+            setMessage("");
+            setGame(null);
+            setPlayerHand([]);
+            setAiHandCount(0);
+            setTopCard(null);
+            setIsPlayerTurn(true);
+            setPendingCard(null);
+            setShowColorPicker(false);
+            await initializeGame();
+          }}
+          disabled={loading}
+          className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded"
+        >
+          {loading ? "Chargement..." : "Rejouer"}
+        </button>
+      )}
+    </div>
+  </div>
+)}
+
   </div>
 );
 }

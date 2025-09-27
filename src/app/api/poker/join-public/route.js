@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
-import { eq, and, lt } from "drizzle-orm";
+import { eq, and, lt, sql } from "drizzle-orm";
 
 export async function POST(req) {
   try {
@@ -15,7 +15,7 @@ export async function POST(req) {
       .where(
         and(
           eq(pokerGames.isPrivate, false),
-          lt(pokerGames.players.length, pokerGames.maxPlayers) // not full
+          lt(sql`jsonb_array_length(${pokerGames.players})`, pokerGames.maxPlayers) // ✅ correct length check
         )
       )
       .limit(1);
