@@ -1,6 +1,6 @@
 export default function UnoBack() {
   return (
-    <div className="w-16 h-24 rounded-lg shadow-lg flex flex-col items-center justify-center bg-blue-600 relative overflow-hidden p-2">
+    <div className="w-14 h-20 rounded-lg shadow-lg flex flex-col items-center justify-center bg-blue-600 relative overflow-hidden p-2">
       {/* GoonBet split over two lines */}
       <span className="text-yellow-400 text-lg font-extrabold drop-shadow-md">
         Goon
