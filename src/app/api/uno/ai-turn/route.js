@@ -44,10 +44,16 @@ export async function POST(req) {
     while (!isPlayerTurn && loopCounter < 20) {
       loopCounter++;
 
-      // Find a playable card
-      const playableIndex = aiHand.findIndex(card =>
-        card.color === "black" || card.color === currentColor || card.value === topCard.value
-      );
+      // Prefer Skip or Reverse if possible (for testing)
+let playableIndex = aiHand.findIndex(card => card.value === "Skip" || card.value === "Reverse");
+
+// If no Skip/Reverse, fall back to any normal playable card
+if (playableIndex === -1) {
+  playableIndex = aiHand.findIndex(card =>
+    card.color === "black" || card.color === currentColor || card.value === topCard.value
+  );
+}
+
 
       if (playableIndex >= 0) {
         // Play the card
@@ -76,6 +82,11 @@ export async function POST(req) {
         currentColor = updatedGame.currentColor;
         topCard = discardPile[discardPile.length - 1];
         isPlayerTurn = updatedGame.turn === "player";
+if (updatedGame.turn === "ai") {
+  // AI kept the turn (Skip or Reverse), so let the loop continue
+  continue;
+}
+
 
       } else {
         // Draw a card if no playable card

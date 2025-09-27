@@ -19,6 +19,9 @@ export default function UnoGamePage() {
   const [colorChoice, setColorChoice] = useState(null);
 const [showColorPicker, setShowColorPicker] = useState(false);
 const [pendingCard, setPendingCard] = useState(null);
+const [turnHistory, setTurnHistory] = useState([]);
+const [historyIndex, setHistoryIndex] = useState(null); // null = live game
+
 
 
   const router = useRouter();
@@ -75,6 +78,8 @@ const [pendingCard, setPendingCard] = useState(null);
       setPlayerHand(data.data.playerHand);
       setAiHandCount(data.data.aiHand.length);
       setTopCard(data.data.topCard);
+setTurnHistory((prev) => [...prev, data.data.topCard]);
+setHistoryIndex(null); // back to live mode
       setIsPlayerTurn(true);
       setMessage("À ton tour !");
       setTokens({ balance: data.data.newBalance }); // ✅ update tokens
@@ -95,7 +100,10 @@ const [pendingCard, setPendingCard] = useState(null);
       if (data.success) {
   setPlayerHand(data.data.playerHand);
   setAiHandCount(data.data.aiHandCount);
-  setTopCard(data.data.topCard);  // <-- update top card here exactly
+  setTopCard(data.data.topCard);
+setTurnHistory((prev) => [...prev, data.data.topCard]);
+setHistoryIndex(null); // back to live mode
+
   setIsPlayerTurn(data.data.isPlayerTurn);
   setMessage(data.data.message || "À ton tour !");
   setTokens({ balance: data.data.newBalance });
@@ -110,6 +118,7 @@ const [pendingCard, setPendingCard] = useState(null);
 
  const playCard = async (card) => {
   if (!isPlayerTurn || loading) return;
+  if (historyIndex !== null) return; // block while browsing history
 
   // If it's a wild or black card, ask for color first
   if (card.color === "wild" || card.color === "black") {
@@ -150,7 +159,10 @@ const sendPlayCard = async (card, chosenColor = null) => {
     }
 
     setPlayerHand(data.data.playerHand);
-    setTopCard(data.data.topCard);
+   setTopCard(data.data.topCard);
+setTurnHistory((prev) => [...prev, data.data.topCard]);
+setHistoryIndex(null); // back to live mode
+
     setAiHandCount(data.data.aiHandCount);
     setIsPlayerTurn(data.data.isPlayerTurn);
     setMessage(data.data.message || "À ton tour !");
@@ -168,10 +180,9 @@ const sendPlayCard = async (card, chosenColor = null) => {
   setLoading(false);
 };
 
-
-
 const drawCard = async () => {
     if (!isPlayerTurn || loading) return;
+    if (historyIndex !== null) return; // block while browsing history
     setLoading(true);
     const res = await fetch("/api/uno/draw-card", {
       method: "POST",
@@ -182,7 +193,10 @@ const drawCard = async () => {
     const data = await res.json();
     if (data.success) {
   setPlayerHand(data.data.playerHand);
-  setTopCard(data.data.topCard);  // ✅ update top card immediately
+  setTopCard(data.data.topCard);
+setTurnHistory((prev) => [...prev, data.data.topCard]);
+setHistoryIndex(null); // back to live mode
+
   setIsPlayerTurn(false);
   setMessage("L'IA joue...");
   await checkForWinner(game.id);
@@ -194,6 +208,10 @@ else {
     }
     setLoading(false);
   };
+const displayedCard =
+  historyIndex === null
+    ? topCard
+    : turnHistory[historyIndex];
 
 return (
 
@@ -275,23 +293,62 @@ return (
   </div>
 )}
 
-    {/* Center with current card + message */}
-    <div className="flex flex-col items-center">
-      <div className="mb-4">
-        Carte actuelle :
-        {topCard ? (
-          <UnoCard
-  color={topCard.color}
-  value={topCard.value}
-  onClick={() => {}}
-/>
+    {/* Center with arrows + current/past card */}
+<div className="flex items-center justify-center gap-6 mb-4">
+  {/* Left arrow */}
+ <button
+  onClick={() =>
+    setHistoryIndex((prev) => {
+      if (turnHistory.length <= 1) return null;
+      if (prev === null) return turnHistory.length - 2; // jump to last turn before live
+      return Math.max(prev - 1, 0); // go back but not before first card
+    })
+  }
+  disabled={turnHistory.length <= 1 || historyIndex === 0}
+  className="text-3xl font-bold text-yellow-300 hover:scale-110 transition disabled:opacity-30"
+  title="Tour précédent"
+>
+  ⬅️
+</button>
 
-        ) : (
-          <span className="font-bold ml-2">?</span>
-        )}
-      </div>
-      <div className="text-center mb-2">{message}</div>
-    </div>
+
+  {/* Card in center */}
+  <div className="flex flex-col items-center">
+    Carte actuelle :
+    {displayedCard ? (
+      <UnoCard
+        color={displayedCard.color}
+        value={displayedCard.value}
+        onClick={() => {}}
+      />
+    ) : (
+      <span className="font-bold ml-2">?</span>
+    )}
+    {historyIndex !== null && (
+      <p className="text-sm text-gray-300 mt-2">
+        Historique ({historyIndex + 1}/{turnHistory.length})
+      </p>
+    )}
+  </div>
+
+  {/* Right arrow */}
+ <button
+  onClick={() =>
+    setHistoryIndex((prev) => {
+      if (prev === null) return null; // already live
+      if (prev >= turnHistory.length - 2) return null; // next step would be live
+      return prev + 1;
+    })
+  }
+  disabled={historyIndex === null}
+  className="text-3xl font-bold text-yellow-300 hover:scale-110 transition disabled:opacity-30"
+  title="Tour suivant"
+>
+  ➡️
+</button>
+
+</div>
+
 
     {/* Player hand */}
     <div className="flex flex-wrap gap-2 justify-center">
@@ -304,6 +361,13 @@ return (
         />
       ))}
     </div>
+{historyIndex === null ? (
+  <p className="text-sm text-green-300 mt-2">En direct</p>
+) : (
+  <p className="text-sm text-gray-300 mt-2">
+    Historique ({historyIndex + 1}/{turnHistory.length})
+  </p>
+)}
 
     {/* Draw & replay buttons */}
     <div className="flex flex-col items-center mt-4">
