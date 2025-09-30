@@ -210,11 +210,11 @@ export default function BlackjackPage() {
     <div className="min-h-screen bg-[#003366] pt-20">
       <NavigationBar currentPath="/casino" />
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <div className="mb-8 flex items-center justify-between">
-          <h1 className="text-4xl font-bold text-[#FFD700]">Blackjack</h1>
+        <div className="mb-4 flex items-center justify-between">
+          <h1 className="text-xl font-bold text-[#FFD700]">Blackjack</h1>
           <div className="flex items-center gap-2 text-[#FFD700]">
             <i className="fas fa-coins" />
-            <span className="w-auto h-auto text-xl font-semibold">
+            <span className="w-auto h-auto text-1g font-semibold">
   Tokens: {userTokens !== null ? userTokens : "..."}
 </span>
 
@@ -226,42 +226,48 @@ export default function BlackjackPage() {
         )}
 
         <div className="rounded-lg bg-[#0e6b0e] p-6 border-[10px] border-[#5c3b15] shadow-inner">
-          <h2 className="text-xl text-[#FFD700] mb-4">Dealer</h2>
-          <div className="flex justify-center gap-4 mb-4">
-            {dealerCards.map((card, i) => (
-              <div
-                key={i}
-                className="h-32 w-24 bg-white text-xl flex items-center justify-center rounded shadow"
-                style={{
-                  color: ["♥", "♦"].includes(card.suit) ? "red" : "black",
-                }}
-              >
-                {gameState === "playing" && i === 0 ? "?" : `${card.value}${card.suit}`}
-              </div>
-            ))}
-          </div>
+     <h2 className="text-1g text-[#FFD700] mb-2 text-center">Dealer</h2>
+{gameState !== "playing" && dealerCards.length > 0 && (
+  <div className="text-[#FFD700] text-base mb-2 text-center">
+    Points: {calculateHandValue(dealerCards)}
+  </div>
+)}
+<div className="flex justify-center gap-4 mb-6">
+  {dealerCards.map((card, i) => (
+    <div
+      key={i}
+      className="h-28 w-20 bg-white text-xl flex items-center justify-center rounded shadow"
+      style={{
+        color: ["♥", "♦"].includes(card.suit) ? "red" : "black",
+      }}
+    >
+      {gameState === "playing" && i === 0 ? "?" : `${card.value}${card.suit}`}
+    </div>
+  ))}
+</div>
 
-          <h2 className="text-xl text-[#FFD700] mb-4">Vos cartes</h2>
-          <div className="flex justify-center gap-4 mb-2">
-            {playerCards.map((card, i) => (
-              <div
-                key={i}
-                className="h-32 w-24 bg-white text-xl flex items-center justify-center rounded shadow"
-                style={{
-                  color: ["♥", "♦"].includes(card.suit) ? "red" : "black",
-                }}
-              >
-                {`${card.value}${card.suit}`}
-              </div>
-            ))}
-          </div>
 
-          <div className="text-[#FFD700] text-lg mb-4">
-            Points: {calculateHandValue(playerCards)}
-            {playerCards.length === 2 && calculateHandValue(playerCards) === 21 && (
-              <span className="ml-2 text-green-400">(Blackjack!)</span>
-            )}
-          </div>
+         <h2 className="text-1g text-[#FFD700] mb-2 text-center">Vos cartes</h2>
+<div className="text-[#FFD700] text-base mb-2 text-center">
+  Points: {calculateHandValue(playerCards)}
+  {playerCards.length === 2 && calculateHandValue(playerCards) === 21 && (
+    <span className="ml-2 text-green-400">(Blackjack!)</span>
+  )}
+</div>
+<div className="flex justify-center gap-4 mb-6">
+  {playerCards.map((card, i) => (
+    <div
+      key={i}
+      className="h-28 w-20 bg-white text-xl flex items-center justify-center rounded shadow"
+      style={{
+        color: ["♥", "♦"].includes(card.suit) ? "red" : "black",
+      }}
+    >
+      {`${card.value}${card.suit}`}
+    </div>
+  ))}
+</div>
+
 
           {message && (
             <div className="text-center text-xl text-[#FFD700] mb-4">{message}</div>
