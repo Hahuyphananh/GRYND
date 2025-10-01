@@ -179,6 +179,36 @@ setHistoryIndex(null); // back to live mode
 
   setLoading(false);
 };
+const joinOnlineGame = async () => {
+  setLoading(true);
+  try {
+    const res = await fetch("/api/uno/join-online", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ betAmount }),
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      setGame(data.data);
+      setPlayerHand(data.data.playerHand);
+      setAiHandCount(data.data.opponentHandCount);
+      setTopCard(data.data.topCard);
+      setTurnHistory([data.data.topCard]);
+      setHistoryIndex(null);
+      setIsPlayerTurn(data.data.isPlayerTurn);
+      setMessage("✅ Partie en ligne trouvée !");
+      setTokens({ balance: data.data.newBalance });
+    } else {
+      setMessage("Erreur lors de la recherche de partie");
+    }
+  } catch (err) {
+    console.error("Erreur joinOnlineGame:", err);
+    setMessage("Impossible de rejoindre une partie");
+  }
+  setLoading(false);
+};
+
 
 const drawCard = async () => {
     if (!isPlayerTurn || loading) return;
@@ -248,6 +278,14 @@ return (
     >
       {loading ? "Chargement..." : "Commencer une partie"}
     </button>
+    <button
+  onClick={joinOnlineGame}
+  disabled={loading}
+  className="mt-4 bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-lg transition"
+>
+  {loading ? "Recherche..." : "Rejoindre une partie en ligne"}
+</button>
+
 
     {message && (
       <p className="mt-6 text-yellow-300 text-lg font-medium">{message}</p>
