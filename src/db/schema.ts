@@ -102,14 +102,25 @@ export const unoGames = pgTable("uno_games", {
   pot: text("pot").notNull(), // total pot
   result: text("result").notNull(), // 'win' | 'lose' | 'draw' | 'pending'
   payout: text("payout").notNull(), // string format of number
+
+  // ✅ existing AI game fields
   playerHand: json("player_hand").notNull(),
   aiHand: json("ai_hand").notNull(),
+
+  // ✅ new online multiplayer fields
+  player1Hand: json("player1_hand").default("[]").notNull(),
+  player2Hand: json("player2_hand").default("[]").notNull(),
+
   deck: json("deck").notNull(),
   discardPile: json("discard_pile").notNull(),
-  turn: text("turn").notNull(), // 'player' or 'ai'
+  turn: text("turn").notNull(), // 'player' / 'ai' OR 'player1' / 'player2'
+  currentColor: text("current_color"),
+  status: text("status").default("waiting").notNull(), // 'waiting' | 'active' | 'finished'
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  winner: text("winner").notNull(), // stores "player" or "ai" after game ends
+  winner: text("winner").notNull(), // 'player' / 'ai' OR 'player1' / 'player2'
 });
+
 
 export const rpsGames = pgTable("rps_games", {
   id: serial("id").primaryKey(),
