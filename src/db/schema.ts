@@ -104,8 +104,8 @@ export const unoGames = pgTable("uno_games", {
   payout: text("payout").notNull(), // string format of number
 
   // ✅ existing AI game fields
-  playerHand: json("player_hand").notNull(),
-  aiHand: json("ai_hand").notNull(),
+  playerHand: json("player_hand").default("[]").notNull(),
+aiHand: json("ai_hand").default("[]").notNull(),
 
   // ✅ new online multiplayer fields
   player1Hand: json("player1_hand").default("[]").notNull(),
