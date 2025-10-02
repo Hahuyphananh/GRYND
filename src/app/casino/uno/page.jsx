@@ -69,6 +69,7 @@ const [historyIndex, setHistoryIndex] = useState(null); // null = live game
     const res = await fetch("/api/uno/initialize-vs-ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ betAmount }),
     });
 
@@ -185,6 +186,7 @@ const joinOnlineGame = async () => {
     const res = await fetch("/api/uno/join-online", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ betAmount }),
     });
 
