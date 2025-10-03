@@ -125,11 +125,12 @@ player2_hand: JSON.stringify([]),          // empty until joined
 
       });
 
-      return new Response(JSON.stringify({
-        success: false,
-        message: "No opponent found. Waiting for another player to join.",
-        gameId: inserted.id,
-      }), { status: 200 });
+     return new Response(JSON.stringify({
+  success: true,
+  waiting: true,
+  message: "⏳ Waiting for another player to join...",
+  gameId: inserted.id,
+}), { status: 200 });
     }
 
   } catch (err) {

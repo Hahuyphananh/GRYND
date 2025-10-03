@@ -191,18 +191,57 @@ const joinOnlineGame = async () => {
     });
 
     const data = await res.json();
+
     if (data.success) {
+      if (data.waiting) {
+        // Waiting mode
+        setMessage("⏳ En attente d'un autre joueur...");
+        
+        // Poll every 3s to check if game became active
+        const interval = setInterval(async () => {
+          try {
+            const res2 = await fetch("/api/uno/check-game", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ gameId: data.gameId }),
+            });
+            const d2 = await res2.json();
+
+            if (d2.success && d2.status === "active") {
+              clearInterval(interval);
+
+              const playerHand = d2.data.player1Hand || d2.data.player2Hand; // pick based on role
+              const opponentHand = d2.data.player1Hand ? d2.data.player2Hand : d2.data.player1Hand;
+
+              setGame(d2.data);
+              setPlayerHand(playerHand);
+              setAiHandCount(opponentHand.length);
+              setTopCard(d2.data.topCard);
+              setTurnHistory([d2.data.topCard]);
+              setIsPlayerTurn(d2.data.turn === "player1"); // adjust if needed
+              setMessage("✅ Partie trouvée !");
+            }
+          } catch (err) {
+            console.error("Erreur check-game:", err);
+          }
+        }, 3000);
+
+        // Stop polling after 1 min
+        setTimeout(() => clearInterval(interval), 60000);
+        return;
+      }
+
+      // Immediate match → join as player2
       setGame(data.data);
       setPlayerHand(data.data.playerHand);
       setAiHandCount(data.data.opponentHandCount);
       setTopCard(data.data.topCard);
       setTurnHistory([data.data.topCard]);
-      setHistoryIndex(null);
-      setIsPlayerTurn(data.data.isPlayerTurn);
+      setIsPlayerTurn(data.data.turn === "player2");
       setMessage("✅ Partie en ligne trouvée !");
       setTokens({ balance: data.data.newBalance });
     } else {
-      setMessage("Erreur lors de la recherche de partie");
+      setMessage(data.error || "Erreur lors de la recherche de partie");
     }
   } catch (err) {
     console.error("Erreur joinOnlineGame:", err);
