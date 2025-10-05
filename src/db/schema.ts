@@ -36,15 +36,62 @@ export const crashGames = pgTable('crash_games', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
-export const pokerGames = pgTable('poker_games', {
-  id: serial('id').primaryKey(),
-  gameCode: varchar('game_code', { length: 10 }).notNull().unique().default("substr(md5((random())::text), 1, 10)"),
-  maxPlayers: integer('max_players').notNull().default(6),
-  isPrivate: boolean('is_private').notNull().default(false),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  players: jsonb("players").notNull().default(sql`'[]'::jsonb`),
-});
+export const pokerGames = pgTable("poker_games", {
+  id: serial("id").primaryKey(),
 
+  // game 1
+  gameCode: varchar("game_code", { length: 10 })
+    .notNull()
+    .unique()
+    .default(sql`substr(md5((random())::text), 1, 10)`),
+  maxPlayers: integer("max_players").notNull().default(6),
+  isPrivate: boolean("is_private").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  players: jsonb("players").notNull().default(sql`'[]'::jsonb`),
+
+  // ✅ Game state
+  currentTurn: integer("current_turn"), // index of current player
+  pot: text("pot"), // total pot amount (string for consistency)
+  communityCards: jsonb("community_cards"), // Hold’em only
+  deck: jsonb("deck"),
+  discardPile: jsonb("discard_pile"),
+
+  // ✅ Betting & rounds
+  round: text("round"), // 'preflop' | 'flop' | 'turn' | 'river' | 'showdown'
+  currentBet: text("current_bet"),
+  minRaise: text("min_raise"),
+
+  // ✅ Player-specific info
+  dealerPosition: integer("dealer_position"),
+  smallBlind: text("small_blind"),
+  bigBlind: text("big_blind"),
+  playerPositions: jsonb("player_positions"), // if you want to track seating order
+
+  // ✅ Winner / game result
+  status: text("status").default("waiting"), // 'waiting' | 'active' | 'finished'
+  winner: text("winner"),
+  winnings: jsonb("winnings"), // {playerId: amount}
+
+  // ✅ Variant handling
+  variant: text("variant"), // 'texas_holdem' | 'show_hand'
+
+    // 🔥 Add these to match your route
+  playerHand: jsonb("player_hand").default(sql`'[]'::jsonb`),
+  aiHand: jsonb("ai_hand").default(sql`'[]'::jsonb`),
+});
+export const pokerPlayerPositions = pgTable("poker_player_positions", {
+  id: serial("id").primaryKey(),
+  gameId: integer("game_id").notNull(),    // FK to poker_games.id (add constraint in SQL migration if desired)
+  playerId: integer("player_id").default(null), // clerk id or NULL for AI
+  position: integer("position").notNull(), // seat index
+  stack: integer("stack").notNull().default(0),
+  currentBet: integer("current_bet").notNull().default(0),
+  hasFolded: boolean("has_folded").notNull().default(false),
+  isAi: boolean("is_ai").notNull().default(false),
+  hand: json("hand").notNull().default(sql`'[]'::json`),
+  lastAction: text("last_action").default(null),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 export const blackjackGames = pgTable('blackjack_games', {
   id: serial('id').primaryKey(),
