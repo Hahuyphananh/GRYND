@@ -122,14 +122,23 @@ export const plinkoGames = pgTable('plinko_games', {
 
 export const chessGames = pgTable('chess_games', {
   id: serial('id').primaryKey(),
-  playerWhiteId: integer('player_white_id').notNull(),
-  playerBlackId: integer('player_black_id'),
+
+  // Clerk IDs for players
+  playerWhiteId: varchar('player_white_id', { length: 255 }).notNull(),
+  playerBlackId: varchar('player_black_id', { length: 255 }), // can be null if AI
+
   betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
-  winnerId: integer('winner_id'),
-  result: varchar('result', { length: 20 }), // win, loss, draw
+
+  winnerId: varchar('winner_id', { length: 255 }), // Clerk ID or null if no result yet
+  result: varchar('result', { length: 20 }),       // win, loss, draw
   payout: numeric('payout', { precision: 10, scale: 2 }),
+
+  isAiGame: boolean('is_ai_game').default(false).notNull(), // ✅ new column
+
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
+
+
 
 export const coinFlipGames = pgTable("coin_flip_games", {
   id: serial("id").primaryKey(),

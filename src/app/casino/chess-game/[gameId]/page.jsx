@@ -3,7 +3,13 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import { Chess } from "chess.js";
 
-const Chessboard = dynamic(() => import("react-chessboard"), { ssr: false });
+const Chessboard = dynamic(
+  async () => {
+    const mod = await import("react-chessboard");
+    return mod.Chessboard;
+  },
+  { ssr: false }
+);
 
 export default function ChessGamePage() {
   const [game, setGame] = useState(new Chess());
@@ -34,7 +40,7 @@ export default function ChessGamePage() {
     const move = {
       from: sourceSquare,
       to: targetSquare,
-      promotion: "q", // always promote to queen for simplicity
+      promotion: "q",
     };
     makeAMove(move);
   }

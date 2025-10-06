@@ -20,14 +20,13 @@ const isPublicRoute = createRouteMatcher([
   '/casino/plinko',
   '/casino/mines',
   '/casino/crash',
-  '/casino/chess',
+  '/casino/chess(.*)',
   '/casino/slots',
   '/casino/coin-flip',
   '/casino/keno',
   '/casino/rps',
   '/access-denied',
   '/complete-profile',
-  "/casino/chess/ai",
   "/casino/poker/multi",
 ]);
 
