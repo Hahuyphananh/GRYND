@@ -14,27 +14,37 @@ export default function ChessAIPage() {
   const [playerColor, setPlayerColor] = useState<"white" | "black">("white");
   const router = useRouter();
 
+  // initialize game & color
   useEffect(() => {
-    // Randomize starting color when component mounts
     const randomColor = Math.random() > 0.5 ? "white" : "black";
     setPlayerColor(randomColor);
     const newGame = new Chess();
     setGame(newGame);
+    setGameOver(false);
+    setWinner("");
 
-    // If player is black, AI moves first
+    // If player is black, AI (white) should move first after a short delay
     if (randomColor === "black") {
       setTimeout(() => makeAIMove(newGame), 500);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // AI move logic with difficulty
+  // helper: is it currently the player's turn?
+  function isPlayersTurn(gameInstance: Chess) {
+    if (!gameInstance) return false;
+    const turn = gameInstance.turn(); // 'w' or 'b'
+    const playerTurnChar = playerColor === "white" ? "w" : "b";
+    return turn === playerTurnChar;
+  }
+
+  // AI move (same logic you had)
   function makeAIMove(gameInstance: any) {
-    if (gameInstance.isGameOver()) return handleGameOver(gameInstance);
+    if (!gameInstance || gameInstance.isGameOver()) return handleGameOver(gameInstance);
 
     const moves = gameInstance.moves();
     if (moves.length === 0) return;
 
-    // AI move selection
     let move;
     if (aiLevel <= 2) {
       move = moves[Math.floor(Math.random() * moves.length)];
@@ -56,51 +66,64 @@ export default function ChessAIPage() {
     if (gameInstance.isGameOver()) handleGameOver(gameInstance);
   }
 
-  // Player move handling (includes castling)
+  // run AI automatically whenever it becomes the AI's turn
+  useEffect(() => {
+    if (!game) return;
+
+    if (game.isGameOver()) return;
+
+    // determine AI color (opposite of player)
+    const aiColor = playerColor === "white" ? "black" : "white";
+    const aiTurnChar = aiColor === "white" ? "w" : "b";
+
+    if (game.turn() === aiTurnChar) {
+      // small delay to feel natural
+      const t = setTimeout(() => makeAIMove(new Chess(game.fen())), 450);
+      return () => clearTimeout(t);
+    }
+  }, [game, playerColor, aiLevel]);
+
+  // Player move handling (includes castling). Prevents moves when not player's turn.
   function onDrop(sourceSquare: string, targetSquare: string) {
-    const gameCopy = new Chess(game.fen());
+  // prevent moves if game over or not player's turn
+  if (game.isGameOver() || !isPlayersTurn(game)) return false;
 
-    // Detect castling (king moves two squares)
-    const piece = gameCopy.get(sourceSquare as any);
-    const isKing = piece?.type === "k";
-    const fileDiff = sourceSquare.charCodeAt(0) - targetSquare.charCodeAt(0);
-    let move = null;
+  const gameCopy = new Chess(game.fen());
+  const move = gameCopy.move({
+    from: sourceSquare,
+    to: targetSquare,
+    promotion: "q", // always promote to queen
+  });
 
-    if (isKing && Math.abs(fileDiff) === 2) {
-      const isKingside = fileDiff < 0;
-      const castlingMove = isKingside ? "O-O" : "O-O-O";
-      move = gameCopy.move(castlingMove);
-    } else {
-      move = gameCopy.move({
-        from: sourceSquare,
-        to: targetSquare,
-        promotion: "q",
-      });
-    }
+  if (move === null) return false;
 
-    if (move === null) return false;
+  setGame(new Chess(gameCopy.fen()));
 
-    setGame(new Chess(gameCopy.fen()));
-
-    if (gameCopy.isGameOver()) {
-      handleGameOver(gameCopy);
-    } else {
-      setTimeout(() => makeAIMove(gameCopy), 500);
-    }
-
-    return true;
+  if (gameCopy.isGameOver()) {
+    handleGameOver(gameCopy);
   }
+  // AI moves are automatically handled by the useEffect watching `game`
 
-  // Game over handler
+  return true;
+}
+
+
+  // Game over handler (determine winner color from game.turn())
   function handleGameOver(gameInstance: any) {
     setGameOver(true);
 
+    if (!gameInstance) {
+      setWinner("Game Over!");
+      return;
+    }
+
     if (gameInstance.isCheckmate()) {
-      if (gameInstance.turn() === "w") {
-        // White to move but no moves → black wins
-        setWinner(playerColor === "black" ? "You win!" : "AI wins!");
+      // If it's white's turn and checkmate, black delivered mate
+      const winnerColor = gameInstance.turn() === "w" ? "black" : "white";
+      if (winnerColor === playerColor) {
+        setWinner("You win!");
       } else {
-        setWinner(playerColor === "white" ? "You win!" : "AI wins!");
+        setWinner("AI wins!");
       }
     } else if (gameInstance.isDraw()) {
       setWinner("Draw!");
@@ -127,53 +150,72 @@ export default function ChessAIPage() {
     }
   }
 
+  // small UI helpers
+  const opponentColor = playerColor === "white" ? "Black" : "White";
+  const playerSideLabel = `You (${playerColor === "white" ? "White" : "Black"})`;
+  const aiSideLabel = `AI (${opponentColor})`;
+  const isPlayerTurnNow = isPlayersTurn(game);
+
   return (
-    <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center justify-start p-6 relative">
-       <NavigationBar currentPath="/casino" />
+    <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center p-6">
+      <NavigationBar currentPath="/casino" />
+
       {/* Title */}
       <h1 className="text-4xl font-bold text-[#FFD700] mb-6 mt-12">
         ♟️ AI Chess Arena
       </h1>
 
-      {/* Buttons and Controls */}
-      <div className="flex gap-4 mb-4">
+      {/* Controls */}
+      <div className="flex gap-4 mb-4 items-center">
         <button
           onClick={handleResign}
           className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded shadow"
         >
           Resign
         </button>
-        {/* AI Level Selector */}
-      <div className="mb-6 text-center">
-        <label className="mr-2 font-semibold">AI Level:</label>
-        <select
-          value={aiLevel}
-          onChange={(e) => setAiLevel(Number(e.target.value))}
-          className="text-black px-2 py-1 rounded"
-        >
-          {[1, 2, 3, 4, 5].map((level) => (
-            <option key={level} value={level}>
-              {level}
-            </option>
-          ))}
-        </select>
-      </div>
+
+        <div className="mb-0 text-center">
+          <label className="mr-2 font-semibold">AI Level:</label>
+          <select
+            value={aiLevel}
+            onChange={(e) => setAiLevel(Number(e.target.value))}
+            className="text-black px-2 py-1 rounded"
+          >
+            {[1, 2, 3, 4, 5].map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Chessboard */}
-      <div className="flex justify-center items-center w-full">
-        <Chessboard
-          position={game.fen()}
-          onPieceDrop={onDrop}
-          boardWidth={500}
-          boardOrientation={playerColor}
-          customBoardStyle={{
-            borderRadius: "12px",
-            boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
-          }}
-          customDarkSquareStyle={{ backgroundColor: "#779952" }}
-          customLightSquareStyle={{ backgroundColor: "#edeed1" }}
-        />
+      {/* Labels + Turn indicator (centered) */}
+      <div className="w-full max-w-4xl mx-auto text-center mb-4">
+        <h2 className="text-xl font-semibold">
+          {playerSideLabel} vs {aiSideLabel}
+        </h2>
+        <div className="text-sm text-yellow-300 mt-2">
+          {gameOver ? "" : isPlayerTurnNow ? "Your turn" : "AI is thinking..."}
+        </div>
+      </div>
+
+      {/* Board wrapper: fixed-width inner container for exact centering */}
+      <div className="w-full flex justify-center items-center mb-8">
+        <div className="w-[500px]">
+          <Chessboard
+            position={game.fen()}
+            onPieceDrop={onDrop}
+            boardWidth={500}
+            boardOrientation={playerColor}
+            customBoardStyle={{
+              borderRadius: "12px",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+            }}
+            customDarkSquareStyle={{ backgroundColor: "#779952" }}
+            customLightSquareStyle={{ backgroundColor: "#edeed1" }}
+          />
+        </div>
       </div>
 
       {/* Game Over Modal */}
