@@ -165,29 +165,27 @@ const evaluateHand = (hand) => {
 
 
 
- // renderCard now takes in highlightValues too
 const renderCard = (card, i, highlight = { values: [], color: "yellow" }) => {
   const suitSymbols = { hearts: "♥", diamonds: "♦", clubs: "♣", spades: "♠" };
   const symbol = suitSymbols[card.suit] || card.suit;
-
   const isHighlighted = highlight.values.includes(card.value);
 
   return (
-   <div
-  key={i}
-  className={`h-32 w-24 bg-white text-xl flex items-center justify-center rounded shadow ${
-    isHighlighted ? "border-4 border-yellow-500" : ""
-  }`}
-  style={{
-    color: ["♥", "♦"].includes(symbol) ? "red" : "black",
-    boxShadow: "none" // remove neon glow
-  }}
->
-  {`${card.value}${symbol}`}
-</div>
-
+    <div
+      key={i}
+      className={`h-20 w-14 sm:h-24 sm:w-16 md:h-28 md:w-20 bg-white text-lg flex items-center justify-center rounded shadow ${
+        isHighlighted ? "border-4 border-yellow-500" : ""
+      }`}
+      style={{
+        color: ["♥", "♦"].includes(symbol) ? "red" : "black",
+        boxShadow: "none",
+      }}
+    >
+      {`${card.value}${symbol}`}
+    </div>
   );
 };
+
 
 // highlight pairs/trips/quads; otherwise highlight highest card in YELLOW
 const getHighlightValues = (hand) => {
@@ -258,78 +256,95 @@ return (
 )}
 
 
-        {game && (
-       <div className="mt-8 rounded-lg bg-[#0e6b0e] p-8 border-[10px] border-[#5c3b15] shadow-inner w-full max-w-6xl mx-auto">
-  <div className="flex justify-center flex-wrap gap-4 mb-4">
-    <div>
-      <h3 className="text-[#FFD700] text-center mb-2">Votre main</h3>
-      <div className="flex gap-2 justify-center">
-  {playerHand.map((c, i) => renderCard(c, i, getHighlightValues(playerHand)))}
-</div>
+      {game && (
+  <div className="mt-8 rounded-lg bg-[#0e6b0e] p-6 border-[10px] border-[#5c3b15] shadow-inner w-full max-w-6xl mx-auto">
+
+    {/* --- Result & Replay (Top of Board) --- */}
+    {result && (
+      <div className="mb-6 text-center space-y-3">
+      <p className="text-xl font-bold text-[#FFD700]">
+  {result.message}
+  {result.kicker && result.aiKicker && (
+    <span className="text-[#FFD700] ml-2 text-sm">
+      (Kicker: {result.kicker} vs {result.aiKicker})
+    </span>
+  )}
+  {result.won && (
+    <span className="text-green-400 font-extrabold ml-2">
+      +{result.winAmount} tokens 🎉
+    </span>
+  )}
+</p>
+
+        <button
+          onClick={() => {
+            setResult(null);
+            setGame(null);
+            initializeAiGame();
+          }}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-full text-sm sm:text-base"
+        >
+          🔄 Replay
+        </button>
+      </div>
+    )}
+
+    {/* --- Action Buttons (Below Result) --- */}
+    <div className="flex flex-wrap justify-center items-center gap-4 mb-6">
+      <button
+        onClick={() => handleAction("fold")}
+        className="bg-red-600 hover:bg-red-700 px-5 py-2 rounded-full font-bold text-white text-sm sm:text-base"
+      >
+        Fold
+      </button>
+      <button
+        onClick={() => {
+          setRaiseAmount(pot / 10 * 2);
+          handleAction("play");
+        }}
+        className="bg-green-600 hover:bg-green-700 px-5 py-2 rounded-full font-bold text-white text-sm sm:text-base"
+      >
+        Play
+      </button>
+    </div>
+
+    {/* --- Player & AI Hands --- */}
+    <div className="flex justify-center flex-wrap gap-4 mb-4">
+      {/* Player Hand */}
+      <div>
+        <h3 className="text-[#FFD700] text-center mb-2">Votre main</h3>
+        <div className="flex gap-2 justify-center">
+          {playerHand.map((c, i) => renderCard(c, i, getHighlightValues(playerHand)))}
+        </div>
         {playerHand.length === 5 && (
-    <div className="text-center mt-2 text-lg font-bold text-[#FFD700]">
-      Votre main: {evaluateHand(playerHand)}
-    </div>
-  )}
-    </div>
-    <div>
-      <h3 className="text-[#FFD700] text-center mb-2">Main AI</h3>
-    <div className="flex gap-2 justify-center">
-  {opponentHand.map((c, i) => renderCard(c, i, getHighlightValues(opponentHand)))}
-</div>
-       {opponentHand.length === 5 && !opponentHand.some(c => c.value === "?") && (
-    <div className="text-center mt-2 text-lg font-bold text-[#FFD700]">
-      Main AI: {evaluateHand(opponentHand)}
-    </div>
-  )}
-    </div>
-  </div>
-
-  <div className="text-center text-[#FFD700] font-semibold text-lg mb-4">
-    Pot actuel: {pot} tokens
-  </div>
-
-  <div className="flex flex-wrap gap-4 justify-center items-center">
-    <button
-      onClick={() => handleAction("fold")}
-      className="bg-red-600 hover:bg-red-700 px-5 py-2 rounded-full font-bold"
-    >
-      Fold
-    </button>
-    <button
-      onClick={() => {
-        setRaiseAmount(pot / 10 * 2);
-        handleAction("play");
-      }}
-      className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-full font-bold"
-    >
-      Play
-    </button>
-  </div>
-</div>
-
+          <div className="text-center mt-2 text-lg font-bold text-[#FFD700]">
+            Votre main: {evaluateHand(playerHand)}
+          </div>
         )}
+      </div>
 
-        {result && (
-  <div className="mt-6 text-center space-y-4">
-    <p className="text-xl font-bold text-[#FFD700]">
-      {result.message} {result.won && `+${result.winAmount} tokens! 🎉`}
-    </p>
+      {/* AI Hand */}
+      <div>
+        <h3 className="text-[#FFD700] text-center mb-2">Main AI</h3>
+        <div className="flex gap-2 justify-center">
+          {opponentHand.map((c, i) => renderCard(c, i, getHighlightValues(opponentHand)))}
+        </div>
+        {opponentHand.length === 5 && !opponentHand.some(c => c.value === "?") && (
+          <div className="text-center mt-2 text-lg font-bold text-[#FFD700]">
+            Main AI: {evaluateHand(opponentHand)}
+          </div>
+        )}
+      </div>
+    </div>
 
-    {/* Replay button */}
-    <button
-      onClick={() => {
-        setResult(null); // clear previous result
-        setGame(null);   // reset game state so new one initializes
-        // You can choose AI or normal game depending on how it ended
-        initializeAiGame(); 
-      }}
-      className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-full"
-    >
-      🔄 Replay
-    </button>
+    {/* --- Pot Info --- */}
+    <div className="text-center text-[#FFD700] font-semibold text-lg">
+      Pot actuel: {pot} tokens
+    </div>
   </div>
 )}
+
+
 
 {/* Poker Hand Rankings Legend */}
 <div className="mt-6 w-full bg-[#222] text-white p-4 rounded shadow">
