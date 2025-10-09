@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../db/client";
 import { users, pokerGames } from "../../../db/schema";
 import { eq } from "drizzle-orm";
-import { performAiAction, compareHands, dealCommunityCards } from "../../lib/ailogic";
+import { compareHands, dealCommunityCards } from "../../lib/ailogic";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -30,31 +30,49 @@ export async function POST(request) {
     let pot = parseFloat(game.pot || 0);
     const betAmount = parseFloat(game.betAmount || 10);
 
-    // --- Fold action ---
+    // --- Fold action (Lose half bet) ---
     if (action === "fold") {
-      const resultMessage = "You folded. Dealer wins.";
+      const loss = betAmount / 2; // only lose half
+      const refund = betAmount - loss; // refunded half
+      userBalance += refund; // return half of the player's bet
+
+      const resultMessage = `You folded and lost half your bet (-${loss} tokens).`;
 
       await db.transaction(async (tx) => {
-        await tx.update(pokerGames).set({ result: "lose" }).where(eq(pokerGames.id, gameId));
+        await tx.update(pokerGames)
+          .set({
+            result: "lose",
+            status: "finished",
+            pot: 0,
+          })
+          .where(eq(pokerGames.id, gameId));
+
+        await tx.update(users)
+          .set({ balance: userBalance })
+          .where(eq(users.clerkId, userId));
       });
 
-      const userBalance = parseFloat(user.balance);
+      const playerHand = game.playerHand || [];
+      const aiHand = game.aiHand || [];
 
-      return new Response(JSON.stringify({
-        success: true,
-        game: { ...game, result: "lose" },
-        positions: [
-          { player_id: user.id, hand: game.playerHand },
-          { player_id: null, hand: ["?", "?"] },
-        ],
-        result: {
-          message: resultMessage,
-          won: false,
-          winAmount: 0,
-          bet: parseFloat(game.betAmount || 10),
-        },
-        newBalance: userBalance,
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          game: { ...game, result: "lose", status: "finished" },
+          positions: [
+            { player_id: user.id, hand: playerHand },
+            { player_id: null, hand: aiHand.map(() => "?") },
+          ],
+          result: {
+            message: resultMessage,
+            won: false,
+            winAmount: 0,
+            bet: loss,
+          },
+          newBalance: userBalance,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     // --- Play action ---
@@ -68,7 +86,6 @@ export async function POST(request) {
       const playerHand = game.playerHand;
       const aiHand = game.aiHand;
 
-      // --- UPDATED: Deal community cards and combine hands for comparison ---
       const communityCards = dealCommunityCards(
         game.communityCards || [],
         playerHand,
@@ -88,35 +105,47 @@ export async function POST(request) {
       }
 
       await db.transaction(async (tx) => {
-        await tx.update(pokerGames).set({
-          pot,
-          result,
-          communityCards: communityCards.newCommunity,
-          aiHand
-        }).where(eq(pokerGames.id, gameId));
+        await tx.update(pokerGames)
+          .set({
+            pot,
+            result,
+            communityCards: communityCards.newCommunity,
+            aiHand,
+          })
+          .where(eq(pokerGames.id, gameId));
 
-        await tx.update(users).set({ balance: userBalance }).where(eq(users.clerkId, userId));
+        await tx.update(users)
+          .set({ balance: userBalance })
+          .where(eq(users.clerkId, userId));
       });
 
-      return new Response(JSON.stringify({
-        success: true,
-        game: { ...game, pot, result, communityCards: communityCards.newCommunity, aiHand },
-        positions: [
-          { player_id: user.id, hand: playerHand },
-          { player_id: null, hand: aiHand },
-        ],
-        result: {
-          message: `Hand over. ${result === "win" ? "You won!" : result === "lose" ? "Dealer wins!" : "It's a tie."}`,
-          won: result === "win",
-          winAmount,
-          bet: playBet,
-        },
-        newBalance: userBalance,
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          game: { ...game, pot, result, communityCards: communityCards.newCommunity, aiHand },
+          positions: [
+            { player_id: user.id, hand: playerHand },
+            { player_id: null, hand: aiHand },
+          ],
+          result: {
+            message: `Hand over. ${
+              result === "win"
+                ? "You won!"
+                : result === "lose"
+                ? "Dealer wins!"
+                : "It's a tie."
+            }`,
+            won: result === "win",
+            winAmount,
+            bet: playBet,
+          },
+          newBalance: userBalance,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     throw new Error("Invalid action");
-
   } catch (err) {
     console.error("❌ Poker action error:", err);
     return new Response(JSON.stringify({ success: false, error: err.message || "Server error" }), {
@@ -125,4 +154,3 @@ export async function POST(request) {
     });
   }
 }
-
