@@ -94,7 +94,10 @@ const multipliers = multipliersByRisk[riskLevel];
       const path = ball.fullPath || ball.path;
       if (!path || ball.currentPathIndex >= path.length - 1) {
         if (!ball.hasShownResult && ball.winAmount !== undefined) {
-          const lastPos = path[path.length - 1];
+          const lastPos =
+  ball.finalPosition ??
+  (path && path.length ? path[path.length - 1] : { x: ball.position.x, y: ball.position.y });
+
 
           const resultDiv = document.createElement("div");
           resultDiv.className =
@@ -124,7 +127,10 @@ const multipliers = multipliersByRisk[riskLevel];
         }
 
         if (!ball.finalBounce) {
-          const lastPos = path[path.length - 1];
+          const lastPos =
+  ball.finalPosition ??
+  (path && path.length ? path[path.length - 1] : { x: ball.position.x, y: ball.position.y });
+
           setActiveBalls((prev) =>
             prev.map((b) =>
               b.id === ball.id
@@ -147,7 +153,10 @@ const multipliers = multipliersByRisk[riskLevel];
           const progress = Math.min(1, elapsedTime / bounceDuration);
 
           if (progress < 1) {
-            const lastPos = path[path.length - 1];
+            const lastPos =
+  ball.finalPosition ??
+  (path && path.length ? path[path.length - 1] : { x: ball.position.x, y: ball.position.y });
+
             const bounceHeight = Math.sin(progress * Math.PI) * 15;
             setActiveBalls((prev) =>
               prev.map((b) => (b.id === ball.id ? { ...b, position: { x: lastPos.x, y: lastPos.y - bounceHeight } } : b))
@@ -247,8 +256,8 @@ const handleDrop = async () => {
 
   setError(null);
   setShowResult(false);
-  setIsProcessing(true);
 
+  // Generate a unique temp ball
   const tempBallId = Date.now() + Math.random();
   const tempBall = {
     id: tempBallId,
@@ -260,60 +269,74 @@ const handleDrop = async () => {
     currentPathIndex: 0,
     startTime: performance.now(),
     isTemp: true,
-    opacity: 1
+    opacity: 1,
   };
 
   setActiveBalls((prev) => [...prev, tempBall]);
+
+  // Immediately deduct the bet locally
+  setUserTokens((prev) => (prev !== null ? prev - betAmount : prev));
 
   try {
     const response = await fetch("/api/play-plinko", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ betAmount, riskLevel }),  // <-- send riskLevel here
+      body: JSON.stringify({ betAmount, riskLevel }),
     });
 
-    if (!response.ok) {
-      throw new Error("Network response was not ok");
-    }
+    if (!response.ok) throw new Error("Erreur réseau");
 
     const data = await response.json();
-    if (!data.success) throw new Error(data.error || "Game error");
+    if (!data.success) throw new Error(data.error || "Erreur du jeu");
 
     const { path, winAmount, multiplier, newBalance, finalPosition } = data.data;
 
+    // Update game data
     setGameResults((prev) => [...prev, winAmount]);
     setGameMultipliers((prev) => [...prev, multiplier]);
     setUserTokens(newBalance);
     setLastMultiplier(multiplier);
 
-    setActiveBalls((prev) =>
-      prev.map((ball) =>
-        ball.id === tempBallId
-          ? {
-              ...ball,
-              isTemp: false,
-              fullPath: path,
-              path: path,
-              finalPosition,
-              currentPathIndex: 0,
-              startTime: performance.now(),
-              winAmount,
-              multiplier,
-              hasShownResult: false,
-            }
-          : ball
-      )
-    );
+  // Extend path to include finalPosition so ball lands exactly on the multiplier
+const adjustedPath = Array.isArray(path) ? [...path] : [];
+const lastPoint = adjustedPath[adjustedPath.length - 1];
+if (
+  !lastPoint ||
+  lastPoint.x !== finalPosition.x ||
+  lastPoint.y !== finalPosition.y
+) {
+  adjustedPath.push({ x: finalPosition.x, y: finalPosition.y });
+}
 
-    setTimeout(() => setShowResult(true), 3000);
+setActiveBalls((prev) =>
+  prev.map((ball) =>
+    ball.id === tempBallId
+      ? {
+          ...ball,
+          isTemp: false,
+          fullPath: adjustedPath,
+          path: adjustedPath,
+          finalPosition,
+          currentPathIndex: 0,
+          startTime: performance.now(),
+          winAmount,
+          multiplier,
+          hasShownResult: false,
+        }
+      : ball
+  )
+);
+
+
+    // Show result per-ball
+    setTimeout(() => setShowResult(true), 1500);
   } catch (error) {
     console.error("Plinko error:", error);
     setError(error.message || "Erreur lors du lancement du jeu");
     setActiveBalls((prev) => prev.filter((b) => b.id !== tempBallId));
-  } finally {
-    setIsProcessing(false);
   }
 };
+
 
 
   const totalWinAmount = gameResults.reduce((sum, amount) => sum + amount, 0);
@@ -406,15 +429,13 @@ return (
         </button>
       </div>
 
-      <button
-        className={`w-full rounded px-4 py-2 text-white ${
-          isProcessing ? "bg-gray-500 cursor-not-allowed" : "bg-[#4CAF50] hover:bg-[#45a049]"
-        }`}
-        onClick={handleDrop}
-        disabled={isProcessing}
-      >
-        {isProcessing ? "En cours..." : "Lancer"}
-      </button>
+     <button
+  className="w-full rounded px-4 py-2 text-white bg-[#4CAF50] hover:bg-[#45a049] active:scale-95 transition-transform"
+  onClick={handleDrop}
+>
+  Lancer
+</button>
+
 
       {showResult && lastMultiplier && gameResults.length > 0 && (
         <div className="mt-6 rounded-lg bg-[#2A2B30] p-4 text-center shadow-lg">
