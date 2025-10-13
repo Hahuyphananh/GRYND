@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
 import { number } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 type Player = {
   id: string;
@@ -61,7 +62,7 @@ export default function PokerPage() {
   const [inviteCode, setInviteCode] = useState("");
 const [joiningGame, setJoiningGame] = useState(false);
 const [isPrivate, setIsPrivate] = useState(true); // ✅ default to private
-
+const [leaveAfterHand, setLeaveAfterHand] = useState(false);
 
   const maxCurrentBet = (players: Player[]) => Math.max(...players.map(p => p.currentBet || 0));
 
@@ -466,6 +467,11 @@ async function joinPublicGame() {
     }
 
     setGame({...game,players:updated,winnerId:winner.id,pot:0,stage:"showdown",replayVisible:true});
+    if (leaveAfterHand) {
+  setTimeout(() => {
+    window.location.href = "/casino/poker";
+  }, 2000); // redirect 2 seconds after hand ends
+}
   }
 
  function replayHand() {
@@ -518,7 +524,9 @@ if (!game) {
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
       <div className="p-6 bg-slate-800 rounded shadow w-96 text-center mb-4">
         <h1 className="text-2xl mb-4">{joiningGame ? "Join Game" : "Create Game"}</h1>
-        <div className="mb-2">Balance: {balance}</div>
+        <div className="mb-4 flex flex-col items-center">
+</div>
+
 
 {!joiningGame ? (
   <>
@@ -561,6 +569,13 @@ if (!game) {
   Join Public Game
 </button>
 
+<a href="/casino/poker/">
+<button
+  className="bg-red-500 px-4 py-2 rounded w-full font-bold mb-2"
+>
+  Retour
+</button>
+</a>
   </>
 ) : (
   <>
@@ -631,23 +646,45 @@ if (!game) {
       </div>
     )}
 
-    <div className="mb-2 font-bold">Balance: {balance}</div>
+   <div className="mb-4 flex flex-col items-center">
+  <div className="font-bold text-xl mb-1">Pot: {game?.pot ?? 0}</div>
+</div>
+
 
     <div className="relative w-[700px] h-[400px] bg-green-700 rounded-full border-8 border-yellow-800 flex items-center justify-center mb-6">
       {/* Pot + Community */}
-      <div className="absolute top-[45%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-        <div className="mb-2 font-bold">Pot: {game?.pot ?? 0}</div>
-        <div className="flex gap-2">
-          {(game?.community || []).map((c, i) => (
-            <div
-              key={i}
-              className={`w-16 h-24 bg-white flex items-center justify-center rounded shadow 
-              ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
-            >
-              {c.value}{c.suit}
-            </div>
-          ))}
-        </div>
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+  <div className="flex gap-2 relative">
+
+  <AnimatePresence>
+    {(game?.community || []).map((c, i) => (
+      <motion.div
+        key={`${c.suit}-${c.value}-${i}`}
+        initial={{
+          opacity: 0,
+          y: -200,
+          x: Math.random() * 200 - 100,
+          rotate: Math.random() * 40 - 20,
+          scale: 0.5,
+        }}
+        animate={{
+          opacity: 1,
+          y: 0,
+          x: 0,
+          rotate: 0,
+          scale: 1,
+          transition: { delay: i * 0.3, type: "spring", stiffness: 120 },
+        }}
+        exit={{ opacity: 0, scale: 0.8, y: 50 }}
+        className={`w-16 h-24 bg-white flex items-center justify-center rounded shadow 
+          ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
+      >
+        {c.value}{c.suit}
+      </motion.div>
+    ))}
+  </AnimatePresence>
+</div>
+
       </div>
 
       {/* Players */}
@@ -657,22 +694,38 @@ if (!game) {
         const aiCountReal = Math.max(totalPlayers - 1, 1);
 
         if (p.id === "player") {
-          left = 350;
-          top = 200 + 140 - 20;
-        } else {
-          const aiIndex = idx - 1;
-          const angle = -Math.PI / 2 + (aiIndex + 0.5) * (2 * Math.PI / aiCountReal);
-          left = 350 + Math.cos(angle) * 280;
-          top = 200 + Math.sin(angle) * 140 - 10;
-        }
+  // Human always bottom center
+  left = 350;
+  top = 200 + 140 - 20;
+} else {
+  const aiIndex = idx - 1;
+  const aiTotal = Math.max(aiCountReal, 1);
+
+  if (aiTotal === 1) {
+    // Special layout for 1 AI — place top center
+    left = 350;
+    top = 200 - 160 + 20;
+  } else {
+    const angle = -Math.PI / 2 + (aiIndex + 0.5) * (2 * Math.PI / aiTotal);
+    left = 350 + Math.cos(angle) * 280;
+    top = 200 + Math.sin(angle) * 140 - 10;
+  }
+}
 
         return (
           <div
-            key={p.id}
-            className={`absolute w-32 p-2 rounded text-center ${p.id === "player" ? "bg-yellow-500 text-black" : "bg-slate-700"} 
-            ${p.hasFolded ? "opacity-50" : ""} ${game?.winnerId === p.id ? "border-2 border-yellow-400" : ""}`}
-            style={{ left, top, transform: "translate(-50%,-50%)" }}
-          >
+  key={p.id}
+  className={`absolute w-20 p-1 rounded text-center text-xs 
+  ${p.id === "player" ? "bg-yellow-500 text-black" : "bg-slate-700"} 
+  ${p.hasFolded ? "opacity-50" : ""} ${game?.winnerId === p.id ? "border-2 border-yellow-400" : ""}`}
+  style={{
+    left,
+    top,
+    transform: "translate(-50%, -50%)",
+    zIndex: p.id === "player" ? 20 : 10,
+  }}
+>
+
             <div className="font-semibold">{p.name}</div>
             <div className="text-sm">Stack: {p.stack ?? 0}</div>
 
@@ -696,8 +749,9 @@ if (!game) {
                 : game?.stage !== "showdown"
                   ? (
                     <>
-                      <div className="w-12 h-16 bg-gray-800 rounded"></div>
-                      <div className="w-12 h-16 bg-gray-800 rounded"></div>
+                      <div className="w-8 h-10 bg-gray-800 rounded-lg border border-gray-600 shadow"></div>
+<div className="w-8 h-10 bg-gray-800 rounded-lg border border-gray-600 shadow"></div>
+
                     </>
                   )
                   : (p.hand || []).map((c, i) => (
@@ -726,9 +780,11 @@ if (!game) {
   </button>
 )}
 
+
     <div className="mb-4">
       Your Best Hand: {evaluateHand(game?.players?.find(p => p.id === "player")?.hand || [], game?.community || [])}
     </div>
+    
 
     {!game?.waiting && game?.stage !== "showdown" && (
       <div className="flex gap-2 mb-4 items-center">
