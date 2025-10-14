@@ -6,10 +6,16 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { slug } = body;
-    if (!slug) return NextResponse.json({ success: false, error: "Missing slug" }, { status: 400 });
+    if (!slug)
+      return NextResponse.json(
+        { success: false, error: "Missing slug" },
+        { status: 400 }
+      );
 
     // Fetch all sports
-    const sportsRes = await fetch(`https://api.the-odds-api.com/v4/sports/?apiKey=${ODDS_API_KEY}`);
+    const sportsRes = await fetch(
+      `https://api.the-odds-api.com/v4/sports/?apiKey=${ODDS_API_KEY}`
+    );
     const sports = await sportsRes.json();
 
     let matchEvent = null;
@@ -19,11 +25,13 @@ export async function POST(req: Request) {
       const eventsRes = await fetch(
         `https://api.the-odds-api.com/v4/sports/${sport.key}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h`
       );
-
       const eventsData = await eventsRes.json();
-
-      // Ensure it's an array before searching
       const events = Array.isArray(eventsData) ? eventsData : [];
+
+      console.log("Current sport key:", sport.key);
+      console.log("Requested slug:", slug);
+      console.log("Events fetched:", events.map((e) => e.id));
+
       matchEvent = events.find((e: any) => e.id === slug || e.slug === slug);
 
       if (matchEvent) {
@@ -32,7 +40,11 @@ export async function POST(req: Request) {
       }
     }
 
-    if (!matchEvent) return NextResponse.json({ success: false, error: "Match not found" }, { status: 404 });
+    if (!matchEvent)
+      return NextResponse.json(
+        { success: false, error: "Match not found" },
+        { status: 404 }
+      );
 
     const outcomes = matchEvent.bookmakers?.[0]?.markets?.[0]?.outcomes || [];
     const oddsMap = {
@@ -40,6 +52,28 @@ export async function POST(req: Request) {
       draw: outcomes[2]?.price || outcomes[1]?.price || null,
       [outcomes[1]?.name || "Team B"]: outcomes[1]?.price || null,
     };
+
+    // 🔹 Fetch live score for this match safely
+    let liveScore = null;
+    try {
+      const scoreRes = await fetch(
+        `https://api.the-odds-api.com/v4/sports/${sportKey}/scores/?apiKey=${ODDS_API_KEY}&daysFrom=0&dateFormat=iso`
+      );
+      const scoresData = await scoreRes.json();
+      const scores = Array.isArray(scoresData) ? scoresData : [];
+
+      const scoreMatch = scores.find((s: any) => s.id === matchEvent.id);
+
+      if (scoreMatch) {
+        liveScore = {
+          team_a_score: scoreMatch.home_score ?? 0,
+          team_b_score: scoreMatch.away_score ?? 0,
+          status: scoreMatch.status || "scheduled", // "inprogress", "completed", etc.
+        };
+      }
+    } catch (err) {
+      console.warn("Failed to fetch live score:", err);
+    }
 
     const eventData = {
       id: matchEvent.id,
@@ -49,11 +83,15 @@ export async function POST(req: Request) {
       start_time: matchEvent.commence_time,
       odds_map: oddsMap,
       raw_odds: outcomes,
+      live_score: liveScore, // 🔹 attach live score
     };
 
     return NextResponse.json({ success: true, event: eventData });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }
