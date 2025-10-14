@@ -16,36 +16,33 @@ export default function MatchPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Fetch event + odds from single endpoint
+  // Fetch event + odds
+  const fetchMatch = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/sports/get-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: matchId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Match introuvable.");
+
+      setEvent(data.event);
+    } catch (err) {
+      console.error(err);
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchMatch = async () => {
-      setLoading(true);
-     try {
-  const res = await fetch("/api/sports/get-match", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ slug: matchId }),
-  });
-
-  let data;
-  try {
-    data = await res.json();
-  } catch (e) {
-    throw new Error("Invalid JSON response from server");
-  }
-
-  if (!res.ok) throw new Error(data?.error || "Match introuvable.");
-
-  setEvent(data.event);
-} catch (err) {
-  console.error(err);
-  setMessage(err.message);
-} finally {
-  setLoading(false);
-}
-
-    };
     fetchMatch();
+    // Refresh live score every 10 seconds
+    const interval = setInterval(fetchMatch, 10000);
+    return () => clearInterval(interval);
   }, [matchId]);
 
   // Fetch user tokens
@@ -136,6 +133,19 @@ export default function MatchPage() {
             Débute dans {formatTime(countdown)} —{" "}
             {new Date(event.start_time).toLocaleString("fr-FR")}
           </p>
+
+          {/* Live Score */}
+          <div className="mt-2">
+            {event.live_score ? (
+              <p className="text-lg text-white">
+                🔴 Score: {event.team_a} {event.live_score.team_a_score} —{" "}
+                {event.live_score.team_b_score} {event.team_b} (
+                {event.live_score.status})
+              </p>
+            ) : (
+              <p className="text-gray-400 text-sm">Score non disponible</p>
+            )}
+          </div>
         </div>
 
         <div className="flex justify-center gap-6 mt-8">
