@@ -187,7 +187,7 @@ export default function BlackjackPage() {
     }
 
     try {
-      await fetch("/api/update-blackjack-stats", {
+      await fetch("/api/blackjack/update-stats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ won, blackjack, amount: bet, winAmount: winAmount - bet }),

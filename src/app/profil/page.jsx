@@ -166,21 +166,42 @@ export default function ProfilePage() {
 </td>
 <td className="px-4 py-2">{bet.amount} tokens</td>
 <td className="px-4 py-2">
-  <span
-    className={`px-2 py-1 rounded-full text-xs ${
-      bet.result === "won"
-        ? "bg-green-600/20 text-green-400"
+  <div className="flex items-center gap-2">
+    <span
+      className={`px-2 py-1 rounded-full text-xs ${
+        bet.result === "won"
+          ? "bg-green-600/20 text-green-400"
+          : bet.result === "lost"
+          ? "bg-red-600/20 text-red-400"
+          : "bg-gray-500/20 text-gray-300"
+      }`}
+    >
+      {bet.result === "won"
+        ? "Gagné"
         : bet.result === "lost"
-        ? "bg-red-600/20 text-red-400"
-        : "bg-gray-500/20 text-gray-300"
-    }`}
-  >
-    {bet.result === "won"
-      ? "Gagné"
-      : bet.result === "lost"
-      ? "Perdu"
-      : "En cours"}
-  </span>
+        ? "Perdu"
+        : "En cours"}
+    </span>
+
+    {/* 🪙 Display token difference */}
+    {bet.result !== "pending" && (
+      <span
+        className={`text-sm ${
+          bet.tokenDiff > 0
+            ? "text-green-400"
+            : bet.tokenDiff < 0
+            ? "text-red-400"
+            : "text-gray-300"
+        }`}
+      >
+       {bet.tokenDiff > 0
+  ? `+${Number(bet.tokenDiff).toFixed(2)} tokens`
+  : bet.tokenDiff < 0
+  ? `${Number(bet.tokenDiff).toFixed(2)} tokens`
+  : ""}
+      </span>
+    )}
+  </div>
 </td>
 
                     </tr>

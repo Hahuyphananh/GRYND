@@ -11,7 +11,8 @@ export async function POST(req) {
     if (!userId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-const { betAmount, multiplier, gameWon, immediateDeduct } = await req.json();
+
+    const { betAmount, multiplier, gameWon, immediateDeduct } = await req.json();
 
     if (
       typeof betAmount !== 'number' ||
@@ -27,36 +28,32 @@ const { betAmount, multiplier, gameWon, immediateDeduct } = await req.json();
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    let newBalance = parseFloat(userData[0].balance);
+    const user = userData[0];
+    let newBalance = parseFloat(user.balance);
     const payout = gameWon ? betAmount * multiplier : 0;
 
-    if (!gameWon) {
+    // Balance logic
+    if (immediateDeduct) {
       newBalance -= betAmount;
-    } else {
+    } else if (gameWon) {
       newBalance += payout;
+    } else {
+      newBalance -= betAmount;
     }
 
+    await db.update(users).set({ balance: newBalance }).where(eq(users.clerkId, userId));
 
-if (immediateDeduct) {
-  newBalance -= betAmount;
-} else if (gameWon) {
-  newBalance += betAmount * multiplier;
-}
-
-// After updating user balance
-    await db
-      .update(users)
-      .set({ balance: newBalance }) // Ensure 'balance' exists in your users schema
-      .where(eq(users.clerkId, userId));
-
-// Record game in crashGames table
-    await db.insert(crashGames).values({
-      userId: users.id, // assuming `user` is fetched from DB earlier
-      betAmount: betAmount.toFixed(2),
-      cashedOutAt: gameWon ? multiplier.toFixed(2) : null,
-      payout: gameWon ? (betAmount * multiplier).toFixed(2) : '0.00',
-    });
-
+    // ✅ Only insert when the game has finished, not when just deducting the bet
+    if (!immediateDeduct) {
+      await db.insert(crashGames).values({
+        userId: user.id,
+        betAmount: betAmount.toFixed(2),
+        cashedOutAt: gameWon ? multiplier.toFixed(2) : null,
+        payout: payout.toFixed(2),
+        result: gameWon ? 'won' : 'lost',
+        status: 'completed',
+      });
+    }
 
     return NextResponse.json({
       success: true,

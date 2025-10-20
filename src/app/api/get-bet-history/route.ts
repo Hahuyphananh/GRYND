@@ -49,20 +49,54 @@ export async function GET() {
       db.select().from(crashGames).where(eq(crashGames.userId, uid)),
       db.select().from(rpsGames).where(eq(rpsGames.userId, userId)), // note: Clerk ID
       db.select().from(unoGames).where(eq(unoGames.userId, uid)),
-      db.select().from(chessGames).where(
-        or(eq(chessGames.playerWhiteId, userId), eq(chessGames.playerBlackId, userId))
-      ),
+      db
+        .select()
+        .from(chessGames)
+        .where(or(eq(chessGames.playerWhiteId, userId), eq(chessGames.playerBlackId, userId))),
       db.select().from(sportsBets).where(eq(sportsBets.userId, uid)),
     ]);
 
-    // Normalize all bets with consistent type labels
-    const formatBet = (type: string, bet: any) => ({
-      type,
-      date: bet.createdAt || bet.placedAt || bet.created_at || new Date().toISOString(),
-      amount: Number(bet.betAmount || bet.bet_amount || bet.amount || 0),
-      payout: Number(bet.payout ?? 0),
-      result: bet.result || bet.status || "pending",
-    });
+    // ✅ Smarter result normalization
+const formatBet = (type: string, bet: any) => {
+  let result = "pending";
+
+  // normalize known keys
+  const r = bet.result?.toLowerCase?.();
+  const s = bet.status?.toLowerCase?.();
+  const o = bet.outcome?.toLowerCase?.();
+
+  if (r === "win" || r === "won") result = "won";
+  else if (r === "loss" || r === "lost") result = "lost";
+  else if (s === "win" || s === "won") result = "won";
+  else if (s === "loss" || s === "lost") result = "lost";
+  else if (o === "win" || o === "won") result = "won";
+  else if (o === "loss" || o === "lost") result = "lost";
+  else if (typeof bet.didWin === "boolean") result = bet.didWin ? "won" : "lost";
+  else if (typeof bet.win === "boolean") result = bet.win ? "won" : "lost";
+  else if (!isNaN(Number(bet.payout))) {
+    const payoutNum = Number(bet.payout);
+    if (payoutNum > 0) result = "won";
+    else if (payoutNum === 0) result = "lost";
+  }
+
+  // 🪙 Token calculation (added)
+  const amount = Number(bet.betAmount || bet.bet_amount || bet.amount || 0);
+  const payout = Number(bet.payout ?? 0);
+  const tokenDiff =
+    result === "won" ? payout - amount :
+    result === "lost" ? -amount : 0;
+
+  return {
+    type,
+    date: bet.createdAt || bet.placedAt || bet.created_at || new Date().toISOString(),
+    amount,
+    payout,
+    result,
+    tokenDiff, // ✅ added this field
+  };
+};
+
+
 
     // Combine all bets into one array with proper labels
     const allBets = [

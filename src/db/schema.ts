@@ -33,6 +33,8 @@ export const crashGames = pgTable('crash_games', {
   betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
   cashedOutAt: numeric('cashed_out_at', { precision: 10, scale: 2 }),
   payout: numeric('payout', { precision: 10, scale: 2 }).notNull(),
+  result: varchar('result', { length: 10 }).default('pending').notNull(),
+  status: varchar('status', { length: 20 }).default('active').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -108,6 +110,8 @@ export const minesGames = pgTable('mines_games', {
   betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
   tilesRevealed: integer('tiles_revealed').default(0),
   payout: numeric('payout', { precision: 10, scale: 2 }).notNull(),
+  result: varchar('result', { length: 10 }).default('pending').notNull(),
+  status: varchar('status', { length: 20 }).default('active').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -117,6 +121,8 @@ export const plinkoGames = pgTable('plinko_games', {
   betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
   resultMultiplier: numeric('result_multiplier', { precision: 10, scale: 2 }).notNull(),
   payout: numeric('payout', { precision: 10, scale: 2 }).notNull(),
+  result: varchar('result', { length: 10 }).default('pending').notNull(),
+  status: varchar('status', { length: 20 }).default('active').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -145,9 +151,11 @@ export const coinFlipGames = pgTable("coin_flip_games", {
   player1Id: varchar("player1_id", { length: 255 }).notNull(),
   player2Id: varchar("player2_id", { length: 255 }),
   betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-  player1Choice: varchar("player1_choice", { length: 10 }).notNull(), // "heads" or "tails"
+  player1Choice: varchar("player1_choice", { length: 10 }).notNull(),
   outcome: varchar("outcome", { length: 10 }),
   winnerId: varchar("winner_id", { length: 255 }),
+  result: varchar("result", { length: 10 }).default('pending').notNull(),
+  status: varchar("status", { length: 20 }).default('active').notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
