@@ -219,6 +219,21 @@ export default function RoulettePage() {
     }));
     setBets({});
     setSelectedBets([]);
+    // 🧠 Save game to backend
+try {
+  await fetch("/api/roulette/save-game", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      betAmount: totalBetAmount,
+      result: win ? "won" : "lost",
+      payout: win ? winAmount : 0,
+    }),
+  });
+} catch (err) {
+  console.error("Failed to save roulette game:", err);
+}
+
 
     setSpinning(false);
 
