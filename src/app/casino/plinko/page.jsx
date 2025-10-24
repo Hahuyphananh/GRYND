@@ -16,6 +16,8 @@ function MainComponent() {
   const [showHistory, setShowHistory] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [riskLevel, setRiskLevel] = useState("medium");
+  const saveTimeoutRef = useRef(null);
+const pendingBallsRef = useRef([]);
 
  const lowRiskMultipliers = [
   5, 3, 2, 1.5, 1.2, 1, 1, 1, 0.5, 0.3, 0.5, 1, 1, 1, 1.2, 1.5, 2, 3, 5,
@@ -294,6 +296,40 @@ const handleDrop = async () => {
     // Update game data
     setGameResults((prev) => [...prev, winAmount]);
     setGameMultipliers((prev) => [...prev, multiplier]);
+    // 🧠 Queue the ball result for batch saving
+pendingBallsRef.current.push({
+  betAmount,
+  multiplier,
+  winAmount,
+});
+
+// Reset timer if it exists
+if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+
+// Schedule save in 5 seconds
+saveTimeoutRef.current = setTimeout(async () => {
+  const pending = [...pendingBallsRef.current];
+  if (pending.length === 0) return;
+
+  const totalBet = pending.reduce((sum, b) => sum + b.betAmount, 0);
+  const totalPayout = pending.reduce((sum, b) => sum + b.winAmount, 0);
+  const multipliers = pending.map((b) => b.multiplier);
+
+  try {
+    await fetch("/api/plinko/save-games", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ totalBet, totalPayout, multipliers }),
+    });
+    console.log("✅ Saved Plinko batch:", pending);
+  } catch (err) {
+    console.error("Failed to save Plinko games:", err);
+  } finally {
+    pendingBallsRef.current = [];
+    saveTimeoutRef.current = null;
+  }
+}, 5000);
+
     setUserTokens(newBalance);
     setLastMultiplier(multiplier);
 

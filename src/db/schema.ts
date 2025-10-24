@@ -38,6 +38,17 @@ export const crashGames = pgTable('crash_games', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+export const slotGames = pgTable("slot_games", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
+  payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
+  result: varchar("result", { length: 10 }).default("pending").notNull(), // won / lost / draw
+  reels: varchar("reels", { length: 255 }).notNull(), // serialized emojis or symbols
+  status: varchar("status", { length: 20 }).default("completed").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const pokerGames = pgTable("poker_games", {
   id: serial("id").primaryKey(),
 
@@ -117,9 +128,9 @@ export const minesGames = pgTable('mines_games', {
 
 export const plinkoGames = pgTable('plinko_games', {
   id: serial('id').primaryKey(),
-  userId: integer('user_id').notNull(),
+  userId: varchar('user_id', { length: 255 }).notNull(),
   betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
-  resultMultiplier: numeric('result_multiplier', { precision: 10, scale: 2 }).notNull(),
+  resultMultiplier: varchar('result_multiplier', { length: 255 }).notNull(), // 👈 changed from numeric to varchar
   payout: numeric('payout', { precision: 10, scale: 2 }).notNull(),
   result: varchar('result', { length: 10 }).default('pending').notNull(),
   status: varchar('status', { length: 20 }).default('active').notNull(),

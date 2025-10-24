@@ -12,6 +12,7 @@ import {
   sportsBets,
   unoGames,
   chessGames,
+  slotGames,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 
@@ -41,11 +42,12 @@ export async function GET() {
       uno,
       chess,
       sports,
+      slots,
     ] = await Promise.all([
       db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)),
       db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid)),
       db.select().from(minesGames).where(eq(minesGames.userId, uid)),
-      db.select().from(plinkoGames).where(eq(plinkoGames.userId, uid)),
+     db.select().from(plinkoGames).where(eq(plinkoGames.userId, userId)), // ✅ use Clerk ID here,
       db.select().from(crashGames).where(eq(crashGames.userId, uid)),
       db.select().from(rpsGames).where(eq(rpsGames.userId, userId)), // note: Clerk ID
       db.select().from(unoGames).where(eq(unoGames.userId, uid)),
@@ -54,10 +56,11 @@ export async function GET() {
         .from(chessGames)
         .where(or(eq(chessGames.playerWhiteId, userId), eq(chessGames.playerBlackId, userId))),
       db.select().from(sportsBets).where(eq(sportsBets.userId, uid)),
+      db.select().from(slotGames).where(eq(slotGames.userId, userId)), // ✅ use Clerk ID here,
     ]);
 
     // ✅ Smarter result normalization
-const formatBet = (type: string, bet: any) => {
+const formatBet = (type, bet) => {
   let result = "pending";
 
   // normalize known keys
@@ -79,12 +82,21 @@ const formatBet = (type: string, bet: any) => {
     else if (payoutNum === 0) result = "lost";
   }
 
-  // 🪙 Token calculation (added)
   const amount = Number(bet.betAmount || bet.bet_amount || bet.amount || 0);
   const payout = Number(bet.payout ?? 0);
-  const tokenDiff =
-    result === "won" ? payout - amount :
-    result === "lost" ? -amount : 0;
+
+   // 🧮 Custom tokenDiff for Plinko and Slots
+  let tokenDiff;
+  if (type.includes("Plinko") || type.includes("Slots")) {
+    // ✅ Show net profit/loss (difference) for Plinko & Slots
+    tokenDiff = payout - amount;
+  } else {
+    // 🕹 Default logic for other games
+    tokenDiff =
+      result === "won" ? payout - amount :
+      result === "lost" ? -amount : 0;
+  }
+
 
   return {
     type,
@@ -92,7 +104,7 @@ const formatBet = (type: string, bet: any) => {
     amount,
     payout,
     result,
-    tokenDiff, // ✅ added this field
+    tokenDiff,
   };
 };
 
@@ -109,6 +121,7 @@ const formatBet = (type: string, bet: any) => {
       ...uno.map((b) => formatBet("🎴 UNO", b)),
       ...chess.map((b) => formatBet("♟️ Chess", b)),
       ...sports.map((b) => formatBet("🏈 Sports Bet", b)),
+      ...slots.map((b) => formatBet("🎰 Slots", b)),
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return NextResponse.json({ success: true, bets: allBets });

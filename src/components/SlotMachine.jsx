@@ -74,6 +74,16 @@ export default function SlotMachine() {
       if (!json.success) throw new Error(json.error);
 
       const { reels: newReels, winAmount, newBalance } = json.data;
+      
+await fetch("/api/slots/save-game", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    betAmount: bet,
+    payout: winAmount,
+    reels: newReels.flat(), // flatten into simple array for saving
+  }),
+});
 
       // Simulate spin time
       setTimeout(() => {
