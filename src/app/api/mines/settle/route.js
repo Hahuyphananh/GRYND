@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { db } from '../../../../db/client';
-import { users } from '../../../../db/schema';
+import { users, minesGames } from '../../../../db/schema'; // ✅ added minesGames
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 
@@ -68,24 +68,36 @@ export async function POST(req) {
     const user = userData[0];
     let newBalance = parseFloat(user.balance);
     
-if (betAmount > newBalance) {
-  return NextResponse.json({ success: false, error: 'Bet amount exceeds balance' }, { status: 400 });
-}
+    if (betAmount > newBalance) {
+      return NextResponse.json({ success: false, error: 'Bet amount exceeds balance' }, { status: 400 });
+    }
 
     newBalance -= betAmount; // subtract bet first
+    let payout = 0;
 
-if (gameWon) {
-  const multiplier = calculateMultiplier(mines, revealedCount);
-  const payout = betAmount * multiplier; // payout includes original bet
-  newBalance += payout; // add payout back
-}
-
+    if (gameWon) {
+      const multiplier = calculateMultiplier(mines, revealedCount);
+      payout = betAmount * multiplier; // payout includes original bet
+      newBalance += payout; // add payout back
+    }
 
     // Update user balance
     await db
       .update(users)
       .set({ balance: newBalance })
       .where(eq(users.clerkId, userId));
+
+    // ✅ Record Mines game result
+    await db.insert(minesGames).values({
+      userId: user.id,
+      betAmount,
+      payout,
+      result: gameWon ? 'win' : 'loss',
+      tilesRevealed: revealedCount,
+      minesCount: mines,
+      status: 'completed',
+      createdAt: new Date(),
+    });
 
     return NextResponse.json({
       success: true,
