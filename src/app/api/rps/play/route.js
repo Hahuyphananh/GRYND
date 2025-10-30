@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
-import { users } from "../../../../db/schema";
+import { users, rpsGames } from "../../../../db/schema"; // ✅ import rpsGames
 import { eq } from "drizzle-orm";
 
 // Random AI choice
@@ -29,20 +29,23 @@ const FIXED_MULTIPLIER = 1.9;
 export async function POST(req) {
   try {
     const { userId } = getAuth(req);
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const { betAmount, choice, winStreak } = body;
+    const { betAmount, choice, winStreak = 0 } = body;
 
     if (!choice || betAmount <= 0)
       return NextResponse.json({ error: "Invalid bet" }, { status: 400 });
 
-    // Get the user from DB
+    // Get user
     const user = await db.query.users.findFirst({
       where: eq(users.clerkId, userId),
     });
 
-    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (!user)
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+
     if (Number(user.balance) < betAmount)
       return NextResponse.json({ error: "Not enough tokens" }, { status: 400 });
 
@@ -60,13 +63,22 @@ export async function POST(req) {
     } else if (result === "lose") {
       newBalance -= betAmount;
     }
-    // tie -> no token change
 
-    // Update user balance
+    // ✅ Update balance
     await db
       .update(users)
       .set({ balance: newBalance.toString() })
       .where(eq(users.id, user.id));
+
+    // ✅ Insert into rps_games table
+    await db.insert(rpsGames).values({
+      userId: userId,
+      betAmount,
+      choice,
+      aiChoice,
+      result,
+      payout,
+    });
 
     return NextResponse.json({
       aiChoice,
@@ -75,6 +87,12 @@ export async function POST(req) {
       payout: payout.toFixed(2),
       winStreak: newStreak,
       multiplier: FIXED_MULTIPLIER.toFixed(2),
+      message:
+        result === "win"
+          ? "🎉 You won!"
+          : result === "lose"
+          ? "😢 You lost."
+          : "🤝 It's a tie.",
     });
   } catch (err) {
     console.error("RPS API Error:", err);
