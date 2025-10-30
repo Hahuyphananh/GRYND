@@ -173,6 +173,8 @@ export default function ProfilePage() {
           ? "bg-green-600/20 text-green-400"
           : bet.result === "lost"
           ? "bg-red-600/20 text-red-400"
+          : bet.result === "draw"
+          ? "bg-gray-500/20 text-gray-300"
           : "bg-gray-500/20 text-gray-300"
       }`}
     >
@@ -180,7 +182,9 @@ export default function ProfilePage() {
         ? "Gagné"
         : bet.result === "lost"
         ? "Perdu"
-        : "En cours"}
+        : bet.result === "draw"
+        ? "Égalité"
+        : "Égalité"}
     </span>
 
     {/* 🪙 Display token difference */}
@@ -194,11 +198,11 @@ export default function ProfilePage() {
             : "text-gray-300"
         }`}
       >
-       {bet.tokenDiff > 0
-  ? `+${Number(bet.tokenDiff).toFixed(2)} tokens`
-  : bet.tokenDiff < 0
-  ? `${Number(bet.tokenDiff).toFixed(2)} tokens`
-  : ""}
+        {bet.tokenDiff > 0
+          ? `+${Number(bet.tokenDiff).toFixed(2)} tokens`
+          : bet.tokenDiff < 0
+          ? `${Number(bet.tokenDiff).toFixed(2)} tokens`
+          : "±0.00 tokens"}
       </span>
     )}
   </div>

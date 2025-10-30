@@ -69,52 +69,60 @@ export async function GET() {
     ]);
 
     // Generic formatter (unchanged)
-    const formatBet = (type, bet) => {
-      let result = "pending";
+const formatBet = (type, bet) => {
+  let result = "pending";
 
-      // normalize known keys
-      const r = bet.result?.toLowerCase?.();
-      const s = bet.status?.toLowerCase?.();
-      const o = bet.outcome?.toLowerCase?.();
+  // normalize known keys
+  const r = bet.result?.toLowerCase?.();
+  const s = bet.status?.toLowerCase?.();
+  const o = bet.outcome?.toLowerCase?.();
 
-      if (r === "win" || r === "won") result = "won";
-      else if (r === "loss" || r === "lost") result = "lost";
-      else if (s === "win" || s === "won") result = "won";
-      else if (s === "loss" || s === "lost") result = "lost";
-      else if (o === "win" || o === "won") result = "won";
-      else if (o === "loss" || o === "lost") result = "lost";
-      else if (typeof bet.didWin === "boolean") result = bet.didWin ? "won" : "lost";
-      else if (typeof bet.win === "boolean") result = bet.win ? "won" : "lost";
-      else if (!isNaN(Number(bet.payout))) {
-        const payoutNum = Number(bet.payout);
-        if (payoutNum > 0) result = "won";
-        else if (payoutNum === 0) result = "lost";
-      }
+  if (r === "win" || r === "won") result = "won";
+  else if (r === "loss" || r === "lost") result = "lost";
+  else if (s === "win" || s === "won") result = "won";
+  else if (s === "loss" || s === "lost") result = "lost";
+  else if (o === "win" || o === "won") result = "won";
+  else if (o === "loss" || o === "lost") result = "lost";
+  else if (typeof bet.didWin === "boolean") result = bet.didWin ? "won" : "lost";
+  else if (typeof bet.win === "boolean") result = bet.win ? "won" : "lost";
+  else if (!isNaN(Number(bet.payout))) {
+    const payoutNum = Number(bet.payout);
+    if (payoutNum > 0) result = "won";
+    else if (payoutNum === 0) result = "lost";
+  }
 
-      const amount = Number(bet.betAmount || bet.bet_amount || bet.amount || 0);
-      const payout = Number(bet.payout ?? 0);
+  // 🪨✂️🧻 Special case for Rock Paper Scissors
+  if (type.includes("Rock Paper Scissors")) {
+    const lowerResult = bet.result?.toLowerCase?.() || bet.outcome?.toLowerCase?.() || "";
+    if (lowerResult.includes("tie") || lowerResult.includes("draw")) {
+      result = "tie";
+    }
+  }
 
-      // 🧮 Custom tokenDiff for Plinko and Slots
-      let tokenDiff;
-      if (type.includes("Plinko") || type.includes("Slots")) {
-        // ✅ Show net profit/loss (difference) for Plinko & Slots
-        tokenDiff = payout - amount;
-      } else {
-        // 🕹 Default logic for other games
-        tokenDiff =
-          result === "won" ? payout - amount :
-          result === "lost" ? -amount : 0;
-      }
+  const amount = Number(bet.betAmount || bet.bet_amount || bet.amount || 0);
+  const payout = Number(bet.payout ?? 0);
 
-      return {
-        type,
-        date: bet.createdAt || bet.placedAt || bet.created_at || new Date().toISOString(),
-        amount,
-        payout,
-        result,
-        tokenDiff,
-      };
-    };
+  // 🧮 Custom tokenDiff for Plinko and Slots
+  let tokenDiff;
+  if (type.includes("Plinko") || type.includes("Slots")) {
+    tokenDiff = payout - amount;
+  } else if (type.includes("Rock Paper Scissors") && result === "tie") {
+    tokenDiff = 0; // 🟰 no gain/loss on a tie
+  } else {
+    tokenDiff =
+      result === "won" ? payout - amount :
+      result === "lost" ? -amount : 0;
+  }
+
+  return {
+    type,
+    date: bet.createdAt || bet.placedAt || bet.created_at || new Date().toISOString(),
+    amount,
+    payout,
+    result,
+    tokenDiff,
+  };
+};
 
     // coinflip mapping (keeps your existing coinflip logic)
     const coinflipFormatted = coinflipRows.map((bet) => {
