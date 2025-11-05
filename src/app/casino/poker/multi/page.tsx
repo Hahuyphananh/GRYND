@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
-import { number } from "framer-motion";
 import { motion, AnimatePresence } from "framer-motion";
 
 type Player = {
@@ -14,6 +13,7 @@ type Player = {
   hasFolded?: boolean;
   lastAction?: string;
   currentBet: number;
+  seatIndex?: number; // UI seat index (0..5)
 };
 
 type Game = {
@@ -30,7 +30,7 @@ type Game = {
   replayVisible: boolean;
   dealerIndex: number;
   inviteCode?: string;
-   waiting?: boolean; // ✅ ADD THIS
+  waiting?: boolean;
 };
 
 const SUITS = ["♠", "♥", "♦", "♣"];
@@ -54,244 +54,260 @@ function nextActive(start: number, players: Player[]): number {
 }
 
 export default function PokerPage() {
-  const [name,setName]=useState("");
-  const [game,setGame]=useState<Game|null>(null);
-  const [aiCount,setAiCount]=useState(2);
+  const [name,setName] = useState("");
+  const [game,setGame] = useState<Game|null>(null);
   const [raiseAmount,setRaiseAmount] = useState(50);
-  const [balance, setBalance] = useState<number>(0); // ✅ player balance synced
+  const [balance, setBalance] = useState<number>(0);
   const [inviteCode, setInviteCode] = useState("");
-const [joiningGame, setJoiningGame] = useState(false);
-const [isPrivate, setIsPrivate] = useState(true); // ✅ default to private
-const [leaveAfterHand, setLeaveAfterHand] = useState(false);
+  const [joiningGame, setJoiningGame] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(true);
+  const [leaveAfterHand, setLeaveAfterHand] = useState(false);
+
+  // UI modal / seat state
+  const [seatModalOpen, setSeatModalOpen] = useState(false);
+  const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
+  const [aiNameInput, setAiNameInput] = useState("");
+  const [aiStackInput, setAiStackInput] = useState<number>(1000);
 
   const maxCurrentBet = (players: Player[]) => Math.max(...players.map(p => p.currentBet || 0));
 
   const fetchUserTokens = async () => {
-  try {
-    const res = await fetch("/api/get-user-tokens", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-    });
-    const data = await res.json();
-    if (data.success) {
-      setBalance(parseFloat(data.data.balance));
-      setName(data.data.name); // ✅ use name from DB
-    } else {
-      console.error("Failed to fetch tokens:", data.error);
+    try {
+      const res = await fetch("/api/get-user-tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBalance(parseFloat(data.data.balance));
+        setName(data.data.name || "");
+      } else {
+        console.error("Failed to fetch tokens:", data.error);
+      }
+    } catch (err) {
+      console.error("Error fetching tokens:", err);
     }
-  } catch (err) {
-    console.error("Error fetching tokens:", err);
-  }
-};
+  };
 
-
-
-  // ✅ fetch tokens from existing API
   useEffect(() => {
-  fetchUserTokens();
-}, []);
+    fetchUserTokens();
+  }, []);
+
+  // -----------------------------
+  // Seat positions (aligned around the table)
+  // Table: 700x400 centered in 900x600 container
+  // Player stays at bottom-center (same as before)
+  // -----------------------------
+  const seatPositions = [
+  { left: 450, top: 30 },   // 0: top-center
+  { left: 700, top: 80 },  // 1: top-right (lowered & slightly left)
+  { left: 700, top: 450 },  // 2: bottom-right
+  { left: 450, top: 480 },  // 3: bottom-center (YOU)
+  { left: 200, top: 450 },  // 4: bottom-left
+  { left: 200, top: 80 },  // 5: top-left (lowered & slightly right)
+];
 
 
- // ======== CREATE GAME =========
-async function createGame(dealerIndex = 0) {
-  if (!name.trim()) return alert("Enter your name first");
+  // ======== CREATE GAME =========
+  // Now player creates the game alone (no dropdown). Player will be at seatIndex 3.
+  async function createGame(dealerIndex = 0) {
+    if (!name.trim()) return alert("Enter your name first");
 
-  const deck = shuffle(createDeck());
-  const players: Player[] = [{ id: "player", name, stack: 1000, hand: [], currentBet: 0 }];
-  for (let i = 0; i < aiCount; i++) {
-    players.push({ id: `ai${i}`, name: `AI ${i + 1}`, stack: 1000, hand: [], isAI: true, currentBet: 0 });
-  }
+    const deck = shuffle(createDeck());
+    // only the human player initially; seatIndex = 3 (bottom-center)
+    const players: Player[] = [{ id: "player", name, stack: 1000, hand: [], currentBet: 0, seatIndex: 3 }];
 
-  try {
-    const res = await fetch("/api/poker/create-game", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ maxPlayers: aiCount + 1, isPrivate, playerName: name }),
-    });
+    try {
+      const res = await fetch("/api/poker/create-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxPlayers: 6, isPrivate, playerName: name }),
+      });
 
-    if (!res.ok) return alert("Failed to create game on server");
-    const data = await res.json();
+      if (!res.ok) return alert("Failed to create game on server");
+      const data = await res.json();
 
-    setGame({
-      players,
-      community: [],
-      deck,
-      pot: 0,
-      currentTurn: 0,
-      stage: "pre-flop",
-      smallBlind: 10,
-      bigBlind: 20,
-      replayVisible: false,
-      dealerIndex,
-      inviteCode: data.gameCode,
-      waiting: true, // ✅ LOBBY MODE
-    });
+      setGame({
+        players,
+        community: [],
+        deck,
+        pot: 0,
+        currentTurn: 0,
+        stage: "pre-flop",
+        smallBlind: 10,
+        bigBlind: 20,
+        replayVisible: false,
+        dealerIndex,
+        inviteCode: data.gameCode,
+        waiting: true,
+      });
 
-  } catch (err) {
-    console.error("Error creating game:", err);
-    alert("Error creating game. Check console.");
-  }
-}
-function startGame() {
-  if (!game) return;
-
-  const newDeck = [...game.deck];
-  const players = game.players.map(p => ({
-    ...p,
-    hand: [newDeck.pop()!, newDeck.pop()!],
-    hasFolded: false,
-    lastAction: "",
-    currentBet: 0,
-  }));
-
-  // Setup blinds
-  const sbIndex = (game.dealerIndex + 1) % players.length;
-  const bbIndex = (game.dealerIndex + 2) % players.length;
-  players[sbIndex].stack -= game.smallBlind;
-  players[sbIndex].currentBet = game.smallBlind;
-  players[sbIndex].lastAction = "Small Blind";
-
-  players[bbIndex].stack -= game.bigBlind;
-  players[bbIndex].currentBet = game.bigBlind;
-  players[bbIndex].lastAction = "Big Blind";
-
-  const firstToAct = (bbIndex + 1) % players.length;
-
-  setGame({
-    ...game,
-    players,
-    deck: newDeck,
-    pot: game.smallBlind + game.bigBlind,
-    currentTurn: firstToAct,
-    roundStarter: firstToAct,
-    waiting: false, // ✅ GAME STARTED
-  });
-}
-
-
-// ======== JOIN GAME =========
-async function joinGame() {
-  if (!inviteCode.trim()) return alert("Enter invite code!");
-  setJoiningGame(true);
-
-  try {
-    const res = await fetch(`/api/poker/join-game?code=${inviteCode.trim()}`);
-    if (!res.ok) {
-      const err = await res.json();
-      return alert(err?.error || "Failed to join game");
+    } catch (err) {
+      console.error("Error creating game:", err);
+      alert("Error creating game. Check console.");
     }
+  }
 
-    const data = await res.json();
-    const serverGame = data.game as Game;
+  // startGame unchanged (deals from deck to players array as-is)
+  function startGame() {
+    if (!game) return;
 
-    // Map players safely, don't add new AI
-    const players: Player[] = (serverGame.players || []).map(p => ({
+    const newDeck = [...game.deck];
+    const players = game.players.map(p => ({
       ...p,
-      currentBet: p.currentBet || 0,
-      hasFolded: p.hasFolded || false,
-      lastAction: p.lastAction || "",
-      hand: p.hand || [],
+      hand: [newDeck.pop()!, newDeck.pop()!],
+      hasFolded: false,
+      lastAction: "",
+      currentBet: 0,
     }));
 
-    // Only set blinds if they are missing
-    if (!players.some(p => p.lastAction === "Small Blind")) {
-      const sb = 10, bb = 20;
-      const dealerIndex = serverGame.dealerIndex || 0;
-      const sbIndex = (dealerIndex + 1) % players.length;
-      const bbIndex = (dealerIndex + 2) % players.length;
+    // Setup blinds
+    const sbIndex = (game.dealerIndex + 1) % players.length;
+    const bbIndex = (game.dealerIndex + 2) % players.length;
+    players[sbIndex].stack -= game.smallBlind;
+    players[sbIndex].currentBet = game.smallBlind;
+    players[sbIndex].lastAction = "Small Blind";
 
-      players[sbIndex].stack -= sb;
-      players[sbIndex].currentBet = sb;
-      players[sbIndex].lastAction = "Small Blind";
+    players[bbIndex].stack -= game.bigBlind;
+    players[bbIndex].currentBet = game.bigBlind;
+    players[bbIndex].lastAction = "Big Blind";
 
-      players[bbIndex].stack -= bb;
-      players[bbIndex].currentBet = bb;
-      players[bbIndex].lastAction = "Big Blind";
-    }
-
-    const firstToAct = (players.findIndex(p => p.lastAction === "Big Blind") + 1) % players.length;
+    const firstToAct = (bbIndex + 1) % players.length;
 
     setGame({
-      ...serverGame,
+      ...game,
       players,
-      pot: players.reduce((sum, p) => sum + (p.currentBet || 0), 0),
+      deck: newDeck,
+      pot: game.smallBlind + game.bigBlind,
       currentTurn: firstToAct,
       roundStarter: firstToAct,
+      waiting: false,
     });
-
-    // Update human balance
-    const joiningHuman = players.find(p => !p.isAI);
-    if (joiningHuman) setBalance(joiningHuman.stack);
-
-    setJoiningGame(false);
-  } catch (err) {
-    console.error("Join game error:", err);
-    alert("Failed to join game. See console.");
-    setJoiningGame(false);
   }
-}
-async function joinPublicGame() {
-  setJoiningGame(true);
-  try {
-    const res = await fetch("/api/poker/join-public", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ playerName: name }),
-    });
 
-    const data = await res.json();
-    if (!res.ok) return alert(data.error || "No public games available");
+  // ======== JOIN / PUBLIC functions unchanged except seat handling is preserved if seatIndex exists on serverGame
+  async function joinGame() {
+    if (!inviteCode.trim()) return alert("Enter invite code!");
+    setJoiningGame(true);
 
-    const serverGame = data.game as Game;
+    try {
+      const res = await fetch(`/api/poker/join-game?code=${inviteCode.trim()}`);
+      if (!res.ok) {
+        const err = await res.json();
+        return alert(err?.error || "Failed to join game");
+      }
 
-    // Normalize player objects
-    const players: Player[] = (serverGame.players || []).map(p => ({
-      ...p,
-      currentBet: p.currentBet || 0,
-      hasFolded: p.hasFolded || false,
-      lastAction: p.lastAction || "",
-      hand: p.hand || [],
-    }));
+      const data = await res.json();
+      const serverGame = data.game as Game;
 
-    // Set blinds if missing
-    if (!players.some(p => p.lastAction === "Small Blind")) {
-      const sb = 10, bb = 20;
-      const dealerIndex = serverGame.dealerIndex || 0;
-      const sbIndex = (dealerIndex + 1) % players.length;
-      const bbIndex = (dealerIndex + 2) % players.length;
-      players[sbIndex].stack -= sb;
-      players[sbIndex].currentBet = sb;
-      players[sbIndex].lastAction = "Small Blind";
-      players[bbIndex].stack -= bb;
-      players[bbIndex].currentBet = bb;
-      players[bbIndex].lastAction = "Big Blind";
+      // Map players safely, don't add new AI
+      const players: Player[] = (serverGame.players || []).map(p => ({
+        ...p,
+        currentBet: (p as any).currentBet || 0,
+        hasFolded: (p as any).hasFolded || false,
+        lastAction: (p as any).lastAction || "",
+        hand: (p as any).hand || [],
+        seatIndex: (p as any).seatIndex ?? undefined,
+      }));
+
+      // Only set blinds if they are missing
+      if (!players.some(p => p.lastAction === "Small Blind")) {
+        const sb = 10, bb = 20;
+        const dealerIndex = serverGame.dealerIndex || 0;
+        const sbIndex = (dealerIndex + 1) % players.length;
+        const bbIndex = (dealerIndex + 2) % players.length;
+
+        players[sbIndex].stack -= sb;
+        players[sbIndex].currentBet = sb;
+        players[sbIndex].lastAction = "Small Blind";
+
+        players[bbIndex].stack -= bb;
+        players[bbIndex].currentBet = bb;
+        players[bbIndex].lastAction = "Big Blind";
+      }
+
+      const firstToAct = (players.findIndex(p => p.lastAction === "Big Blind") + 1) % players.length;
+
+      setGame({
+        ...serverGame,
+        players,
+        pot: players.reduce((sum, p) => sum + (p.currentBet || 0), 0),
+        currentTurn: firstToAct,
+        roundStarter: firstToAct,
+      });
+
+      const joiningHuman = players.find(p => !p.isAI);
+      if (joiningHuman) setBalance(joiningHuman.stack);
+
+      setJoiningGame(false);
+    } catch (err) {
+      console.error("Join game error:", err);
+      alert("Failed to join game. See console.");
+      setJoiningGame(false);
     }
-
-    const firstToAct = (players.findIndex(p => p.lastAction === "Big Blind") + 1) % players.length;
-
-    setGame({
-      ...serverGame,
-      players,
-      pot: players.reduce((sum, p) => sum + (p.currentBet || 0), 0),
-      currentTurn: firstToAct,
-      roundStarter: firstToAct,
-    });
-
-    // Update balance for the human player
-    const human = players.find(p => !p.isAI);
-    if (human) setBalance(human.stack);
-
-  } catch (err) {
-    console.error("Join public game error:", err);
-    alert("Failed to join public game. See console.");
-  } finally {
-    setJoiningGame(false);
   }
-}
 
+  async function joinPublicGame() {
+    setJoiningGame(true);
+    try {
+      const res = await fetch("/api/poker/join-public", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerName: name }),
+      });
 
-  // ======== AI Turn Logic =======
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || "No public games available");
+
+      const serverGame = data.game as Game;
+
+      // Normalize player objects
+      const players: Player[] = (serverGame.players || []).map(p => ({
+        ...p,
+        currentBet: (p as any).currentBet || 0,
+        hasFolded: (p as any).hasFolded || false,
+        lastAction: (p as any).lastAction || "",
+        hand: (p as any).hand || [],
+        seatIndex: (p as any).seatIndex ?? undefined,
+      }));
+
+      // Set blinds if missing
+      if (!players.some(p => p.lastAction === "Small Blind")) {
+        const sb = 10, bb = 20;
+        const dealerIndex = serverGame.dealerIndex || 0;
+        const sbIndex = (dealerIndex + 1) % players.length;
+        const bbIndex = (dealerIndex + 2) % players.length;
+        players[sbIndex].stack -= sb;
+        players[sbIndex].currentBet = sb;
+        players[sbIndex].lastAction = "Small Blind";
+        players[bbIndex].stack -= bb;
+        players[bbIndex].currentBet = bb;
+        players[bbIndex].lastAction = "Big Blind";
+      }
+
+      const firstToAct = (players.findIndex(p => p.lastAction === "Big Blind") + 1) % players.length;
+
+      setGame({
+        ...serverGame,
+        players,
+        pot: players.reduce((sum, p) => sum + (p.currentBet || 0), 0),
+        currentTurn: firstToAct,
+        roundStarter: firstToAct,
+      });
+
+      const human = players.find(p => !p.isAI);
+      if (human) setBalance(human.stack);
+
+    } catch (err) {
+      console.error("Join public game error:", err);
+      alert("Failed to join public game. See console.");
+    } finally {
+      setJoiningGame(false);
+    }
+  }
+
+  // ======== AI Turn Logic, performAction, advanceStage, showdown, etc. (kept intact) ========
   useEffect(() => {
     if(!game) return;
     if (game.stage === "showdown") return;
@@ -314,35 +330,33 @@ async function joinPublicGame() {
   }, [game?.currentTurn, game?.stage]);
 
   function checkForWinner(players: Player[], pot: number) {
-  const activePlayers = players.filter(p => !p.hasFolded);
-  if (activePlayers.length === 1) {
-    const winner = activePlayers[0];
-    const updatedPlayers = players.map(p =>
-      p.id === winner.id ? { ...p, stack: p.stack + pot } : p
-    );
+    const activePlayers = players.filter(p => !p.hasFolded);
+    if (activePlayers.length === 1) {
+      const winner = activePlayers[0];
+      const updatedPlayers = players.map(p =>
+        p.id === winner.id ? { ...p, stack: p.stack + pot } : p
+      );
 
-    // ✅ If human player wins, update balance too
-    if (winner.id === "player") {
-      setBalance(prev => prev + pot);
-      fetchUserTokens();
+      if (winner.id === "player") {
+        setBalance(prev => prev + pot);
+        fetchUserTokens();
+      }
+
+      setGame(g => g ? ({
+        ...g,
+        players: updatedPlayers,
+        winnerId: winner.id,
+        pot: 0,
+        stage: "showdown",
+        replayVisible: true,
+      }) : g);
+
+      return true;
     }
-
-    setGame(g => g ? ({
-      ...g,
-      players: updatedPlayers,
-      winnerId: winner.id,
-      pot: 0,
-      stage: "showdown",
-      replayVisible: true,
-    }) : g);
-
-    return true;
+    return false;
   }
-  return false;
-}
 
-  // ======== Actions =========
-  function performAction(action: "check" | "call" | "raise" | "fold", isAI = false) {
+  function performAction(action: "check" | "call" | "raise" | "fold" | "bet20", isAI = false) {
     if (!game) return;
 
     const players = game.players.map(p => ({ ...p }));
@@ -356,8 +370,7 @@ async function joinPublicGame() {
     if (action === "fold") {
       current.hasFolded = true;
       current.lastAction = "Folded";
-       // ✅ Check if this ends the hand
-  if (checkForWinner(players, potNew)) return;
+      if (checkForWinner(players, potNew)) return;
     } else if (action === "call") {
       const toCall = Math.max(0, highest - (current.currentBet || 0));
       if (toCall > 0) {
@@ -366,16 +379,28 @@ async function joinPublicGame() {
         current.currentBet += actual;
         potNew += actual;
         current.lastAction = `Called ${actual}`;
-         if (checkForWinner(players, potNew)) return;
+        if (checkForWinner(players, potNew)) return;
 
         if (current.id === "player") {
-          setBalance(prev => Math.max(prev - actual, 0)); // ✅ deduct from DB balance
-          fetchUserTokens(); // ✅ refresh after action
+          setBalance(prev => Math.max(prev - actual, 0));
+          fetchUserTokens();
         }
       } else {
         current.lastAction = "Check";
       }
-    } else if (action === "raise") {
+    } else if (action === "bet20") {
+  const betSize = 20;
+  const actual = Math.min(betSize, current.stack);
+  current.stack -= actual;
+  current.currentBet += actual;
+  potNew += actual;
+  current.lastAction = `Bet ${betSize}`;
+
+  if (current.id === "player") {
+    setBalance((prev) => Math.max(prev - actual, 0));
+    fetchUserTokens();
+  }
+} else if (action === "raise") {
       const toCall = Math.max(0, highest - (current.currentBet || 0));
       const totalPut = toCall + raiseAmount;
       const actual = Math.min(totalPut, current.stack);
@@ -385,7 +410,7 @@ async function joinPublicGame() {
       current.lastAction = `Raised ${raiseAmount}`;
 
       if (current.id === "player") {
-        setBalance(prev => Math.max(prev - actual, 0)); // ✅ deduct on raise
+        setBalance(prev => Math.max(prev - actual, 0));
       }
     }
 
@@ -460,372 +485,525 @@ async function joinPublicGame() {
 
     const updated=game.players.map(p=>p.id===winner.id?{...p,stack:p.stack+game.pot}:p);
 
-    // ✅ add winnings back to balance if player wins
     if (winner.id === "player") {
       setBalance(prev => prev + game.pot);
-      fetchUserTokens(); // ✅ refresh after showdown
+      fetchUserTokens();
     }
 
     setGame({...game,players:updated,winnerId:winner.id,pot:0,stage:"showdown",replayVisible:true});
     if (leaveAfterHand) {
-  setTimeout(() => {
-    window.location.href = "/casino/poker";
-  }, 2000); // redirect 2 seconds after hand ends
-}
+      setTimeout(() => {
+        window.location.href = "/casino/poker";
+      }, 2000);
+    }
   }
 
- function replayHand() {
-  if (!game) return;
+  function replayHand() {
+    if (!game) return;
 
-  // Rotate dealer
-  const nextDealer = (game.dealerIndex + 1) % game.players.length;
+    const nextDealer = (game.dealerIndex + 1) % game.players.length;
+    const handsPlayed = (game as any).handsPlayed ?? 0;
+    const newSmallBlind = handsPlayed > 0 && handsPlayed % 3 === 0 ? game.smallBlind * 2 : game.smallBlind;
+    const newBigBlind = handsPlayed > 0 && handsPlayed % 3 === 0 ? game.bigBlind * 2 : game.bigBlind;
 
-  // Optionally increase blinds every X hands
-  const handsPlayed = (game as any).handsPlayed ?? 0;
-  const newSmallBlind = handsPlayed > 0 && handsPlayed % 3 === 0
-    ? game.smallBlind * 2
-    : game.smallBlind;
-  const newBigBlind = handsPlayed > 0 && handsPlayed % 3 === 0
-    ? game.bigBlind * 2
-    : game.bigBlind;
+    const newDeck = shuffle(createDeck());
+    const resetPlayers = game.players.map(p => ({
+      ...p,
+      hand: [],
+      currentBet: 0,
+      hasFolded: false,
+      lastAction: "",
+    }));
 
-  // Reset deck & hands
-  const newDeck = shuffle(createDeck());
-  const resetPlayers = game.players.map(p => ({
-    ...p,
-    hand: [],
-    currentBet: 0,
-    hasFolded: false,
-    lastAction: "",
-  }));
+    setGame({
+      ...game,
+      dealerIndex: nextDealer,
+      players: resetPlayers,
+      deck: newDeck,
+      community: [],
+      pot: 0,
+      currentTurn: 0,
+      roundStarter: undefined,
+      stage: "pre-flop",
+      winnerId: undefined,
+      replayVisible: false,
+      smallBlind: newSmallBlind,
+      bigBlind: newBigBlind,
+      waiting: true,
+    });
+  }
 
-  setGame({
-    ...game,
-    dealerIndex: nextDealer,
-    players: resetPlayers,
-    deck: newDeck,
-    community: [],
-    pot: 0,
-    currentTurn: 0,
-    roundStarter: undefined,
-    stage: "pre-flop",
-    winnerId: undefined,
-    replayVisible: false,
-    smallBlind: newSmallBlind,
-    bigBlind: newBigBlind,
-    waiting: true,
-  });
-}
+  // ---- Seat click: open modal to add AI or invite (we only do AI add now) ----
+  function handleSeatClick(seatIndex: number) {
+    if (!game) {
+      // if no game yet, user should create game first
+      alert("Create a game first (enter your name and press Create Game).");
+      return;
+    }
+    // only allow seat changes while waiting (lobby)
+    if (!game.waiting) {
+      alert("You can only add AIs in the lobby before the game starts.");
+      return;
+    }
+    // check if seat occupied
+    const occupied = game.players.some(p => p.seatIndex === seatIndex);
+    if (occupied) {
+      alert("Seat already taken.");
+      return;
+    }
+    setSelectedSeat(seatIndex);
+    setAiNameInput("");
+    setAiStackInput(1000);
+    setSeatModalOpen(true);
+  }
 
+  function addAiToSeat() {
+    if (!game || selectedSeat === null) return;
+    const existingAIs = game.players.filter(p => p.isAI).length;
+    const autoName = `AI ${existingAIs + 1}`;
+    const nameToUse = aiNameInput.trim() || autoName;
+    const newAi: Player = {
+      id: `ai_${Date.now()}`,
+      name: nameToUse,
+      stack: Number(aiStackInput) || 1000,
+      hand: [],
+      isAI: true,
+      currentBet: 0,
+      seatIndex: selectedSeat,
+    };
+    setGame(g => g ? { ...g, players: [...g.players, newAi] } : g);
+    setSeatModalOpen(false);
+    setSelectedSeat(null);
+  }
 
-  // ======== RENDER ========
-if (!game) {
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
-      <div className="p-6 bg-slate-800 rounded shadow w-96 text-center mb-4">
-        <h1 className="text-2xl mb-4">{joiningGame ? "Join Game" : "Create Game"}</h1>
-        <div className="mb-4 flex flex-col items-center">
-</div>
+  // helper to find player at a seat
+  function playerAtSeat(seatIndex: number) {
+    return game?.players.find(p => p.seatIndex === seatIndex) ?? null;
+  }
+// Determine if someone has bet after the flop
+const hasBetThisRound =
+  game &&
+  game.players.some((p) => p.currentBet > 0 && !p.hasFolded) &&
+  game.stage !== "pre-flop";
 
+  // ==== RENDER ====
+  if (!game) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+        <div className="p-6 bg-slate-800 rounded shadow w-96 text-center mb-4">
+          <h1 className="text-2xl mb-4">Create Game</h1>
 
-{!joiningGame ? (
-  <>
-    <label className="block mb-2">Number of AI players:</label>
-    <input
-      type="number"
-      min={0}
-      max={5}
-      value={aiCount}
-      onChange={(e) => setAiCount(Number(e.target.value))}
-      className="border p-2 rounded mb-4 w-full text-black"
-    />
-    <label className="block mb-2">Private Game:</label>
-<select
-  value={isPrivate ? "true" : "false"}
-  onChange={(e) => setIsPrivate(e.target.value === "true")}
-  className="border p-2 rounded mb-4 w-full text-black"
->
-  <option value="true">Private</option>
-  <option value="false">Public</option>
-</select>
+          <input
+            placeholder="Your display name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full p-2 rounded mb-3 text-black"
+          />
 
-    <button
-      onClick={() => createGame()}
-      className="bg-yellow-500 px-4 py-2 rounded w-full font-bold mb-2"
-    >
-      Create Game
-    </button>
+          <label className="block mb-2">Private Game:</label>
+          <select
+            value={isPrivate ? "true" : "false"}
+            onChange={(e) => setIsPrivate(e.target.value === "true")}
+            className="border p-2 rounded mb-4 w-full text-black"
+          >
+            <option value="true">Private</option>
+            <option value="false">Public</option>
+          </select>
 
-    <button
-      onClick={() => setJoiningGame(true)} // ✅ toggle to join form
-      className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
-    >
-      Join Game
-    </button>
-    <button
-  onClick={joinPublicGame}
-  className="bg-blue-500 px-4 py-2 rounded w-full font-bold mb-2"
->
-  Join Public Game
-</button>
+          <button
+            onClick={() => createGame()}
+            className="bg-yellow-500 px-4 py-2 rounded w-full font-bold mb-2"
+          >
+            Create Game
+          </button>
 
-<a href="/casino/poker/">
-<button
-  className="bg-red-500 px-4 py-2 rounded w-full font-bold mb-2"
->
-  Retour
-</button>
-</a>
-  </>
-) : (
-  <>
-    <input
-      placeholder="Enter Invite Code"
-      value={inviteCode}
-      onChange={(e) => setInviteCode(e.target.value)}
-      className="border p-2 w-full rounded mb-4 text-black"
-    />
+          <button
+            onClick={() => setJoiningGame(true)}
+            className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
+          >
+            Join Game
+          </button>
 
-    <button
-      onClick={async () => {
-        try {
-          const text = await navigator.clipboard.readText();
-          if (text.trim()) setInviteCode(text.trim());
-        } catch {
-          alert("Unable to access clipboard.");
-        }
-      }}
-      className="bg-yellow-400 px-3 py-1 rounded w-full font-bold mb-2 text-black"
-    >
-      Paste from Clipboard
-    </button>
+          <button
+            onClick={joinPublicGame}
+            className="bg-blue-500 px-4 py-2 rounded w-full font-bold mb-2"
+          >
+            Join Public Game
+          </button>
 
-    <button
-      onClick={joinGame} // ✅ uses your joinGame function
-      className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
-    >
-      Join Game
-    </button>
-
-    <button
-      onClick={() => setJoiningGame(false)} // ✅ back to initial panel
-      className="bg-gray-500 px-4 py-2 rounded w-full font-bold"
-    >
-      Back
-    </button>
-  </>
-)}
-
+          <a href="/casino/poker/">
+            <button className="bg-red-500 px-4 py-2 rounded w-full font-bold mb-2">Retour</button>
+          </a>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-
-  const centerX=350, centerY=200, rx=280, ry=140;
-  const totalPlayers=game.players.length;
-  const aiCountReal=totalPlayers-1;
-
+  // main UI when game exists
   return (
-  <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6">
-    {/* ✅ Return to Casino button - only active after hand ends */}
-<div className="absolute top-4 left-4">
-  <button
-    onClick={() => {
-      if (game?.stage === "showdown") {
-        window.location.href = "/casino";
-      } else {
-        alert("You can only return to the casino after the hand ends!");
-      }
-    }}
-    className={`px-4 py-2 rounded font-bold transition ${
-      game?.stage === "showdown"
-        ? "bg-yellow-500 text-black hover:bg-yellow-400"
-        : "bg-gray-500 text-gray-300 cursor-not-allowed"
-    }`}
-  >
-    ← Return to Casino
-  </button>
-</div>
-
-    <h1 className="text-3xl mb-4">Texas Hold'em</h1>
-
-    {game?.inviteCode && (
-      <div className="mb-4 text-center">
-        <span className="font-bold">Invite Code:</span>{" "}
-        <span className="bg-yellow-300 text-black px-2 py-1 rounded">{game.inviteCode}</span>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6">
+      <div className="absolute top-4 left-4">
         <button
           onClick={() => {
-            navigator.clipboard.writeText(game.inviteCode || "");
-            alert("Invite code copied!");
+            if (game?.stage === "showdown") window.location.href = "/casino";
+            else alert("You can only return to the casino after the hand ends!");
           }}
-          className="ml-2 bg-blue-500 px-3 py-1 rounded text-sm"
+          className={`px-4 py-2 rounded font-bold transition ${game?.stage === "showdown" ? "bg-yellow-500 text-black hover:bg-yellow-400" : "bg-gray-500 text-gray-300 cursor-not-allowed"}`}
         >
-          Copy
+          ← Return to Casino
         </button>
       </div>
+
+      <h1 className="text-3xl mb-4">Texas Hold'em</h1>
+
+     {game?.inviteCode && (
+  <div className="mb-4 text-center flex items-center justify-center gap-4">
+    <div>
+      <span className="font-bold">Invite Code:</span>{" "}
+      <span className="bg-yellow-300 text-black px-2 py-1 rounded">{game.inviteCode}</span>
+      <button
+        onClick={() => { navigator.clipboard.writeText(game.inviteCode || ""); alert("Invite code copied!"); }}
+        className="ml-2 bg-blue-500 px-3 py-1 rounded text-sm"
+      >
+        Copy
+      </button>
+    </div>
+
+    {/* START GAME button */}
+    {game?.waiting && (
+      <button
+        onClick={() => {
+          if (!game) return;
+          if (game.players.length < 2) {
+            alert("You need at least 1 AI to start (player + 1 AI). Add an AI by clicking a seat.");
+            return;
+          }
+          startGame();
+        }}
+        className={`bg-green-600 px-4 py-2 rounded font-bold ${
+          game.players.length < 2 ? "opacity-60 cursor-not-allowed" : ""
+        }`}
+        disabled={game.players.length < 2}
+      >
+        Start Game
+      </button>
     )}
 
-   <div className="mb-4 flex flex-col items-center">
-  <div className="font-bold text-xl mb-1">Pot: {game?.pot ?? 0}</div>
-</div>
-
-
-    <div className="relative w-[700px] h-[400px] bg-green-700 rounded-full border-8 border-yellow-800 flex items-center justify-center mb-6">
-      {/* Pot + Community */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-  <div className="flex gap-2 relative">
-
-  <AnimatePresence>
-    {(game?.community || []).map((c, i) => (
-      <motion.div
-        key={`${c.suit}-${c.value}-${i}`}
-        initial={{
-          opacity: 0,
-          y: -200,
-          x: Math.random() * 200 - 100,
-          rotate: Math.random() * 40 - 20,
-          scale: 0.5,
-        }}
-        animate={{
-          opacity: 1,
-          y: 0,
-          x: 0,
-          rotate: 0,
-          scale: 1,
-          transition: { delay: i * 0.3, type: "spring", stiffness: 120 },
-        }}
-        exit={{ opacity: 0, scale: 0.8, y: 50 }}
-        className={`w-16 h-24 bg-white flex items-center justify-center rounded shadow 
-          ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
+    {/* REPLAY HAND button moved here */}
+    {game?.replayVisible && (
+      <button
+        onClick={replayHand}
+        className="bg-yellow-400 text-black px-4 py-2 rounded font-bold hover:bg-yellow-300 transition"
       >
-        {c.value}{c.suit}
-      </motion.div>
-    ))}
-  </AnimatePresence>
-</div>
-
-      </div>
-
-      {/* Players */}
-      {(game?.players || []).map((p, idx) => {
-        let left = 350, top = 200;
-        const totalPlayers = game?.players?.length ?? 1;
-        const aiCountReal = Math.max(totalPlayers - 1, 1);
-
-        if (p.id === "player") {
-  // Human always bottom center
-  left = 350;
-  top = 200 + 140 - 20;
-} else {
-  const aiIndex = idx - 1;
-  const aiTotal = Math.max(aiCountReal, 1);
-
-  if (aiTotal === 1) {
-    // Special layout for 1 AI — place top center
-    left = 350;
-    top = 200 - 160 + 20;
-  } else {
-    const angle = -Math.PI / 2 + (aiIndex + 0.5) * (2 * Math.PI / aiTotal);
-    left = 350 + Math.cos(angle) * 280;
-    top = 200 + Math.sin(angle) * 140 - 10;
-  }
-}
-
-        return (
-          <div
-  key={p.id}
-  className={`absolute w-20 p-1 rounded text-center text-xs 
-  ${p.id === "player" ? "bg-yellow-500 text-black" : "bg-slate-700"} 
-  ${p.hasFolded ? "opacity-50" : ""} ${game?.winnerId === p.id ? "border-2 border-yellow-400" : ""}`}
-  style={{
-    left,
-    top,
-    transform: "translate(-50%, -50%)",
-    zIndex: p.id === "player" ? 20 : 10,
-  }}
->
-
-            <div className="font-semibold">{p.name}</div>
-            <div className="text-sm">Stack: {p.stack ?? 0}</div>
-
-            {p.currentBet && p.currentBet > 0 && (
-              <div className="mt-2 flex justify-center">
-                <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center text-white font-bold">{p.currentBet}</div>
-              </div>
-            )}
-
-            <div className="mt-2 flex justify-center gap-1">
-              {p.id === "player"
-                ? (p.hand || []).map((c, i) => (
-                  <div
-                    key={i}
-                    className={`px-1 py-0.5 border rounded bg-white 
-                    ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
-                  >
-                    {c.value}{c.suit}
-                  </div>
-                ))
-                : game?.stage !== "showdown"
-                  ? (
-                    <>
-                      <div className="w-8 h-10 bg-gray-800 rounded-lg border border-gray-600 shadow"></div>
-<div className="w-8 h-10 bg-gray-800 rounded-lg border border-gray-600 shadow"></div>
-
-                    </>
-                  )
-                  : (p.hand || []).map((c, i) => (
-                    <div
-                      key={i}
-                      className={`px-1 py-0.5 border rounded bg-white 
-                      ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
-                    >
-                      {c.value}{c.suit}
-                    </div>
-                  ))
-              }
-            </div>
-
-            {p.lastAction && <div className="text-xs mt-1 italic">{p.lastAction}</div>}
-          </div>
-        );
-      })}
-    </div>
-{game?.waiting && (
-  <button
-    onClick={startGame}
-    className="mb-4 bg-green-600 px-6 py-2 rounded font-bold"
-  >
-    Start Game
-  </button>
+        Replay Hand
+      </button>
+    )}
+  </div>
 )}
 
 
-    <div className="mb-4">
-      Your Best Hand: {evaluateHand(game?.players?.find(p => p.id === "player")?.hand || [], game?.community || [])}
-    </div>
-    
+      <div className="mb-4 flex flex-col items-center">
+        {/* Pot moved inside table for layout; but keep this here as well if you want */}
+      </div>
 
-    {!game?.waiting && game?.stage !== "showdown" && (
-      <div className="flex gap-2 mb-4 items-center">
-        <button onClick={() => performAction("fold")} className="bg-red-600 px-4 py-2 rounded">Fold</button>
-        <button onClick={() => performAction("check")} className="bg-yellow-500 px-4 py-2 rounded text-black">Check</button>
-        <button onClick={() => performAction("call")} className="bg-blue-600 px-4 py-2 rounded">Call</button>
+      {/* The poker table itself */}
+      <div className="relative w-[700px] h-[400px] bg-green-700 rounded-full border-8 border-yellow-800 flex items-center justify-center mb-6 mt-12 shadow-[0_0_40px_rgba(255,215,0,0.3)]">
+        {/* community cards in center */}
+       {/* Centered pot display */}
+{game && (
+  <div
+    className="absolute text-yellow-300 text-sm font-bold bg-black/50 px-3 py-1.5 rounded-full border border-yellow-400 shadow-lg"
+    style={{
+      left: "50%",                 // perfectly centered horizontally
+      top: "27%",                  // moved up so it won't overlap community cards
+      transform: "translate(-50%, 0)", // keep centered but avoid vertical translate that overlaps cards
+      zIndex: 15,                  // adjust stacking; lower than cards if you want cards on top
+      padding: "6px 10px",         // slightly smaller/more compact
+    }}
+  >
+    💰 Pot: ${game.pot}
+  </div>
+)}
+
+
+
+
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <div className="flex gap-2 relative">
+            <AnimatePresence>
+              {(game?.community || []).map((c, i) => (
+                <motion.div
+                  key={`${c.suit}-${c.value}-${i}`}
+                  initial={{ opacity: 0, y: -200, x: Math.random() * 200 - 100, rotate: Math.random() * 40 - 20, scale: 0.5 }}
+                  animate={{ opacity: 1, y: 0, x: 0, rotate: 0, scale: 1, transition: { delay: i * 0.2, type: "spring", stiffness: 120 } }}
+                  exit={{ opacity: 0, scale: 0.8, y: 50 }}
+                  className={`w-16 h-24 bg-white flex items-center justify-center rounded shadow ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
+                >
+                  {c.value}{c.suit}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </div>
+     {/* Your Best Hand (always visible, centered below community cards) */}
+{game && (
+  <div
+    className="absolute text-white text-sm font-semibold mt-6 bg-black/40 px-3 py-1 rounded-lg border border-yellow-400"
+    style={{
+      top: "58%", // slightly below community cards
+      left: "50%",
+      transform: "translateX(-50%)",
+      zIndex: 30,
+    }}
+  >
+    Your Best Hand:{" "}
+    {evaluateHand(
+      game.players.find((p) => p.id === "player")?.hand || [],
+      game.community
+    )}
+  </div>
+)}
+
+
+
+  {/* ACTION BUTTONS — moved outside the gameboard (2 per side) */}
+{!game?.waiting && game?.stage !== "showdown" && (
+  <>
+    {/* LEFT SIDE BUTTONS */}
+    <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col gap-3 ml-[-100px] z-40 pointer-events-auto">
+      <button onClick={() => performAction("fold")} className="bg-red-600 px-4 py-2 rounded w-24">
+        Fold
+      </button>
+      <button onClick={() => performAction("check")} className="bg-yellow-500 px-4 py-2 rounded text-black w-24">
+        Check
+      </button>
+    </div>
+
+    {/* RIGHT SIDE BUTTONS */}
+    <div className="absolute right-0 top-1/2 -translate-y-1/2 flex flex-col gap-3 mr-[-100px] z-40 pointer-events-auto">
+      <button
+  onClick={() => {
+    if (game?.stage !== "pre-flop") {
+      if (hasBetThisRound) performAction("call");
+      else performAction("bet20"); // new pseudo-action
+    } else {
+      performAction("call");
+    }
+  }}
+  className="bg-blue-600 px-4 py-2 rounded w-24"
+>
+  {game?.stage !== "pre-flop" && !hasBetThisRound ? "Bet 20" : "Call"}
+</button>
+
+      <div className="flex flex-col items-center">
         <input
           type="number"
           min={10}
           max={game?.players?.[0]?.stack ?? 1000}
           value={raiseAmount}
           onChange={e => setRaiseAmount(Number(e.target.value))}
-          className="w-20 text-black px-2 py-1 rounded"
+          className="w-20 text-black px-2 py-1 rounded mb-1"
         />
-        <button onClick={() => performAction("raise")} className="bg-green-600 px-4 py-2 rounded">Raise</button>
+        <button onClick={() => performAction("raise")} className="bg-green-600 px-4 py-2 rounded w-24">
+          Raise
+        </button>
+      </div>
+    </div>
+  </>
+)}
+
+      </div>
+
+  {/* Seat positions absolutely positioned around the board */}
+<div className="relative w-[900px] h-[600px] -mt-[480px] pointer-events-none">
+  {seatPositions.map((pos, seatIdx) => {
+    const occupant = playerAtSeat(seatIdx);
+    const isPlayer = occupant?.id === "player";
+
+    return (
+      <div
+        key={seatIdx}
+        className="absolute pointer-events-auto"
+        style={{
+          left: pos.left,
+          top: pos.top,
+          transform: "translate(-50%, -50%)",
+          zIndex: 30,
+        }}
+      >
+        {occupant ? (
+  <div
+    className={`flex flex-col items-center gap-1 w-[120px] p-1.5 rounded-xl text-[10px] font-semibold
+      ${isPlayer ? "bg-yellow-400 text-black" : "bg-slate-800 text-white"}
+      ${occupant.hasFolded ? "opacity-50" : ""}
+      ${game?.winnerId === occupant.id ? "border border-yellow-400 shadow-[0_0_10px_rgba(255,215,0,0.8)]" : "border border-slate-700"}
+    `}
+  >
+    <div className="flex justify-between w-full px-1">
+      <span className="truncate">{occupant.name}</span>
+      <span className="text-xs">${occupant.stack}</span>
+    </div>
+
+   {/* Cards display logic */}
+<div className="flex gap-1 justify-center">
+  {isPlayer
+    ? (occupant.hand || []).map((card, i) => (
+        <div
+          key={i}
+          className={`w-6 h-8 rounded bg-white flex items-center justify-center
+            text-[10px] font-bold shadow 
+            ${card.suit === "♥" || card.suit === "♦" ? "text-red-600" : "text-black"}
+          `}
+        >
+          {card.value}{card.suit}
+        </div>
+      ))
+    : game?.stage !== "showdown"
+    ? (
+        <>
+          {/* Face-down cards for opponents */}
+          <div className="w-6 h-8 bg-gray-700 rounded border border-gray-500 shadow"></div>
+          <div className="w-6 h-8 bg-gray-700 rounded border border-gray-500 shadow"></div>
+        </>
+      )
+    : (
+        // Reveal cards at showdown
+        (occupant.hand || []).map((card, i) => (
+          <div
+            key={i}
+            className={`w-6 h-8 rounded bg-white flex items-center justify-center
+              text-[10px] font-bold shadow 
+              ${card.suit === "♥" || card.suit === "♦" ? "text-red-600" : "text-black"}
+            `}
+          >
+            {card.value}{card.suit}
+          </div>
+        ))
+      )}
+</div>
+
+
+    {/* Last action line */}
+    {occupant.lastAction && (
+      <div className="text-[9px] text-gray-300 italic truncate max-w-[100px]">
+        {occupant.lastAction}
       </div>
     )}
-
-    {game?.replayVisible && (
-      <button onClick={replayHand} className="bg-purple-600 px-6 py-2 rounded font-bold">Replay Hand</button>
-    )}
   </div>
-);
+) : (
+  <button
+    onClick={() => handleSeatClick(seatIdx)}
+    className="w-[100px] h-[40px] bg-slate-600/40 text-xs rounded-full border border-slate-400 hover:bg-slate-500/70 pointer-events-auto"
+  >
+    + Seat
+  </button>
+)}
+
+      </div>
+    );
+  })}
+
+ {/* 💰 Chips displayed relative to table */}
+{game?.players.map((p) => {
+  if (!p || !p.currentBet || p.currentBet <= 0 || p.seatIndex == null) return null;
+  const pos = seatPositions[p.seatIndex];
+  if (!pos) return null;
+
+  // Adjust chip offset so they face toward the center
+  let offset = { x: 0, y: 0 };
+  switch (p.seatIndex) {
+    case 0: offset = { x: -17, y: 50 }; break;        // top-center 
+    case 1: offset = { x: -85, y: 40 }; break;      // top-right 
+    case 2: offset = { x: -90, y: -70 }; break;       // bottom-right
+    case 3: offset = { x: -15, y: -75 }; break;       // bottom-center → PLAYER
+    case 4: offset = { x: 50, y: -70 }; break;        // bottom-left
+    case 5: offset = { x: 50, y: 40 }; break;       // top-left
+    default: offset = { x: 0, y: 0 };
+  }
+
+  return (
+    <motion.div
+      key={p.id + "-chip"}
+      initial={{ scale: 0, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      exit={{ scale: 0, opacity: 0 }}
+      className="absolute z-40 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center text-white font-bold border-2 border-yellow-400 shadow-lg"
+      style={{
+        left: pos.left + offset.x,
+        top: pos.top + offset.y,
+        transform: "translate(-50%, -50%)",
+      }}
+    >
+      {p.currentBet}
+    </motion.div>
+  );
+})}
+
+</div>
+
+
+      <div className="mb-4">
+        Your Best Hand: {evaluateHand(game?.players?.find(p => p.id === "player")?.hand || [], game?.community || [])}
+      </div>
+
+      {/* Seat Modal */}
+      {seatModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setSeatModalOpen(false)} />
+          <div className="bg-slate-800 p-6 rounded z-60 w-[320px]">
+            <h2 className="text-xl mb-3">Add AI to seat {selectedSeat}</h2>
+            <label className="block mb-1">Name (optional)</label>
+            <input className="w-full p-2 rounded mb-3 text-black" value={aiNameInput} onChange={(e) => setAiNameInput(e.target.value)} placeholder="AI name or leave blank" />
+            <label className="block mb-1">Stack</label>
+            <input type="number" className="w-full p-2 rounded mb-3 text-black" value={aiStackInput} onChange={(e) => setAiStackInput(Number(e.target.value))} />
+            <div className="flex gap-2">
+              <button onClick={addAiToSeat} className="bg-green-600 px-4 py-2 rounded font-bold">Add AI</button>
+              <button onClick={() => setSeatModalOpen(false)} className="bg-gray-500 px-4 py-2 rounded">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* AI Seat Modal */}
+      {seatModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/70 z-[100]">
+          <div
+            className="bg-white text-black rounded-lg p-6 w-80 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-xl font-bold mb-3">Add AI Player</h2>
+            <label className="block mb-1 font-semibold">AI Name</label>
+            <input
+              type="text"
+              value={aiNameInput}
+              onChange={(e) => setAiNameInput(e.target.value)}
+              className="border rounded w-full p-2 mb-3"
+              placeholder="AI name..."
+            />
+            <label className="block mb-1 font-semibold">Starting Stack</label>
+            <input
+              type="number"
+              value={aiStackInput}
+              onChange={(e) => setAiStackInput(Number(e.target.value))}
+              className="border rounded w-full p-2 mb-4"
+            />
+            <div className="flex justify-between">
+              <button
+                onClick={addAiToSeat}
+                className="bg-green-600 text-white px-4 py-2 rounded font-bold"
+              >
+                Add
+              </button>
+              <button
+                onClick={() => setSeatModalOpen(false)}
+                className="bg-red-500 text-white px-4 py-2 rounded font-bold"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
 }
