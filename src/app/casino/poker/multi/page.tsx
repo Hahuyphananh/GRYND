@@ -62,6 +62,9 @@ export default function PokerPage() {
   const [joiningGame, setJoiningGame] = useState(false);
   const [isPrivate, setIsPrivate] = useState(true);
   const [leaveAfterHand, setLeaveAfterHand] = useState(false);
+  const [isProcessingTurn, setIsProcessingTurn] = useState(false);
+  const [turnTimer, setTurnTimer] = useState(60);
+const [isMyTurn, setIsMyTurn] = useState(false);
 
   // UI modal / seat state
   const [seatModalOpen, setSeatModalOpen] = useState(false);
@@ -93,6 +96,33 @@ export default function PokerPage() {
   useEffect(() => {
     fetchUserTokens();
   }, []);
+  
+// Turn timer effect — runs whenever the current turn changes
+useEffect(() => {
+  if (!game) return;
+
+  const currentPlayer = game.players[game.currentTurn];
+  const isPlayerTurn = currentPlayer && currentPlayer.id === "player";
+  setIsMyTurn(isPlayerTurn);
+  setTurnTimer(60); // reset every time the turn changes
+
+  if (!isPlayerTurn || game.stage === "showdown" || game.waiting) return;
+
+  // Start countdown only if it's your turn
+  const interval = setInterval(() => {
+    setTurnTimer((t) => {
+      if (t <= 1) {
+        clearInterval(interval);
+        performAction("fold"); // auto fold when time runs out
+        return 0;
+      }
+      return t - 1;
+    });
+  }, 1000);
+
+  // cleanup
+  return () => clearInterval(interval);
+}, [game?.currentTurn]);
 
   // -----------------------------
   // Seat positions (aligned around the table)
@@ -308,26 +338,30 @@ export default function PokerPage() {
   }
 
   // ======== AI Turn Logic, performAction, advanceStage, showdown, etc. (kept intact) ========
-  useEffect(() => {
-    if(!game) return;
-    if (game.stage === "showdown") return;
+ useEffect(() => {
+  if (!game) return;
+  if (game.stage === "showdown" || game.waiting) return;
 
-    const current = game.players[game.currentTurn];
-    if (!current || current.hasFolded) return;
+  const current = game.players[game.currentTurn];
+  if (!current || current.hasFolded) return;
 
-    if (current.isAI) {
+  if (current.isAI) {
+    const timer = setTimeout(() => {
       const hs = evaluateHand(current.hand, game.community);
-      let action: "check"|"call"|"raise"|"fold" = "check";
+      let action: "check" | "call" | "raise" | "fold" = "check";
 
       if (hs.includes("Three") || hs.includes("Straight") || hs.includes("Flush")) action = "raise";
       else if (hs.includes("Pair") || hs.includes("Two Pair")) action = "call";
-      else if (Math.random()<0.2) action="fold";
-      else action="call";
+      else if (Math.random() < 0.2) action = "fold";
+      else action = "call";
 
-      const t = setTimeout(()=>performAction(action,true),800+Math.random()*500);
-      return ()=>clearTimeout(t);
-    }
-  }, [game?.currentTurn, game?.stage]);
+      performAction(action, true);
+    }, 800 + Math.random() * 600);
+
+    return () => clearTimeout(timer);
+  }
+}, [game?.currentTurn]);
+
 
   function checkForWinner(players: Player[], pot: number) {
     const activePlayers = players.filter(p => !p.hasFolded);
@@ -413,16 +447,21 @@ export default function PokerPage() {
         setBalance(prev => Math.max(prev - actual, 0));
       }
     }
+// Determine if everyone has either called or folded
+const activePlayers = players.filter(p => !p.hasFolded);
+const highestBet = Math.max(...players.map(p => p.currentBet));
+const allMatched = activePlayers.every(p => p.currentBet === highestBet);
 
-    let next = nextActive((currentIndex + 1) % players.length, players);
-    const wrappedBack = next === game.roundStarter;
+// Move to next turn
+let nextTurn = nextActive((currentIndex + 1) % players.length, players);
 
-    if (wrappedBack) {
-      setGame(g => g ? { ...g, players, pot: potNew } : g);
-      advanceStage();
-    } else {
-      setGame(g => g ? { ...g, players, pot: potNew, currentTurn: next } : g);
-    }
+setGame(g => g ? { ...g, players, pot: potNew, currentTurn: nextTurn } : g);
+
+// Advance stage only after all bets matched
+if (allMatched && nextTurn === game.roundStarter) {
+  setTimeout(() => advanceStage(), 1000);
+}
+
   }
 
   async function advanceStage() {
@@ -433,35 +472,37 @@ export default function PokerPage() {
 
     let nextStage: Game["stage"] = game.stage;
 
-    if (game.stage === "pre-flop") {
-      for (let i = 0; i < 3; i++) {
-        await new Promise(res => setTimeout(res, 500));
-        comm.push(deck.pop()!);
-      }
-      nextStage = "flop";
-    } else if (game.stage === "flop") {
-      await new Promise(res => setTimeout(res, 500));
-      comm.push(deck.pop()!);
-      nextStage = "turn";
-    } else if (game.stage === "turn") {
-      await new Promise(res => setTimeout(res, 500));
-      comm.push(deck.pop()!);
-      nextStage = "river";
-    } else if (game.stage === "river") {
-      showdown();
-      return;
-    }
+if (game.stage === "pre-flop") {
+  // Deal all 3 flop cards at once, small visual delay
+  await new Promise(res => setTimeout(res, 400));
+  comm.push(deck.pop()!, deck.pop()!, deck.pop()!);
+  nextStage = "flop";
+} else if (game.stage === "flop") {
+  await new Promise(res => setTimeout(res, 400));
+  comm.push(deck.pop()!);
+  nextStage = "turn";
+} else if (game.stage === "turn") {
+  await new Promise(res => setTimeout(res, 400));
+  comm.push(deck.pop()!);
+  nextStage = "river";
+} else if (game.stage === "river") {
+  showdown();
+  return;
+}
 
-    const playerIndex = playersReset.findIndex(p => p.id === "player");
+const nextDealer = (game.dealerIndex + 1) % game.players.length;
+const firstToAct = nextActive((nextDealer + 1) % playersReset.length, playersReset);
 
-    setGame({
-      ...game,
-      deck,
-      community: comm,
-      stage: nextStage,
-      players: playersReset,
-      currentTurn: playerIndex,
-    });
+setGame({
+  ...game,
+  deck,
+  community: comm,
+  stage: nextStage,
+  players: playersReset,
+  currentTurn: firstToAct,
+  roundStarter: firstToAct,
+});
+
   }
 
   function showdown() {
@@ -724,10 +765,6 @@ const hasBetThisRound =
     💰 Pot: ${game.pot}
   </div>
 )}
-
-
-
-
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <div className="flex gap-2 relative">
             <AnimatePresence>
@@ -766,15 +803,32 @@ const hasBetThisRound =
 
 
 
-  {/* ACTION BUTTONS — moved outside the gameboard (2 per side) */}
+{/* ACTION BUTTONS — moved outside the gameboard (2 per side) */}
 {!game?.waiting && game?.stage !== "showdown" && (
   <>
     {/* LEFT SIDE BUTTONS */}
     <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col gap-3 ml-[-100px] z-40 pointer-events-auto">
-      <button onClick={() => performAction("fold")} className="bg-red-600 px-4 py-2 rounded w-24">
+      <button
+        onClick={() => performAction("fold")}
+        disabled={!isMyTurn}
+        className={`px-4 py-2 rounded w-24 transition ${
+          isMyTurn
+            ? "bg-red-600 hover:bg-red-500"
+            : "bg-red-800 text-gray-300 opacity-60 cursor-not-allowed"
+        }`}
+      >
         Fold
       </button>
-      <button onClick={() => performAction("check")} className="bg-yellow-500 px-4 py-2 rounded text-black w-24">
+
+      <button
+        onClick={() => performAction("check")}
+        disabled={!isMyTurn}
+        className={`px-4 py-2 rounded text-black w-24 transition ${
+          isMyTurn
+            ? "bg-yellow-500 hover:bg-yellow-400"
+            : "bg-yellow-900 text-gray-400 opacity-60 cursor-not-allowed"
+        }`}
+      >
         Check
       </button>
     </div>
@@ -782,18 +836,24 @@ const hasBetThisRound =
     {/* RIGHT SIDE BUTTONS */}
     <div className="absolute right-0 top-1/2 -translate-y-1/2 flex flex-col gap-3 mr-[-100px] z-40 pointer-events-auto">
       <button
-  onClick={() => {
-    if (game?.stage !== "pre-flop") {
-      if (hasBetThisRound) performAction("call");
-      else performAction("bet20"); // new pseudo-action
-    } else {
-      performAction("call");
-    }
-  }}
-  className="bg-blue-600 px-4 py-2 rounded w-24"
->
-  {game?.stage !== "pre-flop" && !hasBetThisRound ? "Bet 20" : "Call"}
-</button>
+        onClick={() => {
+          if (!isMyTurn) return;
+          if (game?.stage !== "pre-flop") {
+            if (hasBetThisRound) performAction("call");
+            else performAction("bet20"); // new pseudo-action
+          } else {
+            performAction("call");
+          }
+        }}
+        disabled={!isMyTurn}
+        className={`px-4 py-2 rounded w-24 transition ${
+          isMyTurn
+            ? "bg-blue-600 hover:bg-blue-500"
+            : "bg-blue-900 text-gray-300 opacity-60 cursor-not-allowed"
+        }`}
+      >
+        {game?.stage !== "pre-flop" && !hasBetThisRound ? "Bet 20" : "Call"}
+      </button>
 
       <div className="flex flex-col items-center">
         <input
@@ -801,10 +861,21 @@ const hasBetThisRound =
           min={10}
           max={game?.players?.[0]?.stack ?? 1000}
           value={raiseAmount}
-          onChange={e => setRaiseAmount(Number(e.target.value))}
-          className="w-20 text-black px-2 py-1 rounded mb-1"
+          onChange={(e) => setRaiseAmount(Number(e.target.value))}
+          disabled={!isMyTurn}
+          className={`w-20 text-black px-2 py-1 rounded mb-1 ${
+            !isMyTurn ? "opacity-50 cursor-not-allowed" : ""
+          }`}
         />
-        <button onClick={() => performAction("raise")} className="bg-green-600 px-4 py-2 rounded w-24">
+        <button
+          onClick={() => isMyTurn && performAction("raise")}
+          disabled={!isMyTurn}
+          className={`px-4 py-2 rounded w-24 transition ${
+            isMyTurn
+              ? "bg-green-600 hover:bg-green-500"
+              : "bg-green-900 text-gray-300 opacity-60 cursor-not-allowed"
+          }`}
+        >
           Raise
         </button>
       </div>
@@ -812,96 +883,125 @@ const hasBetThisRound =
   </>
 )}
 
+
       </div>
 
   {/* Seat positions absolutely positioned around the board */}
 <div className="relative w-[900px] h-[600px] -mt-[480px] pointer-events-none">
-  {seatPositions.map((pos, seatIdx) => {
-    const occupant = playerAtSeat(seatIdx);
-    const isPlayer = occupant?.id === "player";
+ {seatPositions.map((pos, seatIdx) => {
+  const occupant = playerAtSeat(seatIdx);
+  const isPlayer = occupant?.id === "player";
 
-    return (
-      <div
-        key={seatIdx}
-        className="absolute pointer-events-auto"
-        style={{
-          left: pos.left,
-          top: pos.top,
-          transform: "translate(-50%, -50%)",
-          zIndex: 30,
-        }}
-      >
-        {occupant ? (
-  <div
-    className={`flex flex-col items-center gap-1 w-[120px] p-1.5 rounded-xl text-[10px] font-semibold
-      ${isPlayer ? "bg-yellow-400 text-black" : "bg-slate-800 text-white"}
-      ${occupant.hasFolded ? "opacity-50" : ""}
-      ${game?.winnerId === occupant.id ? "border border-yellow-400 shadow-[0_0_10px_rgba(255,215,0,0.8)]" : "border border-slate-700"}
-    `}
-  >
-    <div className="flex justify-between w-full px-1">
-      <span className="truncate">{occupant.name}</span>
-      <span className="text-xs">${occupant.stack}</span>
-    </div>
-
-   {/* Cards display logic */}
-<div className="flex gap-1 justify-center">
-  {isPlayer
-    ? (occupant.hand || []).map((card, i) => (
+  return (
+    <div
+      key={seatIdx}
+      className="absolute pointer-events-auto"
+      style={{
+        left: pos.left,
+        top: pos.top,
+        transform: "translate(-50%, -50%)",
+        zIndex: 30,
+      }}
+    >
+      {occupant ? (
         <div
-          key={i}
-          className={`w-6 h-8 rounded bg-white flex items-center justify-center
-            text-[10px] font-bold shadow 
-            ${card.suit === "♥" || card.suit === "♦" ? "text-red-600" : "text-black"}
+          className={`flex flex-col items-center gap-1 w-[120px] p-1.5 rounded-xl text-[10px] font-semibold
+            ${isPlayer ? "bg-yellow-400 text-black" : "bg-slate-800 text-white"}
+            ${occupant.hasFolded ? "opacity-50" : ""}
+            ${
+              game?.winnerId === occupant.id
+                ? "border border-yellow-400 shadow-[0_0_10px_rgba(255,215,0,0.8)]"
+                : "border border-slate-700"
+            }
           `}
         >
-          {card.value}{card.suit}
-        </div>
-      ))
-    : game?.stage !== "showdown"
-    ? (
-        <>
-          {/* Face-down cards for opponents */}
-          <div className="w-6 h-8 bg-gray-700 rounded border border-gray-500 shadow"></div>
-          <div className="w-6 h-8 bg-gray-700 rounded border border-gray-500 shadow"></div>
-        </>
-      )
-    : (
-        // Reveal cards at showdown
-        (occupant.hand || []).map((card, i) => (
-          <div
-            key={i}
-            className={`w-6 h-8 rounded bg-white flex items-center justify-center
-              text-[10px] font-bold shadow 
-              ${card.suit === "♥" || card.suit === "♦" ? "text-red-600" : "text-black"}
-            `}
-          >
-            {card.value}{card.suit}
+          <div className="flex justify-between w-full px-1">
+            <span className="truncate">{occupant.name}</span>
+            <span className="text-xs">${occupant.stack}</span>
           </div>
-        ))
+
+          {/* Cards display logic */}
+          <div className="flex gap-1 justify-center">
+            {isPlayer
+              ? (occupant.hand || []).map((card, i) => (
+                  <div
+                    key={i}
+                    className={`w-6 h-8 rounded bg-white flex items-center justify-center
+                      text-[10px] font-bold shadow 
+                      ${
+                        card.suit === "♥" || card.suit === "♦"
+                          ? "text-red-600"
+                          : "text-black"
+                      }
+                    `}
+                  >
+                    {card.value}
+                    {card.suit}
+                  </div>
+                ))
+              : game?.stage !== "showdown"
+              ? (
+                  <>
+                    {/* Face-down cards for opponents */}
+                    <div className="w-6 h-8 bg-gray-700 rounded border border-gray-500 shadow"></div>
+                    <div className="w-6 h-8 bg-gray-700 rounded border border-gray-500 shadow"></div>
+                  </>
+                )
+              : (
+                  // Reveal cards at showdown
+                  (occupant.hand || []).map((card, i) => (
+                    <div
+                      key={i}
+                      className={`w-6 h-8 rounded bg-white flex items-center justify-center
+                        text-[10px] font-bold shadow 
+                        ${
+                          card.suit === "♥" || card.suit === "♦"
+                            ? "text-red-600"
+                            : "text-black"
+                        }
+                      `}
+                    >
+                      {card.value}
+                      {card.suit}
+                    </div>
+                  ))
+                )}
+          </div>
+
+          {/* Last action line */}
+          {occupant.lastAction && (
+            <div className="text-[9px] text-gray-300 italic truncate max-w-[100px]">
+              {occupant.lastAction}
+            </div>
+          )}
+
+          {/* ✅ Progress bar under the player div */}
+          {isPlayer && isMyTurn && (
+            <div className="mt-2 w-full text-center">
+              <div className="bg-yellow-400 text-black px-3 py-1 rounded-t-lg font-bold shadow-lg border-x-2 border-t-2 border-yellow-600 text-[11px]">
+                Your Turn ({turnTimer}s)
+              </div>
+              <div className="h-2 bg-yellow-800 rounded-b-lg overflow-hidden">
+                <div
+                  className="h-full bg-yellow-300 transition-all duration-1000"
+                  style={{ width: `${(turnTimer / 60) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <button
+          onClick={() => handleSeatClick(seatIdx)}
+          className="w-[100px] h-[40px] bg-slate-600/40 text-xs rounded-full border border-slate-400 hover:bg-slate-500/70 pointer-events-auto"
+        >
+          + Seat
+        </button>
       )}
-</div>
+    </div>
+  );
+})}
 
-
-    {/* Last action line */}
-    {occupant.lastAction && (
-      <div className="text-[9px] text-gray-300 italic truncate max-w-[100px]">
-        {occupant.lastAction}
-      </div>
-    )}
-  </div>
-) : (
-  <button
-    onClick={() => handleSeatClick(seatIdx)}
-    className="w-[100px] h-[40px] bg-slate-600/40 text-xs rounded-full border border-slate-400 hover:bg-slate-500/70 pointer-events-auto"
-  >
-    + Seat
-  </button>
-)}
-
-      </div>
-    );
-  })}
 
  {/* 💰 Chips displayed relative to table */}
 {game?.players.map((p) => {
@@ -940,11 +1040,6 @@ const hasBetThisRound =
 })}
 
 </div>
-
-
-      <div className="mb-4">
-        Your Best Hand: {evaluateHand(game?.players?.find(p => p.id === "player")?.hand || [], game?.community || [])}
-      </div>
 
       {/* Seat Modal */}
       {seatModalOpen && (
