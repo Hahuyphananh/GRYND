@@ -175,14 +175,21 @@ function MainComponent() {
   };
 
   return (
-    <div className="min-h-screen bg-[#003366]">
+   <div className="animated-bg">
       <NavigationBar currentPath="/" />
 
       <section className="bg-gradient-to-r from-[#003366] to-[#004080] px-4 py-20 mt-8">
         <div className="mx-auto max-w-7xl text-center">
-          <h1 className="mb-4 text-4xl font-bold text-[#FFD700] md:text-6xl">
-            Pariez sur vos Sports Préférés et Jouez au Casino
-          </h1>
+      <h1
+  className="mb-4 text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text 
+  bg-gradient-to-r from-yellow-300 via-yellow-400 to-yellow-300
+  drop-shadow-[0_0_8px_rgba(255,215,0,0.6)] tracking-widest uppercase 
+  animate-[shimmerGradient_8s_ease-in-out_infinite]"
+  style={{ backgroundSize: "200% auto" }}
+>
+  Pariez sur vos Sports Préférés et Jouez au Casino
+</h1>
+
           <p className="mb-8 text-xl text-white">
             Des cotes compétitives, des paris en direct, des jeux de casino et
             des récompenses exclusives

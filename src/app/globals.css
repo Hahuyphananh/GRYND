@@ -9,3 +9,39 @@
 .animate-glow {
   animation: glow 1s ease-in-out infinite;
 }
+
+@keyframes shimmerElegant {
+  0% {
+    background-position: -100% center;
+    text-shadow: 0 0 6px rgba(255, 215, 0, 0.5);
+  }
+  50% {
+    background-position: 100% center;
+    text-shadow: 0 0 12px rgba(255, 200, 50, 0.7), 0 0 20px rgba(255, 180, 0, 0.5);
+  }
+  100% {
+    background-position: -100% center;
+    text-shadow: 0 0 6px rgba(255, 215, 0, 0.5);
+  }
+}
+
+.animate-shimmer-elegant {
+  background-size: 150% auto;
+  animation: shimmerElegant 6s ease-in-out infinite;
+}
+
+/* Smooth animated background gradient */
+.animated-bg {
+  min-height: 100vh; /* Full page height */
+  background: linear-gradient(270deg, #003366, #004080, #003366);
+  background-size: 600% 600%;
+  animation: gradientBG 30s ease infinite;
+}
+
+@keyframes gradientBG {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+
