@@ -65,6 +65,7 @@ export default function PokerPage() {
   const [isProcessingTurn, setIsProcessingTurn] = useState(false);
   const [turnTimer, setTurnTimer] = useState(60);
 const [isMyTurn, setIsMyTurn] = useState(false);
+const [publicGameCode, setPublicGameCode] = useState<string | null>(null);
 
   // UI modal / seat state
   const [seatModalOpen, setSeatModalOpen] = useState(false);
@@ -93,10 +94,26 @@ const [isMyTurn, setIsMyTurn] = useState(false);
     }
   };
 
-  useEffect(() => {
-    fetchUserTokens();
-  }, []);
   
+  const [availablePublicGames, setAvailablePublicGames] = useState<number>(0);
+
+const fetchPublicGamesCount = async () => {
+  try {
+    const res = await fetch("/api/poker/public-games");
+    const data = await res.json();
+    setAvailablePublicGames(data.count || 0);
+  } catch (err) {
+    console.error("Error fetching public games:", err);
+    setAvailablePublicGames(0);
+  }
+};
+
+useEffect(() => {
+  fetchUserTokens();
+  fetchPublicGamesCount();
+}, []);
+
+
 // Turn timer effect — runs whenever the current turn changes
 useEffect(() => {
   if (!game) return;
@@ -575,28 +592,36 @@ setGame({
   }
 
   // ---- Seat click: open modal to add AI or invite (we only do AI add now) ----
-  function handleSeatClick(seatIndex: number) {
-    if (!game) {
-      // if no game yet, user should create game first
-      alert("Create a game first (enter your name and press Create Game).");
-      return;
-    }
-    // only allow seat changes while waiting (lobby)
-    if (!game.waiting) {
-      alert("You can only add AIs in the lobby before the game starts.");
-      return;
-    }
-    // check if seat occupied
-    const occupied = game.players.some(p => p.seatIndex === seatIndex);
-    if (occupied) {
-      alert("Seat already taken.");
-      return;
-    }
-    setSelectedSeat(seatIndex);
-    setAiNameInput("");
-    setAiStackInput(1000);
-    setSeatModalOpen(true);
+ function handleSeatClick(seatIndex: number) {
+  if (!game) {
+    alert("Create or join a game first.");
+    return;
   }
+
+  // 🔒 Prevent seat adding in public games
+  if (!isPrivate) {
+    alert("Only the host can add seats in public games.");
+    return;
+  }
+
+  // only allow seat changes while waiting (lobby)
+  if (!game.waiting) {
+    alert("You can only add AIs before the game starts.");
+    return;
+  }
+
+  const occupied = game.players.some(p => p.seatIndex === seatIndex);
+  if (occupied) {
+    alert("Seat already taken.");
+    return;
+  }
+
+  setSelectedSeat(seatIndex);
+  setAiNameInput("");
+  setAiStackInput(1000);
+  setSeatModalOpen(true);
+}
+
 
   function addAiToSeat() {
     if (!game || selectedSeat === null) return;
@@ -631,8 +656,24 @@ const hasBetThisRound =
   if (!game) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+        <div className="absolute top-4 left-4">
+  <a href="/casino">
+    <button className="bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-2 rounded font-bold transition">
+      ← Return to Casino
+    </button>
+  </a>
+</div>
+
         <div className="p-6 bg-slate-800 rounded shadow w-96 text-center mb-4">
           <h1 className="text-2xl mb-4">Create Game</h1>
+{availablePublicGames > 0 ? (
+  <p className="text-green-400 mb-2">
+    {availablePublicGames} Public Game{availablePublicGames > 1 ? "s" : ""} Available
+  </p>
+) : (
+  <p className="text-gray-400 mb-2">No public games available</p>
+)}
+
 
           <input
             placeholder="Your display name"
@@ -665,12 +706,18 @@ const hasBetThisRound =
             Join Game
           </button>
 
-          <button
-            onClick={joinPublicGame}
-            className="bg-blue-500 px-4 py-2 rounded w-full font-bold mb-2"
-          >
-            Join Public Game
-          </button>
+   <button
+  onClick={availablePublicGames > 0 ? joinPublicGame : undefined}
+  disabled={availablePublicGames === 0}
+  className={`px-4 py-2 rounded w-full font-bold mb-2 transition ${
+    availablePublicGames > 0
+      ? "bg-blue-500 hover:bg-blue-400"
+      : "bg-gray-500 cursor-not-allowed text-gray-300"
+  }`}
+>
+  {availablePublicGames > 0 ? "Join Public Game" : "No Public Game Available"}
+</button>
+
 
           <a href="/casino/poker/">
             <button className="bg-red-500 px-4 py-2 rounded w-full font-bold mb-2">Retour</button>
@@ -683,17 +730,25 @@ const hasBetThisRound =
   // main UI when game exists
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6">
-      <div className="absolute top-4 left-4">
-        <button
-          onClick={() => {
-            if (game?.stage === "showdown") window.location.href = "/casino";
-            else alert("You can only return to the casino after the hand ends!");
-          }}
-          className={`px-4 py-2 rounded font-bold transition ${game?.stage === "showdown" ? "bg-yellow-500 text-black hover:bg-yellow-400" : "bg-gray-500 text-gray-300 cursor-not-allowed"}`}
-        >
-          ← Return to Casino
-        </button>
-      </div>
+     <div className="absolute top-4 left-4">
+  <button
+    onClick={() => {
+      if (game?.stage === "showdown" || game?.waiting) {
+        setGame(null); // go back to form page
+      } else {
+        alert("You can only return to the form after the hand ends!");
+      }
+    }}
+    className={`px-4 py-2 rounded font-bold transition ${
+      game?.stage === "showdown" || game?.waiting
+        ? "bg-yellow-500 text-black hover:bg-yellow-400"
+        : "bg-gray-500 text-gray-300 cursor-not-allowed"
+    }`}
+  >
+    ← Return
+  </button>
+</div>
+
 
       <h1 className="text-3xl mb-4">Texas Hold'em</h1>
 
