@@ -66,6 +66,7 @@ export default function PokerPage() {
   const [turnTimer, setTurnTimer] = useState(60);
 const [isMyTurn, setIsMyTurn] = useState(false);
 const [publicGameCode, setPublicGameCode] = useState<string | null>(null);
+const [showJoinForm, setShowJoinForm] = useState(false);
 
   // UI modal / seat state
   const [seatModalOpen, setSeatModalOpen] = useState(false);
@@ -652,6 +653,46 @@ const hasBetThisRound =
   game.players.some((p) => p.currentBet > 0 && !p.hasFolded) &&
   game.stage !== "pre-flop";
 
+if (showJoinForm) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+      <div className="absolute top-4 left-4">
+        <button
+          onClick={() => setShowJoinForm(false)}
+          className="bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-2 rounded font-bold transition"
+        >
+          ← Back
+        </button>
+      </div>
+
+      <div className="p-6 bg-slate-800 rounded shadow w-96 text-center">
+        <h1 className="text-2xl mb-4">Join a Private Game</h1>
+
+        <input
+          placeholder="Enter Invite Code"
+          value={inviteCode}
+          onChange={(e) => setInviteCode(e.target.value)}
+          className="w-full p-2 rounded mb-3 text-black"
+        />
+
+        <button
+          onClick={joinGame}
+          className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
+        >
+          Join Game
+        </button>
+
+        <button
+          onClick={() => setShowJoinForm(false)}
+          className="bg-red-500 px-4 py-2 rounded w-full font-bold"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
   // ==== RENDER ====
   if (!game) {
     return (
@@ -665,7 +706,16 @@ const hasBetThisRound =
 </div>
 
         <div className="p-6 bg-slate-800 rounded shadow w-96 text-center mb-4">
-          <h1 className="text-2xl mb-4">Create Game</h1>
+    <h1
+  className="text-2xl mb-4 font-extrabold text-transparent bg-clip-text 
+  bg-gradient-to-r from-yellow-300 via-amber-400 to-yellow-300 
+  drop-shadow-[0_0_8px_rgba(255,223,0,0.6)] tracking-widest uppercase animate-shimmer-elegant"
+>
+  ♠ Poker Royale ♠
+</h1>
+
+
+
 {availablePublicGames > 0 ? (
   <p className="text-green-400 mb-2">
     {availablePublicGames} Public Game{availablePublicGames > 1 ? "s" : ""} Available
@@ -700,11 +750,12 @@ const hasBetThisRound =
           </button>
 
           <button
-            onClick={() => setJoiningGame(true)}
-            className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
-          >
-            Join Game
-          </button>
+  onClick={() => setShowJoinForm(true)}
+  className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
+>
+  Join Game
+</button>
+
 
    <button
   onClick={availablePublicGames > 0 ? joinPublicGame : undefined}
