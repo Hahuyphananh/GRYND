@@ -8,29 +8,41 @@ export async function POST(req) {
     const body = await req.json();
     const playerName = body.playerName ?? "Player";
 
-    // 1️⃣ Find a public game that is not full
-    const [game] = await db
+    // 1️⃣ Get all public games that are not full
+    const availableGames = await db
       .select()
       .from(pokerGames)
       .where(
         and(
           eq(pokerGames.isPrivate, false),
-          lt(sql`jsonb_array_length(${pokerGames.players})`, pokerGames.maxPlayers) // ✅ correct length check
+          lt(sql`jsonb_array_length(${pokerGames.players})`, pokerGames.maxPlayers)
         )
-      )
-      .limit(1);
+      );
 
-    if (!game) {
+    if (!availableGames || availableGames.length === 0) {
       return NextResponse.json(
         { error: "No available public games" },
         { status: 404 }
       );
     }
 
-    // 2️⃣ Assign player ID
-    const existingPlayers = Array.isArray(game.players) ? game.players : [];
-    const numJoined = existingPlayers.length;
-    const playerId = `playerjoin${numJoined}`;
+    // 2️⃣ Pick a random available game
+    const randomGame = availableGames[Math.floor(Math.random() * availableGames.length)];
+
+    // 3️⃣ Safely parse existing data
+    const existingPlayers = Array.isArray(randomGame.players) ? randomGame.players : [];
+    const community = Array.isArray(randomGame.community) ? randomGame.community : [];
+
+    // 4️⃣ Prevent duplicate player name in that game
+    if (existingPlayers.some((p) => p.name === playerName)) {
+      return NextResponse.json(
+        { error: "Player name already taken in this game" },
+        { status: 400 }
+      );
+    }
+
+    // 5️⃣ Assign player ID
+    const playerId = `player${existingPlayers.length + 1}`;
 
     const newPlayer = {
       id: playerId,
@@ -46,20 +58,34 @@ export async function POST(req) {
 
     const updatedPlayers = [...existingPlayers, newPlayer];
 
-    // 3️⃣ Update DB
+    // 6️⃣ Update the selected game
     const [updatedGame] = await db
       .update(pokerGames)
-      .set({ players: updatedPlayers })
-      .where(eq(pokerGames.gameCode, game.gameCode))
+      .set({
+        players: updatedPlayers,
+        community,
+        lastUpdated: new Date(),
+      })
+      .where(eq(pokerGames.gameCode, randomGame.gameCode))
       .returning();
+
+    // 7️⃣ Return safe, full response
+    const safeGame = {
+      ...updatedGame,
+      players: updatedPlayers,
+      community,
+      pot: updatedGame.pot ?? 0,
+      deck: updatedGame.deck ?? [],
+      stage: updatedGame.stage ?? "pre-flop",
+    };
 
     return NextResponse.json({
       success: true,
-      game: updatedGame,
-      gameCode: updatedGame.gameCode,
+      game: safeGame,
+      gameCode: safeGame.gameCode,
     });
   } catch (err) {
-    console.error("JOIN PUBLIC GAME ERROR", err);
+    console.error("JOIN PUBLIC GAME ERROR:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
