@@ -301,13 +301,14 @@ function MainComponent() {
 
           {/* Bouton More centré sous la grille */}
           <div className="flex justify-center mt-8">
-            <a
-              href="/casino"
-              className="inline-block rounded bg-[#FFD700] px-6 py-3 text-lg font-semibold text-[#003366] hover:bg-[#e6c200] transition-colors"
-            >
-              Plus de jeux
-            </a>
-          </div>
+  <a
+    href="/casino"
+    className="inline-block rounded-lg bg-[#FFD700] px-6 py-3 text-lg font-semibold text-[#003366] transition-all glow-pulse more-hover"
+  >
+    Plus de jeux
+  </a>
+</div>
+
         </section>
 
         <section className="mb-16">
@@ -315,7 +316,7 @@ function MainComponent() {
             <h2 className="text-2xl font-bold text-[#FFD700]">Sports Populaires</h2>
             <button
               onClick={handleLoadSports}
-              className="bg-[#FFD700] text-[#003366] px-4 py-2 rounded hover:bg-[#FFD700]/80"
+              className="inline-block rounded-lg bg-[#FFD700] px-6 py-3 text-lg font-semibold text-[#003366] transition-all glow-pulse more-hover"
             >
               Charger les Sports
             </button>
@@ -341,7 +342,7 @@ function MainComponent() {
             <h2 className="text-2xl font-bold text-[#FFD700]">Matchs du Jour</h2>
             <button
               onClick={handleLoadEvents}
-              className="bg-[#FFD700] text-[#003366] px-4 py-2 rounded hover:bg-[#FFD700]/80"
+              className="inline-block rounded-lg bg-[#FFD700] px-6 py-3 text-lg font-semibold text-[#003366] transition-all glow-pulse more-hover"
             >
               Charger les Événements
             </button>
