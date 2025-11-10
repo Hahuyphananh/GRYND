@@ -27,19 +27,20 @@ function MainComponent() {
 
       <div className="mx-auto max-w-7xl px-4 py-12">
         <section className="mb-16 text-center">
-          <h1 className="mb-4 text-4xl font-bold text-[#FFD700] md:text-6xl">
-            Casino en Ligne
-          </h1>
-          <p className="mb-8 text-xl text-white">
-            Découvrez nos jeux de casino et tentez votre chance
-          </p>
-          {error && (
-            <div className="mx-auto mb-4 max-w-md rounded-lg bg-red-500/10 p-3 text-sm text-red-500">
-              {error}
-            </div>
-          )}
-          {user && <></>}
-        </section>
+  <h1 className="mb-4 text-4xl font-bold text-[#FFD700] md:text-6xl fade-slide-up shimmer-heading">
+    Casino en Ligne
+  </h1>
+  <p className="mb-8 text-xl text-white fade-slide-up" style={{ animationDelay: '0.3s' }}>
+    Découvrez nos jeux de casino et tentez votre chance
+  </p>
+  {error && (
+    <div className="mx-auto mb-4 max-w-md rounded-lg bg-red-500/10 p-3 text-sm text-red-500 fade-slide-up" style={{ animationDelay: '0.6s' }}>
+      {error}
+    </div>
+  )}
+  {user && <></>}
+</section>
+
 
         <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
           <a

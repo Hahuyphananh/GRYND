@@ -194,20 +194,21 @@ function MainComponent() {
             Des cotes compétitives, des paris en direct, des jeux de casino et
             des récompenses exclusives
           </p>
-          <div className="flex flex-col space-y-4 sm:flex-row sm:justify-center sm:space-x-4 sm:space-y-0">
-            <a
-              href="/account/signup"
-              className="inline-block rounded-lg bg-[#FFD700] px-8 py-4 text-lg font-medium text-[#003366] transition-colors hover:bg-[#FFD700]/80"
-            >
-              Commencer à Parier
-            </a>
-            <a
-              href="/casino"
-              className="inline-block rounded-lg border-2 border-[#FFD700] px-8 py-4 text-lg font-medium text-[#FFD700] transition-colors hover:bg-[#FFD700] hover:text-[#003366]"
-            >
-              Découvrir le Casino
-            </a>
-          </div>
+   <div className="flex flex-col space-y-4 sm:flex-row sm:justify-center sm:space-x-4 sm:space-y-0">
+  <a
+    href="/sign-up"
+    className="inline-block rounded-lg bg-[#FFD700] px-8 py-4 text-lg font-medium text-[#003366] transition-all glow-pulse commencer-hover"
+  >
+    Commencer à Parier
+  </a>
+  <a
+    href="/casino"
+    className="inline-block rounded-lg border-2 border-[#FFD700] px-8 py-4 text-lg font-medium text-[#FFD700] transition-all glow-pulse decouvrir-hover"
+  >
+    Découvrir le Casino
+  </a>
+</div>
+
         </div>
       </section>
 
