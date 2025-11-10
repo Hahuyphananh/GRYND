@@ -44,4 +44,122 @@
   100% { background-position: 0% 50%; }
 }
 
+/* Button bounce/shimmer animation */
+@keyframes bounceScale {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+/* Gradient hover animation for casino button */
+@keyframes gradientHover {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animated-button {
+  animation: bounceScale 2s infinite;
+}
+
+.gradient-hover {
+  background: linear-gradient(90deg, #FFD700, #FFEA00, #FFD700);
+  background-size: 200% 200%;
+  transition: all 0.3s ease;
+}
+
+.gradient-hover:hover {
+  animation: gradientHover 3s ease infinite;
+  color: #003366 !important;
+}
+
+/* Subtle glow + pulse animation */
+@keyframes pulseGlow {
+  0% {
+    box-shadow: 0 0 0px rgba(255, 215, 0, 0.5);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(255, 215, 0, 0.7);
+    transform: scale(1.03);
+  }
+  100% {
+    box-shadow: 0 0 0px rgba(255, 215, 0, 0.5);
+    transform: scale(1);
+  }
+}
+
+/* Add glow + pulse to buttons */
+.glow-pulse {
+  animation: pulseGlow 2s infinite ease-in-out;
+  transition: all 0.3s ease;
+}
+
+/* Commencer à Parier hover gradient with smooth transition */
+.commencer-hover {
+  background: linear-gradient(135deg, #FFD700, #FFD700); /* solid initial color as gradient */
+  background-size: 200% 200%;
+  transition: background 0.5s ease, color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.commencer-hover:hover {
+  background: linear-gradient(135deg, #FFD700, #FFB700, #FFC34D);
+}
+
+
+/* Découvrir le Casino hover gradient */
+.decouvrir-hover:hover {
+  background: linear-gradient(135deg, #FFB347, #FFCC33, #FFD700);
+  color: #003366;
+}
+
+/* Subtle glow + pulse animation */
+@keyframes pulseGlow {
+  0% {
+    box-shadow: 0 0 0px rgba(255, 215, 0, 0.5);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(255, 215, 0, 0.7);
+    transform: scale(1.03);
+  }
+  100% {
+    box-shadow: 0 0 0px rgba(255, 215, 0, 0.5);
+    transform: scale(1);
+  }
+}
+
+.glow-pulse {
+  animation: pulseGlow 2s infinite ease-in-out;
+  transition: all 0.3s ease;
+}
+
+/* Fade in + slide up */
+@keyframes fadeSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-slide-up {
+  animation: fadeSlideUp 1s ease-out forwards;
+}
+
+/* Optional: subtle shimmer glow for headings */
+@keyframes textGlowShimmer {
+  0%, 100% {
+    text-shadow: 0 0 4px rgba(255, 215, 0, 0.5);
+  }
+  50% {
+    text-shadow: 0 0 12px rgba(255, 215, 0, 0.7), 0 0 20px rgba(255, 180, 0, 0.5);
+  }
+}
+
+.shimmer-heading {
+  animation: textGlowShimmer 3s ease-in-out infinite;
+}
 
