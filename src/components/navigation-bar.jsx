@@ -1,8 +1,10 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useUser, useAuth, SignOutButton } from '@clerk/nextjs';
-import Link from 'next/link';
 import AddFundsModal from './AddFundsModal';
+import LogoSmiley from "../images/logo.png"; // Adjust the path if needed
+import Image from "next/image";
+import Link from "next/link";
 
 function NavigationBar({ currentPath }) {
   const { isLoaded, isSignedIn } = useUser();
@@ -78,9 +80,15 @@ function NavigationBar({ currentPath }) {
       <nav className="fixed top-0 left-0 right-0 z-40 bg-[#003366] border-b border-[#FFD700]/20">
         <div className="mx-auto max-w-7xl px-4">
           <div className="flex h-16 items-center justify-between">
-            <Link href="/" className="text-xl font-bold text-[#FFD700]">
-              GoonBet
-            </Link>
+          <Link href="/" className="flex items-center space-x-2">
+ <Image
+  src={LogoSmiley}
+  alt="GoonBet Logo"
+  width={150}
+  height={60}
+  className="drop-shadow-[0_0_8px_rgba(255,215,0,0.3)] rounded-lg object-contain"
+/>
+    </Link>
 
             <div className="hidden md:flex items-center space-x-4">
               {["/", "/sport", "/casino", "/rankings"].map((path) => (

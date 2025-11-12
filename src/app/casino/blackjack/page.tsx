@@ -283,82 +283,98 @@ export default function BlackjackPage() {
           {message && <div className="text-center text-xl text-[#FFD700] mb-4">{message}</div>}
 
           {gameState === "betting" ? (
-            <div className="flex flex-col items-center space-y-4">
-              <div className="flex flex-col items-center">
-                <label className="text-[#FFD700] mb-2 text-lg font-semibold">
-                  Entrez votre mise :
-                </label>
+  <div className="flex flex-col items-center space-y-4">
+    <div className="flex flex-col items-center">
+      <label className="text-[#FFD700] mb-2 text-lg font-semibold">
+        Entrez votre mise :
+      </label>
 
-                <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    min={1}
-                    max={userTokens ?? 999999}
-                    value={bet}
-                    onChange={(e) =>
-                      setBet(Math.min(Number(e.target.value), userTokens ?? Number(e.target.value)))
-                    }
-                    className="text-center text-[#003366] font-semibold rounded-lg px-4 py-2 w-32 outline-none border-2 border-[#FFD700] bg-[#fff9d6] focus:ring-2 focus:ring-[#FFD700]"
-                  />
+      <div className="flex items-center gap-3">
+        <input
+          type="number"
+          min={1}
+          max={userTokens ?? 999999}
+          value={bet}
+          onChange={(e) =>
+            setBet(Math.min(Number(e.target.value), userTokens ?? Number(e.target.value)))
+          }
+          className="text-center text-[#003366] font-semibold rounded-lg px-4 py-2 w-32 outline-none border-2 border-[#FFD700] bg-[#fff9d6] focus:ring-2 focus:ring-[#FFD700]"
+        />
 
-                  <button
-                    onClick={() => {
-                      if (userTokens) setBet(Math.max(1, Math.floor(userTokens / 2)));
-                    }}
-                    className="bg-[#FFD700] px-3 py-1 rounded text-[#003366] font-semibold hover:bg-[#ffec80] transition"
-                  >
-                    ½
-                  </button>
+        <button
+          onClick={() => {
+            if (userTokens) setBet(Math.max(1, Math.floor(userTokens / 2)));
+          }}
+          className="bg-[#FFD700] px-3 py-1 rounded text-[#003366] font-semibold glow-pulse more-hover"
+        >
+          ½
+        </button>
 
-                  <button
-                    onClick={() => {
-                      if (userTokens) setBet(userTokens);
-                    }}
-                    className="bg-[#FFD700] px-3 py-1 rounded text-[#003366] font-semibold hover:bg-[#ffec80] transition"
-                  >
-                    ALL IN
-                  </button>
-                </div>
+        <button
+          onClick={() => {
+            if (userTokens) setBet(userTokens);
+          }}
+          className="bg-[#FFD700] px-3 py-1 rounded text-[#003366] font-semibold glow-pulse more-hover"
+        >
+          ALL IN
+        </button>
+      </div>
 
-                {userTokens !== null && (
-                  <p className="text-[#FFD700] mt-1 text-sm">
-                    Solde disponible : {userTokens} tokens
-                  </p>
-                )}
-              </div>
+      {userTokens !== null && (
+        <p className="text-[#FFD700] mt-1 text-sm">
+          Solde disponible : {userTokens} tokens
+        </p>
+      )}
+    </div>
 
-              <button
-                onClick={startGame}
-                className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold mt-3 hover:bg-[#ffec80] transition"
-              >
-                Miser
-              </button>
-            </div>
-          ) : (
-            <div className="flex justify-center gap-4 mt-4">
-              <button onClick={hit} className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold">
-                Carte
-              </button>
-              <button onClick={stand} className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold">
-                Rester
-              </button>
-              {canDouble && (
-                <button onClick={doubleDown} className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold">
-                  Double
-                </button>
-              )}
-              {canSplit && (
-                <button onClick={splitHand} className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold">
-                  Split
-                </button>
-              )}
-              {isSplit && (
-                <button onClick={nextSplitHand} className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold">
-                  Next Hand
-                </button>
-              )}
-            </div>
-          )}
+    <button
+      onClick={startGame}
+      className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold mt-3 glow-pulse more-hover animated-button"
+    >
+      Miser
+    </button>
+  </div>
+) : (
+  <div className="flex justify-center gap-4 mt-4 flex-wrap">
+    <button
+      onClick={hit}
+      className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+    >
+      Carte
+    </button>
+    <button
+      onClick={stand}
+      className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+    >
+      Rester
+    </button>
+    {canDouble && (
+      <button
+        onClick={doubleDown}
+        className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+      >
+        Double
+      </button>
+    )}
+    {canSplit && (
+      <button
+        onClick={splitHand}
+        className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+      >
+        Split
+      </button>
+    )}
+    {isSplit && (
+      <button
+        onClick={nextSplitHand}
+        className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+      >
+        Next Hand
+      </button>
+    )}
+  </div>
+)}
+
         </div>
       </div>
     </div>
