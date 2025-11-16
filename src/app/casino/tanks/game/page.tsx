@@ -16,6 +16,15 @@ export default function TanksGamePage() {
   const posRef = useRef(pos);
   posRef.current = pos;
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
+  const MAX_HEALTH = 5;
+const [health, setHealth] = useState(MAX_HEALTH);
+const healthRef = useRef(health);
+healthRef.current = health;
+const [cashOutCountdown, setCashOutCountdown] = useState(0);
+const cashOutCountdownRef = useRef(0);
+cashOutCountdownRef.current = cashOutCountdown;
+
+const lastDamageTimeRef = useRef(Date.now());
 
 
   const [rotation, setRotation] = useState(0);
@@ -91,6 +100,23 @@ export default function TanksGamePage() {
     };
   }, []);
 
+  /* ---------------- Mouse movement for rotation only ---------------- */
+useEffect(() => {
+  const handleMouseMove = (e: MouseEvent) => {
+    // Tank is always in the center of the screen visually
+    const angle =
+      Math.atan2(e.clientY - window.innerHeight / 2, e.clientX - window.innerWidth / 2) * 
+      (180 / Math.PI) + 90;
+
+    rotationRef.current = angle;
+    setRotation(angle);
+  };
+
+  window.addEventListener("mousemove", handleMouseMove);
+  return () => window.removeEventListener("mousemove", handleMouseMove);
+}, []);
+
+
   /* ---------------- Mouse click to shoot ---------------- */
   useEffect(() => {
     const handleMouse = (e: MouseEvent) => {
@@ -116,6 +142,59 @@ export default function TanksGamePage() {
     window.addEventListener("mousedown", handleMouse);
     return () => window.removeEventListener("mousedown", handleMouse);
   }, []);
+
+function CashOutButton() {
+  const [countdown, setCountdown] = useState(0);
+  const countdownRef = useRef<number>(0);
+  const rafRef = useRef<number | undefined>(undefined);
+
+  const handleCashOut = () => {
+    if (countdownRef.current > 0) return; // already counting down
+console.log("cashOutCountdown", cashOutCountdown);
+
+    const duration = 5; // 5 seconds
+    const startTime = performance.now();
+    countdownRef.current = duration;
+    setCountdown(duration);
+    setCashOutCountdown(duration);
+
+    const animate = (time: number) => {
+      const elapsed = (time - startTime) / 1000;
+      const remaining = Math.max(0, duration - elapsed);
+      countdownRef.current = remaining;
+      setCountdown(remaining);
+      setCashOutCountdown(remaining);
+
+      if (remaining > 0) {
+        rafRef.current = requestAnimationFrame(animate);
+      } else {
+        countdownRef.current = 0;
+        setCashOutCountdown(0);
+        alert("You cashed out!");
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(animate);
+  };
+
+  return (
+    <button
+  onClick={() => {
+    console.log("CashOut button clicked");
+    handleCashOut();
+  }}
+  disabled={countdown > 0}
+  className={`mt-2 w-full p-2 rounded-xl font-bold text-white ${
+    countdown > 0 ? "bg-gray-600 cursor-not-allowed" : "bg-yellow-600 hover:bg-yellow-700"
+  }`}
+>
+  {countdown > 0 ? `Cashing out in ${Math.ceil(countdown)}s` : "Cash Out"}
+</button>
+
+  );
+}
+
+
 
   /* ---------------- Main Game Loop (single RAF) ---------------- */
   useEffect(() => {
@@ -165,10 +244,6 @@ export default function TanksGamePage() {
           posRef.current = newPos;
           setPos(newPos);
         }
-
-        const angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
-        rotationRef.current = angle;
-        setRotation(angle);
       }
 
       // BULLET UPDATE (compute next positions and collisions)
@@ -209,6 +284,31 @@ export default function TanksGamePage() {
       // commit bullets
       bulletsRef.current = nextBullets;
       setBullets(nextBullets);
+
+// PLAYER DAMAGE CHECK (player hit by any bullets)
+for (const b of bulletsRef.current) {
+  // simple circle collision check
+  const dist = Math.hypot(b.x - posRef.current.x, b.y - posRef.current.y);
+  if (dist < 22 /* tank radius */) {
+    // Reduce health and remove bullet
+    setHealth(h => Math.max(0, h - 1));
+    healthRef.current = Math.max(0, healthRef.current - 1);
+    lastDamageTimeRef.current = Date.now();
+
+    // Remove the bullet from nextBullets
+    continue; // bullet disappears on hit
+  }
+}
+
+const timeSinceDamage = Date.now() - lastDamageTimeRef.current;
+if (timeSinceDamage >= 2000 /* 2 minutes = 120000ms */) {
+  // regen linearly over 2 minutes
+  const regenPerMs = MAX_HEALTH / 120000;
+  const newHealth = Math.min(MAX_HEALTH, healthRef.current + regenPerMs * 16); // 16ms per frame approx
+  healthRef.current = newHealth;
+  setHealth(newHealth);
+}
+
 
       requestAnimationFrame(gameLoop);
     }
@@ -252,9 +352,42 @@ export default function TanksGamePage() {
             }}
           />
         ))}
+{/* PLAYER + CASHOUT CIRCLE */}
+<div
+  className="absolute"
+  style={{
+    left: pos.x,
+    top: pos.y,
+    width: 70,
+    height: 70,
+    transform: "translate(-50%, -50%)",
+    pointerEvents: "none", // so circle doesn't block clicks
+  }}
+>
+  {/* CASHOUT CIRCLE */}
+  {cashOutCountdown > 0 && (
+    <svg className="absolute inset-0 w-full h-full">
+      <circle
+        cx={35}
+        cy={35}
+        r={32}
+        stroke="yellow"
+        strokeWidth={20}
+        fill="transparent"
+        strokeDasharray={2 * Math.PI * 32}
+        strokeDashoffset={(1 - cashOutCountdown / 5) * 2 * Math.PI * 32}
+        strokeLinecap="round"
+      />
+    </svg>
+  )}
 
-        {/* PLAYER */}
-        <PlayerTank x={pos.x} y={pos.y} rotation={rotation} />
+  {/* PLAYER TANK */}
+  <PlayerTank x={35} y={35} rotation={rotation} health={health} maxHealth={MAX_HEALTH} />
+</div>
+
+
+
+
 
         {/* BULLETS */}
         {bullets.map((b, i) => (
@@ -267,10 +400,15 @@ export default function TanksGamePage() {
       </div>
 
       {/* UI */}
-      <div className="absolute top-4 left-4 p-4 bg-black/40 rounded-xl text-white">
-        <p className="text-lg font-bold">Bounty: $0</p>
-        <p className="text-sm text-gray-300">(frontend only)</p>
-      </div>
+      /* ---------------- UI ---------------- */
+<div className="absolute top-4 left-4 p-4 bg-black/40 rounded-xl text-white flex flex-col gap-2 z-50">
+  <p className="text-lg font-bold">Bounty: $0</p>
+  <p className="text-sm text-gray-300">(frontend only)</p>
+
+  {/* Cash Out Button */}
+  <CashOutButton />
+</div>
+
     </div>
   );
 }

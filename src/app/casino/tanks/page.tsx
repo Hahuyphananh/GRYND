@@ -8,7 +8,15 @@ export default function TanksLobby() {
   const [wager, setWager] = useState(10);
 
   return (
-    <div className="w-full h-screen bg-gradient-to-br from-gray-900 to-black flex flex-col items-center justify-center text-white p-6">
+    <div className="w-full h-screen bg-gradient-to-br from-gray-900 to-black flex flex-col items-center justify-center text-white p-6 relative">
+      {/* Return to Casino button */}
+      <Link
+        href="/casino"
+        className="absolute top-4 left-4 px-4 py-2 bg-gray-700/80 hover:bg-gray-600 rounded-xl font-bold text-sm"
+      >
+        Return to Casino
+      </Link>
+
       <motion.div
         className="p-8 bg-gray-800/50 rounded-2xl shadow-2xl w-full max-w-md"
         initial={{ opacity: 0, y: 20 }}
