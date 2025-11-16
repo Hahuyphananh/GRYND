@@ -1,3 +1,4 @@
+//get-bet-history/route.ts
 import { NextResponse } from "next/server";
 import { db } from "../../../db";
 import { eq, or } from "drizzle-orm";
