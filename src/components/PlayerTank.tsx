@@ -1,11 +1,15 @@
-export default function PlayerTank({
+export default function PlayerTank({ 
   x,
   y,
   rotation,
+  health,
+  maxHealth
 }: {
   x: number;
   y: number;
   rotation: number;
+  health: number;
+  maxHealth: number;
 }) {
   const size = 50;
 
@@ -18,18 +22,24 @@ export default function PlayerTank({
         width: size,
         height: size,
         transform: `rotate(${rotation}deg)`,
-        transformOrigin: "center", // <-- this fixes rotation
+        transformOrigin: "center",
       }}
     >
       {/* Tank body */}
       <div className="w-full h-full bg-green-600 rounded-md border-2 border-black relative">
-        {/* Barrel */}
+        {/* Barrel (shorter now) */}
         <div
-          className="w-2 h-10 bg-black absolute top-0 left-1/2 -translate-x-1/2 rounded"
-          style={{
-            transformOrigin: "bottom center", // barrel rotates around its base if needed
-          }}
-        ></div>
+          className="w-2 h-6 bg-black absolute top-0 left-1/2 -translate-x-1/2 rounded"
+          style={{ transformOrigin: "bottom center" }}
+        />
+
+        {/* Health Bar (inside tank, below barrel) */}
+        <div className="absolute top-[30px] left-2 right-2 h-3 bg-gray-700 rounded">
+          <div
+            className="h-3 bg-red-500 rounded"
+            style={{ width: `${(health / maxHealth) * 100}%` }}
+          />
+        </div>
       </div>
     </div>
   );
