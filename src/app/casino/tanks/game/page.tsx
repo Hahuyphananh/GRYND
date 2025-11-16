@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import PlayerTank from "../../../../components/PlayerTank";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 export default function TanksGamePage() {
   const [pos, setPos] = useState({ x: 1500, y: 1500 });
@@ -40,7 +40,6 @@ export default function TanksGamePage() {
   const MAP_HEIGHT = 3000;
 
   const [matchId, setMatchId] = useState<string | null>(null);
-  const searchParams = useSearchParams(); // keep it, but only use inside useEffect
 
   const rocksRef = useRef(
     Array.from({ length: 40 }).map((_, i) => {
@@ -76,27 +75,30 @@ export default function TanksGamePage() {
   }
 
   // fetch matchId and bounty only on client
-  useEffect(() => {
-    const id = searchParams.get("matchId");
-    setMatchId(id);
+useEffect(() => {
+  // only run on client
+  const urlParams = new URLSearchParams(window.location.search);
+  const id = urlParams.get("matchId");
+  setMatchId(id);
 
-    if (!id) return;
+  if (!id) return;
 
-    async function fetchMatch() {
-      try {
-        const res = await fetch(`/api/tanks/get-match?matchId=${id}`);
-        if (!res.ok) return console.error("Failed to fetch match:", res.status);
-        const data = await res.json();
-        if (data?.bounty !== undefined && data?.bounty !== null) {
-          setBounty(Number(data.bounty));
-          bountyRef.current = Number(data.bounty);
-        }
-      } catch (err) {
-        console.error("Error fetching match:", err);
+  async function fetchMatch() {
+    try {
+      const res = await fetch(`/api/tanks/get-match?matchId=${id}`);
+      if (!res.ok) return console.error("Failed to fetch match:", res.status);
+      const data = await res.json();
+      if (data?.bounty !== undefined && data?.bounty !== null) {
+        setBounty(Number(data.bounty));
+        bountyRef.current = Number(data.bounty);
       }
+    } catch (err) {
+      console.error("Error fetching match:", err);
     }
-    fetchMatch();
-  }, [searchParams]);
+  }
+  fetchMatch();
+}, []); // note: empty dependency array
+
 
   // Keyboard input
   useEffect(() => {
