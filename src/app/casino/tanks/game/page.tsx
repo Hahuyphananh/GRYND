@@ -39,8 +39,8 @@ export default function TanksGamePage() {
   const MAP_WIDTH = 3000;
   const MAP_HEIGHT = 3000;
 
-  const searchParams = useSearchParams();
-  const matchId = searchParams.get("matchId");
+  const [matchId, setMatchId] = useState<string | null>(null);
+  const searchParams = useSearchParams(); // keep it, but only use inside useEffect
 
   const rocksRef = useRef(
     Array.from({ length: 40 }).map((_, i) => {
@@ -75,13 +75,16 @@ export default function TanksGamePage() {
     return dx * dx + dy * dy <= r * r;
   }
 
+  // fetch matchId and bounty only on client
   useEffect(() => {
-    const matchId = searchParams.get("matchId");
-    if (!matchId) return;
+    const id = searchParams.get("matchId");
+    setMatchId(id);
+
+    if (!id) return;
 
     async function fetchMatch() {
       try {
-        const res = await fetch(`/api/tanks/get-match?matchId=${matchId}`);
+        const res = await fetch(`/api/tanks/get-match?matchId=${id}`);
         if (!res.ok) return console.error("Failed to fetch match:", res.status);
         const data = await res.json();
         if (data?.bounty !== undefined && data?.bounty !== null) {
@@ -138,7 +141,64 @@ export default function TanksGamePage() {
     return () => window.removeEventListener("mousedown", handleMouse);
   }, []);
 
-  function CashOutButton() {
+  // Game loop
+  useEffect(() => {
+    const TANK_RADIUS = 22;
+    function gameLoop() {
+      let dx = 0, dy = 0;
+      if (keys.current["w"]) dy -= 1;
+      if (keys.current["s"]) dy += 1;
+      if (keys.current["a"]) dx -= 1;
+      if (keys.current["d"]) dx += 1;
+      if (dx && dy) { dx *= 0.7; dy *= 0.7; }
+
+      const curPos = posRef.current;
+      const nextX = curPos.x + dx * speed;
+      const nextY = curPos.y + dy * speed;
+
+      let blocked = false;
+      for (const rock of rocks) {
+        const cx = rock.x + rock.size / 2;
+        const cy = rock.y + rock.size / 2;
+        const rockR = rock.size / 2;
+        if (Math.hypot(nextX - cx, nextY - cy) < rockR + TANK_RADIUS) blocked = true;
+      }
+
+      if (!blocked) {
+        const newPos = {
+          x: Math.min(MAP_WIDTH, Math.max(0, nextX)),
+          y: Math.min(MAP_HEIGHT, Math.max(0, nextY)),
+        };
+        posRef.current = newPos;
+        setPos(newPos);
+      }
+
+      const nextBullets = bulletsRef.current.filter(b => {
+        const rad = (b.angle - 90) * (Math.PI / 180);
+        const nx = b.x + Math.cos(rad) * BULLET_SPEED;
+        const ny = b.y + Math.sin(rad) * BULLET_SPEED;
+        let hit = rocks.some(r => lineIntersectsCircle(b.x, b.y, nx, ny, r.x + r.size/2, r.y + r.size/2, r.size/2));
+        if (!hit && nx >= 0 && nx <= MAP_WIDTH && ny >= 0 && ny <= MAP_HEIGHT) {
+          b.x = nx; b.y = ny;
+          return true;
+        }
+        return false;
+      });
+
+      bulletsRef.current = nextBullets;
+      setBullets(nextBullets);
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    const raf = requestAnimationFrame(gameLoop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const cameraX = typeof window !== "undefined" ? window.innerWidth / 2 - pos.x : 0;
+  const cameraY = typeof window !== "undefined" ? window.innerHeight / 2 - pos.y : 0;
+
+  const CashOutButton = () => {
     const [countdown, setCountdown] = useState(0);
     const countdownRef = useRef(0);
     const rafRef = useRef<number | null>(null);
@@ -196,10 +256,7 @@ export default function TanksGamePage() {
     return (
       <button
         style={{ pointerEvents: "auto" }}
-        onClick={() => {
-          console.log("CashOut button clicked");
-          handleCashOut();
-        }}
+        onClick={handleCashOut}
         disabled={countdown > 0}
         className={`mt-2 w-full p-2 rounded-xl font-bold text-white ${
           countdown > 0 ? "bg-gray-600 cursor-not-allowed" : "bg-yellow-600 hover:bg-yellow-700"
@@ -208,65 +265,7 @@ export default function TanksGamePage() {
         {countdown > 0 ? `Cashing out in ${Math.ceil(countdown)}s` : "Cash Out"}
       </button>
     );
-  }
-
-  // Game loop (unchanged)
-  useEffect(() => {
-    const TANK_RADIUS = 22;
-    function gameLoop() {
-      let dx = 0, dy = 0;
-      if (keys.current["w"]) dy -= 1;
-      if (keys.current["s"]) dy += 1;
-      if (keys.current["a"]) dx -= 1;
-      if (keys.current["d"]) dx += 1;
-      if (dx && dy) { dx *= 0.7; dy *= 0.7; }
-
-      const curPos = posRef.current;
-      const nextX = curPos.x + dx * speed;
-      const nextY = curPos.y + dy * speed;
-
-      let blocked = false;
-      for (const rock of rocks) {
-        const cx = rock.x + rock.size / 2;
-        const cy = rock.y + rock.size / 2;
-        const rockR = rock.size / 2;
-        if (Math.hypot(nextX - cx, nextY - cy) < rockR + TANK_RADIUS) blocked = true;
-      }
-
-      if (!blocked) {
-        const newPos = {
-          x: Math.min(MAP_WIDTH, Math.max(0, nextX)),
-          y: Math.min(MAP_HEIGHT, Math.max(0, nextY)),
-        };
-        posRef.current = newPos;
-        setPos(newPos);
-      }
-
-      // Update bullets
-      const nextBullets = bulletsRef.current.filter(b => {
-        const rad = (b.angle - 90) * (Math.PI / 180);
-        const nx = b.x + Math.cos(rad) * BULLET_SPEED;
-        const ny = b.y + Math.sin(rad) * BULLET_SPEED;
-        let hit = rocks.some(r => lineIntersectsCircle(b.x, b.y, nx, ny, r.x + r.size/2, r.y + r.size/2, r.size/2));
-        if (!hit && nx >= 0 && nx <= MAP_WIDTH && ny >= 0 && ny <= MAP_HEIGHT) {
-          b.x = nx; b.y = ny;
-          return true;
-        }
-        return false;
-      });
-
-      bulletsRef.current = nextBullets;
-      setBullets(nextBullets);
-
-      requestAnimationFrame(gameLoop);
-    }
-
-    const raf = requestAnimationFrame(gameLoop);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  const cameraX = typeof window !== "undefined" ? window.innerWidth / 2 - pos.x : 0;
-  const cameraY = typeof window !== "undefined" ? window.innerHeight / 2 - pos.y : 0;
+  };
 
   return (
     <div className="w-full h-screen overflow-hidden relative bg-black">
