@@ -15,6 +15,13 @@
       "when": 1751403158195,
       "tag": "0001_glossy_smiling_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1763323277982,
+      "tag": "0002_silly_professor_monster",
+      "breakpoints": true
     }
   ]
 }
