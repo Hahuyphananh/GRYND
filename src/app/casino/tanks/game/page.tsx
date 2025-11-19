@@ -100,6 +100,13 @@ export default function TanksGamePage() {
   const bountyRef = useRef(bounty);
   bountyRef.current = bounty;
 
+  const MAX_AMMO = 5;
+const AMMO_RECHARGE_RATE = 1000; // 1 ammo per second
+
+const [ammo, setAmmo] = useState(MAX_AMMO);
+const ammoRef = useRef(ammo);
+ammoRef.current = ammo;
+
   const lastDamageTimeRef = useRef(Date.now());
 
   const [rotation, setRotation] = useState(0);
@@ -162,6 +169,18 @@ export default function TanksGamePage() {
     const dy = py - cy;
     return dx * dx + dy * dy <= r * r;
   }
+
+  useEffect(() => {
+  const interval = setInterval(() => {
+    if (ammoRef.current < MAX_AMMO) {
+      ammoRef.current += 1;
+      setAmmo(ammoRef.current);
+    }
+  }, AMMO_RECHARGE_RATE);
+
+  return () => clearInterval(interval);
+}, []);
+
 
   useEffect(() => {
     const urlParams = new URLSearchParams(
@@ -229,24 +248,32 @@ export default function TanksGamePage() {
   }, []);
 
   useEffect(() => {
-    const handleMouse = (e: MouseEvent) => {
-      if (e.button !== 0) return;
-      const px = posRef.current.x;
-      const py = posRef.current.y;
-      const rot = rotationRef.current;
-      const rad = ((rot - 90) * Math.PI) / 180;
-      const spawnDist = 35;
-      const newBullet = {
-        x: px + Math.cos(rad) * spawnDist,
-        y: py + Math.sin(rad) * spawnDist,
-        angle: rot,
-      };
-      bulletsRef.current = [
-        ...bulletsRef.current,
-        newBullet,
-      ];
-      setBullets(bulletsRef.current);
-    };
+   const handleMouse = (e: MouseEvent) => {
+  if (e.button !== 0) return;
+
+  // 🔫 Prevent shooting if ammo is zero
+  if (ammoRef.current <= 0) return;
+
+  // 🔻 Consume 1 ammo
+  ammoRef.current -= 1;
+  setAmmo(ammoRef.current);
+
+  const px = posRef.current.x;
+  const py = posRef.current.y;
+  const rot = rotationRef.current;
+  const rad = ((rot - 90) * Math.PI) / 180;
+  const spawnDist = 35;
+
+  const newBullet = {
+    x: px + Math.cos(rad) * spawnDist,
+    y: py + Math.sin(rad) * spawnDist,
+    angle: rot,
+  };
+
+  bulletsRef.current = [...bulletsRef.current, newBullet];
+  setBullets(bulletsRef.current);
+};
+
     window.addEventListener("mousedown", handleMouse);
     return () =>
       window.removeEventListener(
@@ -452,6 +479,8 @@ export default function TanksGamePage() {
         <p className="text-lg font-bold">
           Bounty: ${bounty}
         </p>
+
+        <p className="font-bold">Ammo: {ammo}/{MAX_AMMO}</p>
 
         {/* Pass refs properly */}
         <CashOutButton
