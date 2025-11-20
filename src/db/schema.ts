@@ -184,7 +184,6 @@ export const tankMatches = pgTable("tank_matches", {
 });
 
 
-
 export const coinFlipGames = pgTable("coin_flip_games", {
   id: serial("id").primaryKey(),
   player1Id: varchar("player1_id", { length: 255 }).notNull(),
