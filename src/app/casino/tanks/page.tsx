@@ -43,6 +43,33 @@ export default function TanksLobby() {
     if (isSignedIn && user) fetchUserTokens();
   }, [isSignedIn, user]);
 
+
+async function joinGame() {
+  try {
+    setLoading(true);
+
+    const res = await fetch("/api/tanks/join-game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Failed to join game");
+      return;
+    }
+
+    // Redirect to game with the returned matchId
+    router.push(`/casino/tanks/game?matchId=${data.matchId}`);
+  } catch (err) {
+    console.error("Join match error:", err);
+    alert("Server error while joining match");
+  } finally {
+    setLoading(false);
+  }
+}
+
   async function startMatch() {
     if (wager > balance) {
       alert("You do not have enough tokens for this wager.");
@@ -122,6 +149,15 @@ export default function TanksLobby() {
         >
           {loading ? "Starting..." : "Start Game"}
         </motion.button>
+        <motion.button
+  whileTap={{ scale: 0.96 }}
+  onClick={joinGame}
+  disabled={loading}
+  className="block text-center w-full p-3 mt-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-bold cursor-pointer disabled:bg-blue-900"
+>
+  {loading ? "Joining..." : "Join Game"}
+</motion.button>
+
 
         <div className="mt-6 text-center text-gray-400 text-sm">
           Kill players → steal their bounty.<br />Survive 5s to cash out.
