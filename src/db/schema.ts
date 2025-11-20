@@ -166,6 +166,24 @@ export const tankStats = pgTable("tank_stats", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const tankMatches = pgTable("tank_matches", {
+  id: serial("id").primaryKey(),
+  matchId: varchar("match_id", { length: 255 }).notNull(),
+  hostClerkId: varchar("host_clerk_id", { length: 255 }).notNull(),
+  
+  maxPlayers: integer("max_players").notNull().default(10),
+
+  // NEW COLUMN
+  currentPlayers: integer("current_players")
+    .notNull()
+    .default(1), // since the host counts as the first player
+
+  isOpen: boolean("is_open").notNull().default(true),
+  settings: jsonb("settings").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+
 
 export const coinFlipGames = pgTable("coin_flip_games", {
   id: serial("id").primaryKey(),

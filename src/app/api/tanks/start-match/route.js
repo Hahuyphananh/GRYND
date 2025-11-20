@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
-import { tankStats, users } from "../../../../db/schema";
+import { tankStats, users, tankMatches } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 export async function POST(req) {
   try {
+    // Clerk authentication
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -17,10 +18,13 @@ export async function POST(req) {
     const bet = Number(betAmount);
 
     if (!bet || bet <= 0) {
-      return NextResponse.json({ error: "Invalid bet amount" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid bet amount" },
+        { status: 400 }
+      );
     }
 
-    // Fetch user
+    // Fetch user from DB
     const existingUser = await db
       .select()
       .from(users)
@@ -28,17 +32,23 @@ export async function POST(req) {
       .limit(1);
 
     if (existingUser.length === 0) {
-      return NextResponse.json({ error: "User not found in DB" }, { status: 404 });
+      return NextResponse.json(
+        { error: "User not found in DB" },
+        { status: 404 }
+      );
     }
 
     const dbUser = existingUser[0];
     const balance = Number(dbUser.balance);
 
     if (balance < bet) {
-      return NextResponse.json({ error: "Insufficient balance" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Insufficient balance" },
+        { status: 400 }
+      );
     }
 
-    // Deduct balance
+    // Deduct wager from user balance
     await db
       .update(users)
       .set({ balance: balance - bet })
@@ -47,7 +57,17 @@ export async function POST(req) {
     // Generate match ID
     const matchId = nanoid(12);
 
-    // Insert tank match
+    // 1️⃣ Insert new match (host = first player)
+    await db.insert(tankMatches).values({
+      matchId,
+      hostClerkId: userId,
+      maxPlayers: 10,
+      currentPlayers: 1, // ← HOST IS FIRST PLAYER
+      isOpen: true,
+      settings: {},
+    });
+
+    // 2️⃣ Insert host player into tank_stats
     const inserted = await db
       .insert(tankStats)
       .values({
@@ -65,12 +85,15 @@ export async function POST(req) {
         success: true,
         matchId,
         player: inserted[0],
-        newBalance: balance - bet, // send updated balance
+        newBalance: balance - bet,
       },
       { status: 200 }
     );
   } catch (err) {
     console.error("Start match error:", err);
-    return NextResponse.json({ error: "Server error", detail: String(err) }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error", detail: String(err) },
+      { status: 500 }
+    );
   }
 }
