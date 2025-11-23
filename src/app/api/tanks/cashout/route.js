@@ -17,60 +17,75 @@ export async function POST(req) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
 
     // -------------------------------------------------
-    // Find the match the player is actually in
+    // Apply 90% payout (10% house cut)
     // -------------------------------------------------
-    const playerMatch = await db
+    const payout = Number(amount) * 0.9;
+
+    // -------------------------------------------------
+    // Find this player's stats row
+    // -------------------------------------------------
+    const playerStats = await db
       .select()
       .from(tankStats)
       .where(eq(tankStats.clerkId, clerkId))
       .limit(1);
 
-    let matchId = null;
-    if (playerMatch.length > 0) {
-      matchId = playerMatch[0].matchId;
+    if (playerStats.length === 0) {
+      return NextResponse.json(
+        { error: "Player not in any match" },
+        { status: 400 }
+      );
     }
 
+    const { matchId } = playerStats[0];
+
     // -------------------------------------------------
-    // UPDATE BALANCE (unchanged)
+    // Update user balance
     // -------------------------------------------------
     const updated = await db
       .update(users)
-      .set({ balance: sql`${users.balance} + ${amount}` })
+      .set({ balance: sql`${users.balance} + ${payout}` })
       .where(eq(users.clerkId, clerkId))
       .returning({ balance: users.balance });
 
     // -------------------------------------------------
-    // Update match players if match found
+    // Record amount cashed out + result = win
     // -------------------------------------------------
-    if (matchId) {
-      const match = await db
-        .select()
-        .from(tankMatches)
-        .where(eq(tankMatches.matchId, matchId))
-        .limit(1);
+    await db
+      .update(tankStats)
+      .set({
+        amountCashedOut: payout,
+        result: "win",
+      })
+      .where(eq(tankStats.clerkId, clerkId));
 
-      if (match.length > 0) {
-        const m = match[0];
-        const newCount = Math.max(m.currentPlayers - 1, 0);
+    // -------------------------------------------------
+    // Manage match player count
+    // -------------------------------------------------
+    const match = await db
+      .select()
+      .from(tankMatches)
+      .where(eq(tankMatches.matchId, matchId))
+      .limit(1);
 
-        if (newCount === 0) {
-          // Delete match if no players left
-          await db.delete(tankMatches).where(eq(tankMatches.matchId, matchId));
-        } else {
-          // Decrease currentPlayers
-          await db
-            .update(tankMatches)
-            .set({ currentPlayers: newCount })
-            .where(eq(tankMatches.matchId, matchId));
-        }
+    if (match.length > 0) {
+      const m = match[0];
+      const newCount = Math.max(m.currentPlayers - 1, 0);
+
+      if (newCount === 0) {
+        // Delete match if no players left
+        await db.delete(tankMatches).where(eq(tankMatches.matchId, matchId));
+      } else {
+        // Update remaining count
+        await db
+          .update(tankMatches)
+          .set({ currentPlayers: newCount })
+          .where(eq(tankMatches.matchId, matchId));
       }
-
-      // ❌ Removed the code that deleted tankStats rows
-      // This is what was breaking everything
     }
 
     return NextResponse.json(
-      { success: true, newBalance: updated[0].balance },
+      { success: true, newBalance: updated[0].balance, payout },
       { status: 200 }
     );
   } catch (err) {

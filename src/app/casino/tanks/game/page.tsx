@@ -45,7 +45,7 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown }) {
             const data = await res.json();
 
             if (res.ok) {
-              alert(`You cashed out ${bountyRef.current} tokens!`);
+              alert(`You cashed out ${bountyRef.current  * 0.9 } tokens!`);
               setBounty(0);
               bountyRef.current = 0;
               router.push("/casino/tanks");

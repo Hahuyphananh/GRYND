@@ -163,6 +163,7 @@ export const tankStats = pgTable("tank_stats", {
   bounty: numeric("bounty", { precision: 12, scale: 2 }).notNull().default("1.00"),
   kills: integer("kills").notNull().default(0),
   amountCashedOut: numeric("amount_cashed_out", { precision: 12, scale: 2 }).default("0.00"),
+  result: varchar("result", { length: 20 }), 
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
