@@ -57,14 +57,15 @@ export async function POST(req) {
     // Generate match ID
     const matchId = nanoid(12);
 
-    // 1️⃣ Insert new match (host = first player)
+    // 1️⃣ Insert new match with host added to players array
     await db.insert(tankMatches).values({
       matchId,
       hostClerkId: userId,
       maxPlayers: 10,
-      currentPlayers: 1, // ← HOST IS FIRST PLAYER
+      currentPlayers: 1,     // Host counts as the first player
       isOpen: true,
       settings: {},
+      players: [userId],     // ⭐ Host automatically added to array
     });
 
     // 2️⃣ Insert host player into tank_stats
@@ -77,6 +78,7 @@ export async function POST(req) {
         bounty: bet,
         kills: 0,
         amountCashedOut: 0,
+        result: null,
       })
       .returning();
 
