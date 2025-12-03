@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import NavigationBar from "../../../../components/navigation-bar";
 
 export default function ChessAIPage() {
@@ -12,7 +12,10 @@ export default function ChessAIPage() {
   const [gameOver, setGameOver] = useState(false);
   const [winner, setWinner] = useState("");
   const [playerColor, setPlayerColor] = useState<"white" | "black">("white");
+
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const bet = searchParams.get("bet"); // <-- GET BET FROM URL
 
   // initialize game & color
   useEffect(() => {
@@ -23,22 +26,18 @@ export default function ChessAIPage() {
     setGameOver(false);
     setWinner("");
 
-    // If player is black, AI (white) should move first after a short delay
     if (randomColor === "black") {
       setTimeout(() => makeAIMove(newGame), 500);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // helper: is it currently the player's turn?
   function isPlayersTurn(gameInstance: Chess) {
     if (!gameInstance) return false;
-    const turn = gameInstance.turn(); // 'w' or 'b'
+    const turn = gameInstance.turn();
     const playerTurnChar = playerColor === "white" ? "w" : "b";
     return turn === playerTurnChar;
   }
 
-  // AI move (same logic you had)
   function makeAIMove(gameInstance: any) {
     if (!gameInstance || gameInstance.isGameOver()) return handleGameOver(gameInstance);
 
@@ -66,49 +65,38 @@ export default function ChessAIPage() {
     if (gameInstance.isGameOver()) handleGameOver(gameInstance);
   }
 
-  // run AI automatically whenever it becomes the AI's turn
   useEffect(() => {
     if (!game) return;
-
     if (game.isGameOver()) return;
 
-    // determine AI color (opposite of player)
     const aiColor = playerColor === "white" ? "black" : "white";
     const aiTurnChar = aiColor === "white" ? "w" : "b";
 
     if (game.turn() === aiTurnChar) {
-      // small delay to feel natural
       const t = setTimeout(() => makeAIMove(new Chess(game.fen())), 450);
       return () => clearTimeout(t);
     }
   }, [game, playerColor, aiLevel]);
 
-  // Player move handling (includes castling). Prevents moves when not player's turn.
   function onDrop(sourceSquare: string, targetSquare: string) {
-  // prevent moves if game over or not player's turn
-  if (game.isGameOver() || !isPlayersTurn(game)) return false;
+    if (game.isGameOver() || !isPlayersTurn(game)) return false;
 
-  const gameCopy = new Chess(game.fen());
-  const move = gameCopy.move({
-    from: sourceSquare,
-    to: targetSquare,
-    promotion: "q", // always promote to queen
-  });
+    const gameCopy = new Chess(game.fen());
+    const move = gameCopy.move({
+      from: sourceSquare,
+      to: targetSquare,
+      promotion: "q",
+    });
 
-  if (move === null) return false;
+    if (move === null) return false;
 
-  setGame(new Chess(gameCopy.fen()));
+    setGame(new Chess(gameCopy.fen()));
 
-  if (gameCopy.isGameOver()) {
-    handleGameOver(gameCopy);
+    if (gameCopy.isGameOver()) handleGameOver(gameCopy);
+
+    return true;
   }
-  // AI moves are automatically handled by the useEffect watching `game`
 
-  return true;
-}
-
-
-  // Game over handler (determine winner color from game.turn())
   function handleGameOver(gameInstance: any) {
     setGameOver(true);
 
@@ -118,7 +106,6 @@ export default function ChessAIPage() {
     }
 
     if (gameInstance.isCheckmate()) {
-      // If it's white's turn and checkmate, black delivered mate
       const winnerColor = gameInstance.turn() === "w" ? "black" : "white";
       if (winnerColor === playerColor) {
         setWinner("You win!");
@@ -150,7 +137,6 @@ export default function ChessAIPage() {
     }
   }
 
-  // small UI helpers
   const opponentColor = playerColor === "white" ? "Black" : "White";
   const playerSideLabel = `You (${playerColor === "white" ? "White" : "Black"})`;
   const aiSideLabel = `AI (${opponentColor})`;
@@ -161,9 +147,16 @@ export default function ChessAIPage() {
       <NavigationBar currentPath="/casino" />
 
       {/* Title */}
-      <h1 className="text-4xl font-bold text-[#FFD700] mb-6 mt-12">
+      <h1 className="text-4xl font-bold text-[#FFD700] mb-2 mt-12">
         ♟️ AI Chess Arena
       </h1>
+
+      {/* ⭐ SHOW BET IF PRESENT */}
+      {bet && (
+        <p className="text-2xl font-semibold text-green-400 mb-6">
+          Bet: ${bet}
+        </p>
+      )}
 
       {/* Controls */}
       <div className="flex gap-4 mb-4 items-center">
@@ -190,7 +183,7 @@ export default function ChessAIPage() {
         </div>
       </div>
 
-      {/* Labels + Turn indicator (centered) */}
+      {/* Labels */}
       <div className="w-full max-w-4xl mx-auto text-center mb-4">
         <h2 className="text-xl font-semibold">
           {playerSideLabel} vs {aiSideLabel}
@@ -200,7 +193,6 @@ export default function ChessAIPage() {
         </div>
       </div>
 
-      {/* Board wrapper: fixed-width inner container for exact centering */}
       <div className="w-full flex justify-center items-center mb-8">
         <div className="w-[500px]">
           <Chessboard
@@ -218,11 +210,24 @@ export default function ChessAIPage() {
         </div>
       </div>
 
-      {/* Game Over Modal */}
       {gameOver && (
         <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
           <div className="bg-white text-black rounded-lg p-8 text-center shadow-lg">
             <h2 className="text-3xl font-bold mb-4">{winner}</h2>
+
+            {/* Show bet result */}
+            {bet && (
+              <p className="text-xl mb-4 font-semibold">
+                {winner.includes("You") ? (
+                  <span className="text-green-600">You won ${Number(bet) * 1.98}!</span>
+                ) : winner.includes("Draw") ? (
+                  <span className="text-yellow-600">Bet returned.</span>
+                ) : (
+                  <span className="text-red-600">You lost ${bet}.</span>
+                )}
+              </p>
+            )}
+
             <div className="flex gap-4 justify-center">
               <button
                 onClick={resetGame}

@@ -139,19 +139,14 @@ export const plinkoGames = pgTable('plinko_games', {
 
 export const chessGames = pgTable('chess_games', {
   id: serial('id').primaryKey(),
-
   // Clerk IDs for players
   playerWhiteId: varchar('player_white_id', { length: 255 }).notNull(),
   playerBlackId: varchar('player_black_id', { length: 255 }), // can be null if AI
-
   betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
-
   winnerId: varchar('winner_id', { length: 255 }), // Clerk ID or null if no result yet
   result: varchar('result', { length: 20 }),       // win, loss, draw
   payout: numeric('payout', { precision: 10, scale: 2 }),
-
   isAiGame: boolean('is_ai_game').default(false).notNull(), // ✅ new column
-
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -171,19 +166,16 @@ export const tankMatches = pgTable("tank_matches", {
   id: serial("id").primaryKey(),
   matchId: varchar("match_id", { length: 255 }).notNull(),
   hostClerkId: varchar("host_clerk_id", { length: 255 }).notNull(),
-  
   maxPlayers: integer("max_players").notNull().default(10),
-
   // NEW COLUMN
   currentPlayers: integer("current_players")
     .notNull()
     .default(1), // since the host counts as the first player
-
   isOpen: boolean("is_open").notNull().default(true),
   settings: jsonb("settings").default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  players: jsonb("players").$type<string[]>().notNull().default([]),
 });
-
 
 export const coinFlipGames = pgTable("coin_flip_games", {
   id: serial("id").primaryKey(),

@@ -6,13 +6,13 @@ import { eq, and, lt, desc } from "drizzle-orm";
 
 export async function POST() {
   try {
-    // Auth
+    // 1️⃣ Auth
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // Get user from DB
+    // 2️⃣ Fetch user
     const userList = await db
       .select()
       .from(users)
@@ -20,29 +20,34 @@ export async function POST() {
       .limit(1);
 
     if (userList.length === 0) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     const dbUser = userList[0];
 
-    // 1️⃣ Find the MOST FULL open match (but not full)
+    // 3️⃣ Fetch most full open match (INCLUDING players array)
     const openMatches = await db
-      .select()
+      .select({
+        id: tankMatches.id,
+        matchId: tankMatches.matchId,
+        hostClerkId: tankMatches.hostClerkId,
+        maxPlayers: tankMatches.maxPlayers,
+        currentPlayers: tankMatches.currentPlayers,
+        isOpen: tankMatches.isOpen,
+        settings: tankMatches.settings,
+        players: tankMatches.players, // ⭐ Required to update array
+      })
       .from(tankMatches)
       .where(
         and(
           eq(tankMatches.isOpen, true),
-          lt(tankMatches.currentPlayers, tankMatches.maxPlayers),
           lt(tankMatches.currentPlayers, tankMatches.maxPlayers)
         )
       )
-      .orderBy(desc(tankMatches.currentPlayers)) // fullest game first
+      .orderBy(desc(tankMatches.currentPlayers))
       .limit(1);
 
-    if (openMatches.length === 0 || openMatches[0].currentPlayers < 1) {
+    if (openMatches.length === 0) {
       return NextResponse.json(
         { error: "No matches available, create a game." },
         { status: 404 }
@@ -51,7 +56,7 @@ export async function POST() {
 
     const match = openMatches[0];
 
-    // 2️⃣ Check if player already in this match
+    // 4️⃣ Already inside match?
     const existingPlayer = await db
       .select()
       .from(tankStats)
@@ -74,27 +79,34 @@ export async function POST() {
       );
     }
 
-    // 3️⃣ Insert player into match
+    // 5️⃣ Insert into tank_stats
     const insertedPlayer = await db
       .insert(tankStats)
       .values({
         matchId: match.matchId,
         clerkId: userId,
         username: dbUser.name,
-        bounty: 1,
+        bounty: 10,
         kills: 0,
         amountCashedOut: 0,
       })
       .returning();
 
-    // 4️⃣ Update match player count
-    const newPlayerCount = match.currentPlayers + 1;
+    // 6️⃣ Update players array (NO DUPLICATES)
+    const updatedPlayers = [
+      ...(Array.isArray(match.players) ? match.players : []),
+      userId
+    ];
+
+    // 7️⃣ Update match row
+    const newCount = match.currentPlayers + 1;
 
     await db
       .update(tankMatches)
       .set({
-        currentPlayers: newPlayerCount,
-        isOpen: newPlayerCount >= match.maxPlayers ? false : true,
+        currentPlayers: newCount,
+        players: updatedPlayers, // ⭐ IMPORTANT
+        isOpen: newCount < match.maxPlayers,
       })
       .where(eq(tankMatches.matchId, match.matchId));
 
@@ -106,13 +118,11 @@ export async function POST() {
       },
       { status: 200 }
     );
+
   } catch (err) {
     console.error("Join game error:", err);
     return NextResponse.json(
-      {
-        error: "Server error",
-        detail: String(err),
-      },
+      { error: "Server error", detail: String(err) },
       { status: 500 }
     );
   }
