@@ -33,7 +33,7 @@ export default function ChessAIPageInner() {
   function isPlayersTurn(gameInstance: Chess) {
     if (!gameInstance) return false;
     const turn = gameInstance.turn();
-    const playerTurnChar = playerColor === "white" ? "w" : "b";
+    const playerTurnChar = playerColor === "white" ? "w" : "b";1
     return turn === playerTurnChar;
   }
 
