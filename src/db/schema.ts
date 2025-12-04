@@ -146,6 +146,7 @@ export const chessGames = pgTable('chess_games', {
   winnerId: varchar('winner_id', { length: 255 }), // Clerk ID or null if no result yet
   result: varchar('result', { length: 20 }),       // win, loss, draw
   payout: numeric('payout', { precision: 10, scale: 2 }),
+    status: text("status").notNull().default("waiting"),
   isAiGame: boolean('is_ai_game').default(false).notNull(), // ✅ new column
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
