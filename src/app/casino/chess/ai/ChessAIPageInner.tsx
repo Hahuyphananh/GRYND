@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -16,7 +16,40 @@ export default function ChessAIPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const bet = searchParams.get("bet");
+  const [gameResult, setGameResult] = useState<"win" | "lose" | "draw" | "pending">("pending");
+const [winnerText, setWinnerText] = useState(""); // text shown in popup
 
+  // Prevent duplicate calls
+  const endGameCalled = useRef(false);
+
+  // END GAME API CALL
+  async function endGame() {
+    if (endGameCalled.current) return; // 🔥 prevents duplicates
+    endGameCalled.current = true;
+
+    try {
+      await fetch("/api/chess/end-game", {
+        method: "POST",
+      });
+    } catch (e) {
+      console.error("Failed to end game:", e);
+    }
+  }
+
+  // Trigger endGame when leaving page
+  useEffect(() => {
+    const handleLeave = () => {
+      if (!endGameCalled.current) {
+        navigator.sendBeacon("/api/chess/end-game"); // safer for unload
+        endGameCalled.current = true;
+      }
+    };
+
+    window.addEventListener("beforeunload", handleLeave);
+    return () => window.removeEventListener("beforeunload", handleLeave);
+  }, []);
+
+  // GAME INITIALIZATION
   useEffect(() => {
     const randomColor = Math.random() > 0.5 ? "white" : "black";
     setPlayerColor(randomColor);
@@ -24,6 +57,7 @@ export default function ChessAIPageInner() {
     setGame(newGame);
     setGameOver(false);
     setWinner("");
+    endGameCalled.current = false;
 
     if (randomColor === "black") {
       setTimeout(() => makeAIMMove(newGame), 500);
@@ -33,7 +67,7 @@ export default function ChessAIPageInner() {
   function isPlayersTurn(gameInstance: Chess) {
     if (!gameInstance) return false;
     const turn = gameInstance.turn();
-    const playerTurnChar = playerColor === "white" ? "w" : "b";1
+    const playerTurnChar = playerColor === "white" ? "w" : "b";
     return turn === playerTurnChar;
   }
 
@@ -100,32 +134,40 @@ export default function ChessAIPageInner() {
     return true;
   }
 
-  function handleGameOver(gameInstance: any) {
-    setGameOver(true);
+// Example for handleGameOver
+async function handleGameOver(gameInstance: any) {
+  setGameOver(true);
+  await endGame();
 
-    if (!gameInstance) {
-      setWinner("Game Over!");
-      return;
-    }
+  if (!gameInstance) {
+    setWinnerText("Game Over!");
+    setGameResult("draw");
+    return;
+  }
 
-    if (gameInstance.isCheckmate()) {
-      const winnerColor = gameInstance.turn() === "w" ? "black" : "white";
-      if (winnerColor === playerColor) {
-        setWinner("You win!");
-      } else {
-        setWinner("AI wins!");
-      }
-    } else if (gameInstance.isDraw()) {
-      setWinner("Draw!");
+  if (gameInstance.isCheckmate()) {
+    const winnerColor = gameInstance.turn() === "w" ? "black" : "white";
+    if (winnerColor === playerColor) {
+      setWinnerText("You win!");
+      setGameResult("win");
     } else {
-      setWinner("Game Over!");
+      setWinnerText("AI wins!");
+      setGameResult("lose");
     }
+  } else if (gameInstance.isDraw()) {
+    setWinnerText("Draw!");
+    setGameResult("draw");
+  } else {
+    setWinnerText("Game Over!");
+    setGameResult("draw");
   }
+}
+async function handleResign() {
+  setGameOver(true);
+  setWinner("AI wins! (You resigned)");
+  await fetch("/api/chess/end-game", { method: "POST" }); // bypass dup prevention
+}
 
-  function handleResign() {
-    setGameOver(true);
-    setWinner("AI wins! (You resigned)");
-  }
 
   function resetGame() {
     const newGame = new Chess();
@@ -134,6 +176,7 @@ export default function ChessAIPageInner() {
     setGame(newGame);
     setGameOver(false);
     setWinner("");
+    endGameCalled.current = false;
 
     if (randomColor === "black") {
       setTimeout(() => makeAIMMove(newGame), 500);
@@ -214,19 +257,18 @@ export default function ChessAIPageInner() {
           <div className="bg-white text-black rounded-lg p-8 text-center shadow-lg">
             <h2 className="text-3xl font-bold mb-4">{winner}</h2>
 
-            {bet && (
-              <p className="text-xl mb-4 font-semibold">
-                {winner.includes("You") ? (
-                  <span className="text-green-600">
-                    You won ${Number(bet) * 1.98}!
-                  </span>
-                ) : winner.includes("Draw") ? (
-                  <span className="text-yellow-600">Bet returned.</span>
-                ) : (
-                  <span className="text-red-600">You lost ${bet}.</span>
-                )}
-              </p>
-            )}
+     {bet && (
+  <p className="text-xl mb-4 font-semibold">
+    {gameResult === "win" ? (
+      <span className="text-green-600">You won ${Number(bet) * 1.98}!</span>
+    ) : gameResult === "draw" ? (
+      <span className="text-yellow-600">Bet returned.</span>
+    ) : (
+      <span className="text-red-600">You lost ${bet}.</span>
+    )}
+  </p>
+)}
+
 
             <div className="flex gap-4 justify-center">
               <button
@@ -236,10 +278,10 @@ export default function ChessAIPageInner() {
                 Play Again
               </button>
               <button
-                onClick={() => router.push("/casino")}
+                onClick={() => router.push("/casino/chess")}
                 className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded shadow"
               >
-                Return to Casino
+                Return to Lobby
               </button>
             </div>
           </div>
