@@ -2,27 +2,23 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
+import { auth } from "@clerk/nextjs/server";
+import { sql } from "drizzle-orm";
 
-const SUITS = ["♠", "♥", "♦", "♣"];
-const VALUES = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
-
-function createDeck() {
-  return SUITS.flatMap(suit => VALUES.map(value => ({ suit, value })));
-}
-
-function shuffle(deck) {
-  return deck.sort(() => Math.random() - 0.5);
-}
-
-export async function GET(req) {
+export async function POST(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const code = searchParams.get("code");
+    const body = await req.json();
+    const { code } = body;
 
     if (!code)
-      return NextResponse.json({ error: "Missing invite code" }, { status: 400 });
+      return NextResponse.json({ error: "Invite code missing" }, { status: 400 });
 
-    // 1️⃣ Fetch game
+    // Clerk ID of the joining user
+    const { userId: clerkId } = await auth();
+    if (!clerkId)
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+    // 1️⃣ Fetch the specific game using invite code
     const [game] = await db
       .select()
       .from(pokerGames)
@@ -31,47 +27,32 @@ export async function GET(req) {
     if (!game)
       return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
-    // 2️⃣ Determine new player ID
-    const existingPlayers = Array.isArray(game.players) ? game.players : [];
-    const numJoined = existingPlayers.filter(p => p.id.startsWith("playerjoin")).length;
-    const playerId = `playerjoin${numJoined + 1}`;
+    // 2️⃣ Ensure game has open seats
+    const updatedPlayers = [...game.players];
+    const openSeat = updatedPlayers.find((p) => p.clerkId === null);
 
-    // 3️⃣ Prepare deck and remove already-dealt cards
-    const deck = shuffle(createDeck());
-    existingPlayers.forEach(p => {
-      p.hand.forEach(card => {
-        const index = deck.findIndex(c => c.suit === card.suit && c.value === card.value);
-        if (index !== -1) deck.splice(index, 1);
-      });
-    });
+    if (!openSeat)
+      return NextResponse.json({ error: "No empty seats" }, { status: 400 });
 
-    // 4️⃣ Create new player with hand
-    const newPlayer = {
-      id: playerId,
-      name: "You", // could be replaced by frontend-provided name
-      stack: 1000,
-      hand: [deck.pop(), deck.pop()],
-      isAI: false,
-      hasFolded: false,
-      currentBet: 0,
-      lastAction: "",
-      isReady: false,
-    };
+    // 3️⃣ Assign seat to the joining player
+    openSeat.clerkId = clerkId;
 
-    // 5️⃣ Save updated players to DB
-    const updatedPlayers = [...existingPlayers, newPlayer];
+    // 4️⃣ Save updated JSON array
     const [updatedGame] = await db
       .update(pokerGames)
-      .set({ players: updatedPlayers })
-      .where(eq(pokerGames.gameCode, code))
+      .set({
+        players: sql`${JSON.stringify(updatedPlayers)}::jsonb`,
+      })
+      .where(eq(pokerGames.id, game.id))
       .returning();
 
     return NextResponse.json({
       success: true,
       game: updatedGame,
+      joinedSeat: openSeat.seat,
     });
   } catch (err) {
-    console.error("JOIN GAME ERROR", err);
+    console.error("JOIN PRIVATE GAME ERROR", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

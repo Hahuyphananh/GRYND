@@ -98,20 +98,60 @@ const [showJoinForm, setShowJoinForm] = useState(false);
   
   const [availablePublicGames, setAvailablePublicGames] = useState<number>(0);
 
-const fetchPublicGamesCount = async () => {
-  try {
-    const res = await fetch("/api/poker/public-games");
-    const data = await res.json();
-    setAvailablePublicGames(data.count || 0);
-  } catch (err) {
-    console.error("Error fetching public games:", err);
-    setAvailablePublicGames(0);
-  }
-};
+  const [waitingPlayers, setWaitingPlayers] = useState<{id:string,name:string,level?:number}[]>([]);
+
+  const fetchWaitingPlayers = async () => {
+    try {
+      // try known endpoints, fall back gracefully
+      const endpoints = ["/api/poker/waiting-players", "/api/poker/public-waiting", "/api/poker/public-queue"];
+      let data:any = null;
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep);
+          if (!res.ok) continue;
+          data = await res.json();
+          if (Array.isArray(data)) break;
+          if (data.players && Array.isArray(data.players)) { data = data.players; break; }
+          if (data.waiting && Array.isArray(data.waiting)) { data = data.waiting; break; }
+        } catch (e) { continue; }
+      }
+      if (!data) {
+        // fallback: show a simple placeholder count based on availablePublicGames
+        setWaitingPlayers(Array.from({length: availablePublicGames}, (_,i)=>({id:`fallback_${i}`, name:`Player ${i+1}`})));
+        return;
+      }
+      // normalize to {id,name}
+      const norm = data.map((p:any, idx:number) => ({ id: p.id || p.playerId || `p_${idx}`, name: p.name || p.displayName || p.player || "Player", level: p.level }));
+      setWaitingPlayers(norm);
+    } catch (err) {
+      console.error("Failed to fetch waiting players", err);
+      setWaitingPlayers([]);
+    }
+  };
+
+  const fetchPublicGamesCount = async () => {
+    try {
+      const res = await fetch("/api/poker/public-games");
+      const data = await res.json();
+      setAvailablePublicGames(data.count || 0);
+    } catch (err) {
+      console.error("Error fetching public games:", err);
+      setAvailablePublicGames(0);
+    }
+  };
 
 useEffect(() => {
   fetchUserTokens();
   fetchPublicGamesCount();
+}, []);
+
+// Multiplayer Waiting List Auto-Refresh
+useEffect(() => {
+  const interval = setInterval(() => {
+    fetchPublicGamesCount();
+  }, 3000);
+
+  return () => clearInterval(interval);
 }, []);
 
 
@@ -235,66 +275,84 @@ useEffect(() => {
   }
 
   // ======== JOIN / PUBLIC functions unchanged except seat handling is preserved if seatIndex exists on serverGame
-  async function joinGame() {
-    if (!inviteCode.trim()) return alert("Enter invite code!");
-    setJoiningGame(true);
+ async function joinGame() {
+  if (!inviteCode.trim()) return alert("Enter invite code!");
+  setJoiningGame(true);
 
-    try {
-      const res = await fetch(`/api/poker/join-game?code=${inviteCode.trim()}`);
-      if (!res.ok) {
-        const err = await res.json();
-        return alert(err?.error || "Failed to join game");
-      }
+  try {
+    const res = await fetch(`/api/poker/join-game`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: inviteCode.trim(), playerName: name }),
+    });
 
-      const data = await res.json();
-      const serverGame = data.game as Game;
+    if (!res.ok) {
+      const err = await res.json();
+      return alert(err?.error || "Failed to join game");
+    }
 
-      // Map players safely, don't add new AI
-      const players: Player[] = (serverGame.players || []).map(p => ({
-        ...p,
-        currentBet: (p as any).currentBet || 0,
-        hasFolded: (p as any).hasFolded || false,
-        lastAction: (p as any).lastAction || "",
-        hand: (p as any).hand || [],
-        seatIndex: (p as any).seatIndex ?? undefined,
-      }));
+    const data = await res.json();
+    const serverGame = data.game as Game;
 
-      // Only set blinds if they are missing
-      if (!players.some(p => p.lastAction === "Small Blind")) {
-        const sb = 10, bb = 20;
-        const dealerIndex = serverGame.dealerIndex || 0;
-        const sbIndex = (dealerIndex + 1) % players.length;
-        const bbIndex = (dealerIndex + 2) % players.length;
+    // 🔥 Convert DB players (seat+clerkId) into full usable Player objects
+    const players: Player[] = (serverGame.players || []).map((p: any) => ({
+      id: p.clerkId || `seat${p.seat}`,
+      name: p.clerkId ? "Player" : "Empty",
+      seatIndex: p.seat,
+      isAI: false,
+      stack: p.clerkId ? 1000 : 0,
+      currentBet: 0,
+      hasFolded: false,
+      lastAction: "",
+      hand: [],
+    }));
 
+    // 🔥 Only assign blinds if they weren't assigned already
+    if (!players.some((p) => p.lastAction === "Small Blind")) {
+      const sb = 10, bb = 20;
+      const dealerIndex = serverGame.dealerIndex || 0;
+      const sbIndex = (dealerIndex + 1) % players.length;
+      const bbIndex = (dealerIndex + 2) % players.length;
+
+      if (players[sbIndex].stack >= sb) {
         players[sbIndex].stack -= sb;
         players[sbIndex].currentBet = sb;
         players[sbIndex].lastAction = "Small Blind";
+      }
 
+      if (players[bbIndex].stack >= bb) {
         players[bbIndex].stack -= bb;
         players[bbIndex].currentBet = bb;
         players[bbIndex].lastAction = "Big Blind";
       }
-
-      const firstToAct = (players.findIndex(p => p.lastAction === "Big Blind") + 1) % players.length;
-
-      setGame({
-        ...serverGame,
-        players,
-        pot: players.reduce((sum, p) => sum + (p.currentBet || 0), 0),
-        currentTurn: firstToAct,
-        roundStarter: firstToAct,
-      });
-
-      const joiningHuman = players.find(p => !p.isAI);
-      if (joiningHuman) setBalance(joiningHuman.stack);
-
-      setJoiningGame(false);
-    } catch (err) {
-      console.error("Join game error:", err);
-      alert("Failed to join game. See console.");
-      setJoiningGame(false);
     }
+
+    // 🔥 Determine who's first to act
+    const firstToAct =
+      (players.findIndex((p) => p.lastAction === "Big Blind") + 1) %
+      players.length;
+
+    // 🔥 Update global game state
+    setGame({
+      ...serverGame,
+      players,
+      pot: players.reduce((sum, p) => sum + (p.currentBet || 0), 0),
+      currentTurn: firstToAct,
+      roundStarter: firstToAct,
+    });
+
+    // 🔥 Set user balance to their starting stack
+    const joiningHuman = players.find((p) => p.id === "player");
+    if (joiningHuman) setBalance(joiningHuman.stack);
+
+    setJoiningGame(false);
+  } catch (err) {
+    console.error("Join game error:", err);
+    alert("Failed to join game. See console.");
+    setJoiningGame(false);
   }
+}
+
 
   async function joinPublicGame() {
     setJoiningGame(true);
@@ -1111,7 +1169,7 @@ if (showJoinForm) {
 
  {/* 💰 Chips displayed relative to table */}
 {game?.players.map((p) => {
-  if (!p || !p.currentBet || p.currentBet <= 0 || p.seatIndex == null) return null;
+  if (!p || !p.currentBet || p.currentBet <= 0 || p.seatIndex ==null) return null;
   const pos = seatPositions[p.seatIndex];
   if (!pos) return null;
 
@@ -1199,6 +1257,51 @@ if (showJoinForm) {
                 className="bg-red-500 text-white px-4 py-2 rounded font-bold"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Multiplayer Waiting Panel — bottom-left, public-only */}
+      {!isPrivate && (
+        <div className="fixed bottom-6 left-6 z-50 pointer-events-auto">
+          <div className="w-64 bg-slate-800/90 backdrop-blur-sm border border-slate-700 rounded-lg shadow-lg p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-bold">Public Queue</div>
+              <div className="text-xs text-gray-300">{waitingPlayers.length} waiting</div>
+            </div>
+
+            <div className="max-h-40 overflow-y-auto space-y-2">
+              <AnimatePresence initial={false}>
+                {waitingPlayers.map((p) => (
+                  <motion.div
+                    key={p.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 6 }}
+                    className="flex items-center justify-between bg-slate-700/60 px-2 py-1 rounded"
+                  >
+                    <div className="truncate text-sm">{p.name || "Anonymous"}</div>
+                    <div className="text-xs text-gray-300">{p.level ? `Lv ${p.level}` : ""}</div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => joinPublicGame()}
+                disabled={joiningGame}
+                className={`flex-1 text-sm px-3 py-2 rounded font-bold transition ${joiningGame ? "bg-gray-600 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-500"}`}
+              >
+                Join Public
+              </button>
+              <button
+                onClick={() => fetchWaitingPlayers()}
+                className="px-3 py-2 rounded text-sm bg-slate-600 hover:bg-slate-500"
+              >
+                Refresh
               </button>
             </div>
           </div>
