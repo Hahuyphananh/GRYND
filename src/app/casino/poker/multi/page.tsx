@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
 
 type Player = {
   id: string;
@@ -54,6 +55,7 @@ function nextActive(start: number, players: Player[]): number {
 }
 
 export default function PokerPage() {
+  const router = useRouter();
   const [name,setName] = useState("");
   const [game,setGame] = useState<Game|null>(null);
   const [raiseAmount,setRaiseAmount] = useState(50);
@@ -128,6 +130,15 @@ const [showJoinForm, setShowJoinForm] = useState(false);
       setWaitingPlayers([]);
     }
   };
+
+  useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("gameCode");
+  if (code) {
+    setInviteCode(code);
+    joinGame();
+  }
+}, []);
 
   const fetchPublicGamesCount = async () => {
     try {
@@ -230,6 +241,14 @@ useEffect(() => {
         inviteCode: data.gameCode,
         waiting: true,
       });
+
+      if (data.gameCode) {
+  setGame(g => g ? { ...g, inviteCode: data.gameCode } : g);
+
+  // ✅ Update the URL with game code without reload
+  router.replace(`/casino/poker/multi?gameCode=${data.gameCode}`);
+}
+
 
     } catch (err) {
       console.error("Error creating game:", err);
