@@ -27,7 +27,7 @@ const isPublicRoute = createRouteMatcher([
   '/casino/rps',
   '/access-denied',
   '/complete-profile',
-  "/casino/poker/multi",
+  "/casino/poker/multi(.*)",
   '/casino/tanks(.*)',
 ]);
 
