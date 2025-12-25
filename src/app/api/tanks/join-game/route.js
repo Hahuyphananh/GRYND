@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { tankMatches, tankStats, users } from "../../../../db/schema";
-import { eq, and, lt, desc } from "drizzle-orm";
+import { eq, and, lt, desc, sql } from "drizzle-orm";
 
 export async function POST() {
   try {
@@ -35,7 +35,7 @@ export async function POST() {
         currentPlayers: tankMatches.currentPlayers,
         isOpen: tankMatches.isOpen,
         settings: tankMatches.settings,
-        players: tankMatches.players, // ⭐ Required to update array
+        players: tankMatches.players,
       })
       .from(tankMatches)
       .where(
@@ -92,21 +92,13 @@ export async function POST() {
       })
       .returning();
 
-    // 6️⃣ Update players array (NO DUPLICATES)
-    const updatedPlayers = [
-      ...(Array.isArray(match.players) ? match.players : []),
-      userId
-    ];
-
-    // 7️⃣ Update match row
-    const newCount = match.currentPlayers + 1;
-
+    // 6️⃣ + 7️⃣ FIXED: JSONB-safe players update
     await db
       .update(tankMatches)
       .set({
-        currentPlayers: newCount,
-        players: updatedPlayers, // ⭐ IMPORTANT
-        isOpen: newCount < match.maxPlayers,
+        currentPlayers: sql`${tankMatches.currentPlayers} + 1`,
+        players: sql`${tankMatches.players} || jsonb_build_array(${userId})`,
+        isOpen: sql`${tankMatches.currentPlayers} + 1 < ${tankMatches.maxPlayers}`,
       })
       .where(eq(tankMatches.matchId, match.matchId));
 
