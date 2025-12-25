@@ -28,10 +28,10 @@ _A preview of the main lobby interface (Roulette + Blackjack shown)_
 
 | Layer            | Technology |
 |-----------------|------------|
-| **Frontend**    | Next.js 14, React, TailwindCSS |
+| **Frontend**    | Next.js 15, React, TailwindCSS |
 | **Backend**     | Next.js API Routes, Neon Postgres |
 | **Auth**        | Clerk (JWTs + OAuth) |
-| **Database**    | Postgres + Drizzle ORM |
+| **Database**    | Neon DB + Drizzle ORM |
 | **Hosting**     | Vercel |
 
 ---
