@@ -178,7 +178,7 @@ function MainComponent() {
    <div className="animated-bg">
       <NavigationBar currentPath="/" />
 
-      <section className="bg-gradient-to-r from-[#003366] to-[#004080] px-4 py-20 mt-8">
+      <section className="bg [#003366] px-4 py-20 mt-8">
         <div className="mx-auto max-w-7xl text-center">
       <h1
   className="mb-4 text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text 
@@ -211,17 +211,6 @@ function MainComponent() {
 
         </div>
       </section>
-
-      {user && (
-        <div className="mx-auto max-w-7xl px-4">
-          <div className="flex items-center justify-end space-x-2 rounded-lg bg-[#003366] p-3">
-            <i className="fas fa-coins text-[#FFD700]"></i>
-            <span className="text-[#FFD700] font-medium">
-              {userTokens !== null ? userTokens : "..."}
-            </span>
-          </div>
-        </div>
-      )}
 
       <div className="mx-auto max-w-7xl px-4 py-8">
         <section className="mb-16">
