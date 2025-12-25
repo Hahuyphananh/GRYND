@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import NavigationBar from "../../../components/navigation-bar";
 
+
 const multiplierTable: Record<number, Record<number, number>> = {
   1: { 1: 3 },
   2: { 1: 1.5, 2: 6 },
