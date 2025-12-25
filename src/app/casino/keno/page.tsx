@@ -5,6 +5,14 @@ import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import NavigationBar from "../../../components/navigation-bar";
 
+const multiplierTable: Record<number, Record<number, number>> = {
+  1: { 1: 3 },
+  2: { 1: 1.5, 2: 6 },
+  3: { 1: 1.2, 2: 3, 3: 12 },
+  4: { 2: 2, 3: 6, 4: 20 },
+  5: { 2: 2, 3: 5, 4: 15, 5: 50 },
+};
+
 export default function KenoGame() {
   const router = useRouter();
   const { isSignedIn, user } = useUser();
@@ -16,9 +24,9 @@ export default function KenoGame() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [highlightedWins, setHighlightedWins] = useState<number[]>([]);
-const [animationDone, setAnimationDone] = useState(false);
+  const [animationDone, setAnimationDone] = useState(false);
 
-const fetchUserBalance = async () => {
+  const fetchUserBalance = async () => {
     if (!user) return;
     try {
       const res = await fetch('/api/get-user-tokens', {
@@ -28,8 +36,7 @@ const fetchUserBalance = async () => {
       const data = await res.json();
       if (data.success) setUserBalance(Number(data.data.balance));
       else setError('Failed to fetch balance');
-    } catch (err) {
-      console.error(err);
+    } catch {
       setError('Unable to fetch balance');
     }
   };
@@ -39,46 +46,56 @@ const fetchUserBalance = async () => {
   }, [isSignedIn]);
 
   const toggleNumber = (num: number) => {
+    if (highlightedWins.length > 0) {
+      setHighlightedWins([]);
+      setResult(null);
+    }
+
     setSelectedNumbers((prev) =>
       prev.includes(num)
         ? prev.filter((n) => n !== num)
-        : prev.length < 10
+        : prev.length < 5
         ? [...prev, num]
         : prev
     );
   };
 
   useEffect(() => {
-  if (!result?.winningNumbers) return;
+    if (!result?.winningNumbers) return;
 
-  setHighlightedWins([]);
-  setAnimationDone(false);
+    setHighlightedWins([]);
+    setAnimationDone(false);
 
-  let i = 0;
-  const interval = setInterval(() => {
-    if (i >= result.winningNumbers.length) {
-      clearInterval(interval);
-      setAnimationDone(true);
-      return;
-    }
-    setHighlightedWins((prev) => [...prev, result.winningNumbers[i]]);
-    i++;
-  }, 300); // 300ms between each highlight
+    let i = 0;
+    const interval = setInterval(() => {
+      if (i >= result.winningNumbers.length) {
+        clearInterval(interval);
+        setAnimationDone(true);
+        return;
+      }
+      setHighlightedWins((prev) => [...prev, result.winningNumbers[i]]);
+      i++;
+    }, 300);
 
-  return () => clearInterval(interval);
-}, [result]);
-
+    return () => clearInterval(interval);
+  }, [result]);
 
   const handleAutoPick = () => {
     const picks: number[] = [];
-    while (picks.length < 5) { // auto pick 5 numbers max
+    while (picks.length < 5) {
       const rand = Math.floor(Math.random() * 40) + 1;
       if (!picks.includes(rand)) picks.push(rand);
     }
     setSelectedNumbers(picks);
   };
 
-  const handleClear = () => setSelectedNumbers([]);
+  const handleClear = () => {
+  setSelectedNumbers([]);
+  setHighlightedWins([]);
+  setResult(null);
+  setAnimationDone(false);
+};
+
 
   const handleBet = async () => {
     setError(null);
@@ -100,25 +117,24 @@ const fetchUserBalance = async () => {
         body: JSON.stringify({ betAmount, numbers: selectedNumbers }),
       });
       const data = await res.json();
-
       if (data.error) {
         setError(data.error);
         setLoading(false);
         return;
       }
-
       setResult(data);
       await fetchUserBalance();
-    } catch (err) {
-      console.error(err);
+    } catch {
       setError('Error starting game');
     }
     setLoading(false);
   };
 
+  const payoutTable = multiplierTable[selectedNumbers.length] || {};
+
   return (
     <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center p-6 relative">
-<NavigationBar currentPath="/casino" />
+      <NavigationBar currentPath="/casino" />
 
       <div className="absolute top-4 right-4 bg-[#0055aa] px-4 py-2 rounded-lg shadow text-yellow-400 font-bold">
         🪙 Balance: {userBalance ?? '...'}
@@ -144,44 +160,90 @@ const fetchUserBalance = async () => {
           />
         </div>
 
-        <button
-          onClick={handleAutoPick}
-          className="bg-gray-600 px-4 py-1 rounded hover:bg-gray-500"
-        >
+        <button onClick={handleAutoPick} className="bg-gray-600 px-4 py-1 rounded hover:bg-gray-500">
           Auto Pick
         </button>
-        <button
-          onClick={handleClear}
-          className="bg-gray-600 px-4 py-1 rounded hover:bg-gray-500"
-        >
+        <button onClick={handleClear} className="bg-gray-600 px-4 py-1 rounded hover:bg-gray-500">
           Clear Table
         </button>
       </div>
 
-      {/* Number grid */}
-      <div className="grid grid-cols-8 gap-2 mb-4">
-        {Array.from({ length: 40 }, (_, i) => i + 1).map((num) => {
-          const isSelected = selectedNumbers.includes(num);
-const isWinning = highlightedWins.includes(num);
+      {/* Gameboard */}
+      <div className="mb-6 bg-[#001a33] border-4 border-yellow-500 rounded-2xl shadow-2xl p-6">
+        <div className="flex gap-6">
 
-          return (
-            <button
-              key={num}
-              onClick={() => toggleNumber(num)}
-              className={`w-12 h-12 flex items-center justify-center rounded
-  ${
-    isWinning
-      ? 'bg-green-400 text-black animate-pulse' // winning highlight + pulse animation
-      : isSelected
-      ? 'bg-yellow-400 text-black'
-      : 'bg-[#002244] hover:bg-[#004488]'
-  }`}
+          {/* Number grid */}
+          <div className="grid grid-cols-8 gap-4 flex-1">
+            {Array.from({ length: 40 }, (_, i) => i + 1).map((num) => {
+              const isSelected = selectedNumbers.includes(num);
+              const isWinning = highlightedWins.includes(num);
+              const isDisabled = !isSelected && selectedNumbers.length >= 5;
+              const isMatch = isSelected && isWinning;
 
-            >
-              {num}
-            </button>
-          );
-        })}
+              return (
+        <button
+  key={num}
+  onClick={() => toggleNumber(num)}
+  disabled={isDisabled}
+  className={`relative w-16 h-16 flex items-center justify-center rounded-xl text-lg font-bold transition-all duration-300
+    ${
+      isMatch
+        ? 'bg-green-400 text-black scale-110 ring-4 ring-green-300 shadow-[0_0_25px_6px_rgba(34,197,94,0.9)] animate-pulse'
+        : isWinning
+        ? 'bg-green-400/40 text-white'
+        : isSelected
+        ? 'bg-yellow-400 text-black shadow-md scale-105'
+        : isDisabled
+        ? 'bg-[#002244] opacity-40 cursor-not-allowed'
+        : 'bg-[#003366] hover:bg-[#0055aa] border border-[#0066cc]'
+    }`}
+>
+  {num}
+
+  {isMatch && (
+    <span className="absolute top-1 right-1 text-xs">
+      🔥
+    </span>
+  )}
+</button>
+
+
+              );
+            })}
+          </div>
+
+          {/* Multiplier panel */}
+          <div className="w-40 bg-[#002244] border-2 border-yellow-400 rounded-xl p-3 flex flex-col gap-2">
+            <h3 className="text-center font-bold text-yellow-400 mb-2">Payouts</h3>
+
+            {Object.entries(payoutTable).map(([hits, mult]) => {
+              const isActive =
+                animationDone && result?.matches?.length === Number(hits);
+
+              return (
+                <div
+                  key={hits}
+                  className={`flex justify-between px-2 py-1 rounded text-sm
+                    ${
+                      isActive
+                        ? 'bg-green-400 text-black font-bold'
+                        : 'bg-[#003366]'
+                    }`}
+                >
+                  <span>{hits} hit{hits !== '1' ? 's' : ''}</span>
+                  <span>x{mult}</span>
+                </div>
+              );
+            })}
+
+            {selectedNumbers.length === 0 && (
+              <div className="text-xs text-gray-400 text-center mt-2">
+                Select numbers
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
 
       <button
@@ -201,7 +263,4 @@ const isWinning = highlightedWins.includes(num);
       )}
     </div>
   );
-
-  
 }
-
