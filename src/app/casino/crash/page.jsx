@@ -240,7 +240,11 @@ export default function Page() {
         </div>
 
         {/* Center */}
-        <div className="relative bg-[#1f1f1f] p-4 rounded-lg w-full lg:w-2/4 h-[600px] overflow-hidden flex items-center justify-center">
+<div className="relative bg-[#1f1f1f] p-4 rounded-lg w-full lg:w-2/4 h-[600px] overflow-hidden flex items-center justify-center">
+
+  {/* Space background (NEW — does not affect anything else) */}
+  <div className="absolute inset-0 space-bg" />
+
           {isCountingDown && (
             <div className="absolute inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center">
               <div className="text-8xl font-bold text-white animate-pulse">{countdown}</div>
