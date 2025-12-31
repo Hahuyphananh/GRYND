@@ -19,6 +19,7 @@ export default function MinesGamePage() {
   const [userTokens, setUserTokens] = useState(0); // user tokens balance
   const [loading, setLoading] = useState(false);
   const [betAmount, setBetAmount] = useState(1);
+const [gameStarted, setGameStarted] = useState(false);
 
   
   // Autoplay references
@@ -233,6 +234,7 @@ export default function MinesGamePage() {
   }
 
 async function handleClick(index) {
+  if (!gameStarted) return false; // ⛔ block clicks before New Game
   if (revealed[index] || gameOver) return false;
 
   const updated = [...revealed];
@@ -317,16 +319,17 @@ async function handleClick(index) {
   }
 }
 
-  function handleReset() {
-    setGrid(generateGrid(totalMines));
-    setRevealed(Array(GRID_SIZE ** 2).fill(false));
-    setGameOver(false);
-    setMultiplier(1);
-    setHasWon(false);
-    setRevealedCount(0);
-    setShowAllMines(false);
-    setAutoplaySettings(false);
-  }
+ function handleReset() {
+  setGrid(generateGrid(totalMines));
+  setRevealed(Array(GRID_SIZE ** 2).fill(false));
+  setGameOver(false);
+  setMultiplier(1);
+  setHasWon(false);
+  setRevealedCount(0);
+  setShowAllMines(false);
+  setAutoplaySettings(false);
+  setGameStarted(true); // ✅ game officially starts
+}
 
   function handleMineChange(mines) {
     setTotalMines(mines);
@@ -472,15 +475,38 @@ return (
         </div>
 
         {/* Main game grid */}
-        <div className="w-full lg:w-2/4">
-          <div className="grid grid-cols-5 gap-3">
+<div className="w-full lg:w-2/4 relative">
+  
+  {/* 🔒 Start Game Overlay */}
+  {!gameStarted && (
+    <div className="absolute inset-0 z-20 bg-black/50 rounded-lg
+                    flex flex-col items-center justify-center text-center">
+     <p className="text-2xl font-bold mb-3 animate-pulse">
+  🎮 Click NEW GAME to start
+</p>
+      <p className="text-sm text-gray-300">
+        Place your bet, choose mines, then start the game
+      </p>
+    </div>
+  )}
+
+  <div className={`grid grid-cols-5 gap-3 ${!gameStarted ? "pointer-events-none" : ""}`}>
+
             {grid.map((cell, i) => (
-              <button
-                key={i}
-                onClick={() => handleClick(i)}
-                disabled={gameOver || (showAllMines && cell === "mine") || autoplayEnabled}
-                className={`w-full aspect-square rounded-lg flex items-center justify-center transition-all duration-300 text-3xl
-                  ${getCellStyle(cell, i)} ${autoplayEnabled ? "cursor-not-allowed" : ""}`}
+             <button
+  key={i}
+  onClick={() => handleClick(i)}
+  disabled={
+    !gameStarted || 
+    gameOver || 
+    (showAllMines && cell === "mine") || 
+    autoplayEnabled
+  }
+                className={`w-full aspect-square rounded-lg flex items-center justify-center
+  transition-all duration-300 text-3xl
+  ${getCellStyle(cell, i)}
+  ${!gameStarted ? "opacity-50 cursor-not-allowed" : ""}
+`}
               >
                 {getCellContent(cell, i)}
               </button>
@@ -509,8 +535,16 @@ return (
             <button
               onClick={handleCashOut}
               className={`bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 px-4 rounded-lg text-lg
-                ${(gameOver || autoplayEnabled) ? 'opacity-50 cursor-not-allowed' : ''}`}
-              disabled={gameOver || autoplayEnabled}
+                ${(!gameStarted || revealedCount === 0 || gameOver || autoplayEnabled)
+  ? 'opacity-50 cursor-not-allowed'
+  : ''}
+`}
+              disabled={
+  !gameStarted ||
+  revealedCount === 0 ||
+  gameOver ||
+  autoplayEnabled
+}
             >
               CASHOUT
             </button>
