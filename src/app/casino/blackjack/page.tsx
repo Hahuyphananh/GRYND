@@ -4,6 +4,7 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
 import { motion, AnimatePresence } from "framer-motion";
+import BlackjackCardBack from "../../../components/BlackjackCardBack";
 
 export default function BlackjackPage() {
   const { isSignedIn, user } = useUser();
@@ -231,7 +232,7 @@ export default function BlackjackPage() {
 
         {error && <div className="mb-4 bg-red-500/10 p-3 text-red-500 rounded">{error}</div>}
 
-        <div className="bg-[#0e6b0e] p-6 border-[10px] border-[#5c3b15] rounded-lg shadow-inner">
+        <div className="bg-[#0e6b0e] p-6 border-[10px] border-[#5c3b15] rounded-lg shadow-inner bg-gradient-to-b from-[#117a11] to-[#0e6b0e]">
           {/* Dealer */}
           <h2 className="text-[#FFD700] mb-2 text-center">Dealer</h2>
           {gameState !== "playing" && dealerCards.length > 0 && (
@@ -251,11 +252,17 @@ export default function BlackjackPage() {
                   className="h-28 w-20 bg-white text-xl flex items-center justify-center rounded shadow"
                   style={{ color: ["♥", "♦"].includes(card.suit) ? "red" : "black" }}
                 >
-                  {gameState === "playing" && i === 0 ? "?" : `${card.value}${card.suit}`}
+      {gameState === "playing" && i === 0 ? (
+  <BlackjackCardBack />
+) : (
+  `${card.value}${card.suit}`
+)}
+
                 </motion.div>
               ))}
             </AnimatePresence>
           </div>
+<div className="my-4 h-px bg-[#FFD700]/30"></div>
 
           {/* Player */}
           <h2 className="text-[#FFD700] mb-2 text-center">Vos cartes</h2>

@@ -191,7 +191,7 @@ function MainComponent() {
             </div>
             <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Échecs</h3>
             <p className="text-gray-300">
-              Posez vos paris et affrontez des gens dans un match d'échecs!
+              Posez vos paris et affrontez des gens dans un match d'échecs! (encore en développement)
             </p>
             <div className="mt-4 flex items-center text-[#FFD700]">
               <span>Jouer maintenant</span>
@@ -331,6 +331,7 @@ function MainComponent() {
             <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Tanks</h3>
             <p className="text-gray-300">
              Deviens le meilleur tank et empare toi des primes des autres!
+             (encore en développement)
             </p>
             <div className="mt-4 flex items-center text-[#FFD700]">
               <span>Jouer maintenant</span>
