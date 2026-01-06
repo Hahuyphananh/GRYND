@@ -218,3 +218,22 @@
   }
 }
 
+@keyframes bombFuse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+@keyframes bombExplode {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.4) rotate(10deg); }
+  100% { transform: scale(1); }
+}
+
+.animate-bomb-fuse {
+  animation: bombFuse 0.8s infinite ease-in-out;
+}
+
+.animate-bomb-explode {
+  animation: bombExplode 0.4s ease-out;
+}
+

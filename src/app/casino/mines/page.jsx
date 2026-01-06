@@ -18,7 +18,7 @@ export default function MinesGamePage() {
   const [autoplaySettings, setAutoplaySettings] = useState(false);
   const [userTokens, setUserTokens] = useState(0); // user tokens balance
   const [loading, setLoading] = useState(false);
-  const [betAmount, setBetAmount] = useState(1);
+  const [betAmount, setBetAmount] = useState(10);
 const [gameStarted, setGameStarted] = useState(false);
 
   
@@ -353,12 +353,17 @@ async function handleClick(index) {
 
   function getCellContent(cellType, index) {
     if (revealed[index]) {
-      return cellType === "mine" ? "☢️" : "💎";
+      return cellType === "mine" ? (
+  <AnimatedBomb exploded={gameOver} />
+) : (
+  "💎"
+);
+
     }
     
-    if (showAllMines && cellType === "mine") {
-      return "☢️";
-    }
+   if (showAllMines && cellType === "mine") {
+  return <AnimatedBomb exploded />;
+}
     
     return "❓";
   }
@@ -378,6 +383,27 @@ async function handleClick(index) {
   }
 
   const maxMultiplier = calculateMultiplier(totalMines, GRID_SIZE * GRID_SIZE - totalMines - 1);
+
+  function AnimatedBomb({ exploded = false }) {
+  return (
+    <span
+      className={`
+        relative text-4xl
+        ${exploded ? "animate-bomb-explode" : "animate-bomb-fuse"}
+      `}
+    >
+      💣
+
+      {/* Spark */}
+      {!exploded && (
+        <span className="absolute -top-2 -right-2 text-orange-400 animate-ping">
+          ✨
+        </span>
+      )}
+    </span>
+  );
+}
+
 
 return (
   <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center justify-center p-4 relative">
@@ -467,7 +493,7 @@ return (
             <div className="flex justify-between items-center mb-4">
               <span className="font-bold">Mines:</span>
               <span className="flex items-center">
-                <span className="text-purple-500 mr-1">☢️</span>
+                <span className="text-purple-500 mr-1">💣</span>
                 {totalMines}
               </span>
             </div>
