@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
+import BlackjackCardBack from "../../../components/BlackjackCardBack";
 
 export default function PokerPage() {
   const { user } = useUser();
@@ -162,10 +163,16 @@ const evaluateHand = (hand) => {
   return "High Card";
 };
 
-
-
-
 const renderCard = (card, i, highlight = { values: [], color: "yellow" }) => {
+  // 🂠 Hidden AI card → show Blackjack back
+  if (card.value === "?") {
+    return (
+      <div key={i}>
+        <BlackjackCardBack />
+      </div>
+    );
+  }
+
   const suitSymbols = { hearts: "♥", diamonds: "♦", clubs: "♣", spades: "♠" };
   const symbol = suitSymbols[card.suit] || card.suit;
   const isHighlighted = highlight.values.includes(card.value);
@@ -178,13 +185,13 @@ const renderCard = (card, i, highlight = { values: [], color: "yellow" }) => {
       }`}
       style={{
         color: ["♥", "♦"].includes(symbol) ? "red" : "black",
-        boxShadow: "none",
       }}
     >
       {`${card.value}${symbol}`}
     </div>
   );
 };
+
 
 
 // highlight pairs/trips/quads; otherwise highlight highest card in YELLOW
