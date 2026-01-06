@@ -22,8 +22,6 @@ const [pendingCard, setPendingCard] = useState(null);
 const [turnHistory, setTurnHistory] = useState([]);
 const [historyIndex, setHistoryIndex] = useState(null); // null = live game
 
-
-
   const router = useRouter();
 
   // ✅ Load tokens on page mount
