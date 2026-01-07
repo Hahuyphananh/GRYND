@@ -91,7 +91,7 @@ function NavigationBar({ currentPath }) {
     </Link>
 
             <div className="hidden md:flex items-center space-x-4">
-              {["/", "/sport", "/casino", "/rankings"].map((path) => (
+              {["/", "/sport", "/casino", "/classement"].map((path) => (
                 <Link
                   key={path}
                   href={path}
