@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation"; // add this at the top
 import NavigationBar from "../components/navigation-bar";
-import BetSlip from "../components/bet-slip";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
 import Img1 from "../images/roulette.jpg";
@@ -11,13 +11,21 @@ import Img4 from "../images/plinko.jpg";
 import SportCard from "../components/sport-card";
 import EventCard from "../components/event-card";
 
+const MAIN_SPORT_GROUPS = [
+  "American Football",
+  "Basketball",
+  "Ice Hockey",
+  "Soccer",
+];
+
 function MainComponent() {
+    const router = useRouter();
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user } = useUser();
-
+const [openGroup, setOpenGroup] = useState(null);
   const [selectedBet, setSelectedBet] = useState(null);
   const [selectedOdds, setSelectedOdds] = useState(null);
-  const [sports, setSports] = useState([]);
+  const [sports, setSports] = useState({});
   const [events, setEvents] = useState([]);
   const [loadingSports, setLoadingSports] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(true);
@@ -30,20 +38,76 @@ function MainComponent() {
   const [notification, setNotification] = useState(null);
   const [jwt, setJwt] = useState(null);
 
-  const handleLoadSports = async () => {
-    try {
-      setLoadingSports(true);
-      const res = await fetch("/api/list-sports", { method: "POST", body: JSON.stringify({}) });
-      if (!res.ok) throw new Error(`Error fetching sports: ${res.status}`);
-      const data = await res.json();
-      setSports(data.sports);
-    } catch (error) {
-      setErrorSports("Failed to load sports");
-      console.error(error);
-    } finally {
-      setLoadingSports(false);
+const handleLoadSports = async () => {
+  try {
+    setLoadingSports(true);
+
+    const res = await fetch("/api/sports/list");
+    const data = await res.json();
+
+    const grouped = {};
+
+    data.sports.forEach((sport) => {
+      console.log("SPORT FROM API:", {
+  key: sport.key,
+  group: sport.group,
+  title: sport.title,
+  active: sport.active,
+  has_outrights: sport.has_outrights,
+});
+
+      // Only main sports
+      if (!MAIN_SPORT_GROUPS.includes(sport.group)) return;
+
+      // Only active leagues
+      if (!sport.active) return;
+
+      // Hide championship / winner markets
+      if (sport.has_outrights) return;
+
+      if (!grouped[sport.group]) {
+        grouped[sport.group] = [];
+      }
+
+      grouped[sport.group].push(sport);
+    });
+
+    setSports(grouped);
+  } catch (err) {
+    console.error(err);
+    setErrorSports("Failed to load sports");
+  } finally {
+    setLoadingSports(false);
+  }
+};
+
+
+const fetchEventsByLeague = async (leagueKey) => {
+  console.log("FETCHING EVENTS FOR LEAGUE:", leagueKey);
+console.log("API RESPONSE:", data);
+
+  if (!leagueKey) return;
+
+  try {
+    setLoadingEvents(true);
+    const res = await fetch(`/api/sports/${leagueKey}`);
+    const data = await res.json();
+
+    if (data.success) {
+      setEvents(data.events);
     }
-  };
+  } catch (err) {
+    setErrorEvents("Failed to load events");
+    console.error(err);
+  } finally {
+    setLoadingEvents(false);
+  }
+};
+
+useEffect(() => {
+  handleLoadSports();
+}, []);
+
 
   const handleLoadEvents = async () => {
     try {
@@ -301,68 +365,62 @@ function MainComponent() {
         </section>
 
         <section className="mb-16">
-          <div className="mb-8 flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-[#FFD700]">Sports Populaires</h2>
-            <button
-              onClick={handleLoadSports}
-              className="inline-block rounded-lg bg-[#FFD700] px-6 py-3 text-lg font-semibold text-[#003366] transition-all glow-pulse more-hover"
-            >
-              Charger les Sports
-            </button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {loadingSports ? (
-              <div className="text-center col-span-full text-[#FFD700]">Chargement...</div>
-            ) : (
-              sports.map((sport) => (
-                <SportCard
-                  key={sport.id}
-                  icon={`fa-${sport.icon_name}`}
-                  name={sport.name}
-                  onClick={() => handleLoadEvents(sport.id)}
-                />
-              ))
-            )}
-          </div>
-        </section>
+  <div className="mb-8 flex justify-between items-center">
+    <h2 className="text-2xl font-bold text-[#FFD700]">
+      Sports Populaires
+    </h2>
+  </div>
 
-        <section className="mb-16">
-          <div className="mb-8 flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-[#FFD700]">Matchs du Jour</h2>
-            <button
-              onClick={handleLoadEvents}
-              className="inline-block rounded-lg bg-[#FFD700] px-6 py-3 text-lg font-semibold text-[#003366] transition-all glow-pulse more-hover"
-            >
-              Charger les Événements
-            </button>
-          </div>
-          <div className="space-y-4">
-            {loadingEvents ? (
-              <div className="text-center text-[#FFD700]">Chargement...</div>
-            ) : (
-              events.map((event) => (
-                <EventCard
-                  key={event.id}
-                  team1={event.team1}
-                  team2={event.team2}
-                  date={event.date}
-                  time={event.time}
-                  odds1={event.odds1}
-                  oddsDraw={event.oddsDraw}
-                  odds2={event.odds2}
-                  onBetSelect={(team, odds) => {
-                    setSelectedBet(team);
-                    setSelectedOdds(odds);
-                  }}
-                />
-              ))
-            )}
-          </div>
-        </section>
+  {loadingSports ? (
+    <div className="text-center text-[#FFD700]">Chargement...</div>
+  ) : (
+    <div className="space-y-4">
+     {Object.keys(sports).map((groupKey) => (
+    <div
+      key={groupKey}
+      className="border border-[#FFD700]/30 rounded-lg overflow-hidden"
+    >
+      <button
+        onClick={() =>
+          setOpenGroup(openGroup === groupKey ? null : groupKey)
+        }
+        className="w-full flex justify-between items-center px-4 py-3
+                   bg-[#002347] text-[#FFD700] font-bold hover:bg-[#003366]"
+      >
+        <span>{groupKey}</span>
+        <span>{openGroup === groupKey ? "▲" : "▼"}</span>
+      </button>
 
-        <div className="lg:sticky lg:top-24">
-          <BetSlip selectedBet={selectedBet} odds={selectedOdds} onSubmit={handleBetSubmit} />
+      {openGroup === groupKey && (
+        <div className="p-4 bg-[#001a33] grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {sports[groupKey].map((league) => (
+            <SportCard
+              key={league.key}
+              icon="fa-trophy"
+              name={league.title}
+              onClick={() => {
+                // Navigate to /sport and pass league key
+                router.push(`/sport?league=${league.key}`);
+              }}
+            />
+          ))}
         </div>
+      )}
+    </div>
+  ))}
+    </div>
+  )}
+  {/* Bouton Plus de Sports centré sous la grille */}
+<div className="flex justify-center mt-8">
+  <a
+    href="/sport"
+    className="inline-block rounded-lg bg-[#FFD700] px-6 py-3 text-lg font-semibold text-[#003366] transition-all glow-pulse more-hover"
+  >
+    Plus de Sports
+  </a>
+</div>
+
+</section>
       </div>
 
       {notification && (
