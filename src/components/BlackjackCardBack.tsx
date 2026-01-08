@@ -6,7 +6,7 @@ export default function BlackjackCardBack() {
 
       {/* Logo */}
       <span className="text-[#FFD700] text-lg font-extrabold leading-none drop-shadow mb-3">
-        Goon
+        Moon
       </span>
       <span className="text-[#FFD700] text-lg font-extrabold leading-none drop-shadow -mt-1">
         Bet
