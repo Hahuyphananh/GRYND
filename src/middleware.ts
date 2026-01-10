@@ -11,7 +11,7 @@ const isPublicRoute = createRouteMatcher([
   '/sport',
   '/sport/match/(.*)',
   '/sync',
-  '/rankings',
+  '/Classement',
   '/profil',
   '/casino/poker',
   '/casino/blackjack',
