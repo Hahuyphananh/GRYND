@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 
 type Player = {
   id: string;
@@ -18,6 +19,7 @@ type Player = {
 };
 
 type Game = {
+  id?: string;
   players: Player[];
   community: Card[];
   deck: Card[];
@@ -55,6 +57,9 @@ function nextActive(start: number, players: Player[]): number {
 }
 
 export default function PokerPage() {
+  const { user } = useUser();
+  const clerkId = user?.id; 
+  const myId = clerkId;
   const router = useRouter();
   const [name,setName] = useState("");
   const [game,setGame] = useState<Game|null>(null);
@@ -123,7 +128,7 @@ const [showJoinForm, setShowJoinForm] = useState(false);
         return;
       }
       // normalize to {id,name}
-      const norm = data.map((p:any, idx:number) => ({ id: p.id || p.playerId || `p_${idx}`, name: p.name || p.displayName || p.player || "Player", level: p.level }));
+      const norm = data.map((p:any, idx:number) => ({ id: p.id || p.playerId || `p_${idx}`, name: p.name || p.displayName || p.player || myId, level: p.level }));
       setWaitingPlayers(norm);
     } catch (err) {
       console.error("Failed to fetch waiting players", err);
@@ -171,7 +176,7 @@ useEffect(() => {
   if (!game) return;
 
   const currentPlayer = game.players[game.currentTurn];
-  const isPlayerTurn = currentPlayer && currentPlayer.id === "player";
+  const isPlayerTurn = currentPlayer && currentPlayer.id === myId;
   setIsMyTurn(isPlayerTurn);
   setTurnTimer(60); // reset every time the turn changes
 
@@ -215,7 +220,6 @@ useEffect(() => {
 
     const deck = shuffle(createDeck());
     // only the human player initially; seatIndex = 3 (bottom-center)
-    const players: Player[] = [{ id: "player", name, stack: 1000, hand: [], currentBet: 0, seatIndex: 3 }];
 
     try {
       const res = await fetch("/api/poker/create-game", {
@@ -228,7 +232,7 @@ useEffect(() => {
       const data = await res.json();
 
       setGame({
-        players,
+        players: [],
         community: [],
         deck,
         pot: 0,
@@ -314,54 +318,43 @@ useEffect(() => {
     const serverGame = data.game as Game;
 
     // 🔥 Convert DB players (seat+clerkId) into full usable Player objects
-    const players: Player[] = (serverGame.players || []).map((p: any) => ({
-      id: p.clerkId || `seat${p.seat}`,
-      name: p.clerkId ? "Player" : "Empty",
-      seatIndex: p.seat,
-      isAI: false,
-      stack: p.clerkId ? 1000 : 0,
-      currentBet: 0,
-      hasFolded: false,
-      lastAction: "",
-      hand: [],
-    }));
+   const seen = new Set<string>();
 
-    // 🔥 Only assign blinds if they weren't assigned already
-    if (!players.some((p) => p.lastAction === "Small Blind")) {
-      const sb = 10, bb = 20;
-      const dealerIndex = serverGame.dealerIndex || 0;
-      const sbIndex = (dealerIndex + 1) % players.length;
-      const bbIndex = (dealerIndex + 2) % players.length;
+const players: Player[] = (serverGame.players || [])
+  .filter((p: any) => p.clerkId)
+  .filter((p: any) => {
+    if (seen.has(p.clerkId)) return false;
+    seen.add(p.clerkId);
+    return true;
+  })
+  .map((p: any) => ({
+    id: p.clerkId,                // ✅ ALWAYS Clerk ID
+    name: p.clerkId === data.clerkId ? name : myId,
+    seatIndex: p.seat,
+    isAI: false,
+    stack: 1000,
+    currentBet: 0,
+    hasFolded: false,
+    lastAction: "",
+    hand: [],
+  }));
 
-      if (players[sbIndex].stack >= sb) {
-        players[sbIndex].stack -= sb;
-        players[sbIndex].currentBet = sb;
-        players[sbIndex].lastAction = "Small Blind";
-      }
 
-      if (players[bbIndex].stack >= bb) {
-        players[bbIndex].stack -= bb;
-        players[bbIndex].currentBet = bb;
-        players[bbIndex].lastAction = "Big Blind";
-      }
-    }
+// 🔥 Update global game state
+setGame((prev) => ({
+  ...prev,              // 👈 KEEP inviteCode, waiting, dealerIndex
+  ...serverGame,        // 👈 overwrite server truth
+  players,
+  pot: serverGame.pot ?? prev?.pot ?? 0,
+  currentTurn: serverGame.currentTurn ?? prev?.currentTurn ?? 0,
+  roundStarter: serverGame.roundStarter ?? prev?.roundStarter,
+  waiting: serverGame.waiting ?? prev?.waiting ?? true,
+}));
 
-    // 🔥 Determine who's first to act
-    const firstToAct =
-      (players.findIndex((p) => p.lastAction === "Big Blind") + 1) %
-      players.length;
 
-    // 🔥 Update global game state
-    setGame({
-      ...serverGame,
-      players,
-      pot: players.reduce((sum, p) => sum + (p.currentBet || 0), 0),
-      currentTurn: firstToAct,
-      roundStarter: firstToAct,
-    });
 
     // 🔥 Set user balance to their starting stack
-    const joiningHuman = players.find((p) => p.id === "player");
+    const joiningHuman = players.find((p) => p.id === myId);
     if (joiningHuman) setBalance(joiningHuman.stack);
 
     setJoiningGame(false);
@@ -466,7 +459,7 @@ useEffect(() => {
         p.id === winner.id ? { ...p, stack: p.stack + pot } : p
       );
 
-      if (winner.id === "player") {
+      if (winner.id === myId) {
         setBalance(prev => prev + pot);
         fetchUserTokens();
       }
@@ -510,7 +503,7 @@ useEffect(() => {
         current.lastAction = `Called ${actual}`;
         if (checkForWinner(players, potNew)) return;
 
-        if (current.id === "player") {
+        if (current.id === myId) {
           setBalance(prev => Math.max(prev - actual, 0));
           fetchUserTokens();
         }
@@ -525,7 +518,7 @@ useEffect(() => {
   potNew += actual;
   current.lastAction = `Bet ${betSize}`;
 
-  if (current.id === "player") {
+  if (current.id === myId) {
     setBalance((prev) => Math.max(prev - actual, 0));
     fetchUserTokens();
   }
@@ -538,7 +531,7 @@ useEffect(() => {
       potNew += actual;
       current.lastAction = `Raised ${raiseAmount}`;
 
-      if (current.id === "player") {
+      if (current.id === myId) {
         setBalance(prev => Math.max(prev - actual, 0));
       }
     }
@@ -621,7 +614,7 @@ setGame({
 
     const updated=game.players.map(p=>p.id===winner.id?{...p,stack:p.stack+game.pot}:p);
 
-    if (winner.id === "player") {
+    if (winner.id === myId) {
       setBalance(prev => prev + game.pot);
       fetchUserTokens();
     }
@@ -669,37 +662,58 @@ setGame({
     });
   }
 
+  function isSeatAvailableForHuman(seatIndex: number) {
+  if (!game) return false;
+
+  // seat already taken?
+  const occupied = game.players.some(p => p.seatIndex === seatIndex);
+  if (occupied) return false;
+
+  // only allow humans before game starts
+  if (!game.waiting) return false;
+
+  return true;
+}
+
   // ---- Seat click: open modal to add AI or invite (we only do AI add now) ----
- function handleSeatClick(seatIndex: number) {
-  if (!game) {
-    alert("Create or join a game first.");
-    return;
-  }
+function handleSeatClick(seatIndex: number) {
+  if (!game) return alert("Create or join a game first.");
 
-  // 🔒 Prevent seat adding in public games
-  if (!isPrivate) {
-    alert("Only the host can add seats in public games.");
-    return;
-  }
-
-  // only allow seat changes while waiting (lobby)
-  if (!game.waiting) {
-    alert("You can only add AIs before the game starts.");
-    return;
-  }
+  if (!game.waiting)
+    return alert("Seats are locked once the game starts.");
 
   const occupied = game.players.some(p => p.seatIndex === seatIndex);
-  if (occupied) {
-    alert("Seat already taken.");
-    return;
-  }
+  if (occupied) return alert("Seat already taken.");
 
   setSelectedSeat(seatIndex);
-  setAiNameInput("");
-  setAiStackInput(1000);
   setSeatModalOpen(true);
 }
 
+async function sitAsHuman() {
+  if (selectedSeat === null || !game || !clerkId) return;
+
+  if (game.players.some((p) => p.id === clerkId)) {
+    alert("You are already seated.");
+    return;
+  }
+
+  const res = await fetch("/api/poker/sit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      gameCode: game.inviteCode,
+      seatIndex: selectedSeat,
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) return alert(data.error || "Failed to sit");
+
+  await joinGame();
+
+  setSeatModalOpen(false);
+  setSelectedSeat(null);
+}
 
   function addAiToSeat() {
     if (!game || selectedSeat === null) return;
@@ -951,7 +965,9 @@ if (showJoinForm) {
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <div className="flex gap-2 relative">
             <AnimatePresence>
-              {(game?.community || []).map((c, i) => (
+              {(game?.community || [])
+  .filter((c): c is Card => !!c && !!c.suit && !!c.value)
+  .map((c, i) => (
                 <motion.div
                   key={`${c.suit}-${c.value}-${i}`}
                   initial={{ opacity: 0, y: -200, x: Math.random() * 200 - 100, rotate: Math.random() * 40 - 20, scale: 0.5 }}
@@ -978,7 +994,7 @@ if (showJoinForm) {
   >
     Your Best Hand:{" "}
     {evaluateHand(
-      game.players.find((p) => p.id === "player")?.hand || [],
+      game.players.find((p) => p.id === myId)?.hand || [],
       game.community
     )}
   </div>
@@ -1073,7 +1089,7 @@ if (showJoinForm) {
 <div className="relative w-[900px] h-[600px] -mt-[480px] pointer-events-none">
  {seatPositions.map((pos, seatIdx) => {
   const occupant = playerAtSeat(seatIdx);
-  const isPlayer = occupant?.id === "player";
+  const isPlayer = occupant?.id === myId;
 
   return (
     <div
@@ -1106,22 +1122,25 @@ if (showJoinForm) {
           {/* Cards display logic */}
           <div className="flex gap-1 justify-center">
             {isPlayer
-              ? (occupant.hand || []).map((card, i) => (
-                  <div
-                    key={i}
-                    className={`w-6 h-8 rounded bg-white flex items-center justify-center
-                      text-[10px] font-bold shadow 
-                      ${
-                        card.suit === "♥" || card.suit === "♦"
-                          ? "text-red-600"
-                          : "text-black"
-                      }
-                    `}
-                  >
-                    {card.value}
-                    {card.suit}
-                  </div>
-                ))
+              ? (occupant.hand || [])
+  .filter((card): card is Card => !!card && !!card.suit && !!card.value)
+  .map((card, i) => (
+    <div
+      key={i}
+      className={`w-6 h-8 rounded bg-white flex items-center justify-center
+        text-[10px] font-bold shadow 
+        ${
+          card.suit === "♥" || card.suit === "♦"
+            ? "text-red-600"
+            : "text-black"
+        }
+      `}
+    >
+      {card.value}
+      {card.suit}
+    </div>
+  ))
+
               : game?.stage !== "showdown"
               ? (
                   <>
@@ -1131,23 +1150,25 @@ if (showJoinForm) {
                   </>
                 )
               : (
-                  // Reveal cards at showdown
-                  (occupant.hand || []).map((card, i) => (
-                    <div
-                      key={i}
-                      className={`w-6 h-8 rounded bg-white flex items-center justify-center
-                        text-[10px] font-bold shadow 
-                        ${
-                          card.suit === "♥" || card.suit === "♦"
-                            ? "text-red-600"
-                            : "text-black"
-                        }
-                      `}
-                    >
-                      {card.value}
-                      {card.suit}
-                    </div>
-                  ))
+               (occupant.hand || [])
+  .filter((card): card is Card => !!card && !!card.suit && !!card.value)
+  .map((card, i) => (
+    <div
+      key={i}
+      className={`w-6 h-8 rounded bg-white flex items-center justify-center
+        text-[10px] font-bold shadow 
+        ${
+          card.suit === "♥" || card.suit === "♦"
+            ? "text-red-600"
+            : "text-black"
+        }
+      `}
+    >
+      {card.value}
+      {card.suit}
+    </div>
+  ))
+
                 )}
           </div>
 
@@ -1206,7 +1227,7 @@ if (showJoinForm) {
 
   return (
     <motion.div
-      key={p.id + "-chip"}
+      key={`chip-${p.id}-${p.seatIndex}`}
       initial={{ scale: 0, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0, opacity: 0 }}
@@ -1224,63 +1245,69 @@ if (showJoinForm) {
 
 </div>
 
-      {/* Seat Modal */}
-      {seatModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setSeatModalOpen(false)} />
-          <div className="bg-slate-800 p-6 rounded z-60 w-[320px]">
-            <h2 className="text-xl mb-3">Add AI to seat {selectedSeat}</h2>
-            <label className="block mb-1">Name (optional)</label>
-            <input className="w-full p-2 rounded mb-3 text-black" value={aiNameInput} onChange={(e) => setAiNameInput(e.target.value)} placeholder="AI name or leave blank" />
-            <label className="block mb-1">Stack</label>
-            <input type="number" className="w-full p-2 rounded mb-3 text-black" value={aiStackInput} onChange={(e) => setAiStackInput(Number(e.target.value))} />
-            <div className="flex gap-2">
-              <button onClick={addAiToSeat} className="bg-green-600 px-4 py-2 rounded font-bold">Add AI</button>
-              <button onClick={() => setSeatModalOpen(false)} className="bg-gray-500 px-4 py-2 rounded">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* AI Seat Modal */}
-      {seatModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/70 z-[100]">
-          <div
-            className="bg-white text-black rounded-lg p-6 w-80 relative"
-            onClick={(e) => e.stopPropagation()}
+     {seatModalOpen && selectedSeat !== null && (
+ <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-auto">
+    {/* Backdrop */}
+    <div
+      className="absolute inset-0 bg-black/60 z-[90]"
+      onClick={() => setSeatModalOpen(false)}
+    />
+
+    <div className="relative bg-slate-800 p-6 rounded-xl w-[340px] z-[100] pointer-events-auto">
+      <h2 className="text-xl font-bold mb-2">
+        Seat {selectedSeat}
+      </h2>
+
+      <p className="text-sm text-gray-300 mb-4">
+        Who should sit in this seat?
+      </p>
+
+      {/* HUMAN OPTION */}
+      <button
+        onClick={sitAsHuman}
+        className="w-full bg-yellow-500 text-black px-4 py-2 rounded font-bold mb-3 hover:bg-yellow-400"
+      >
+        Sit as Human
+      </button>
+
+      {/* AI OPTION (host only, private only) */}
+      {isPrivate && (
+        <>
+          <div className="border-t border-slate-600 my-3" />
+
+          <label className="block text-sm mb-1">AI Name (optional)</label>
+          <input
+            value={aiNameInput}
+            onChange={(e) => setAiNameInput(e.target.value)}
+            className="w-full p-2 rounded text-black mb-2"
+          />
+
+          <label className="block text-sm mb-1">AI Stack</label>
+          <input
+            type="number"
+            value={aiStackInput}
+            onChange={(e) => setAiStackInput(Number(e.target.value))}
+            className="w-full p-2 rounded text-black mb-3"
+          />
+
+          <button
+            onClick={addAiToSeat}
+            className="w-full bg-green-600 px-4 py-2 rounded font-bold hover:bg-green-500"
           >
-            <h2 className="text-xl font-bold mb-3">Add AI Player</h2>
-            <label className="block mb-1 font-semibold">AI Name</label>
-            <input
-              type="text"
-              value={aiNameInput}
-              onChange={(e) => setAiNameInput(e.target.value)}
-              className="border rounded w-full p-2 mb-3"
-              placeholder="AI name..."
-            />
-            <label className="block mb-1 font-semibold">Starting Stack</label>
-            <input
-              type="number"
-              value={aiStackInput}
-              onChange={(e) => setAiStackInput(Number(e.target.value))}
-              className="border rounded w-full p-2 mb-4"
-            />
-            <div className="flex justify-between">
-              <button
-                onClick={addAiToSeat}
-                className="bg-green-600 text-white px-4 py-2 rounded font-bold"
-              >
-                Add
-              </button>
-              <button
-                onClick={() => setSeatModalOpen(false)}
-                className="bg-red-500 text-white px-4 py-2 rounded font-bold"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+            Add AI
+          </button>
+        </>
       )}
+
+      <button
+        onClick={() => setSeatModalOpen(false)}
+        className="mt-4 w-full bg-gray-600 px-4 py-2 rounded"
+      >
+        Cancel
+      </button>
+    </div>
+  </div>
+)}
 
       {/* Multiplayer Waiting Panel — bottom-left, public-only */}
       {!isPrivate && (

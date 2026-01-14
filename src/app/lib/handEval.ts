@@ -13,12 +13,20 @@ export function evaluateHand(
     return "";
   }
 
-  const all = [...playerCards, ...community];
-  if (all.length === 0) return "";
+  const all = [...playerCards, ...community].filter(
+  (c): c is Card =>
+    !!c &&
+    typeof c === "object" &&
+    typeof c.suit === "string" &&
+    typeof c.value === "string"
+);
+
+if (all.length === 0) return "";
+if (all.length < 5) return "";
 
   // Count suits for flush
   const suitsCount: Record<string, Card[]> = {};
-  all.forEach(c => {
+  all.forEach(c => {  
     if (!suitsCount[c.suit]) suitsCount[c.suit] = [];
     suitsCount[c.suit].push(c);
   });
@@ -46,9 +54,14 @@ export function evaluateHand(
     : null;
 
   // Check straight
-  const uniqueIndices = Array.from(
-    new Set(all.map(c => cardOrder.indexOf(c.value)))
-  ).sort((a, b) => b - a);
+const uniqueIndices = Array.from(
+  new Set(
+    all
+      .map(c => cardOrder.indexOf(c.value))
+      .filter(i => i >= 0)
+  )
+).sort((a, b) => b - a);
+
 
   let straight = false;
   for (let i = 0; i <= uniqueIndices.length - 5; i++) {
