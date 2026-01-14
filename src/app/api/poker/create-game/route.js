@@ -2,46 +2,40 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "drizzle-orm";
 
 export async function POST(req) {
   try {
     const body = await req.json();
-    const maxPlayers = body.maxPlayers ?? 5;
+    const maxPlayers = body.maxPlayers ?? 6;
     const isPrivate = body.isPrivate ?? true;
 
-    // 🔥 ALWAYS get host Clerk ID from Clerk server-side
+    // ✅ Always get host from Clerk
     const { userId: clerkId } = await auth();
+    if (!clerkId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    const playerName = body.playerName ?? "Player";
-
-    // 1️⃣ Generate game code
+    // ✅ Generate game code
     const gameCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    // 2️⃣ Insert game into DB
+    // ✅ Create EMPTY game
     const [newGame] = await db
       .insert(pokerGames)
       .values({
+        hostClerkId: clerkId,   // ⭐ IMPORTANT
         maxPlayers,
         isPrivate,
         gameCode,
+
+        status: "waiting",      // ⭐ lobby state
         pot: "0",
         round: "preflop",
+
         communityCards: [],
         deck: [],
         discardPile: [],
 
-        // 🔥 FIX: Serialize player array only if PUBLIC
-        players: isPrivate
-          ? undefined
-          : sql`${JSON.stringify([
-              { seat: 0, clerkId: clerkId ?? null }, // host seat
-              { seat: 1, clerkId: null },
-              { seat: 2, clerkId: null },
-              { seat: 3, clerkId: null },
-              { seat: 4, clerkId: null },
-              { seat: 5, clerkId: null },
-            ])}::jsonb`,
+        // ❌ NO players here
       })
       .returning();
 
