@@ -264,7 +264,11 @@ useEffect(() => {
   function startGame() {
     if (!game) return;
 
-    const newDeck = [...game.deck];
+    const newDeck =
+  game.deck.length > 0
+    ? [...game.deck]
+    : shuffle(createDeck());
+
     const players = game.players.map(p => ({
       ...p,
       hand: [newDeck.pop()!, newDeck.pop()!],
@@ -297,70 +301,73 @@ useEffect(() => {
     });
   }
 
-  // ======== JOIN / PUBLIC functions unchanged except seat handling is preserved if seatIndex exists on serverGame
- async function joinGame() {
+  //JOIN Game
+async function joinGame() {
   if (!inviteCode.trim()) return alert("Enter invite code!");
+  if (!clerkId) return alert("Not authenticated");
+
   setJoiningGame(true);
 
   try {
-    const res = await fetch(`/api/poker/join-game`, {
+    const res = await fetch("/api/poker/join-game", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: inviteCode.trim(), playerName: name }),
+      body: JSON.stringify({
+        code: inviteCode.trim(),
+        playerName: name,
+      }),
     });
 
+    const data = await res.json();
     if (!res.ok) {
-      const err = await res.json();
-      return alert(err?.error || "Failed to join game");
+      setJoiningGame(false);
+      return alert(data?.error || "Failed to join game");
     }
 
-    const data = await res.json();
-    const serverGame = data.game as Game;
+    const serverGame = data.game;
 
-    // 🔥 Convert DB players (seat+clerkId) into full usable Player objects
-   const seen = new Set<string>();
+    /**
+     * ✅ Convert DB players → UI players
+     * DB shape: { seat: number, clerkId: string | null }
+     */
+    const players: Player[] = (serverGame.players || [])
+      .filter((p: any) => p.clerkId) // only occupied seats
+      .map((p: any) => ({
+        id: p.clerkId,                 // ✅ ALWAYS Clerk ID
+        name: p.clerkId === clerkId ? name : "Player",
+        seatIndex: p.seat,             // ✅ seat from DB
+        stack: 1000,
+        hand: [],
+        isAI: false,
+        hasFolded: false,
+        lastAction: "",
+        currentBet: 0,
+      }));
 
-const players: Player[] = (serverGame.players || [])
-  .filter((p: any) => p.clerkId)
-  .filter((p: any) => {
-    if (seen.has(p.clerkId)) return false;
-    seen.add(p.clerkId);
-    return true;
-  })
-  .map((p: any) => ({
-    id: p.clerkId,                // ✅ ALWAYS Clerk ID
-    name: p.clerkId === data.clerkId ? name : myId,
-    seatIndex: p.seat,
-    isAI: false,
-    stack: 1000,
-    currentBet: 0,
-    hasFolded: false,
-    lastAction: "",
-    hand: [],
-  }));
+    setGame({
+      id: serverGame.id,
+      inviteCode: serverGame.gameCode,
+      players,
+      community: [],
+      deck: [],
+      pot: 0,
+      currentTurn: 0,
+      stage: "pre-flop",
+      smallBlind: 10,
+      bigBlind: 20,
+      replayVisible: false,
+      dealerIndex: serverGame.dealerIndex ?? 0,
+      waiting: true,
+    });
 
+    // ✅ set balance for THIS user only
+    const me = players.find(p => p.id === clerkId);
+    if (me) setBalance(me.stack);
 
-// 🔥 Update global game state
-setGame((prev) => ({
-  ...prev,              // 👈 KEEP inviteCode, waiting, dealerIndex
-  ...serverGame,        // 👈 overwrite server truth
-  players,
-  pot: serverGame.pot ?? prev?.pot ?? 0,
-  currentTurn: serverGame.currentTurn ?? prev?.currentTurn ?? 0,
-  roundStarter: serverGame.roundStarter ?? prev?.roundStarter,
-  waiting: serverGame.waiting ?? prev?.waiting ?? true,
-}));
-
-
-
-    // 🔥 Set user balance to their starting stack
-    const joiningHuman = players.find((p) => p.id === myId);
-    if (joiningHuman) setBalance(joiningHuman.stack);
-
-    setJoiningGame(false);
   } catch (err) {
     console.error("Join game error:", err);
-    alert("Failed to join game. See console.");
+    alert("Failed to join game");
+  } finally {
     setJoiningGame(false);
   }
 }
@@ -448,7 +455,7 @@ setGame((prev) => ({
 
     return () => clearTimeout(timer);
   }
-}, [game?.currentTurn]);
+}, [game?.currentTurn, game?.stage, game?.waiting]);
 
 
   function checkForWinner(players: Player[], pot: number) {
@@ -546,8 +553,11 @@ let nextTurn = nextActive((currentIndex + 1) % players.length, players);
 setGame(g => g ? { ...g, players, pot: potNew, currentTurn: nextTurn } : g);
 
 // Advance stage only after all bets matched
-if (allMatched && nextTurn === game.roundStarter) {
-  setTimeout(() => advanceStage(), 1000);
+const activeCount = players.filter(p => !p.hasFolded).length;
+
+if (allMatched && activeCount > 1) {
+  setTimeout(() => advanceStage(), 600);
+  return;
 }
 
   }
