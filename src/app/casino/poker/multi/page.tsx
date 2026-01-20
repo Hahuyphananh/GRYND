@@ -34,6 +34,7 @@ type Game = {
   dealerIndex: number;
   inviteCode?: string;
   waiting?: boolean;
+  lastAggressorIndex?: number;
 };
 
 const SUITS = ["♠", "♥", "♦", "♣"];
@@ -47,13 +48,25 @@ function shuffle(deck: Card[]): Card[] {
 }
 
 function nextActive(start: number, players: Player[]): number {
-  let i = start;
+  let i = start % players.length;
   let safety = 0;
-  while (players[i].hasFolded && safety < players.length) {
+
+  console.log("➡️ nextActive called", {
+  start,
+  resolvedIndex: i,
+  resolvedPlayer: players[i]?.name
+});
+
+  while (
+    (players[i]?.hasFolded || !players[i]) &&
+    safety < players.length
+  ) {
     i = (i + 1) % players.length;
     safety++;
   }
+
   return i;
+
 }
 
 export default function PokerPage() {
@@ -74,6 +87,7 @@ export default function PokerPage() {
 const [isMyTurn, setIsMyTurn] = useState(false);
 const [publicGameCode, setPublicGameCode] = useState<string | null>(null);
 const [showJoinForm, setShowJoinForm] = useState(false);
+const [aiThinking, setAiThinking] = useState(false);
 
   // UI modal / seat state
   const [seatModalOpen, setSeatModalOpen] = useState(false);
@@ -102,6 +116,22 @@ const [showJoinForm, setShowJoinForm] = useState(false);
     }
   };
 
+function findFirstActorIndex(
+  players: Player[],
+  dealerIndex: number,
+  stage: Game["stage"]
+): number {
+  if (players.length === 0) return 0;
+
+  // Pre-flop → first after BB
+  if (stage === "pre-flop") {
+    const bbIndex = (dealerIndex + 2) % players.length;
+    return nextActive(bbIndex + 1, players);
+  }
+
+  // Flop / Turn / River → first after dealer
+  return nextActive(dealerIndex + 1, players);
+}
   
   const [availablePublicGames, setAvailablePublicGames] = useState<number>(0);
 
@@ -288,18 +318,42 @@ useEffect(() => {
     players[bbIndex].currentBet = game.bigBlind;
     players[bbIndex].lastAction = "Big Blind";
 
-    const firstToAct = (bbIndex + 1) % players.length;
+   const firstActorIndex = findFirstActorIndex(
+  players,
+  game.dealerIndex,
+  "pre-flop"
+);
 
-    setGame({
-      ...game,
-      players,
-      deck: newDeck,
-      pot: game.smallBlind + game.bigBlind,
-      currentTurn: firstToAct,
-      roundStarter: firstToAct,
-      waiting: false,
-    });
-  }
+console.log("🟢 GAME START TURN CHECK", {
+  stage: "pre-flop",
+  dealerIndex: game.dealerIndex,
+  firstActorIndex,
+  firstActorName: players[firstActorIndex]?.name,
+  seating: players.map(p => ({
+    seat: p.seatIndex,
+    name: p.name,
+    folded: p.hasFolded
+  }))
+});
+
+setGame({
+  ...game,
+  players,
+  deck: newDeck,
+  pot: game.smallBlind + game.bigBlind,
+  currentTurn: firstActorIndex,
+  roundStarter: firstActorIndex,
+  waiting: false,
+  lastAggressorIndex: firstActorIndex,
+});
+
+console.log(
+  "TURN DEBUG:",
+  players.map(p => ({ name: p.name, seat: p.seatIndex })),
+  "firstTurn:",
+  players[firstActorIndex]?.name
+);
+} 
 
   //JOIN Game
 async function joinGame() {
@@ -326,23 +380,25 @@ async function joinGame() {
 
     const serverGame = data.game;
 
-    /**
-     * ✅ Convert DB players → UI players
-     * DB shape: { seat: number, clerkId: string | null }
-     */
-    const players: Player[] = (serverGame.players || [])
-      .filter((p: any) => p.clerkId) // only occupied seats
-      .map((p: any) => ({
-        id: p.clerkId,                 // ✅ ALWAYS Clerk ID
-        name: p.clerkId === clerkId ? name : "Player",
-        seatIndex: p.seat,             // ✅ seat from DB
-        stack: 1000,
-        hand: [],
-        isAI: false,
-        hasFolded: false,
-        lastAction: "",
-        currentBet: 0,
-      }));
+  const seen = new Set<string>();
+
+const players: Player[] = (serverGame.players || [])
+  .filter((p: any) => p.clerkId && !seen.has(p.clerkId))
+  .map((p: any) => {
+    seen.add(p.clerkId);
+    return {
+      id: p.clerkId === clerkId ? clerkId : `player_${p.clerkId}`,
+      name: p.clerkId === clerkId ? name : "Player",
+      seatIndex: p.seat,
+      stack: 1000,
+      hand: [],
+      isAI: false,
+      hasFolded: false,
+      lastAction: "",
+      currentBet: 0,
+    };
+  });
+
 
     setGame({
       id: serverGame.id,
@@ -395,6 +451,7 @@ async function joinGame() {
         lastAction: (p as any).lastAction || "",
         hand: (p as any).hand || [],
         seatIndex: (p as any).seatIndex ?? undefined,
+        id: p.id === clerkId ? clerkId : p.id,
       }));
 
       // Set blinds if missing
@@ -411,15 +468,20 @@ async function joinGame() {
         players[bbIndex].lastAction = "Big Blind";
       }
 
-      const firstToAct = (players.findIndex(p => p.lastAction === "Big Blind") + 1) % players.length;
+      const firstActorIndex = findFirstActorIndex(
+  players,
+  serverGame.dealerIndex ?? 0,
+  "pre-flop"
+);
 
-      setGame({
-        ...serverGame,
-        players,
-        pot: players.reduce((sum, p) => sum + (p.currentBet || 0), 0),
-        currentTurn: firstToAct,
-        roundStarter: firstToAct,
-      });
+setGame({
+  ...serverGame,
+  players,
+  pot: players.reduce((sum, p) => sum + (p.currentBet || 0), 0),
+  currentTurn: firstActorIndex,
+  roundStarter: firstActorIndex,
+});
+
 
       const human = players.find(p => !p.isAI);
       if (human) setBalance(human.stack);
@@ -433,29 +495,49 @@ async function joinGame() {
   }
 
   // ======== AI Turn Logic, performAction, advanceStage, showdown, etc. (kept intact) ========
- useEffect(() => {
+useEffect(() => {
   if (!game) return;
   if (game.stage === "showdown" || game.waiting) return;
 
   const current = game.players[game.currentTurn];
-  if (!current || current.hasFolded) return;
+  if (!current || current.hasFolded || !current.isAI) return;
 
-  if (current.isAI) {
-    const timer = setTimeout(() => {
+  const timer = setTimeout(() => {
+    try {
       const hs = evaluateHand(current.hand, game.community);
-      let action: "check" | "call" | "raise" | "fold" = "check";
+      const highest = Math.max(...game.players.map(p => p.currentBet));
 
-      if (hs.includes("Three") || hs.includes("Straight") || hs.includes("Flush")) action = "raise";
-      else if (hs.includes("Pair") || hs.includes("Two Pair")) action = "call";
-      else if (Math.random() < 0.2) action = "fold";
-      else action = "call";
+let action: "check" | "call" | "raise" | "fold"| "bet20";
 
-      performAction(action, true);
-    }, 800 + Math.random() * 600);
+if (current.currentBet < highest) {
+  action = "call";
+} else if (Math.random() < 0.35) {
+  action = "bet20"; // force visible chips
+} else {
+  action = "check";
+}
 
-    return () => clearTimeout(timer);
-  }
-}, [game?.currentTurn, game?.stage, game?.waiting]);
+
+      if (hs.includes("Three") || hs.includes("Straight") || hs.includes("Flush")) {
+        action = "raise";
+      } else if (hs.includes("Pair") || hs.includes("Two Pair")) {
+        action = "call";
+      } else if (Math.random() < 0.2) {
+        action = "fold";
+      } else {
+        action = "call";
+      }
+
+      performAction(action as any, true);
+    } finally {
+      setAiThinking(false); // 🔒 ALWAYS unlock
+    }
+  }, 800 + Math.random() * 600);
+
+  setAiThinking(true);
+
+  return () => clearTimeout(timer);
+}, [game?.currentTurn, game?.stage]);
 
 
   function checkForWinner(players: Player[], pot: number) {
@@ -545,22 +627,43 @@ async function joinGame() {
 // Determine if everyone has either called or folded
 const activePlayers = players.filter(p => !p.hasFolded);
 const highestBet = Math.max(...players.map(p => p.currentBet));
-const allMatched = activePlayers.every(p => p.currentBet === highestBet);
 
-// Move to next turn
-let nextTurn = nextActive((currentIndex + 1) % players.length, players);
+// everyone either matched the bet or folded
+const bettingComplete = activePlayers.every(
+  p => p.currentBet === highestBet
+);
 
-setGame(g => g ? { ...g, players, pot: potNew, currentTurn: nextTurn } : g);
+// move turn
+let nextTurn = nextActive(currentIndex + 1, players);
 
-// Advance stage only after all bets matched
-const activeCount = players.filter(p => !p.hasFolded).length;
+// if betting round is complete → advance stage
+if (bettingComplete) {
+  setGame(g =>
+    g
+      ? {
+          ...g,
+          players,
+          pot: potNew,
+        }
+      : g
+  );
 
-if (allMatched && activeCount > 1) {
-  setTimeout(() => advanceStage(), 600);
+  setTimeout(() => advanceStage(), 500);
   return;
 }
 
-  }
+// otherwise continue normally
+setGame(g =>
+  g
+    ? {
+        ...g,
+        players,
+        pot: potNew,
+        currentTurn: nextTurn,
+      }
+    : g
+);
+}
 
   async function advanceStage() {
     if (!game) return;
@@ -589,7 +692,23 @@ if (game.stage === "pre-flop") {
 }
 
 const nextDealer = (game.dealerIndex + 1) % game.players.length;
-const firstToAct = nextActive((nextDealer + 1) % playersReset.length, playersReset);
+const firstToAct = findFirstActorIndex(
+  playersReset,
+  nextDealer,
+  nextStage
+);
+
+console.log("🟡 STAGE ADVANCE TURN CHECK", {
+  stage: nextStage,
+  dealerIndex: nextDealer,
+  firstActorIndex: firstToAct,
+  firstActorName: playersReset[firstToAct]?.name,
+  seating: playersReset.map(p => ({
+    seat: p.seatIndex,
+    name: p.name,
+    folded: p.hasFolded
+  }))
+});
 
 setGame({
   ...game,
@@ -597,8 +716,10 @@ setGame({
   community: comm,
   stage: nextStage,
   players: playersReset,
-  currentTurn: firstToAct,
-  roundStarter: firstToAct,
+ currentTurn: firstToAct,
+roundStarter: firstToAct,
+
+  lastAggressorIndex: firstToAct,
 });
 
   }
@@ -702,7 +823,8 @@ function handleSeatClick(seatIndex: number) {
 async function sitAsHuman() {
   if (selectedSeat === null || !game || !clerkId) return;
 
-  if (game.players.some((p) => p.id === clerkId)) {
+  // HARD GUARD — never allow duplicates
+  if (game.players.some(p => p.id === clerkId)) {
     alert("You are already seated.");
     return;
   }
@@ -719,7 +841,24 @@ async function sitAsHuman() {
   const data = await res.json();
   if (!res.ok) return alert(data.error || "Failed to sit");
 
-  await joinGame();
+  // ✅ ADD PLAYER LOCALLY (NO joinGame)
+  const newPlayer: Player = {
+    id: clerkId,               // ✅ Clerk ID ONLY
+    name,
+    stack: 1000,
+    hand: [],
+    isAI: false,
+    hasFolded: false,
+    lastAction: "",
+    currentBet: 0,
+    seatIndex: selectedSeat,
+  };
+
+  setGame(g =>
+    g
+      ? { ...g, players: [...g.players, newPlayer] }
+      : g
+  );
 
   setSeatModalOpen(false);
   setSelectedSeat(null);
@@ -751,8 +890,13 @@ async function sitAsHuman() {
 // Determine if someone has bet after the flop
 const hasBetThisRound =
   game &&
-  game.players.some((p) => p.currentBet > 0 && !p.hasFolded) &&
-  game.stage !== "pre-flop";
+  game.stage !== "pre-flop" &&
+  game.players.some(
+    (p, idx) =>
+      !p.hasFolded &&
+      p.currentBet > 0 &&
+      idx !== game.roundStarter // 🔑 ignore blind carry-over
+  );
 
 if (showJoinForm) {
   return (
