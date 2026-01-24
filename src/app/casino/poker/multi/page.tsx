@@ -606,6 +606,7 @@ if (current.currentBet < highest) {
   current.currentBet += actual;
   potNew += actual;
   current.lastAction = `Bet ${betSize}`;
+    game.lastAggressorIndex = currentIndex;
 
   if (current.id === myId) {
     setBalance((prev) => Math.max(prev - actual, 0));
@@ -619,25 +620,46 @@ if (current.currentBet < highest) {
       current.currentBet += actual;
       potNew += actual;
       current.lastAction = `Raised ${raiseAmount}`;
+  game.lastAggressorIndex = currentIndex;
 
       if (current.id === myId) {
         setBalance(prev => Math.max(prev - actual, 0));
       }
+    }else if (action === "check") {
+  // You can only check if no bet to call
+  if (current.currentBet === highest) {
+    current.lastAction = "Check";
+  } else {
+    // safety fallback — treat illegal check as call
+    const toCall = highest - current.currentBet;
+    const actual = Math.min(toCall, current.stack);
+    current.stack -= actual;
+    current.currentBet += actual;
+    potNew += actual;
+    current.lastAction = `Called ${actual}`;
+
+    if (current.id === myId) {
+      setBalance(prev => Math.max(prev - actual, 0));
+      fetchUserTokens();
     }
+  }
+}
+
 // Determine if everyone has either called or folded
 const activePlayers = players.filter(p => !p.hasFolded);
-const highestBet = Math.max(...players.map(p => p.currentBet));
-
-// everyone either matched the bet or folded
-const bettingComplete = activePlayers.every(
-  p => p.currentBet === highestBet
-);
 
 // move turn
 let nextTurn = nextActive(currentIndex + 1, players);
 
-// if betting round is complete → advance stage
-if (bettingComplete) {
+const highestBet = Math.max(...players.map(p => p.currentBet));
+const lastAggressor = game.lastAggressorIndex;
+
+// ✅ CASE 1: nobody bet this round (check-check scenario)
+// betting ends ONLY when action comes back to roundStarter
+if (
+  highestBet === 0 &&
+  nextTurn === game.roundStarter
+) {
   setGame(g =>
     g
       ? {
@@ -651,6 +673,40 @@ if (bettingComplete) {
   setTimeout(() => advanceStage(), 500);
   return;
 }
+
+// ✅ CASE 2: someone bet or raised
+// betting ends ONLY when action comes back to last aggressor
+if (
+  highestBet > 0 &&
+  lastAggressor !== undefined &&
+  nextTurn === lastAggressor
+) {
+  setGame(g =>
+    g
+      ? {
+          ...g,
+          players,
+          pot: potNew,
+        }
+      : g
+  );
+
+  setTimeout(() => advanceStage(), 500);
+  return;
+}
+
+// otherwise → continue betting round
+setGame(g =>
+  g
+    ? {
+        ...g,
+        players,
+        pot: potNew,
+        currentTurn: nextTurn,
+      }
+    : g
+);
+
 
 // otherwise continue normally
 setGame(g =>
@@ -1361,9 +1417,15 @@ if (showJoinForm) {
 })}
 
 
- {/* 💰 Chips displayed relative to table */}
+{/* 💰 Chips / CHECK displayed relative to table */}
 {game?.players.map((p) => {
-  if (!p || !p.currentBet || p.currentBet <= 0 || p.seatIndex ==null) return null;
+  if (!p || p.seatIndex == null) return null;
+
+  const showChips = p.currentBet > 0;
+  const showCheck = p.currentBet === 0 && p.lastAction === "Check";
+
+  if (!showChips && !showCheck) return null;
+
   const pos = seatPositions[p.seatIndex];
   if (!pos) return null;
 
@@ -1371,11 +1433,11 @@ if (showJoinForm) {
   let offset = { x: 0, y: 0 };
   switch (p.seatIndex) {
     case 0: offset = { x: -17, y: 50 }; break;        // top-center 
-    case 1: offset = { x: -85, y: 40 }; break;      // top-right 
+    case 1: offset = { x: -85, y: 40 }; break;        // top-right 
     case 2: offset = { x: -90, y: -70 }; break;       // bottom-right
     case 3: offset = { x: -15, y: -75 }; break;       // bottom-center → PLAYER
     case 4: offset = { x: 50, y: -70 }; break;        // bottom-left
-    case 5: offset = { x: 50, y: 40 }; break;       // top-left
+    case 5: offset = { x: 50, y: 40 }; break;         // top-left
     default: offset = { x: 0, y: 0 };
   }
 
@@ -1392,10 +1454,11 @@ if (showJoinForm) {
         transform: "translate(-50%, -50%)",
       }}
     >
-      {p.currentBet}
+      {showChips ? p.currentBet : "✓"}
     </motion.div>
   );
 })}
+
 
 </div>
 
