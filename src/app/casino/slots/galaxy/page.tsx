@@ -1,10 +1,65 @@
 "use client";
-import NavigationBar from "../components/navigation-bar";
+
+import NavigationBar from "../../../../components/navigation-bar";
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 
+// 🍓 Fruit → 💎 Luxury Gem Set
+// 🌌 Fruit → 🚀 Galaxy Relics
+const FRUIT_TO_SPACE: Record<string, string> = {
+  // Common
+  "🍉": "⭐",   // Star
+  "🍌": "🌟",   // Bright Star
+  "🍍": "🪐",   // Ringed Planet
+  "🍏": "🌍",   // Earth-like World
+  "🍓": "🌙",   // Moon
+
+  // Mid-tier
+  "🥭": "☄️",   // Comet
+  "🍈": "🌑",   // Dark Moon
+  "🍇": "🛸",   // UFO
+  "🍒": "🚀",   // Rocket
+  "🍎": "🌠",   // Shooting Star
+
+  // Upper tier
+  "🍊": "🌌",   // Galaxy
+  "🍋": "🌀",   // Wormhole
+  "🥝": "🛰️",   // Satellite
+  "🍐": "🧭",   // Cosmic Navigator
+
+  // Ultra-rare
+  "🍑": "👽",   // Alien Entity
+  "🥥": "🪐",   // Ancient Planet
+  "🍅": "🌌",   // Deep Space
+  "🍆": "🌀",   // Singularity
+  "🌽": "🛸",   // Mothership
+  "🍠": "🚀",   // Hyperdrive Ship
+};
+
+
+const glowBySpace: Record<string, string> = {
+  "⭐": "shadow-yellow-300",
+  "🌟": "shadow-yellow-400",
+  "🌙": "shadow-slate-300",
+  "🌍": "shadow-blue-400",
+  "🪐": "shadow-indigo-400",
+
+  "☄️": "shadow-orange-400",
+  "🌑": "shadow-gray-500",
+  "🚀": "shadow-red-500",
+  "🛸": "shadow-cyan-400",
+  "🌠": "shadow-purple-400",
+
+  "🌌": "shadow-fuchsia-500",
+  "🌀": "shadow-indigo-600",
+  "🛰️": "shadow-sky-400",
+  "🧭": "shadow-amber-400",
+
+  "👽": "shadow-green-500",
+};
+
 const playSound = (freq = 880) => {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const ctx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.frequency.value = freq;
@@ -14,10 +69,13 @@ const playSound = (freq = 880) => {
   gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
 };
 
-export default function SlotMachine() {
-  const [reels, setReels] = useState(
-    Array.from({ length: 5 }, () => Array(3).fill("💰"))
-  );
+// 💎 Gem symbols
+const GEM_SYMBOLS = ["💎", "🔷", "🔶", "💠", "👑"];
+
+export default function GemSlotMachine() {
+ const [reels, setReels] = useState(
+  Array.from({ length: 5 }, () => Array(3).fill("💎"))
+);
   const [balance, setBalance] = useState(0);
   const [bet, setBet] = useState(100);
   const [lastResult, setLastResult] = useState("");
@@ -26,11 +84,12 @@ export default function SlotMachine() {
   const [autoSpinning, setAutoSpinning] = useState(false);
   const [spinning, setSpinning] = useState(false);
   const [flashWin, setFlashWin] = useState(false);
-  const autoSpinRef = useRef(null);
+  const autoSpinRef = useRef<NodeJS.Timeout | null>(null);
 
   const [animatingReels, setAnimatingReels] = useState(Array(5).fill(false));
 
-  // Load token balance from backend
+  
+  // Load token balance
   useEffect(() => {
     const fetchTokens = async () => {
       try {
@@ -39,8 +98,7 @@ export default function SlotMachine() {
         if (data.success) {
           setBalance(parseFloat(data.data.balance));
         }
-      } catch (err) {
-        console.error("Error fetching tokens:", err);
+      } catch {
         setLastResult("❌ Failed to load balance");
       }
     };
@@ -48,7 +106,7 @@ export default function SlotMachine() {
     fetchTokens();
   }, []);
 
-  const handleBetChange = (e) => {
+  const handleBetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value);
     if (!isNaN(value) && value > 0) {
       setBet(Math.min(value, balance));
@@ -75,21 +133,21 @@ export default function SlotMachine() {
       if (!json.success) throw new Error(json.error);
 
       const { reels: newReels, winAmount, newBalance } = json.data;
-      
-await fetch("/api/slots/save-game", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    betAmount: bet,
-    payout: winAmount,
-    reels: newReels.flat(), // flatten into simple array for saving
-  }),
-});
 
-      // Simulate spin time
+      await fetch("/api/slots/save-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          betAmount: bet,
+          payout: winAmount,
+          reels: newReels.flat(),
+        }),
+      });
+
       setTimeout(() => {
         setAnimatingReels(Array(5).fill(false));
         setReels(newReels);
+
         playSound(
           winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700
         );
@@ -101,9 +159,9 @@ await fetch("/api/slots/save-game", {
 
         setLastResult(
           winAmount >= bet * 5
-            ? "🎉 JACKPOT!"
+            ? "💎 MEGA JACKPOT!"
             : winAmount >= bet * 2
-            ? "✅ Match!"
+            ? "✨ GEM MATCH!"
             : "❌ No match."
         );
 
@@ -113,8 +171,7 @@ await fetch("/api/slots/save-game", {
 
         setSpinning(false);
       }, 1500);
-    } catch (err) {
-      console.error("Slot error:", err);
+    } catch {
       setLastResult("❌ Error playing slot");
       setSpinning(false);
     }
@@ -128,20 +185,21 @@ await fetch("/api/slots/save-game", {
 
   const stopAutoSpin = () => {
     setAutoSpinning(false);
-    clearInterval(autoSpinRef.current);
+    if (autoSpinRef.current) clearInterval(autoSpinRef.current);
   };
 
   const setMaxBet = () => {
-    setBet(Math.min(1000, balance)); // Max bet limit
+    setBet(Math.min(1000, balance));
   };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-[#001A33] to-[#002B5B] p-4 text-white relative">
-      <NavigationBar currentPath="/casino" />
+      <NavigationBar currentPath="/slots/gems" />
+
       {/* Title */}
-      <h1 className="text-4xl font-extrabold text-yellow-400 mb-6 drop-shadow-[0_0_10px_gold] animate-pulse mt-20">
-        🍒 FRUIT FORTUNE 🍒
-      </h1>
+      <h1 className="text-4xl font-extrabold text-indigo-300 mb-6 drop-shadow-[0_0_15px_rgba(99,102,241,0.9)] animate-pulse mt-20">
+  🌌 GALAXY SLOTS 🌌
+</h1>
 
 {/* Return to Lobby Button */}
 <Link href="/casino/slots">
@@ -175,14 +233,23 @@ await fetch("/api/slots/save-game", {
                     : ""
                 }`}
               >
-                {symbols.map((fruit, rowIdx) => (
-                  <div
-                    key={`${fruit}-${colIdx}-${rowIdx}`}
-                    className="w-16 h-16 text-4xl flex items-center justify-center my-1 bg-[#004080] rounded-lg border-2 border-yellow-300"
-                  >
-                    {fruit}
-                  </div>
-                ))}
+{symbols.map((symbol, rowIdx) => {
+  const spaceSymbol = FRUIT_TO_SPACE[symbol] ?? "⭐";
+
+  return (
+<div
+  key={`${symbol}-${colIdx}-${rowIdx}`}
+  className={`
+w-16 h-16 text-4xl flex items-center justify-center my-1 bg-gradient-to-br from-[#020617] via-[#020617] to-[#020617] rounded-xl border border-indigo-400 drop-shadow-[0_0_12px_rgba(99,102,241,0.6)]
+    ${glowBySpace[spaceSymbol]}
+  `}
+>
+  {spaceSymbol}
+</div>
+
+  );
+})}
+
               </div>
             </div>
           );
@@ -198,6 +265,7 @@ await fetch("/api/slots/save-game", {
         >
           SPIN
         </button>
+
         {!autoSpinning ? (
           <button
             onClick={startAutoSpin}
@@ -213,6 +281,7 @@ await fetch("/api/slots/save-game", {
             STOP AUTO
           </button>
         )}
+
         <button
           onClick={setMaxBet}
           className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded shadow"
@@ -222,32 +291,40 @@ await fetch("/api/slots/save-game", {
       </div>
 
       {/* Stats */}
-      <div className="bg-black bg-opacity-40 p-6 rounded-lg w-full max-w-xl text-white space-y-2 border-2 border-yellow-500">
+      <div className="bg-black bg-opacity-40 p-6 rounded-lg w-full max-w-xl space-y-2 border-2 border-yellow-500">
         <div className="flex justify-between items-center">
           <span>Bet Amount:</span>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min="1"
-              max={balance}
-              value={bet}
-              onChange={handleBetChange}
-              className="w-24 px-2 py-1 rounded text-black text-right"
-            />
-          </div>
+          <input
+            type="number"
+            min="1"
+            max={balance}
+            value={bet}
+            onChange={handleBetChange}
+            className="w-24 px-2 py-1 rounded text-black text-right"
+          />
         </div>
+
         <div className="flex justify-between">
           <span>Balance:</span>
-          <span className="font-bold text-green-400">${balance.toFixed(2)}</span>
+          <span className="font-bold text-green-400">
+            ${balance.toFixed(2)}
+          </span>
         </div>
+
         <div className="flex justify-between">
           <span>Total Won:</span>
-          <span className="font-bold text-green-300">${totalWin.toFixed(2)}</span>
+          <span className="font-bold text-green-300">
+            ${totalWin.toFixed(2)}
+          </span>
         </div>
+
         <div className="flex justify-between">
           <span>Total Lost:</span>
-          <span className="font-bold text-red-300">${totalLoss.toFixed(2)}</span>
+          <span className="font-bold text-red-300">
+            ${totalLoss.toFixed(2)}
+          </span>
         </div>
+
         <div className="text-center mt-4">
           {lastResult && <p className="text-xl">{lastResult}</p>}
         </div>
