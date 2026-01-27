@@ -19,17 +19,22 @@ function MainComponent() {
   const saveTimeoutRef = useRef(null);
 const pendingBallsRef = useRef([]);
 
- const lowRiskMultipliers = [
-  5, 3, 2, 1.5, 1.2, 1, 1, 1, 0.5, 0.3, 0.5, 1, 1, 1, 1.2, 1.5, 2, 3, 5,
+const lowRiskMultipliers = [
+  20, 10, 6, 4, 2.5, 1.6, 1.2, 1, 0.7, 0.4,
+  0.7, 1, 1.2, 1.6, 2.5, 4, 6, 10, 20
 ];
 
 const mediumRiskMultipliers = [
-  10, 5, 3, 2, 1.5, 1.2, 1, 0.6, 0.4, 0.2, 0.4, 0.6, 1, 1.2, 1.5, 2, 3, 5, 10,
+  120, 40, 15, 6, 3, 1.8, 1.1, 0.6, 0.3, 0.1,
+  0.3, 0.6, 1.1, 1.8, 3, 6, 15, 40, 120
 ];
 
+
 const highRiskMultipliers = [
-  50, 25, 10, 5, 3, 1, 0.8, 0.5, 0.2, 0, 0.2, 0.5, 0.8, 1, 3, 5, 10, 25, 50,
+  1000, 250, 80, 25, 8, 2.5, 1, 0.3, 0, 0,
+  0, 0.3, 1, 2.5, 8, 25, 80, 250, 1000
 ];
+
 
 const multipliersByRisk = {
   low: lowRiskMultipliers,
@@ -238,13 +243,22 @@ const multipliers = multipliersByRisk[riskLevel];
     }
   };
 
-  const getMultiplierColor = (multiplier) => {
-    if (multiplier >= 10) return "#FF4444";
-    if (multiplier >= 5) return "#FF8C00";
-    if (multiplier >= 3) return "#FFD700";
-    if (multiplier >= 2) return "#4CAF50";
-    return "#2196F3";
-  };
+ const getMultiplierColorByIndex = (index, total) => {
+  // Distance from center (0 → center, 1 → edge)
+  const center = (total - 1) / 2;
+  const distance = Math.abs(index - center) / center;
+
+  // Yellow → Red interpolation
+  const start = { r: 255, g: 215, b: 0 };   // #e6c400 (yellow)
+  const end   = { r: 255, g: 68,  b: 68 };  // #450000 (red)
+
+  const r = Math.round(start.r + (end.r - start.r) * distance);
+  const g = Math.round(start.g + (end.g - start.g) * distance);
+  const b = Math.round(start.b + (end.b - start.b) * distance);
+
+  return `rgb(${r}, ${g}, ${b})`;
+};
+
 const handleDrop = async () => {
   if (!isSignedIn) {
     setError("Vous devez être connecté pour jouer.");
@@ -551,7 +565,7 @@ return (
                     y={460}
                     width={slotWidth}
                     height={30}
-                    fill={getMultiplierColor(multiplier)}
+                    fill={getMultiplierColorByIndex(i, multipliers.length)}
                   />
                   <text
                     x={x}
