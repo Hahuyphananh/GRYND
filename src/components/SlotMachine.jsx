@@ -27,8 +27,10 @@ export default function SlotMachine() {
   const [spinning, setSpinning] = useState(false);
   const [flashWin, setFlashWin] = useState(false);
   const autoSpinRef = useRef(null);
+const [winningPositions, setWinningPositions] = useState([]);
 
   const [animatingReels, setAnimatingReels] = useState(Array(5).fill(false));
+const spinLockRef = useRef(false);
 
   // Load token balance from backend
   useEffect(() => {
@@ -55,7 +57,11 @@ export default function SlotMachine() {
     }
   };
 
-  const handleSpin = async () => {
+ const handleSpin = async () => {
+  if (spinLockRef.current) return;
+  spinLockRef.current = true;
+
+    setWinningPositions([]);
     if (balance < bet) {
       setLastResult("❌ Not enough balance.");
       return;
@@ -74,7 +80,12 @@ export default function SlotMachine() {
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
 
-      const { reels: newReels, winAmount, newBalance } = json.data;
+     const {
+  reels: newReels,
+  winAmount,
+  newBalance,
+  winningLine,
+} = json.data;
       
 await fetch("/api/slots/save-game", {
   method: "POST",
@@ -93,6 +104,8 @@ await fetch("/api/slots/save-game", {
         playSound(
           winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700
         );
+setSpinning(false);
+spinLockRef.current = false;
 
         if (winAmount > 0) {
           setFlashWin(true);
@@ -106,6 +119,12 @@ await fetch("/api/slots/save-game", {
             ? "✅ Match!"
             : "❌ No match."
         );
+        if (winningLine && winningLine.positions) {
+  setWinningPositions(winningLine.positions);
+} else {
+  setWinningPositions([]);
+}
+
 
         setBalance(newBalance);
         setTotalWin((prev) => prev + winAmount);
@@ -114,6 +133,9 @@ await fetch("/api/slots/save-game", {
         setSpinning(false);
       }, 1500);
     } catch (err) {
+      setSpinning(false);
+spinLockRef.current = false;
+
       console.error("Slot error:", err);
       setLastResult("❌ Error playing slot");
       setSpinning(false);
@@ -175,14 +197,27 @@ await fetch("/api/slots/save-game", {
                     : ""
                 }`}
               >
-                {symbols.map((fruit, rowIdx) => (
-                  <div
-                    key={`${fruit}-${colIdx}-${rowIdx}`}
-                    className="w-16 h-16 text-4xl flex items-center justify-center my-1 bg-[#004080] rounded-lg border-2 border-yellow-300"
-                  >
-                    {fruit}
-                  </div>
-                ))}
+              {symbols.map((fruit, rowIdx) => {
+  const isWinning = winningPositions.some(
+    (p) => p.col === colIdx && p.row === rowIdx
+  );
+
+  return (
+    <div
+      key={`${fruit}-${colIdx}-${rowIdx}`}
+      className={`w-16 h-16 text-4xl flex items-center justify-center my-1 rounded-lg border-2 transition
+        ${
+          isWinning
+            ? "bg-yellow-400 border-yellow-500 shadow-[0_0_20px_gold] animate-pulse"
+            : "bg-[#004080] border-yellow-300"
+        }
+      `}
+    >
+      {fruit}
+    </div>
+  );
+})}
+
               </div>
             </div>
           );
