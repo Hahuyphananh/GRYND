@@ -32,14 +32,15 @@ export async function POST(req) {
     let newBalance = parseFloat(user.balance);
     const payout = gameWon ? betAmount * multiplier : 0;
 
-    // Balance logic
-    if (immediateDeduct) {
-      newBalance -= betAmount;
-    } else if (gameWon) {
-      newBalance += payout;
-    } else {
-      newBalance -= betAmount;
-    }
+// Deduct bet once at game start
+if (immediateDeduct) {
+  newBalance -= betAmount;
+}
+
+// On game end, ONLY credit winnings
+if (!immediateDeduct && gameWon) {
+  newBalance += payout;
+}
 
     await db.update(users).set({ balance: newBalance }).where(eq(users.clerkId, userId));
 

@@ -73,16 +73,19 @@ export async function POST(req) {
 }
 
 function calculatePlinkoResult(riskLevel) {
-  const lowRiskMultipliers = [
-  5, 3, 2, 1.5, 1.2, 1, 1, 1, 0.5, 0.3, 0.5, 1, 1, 1, 1.2, 1.5, 2, 3, 5,
+ const lowRiskMultipliers = [
+  20, 10, 6, 4, 2.5, 1.6, 1.2, 1, 0.7, 0.4,
+  0.7, 1, 1.2, 1.6, 2.5, 4, 6, 10, 20
 ];
 
-const mediumRiskMultipliers = [
-  10, 5, 3, 2, 1.5, 1.2, 1, 0.6, 0.4, 0.2, 0.4, 0.6, 1, 1.2, 1.5, 2, 3, 5, 10,
+ const mediumRiskMultipliers = [
+  120, 40, 15, 6, 3, 1.8, 1.1, 0.6, 0.3, 0.1,
+  0.3, 0.6, 1.1, 1.8, 3, 6, 15, 40, 120
 ];
 
 const highRiskMultipliers = [
-  50, 25, 10, 5, 3, 1, 0.8, 0.5, 0.2, 0, 0.2, 0.5, 0.8, 1, 3, 5, 10, 25, 50,
+  1000, 250, 80, 25, 8, 2.5, 1, 0.3, 0, 0,
+  0, 0.3, 1, 2.5, 8, 25, 80, 250, 1000
 ];
 
   const multipliersByRisk = {
@@ -93,39 +96,61 @@ const highRiskMultipliers = [
 
   const multipliers = multipliersByRisk[riskLevel] || mediumRiskMultipliers;
 
+  const rows = multipliers.length - 1; // 18
   const slotWidth = 500 / multipliers.length;
-  const path = [];
-  const rows = 18;
 
-  let x = 250; // Center
-  let y = 30;
-  path.push({ x, y });
-
-  for (let row = 0; row < rows; row++) {
-    const randomFactor = Math.random() * 0.7 + 0.3; // 0.3-1.0 range
-    const dir = Math.random() < 0.5 ? -1 : 1;
-    const bounceAmount = 12 * randomFactor;
-
-    x += dir * bounceAmount;
-    y += 22;
-    x = Math.max(10, Math.min(490, x)); // Keep in bounds
-    path.push({ x, y });
+  // -----------------------------
+  // 🎯 STEP 1: BINOMIAL SLOT PICK
+  // -----------------------------
+  let rightMoves = 0;
+  for (let i = 0; i < rows; i++) {
+    if (Math.random() < 0.5) rightMoves++;
   }
 
-  const finalX = Math.max(0, Math.min(499, x));
   const slotIndex = Math.min(
-    Math.floor(finalX / slotWidth),
+    Math.max(rightMoves, 0),
     multipliers.length - 1
   );
+
   const multiplier = multipliers[slotIndex];
+
+  // -----------------------------
+  // 🎢 STEP 2: GENERATE MATCHING PATH
+  // -----------------------------
+  const path = [];
+  let x = 250;
+  let y = 30;
+
+  path.push({ x, y });
+
+  let remainingRight = rightMoves;
+  let remainingLeft = rows - rightMoves;
+
+  for (let i = 0; i < rows; i++) {
+    const goRight =
+      remainingRight > 0 &&
+      (remainingLeft === 0 || Math.random() < remainingRight / (remainingRight + remainingLeft));
+
+    if (goRight) {
+      x += 14;
+      remainingRight--;
+    } else {
+      x -= 14;
+      remainingLeft--;
+    }
+
+    y += 22;
+    path.push({ x, y });
+  }
 
   return {
     path,
     multiplier,
     finalPosition: {
-      x: (slotIndex * slotWidth) + (slotWidth / 2), // Center of slot
+      x: slotIndex * slotWidth + slotWidth / 2,
       y: 480,
     },
-    slotIndex, // Crucial for frontend
+    slotIndex,
   };
 }
+
