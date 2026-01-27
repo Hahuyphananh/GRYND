@@ -24,33 +24,91 @@ export async function POST(req) {
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
     const fruitIcons = [
-  "🍉", "🍌", "🍍", "🍏", "🍓", "🥭", "🍈", "🍇", "🍒", "🍎",
-  "🍊", "🍋", "🥝", "🍐", "🍑", "🥥", "🍅", "🍆", "🌽", "🍠"
+      "🍉", "🍌", "🍍", "🍏", "🍓", "🥭", "🍈", "🍇", "🍒", "🍎",
+      "🍊", "🍋", "🥝", "🍐", "🍑", "🥥", "🍅", "🍆", "🌽", "🍠"
+    ];
+
+    // ---------------------------
+    // 🎰 DECIDE OUTCOME FIRST
+    // ---------------------------
+    const roll = Math.random() * 100;
+
+    let matchCount = 0;
+    if (roll < 3) matchCount = 5;          // 3%
+    else if (roll < 10) matchCount = 4;    // 7%
+    else if (roll < 25) matchCount = 3;    // 15%
+    else matchCount = 0;                   // 75%
+
+    const matchSymbol =
+      fruitIcons[Math.floor(Math.random() * fruitIcons.length)];
+
+      const paylines = [
+  { name: "top", rows: [0, 0, 0, 0, 0] },
+  { name: "middle", rows: [1, 1, 1, 1, 1] },
+  { name: "bottom", rows: [2, 2, 2, 2, 2] },
+  { name: "v-shape", rows: [0, 1, 2, 1, 0] },
+  { name: "inverted-v", rows: [2, 1, 0, 1, 2] },
 ];
 
-    // Generate spin
+    // ---------------------------
+    // 🎰 BUILD REELS
+    // ---------------------------
     const reels = Array.from({ length: 5 }, () =>
-      Array.from({ length: 3 }, () => fruitIcons[Math.floor(Math.random() * fruitIcons.length)])
+      Array.from({ length: 3 }, () =>
+        fruitIcons[Math.floor(Math.random() * fruitIcons.length)]
+      )
     );
-    const flat = reels.flat();
-    const counts = flat.reduce((acc, f) => (acc[f] = (acc[f] || 0) + 1, acc), {});
-    const maxCount = Math.max(...Object.values(counts));
-    let winAmount = 0;
 
-    if (maxCount >= 5) winAmount = bet * 5;
-    else if (maxCount >= 3) winAmount = bet * 2;
+  let chosenPayline = null;
 
-    // Add win, if any
-    await db
-      .update(users)
-      .set({ balance: sql`balance + ${winAmount}` })
-      .where(eq(users.clerkId, userId));
+if (matchCount >= 3) {
+  chosenPayline =
+    paylines[Math.floor(Math.random() * paylines.length)];
 
-    const newBalance = parseFloat(user.balance) - bet + winAmount;
+  for (let col = 0; col < matchCount; col++) {
+    const row = chosenPayline.rows[col];
+    reels[col][row] = matchSymbol;
+  }
+}
+
+    // ---------------------------
+    // 💰 PAYOUT
+    // ---------------------------
+   let winAmount = 0;
+
+if (matchCount === 5) winAmount = bet * 6; // bet + 5x
+else if (matchCount === 4) winAmount = bet * 4; // bet + 3x
+else if (matchCount === 3) winAmount = bet * 3; // bet + 2x
+
+
+  await db
+  .update(users)
+  .set({ balance: sql`balance + ${winAmount}` })
+  .where(eq(users.clerkId, userId));
+
+    const newBalance = parseFloat(user.balance) + winAmount;
 
     return NextResponse.json({
       success: true,
-      data: { reels, winAmount, newBalance },
+      data: {
+        reels,
+        winAmount,
+        profit: winAmount - bet,
+        newBalance,
+      winningLine:
+  matchCount >= 3
+    ? {
+        line: chosenPayline.name,
+        symbol: matchSymbol,
+        count: matchCount,
+        positions: Array.from({ length: matchCount }, (_, i) => ({
+          col: i,
+          row: chosenPayline.rows[i],
+        })),
+      }
+    : null,
+
+      },
     });
   } catch (err) {
     console.error('Slots play error:', err);

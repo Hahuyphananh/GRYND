@@ -83,7 +83,10 @@ export default function GemSlotMachine() {
 
   const [animatingReels, setAnimatingReels] = useState(Array(5).fill(false));
 
-  
+  const [winningPositions, setWinningPositions] = useState<
+  { col: number; row: number }[]
+>([]);
+
   // Load token balance
   useEffect(() => {
     const fetchTokens = async () => {
@@ -109,6 +112,7 @@ export default function GemSlotMachine() {
   };
 
   const handleSpin = async () => {
+    setWinningPositions([]);
     if (balance < bet) {
       setLastResult("❌ Not enough balance.");
       return;
@@ -127,7 +131,12 @@ export default function GemSlotMachine() {
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
 
-      const { reels: newReels, winAmount, newBalance } = json.data;
+      const {
+  reels: newReels,
+  winAmount,
+  newBalance,
+  winningLine,
+} = json.data;
 
       await fetch("/api/slots/save-game", {
         method: "POST",
@@ -146,6 +155,11 @@ export default function GemSlotMachine() {
         playSound(
           winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700
         );
+if (winningLine?.positions) {
+  setWinningPositions(winningLine.positions);
+} else {
+  setWinningPositions([]);
+}
 
         if (winAmount > 0) {
           setFlashWin(true);
@@ -231,26 +245,34 @@ export default function GemSlotMachine() {
 {symbols.map((symbol, rowIdx) => {
   const gem = FRUIT_TO_GEM[symbol] ?? "💎";
 
+  const isWinning = winningPositions.some(
+    (p) => p.col === colIdx && p.row === rowIdx
+  );
+
   return (
-<div
-  className={`relative w-16 h-16 flex items-center justify-center my-1
-    rounded-xl
-    bg-gradient-to-br from-[#0b2a45] via-[#003366] to-[#001829]
-    border border-yellow-400
-    shadow-xl ${glowByGem[gem]}`}
->
-  {/* Inner shine */}
-  <div className="absolute inset-1 rounded-lg bg-gradient-to-tr from-white/10 to-transparent pointer-events-none" />
+    <div
+      key={`${colIdx}-${rowIdx}`}
+      className={`relative w-16 h-16 flex items-center justify-center my-1
+        rounded-xl border transition-all duration-300
+        ${
+          isWinning
+            ? "bg-yellow-400 border-yellow-500 shadow-[0_0_25px_gold] animate-pulse scale-110 z-10"
+            : "bg-gradient-to-br from-[#0b2a45] via-[#003366] to-[#001829] border-yellow-400 shadow-xl"
+        }
+        ${glowByGem[gem]}
+      `}
+    >
+      {/* Inner shine */}
+      <div className="absolute inset-1 rounded-lg bg-gradient-to-tr from-white/20 to-transparent pointer-events-none" />
 
-  {/* Gem */}
-  <span className="relative text-4xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]">
-    {gem}
-  </span>
-</div>
-
-
+      {/* Gem */}
+      <span className="relative text-4xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]">
+        {gem}
+      </span>
+    </div>
   );
 })}
+
 
               </div>
             </div>

@@ -36,7 +36,6 @@ const FRUIT_TO_SPACE: Record<string, string> = {
   "🍠": "🚀",   // Hyperdrive Ship
 };
 
-
 const glowBySpace: Record<string, string> = {
   "⭐": "shadow-yellow-300",
   "🌟": "shadow-yellow-400",
@@ -69,13 +68,8 @@ const playSound = (freq = 880) => {
   gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
 };
 
-// 💎 Gem symbols
-const GEM_SYMBOLS = ["💎", "🔷", "🔶", "💠", "👑"];
-
 export default function GemSlotMachine() {
- const [reels, setReels] = useState(
-  Array.from({ length: 5 }, () => Array(3).fill("💎"))
-);
+  const [reels, setReels] = useState(Array.from({ length: 5 }, () => Array(3).fill("💎")));
   const [balance, setBalance] = useState(0);
   const [bet, setBet] = useState(100);
   const [lastResult, setLastResult] = useState("");
@@ -84,33 +78,26 @@ export default function GemSlotMachine() {
   const [autoSpinning, setAutoSpinning] = useState(false);
   const [spinning, setSpinning] = useState(false);
   const [flashWin, setFlashWin] = useState(false);
+  const [winningPositions, setWinningPositions] = useState<{ col: number; row: number }[]>([]);
   const autoSpinRef = useRef<NodeJS.Timeout | null>(null);
-
   const [animatingReels, setAnimatingReels] = useState(Array(5).fill(false));
 
-  
-  // Load token balance
   useEffect(() => {
     const fetchTokens = async () => {
       try {
         const res = await fetch("/api/get-user-tokens", { method: "POST" });
         const data = await res.json();
-        if (data.success) {
-          setBalance(parseFloat(data.data.balance));
-        }
+        if (data.success) setBalance(parseFloat(data.data.balance));
       } catch {
         setLastResult("❌ Failed to load balance");
       }
     };
-
     fetchTokens();
   }, []);
 
   const handleBetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value);
-    if (!isNaN(value) && value > 0) {
-      setBet(Math.min(value, balance));
-    }
+    if (!isNaN(value) && value > 0) setBet(Math.min(value, balance));
   };
 
   const handleSpin = async () => {
@@ -132,30 +119,29 @@ export default function GemSlotMachine() {
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
 
-      const { reels: newReels, winAmount, newBalance } = json.data;
+      const { reels: newReels, winAmount, newBalance, winningLine } = json.data;
 
       await fetch("/api/slots/save-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          betAmount: bet,
-          payout: winAmount,
-          reels: newReels.flat(),
-        }),
+        body: JSON.stringify({ betAmount: bet, payout: winAmount, reels: newReels.flat() }),
       });
 
       setTimeout(() => {
         setAnimatingReels(Array(5).fill(false));
         setReels(newReels);
 
-        playSound(
-          winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700
-        );
+        playSound(winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700);
 
-        if (winAmount > 0) {
-          setFlashWin(true);
-          setTimeout(() => setFlashWin(false), 800);
-        }
+       // 💥 Flash + highlight winning positions (persist until next spin)
+if (winAmount > 0 && winningLine?.positions) {
+  setWinningPositions(winningLine.positions);
+  setFlashWin(true);
+  setTimeout(() => setFlashWin(false), 800); // only the flash animation resets
+} else {
+  setWinningPositions([]); // clear highlights if no win
+}
+
 
         setLastResult(
           winAmount >= bet * 5
@@ -166,8 +152,9 @@ export default function GemSlotMachine() {
         );
 
         setBalance(newBalance);
-        setTotalWin((prev) => prev + winAmount);
-        if (winAmount === 0) setTotalLoss((prev) => prev + bet);
+        const safeWinAmount = Number(winAmount) || 0;
+        setTotalWin((prev) => prev + safeWinAmount);
+        if (safeWinAmount === 0) setTotalLoss((prev) => prev + bet);
 
         setSpinning(false);
       }, 1500);
@@ -188,9 +175,7 @@ export default function GemSlotMachine() {
     if (autoSpinRef.current) clearInterval(autoSpinRef.current);
   };
 
-  const setMaxBet = () => {
-    setBet(Math.min(1000, balance));
-  };
+  const setMaxBet = () => setBet(Math.min(1000, balance));
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-[#001A33] to-[#002B5B] p-4 text-white relative">
@@ -198,58 +183,44 @@ export default function GemSlotMachine() {
 
       {/* Title */}
       <h1 className="text-4xl font-extrabold text-indigo-300 mb-6 drop-shadow-[0_0_15px_rgba(99,102,241,0.9)] animate-pulse mt-20">
-  🌌 GALAXY SLOTS 🌌
-</h1>
+        🌌 GALAXY SLOTS 🌌
+      </h1>
 
-{/* Return to Lobby Button */}
-<Link href="/casino/slots">
-  <button
-    className="mb-6 flex items-center gap-2 bg-[#002B5B] border-2 border-yellow-400 text-yellow-300 font-semibold px-5 py-2 rounded-full shadow-[0_0_10px_rgba(255,215,0,0.4)] hover:bg-[#003F7A] hover:shadow-[0_0_16px_rgba(255,215,0,0.8)] transition"
-  >
-    ⬅️ Return to Lobby
-  </button>
-</Link>
+      <Link href="/casino/slots">
+        <button className="mb-6 flex items-center gap-2 bg-[#002B5B] border-2 border-yellow-400 text-yellow-300 font-semibold px-5 py-2 rounded-full shadow-[0_0_10px_rgba(255,215,0,0.4)] hover:bg-[#003F7A] hover:shadow-[0_0_16px_rgba(255,215,0,0.8)] transition">
+          ⬅️ Return to Lobby
+        </button>
+      </Link>
 
       {/* Slot Frame */}
       <div className="relative flex border-8 border-yellow-500 rounded-2xl bg-[#003366] p-4 mb-6 shadow-[0_0_30px_gold] overflow-hidden">
-        {flashWin && (
-          <div className="absolute inset-0 bg-yellow-400 bg-opacity-30 animate-flash pointer-events-none"></div>
-        )}
+        {flashWin && <div className="absolute inset-0 bg-yellow-400 bg-opacity-30 animate-flash pointer-events-none"></div>}
 
         {reels.map((column, colIdx) => {
-          const symbols = animatingReels[colIdx]
-            ? [...column, ...column, ...column]
-            : column;
+          const symbols = animatingReels[colIdx] ? [...column, ...column, ...column] : column;
 
           return (
-            <div
-              key={colIdx}
-              className="flex flex-col items-center mx-1 bg-[#002B5B] p-2 rounded-lg border-4 border-yellow-400 shadow-lg overflow-hidden h-[240px]"
-            >
-              <div
-                className={`flex flex-col ${
-                  animatingReels[colIdx]
-                    ? "animate-[scrollReel_0.3s_linear_infinite]"
-                    : ""
-                }`}
-              >
-{symbols.map((symbol, rowIdx) => {
-  const spaceSymbol = FRUIT_TO_SPACE[symbol] ?? "⭐";
+            <div key={colIdx} className="flex flex-col items-center mx-1 bg-[#002B5B] p-2 rounded-lg border-4 border-yellow-400 shadow-lg overflow-hidden h-[240px]">
+              <div className={`flex flex-col ${animatingReels[colIdx] ? "animate-[scrollReel_0.3s_linear_infinite]" : ""}`}>
+                {symbols.map((symbol, rowIdx) => {
+                  const spaceSymbol = FRUIT_TO_SPACE[symbol] ?? "⭐";
+                  const isWinning = winningPositions.some(p => p.col === colIdx && p.row === rowIdx);
 
-  return (
-<div
-  key={`${symbol}-${colIdx}-${rowIdx}`}
-  className={`
-w-16 h-16 text-4xl flex items-center justify-center my-1 bg-gradient-to-br from-[#020617] via-[#020617] to-[#020617] rounded-xl border border-indigo-400 drop-shadow-[0_0_12px_rgba(99,102,241,0.6)]
-    ${glowBySpace[spaceSymbol]}
-  `}
->
-  {spaceSymbol}
-</div>
-
-  );
-})}
-
+                  return (
+                    <div
+                      key={`${symbol}-${colIdx}-${rowIdx}`}
+                      className={`
+                        w-16 h-16 text-4xl flex items-center justify-center my-1 rounded-xl border transition-all duration-300
+                        ${isWinning
+                          ? "bg-yellow-400 border-yellow-500 shadow-[0_0_25px_gold] animate-pulse scale-110 z-10"
+                          : "bg-gradient-to-br from-[#020617] via-[#020617] to-[#020617] border-indigo-400 drop-shadow-[0_0_12px_rgba(99,102,241,0.6)]"}
+                        ${glowBySpace[spaceSymbol]}
+                      `}
+                    >
+                      {spaceSymbol}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
@@ -267,25 +238,16 @@ w-16 h-16 text-4xl flex items-center justify-center my-1 bg-gradient-to-br from-
         </button>
 
         {!autoSpinning ? (
-          <button
-            onClick={startAutoSpin}
-            className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-6 rounded shadow"
-          >
+          <button onClick={startAutoSpin} className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-6 rounded shadow">
             AUTO SPIN
           </button>
         ) : (
-          <button
-            onClick={stopAutoSpin}
-            className="bg-red-700 hover:bg-red-800 text-white font-semibold py-2 px-6 rounded shadow"
-          >
+          <button onClick={stopAutoSpin} className="bg-red-700 hover:bg-red-800 text-white font-semibold py-2 px-6 rounded shadow">
             STOP AUTO
           </button>
         )}
 
-        <button
-          onClick={setMaxBet}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded shadow"
-        >
+        <button onClick={setMaxBet} className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded shadow">
           MAX BET
         </button>
       </div>
@@ -294,35 +256,22 @@ w-16 h-16 text-4xl flex items-center justify-center my-1 bg-gradient-to-br from-
       <div className="bg-black bg-opacity-40 p-6 rounded-lg w-full max-w-xl space-y-2 border-2 border-yellow-500">
         <div className="flex justify-between items-center">
           <span>Bet Amount:</span>
-          <input
-            type="number"
-            min="1"
-            max={balance}
-            value={bet}
-            onChange={handleBetChange}
-            className="w-24 px-2 py-1 rounded text-black text-right"
-          />
+          <input type="number" min="1" max={balance} value={bet} onChange={handleBetChange} className="w-24 px-2 py-1 rounded text-black text-right" />
         </div>
 
         <div className="flex justify-between">
           <span>Balance:</span>
-          <span className="font-bold text-green-400">
-            ${balance.toFixed(2)}
-          </span>
+          <span className="font-bold text-green-400">${balance.toFixed(2)}</span>
         </div>
 
         <div className="flex justify-between">
           <span>Total Won:</span>
-          <span className="font-bold text-green-300">
-            ${totalWin.toFixed(2)}
-          </span>
+          <span className="font-bold text-green-300">${totalWin.toFixed(2)}</span>
         </div>
 
         <div className="flex justify-between">
           <span>Total Lost:</span>
-          <span className="font-bold text-red-300">
-            ${totalLoss.toFixed(2)}
-          </span>
+          <span className="font-bold text-red-300">${totalLoss.toFixed(2)}</span>
         </div>
 
         <div className="text-center mt-4">
