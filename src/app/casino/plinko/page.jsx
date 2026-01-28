@@ -434,15 +434,15 @@ return (
 
       {/* Risk Level Selector */}
       <div className="mb-4">
-  <label className="block mb-2 text-sm text-gray-300">Risk Level</label>
+  <label className="block mb-2 text-sm text-gray-300">Niveau de Risque</label>
   <select
     value={riskLevel}
     onChange={(e) => setRiskLevel(e.target.value)}
     className="w-full rounded bg-[#1A1B1F] px-2 py-1 text-white"
   >
-    <option value="low">Low Risk</option>
-    <option value="medium">Medium Risk</option>
-    <option value="high">High Risk</option>
+    <option value="low">Risque Faible</option>
+    <option value="medium">Risque Moyen</option>
+    <option value="high">Risque Élevé</option>
   </select>
 </div>
 
@@ -609,17 +609,6 @@ return (
                   r={2}
                   fill="rgba(255,255,255,0.8)"
                 />
-                {ball.finalPosition && (
-                  <circle
-                    cx={ball.finalPosition.x}
-                    cy={ball.finalPosition.y}
-                    r={10}
-                    fill="none"
-                    stroke="rgba(0,255,0,0.5)"
-                    strokeWidth="2"
-                    strokeDasharray="5,5"
-                  />
-                )}
               </g>
             ))}
 
