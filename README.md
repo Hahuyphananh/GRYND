@@ -1,6 +1,6 @@
-# 🎰 MoonBet — The Next-Gen Online Casino  
+# 🎰 GoonBet — The Next-Gen Online Casino  
 
-Welcome to **MoonBet**, a modern online casino and sports betting platform where users can play with **tokens or real money** in a fun, fair, and engaging way.  
+Welcome to **GoonBet**, a modern online casino and sports betting platform where users can play with **tokens or real money** in a fun, fair, and engaging way.  
 
 Our platform is designed to combine classic casino games with a smooth, interactive experience that works on desktop and mobile.  
 
