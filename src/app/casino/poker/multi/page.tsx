@@ -16,6 +16,7 @@ type Player = {
   lastAction?: string;
   currentBet: number;
   seatIndex?: number; // UI seat index (0..5)
+  hasActed?: boolean;
 };
 
 type Game = {
@@ -69,6 +70,23 @@ function nextActive(start: number, players: Player[]): number {
 
 }
 
+function getActiveIndices(players: Player[]): number[] {
+  return players
+    .map((p, i) => (!p.hasFolded ? i : -1))
+    .filter(i => i !== -1);
+}
+
+function nextActiveFrom(currentIndex: number, players: Player[]): number {
+  const active = getActiveIndices(players);
+  if (active.length === 0) return currentIndex;
+
+  const pos = active.indexOf(currentIndex);
+  if (pos === -1) return active[0];
+
+  return active[(pos + 1) % active.length];
+}
+
+
 export default function PokerPage() {
   const { user } = useUser();
   const clerkId = user?.id; 
@@ -88,6 +106,8 @@ const [isMyTurn, setIsMyTurn] = useState(false);
 const [publicGameCode, setPublicGameCode] = useState<string | null>(null);
 const [showJoinForm, setShowJoinForm] = useState(false);
 const [aiThinking, setAiThinking] = useState(false);
+const [aiInfoOpen, setAiInfoOpen] = useState(false);
+const [selectedAi, setSelectedAi] = useState<Player | null>(null);
 
   // UI modal / seat state
   const [seatModalOpen, setSeatModalOpen] = useState(false);
@@ -300,12 +320,13 @@ useEffect(() => {
     : shuffle(createDeck());
 
     const players = game.players.map(p => ({
-      ...p,
-      hand: [newDeck.pop()!, newDeck.pop()!],
-      hasFolded: false,
-      lastAction: "",
-      currentBet: 0,
-    }));
+  ...p,
+  hand: [newDeck.pop()!, newDeck.pop()!],
+  hasFolded: false,
+  lastAction: "",
+  currentBet: 0,
+  hasActed: false, // ✅
+}));
 
     // Setup blinds
     const sbIndex = (game.dealerIndex + 1) % players.length;
@@ -574,7 +595,7 @@ if (current.currentBet < highest) {
     const currentIndex = game.currentTurn;
     const current = players[currentIndex];
     if (!current || current.hasFolded) return;
-
+    current.hasActed = true;
     const highest = maxCurrentBet(players);
     let potNew = game.pot;
 
@@ -608,6 +629,11 @@ if (current.currentBet < highest) {
   current.lastAction = `Bet ${betSize}`;
     game.lastAggressorIndex = currentIndex;
 
+players.forEach((p, i) => {
+  if (i !== currentIndex && !p.hasFolded) {
+    p.hasActed = false;
+  }
+});
   if (current.id === myId) {
     setBalance((prev) => Math.max(prev - actual, 0));
     fetchUserTokens();
@@ -622,6 +648,11 @@ if (current.currentBet < highest) {
       current.lastAction = `Raised ${raiseAmount}`;
   game.lastAggressorIndex = currentIndex;
 
+players.forEach((p, i) => {
+  if (i !== currentIndex && !p.hasFolded) {
+    p.hasActed = false;
+  }
+});
       if (current.id === myId) {
         setBalance(prev => Math.max(prev - actual, 0));
       }
@@ -645,70 +676,44 @@ if (current.currentBet < highest) {
   }
 }
 
-// Determine if everyone has either called or folded
+function getActiveIndices(players: Player[]): number[] {
+  return players
+    .map((p, i) => (!p.hasFolded ? i : -1))
+    .filter(i => i !== -1);
+}
+
 const activePlayers = players.filter(p => !p.hasFolded);
-
-// move turn
-let nextTurn = nextActive(currentIndex + 1, players);
-
 const highestBet = Math.max(...players.map(p => p.currentBet));
-const lastAggressor = game.lastAggressorIndex;
 
-// ✅ CASE 1: nobody bet this round (check-check scenario)
-// betting ends ONLY when action comes back to roundStarter
-if (
-  highestBet === 0 &&
-  nextTurn === game.roundStarter
-) {
-  setGame(g =>
-    g
-      ? {
-          ...g,
-          players,
-          pot: potNew,
-        }
-      : g
-  );
-
-  setTimeout(() => advanceStage(), 500);
+// 🛑 If only one player remains → instant win
+if (activePlayers.length === 1) {
+  checkForWinner(players, potNew);
   return;
 }
 
-// ✅ CASE 2: someone bet or raised
-// betting ends ONLY when action comes back to last aggressor
-if (
-  highestBet > 0 &&
-  lastAggressor !== undefined &&
-  nextTurn === lastAggressor
-) {
-  setGame(g =>
-    g
-      ? {
-          ...g,
-          players,
-          pot: potNew,
-        }
-      : g
-  );
-
-  setTimeout(() => advanceStage(), 500);
-  return;
-}
-
-// otherwise → continue betting round
-setGame(g =>
-  g
-    ? {
-        ...g,
-        players,
-        pot: potNew,
-        currentTurn: nextTurn,
-      }
-    : g
+// 🛑 If everyone has matched the bet → end betting round
+const bettingComplete = activePlayers.every(
+  p => p.hasActed && p.currentBet === highestBet
 );
 
+if (bettingComplete) {
+  setGame(g =>
+    g
+      ? {
+          ...g,
+          players,
+          pot: potNew,
+        }
+      : g
+  );
 
-// otherwise continue normally
+  setTimeout(() => advanceStage(), 500);
+  return;
+}
+
+// ▶️ Otherwise → advance to next ACTIVE player
+const nextTurn = nextActiveFrom(currentIndex, players);
+
 setGame(g =>
   g
     ? {
@@ -725,7 +730,11 @@ setGame(g =>
     if (!game) return;
     const deck = [...game.deck];
     const comm = [...game.community];
-    const playersReset = game.players.map(p => ({ ...p, currentBet: 0 }));
+    const playersReset = game.players.map(p => ({
+  ...p,
+  currentBet: 0,
+  hasActed: false, // ✅
+}));
 
     let nextStage: Game["stage"] = game.stage;
 
@@ -1312,18 +1321,24 @@ if (showJoinForm) {
         zIndex: 30,
       }}
     >
-      {occupant ? (
-        <div
-          className={`flex flex-col items-center gap-1 w-[120px] p-1.5 rounded-xl text-[10px] font-semibold
-            ${isPlayer ? "bg-yellow-400 text-black" : "bg-slate-800 text-white"}
-            ${occupant.hasFolded ? "opacity-50" : ""}
-            ${
-              game?.winnerId === occupant.id
-                ? "border border-yellow-400 shadow-[0_0_10px_rgba(255,215,0,0.8)]"
-                : "border border-slate-700"
-            }
-          `}
-        >
+     {occupant ? (
+  <div
+    onClick={() => {
+      if (occupant.isAI && game?.waiting) {
+        setSelectedAi(occupant);
+        setAiInfoOpen(true);
+      }
+    }}
+    className={`flex flex-col items-center gap-1 w-[120px] p-1.5 rounded-xl text-[10px] font-semibold cursor-pointer
+      ${isPlayer ? "bg-yellow-400 text-black" : "bg-slate-800 text-white"}
+      ${occupant.hasFolded ? "opacity-50" : ""}
+      ${
+        game?.winnerId === occupant.id
+          ? "border border-yellow-400 shadow-[0_0_10px_rgba(255,215,0,0.8)]"
+          : "border border-slate-700"
+      }
+    `}
+  >
           <div className="flex justify-between w-full px-1">
             <span className="truncate">{occupant.name}</span>
             <span className="text-xs">${occupant.stack}</span>
@@ -1525,6 +1540,55 @@ if (showJoinForm) {
     </div>
   </div>
 )}
+{aiInfoOpen && selectedAi && (
+  <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+    <div className="bg-slate-800 text-white p-6 rounded-xl w-80 shadow-xl border border-yellow-500">
+      <h2 className="text-xl font-bold mb-4 text-center text-yellow-400">
+        🤖 AI Player Info
+      </h2>
+
+      <div className="space-y-2 text-sm">
+        <p><span className="font-semibold">Name:</span> {selectedAi.name}</p>
+        <p><span className="font-semibold">Stack:</span> ${selectedAi.stack}</p>
+        <p><span className="font-semibold">Seat:</span> {selectedAi.seatIndex}</p>
+      </div>
+
+      <div className="mt-6 flex justify-between gap-3">
+        <button
+          onClick={() => {
+            setAiInfoOpen(false);
+            setSelectedAi(null);
+          }}
+          className="flex-1 bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded font-bold"
+        >
+          Close
+        </button>
+
+        <button
+          onClick={() => {
+            if (!game) return;
+
+            setGame(g =>
+              g
+                ? {
+                    ...g,
+                    players: g.players.filter(p => p.id !== selectedAi.id),
+                  }
+                : g
+            );
+
+            setAiInfoOpen(false);
+            setSelectedAi(null);
+          }}
+          className="flex-1 bg-red-600 hover:bg-red-500 px-4 py-2 rounded font-bold"
+        >
+          Delete AI
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
       {/* Multiplayer Waiting Panel — bottom-left, public-only */}
       {!isPrivate && (

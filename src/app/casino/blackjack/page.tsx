@@ -23,6 +23,7 @@ export default function BlackjackPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+const PLACEHOLDER_CARDS = [0, 1];
 
   const fetchUserTokens = async () => {
     if (!user) return;
@@ -240,28 +241,42 @@ export default function BlackjackPage() {
               Points: {calculateHandValue(dealerCards)}
             </div>
           )}
-          <div className="flex justify-center gap-4 mb-6">
-            <AnimatePresence>
-              {dealerCards.map((card, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ y: -50, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.4, delay: i * 0.15 }}
-                  className="h-28 w-20 bg-white text-xl flex items-center justify-center rounded shadow"
-                  style={{ color: ["♥", "♦"].includes(card.suit) ? "red" : "black" }}
-                >
-      {gameState === "playing" && i === 0 ? (
-  <BlackjackCardBack />
-) : (
-  `${card.value}${card.suit}`
-)}
+        <div className="flex justify-center gap-4 mb-6">
+  <AnimatePresence>
+    {gameState === "betting" ? (
+      PLACEHOLDER_CARDS.map((_, i) => (
+        <motion.div
+          key={`dealer-placeholder-${i}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="h-28 w-20 rounded shadow"
+        >
+          <BlackjackCardBack />
+        </motion.div>
+      ))
+    ) : (
+      dealerCards.map((card, i) => (
+        <motion.div
+          key={i}
+          initial={{ y: -50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4, delay: i * 0.15 }}
+          className="h-28 w-20 bg-white text-xl flex items-center justify-center rounded shadow"
+          style={{ color: ["♥", "♦"].includes(card.suit) ? "red" : "black" }}
+        >
+          {gameState === "playing" && i === 0 ? (
+            <BlackjackCardBack />
+          ) : (
+            `${card.value}${card.suit}`
+          )}
+        </motion.div>
+      ))
+    )}
+  </AnimatePresence>
+</div>
 
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
 <div className="my-4 h-px bg-[#FFD700]/30"></div>
 
           {/* Player */}
@@ -269,23 +284,38 @@ export default function BlackjackPage() {
           <div className="text-[#FFD700] text-center mb-2">
             Points: {calculateHandValue(playerCards)}
           </div>
-          <div className="flex justify-center gap-4 mb-6">
-            <AnimatePresence>
-              {playerCards.map((card, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ y: 100, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.4, delay: i * 0.15 }}
-                  className="h-28 w-20 bg-white text-xl flex items-center justify-center rounded shadow"
-                  style={{ color: ["♥", "♦"].includes(card.suit) ? "red" : "black" }}
-                >
-                  {`${card.value}${card.suit}`}
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+         <div className="flex justify-center gap-4 mb-6">
+  <AnimatePresence>
+    {gameState === "betting" ? (
+      PLACEHOLDER_CARDS.map((_, i) => (
+        <motion.div
+          key={`player-placeholder-${i}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="h-28 w-20 rounded shadow"
+        >
+          <BlackjackCardBack />
+        </motion.div>
+      ))
+    ) : (
+      playerCards.map((card, i) => (
+        <motion.div
+          key={i}
+          initial={{ y: 100, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4, delay: i * 0.15 }}
+          className="h-28 w-20 bg-white text-xl flex items-center justify-center rounded shadow"
+          style={{ color: ["♥", "♦"].includes(card.suit) ? "red" : "black" }}
+        >
+          {`${card.value}${card.suit}`}
+        </motion.div>
+      ))
+    )}
+  </AnimatePresence>
+</div>
+
 
           {message && <div className="text-center text-xl text-[#FFD700] mb-4">{message}</div>}
 
