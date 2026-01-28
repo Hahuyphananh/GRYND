@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useUser, useAuth, SignOutButton } from '@clerk/nextjs';
 import AddFundsModal from './AddFundsModal';
-import LogoSmiley from "../images/logo.png"; // Adjust the path if needed
+import LogoSmiley from "../images/logo1.png"; // Adjust the path if needed
 import Image from "next/image";
 import Link from "next/link";
 
@@ -83,7 +83,7 @@ function NavigationBar({ currentPath }) {
           <Link href="/" className="flex items-center space-x-2">
  <Image
   src={LogoSmiley}
-  alt="MoonBet Logo"
+  alt="GoonBet Logo"
   width={150}
   height={60}
   className="drop-shadow-[0_0_8px_rgba(255,215,0,0.3)] rounded-lg object-contain"
