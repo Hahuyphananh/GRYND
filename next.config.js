@@ -2,6 +2,7 @@
 const nextConfig = {
   experimental: {
     esmExternals: 'loose',
+     turbo: false,
   },
   webpack: (config) => {
     config.externals = [...config.externals, { canvas: "canvas" }]; // required to make pdfjs work
