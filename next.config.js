@@ -1,11 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // experimental features
   experimental: {
-    esmExternals: 'loose',
-     turbo: false,
+    turbo: false, // keep Turbopack disabled if needed
   },
   webpack: (config) => {
-    config.externals = [...config.externals, { canvas: "canvas" }]; // required to make pdfjs work
+    // keep your PDF.js fix intact
+    config.externals = [...config.externals, { canvas: "canvas" }];
     return config;
   },
   env: {
