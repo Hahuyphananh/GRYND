@@ -11,10 +11,10 @@
     "db:migrate": "tsx ./src/db/migrate.ts"
   },
   "dependencies": {
-    "@clerk/backend": "^2.0.0",
+    "@clerk/backend": "^2.29.7",
     "@clerk/clerk-react": "^5.28.2",
     "@clerk/clerk-sdk-node": "^4.13.23",
-    "@clerk/nextjs": "^6.23.3",
+    "@clerk/nextjs": "^6.37.1",
     "@neondatabase/serverless": "^1.0.1",
     "@vercel/postgres": "^0.10.0",
     "axios": "^1.12.0",
@@ -25,8 +25,6 @@
     "drizzle-orm": "^0.42.0",
     "framer-motion": "^12.12.1",
     "next": "^16.1.5",
-    "next-auth": "^4.24.12",
-    "nextjs": "^0.0.3",
     "ngrok": "^5.0.0-beta.2",
     "pg": "^8.15.5",
     "react": "^18.3.1",
