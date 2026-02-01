@@ -37,6 +37,15 @@ const [openGroup, setOpenGroup] = useState(null);
   const [betInProgress, setBetInProgress] = useState(false);
   const [notification, setNotification] = useState(null);
   const [jwt, setJwt] = useState(null);
+const [dailyRewardCooldown, setDailyRewardCooldown] = useState(false);
+const [nextRewardTime, setNextRewardTime] = useState(null); // timestamp for cooldown
+const [cooldownTimeLeft, setCooldownTimeLeft] = useState("");
+const [rewardPopupVisible, setRewardPopupVisible] = useState(false);
+const [streakData, setStreakData] = useState({
+  claimedDays: [], // array of ISO dates strings
+  currentStreak: 0,
+  lastClaimDate: null
+});
 
 const handleLoadSports = async () => {
   try {
@@ -81,6 +90,113 @@ const handleLoadSports = async () => {
   }
 };
 
+useEffect(() => {
+  const fetchRewardStatus = async () => {
+    if (!user || !isSignedIn) return;
+
+    try {
+      const res = await fetch("/api/get-login-reward-status", {
+        method: "GET",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!data.success) return;
+
+      if (data.lastClaimedDate) {
+        const lastClaimed = new Date(data.lastClaimedDate);
+        const now = new Date();
+
+        // If last claim was today, disable button
+        if (lastClaimed.toDateString() === now.toDateString()) {
+          setDailyRewardCooldown(true);
+          const nextTime = new Date();
+          nextTime.setDate(now.getDate() + 1);
+          setNextRewardTime(nextTime);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch reward status:", err);
+    }
+  };
+
+  fetchRewardStatus();
+}, [user, isSignedIn]);
+
+
+const claimDailyReward = async () => {
+  if (!user || !isSignedIn) {
+    showNotification("Vous devez être connecté pour réclamer la récompense", "error");
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/claim-login-reward", {
+      method: "GET",
+      credentials: "include",
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      showNotification(data.error || "Erreur lors de la réclamation", "error");
+      return;
+    }
+
+    // 1️⃣ Update user's tokens
+    setUserTokens(prev => prev + data.reward);
+
+    // 2️⃣ Update streak state for popup
+    setStreakData({
+      currentDay: data.nextDay - 1, // last claimed day
+      claimedDays: Array.from({ length: data.nextDay - 1 }, (_, i) => i + 1),
+      lastClaimDate: data.lastClaimedDate,
+      maxDay: data.maxDay
+    });
+
+    // 3️⃣ Show popup
+    setRewardPopupVisible(true);
+
+    // 4️⃣ Set 24h cooldown
+    const nextTime = new Date();
+    nextTime.setHours(nextTime.getHours() + 24);
+    setNextRewardTime(nextTime);
+    setDailyRewardCooldown(true);
+    localStorage.setItem("nextRewardTime", nextTime.toISOString());
+
+  } catch (err) {
+    console.error(err);
+    showNotification(err.message || "Erreur lors de la réclamation", "error");
+  }
+};
+
+useEffect(() => {
+  if (!nextRewardTime) return;
+
+  const interval = setInterval(() => {
+    const now = new Date();
+    const diff = nextRewardTime - now;
+
+    if (diff <= 0) {
+      setDailyRewardCooldown(false);
+      setNextRewardTime(null);
+      setCooldownTimeLeft("");
+      localStorage.removeItem("nextRewardTime");
+      clearInterval(interval);
+      return;
+    }
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    setCooldownTimeLeft(
+      `${hours.toString().padStart(2, "0")}:${minutes
+        .toString()
+        .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
+    );
+  }, 1000);
+
+  return () => clearInterval(interval);
+}, [nextRewardTime]);
 
 const fetchEventsByLeague = async (leagueKey) => {
   console.log("FETCHING EVENTS FOR LEAGUE:", leagueKey);
@@ -432,7 +548,56 @@ useEffect(() => {
           {notification.message}
         </div>
       )}
+{isSignedIn && (
+  <button
+    onClick={claimDailyReward}
+    disabled={dailyRewardCooldown}
+    className={`fixed right-4 bottom-16 z-50 rounded-lg px-4 py-3 text-lg font-semibold text-white transition-all shadow-lg
+      ${dailyRewardCooldown ? "bg-gray-400 cursor-not-allowed" : "bg-[#FFD700] hover:scale-105 glow-pulse"}`}
+    title={
+      dailyRewardCooldown
+        ? `Récompense déjà réclamée. Disponible dans ${cooldownTimeLeft}`
+        : "Réclamer Récompense Quotidienne"
+    }
+  >
+    {dailyRewardCooldown
+      ? `Cooldown: ${cooldownTimeLeft}`
+      : "Réclamer Récompense"}
+  </button>
+)}
+
+{rewardPopupVisible && (
+  <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70 z-50">
+    <div className="bg-[#003366] p-8 rounded-lg text-white max-w-sm text-center">
+      <h2 className="text-2xl font-bold mb-4">Récompense Réclamée !</h2>
+      <p>Vous avez reçu <strong>{100 * 2 ** (streakData.currentDay - 1)} tokens</strong> !</p>
+      <p>Streak actuel : <strong>{streakData.currentDay} jour(s)</strong></p>
+
+      <div className="flex justify-center mt-4">
+        {Array.from({ length: streakData.maxDay }).map((_, i) => (
+          <div
+            key={i}
+            className={`w-5 h-5 m-1 rounded-full border-2 ${
+              i < streakData.currentDay
+                ? "bg-yellow-400 border-yellow-300"
+                : "border-gray-500"
+            }`}
+          />
+        ))}
+      </div>
+
+      <button
+        onClick={() => setRewardPopupVisible(false)}
+        className="mt-6 px-4 py-2 bg-[#FFD700] text-[#003366] font-bold rounded hover:scale-105 transition"
+      >
+        Fermer
+      </button>
     </div>
+  </div>
+)}
+
+    </div>
+    
   );
 }
 

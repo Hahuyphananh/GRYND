@@ -49,7 +49,7 @@
     "src/app/api/tanks/start-match/route.js",
     "src/app/api/chess/end-game/route.js",
     ".next/dev/types/**/*.ts"
-  ],
+, "src/app/api/claim-login-reward/route.js"  ],
   "exclude": [
     "node_modules"
   ]

@@ -1,5 +1,5 @@
 // src/db/schema.ts
-import { pgTable, serial, varchar, integer, numeric, timestamp, jsonb, text, json, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, integer, numeric, timestamp, jsonb, text, json, boolean, date} from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
 // USERS TABLE
@@ -16,6 +16,11 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+export const userLoginRewards = pgTable("user_login_rewards", {
+  userId: integer("user_id").primaryKey().references(() => users.id), // INT to match users.id
+  currentDay: integer("current_day").default(1),
+  lastClaimedDate: date("last_claimed_date").default(null),
+});
 
 // GAMES TABLES
 export const rouletteGames = pgTable('roulette_games', {
