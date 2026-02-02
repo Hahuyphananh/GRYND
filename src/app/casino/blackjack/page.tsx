@@ -11,7 +11,7 @@ export default function BlackjackPage() {
   const router = useRouter();
 
   const [userTokens, setUserTokens] = useState<number | null>(null);
-  const [gameState, setGameState] = useState("betting");
+  const [gameState, setGameState] = useState("idle");
   const [bet, setBet] = useState(10);
   const [dealerCards, setDealerCards] = useState<any[]>([]);
   const [playerCards, setPlayerCards] = useState<any[]>([]);
@@ -217,7 +217,7 @@ const PLACEHOLDER_CARDS = [0, 1];
     }
 
     setMessage(msg);
-    setGameState("betting");
+    setGameState("finished");
     setIsSplit(false);
     setHands([]);
     setBet(10);
@@ -243,7 +243,7 @@ const PLACEHOLDER_CARDS = [0, 1];
           )}
         <div className="flex justify-center gap-4 mb-6">
   <AnimatePresence>
-    {gameState === "betting" ? (
+    {gameState === "idle" ? (
       PLACEHOLDER_CARDS.map((_, i) => (
         <motion.div
           key={`dealer-placeholder-${i}`}
@@ -286,7 +286,7 @@ const PLACEHOLDER_CARDS = [0, 1];
           </div>
          <div className="flex justify-center gap-4 mb-6">
   <AnimatePresence>
-    {gameState === "betting" ? (
+    {gameState === "idle" ? (
       PLACEHOLDER_CARDS.map((_, i) => (
         <motion.div
           key={`player-placeholder-${i}`}
@@ -319,7 +319,7 @@ const PLACEHOLDER_CARDS = [0, 1];
 
           {message && <div className="text-center text-xl text-[#FFD700] mb-4">{message}</div>}
 
-          {gameState === "betting" ? (
+          {gameState === "idle" || gameState === "finished" ? (
   <div className="flex flex-col items-center space-y-4">
     <div className="flex flex-col items-center">
       <label className="text-[#FFD700] mb-2 text-lg font-semibold">
