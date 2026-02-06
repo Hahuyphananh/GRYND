@@ -1,4 +1,5 @@
 // app/api/claim-login-reward/route.js
+
 import { NextResponse } from "next/server";
 import { db } from "../../../db";
 import { eq, sql } from "drizzle-orm";
@@ -7,81 +8,123 @@ import { auth } from "@clerk/nextjs/server";
 
 const LOGIN_REWARD_BASE = 100;
 const MAX_DAY = 14;
+const COOLDOWN_HOURS = 24;
+const STREAK_RESET_HOURS = 48;
 
-export async function GET() {
+export async function POST() {
   try {
-    // 1️⃣ Authenticate user
+
     const { userId } = await auth();
+
     if (!userId) {
-      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: "Not authenticated" },
+        { status: 401 }
+      );
     }
 
-    // 2️⃣ Get internal user ID
     const dbUser = await db.query.users.findFirst({
       where: eq(users.clerkId, userId),
     });
+
     if (!dbUser) {
-      return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: "User not found" },
+        { status: 404 }
+      );
     }
+
     const uid = dbUser.id;
 
-    // 3️⃣ Fetch login reward record
     let rewardData = await db.query.userLoginRewards.findFirst({
       where: eq(userLoginRewards.userId, uid),
     });
 
-    // 4️⃣ First-time user: insert record
+    // ⭐ First login
     if (!rewardData) {
       await db.insert(userLoginRewards).values({
         userId: uid,
         currentDay: 1,
         lastClaimedDate: null,
       });
+
       rewardData = {
-        userId: uid,
         currentDay: 1,
         lastClaimedDate: null,
       };
     }
 
-    // 5️⃣ Check if already claimed today
-    const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const now = new Date();
 
-    let lastClaimedDateStr = null;
     if (rewardData.lastClaimedDate) {
-      lastClaimedDateStr = rewardData.lastClaimedDate instanceof Date
-        ? rewardData.lastClaimedDate.toISOString().slice(0, 10)
-        : rewardData.lastClaimedDate.slice(0, 10);
+
+      const lastClaim = new Date(rewardData.lastClaimedDate);
+
+      const hoursSinceClaim =
+        (now.getTime() - lastClaim.getTime()) / (1000 * 60 * 60);
+
+      // ✅ RESET streak if missed too long
+      if (hoursSinceClaim > STREAK_RESET_HOURS) {
+
+        await db.update(userLoginRewards)
+          .set({
+            currentDay: 1,
+          })
+          .where(eq(userLoginRewards.userId, uid));
+
+        rewardData.currentDay = 1;
+      }
+
+      // ✅ Cooldown check
+      if (hoursSinceClaim < COOLDOWN_HOURS) {
+
+        const remainingMs =
+          COOLDOWN_HOURS * 60 * 60 * 1000 -
+          (now.getTime() - lastClaim.getTime());
+
+        const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Reward already claimed. Try again in ${remainingHours}h.`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
-    if (lastClaimedDateStr === today) {
-      return NextResponse.json({ success: false, error: "Reward already claimed today" }, { status: 400 });
-    }
-
-    // 6️⃣ Calculate today's reward
+    // ⭐ Calculate reward AFTER reset logic
     const reward = LOGIN_REWARD_BASE * 2 ** (rewardData.currentDay - 1);
 
-    // 7️⃣ Update user's balance in users table
     await db.update(users)
-      .set({ balance: sql`${users.balance} + ${reward}` })
+      .set({
+        balance: sql`${users.balance} + ${reward}`,
+      })
       .where(eq(users.id, uid));
 
-    // 8️⃣ Update login reward record
+    const nextDay =
+      rewardData.currentDay >= MAX_DAY
+        ? 1
+        : rewardData.currentDay + 1;
+
     await db.update(userLoginRewards)
       .set({
-        currentDay: Math.min(rewardData.currentDay + 1, MAX_DAY),
-        lastClaimedDate: today, // store as string "YYYY-MM-DD"
+        currentDay: nextDay,
+        lastClaimedDate: now,
       })
       .where(eq(userLoginRewards.userId, uid));
 
-    // 9️⃣ Return response
     return NextResponse.json({
       success: true,
       reward,
-      nextDay: Math.min(rewardData.currentDay + 1, MAX_DAY),
+      claimedDay: rewardData.currentDay,
+      nextDay,
     });
+
   } catch (err) {
     console.error("[CLAIM_LOGIN_REWARD_ERROR]", err);
+
     return NextResponse.json(
       { success: false, error: "Internal server error" },
       { status: 500 }
