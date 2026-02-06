@@ -1,6 +1,6 @@
 # 🎰 GoonBet — The Next-Gen Online Casino  
 
-Welcome to **GoonBet**, a modern online casino and sports betting platform where users can play with **tokens or real money** in a fun, fair, and engaging way.  
+Welcome to **GoonBet**, a modern online casino and sports betting platform where users can play with **tokens** in a fun, fair, and engaging way.  
 
 Our platform is designed to combine classic casino games with a smooth, interactive experience that works on desktop and mobile.  
 
@@ -8,7 +8,7 @@ Our platform is designed to combine classic casino games with a smooth, interact
 
 ## 🚀 Features
 
-- 🎲 **Casino Games** — Blackjack, Poker, Roulette, and Keno (token-based & real-money modes)  
+- 🎲 **Casino Games** — Blackjack, Poker, Roulette, Keno, rock paper scissors, crash, mines, uno and more (token-based)
 - 📊 **Sports Betting** — Soccer, Basketball, MMA, E-Sports, and more  
 - 🏆 **Token System** — Play-for-fun mode so users can practice without losing real money  
 - 🔑 **Clerk Authentication** — Secure user sign-up and login  
@@ -28,7 +28,7 @@ _A preview of the main lobby interface (Roulette + Blackjack shown)_
 
 | Layer            | Technology |
 |-----------------|------------|
-| **Frontend**    | Next.js 15, React, TailwindCSS |
+| **Frontend**    | Next.js 16.15, React 19.1, TailwindCSS |
 | **Backend**     | Next.js API Routes, Neon Postgres |
 | **Auth**        | Clerk (JWTs + OAuth) |
 | **Database**    | Neon DB + Drizzle ORM |
