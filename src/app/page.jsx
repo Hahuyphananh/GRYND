@@ -90,35 +90,40 @@ const handleLoadSports = async () => {
   }
 };
 
-useEffect(() => {
-  const fetchRewardStatus = async () => {
-    if (!user || !isSignedIn) return;
+const fetchRewardStatus = async () => {
+  if (!user || !isSignedIn) return;
 
-    try {
-      const res = await fetch("/api/get-login-reward-status", {
-        method: "GET",
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (!data.success) return;
+  try {
+    const res = await fetch("/api/get-login-reward-status");
+    const data = await res.json();
+    if (!data.success) return;
 
-      if (data.lastClaimedDate) {
-        const lastClaimed = new Date(data.lastClaimedDate);
-        const now = new Date();
+    setStreakData({
+      currentDay: data.currentDay,
+      claimedDays: data.claimedDays || [],
+      lastClaimDate: data.lastClaimedDate,
+      maxDay: data.maxDay || 14
+    });
 
-        // If last claim was today, disable button
-        if (lastClaimed.toDateString() === now.toDateString()) {
-          setDailyRewardCooldown(true);
-          const nextTime = new Date();
-          nextTime.setDate(now.getDate() + 1);
-          setNextRewardTime(nextTime);
-        }
+    if (data.lastClaimedDate) {
+      const lastClaimed = new Date(data.lastClaimedDate);
+      const now = new Date();
+
+      if (lastClaimed.toDateString() === now.toDateString()) {
+        setDailyRewardCooldown(true);
+
+        const nextTime = new Date(lastClaimed);
+        nextTime.setHours(nextTime.getHours() + 24);
+        setNextRewardTime(nextTime);
       }
-    } catch (err) {
-      console.error("Failed to fetch reward status:", err);
     }
-  };
 
+  } catch (err) {
+    console.error("Failed to fetch reward status:", err);
+  }
+};
+
+useEffect(() => {
   fetchRewardStatus();
 }, [user, isSignedIn]);
 
@@ -131,7 +136,7 @@ const claimDailyReward = async () => {
 
   try {
     const res = await fetch("/api/claim-login-reward", {
-      method: "GET",
+      method: "POST",
       credentials: "include",
     });
     const data = await res.json();
@@ -141,26 +146,24 @@ const claimDailyReward = async () => {
       return;
     }
 
-    // 1️⃣ Update user's tokens
+    // 1) Update user's tokens
     setUserTokens(prev => prev + data.reward);
+   
+    setStreakData(prev => ({
+  ...prev,
+  currentDay: data.claimedDay + 1
+}));
 
-    // 2️⃣ Update streak state for popup
-    setStreakData({
-      currentDay: data.nextDay - 1, // last claimed day
-      claimedDays: Array.from({ length: data.nextDay - 1 }, (_, i) => i + 1),
-      lastClaimDate: data.lastClaimedDate,
-      maxDay: data.maxDay
-    });
+setRewardPopupVisible(true);
 
-    // 3️⃣ Show popup
-    setRewardPopupVisible(true);
+fetchRewardStatus(); // silent refresh
 
-    // 4️⃣ Set 24h cooldown
+
+    // 4) Set 24h cooldown
     const nextTime = new Date();
     nextTime.setHours(nextTime.getHours() + 24);
     setNextRewardTime(nextTime);
     setDailyRewardCooldown(true);
-    localStorage.setItem("nextRewardTime", nextTime.toISOString());
 
   } catch (err) {
     console.error(err);
@@ -178,8 +181,7 @@ useEffect(() => {
     if (diff <= 0) {
       setDailyRewardCooldown(false);
       setNextRewardTime(null);
-      setCooldownTimeLeft("");
-      localStorage.removeItem("nextRewardTime");
+      setCooldownTimeLeft("");  
       clearInterval(interval);
       return;
     }
@@ -553,7 +555,7 @@ useEffect(() => {
     onClick={claimDailyReward}
     disabled={dailyRewardCooldown}
     className={`fixed right-4 bottom-16 z-50 rounded-lg px-4 py-3 text-lg font-semibold text-white transition-all shadow-lg
-      ${dailyRewardCooldown ? "bg-gray-400 cursor-not-allowed" : "bg-[#FFD700] hover:scale-105 glow-pulse"}`}
+      ${dailyRewardCooldown ? "bg-gray-400 cursor-not-allowed" : "bg-[#FFD700] hover:scale-110 animate-pulse"}`}
     title={
       dailyRewardCooldown
         ? `Récompense déjà réclamée. Disponible dans ${cooldownTimeLeft}`
@@ -565,36 +567,100 @@ useEffect(() => {
       : "Réclamer Récompense"}
   </button>
 )}
-
 {rewardPopupVisible && (
-  <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70 z-50">
-    <div className="bg-[#003366] p-8 rounded-lg text-white max-w-sm text-center">
-      <h2 className="text-2xl font-bold mb-4">Récompense Réclamée !</h2>
-      <p>Vous avez reçu <strong>{100 * 2 ** (streakData.currentDay - 1)} tokens</strong> !</p>
-      <p>Streak actuel : <strong>{streakData.currentDay} jour(s)</strong></p>
+  <div className="fixed inset-0 flex items-center justify-center bg-black/80 z-50">
+    
+    <div className="bg-gradient-to-b from-[#003366] to-[#001a33] 
+                border-2 border-[#FFD700]
+                p-6 rounded-2xl text-white 
+                max-w-4xl w-[95%] text-center shadow-2xl
+                max-h-[90vh] overflow-y-auto">
 
-      <div className="flex justify-center mt-4">
-        {Array.from({ length: streakData.maxDay }).map((_, i) => (
-          <div
-            key={i}
-            className={`w-5 h-5 m-1 rounded-full border-2 ${
-              i < streakData.currentDay
-                ? "bg-yellow-400 border-yellow-300"
-                : "border-gray-500"
-            }`}
-          />
-        ))}
+      <h2 className="text-3xl font-extrabold text-[#FFD700] mb-2">
+        🎉 Récompense Quotidienne !
+      </h2>
+
+      <p className="mb-6 text-lg">
+        Jour <span className="text-[#FFD700] font-bold">
+          {streakData.currentDay}
+        </span> réclamé !
+      </p>
+
+
+      {/* 14 DAY GRID */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 mb-6">
+
+        {Array.from({ length: streakData.maxDay || 14 }).map((_, i) => {
+
+          const day = i + 1;
+          const reward = 100 * 2 ** (day - 1);
+
+ const claimed = day < streakData.currentDay;
+const isToday = day === streakData.currentDay;
+
+          return (
+            <div
+  key={day}
+  className={`relative flex flex-col items-center justify-center
+  rounded-xl p-3 border font-bold transition-all overflow-hidden
+
+  ${
+    claimed
+      ? "bg-green-500/20 border-green-400"
+      : isToday
+      ? "bg-[#FFD700]/20 border-[#FFD700] scale-105"
+      : "bg-white/5 border-white/10"
+  }
+  `}
+>
+
+  {/* DARK OVERLAY */}
+  {claimed && (
+    <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-10">
+      <span className="text-3xl">✅</span>
+    </div>
+  )}
+
+  <div className="text-sm">Jour {day}</div>
+
+  <div className="text-2xl">
+    {"💰".repeat(Math.min(day, 5))}
+  </div>
+
+  <div className="text-xs text-[#FFD700]">
+    {reward.toLocaleString()}
+  </div>
+
+</div>
+          );
+        })}
       </div>
+
+
+      {/* Streak message */}
+      <div className="mb-4 text-lg">
+        🔥 Streak actuel : 
+        <span className="text-[#FFD700] font-bold">
+          {" "}
+          {streakData.currentDay} jours
+        </span>
+      </div>
+
 
       <button
         onClick={() => setRewardPopupVisible(false)}
-        className="mt-6 px-4 py-2 bg-[#FFD700] text-[#003366] font-bold rounded hover:scale-105 transition"
+        className="mt-2 px-6 py-3 
+                   bg-[#FFD700] text-[#003366] 
+                   font-bold rounded-lg
+                   hover:scale-105 transition-all"
       >
-        Fermer
+        Continuer
       </button>
+
     </div>
   </div>
 )}
+
 
     </div>
     
