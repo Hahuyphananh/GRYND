@@ -224,14 +224,18 @@ function PvPCoinFlip() {
   const [result, setResult] = useState(null), [flipKey, setFlipKey] = useState(0);
   const [games, setGames] = useState([]), [myGameId, setMyGameId] = useState(null);
 
-  useEffect(() => {
-    async function fetchGames() {
-      const res = await fetch("/api/coin-flip/pvp/available", { method: "POST" });
-      const json = await res.json();
-      if (json.success) setGames(json.data.games);
-    }
-    fetchGames();
-  }, []);
+ useEffect(() => {
+  const fetchGames = async () => {
+    const res = await fetch("/api/coin-flip/pvp/available");
+    const json = await res.json();
+    if (json.success) setGames(json.data.games);
+  };
+
+  fetchGames();
+  const interval = setInterval(fetchGames, 2000); // every 2s
+
+  return () => clearInterval(interval);
+}, []);
 
   const createGame = async () => {
     setMessage("Creating...");
@@ -258,7 +262,7 @@ function PvPCoinFlip() {
     if (json.success) {
       setResult(json.data.outcome);
       setMessage(json.data.winner === "you" ? "✅ You won!" : "❌ You lost.");
-      setGames(prev => prev.filter(g => g.gameId !== gameId));
+      setGames(prev => prev.filter(g => g.id !== gameId));
       setMyGameId(null);
       setFlipKey(k => k + 1);
     } else setMessage(json.error);
@@ -270,9 +274,9 @@ function PvPCoinFlip() {
         <button onClick={createGame}>Create Game</button>
       ) : (
         <div>
-          {games.filter(g=>g.gameId===myGameId).map(g=>(
-            <button key={g.gameId} onClick={()=>joinGame(g.gameId)}>
-              Join Game #{g.gameId}
+          {games.filter(g=>g.id===myGameId).map(g=>(
+            <button key={g.id} onClick={()=>joinGame(g.id)}>
+              Join Game #{g.id}
             </button>
           ))}
         </div>

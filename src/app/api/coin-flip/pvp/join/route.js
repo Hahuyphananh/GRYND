@@ -2,42 +2,69 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../../db/client";
 import { coinFlipGames, users } from "../../../../../db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 
 export async function POST(req) {
-  const { userId } = auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { userId } = await auth();
+  if (!userId)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { gameId } = await req.json();
 
-  const [game] = await db
-    .select()
-    .from(coinFlipGames)
-    .where(and(eq(coinFlipGames.id, gameId), eq(coinFlipGames.player2Id, null)))
-    .limit(1);
+  try {
+    const result = await db.transaction(async (tx) => {
 
-  if (!game) {
-    return NextResponse.json({ error: "Game not found or already joined" }, { status: 404 });
+      // 🔥 LOCK THE GAME ROW
+      const [game] = await tx
+        .select()
+        .from(coinFlipGames)
+        .where(
+          and(
+            eq(coinFlipGames.id, gameId),
+            isNull(coinFlipGames.player2Id)
+          )
+        )
+        .for("update"); // ← VERY IMPORTANT (row lock)
+
+      if (!game) throw new Error("Game already joined");
+
+      if (game.player1Id === userId)
+        throw new Error("Cannot join your own game");
+
+      // 🔥 Deduct ONLY if enough balance
+      const [joiner] = await tx
+        .update(users)
+        .set({
+          balance: sql`${users.balance} - ${game.betAmount}`
+        })
+        .where(
+          and(
+            eq(users.clerkId, userId),
+            sql`${users.balance} >= ${game.betAmount}`
+          )
+        )
+        .returning();
+
+      if (!joiner) throw new Error("Insufficient balance");
+
+      // 🔥 Seat the player
+      await tx
+        .update(coinFlipGames)
+        .set({ player2Id: userId })
+        .where(eq(coinFlipGames.id, gameId));
+
+      return { game };
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: { gameId }
+    });
+
+  } catch (err) {
+    return NextResponse.json(
+      { error: err.message },
+      { status: 400 }
+    );
   }
-  if (game.player1Id === userId) {
-    return NextResponse.json({ error: "Cannot join your own game" }, { status: 400 });
-  }
-
-  // Deduct bet from joining player
-  const [joiner] = await db
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${game.betAmount}` })
-    .where(eq(users.clerkId, userId))
-    .returning();
-
-  if (joiner.balance < 0) {
-    return NextResponse.json({ error: "Insufficient balance" }, { status: 400 });
-  }
-
-  await db
-    .update(coinFlipGames)
-    .set({ player2Id: userId })
-    .where(eq(coinFlipGames.id, gameId));
-
-  return NextResponse.json({ success: true, data: { gameId } });
 }
