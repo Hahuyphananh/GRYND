@@ -1,5 +1,5 @@
 // src/db/schema.ts
-import { pgTable, serial, varchar, integer, numeric, timestamp, jsonb, text, json, boolean, date} from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, integer, numeric, timestamp, jsonb, text, json, boolean, date, pgEnum, index} from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
 // USERS TABLE
@@ -197,18 +197,43 @@ export const tankMatches = pgTable("tank_matches", {
   players: jsonb("players").$type<string[]>().notNull().default([]),
 });
 
-export const coinFlipGames = pgTable("coin_flip_games", {
-  id: serial("id").primaryKey(),
-  player1Id: varchar("player1_id", { length: 255 }).notNull(),
-  player2Id: varchar("player2_id", { length: 255 }),
-  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-  player1Choice: varchar("player1_choice", { length: 10 }).notNull(),
-  outcome: varchar("outcome", { length: 10 }),
-  winnerId: varchar("winner_id", { length: 255 }),
-  result: varchar("result", { length: 10 }).default('pending').notNull(),
-  status: varchar("status", { length: 20 }).default('active').notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const coinFlipStatusEnum = pgEnum("coin_flip_status", [
+  "active",
+  "matched",
+  "finished",
+  "cancelled",
+]);
+
+export const coinFlipGames = pgTable(
+  "coin_flip_games",
+  {
+id: serial("id").primaryKey(),
+player1Id: varchar("player1_id", { length: 255 }).notNull(),
+player2Id: varchar("player2_id", { length: 255 }),
+betAmount: numeric("bet_amount", {
+      precision: 10,
+      scale: 2,
+    }).notNull(),
+player1Choice: varchar("player1_choice", { length: 10 }).notNull(),
+outcome: varchar("outcome", { length: 10 }),
+winnerId: varchar("winner_id", { length: 255 }),
+result: varchar("result", { length: 10 })
+      .default("pending")
+      .notNull(),
+status: coinFlipStatusEnum("status")
+      .default("active")
+      .notNull(),
+createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    openGamesIdx: index("coin_flip_open_games_idx").on(
+      table.player2Id
+    ),
+    statusIdx: index("coin_flip_status_idx").on(
+      table.status
+    ),
+  })
+);
 
 export const unoGames = pgTable("uno_games", {
   id: serial("id").primaryKey(),
