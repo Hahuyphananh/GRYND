@@ -216,77 +216,338 @@ function SoloCoinFlip() {
   );
 }
 
-
 // ------------------- PvP Coin Flip ------------------- //
 function PvPCoinFlip() {
-  const [bet, setBet] = useState(10), [choice, setChoice] = useState("heads");
-  const [flipping, setFlipping] = useState(false), [message, setMessage] = useState("");
-  const [result, setResult] = useState(null), [flipKey, setFlipKey] = useState(0);
-  const [games, setGames] = useState([]), [myGameId, setMyGameId] = useState(null);
 
- useEffect(() => {
-  const fetchGames = async () => {
-    const res = await fetch("/api/coin-flip/pvp/available");
-    const json = await res.json();
-    if (json.success) setGames(json.data.games);
-  };
+  const [bet, setBet] = useState(10);
+  const [choice, setChoice] = useState("heads");
 
-  fetchGames();
-  const interval = setInterval(fetchGames, 2000); // every 2s
+  const [flipping, setFlipping] = useState(false);
+  const [message, setMessage] = useState("");
+  const [result, setResult] = useState(null);
+  const [flipKey, setFlipKey] = useState(0);
 
-  return () => clearInterval(interval);
-}, []);
+  const [games, setGames] = useState([]);
+  const [myGameId, setMyGameId] = useState(null);
+  const [myBet, setMyBet] = useState(null); // ⭐ LOCAL truth
+  const [userId, setUserId] = useState(null);
+
+  // ✅ Fetch user once
+  useEffect(() => {
+    const getUser = async () => {
+      const res = await fetch("/api/get-user");
+      const json = await res.json();
+      if (json.success) setUserId(json.data.userId);
+    };
+
+    getUser();
+  }, []);
+
+  // ✅ Poll lobby WITHOUT destroying your active game
+  useEffect(() => {
+
+    const fetchGames = async () => {
+      const res = await fetch("/api/coin-flip/pvp/available");
+      const json = await res.json();
+
+      if (!json.success) return;
+
+      // 🔥 NEVER overwrite your own game
+      setGames(prev => {
+
+        if (!myGameId) return json.data.games;
+
+        const stillExists = json.data.games.some(g => g.id === myGameId);
+
+        // if server now returns it → trust server
+        if (stillExists) return json.data.games;
+
+        // otherwise keep your local game OUT of lobby
+        return json.data.games;
+      });
+    };
+
+    fetchGames();
+    const interval = setInterval(fetchGames, 2000);
+
+    return () => clearInterval(interval);
+
+  }, [myGameId]);
+
+
+
+  // =============================
+  // CREATE GAME
+  // =============================
 
   const createGame = async () => {
-    setMessage("Creating...");
+
+    setMessage("Creating game...");
+
     const res = await fetch("/api/coin-flip/pvp/create", {
-      method: "POST", headers:{ "Content-Type":"application/json" },
+      method: "POST",
+      headers:{ "Content-Type":"application/json" },
       body: JSON.stringify({ betAmount: bet, choice })
     });
+
     const json = await res.json();
+
     if (json.success) {
+
+      // ⭐ TRUST LOCAL STATE
       setMyGameId(json.data.gameId);
-      setGames(prev => [...prev, json.data]);
-      setMessage("Game created.");
-    } else setMessage(json.error);
+      setMyBet(json.data.betAmount);
+
+      setMessage("Waiting for opponent...");
+      
+    } else {
+      setMessage(json.error);
+    }
   };
 
+
+
+  // =============================
+  // CANCEL
+  // =============================
+
+  const cancelGame = async () => {
+
+    setMessage("Cancelling game...");
+
+    const res = await fetch("/api/coin-flip/pvp/cancel", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ gameId: myGameId })
+    });
+
+    const json = await res.json();
+
+    if(json.success){
+
+      setMyGameId(null);
+      setMyBet(null);
+
+      setGames(prev => prev.filter(g => g.id !== myGameId));
+
+      setMessage("Game cancelled.");
+
+    }else{
+      setMessage(json.error);
+    }
+  };
+
+
+
+  // =============================
+  // JOIN
+  // =============================
+
   const joinGame = async (gameId) => {
-    setFlipping(true); setMessage("Flipping...");
+
+    if(gameId === myGameId) return;
+
+    setFlipping(true);
+    setMessage("Flipping coin...");
+
     const res = await fetch("/api/coin-flip/pvp/join", {
-      method: "POST", headers:{ "Content-Type":"application/json" },
+      method: "POST",
+      headers:{ "Content-Type":"application/json" },
       body: JSON.stringify({ gameId, choice })
     });
+
     const json = await res.json();
+
     setFlipping(false);
+
     if (json.success) {
+
       setResult(json.data.outcome);
       setMessage(json.data.winner === "you" ? "✅ You won!" : "❌ You lost.");
+
       setGames(prev => prev.filter(g => g.id !== gameId));
+
       setMyGameId(null);
+      setMyBet(null);
+
       setFlipKey(k => k + 1);
-    } else setMessage(json.error);
+
+    } else {
+      setMessage(json.error);
+    }
   };
+
+
+
+  // ⭐ lobby filter
+  const availableGames = games.filter(
+    g => g.player1Id !== userId && g.id !== myGameId
+  );
+
+
 
   return (
     <>
-      {!myGameId ? (
-        <button onClick={createGame}>Create Game</button>
-      ) : (
-        <div>
-          {games.filter(g=>g.id===myGameId).map(g=>(
-            <button key={g.id} onClick={()=>joinGame(g.id)}>
-              Join Game #{g.id}
+      {/* CREATE UI */}
+      {!myGameId && (
+        <>
+          <label className="block mb-1">Bet Amount</label>
+          <input
+            type="number"
+            className="w-full bg-gray-700 p-2 rounded mb-4"
+            value={bet}
+            onChange={(e) => setBet(parseFloat(e.target.value))}
+          />
+
+          <div className="flex justify-between mb-4">
+            <button
+              onClick={() => setChoice("heads")}
+              className={`w-full mr-2 p-2 rounded ${
+                choice === "heads" ? "bg-green-600" : "bg-gray-600"
+              }`}
+            >
+              Heads
             </button>
-          ))}
+
+            <button
+              onClick={() => setChoice("tails")}
+              className={`w-full ml-2 p-2 rounded ${
+                choice === "tails" ? "bg-green-600" : "bg-gray-600"
+              }`}
+            >
+              Tails
+            </button>
+          </div>
+
+          <button
+            onClick={createGame}
+            className="w-full p-3 rounded font-bold text-lg 
+                       bg-gradient-to-r from-yellow-400 to-yellow-600
+                       hover:scale-105 transition transform
+                       text-black shadow-lg"
+          >
+            🎲 Create PvP Game
+          </button>
+
+
+          {/* LOBBY */}
+          <div className="mt-8">
+            <h2 className="text-xl font-bold mb-3 text-center">
+              Available Games
+            </h2>
+
+            {availableGames.length === 0 && (
+              <p className="text-center text-gray-400">
+                No games available. Be the first to create one!
+              </p>
+            )}
+
+            <div className="space-y-3">
+              {availableGames.map(game => (
+                <div
+                  key={game.id}
+                  className="bg-gray-900 border border-gray-700 
+                             rounded-lg p-4 flex justify-between items-center"
+                >
+                  <div>
+                    <p className="font-bold break-all">
+                      {game.player1Id}
+                    </p>
+
+                    <p className="text-gray-400 mt-1">
+                      Bet: {game.betAmount} 🪙
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => joinGame(game.id)}
+                    className="px-4 py-2 rounded-lg font-bold
+                               bg-green-600 hover:bg-green-500
+                               transition"
+                  >
+                    Join
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+
+
+      {/* WAITING SCREEN — ZERO flicker now */}
+      {myGameId && !flipping && (
+        <div className="mt-6 bg-gray-900 rounded-xl p-6 shadow-xl border border-gray-700">
+
+          <h2 className="text-center text-xl font-bold mb-4">
+            Waiting for Opponent...
+          </h2>
+
+          <div className="flex justify-center mb-6">
+            <div className="relative w-24 h-24 perspective">
+              <div
+                className="w-full h-full rounded-full flex items-center justify-center 
+                           bg-yellow-300 text-black text-4xl font-bold 
+                           animate-coin-flip"
+                style={{ animationIterationCount: "infinite" }} // ⭐ smooth loop
+              >
+                🪙
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-6 text-center">
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <p className="font-bold">You</p>
+            </div>
+
+            <div className="bg-gray-800 p-4 rounded-lg animate-pulse">
+              <p className="font-bold text-yellow-400">
+                Searching...
+              </p>
+            </div>
+          </div>
+
+          <p className="text-center mt-4 text-gray-400">
+            Bet Locked: {myBet} 🪙
+          </p>
+
+          <button
+            onClick={cancelGame}
+            className="mt-6 w-full p-3 rounded-lg font-bold
+                       bg-red-600 hover:bg-red-500
+                       transition transform hover:scale-105"
+          >
+            Cancel Game
+          </button>
+
         </div>
       )}
-      <div className="perspective">
-        <div key={flipKey} className={`w-24 h-24 rounded-full flex items-center justify-center bg-yellow-300 text-black text-4xl font-bold ${flipping?"animate-coin-flip":""}`}>
-          {result==="heads"?"H":result==="tails"?"T":"?"}
+
+
+
+      {/* FLIP */}
+      {flipping && (
+        <div className="flex justify-center mt-6 h-28">
+          <div className="relative w-24 h-24 perspective">
+            <div
+              key={flipKey}
+              className="w-full h-full rounded-full flex items-center justify-center 
+                         bg-yellow-300 text-black text-4xl font-bold 
+                         animate-coin-flip"
+            >
+              {result === "heads" ? "H" : result === "tails" ? "T" : "?"}
+            </div>
+          </div>
         </div>
-      </div>
-      {message && <p>{message}</p>}
+      )}
+
+      {message && (
+        <p className="text-center mt-4 text-blue-300">{message}</p>
+      )}
     </>
   );
 }
+
+
