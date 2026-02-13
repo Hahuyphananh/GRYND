@@ -76,8 +76,10 @@ const [historyIndex, setHistoryIndex] = useState(null); // null = live game
       setGame(data.data);
       setPlayerHand(data.data.playerHand);
       setAiHandCount(data.data.aiHand.length);
-      setTopCard(data.data.topCard);
-setTurnHistory((prev) => [...prev, data.data.topCard]);
+      if (data.data.topCard) {
+  setTopCard(data.data.topCard);
+  setTurnHistory((prev) => [...prev, data.data.topCard]);
+}
 setHistoryIndex(null); // back to live mode
       setIsPlayerTurn(true);
       setMessage("À ton tour !");

@@ -12,7 +12,20 @@ export async function POST(req) {
     const playerHand = typeof game.playerHand === "string" ? JSON.parse(game.playerHand) : game.playerHand;
     const aiHand = typeof game.aiHand === "string" ? JSON.parse(game.aiHand) : game.aiHand;
     const deck = typeof game.deck === "string" ? JSON.parse(game.deck) : game.deck;
-    const discardPile = typeof game.discardPile === "string" ? JSON.parse(game.discardPile) : game.discardPile;
+    let discardPile;
+
+if (!game.discardPile) {
+  // rebuild pile from topCard if missing
+  discardPile = game.topCard
+    ? [typeof game.topCard === "string"
+        ? JSON.parse(game.topCard)
+        : game.topCard]
+    : [];
+} else {
+  discardPile = typeof game.discardPile === "string"
+    ? JSON.parse(game.discardPile)
+    : game.discardPile;
+}
 
     const topCard = discardPile[discardPile.length - 1] || null;
     const currentColor = game.currentColor || topCard?.color;
