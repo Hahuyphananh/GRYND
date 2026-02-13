@@ -45,7 +45,7 @@ export async function POST(req) {
       loopCounter++;
 
       // Prefer Skip or Reverse if possible (for testing)
-let playableIndex = aiHand.findIndex(card => card.value === "Skip" || card.value === "Reverse");
+let playableIndex = aiHand.findIndex(card => card.value === "skip" || card.value === "reverse");
 
 // If no Skip/Reverse, fall back to any normal playable card
 if (playableIndex === -1) {
@@ -90,10 +90,14 @@ if (updatedGame.turn === "ai") {
 
       } else {
         // Draw a card if no playable card
-        const drawnCard = drawUnoCard({ deck, playerHand, aiHand, discardPile, currentColor, turn: "ai" });
-        aiHand.push(drawnCard);
-        message = "IA pioche une carte";
-        isPlayerTurn = true; // End AI turn after drawing
+const { card, deck: updatedDeck } = drawUnoCard(deck);
+
+deck = updatedDeck;
+aiHand.push(card);
+
+message = "IA pioche une carte";
+isPlayerTurn = true;
+
       }
     }
 

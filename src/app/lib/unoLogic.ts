@@ -9,16 +9,34 @@ export type UnoGameState = {
   playerHand: UnoCard[];
   aiHand: UnoCard[];
   turn: "player" | "ai";
+  currentColor: string; // ⭐ THE RULE COLOR
 };
 
 /**
  * Checks if a card is playable based on the top card of the discard pile.
  */
-export function isValidPlay(card: UnoCard, topCard: UnoCard): boolean {
+export function isValidPlay(
+  card: UnoCard,
+  topCard: UnoCard,
+  currentColor: string,
+  hand?: UnoCard[]
+): boolean {
+
+  // Wild is always playable
+  if (card.value === "Wild") return true;
+
+  // Wild Draw Four rule
+  if (card.value === "Wild Draw Four") {
+    if (!hand) return true; // AI safety fallback
+
+    // Can only play if no matching color exists
+    const hasMatch = hand.some(c => c.color === currentColor);
+    return !hasMatch;
+  }
+
   return (
-    card.color === topCard.color ||
-    card.value === topCard.value ||
-    card.color === "black"
+    card.color === currentColor ||
+    card.value === topCard.value
   );
 }
 
@@ -61,12 +79,18 @@ export function playCard(
 /**
  * Chooses a valid card to play for the AI.
  */
-export function getPlayableCard(hand: UnoCard[], topCard: UnoCard): UnoCard | null {
+export function getPlayableCard(
+  hand: UnoCard[],
+  topCard: UnoCard,
+  currentColor: string
+): UnoCard | null {
+
   for (const card of hand) {
-    if (isValidPlay(card, topCard)) {
+    if (isValidPlay(card, topCard, currentColor, hand)) {
       return card;
     }
   }
+
   return null;
 }
 
@@ -116,8 +140,8 @@ export function applyUnoCard(game, card, currentPlayer, chosenColor = null) {
     if (!chosenColor) {
       throw new Error("Wild cards must have a chosen color!");
     }
-    playedCard.color = chosenColor.toLowerCase();
-    currentColor = playedCard.color;
+currentColor = chosenColor.toLowerCase();
+
   } else {
     currentColor = card.color.toLowerCase();
   }
