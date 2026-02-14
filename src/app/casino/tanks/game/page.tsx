@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import PlayerTank from "../../../../components/PlayerTank";
 import { useRouter } from "next/navigation";
+import WaitingRoom from "./components/WaitingRoom";
 
 /* ---------------------- FIX #1 — MOVE OUTSIDE ---------------------- */
 function CashOutButton({ bountyRef, setBounty, setCashOutCountdown }) {
@@ -106,6 +107,7 @@ const AMMO_RECHARGE_RATE = 1000; // 1 ammo per second
 const [ammo, setAmmo] = useState(MAX_AMMO);
 const ammoRef = useRef(ammo);
 ammoRef.current = ammo;
+const [isMatchReady, setIsMatchReady] = useState(false);
 
   const lastDamageTimeRef = useRef(Date.now());
 
@@ -179,6 +181,26 @@ ammoRef.current = ammo;
   }, AMMO_RECHARGE_RATE);
 
   return () => clearInterval(interval);
+}, []);
+useEffect(() => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const id = urlParams.get("matchId");
+
+  if (!id) return;
+
+  async function checkMatch() {
+    const res = await fetch(`/api/tanks/get-match?matchId=${id}`);
+    const data = await res.json();
+
+    // example response:
+    // { players: 2, started: true }
+
+    if (data.players >= 2) {
+      setIsMatchReady(true);
+    }
+  }
+
+  checkMatch();
 }, []);
 
 
@@ -379,6 +401,9 @@ ammoRef.current = ammo;
     typeof window !== "undefined"
       ? window.innerHeight / 2 - pos.y
       : 0;
+if (!isMatchReady) {
+  return <WaitingRoom gameId={matchId!} />;
+}
 
   return (
     <div className="w-full h-screen overflow-hidden relative bg-black">

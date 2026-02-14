@@ -45,7 +45,7 @@ export async function POST(req) {
       loopCounter++;
 
       // Prefer Skip or Reverse if possible (for testing)
-let playableIndex = aiHand.findIndex(card => card.value === "skip" || card.value === "reverse");
+let playableIndex = aiHand.findIndex(card => card.value === "Skip" || card.value === "Reverse");
 
 // If no Skip/Reverse, fall back to any normal playable card
 if (playableIndex === -1) {
