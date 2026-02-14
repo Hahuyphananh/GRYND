@@ -50,7 +50,7 @@
     "src/app/api/chess/end-game/route.js",
     ".next/dev/types/**/*.ts",
     "src/app/api/claim-login-reward/route.js"
-, "src/app/api/get-user/route.js"  ],
+, "src/app/api/get-user/route.js", "src/app/api/tanks/leave-match/route.js"  ],
   "exclude": [
     "node_modules"
   ]
