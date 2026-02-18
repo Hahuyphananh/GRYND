@@ -8,6 +8,7 @@ import Img1 from "../images/roulette.jpg";
 import Img2 from "../images/blackjack.jpg";
 import Img3 from "../images/poker.jpg";
 import Img4 from "../images/plinko.jpg";
+import HeroBg from "../images/casino-bg.png";
 import SportCard from "../components/sport-card";
 import EventCard from "../components/event-card";
 
@@ -360,8 +361,22 @@ useEffect(() => {
    <div className="animated-bg">
       <NavigationBar currentPath="/" />
 
-      <section className="bg [#003366] px-4 py-20 mt-8">
-        <div className="mx-auto max-w-7xl text-center">
+     <section className="relative mt-8 px-4 min-h-[70vh] flex items-center overflow-hidden">
+  
+  {/* Background Image */}
+  <Image
+    src={HeroBg}
+    alt="Casino background"
+    fill
+    priority
+    quality={100}
+    className="object-cover object-center z-0"
+  />
+
+  {/* Dark overlay for readability */}
+  <div className="absolute inset-0 bg-black/65 z-10" />
+
+        <div className="relative z-20 mx-auto max-w-7xl text-center">
       <h1
   className="mb-4 text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text 
   bg-gradient-to-r from-yellow-300 via-yellow-400 to-yellow-300
