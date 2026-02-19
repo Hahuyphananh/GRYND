@@ -11,7 +11,7 @@ export async function POST() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // Find ONE open match and lock it
+    // 1️⃣ Find open match
     const match = await db
       .select()
       .from(tankMatches)
@@ -33,22 +33,68 @@ export async function POST() {
 
     const selectedMatch = match[0];
 
-    // Prevent joining twice
-    if (selectedMatch.players.includes(userId)) {
+    // 2️⃣ Prevent joining twice
+    if (selectedMatch.players?.includes(userId)) {
       return NextResponse.json({
         success: true,
         matchId: selectedMatch.matchId,
       });
     }
 
-    // 🔥 CRITICAL: Atomic update
+    // 3️⃣ Get host bet amount
+    const hostStats = await db
+      .select()
+      .from(tankStats)
+      .where(eq(tankStats.matchId, selectedMatch.matchId))
+      .limit(1);
+
+    if (hostStats.length === 0) {
+      return NextResponse.json(
+        { error: "Host stats not found." },
+        { status: 500 }
+      );
+    }
+
+    const bet = Number(hostStats[0].bounty);
+
+    // 4️⃣ Fetch joining user
+    const existingUser = await db
+      .select()
+      .from(users)
+      .where(eq(users.clerkId, userId))
+      .limit(1);
+
+    if (existingUser.length === 0) {
+      return NextResponse.json(
+        { error: "User not found." },
+        { status: 404 }
+      );
+    }
+
+    const dbUser = existingUser[0];
+    const balance = Number(dbUser.balance);
+
+    if (balance < bet) {
+      return NextResponse.json(
+        { error: "Insufficient balance" },
+        { status: 400 }
+      );
+    }
+
+    // 5️⃣ Deduct balance
+    await db
+      .update(users)
+      .set({ balance: balance - bet })
+      .where(eq(users.clerkId, userId));
+
+    // 6️⃣ Atomic match update
     const updated = await db
       .update(tankMatches)
       .set({
         currentPlayers: sql`${tankMatches.currentPlayers} + 1`,
-        players: sql`${tankMatches.players} || jsonb_build_array(${userId})`,
-        isOpen: false, // since maxPlayers = 2
-        gameStarted: true, 
+        players: sql`${tankMatches.players} || jsonb_build_array(${sql.raw(`'${userId}'`)})`,
+        isOpen: false,
+        gameStarted: true,
       })
       .where(
         and(
@@ -65,27 +111,30 @@ export async function POST() {
       );
     }
 
-    // Insert into tank_stats
+    // 7️⃣ Insert joining player stats
     await db.insert(tankStats).values({
       matchId: selectedMatch.matchId,
       clerkId: userId,
-      username: "Player",
-      bounty: 10,
+      username: dbUser.name,
+      bounty: bet,
       kills: 0,
       amountCashedOut: 0,
+      result: null,
     });
 
     return NextResponse.json({
       success: true,
       matchId: selectedMatch.matchId,
+      newBalance: balance - bet,
     });
 
   } catch (err) {
-    console.error("Join game error:", err);
+    console.error("Join game error FULL:", err);
     return NextResponse.json(
       { error: "Server error", detail: String(err) },
       { status: 500 }
     );
   }
 }
+
 
