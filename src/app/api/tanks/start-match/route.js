@@ -61,7 +61,7 @@ export async function POST(req) {
     await db.insert(tankMatches).values({
       matchId,
       hostClerkId: userId,
-      maxPlayers: 10,
+      maxPlayers: 2,
       currentPlayers: 1,     // Host counts as the first player
       isOpen: true,
       settings: {},

@@ -43,7 +43,6 @@ export default function TanksLobby() {
     if (isSignedIn && user) fetchUserTokens();
   }, [isSignedIn, user]);
 
-
 async function joinGame() {
   try {
     setLoading(true);
