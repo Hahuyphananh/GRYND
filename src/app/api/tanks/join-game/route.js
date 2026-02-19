@@ -6,37 +6,14 @@ import { eq, and, lt, desc, sql } from "drizzle-orm";
 
 export async function POST() {
   try {
-    // 1️⃣ Auth
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // 2️⃣ Fetch user
-    const userList = await db
+    // Find ONE open match and lock it
+    const match = await db
       .select()
-      .from(users)
-      .where(eq(users.clerkId, userId))
-      .limit(1);
-
-    if (userList.length === 0) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    const dbUser = userList[0];
-
-    // 3️⃣ Fetch most full open match (INCLUDING players array)
-    const openMatches = await db
-      .select({
-        id: tankMatches.id,
-        matchId: tankMatches.matchId,
-        hostClerkId: tankMatches.hostClerkId,
-        maxPlayers: tankMatches.maxPlayers,
-        currentPlayers: tankMatches.currentPlayers,
-        isOpen: tankMatches.isOpen,
-        settings: tankMatches.settings,
-        players: tankMatches.players,
-      })
       .from(tankMatches)
       .where(
         and(
@@ -47,69 +24,61 @@ export async function POST() {
       .orderBy(desc(tankMatches.currentPlayers))
       .limit(1);
 
-    if (openMatches.length === 0) {
+    if (match.length === 0) {
       return NextResponse.json(
-        { error: "No matches available, create a game." },
+        { error: "No matches available." },
         { status: 404 }
       );
     }
 
-    const match = openMatches[0];
+    const selectedMatch = match[0];
 
-    // 4️⃣ Already inside match?
-    const existingPlayer = await db
-      .select()
-      .from(tankStats)
-      .where(
-        and(
-          eq(tankStats.matchId, match.matchId),
-          eq(tankStats.clerkId, userId)
-        )
-      )
-      .limit(1);
-
-    if (existingPlayer.length > 0) {
-      return NextResponse.json(
-        {
-          success: true,
-          matchId: match.matchId,
-          player: existingPlayer[0],
-        },
-        { status: 200 }
-      );
+    // Prevent joining twice
+    if (selectedMatch.players.includes(userId)) {
+      return NextResponse.json({
+        success: true,
+        matchId: selectedMatch.matchId,
+      });
     }
 
-    // 5️⃣ Insert into tank_stats
-    const insertedPlayer = await db
-      .insert(tankStats)
-      .values({
-        matchId: match.matchId,
-        clerkId: userId,
-        username: dbUser.name,
-        bounty: 10,
-        kills: 0,
-        amountCashedOut: 0,
-      })
-      .returning();
-
-    // 6️⃣ + 7️⃣ FIXED: JSONB-safe players update
-    await db
+    // 🔥 CRITICAL: Atomic update
+    const updated = await db
       .update(tankMatches)
       .set({
         currentPlayers: sql`${tankMatches.currentPlayers} + 1`,
         players: sql`${tankMatches.players} || jsonb_build_array(${userId})`,
-        isOpen: sql`${tankMatches.currentPlayers} + 1 < ${tankMatches.maxPlayers}`,
+        isOpen: false, // since maxPlayers = 2
+        gameStarted: true, 
       })
-      .where(eq(tankMatches.matchId, match.matchId));
+      .where(
+        and(
+          eq(tankMatches.matchId, selectedMatch.matchId),
+          lt(tankMatches.currentPlayers, 2)
+        )
+      )
+      .returning();
 
-    return NextResponse.json(
-      {
-        success: true,
-        matchId: match.matchId,
-        player: insertedPlayer[0],
-      },
-      { status: 200 }
-    );
+    if (updated.length === 0) {
+      return NextResponse.json(
+        { error: "Match just filled. Try again." },
+        { status: 400 }
+      );
+    }
+
+    // Insert into tank_stats
+    await db.insert(tankStats).values({
+      matchId: selectedMatch.matchId,
+      clerkId: userId,
+      username: "Player",
+      bounty: 10,
+      kills: 0,
+      amountCashedOut: 0,
+    });
+
+    return NextResponse.json({
+      success: true,
+      matchId: selectedMatch.matchId,
+    });
 
   } catch (err) {
     console.error("Join game error:", err);
@@ -119,3 +88,4 @@ export async function POST() {
     );
   }
 }
+

@@ -186,7 +186,7 @@ export const tankMatches = pgTable("tank_matches", {
   id: serial("id").primaryKey(),
   matchId: varchar("match_id", { length: 255 }).notNull(),
   hostClerkId: varchar("host_clerk_id", { length: 255 }).notNull(),
-  maxPlayers: integer("max_players").notNull().default(10),
+  maxPlayers: integer("max_players").notNull().default(2),
   // NEW COLUMN
   currentPlayers: integer("current_players")
     .notNull()
@@ -195,6 +195,7 @@ export const tankMatches = pgTable("tank_matches", {
   settings: jsonb("settings").default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   players: jsonb("players").$type<string[]>().notNull().default([]),
+  gameStarted: boolean("game_started").notNull().default(false),
 });
 
 export const coinFlipStatusEnum = pgEnum("coin_flip_status", [
