@@ -18,6 +18,14 @@ function MainComponent() {
   const [riskLevel, setRiskLevel] = useState("medium");
   const saveTimeoutRef = useRef(null);
 const pendingBallsRef = useRef([]);
+const [autoEnabled, setAutoEnabled] = useState(false);
+const [autoBetCount, setAutoBetCount] = useState(10);
+const [autoDelay, setAutoDelay] = useState(400); // ms between drops
+const [autoStopLoss, setAutoStopLoss] = useState(0);
+const [autoTakeProfit, setAutoTakeProfit] = useState(0);
+const autoIntervalRef = useRef(null);
+const [autoRunning, setAutoRunning] = useState(false);
+const [autoInfinite, setAutoInfinite] = useState(false);
 
 const lowRiskMultipliers = [
   20, 10, 6, 4, 2.5, 1.6, 1.2, 1, 0.7, 0.4,
@@ -260,15 +268,19 @@ const multipliers = multipliersByRisk[riskLevel];
 };
 
 const handleDrop = async () => {
+
+    if (isProcessing) return;   // ✅ ADD THIS LINE
+  setIsProcessing(true);
   if (!isSignedIn) {
     setError("Vous devez être connecté pour jouer.");
     return;
   }
 
-  if (userTokens < betAmount) {
-    setError("Solde insuffisant");
-    return;
-  }
+ if (userTokens < betAmount) {
+  setError("Solde insuffisant");
+  setIsProcessing(false);
+  return;
+}
 
   setError(null);
   setShowResult(false);
@@ -377,17 +389,77 @@ setActiveBalls((prev) =>
   )
 );
 
-
     // Show result per-ball
     setTimeout(() => setShowResult(true), 1500);
-  } catch (error) {
-    console.error("Plinko error:", error);
-    setError(error.message || "Erreur lors du lancement du jeu");
-    setActiveBalls((prev) => prev.filter((b) => b.id !== tempBallId));
-  }
+} catch (error) {
+  console.error("Plinko error:", error);
+  setError(error.message || "Erreur lors du lancement du jeu");
+  setActiveBalls((prev) => prev.filter((b) => b.id !== tempBallId));
+} finally {
+  setIsProcessing(false);   // ✅ THIS IS VERY IMPORTANT
+}
 };
 
+const startAutoBet = () => {
+  if (autoRunning) return;
 
+  let betsPlaced = 0;
+  let sessionProfit = 0;
+
+  setAutoRunning(true);
+
+  autoIntervalRef.current = setInterval(async () => {
+    if (isProcessing) return;
+
+    // Stop if not infinite AND reached bet count
+    if (!autoInfinite && betsPlaced >= autoBetCount) {
+      stopAutoBet();
+      return;
+    }
+
+    // Stop if no balance
+    if (userTokens < betAmount) {
+      stopAutoBet();
+      return;
+    }
+
+    const beforeBalance = userTokens;
+
+    await handleDrop();
+
+    betsPlaced++;
+
+    const afterBalance = userTokens;
+    const profitChange = afterBalance - beforeBalance;
+    sessionProfit += profitChange;
+
+    // Stop Loss
+    if (autoStopLoss && sessionProfit <= -autoStopLoss) {
+      stopAutoBet();
+    }
+
+    // Take Profit
+    if (autoTakeProfit && sessionProfit >= autoTakeProfit) {
+      stopAutoBet();
+    }
+
+  }, autoDelay);
+};
+
+const stopAutoBet = () => {
+  if (autoIntervalRef.current) {
+    clearInterval(autoIntervalRef.current);
+    autoIntervalRef.current = null;
+  }
+  setAutoRunning(false);
+};
+useEffect(() => {
+  return () => {
+    if (autoIntervalRef.current) {
+      clearInterval(autoIntervalRef.current);
+    }
+  };
+}, []);
 
   const totalWinAmount = gameResults.reduce((sum, amount) => sum + amount, 0);
 
@@ -420,14 +492,13 @@ const scaledBoardSize = {
   height: boardSize.height * 0.95  // 90% of original height
 };
 
-
 return (
-  <div className="h-screen flex bg-[#003366]">
+  <div className="h-screen flex bg-[#003366] overflow-hidden">
     <NavigationBar currentPath="/casino" />
     {/* Sidebar */}
     <aside
       ref={sidebarRef}
-      className="flex flex-col w-64 p-6 bg-[#004B7C] text-white h-full"
+      className="flex flex-col w-64 p-6 bg-[#004B7C] text-white overflow-y-auto"
     >
 
       <h1 className="mb-8 text-3xl font-bold mt-12">Plinko</h1>
@@ -479,13 +550,85 @@ return (
         </button>
       </div>
 
-     <button
+   <button
   className="w-full rounded px-4 py-2 text-white bg-[#4CAF50] hover:bg-[#45a049] active:scale-95 transition-transform"
   onClick={handleDrop}
+  disabled={autoRunning}
 >
   Lancer
 </button>
+<div className="mt-6 rounded-lg bg-[#1A1B1F] p-4">
+  <h3 className="text-[#FFD700] font-bold mb-3">Auto Bet</h3>
 
+ <label className="text-sm text-gray-300">Nombre de paris</label>
+
+<div className="flex items-center gap-2 mb-2">
+  <input
+    type="number"
+    value={autoBetCount}
+    disabled={autoInfinite}
+    onChange={(e) => setAutoBetCount(Number(e.target.value))}
+    className="w-full rounded bg-black px-2 py-1 text-white disabled:opacity-40"
+  />
+
+ <label className="flex items-center gap-2 cursor-pointer text-xs">
+  <span>Infini</span>
+  <div
+    onClick={() => setAutoInfinite(!autoInfinite)}
+    className={`w-10 h-5 flex items-center rounded-full p-1 transition ${
+      autoInfinite ? "bg-[#FFD700]" : "bg-gray-600"
+    }`}
+  >
+    <div
+      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition ${
+        autoInfinite ? "translate-x-5" : ""
+      }`}
+    />
+  </div>
+</label>
+
+</div>
+
+  <label className="text-sm text-gray-300">Délai (ms)</label>
+  <input
+    type="number"
+    value={autoDelay}
+    onChange={(e) => setAutoDelay(Number(e.target.value))}
+    className="w-full mb-2 rounded bg-black px-2 py-1 text-white"
+  />
+
+  <label className="text-sm text-gray-300">Stop Loss (optionnel)</label>
+  <input
+    type="number"
+    value={autoStopLoss}
+    onChange={(e) => setAutoStopLoss(Number(e.target.value))}
+    className="w-full mb-2 rounded bg-black px-2 py-1 text-white"
+  />
+
+  <label className="text-sm text-gray-300">Take Profit (optionnel)</label>
+  <input
+    type="number"
+    value={autoTakeProfit}
+    onChange={(e) => setAutoTakeProfit(Number(e.target.value))}
+    className="w-full mb-4 rounded bg-black px-2 py-1 text-white"
+  />
+
+  {!autoRunning ? (
+    <button
+      onClick={startAutoBet}
+      className="w-full rounded bg-[#FFD700] px-4 py-2 text-black hover:bg-[#FFD700]/80"
+    >
+      Démarrer Auto
+    </button>
+  ) : (
+    <button
+      onClick={stopAutoBet}
+      className="w-full rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+    >
+      Stop
+    </button>
+  )}
+</div>
 
       {showResult && lastMultiplier && gameResults.length > 0 && (
         <div className="mt-6 rounded-lg bg-[#2A2B30] p-4 text-center shadow-lg">
@@ -512,13 +655,13 @@ return (
     {/* Main Plinko game container */}
     <main
       ref={mainRef}
-      className="flex-1 flex flex-col items-center justify-center min-h-0 p-4"
+      className="flex-1 flex flex-col items-center justify-center min-h-0 overflow-hidden p-4"
     >
       <div
-        ref={boardAreaRef}
-        className="flex-1 flex items-center justify-center w-full min-h-0"
-        style={{ height: "100vh" }}
-      >
+  ref={boardAreaRef}
+  className="flex-1 flex items-center justify-center w-full min-h-0 overflow-hidden"
+>
+
         <div
   style={{
     width: `${scaledBoardSize.width}px`,
