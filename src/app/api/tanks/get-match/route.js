@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../db";
-import { tankStats } from "../../../../db/schema";
+import { tankMatches } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req) {
   try {
@@ -17,8 +19,9 @@ export async function GET(req) {
 
     const match = await db
       .select()
-      .from(tankStats)
-      .where(eq(tankStats.matchId, matchId));
+      .from(tankMatches)
+      .where(eq(tankMatches.matchId, matchId))
+      .limit(1);
 
     if (match.length === 0) {
       return NextResponse.json(
