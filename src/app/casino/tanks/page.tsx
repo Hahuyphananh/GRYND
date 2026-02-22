@@ -60,7 +60,7 @@ async function joinGame() {
     }
 
     // Redirect to game with the returned matchId
-    router.push(`/casino/tanks/game?matchId=${data.matchId}`);
+    router.push(`/casino/tanks/game/${data.matchId}`);
   } catch (err) {
     console.error("Join match error:", err);
     alert("Server error while joining match");
@@ -95,7 +95,7 @@ async function joinGame() {
       setBalance(prev => prev - wager);
 
       // Redirect to game with matchId
-      router.push(`/casino/tanks/game?matchId=${data.matchId}`);
+      router.push(`/casino/tanks/game/${data.matchId}`);
     } catch (err) {
       console.error("Start match error:", err);
       alert("Server error while starting match");

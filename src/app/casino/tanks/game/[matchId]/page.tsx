@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import PlayerTank from "../../../../components/PlayerTank";
+import PlayerTank from "../../../../../components/PlayerTank";
 import { useRouter } from "next/navigation";
 import WaitingRoom from "./components/WaitingRoom";
 
@@ -195,7 +195,7 @@ useEffect(() => {
     // example response:
     // { players: 2, started: true }
 
-    if (data.players >= 2) {
+    if (data.currentPlayers >= 2){
       setIsMatchReady(true);
     }
   }
