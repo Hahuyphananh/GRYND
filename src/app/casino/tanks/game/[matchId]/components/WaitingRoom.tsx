@@ -18,12 +18,15 @@ export default function WaitingRoom({ gameId }: WaitingRoomProps) {
   useEffect(() => {
     const checkPlayers = async () => {
       try {
-        const res = await fetch(`/api/tanks/players?gameId=${gameId}`);
+        if (!gameId) return;
+
+        const res = await fetch(`/api/tanks/get-match?matchId=${gameId}`);
         const data = await res.json();
 
-        setPlayerCount(data.count);
+        const count = Number(data.currentPlayers ?? 1);
+        setPlayerCount(count);
 
-        if (data.count >= 2) {
+        if (count >= 2) {
           setStatus("Match found! Starting game...");
           setIsReady(true);
 
