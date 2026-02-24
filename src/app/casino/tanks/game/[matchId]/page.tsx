@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import PlayerTank from "../../../../../components/PlayerTank";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import WaitingRoom from "./components/WaitingRoom";
 
 /* ---------------------- FIX #1 — MOVE OUTSIDE ---------------------- */
@@ -84,6 +84,8 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown }) {
 /* ------------------------------------------------------------------- */
 
 export default function TanksGamePage() {
+  const params = useParams<{ matchId: string }>();
+  const routeMatchId = params?.matchId;
   const [pos, setPos] = useState({ x: 1500, y: 1500 });
   const posRef = useRef(pos);
   posRef.current = pos;
@@ -128,7 +130,9 @@ const [isMatchReady, setIsMatchReady] = useState(false);
   const MAP_WIDTH = 3000;
   const MAP_HEIGHT = 3000;
 
-  const [matchId, setMatchId] = useState<string | null>(null);
+  const [matchId, setMatchId] = useState<string | null>(
+    routeMatchId ?? null
+  );
 
   const rocksRef = useRef(
     Array.from({ length: 40 }).map((_, i) => {
@@ -183,13 +187,10 @@ const [isMatchReady, setIsMatchReady] = useState(false);
   return () => clearInterval(interval);
 }, []);
 useEffect(() => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const id = urlParams.get("matchId");
-
-  if (!id) return;
+  if (!routeMatchId) return;
 
   async function checkMatch() {
-    const res = await fetch(`/api/tanks/get-match?matchId=${id}`);
+    const res = await fetch(`/api/tanks/get-match?matchId=${routeMatchId}`);
     const data = await res.json();
 
     // example response:
@@ -201,22 +202,18 @@ useEffect(() => {
   }
 
   checkMatch();
-}, []);
+}, [routeMatchId]);
 
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(
-      window.location.search
-    );
-    const id = urlParams.get("matchId");
-    setMatchId(id);
+    setMatchId(routeMatchId ?? null);
 
-    if (!id) return;
+    if (!routeMatchId) return;
 
     async function fetchMatch() {
       try {
         const res = await fetch(
-          `/api/tanks/get-match?matchId=${id}`
+          `/api/tanks/get-match?matchId=${routeMatchId}`
         );
         if (!res.ok)
           return console.error(
@@ -233,7 +230,7 @@ useEffect(() => {
       }
     }
     fetchMatch();
-  }, []);
+  }, [routeMatchId]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) =>
@@ -401,8 +398,8 @@ useEffect(() => {
     typeof window !== "undefined"
       ? window.innerHeight / 2 - pos.y
       : 0;
-if (!isMatchReady) {
-  return <WaitingRoom gameId={matchId!} />;
+if (!isMatchReady || !matchId) {
+  return <WaitingRoom gameId={matchId ?? ""} />;
 }
 
   return (
