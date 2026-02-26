@@ -399,7 +399,12 @@ useEffect(() => {
       ? window.innerHeight / 2 - pos.y
       : 0;
 if (!isMatchReady || !matchId) {
-  return <WaitingRoom gameId={matchId ?? ""} />;
+  return (
+    <WaitingRoom
+      gameId={matchId ?? ""}
+      onReady={() => setIsMatchReady(true)}
+    />
+  );
 }
 
   return (
