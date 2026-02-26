@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 
 type WaitingRoomProps = {
   gameId: string;
+  onReady: () => void;
 };
 
-export default function WaitingRoom({ gameId }: WaitingRoomProps) {
+export default function WaitingRoom({ gameId, onReady }: WaitingRoomProps) {
   const [playerCount, setPlayerCount] = useState(1);
   const [status, setStatus] = useState("Waiting for players...");
   const [isReady, setIsReady] = useState(false);
@@ -29,14 +30,11 @@ export default function WaitingRoom({ gameId }: WaitingRoomProps) {
         if (count >= 2) {
           setStatus("Match found! Starting game...");
           setIsReady(true);
+          onReady();
 
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
           }
-
-          setTimeout(() => {
-            window.location.reload(); // or trigger match start callback later
-          }, 1200);
         }
       } catch (err) {
         console.error("Error checking players:", err);
@@ -51,7 +49,7 @@ export default function WaitingRoom({ gameId }: WaitingRoomProps) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [gameId]);
+  }, [gameId, onReady]);
 
   /* ✅ CANCEL MATCHMAKING */
   const handleCancel = async () => {
