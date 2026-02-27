@@ -1,20 +1,19 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
-import { tankMatches } from "../../../../db/schema";
-import { eq } from "drizzle-orm";
+import { tankMatches, tankStats } from "../../../../db/schema";
+import { and, eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req) {
   try {
+    const { userId } = await auth();
     const url = new URL(req.url);
     const matchId = url.searchParams.get("matchId");
 
     if (!matchId) {
-      return NextResponse.json(
-        { error: "Missing matchId" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing matchId" }, { status: 400 });
     }
 
     const match = await db
@@ -24,14 +23,38 @@ export async function GET(req) {
       .limit(1);
 
     if (match.length === 0) {
-      return NextResponse.json(
-        { error: "Match not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Match not found" }, { status: 404 });
     }
 
-    return NextResponse.json(match[0], { status: 200 });
+    const stats = await db
+      .select({
+        clerkId: tankStats.clerkId,
+        username: tankStats.username,
+        bounty: tankStats.bounty,
+        kills: tankStats.kills,
+      })
+      .from(tankStats)
+      .where(eq(tankStats.matchId, matchId));
 
+    let bounty = null;
+    if (userId) {
+      const currentPlayerStats = await db
+        .select({ bounty: tankStats.bounty })
+        .from(tankStats)
+        .where(and(eq(tankStats.matchId, matchId), eq(tankStats.clerkId, userId)))
+        .limit(1);
+
+      bounty = currentPlayerStats[0]?.bounty ?? null;
+    }
+
+    return NextResponse.json(
+      {
+        ...match[0],
+        bounty,
+        playersStats: stats,
+      },
+      { status: 200 }
+    );
   } catch (err) {
     console.error("Get match error:", err);
     return NextResponse.json(
