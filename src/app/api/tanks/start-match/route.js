@@ -64,7 +64,10 @@ export async function POST(req) {
       maxPlayers: 2,
       currentPlayers: 1,     // Host counts as the first player
       isOpen: true,
-      settings: {},
+      settings: {
+        mapSeed: Math.floor(Math.random() * 1_000_000_000),
+        playerStates: {},
+      },
       players: [userId],     // ⭐ Host automatically added to array
     });
 
