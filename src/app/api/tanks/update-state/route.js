@@ -32,9 +32,6 @@ export async function POST(req) {
     const settings = match.settings ?? {};
     const playerStates = settings.playerStates ?? {};
 
-    // Conflict resolution choice:
-    // keep previous-state fallback + health protection so stale clients
-    // cannot overwrite server-lowered health after getting hit.
     const previousState = playerStates[userId] ?? {};
     const nextX = Number(x ?? previousState.x ?? 0);
     const nextY = Number(y ?? previousState.y ?? 0);
