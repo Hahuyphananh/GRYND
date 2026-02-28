@@ -10,12 +10,18 @@ export async function POST(req) {
   try {
     const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
     }
 
     const { matchId, x, y, rotation, health } = await req.json();
     if (!matchId) {
-      return NextResponse.json({ error: "Missing matchId" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing matchId" },
+        { status: 400 }
+      );
     }
 
     const rows = await db
@@ -25,20 +31,24 @@ export async function POST(req) {
       .limit(1);
 
     if (rows.length === 0) {
-      return NextResponse.json({ error: "Match not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Match not found" },
+        { status: 404 }
+      );
     }
 
     const match = rows[0];
     const settings = match.settings ?? {};
     const playerStates = settings.playerStates ?? {};
 
-    const postedHealth = Number(health ?? 5);
-    const existingHealth = Number(playerStates[userId]?.health ?? postedHealth);
+    const previousState = playerStates[userId] ?? {};
+    const postedHealth = Number(health ?? previousState.health ?? 5);
+    const existingHealth = Number(previousState.health ?? postedHealth);
 
     playerStates[userId] = {
-      x: Number(x ?? 0),
-      y: Number(y ?? 0),
-      rotation: Number(rotation ?? 0),
+      x: Number(x ?? previousState.x ?? 0),
+      y: Number(y ?? previousState.y ?? 0),
+      rotation: Number(rotation ?? previousState.rotation ?? 0),
       health: Math.min(existingHealth, postedHealth),
       updatedAt: Date.now(),
     };

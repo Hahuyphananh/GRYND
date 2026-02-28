@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PlayerTank from "../../../../../components/PlayerTank";
 import { useParams, useRouter } from "next/navigation";
 import WaitingRoom from "./components/WaitingRoom";
@@ -538,11 +538,15 @@ export default function TanksGamePage() {
       ? window.innerHeight / 2 - pos.y
       : 0;
 
+  const handleReady = useCallback(() => {
+    setIsMatchReady(true);
+  }, []);
+
   if (!isMatchReady || !matchId) {
     return (
       <WaitingRoom
         gameId={matchId ?? ""}
-        onReady={() => setIsMatchReady(true)}
+        onReady={handleReady}
       />
     );
   }
