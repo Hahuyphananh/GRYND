@@ -13,7 +13,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const { matchId, x, y, rotation, health } = await req.json();
+    const { matchId, x, y, rotation, health, hits = [] } = await req.json();
     if (!matchId) {
       return NextResponse.json({ error: "Missing matchId" }, { status: 400 });
     }
@@ -39,6 +39,17 @@ export async function POST(req) {
       health: Number(health ?? 5),
       updatedAt: Date.now(),
     };
+
+    const normalizedHits = Array.isArray(hits)
+      ? [...new Set(hits.filter((id) => typeof id === "string" && id !== userId))]
+      : [];
+
+    for (const targetId of normalizedHits) {
+      if (!playerStates[targetId]) continue;
+      const currentHealth = Number(playerStates[targetId].health ?? 5);
+      playerStates[targetId].health = Math.max(0, currentHealth - 1);
+    }
+
 
     await db
       .update(tankMatches)
