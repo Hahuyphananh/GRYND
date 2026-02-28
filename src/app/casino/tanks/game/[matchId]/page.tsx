@@ -92,14 +92,10 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown }) {
       onClick={handleCashOut}
       disabled={countdown > 0}
       className={`mt-2 w-full p-2 rounded-xl font-bold text-white ${
-        countdown > 0
-          ? "bg-gray-600 cursor-not-allowed"
-          : "bg-yellow-600 hover:bg-yellow-700"
+        countdown > 0 ? "bg-gray-600 cursor-not-allowed" : "bg-yellow-600 hover:bg-yellow-700"
       }`}
     >
-      {countdown > 0
-        ? `Cashing out in ${Math.ceil(countdown)}s`
-        : "Cash Out"}
+      {countdown > 0 ? `Cashing out in ${Math.ceil(countdown)}s` : "Cash Out"}
     </button>
   );
 }
@@ -191,13 +187,9 @@ export default function TanksGamePage() {
     const wy = cy - y1;
     const len2 = vx * vx + vy * vy;
 
-    if (len2 === 0)
-      return (cx - x1) ** 2 + (cy - y1) ** 2 <= r * r;
+    if (len2 === 0) return (cx - x1) ** 2 + (cy - y1) ** 2 <= r * r;
 
-    const t = Math.max(
-      0,
-      Math.min(1, (wx * vx + wy * vy) / len2)
-    );
+    const t = Math.max(0, Math.min(1, (wx * vx + wy * vy) / len2));
     const px = x1 + vx * t;
     const py = y1 + vy * t;
     const dx = px - cx;
@@ -339,23 +331,12 @@ export default function TanksGamePage() {
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      const angle =
-        (Math.atan2(
-          e.clientY - window.innerHeight / 2,
-          e.clientX - window.innerWidth / 2
-        ) *
-          180) /
-          Math.PI +
-        90;
+      const angle = (Math.atan2(e.clientY - window.innerHeight / 2, e.clientX - window.innerWidth / 2) * 180) / Math.PI + 90;
       rotationRef.current = angle;
       setRotation(angle);
     };
     window.addEventListener("mousemove", handleMouseMove);
-    return () =>
-      window.removeEventListener(
-        "mousemove",
-        handleMouseMove
-      );
+    return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
   useEffect(() => {
@@ -390,8 +371,8 @@ export default function TanksGamePage() {
 
   useEffect(() => {
     function gameLoop() {
-      let dx = 0,
-        dy = 0;
+      let dx = 0;
+      let dy = 0;
       if (keys.current["w"]) dy -= 1;
       if (keys.current["s"]) dy += 1;
       if (keys.current["a"]) dx -= 1;
@@ -410,23 +391,13 @@ export default function TanksGamePage() {
         const cx = rock.x + rock.size / 2;
         const cy = rock.y + rock.size / 2;
         const rockR = rock.size / 2;
-        if (
-          Math.hypot(nextX - cx, nextY - cy) <
-          rockR + TANK_RADIUS
-        )
-          blocked = true;
+        if (Math.hypot(nextX - cx, nextY - cy) < rockR + TANK_RADIUS) blocked = true;
       }
 
       if (!blocked) {
         const newPos = {
-          x: Math.min(
-            MAP_WIDTH,
-            Math.max(0, nextX)
-          ),
-          y: Math.min(
-            MAP_HEIGHT,
-            Math.max(0, nextY)
-          ),
+          x: Math.min(MAP_WIDTH, Math.max(0, nextX)),
+          y: Math.min(MAP_HEIGHT, Math.max(0, nextY)),
         };
         posRef.current = newPos;
         setPos(newPos);
@@ -517,7 +488,8 @@ export default function TanksGamePage() {
           }
           return false;
         }
-      );
+        return false;
+      });
 
       bulletsRef.current = nextBullets;
       setBullets(nextBullets);
@@ -580,13 +552,26 @@ export default function TanksGamePage() {
           <div
             key={r.id}
             className="absolute bg-gray-700 rounded-full border border-gray-900 shadow-lg"
-            style={{
-              width: r.size,
-              height: r.size,
-              left: r.x,
-              top: r.y,
-            }}
+            style={{ width: r.size, height: r.size, left: r.x, top: r.y }}
           />
+        ))}
+
+        {Object.entries(remotePlayers).map(([id, tank]) => (
+          <div
+            key={id}
+            className="absolute"
+            style={{
+              left: tank.x,
+              top: tank.y,
+              width: 70,
+              height: 70,
+              transform: "translate(-50%, -50%)",
+              pointerEvents: "none",
+              zIndex: 9,
+            }}
+          >
+            <PlayerTank x={35} y={35} rotation={tank.rotation} health={tank.health} maxHealth={MAX_HEALTH} />
+          </div>
         ))}
 
         {Object.entries(remotePlayers).map(([id, tank]) => (
@@ -636,12 +621,7 @@ export default function TanksGamePage() {
                 strokeWidth={20}
                 fill="transparent"
                 strokeDasharray={2 * Math.PI * 32}
-                strokeDashoffset={
-                  (1 -
-                    cashOutCountdown / 5) *
-                  2 * Math.PI *
-                  32
-                }
+                strokeDashoffset={(1 - cashOutCountdown / 5) * 2 * Math.PI * 32}
                 strokeLinecap="round"
               />
             </svg>
@@ -672,6 +652,7 @@ export default function TanksGamePage() {
 
         <p className="font-bold">Health: {health}/{MAX_HEALTH}</p>
         <p className="font-bold">Ammo: {ammo}/{MAX_AMMO}</p>
+        <p className="text-xs text-gray-300">Player: {selfId ?? "..."}</p>
 
         <CashOutButton
           bountyRef={bountyRef}
