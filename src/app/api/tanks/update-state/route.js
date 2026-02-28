@@ -10,18 +10,12 @@ export async function POST(req) {
   try {
     const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     const { matchId, x, y, rotation, health } = await req.json();
     if (!matchId) {
-      return NextResponse.json(
-        { error: "Missing matchId" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing matchId" }, { status: 400 });
     }
 
     const rows = await db
@@ -31,10 +25,7 @@ export async function POST(req) {
       .limit(1);
 
     if (rows.length === 0) {
-      return NextResponse.json(
-        { error: "Match not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Match not found" }, { status: 404 });
     }
 
     const match = rows[0];
