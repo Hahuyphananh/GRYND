@@ -37,9 +37,7 @@ export async function POST(req) {
     const nextY = Number(y ?? previousState.y ?? 0);
     const nextRotation = Number(rotation ?? previousState.rotation ?? 0);
     const postedHealth = Number(health ?? previousState.health ?? 5);
-    const existingHealth = Number(
-      previousState.health ?? postedHealth
-    );
+    const existingHealth = Number(previousState.health ?? postedHealth);
 
     playerStates[userId] = {
       x: nextX,
