@@ -3,13 +3,15 @@ export default function PlayerTank({
   y,
   rotation,
   health,
-  maxHealth
+  maxHealth,
+  isEnemy = false,
 }: {
   x: number;
   y: number;
   rotation: number;
   health: number;
   maxHealth: number;
+  isEnemy?: boolean;
 }) {
   const size = 50;
 
@@ -24,9 +26,9 @@ export default function PlayerTank({
         transform: `rotate(${rotation}deg)`,
         transformOrigin: "center",
       }}
-    >
+      >
       {/* Tank body */}
-      <div className="w-full h-full bg-green-600 rounded-md border-2 border-black relative">
+      <div className={`w-full h-full rounded-md border-2 border-black relative ${isEnemy ? "bg-red-600" : "bg-green-600"}`}>
         {/* Barrel (shorter now) */}
         <div
           className="w-2 h-6 bg-black absolute top-0 left-1/2 -translate-x-1/2 rounded"
