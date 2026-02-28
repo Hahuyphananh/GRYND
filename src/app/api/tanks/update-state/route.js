@@ -32,14 +32,20 @@ export async function POST(req) {
     const settings = match.settings ?? {};
     const playerStates = settings.playerStates ?? {};
 
+    // Conflict resolution choice:
+    // keep previous-state fallback + health protection so stale clients
+    // cannot overwrite server-lowered health after getting hit.
     const previousState = playerStates[userId] ?? {};
+    const nextX = Number(x ?? previousState.x ?? 0);
+    const nextY = Number(y ?? previousState.y ?? 0);
+    const nextRotation = Number(rotation ?? previousState.rotation ?? 0);
     const postedHealth = Number(health ?? previousState.health ?? 5);
     const existingHealth = Number(previousState.health ?? postedHealth);
 
     playerStates[userId] = {
-      x: Number(x ?? previousState.x ?? 0),
-      y: Number(y ?? previousState.y ?? 0),
-      rotation: Number(rotation ?? previousState.rotation ?? 0),
+      x: nextX,
+      y: nextY,
+      rotation: nextRotation,
       health: Math.min(existingHealth, postedHealth),
       updatedAt: Date.now(),
     };
