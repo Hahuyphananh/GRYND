@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { users, tankMatches, tankStats } from "../../../../db/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 export async function POST(req) {
   try {
@@ -57,7 +57,7 @@ export async function POST(req) {
         amountCashedOut: payout,
         result: "win",
       })
-      .where(eq(tankStats.clerkId, clerkId));
+      .where(and(eq(tankStats.clerkId, clerkId), eq(tankStats.matchId, matchId)));
 
     // -------------------------------------------------
     // Manage match player count
@@ -70,19 +70,37 @@ export async function POST(req) {
 
     if (match.length > 0) {
       const m = match[0];
-      const newCount = Math.max(m.currentPlayers - 1, 0);
+      const players = Array.isArray(m.players) ? m.players : [];
+      const updatedPlayers = players.filter((id) => id !== clerkId);
+      const newCount = Math.max(updatedPlayers.length, 0);
+
+      const settings = m.settings ?? {};
+      const playerStates = { ...(settings.playerStates ?? {}) };
+      delete playerStates[clerkId];
 
       if (newCount === 0) {
         // Delete match if no players left
         await db.delete(tankMatches).where(eq(tankMatches.matchId, matchId));
       } else {
-        // Update remaining count
+        // Update remaining count + remove player and their runtime state
         await db
           .update(tankMatches)
-          .set({ currentPlayers: newCount })
+          .set({
+            currentPlayers: newCount,
+            players: updatedPlayers,
+            settings: {
+              ...settings,
+              playerStates,
+            },
+          })
           .where(eq(tankMatches.matchId, matchId));
       }
     }
+
+    // Remove player stats row so they are fully out of the active match
+    await db
+      .delete(tankStats)
+      .where(and(eq(tankStats.clerkId, clerkId), eq(tankStats.matchId, matchId)));
 
     return NextResponse.json(
       { success: true, newBalance: updated[0].balance, payout },

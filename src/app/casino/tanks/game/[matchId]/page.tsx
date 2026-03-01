@@ -105,6 +105,7 @@ type PlayerState = {
   y: number;
   rotation: number;
   health: number;
+  updatedAt?: number;
 };
 
 export default function TanksGamePage() {
@@ -119,7 +120,7 @@ export default function TanksGamePage() {
   posRef.current = pos;
 
   const MAX_HEALTH = 5;
-  const [health] = useState(MAX_HEALTH);
+  const [health, setHealth] = useState(MAX_HEALTH);
   const healthRef = useRef(health);
   healthRef.current = health;
 
@@ -139,6 +140,15 @@ export default function TanksGamePage() {
   const [matchId, setMatchId] = useState<string | null>(routeMatchId ?? null);
   const [selfId, setSelfId] = useState<string | null>(null);
   const [remotePlayers, setRemotePlayers] = useState<Record<string, PlayerState>>({});
+  const remotePlayersRef = useRef(remotePlayers);
+  remotePlayersRef.current = remotePlayers;
+
+  const [renderRemotePlayers, setRenderRemotePlayers] = useState<Record<string, PlayerState>>({});
+  const renderRemotePlayersRef = useRef(renderRemotePlayers);
+  renderRemotePlayersRef.current = renderRemotePlayers;
+
+  const pendingHitsRef = useRef<string[]>([]);
+
   const [mapSeed, setMapSeed] = useState<number>(12345);
 
   const [rotation, setRotation] = useState(0);
@@ -227,13 +237,19 @@ export default function TanksGamePage() {
             x: posRef.current.x,
             y: posRef.current.y,
             rotation: rotationRef.current,
-            health: healthRef.current,
+            hits: pendingHitsRef.current.splice(0),
           }),
         });
 
         if (!res.ok) return;
         const data = await res.json();
         setSelfId(data.selfId);
+
+        const ownState = data.playerStates?.[data.selfId];
+        if (ownState && typeof ownState.health === "number") {
+          setHealth(ownState.health);
+          healthRef.current = ownState.health;
+        }
 
         const others = Object.fromEntries(
           Object.entries(data.playerStates ?? {}).filter(([id]) => id !== data.selfId)
@@ -246,7 +262,7 @@ export default function TanksGamePage() {
     };
 
     syncState();
-    const interval = setInterval(syncState, 120);
+    const interval = setInterval(syncState, 70);
     return () => clearInterval(interval);
   }, [routeMatchId]);
 
@@ -301,6 +317,22 @@ export default function TanksGamePage() {
   useEffect(() => {
     const TANK_RADIUS = 22;
     function gameLoop() {
+      const targetRemotes = remotePlayersRef.current;
+      const currentRemotes = renderRemotePlayersRef.current;
+      const smoothed: Record<string, PlayerState> = {};
+
+      for (const [id, target] of Object.entries(targetRemotes)) {
+        const current = currentRemotes[id] ?? target;
+        smoothed[id] = {
+          ...target,
+          x: current.x + (target.x - current.x) * 0.35,
+          y: current.y + (target.y - current.y) * 0.35,
+          rotation: current.rotation + (target.rotation - current.rotation) * 0.35,
+        };
+      }
+
+      renderRemotePlayersRef.current = smoothed;
+      setRenderRemotePlayers(smoothed);
       let dx = 0;
       let dy = 0;
       if (keys.current["w"]) dy -= 1;
@@ -338,15 +370,28 @@ export default function TanksGamePage() {
         const nx = b.x + Math.cos(rad) * BULLET_SPEED;
         const ny = b.y + Math.sin(rad) * BULLET_SPEED;
 
-        const hit = rocks.some((r) =>
+        const hitRock = rocks.some((r) =>
           lineIntersectsCircle(b.x, b.y, nx, ny, r.x + r.size / 2, r.y + r.size / 2, r.size / 2)
         );
 
-        if (!hit && nx >= 0 && nx <= MAP_WIDTH && ny >= 0 && ny <= MAP_HEIGHT) {
+        if (hitRock) return false;
+
+        const hitPlayerEntry = Object.entries(remotePlayersRef.current).find(([_, player]) =>
+          lineIntersectsCircle(b.x, b.y, nx, ny, player.x, player.y, TANK_RADIUS)
+        );
+
+        if (hitPlayerEntry) {
+          const [targetId] = hitPlayerEntry;
+          pendingHitsRef.current.push(targetId);
+          return false;
+        }
+
+        if (nx >= 0 && nx <= MAP_WIDTH && ny >= 0 && ny <= MAP_HEIGHT) {
           b.x = nx;
           b.y = ny;
           return true;
         }
+
         return false;
       });
 
@@ -392,7 +437,7 @@ export default function TanksGamePage() {
           />
         ))}
 
-        {Object.entries(remotePlayers).map(([id, tank]) => (
+        {Object.entries(renderRemotePlayers).map(([id, tank]) => (
           <div
             key={id}
             className="absolute"
@@ -406,7 +451,7 @@ export default function TanksGamePage() {
               zIndex: 9,
             }}
           >
-            <PlayerTank x={35} y={35} rotation={tank.rotation} health={tank.health} maxHealth={MAX_HEALTH} />
+            <PlayerTank x={35} y={35} rotation={tank.rotation} health={tank.health} maxHealth={MAX_HEALTH} isEnemy />
           </div>
         ))}
 
@@ -437,7 +482,7 @@ export default function TanksGamePage() {
               />
             </svg>
           )}
-          <PlayerTank x={35} y={35} rotation={rotation} health={health} maxHealth={MAX_HEALTH} />
+          <PlayerTank x={35} y={35} rotation={rotation} health={health} maxHealth={MAX_HEALTH} isEnemy={false} />
         </div>
 
         {bullets.map((b, i) => (

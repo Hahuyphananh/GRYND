@@ -13,7 +13,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const { matchId, x, y, rotation, health } = await req.json();
+    const { matchId, x, y, rotation, hits = [] } = await req.json();
     if (!matchId) {
       return NextResponse.json({ error: "Missing matchId" }, { status: 400 });
     }
@@ -30,15 +30,37 @@ export async function POST(req) {
 
     const match = rows[0];
     const settings = match.settings ?? {};
-    const playerStates = settings.playerStates ?? {};
+    const activePlayers = Array.isArray(match.players) ? match.players : [];
+
+    if (!activePlayers.includes(userId)) {
+      return NextResponse.json({ error: "Player not in this match" }, { status: 403 });
+    }
+
+    const rawPlayerStates = settings.playerStates ?? {};
+    const playerStates = Object.fromEntries(
+      Object.entries(rawPlayerStates).filter(([id]) => activePlayers.includes(id))
+    );
+
+    const prevSelfState = playerStates[userId] ?? {};
 
     playerStates[userId] = {
-      x: Number(x ?? 0),
-      y: Number(y ?? 0),
-      rotation: Number(rotation ?? 0),
-      health: Number(health ?? 5),
+      x: Number(x ?? prevSelfState.x ?? 0),
+      y: Number(y ?? prevSelfState.y ?? 0),
+      rotation: Number(rotation ?? prevSelfState.rotation ?? 0),
+      health: Number(prevSelfState.health ?? 5),
       updatedAt: Date.now(),
     };
+
+    const normalizedHits = Array.isArray(hits)
+      ? [...new Set(hits.filter((id) => typeof id === "string" && id !== userId && activePlayers.includes(id)))]
+      : [];
+
+    for (const targetId of normalizedHits) {
+      if (!playerStates[targetId]) continue;
+      const currentHealth = Number(playerStates[targetId].health ?? 5);
+      playerStates[targetId].health = Math.max(0, currentHealth - 1);
+      playerStates[targetId].updatedAt = Date.now();
+    }
 
     await db
       .update(tankMatches)
