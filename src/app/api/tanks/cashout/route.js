@@ -70,16 +70,29 @@ export async function POST(req) {
 
     if (match.length > 0) {
       const m = match[0];
-      const newCount = Math.max(m.currentPlayers - 1, 0);
+      const existingPlayers = Array.isArray(m.players) ? m.players : [];
+      const remainingPlayers = existingPlayers.filter((id) => id !== clerkId);
+      const newCount = Math.max(remainingPlayers.length, 0);
 
       if (newCount === 0) {
         // Delete match if no players left
         await db.delete(tankMatches).where(eq(tankMatches.matchId, matchId));
       } else {
-        // Update remaining count
+        const existingSettings = m.settings ?? {};
+        const existingPlayerStates = existingSettings.playerStates ?? {};
+        const { [clerkId]: _removed, ...remainingPlayerStates } = existingPlayerStates;
+
+        // Update remaining match participants and remove cashing-out tank from state
         await db
           .update(tankMatches)
-          .set({ currentPlayers: newCount })
+          .set({
+            currentPlayers: newCount,
+            players: remainingPlayers,
+            settings: {
+              ...existingSettings,
+              playerStates: remainingPlayerStates,
+            },
+          })
           .where(eq(tankMatches.matchId, matchId));
       }
     }

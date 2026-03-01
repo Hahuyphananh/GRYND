@@ -13,7 +13,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const { matchId, x, y, rotation, health, hits = [] } = await req.json();
+    const { matchId, x, y, rotation, hits = [], bullets = [] } = await req.json();
     if (!matchId) {
       return NextResponse.json({ error: "Missing matchId" }, { status: 400 });
     }
@@ -31,13 +31,35 @@ export async function POST(req) {
     const match = rows[0];
     const settings = match.settings ?? {};
     const playerStates = settings.playerStates ?? {};
+    const matchPlayers = Array.isArray(match.players) ? match.players : [];
+
+    if (matchPlayers.length > 0 && !matchPlayers.includes(userId)) {
+      return NextResponse.json({ error: "Player is not in this match" }, { status: 403 });
+    }
+
+    const currentPlayerState = playerStates[userId] ?? {};
+    const authoritativeHealth = Number(currentPlayerState.health ?? 5);
+
+    const normalizedBullets = Array.isArray(bullets)
+      ? bullets
+          .slice(0, 30)
+          .map((bullet) => ({
+            x: Number(bullet?.x ?? 0),
+            y: Number(bullet?.y ?? 0),
+            angle: Number(bullet?.angle ?? 0),
+          }))
+          .filter((bullet) => Number.isFinite(bullet.x) && Number.isFinite(bullet.y) && Number.isFinite(bullet.angle))
+      : [];
 
     playerStates[userId] = {
       x: Number(x ?? 0),
       y: Number(y ?? 0),
       rotation: Number(rotation ?? 0),
-      health: Number(health ?? 5),
+      // Never trust client-reported health.
+      // Health is server-authoritative and only changes via validated hits.
+      health: authoritativeHealth,
       updatedAt: Date.now(),
+      bullets: normalizedBullets,
     };
 
     const normalizedHits = Array.isArray(hits)
@@ -46,6 +68,7 @@ export async function POST(req) {
 
     for (const targetId of normalizedHits) {
       if (!playerStates[targetId]) continue;
+      if (matchPlayers.length > 0 && !matchPlayers.includes(targetId)) continue;
       const currentHealth = Number(playerStates[targetId].health ?? 5);
       playerStates[targetId].health = Math.max(0, currentHealth - 1);
     }

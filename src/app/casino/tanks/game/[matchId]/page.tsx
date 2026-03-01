@@ -100,11 +100,18 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown }) {
   );
 }
 
+type BulletState = {
+  x: number;
+  y: number;
+  angle: number;
+};
+
 type PlayerState = {
   x: number;
   y: number;
   rotation: number;
   health: number;
+  bullets?: BulletState[];
   updatedAt?: number;
 };
 
@@ -237,8 +244,8 @@ export default function TanksGamePage() {
             x: posRef.current.x,
             y: posRef.current.y,
             rotation: rotationRef.current,
-            health: healthRef.current,
             hits: pendingHitsRef.current.splice(0),
+            bullets: bulletsRef.current,
           }),
         });
 
@@ -485,6 +492,16 @@ export default function TanksGamePage() {
           )}
           <PlayerTank x={35} y={35} rotation={rotation} health={health} maxHealth={MAX_HEALTH} isEnemy={false} />
         </div>
+
+        {Object.entries(renderRemotePlayers).flatMap(([id, tank]) =>
+          (tank.bullets ?? []).map((b, i) => (
+            <div
+              key={`remote-${id}-${i}`}
+              className="absolute w-3 h-3 bg-zinc-800 rounded-full"
+              style={{ left: b.x - 2, top: b.y - 2 }}
+            />
+          ))
+        )}
 
         {bullets.map((b, i) => (
           <div key={i} className="absolute w-3 h-3 bg-black rounded-full" style={{ left: b.x - 2, top: b.y - 2 }} />
