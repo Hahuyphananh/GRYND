@@ -146,7 +146,9 @@ export function applyUnoCard(game, card, currentPlayer, chosenColor = null) {
     if (!chosenColor) {
       throw new Error("Wild cards must have a chosen color!");
     }
-currentColor = chosenColor.toLowerCase();
+    currentColor = chosenColor.toLowerCase();
+    // Keep discard pile visually aligned with the selected color.
+    playedCard = { ...playedCard, color: currentColor };
 
   } else {
     currentColor = card.color.toLowerCase();
