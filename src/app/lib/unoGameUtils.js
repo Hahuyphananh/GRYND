@@ -94,6 +94,6 @@ export async function updateUnoGameState(gameId, updatedGame) {
     discardPile: JSON.stringify(updatedGame.discardPile),
     currentColor: updatedGame.currentColor,
     topCard: JSON.stringify(updatedGame.discardPile[updatedGame.discardPile.length - 1]),
-    isPlayerTurn: updatedGame.isPlayerTurn,
+    turn: updatedGame.turn || (updatedGame.isPlayerTurn ? "player" : "ai"),
   }).where(eq(unoGames.id, gameId));
 }
