@@ -1,23 +1,106 @@
 import { db } from "../../../../db/client";
 import { getUnoGameById, drawUnoCard, updateUnoGameState } from "../../../lib/unoGameUtils";
-import { applyUnoCard } from "../../../lib/unoLogic";
+import { applyUnoCard, isValidPlay } from "../../../lib/unoLogic";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 
-// Safe parse utility
 function safeParse(data) {
   if (!data) return [];
   if (typeof data === "string") {
-    try { return JSON.parse(data); } catch { return []; }
+    try {
+      return JSON.parse(data);
+    } catch {
+      return [];
+    }
   }
   return data;
 }
 
-// AI chooses color with most cards
+function normalize(value) {
+  return (value || "").toLowerCase();
+}
+
+function isActionCard(card) {
+  const value = normalize(card.value);
+  return ["skip", "reverse", "draw two", "+2", "wild", "wild draw four", "+4"].includes(value);
+}
+
 function aiChooseColor(hand) {
   const colorCount = { red: 0, yellow: 0, green: 0, blue: 0 };
-  for (const card of hand) if (colorCount[card.color] !== undefined) colorCount[card.color]++;
-  return Object.keys(colorCount).reduce((a, b) => colorCount[a] > colorCount[b] ? a : b, "red");
+
+  for (const card of hand) {
+    if (colorCount[card.color] !== undefined) {
+      colorCount[card.color] += isActionCard(card) ? 1 : 2;
+    }
+  }
+
+  return Object.keys(colorCount).reduce(
+    (best, current) => (colorCount[current] > colorCount[best] ? current : best),
+    "red"
+  );
+}
+
+function getPlayableCards(hand, topCard, currentColor) {
+  if (!topCard) return [];
+  return hand.filter((card) => isValidPlay(card, topCard, currentColor, hand));
+}
+
+function scoreCard(card, gameState) {
+  const { aiHand, playerHand, currentColor } = gameState;
+  const value = normalize(card.value);
+
+  const aiColorCount = aiHand.filter((c) => c.color === card.color).length;
+  const playerLikelyColorPressure = playerHand.filter((c) => c.color === currentColor).length;
+  const playerCardCount = playerHand.length;
+
+  let score = 0;
+
+  if (card.color === currentColor) score += 8;
+
+  if (value === "skip" || value === "reverse") {
+    score += playerCardCount <= 2 ? 80 : 36;
+  }
+
+  if (value === "draw two" || value === "+2") {
+    score += playerCardCount <= 3 ? 90 : 44;
+  }
+
+  if (value === "wild draw four" || value === "+4") {
+    score += playerCardCount <= 4 ? 110 : 50;
+    score -= aiHand.length > 5 ? 8 : 0;
+  }
+
+  if (value === "wild") {
+    score += playerCardCount <= 3 ? 35 : 20;
+    score -= aiHand.length > 4 ? 5 : 0;
+  }
+
+  if (/^\d+$/.test(card.value)) {
+    score += 12 - Number(card.value);
+  }
+
+  if (card.color !== "black") {
+    if (aiColorCount >= 3) score += 16;
+    if (aiColorCount === 1) score -= 4;
+  }
+
+  if (playerLikelyColorPressure >= 3 && card.color !== currentColor) {
+    score -= 6;
+  }
+
+  return score;
+}
+
+function chooseBestPlay(aiHand, playerHand, topCard, currentColor) {
+  const playable = getPlayableCards(aiHand, topCard, currentColor);
+  if (playable.length === 0) return null;
+
+  return playable
+    .map((card) => ({
+      card,
+      score: scoreCard(card, { aiHand, playerHand, currentColor }),
+    }))
+    .sort((a, b) => b.score - a.score)[0].card;
 }
 
 export async function POST(req) {
@@ -28,53 +111,50 @@ export async function POST(req) {
     const game = await getUnoGameById(gameId);
     if (!game) return new Response(JSON.stringify({ success: false, error: "Game not found" }), { status: 404 });
 
-    // Parse state safely
     let deck = safeParse(game.deck);
     let aiHand = safeParse(game.aiHand);
     let playerHand = safeParse(game.playerHand);
     let discardPile = safeParse(game.discardPile);
     let topCard = discardPile[discardPile.length - 1] || null;
-    let currentColor = game.currentColor || topCard?.color;
+    let currentColor = (game.currentColor || topCard?.color || "red").toLowerCase();
     let message = "";
     let isPlayerTurn = false;
 
-    // Safety counter to prevent infinite loops
+    if (!topCard) {
+      return new Response(JSON.stringify({ success: false, error: "Invalid game state: missing top card" }), { status: 400 });
+    }
+
     let loopCounter = 0;
 
     while (!isPlayerTurn && loopCounter < 20) {
       loopCounter++;
 
-      // Prefer Skip or Reverse if possible (for testing)
-let playableIndex = aiHand.findIndex(card => card.value === "Skip" || card.value === "Reverse");
+      const chosenCard = chooseBestPlay(aiHand, playerHand, topCard, currentColor);
 
-// If no Skip/Reverse, fall back to any normal playable card
-if (playableIndex === -1) {
-  playableIndex = aiHand.findIndex(card =>
-    card.color === "black" || card.color === currentColor || card.value === topCard.value
-  );
-}
+      if (chosenCard) {
+        const playableIndex = aiHand.findIndex(
+          (card) => card.color === chosenCard.color && card.value === chosenCard.value
+        );
 
+        const playedCard = aiHand.splice(playableIndex, 1)[0];
+        const normalizedValue = normalize(playedCard.value);
+        const isWildCard = playedCard.color === "black" || normalize(playedCard.color) === "wild";
+        const chosenColor = isWildCard ? aiChooseColor(aiHand) : playedCard.color;
+        const cardToPlay = isWildCard ? { ...playedCard, color: chosenColor } : playedCard;
 
-      if (playableIndex >= 0) {
-        // Play the card
-        let playedCard = aiHand.splice(playableIndex, 1)[0];
-
-        // If wild, choose color
-        if (playedCard.color === "black") {
-          playedCard.color = aiChooseColor(aiHand) || "red";
-          message = `IA joue ${playedCard.value} et choisit ${playedCard.color}`;
+        if (isWildCard) {
+          message = `IA joue ${playedCard.value} et choisit ${chosenColor}`;
         } else {
           message = `IA joue ${playedCard.color} ${playedCard.value}`;
         }
 
         const updatedGame = applyUnoCard(
           { deck, playerHand, aiHand, discardPile, currentColor, turn: "ai" },
-          playedCard,
+          cardToPlay,
           "ai",
-          playedCard.color
+          chosenColor
         );
 
-        // Update state from applyUnoCard
         deck = updatedGame.deck;
         aiHand = updatedGame.aiHand;
         playerHand = updatedGame.playerHand;
@@ -82,44 +162,91 @@ if (playableIndex === -1) {
         currentColor = updatedGame.currentColor;
         topCard = discardPile[discardPile.length - 1];
         isPlayerTurn = updatedGame.turn === "player";
-if (updatedGame.turn === "ai") {
-  // AI kept the turn (Skip or Reverse), so let the loop continue
-  continue;
-}
 
-
+        if (updatedGame.turn === "ai") {
+          if (normalizedValue === "skip" || normalizedValue === "reverse") {
+            message = `${message}. Ton tour est sauté !`;
+          }
+          continue;
+        }
       } else {
-        // Draw a card if no playable card
-const { card, deck: updatedDeck } = drawUnoCard(deck);
+        const { card, deck: updatedDeck } = drawUnoCard(deck);
 
-deck = updatedDeck;
-aiHand.push(card);
+        if (!card) {
+          message = "Pioche vide, passage de tour";
+          isPlayerTurn = true;
+          break;
+        }
 
-message = "IA pioche une carte";
-isPlayerTurn = true;
+        deck = updatedDeck;
+        aiHand.push(card);
 
+        if (isValidPlay(card, topCard, currentColor, aiHand)) {
+          const isWildCard = card.color === "black" || normalize(card.color) === "wild";
+          const chosenColor = isWildCard ? aiChooseColor(aiHand) : card.color;
+          const cardToPlay = isWildCard ? { ...card, color: chosenColor } : card;
+
+          const drawnCardIndex = aiHand.findIndex(
+            (handCard) => handCard.color === card.color && handCard.value === card.value
+          );
+          if (drawnCardIndex !== -1) aiHand.splice(drawnCardIndex, 1);
+
+          message = isWildCard
+            ? `IA pioche et joue ${card.value}, couleur choisie: ${chosenColor}`
+            : `IA pioche et joue ${card.color} ${card.value}`;
+
+          const updatedGame = applyUnoCard(
+            { deck, playerHand, aiHand, discardPile, currentColor, turn: "ai" },
+            cardToPlay,
+            "ai",
+            chosenColor
+          );
+
+          deck = updatedGame.deck;
+          aiHand = updatedGame.aiHand;
+          playerHand = updatedGame.playerHand;
+          discardPile = updatedGame.discardPile;
+          currentColor = updatedGame.currentColor;
+          topCard = discardPile[discardPile.length - 1];
+          isPlayerTurn = updatedGame.turn === "player";
+          if (updatedGame.turn === "ai") continue;
+        } else {
+          message = "IA pioche une carte";
+          isPlayerTurn = true;
+        }
       }
     }
 
-    // Save updated game state
-    const updatedGameState = { deck, playerHand, aiHand, discardPile, topCard, currentColor, isPlayerTurn };
+    const updatedGameState = {
+      deck,
+      playerHand,
+      aiHand,
+      discardPile,
+      topCard,
+      currentColor,
+      turn: isPlayerTurn ? "player" : "ai",
+      isPlayerTurn,
+    };
+
     await updateUnoGameState(gameId, updatedGameState);
 
     const user = await db.query.users.findFirst({ where: eq(users.id, game.userId) });
 
-    return new Response(JSON.stringify({
-      success: true,
-      data: {
-        topCard,
-        playerHand,
-        aiHandCount: aiHand.length,
-        newBalance: parseFloat(user.balance),
-        message,
-        isPlayerTurn,
-        currentColor
-      }
-    }), { status: 200 });
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          topCard,
+          playerHand,
+          aiHandCount: aiHand.length,
+          newBalance: parseFloat(user.balance),
+          message,
+          isPlayerTurn,
+          currentColor,
+        },
+      }),
+      { status: 200 }
+    );
   } catch (err) {
     console.error("AI Turn Error:", err);
     return new Response(JSON.stringify({ success: false, error: "Internal Server Error" }), { status: 500 });
