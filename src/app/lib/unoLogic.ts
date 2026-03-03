@@ -21,12 +21,14 @@ export function isValidPlay(
   currentColor: string,
   hand?: UnoCard[]
 ): boolean {
+  const normalizedValue = card.value.toLowerCase();
+  const normalizedTopValue = topCard.value.toLowerCase();
 
   // Wild is always playable
-  if (card.value === "Wild") return true;
+  if (normalizedValue === "wild") return true;
 
   // Wild Draw Four rule
-  if (card.value === "Wild Draw Four") {
+  if (normalizedValue === "wild draw four" || normalizedValue === "+4") {
     if (!hand) return true; // AI safety fallback
 
     // Can only play if no matching color exists
@@ -36,7 +38,7 @@ export function isValidPlay(
 
   return (
     card.color === currentColor ||
-    card.value === topCard.value
+    normalizedValue === normalizedTopValue
   );
 }
 
@@ -98,8 +100,9 @@ export function getPlayableCard(
  * Checks if a card is a draw effect card.
  */
 export function getDrawCount(card: UnoCard): number {
-  if (card.value === "Draw Two") return 2;
-  if (card.value === "Wild Draw Four") return 4;
+  const normalizedValue = card.value.toLowerCase();
+  if (normalizedValue === "draw two" || normalizedValue === "+2") return 2;
+  if (normalizedValue === "wild draw four" || normalizedValue === "+4") return 4;
   return 0;
 }
 
@@ -110,7 +113,8 @@ export function getNextTurn(
   current: "player" | "ai",
   cardPlayed: UnoCard
 ): "player" | "ai" {
-  if (cardPlayed.value === "Skip" || cardPlayed.value === "Reverse") {
+  const normalizedValue = cardPlayed.value.toLowerCase();
+  if (normalizedValue === "skip" || normalizedValue === "reverse") {
     // Skip or Reverse: opponent loses their turn, current player plays again
     return current;
   }
@@ -136,7 +140,9 @@ export function applyUnoCard(game, card, currentPlayer, chosenColor = null) {
   let playedCard = { ...card };
 
   // ✅ Wilds must have a chosen color
-  if (card.value === "Wild" || card.value === "Wild Draw Four") {
+  const normalizedValue = card.value.toLowerCase();
+
+  if (normalizedValue === "wild" || normalizedValue === "wild draw four" || normalizedValue === "+4") {
     if (!chosenColor) {
       throw new Error("Wild cards must have a chosen color!");
     }
@@ -148,22 +154,24 @@ currentColor = chosenColor.toLowerCase();
 
   newDiscardPile.push(playedCard);
 
-  switch (card.value) {
-    case "Skip":
+  switch (normalizedValue) {
+    case "skip":
       nextTurn = currentPlayer; // opponent loses turn
       break;
-    case "Reverse":
+    case "reverse":
       nextTurn = currentPlayer; // 2-player: Reverse = Skip
       break;
-    case "Draw Two":
+    case "draw two":
+    case "+2":
       if (currentPlayer === "player") newAiHand.push(...deck.splice(0, 2));
       else newPlayerHand.push(...deck.splice(0, 2));
       skipTurn();
       break;
-    case "Wild":
+    case "wild":
       switchTurn();
       break;
-    case "Wild Draw Four":
+    case "wild draw four":
+    case "+4":
       if (currentPlayer === "player") newAiHand.push(...deck.splice(0, 4));
       else newPlayerHand.push(...deck.splice(0, 4));
       skipTurn();
