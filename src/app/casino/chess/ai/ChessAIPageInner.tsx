@@ -1,97 +1,268 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import { useRouter, useSearchParams } from "next/navigation";
 import NavigationBar from "../../../../components/navigation-bar";
 
+const PIECE_VALUES: Record<string, number> = {
+  p: 100,
+  n: 320,
+  b: 330,
+  r: 500,
+  q: 900,
+  k: 20000,
+};
+
+const PST = {
+  p: [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    50, 50, 50, 50, 50, 50, 50, 50,
+    10, 10, 20, 30, 30, 20, 10, 10,
+    5, 5, 10, 25, 25, 10, 5, 5,
+    0, 0, 0, 20, 20, 0, 0, 0,
+    5, -5, -10, 0, 0, -10, -5, 5,
+    5, 10, 10, -20, -20, 10, 10, 5,
+    0, 0, 0, 0, 0, 0, 0, 0,
+  ],
+  n: [
+    -50, -40, -30, -30, -30, -30, -40, -50,
+    -40, -20, 0, 5, 5, 0, -20, -40,
+    -30, 5, 10, 15, 15, 10, 5, -30,
+    -30, 0, 15, 20, 20, 15, 0, -30,
+    -30, 5, 15, 20, 20, 15, 5, -30,
+    -30, 0, 10, 15, 15, 10, 0, -30,
+    -40, -20, 0, 0, 0, 0, -20, -40,
+    -50, -40, -30, -30, -30, -30, -40, -50,
+  ],
+  b: [
+    -20, -10, -10, -10, -10, -10, -10, -20,
+    -10, 5, 0, 0, 0, 0, 5, -10,
+    -10, 10, 10, 10, 10, 10, 10, -10,
+    -10, 0, 10, 10, 10, 10, 0, -10,
+    -10, 5, 5, 10, 10, 5, 5, -10,
+    -10, 0, 5, 10, 10, 5, 0, -10,
+    -10, 0, 0, 0, 0, 0, 0, -10,
+    -20, -10, -10, -10, -10, -10, -10, -20,
+  ],
+  r: [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    5, 10, 10, 10, 10, 10, 10, 5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    0, 0, 0, 5, 5, 0, 0, 0,
+  ],
+  q: [
+    -20, -10, -10, -5, -5, -10, -10, -20,
+    -10, 0, 5, 0, 0, 0, 0, -10,
+    -10, 5, 5, 5, 5, 5, 0, -10,
+    0, 0, 5, 5, 5, 5, 0, -5,
+    -5, 0, 5, 5, 5, 5, 0, -5,
+    -10, 0, 5, 5, 5, 5, 0, -10,
+    -10, 0, 0, 0, 0, 0, 0, -10,
+    -20, -10, -10, -5, -5, -10, -10, -20,
+  ],
+  k: [
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -20, -30, -30, -40, -40, -30, -30, -20,
+    -10, -20, -20, -20, -20, -20, -20, -10,
+    20, 20, 0, 0, 0, 0, 20, 20,
+    20, 30, 10, 0, 0, 10, 30, 20,
+  ],
+};
+
+function toIndex(square: string) {
+  const file = square.charCodeAt(0) - 97;
+  const rank = Number(square[1]) - 1;
+  return (7 - rank) * 8 + file;
+}
+
+function pieceSquareValue(type: string, color: "w" | "b", square: string) {
+  const table = PST[type as keyof typeof PST] || null;
+  if (!table) return 0;
+  const idx = toIndex(square);
+  return color === "w" ? table[idx] : table[63 - idx];
+}
+
+function evaluatePosition(game: Chess, aiColor: "w" | "b") {
+  if (game.isCheckmate()) {
+    return game.turn() === aiColor ? -999999 : 999999;
+  }
+  if (game.isDraw() || game.isStalemate() || game.isThreefoldRepetition()) return 0;
+
+  let score = 0;
+  const board = game.board();
+  for (let r = 0; r < 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      const piece = board[r][f];
+      if (!piece) continue;
+      const square = String.fromCharCode(97 + f) + (8 - r);
+      const val = PIECE_VALUES[piece.type] + pieceSquareValue(piece.type, piece.color as "w" | "b", square);
+      score += piece.color === aiColor ? val : -val;
+    }
+  }
+
+  // Small mobility bonus
+  const moveCount = game.moves().length;
+  score += game.turn() === aiColor ? moveCount * 2 : -moveCount * 2;
+  return score;
+}
+
+function orderedMoves(game: Chess) {
+  return game.moves({ verbose: true }).sort((a, b) => {
+    const aScore = (a.captured ? 10 : 0) + (a.promotion ? 8 : 0) + (a.san.includes("+") ? 4 : 0);
+    const bScore = (b.captured ? 10 : 0) + (b.promotion ? 8 : 0) + (b.san.includes("+") ? 4 : 0);
+    return bScore - aScore;
+  });
+}
+
+function minimax(game: Chess, depth: number, alpha: number, beta: number, maximizing: boolean, aiColor: "w" | "b") {
+  if (depth === 0 || game.isGameOver()) {
+    return evaluatePosition(game, aiColor);
+  }
+
+  const moves = orderedMoves(game);
+
+  if (maximizing) {
+    let best = -Infinity;
+    for (const move of moves) {
+      game.move(move);
+      const val = minimax(game, depth - 1, alpha, beta, false, aiColor);
+      game.undo();
+      best = Math.max(best, val);
+      alpha = Math.max(alpha, val);
+      if (beta <= alpha) break;
+    }
+    return best;
+  }
+
+  let best = Infinity;
+  for (const move of moves) {
+    game.move(move);
+    const val = minimax(game, depth - 1, alpha, beta, true, aiColor);
+    game.undo();
+    best = Math.min(best, val);
+    beta = Math.min(beta, val);
+    if (beta <= alpha) break;
+  }
+  return best;
+}
+
+function pickBestMove(game: Chess, aiColor: "w" | "b", aiLevel: number) {
+  const depth = Math.min(5, Math.max(1, aiLevel + 1));
+  const maximizing = game.turn() === aiColor;
+  const moves = orderedMoves(game);
+  let bestMove = moves[0];
+  let bestScore = maximizing ? -Infinity : Infinity;
+
+  for (const move of moves) {
+    game.move(move);
+    const score = minimax(game, depth - 1, -Infinity, Infinity, !maximizing, aiColor);
+    game.undo();
+
+    if ((maximizing && score > bestScore) || (!maximizing && score < bestScore)) {
+      bestScore = score;
+      bestMove = move;
+    }
+  }
+
+  return bestMove;
+}
+
 export default function ChessAIPageInner() {
   const [game, setGame] = useState(new Chess());
-  const [aiLevel, setAiLevel] = useState(1);
+  const [aiLevel, setAiLevel] = useState(5);
   const [gameOver, setGameOver] = useState(false);
-  const [winner, setWinner] = useState("");
   const [playerColor, setPlayerColor] = useState<"white" | "black">("white");
+  const [gameResult, setGameResult] = useState<"win" | "lose" | "draw" | "pending">("pending");
+  const [winnerText, setWinnerText] = useState("");
 
   const router = useRouter();
   const searchParams = useSearchParams();
   const bet = searchParams.get("bet");
-  const [gameResult, setGameResult] = useState<"win" | "lose" | "draw" | "pending">("pending");
-const [winnerText, setWinnerText] = useState(""); // text shown in popup
+  const gameId = searchParams.get("gameId");
 
-  // Prevent duplicate calls
   const endGameCalled = useRef(false);
 
-  // END GAME API CALL
-  async function endGame() {
-    if (endGameCalled.current) return; // 🔥 prevents duplicates
+  const aiColor = useMemo<"w" | "b">(
+    () => (playerColor === "white" ? "b" : "w"),
+    [playerColor]
+  );
+
+  async function endGame(result?: "win" | "loss" | "draw") {
+    if (endGameCalled.current) return;
     endGameCalled.current = true;
 
     try {
       await fetch("/api/chess/end-game", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gameId: gameId ? Number(gameId) : undefined,
+          result,
+        }),
       });
     } catch (e) {
       console.error("Failed to end game:", e);
     }
   }
 
-  // Trigger endGame when leaving page
   useEffect(() => {
     const handleLeave = () => {
-      if (!endGameCalled.current) {
-        navigator.sendBeacon("/api/chess/end-game"); // safer for unload
-        endGameCalled.current = true;
-      }
+      if (endGameCalled.current) return;
+      const payload = JSON.stringify({
+        gameId: gameId ? Number(gameId) : undefined,
+        result: "loss",
+      });
+      navigator.sendBeacon(
+        "/api/chess/end-game",
+        new Blob([payload], { type: "application/json" })
+      );
+      endGameCalled.current = true;
     };
 
     window.addEventListener("beforeunload", handleLeave);
-    return () => window.removeEventListener("beforeunload", handleLeave);
-  }, []);
+    return () => {
+      handleLeave();
+      window.removeEventListener("beforeunload", handleLeave);
+    };
+  }, [gameId]);
 
-  // GAME INITIALIZATION
   useEffect(() => {
     const randomColor = Math.random() > 0.5 ? "white" : "black";
-    setPlayerColor(randomColor);
     const newGame = new Chess();
+    setPlayerColor(randomColor);
     setGame(newGame);
     setGameOver(false);
-    setWinner("");
+    setWinnerText("");
+    setGameResult("pending");
     endGameCalled.current = false;
 
     if (randomColor === "black") {
-      setTimeout(() => makeAIMMove(newGame), 500);
+      setTimeout(() => makeAIMMove(newGame), 450);
     }
   }, []);
 
   function isPlayersTurn(gameInstance: Chess) {
-    if (!gameInstance) return false;
-    const turn = gameInstance.turn();
     const playerTurnChar = playerColor === "white" ? "w" : "b";
-    return turn === playerTurnChar;
+    return gameInstance.turn() === playerTurnChar;
   }
 
-  function makeAIMMove(gameInstance: any) {
-    if (!gameInstance || gameInstance.isGameOver())
-      return handleGameOver(gameInstance);
-
-    const moves = gameInstance.moves();
-    if (moves.length === 0) return;
-
-    let move;
-    if (aiLevel <= 2) {
-      move = moves[Math.floor(Math.random() * moves.length)];
-    } else {
-      const captures = moves.filter((m) => m.includes("x"));
-      const checks = moves.filter((m) => m.includes("+"));
-      if (aiLevel >= 4 && checks.length) {
-        move = checks[Math.floor(Math.random() * checks.length)];
-      } else if (captures.length) {
-        move = captures[Math.floor(Math.random() * captures.length)];
-      } else {
-        move = moves[Math.floor(Math.random() * moves.length)];
-      }
+  function makeAIMMove(gameInstance: Chess) {
+    if (!gameInstance || gameInstance.isGameOver()) {
+      handleGameOver(gameInstance);
+      return;
     }
+
+    const move = pickBestMove(gameInstance, aiColor, aiLevel);
+    if (!move) return;
 
     gameInstance.move(move);
     setGame(new Chess(gameInstance.fen()));
@@ -100,20 +271,12 @@ const [winnerText, setWinnerText] = useState(""); // text shown in popup
   }
 
   useEffect(() => {
-    if (!game) return;
-    if (game.isGameOver()) return;
+    if (!game || game.isGameOver()) return;
+    if (game.turn() !== aiColor) return;
 
-    const aiColor = playerColor === "white" ? "black" : "white";
-    const aiTurnChar = aiColor === "white" ? "w" : "b";
-
-    if (game.turn() === aiTurnChar) {
-      const t = setTimeout(
-        () => makeAIMMove(new Chess(game.fen())),
-        450
-      );
-      return () => clearTimeout(t);
-    }
-  }, [game, playerColor, aiLevel]);
+    const t = setTimeout(() => makeAIMMove(new Chess(game.fen())), 300);
+    return () => clearTimeout(t);
+  }, [game, aiColor, aiLevel]);
 
   function onDrop(sourceSquare: string, targetSquare: string) {
     if (game.isGameOver() || !isPlayersTurn(game)) return false;
@@ -128,46 +291,52 @@ const [winnerText, setWinnerText] = useState(""); // text shown in popup
     if (move === null) return false;
 
     setGame(new Chess(gameCopy.fen()));
-
     if (gameCopy.isGameOver()) handleGameOver(gameCopy);
-
     return true;
   }
 
-// Example for handleGameOver
-async function handleGameOver(gameInstance: any) {
-  setGameOver(true);
-  await endGame();
+  async function handleGameOver(gameInstance: Chess) {
+    setGameOver(true);
 
-  if (!gameInstance) {
-    setWinnerText("Game Over!");
-    setGameResult("draw");
-    return;
-  }
-
-  if (gameInstance.isCheckmate()) {
-    const winnerColor = gameInstance.turn() === "w" ? "black" : "white";
-    if (winnerColor === playerColor) {
-      setWinnerText("You win!");
-      setGameResult("win");
-    } else {
-      setWinnerText("AI wins!");
-      setGameResult("lose");
+    if (!gameInstance) {
+      setWinnerText("Game Over!");
+      setGameResult("draw");
+      await endGame("draw");
+      return;
     }
-  } else if (gameInstance.isDraw()) {
-    setWinnerText("Draw!");
-    setGameResult("draw");
-  } else {
+
+    if (gameInstance.isCheckmate()) {
+      const winnerColor = gameInstance.turn() === "w" ? "black" : "white";
+      if (winnerColor === playerColor) {
+        setWinnerText("You win!");
+        setGameResult("win");
+        await endGame("win");
+      } else {
+        setWinnerText("AI wins!");
+        setGameResult("lose");
+        await endGame("loss");
+      }
+      return;
+    }
+
+    if (gameInstance.isDraw()) {
+      setWinnerText("Draw!");
+      setGameResult("draw");
+      await endGame("draw");
+      return;
+    }
+
     setWinnerText("Game Over!");
     setGameResult("draw");
+    await endGame("draw");
   }
-}
-async function handleResign() {
-  setGameOver(true);
-  setWinner("AI wins! (You resigned)");
-  await fetch("/api/chess/end-game", { method: "POST" }); // bypass dup prevention
-}
 
+  async function handleResign() {
+    setGameOver(true);
+    setWinnerText("AI wins! (You resigned)");
+    setGameResult("lose");
+    await endGame("loss");
+  }
 
   function resetGame() {
     const newGame = new Chess();
@@ -175,11 +344,12 @@ async function handleResign() {
     setPlayerColor(randomColor);
     setGame(newGame);
     setGameOver(false);
-    setWinner("");
+    setWinnerText("");
+    setGameResult("pending");
     endGameCalled.current = false;
 
     if (randomColor === "black") {
-      setTimeout(() => makeAIMMove(newGame), 500);
+      setTimeout(() => makeAIMMove(newGame), 450);
     }
   }
 
@@ -192,15 +362,9 @@ async function handleResign() {
     <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center p-6">
       <NavigationBar currentPath="/casino" />
 
-      <h1 className="text-4xl font-bold text-[#FFD700] mb-2 mt-12">
-        ♟️ AI Chess Arena
-      </h1>
+      <h1 className="text-4xl font-bold text-[#FFD700] mb-2 mt-12">♟️ AI Chess Arena</h1>
 
-      {bet && (
-        <p className="text-2xl font-semibold text-green-400 mb-6">
-          Bet: ${bet}
-        </p>
-      )}
+      {bet && <p className="text-2xl font-semibold text-green-400 mb-6">Bet: ${bet}</p>}
 
       <div className="flex gap-4 mb-4 items-center">
         <button
@@ -255,20 +419,19 @@ async function handleResign() {
       {gameOver && (
         <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
           <div className="bg-white text-black rounded-lg p-8 text-center shadow-lg">
-            <h2 className="text-3xl font-bold mb-4">{winner}</h2>
+            <h2 className="text-3xl font-bold mb-4">{winnerText}</h2>
 
-     {bet && (
-  <p className="text-xl mb-4 font-semibold">
-    {gameResult === "win" ? (
-      <span className="text-green-600">You won ${Number(bet) * 1.98}!</span>
-    ) : gameResult === "draw" ? (
-      <span className="text-yellow-600">Bet returned.</span>
-    ) : (
-      <span className="text-red-600">You lost ${bet}.</span>
-    )}
-  </p>
-)}
-
+            {bet && (
+              <p className="text-xl mb-4 font-semibold">
+                {gameResult === "win" ? (
+                  <span className="text-green-600">You won ${Number(bet) * 1.98}!</span>
+                ) : gameResult === "draw" ? (
+                  <span className="text-yellow-600">Bet returned.</span>
+                ) : (
+                  <span className="text-red-600">You lost ${bet}.</span>
+                )}
+              </p>
+            )}
 
             <div className="flex gap-4 justify-center">
               <button
