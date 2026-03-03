@@ -20,6 +20,7 @@ export async function POST(req) {
         playerBlackId: null,    // AI takes this spot
         betAmount: tableAmount,
         isAiGame: true,
+        status: "in_progress",
       })
       .returning({ id: chessGames.id });
 
