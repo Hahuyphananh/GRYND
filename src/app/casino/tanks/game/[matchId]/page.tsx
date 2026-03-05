@@ -28,7 +28,7 @@ function generateRocks(seed: number, mapWidth: number, mapHeight: number) {
   });
 }
 
-function CashOutButton({ bountyRef, setBounty, setCashOutCountdown }) {
+function CashOutButton({ bountyRef, setBounty, setCashOutCountdown, routeMatchId }) {
   const [countdown, setCountdown] = useState(0);
   const countdownRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -63,7 +63,7 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown }) {
             const res = await fetch("/api/tanks/cashout", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ amount: bountyRef.current }),
+              body: JSON.stringify({ amount: bountyRef.current, matchId: routeMatchId }),
             });
             const data = await res.json();
 
@@ -116,6 +116,7 @@ type PlayerState = {
 };
 
 export default function TanksGamePage() {
+  const router = useRouter();
   const params = useParams<{ matchId: string }>();
   const routeMatchId = params?.matchId;
 
@@ -155,6 +156,8 @@ export default function TanksGamePage() {
   renderRemotePlayersRef.current = renderRemotePlayers;
 
   const pendingHitsRef = useRef<string[]>([]);
+  const gameFinishedRef = useRef(false);
+
 
   const [mapSeed, setMapSeed] = useState<number>(12345);
 
@@ -249,7 +252,15 @@ export default function TanksGamePage() {
           }),
         });
 
-        if (!res.ok) return;
+        if (!res.ok) {
+          if ((res.status === 403 || res.status === 404) && !gameFinishedRef.current) {
+            gameFinishedRef.current = true;
+            alert("Match ended. Returning to lobby.");
+            router.push("/casino/tanks");
+          }
+          return;
+        }
+
         const data = await res.json();
         setSelfId(data.selfId);
 
@@ -257,6 +268,17 @@ export default function TanksGamePage() {
         if (ownState && typeof ownState.health === "number") {
           setHealth(ownState.health);
           healthRef.current = ownState.health;
+        }
+
+        if (data?.gameOver && !gameFinishedRef.current) {
+          gameFinishedRef.current = true;
+          if (data.gameOver.winnerId === data.selfId) {
+            alert(`You won! +${Number(data.gameOver.winnerPayout).toFixed(2)} tokens`);
+          } else {
+            alert("You were destroyed. Better luck next game.");
+          }
+          router.push("/casino/tanks");
+          return;
         }
 
         const others = Object.fromEntries(
@@ -513,7 +535,7 @@ export default function TanksGamePage() {
         <p className="font-bold">Ammo: {ammo}/{MAX_AMMO}</p>
         <p className="text-xs text-gray-300">Player: {selfId ?? "..."}</p>
 
-        <CashOutButton bountyRef={bountyRef} setBounty={setBounty} setCashOutCountdown={setCashOutCountdown} />
+        <CashOutButton bountyRef={bountyRef} setBounty={setBounty} setCashOutCountdown={setCashOutCountdown} routeMatchId={routeMatchId} />
       </div>
     </div>
   );
