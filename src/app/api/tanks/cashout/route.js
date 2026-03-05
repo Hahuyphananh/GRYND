@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { users, tankMatches, tankStats } from "../../../../db/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 export async function POST(req) {
   try {
@@ -11,57 +11,56 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const { amount } = body;
+    const { amount, matchId: requestedMatchId } = body;
 
     if (!amount || Number(amount) <= 0)
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
 
-    // -------------------------------------------------
     // Apply 90% payout (10% house cut)
-    // -------------------------------------------------
     const payout = Number(amount) * 0.9;
 
-    // -------------------------------------------------
-    // Find this player's stats row
-    // -------------------------------------------------
+    // Find this player's active stats row (prefer current match from client)
     const playerStats = await db
-      .select()
+      .select({ matchId: tankStats.matchId })
       .from(tankStats)
-      .where(eq(tankStats.clerkId, clerkId))
+      .where(
+        requestedMatchId
+          ? and(
+              eq(tankStats.clerkId, clerkId),
+              eq(tankStats.matchId, requestedMatchId),
+              isNull(tankStats.result)
+            )
+          : and(eq(tankStats.clerkId, clerkId), isNull(tankStats.result))
+      )
+      .orderBy(desc(tankStats.id))
       .limit(1);
 
     if (playerStats.length === 0) {
       return NextResponse.json(
-        { error: "Player not in any match" },
+        { error: "Player not in any active match" },
         { status: 400 }
       );
     }
 
     const { matchId } = playerStats[0];
 
-    // -------------------------------------------------
     // Update user balance
-    // -------------------------------------------------
     const updated = await db
       .update(users)
       .set({ balance: sql`${users.balance} + ${payout}` })
       .where(eq(users.clerkId, clerkId))
       .returning({ balance: users.balance });
 
-    // -------------------------------------------------
-    // Record amount cashed out + result = win
-    // -------------------------------------------------
+    // Record amount cashed out + result = win (for history)
     await db
       .update(tankStats)
       .set({
         amountCashedOut: payout,
         result: "win",
       })
-      .where(eq(tankStats.clerkId, clerkId));
+      .where(and(eq(tankStats.clerkId, clerkId), eq(tankStats.matchId, matchId)));
 
-    // -------------------------------------------------
     // Manage match player count
-    // -------------------------------------------------
     const match = await db
       .select()
       .from(tankMatches)
