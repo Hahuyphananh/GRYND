@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
-import { tankMatches } from "../../../../db/schema";
-import { eq } from "drizzle-orm";
+import { tankMatches, tankStats, users } from "../../../../db/schema";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -73,21 +73,95 @@ export async function POST(req) {
       playerStates[targetId].health = Math.max(0, currentHealth - 1);
     }
 
+    let gameOver = null;
+    const alivePlayers = matchPlayers.filter((id) => Number(playerStates[id]?.health ?? 5) > 0);
 
-    await db
-      .update(tankMatches)
-      .set({
-        settings: {
-          ...settings,
-          playerStates,
-        },
-      })
-      .where(eq(tankMatches.matchId, matchId));
+    if (matchPlayers.length === 2 && alivePlayers.length === 1) {
+      const winnerId = alivePlayers[0];
+      const loserId = matchPlayers.find((id) => id !== winnerId);
+
+      if (loserId) {
+        const unresolvedStats = await db
+          .select({ clerkId: tankStats.clerkId, bounty: tankStats.bounty })
+          .from(tankStats)
+          .where(and(eq(tankStats.matchId, matchId), isNull(tankStats.result)));
+
+        if (unresolvedStats.length > 0) {
+          const winnerStat = unresolvedStats.find((row) => row.clerkId === winnerId);
+          const loserStat = unresolvedStats.find((row) => row.clerkId === loserId);
+
+          if (winnerStat && loserStat) {
+            const winnerBet = Number(winnerStat.bounty ?? 0);
+            const loserBet = Number(loserStat.bounty ?? 0);
+            const winnerPayout = winnerBet + loserBet * 0.9;
+
+            await db
+              .update(users)
+              .set({ balance: sql`${users.balance} + ${winnerPayout}` })
+              .where(eq(users.clerkId, winnerId));
+
+            await db
+              .update(tankStats)
+              .set({
+                result: "win",
+                amountCashedOut: winnerPayout,
+              })
+              .where(and(eq(tankStats.matchId, matchId), eq(tankStats.clerkId, winnerId)));
+
+            await db
+              .update(tankStats)
+              .set({
+                result: "lose",
+                amountCashedOut: 0,
+              })
+              .where(and(eq(tankStats.matchId, matchId), eq(tankStats.clerkId, loserId)));
+
+            gameOver = {
+              winnerId,
+              loserId,
+              winnerPayout,
+            };
+          }
+        }
+
+        if (gameOver) {
+          await db
+            .update(tankMatches)
+            .set({
+              isOpen: false,
+              gameStarted: false,
+              currentPlayers: 0,
+              players: [],
+              settings: {
+                ...settings,
+                playerStates: {},
+                gameOver,
+              },
+            })
+            .where(eq(tankMatches.matchId, matchId));
+
+          await db.delete(tankMatches).where(eq(tankMatches.matchId, matchId));
+        }
+      }
+    }
+
+    if (!gameOver) {
+      await db
+        .update(tankMatches)
+        .set({
+          settings: {
+            ...settings,
+            playerStates,
+          },
+        })
+        .where(eq(tankMatches.matchId, matchId));
+    }
 
     return NextResponse.json({
       success: true,
       selfId: userId,
       playerStates,
+      gameOver,
     });
   } catch (err) {
     console.error("Update tank state error:", err);
