@@ -6,6 +6,37 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
+const MAP_WIDTH = 3000;
+const MAP_HEIGHT = 3000;
+const SPAWN_PADDING = 120;
+const MIN_SPAWN_DISTANCE = 450;
+
+function randomSpawnPosition() {
+  return {
+    x: SPAWN_PADDING + Math.random() * (MAP_WIDTH - SPAWN_PADDING * 2),
+    y: SPAWN_PADDING + Math.random() * (MAP_HEIGHT - SPAWN_PADDING * 2),
+  };
+}
+
+function getSpawnPosition(existingStates) {
+  const occupiedStates = Object.values(existingStates ?? {}).filter(
+    (state) => Number.isFinite(Number(state?.x)) && Number.isFinite(Number(state?.y))
+  );
+
+  for (let i = 0; i < 20; i += 1) {
+    const candidate = randomSpawnPosition();
+    const tooClose = occupiedStates.some(
+      (state) => Math.hypot(Number(state.x) - candidate.x, Number(state.y) - candidate.y) < MIN_SPAWN_DISTANCE
+    );
+
+    if (!tooClose) {
+      return candidate;
+    }
+  }
+
+  return randomSpawnPosition();
+}
+
 export async function POST(req) {
   try {
     const { userId } = await auth();
@@ -51,9 +82,12 @@ export async function POST(req) {
           .filter((bullet) => Number.isFinite(bullet.x) && Number.isFinite(bullet.y) && Number.isFinite(bullet.angle))
       : [];
 
+    const hasExistingPosition = Number.isFinite(Number(currentPlayerState.x)) && Number.isFinite(Number(currentPlayerState.y));
+    const spawnPosition = hasExistingPosition ? null : getSpawnPosition(playerStates);
+
     playerStates[userId] = {
-      x: Number(x ?? 0),
-      y: Number(y ?? 0),
+      x: hasExistingPosition ? Number(x ?? currentPlayerState.x) : spawnPosition.x,
+      y: hasExistingPosition ? Number(y ?? currentPlayerState.y) : spawnPosition.y,
       rotation: Number(rotation ?? 0),
       // Never trust client-reported health.
       // Health is server-authoritative and only changes via validated hits.
