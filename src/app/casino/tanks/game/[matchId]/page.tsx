@@ -157,7 +157,7 @@ export default function TanksGamePage() {
 
   const pendingHitsRef = useRef<string[]>([]);
   const gameFinishedRef = useRef(false);
-
+  const hasInitializedSpawnRef = useRef(false);
 
   const [mapSeed, setMapSeed] = useState<number>(12345);
 
@@ -268,6 +268,18 @@ export default function TanksGamePage() {
         if (ownState && typeof ownState.health === "number") {
           setHealth(ownState.health);
           healthRef.current = ownState.health;
+        }
+
+        if (
+          ownState &&
+          !hasInitializedSpawnRef.current &&
+          Number.isFinite(Number(ownState.x)) &&
+          Number.isFinite(Number(ownState.y))
+        ) {
+          const spawnedPos = { x: Number(ownState.x), y: Number(ownState.y) };
+          hasInitializedSpawnRef.current = true;
+          posRef.current = spawnedPos;
+          setPos(spawnedPos);
         }
 
         if (data?.gameOver && !gameFinishedRef.current) {
