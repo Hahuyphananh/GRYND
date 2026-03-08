@@ -270,16 +270,6 @@ export default function TanksGamePage() {
           healthRef.current = ownState.health;
         }
 
-        if (
-          ownState &&
-          Number.isFinite(Number(ownState.x)) &&
-          Number.isFinite(Number(ownState.y))
-        ) {
-          const syncedPos = { x: Number(ownState.x), y: Number(ownState.y) };
-          posRef.current = syncedPos;
-          setPos(syncedPos);
-        }
-
         if (data?.gameOver && !gameFinishedRef.current) {
           gameFinishedRef.current = true;
           if (data.gameOver.winnerId === data.selfId) {
