@@ -1,12 +1,14 @@
 "use client"; 
 import NavigationBar from "../components/navigation-bar";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation"; // ✅ For navigation
 
 const HOUSE_EDGE = 0.98;
 const FEE = 0.02;
 
 export default function CoinFlipPage() {
   const [mode, setMode] = useState("solo");
+  const router = useRouter();
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-start p-6 text-white relative"
@@ -216,6 +218,7 @@ function SoloCoinFlip() {
 
 // ------------------- PvP Coin Flip ------------------- //
 function PvPCoinFlip() {
+
   const [bet, setBet] = useState(10);
   const [choice, setChoice] = useState("heads");
 
@@ -226,9 +229,10 @@ function PvPCoinFlip() {
 
   const [games, setGames] = useState([]);
   const [myGameId, setMyGameId] = useState(null);
-  const [myBet, setMyBet] = useState(null);
+  const [myBet, setMyBet] = useState(null); // ⭐ LOCAL truth
   const [userId, setUserId] = useState(null);
 
+  // ✅ Fetch user once
   useEffect(() => {
     const getUser = async () => {
       const res = await fetch("/api/get-user");
@@ -239,127 +243,152 @@ function PvPCoinFlip() {
     getUser();
   }, []);
 
+  // ✅ Poll lobby WITHOUT destroying your active game
   useEffect(() => {
+
     const fetchGames = async () => {
       const res = await fetch("/api/coin-flip/pvp/available");
       const json = await res.json();
-      if (json.success) setGames(json.data.games ?? []);
+
+      if (!json.success) return;
+
+      // 🔥 NEVER overwrite your own game
+      setGames(prev => {
+
+        if (!myGameId) return json.data.games;
+
+        const stillExists = json.data.games.some(g => g.id === myGameId);
+
+        // if server now returns it → trust server
+        if (stillExists) return json.data.games;
+
+        // otherwise keep your local game OUT of lobby
+        return json.data.games;
+      });
     };
 
     fetchGames();
     const interval = setInterval(fetchGames, 2000);
+
     return () => clearInterval(interval);
-  }, []);
 
-  useEffect(() => {
-    if (!myGameId || !userId) return;
+  }, [myGameId]);
 
-    const pollGameState = async () => {
-      try {
-        const res = await fetch(`/api/coin-flip/pvp/game?gameId=${myGameId}`);
-        const json = await res.json();
 
-        if (!json.success) {
-          if (res.status === 404) {
-            setMyGameId(null);
-            setMyBet(null);
-          }
-          return;
-        }
 
-        const game = json.data.game;
-        setMyBet(Number(game.betAmount));
-
-        if (game.status === "finished" && game.outcome && game.winnerId) {
-          setFlipping(true);
-          setTimeout(() => {
-            setResult(game.outcome);
-            setMessage(game.winnerId === userId ? "✅ You won!" : "❌ You lost.");
-            setFlipping(false);
-            setFlipKey((k) => k + 1);
-            setMyGameId(null);
-            setMyBet(null);
-          }, 1000);
-        }
-      } catch (err) {
-        console.error("Failed to poll coinflip game:", err);
-      }
-    };
-
-    pollGameState();
-    const interval = setInterval(pollGameState, 1200);
-    return () => clearInterval(interval);
-  }, [myGameId, userId]);
+  // =============================
+  // CREATE GAME
+  // =============================
 
   const createGame = async () => {
+
     setMessage("Creating game...");
 
     const res = await fetch("/api/coin-flip/pvp/create", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ betAmount: bet, choice }),
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ betAmount: bet, choice })
     });
 
     const json = await res.json();
 
     if (json.success) {
+
+      // ⭐ TRUST LOCAL STATE
       setMyGameId(json.data.gameId);
-      setMyBet(Number(json.data.betAmount));
+      setMyBet(json.data.betAmount);
+
       setMessage("Waiting for opponent...");
-      setResult(null);
+      
     } else {
-      setMessage(json.error || "Unable to create game");
+      setMessage(json.error);
     }
   };
 
+
+
+  // =============================
+  // CANCEL
+  // =============================
+
   const cancelGame = async () => {
-    if (!myGameId) return;
 
     setMessage("Cancelling game...");
 
     const res = await fetch("/api/coin-flip/pvp/cancel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gameId: myGameId }),
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ gameId: myGameId })
     });
 
     const json = await res.json();
 
-    if (json.success) {
+    if(json.success){
+
       setMyGameId(null);
       setMyBet(null);
+
+      setGames(prev => prev.filter(g => g.id !== myGameId));
+
       setMessage("Game cancelled.");
-    } else {
-      setMessage(json.error || "Unable to cancel game");
+
+    }else{
+      setMessage(json.error);
     }
   };
 
-  const joinGame = async (gameId) => {
-    if (gameId === myGameId) return;
 
-    setMessage("Joining game...");
+
+  // =============================
+  // JOIN
+  // =============================
+
+  const joinGame = async (gameId) => {
+
+    if(gameId === myGameId) return;
+
+    setFlipping(true);
+    setMessage("Flipping coin...");
 
     const res = await fetch("/api/coin-flip/pvp/join", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gameId, choice }),
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ gameId, choice })
     });
 
     const json = await res.json();
 
+    setFlipping(false);
+
     if (json.success) {
-      setMyGameId(json.data.gameId);
-      setMyBet(Number(games.find((g) => g.id === gameId)?.betAmount ?? 0));
-      setMessage("Match found! Flipping coin...");
+
+      setResult(json.data.outcome);
+      setMessage(json.data.winner === "you" ? "✅ You won!" : "❌ You lost.");
+
+      setGames(prev => prev.filter(g => g.id !== gameId));
+
+      setMyGameId(null);
+      setMyBet(null);
+
+      setFlipKey(k => k + 1);
+
     } else {
-      setMessage(json.error || "Unable to join game");
+      setMessage(json.error);
     }
   };
 
-  const availableGames = games.filter((g) => g.player1Id !== userId && g.id !== myGameId);
+
+
+  // ⭐ lobby filter
+  const availableGames = games.filter(
+    g => g.player1Id !== userId && g.id !== myGameId
+  );
+
+
 
   return (
     <>
+      {/* CREATE UI */}
       {!myGameId && (
         <>
           <label className="block mb-1">Bet Amount</label>
@@ -373,14 +402,18 @@ function PvPCoinFlip() {
           <div className="flex justify-between mb-4">
             <button
               onClick={() => setChoice("heads")}
-              className={`w-full mr-2 p-2 rounded ${choice === "heads" ? "bg-green-600" : "bg-gray-600"}`}
+              className={`w-full mr-2 p-2 rounded ${
+                choice === "heads" ? "bg-green-600" : "bg-gray-600"
+              }`}
             >
               Heads
             </button>
 
             <button
               onClick={() => setChoice("tails")}
-              className={`w-full ml-2 p-2 rounded ${choice === "tails" ? "bg-green-600" : "bg-gray-600"}`}
+              className={`w-full ml-2 p-2 rounded ${
+                choice === "tails" ? "bg-green-600" : "bg-gray-600"
+              }`}
             >
               Tails
             </button>
@@ -388,32 +421,49 @@ function PvPCoinFlip() {
 
           <button
             onClick={createGame}
-            className="w-full p-3 rounded font-bold text-lg bg-gradient-to-r from-yellow-400 to-yellow-600 hover:scale-105 transition transform text-black shadow-lg"
+            className="w-full p-3 rounded font-bold text-lg 
+                       bg-gradient-to-r from-yellow-400 to-yellow-600
+                       hover:scale-105 transition transform
+                       text-black shadow-lg"
           >
             🎲 Create PvP Game
           </button>
 
+
+          {/* LOBBY */}
           <div className="mt-8">
-            <h2 className="text-xl font-bold mb-3 text-center">Available Games</h2>
+            <h2 className="text-xl font-bold mb-3 text-center">
+              Available Games
+            </h2>
 
             {availableGames.length === 0 && (
-              <p className="text-center text-gray-400">No games available. Be the first to create one!</p>
+              <p className="text-center text-gray-400">
+                No games available. Be the first to create one!
+              </p>
             )}
 
             <div className="space-y-3">
-              {availableGames.map((game) => (
+              {availableGames.map(game => (
                 <div
                   key={game.id}
-                  className="bg-gray-900 border border-gray-700 rounded-lg p-4 flex justify-between items-center"
+                  className="bg-gray-900 border border-gray-700 
+                             rounded-lg p-4 flex justify-between items-center"
                 >
                   <div>
-                    <p className="font-bold break-all">{game.player1Id}</p>
-                    <p className="text-gray-400 mt-1">Bet: {game.betAmount} 🪙</p>
+                    <p className="font-bold break-all">
+                      {game.player1Id}
+                    </p>
+
+                    <p className="text-gray-400 mt-1">
+                      Bet: {game.betAmount} 🪙
+                    </p>
                   </div>
 
                   <button
                     onClick={() => joinGame(game.id)}
-                    className="px-4 py-2 rounded-lg font-bold bg-green-600 hover:bg-green-500 transition"
+                    className="px-4 py-2 rounded-lg font-bold
+                               bg-green-600 hover:bg-green-500
+                               transition"
                   >
                     Join
                   </button>
@@ -424,38 +474,68 @@ function PvPCoinFlip() {
         </>
       )}
 
+
+
+      {/* WAITING SCREEN — ZERO flicker now */}
       {myGameId && !flipping && (
         <div className="mt-6 bg-gray-900 rounded-xl p-6 shadow-xl border border-gray-700">
-          <h2 className="text-center text-xl font-bold mb-4">Waiting for Opponent...</h2>
+
+          <h2 className="text-center text-xl font-bold mb-4">
+            Waiting for Opponent...
+          </h2>
 
           <div className="flex justify-center mb-6">
             <div className="relative w-24 h-24 perspective">
               <div
-                className="w-full h-full rounded-full flex items-center justify-center bg-yellow-300 text-black text-4xl font-bold animate-coin-flip"
-                style={{ animationIterationCount: "infinite" }}
+                className="w-full h-full rounded-full flex items-center justify-center 
+                           bg-yellow-300 text-black text-4xl font-bold 
+                           animate-coin-flip"
+                style={{ animationIterationCount: "infinite" }} // ⭐ smooth loop
               >
                 🪙
               </div>
             </div>
           </div>
 
-          <p className="text-center mt-4 text-gray-400">Bet Locked: {myBet} 🪙</p>
+          <div className="grid grid-cols-2 gap-6 text-center">
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <p className="font-bold">You</p>
+            </div>
+
+            <div className="bg-gray-800 p-4 rounded-lg animate-pulse">
+              <p className="font-bold text-yellow-400">
+                Searching...
+              </p>
+            </div>
+          </div>
+
+          <p className="text-center mt-4 text-gray-400">
+            Bet Locked: {myBet} 🪙
+          </p>
 
           <button
             onClick={cancelGame}
-            className="mt-6 w-full p-3 rounded-lg font-bold bg-red-600 hover:bg-red-500 transition transform hover:scale-105"
+            className="mt-6 w-full p-3 rounded-lg font-bold
+                       bg-red-600 hover:bg-red-500
+                       transition transform hover:scale-105"
           >
             Cancel Game
           </button>
+
         </div>
       )}
 
+
+
+      {/* FLIP */}
       {flipping && (
         <div className="flex justify-center mt-6 h-28">
           <div className="relative w-24 h-24 perspective">
             <div
               key={flipKey}
-              className="w-full h-full rounded-full flex items-center justify-center bg-yellow-300 text-black text-4xl font-bold animate-coin-flip"
+              className="w-full h-full rounded-full flex items-center justify-center 
+                         bg-yellow-300 text-black text-4xl font-bold 
+                         animate-coin-flip"
             >
               {result === "heads" ? "H" : result === "tails" ? "T" : "?"}
             </div>
@@ -463,8 +543,11 @@ function PvPCoinFlip() {
         </div>
       )}
 
-      {message && <p className="text-center mt-4 text-blue-300">{message}</p>}
+      {message && (
+        <p className="text-center mt-4 text-blue-300">{message}</p>
+      )}
     </>
   );
 }
+
 

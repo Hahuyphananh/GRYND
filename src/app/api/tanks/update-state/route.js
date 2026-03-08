@@ -6,34 +6,6 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
-const MAP_WIDTH = 3000;
-const MAP_HEIGHT = 3000;
-const SPAWN_MARGIN = 120;
-const MIN_SPAWN_DISTANCE = 450;
-
-function generateSpawnPosition(existingStates) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const x = SPAWN_MARGIN + Math.random() * (MAP_WIDTH - SPAWN_MARGIN * 2);
-    const y = SPAWN_MARGIN + Math.random() * (MAP_HEIGHT - SPAWN_MARGIN * 2);
-
-    const overlapsExisting = Object.values(existingStates).some((player) => {
-      const px = Number(player?.x);
-      const py = Number(player?.y);
-      if (!Number.isFinite(px) || !Number.isFinite(py)) return false;
-      return Math.hypot(px - x, py - y) < MIN_SPAWN_DISTANCE;
-    });
-
-    if (!overlapsExisting) {
-      return { x, y };
-    }
-  }
-
-  return {
-    x: SPAWN_MARGIN + Math.random() * (MAP_WIDTH - SPAWN_MARGIN * 2),
-    y: SPAWN_MARGIN + Math.random() * (MAP_HEIGHT - SPAWN_MARGIN * 2),
-  };
-}
-
 export async function POST(req) {
   try {
     const { userId } = await auth();
@@ -79,12 +51,9 @@ export async function POST(req) {
           .filter((bullet) => Number.isFinite(bullet.x) && Number.isFinite(bullet.y) && Number.isFinite(bullet.angle))
       : [];
 
-    const hasSpawn = Number.isFinite(Number(currentPlayerState.x)) && Number.isFinite(Number(currentPlayerState.y));
-    const spawn = hasSpawn ? null : generateSpawnPosition(playerStates);
-
     playerStates[userId] = {
-      x: hasSpawn ? Number(x ?? currentPlayerState.x ?? 0) : spawn.x,
-      y: hasSpawn ? Number(y ?? currentPlayerState.y ?? 0) : spawn.y,
+      x: Number(x ?? 0),
+      y: Number(y ?? 0),
       rotation: Number(rotation ?? 0),
       // Never trust client-reported health.
       // Health is server-authoritative and only changes via validated hits.
