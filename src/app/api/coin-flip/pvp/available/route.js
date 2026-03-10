@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
-import { coinFlipGames, users } from "../../../../../db/schema";
-import { eq, sql } from "drizzle-orm";
+import { coinFlipGames } from "../../../../../db/schema";
+import { and, eq, isNull } from "drizzle-orm";
 
 export async function GET() {
   const games = await db
@@ -11,7 +11,12 @@ export async function GET() {
       player1Id: coinFlipGames.player1Id,
     })
     .from(coinFlipGames)
-    .where(eq(coinFlipGames.player2Id, null))
+    .where(
+      and(
+        isNull(coinFlipGames.player2Id),
+        eq(coinFlipGames.status, "active")
+      )
+    )
     .limit(20);
 
   return NextResponse.json({ success: true, data: { games } });
