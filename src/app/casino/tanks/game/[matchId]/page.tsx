@@ -28,6 +28,51 @@ function generateRocks(seed: number, mapWidth: number, mapHeight: number) {
   });
 }
 
+function showGameAlert(message: string) {
+  const overlay = document.createElement("div");
+  overlay.style.position = "fixed";
+  overlay.style.inset = "0";
+  overlay.style.background = "rgba(0,0,0,0.65)";
+  overlay.style.display = "flex";
+  overlay.style.alignItems = "center";
+  overlay.style.justifyContent = "center";
+  overlay.style.zIndex = "999999";
+
+  const box = document.createElement("div");
+  box.style.background = "#111";
+  box.style.border = "2px solid #eab308";
+  box.style.padding = "28px";
+  box.style.borderRadius = "16px";
+  box.style.color = "white";
+  box.style.fontFamily = "sans-serif";
+  box.style.textAlign = "center";
+  box.style.boxShadow = "0 10px 40px rgba(0,0,0,0.6)";
+  box.style.maxWidth = "360px";
+
+  const text = document.createElement("div");
+  text.style.fontSize = "18px";
+  text.style.marginBottom = "18px";
+  text.innerText = message;
+
+  const btn = document.createElement("button");
+  btn.innerText = "OK";
+  btn.style.background = "#eab308";
+  btn.style.border = "none";
+  btn.style.padding = "10px 18px";
+  btn.style.borderRadius = "10px";
+  btn.style.fontWeight = "bold";
+  btn.style.cursor = "pointer";
+
+  btn.onclick = () => {
+    document.body.removeChild(overlay);
+  };
+
+  box.appendChild(text);
+  box.appendChild(btn);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
 function CashOutButton({ bountyRef, setBounty, setCashOutCountdown, routeMatchId }) {
   const [countdown, setCountdown] = useState(0);
   const countdownRef = useRef(0);
@@ -68,16 +113,16 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown, routeMatchId
             const data = await res.json();
 
             if (res.ok) {
-              alert(`You cashed out ${bountyRef.current * 0.9} tokens!`);
+             showGameAlert(`💰 Cashout successful!\nYou received ${bountyRef.current * 0.9} tokens`);
               setBounty(0);
               bountyRef.current = 0;
               router.push("/casino/tanks");
             } else {
-              alert(data.error || "Failed to cash out");
+              showGameAlert(data.error || "Failed to cash out");
             }
           } catch (err) {
             console.error("Cashout error:", err);
-            alert("Server error while cashing out");
+            showGameAlert("Server error while cashing out");
           }
         })();
       }
@@ -157,7 +202,6 @@ export default function TanksGamePage() {
 
   const pendingHitsRef = useRef<string[]>([]);
   const gameFinishedRef = useRef(false);
-
 
   const [mapSeed, setMapSeed] = useState<number>(12345);
 
@@ -255,7 +299,7 @@ export default function TanksGamePage() {
         if (!res.ok) {
           if ((res.status === 403 || res.status === 404) && !gameFinishedRef.current) {
             gameFinishedRef.current = true;
-            alert("Match ended. Returning to lobby.");
+            showGameAlert("Match ended. Returning to lobby.");
             router.push("/casino/tanks");
           }
           return;
@@ -273,9 +317,9 @@ export default function TanksGamePage() {
         if (data?.gameOver && !gameFinishedRef.current) {
           gameFinishedRef.current = true;
           if (data.gameOver.winnerId === data.selfId) {
-            alert(`You won! +${Number(data.gameOver.winnerPayout).toFixed(2)} tokens`);
+            showGameAlert(`🏆 Victory!\n+${Number(data.gameOver.winnerPayout).toFixed(2)} tokens`);
           } else {
-            alert("You were destroyed. Better luck next game.");
+            showGameAlert("💀 You were destroyed");
           }
           router.push("/casino/tanks");
           return;
