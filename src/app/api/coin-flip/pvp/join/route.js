@@ -13,8 +13,6 @@ export async function POST(req) {
 
   try {
     const result = await db.transaction(async (tx) => {
-
-      // 🔥 LOCK THE GAME ROW
       const [game] = await tx
         .select()
         .from(coinFlipGames)
@@ -24,18 +22,15 @@ export async function POST(req) {
             isNull(coinFlipGames.player2Id)
           )
         )
-        .for("update"); // ← VERY IMPORTANT (row lock)
+        .for("update");
 
       if (!game) throw new Error("Game already joined");
+      if (game.player1Id === userId) throw new Error("Cannot join your own game");
 
-      if (game.player1Id === userId)
-        throw new Error("Cannot join your own game");
-
-      // 🔥 Deduct ONLY if enough balance
       const [joiner] = await tx
         .update(users)
         .set({
-          balance: sql`${users.balance} - ${game.betAmount}`
+          balance: sql`${users.balance} - ${game.betAmount}`,
         })
         .where(
           and(
@@ -47,24 +42,43 @@ export async function POST(req) {
 
       if (!joiner) throw new Error("Insufficient balance");
 
-      // 🔥 Seat the player
+      const outcome = Math.random() < 0.5 ? "heads" : "tails";
+      const winnerId = outcome === game.player1Choice ? game.player1Id : userId;
+      const payout = Number(game.betAmount) * 2;
+
+      await tx
+        .update(users)
+        .set({
+          balance: sql`${users.balance} + ${payout}`,
+        })
+        .where(eq(users.clerkId, winnerId));
+
       await tx
         .update(coinFlipGames)
-        .set({ player2Id: userId })
+        .set({
+          player2Id: userId,
+          outcome,
+          winnerId,
+          result: winnerId === game.player1Id ? "player1" : "player2",
+          status: "finished",
+        })
         .where(eq(coinFlipGames.id, gameId));
 
-      return { game };
+      return {
+        outcome,
+        winner: winnerId === userId ? "you" : "opponent",
+      };
     });
 
     return NextResponse.json({
       success: true,
-      data: { gameId }
+      data: {
+        gameId,
+        outcome: result.outcome,
+        winner: result.winner,
+      },
     });
-
   } catch (err) {
-    return NextResponse.json(
-      { error: err.message },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: err.message }, { status: 400 });
   }
 }

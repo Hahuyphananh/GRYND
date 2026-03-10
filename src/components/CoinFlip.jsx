@@ -243,36 +243,47 @@ function PvPCoinFlip() {
     getUser();
   }, []);
 
-  // ✅ Poll lobby WITHOUT destroying your active game
+  // ✅ Poll lobby
   useEffect(() => {
-
     const fetchGames = async () => {
       const res = await fetch("/api/coin-flip/pvp/available");
       const json = await res.json();
-
       if (!json.success) return;
-
-      // 🔥 NEVER overwrite your own game
-      setGames(prev => {
-
-        if (!myGameId) return json.data.games;
-
-        const stillExists = json.data.games.some(g => g.id === myGameId);
-
-        // if server now returns it → trust server
-        if (stillExists) return json.data.games;
-
-        // otherwise keep your local game OUT of lobby
-        return json.data.games;
-      });
+      setGames(json.data.games);
     };
 
     fetchGames();
     const interval = setInterval(fetchGames, 2000);
-
     return () => clearInterval(interval);
+  }, []);
 
-  }, [myGameId]);
+  // ✅ Poll my game status while waiting for opponent
+  useEffect(() => {
+    if (!myGameId || flipping) return;
+
+    const checkGame = async () => {
+      const res = await fetch(`/api/coin-flip/pvp/status?gameId=${myGameId}`);
+      const json = await res.json();
+
+      if (!json.success || json.data.status !== "finished") return;
+
+      setFlipping(true);
+      setMessage("Flipping coin...");
+
+      setTimeout(() => {
+        setResult(json.data.outcome);
+        setMessage(json.data.winner === "you" ? "✅ You won!" : "❌ You lost.");
+        setFlipping(false);
+        setMyGameId(null);
+        setMyBet(null);
+        setFlipKey((k) => k + 1);
+      }, 1000);
+    };
+
+    checkGame();
+    const interval = setInterval(checkGame, 2000);
+    return () => clearInterval(interval);
+  }, [myGameId, flipping]);
 
 
 
@@ -358,21 +369,20 @@ function PvPCoinFlip() {
 
     const json = await res.json();
 
-    setFlipping(false);
-
     if (json.success) {
-
-      setResult(json.data.outcome);
-      setMessage(json.data.winner === "you" ? "✅ You won!" : "❌ You lost.");
-
-      setGames(prev => prev.filter(g => g.id !== gameId));
-
-      setMyGameId(null);
-      setMyBet(null);
-
       setFlipKey(k => k + 1);
 
+      setTimeout(() => {
+        setFlipping(false);
+        setResult(json.data.outcome);
+        setMessage(json.data.winner === "you" ? "✅ You won!" : "❌ You lost.");
+      }, 1000);
+
+      setGames(prev => prev.filter(g => g.id !== gameId));
+      setMyGameId(null);
+      setMyBet(null);
     } else {
+      setFlipping(false);
       setMessage(json.error);
     }
   };
