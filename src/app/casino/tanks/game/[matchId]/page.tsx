@@ -202,7 +202,7 @@ export default function TanksGamePage() {
 
   const pendingHitsRef = useRef<string[]>([]);
   const gameFinishedRef = useRef(false);
-
+  const hasInitializedSpawnRef = useRef(false);
 
   const [mapSeed, setMapSeed] = useState<number>(12345);
 
