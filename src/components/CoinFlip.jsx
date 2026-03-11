@@ -220,8 +220,6 @@ function SoloCoinFlip() {
 function PvPCoinFlip() {
 
   const [bet, setBet] = useState(10);
-  const [choice, setChoice] = useState("heads");
-
   const [flipping, setFlipping] = useState(false);
   const [message, setMessage] = useState("");
   const [result, setResult] = useState(null);
@@ -231,6 +229,10 @@ function PvPCoinFlip() {
   const [myGameId, setMyGameId] = useState(null);
   const [myBet, setMyBet] = useState(null); // ⭐ LOCAL truth
   const [userId, setUserId] = useState(null);
+  const [opponentId, setOpponentId] = useState(null);
+  const [myChoice, setMyChoice] = useState(null);
+const [opponentChoice, setOpponentChoice] = useState(null);
+const [gameFinished, setGameFinished] = useState(false);
 
   // ✅ Fetch user once
   useEffect(() => {
@@ -268,6 +270,18 @@ useEffect(() => {
     if (!json.success) return;
 
     const game = json.data;
+    const opponent =
+  game.player1Id === userId ? game.player2Id : game.player1Id;
+
+  if (game.player1Id === userId) {
+  setMyChoice(game.player1Choice);
+  setOpponentChoice(game.player2Choice);
+} else {
+  setMyChoice(game.player2Choice);
+  setOpponentChoice(game.player1Choice);
+}
+
+setOpponentId(opponent);
 
     // start animation
     if (game.status === "flipping" && !flipping) {
@@ -276,21 +290,20 @@ useEffect(() => {
       setFlipKey(k => k + 1);
     }
 
-    // reveal result
-    if (game.status === "finished") {
-      setTimeout(() => {
-  setResult(game.outcome);
-
+  // reveal result
+if (game.status === "finished" && !gameFinished) {
   setTimeout(() => {
-    setFlipping(false);
-    setMessage(game.winner === "you" ? "✅ You won!" : "❌ You lost.");
+    setResult(game.outcome);
 
-    setMyGameId(null);
-    setMyBet(null);
-  }, 800);
+    setTimeout(() => {
+      setFlipping(false);
+      setMessage(game.winner === "you" ? "✅ You won!" : "❌ You lost.");
 
-}, 1200);
-    }
+      setGameFinished(true);
+    }, 800);
+
+  }, 1200);
+}
   };
 
   checkGame();
@@ -298,7 +311,7 @@ useEffect(() => {
 
   return () => clearInterval(interval);
 
-}, [myGameId, flipping]);
+}, [myGameId, flipping, userId]);
 
   // =============================
   // CREATE GAME
@@ -314,7 +327,7 @@ setFlipping(false);
     const res = await fetch("/api/coin-flip/pvp/create", {
       method: "POST",
       headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ betAmount: bet, choice })
+      body: JSON.stringify({ betAmount: bet, choice: myChoice })
     });
 
     const json = await res.json();
@@ -370,6 +383,12 @@ setFlipping(false);
 
   if(gameId === myGameId) return;
 
+   // require player choice first
+  if (!myChoice) {
+    setMessage("Choose heads or tails first.");
+    return;
+  }
+
   setResult(null);
 setFlipping(false);
 
@@ -378,7 +397,7 @@ setFlipping(false);
   const res = await fetch("/api/coin-flip/pvp/join", {
     method: "POST",
     headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ gameId, choice })
+    body: JSON.stringify({ gameId, choice: myChoice })
   });
 
   const json = await res.json();
@@ -412,26 +431,6 @@ setFlipping(false);
             value={bet}
             onChange={(e) => setBet(parseFloat(e.target.value))}
           />
-
-          <div className="flex justify-between mb-4">
-            <button
-              onClick={() => setChoice("heads")}
-              className={`w-full mr-2 p-2 rounded ${
-                choice === "heads" ? "bg-green-600" : "bg-gray-600"
-              }`}
-            >
-              Heads
-            </button>
-
-            <button
-              onClick={() => setChoice("tails")}
-              className={`w-full ml-2 p-2 rounded ${
-                choice === "tails" ? "bg-green-600" : "bg-gray-600"
-              }`}
-            >
-              Tails
-            </button>
-          </div>
 
           <button
             onClick={createGame}
@@ -499,17 +498,54 @@ setFlipping(false);
     <div className="grid grid-cols-2 gap-6 text-center mb-6">
 
       <div className="bg-gray-800 p-4 rounded-lg">
-        <p className="font-bold text-green-400">You</p>
-        <p className="text-sm break-all">{userId}</p>
-      </div>
+  <p className="font-bold text-green-400">You</p>
+  <p className="text-sm break-all">{userId}</p>
+
+  {myChoice && (
+    <p className="mt-2 text-yellow-400">
+      Choice: {myChoice}
+    </p>
+  )}
+</div>
 
       <div className="bg-gray-800 p-4 rounded-lg">
-        <p className="font-bold text-yellow-400">
-          {flipping ? "Opponent" : "Searching..."}
-        </p>
-      </div>
+  <p className="font-bold text-yellow-400">
+    {opponentId ? "Opponent" : "Searching..."}
+  </p>
+
+  <p className="text-sm break-all">
+    {opponentId || "..."}
+  </p>
+
+  {opponentChoice && (
+    <p className="mt-2 text-yellow-400">
+      Choice: {opponentChoice}
+    </p>
+  )}
+</div>
 
     </div>
+    {!myChoice && !flipping && (
+  <div className="flex justify-between mb-6">
+    <button
+      onClick={() => setMyChoice("heads")}
+      className={`w-full mr-2 p-2 rounded ${
+        myChoice === "heads" ? "bg-green-600" : "bg-gray-600"
+      }`}
+    >
+      Heads
+    </button>
+
+    <button
+      onClick={() => setMyChoice("tails")}
+      className={`w-full ml-2 p-2 rounded ${
+        myChoice === "tails" ? "bg-green-600" : "bg-gray-600"
+      }`}
+    >
+      Tails
+    </button>
+  </div>
+)}
 
     {/* COIN */}
     <div className="flex justify-center mb-6">
@@ -548,9 +584,9 @@ setFlipping(false);
     )}
 
     {/* CANCEL */}
-    {!flipping && (
-      <button
-        onClick={cancelGame}
+   {!flipping && !gameFinished && (
+  <button
+    onClick={cancelGame}
         className="mt-2 w-full p-3 rounded-lg font-bold
                    bg-red-600 hover:bg-red-500
                    transition transform hover:scale-105"
@@ -558,6 +594,24 @@ setFlipping(false);
         Cancel Game
       </button>
     )}
+    {gameFinished && (
+  <button
+    onClick={() => {
+      setGameFinished(false);
+      setMyGameId(null);
+      setMyBet(null);
+      setOpponentId(null);
+      setMyChoice(null);
+      setOpponentChoice(null);
+      setResult(null);
+      setMessage("");
+    }}
+    className="mt-2 w-full p-3 rounded-lg font-bold
+               bg-blue-600 hover:bg-blue-500"
+  >
+    Close
+  </button>
+)}
 
   </div>
 )}     
