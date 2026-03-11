@@ -383,12 +383,6 @@ setFlipping(false);
 
   if(gameId === myGameId) return;
 
-   // require player choice first
-  if (!myChoice) {
-    setMessage("Choose heads or tails first.");
-    return;
-  }
-
   setResult(null);
 setFlipping(false);
 
