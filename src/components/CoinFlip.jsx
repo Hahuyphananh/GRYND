@@ -279,12 +279,17 @@ useEffect(() => {
     // reveal result
     if (game.status === "finished") {
       setTimeout(() => {
-        setResult(game.outcome);
-        setMessage(game.winner === "you" ? "✅ You won!" : "❌ You lost.");
-        setFlipping(false);
-        setMyGameId(null);
-        setMyBet(null);
-      }, 1200);
+  setResult(game.outcome);
+
+  setTimeout(() => {
+    setFlipping(false);
+    setMessage(game.winner === "you" ? "✅ You won!" : "❌ You lost.");
+
+    setMyGameId(null);
+    setMyBet(null);
+  }, 800);
+
+}, 1200);
     }
   };
 
@@ -302,6 +307,9 @@ useEffect(() => {
   const createGame = async () => {
 
     setMessage("Creating game...");
+
+    setResult(null);
+setFlipping(false);
 
     const res = await fetch("/api/coin-flip/pvp/create", {
       method: "POST",
@@ -323,8 +331,6 @@ useEffect(() => {
       setMessage(json.error);
     }
   };
-
-
 
   // =============================
   // CANCEL
@@ -363,6 +369,9 @@ useEffect(() => {
  const joinGame = async (gameId) => {
 
   if(gameId === myGameId) return;
+
+  setResult(null);
+setFlipping(false);
 
   setMessage("Joining game...");
 
@@ -479,74 +488,79 @@ useEffect(() => {
         </>
       )}
 
-      {/* WAITING SCREEN — ZERO flicker now */}
-      {myGameId && !flipping && (
-        <div className="mt-6 bg-gray-900 rounded-xl p-6 shadow-xl border border-gray-700">
+      {myGameId && (
+  <div className="mt-6 bg-gray-900 rounded-xl p-6 shadow-xl border border-gray-700">
 
-          <h2 className="text-center text-xl font-bold mb-4">
-            Waiting for Opponent...
-          </h2>
+    <h2 className="text-center text-xl font-bold mb-6">
+      Coin Flip PvP
+    </h2>
 
-          <div className="flex justify-center mb-6">
-            <div className="relative w-24 h-24 perspective">
-              <div
-                className="w-full h-full rounded-full flex items-center justify-center 
-                           bg-yellow-300 text-black text-4xl font-bold 
-                           animate-coin-flip"
-                style={{ animationIterationCount: "infinite" }} // ⭐ smooth loop
-              >
-                🪙
-              </div>
-            </div>
-          </div>
+    {/* PLAYERS */}
+    <div className="grid grid-cols-2 gap-6 text-center mb-6">
 
-          <div className="grid grid-cols-2 gap-6 text-center">
-            <div className="bg-gray-800 p-4 rounded-lg">
-              <p className="font-bold">You</p>
-            </div>
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <p className="font-bold text-green-400">You</p>
+        <p className="text-sm break-all">{userId}</p>
+      </div>
 
-            <div className="bg-gray-800 p-4 rounded-lg animate-pulse">
-              <p className="font-bold text-yellow-400">
-                Searching...
-              </p>
-            </div>
-          </div>
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <p className="font-bold text-yellow-400">
+          {flipping ? "Opponent" : "Searching..."}
+        </p>
+      </div>
 
-          <p className="text-center mt-4 text-gray-400">
-            Bet Locked: {myBet} 🪙
-          </p>
+    </div>
 
-          <button
-            onClick={cancelGame}
-            className="mt-6 w-full p-3 rounded-lg font-bold
-                       bg-red-600 hover:bg-red-500
-                       transition transform hover:scale-105"
-          >
-            Cancel Game
-          </button>
+    {/* COIN */}
+    <div className="flex justify-center mb-6">
+
+      <div className="relative w-24 h-24 perspective">
+
+        <div
+          key={flipKey}
+          className={`w-full h-full rounded-full flex items-center justify-center 
+          bg-yellow-300 text-black text-4xl font-bold
+          ${flipping ? "animate-coin-flip" : ""}`}
+        >
+
+          {!result && "🪙"}
+
+          {result === "heads" && "H"}
+
+          {result === "tails" && "T"}
 
         </div>
-      )}
 
-      {/* FLIP */}
-      {flipping && (
-        <div className="flex justify-center mt-6 h-28">
-          <div className="relative w-24 h-24 perspective">
-            <div
-              key={flipKey}
-              className="w-full h-full rounded-full flex items-center justify-center 
-                         bg-yellow-300 text-black text-4xl font-bold 
-                         animate-coin-flip"
-            >
-              {result === "heads" ? "H" : result === "tails" ? "T" : "?"}
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
 
-      {message && (
-        <p className="text-center mt-4 text-blue-300">{message}</p>
-      )}
+    </div>
+
+    {/* BET */}
+    <p className="text-center text-gray-400 mb-4">
+      Bet Locked: {myBet} 🪙
+    </p>
+
+    {/* MESSAGE */}
+    {message && (
+      <p className="text-center text-blue-300 mb-4">
+        {message}
+      </p>
+    )}
+
+    {/* CANCEL */}
+    {!flipping && (
+      <button
+        onClick={cancelGame}
+        className="mt-2 w-full p-3 rounded-lg font-bold
+                   bg-red-600 hover:bg-red-500
+                   transition transform hover:scale-105"
+      >
+        Cancel Game
+      </button>
+    )}
+
+  </div>
+)}     
     </>
   );
 }
