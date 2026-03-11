@@ -397,7 +397,7 @@ setFlipping(false);
   const res = await fetch("/api/coin-flip/pvp/join", {
     method: "POST",
     headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ gameId, choice: myChoice })
+    body: JSON.stringify({ gameId }),
   });
 
   const json = await res.json();
