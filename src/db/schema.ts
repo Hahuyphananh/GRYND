@@ -170,6 +170,20 @@ export const chessGames = pgTable('chess_games', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+export const chessMoves = pgTable("chess_moves", {
+  id: serial("id").primaryKey(),
+  gameId: integer("game_id")
+    .notNull()
+    .references(() => chessGames.id, { onDelete: "cascade" }),
+  playedBy: varchar("played_by", { length: 255 }).notNull(),
+  moveUci: varchar("move_uci", { length: 10 }).notNull(),
+  moveSan: varchar("move_san", { length: 20 }).notNull(),
+  fenAfter: text("fen_after").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  gameIdx: index("chess_moves_game_idx").on(table.gameId),
+}));
+
 export const tankStats = pgTable("tank_stats", {
   id: serial("id").primaryKey(),
   matchId: varchar("match_id", { length: 255 }).notNull(),
