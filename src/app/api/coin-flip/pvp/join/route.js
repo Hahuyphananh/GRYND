@@ -12,7 +12,9 @@ export async function POST(req) {
   const { gameId } = await req.json();
 
   try {
-    const result = await db.transaction(async (tx) => {
+
+    const game = await db.transaction(async (tx) => {
+
       const [game] = await tx
         .select()
         .from(coinFlipGames)
@@ -42,46 +44,62 @@ export async function POST(req) {
 
       if (!joiner) throw new Error("Insufficient balance");
 
-      const player2Choice = game.player1Choice === "heads" ? "tails" : "heads";
-      const outcome = Math.random() < 0.5 ? "heads" : "tails";
-      const winnerId = outcome === game.player1Choice ? game.player1Id : userId;
-      const payout = Number(game.betAmount) * 2;
+      const player2Choice =
+        game.player1Choice === "heads" ? "tails" : "heads";
 
-      await tx
-        .update(users)
-        .set({
-          balance: sql`${users.balance} + ${payout}`,
-        })
-        .where(eq(users.clerkId, winnerId));
-
+      // ⭐ Set game to FLIPPING state
       await tx
         .update(coinFlipGames)
         .set({
           player2Id: userId,
           player2Choice,
-          outcome,
-          winnerId,
-          result: winnerId === game.player1Id ? "player1" : "player2",
-          status: "finished",
+          status: "flipping",
         })
         .where(eq(coinFlipGames.id, gameId));
 
-      return {
-        player2Choice,
-        outcome,
-        winner: winnerId === userId ? "you" : "opponent",
-      };
+      return game;
+
     });
+
+
+    // ⭐ Resolve game AFTER delay (animation time)
+    setTimeout(async () => {
+
+      const outcome = Math.random() < 0.5 ? "heads" : "tails";
+      const winnerId =
+        outcome === game.player1Choice ? game.player1Id : userId;
+
+      const payout = Number(game.betAmount) * 2;
+
+      await db.transaction(async (tx) => {
+
+        await tx
+          .update(users)
+          .set({
+            balance: sql`${users.balance} + ${payout}`,
+          })
+          .where(eq(users.clerkId, winnerId));
+
+        await tx
+          .update(coinFlipGames)
+          .set({
+            outcome,
+            winnerId,
+            result: winnerId === game.player1Id ? "player1" : "player2",
+            status: "finished",
+          })
+          .where(eq(coinFlipGames.id, gameId));
+
+      });
+
+    }, 1500); // animation duration
+
 
     return NextResponse.json({
       success: true,
-      data: {
-        gameId,
-        player2Choice: result.player2Choice,
-        outcome: result.outcome,
-        winner: result.winner,
-      },
+      data: { gameId },
     });
+
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 400 });
   }

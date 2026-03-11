@@ -258,34 +258,42 @@ function PvPCoinFlip() {
   }, []);
 
   // ✅ Poll my game status while waiting for opponent
-  useEffect(() => {
-    if (!myGameId || flipping) return;
+useEffect(() => {
+  if (!myGameId) return;
 
-    const checkGame = async () => {
-      const res = await fetch(`/api/coin-flip/pvp/status?gameId=${myGameId}`);
-      const json = await res.json();
+  const checkGame = async () => {
+    const res = await fetch(`/api/coin-flip/pvp/status?gameId=${myGameId}`);
+    const json = await res.json();
 
-      if (!json.success || json.data.status !== "finished") return;
+    if (!json.success) return;
 
+    const game = json.data;
+
+    // start animation
+    if (game.status === "flipping" && !flipping) {
       setFlipping(true);
       setMessage("Flipping coin...");
+      setFlipKey(k => k + 1);
+    }
 
+    // reveal result
+    if (game.status === "finished") {
       setTimeout(() => {
-        setResult(json.data.outcome);
-        setMessage(json.data.winner === "you" ? "✅ You won!" : "❌ You lost.");
+        setResult(game.outcome);
+        setMessage(game.winner === "you" ? "✅ You won!" : "❌ You lost.");
         setFlipping(false);
         setMyGameId(null);
         setMyBet(null);
-        setFlipKey((k) => k + 1);
-      }, 1000);
-    };
+      }, 1200);
+    }
+  };
 
-    checkGame();
-    const interval = setInterval(checkGame, 2000);
-    return () => clearInterval(interval);
-  }, [myGameId, flipping]);
+  checkGame();
+  const interval = setInterval(checkGame, 1500);
 
+  return () => clearInterval(interval);
 
+}, [myGameId, flipping]);
 
   // =============================
   // CREATE GAME
@@ -348,53 +356,40 @@ function PvPCoinFlip() {
     }
   };
 
-
-
   // =============================
   // JOIN
   // =============================
 
-  const joinGame = async (gameId) => {
+ const joinGame = async (gameId) => {
 
-    if(gameId === myGameId) return;
+  if(gameId === myGameId) return;
 
-    setFlipping(true);
-    setMessage("Flipping coin...");
+  setMessage("Joining game...");
 
-    const res = await fetch("/api/coin-flip/pvp/join", {
-      method: "POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ gameId, choice })
-    });
+  const res = await fetch("/api/coin-flip/pvp/join", {
+    method: "POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ gameId, choice })
+  });
 
-    const json = await res.json();
+  const json = await res.json();
 
-    if (json.success) {
-      setFlipKey(k => k + 1);
+  if (json.success) {
 
-      setTimeout(() => {
-        setFlipping(false);
-        setResult(json.data.outcome);
-        setMessage(json.data.winner === "you" ? "✅ You won!" : "❌ You lost.");
-      }, 1000);
+    // join the same game
+    setMyGameId(gameId);
 
-      setGames(prev => prev.filter(g => g.id !== gameId));
-      setMyGameId(null);
-      setMyBet(null);
-    } else {
-      setFlipping(false);
-      setMessage(json.error);
-    }
-  };
+    setMessage("Opponent joined. Flipping soon...");
 
-
+  } else {
+    setMessage(json.error);
+  }
+};
 
   // ⭐ lobby filter
   const availableGames = games.filter(
     g => g.player1Id !== userId && g.id !== myGameId
   );
-
-
 
   return (
     <>
@@ -484,8 +479,6 @@ function PvPCoinFlip() {
         </>
       )}
 
-
-
       {/* WAITING SCREEN — ZERO flicker now */}
       {myGameId && !flipping && (
         <div className="mt-6 bg-gray-900 rounded-xl p-6 shadow-xl border border-gray-700">
@@ -534,8 +527,6 @@ function PvPCoinFlip() {
 
         </div>
       )}
-
-
 
       {/* FLIP */}
       {flipping && (
