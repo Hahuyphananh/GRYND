@@ -218,7 +218,6 @@ function SoloCoinFlip() {
 
 // ------------------- PvP Coin Flip ------------------- //
 function PvPCoinFlip() {
-
   const [bet, setBet] = useState(10);
   const [flipping, setFlipping] = useState(false);
   const [message, setMessage] = useState("");
@@ -227,14 +226,16 @@ function PvPCoinFlip() {
 
   const [games, setGames] = useState([]);
   const [myGameId, setMyGameId] = useState(null);
-  const [myBet, setMyBet] = useState(null); // ⭐ LOCAL truth
+  const [myBet, setMyBet] = useState(null);
   const [userId, setUserId] = useState(null);
   const [opponentId, setOpponentId] = useState(null);
   const [myChoice, setMyChoice] = useState(null);
-const [opponentChoice, setOpponentChoice] = useState(null);
-const [gameFinished, setGameFinished] = useState(false);
+  const [opponentChoice, setOpponentChoice] = useState(null);
+  const [gameFinished, setGameFinished] = useState(false);
+  const [gameStatus, setGameStatus] = useState(null);
+  const [choiceDeadline, setChoiceDeadline] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(0);
 
-  // ✅ Fetch user once
   useEffect(() => {
     const getUser = async () => {
       const res = await fetch("/api/get-user");
@@ -245,7 +246,6 @@ const [gameFinished, setGameFinished] = useState(false);
     getUser();
   }, []);
 
-  // ✅ Poll lobby
   useEffect(() => {
     const fetchGames = async () => {
       const res = await fetch("/api/coin-flip/pvp/available");
@@ -259,163 +259,172 @@ const [gameFinished, setGameFinished] = useState(false);
     return () => clearInterval(interval);
   }, []);
 
-  // ✅ Poll my game status while waiting for opponent
-useEffect(() => {
-  if (!myGameId) return;
+  useEffect(() => {
+    if (!myGameId) return;
 
-  const checkGame = async () => {
-    const res = await fetch(`/api/coin-flip/pvp/status?gameId=${myGameId}`);
-    const json = await res.json();
+    const checkGame = async () => {
+      const res = await fetch(`/api/coin-flip/pvp/status?gameId=${myGameId}`);
+      const json = await res.json();
+      if (!json.success) return;
 
-    if (!json.success) return;
+      const game = json.data;
+      setGameStatus(game.status);
+      setChoiceDeadline(game.choiceDeadline || null);
 
-    const game = json.data;
-    const opponent =
-  game.player1Id === userId ? game.player2Id : game.player1Id;
+      const opponent = game.player1Id === userId ? game.player2Id : game.player1Id;
+      setOpponentId(opponent || null);
 
-  if (game.player1Id === userId) {
-  setMyChoice(game.player1Choice);
-  setOpponentChoice(game.player2Choice);
-} else {
-  setMyChoice(game.player2Choice);
-  setOpponentChoice(game.player1Choice);
-}
+      if (game.player1Id === userId) {
+        setMyChoice(game.player1Choice || null);
+        setOpponentChoice(game.player2Choice || null);
+      } else {
+        setMyChoice(game.player2Choice || null);
+        setOpponentChoice(game.player1Choice || null);
+      }
 
-setOpponentId(opponent);
+      if (game.status === "matched") {
+        setMessage("Choose heads or tails before the timer ends.");
+      }
 
-    // start animation
-    if (game.status === "flipping" && !flipping) {
-      setFlipping(true);
-      setMessage("Flipping coin...");
-      setFlipKey(k => k + 1);
+      if (game.status === "cancelled") {
+        setFlipping(false);
+        setMessage("Game cancelled: choice timer expired. Bets refunded.");
+      }
+
+      if (game.status === "finished" && !gameFinished) {
+        setFlipping(true);
+        setMessage("Flipping coin...");
+        setFlipKey((k) => k + 1);
+
+        setTimeout(() => {
+          setResult(game.outcome);
+          setFlipping(false);
+          setMessage(game.winner === "you" ? "✅ You won!" : "❌ You lost.");
+          setGameFinished(true);
+        }, 1200);
+      }
+    };
+
+    checkGame();
+    const interval = setInterval(checkGame, 1000);
+    return () => clearInterval(interval);
+  }, [myGameId, userId, gameFinished]);
+
+  useEffect(() => {
+    if (!choiceDeadline || gameStatus !== "matched") {
+      setTimeLeft(0);
+      return;
     }
 
-  // reveal result
-if (game.status === "finished" && !gameFinished) {
-  setTimeout(() => {
-    setResult(game.outcome);
+    const update = () => {
+      const seconds = Math.max(0, Math.ceil((new Date(choiceDeadline).getTime() - Date.now()) / 1000));
+      setTimeLeft(seconds);
+    };
 
-    setTimeout(() => {
-      setFlipping(false);
-      setMessage(game.winner === "you" ? "✅ You won!" : "❌ You lost.");
-
-      setGameFinished(true);
-    }, 800);
-
-  }, 1200);
-}
-  };
-
-  checkGame();
-  const interval = setInterval(checkGame, 1500);
-
-  return () => clearInterval(interval);
-
-}, [myGameId, flipping, userId]);
-
-  // =============================
-  // CREATE GAME
-  // =============================
+    update();
+    const interval = setInterval(update, 250);
+    return () => clearInterval(interval);
+  }, [choiceDeadline, gameStatus]);
 
   const createGame = async () => {
-
     setMessage("Creating game...");
-
     setResult(null);
-setFlipping(false);
+    setFlipping(false);
+    setGameFinished(false);
+    setGameStatus("active");
+    setMyChoice(null);
+    setOpponentChoice(null);
 
     const res = await fetch("/api/coin-flip/pvp/create", {
       method: "POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ betAmount: bet, choice: "heads" })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ betAmount: bet }),
     });
 
     const json = await res.json();
 
     if (json.success) {
-
-      // ⭐ TRUST LOCAL STATE
       setMyGameId(json.data.gameId);
       setMyBet(json.data.betAmount);
-
       setMessage("Waiting for opponent...");
-      
     } else {
       setMessage(json.error);
     }
   };
 
-  // =============================
-  // CANCEL
-  // =============================
+  const submitChoice = async (choice) => {
+    if (!myGameId || gameStatus !== "matched" || myChoice) return;
 
-  const cancelGame = async () => {
-
-    setMessage("Cancelling game...");
-
-    const res = await fetch("/api/coin-flip/pvp/cancel", {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ gameId: myGameId })
+    const res = await fetch("/api/coin-flip/pvp/choose", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gameId: myGameId, choice }),
     });
 
     const json = await res.json();
 
-    if(json.success){
+    if (!json.success) {
+      setMessage(json.error || "Failed to save choice");
+      return;
+    }
 
+    setMyChoice(choice);
+    setMessage("Choice locked. Waiting for opponent...");
+  };
+
+  const cancelGame = async () => {
+    setMessage("Cancelling game...");
+
+    const res = await fetch("/api/coin-flip/pvp/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gameId: myGameId }),
+    });
+
+    const json = await res.json();
+
+    if (json.success) {
       setMyGameId(null);
       setMyBet(null);
-
-      setGames(prev => prev.filter(g => g.id !== myGameId));
-
+      setChoiceDeadline(null);
+      setGameStatus(null);
+      setGames((prev) => prev.filter((g) => g.id !== myGameId));
       setMessage("Game cancelled.");
-
-    }else{
+    } else {
       setMessage(json.error);
     }
   };
 
-  // =============================
-  // JOIN
-  // =============================
+  const joinGame = async (gameId) => {
+    if (gameId === myGameId) return;
 
- const joinGame = async (gameId) => {
+    setResult(null);
+    setFlipping(false);
+    setGameFinished(false);
+    setMessage("Joining game...");
 
-  if(gameId === myGameId) return;
+    const res = await fetch("/api/coin-flip/pvp/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gameId }),
+    });
 
-  setResult(null);
-setFlipping(false);
+    const json = await res.json();
 
-  setMessage("Joining game...");
+    if (json.success) {
+      setMyGameId(gameId);
+      setChoiceDeadline(json.data.choiceDeadline || null);
+      setGameStatus("matched");
+      setMessage("Choose heads or tails in 5 seconds.");
+    } else {
+      setMessage(json.error);
+    }
+  };
 
-  const res = await fetch("/api/coin-flip/pvp/join", {
-    method: "POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ gameId }),
-  });
-
-  const json = await res.json();
-
-  if (json.success) {
-
-    // join the same game
-    setMyGameId(gameId);
-
-    setMessage("Opponent joined. Flipping soon...");
-
-  } else {
-    setMessage(json.error);
-  }
-};
-
-  // ⭐ lobby filter
-  const availableGames = games.filter(
-    g => g.player1Id !== userId && g.id !== myGameId
-  );
+  const availableGames = games.filter((g) => g.player1Id !== userId && g.id !== myGameId);
 
   return (
     <>
-      {/* CREATE UI */}
       {!myGameId && (
         <>
           <label className="block mb-1">Bet Amount</label>
@@ -436,34 +445,23 @@ setFlipping(false);
             🎲 Create PvP Game
           </button>
 
-
-          {/* LOBBY */}
           <div className="mt-8">
-            <h2 className="text-xl font-bold mb-3 text-center">
-              Available Games
-            </h2>
+            <h2 className="text-xl font-bold mb-3 text-center">Available Games</h2>
 
             {availableGames.length === 0 && (
-              <p className="text-center text-gray-400">
-                No games available. Be the first to create one!
-              </p>
+              <p className="text-center text-gray-400">No games available. Be the first to create one!</p>
             )}
 
             <div className="space-y-3">
-              {availableGames.map(game => (
+              {availableGames.map((game) => (
                 <div
                   key={game.id}
                   className="bg-gray-900 border border-gray-700 
                              rounded-lg p-4 flex justify-between items-center"
                 >
                   <div>
-                    <p className="font-bold break-all">
-                      {game.player1Id}
-                    </p>
-
-                    <p className="text-gray-400 mt-1">
-                      Bet: {game.betAmount} 🪙
-                    </p>
+                    <p className="font-bold break-all">{game.player1Id}</p>
+                    <p className="text-gray-400 mt-1">Bet: {game.betAmount} 🪙</p>
                   </div>
 
                   <button
@@ -482,135 +480,103 @@ setFlipping(false);
       )}
 
       {myGameId && (
-  <div className="mt-6 bg-gray-900 rounded-xl p-6 shadow-xl border border-gray-700">
+        <div className="mt-6 bg-gray-900 rounded-xl p-6 shadow-xl border border-gray-700">
+          <h2 className="text-center text-xl font-bold mb-6">Coin Flip PvP</h2>
 
-    <h2 className="text-center text-xl font-bold mb-6">
-      Coin Flip PvP
-    </h2>
+          <div className="grid grid-cols-2 gap-6 text-center mb-6">
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <p className="font-bold text-green-400">You</p>
+              <p className="text-sm break-all">{userId}</p>
+              <p className="mt-2 text-yellow-400">Choice: {myChoice || "Not chosen"}</p>
+            </div>
 
-    {/* PLAYERS */}
-    <div className="grid grid-cols-2 gap-6 text-center mb-6">
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <p className="font-bold text-yellow-400">{opponentId ? "Opponent" : "Searching..."}</p>
+              <p className="text-sm break-all">{opponentId || "..."}</p>
+              <p className="mt-2 text-yellow-400">Choice: {opponentChoice || "Not chosen"}</p>
+            </div>
+          </div>
 
-      <div className="bg-gray-800 p-4 rounded-lg">
-  <p className="font-bold text-green-400">You</p>
-  <p className="text-sm break-all">{userId}</p>
+          {gameStatus === "matched" && (
+            <div className="mb-4 text-center text-orange-300 font-semibold">Choice timer: {timeLeft}s</div>
+          )}
 
-  {myChoice && (
-    <p className="mt-2 text-yellow-400">
-      Choice: {myChoice}
-    </p>
-  )}
-</div>
+          {!myChoice && gameStatus === "matched" && !flipping && (
+            <div className="flex justify-between mb-6">
+              <button
+                onClick={() => submitChoice("heads")}
+                disabled={opponentChoice === "heads"}
+                className={`w-full mr-2 p-2 rounded ${
+                  opponentChoice === "heads" ? "bg-gray-500 cursor-not-allowed" : "bg-gray-600 hover:bg-green-700"
+                }`}
+              >
+                Heads
+              </button>
 
-      <div className="bg-gray-800 p-4 rounded-lg">
-  <p className="font-bold text-yellow-400">
-    {opponentId ? "Opponent" : "Searching..."}
-  </p>
+              <button
+                onClick={() => submitChoice("tails")}
+                disabled={opponentChoice === "tails"}
+                className={`w-full ml-2 p-2 rounded ${
+                  opponentChoice === "tails" ? "bg-gray-500 cursor-not-allowed" : "bg-gray-600 hover:bg-green-700"
+                }`}
+              >
+                Tails
+              </button>
+            </div>
+          )}
 
-  <p className="text-sm break-all">
-    {opponentId || "..."}
-  </p>
-
-  {opponentChoice && (
-    <p className="mt-2 text-yellow-400">
-      Choice: {opponentChoice}
-    </p>
-  )}
-</div>
-
-    </div>
-    {!myChoice && !flipping && (
-  <div className="flex justify-between mb-6">
-    <button
-      onClick={() => setMyChoice("heads")}
-      className={`w-full mr-2 p-2 rounded ${
-        myChoice === "heads" ? "bg-green-600" : "bg-gray-600"
-      }`}
-    >
-      Heads
-    </button>
-
-    <button
-      onClick={() => setMyChoice("tails")}
-      className={`w-full ml-2 p-2 rounded ${
-        myChoice === "tails" ? "bg-green-600" : "bg-gray-600"
-      }`}
-    >
-      Tails
-    </button>
-  </div>
-)}
-
-    {/* COIN */}
-    <div className="flex justify-center mb-6">
-
-      <div className="relative w-24 h-24 perspective">
-
-        <div
-          key={flipKey}
-          className={`w-full h-full rounded-full flex items-center justify-center 
+          <div className="flex justify-center mb-6">
+            <div className="relative w-24 h-24 perspective">
+              <div
+                key={flipKey}
+                className={`w-full h-full rounded-full flex items-center justify-center 
           bg-yellow-300 text-black text-4xl font-bold
           ${flipping ? "animate-coin-flip" : ""}`}
-        >
+              >
+                {!result && "🪙"}
+                {result === "heads" && "H"}
+                {result === "tails" && "T"}
+              </div>
+            </div>
+          </div>
 
-          {!result && "🪙"}
+          <p className="text-center text-gray-400 mb-4">Bet Locked: {myBet} 🪙</p>
 
-          {result === "heads" && "H"}
+          {message && <p className="text-center text-blue-300 mb-4">{message}</p>}
 
-          {result === "tails" && "T"}
-
-        </div>
-
-      </div>
-
-    </div>
-
-    {/* BET */}
-    <p className="text-center text-gray-400 mb-4">
-      Bet Locked: {myBet} 🪙
-    </p>
-
-    {/* MESSAGE */}
-    {message && (
-      <p className="text-center text-blue-300 mb-4">
-        {message}
-      </p>
-    )}
-
-    {/* CANCEL */}
-   {!flipping && !gameFinished && (
-  <button
-    onClick={cancelGame}
-        className="mt-2 w-full p-3 rounded-lg font-bold
+          {!flipping && !gameFinished && gameStatus !== "cancelled" && (
+            <button
+              onClick={cancelGame}
+              className="mt-2 w-full p-3 rounded-lg font-bold
                    bg-red-600 hover:bg-red-500
                    transition transform hover:scale-105"
-      >
-        Cancel Game
-      </button>
-    )}
-    {gameFinished && (
-  <button
-    onClick={() => {
-      setGameFinished(false);
-      setMyGameId(null);
-      setMyBet(null);
-      setOpponentId(null);
-      setMyChoice(null);
-      setOpponentChoice(null);
-      setResult(null);
-      setMessage("");
-    }}
-    className="mt-2 w-full p-3 rounded-lg font-bold
+            >
+              Cancel Game
+            </button>
+          )}
+          {(gameFinished || gameStatus === "cancelled") && (
+            <button
+              onClick={() => {
+                setGameFinished(false);
+                setMyGameId(null);
+                setMyBet(null);
+                setOpponentId(null);
+                setMyChoice(null);
+                setOpponentChoice(null);
+                setResult(null);
+                setChoiceDeadline(null);
+                setGameStatus(null);
+                setMessage("");
+              }}
+              className="mt-2 w-full p-3 rounded-lg font-bold
                bg-blue-600 hover:bg-blue-500"
-  >
-    Close
-  </button>
-)}
-
-  </div>
-)}     
+            >
+              Close
+            </button>
+          )}
+        </div>
+      )}
     </>
   );
 }
-
 
