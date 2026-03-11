@@ -230,6 +230,7 @@ betAmount: numeric("bet_amount", {
       scale: 2,
     }).notNull(),
 player1Choice: varchar("player1_choice", { length: 10 }).notNull(),
+player2Choice: varchar("player2_choice", { length: 10 }),
 outcome: varchar("outcome", { length: 10 }),
 winnerId: varchar("winner_id", { length: 255 }),
 result: varchar("result", { length: 10 })
