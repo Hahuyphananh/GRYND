@@ -42,6 +42,7 @@ export async function POST(req) {
 
       if (!joiner) throw new Error("Insufficient balance");
 
+      const player2Choice = game.player1Choice === "heads" ? "tails" : "heads";
       const outcome = Math.random() < 0.5 ? "heads" : "tails";
       const winnerId = outcome === game.player1Choice ? game.player1Id : userId;
       const payout = Number(game.betAmount) * 2;
@@ -57,6 +58,7 @@ export async function POST(req) {
         .update(coinFlipGames)
         .set({
           player2Id: userId,
+          player2Choice,
           outcome,
           winnerId,
           result: winnerId === game.player1Id ? "player1" : "player2",
@@ -65,6 +67,7 @@ export async function POST(req) {
         .where(eq(coinFlipGames.id, gameId));
 
       return {
+        player2Choice,
         outcome,
         winner: winnerId === userId ? "you" : "opponent",
       };
@@ -74,6 +77,7 @@ export async function POST(req) {
       success: true,
       data: {
         gameId,
+        player2Choice: result.player2Choice,
         outcome: result.outcome,
         winner: result.winner,
       },
