@@ -6,22 +6,22 @@ import { eq, and, isNull, sql } from "drizzle-orm";
 
 export async function POST(req) {
   const { userId } = await auth();
-  if (!userId)
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { gameId } = await req.json();
 
   try {
-
-    const game = await db.transaction(async (tx) => {
-
+    const [joinedGame] = await db.transaction(async (tx) => {
       const [game] = await tx
         .select()
         .from(coinFlipGames)
         .where(
           and(
             eq(coinFlipGames.id, gameId),
-            isNull(coinFlipGames.player2Id)
+            isNull(coinFlipGames.player2Id),
+            eq(coinFlipGames.status, "active")
           )
         )
         .for("update");
@@ -44,62 +44,28 @@ export async function POST(req) {
 
       if (!joiner) throw new Error("Insufficient balance");
 
-      const player2Choice =
-        game.player1Choice === "heads" ? "tails" : "heads";
+      const choiceDeadline = new Date(Date.now() + 5000);
 
-      // ⭐ Set game to FLIPPING state
-      await tx
+      const [updatedGame] = await tx
         .update(coinFlipGames)
         .set({
           player2Id: userId,
-          player2Choice,
-          status: "flipping",
+          status: "matched",
+          choiceDeadline,
         })
-        .where(eq(coinFlipGames.id, gameId));
+        .where(eq(coinFlipGames.id, gameId))
+        .returning();
 
-      return game;
-
+      return [updatedGame];
     });
-
-
-    // ⭐ Resolve game AFTER delay (animation time)
-    setTimeout(async () => {
-
-      const outcome = Math.random() < 0.5 ? "heads" : "tails";
-      const winnerId =
-        outcome === game.player1Choice ? game.player1Id : userId;
-
-      const payout = Number(game.betAmount) * 2;
-
-      await db.transaction(async (tx) => {
-
-        await tx
-          .update(users)
-          .set({
-            balance: sql`${users.balance} + ${payout}`,
-          })
-          .where(eq(users.clerkId, winnerId));
-
-        await tx
-          .update(coinFlipGames)
-          .set({
-            outcome,
-            winnerId,
-            result: winnerId === game.player1Id ? "player1" : "player2",
-            status: "finished",
-          })
-          .where(eq(coinFlipGames.id, gameId));
-
-      });
-
-    }, 1500); // animation duration
-
 
     return NextResponse.json({
       success: true,
-      data: { gameId },
+      data: {
+        gameId,
+        choiceDeadline: joinedGame.choiceDeadline,
+      },
     });
-
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 400 });
   }
