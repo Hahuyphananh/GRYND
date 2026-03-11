@@ -327,7 +327,7 @@ setFlipping(false);
     const res = await fetch("/api/coin-flip/pvp/create", {
       method: "POST",
       headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ betAmount: bet, choice: myChoice })
+      body: JSON.stringify({ betAmount: bet, choice: "heads" })
     });
 
     const json = await res.json();
