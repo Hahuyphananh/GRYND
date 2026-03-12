@@ -33,9 +33,37 @@ export async function POST(req) {
         throw new Error("Forbidden");
       }
 
-      if (game.choiceDeadline && new Date(game.choiceDeadline).getTime() < Date.now()) {
-        throw new Error("Choice timer expired");
-      }
+     const deadlinePassed =
+  game.choiceDeadline && new Date(game.choiceDeadline).getTime() < Date.now();
+
+if (deadlinePassed) {
+  // If one player already chose, force the other side
+  if (game.player1Choice && !game.player2Choice) {
+    const forcedChoice = game.player1Choice === "heads" ? "tails" : "heads";
+
+    const [saved] = await tx
+      .update(coinFlipGames)
+      .set({ player2Choice: forcedChoice })
+      .where(eq(coinFlipGames.id, Number(gameId)))
+      .returning();
+
+    return [saved];
+  }
+
+  if (game.player2Choice && !game.player1Choice) {
+    const forcedChoice = game.player2Choice === "heads" ? "tails" : "heads";
+
+    const [saved] = await tx
+      .update(coinFlipGames)
+      .set({ player1Choice: forcedChoice })
+      .where(eq(coinFlipGames.id, Number(gameId)))
+      .returning();
+
+    return [saved];
+  }
+
+  throw new Error("Choice timer expired");
+}
 
       const isPlayer1 = game.player1Id === userId;
       const ownChoice = isPlayer1 ? game.player1Choice : game.player2Choice;

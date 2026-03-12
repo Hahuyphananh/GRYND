@@ -460,7 +460,7 @@ function PvPCoinFlip() {
                              rounded-lg p-4 flex justify-between items-center"
                 >
                   <div>
-                    <p className="font-bold break-all">{game.player1Id}</p>
+                    <p className="font-bold">{game.player1Name || "Unknown Player"}</p>
                     <p className="text-gray-400 mt-1">Bet: {game.betAmount} 🪙</p>
                   </div>
 
