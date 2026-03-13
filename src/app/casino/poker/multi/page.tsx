@@ -36,6 +36,7 @@ type Game = {
   inviteCode?: string;
   waiting?: boolean;
   lastAggressorIndex?: number;
+  hostClerkId?: string;
 };
 
 const SUITS = ["♠", "♥", "♦", "♣"];
@@ -115,7 +116,32 @@ const [selectedAi, setSelectedAi] = useState<Player | null>(null);
   const [aiNameInput, setAiNameInput] = useState("");
   const [aiStackInput, setAiStackInput] = useState<number>(1000);
 
+
   const maxCurrentBet = (players: Player[]) => Math.max(...players.map(p => p.currentBet || 0));
+
+  const saveGameState = async (state: Game) => {
+    if (!state?.inviteCode) return;
+    try {
+      await fetch("/api/poker/game-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameCode: state.inviteCode, state }),
+      });
+    } catch (err) {
+      console.error("Failed to save game state", err);
+    }
+  };
+
+  const fetchGameState = async (code: string) => {
+    try {
+      const res = await fetch(`/api/poker/game-state?code=${encodeURIComponent(code)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.game) setGame(data.game);
+    } catch (err) {
+      console.error("Failed to fetch game state", err);
+    }
+  };
 
   const fetchUserTokens = async () => {
     try {
@@ -191,7 +217,7 @@ function findFirstActorIndex(
   const code = params.get("gameCode");
   if (code) {
     setInviteCode(code);
-    joinGame();
+    joinGame(code);
   }
 }, []);
 
@@ -219,6 +245,14 @@ useEffect(() => {
 
   return () => clearInterval(interval);
 }, []);
+
+useEffect(() => {
+  if (!game?.inviteCode) return;
+  const interval = setInterval(() => {
+    fetchGameState(game.inviteCode!);
+  }, 1500);
+  return () => clearInterval(interval);
+}, [game?.inviteCode]);
 
 
 // Turn timer effect — runs whenever the current turn changes
@@ -281,7 +315,7 @@ useEffect(() => {
       if (!res.ok) return alert("Failed to create game on server");
       const data = await res.json();
 
-      setGame({
+      const newGame: Game = {
         players: [],
         community: [],
         deck,
@@ -294,14 +328,14 @@ useEffect(() => {
         dealerIndex,
         inviteCode: data.gameCode,
         waiting: true,
-      });
+        hostClerkId: data.hostClerkId || clerkId,
+      };
 
+      setGame(newGame);
       if (data.gameCode) {
-  setGame(g => g ? { ...g, inviteCode: data.gameCode } : g);
-
-  // ✅ Update the URL with game code without reload
-  router.replace(`/casino/poker/multi?gameCode=${data.gameCode}`);
-}
+        await saveGameState(newGame);
+        router.replace(`/casino/poker/multi?gameCode=${data.gameCode}`);
+      }
 
 
     } catch (err) {
@@ -357,7 +391,7 @@ console.log("🟢 GAME START TURN CHECK", {
   }))
 });
 
-setGame({
+const nextGame = {
   ...game,
   players,
   deck: newDeck,
@@ -366,7 +400,9 @@ setGame({
   roundStarter: firstActorIndex,
   waiting: false,
   lastAggressorIndex: firstActorIndex,
-});
+};
+setGame(nextGame);
+saveGameState(nextGame);
 
 console.log(
   "TURN DEBUG:",
@@ -377,8 +413,9 @@ console.log(
 } 
 
   //JOIN Game
-async function joinGame() {
-  if (!inviteCode.trim()) return alert("Enter invite code!");
+async function joinGame(codeOverride?: string) {
+  const codeToUse = (codeOverride ?? inviteCode).trim().toUpperCase();
+  if (!codeToUse) return alert("Enter invite code!");
   if (!clerkId) return alert("Not authenticated");
 
   setJoiningGame(true);
@@ -388,7 +425,7 @@ async function joinGame() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        code: inviteCode.trim(),
+        code: codeToUse,
         playerName: name,
       }),
     });
@@ -401,25 +438,19 @@ async function joinGame() {
 
     const serverGame = data.game;
 
-  const seen = new Set<string>();
-
-const players: Player[] = (serverGame.players || [])
-  .filter((p: any) => p.clerkId && !seen.has(p.clerkId))
-  .map((p: any) => {
-    seen.add(p.clerkId);
-    return {
-      id: p.clerkId === clerkId ? clerkId : `player_${p.clerkId}`,
-      name: p.clerkId === clerkId ? name : "Player",
-      seatIndex: p.seat,
-      stack: 1000,
-      hand: [],
-      isAI: false,
-      hasFolded: false,
-      lastAction: "",
-      currentBet: 0,
-    };
-  });
-
+    const players: Player[] = (serverGame.players || [])
+      .filter((p: any) => p.clerkId)
+      .map((p: any) => ({
+        id: p.clerkId,
+        name: p.name || "Player",
+        seatIndex: p.seat,
+        stack: Number(p.stack ?? 1000),
+        hand: [],
+        isAI: !!p.isAI,
+        hasFolded: false,
+        lastAction: "",
+        currentBet: 0,
+      }));
 
     setGame({
       id: serverGame.id,
@@ -435,7 +466,10 @@ const players: Player[] = (serverGame.players || [])
       replayVisible: false,
       dealerIndex: serverGame.dealerIndex ?? 0,
       waiting: true,
+      hostClerkId: serverGame?.playerPositions?.hostClerkId,
     });
+    setInviteCode(codeToUse);
+    await fetchGameState(codeToUse);
 
     // ✅ set balance for THIS user only
     const me = players.find(p => p.id === clerkId);
@@ -462,51 +496,8 @@ const players: Player[] = (serverGame.players || [])
       const data = await res.json();
       if (!res.ok) return alert(data.error || "No public games available");
 
-      const serverGame = data.game as Game;
-
-      // Normalize player objects
-      const players: Player[] = (serverGame.players || []).map(p => ({
-        ...p,
-        currentBet: (p as any).currentBet || 0,
-        hasFolded: (p as any).hasFolded || false,
-        lastAction: (p as any).lastAction || "",
-        hand: (p as any).hand || [],
-        seatIndex: (p as any).seatIndex ?? undefined,
-        id: p.id === clerkId ? clerkId : p.id,
-      }));
-
-      // Set blinds if missing
-      if (!players.some(p => p.lastAction === "Small Blind")) {
-        const sb = 10, bb = 20;
-        const dealerIndex = serverGame.dealerIndex || 0;
-        const sbIndex = (dealerIndex + 1) % players.length;
-        const bbIndex = (dealerIndex + 2) % players.length;
-        players[sbIndex].stack -= sb;
-        players[sbIndex].currentBet = sb;
-        players[sbIndex].lastAction = "Small Blind";
-        players[bbIndex].stack -= bb;
-        players[bbIndex].currentBet = bb;
-        players[bbIndex].lastAction = "Big Blind";
-      }
-
-      const firstActorIndex = findFirstActorIndex(
-  players,
-  serverGame.dealerIndex ?? 0,
-  "pre-flop"
-);
-
-setGame({
-  ...serverGame,
-  players,
-  pot: players.reduce((sum, p) => sum + (p.currentBet || 0), 0),
-  currentTurn: firstActorIndex,
-  roundStarter: firstActorIndex,
-});
-
-
-      const human = players.find(p => !p.isAI);
-      if (human) setBalance(human.stack);
-
+      setInviteCode(data.gameCode);
+      await joinGame(data.gameCode);
     } catch (err) {
       console.error("Join public game error:", err);
       alert("Failed to join public game. See console.");
@@ -697,15 +688,12 @@ const bettingComplete = activePlayers.every(
 );
 
 if (bettingComplete) {
-  setGame(g =>
-    g
-      ? {
-          ...g,
-          players,
-          pot: potNew,
-        }
-      : g
-  );
+  setGame(g => {
+    if (!g) return g;
+    const nextState = { ...g, players, pot: potNew };
+    saveGameState(nextState as Game);
+    return nextState;
+  });
 
   setTimeout(() => advanceStage(), 500);
   return;
@@ -714,16 +702,12 @@ if (bettingComplete) {
 // ▶️ Otherwise → advance to next ACTIVE player
 const nextTurn = nextActiveFrom(currentIndex, players);
 
-setGame(g =>
-  g
-    ? {
-        ...g,
-        players,
-        pot: potNew,
-        currentTurn: nextTurn,
-      }
-    : g
-);
+setGame(g => {
+  if (!g) return g;
+  const nextState = { ...g, players, pot: potNew, currentTurn: nextTurn };
+  saveGameState(nextState as Game);
+  return nextState;
+});
 }
 
   async function advanceStage() {
@@ -775,17 +759,18 @@ console.log("🟡 STAGE ADVANCE TURN CHECK", {
   }))
 });
 
-setGame({
+const nextGame = {
   ...game,
   deck,
   community: comm,
   stage: nextStage,
   players: playersReset,
- currentTurn: firstToAct,
-roundStarter: firstToAct,
-
+  currentTurn: firstToAct,
+  roundStarter: firstToAct,
   lastAggressorIndex: firstToAct,
-});
+};
+setGame(nextGame);
+saveGameState(nextGame);
 
   }
 
@@ -815,7 +800,9 @@ roundStarter: firstToAct,
       fetchUserTokens();
     }
 
-    setGame({...game,players:updated,winnerId:winner.id,pot:0,stage:"showdown",replayVisible:true});
+    const nextGame: Game = {...game,players:updated,winnerId:winner.id,pot:0,stage:"showdown",replayVisible:true};
+    setGame(nextGame);
+    saveGameState(nextGame);
     if (leaveAfterHand) {
       setTimeout(() => {
         window.location.href = "/casino/poker";
@@ -840,7 +827,7 @@ roundStarter: firstToAct,
       lastAction: "",
     }));
 
-    setGame({
+    const nextGame: Game = {
       ...game,
       dealerIndex: nextDealer,
       players: resetPlayers,
@@ -855,7 +842,9 @@ roundStarter: firstToAct,
       smallBlind: newSmallBlind,
       bigBlind: newBigBlind,
       waiting: true,
-    });
+    };
+    setGame(nextGame);
+    saveGameState(nextGame);
   }
 
   function isSeatAvailableForHuman(seatIndex: number) {
@@ -900,50 +889,44 @@ async function sitAsHuman() {
     body: JSON.stringify({
       gameCode: game.inviteCode,
       seatIndex: selectedSeat,
+      playerName: name,
     }),
   });
 
   const data = await res.json();
   if (!res.ok) return alert(data.error || "Failed to sit");
 
-  // ✅ ADD PLAYER LOCALLY (NO joinGame)
-  const newPlayer: Player = {
-    id: clerkId,               // ✅ Clerk ID ONLY
-    name,
-    stack: 1000,
-    hand: [],
-    isAI: false,
-    hasFolded: false,
-    lastAction: "",
-    currentBet: 0,
-    seatIndex: selectedSeat,
-  };
-
-  setGame(g =>
-    g
-      ? { ...g, players: [...g.players, newPlayer] }
-      : g
-  );
-
+  await fetchGameState(game.inviteCode!);
   setSeatModalOpen(false);
   setSelectedSeat(null);
 }
 
-  function addAiToSeat() {
+  async function addAiToSeat() {
     if (!game || selectedSeat === null) return;
+    if (game.hostClerkId && game.hostClerkId !== clerkId) {
+      alert("Only host can add AIs.");
+      return;
+    }
+
     const existingAIs = game.players.filter(p => p.isAI).length;
     const autoName = `AI ${existingAIs + 1}`;
     const nameToUse = aiNameInput.trim() || autoName;
-    const newAi: Player = {
-      id: `ai_${Date.now()}`,
-      name: nameToUse,
-      stack: Number(aiStackInput) || 1000,
-      hand: [],
-      isAI: true,
-      currentBet: 0,
-      seatIndex: selectedSeat,
-    };
-    setGame(g => g ? { ...g, players: [...g.players, newAi] } : g);
+
+    const res = await fetch("/api/poker/sit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        gameCode: game.inviteCode,
+        seatIndex: selectedSeat,
+        isAI: true,
+        playerName: nameToUse,
+        aiStack: Number(aiStackInput) || 1000,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || "Failed to add AI");
+
+    await fetchGameState(game.inviteCode!);
     setSeatModalOpen(false);
     setSelectedSeat(null);
   }
@@ -952,6 +935,8 @@ async function sitAsHuman() {
   function playerAtSeat(seatIndex: number) {
     return game?.players.find(p => p.seatIndex === seatIndex) ?? null;
   }
+const isHost = !!(game && clerkId && game.hostClerkId === clerkId);
+
 // Determine if someone has bet after the flop
 const hasBetThisRound =
   game &&
@@ -986,7 +971,7 @@ if (showJoinForm) {
         />
 
         <button
-          onClick={joinGame}
+          onClick={() => joinGame()}
           className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
         >
           Join Game
@@ -1127,7 +1112,7 @@ if (showJoinForm) {
     </div>
 
     {/* START GAME button */}
-    {game?.waiting && (
+    {game?.waiting && isHost && (
       <button
         onClick={() => {
           if (!game) return;
@@ -1503,7 +1488,7 @@ if (showJoinForm) {
       </button>
 
       {/* AI OPTION (host only, private only) */}
-      {isPrivate && (
+      {isPrivate && isHost && (
         <>
           <div className="border-t border-slate-600 my-3" />
 
