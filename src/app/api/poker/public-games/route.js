@@ -1,23 +1,18 @@
 import { NextResponse } from "next/server";
-import { db } from "../../../../db/client"
+import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
-import { and, lt, eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 export async function GET() {
   try {
-    const games = await db
-      .select()
-      .from(pokerGames)
-      .where(
-        and(
-          eq(pokerGames.isPrivate, false),
-          lt(sql`jsonb_array_length(${pokerGames.players})`, pokerGames.maxPlayers)
-        )
-      );
-
-    return NextResponse.json({
-      count: games.length,
+    const games = await db.select().from(pokerGames).where(eq(pokerGames.isPrivate, false));
+    const openGames = games.filter((g) => {
+      const seats = Array.isArray(g.players) ? g.players : [];
+      const occupied = seats.filter((s) => s?.clerkId).length;
+      return occupied < (g.maxPlayers ?? 6);
     });
+
+    return NextResponse.json({ count: openGames.length });
   } catch (err) {
     console.error("FETCH PUBLIC GAMES ERROR", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
