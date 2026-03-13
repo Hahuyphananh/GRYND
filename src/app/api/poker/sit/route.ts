@@ -6,6 +6,22 @@ import { eq } from "drizzle-orm";
 
 type Seat = { seat: number; clerkId: string | null; name?: string; isAI?: boolean; stack?: number };
 
+function normalizePlayersFromSeats(seats: Seat[]) {
+  return seats
+    .filter((s) => s.clerkId)
+    .map((s) => ({
+      id: s.clerkId,
+      name: s.name || (s.isAI ? "AI" : "Player"),
+      stack: s.stack ?? 1000,
+      hand: [],
+      isAI: !!s.isAI,
+      hasFolded: false,
+      lastAction: "",
+      currentBet: 0,
+      seatIndex: s.seat,
+    }));
+}
+
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
@@ -49,9 +65,18 @@ export async function POST(req: Request) {
       return { ...p, clerkId: userId, name: playerName || "Player", isAI: false, stack: p.stack ?? 1000 };
     });
 
+    const currentState = (meta as { state?: any } | null)?.state;
+    const nextState = {
+      ...(currentState ?? {}),
+      players: normalizePlayersFromSeats(updatedPlayers),
+    };
+
     const [updatedGame] = await db
       .update(pokerGames)
-      .set({ players: updatedPlayers })
+      .set({
+        players: updatedPlayers,
+        playerPositions: { ...(meta || {}), state: nextState },
+      })
       .where(eq(pokerGames.gameCode, gameCode))
       .returning();
 
