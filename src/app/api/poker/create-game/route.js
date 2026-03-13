@@ -9,33 +9,26 @@ export async function POST(req) {
     const maxPlayers = body.maxPlayers ?? 6;
     const isPrivate = body.isPrivate ?? true;
 
-    // ✅ Always get host from Clerk
     const { userId: clerkId } = await auth();
     if (!clerkId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // ✅ Generate game code
     const gameCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    // ✅ Create EMPTY game
     const [newGame] = await db
       .insert(pokerGames)
       .values({
-        hostClerkId: clerkId,   // ⭐ IMPORTANT
         maxPlayers,
         isPrivate,
         gameCode,
-
-        status: "waiting",      // ⭐ lobby state
+        status: "waiting",
         pot: "0",
-        round: "preflop",
-
+        round: "pre-flop",
         communityCards: [],
         deck: [],
         discardPile: [],
-
-        // ❌ NO players here
+        playerPositions: { hostClerkId: clerkId, state: null },
       })
       .returning();
 
@@ -43,6 +36,7 @@ export async function POST(req) {
       success: true,
       game: newGame,
       gameCode: newGame.gameCode,
+      hostClerkId: clerkId,
     });
   } catch (err) {
     console.error("CREATE GAME ERROR", err);
