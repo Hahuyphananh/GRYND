@@ -1,9 +1,20 @@
-// File: src/app/api/uno/determine-winner/route.js
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
+
+function safeParse(value, fallback = []) {
+  if (value == null) return fallback;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return fallback;
+    }
+  }
+  return value;
+}
 
 export async function POST(req) {
   try {
@@ -17,7 +28,6 @@ export async function POST(req) {
       return NextResponse.json({ error: "Missing gameId" }, { status: 400 });
     }
 
-    // Fetch the current game
     const game = await db.query.unoGames.findFirst({
       where: eq(unoGames.id, gameId),
     });
@@ -25,50 +35,103 @@ export async function POST(req) {
       return NextResponse.json({ error: "Game not found" }, { status: 404 });
     }
 
-    // Prevent double processing
-    if (game.result !== "pending" && game.winner) {
-      const user = await db.query.users.findFirst({
-        where: eq(users.clerkId, userId),
-      });
+    const requester = await db.query.users.findFirst({ where: eq(users.clerkId, userId) });
+    if (!requester) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const isMultiplayer = Boolean(game.player2Id);
+
+    if (game.result !== "pending" && game.winner && game.winner !== "pending") {
       return NextResponse.json({
         success: true,
         winner: game.winner,
         result: game.result,
-        newBalance: parseFloat(user.balance),
+        newBalance: parseFloat(requester.balance),
         message: "Winner already determined.",
       });
     }
 
-    // Parse player and AI hands
-    const playerCards = typeof game.playerHand === "string"
-      ? JSON.parse(game.playerHand)
-      : game.playerHand || [];
-    const aiCards = typeof game.aiHand === "string"
-      ? JSON.parse(game.aiHand)
-      : game.aiHand || [];
+    if (isMultiplayer) {
+      const role = game.userId === requester.id ? "player1" : game.player2Id === requester.id ? "player2" : null;
+      if (!role) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
 
-    const user = await db.query.users.findFirst({
-      where: eq(users.clerkId, userId),
-    });
-    if (!user)
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      const player1Cards = safeParse(game.player1Hand, []);
+      const player2Cards = safeParse(game.player2Hand, []);
 
-    let newBalance = parseFloat(user.balance);
+      let winner = null;
+      if (player1Cards.length === 0) winner = "player1";
+      else if (player2Cards.length === 0) winner = "player2";
+
+      if (!winner) {
+        return NextResponse.json({
+          success: true,
+          winner: null,
+          result: "pending",
+          message: "Game still in progress.",
+        });
+      }
+
+      const winnerUserId = winner === "player1" ? game.userId : game.player2Id;
+      const winnerUser = await db.query.users.findFirst({ where: eq(users.id, winnerUserId) });
+
+      if (!winnerUser) {
+        return NextResponse.json({ error: "Winner not found" }, { status: 404 });
+      }
+
+      const payout = (parseFloat(game.pot || "0") * 0.95).toFixed(2);
+
+      await db.transaction(async (tx) => {
+        await tx
+          .update(unoGames)
+          .set({
+            winner,
+            result: "finished",
+            status: "finished",
+            payout,
+          })
+          .where(eq(unoGames.id, gameId));
+
+        await tx
+          .update(users)
+          .set({ balance: (parseFloat(winnerUser.balance) + parseFloat(payout)).toFixed(2) })
+          .where(eq(users.id, winnerUserId));
+      });
+
+      const didRequesterWin = winner === role;
+      const updatedRequester = didRequesterWin
+        ? parseFloat(requester.balance) + parseFloat(payout)
+        : parseFloat(requester.balance);
+
+      return NextResponse.json({
+        success: true,
+        winner,
+        result: didRequesterWin ? "win" : "lose",
+        newBalance: updatedRequester,
+        message: didRequesterWin
+          ? `🎉 You won! Payout after tax: ${payout}`
+          : "😢 Opponent won. You lost your bet.",
+      });
+    }
+
+    const playerCards = safeParse(game.playerHand, []);
+    const aiCards = safeParse(game.aiHand, []);
+
+    let newBalance = parseFloat(requester.balance);
     let winner = null;
     let result = "pending";
 
-    // Determine winner logic
     if (playerCards.length === 0) {
       winner = "player";
       result = "win";
-      const profit = parseFloat(game.betAmount) * 2; // double bet
-      const taxedProfit = profit * 0.95; // 5% tax
+      const taxedProfit = parseFloat(game.pot || "0") * 0.95;
       newBalance += taxedProfit;
     } else if (aiCards.length === 0) {
       winner = "ai";
       result = "lose";
     } else {
-      // Neither finished
       return NextResponse.json({
         success: true,
         winner: null,
@@ -77,21 +140,16 @@ export async function POST(req) {
       });
     }
 
-    // ✅ Update game in DB
     await db
       .update(unoGames)
       .set({
         winner,
         result,
         status: "finished",
-        payout:
-          result === "win"
-            ? (parseFloat(game.betAmount) * 1.9).toFixed(2)
-            : "0.00",
+        payout: result === "win" ? (parseFloat(game.pot || "0") * 0.95).toFixed(2) : "0.00",
       })
       .where(eq(unoGames.id, gameId));
 
-    // ✅ Update user balance if player wins
     if (result === "win") {
       await db
         .update(users)
@@ -106,7 +164,7 @@ export async function POST(req) {
       newBalance,
       message:
         result === "win"
-          ? `🎉 You won! Profit after tax: ${(parseFloat(game.betAmount) * 0.95).toFixed(2)}`
+          ? `🎉 You won! Payout after tax: ${(parseFloat(game.pot || "0") * 0.95).toFixed(2)}`
           : "😢 The AI won. You lost your bet.",
     });
   } catch (error) {

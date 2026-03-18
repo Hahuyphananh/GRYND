@@ -113,6 +113,8 @@ export async function POST(request) {
           topCard,
           currentColor,
           turn: "player",
+          status: "active",
+          winner: "pending",
         })
         .returning();
 
