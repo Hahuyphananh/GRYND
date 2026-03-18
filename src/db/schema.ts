@@ -255,6 +255,7 @@ createdAt: timestamp("created_at").defaultNow().notNull(),
 export const unoGames = pgTable("uno_games", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
+  player2Id: integer("player2_id"),
   betAmount: text("bet_amount").notNull(), // stored as string to match other tables
   pot: text("pot").notNull(), // total pot
   result: text("result").notNull(), // 'win' | 'lose' | 'draw' | 'pending'
@@ -272,10 +273,11 @@ aiHand: json("ai_hand").default("[]").notNull(),
   discardPile: json("discard_pile").notNull(),
   turn: text("turn").notNull(), // 'player' / 'ai' OR 'player1' / 'player2'
   currentColor: text("current_color"),
+  topCard: json("top_card"),
   status: text("status").default("waiting").notNull(), // 'waiting' | 'active' | 'finished'
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  winner: text("winner").notNull(), // 'player' / 'ai' OR 'player1' / 'player2'
+  winner: text("winner").default("pending").notNull(), // 'player' / 'ai' OR 'player1' / 'player2'
 });
 
 
