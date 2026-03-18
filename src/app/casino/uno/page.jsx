@@ -8,6 +8,7 @@ import NavigationBar from "../../../components/navigation-bar";
 
 export default function UnoGamePage() {
   const [game, setGame] = useState(null);
+  const [gameMode, setGameMode] = useState("ai");
   const [playerHand, setPlayerHand] = useState([]);
   const [aiHandCount, setAiHandCount] = useState(0);
   const [topCard, setTopCard] = useState(null);
@@ -54,7 +55,12 @@ const [historyIndex, setHistoryIndex] = useState(null); // null = live game
       });
       const data = await res.json();
       if (data.winner) {
-        setMessage(`🎉 ${data.winner} a gagné la partie !`);
+        if (gameMode === "online") {
+          const youWon = data.result === "win";
+          setMessage(youWon ? "🎉 Tu as gagné la partie !" : "😢 Ton adversaire a gagné la partie !");
+        } else {
+          setMessage(`🎉 ${data.winner} a gagné la partie !`);
+        }
         setIsPlayerTurn(false);
       }
     } catch (err) {
@@ -73,6 +79,7 @@ const [historyIndex, setHistoryIndex] = useState(null); // null = live game
 
     const data = await res.json();
     if (data.success) {
+      setGameMode("ai");
       setGame(data.data);
       setPlayerHand(data.data.playerHand);
       setAiHandCount(data.data.aiHand.length);
@@ -160,18 +167,17 @@ const sendPlayCard = async (card, chosenColor = null) => {
     }
 
     setPlayerHand(data.data.playerHand);
-   setTopCard(data.data.topCard);
-setTurnHistory((prev) => [...prev, data.data.topCard]);
-setHistoryIndex(null); // back to live mode
-
-    setAiHandCount(data.data.aiHandCount);
+    setTopCard(data.data.topCard);
+    setTurnHistory((prev) => [...prev, data.data.topCard]);
+    setHistoryIndex(null); // back to live mode
+    setAiHandCount(data.data.aiHandCount ?? data.data.opponentHandCount ?? 0);
     setIsPlayerTurn(data.data.isPlayerTurn);
     setMessage(data.data.message || "À ton tour !");
     setPendingCard(null);       // ✅ clear pending card
     setShowColorPicker(false);  // ✅ make sure popup closes
     await checkForWinner(game.id);
 
-    if (!data.data.isPlayerTurn) {
+    if (!data.data.isPlayerTurn && gameMode === "ai") {
       setTimeout(() => handleAITurn(game.id), 1000);
     }
   } else {
@@ -196,6 +202,8 @@ const joinOnlineGame = async () => {
       if (data.waiting) {
         // Waiting mode
         setMessage("⏳ En attente d'un autre joueur...");
+        setGameMode("online");
+        if (data.newBalance) setTokens({ balance: data.newBalance });
         
         // Poll every 3s to check if game became active
         const interval = setInterval(async () => {
@@ -209,16 +217,13 @@ const joinOnlineGame = async () => {
 
             if (d2.success && d2.status === "active") {
               clearInterval(interval);
-
-              const playerHand = d2.data.player1Hand || d2.data.player2Hand; // pick based on role
-              const opponentHand = d2.data.player1Hand ? d2.data.player2Hand : d2.data.player1Hand;
-
+              setGameMode("online");
               setGame(d2.data);
-              setPlayerHand(playerHand);
-              setAiHandCount(opponentHand.length);
+              setPlayerHand(d2.data.playerHand);
+              setAiHandCount(d2.data.opponentHandCount);
               setTopCard(d2.data.topCard);
               setTurnHistory([d2.data.topCard]);
-              setIsPlayerTurn(d2.data.turn === "player1"); // adjust if needed
+              setIsPlayerTurn(d2.data.turn === d2.data.role);
               setMessage("✅ Partie trouvée !");
             }
           } catch (err) {
@@ -232,12 +237,13 @@ const joinOnlineGame = async () => {
       }
 
       // Immediate match → join as player2
+      setGameMode("online");
       setGame(data.data);
       setPlayerHand(data.data.playerHand);
       setAiHandCount(data.data.opponentHandCount);
       setTopCard(data.data.topCard);
       setTurnHistory([data.data.topCard]);
-      setIsPlayerTurn(data.data.turn === "player2");
+      setIsPlayerTurn(data.data.turn === (data.data.role || "player2"));
       setMessage("✅ Partie en ligne trouvée !");
       setTokens({ balance: data.data.newBalance });
     } else {
@@ -249,6 +255,38 @@ const joinOnlineGame = async () => {
   }
   setLoading(false);
 };
+
+useEffect(() => {
+  if (!game?.id || gameMode !== "online") return;
+
+  const interval = setInterval(async () => {
+    try {
+      const res = await fetch("/api/uno/check-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId: game.id }),
+      });
+      const data = await res.json();
+
+      if (!data.success || !data.data) return;
+
+      setPlayerHand(data.data.playerHand);
+      setAiHandCount(data.data.opponentHandCount);
+      setTopCard(data.data.topCard);
+      setIsPlayerTurn(data.data.turn === data.data.role);
+      setTurnHistory((prev) => {
+        const last = prev[prev.length - 1];
+        const sameCard = last?.color === data.data.topCard?.color && last?.value === data.data.topCard?.value;
+        if (sameCard) return prev;
+        return [...prev, data.data.topCard];
+      });
+    } catch (err) {
+      console.error("Erreur sync online:", err);
+    }
+  }, 2000);
+
+  return () => clearInterval(interval);
+}, [game?.id, gameMode]);
 
 
 const drawCard = async () => {
@@ -268,11 +306,14 @@ const drawCard = async () => {
 setTurnHistory((prev) => [...prev, data.data.topCard]);
 setHistoryIndex(null); // back to live mode
 
-  setIsPlayerTurn(false);
-  setMessage("L'IA joue...");
+  setAiHandCount(data.data.aiHandCount ?? data.data.opponentHandCount ?? aiHandCount);
+  setIsPlayerTurn(data.data.isPlayerTurn);
+  setMessage(gameMode === "ai" ? "L'IA joue..." : "Tour adverse...");
   await checkForWinner(game.id);
 
-  setTimeout(() => handleAITurn(game.id), 1000);
+  if (gameMode === "ai") {
+    setTimeout(() => handleAITurn(game.id), 1000);
+  }
 }
 else {
       setMessage(data.error);
@@ -288,7 +329,7 @@ return (
 
   <div className="bg-[#003366] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8">
  <NavigationBar currentPath="/casino" />
-    <h1 className="text-3xl mb-2 font-bold">UNO vs IA</h1>
+    <h1 className="text-3xl mb-2 font-bold">{gameMode === "online" ? "UNO 1v1 en ligne" : "UNO vs IA"}</h1>
 
     {tokens && (
       <p className="text-yellow-300 mb-4 text-lg">
@@ -334,8 +375,8 @@ return (
   </div>
 ) : (
   <div className="w-full max-w-5xl aspect-[2/1] bg-green-700 rounded-full flex flex-col justify-between items-center shadow-2xl border-8 border-green-900 p-6 relative">
-    {/* AI hand */}
-    Main de l'IA:
+    {/* Opponent hand */}
+    {gameMode === "online" ? "Main adverse:" : "Main de l'IA:"}
     <div className="flex justify-center gap-2">
       {Array(aiHandCount)
         .fill(0)
