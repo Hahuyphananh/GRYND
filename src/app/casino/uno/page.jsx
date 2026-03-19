@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import UnoCard from "../../../components/UnoCard"; 
 import UnoBack from "../../../components/UnoBack"; 
 import NavigationBar from "../../../components/navigation-bar";
@@ -17,13 +16,13 @@ export default function UnoGamePage() {
   const [message, setMessage] = useState("");
   const [betAmount, setBetAmount] = useState(100);
   const [tokens, setTokens] = useState(null);
-  const [colorChoice, setColorChoice] = useState(null);
 const [showColorPicker, setShowColorPicker] = useState(false);
 const [pendingCard, setPendingCard] = useState(null);
 const [turnHistory, setTurnHistory] = useState([]);
 const [historyIndex, setHistoryIndex] = useState(null); // null = live game
-
-  const router = useRouter();
+const [showGameModeModal, setShowGameModeModal] = useState(false);
+const [availableGames, setAvailableGames] = useState([]);
+const [isLoadingAvailableGames, setIsLoadingAvailableGames] = useState(false);
 
   // ✅ Load tokens on page mount
   useEffect(() => {
@@ -44,6 +43,34 @@ const [historyIndex, setHistoryIndex] = useState(null); // null = live game
     };
     fetchTokens();
   }, []);
+
+  const fetchAvailableGames = async () => {
+    setIsLoadingAvailableGames(true);
+    try {
+      const res = await fetch("/api/uno/available-games", {
+        method: "GET",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAvailableGames(data.data || []);
+      }
+    } catch (err) {
+      console.error("Erreur lors du chargement des parties disponibles:", err);
+    }
+    setIsLoadingAvailableGames(false);
+  };
+
+  useEffect(() => {
+    if (game) return;
+    fetchAvailableGames();
+
+    const interval = setInterval(() => {
+      fetchAvailableGames();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [game]);
 
   // ✅ Winner check helper
   const checkForWinner = async (gameId) => {
@@ -186,6 +213,35 @@ const sendPlayCard = async (card, chosenColor = null) => {
 
   setLoading(false);
 };
+const waitForOnlineGameStart = (gameId) => {
+  const interval = setInterval(async () => {
+    try {
+      const res2 = await fetch("/api/uno/check-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId }),
+      });
+      const d2 = await res2.json();
+
+      if (d2.success && d2.status === "active") {
+        clearInterval(interval);
+        setGameMode("online");
+        setGame(d2.data);
+        setPlayerHand(d2.data.playerHand);
+        setAiHandCount(d2.data.opponentHandCount);
+        setTopCard(d2.data.topCard);
+        setTurnHistory([d2.data.topCard]);
+        setIsPlayerTurn(d2.data.turn === d2.data.role);
+        setMessage("✅ Partie trouvée !");
+      }
+    } catch (err) {
+      console.error("Erreur check-game:", err);
+    }
+  }, 3000);
+
+  setTimeout(() => clearInterval(interval), 60000);
+};
+
 const joinOnlineGame = async () => {
   setLoading(true);
   try {
@@ -193,50 +249,12 @@ const joinOnlineGame = async () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ betAmount }),
+      body: JSON.stringify({ mode: "join-random" }),
     });
 
     const data = await res.json();
 
     if (data.success) {
-      if (data.waiting) {
-        // Waiting mode
-        setMessage("⏳ En attente d'un autre joueur...");
-        setGameMode("online");
-        if (data.newBalance) setTokens({ balance: data.newBalance });
-        
-        // Poll every 3s to check if game became active
-        const interval = setInterval(async () => {
-          try {
-            const res2 = await fetch("/api/uno/check-game", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ gameId: data.gameId }),
-            });
-            const d2 = await res2.json();
-
-            if (d2.success && d2.status === "active") {
-              clearInterval(interval);
-              setGameMode("online");
-              setGame(d2.data);
-              setPlayerHand(d2.data.playerHand);
-              setAiHandCount(d2.data.opponentHandCount);
-              setTopCard(d2.data.topCard);
-              setTurnHistory([d2.data.topCard]);
-              setIsPlayerTurn(d2.data.turn === d2.data.role);
-              setMessage("✅ Partie trouvée !");
-            }
-          } catch (err) {
-            console.error("Erreur check-game:", err);
-          }
-        }, 3000);
-
-        // Stop polling after 1 min
-        setTimeout(() => clearInterval(interval), 60000);
-        return;
-      }
-
-      // Immediate match → join as player2
       setGameMode("online");
       setGame(data.data);
       setPlayerHand(data.data.playerHand);
@@ -246,12 +264,44 @@ const joinOnlineGame = async () => {
       setIsPlayerTurn(data.data.turn === (data.data.role || "player2"));
       setMessage("✅ Partie en ligne trouvée !");
       setTokens({ balance: data.data.newBalance });
+      fetchAvailableGames();
     } else {
       setMessage(data.error || "Erreur lors de la recherche de partie");
     }
   } catch (err) {
     console.error("Erreur joinOnlineGame:", err);
     setMessage("Impossible de rejoindre une partie");
+  }
+  setLoading(false);
+};
+
+const createOnlineGame = async () => {
+  setLoading(true);
+  setShowGameModeModal(false);
+
+  try {
+    const res = await fetch("/api/uno/join-online", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ mode: "create", betAmount }),
+    });
+
+    const data = await res.json();
+    if (data.success && data.waiting) {
+      setMessage("⏳ En attente d'un autre joueur...");
+      setGameMode("online");
+      if (data.newBalance) {
+        setTokens({ balance: data.newBalance });
+      }
+      waitForOnlineGameStart(data.gameId);
+      fetchAvailableGames();
+    } else {
+      setMessage(data.error || "Impossible de créer la partie en ligne");
+    }
+  } catch (err) {
+    console.error("Erreur createOnlineGame:", err);
+    setMessage("Impossible de créer la partie en ligne");
   }
   setLoading(false);
 };
@@ -354,7 +404,7 @@ return (
     </label>
 
     <button
-      onClick={initializeGame}
+      onClick={() => setShowGameModeModal(true)}
       disabled={loading}
       className="bg-yellow-500 hover:bg-yellow-600 text-black px-8 py-3 rounded-full font-bold shadow-lg transition"
     >
@@ -365,8 +415,64 @@ return (
   disabled={loading}
   className="mt-4 bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-lg transition"
 >
-  {loading ? "Recherche..." : "Rejoindre une partie en ligne"}
+  {loading ? "Recherche..." : "Rejoindre une partie"}
 </button>
+
+    <div className="mt-6 w-full max-w-md bg-green-800/70 rounded-2xl p-4 border border-green-900">
+      <h3 className="text-lg font-bold mb-3">Parties en ligne disponibles</h3>
+      {isLoadingAvailableGames ? (
+        <p className="text-sm text-gray-200">Chargement des parties...</p>
+      ) : availableGames.length === 0 ? (
+        <p className="text-sm text-gray-200">Aucune partie en attente pour le moment.</p>
+      ) : (
+        <ul className="space-y-2 text-sm">
+          {availableGames.slice(0, 6).map((onlineGame) => (
+            <li
+              key={onlineGame.id}
+              className="flex justify-between items-center bg-green-900/60 rounded-lg px-3 py-2"
+            >
+              <span>
+                {onlineGame.hostName} • Mise: {onlineGame.betAmount}
+              </span>
+              <span className={onlineGame.canAfford ? "text-green-300" : "text-red-300"}>
+                {onlineGame.canAfford ? "Disponible" : "Solde insuffisant"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+
+    {showGameModeModal && (
+      <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+        <div className="bg-white text-black rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+          <h3 className="text-xl font-bold mb-4 text-center">Choisir un mode</h3>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => {
+                setShowGameModeModal(false);
+                initializeGame();
+              }}
+              className="bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold"
+            >
+              Jouer contre l'IA
+            </button>
+            <button
+              onClick={createOnlineGame}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-bold"
+            >
+              Créer une partie multijoueur
+            </button>
+            <button
+              onClick={() => setShowGameModeModal(false)}
+              className="bg-gray-300 hover:bg-gray-400 text-black px-4 py-2 rounded-lg font-semibold"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
 
     {message && (
