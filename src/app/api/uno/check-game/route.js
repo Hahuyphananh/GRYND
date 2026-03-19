@@ -46,6 +46,10 @@ export async function POST(request) {
     }
 
     if (game.status === "waiting") {
+      if (!isPlayer1) {
+        return new Response(JSON.stringify({ success: false, error: "Forbidden" }), { status: 403 });
+      }
+
       return new Response(JSON.stringify({
         success: true,
         status: "waiting",
