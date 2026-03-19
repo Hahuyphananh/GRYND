@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 function safeParse(value, fallback = []) {
   if (value == null) return fallback;
@@ -83,8 +83,8 @@ export async function POST(req) {
 
       const payout = (parseFloat(game.pot || "0") * 0.95).toFixed(2);
 
-      await db.transaction(async (tx) => {
-        await tx
+      const didFinalize = await db.transaction(async (tx) => {
+        const finalized = await tx
           .update(unoGames)
           .set({
             winner,
@@ -92,13 +92,35 @@ export async function POST(req) {
             status: "finished",
             payout,
           })
-          .where(eq(unoGames.id, gameId));
+          .where(and(eq(unoGames.id, gameId), eq(unoGames.result, "pending"), eq(unoGames.winner, "pending")))
+          .returning({ id: unoGames.id });
+
+        if (finalized.length === 0) {
+          return false;
+        }
 
         await tx
           .update(users)
           .set({ balance: (parseFloat(winnerUser.balance) + parseFloat(payout)).toFixed(2) })
           .where(eq(users.id, winnerUserId));
+
+        return true;
       });
+
+      if (!didFinalize) {
+        const refreshedGame = await db.query.unoGames.findFirst({ where: eq(unoGames.id, gameId) });
+        const requesterRole = role;
+        const alreadyWinner = refreshedGame?.winner || winner;
+        const didRequesterWin = alreadyWinner === requesterRole;
+
+        return NextResponse.json({
+          success: true,
+          winner: alreadyWinner,
+          result: didRequesterWin ? "win" : "lose",
+          newBalance: parseFloat(requester.balance),
+          message: "Winner already determined.",
+        });
+      }
 
       const didRequesterWin = winner === role;
       const updatedRequester = didRequesterWin
@@ -140,7 +162,7 @@ export async function POST(req) {
       });
     }
 
-    await db
+    const finalizedAiGame = await db
       .update(unoGames)
       .set({
         winner,
@@ -148,7 +170,18 @@ export async function POST(req) {
         status: "finished",
         payout: result === "win" ? (parseFloat(game.pot || "0") * 0.95).toFixed(2) : "0.00",
       })
-      .where(eq(unoGames.id, gameId));
+      .where(and(eq(unoGames.id, gameId), eq(unoGames.result, "pending"), eq(unoGames.winner, "pending")))
+      .returning({ id: unoGames.id });
+
+    if (finalizedAiGame.length === 0) {
+      return NextResponse.json({
+        success: true,
+        winner: game.winner,
+        result: game.result,
+        newBalance: parseFloat(requester.balance),
+        message: "Winner already determined.",
+      });
+    }
 
     if (result === "win") {
       await db
