@@ -52,41 +52,48 @@ async function joinOpenGame({ user, clerkId, openGame }) {
   const player1Hand = safeParse(openGame.player1Hand, []);
   const player2Hand = deck.splice(0, 7);
 
-  const updated = await db.transaction(async (tx) => {
-    await tx.update(users)
-      .set({ balance: (balance - joinBet).toFixed(2) })
-      .where(eq(users.clerkId, clerkId));
+  try {
+    const updated = await db.transaction(async (tx) => {
+      await tx.update(users)
+        .set({ balance: (balance - joinBet).toFixed(2) })
+        .where(eq(users.clerkId, clerkId));
 
-    const [game] = await tx.update(unoGames)
-      .set({
-        player2Id: user.id,
-        player2Hand,
-        deck,
-        status: "active",
-        turn: Math.random() > 0.5 ? "player1" : "player2",
-      })
-      .where(and(eq(unoGames.id, openGame.id), isNull(unoGames.player2Id), eq(unoGames.status, "waiting")))
-      .returning();
+      const [game] = await tx.update(unoGames)
+        .set({
+          player2Id: user.id,
+          player2Hand,
+          deck,
+          status: "active",
+          turn: Math.random() > 0.5 ? "player1" : "player2",
+        })
+        .where(and(eq(unoGames.id, openGame.id), isNull(unoGames.player2Id), eq(unoGames.status, "waiting")))
+        .returning();
 
-    if (!game) throw new Error("Game just got filled");
-    return game;
-  });
+      if (!game) throw new Error("GAME_ALREADY_FILLED");
+      return game;
+    });
 
-  return new Response(JSON.stringify({
-    success: true,
-    data: {
-      id: updated.id,
-      mode: "online",
-      role: "player2",
-      newBalance: (balance - joinBet).toFixed(2),
-      playerHand: player2Hand,
-      opponentHandCount: player1Hand.length,
-      topCard: safeParse(updated.topCard, null),
-      currentColor: updated.currentColor,
-      turn: updated.turn,
-      betAmount: openGame.betAmount,
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        id: updated.id,
+        mode: "online",
+        role: "player2",
+        newBalance: (balance - joinBet).toFixed(2),
+        playerHand: player2Hand,
+        opponentHandCount: player1Hand.length,
+        topCard: safeParse(updated.topCard, null),
+        currentColor: updated.currentColor,
+        turn: updated.turn,
+        betAmount: openGame.betAmount,
+      }
+    }), { status: 200 });
+  } catch (error) {
+    if (error?.message === "GAME_ALREADY_FILLED") {
+      return new Response(JSON.stringify({ success: false, error: "Game is no longer available" }), { status: 409 });
     }
-  }), { status: 200 });
+    throw error;
+  }
 }
 
 async function createWaitingGame({ user, clerkId, betAmount }) {
@@ -151,7 +158,7 @@ export async function POST(request) {
   const { userId } = await auth();
   if (!userId) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
 
-  const { betAmount, mode = "join_or_create" } = await request.json();
+  const { betAmount, mode = "join_or_create", gameId } = await request.json();
 
   try {
     const user = await db.query.users.findFirst({ where: eq(users.clerkId, userId) });
@@ -173,6 +180,23 @@ export async function POST(request) {
       }
       const randomGame = affordableWaitingGames[Math.floor(Math.random() * affordableWaitingGames.length)];
       return await joinOpenGame({ user, clerkId: userId, openGame: randomGame });
+    }
+
+    if (mode === "join-specific") {
+      if (!gameId) {
+        return new Response(JSON.stringify({ success: false, error: "Missing gameId" }), { status: 400 });
+      }
+
+      const targetedGame = waitingGames.find((g) => g.id === Number(gameId));
+      if (!targetedGame) {
+        return new Response(JSON.stringify({ success: false, error: "Game is not available" }), { status: 404 });
+      }
+
+      if (parseFloat(user.balance) < parseFloat(targetedGame.betAmount)) {
+        return new Response(JSON.stringify({ success: false, error: "Insufficient balance for this game" }), { status: 400 });
+      }
+
+      return await joinOpenGame({ user, clerkId: userId, openGame: targetedGame });
     }
 
     if (mode === "create") {
