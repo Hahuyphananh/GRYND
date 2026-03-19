@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import UnoCard from "../../../components/UnoCard"; 
 import UnoBack from "../../../components/UnoBack"; 
 import NavigationBar from "../../../components/navigation-bar";
@@ -23,6 +23,10 @@ const [historyIndex, setHistoryIndex] = useState(null); // null = live game
 const [showGameModeModal, setShowGameModeModal] = useState(false);
 const [availableGames, setAvailableGames] = useState([]);
 const [isLoadingAvailableGames, setIsLoadingAvailableGames] = useState(false);
+const [waitingGameId, setWaitingGameId] = useState(null);
+const [isCancellingWaitingGame, setIsCancellingWaitingGame] = useState(false);
+const availableGamesPollingRef = useRef(null);
+const waitingPollRef = useRef(null);
 
   // ✅ Load tokens on page mount
   useEffect(() => {
@@ -45,6 +49,8 @@ const [isLoadingAvailableGames, setIsLoadingAvailableGames] = useState(false);
   }, []);
 
   const fetchAvailableGames = async () => {
+    if (typeof document !== "undefined" && document.hidden) return;
+    if (game || waitingGameId) return;
     setIsLoadingAvailableGames(true);
     try {
       const res = await fetch("/api/uno/available-games", {
@@ -62,15 +68,32 @@ const [isLoadingAvailableGames, setIsLoadingAvailableGames] = useState(false);
   };
 
   useEffect(() => {
-    if (game) return;
+    if (availableGamesPollingRef.current) {
+      clearInterval(availableGamesPollingRef.current);
+      availableGamesPollingRef.current = null;
+    }
+
+    if (game || waitingGameId) return;
     fetchAvailableGames();
 
-    const interval = setInterval(() => {
+    availableGamesPollingRef.current = setInterval(() => {
       fetchAvailableGames();
-    }, 5000);
+    }, 10000);
 
-    return () => clearInterval(interval);
-  }, [game]);
+    const onVisibilityChange = () => {
+      if (!document.hidden) fetchAvailableGames();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      if (availableGamesPollingRef.current) {
+        clearInterval(availableGamesPollingRef.current);
+        availableGamesPollingRef.current = null;
+      }
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [game, waitingGameId]);
 
   // ✅ Winner check helper
   const checkForWinner = async (gameId) => {
@@ -214,7 +237,12 @@ const sendPlayCard = async (card, chosenColor = null) => {
   setLoading(false);
 };
 const waitForOnlineGameStart = (gameId) => {
-  const interval = setInterval(async () => {
+  if (waitingPollRef.current) {
+    clearInterval(waitingPollRef.current);
+    waitingPollRef.current = null;
+  }
+
+  waitingPollRef.current = setInterval(async () => {
     try {
       const res2 = await fetch("/api/uno/check-game", {
         method: "POST",
@@ -224,7 +252,9 @@ const waitForOnlineGameStart = (gameId) => {
       const d2 = await res2.json();
 
       if (d2.success && d2.status === "active") {
-        clearInterval(interval);
+        clearInterval(waitingPollRef.current);
+        waitingPollRef.current = null;
+        setWaitingGameId(null);
         setGameMode("online");
         setGame(d2.data);
         setPlayerHand(d2.data.playerHand);
@@ -238,8 +268,76 @@ const waitForOnlineGameStart = (gameId) => {
       console.error("Erreur check-game:", err);
     }
   }, 3000);
+};
 
-  setTimeout(() => clearInterval(interval), 60000);
+const cancelWaitingOnlineGame = async () => {
+  if (!waitingGameId || isCancellingWaitingGame) return;
+
+  setIsCancellingWaitingGame(true);
+  try {
+    const res = await fetch("/api/uno/cancel-waiting", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ gameId: waitingGameId }),
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      if (waitingPollRef.current) {
+        clearInterval(waitingPollRef.current);
+        waitingPollRef.current = null;
+      }
+      setWaitingGameId(null);
+      setMessage("✅ Partie annulée.");
+      if (data.newBalance) {
+        setTokens({ balance: data.newBalance });
+      }
+      fetchAvailableGames();
+    } else {
+      setMessage(data.error || "Impossible d'annuler la partie.");
+    }
+  } catch (err) {
+    console.error("Erreur cancelWaitingOnlineGame:", err);
+    setMessage("Impossible d'annuler la partie.");
+  }
+  setIsCancellingWaitingGame(false);
+};
+
+const joinSpecificOnlineGame = async (gameId) => {
+  if (loading) return;
+  setLoading(true);
+  try {
+    const res = await fetch("/api/uno/join-online", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ mode: "join-specific", gameId }),
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      setWaitingGameId(null);
+      setGameMode("online");
+      setGame(data.data);
+      setPlayerHand(data.data.playerHand);
+      setAiHandCount(data.data.opponentHandCount);
+      setTopCard(data.data.topCard);
+      setTurnHistory([data.data.topCard]);
+      setIsPlayerTurn(data.data.turn === (data.data.role || "player2"));
+      setMessage("✅ Partie en ligne trouvée !");
+      setTokens({ balance: data.data.newBalance });
+      fetchAvailableGames();
+    } else {
+      setMessage(data.error || "Impossible de rejoindre cette partie");
+      fetchAvailableGames();
+    }
+  } catch (err) {
+    console.error("Erreur joinSpecificOnlineGame:", err);
+    setMessage("Impossible de rejoindre cette partie");
+  }
+  setLoading(false);
 };
 
 const joinOnlineGame = async () => {
@@ -255,6 +353,11 @@ const joinOnlineGame = async () => {
     const data = await res.json();
 
     if (data.success) {
+      if (waitingPollRef.current) {
+        clearInterval(waitingPollRef.current);
+        waitingPollRef.current = null;
+      }
+      setWaitingGameId(null);
       setGameMode("online");
       setGame(data.data);
       setPlayerHand(data.data.playerHand);
@@ -291,6 +394,7 @@ const createOnlineGame = async () => {
     if (data.success && data.waiting) {
       setMessage("⏳ En attente d'un autre joueur...");
       setGameMode("online");
+      setWaitingGameId(data.gameId);
       if (data.newBalance) {
         setTokens({ balance: data.newBalance });
       }
@@ -337,6 +441,15 @@ useEffect(() => {
 
   return () => clearInterval(interval);
 }, [game?.id, gameMode]);
+
+useEffect(() => {
+  return () => {
+    if (waitingPollRef.current) {
+      clearInterval(waitingPollRef.current);
+      waitingPollRef.current = null;
+    }
+  };
+}, []);
 
 
 const drawCard = async () => {
@@ -405,18 +518,27 @@ return (
 
     <button
       onClick={() => setShowGameModeModal(true)}
-      disabled={loading}
+      disabled={loading || !!waitingGameId}
       className="bg-yellow-500 hover:bg-yellow-600 text-black px-8 py-3 rounded-full font-bold shadow-lg transition"
     >
       {loading ? "Chargement..." : "Commencer une partie"}
     </button>
-    <button
+<button
   onClick={joinOnlineGame}
-  disabled={loading}
+  disabled={loading || !!waitingGameId}
   className="mt-4 bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-lg transition"
 >
   {loading ? "Recherche..." : "Rejoindre une partie"}
 </button>
+{waitingGameId && (
+  <button
+    onClick={cancelWaitingOnlineGame}
+    disabled={isCancellingWaitingGame}
+    className="mt-3 bg-red-500 hover:bg-red-600 text-white px-8 py-2 rounded-full font-bold shadow-lg transition"
+  >
+    {isCancellingWaitingGame ? "Annulation..." : "Annuler la partie en attente"}
+  </button>
+)}
 
     <div className="mt-6 w-full max-w-md bg-green-800/70 rounded-2xl p-4 border border-green-900">
       <h3 className="text-lg font-bold mb-3">Parties en ligne disponibles</h3>
@@ -434,9 +556,17 @@ return (
               <span>
                 {onlineGame.hostName} • Mise: {onlineGame.betAmount}
               </span>
-              <span className={onlineGame.canAfford ? "text-green-300" : "text-red-300"}>
-                {onlineGame.canAfford ? "Disponible" : "Solde insuffisant"}
-              </span>
+              <button
+                onClick={() => joinSpecificOnlineGame(onlineGame.id)}
+                disabled={!onlineGame.canAfford || loading || !!waitingGameId}
+                className={`px-3 py-1 rounded-md font-semibold ${
+                  onlineGame.canAfford && !waitingGameId
+                    ? "bg-blue-500 hover:bg-blue-600 text-white"
+                    : "bg-gray-600 text-gray-200 cursor-not-allowed"
+                }`}
+              >
+                {onlineGame.canAfford ? "Rejoindre" : "Solde insuffisant"}
+              </button>
             </li>
           ))}
         </ul>
@@ -459,6 +589,7 @@ return (
             </button>
             <button
               onClick={createOnlineGame}
+              disabled={!!waitingGameId}
               className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-bold"
             >
               Créer une partie multijoueur

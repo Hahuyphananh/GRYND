@@ -42,7 +42,12 @@ export async function GET() {
       };
     });
 
-    return new Response(JSON.stringify({ success: true, data: games }), { status: 200 });
+    return new Response(JSON.stringify({ success: true, data: games }), {
+      status: 200,
+      headers: {
+        "Cache-Control": "private, max-age=3, stale-while-revalidate=7",
+      },
+    });
   } catch (error) {
     console.error("UNO available-games error:", error);
     return new Response(JSON.stringify({ success: false, error: "Server error" }), { status: 500 });
