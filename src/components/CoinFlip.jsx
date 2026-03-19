@@ -246,18 +246,21 @@ function PvPCoinFlip() {
     getUser();
   }, []);
 
-  useEffect(() => {
-    const fetchGames = async () => {
-      const res = await fetch("/api/coin-flip/pvp/available");
-      const json = await res.json();
-      if (!json.success) return;
+  const fetchGames = async () => {
+  try {
+    const res = await fetch("/api/coin-flip/pvp/available");
+    const json = await res.json();
+    if (json.success) {
       setGames(json.data.games);
-    };
+    }
+  } catch (err) {
+    console.error("Error fetching games:", err);
+  }
+};
 
-    fetchGames();
-    const interval = setInterval(fetchGames, 2000);
-    return () => clearInterval(interval);
-  }, []);
+useEffect(() => {
+  fetchGames(); // load once
+}, []);
 
   useEffect(() => {
     if (!myGameId) return;
@@ -446,7 +449,20 @@ function PvPCoinFlip() {
           </button>
 
           <div className="mt-8">
-            <h2 className="text-xl font-bold mb-3 text-center">Available Games</h2>
+            <div className="flex justify-between items-center mb-3">
+  <h2 className="text-xl font-bold">Available Games</h2>
+  <button
+  onClick={fetchGames}
+  disabled={!!myGameId}
+  className={`px-3 py-1 rounded text-sm font-semibold ${
+    myGameId
+      ? "bg-gray-500 cursor-not-allowed"
+      : "bg-blue-500 hover:bg-blue-600"
+  }`}
+>
+  🔄 Refresh
+</button>
+</div>
 
             {availableGames.length === 0 && (
               <p className="text-center text-gray-400">No games available. Be the first to create one!</p>

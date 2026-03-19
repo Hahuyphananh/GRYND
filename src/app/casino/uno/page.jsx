@@ -25,8 +25,11 @@ const [availableGames, setAvailableGames] = useState([]);
 const [isLoadingAvailableGames, setIsLoadingAvailableGames] = useState(false);
 const [waitingGameId, setWaitingGameId] = useState(null);
 const [isCancellingWaitingGame, setIsCancellingWaitingGame] = useState(false);
-const availableGamesPollingRef = useRef(null);
 const waitingPollRef = useRef(null);
+
+useEffect(() => {
+  fetchAvailableGames();
+}, []);
 
   // ✅ Load tokens on page mount
   useEffect(() => {
@@ -66,35 +69,6 @@ const waitingPollRef = useRef(null);
     }
     setIsLoadingAvailableGames(false);
   };
-
-  useEffect(() => {
-    if (availableGamesPollingRef.current) {
-      clearInterval(availableGamesPollingRef.current);
-      availableGamesPollingRef.current = null;
-    }
-
-    if (game || waitingGameId) return;
-    fetchAvailableGames();
-
-    availableGamesPollingRef.current = setInterval(() => {
-      fetchAvailableGames();
-    }, 10000);
-
-    const onVisibilityChange = () => {
-      if (!document.hidden) fetchAvailableGames();
-    };
-
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      if (availableGamesPollingRef.current) {
-        clearInterval(availableGamesPollingRef.current);
-        availableGamesPollingRef.current = null;
-      }
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [game, waitingGameId]);
-
   // ✅ Winner check helper
   const checkForWinner = async (gameId) => {
     try {
@@ -541,7 +515,16 @@ return (
 )}
 
     <div className="mt-6 w-full max-w-md bg-green-800/70 rounded-2xl p-4 border border-green-900">
-      <h3 className="text-lg font-bold mb-3">Parties en ligne disponibles</h3>
+      <div className="flex justify-between items-center mb-3">
+  <h3 className="text-lg font-bold">Parties en ligne disponibles</h3>
+  <button
+    onClick={fetchAvailableGames}
+    disabled={isLoadingAvailableGames}
+    className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md text-sm font-semibold"
+  >
+    {isLoadingAvailableGames ? "..." : "🔄 Refresh"}
+  </button>
+</div>
       {isLoadingAvailableGames ? (
         <p className="text-sm text-gray-200">Chargement des parties...</p>
       ) : availableGames.length === 0 ? (
