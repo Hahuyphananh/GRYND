@@ -53,6 +53,8 @@ async function joinOpenGame({ user, clerkId, openGame }) {
   const player2Hand = deck.splice(0, 7);
 
   try {
+    const firstTurn = Math.random() > 0.5 ? "player1" : "player2";
+
     const updated = await db.transaction(async (tx) => {
       await tx.update(users)
         .set({ balance: (balance - joinBet).toFixed(2) })
@@ -64,7 +66,7 @@ async function joinOpenGame({ user, clerkId, openGame }) {
           player2Hand,
           deck,
           status: "active",
-          turn: Math.random() > 0.5 ? "player1" : "player2",
+          turn: firstTurn,
         })
         .where(and(eq(unoGames.id, openGame.id), isNull(unoGames.player2Id), eq(unoGames.status, "waiting")))
         .returning();
@@ -85,6 +87,7 @@ async function joinOpenGame({ user, clerkId, openGame }) {
         topCard: safeParse(updated.topCard, null),
         currentColor: updated.currentColor,
         turn: updated.turn,
+        firstTurn,
         betAmount: openGame.betAmount,
       }
     }), { status: 200 });
