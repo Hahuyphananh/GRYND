@@ -235,8 +235,9 @@ const waitForOnlineGameStart = (gameId) => {
         setAiHandCount(d2.data.opponentHandCount);
         setTopCard(d2.data.topCard);
         setTurnHistory([d2.data.topCard]);
-        setIsPlayerTurn(d2.data.turn === d2.data.role);
-        setMessage("✅ Partie trouvée !");
+        const isMyTurn = d2.data.turn === d2.data.role;
+        setIsPlayerTurn(isMyTurn);
+        setMessage(isMyTurn ? "✅ Partie trouvée ! Tu commences." : "✅ Partie trouvée ! L'adversaire commence.");
       }
     } catch (err) {
       console.error("Erreur check-game:", err);
@@ -299,8 +300,9 @@ const joinSpecificOnlineGame = async (gameId) => {
       setAiHandCount(data.data.opponentHandCount);
       setTopCard(data.data.topCard);
       setTurnHistory([data.data.topCard]);
-      setIsPlayerTurn(data.data.turn === (data.data.role || "player2"));
-      setMessage("✅ Partie en ligne trouvée !");
+      const isMyTurn = data.data.turn === (data.data.role || "player2");
+      setIsPlayerTurn(isMyTurn);
+      setMessage(isMyTurn ? "✅ Partie en ligne trouvée ! Tu commences." : "✅ Partie en ligne trouvée ! L'adversaire commence.");
       setTokens({ balance: data.data.newBalance });
       fetchAvailableGames();
     } else {
@@ -338,8 +340,9 @@ const joinOnlineGame = async () => {
       setAiHandCount(data.data.opponentHandCount);
       setTopCard(data.data.topCard);
       setTurnHistory([data.data.topCard]);
-      setIsPlayerTurn(data.data.turn === (data.data.role || "player2"));
-      setMessage("✅ Partie en ligne trouvée !");
+      const isMyTurn = data.data.turn === (data.data.role || "player2");
+      setIsPlayerTurn(isMyTurn);
+      setMessage(isMyTurn ? "✅ Partie en ligne trouvée ! Tu commences." : "✅ Partie en ligne trouvée ! L'adversaire commence.");
       setTokens({ balance: data.data.newBalance });
       fetchAvailableGames();
     } else {
