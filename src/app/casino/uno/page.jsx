@@ -465,6 +465,24 @@ const displayedCard =
     ? topCard
     : turnHistory[historyIndex];
 
+    const returnToLobby = () => {
+  setGame(null);
+  setGameMode("ai");
+  setPlayerHand([]);
+  setAiHandCount(0);
+  setTopCard(null);
+  setIsPlayerTurn(true);
+  setMessage("");
+  setPendingCard(null);
+  setShowColorPicker(false);
+  setTurnHistory([]);
+  setHistoryIndex(null);
+  setWaitingGameId(null);
+
+  // Optional: refresh available games when returning
+  fetchAvailableGames();
+};
+
 return (
 
   <div className="bg-[#003366] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8">
@@ -721,24 +739,30 @@ return (
         Piocher une carte
       </button>
 
-      {!isPlayerTurn && game && message.includes("a gagné") && (
+      {!isPlayerTurn && game && message.includes("gagné") && (
+  <div className="flex gap-3 mt-2">
         <button
-          onClick={async () => {
-            setMessage("");
-            setGame(null);
-            setPlayerHand([]);
-            setAiHandCount(0);
-            setTopCard(null);
-            setIsPlayerTurn(true);
-            setPendingCard(null);
-            setShowColorPicker(false);
-            await initializeGame();
-          }}
-          disabled={loading}
-          className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded"
-        >
-          {loading ? "Chargement..." : "Rejouer"}
-        </button>
+  onClick={async () => {
+    if (gameMode === "ai") {
+      setMessage("");
+      await initializeGame();
+    } else {
+      returnToLobby();
+    }
+  }}
+  disabled={loading}
+  className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded"
+>
+  {loading ? "Chargement..." : "Rejouer"}
+</button>
+
+<button
+  onClick={returnToLobby}
+  className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded"
+>
+  🏠 Lobby
+</button>
+        </div>
       )}
     </div>
   </div>
