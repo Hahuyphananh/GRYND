@@ -49,6 +49,7 @@ export async function POST(req) {
       const player1Hand = safeParse(game.player1Hand, []);
       const player2Hand = safeParse(game.player2Hand, []);
       const discardPile = safeParse(game.discardPile, []);
+      const topCard = discardPile[discardPile.length - 1] || safeParse(game.topCard, null);
 
       const { card, deck: updatedDeck } = drawUnoCard(deck);
       if (!card) {
@@ -66,6 +67,8 @@ export async function POST(req) {
           player1Hand: updatedPlayer1Hand,
           player2Hand: updatedPlayer2Hand,
           discardPile,
+          topCard,
+          currentColor: game.currentColor || topCard?.color || null,
           turn: updatedTurn,
         })
         .where(eq(unoGames.id, gameId));
@@ -77,10 +80,10 @@ export async function POST(req) {
           role,
           playerHand: role === "player1" ? updatedPlayer1Hand : updatedPlayer2Hand,
           opponentHandCount: role === "player1" ? updatedPlayer2Hand.length : updatedPlayer1Hand.length,
-          topCard: discardPile[discardPile.length - 1],
+          topCard,
           message: "Tu as pioché une carte.",
           isPlayerTurn: false,
-          currentColor: game.currentColor,
+          currentColor: game.currentColor || topCard?.color || null,
         },
       });
     }
