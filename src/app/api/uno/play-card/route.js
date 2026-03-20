@@ -28,6 +28,10 @@ function getTopCard(game) {
   return { discardPile: topCard ? [topCard] : [], topCard };
 }
 
+function isAllowedChosenColor(color) {
+  return ["red", "yellow", "green", "blue"].includes(String(color || "").toLowerCase());
+}
+
 export async function POST(req) {
   try {
     const { userId } = await auth();
@@ -86,6 +90,9 @@ export async function POST(req) {
       if ((card.value === "Wild" || card.value === "Wild Draw Four") && !chosenColor) {
         return NextResponse.json({ success: true, needsColorChoice: true, card });
       }
+      if ((card.value === "Wild" || card.value === "Wild Draw Four") && !isAllowedChosenColor(chosenColor)) {
+        return NextResponse.json({ success: false, error: "Invalid color choice" }, { status: 400 });
+      }
 
       const workingMyHand = [...myHand];
       workingMyHand.splice(cardIndex, 1);
@@ -123,6 +130,7 @@ export async function POST(req) {
         data: {
           mode: "online",
           role,
+          turn: updatedTurn,
           playerHand: role === "player1" ? updatedPlayer1Hand : updatedPlayer2Hand,
           opponentHandCount: role === "player1" ? updatedPlayer2Hand.length : updatedPlayer1Hand.length,
           topCard: top,
@@ -147,6 +155,9 @@ export async function POST(req) {
 
     if ((card.value === "Wild" || card.value === "Wild Draw Four") && !chosenColor) {
       return NextResponse.json({ success: true, needsColorChoice: true, card });
+    }
+    if ((card.value === "Wild" || card.value === "Wild Draw Four") && !isAllowedChosenColor(chosenColor)) {
+      return NextResponse.json({ success: false, error: "Invalid color choice" }, { status: 400 });
     }
 
     const playedCard = { ...card, color: chosenColor || card.color };

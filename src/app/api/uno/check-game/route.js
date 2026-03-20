@@ -15,6 +15,15 @@ function safeParse(value, fallback = []) {
   return value;
 }
 
+function getTopCard(game) {
+  const discardPile = safeParse(game.discardPile, []);
+  if (discardPile.length > 0) {
+    return discardPile[discardPile.length - 1];
+  }
+
+  return safeParse(game.topCard, null);
+}
+
 export async function POST(request) {
   const { userId } = await auth();
   if (!userId) {
@@ -57,13 +66,14 @@ export async function POST(request) {
     }
 
     if (!isMultiplayer) {
+      const topCard = getTopCard(game);
       return new Response(JSON.stringify({
         success: true,
         status: game.status,
         data: {
           id: game.id,
           mode: "ai",
-          topCard: safeParse(game.topCard, null),
+          topCard,
           currentColor: game.currentColor,
           turn: game.turn,
           playerHand: safeParse(game.playerHand, []),
@@ -72,12 +82,19 @@ export async function POST(request) {
       }), { status: 200 });
     }
 
+    let resolvedTurn = game.turn;
+    if (game.status === "active" && resolvedTurn !== "player1" && resolvedTurn !== "player2") {
+      resolvedTurn = Math.random() > 0.5 ? "player1" : "player2";
+      await db.update(unoGames).set({ turn: resolvedTurn }).where(eq(unoGames.id, game.id));
+    }
+
     const role = isPlayer1 ? "player1" : "player2";
     const player1Hand = safeParse(game.player1Hand, []);
     const player2Hand = safeParse(game.player2Hand, []);
 
     const myHand = role === "player1" ? player1Hand : player2Hand;
     const opponentHandCount = role === "player1" ? player2Hand.length : player1Hand.length;
+    const topCard = getTopCard(game);
 
     return new Response(JSON.stringify({
       success: true,
@@ -86,9 +103,9 @@ export async function POST(request) {
         id: game.id,
         mode: "online",
         role,
-        topCard: safeParse(game.topCard, null),
+        topCard,
         currentColor: game.currentColor,
-        turn: game.turn,
+        turn: resolvedTurn,
         playerHand: myHand,
         opponentHandCount,
         winner: game.winner,
