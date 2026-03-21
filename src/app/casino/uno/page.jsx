@@ -405,9 +405,24 @@ useEffect(() => {
       setAiHandCount(data.data.opponentHandCount);
       setTopCard(data.data.topCard);
       setIsPlayerTurn(data.data.turn === data.data.role);
+
+     if (data.status === "finished") {
+  const youWon = data.data.winner === data.data.role;
+
+  setMessage(
+    youWon
+      ? "🎉 Tu as gagné la partie !"
+      : "😢 Ton adversaire a gagné la partie !"
+  );
+
+  setIsPlayerTurn(false);
+}
+
       setTurnHistory((prev) => {
         const last = prev[prev.length - 1];
-        const sameCard = last?.color === data.data.topCard?.color && last?.value === data.data.topCard?.value;
+        const sameCard =
+          last?.color === data.data.topCard?.color &&
+          last?.value === data.data.topCard?.value;
         if (sameCard) return prev;
         return [...prev, data.data.topCard];
       });
