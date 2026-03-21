@@ -88,9 +88,35 @@ export async function POST(request) {
       await db.update(unoGames).set({ turn: resolvedTurn }).where(eq(unoGames.id, game.id));
     }
 
-    const role = isPlayer1 ? "player1" : "player2";
-    const player1Hand = safeParse(game.player1Hand, []);
-    const player2Hand = safeParse(game.player2Hand, []);
+    // ✅ FORCE WINNER DETECTION (CRITICAL FIX)
+let updatedGame = game;
+
+if (game.status !== "finished") {
+  const player1Hand = safeParse(game.player1Hand, []);
+  const player2Hand = safeParse(game.player2Hand, []);
+
+  if (player1Hand.length === 0 || player2Hand.length === 0) {
+    const winner = player1Hand.length === 0 ? "player1" : "player2";
+
+    await db.update(unoGames)
+      .set({
+        status: "finished",
+        winner,
+      })
+      .where(eq(unoGames.id, game.id));
+
+    // update local object so response is correct immediately
+    updatedGame = {
+      ...game,
+      status: "finished",
+      winner,
+    };
+  }
+}
+
+   const role = isPlayer1 ? "player1" : "player2";
+const player1Hand = safeParse(updatedGame.player1Hand, []);
+const player2Hand = safeParse(updatedGame.player2Hand, []);
 
     const myHand = role === "player1" ? player1Hand : player2Hand;
     const opponentHandCount = role === "player1" ? player2Hand.length : player1Hand.length;
@@ -98,7 +124,7 @@ export async function POST(request) {
 
     return new Response(JSON.stringify({
       success: true,
-      status: game.status,
+      status: updatedGame.status,
       data: {
         id: game.id,
         mode: "online",
@@ -108,7 +134,7 @@ export async function POST(request) {
         turn: resolvedTurn,
         playerHand: myHand,
         opponentHandCount,
-        winner: game.winner,
+        winner: updatedGame.winner,
         result: game.result,
       },
     }), { status: 200 });
