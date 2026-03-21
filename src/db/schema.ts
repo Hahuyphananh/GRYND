@@ -292,6 +292,35 @@ export const rpsGames = pgTable("rps_games", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+
+export const rpsPvpStatusEnum = pgEnum("rps_pvp_status", [
+  "active",
+  "matched",
+  "finished",
+  "cancelled",
+]);
+
+export const rpsPvpGames = pgTable(
+  "rps_pvp_games",
+  {
+    id: serial("id").primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
+    player1Choice: varchar("player1_choice", { length: 20 }),
+    player2Choice: varchar("player2_choice", { length: 20 }),
+    outcome: varchar("outcome", { length: 20 }),
+    winnerId: varchar("winner_id", { length: 255 }),
+    result: varchar("result", { length: 20 }).default("pending").notNull(),
+    status: rpsPvpStatusEnum("status").default("active").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    openGamesIdx: index("rps_pvp_open_games_idx").on(table.player2Id),
+    statusIdx: index("rps_pvp_status_idx").on(table.status),
+  })
+);
+
 export const keno_games = pgTable("keno_games", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
