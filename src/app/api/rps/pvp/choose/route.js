@@ -4,6 +4,8 @@ import { db } from "../../../../../db/client";
 import { rpsPvpGames, users } from "../../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 
+const HOUSE_EDGE_PERCENT = 10;
+
 function evaluateChoices(choice1, choice2) {
   if (choice1 === choice2) return "tie";
   if (
@@ -62,6 +64,8 @@ export async function POST(req) {
 
       const outcome = evaluateChoices(updatedGame.player1Choice, updatedGame.player2Choice);
       const pot = Number(updatedGame.betAmount) * 2;
+      const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
+      const winnerPayout = Number((pot - houseFee).toFixed(2));
 
       let winnerId = null;
       if (outcome === "player1") winnerId = updatedGame.player1Id;
@@ -70,7 +74,7 @@ export async function POST(req) {
       if (winnerId) {
         await tx
           .update(users)
-          .set({ balance: sql`${users.balance} + ${pot}` })
+          .set({ balance: sql`${users.balance} + ${winnerPayout}` })
           .where(eq(users.clerkId, winnerId));
       } else {
         await tx

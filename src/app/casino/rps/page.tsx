@@ -29,10 +29,16 @@ export default function RPSGame() {
   const [pvpStatus, setPvpStatus] = useState<string | null>(null);
   const [pvpPlayer1Id, setPvpPlayer1Id] = useState<string | null>(null);
   const [pvpPlayer2Id, setPvpPlayer2Id] = useState<string | null>(null);
+  const [pvpMyName, setPvpMyName] = useState<string>("You");
+  const [pvpOpponentName, setPvpOpponentName] = useState<string>("Opponent");
   const [pvpMyChoice, setPvpMyChoice] = useState<string | null>(null);
   const [pvpOpponentChoice, setPvpOpponentChoice] = useState<string | null>(null);
   const [pvpOutcome, setPvpOutcome] = useState<string | null>(null);
   const [pvpWinner, setPvpWinner] = useState<string | null>(null);
+  const [pvpWinnerPayout, setPvpWinnerPayout] = useState<number | null>(null);
+  const [pvpWinnerProfit, setPvpWinnerProfit] = useState<number | null>(null);
+  const [pvpHouseFee, setPvpHouseFee] = useState<number | null>(null);
+  const [pvpCountdown, setPvpCountdown] = useState<number | null>(null);
   const [pvpMessage, setPvpMessage] = useState<string>("");
   const [pvpActionLoading, setPvpActionLoading] = useState(false);
 
@@ -67,10 +73,15 @@ export default function RPSGame() {
         setPvpStatus(game.status);
         setPvpPlayer1Id(game.player1Id || null);
         setPvpPlayer2Id(game.player2Id || null);
+        setPvpMyName(game.myName || "You");
+        setPvpOpponentName(game.opponentName || "Opponent");
         setPvpMyChoice(game.myChoice || null);
         setPvpOpponentChoice(game.opponentChoice || null);
         setPvpOutcome(game.outcome || null);
         setPvpWinner(game.winner || null);
+        setPvpWinnerPayout(typeof game.winnerPayout === "number" ? game.winnerPayout : null);
+        setPvpWinnerProfit(typeof game.winnerProfit === "number" ? game.winnerProfit : null);
+        setPvpHouseFee(typeof game.houseFee === "number" ? game.houseFee : null);
 
         if (game.status === "active") {
           setPvpMessage("Waiting for opponent...");
@@ -104,6 +115,26 @@ export default function RPSGame() {
     const interval = setInterval(poll, 1500);
     return () => clearInterval(interval);
   }, [pvpGameId]);
+
+  useEffect(() => {
+    if (pvpStatus !== "matched") {
+      setPvpCountdown(null);
+      return;
+    }
+
+    setPvpCountdown(10);
+    const countdownInterval = setInterval(() => {
+      setPvpCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(countdownInterval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(countdownInterval);
+  }, [pvpStatus, pvpGameId]);
 
   const calculateMultiplier = (streak: number) => {
     if (streak <= 0) return 1.0;
@@ -231,10 +262,15 @@ export default function RPSGame() {
         setPvpStatus("active");
         setPvpPlayer1Id(data.data.player1Id);
         setPvpPlayer2Id(null);
+        setPvpMyName("You");
+        setPvpOpponentName("Waiting...");
         setPvpMyChoice(null);
         setPvpOpponentChoice(null);
         setPvpOutcome(null);
         setPvpWinner(null);
+        setPvpWinnerPayout(null);
+        setPvpWinnerProfit(null);
+        setPvpHouseFee(null);
         setTokens(data.data.newBalance);
         setPvpMessage("Game created. Waiting for opponent...");
         fetchAvailablePvpGames();
@@ -263,10 +299,15 @@ export default function RPSGame() {
         setPvpStatus("matched");
         setPvpPlayer1Id(data.data.player1Id);
         setPvpPlayer2Id(data.data.player2Id);
+        setPvpMyName("You");
+        setPvpOpponentName("Opponent");
         setPvpMyChoice(null);
         setPvpOpponentChoice(null);
         setPvpOutcome(null);
         setPvpWinner(null);
+        setPvpWinnerPayout(null);
+        setPvpWinnerProfit(null);
+        setPvpHouseFee(null);
         setTokens(data.data.newBalance);
         setPvpMessage("Joined game. Pick your move.");
         fetchAvailablePvpGames();
@@ -321,10 +362,16 @@ export default function RPSGame() {
         setPvpStatus(null);
         setPvpPlayer1Id(null);
         setPvpPlayer2Id(null);
+        setPvpMyName("You");
+        setPvpOpponentName("Opponent");
         setPvpMyChoice(null);
         setPvpOpponentChoice(null);
         setPvpOutcome(null);
         setPvpWinner(null);
+        setPvpWinnerPayout(null);
+        setPvpWinnerProfit(null);
+        setPvpHouseFee(null);
+        setPvpCountdown(null);
         setPvpMessage("Game cancelled");
         fetchAvailablePvpGames();
       }
@@ -578,6 +625,10 @@ export default function RPSGame() {
 
         {mode === "pvp" && (
           <div className="w-full max-w-2xl flex flex-col items-center gap-4">
+            <div className="w-full flex justify-center gap-10 text-sm text-blue-200 font-semibold">
+              <span>{pvpMyName}</span>
+              <span>{pvpOpponentName}</span>
+            </div>
             <div className="flex items-center gap-8">
               <div className="bg-[#002b55] border border-blue-500 w-28 h-36 flex items-center justify-center rounded-xl text-5xl">
                 {getEmoji(pvpMyChoice)}
@@ -593,18 +644,23 @@ export default function RPSGame() {
             )}
 
             {pvpStatus === "matched" && !pvpMyChoice && (
-              <div className="flex gap-3 flex-wrap justify-center">
-                {PVP_CHOICES.map((choice) => (
-                  <button
-                    key={choice}
-                    onClick={() => choosePvpMove(choice)}
-                    disabled={pvpActionLoading}
-                    className="px-5 py-2 rounded-lg font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {choice}
-                  </button>
-                ))}
-              </div>
+              <>
+                <p className="text-sm text-yellow-300 font-semibold">
+                  Choose your move within: {pvpCountdown ?? 10}s
+                </p>
+                <div className="flex gap-3 flex-wrap justify-center">
+                  {PVP_CHOICES.map((choice) => (
+                    <button
+                      key={choice}
+                      onClick={() => choosePvpMove(choice)}
+                      disabled={pvpActionLoading}
+                      className="px-5 py-2 rounded-lg font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {choice}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
 
             {pvpStatus === "finished" && (
@@ -613,6 +669,24 @@ export default function RPSGame() {
                 <p className="text-lg">
                   Result: {pvpWinner === "you" ? "You win" : pvpWinner === "opponent" ? "You lose" : "Tie"}
                 </p>
+                {pvpWinner === "you" && (
+                  <p className="text-green-300">
+                    You won {pvpWinnerPayout ?? 0} tokens total
+                    {typeof pvpWinnerProfit === "number" ? ` (+${pvpWinnerProfit} profit)` : ""}.
+                  </p>
+                )}
+                {pvpWinner === "opponent" && (
+                  <p className="text-red-300">You won 0 tokens this round.</p>
+                )}
+                {typeof pvpHouseFee === "number" && pvpWinner !== "tie" && (
+                  <p className="text-xs text-gray-300">House fee (10%): {pvpHouseFee} tokens.</p>
+                )}
+                <button
+                  onClick={() => window.location.reload()}
+                  className="mt-3 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded font-semibold"
+                >
+                  Return
+                </button>
               </div>
             )}
 
