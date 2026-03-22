@@ -108,24 +108,25 @@ export default function ChatWidget() {
   useEffect(() => {
     if (!room || !isOpen) return;
 
-    let cancelled = false;
-
     const refresh = async () => {
       try {
         await loadMessages();
       } catch (err) {
-        if (!cancelled) setError(err.message || 'Failed to refresh chat.');
+        setError(err.message || 'Failed to refresh chat.');
       }
     };
 
     refresh();
-    const timer = setInterval(refresh, 3000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
   }, [room?.roomType, room?.roomId, isOpen]);
+
+  async function handleRefresh() {
+    setError('');
+    try {
+      await loadMessages();
+    } catch (err) {
+      setError(err.message || 'Failed to refresh chat.');
+    }
+  }
 
   async function handleSend(e) {
     e.preventDefault();
@@ -184,9 +185,18 @@ export default function ChatWidget() {
 
       {isOpen ? (
         <div className="mt-2 w-[320px] rounded-xl border border-slate-700 bg-slate-900/95 p-3 text-sm text-slate-100 shadow-2xl backdrop-blur">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex items-center justify-between gap-2">
             <p className="font-semibold">{room.title}</p>
-            <span className="text-[11px] text-slate-400">History enabled</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRefresh}
+                className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-100 hover:bg-slate-600"
+              >
+                Refresh
+              </button>
+              <span className="text-[11px] text-slate-400">History enabled</span>
+            </div>
           </div>
 
           <div className="mb-2 h-64 overflow-y-auto rounded border border-slate-700 bg-slate-950 p-2">
@@ -219,6 +229,8 @@ export default function ChatWidget() {
               ))
             )}
           </div>
+
+          <p className="mb-2 text-[11px] text-slate-400">Manual refresh mode enabled.</p>
 
           {!isSignedIn ? (
             <p className="text-xs text-slate-400">Sign in to join chat.</p>
