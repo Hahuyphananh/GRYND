@@ -6,58 +6,255 @@ const TRACKED_GAMES = [
   {
     key: "roulette",
     label: "Roulette",
-    table: "roulette_games",
-    userColumn: "user_id",
-    betColumn: "bet_amount",
-    payoutColumn: "payout",
+    selectSql: `
+      SELECT
+        'roulette'::text AS game_key,
+        'Roulette'::text AS game_label,
+        rg.user_id::int AS user_id,
+        COALESCE(rg.bet_amount::numeric, 0) AS amount_lost,
+        COALESCE(rg.payout::numeric, 0) AS amount_won,
+        CASE WHEN COALESCE(rg.payout::numeric, 0) > COALESCE(rg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN COALESCE(rg.payout::numeric, 0) < COALESCE(rg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_lost
+      FROM roulette_games rg
+    `,
   },
   {
     key: "blackjack",
     label: "Blackjack",
-    table: "blackjack_games",
-    userColumn: "user_id",
-    betColumn: "bet_amount",
-    payoutColumn: "payout",
+    selectSql: `
+      SELECT
+        'blackjack'::text AS game_key,
+        'Blackjack'::text AS game_label,
+        bg.user_id::int AS user_id,
+        COALESCE(bg.bet_amount::numeric, 0) AS amount_lost,
+        COALESCE(bg.payout::numeric, 0) AS amount_won,
+        CASE WHEN COALESCE(bg.payout::numeric, 0) > COALESCE(bg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN COALESCE(bg.payout::numeric, 0) < COALESCE(bg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_lost
+      FROM blackjack_games bg
+    `,
   },
   {
     key: "crash",
     label: "Crash",
-    table: "crash_games",
-    userColumn: "user_id",
-    betColumn: "bet_amount",
-    payoutColumn: "payout",
+    selectSql: `
+      SELECT
+        'crash'::text AS game_key,
+        'Crash'::text AS game_label,
+        cg.user_id::int AS user_id,
+        COALESCE(cg.bet_amount::numeric, 0) AS amount_lost,
+        COALESCE(cg.payout::numeric, 0) AS amount_won,
+        CASE WHEN COALESCE(cg.payout::numeric, 0) > COALESCE(cg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN COALESCE(cg.payout::numeric, 0) < COALESCE(cg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_lost
+      FROM crash_games cg
+    `,
   },
   {
     key: "mines",
     label: "Mines",
-    table: "mines_games",
-    userColumn: "user_id",
-    betColumn: "bet_amount",
-    payoutColumn: "payout",
+    selectSql: `
+      SELECT
+        'mines'::text AS game_key,
+        'Mines'::text AS game_label,
+        mg.user_id::int AS user_id,
+        COALESCE(mg.bet_amount::numeric, 0) AS amount_lost,
+        COALESCE(mg.payout::numeric, 0) AS amount_won,
+        CASE WHEN COALESCE(mg.payout::numeric, 0) > COALESCE(mg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN COALESCE(mg.payout::numeric, 0) < COALESCE(mg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_lost
+      FROM mines_games mg
+    `,
   },
   {
     key: "keno",
     label: "Keno",
-    table: "keno_games",
-    userColumn: "user_id",
-    betColumn: "bet_amount",
-    payoutColumn: "payout",
+    selectSql: `
+      SELECT
+        'keno'::text AS game_key,
+        'Keno'::text AS game_label,
+        kg.user_id::int AS user_id,
+        COALESCE(kg.bet_amount::numeric, 0) AS amount_lost,
+        COALESCE(kg.payout::numeric, 0) AS amount_won,
+        CASE WHEN COALESCE(kg.payout::numeric, 0) > COALESCE(kg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN COALESCE(kg.payout::numeric, 0) < COALESCE(kg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_lost
+      FROM keno_games kg
+    `,
+  },
+  {
+    key: "tanks",
+    label: "Tanks",
+    selectSql: `
+      SELECT
+        'tanks'::text AS game_key,
+        'Tanks'::text AS game_label,
+        u.id AS user_id,
+        COALESCE(ts.bounty::numeric, 0) AS amount_lost,
+        COALESCE(ts.amount_cashed_out::numeric, 0) AS amount_won,
+        CASE WHEN COALESCE(ts.result, '') = 'win' THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN COALESCE(ts.result, '') = 'loss' THEN 1 ELSE 0 END AS games_lost
+      FROM tank_stats ts
+      JOIN users u ON u.clerk_id = ts.clerk_id
+    `,
+  },
+  {
+    key: "coinFlip",
+    label: "Coin Flip",
+    selectSql: `
+      SELECT
+        'coinFlip'::text AS game_key,
+        'Coin Flip'::text AS game_label,
+        u1.id AS user_id,
+        COALESCE(cfg.bet_amount::numeric, 0) AS amount_lost,
+        CASE WHEN cfg.winner_id = cfg.player1_id THEN COALESCE(cfg.bet_amount::numeric, 0) * 2 ELSE 0 END AS amount_won,
+        CASE WHEN cfg.winner_id = cfg.player1_id THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN cfg.winner_id IS NOT NULL AND cfg.winner_id <> cfg.player1_id THEN 1 ELSE 0 END AS games_lost
+      FROM coin_flip_games cfg
+      JOIN users u1 ON u1.clerk_id = cfg.player1_id
+      WHERE cfg.status = 'finished'
+
+      UNION ALL
+
+      SELECT
+        'coinFlip'::text AS game_key,
+        'Coin Flip'::text AS game_label,
+        u2.id AS user_id,
+        COALESCE(cfg.bet_amount::numeric, 0) AS amount_lost,
+        CASE WHEN cfg.winner_id = cfg.player2_id THEN COALESCE(cfg.bet_amount::numeric, 0) * 2 ELSE 0 END AS amount_won,
+        CASE WHEN cfg.winner_id = cfg.player2_id THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN cfg.winner_id IS NOT NULL AND cfg.winner_id <> cfg.player2_id THEN 1 ELSE 0 END AS games_lost
+      FROM coin_flip_games cfg
+      JOIN users u2 ON u2.clerk_id = cfg.player2_id
+      WHERE cfg.status = 'finished' AND cfg.player2_id IS NOT NULL
+    `,
+  },
+  {
+    key: "chess",
+    label: "Chess",
+    selectSql: `
+      SELECT
+        'chess'::text AS game_key,
+        'Chess'::text AS game_label,
+        ux.id AS user_id,
+        COALESCE(cg.bet_amount::numeric, 0) AS amount_lost,
+        CASE
+          WHEN cg.winner_id = cg.player_white_id THEN COALESCE(cg.payout::numeric, COALESCE(cg.bet_amount::numeric, 0) * 2)
+          WHEN cg.winner_id IS NULL THEN COALESCE(cg.bet_amount::numeric, 0)
+          ELSE 0
+        END AS amount_won,
+        CASE WHEN cg.winner_id = cg.player_white_id THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN cg.winner_id IS NOT NULL AND cg.winner_id <> cg.player_white_id THEN 1 ELSE 0 END AS games_lost
+      FROM chess_games cg
+      JOIN users ux ON ux.clerk_id = cg.player_white_id
+
+      UNION ALL
+
+      SELECT
+        'chess'::text AS game_key,
+        'Chess'::text AS game_label,
+        ub.id AS user_id,
+        COALESCE(cg.bet_amount::numeric, 0) AS amount_lost,
+        CASE
+          WHEN cg.winner_id = cg.player_black_id THEN COALESCE(cg.payout::numeric, COALESCE(cg.bet_amount::numeric, 0) * 2)
+          WHEN cg.winner_id IS NULL THEN COALESCE(cg.bet_amount::numeric, 0)
+          ELSE 0
+        END AS amount_won,
+        CASE WHEN cg.winner_id = cg.player_black_id THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN cg.winner_id IS NOT NULL AND cg.winner_id <> cg.player_black_id THEN 1 ELSE 0 END AS games_lost
+      FROM chess_games cg
+      JOIN users ub ON ub.clerk_id = cg.player_black_id
+      WHERE cg.player_black_id IS NOT NULL
+    `,
+  },
+  {
+    key: "plinko",
+    label: "Plinko",
+    selectSql: `
+      SELECT
+        'plinko'::text AS game_key,
+        'Plinko'::text AS game_label,
+        u.id AS user_id,
+        (COALESCE(pg.bet_amount::numeric, 0) / cnt.ball_count) AS amount_lost,
+        (COALESCE(pg.bet_amount::numeric, 0) / cnt.ball_count) * mult.multiplier AS amount_won,
+        CASE WHEN mult.multiplier > 1 THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN mult.multiplier < 1 THEN 1 ELSE 0 END AS games_lost
+      FROM plinko_games pg
+      JOIN users u ON u.clerk_id = pg.user_id
+      CROSS JOIN LATERAL (
+        SELECT NULLIF(array_length(string_to_array(pg.result_multiplier, ','), 1), 0)::numeric AS ball_count
+      ) cnt
+      CROSS JOIN LATERAL (
+        SELECT TRIM(value)::numeric AS multiplier
+        FROM unnest(string_to_array(pg.result_multiplier, ',')) AS value
+        WHERE TRIM(value) ~ '^-?[0-9]+(\\.[0-9]+)?$'
+      ) mult
+      WHERE cnt.ball_count IS NOT NULL
+        AND mult.multiplier <> 1
+    `,
+  },
+  {
+    key: "poker",
+    label: "Poker",
+    selectSql: `
+      SELECT
+        'poker'::text AS game_key,
+        'Poker'::text AS game_label,
+        pg.user_id::int AS user_id,
+        COALESCE(pg.bet_amount::numeric, 0) AS amount_lost,
+        COALESCE(pg.payout::numeric, 0) AS amount_won,
+        CASE WHEN COALESCE(pg.payout::numeric, 0) > COALESCE(pg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN COALESCE(pg.payout::numeric, 0) < COALESCE(pg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_lost
+      FROM poker_games pg
+    `,
+  },
+  {
+    key: "slots",
+    label: "Slots",
+    selectSql: `
+      SELECT
+        'slots'::text AS game_key,
+        'Slots'::text AS game_label,
+        u.id AS user_id,
+        COALESCE(sg.bet_amount::numeric, 0) AS amount_lost,
+        COALESCE(sg.payout::numeric, 0) AS amount_won,
+        CASE WHEN COALESCE(sg.payout::numeric, 0) > COALESCE(sg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN COALESCE(sg.payout::numeric, 0) < COALESCE(sg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_lost
+      FROM slot_games sg
+      JOIN users u ON u.clerk_id = sg.user_id
+    `,
+  },
+  {
+    key: "uno",
+    label: "Uno",
+    selectSql: `
+      SELECT
+        'uno'::text AS game_key,
+        'Uno'::text AS game_label,
+        ug.user_id::int AS user_id,
+        COALESCE(ug.bet_amount::numeric, 0) AS amount_lost,
+        COALESCE(ug.payout::numeric, 0) AS amount_won,
+        CASE WHEN LOWER(COALESCE(ug.result, '')) IN ('win', 'won') THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN LOWER(COALESCE(ug.result, '')) IN ('lose', 'loss', 'lost') THEN 1 ELSE 0 END AS games_lost
+      FROM uno_games ug
+    `,
+  },
+  {
+    key: "rps",
+    label: "RPS",
+    selectSql: `
+      SELECT
+        'rps'::text AS game_key,
+        'RPS'::text AS game_label,
+        u.id AS user_id,
+        COALESCE(rg.bet_amount::numeric, 0) AS amount_lost,
+        COALESCE(rg.payout::numeric, 0) AS amount_won,
+        CASE WHEN LOWER(COALESCE(rg.result, '')) = 'win' THEN 1 ELSE 0 END AS games_won,
+        CASE WHEN LOWER(COALESCE(rg.result, '')) IN ('lose', 'loss', 'lost') THEN 1 ELSE 0 END AS games_lost
+      FROM rps_games rg
+      JOIN users u ON u.clerk_id = rg.user_id
+      WHERE LOWER(COALESCE(rg.result, '')) NOT IN ('tie', 'draw')
+    `,
   },
 ];
 
-const gameStatsUnion = TRACKED_GAMES.map(
-  (game) => `
-    SELECT
-      '${game.key}'::text AS game_key,
-      '${game.label}'::text AS game_label,
-      ${game.userColumn}::int AS user_id,
-      COALESCE(${game.betColumn}::numeric, 0) AS amount_lost,
-      COALESCE(${game.payoutColumn}::numeric, 0) AS amount_won,
-      CASE WHEN COALESCE(${game.payoutColumn}::numeric, 0) > COALESCE(${game.betColumn}::numeric, 0) THEN 1 ELSE 0 END AS games_won,
-      CASE WHEN COALESCE(${game.payoutColumn}::numeric, 0) < COALESCE(${game.betColumn}::numeric, 0) THEN 1 ELSE 0 END AS games_lost
-    FROM ${game.table}
-  `
-).join(" UNION ALL ");
+const gameStatsUnion = TRACKED_GAMES.map((game) => game.selectSql).join(" UNION ALL ");
 
 export async function GET() {
   try {
