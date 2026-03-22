@@ -150,14 +150,13 @@ const claimDailyReward = async () => {
     // 1) Update user's tokens
     setUserTokens(prev => prev + data.reward);
    
-    setStreakData(prev => ({
+   setStreakData(prev => ({
   ...prev,
-  currentDay: data.claimedDay + 1
+  currentDay: data.nextDay
 }));
 
 setRewardPopupVisible(true);
-
-fetchRewardStatus(); // silent refresh
+fetchRewardStatus(); // still keep this for sync
 
 
     // 4) Set 24h cooldown
