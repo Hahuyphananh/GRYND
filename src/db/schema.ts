@@ -22,6 +22,26 @@ export const userLoginRewards = pgTable("user_login_rewards", {
   lastClaimedDate: date("last_claimed_date").default(null),
 });
 
+
+
+export const chatRoomTypeEnum = pgEnum('chat_room_type', ['global', 'game']);
+
+export const chatMessages = pgTable('chat_messages', {
+  id: serial('id').primaryKey(),
+  roomType: chatRoomTypeEnum('room_type').notNull().default('global'),
+  roomId: varchar('room_id', { length: 255 }).notNull(),
+  clerkId: varchar('clerk_id', { length: 255 }).notNull(),
+  displayName: varchar('display_name', { length: 255 }).notNull(),
+  content: text('content').notNull(),
+  isDeleted: boolean('is_deleted').notNull().default(false),
+  deletedAt: timestamp('deleted_at'),
+  deletedByClerkId: varchar('deleted_by_clerk_id', { length: 255 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  roomIdx: index('chat_messages_room_idx').on(table.roomType, table.roomId, table.createdAt),
+  moderationIdx: index('chat_messages_moderation_idx').on(table.isDeleted, table.createdAt),
+}));
+
 // GAMES TABLES
 export const rouletteGames = pgTable('roulette_games', {
   id: serial('id').primaryKey(),
