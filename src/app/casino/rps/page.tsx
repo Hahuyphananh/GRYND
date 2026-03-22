@@ -147,6 +147,24 @@ export default function RPSGame() {
   const multiplierRef = useRef(multiplier);
   multiplierRef.current = multiplier;
 
+  const formatOutcome = (outcome) => {
+  if (!outcome) return "";
+
+  const player1Name =
+    pvpPlayer1Id && pvpPlayer1Id === pvpPlayer1Id
+      ? pvpMyName
+      : pvpOpponentName;
+
+  const player2Name =
+    pvpPlayer2Id && pvpPlayer2Id === pvpPlayer2Id
+      ? pvpMyName
+      : pvpOpponentName;
+
+  return outcome
+    .replace(/player1/g, player1Name)
+    .replace(/player2/g, player2Name);
+};
+
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const placeBet = async () => {
@@ -665,9 +683,16 @@ export default function RPSGame() {
 
             {pvpStatus === "finished" && (
               <div className="text-center">
-                <p className="text-xl font-bold text-yellow-300">Outcome: {pvpOutcome}</p>
+               <p className="text-xl font-bold text-yellow-300">
+  Outcome:{" "}
+  {pvpWinner === "you"
+    ? `${pvpMyName} wins`
+    : pvpWinner === "opponent"
+    ? `${pvpOpponentName} wins`
+    : "It's a tie"}
+</p>
                 <p className="text-lg">
-                  Result: {pvpWinner === "you" ? "You win" : pvpWinner === "opponent" ? "You lose" : "Tie"}
+                  Result: {pvpWinner === "you" ?   "You win" : pvpWinner === "opponent" ? "You lose" : "Tie"}
                 </p>
                 {pvpWinner === "you" && (
                   <p className="text-green-300">
