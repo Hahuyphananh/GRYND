@@ -1,14 +1,16 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import NavigationBar from "../../components/navigation-bar";
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 
 function MainComponent() {
   const [stats, setStats] = useState([]);
+  const [gameStats, setGameStats] = useState({});
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showTop100, setShowTop100] = useState(false);
+  const [selectedLeaderboard, setSelectedLeaderboard] = useState("overall");
   const { user } = useUser();
 
   const loadStats = async () => {
@@ -18,12 +20,20 @@ function MainComponent() {
       if (!response.ok) throw new Error(`Error fetching stats: ${response.status}`);
       const data = await response.json();
       setStats(data.users || []);
+      setGameStats(data.games || {});
     } catch (err) {
       console.error(err);
       setError("Impossible de charger les données du classement");
     }
     setLoading(false);
   };
+
+  useEffect(() => {
+    const queryGame = new URLSearchParams(window.location.search).get("game");
+    if (queryGame) {
+      setSelectedLeaderboard(queryGame);
+    }
+  }, []);
 
   useEffect(() => {
     loadStats();
@@ -44,7 +54,16 @@ function MainComponent() {
     );
   }
 
-  const displayedStats = showTop100 ? stats.slice(0, 100) : stats.slice(0, 10);
+  const displayedStats =
+    selectedLeaderboard === "overall"
+      ? showTop100
+        ? stats.slice(0, 100)
+        : stats.slice(0, 10)
+      : showTop100
+      ? (gameStats[selectedLeaderboard]?.players || []).slice(0, 100)
+      : (gameStats[selectedLeaderboard]?.players || []).slice(0, 10);
+
+  const gameButtons = useMemo(() => Object.entries(gameStats), [gameStats]);
 
   const getMedal = (rank) => {
     if (rank === 1)
@@ -56,6 +75,8 @@ function MainComponent() {
     return <span className="text-[#FFD700] font-bold">{rank}</span>;
   };
 
+  const formatAmount = (value) => Number(value || 0).toFixed(2);
+
   return (
     <div className="min-h-screen bg-[#003366] text-gray-300">
       <NavigationBar currentPath="/rankings" />
@@ -65,7 +86,7 @@ function MainComponent() {
         </h1>
 
         {/* Toggle Button */}
-        <div className="mb-6">
+        <div className="mb-6 flex flex-wrap justify-center gap-3">
           <button
             onClick={() => setShowTop100(!showTop100)}
             className="rounded-lg bg-[#FFD700] px-6 py-3 text-lg font-semibold text-[#003366] transition-all hover:bg-[#e6c200] hover:scale-105 shadow-lg"
@@ -74,7 +95,33 @@ function MainComponent() {
           </button>
         </div>
 
-        <div className="w-full max-w-5xl rounded-lg border border-[#FFD700] bg-[#003366] p-6 shadow-lg overflow-hidden">
+        <div className="mb-6 flex flex-wrap justify-center gap-2">
+          <button
+            onClick={() => setSelectedLeaderboard("overall")}
+            className={`rounded-md px-4 py-2 text-sm font-semibold transition-all ${
+              selectedLeaderboard === "overall"
+                ? "bg-[#FFD700] text-[#003366]"
+                : "bg-[#004080] text-[#FFD700] hover:bg-[#005099]"
+            }`}
+          >
+            Global
+          </button>
+          {gameButtons.map(([gameKey, data]) => (
+            <button
+              key={gameKey}
+              onClick={() => setSelectedLeaderboard(gameKey)}
+              className={`rounded-md px-4 py-2 text-sm font-semibold transition-all ${
+                selectedLeaderboard === gameKey
+                  ? "bg-[#FFD700] text-[#003366]"
+                  : "bg-[#004080] text-[#FFD700] hover:bg-[#005099]"
+              }`}
+            >
+              {data.gameLabel}
+            </button>
+          ))}
+        </div>
+
+        <div className="w-full max-w-7xl rounded-lg border border-[#FFD700] bg-[#003366] p-6 shadow-lg overflow-hidden">
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="text-[#FFD700]">Chargement...</div>
@@ -82,7 +129,7 @@ function MainComponent() {
           ) : (
             <AnimatePresence mode="wait">
               <motion.table
-                key={showTop100 ? "top100" : "top10"}
+                key={`${selectedLeaderboard}-${showTop100 ? "top100" : "top10"}`}
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
@@ -90,9 +137,12 @@ function MainComponent() {
                 className="w-full border-collapse text-left shadow-[0_0_20px_rgba(255,215,0,0.15)]"
               >
                 <thead>
-                  <tr className="border-b border-[#FFD700] text-lg text-[#FFD700]">
+                  <tr className="border-b border-[#FFD700] text-sm md:text-base text-[#FFD700]">
                     <th className="px-4 py-3">Rang</th>
                     <th className="px-4 py-3">Utilisateur</th>
+                    <th className="px-4 py-3">Montant Gagné</th>
+                    <th className="px-4 py-3">Montant Perdu</th>
+                    <th className="px-4 py-3">Profit Total</th>
                     <th className="px-4 py-3">Parties Gagnées</th>
                     <th className="px-4 py-3">Parties Perdues</th>
                     <th className="px-4 py-3">Net Games</th>
@@ -111,7 +161,7 @@ function MainComponent() {
 
                     return (
                       <motion.tr
-                        key={player.rank}
+                        key={`${selectedLeaderboard}-${player.rank}-${player.name}`}
                         initial={{ opacity: 0, y: 15 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.25, delay: player.rank * 0.01 }}
@@ -126,6 +176,20 @@ function MainComponent() {
                         <td className="px-4 py-4 font-bold text-center">{getMedal(player.rank)}</td>
                         <td className="px-4 py-4 font-semibold text-gray-100">
                           {player.name}
+                        </td>
+                        <td className="px-4 py-4 text-green-400 font-semibold">
+                          {formatAmount(player.amountWon)}
+                        </td>
+                        <td className="px-4 py-4 text-red-400 font-semibold">
+                          {formatAmount(player.amountLost)}
+                        </td>
+                        <td
+                          className={`px-4 py-4 font-semibold ${
+                            Number(player.totalProfit) >= 0 ? "text-green-400" : "text-red-400"
+                          }`}
+                        >
+                          {Number(player.totalProfit) >= 0 ? "+" : ""}
+                          {formatAmount(player.totalProfit)}
                         </td>
                         <td className="px-4 py-4 text-green-400 font-semibold">
                           {player.gamesWon}

@@ -16,6 +16,7 @@ import Img11 from "../../images/Uno.jpg";
 import Img12 from "../../images/Rps.png";
 import Img13 from "../../images/tanks.png"
 import Image from "next/image";
+import Link from "next/link";
 
 function MainComponent() {
   const { data: user } = useUser();
@@ -27,6 +28,7 @@ const games = [
   {
     name: "Roulette",
     href: "/casino/roulette",
+    leaderboardKey: "roulette",
     image: Img1,
     description: "Placez vos paris sur les numéros, couleurs ou sections",
     popular: true,
@@ -34,6 +36,7 @@ const games = [
   {
     name: "Blackjack",
     href: "/casino/blackjack",
+    leaderboardKey: "blackjack",
     image: Img2,
     description: "Affrontez le croupier dans ce jeu classique.",
     popular: true,
@@ -41,6 +44,7 @@ const games = [
    {
     name: "Mines",
     href: "/casino/mines",
+    leaderboardKey: "mines",
     image: Img5,
     description: "Évitez les bombes et trouvez les diamants !",
     popular: true,
@@ -49,6 +53,7 @@ const games = [
   {
     name: "Plinko",
     href: "/casino/plinko",
+    leaderboardKey: "plinko",
     image: Img4,
     description: "Regardez tomber votre jeton et multipliez vos gains !",
     popular: true,
@@ -56,54 +61,63 @@ const games = [
    {
     name: "Poker",
     href: "/casino/poker",
+    leaderboardKey: "poker",
     image: Img3,
     description: "Affrontez l'IA ou d'autres joueurs.",
   },
   {
     name: "Crash",
     href: "/casino/crash",
+    leaderboardKey: "crash",
     image: Img6,
     description: "Cash out avant que la fusée crash !",
   },
   {
     name: "Échecs",
     href: "/casino/chess",
+    leaderboardKey: "chess",
     image: Img7,
     description: "Affrontez d'autres joueurs dans un match d'échecs.",
   },
   {
     name: "Slots",
     href: "/casino/slots",
+    leaderboardKey: "slots",
     image: Img8,
     description: "Pariez votre chance dans les jeux de slots !",
   },
   {
     name: "Coin Flip",
     href: "/casino/coin-flip",
+    leaderboardKey: "coin-flip",
     image: Img9,
     description: "Faites tourner votre chance avec un pile ou face !",
   },
   {
     name: "Keno",
     href: "/casino/keno",
+    leaderboardKey: "keno",
     image: Img10,
     description: "Choisissez vos numéros fétiches et gagnez gros !",
   },
   {
     name: "Uno",
     href: "/casino/uno",
+    leaderboardKey: "uno",
     image: Img11,
     description: "Défie l’IA dans ce jeu rapide et stratégique.",
   },
   {
     name: "Roche-Papier-Ciseaux",
     href: "/casino/rps",
+    leaderboardKey: "rps",
     image: Img12,
     description: "Parie tes jetons dans ce jeu rapide et stratégique.",
   },
   {
     name: "Tanks",
     href: "/casino/tanks",
+    leaderboardKey: "tanks",
     image: Img13,
     description: "Deviens le meilleur tank et empare-toi des primes !",
   },
@@ -116,29 +130,36 @@ const filteredGames = games.filter((game) =>
 const popularGames = filteredGames.filter((g) => g.popular);
 const otherGames = filteredGames.filter((g) => !g.popular);
 const GameCard = ({ game }) => (
-  <a
-    href={game.href}
-    className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-2 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
-  >
-    <div className="mb-2 h-28 overflow-hidden rounded-lg">
-      <Image
-        src={game.image}
-        alt={game.name}
-        className="h-full w-full object-cover transition-transform group-hover:scale-110"
-      />
+  <div className="group relative overflow-hidden rounded-lg bg-black p-2 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20">
+    <Link href={game.href} className="block cursor-pointer">
+      <div className="mb-2 h-28 overflow-hidden rounded-lg">
+        <Image
+          src={game.image}
+          alt={game.name}
+          className="h-full w-full object-cover transition-transform group-hover:scale-110"
+        />
+      </div>
+
+      <h3 className="mb-2 text-md font-bold text-[#FFD700]">
+        {game.name}
+      </h3>
+
+      <p className="text-gray-300">{game.description}</p>
+
+      <div className="mt-4 flex items-center text-[#FFD700]">
+        <span>Jouer maintenant</span>
+        <i className="fas fa-arrow-right ml-2"></i>
+      </div>
+    </Link>
+    <div className="mt-2">
+      <Link
+        href={`/classement?game=${game.leaderboardKey}`}
+        className="text-xs text-[#FFD700]/90 underline underline-offset-2 hover:text-[#FFD700]"
+      >
+        Voir le leaderboard de {game.name}
+      </Link>
     </div>
-
-    <h3 className="mb-2 text-md font-bold text-[#FFD700]">
-      {game.name}
-    </h3>
-
-    <p className="text-gray-300">{game.description}</p>
-
-    <div className="mt-4 flex items-center text-[#FFD700]">
-      <span>Jouer maintenant</span>
-      <i className="fas fa-arrow-right ml-2"></i>
-    </div>
-  </a>
+  </div>
 );
 
   return (
