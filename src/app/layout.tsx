@@ -1,7 +1,7 @@
 import { Inter, Roboto_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers'; // Adjust path if needed
-import { SignInButton, SignUpButton, SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import ChatWidget from '../components/ChatWidget';
 
 const inter = Inter({
   variable: '--font-geist-sans',
@@ -24,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.variable} ${robotoMono.variable} antialiased`}>
         <Providers>
           {children}
+          <ChatWidget />
         </Providers>
       </body>
     </html>
