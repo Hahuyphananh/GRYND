@@ -76,6 +76,10 @@ export const slotGames = pgTable("slot_games", {
 
 export const pokerGames = pgTable("poker_games", {
   id: serial("id").primaryKey(),
+  // Legacy single-player stats columns kept for rankings compatibility
+  userId: integer("user_id"),
+  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }),
+  payout: numeric("payout", { precision: 10, scale: 2 }),
   // Game info
   gameCode: varchar("game_code", { length: 10 })
     .notNull()
