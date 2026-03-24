@@ -31,7 +31,7 @@ export default function ChessGamePage() {
   }, [moveIndex, moves, liveFen]);
 
   const turn = useMemo(() => {
-    const game = new Chess(liveFen === "start" ? undefined : liveFen);
+    const game = new Chess(liveFen || undefined);
     return game.turn() === "w" ? "white" : "black";
   }, [liveFen]);
 
@@ -46,7 +46,7 @@ export default function ChessGamePage() {
       return;
     }
 
-    const nextFen = data.data.fen || "start";
+    const nextFen = data.data.fen || null;
     setGameData(data.data);
     setMoves(data.data.moves || []);
     setLiveFen(nextFen);

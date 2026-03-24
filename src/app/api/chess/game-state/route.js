@@ -27,6 +27,10 @@ export async function GET(req) {
       )
       .limit(1);
 
+      console.log("DEBUG userId:", userId);
+console.log("DEBUG gameId:", gameId);
+console.log("DEBUG game:", game);
+
     if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
     const moves = await db
@@ -36,13 +40,28 @@ export async function GET(req) {
       .orderBy(asc(chessMoves.id));
 
     const lastMove = moves[moves.length - 1] || null;
-    const [whiteUser] = game.playerWhiteId
-      ? await db.select({ name: users.name }).from(users).where(eq(users.clerkId, game.playerWhiteId)).limit(1)
-      : [null];
-    const [blackUser] = game.playerBlackId
-      ? await db.select({ name: users.name }).from(users).where(eq(users.clerkId, game.playerBlackId)).limit(1)
-      : [null];
+   let whiteUser = null;
+let blackUser = null;
 
+if (game.playerWhiteId) {
+  const result = await db
+    .select({ name: users.name })
+    .from(users)
+    .where(eq(users.clerkId, game.playerWhiteId))
+    .limit(1);
+
+  whiteUser = result[0] || null;
+}
+
+if (game.playerBlackId) {
+  const result = await db
+    .select({ name: users.name })
+    .from(users)
+    .where(eq(users.clerkId, game.playerBlackId))
+    .limit(1);
+
+  blackUser = result[0] || null;
+}
     return NextResponse.json({
       success: true,
       data: {
@@ -55,7 +74,7 @@ export async function GET(req) {
         blackPlayerName: blackUser?.name || (game.isAiGame ? "Chess AI" : "Waiting..."),
         winnerId: game.winnerId,
         result: game.result,
-        fen: lastMove?.fenAfter ?? "start",
+        fen: lastMove?.fenAfter || null,
         moves: moves.map((m) => ({
           id: m.id,
           playedBy: m.playedBy,
