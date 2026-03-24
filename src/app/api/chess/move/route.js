@@ -1,9 +1,25 @@
 import { Chess } from "chess.js";
 import { auth } from "@clerk/nextjs/server";
-import { and, asc, eq, or } from "drizzle-orm";
+import { and, asc, eq, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
-import { chessGames, chessMoves } from "../../../../db/schema";
+import { chessGames, chessMoves, users } from "../../../../db/schema";
+
+const HOUSE_EDGE_PERCENT = 10;
+
+async function ensureChessMovesTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS chess_moves (
+      id serial PRIMARY KEY,
+      game_id integer NOT NULL REFERENCES chess_games(id) ON DELETE CASCADE,
+      played_by varchar(255) NOT NULL,
+      move_uci varchar(10) NOT NULL,
+      move_san varchar(20) NOT NULL,
+      fen_after text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+  `);
+}
 
 export async function POST(req) {
   try {
@@ -32,6 +48,8 @@ export async function POST(req) {
     if (game.status !== "in_progress") {
       return NextResponse.json({ error: "Game is not active" }, { status: 400 });
     }
+
+    await ensureChessMovesTable();
 
     const moves = await db
       .select()
@@ -62,17 +80,46 @@ export async function POST(req) {
     });
 
     if (chess.isGameOver()) {
-      const isDraw = chess.isDraw() || chess.isStalemate() || chess.isInsufficientMaterial() || chess.isThreefoldRepetition();
+      const isDraw =
+        chess.isDraw() || chess.isStalemate() || chess.isInsufficientMaterial() || chess.isThreefoldRepetition();
       const winnerId = isDraw ? null : userId;
 
-      await db
-        .update(chessGames)
-        .set({
-          status: "finished",
-          winnerId,
-          result: isDraw ? "draw" : "win",
-        })
-        .where(eq(chessGames.id, normalizedGameId));
+      await db.transaction(async (tx) => {
+        const [lockedGame] = await tx.select().from(chessGames).where(eq(chessGames.id, normalizedGameId)).for("update");
+        if (!lockedGame || lockedGame.status === "finished") return;
+
+        if (isDraw) {
+          await tx
+            .update(users)
+            .set({ balance: sql`${users.balance} + ${lockedGame.betAmount}` })
+            .where(eq(users.clerkId, lockedGame.playerWhiteId));
+
+          if (lockedGame.playerBlackId) {
+            await tx
+              .update(users)
+              .set({ balance: sql`${users.balance} + ${lockedGame.betAmount}` })
+              .where(eq(users.clerkId, lockedGame.playerBlackId));
+          }
+        } else {
+          const pot = Number(lockedGame.betAmount) * 2;
+          const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
+          const winnerPayout = Number((pot - houseFee).toFixed(2));
+
+          await tx
+            .update(users)
+            .set({ balance: sql`${users.balance} + ${winnerPayout}` })
+            .where(eq(users.clerkId, winnerId));
+        }
+
+        await tx
+          .update(chessGames)
+          .set({
+            status: "finished",
+            winnerId,
+            result: isDraw ? "draw" : "win",
+          })
+          .where(eq(chessGames.id, normalizedGameId));
+      });
     }
 
     return NextResponse.json({

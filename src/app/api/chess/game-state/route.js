@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { and, asc, eq, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
-import { chessGames, chessMoves } from "../../../../db/schema";
+import { chessGames, chessMoves, users } from "../../../../db/schema";
 
 export async function GET(req) {
   try {
@@ -29,13 +29,31 @@ export async function GET(req) {
 
     if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
-    const moves = await db
-      .select()
-      .from(chessMoves)
-      .where(eq(chessMoves.gameId, gameId))
-      .orderBy(asc(chessMoves.id));
+    let moves = [];
+    try {
+      moves = await db
+        .select()
+        .from(chessMoves)
+        .where(eq(chessMoves.gameId, gameId))
+        .orderBy(asc(chessMoves.id));
+    } catch (movesError) {
+      console.error("chess game-state moves query failed", movesError);
+      moves = [];
+    }
 
     const lastMove = moves[moves.length - 1] || null;
+    let whiteUser = null;
+    let blackUser = null;
+    try {
+      [whiteUser] = game.playerWhiteId
+        ? await db.select({ name: users.name }).from(users).where(eq(users.clerkId, game.playerWhiteId)).limit(1)
+        : [null];
+      [blackUser] = game.playerBlackId
+        ? await db.select({ name: users.name }).from(users).where(eq(users.clerkId, game.playerBlackId)).limit(1)
+        : [null];
+    } catch (userLookupError) {
+      console.error("chess game-state user lookup failed", userLookupError);
+    }
 
     return NextResponse.json({
       success: true,
@@ -45,6 +63,8 @@ export async function GET(req) {
         betAmount: game.betAmount,
         whitePlayerId: game.playerWhiteId,
         blackPlayerId: game.playerBlackId,
+        whitePlayerName: whiteUser?.name || "White",
+        blackPlayerName: blackUser?.name || (game.isAiGame ? "Chess AI" : "Waiting..."),
         winnerId: game.winnerId,
         result: game.result,
         fen: lastMove?.fenAfter ?? "start",
@@ -53,6 +73,7 @@ export async function GET(req) {
           playedBy: m.playedBy,
           moveUci: m.moveUci,
           moveSan: m.moveSan,
+          fenAfter: m.fenAfter,
           createdAt: m.createdAt,
         })),
       },
