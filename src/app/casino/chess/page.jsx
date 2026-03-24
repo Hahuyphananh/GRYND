@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function ChessLobby() {
   const router = useRouter();
@@ -9,6 +9,51 @@ export default function ChessLobby() {
 
   const [showBetPopup, setShowBetPopup] = useState(false);
   const [betAmount, setBetAmount] = useState("");
+  const [availableGames, setAvailableGames] = useState([]);
+  const [isLoadingAvailableGames, setIsLoadingAvailableGames] = useState(false);
+  const [joiningGameId, setJoiningGameId] = useState(null);
+
+  useEffect(() => {
+    fetchAvailableGames();
+  }, []);
+
+  async function fetchAvailableGames() {
+    setIsLoadingAvailableGames(true);
+    try {
+      const res = await fetch("/api/chess/available-games", { cache: "no-store" });
+      const data = await res.json();
+      if (data.success) {
+        setAvailableGames(data.data.games || []);
+      }
+    } catch (error) {
+      console.error("Failed to load available chess games", error);
+    }
+    setIsLoadingAvailableGames(false);
+  }
+
+  async function joinSpecificGame(gameId) {
+    setJoiningGameId(gameId);
+    try {
+      const res = await fetch("/api/chess/join-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.error || "Unable to join game");
+        fetchAvailableGames();
+        return;
+      }
+
+      router.push(`/casino/chess-game/${gameId}?color=black`);
+    } catch (error) {
+      console.error("Failed to join chess game", error);
+      alert("Unable to join game");
+    } finally {
+      setJoiningGameId(null);
+    }
+  }
 
   // This replaces your old handleAIGame
   async function startAIGame() {
@@ -56,6 +101,42 @@ export default function ChessLobby() {
         >
           Play vs AI 🤖
         </button>
+      </div>
+
+      <div className="max-w-3xl mx-auto mt-10 bg-[#002147] p-5 rounded-xl border border-[#FFD700]/40 text-left">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold text-[#FFD700]">Available Games</h2>
+          <button
+            onClick={fetchAvailableGames}
+            className="bg-[#FFD700] text-[#003366] px-4 py-2 rounded-lg font-semibold hover:bg-[#FFD700]/80"
+          >
+            {isLoadingAvailableGames ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+
+        {availableGames.length === 0 ? (
+          <p className="text-white/80">No open games right now. Create one from a table above.</p>
+        ) : (
+          <div className="space-y-3">
+            {availableGames.map((game) => (
+              <div key={game.id} className="flex items-center justify-between bg-[#003366] rounded-lg p-3">
+                <div>
+                  <p className="font-semibold">Game #{game.id}</p>
+                  <p className="text-sm text-white/80">
+                    Host: {game.hostName || "Player"} · Bet: ${Number(game.betAmount)}
+                  </p>
+                </div>
+                <button
+                  onClick={() => joinSpecificGame(game.id)}
+                  disabled={joiningGameId === game.id}
+                  className="bg-green-600 px-4 py-2 rounded-lg font-bold hover:bg-green-700 disabled:bg-green-800"
+                >
+                  {joiningGameId === game.id ? "Joining..." : "Join"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* BETTING POPUP MODAL */}
