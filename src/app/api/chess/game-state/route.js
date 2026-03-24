@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { and, asc, eq, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
-import { chessGames, chessMoves } from "../../../../db/schema";
+import { chessGames, chessMoves, users } from "../../../../db/schema";
 
 export async function GET(req) {
   try {
@@ -36,6 +36,12 @@ export async function GET(req) {
       .orderBy(asc(chessMoves.id));
 
     const lastMove = moves[moves.length - 1] || null;
+    const [whiteUser] = game.playerWhiteId
+      ? await db.select({ name: users.name }).from(users).where(eq(users.clerkId, game.playerWhiteId)).limit(1)
+      : [null];
+    const [blackUser] = game.playerBlackId
+      ? await db.select({ name: users.name }).from(users).where(eq(users.clerkId, game.playerBlackId)).limit(1)
+      : [null];
 
     return NextResponse.json({
       success: true,
@@ -45,6 +51,8 @@ export async function GET(req) {
         betAmount: game.betAmount,
         whitePlayerId: game.playerWhiteId,
         blackPlayerId: game.playerBlackId,
+        whitePlayerName: whiteUser?.name || "White",
+        blackPlayerName: blackUser?.name || (game.isAiGame ? "Chess AI" : "Waiting..."),
         winnerId: game.winnerId,
         result: game.result,
         fen: lastMove?.fenAfter ?? "start",
@@ -53,6 +61,7 @@ export async function GET(req) {
           playedBy: m.playedBy,
           moveUci: m.moveUci,
           moveSan: m.moveSan,
+          fenAfter: m.fenAfter,
           createdAt: m.createdAt,
         })),
       },
