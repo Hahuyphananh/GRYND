@@ -1,8 +1,8 @@
 // src/app/api/chess/create-game/route.js
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
-import { chessGames } from "../../../../db/schema";
-import { eq, and, isNull, ne, lt, or } from "drizzle-orm";
+import { chessGames, users } from "../../../../db/schema";
+import { eq, and, isNull, ne, lt, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 export async function POST(req) {
@@ -72,42 +72,86 @@ export async function POST(req) {
     if (openGame.length > 0) {
       const game = openGame[0];
 
-      const result = await db
-        .update(chessGames)
-        .set({
-          playerBlackId: clerkId,
-          status: "in_progress",
-        })
-        .where(and(eq(chessGames.id, game.id), isNull(chessGames.playerBlackId)))
-        .returning({ id: chessGames.id });
+      const joinResult = await db.transaction(async (tx) => {
+        const [gameLocked] = await tx
+          .select()
+          .from(chessGames)
+          .where(and(eq(chessGames.id, game.id), isNull(chessGames.playerBlackId)))
+          .for("update");
 
-      if (result.length > 0) {
-        return NextResponse.json({
-          gameId: game.id,
-          color: "black",
-          ready: true,
-          status: "in_progress",
-        });
-      }
+        if (!gameLocked) {
+          throw new Error("Game is no longer available");
+        }
+
+        const [updatedUser] = await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} - ${gameLocked.betAmount}` })
+          .where(and(eq(users.clerkId, clerkId), sql`${users.balance} >= ${gameLocked.betAmount}`))
+          .returning({ balance: users.balance });
+
+        if (!updatedUser) {
+          throw new Error("Insufficient balance");
+        }
+
+        const [updatedGame] = await tx
+          .update(chessGames)
+          .set({
+            playerBlackId: clerkId,
+            status: "in_progress",
+          })
+          .where(and(eq(chessGames.id, game.id), isNull(chessGames.playerBlackId)))
+          .returning({ id: chessGames.id });
+
+        if (!updatedGame) {
+          throw new Error("Game is no longer available");
+        }
+
+        return { gameId: updatedGame.id, newBalance: Number(updatedUser.balance) };
+      });
+
+      return NextResponse.json({
+        gameId: joinResult.gameId,
+        color: "black",
+        ready: true,
+        status: "in_progress",
+        newBalance: joinResult.newBalance,
+      });
     }
 
-    const [newGame] = await db
-      .insert(chessGames)
-      .values({
-        playerWhiteId: clerkId,
-        betAmount: tableAmount,
-        status: "waiting",
-      })
-      .returning({ id: chessGames.id });
+    const createdGame = await db.transaction(async (tx) => {
+      const [updatedUser] = await tx
+        .update(users)
+        .set({ balance: sql`${users.balance} - ${tableAmount}` })
+        .where(and(eq(users.clerkId, clerkId), sql`${users.balance} >= ${tableAmount}`))
+        .returning({ balance: users.balance });
+
+      if (!updatedUser) {
+        throw new Error("Insufficient balance");
+      }
+
+      const [newGame] = await tx
+        .insert(chessGames)
+        .values({
+          playerWhiteId: clerkId,
+          betAmount: tableAmount,
+          status: "waiting",
+        })
+        .returning({ id: chessGames.id });
+
+      return { gameId: newGame.id, newBalance: Number(updatedUser.balance) };
+    });
 
     return NextResponse.json({
-      gameId: newGame.id,
+      gameId: createdGame.gameId,
       color: "white",
       ready: false,
       status: "waiting",
+      newBalance: createdGame.newBalance,
     });
   } catch (err) {
     console.error("Create-game error:", err);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    const errorMessage = err?.message || "Internal Server Error";
+    const status = errorMessage === "Insufficient balance" || errorMessage.includes("available") ? 400 : 500;
+    return NextResponse.json({ error: errorMessage }, { status });
   }
 }
