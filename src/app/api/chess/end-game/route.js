@@ -1,7 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
-import { chessGames } from "../../../../db/schema";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { chessGames, users } from "../../../../db/schema";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
+
+const HOUSE_EDGE_PERCENT = 10;
 
 // Ends any open game for this user.
 // Optional body: { gameId?: number, result?: "win" | "loss" | "draw" }
@@ -41,15 +43,72 @@ export async function POST(req) {
       return new Response("No active game found", { status: 200 });
     }
 
-    const gameId = openGame[0].id;
-    const updatePayload = {
-      status: "expired",
-      ...(allowedResult ? { result: allowedResult } : {}),
-    };
+    const game = openGame[0];
+    const gameId = game.id;
 
-    await db.update(chessGames).set(updatePayload).where(eq(chessGames.id, gameId));
+    await db.transaction(async (tx) => {
+      const [lockedGame] = await tx.select().from(chessGames).where(eq(chessGames.id, gameId)).for("update");
+      if (!lockedGame) return;
 
-    return new Response("Game expired", { status: 200 });
+      if (lockedGame.isAiGame) {
+        await tx.update(chessGames).set({ status: "expired" }).where(eq(chessGames.id, gameId));
+        return;
+      }
+
+      if (lockedGame.status === "waiting") {
+        await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} + ${lockedGame.betAmount}` })
+          .where(eq(users.clerkId, userId));
+
+        await tx
+          .update(chessGames)
+          .set({
+            status: "expired",
+            result: allowedResult || "cancelled",
+          })
+          .where(eq(chessGames.id, gameId));
+        return;
+      }
+
+      if (lockedGame.status === "in_progress") {
+        const opponentId = lockedGame.playerWhiteId === userId ? lockedGame.playerBlackId : lockedGame.playerWhiteId;
+        if (!opponentId) {
+          await tx.update(chessGames).set({ status: "expired" }).where(eq(chessGames.id, gameId));
+          return;
+        }
+
+        const pot = Number(lockedGame.betAmount) * 2;
+        const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
+        const winnerPayout = Number((pot - houseFee).toFixed(2));
+
+        await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} + ${winnerPayout}` })
+          .where(eq(users.clerkId, opponentId));
+
+        await tx
+          .update(chessGames)
+          .set({
+            status: "finished",
+            winnerId: opponentId,
+            result: "opponent_left",
+            payout: winnerPayout.toString(),
+          })
+          .where(eq(chessGames.id, gameId));
+        return;
+      }
+
+      await tx
+        .update(chessGames)
+        .set({
+          status: "expired",
+          ...(allowedResult ? { result: allowedResult } : {}),
+        })
+        .where(eq(chessGames.id, gameId));
+    });
+
+    return new Response("Game ended", { status: 200 });
   } catch (err) {
     console.error("End-game error:", err);
     return new Response("Server error", { status: 500 });
