@@ -12,6 +12,8 @@ export default function TanksLobby() {
   const [loading, setLoading] = useState(false);
   const [balance, setBalance] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [availableGames, setAvailableGames] = useState<any[]>([]);
+  const [joiningMatchId, setJoiningMatchId] = useState<string | null>(null);
   const router = useRouter();
 
   const fetchUserTokens = async () => {
@@ -39,17 +41,38 @@ export default function TanksLobby() {
     }
   };
 
+
+  const fetchAvailableGames = async () => {
+    try {
+      const res = await fetch("/api/tanks/available-games", { cache: "no-store" });
+      const data = await res.json();
+      if (data.success) {
+        setAvailableGames(data.games || []);
+      }
+    } catch (err) {
+      console.error("Error fetching tanks matches:", err);
+    }
+  };
+
   useEffect(() => {
     if (isSignedIn && user) fetchUserTokens();
+    fetchAvailableGames();
   }, [isSignedIn, user]);
 
-async function joinGame() {
+  useEffect(() => {
+    const interval = setInterval(fetchAvailableGames, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+async function joinGame(matchId?: string) {
   try {
     setLoading(true);
+    if (matchId) setJoiningMatchId(matchId);
 
     const res = await fetch("/api/tanks/join-game", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(matchId ? { matchId } : {}),
     });
 
     const data = await res.json();
@@ -66,6 +89,7 @@ async function joinGame() {
     alert("Server error while joining match");
   } finally {
     setLoading(false);
+    setJoiningMatchId(null);
   }
 }
 
@@ -150,13 +174,46 @@ async function joinGame() {
         </motion.button>
         <motion.button
   whileTap={{ scale: 0.96 }}
-  onClick={joinGame}
+  onClick={() => joinGame()}
   disabled={loading}
   className="block text-center w-full p-3 mt-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-bold cursor-pointer disabled:bg-blue-900"
 >
-  {loading ? "Joining..." : "Join Game"}
+  {loading ? "Joining..." : "Quick Join"}
 </motion.button>
 
+        <div className="mt-4 bg-black/30 border border-gray-700 rounded-xl p-3">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-semibold">Available Public Matches</h2>
+            <button
+              onClick={fetchAvailableGames}
+              className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {availableGames.length === 0 ? (
+            <p className="text-sm text-gray-400">No public match is open right now.</p>
+          ) : (
+            <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+              {availableGames.map((game) => (
+                <div key={game.matchId} className="flex items-center justify-between bg-gray-900/70 rounded-lg px-2 py-2">
+                  <div className="text-xs">
+                    <p className="font-semibold">{game.hostName || "Host"} · {game.matchId}</p>
+                    <p className="text-gray-400">Bet: {Number(game.bounty || 0).toFixed(2)} · {game.currentPlayers}/{game.maxPlayers}</p>
+                  </div>
+                  <button
+                    onClick={() => joinGame(game.matchId)}
+                    disabled={loading || joiningMatchId === game.matchId}
+                    className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 text-xs font-bold"
+                  >
+                    {joiningMatchId === game.matchId ? "Joining..." : "Join"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="mt-6 text-center text-gray-400 text-sm">
           Kill players → steal their bounty.<br />Survive 5s to cash out.

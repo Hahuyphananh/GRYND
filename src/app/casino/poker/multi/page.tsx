@@ -180,6 +180,13 @@ function findFirstActorIndex(
 }
   
   const [availablePublicGames, setAvailablePublicGames] = useState<number>(0);
+  const [publicGameList, setPublicGameList] = useState<{
+    gameCode: string;
+    hostName: string;
+    occupiedSeats: number;
+    maxPlayers: number;
+    openSeats: number;
+  }[]>([]);
 
   const [waitingPlayers, setWaitingPlayers] = useState<{id:string,name:string,level?:number}[]>([]);
 
@@ -223,12 +230,15 @@ function findFirstActorIndex(
 
   const fetchPublicGamesCount = async () => {
     try {
-      const res = await fetch("/api/poker/public-games");
+      const res = await fetch("/api/poker/public-games", { cache: "no-store" });
       const data = await res.json();
-      setAvailablePublicGames(data.count || 0);
+      const games = Array.isArray(data.games) ? data.games : [];
+      setAvailablePublicGames(data.count || games.length || 0);
+      setPublicGameList(games);
     } catch (err) {
       console.error("Error fetching public games:", err);
       setAvailablePublicGames(0);
+      setPublicGameList([]);
     }
   };
 
@@ -484,13 +494,13 @@ async function joinGame(codeOverride?: string) {
 }
 
 
-  async function joinPublicGame() {
+  async function joinPublicGame(gameCode?: string) {
     setJoiningGame(true);
     try {
       const res = await fetch("/api/poker/join-public", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playerName: name }),
+        body: JSON.stringify({ playerName: name, gameCode }),
       });
 
       const data = await res.json();
@@ -630,13 +640,13 @@ players.forEach((p, i) => {
     fetchUserTokens();
   }
 } else if (action === "raise") {
-      const toCall = Math.max(0, highest - (current.currentBet || 0));
-      const totalPut = toCall + raiseAmount;
-      const actual = Math.min(totalPut, current.stack);
+      const targetBet = Math.max(raiseAmount, highest);
+      const chipsNeeded = Math.max(0, targetBet - (current.currentBet || 0));
+      const actual = Math.min(chipsNeeded, current.stack);
       current.stack -= actual;
       current.currentBet += actual;
       potNew += actual;
-      current.lastAction = `Raised ${raiseAmount}`;
+      current.lastAction = chipsNeeded > 0 ? `Raised to ${current.currentBet}` : "Call";
   game.lastAggressorIndex = currentIndex;
 
 players.forEach((p, i) => {
@@ -937,16 +947,10 @@ async function sitAsHuman() {
   }
 const isHost = !!(game && clerkId && game.hostClerkId === clerkId);
 
-// Determine if someone has bet after the flop
-const hasBetThisRound =
-  game &&
-  game.stage !== "pre-flop" &&
-  game.players.some(
-    (p, idx) =>
-      !p.hasFolded &&
-      p.currentBet > 0 &&
-      idx !== game.roundStarter // 🔑 ignore blind carry-over
-  );
+const me = game?.players.find((p) => p.id === myId);
+const highestBetInRound = game ? Math.max(...game.players.map((p) => p.currentBet || 0)) : 0;
+const toCallAmount = Math.max(0, highestBetInRound - (me?.currentBet || 0));
+const canUseBetShortcut = game?.stage !== "pre-flop" && highestBetInRound === 0;
 
 if (showJoinForm) {
   return (
@@ -1019,6 +1023,29 @@ if (showJoinForm) {
   <p className="text-gray-400 mb-2">No public games available</p>
 )}
 
+{publicGameList.length > 0 && (
+  <div className="mb-3 max-h-48 overflow-y-auto rounded border border-slate-600 p-2 text-left">
+    <p className="text-xs text-slate-300 mb-2">Available Public Tables</p>
+    <div className="space-y-2">
+      {publicGameList.map((g) => (
+        <div key={g.gameCode} className="flex items-center justify-between bg-slate-700 rounded px-2 py-1">
+          <div className="text-xs">
+            <p className="font-semibold">{g.hostName} · {g.gameCode}</p>
+            <p className="text-slate-300">{g.occupiedSeats}/{g.maxPlayers} players</p>
+          </div>
+          <button
+            onClick={() => joinPublicGame(g.gameCode)}
+            disabled={joiningGame}
+            className="bg-blue-500 hover:bg-blue-400 disabled:bg-blue-800 px-2 py-1 rounded text-xs font-bold"
+          >
+            Join
+          </button>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+
 
           <input
             placeholder="Your display name"
@@ -1053,7 +1080,7 @@ if (showJoinForm) {
 
 
    <button
-  onClick={availablePublicGames > 0 ? joinPublicGame : undefined}
+  onClick={availablePublicGames > 0 ? () => joinPublicGame() : undefined}
   disabled={availablePublicGames === 0}
   className={`px-4 py-2 rounded w-full font-bold mb-2 transition ${
     availablePublicGames > 0
@@ -1241,12 +1268,11 @@ if (showJoinForm) {
       <button
         onClick={() => {
           if (!isMyTurn) return;
-          if (game?.stage !== "pre-flop") {
-            if (hasBetThisRound) performAction("call");
-            else performAction("bet20"); // new pseudo-action
-          } else {
-            performAction("call");
+          if (canUseBetShortcut) {
+            performAction("bet20");
+            return;
           }
+          performAction("call");
         }}
         disabled={!isMyTurn}
         className={`px-4 py-2 rounded w-24 transition ${
@@ -1255,7 +1281,7 @@ if (showJoinForm) {
             : "bg-blue-900 text-gray-300 opacity-60 cursor-not-allowed"
         }`}
       >
-        {game?.stage !== "pre-flop" && !hasBetThisRound ? "Bet 20" : "Call"}
+        {canUseBetShortcut ? "Bet 20" : toCallAmount > 0 ? `Call ${toCallAmount}` : "Call"}
       </button>
 
       <div className="flex flex-col items-center">
