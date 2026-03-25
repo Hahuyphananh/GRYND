@@ -11,15 +11,20 @@ export async function POST(req) {
 
     const body = await req.json();
     const playerName = body.playerName ?? "Player";
+    const preferredGameCode = body.gameCode ?? null;
 
     const games = await db.select().from(pokerGames).where(eq(pokerGames.isPrivate, false));
-    const randomGame = games.find((g) => {
+    const availableGames = games.filter((g) => {
       const seats = Array.isArray(g.players) ? g.players : [];
       const occupied = seats.filter((s) => s?.clerkId).length;
       return occupied < (g.maxPlayers ?? 6) && !seats.some((s) => s?.clerkId === userId);
     });
 
-    if (!randomGame) return NextResponse.json({ error: "No available public games" }, { status: 404 });
+    const randomGame = preferredGameCode
+      ? availableGames.find((g) => g.gameCode === preferredGameCode)
+      : availableGames[0];
+
+    if (!randomGame) return NextResponse.json({ error: preferredGameCode ? "Selected game is no longer available" : "No available public games" }, { status: 404 });
 
     const seats = Array.isArray(randomGame.players) ? randomGame.players : [];
     const emptySeat = seats.find((s) => s?.clerkId === null);
