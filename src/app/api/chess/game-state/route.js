@@ -1,8 +1,15 @@
 import { auth } from "@clerk/nextjs/server";
-import { and, asc, eq, or } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { chessGames, chessMoves, users } from "../../../../db/schema";
+
+async function getUserAliases(clerkId) {
+  const aliases = new Set([String(clerkId)]);
+  const [userRow] = await db.select({ id: users.id }).from(users).where(eq(users.clerkId, clerkId)).limit(1);
+  if (userRow?.id) aliases.add(String(userRow.id));
+  return aliases;
+}
 
 async function resolveDisplayName(playerId) {
   if (!playerId) return null;
@@ -42,21 +49,27 @@ export async function GET(req) {
       return NextResponse.json({ error: "Invalid gameId" }, { status: 400 });
     }
 
+    const userAliases = await getUserAliases(userId);
+
     const [game] = await db
       .select()
       .from(chessGames)
-      .where(
-        and(
-          eq(chessGames.id, gameId),
-          or(
-            eq(chessGames.playerWhiteId, userId),
-            eq(chessGames.playerBlackId, userId)
-          )
-        )
-      )
+      .where(eq(chessGames.id, gameId))
       .limit(1);
 
     if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
+
+    const canAccess = userAliases.has(String(game.playerWhiteId)) || userAliases.has(String(game.playerBlackId));
+    if (!canAccess) {
+      console.warn("chess game-state forbidden", {
+        gameId,
+        requester: userId,
+        requesterAliases: Array.from(userAliases),
+        playerWhiteId: game.playerWhiteId,
+        playerBlackId: game.playerBlackId,
+      });
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    }
 
     const moves = await db
       .select()
@@ -94,7 +107,11 @@ export async function GET(req) {
       },
     });
   } catch (error) {
-    console.error("chess game-state error", error);
+    console.error("chess game-state error", {
+      message: error?.message,
+      stack: error?.stack,
+      cause: error?.cause,
+    });
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

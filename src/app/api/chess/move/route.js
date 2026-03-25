@@ -1,11 +1,18 @@
 import { Chess } from "chess.js";
 import { auth } from "@clerk/nextjs/server";
-import { and, asc, eq, or, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { chessGames, chessMoves, users } from "../../../../db/schema";
 
 const HOUSE_EDGE_PERCENT = 10;
+
+async function getUserAliases(clerkId) {
+  const aliases = new Set([String(clerkId)]);
+  const [userRow] = await db.select({ id: users.id }).from(users).where(eq(users.clerkId, clerkId)).limit(1);
+  if (userRow?.id) aliases.add(String(userRow.id));
+  return aliases;
+}
 
 export async function POST(req) {
   try {
@@ -19,18 +26,22 @@ export async function POST(req) {
       return NextResponse.json({ error: "Invalid move payload" }, { status: 400 });
     }
 
+    const userAliases = await getUserAliases(userId);
+
     const [game] = await db
       .select()
       .from(chessGames)
-      .where(
-        and(
-          eq(chessGames.id, normalizedGameId),
-          or(eq(chessGames.playerWhiteId, userId), eq(chessGames.playerBlackId, userId))
-        )
-      )
+      .where(eq(chessGames.id, normalizedGameId))
       .limit(1);
 
     if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
+
+    const isWhitePlayer = userAliases.has(String(game.playerWhiteId));
+    const isBlackPlayer = userAliases.has(String(game.playerBlackId));
+    if (!isWhitePlayer && !isBlackPlayer) {
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    }
+
     if (game.status !== "in_progress") {
       return NextResponse.json({ error: "Game is not active" }, { status: 400 });
     }
@@ -44,7 +55,7 @@ export async function POST(req) {
     const lastFen = moves.length > 0 ? moves[moves.length - 1].fenAfter : undefined;
     const chess = new Chess(lastFen);
 
-    const isWhite = game.playerWhiteId === userId;
+    const isWhite = isWhitePlayer;
     const expectedTurn = isWhite ? "w" : "b";
     if (chess.turn() !== expectedTurn) {
       return NextResponse.json({ error: "Not your turn" }, { status: 409 });
@@ -115,7 +126,11 @@ export async function POST(req) {
       },
     });
   } catch (error) {
-    console.error("chess move error", error);
+    console.error("chess move error", {
+      message: error?.message,
+      stack: error?.stack,
+      cause: error?.cause,
+    });
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
