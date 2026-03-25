@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { and, asc, eq, or, sql } from "drizzle-orm";
+import { and, asc, eq, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { chessGames, chessMoves, users } from "../../../../db/schema";
@@ -8,18 +8,26 @@ async function resolveDisplayName(playerId) {
   if (!playerId) return null;
 
   const normalizedId = String(playerId);
-  const [user] = await db
+  const [byClerk] = await db
     .select({ name: users.name })
     .from(users)
-    .where(
-      or(
-        eq(users.clerkId, normalizedId),
-        sql`${users.id}::text = ${normalizedId}`
-      )
-    )
+    .where(eq(users.clerkId, normalizedId))
     .limit(1);
 
-  return user?.name ?? null;
+  if (byClerk?.name) return byClerk.name;
+
+  const numericId = Number(normalizedId);
+  if (!Number.isInteger(numericId) || numericId <= 0) {
+    return null;
+  }
+
+  const [byNumericId] = await db
+    .select({ name: users.name })
+    .from(users)
+    .where(eq(users.id, numericId))
+    .limit(1);
+
+  return byNumericId?.name ?? null;
 }
 
 export async function GET(req) {
@@ -41,8 +49,8 @@ export async function GET(req) {
         and(
           eq(chessGames.id, gameId),
           or(
-            sql`${chessGames.playerWhiteId}::text = ${userId}`,
-            sql`${chessGames.playerBlackId}::text = ${userId}`
+            eq(chessGames.playerWhiteId, userId),
+            eq(chessGames.playerBlackId, userId)
           )
         )
       )
