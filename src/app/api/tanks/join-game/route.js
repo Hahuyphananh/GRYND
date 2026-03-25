@@ -4,29 +4,38 @@ import { db } from "../../../../db";
 import { tankMatches, tankStats, users } from "../../../../db/schema";
 import { eq, and, lt, desc, sql } from "drizzle-orm";
 
-export async function POST() {
+export async function POST(req) {
   try {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const body = await req.json().catch(() => ({}));
+    const requestedMatchId = body?.matchId || null;
+
     // 1️⃣ Find open match
     const match = await db
       .select()
       .from(tankMatches)
       .where(
-        and(
-          eq(tankMatches.isOpen, true),
-          lt(tankMatches.currentPlayers, tankMatches.maxPlayers)
-        )
+        requestedMatchId
+          ? and(
+              eq(tankMatches.isOpen, true),
+              lt(tankMatches.currentPlayers, tankMatches.maxPlayers),
+              eq(tankMatches.matchId, requestedMatchId)
+            )
+          : and(
+              eq(tankMatches.isOpen, true),
+              lt(tankMatches.currentPlayers, tankMatches.maxPlayers)
+            )
       )
       .orderBy(desc(tankMatches.currentPlayers))
       .limit(1);
 
     if (match.length === 0) {
       return NextResponse.json(
-        { error: "No matches available." },
+        { error: requestedMatchId ? "Selected match is no longer available." : "No matches available." },
         { status: 404 }
       );
     }
