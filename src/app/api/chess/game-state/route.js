@@ -1,8 +1,26 @@
 import { auth } from "@clerk/nextjs/server";
-import { and, asc, eq, or } from "drizzle-orm";
+import { and, asc, eq, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { chessGames, chessMoves, users } from "../../../../db/schema";
+
+async function resolveDisplayName(playerId) {
+  if (!playerId) return null;
+
+  const normalizedId = String(playerId);
+  const [user] = await db
+    .select({ name: users.name })
+    .from(users)
+    .where(
+      or(
+        eq(users.clerkId, normalizedId),
+        sql`${users.id}::text = ${normalizedId}`
+      )
+    )
+    .limit(1);
+
+  return user?.name ?? null;
+}
 
 export async function GET(req) {
   try {
@@ -22,14 +40,13 @@ export async function GET(req) {
       .where(
         and(
           eq(chessGames.id, gameId),
-          or(eq(chessGames.playerWhiteId, userId), eq(chessGames.playerBlackId, userId))
+          or(
+            sql`${chessGames.playerWhiteId}::text = ${userId}`,
+            sql`${chessGames.playerBlackId}::text = ${userId}`
+          )
         )
       )
       .limit(1);
-
-      console.log("DEBUG userId:", userId);
-console.log("DEBUG gameId:", gameId);
-console.log("DEBUG game:", game);
 
     if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
@@ -40,28 +57,11 @@ console.log("DEBUG game:", game);
       .orderBy(asc(chessMoves.id));
 
     const lastMove = moves[moves.length - 1] || null;
-   let whiteUser = null;
-let blackUser = null;
+    const [whiteName, blackName] = await Promise.all([
+      resolveDisplayName(game.playerWhiteId),
+      resolveDisplayName(game.playerBlackId),
+    ]);
 
-if (game.playerWhiteId) {
-  const result = await db
-    .select({ name: users.name })
-    .from(users)
-    .where(eq(users.clerkId, game.playerWhiteId))
-    .limit(1);
-
-  whiteUser = result[0] || null;
-}
-
-if (game.playerBlackId) {
-  const result = await db
-    .select({ name: users.name })
-    .from(users)
-    .where(eq(users.clerkId, game.playerBlackId))
-    .limit(1);
-
-  blackUser = result[0] || null;
-}
     return NextResponse.json({
       success: true,
       data: {
@@ -70,8 +70,8 @@ if (game.playerBlackId) {
         betAmount: game.betAmount,
         whitePlayerId: game.playerWhiteId,
         blackPlayerId: game.playerBlackId,
-        whitePlayerName: whiteUser?.name || "White",
-        blackPlayerName: blackUser?.name || (game.isAiGame ? "Chess AI" : "Waiting..."),
+        whitePlayerName: whiteName || "White",
+        blackPlayerName: blackName || (game.isAiGame ? "Chess AI" : "Waiting..."),
         winnerId: game.winnerId,
         result: game.result,
         fen: lastMove?.fenAfter ?? null,
