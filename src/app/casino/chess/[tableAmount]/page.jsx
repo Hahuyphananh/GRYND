@@ -1,6 +1,6 @@
 "use client";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function MatchmakingPage() {
   const { tableAmount } = useParams();
@@ -9,6 +9,7 @@ export default function MatchmakingPage() {
   const [gameId, setGameId] = useState(null);
   const [color, setColor] = useState("white");
   const [isCanceling, setIsCanceling] = useState(false);
+  const pollFailuresRef = useRef(0);
 
   useEffect(() => {
     let pollId;
@@ -37,13 +38,45 @@ export default function MatchmakingPage() {
 
         setStatusText("Waiting for opponent...");
         pollId = setInterval(async () => {
-          const pollRes = await fetch(`/api/chess/game-state?gameId=${data.gameId}`, { cache: "no-store" });
-          const pollData = await pollRes.json();
-          if (!pollRes.ok) return;
+          try {
+            const pollRes = await fetch(`/api/chess/game-state?gameId=${data.gameId}`, { cache: "no-store" });
+            const pollData = await pollRes.json();
+            if (!pollRes.ok) {
+              const nextFailures = pollFailuresRef.current + 1;
+              pollFailuresRef.current = nextFailures;
+              console.warn("chess waiting-room poll failed", {
+                gameId: data.gameId,
+                status: pollRes.status,
+                error: pollData?.error,
+                failures: nextFailures,
+              });
 
-          if (pollData.data.status === "in_progress" && pollData.data.blackPlayerId) {
-            clearInterval(pollId);
-            router.push(`/casino/chess-game/${data.gameId}?color=${data.color}`);
+              if (nextFailures >= 3) {
+                setStatusText(pollData?.error || "Unable to refresh waiting room. Please retry.");
+                clearInterval(pollId);
+              }
+              return;
+            }
+
+            pollFailuresRef.current = 0;
+
+            if (pollData.data.status === "in_progress" && pollData.data.blackPlayerId) {
+              clearInterval(pollId);
+              router.push(`/casino/chess-game/${data.gameId}?color=${data.color}`);
+            }
+          } catch (pollError) {
+            const nextFailures = pollFailuresRef.current + 1;
+            pollFailuresRef.current = nextFailures;
+            console.warn("chess waiting-room poll exception", {
+              gameId: data.gameId,
+              failures: nextFailures,
+              error: pollError?.message,
+            });
+
+            if (nextFailures >= 3) {
+              setStatusText("Unable to refresh waiting room. Please retry.");
+              clearInterval(pollId);
+            }
           }
         }, 2000);
       } catch (error) {
