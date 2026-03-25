@@ -2,7 +2,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { chessGames, users } from "../../../../db/schema";
-import { eq, and, isNull, ne, lt, or, sql } from "drizzle-orm";
+import { eq, and, lt, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 export async function POST(req) {
@@ -24,6 +24,7 @@ export async function POST(req) {
       .where(
         and(
           eq(chessGames.status, "waiting"),
+          eq(chessGames.isAiGame, false),
           lt(chessGames.createdAt, new Date(Date.now() - 5 * 60 * 1000))
         )
       );
@@ -33,9 +34,9 @@ export async function POST(req) {
       .from(chessGames)
       .where(
         and(
-          eq(chessGames.betAmount, tableAmount),
           or(eq(chessGames.playerWhiteId, clerkId), eq(chessGames.playerBlackId, clerkId)),
-          ne(chessGames.status, "expired")
+          eq(chessGames.isAiGame, false),
+          or(eq(chessGames.status, "waiting"), eq(chessGames.status, "in_progress"))
         )
       )
       .orderBy(chessGames.createdAt)
@@ -46,75 +47,22 @@ export async function POST(req) {
       const color = game.playerWhiteId === clerkId ? "white" : "black";
       const ready = Boolean(game.playerWhiteId && game.playerBlackId);
 
+      if (game.status === "waiting" && Number(game.betAmount) !== tableAmount) {
+        return NextResponse.json(
+          {
+            error: `You already have a waiting game at $${Number(game.betAmount)}. Cancel it first or re-open that table.`,
+            existingGameId: game.id,
+          },
+          { status: 400 }
+        );
+      }
+
       return NextResponse.json({
         gameId: game.id,
         color,
         ready,
         status: game.status,
         note: "Reusing existing game",
-      });
-    }
-
-    const openGame = await db
-      .select()
-      .from(chessGames)
-      .where(
-        and(
-          eq(chessGames.betAmount, tableAmount),
-          eq(chessGames.status, "waiting"),
-          isNull(chessGames.playerBlackId),
-          ne(chessGames.playerWhiteId, clerkId)
-        )
-      )
-      .orderBy(chessGames.createdAt)
-      .limit(1);
-
-    if (openGame.length > 0) {
-      const game = openGame[0];
-
-      const joinResult = await db.transaction(async (tx) => {
-        const [gameLocked] = await tx
-          .select()
-          .from(chessGames)
-          .where(and(eq(chessGames.id, game.id), isNull(chessGames.playerBlackId)))
-          .for("update");
-
-        if (!gameLocked) {
-          throw new Error("Game is no longer available");
-        }
-
-        const [updatedUser] = await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} - ${gameLocked.betAmount}` })
-          .where(and(eq(users.clerkId, clerkId), sql`${users.balance} >= ${gameLocked.betAmount}`))
-          .returning({ balance: users.balance });
-
-        if (!updatedUser) {
-          throw new Error("Insufficient balance");
-        }
-
-        const [updatedGame] = await tx
-          .update(chessGames)
-          .set({
-            playerBlackId: clerkId,
-            status: "in_progress",
-          })
-          .where(and(eq(chessGames.id, game.id), isNull(chessGames.playerBlackId)))
-          .returning({ id: chessGames.id });
-
-        if (!updatedGame) {
-          throw new Error("Game is no longer available");
-        }
-
-        return { gameId: updatedGame.id, newBalance: Number(updatedUser.balance) };
-      });
-
-      return NextResponse.json({
-        gameId: joinResult.gameId,
-        color: "black",
-        ready: true,
-        status: "in_progress",
-        newBalance: joinResult.newBalance,
       });
     }
 
@@ -135,6 +83,7 @@ export async function POST(req) {
           playerWhiteId: clerkId,
           betAmount: tableAmount,
           status: "waiting",
+          isAiGame: false,
         })
         .returning({ id: chessGames.id });
 
@@ -151,7 +100,7 @@ export async function POST(req) {
   } catch (err) {
     console.error("Create-game error:", err);
     const errorMessage = err?.message || "Internal Server Error";
-    const status = errorMessage === "Insufficient balance" || errorMessage.includes("available") ? 400 : 500;
+    const status = errorMessage === "Insufficient balance" ? 400 : 500;
     return NextResponse.json({ error: errorMessage }, { status });
   }
 }
