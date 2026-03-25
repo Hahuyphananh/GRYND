@@ -8,6 +8,7 @@ export default function MatchmakingPage() {
   const [statusText, setStatusText] = useState("Creating game...");
   const [gameId, setGameId] = useState(null);
   const [color, setColor] = useState("white");
+  const [isCanceling, setIsCanceling] = useState(false);
 
   useEffect(() => {
     let pollId;
@@ -58,12 +59,50 @@ export default function MatchmakingPage() {
     };
   }, [tableAmount, router]);
 
+  async function cancelWaitingGame() {
+    if (!gameId) return;
+
+    setIsCanceling(true);
+    try {
+      const res = await fetch("/api/chess/cancel-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setStatusText(data.error || "Unable to cancel game");
+        return;
+      }
+
+      router.push("/casino/chess");
+    } catch (error) {
+      console.error("Failed to cancel chess game", error);
+      setStatusText("Unable to cancel game");
+    } finally {
+      setIsCanceling(false);
+    }
+  }
+
+  const showCancel = statusText === "Waiting for opponent..." && gameId && color === "white";
+
   return (
     <div className="min-h-screen bg-[#003366] text-white flex items-center justify-center">
       <div className="text-center">
         <h2 className="text-3xl font-bold text-[#FFD700] mb-4">{statusText}</h2>
         <p className="mb-2">Stake: ${tableAmount}</p>
-        {gameId && <p className="text-sm opacity-80">Game #{gameId} · You are {color}</p>}
+        {gameId && <p className="text-sm opacity-80 mb-5">Game #{gameId} · You are {color}</p>}
+
+        {showCancel && (
+          <button
+            onClick={cancelWaitingGame}
+            disabled={isCanceling}
+            className="bg-red-600 hover:bg-red-700 disabled:bg-red-900 disabled:cursor-not-allowed px-5 py-2 rounded-lg font-semibold"
+          >
+            {isCanceling ? "Canceling..." : "Cancel & Return to Lobby"}
+          </button>
+        )}
       </div>
     </div>
   );
