@@ -30,8 +30,10 @@ export default function ChessGamePage() {
     return liveFen;
   }, [moveIndex, moves, liveFen]);
 
-  const turn = useMemo(() => {
-    const game = new Chess(liveFen || undefined);
+const turn = useMemo(() => {
+  const game = new Chess(
+    liveFen && liveFen.split(" ").length === 6 ? liveFen : undefined
+  );
     return game.turn() === "w" ? "white" : "black";
   }, [liveFen]);
 
@@ -46,7 +48,10 @@ export default function ChessGamePage() {
       return;
     }
 
-    const nextFen = data.data.fen || null;
+    const nextFen =
+  data.data.fen && data.data.fen.split(" ").length === 6
+    ? data.data.fen
+    : null;
     setGameData(data.data);
     setMoves(data.data.moves || []);
     setLiveFen(nextFen);
