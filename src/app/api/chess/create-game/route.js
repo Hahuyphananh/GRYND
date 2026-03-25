@@ -5,6 +5,13 @@ import { chessGames, users } from "../../../../db/schema";
 import { eq, and, lt, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
+async function getUserAliases(clerkId) {
+  const aliases = [String(clerkId)];
+  const [userRow] = await db.select({ id: users.id }).from(users).where(eq(users.clerkId, clerkId)).limit(1);
+  if (userRow?.id) aliases.push(String(userRow.id));
+  return aliases;
+}
+
 export async function POST(req) {
   try {
     const { userId: clerkId } = await auth();
@@ -18,6 +25,8 @@ export async function POST(req) {
       return NextResponse.json({ error: "Invalid stake amount" }, { status: 400 });
     }
 
+    const userAliases = await getUserAliases(clerkId);
+
     await db
       .update(chessGames)
       .set({ status: "expired" })
@@ -29,12 +38,21 @@ export async function POST(req) {
         )
       );
 
+    const aliasConditions = [
+      eq(chessGames.playerWhiteId, userAliases[0]),
+      eq(chessGames.playerBlackId, userAliases[0]),
+    ];
+    if (userAliases[1]) {
+      aliasConditions.push(eq(chessGames.playerWhiteId, userAliases[1]));
+      aliasConditions.push(eq(chessGames.playerBlackId, userAliases[1]));
+    }
+
     const existingGame = await db
       .select()
       .from(chessGames)
       .where(
         and(
-          or(eq(chessGames.playerWhiteId, clerkId), eq(chessGames.playerBlackId, clerkId)),
+          or(...aliasConditions),
           eq(chessGames.isAiGame, false),
           or(eq(chessGames.status, "waiting"), eq(chessGames.status, "in_progress"))
         )
@@ -44,7 +62,7 @@ export async function POST(req) {
 
     if (existingGame.length > 0) {
       const game = existingGame[0];
-      const color = game.playerWhiteId === clerkId ? "white" : "black";
+      const color = userAliases.includes(String(game.playerWhiteId)) ? "white" : "black";
       const ready = Boolean(game.playerWhiteId && game.playerBlackId);
 
       if (game.status === "waiting" && Number(game.betAmount) !== tableAmount) {
