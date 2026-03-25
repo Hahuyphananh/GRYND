@@ -25,15 +25,21 @@ export default function ChessGamePage() {
   const [moves, setMoves] = useState([]);
   const [moveIndex, setMoveIndex] = useState(-1);
 
+  const normalizeFen = (fen) => {
+    if (typeof fen !== "string") return "start";
+    return fen.split(" ").length === 6 ? fen : "start";
+  };
+
   const displayFen = useMemo(() => {
-    if (moveIndex >= 0 && moves[moveIndex]?.fenAfter) return moves[moveIndex].fenAfter;
-    return liveFen;
+    if (moveIndex >= 0 && moves[moveIndex]?.fenAfter) {
+      return normalizeFen(moves[moveIndex].fenAfter);
+    }
+    return normalizeFen(liveFen);
   }, [moveIndex, moves, liveFen]);
 
 const turn = useMemo(() => {
-  const game = new Chess(
-    liveFen && liveFen.split(" ").length === 6 ? liveFen : undefined
-  );
+  const safeFen = normalizeFen(liveFen);
+  const game = new Chess(safeFen === "start" ? undefined : safeFen);
     return game.turn() === "w" ? "white" : "black";
   }, [liveFen]);
 
@@ -48,10 +54,7 @@ const turn = useMemo(() => {
       return;
     }
 
-    const nextFen =
-  data.data.fen && data.data.fen.split(" ").length === 6
-    ? data.data.fen
-    : null;
+    const nextFen = normalizeFen(data?.data?.fen);
     setGameData(data.data);
     setMoves(data.data.moves || []);
     setLiveFen(nextFen);
@@ -106,7 +109,7 @@ const turn = useMemo(() => {
         return false;
       }
 
-      setLiveFen(data.data.fen);
+      setLiveFen(normalizeFen(data?.data?.fen));
       setStatus(data.data.isGameOver ? "Game over." : "Opponent's turn");
       return true;
     } catch {
