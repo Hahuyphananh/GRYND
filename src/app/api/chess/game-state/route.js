@@ -74,7 +74,7 @@ if (game.playerBlackId) {
         blackPlayerName: blackUser?.name || (game.isAiGame ? "Chess AI" : "Waiting..."),
         winnerId: game.winnerId,
         result: game.result,
-        fen: lastMove?.fenAfter || null,
+        fen: lastMove?.fenAfter ?? null,
         moves: moves.map((m) => ({
           id: m.id,
           playedBy: m.playedBy,
