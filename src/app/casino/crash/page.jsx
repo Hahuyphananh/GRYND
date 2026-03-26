@@ -26,6 +26,9 @@ export default function Page() {
   const [countdown, setCountdown] = useState(0);
   const [isCountingDown, setIsCountingDown] = useState(false);
   const [refreshCounter, setRefreshCounter] = useState(0);
+  const [rocketPoint, setRocketPoint] = useState({ x: GRAPH_PADDING, y: CANVAS_HEIGHT - GRAPH_PADDING });
+  const [showCashoutPopup, setShowCashoutPopup] = useState(false);
+  const [cashoutPopupMultiplier, setCashoutPopupMultiplier] = useState(null);
 
   const countdownRef = useRef(null);
   const canvasRef = useRef(null);
@@ -89,6 +92,9 @@ export default function Page() {
     setGameRunning(true);
     setCashedOut(false);
     setFinalMultiplier(null);
+    setShowCashoutPopup(false);
+    setCashoutPopupMultiplier(null);
+    setRocketPoint({ x: GRAPH_PADDING, y: CANVAS_HEIGHT - GRAPH_PADDING });
 
     animationStateRef.current = {
       startTime,
@@ -186,15 +192,17 @@ export default function Page() {
 }
 
 
-  async function cashOut() {
-    if (!gameRunning || isCrashed || cashedOut) return;
-
+  async function settleCashOut(cashoutMultiplier) {
     const state = animationStateRef.current;
+    if (state.crashed || betStateRef.current.cashedOut) return;
+
+    betStateRef.current = { ...betStateRef.current, cashedOut: true };
     setCashedOut(true);
-    const winMultiplier = parseFloat(state.currentMultiplier.toFixed(2));
+    const winMultiplier = parseFloat(cashoutMultiplier.toFixed(2));
     setFinalMultiplier(winMultiplier);
     setGameRunning(false);
     setDisplayMultiplier(winMultiplier);
+    setRocketPoint(toCanvasPoint(winMultiplier, Math.max(3, winMultiplier * 1.05)));
 
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     animationStateRef.current = { ...state, crashed: true };
@@ -218,7 +226,13 @@ export default function Page() {
 
     setRefreshCounter((prev) => prev + 1);
     resetBet();
-    alert(`You cashed out at ${winMultiplier}x!`);
+    setCashoutPopupMultiplier(winMultiplier);
+    setShowCashoutPopup(true);
+  }
+
+  async function cashOut() {
+    if (!gameRunning || isCrashed || cashedOut) return;
+    await settleCashOut(animationStateRef.current.currentMultiplier);
   }
 
   function generateCrashPoint() {
@@ -228,15 +242,17 @@ export default function Page() {
     return parseFloat((Math.random() * 2 + 1).toFixed(2));
   }
 
-  function toCanvasPoint(mult, localCrashPoint) {
+  function toCanvasPoint(mult, localMaxMultiplier) {
     const maxX = CANVAS_WIDTH - GRAPH_PADDING;
     const minX = GRAPH_PADDING;
     const maxY = CANVAS_HEIGHT - GRAPH_PADDING;
     const minY = GRAPH_PADDING;
 
-    const progress = Math.min(mult / Math.max(localCrashPoint, 1), 1);
+    const elapsedToNow = Math.log(Math.max(mult, 1.0001)) / GROWTH_RATE;
+    const crashTime = Math.log(Math.max(animationStateRef.current.crashPoint, 1.0001)) / GROWTH_RATE;
+    const progress = Math.min(elapsedToNow / Math.max(crashTime, 0.01), 1);
     const x = minX + progress * (maxX - minX);
-    const normalizedY = Math.log(mult) / Math.log(Math.max(localCrashPoint, 1.0001));
+    const normalizedY = (mult - 1) / Math.max(localMaxMultiplier - 1, 0.01);
     const y = maxY - Math.max(0, Math.min(1, normalizedY)) * (maxY - minY);
     return { x, y };
   }
@@ -360,7 +376,10 @@ export default function Page() {
 
     state.currentMultiplier = didCrash ? state.crashPoint : roundedMultiplier;
     state.displayMultiplier = parseFloat(state.currentMultiplier.toFixed(2));
-    state.curvePoints.push(toCanvasPoint(state.currentMultiplier, state.crashPoint));
+    const dynamicMaxMultiplier = Math.max(3, state.currentMultiplier * 1.05, state.crashPoint * 0.8);
+    const currentPoint = toCanvasPoint(state.currentMultiplier, dynamicMaxMultiplier);
+    state.curvePoints.push(currentPoint);
+    setRocketPoint(currentPoint);
     if (state.curvePoints.length > 450) {
       state.curvePoints.shift();
     }
@@ -378,7 +397,7 @@ export default function Page() {
       liveBetState.autoCashout <= state.currentMultiplier &&
       !liveBetState.cashedOut
     ) {
-      cashOut();
+      settleCashOut(state.currentMultiplier);
       return;
     }
 
@@ -439,8 +458,18 @@ export default function Page() {
           <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="absolute bottom-0 left-0 z-0" />
 
           <div className="absolute right-2 top-0 bottom-0 flex flex-col justify-between z-10 py-6">
-            {[100, 50, 20, 10, 5, 2, 1].map((value) => (
-              <div key={value} className="text-sm text-gray-400">
+            {Array.from(
+              { length: 7 },
+              (_, index) =>
+                Math.max(
+                  1,
+                  1 +
+                    ((Math.max(3, Math.ceil((finalMultiplier || displayMultiplier) * 10) / 10) - 1) *
+                      (6 - index)) /
+                      6
+                )
+            ).map((value, idx) => (
+              <div key={`${value}-${idx}`} className="text-sm text-gray-400">
                 {value.toFixed(2)}x
               </div>
             ))}
@@ -451,10 +480,10 @@ export default function Page() {
             <div
               className="absolute z-20"
               style={{
-                left: `${Math.min(displayMultiplier * 5, 80)}%`,
-                bottom: `${Math.min(displayMultiplier * 5, 80)}%`,
+                left: `${rocketPoint.x}px`,
+                top: `${rocketPoint.y}px`,
                 transform: `translate(-50%, 50%) scale(${1 + displayMultiplier / 20})`,
-                transition: "left 0.08s linear, bottom 0.08s linear, transform 0.08s linear",
+                transition: "left 0.08s linear, top 0.08s linear, transform 0.08s linear",
                 opacity: 1,
               }}
             >
@@ -466,8 +495,8 @@ export default function Page() {
             <div
               className="absolute z-20"
               style={{
-                left: `${Math.min((finalMultiplier || displayMultiplier) * 5, 80)}%`,
-                bottom: `${Math.min((finalMultiplier || displayMultiplier) * 5, 80)}%`,
+                left: `${rocketPoint.x}px`,
+                top: `${rocketPoint.y}px`,
                 transform: `translate(-50%, 50%) scale(${1 + (finalMultiplier || displayMultiplier) / 20})`,
                 opacity: 0.4,
               }}
@@ -538,6 +567,21 @@ export default function Page() {
           />
         </div>
       </div>
+
+      {showCashoutPopup && cashoutPopupMultiplier !== null && (
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center px-4">
+          <div className="bg-[#1f1f1f] border border-yellow-500 rounded-xl p-6 text-center w-full max-w-sm shadow-2xl">
+            <h3 className="text-2xl font-bold text-yellow-400 mb-2">Cash Out Successful</h3>
+            <p className="text-lg mb-6">You cashed out at {cashoutPopupMultiplier.toFixed(2)}x.</p>
+            <button
+              onClick={() => setShowCashoutPopup(false)}
+              className="bg-yellow-500 hover:bg-yellow-600 px-4 py-2 rounded-lg font-bold text-black"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
