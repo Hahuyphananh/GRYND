@@ -26,9 +26,9 @@ export default function Page() {
   const [countdown, setCountdown] = useState(0);
   const [isCountingDown, setIsCountingDown] = useState(false);
   const [refreshCounter, setRefreshCounter] = useState(0);
-  const [rocketPoint, setRocketPoint] = useState({ x: GRAPH_PADDING, y: CANVAS_HEIGHT - GRAPH_PADDING });
   const [showCashoutPopup, setShowCashoutPopup] = useState(false);
   const [cashoutPopupMultiplier, setCashoutPopupMultiplier] = useState(null);
+  const fixedMaxMultiplierRef = useRef(2);
 
   const countdownRef = useRef(null);
   const canvasRef = useRef(null);
@@ -78,13 +78,15 @@ export default function Page() {
       alert("You must place a bet before starting the game!");
       return;
     }
-    setCountdown(5);
+    setCountdown(3);
     setIsCountingDown(true);
   }
 
   function actuallyStartGame() {
     const generatedCrashPoint = generateCrashPoint();
     const startTime = performance.now();
+
+fixedMaxMultiplierRef.current = Math.max(autoCashout || 2, 2);
 
     setDisplayMultiplier(1.0);
     setIsCrashed(false);
@@ -94,7 +96,6 @@ export default function Page() {
     setFinalMultiplier(null);
     setShowCashoutPopup(false);
     setCashoutPopupMultiplier(null);
-    setRocketPoint({ x: GRAPH_PADDING, y: CANVAS_HEIGHT - GRAPH_PADDING });
 
     animationStateRef.current = {
       startTime,
@@ -125,7 +126,7 @@ export default function Page() {
   async function crash() {
     const state = animationStateRef.current;
     const lossMultiplier = parseFloat(state.currentMultiplier.toFixed(2));
-    const crashCanvasPoint = toCanvasPoint(lossMultiplier, state.crashPoint);
+    const crashCanvasPoint = toCanvasPoint(lossMultiplier);
 
     setIsCrashed(true);
     setGameRunning(false);
@@ -202,7 +203,6 @@ export default function Page() {
     setFinalMultiplier(winMultiplier);
     setGameRunning(false);
     setDisplayMultiplier(winMultiplier);
-    setRocketPoint(toCanvasPoint(winMultiplier, Math.max(3, winMultiplier * 1.05)));
 
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     animationStateRef.current = { ...state, crashed: true };
@@ -242,20 +242,30 @@ export default function Page() {
     return parseFloat((Math.random() * 2 + 1).toFixed(2));
   }
 
-  function toCanvasPoint(mult, localMaxMultiplier) {
-    const maxX = CANVAS_WIDTH - GRAPH_PADDING;
-    const minX = GRAPH_PADDING;
-    const maxY = CANVAS_HEIGHT - GRAPH_PADDING;
-    const minY = GRAPH_PADDING;
+function toCanvasPoint(mult) {
+  const maxX = CANVAS_WIDTH - GRAPH_PADDING;
+  const minX = GRAPH_PADDING;
+  const maxY = CANVAS_HEIGHT - GRAPH_PADDING;
+  const minY = GRAPH_PADDING;
 
-    const elapsedToNow = Math.log(Math.max(mult, 1.0001)) / GROWTH_RATE;
-    const crashTime = Math.log(Math.max(animationStateRef.current.crashPoint, 1.0001)) / GROWTH_RATE;
-    const progress = Math.min(elapsedToNow / Math.max(crashTime, 0.01), 1);
-    const x = minX + progress * (maxX - minX);
-    const normalizedY = (mult - 1) / Math.max(localMaxMultiplier - 1, 0.01);
-    const y = maxY - Math.max(0, Math.min(1, normalizedY)) * (maxY - minY);
-    return { x, y };
-  }
+  const state = animationStateRef.current;
+
+  // ✅ FIXED X progression (time-based, NOT tied to crash)
+  const elapsed = Math.log(Math.max(mult, 1.0001)) / GROWTH_RATE;
+
+  const MAX_TIME = 8; // seconds to reach right side (tweak this)
+  const progress = Math.min(elapsed / MAX_TIME, 1);
+
+  const x = minX + progress * (maxX - minX);
+
+  // ✅ FIXED Y scale (based on autoCashout)
+  const maxMultiplier = fixedMaxMultiplierRef.current;
+
+  const normalized = (mult - 1) / (maxMultiplier - 1);
+  const y = maxY - Math.max(0, Math.min(1, normalized)) * (maxY - minY);
+
+  return { x, y };
+}
 
   function getCurveColor(mult) {
     if (mult < 2) return "#22c55e";
@@ -376,10 +386,8 @@ export default function Page() {
 
     state.currentMultiplier = didCrash ? state.crashPoint : roundedMultiplier;
     state.displayMultiplier = parseFloat(state.currentMultiplier.toFixed(2));
-    const dynamicMaxMultiplier = Math.max(3, state.currentMultiplier * 1.05, state.crashPoint * 0.8);
-    const currentPoint = toCanvasPoint(state.currentMultiplier, dynamicMaxMultiplier);
+    const currentPoint = toCanvasPoint(state.currentMultiplier);
     state.curvePoints.push(currentPoint);
-    setRocketPoint(currentPoint);
     if (state.curvePoints.length > 450) {
       state.curvePoints.shift();
     }
@@ -451,62 +459,28 @@ export default function Page() {
 
           {isCountingDown && (
             <div className="absolute inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center">
-              <div className="text-8xl font-bold text-white animate-pulse">{countdown}</div>
+              <div className="text-8xl font-bold text-white animate-pulse">{countdown > 0 ? countdown : "GO"}</div>
             </div>
           )}
 
           <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="absolute bottom-0 left-0 z-0" />
 
-          <div className="absolute right-2 top-0 bottom-0 flex flex-col justify-between z-10 py-6">
-            {Array.from(
-              { length: 7 },
-              (_, index) =>
-                Math.max(
-                  1,
-                  1 +
-                    ((Math.max(3, Math.ceil((finalMultiplier || displayMultiplier) * 10) / 10) - 1) *
-                      (6 - index)) /
-                      6
-                )
-            ).map((value, idx) => (
-              <div key={`${value}-${idx}`} className="text-sm text-gray-400">
-                {value.toFixed(2)}x
-              </div>
-            ))}
-          </div>
+        <div className="absolute right-2 top-0 bottom-0 flex flex-col justify-between z-10 py-6">
+  {(() => {
+    const maxMultiplier = fixedMaxMultiplierRef.current;
+    const steps = 6;
 
-          {/* Rocket trail */}
-          {gameRunning && !isCrashed && (
-            <div
-              className="absolute z-20"
-              style={{
-                left: `${rocketPoint.x}px`,
-                top: `${rocketPoint.y}px`,
-                transform: `translate(-50%, 50%) scale(${1 + displayMultiplier / 20})`,
-                transition: "left 0.08s linear, top 0.08s linear, transform 0.08s linear",
-                opacity: 1,
-              }}
-            >
-              <div className="text-6xl">🚀</div>
-            </div>
-          )}
+    return Array.from({ length: steps + 1 }, (_, i) => {
+      const value = 1 + ((maxMultiplier - 1) * (steps - i)) / steps;
 
-          {(isCrashed || cashedOut) && (
-            <div
-              className="absolute z-20"
-              style={{
-                left: `${rocketPoint.x}px`,
-                top: `${rocketPoint.y}px`,
-                transform: `translate(-50%, 50%) scale(${1 + (finalMultiplier || displayMultiplier) / 20})`,
-                opacity: 0.4,
-              }}
-            >
-              <div className="text-6xl">🚀</div>
-              <div className="mt-2 font-bold bg-black bg-opacity-70 px-2 py-1 rounded text-center">
-                {finalMultiplier?.toFixed(2)}x
-              </div>
-            </div>
-          )}
+      return (
+        <div key={i} className="text-sm text-gray-400">
+          {value.toFixed(2)}x
+        </div>
+      );
+    });
+  })()} 
+</div>
 
           {isCrashed && <div className="absolute top-20 text-6xl">💥</div>}
 
