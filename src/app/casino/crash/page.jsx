@@ -5,8 +5,15 @@ import PlayerList from "../../../components/PlayerList";
 import Link from "next/link";
 import NavigationBar from "../../../components/navigation-bar";
 
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 600;
+const GRAPH_PADDING = 40;
+const GROWTH_RATE = 0.33;
+const UI_MULTIPLIER_UPDATE_MS = 80;
+const TRAIL_FADE_ALPHA = 0.12;
+
 export default function Page() {
-  const [multiplier, setMultiplier] = useState(1.0);
+  const [displayMultiplier, setDisplayMultiplier] = useState(1.0);
   const [isCrashed, setIsCrashed] = useState(false);
   const [gameRunning, setGameRunning] = useState(false);
   const [crashPoint, setCrashPoint] = useState(0);
@@ -20,30 +27,36 @@ export default function Page() {
   const [isCountingDown, setIsCountingDown] = useState(false);
   const [refreshCounter, setRefreshCounter] = useState(0);
 
-  const intervalRef = useRef(null);
   const countdownRef = useRef(null);
   const canvasRef = useRef(null);
+  const rafRef = useRef(null);
+  const betStateRef = useRef({ hasBet: false, autoCashout: 0, cashedOut: false });
+  const animationStateRef = useRef({
+    startTime: 0,
+    currentMultiplier: 1,
+    displayMultiplier: 1,
+    crashPoint: 0,
+    curvePoints: [],
+    crashed: false,
+    crashAt: null,
+    crashCanvasPoint: null,
+    explosionProgress: 0,
+    lastUiUpdateAt: 0,
+  });
 
   useEffect(() => {
-    if (gameRunning && !isCrashed) {
-      intervalRef.current = setInterval(() => {
-        setMultiplier((prev) =>
-          parseFloat((prev + 0.01 * Math.pow(prev, 1.05)).toFixed(2))
-        );
-      }, 50);
-    }
-    return () => clearInterval(intervalRef.current);
-  }, [gameRunning, isCrashed]);
+    betStateRef.current = { hasBet, autoCashout, cashedOut };
+  }, [hasBet, autoCashout, cashedOut]);
 
   useEffect(() => {
-    if (multiplier >= crashPoint && crashPoint !== 0) {
-      crash();
-    }
-    if (hasBet && autoCashout <= multiplier && !cashedOut) {
-      cashOut();
-    }
-    drawTrail();
-  }, [multiplier]);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    drawCanvasFrame(performance.now());
+  }, []);
 
   useEffect(() => {
     if (isCountingDown && countdown > 0) {
@@ -67,19 +80,31 @@ export default function Page() {
   }
 
   function actuallyStartGame() {
-    setMultiplier(1.0);
+    const generatedCrashPoint = generateCrashPoint();
+    const startTime = performance.now();
+
+    setDisplayMultiplier(1.0);
     setIsCrashed(false);
-    setCrashPoint(generateCrashPoint());
+    setCrashPoint(generatedCrashPoint);
     setGameRunning(true);
     setCashedOut(false);
     setFinalMultiplier(null);
 
-    if (canvasRef.current) {
-      const ctx = canvasRef.current.getContext("2d");
-      if (ctx) {
-        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-      }
-    }
+    animationStateRef.current = {
+      startTime,
+      currentMultiplier: 1,
+      displayMultiplier: 1,
+      crashPoint: generatedCrashPoint,
+      curvePoints: [{ x: GRAPH_PADDING, y: CANVAS_HEIGHT - GRAPH_PADDING }],
+      crashed: false,
+      crashAt: null,
+      crashCanvasPoint: null,
+      explosionProgress: 0,
+      lastUiUpdateAt: 0,
+    };
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(animationLoop);
   }
 
   function startGame() {
@@ -92,13 +117,27 @@ export default function Page() {
   }
 
   async function crash() {
-    setIsCrashed(true);
-    clearInterval(intervalRef.current);
-    setGameRunning(false);
+    const state = animationStateRef.current;
+    const lossMultiplier = parseFloat(state.currentMultiplier.toFixed(2));
+    const crashCanvasPoint = toCanvasPoint(lossMultiplier, state.crashPoint);
 
-    const lossMultiplier = parseFloat(multiplier.toFixed(2));
+    setIsCrashed(true);
+    setGameRunning(false);
+    setDisplayMultiplier(lossMultiplier);
     setCrashHistory((prev) => [lossMultiplier, ...prev.slice(0, 10)]);
     setFinalMultiplier(lossMultiplier);
+    setCrashPoint(state.crashPoint);
+
+    animationStateRef.current = {
+      ...state,
+      crashed: true,
+      crashAt: performance.now(),
+      crashCanvasPoint,
+      explosionProgress: 0,
+    };
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(drawFrozenCrashFrame);
 
     try {
       const res = await fetch("/api/crash/settle", {
@@ -150,11 +189,16 @@ export default function Page() {
   async function cashOut() {
     if (!gameRunning || isCrashed || cashedOut) return;
 
+    const state = animationStateRef.current;
     setCashedOut(true);
-    const winMultiplier = parseFloat(multiplier.toFixed(2));
+    const winMultiplier = parseFloat(state.currentMultiplier.toFixed(2));
     setFinalMultiplier(winMultiplier);
-    clearInterval(intervalRef.current);
     setGameRunning(false);
+    setDisplayMultiplier(winMultiplier);
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    animationStateRef.current = { ...state, crashed: true };
+    drawCanvasFrame(performance.now());
 
     try {
       const res = await fetch("/api/crash/settle", {
@@ -179,30 +223,171 @@ export default function Page() {
 
   function generateCrashPoint() {
     const r = Math.random();
-    if (r < 0.01) return (Math.random() * 50 + 10).toFixed(2);
-    if (r < 0.1) return (Math.random() * 5 + 2).toFixed(2);
-    return (Math.random() * 2 + 1).toFixed(2);
+    if (r < 0.01) return parseFloat((Math.random() * 50 + 10).toFixed(2));
+    if (r < 0.1) return parseFloat((Math.random() * 5 + 2).toFixed(2));
+    return parseFloat((Math.random() * 2 + 1).toFixed(2));
   }
 
-  function drawTrail() {
+  function toCanvasPoint(mult, localCrashPoint) {
+    const maxX = CANVAS_WIDTH - GRAPH_PADDING;
+    const minX = GRAPH_PADDING;
+    const maxY = CANVAS_HEIGHT - GRAPH_PADDING;
+    const minY = GRAPH_PADDING;
+
+    const progress = Math.min(mult / Math.max(localCrashPoint, 1), 1);
+    const x = minX + progress * (maxX - minX);
+    const normalizedY = Math.log(mult) / Math.log(Math.max(localCrashPoint, 1.0001));
+    const y = maxY - Math.max(0, Math.min(1, normalizedY)) * (maxY - minY);
+    return { x, y };
+  }
+
+  function getCurveColor(mult) {
+    if (mult < 2) return "#22c55e";
+    if (mult < 5) return "#facc15";
+    return "#ef4444";
+  }
+
+  function drawGrid(ctx) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.18)";
+    ctx.lineWidth = 1;
+    for (let x = GRAPH_PADDING; x <= CANVAS_WIDTH - GRAPH_PADDING; x += 40) {
+      ctx.beginPath();
+      ctx.moveTo(x, GRAPH_PADDING);
+      ctx.lineTo(x, CANVAS_HEIGHT - GRAPH_PADDING);
+      ctx.stroke();
+    }
+    for (let y = GRAPH_PADDING; y <= CANVAS_HEIGHT - GRAPH_PADDING; y += 40) {
+      ctx.beginPath();
+      ctx.moveTo(GRAPH_PADDING, y);
+      ctx.lineTo(CANVAS_WIDTH - GRAPH_PADDING, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawSmoothCurve(ctx, points, mult) {
+    if (points.length < 2) return;
+    const gradient = ctx.createLinearGradient(0, CANVAS_HEIGHT, CANVAS_WIDTH, 0);
+    gradient.addColorStop(0, "#22c55e");
+    gradient.addColorStop(0.55, "#facc15");
+    gradient.addColorStop(1, "#ef4444");
+
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 4;
+    ctx.shadowColor = getCurveColor(mult);
+    ctx.shadowBlur = 18;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+
+    for (let i = 1; i < points.length - 1; i += 1) {
+      const xc = (points[i].x + points[i + 1].x) / 2;
+      const yc = (points[i].y + points[i + 1].y) / 2;
+      ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+    }
+
+    const last = points[points.length - 1];
+    ctx.lineTo(last.x, last.y);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  function drawCrashExplosion(ctx, point, progress) {
+    if (!point) return;
+    const radius = 20 + progress * 70;
+    const alpha = Math.max(0, 0.75 - progress * 0.75);
+    const explosionGradient = ctx.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius);
+    explosionGradient.addColorStop(0, `rgba(239, 68, 68, ${alpha})`);
+    explosionGradient.addColorStop(0.4, `rgba(239, 68, 68, ${alpha * 0.5})`);
+    explosionGradient.addColorStop(1, "rgba(239, 68, 68, 0)");
+    ctx.fillStyle = explosionGradient;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawCanvasFrame(now) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const state = animationStateRef.current;
 
-    if (gameRunning && !isCrashed) {
-      ctx.strokeStyle = "white";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      const startX = 20;
-      const startY = canvas.height - 20;
-      const currentX = startX + multiplier * 20;
-      const currentY = startY - multiplier * 15;
-
-      ctx.moveTo(startX, startY);
-      ctx.lineTo(currentX, currentY);
-      ctx.stroke();
+    if (state.curvePoints.length <= 1) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "rgba(2, 6, 23, 1)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      drawGrid(ctx);
+      return;
     }
+
+    ctx.fillStyle = `rgba(2, 6, 23, ${TRAIL_FADE_ALPHA})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    drawGrid(ctx);
+    drawSmoothCurve(ctx, state.curvePoints, state.currentMultiplier);
+
+    const last = state.curvePoints[state.curvePoints.length - 1];
+    ctx.fillStyle = getCurveColor(state.currentMultiplier);
+    ctx.shadowColor = getCurveColor(state.currentMultiplier);
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.arc(last.x, last.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    if (state.crashed && state.crashCanvasPoint) {
+      const progress = Math.min((now - state.crashAt) / 700, 1);
+      state.explosionProgress = progress;
+      drawCrashExplosion(ctx, state.crashCanvasPoint, progress);
+    }
+  }
+
+  function drawFrozenCrashFrame(now) {
+    drawCanvasFrame(now);
+    const { explosionProgress } = animationStateRef.current;
+    if (explosionProgress < 1) {
+      rafRef.current = requestAnimationFrame(drawFrozenCrashFrame);
+    }
+  }
+
+  function animationLoop(now) {
+    const state = animationStateRef.current;
+    const elapsedSeconds = (now - state.startTime) / 1000;
+    const deterministicMultiplier = Math.exp(GROWTH_RATE * elapsedSeconds);
+    const roundedMultiplier = parseFloat(deterministicMultiplier.toFixed(4));
+    const didCrash = roundedMultiplier >= state.crashPoint;
+
+    state.currentMultiplier = didCrash ? state.crashPoint : roundedMultiplier;
+    state.displayMultiplier = parseFloat(state.currentMultiplier.toFixed(2));
+    state.curvePoints.push(toCanvasPoint(state.currentMultiplier, state.crashPoint));
+    if (state.curvePoints.length > 450) {
+      state.curvePoints.shift();
+    }
+
+    if (now - state.lastUiUpdateAt > UI_MULTIPLIER_UPDATE_MS) {
+      state.lastUiUpdateAt = now;
+      setDisplayMultiplier(state.displayMultiplier);
+    }
+
+    drawCanvasFrame(now);
+
+    const liveBetState = betStateRef.current;
+    if (
+      liveBetState.hasBet &&
+      liveBetState.autoCashout <= state.currentMultiplier &&
+      !liveBetState.cashedOut
+    ) {
+      cashOut();
+      return;
+    }
+
+    if (didCrash) {
+      crash();
+      return;
+    }
+
+    rafRef.current = requestAnimationFrame(animationLoop);
   }
 
   return (
@@ -251,7 +436,7 @@ export default function Page() {
             </div>
           )}
 
-          <canvas ref={canvasRef} width={800} height={600} className="absolute bottom-0 left-0 z-0" />
+          <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="absolute bottom-0 left-0 z-0" />
 
           <div className="absolute right-2 top-0 bottom-0 flex flex-col justify-between z-10 py-6">
             {[100, 50, 20, 10, 5, 2, 1].map((value) => (
@@ -266,10 +451,10 @@ export default function Page() {
             <div
               className="absolute z-20"
               style={{
-                left: `${Math.min(multiplier * 5, 80)}%`,
-                bottom: `${Math.min(multiplier * 5, 80)}%`,
-                transform: `translate(-50%, 50%) scale(${1 + multiplier / 20})`,
-                transition: "left 0.2s linear, bottom 0.2s linear, transform 0.2s linear",
+                left: `${Math.min(displayMultiplier * 5, 80)}%`,
+                bottom: `${Math.min(displayMultiplier * 5, 80)}%`,
+                transform: `translate(-50%, 50%) scale(${1 + displayMultiplier / 20})`,
+                transition: "left 0.08s linear, bottom 0.08s linear, transform 0.08s linear",
                 opacity: 1,
               }}
             >
@@ -281,9 +466,9 @@ export default function Page() {
             <div
               className="absolute z-20"
               style={{
-                left: `${Math.min((finalMultiplier || multiplier) * 5, 80)}%`,
-                bottom: `${Math.min((finalMultiplier || multiplier) * 5, 80)}%`,
-                transform: `translate(-50%, 50%) scale(${1 + (finalMultiplier || multiplier) / 20})`,
+                left: `${Math.min((finalMultiplier || displayMultiplier) * 5, 80)}%`,
+                bottom: `${Math.min((finalMultiplier || displayMultiplier) * 5, 80)}%`,
+                transform: `translate(-50%, 50%) scale(${1 + (finalMultiplier || displayMultiplier) / 20})`,
                 opacity: 0.4,
               }}
             >
@@ -297,7 +482,7 @@ export default function Page() {
           {isCrashed && <div className="absolute top-20 text-6xl">💥</div>}
 
           <div className="text-5xl font-bold z-30 mt-12">
-            {isCrashed ? "CRASHED!" : `${multiplier.toFixed(2)}x`}
+            {isCrashed ? "CRASHED!" : `${displayMultiplier.toFixed(2)}x`}
           </div>
         </div>
 
@@ -349,7 +534,7 @@ export default function Page() {
             hasBet={hasBet}
             betAmount={betAmount}
             cashedOut={cashedOut}
-            multiplier={multiplier}
+            multiplier={displayMultiplier}
           />
         </div>
       </div>
