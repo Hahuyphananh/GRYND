@@ -48,18 +48,19 @@ export default function BetPanel({
 
       {/* ✅ Token balance display */}
       <div className="text-yellow-400 text-lg font-semibold">
-        🪙 Balance: {loading ? "..." : !isNaN(userTokens) ? userTokens.toFixed(2) : "0.00"}
+      Balance: {loading ? "..." : !isNaN(userTokens) ? userTokens.toFixed(2) : "0.00"} Tokens
       </div>
       {error && <div className="text-red-500 text-sm">{error}</div>}
-
+      Bet Amount($):
       <input
         type="number"
-        value={amount}
+        value={amount} 
         onChange={e => setAmount(e.target.value)}
         placeholder="Bet Amount ($)"
         className="bg-gray-700 p-3 rounded text-white"
         disabled={gameRunning || hasBet}
       />
+      Auto Cashout at(_x):
       <input
         type="number"
         value={autoCashout}
