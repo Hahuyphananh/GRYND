@@ -5,6 +5,7 @@ export default function PlayerTank({
   health,
   maxHealth,
   isEnemy = false,
+  hitIntensity = 0,
 }: {
   x: number;
   y: number;
@@ -12,8 +13,11 @@ export default function PlayerTank({
   health: number;
   maxHealth: number;
   isEnemy?: boolean;
+  hitIntensity?: number;
 }) {
   const size = 50;
+  const clampedHit = Math.max(0, Math.min(1, hitIntensity));
+  const flashOpacity = clampedHit * 0.45;
 
   return (
     <div
@@ -23,12 +27,20 @@ export default function PlayerTank({
         top: y - size / 2,
         width: size,
         height: size,
-        transform: `rotate(${rotation}deg)`,
+        transform: `rotate(${rotation}deg) scale(${1 + clampedHit * 0.06})`,
         transformOrigin: "center",
+        transition: "transform 90ms ease-out, filter 100ms ease-out",
+        filter: clampedHit > 0 ? `drop-shadow(0 0 ${8 + clampedHit * 12}px rgba(255,120,60,0.55))` : "none",
       }}
       >
       {/* Tank body */}
       <div className={`w-full h-full rounded-md border-2 border-black relative ${isEnemy ? "bg-red-600" : "bg-green-600"}`}>
+        {clampedHit > 0 && (
+          <div
+            className="absolute inset-0 rounded-md pointer-events-none"
+            style={{ background: `rgba(255, 190, 120, ${flashOpacity})` }}
+          />
+        )}
         {/* Barrel (shorter now) */}
         <div
           className="w-2 h-6 bg-black absolute top-0 left-1/2 -translate-x-1/2 rounded"
