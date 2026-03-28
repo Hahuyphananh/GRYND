@@ -48,6 +48,8 @@ const [streakData, setStreakData] = useState({
   lastClaimDate: null
 });
 
+const [claimedDay, setClaimedDay] = useState(null);
+
 const handleLoadSports = async () => {
   try {
     setLoadingSports(true);
@@ -147,16 +149,11 @@ const claimDailyReward = async () => {
       return;
     }
 
-    // 1) Update user's tokens
-    setUserTokens(prev => prev + data.reward);
-   
-   setStreakData(prev => ({
-  ...prev,
-  currentDay: data.nextDay
-}));
+   setUserTokens(prev => prev + data.reward);
+
+setClaimedDay(data.claimedDay);
 
 setRewardPopupVisible(true);
-fetchRewardStatus(); // still keep this for sync
 
 
     // 4) Set 24h cooldown
@@ -595,10 +592,10 @@ useEffect(() => {
       </h2>
 
       <p className="mb-6 text-lg">
-        Jour <span className="text-[#FFD700] font-bold">
-          {streakData.currentDay}
-        </span> réclamé !
-      </p>
+  Jour <span className="text-[#FFD700] font-bold">
+    {claimedDay}
+  </span> réclamé !
+</p>
 
 
       {/* 14 DAY GRID */}
@@ -609,8 +606,8 @@ useEffect(() => {
           const day = i + 1;
           const reward = 100 * 2 ** (day - 1);
 
- const claimed = day < streakData.currentDay;
-const isToday = day === streakData.currentDay;
+const claimed = day < claimedDay;
+const isToday = day === claimedDay;
 
           return (
             <div
@@ -662,7 +659,10 @@ const isToday = day === streakData.currentDay;
 
 
       <button
-        onClick={() => setRewardPopupVisible(false)}
+  onClick={async () => {
+    setRewardPopupVisible(false);
+    await fetchRewardStatus(); // refresh AFTER closing
+  }}
         className="mt-2 px-6 py-3 
                    bg-[#FFD700] text-[#003366] 
                    font-bold rounded-lg
