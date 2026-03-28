@@ -17,8 +17,8 @@ function createSeededRandom(seed: number) {
 
 function generateRocks(seed: number, mapWidth: number, mapHeight: number) {
   const rand = createSeededRandom(seed);
-  return Array.from({ length: 40 }).map((_, i) => {
-    const size = 40 + rand() * 60;
+  return Array.from({ length: 52 }).map((_, i) => {
+    const size = 36 + rand() * 58;
     return {
       id: i,
       size,
@@ -217,8 +217,49 @@ export default function TanksGamePage() {
   const keys = useRef<{ [key: string]: boolean }>({});
   const speed = 2;
   const BULLET_SPEED = 6;
+  const WATER_Y = MAP_HEIGHT * 0.67;
+  const SHORE_TRANSITION = 130;
 
   const rocks = useMemo(() => generateRocks(mapSeed, MAP_WIDTH, MAP_HEIGHT), [mapSeed]);
+  const hitSoundCtxRef = useRef<AudioContext | null>(null);
+  const selfHitUntilRef = useRef(0);
+  const [selfHitIntensity, setSelfHitIntensity] = useState(0);
+  const remoteHitUntilRef = useRef<Record<string, number>>({});
+  const [remoteHitIntensity, setRemoteHitIntensity] = useState<Record<string, number>>({});
+  const rafLoopRef = useRef<number | null>(null);
+  const lastFrameRef = useRef<number>(0);
+
+  const isWaterTile = (y: number) => y >= WATER_Y;
+  const getSpeedFactor = (y: number) => {
+    if (y < WATER_Y - SHORE_TRANSITION) return 1;
+    if (y >= WATER_Y) return 0.56;
+    const t = (y - (WATER_Y - SHORE_TRANSITION)) / SHORE_TRANSITION;
+    return 1 - t * 0.44;
+  };
+
+  const playHitSound = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const ctx = hitSoundCtxRef.current ?? new window.AudioContext();
+      hitSoundCtxRef.current = ctx;
+      const now = ctx.currentTime;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(210, now);
+      osc.frequency.exponentialRampToValueAtTime(120, now + 0.12);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.09, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.19);
+    } catch (err) {
+      console.warn("Unable to play hit sound", err);
+    }
+  };
 
   function lineIntersectsCircle(x1: number, y1: number, x2: number, y2: number, cx: number, cy: number, r: number) {
     const vx = x2 - x1;
@@ -311,6 +352,10 @@ export default function TanksGamePage() {
 
         const ownState = data.playerStates?.[data.selfId];
         if (ownState && typeof ownState.health === "number") {
+          if (ownState.health < healthRef.current) {
+            selfHitUntilRef.current = performance.now() + 220;
+            playHitSound();
+          }
           setHealth(ownState.health);
           healthRef.current = ownState.health;
         }
@@ -341,6 +386,14 @@ export default function TanksGamePage() {
         const others = Object.fromEntries(
           Object.entries(data.playerStates ?? {}).filter(([id]) => id !== data.selfId)
         ) as Record<string, PlayerState>;
+
+        for (const [id, nextState] of Object.entries(others)) {
+          const previous = remotePlayersRef.current[id];
+          if (previous && typeof nextState.health === "number" && nextState.health < previous.health) {
+            remoteHitUntilRef.current[id] = performance.now() + 220;
+            playHitSound();
+          }
+        }
 
         setRemotePlayers(others);
       } catch (err) {
@@ -403,20 +456,31 @@ export default function TanksGamePage() {
 
   useEffect(() => {
     const TANK_RADIUS = 22;
-    function gameLoop() {
+    function gameLoop(frameTime: number) {
+      const dt = lastFrameRef.current ? Math.min(2.2, (frameTime - lastFrameRef.current) / 16.6667) : 1;
+      lastFrameRef.current = frameTime;
       const targetRemotes = remotePlayersRef.current;
       const currentRemotes = renderRemotePlayersRef.current;
       const smoothed: Record<string, PlayerState> = {};
 
       for (const [id, target] of Object.entries(targetRemotes)) {
         const current = currentRemotes[id] ?? target;
+        const smoothing = 0.24 * dt;
         smoothed[id] = {
           ...target,
-          x: current.x + (target.x - current.x) * 0.35,
-          y: current.y + (target.y - current.y) * 0.35,
-          rotation: current.rotation + (target.rotation - current.rotation) * 0.35,
+          x: current.x + (target.x - current.x) * smoothing,
+          y: current.y + (target.y - current.y) * smoothing,
+          rotation: current.rotation + (target.rotation - current.rotation) * smoothing,
         };
       }
+
+      const now = performance.now();
+      setSelfHitIntensity(Math.max(0, (selfHitUntilRef.current - now) / 220));
+      const remoteFx: Record<string, number> = {};
+      Object.entries(remoteHitUntilRef.current).forEach(([id, until]) => {
+        remoteFx[id] = Math.max(0, (until - now) / 220);
+      });
+      setRemoteHitIntensity(remoteFx);
 
       renderRemotePlayersRef.current = smoothed;
       setRenderRemotePlayers(smoothed);
@@ -432,8 +496,9 @@ export default function TanksGamePage() {
       }
 
       const curPos = posRef.current;
-      const nextX = curPos.x + dx * speed;
-      const nextY = curPos.y + dy * speed;
+      const speedFactor = getSpeedFactor(curPos.y);
+      const nextX = curPos.x + dx * speed * speedFactor * dt;
+      const nextY = curPos.y + dy * speed * speedFactor * dt;
 
       let blocked = false;
       for (const rock of rocks) {
@@ -470,6 +535,8 @@ export default function TanksGamePage() {
         if (hitPlayerEntry) {
           const [targetId] = hitPlayerEntry;
           pendingHitsRef.current.push(targetId);
+          remoteHitUntilRef.current[targetId] = performance.now() + 220;
+          playHitSound();
           return false;
         }
 
@@ -485,11 +552,13 @@ export default function TanksGamePage() {
       bulletsRef.current = nextBullets;
       setBullets(nextBullets);
 
-      requestAnimationFrame(gameLoop);
+      rafLoopRef.current = requestAnimationFrame(gameLoop);
     }
 
-    const raf = requestAnimationFrame(gameLoop);
-    return () => cancelAnimationFrame(raf);
+    rafLoopRef.current = requestAnimationFrame(gameLoop);
+    return () => {
+      if (rafLoopRef.current !== null) cancelAnimationFrame(rafLoopRef.current);
+    };
   }, [rocks]);
 
   const cameraX = typeof window !== "undefined" ? window.innerWidth / 2 - pos.x : 0;
@@ -511,16 +580,63 @@ export default function TanksGamePage() {
         }}
       >
         <div className="relative w-full h-full bg-[#f4e7b4]" style={{ pointerEvents: "none" }}>
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,#f7e9b3,transparent_70%)] opacity-70" style={{ pointerEvents: "none" }} />
-          <div className="absolute bottom-0 left-0 w-full h-1/3 bg-gradient-to-b from-[#3db4ff] to-[#006bb3]" style={{ pointerEvents: "none" }} />
-          <div className="absolute bottom-[33%] left-0 w-full h-28 bg-[radial-gradient(circle_at_50%_120%,#f7e9b3_40%,transparent_45%)] opacity-70" style={{ pointerEvents: "none" }} />
+          <div
+            className="absolute inset-0"
+            style={{
+              pointerEvents: "none",
+              backgroundImage: `
+              radial-gradient(circle at 18% 28%, rgba(255,236,182,0.42) 0%, transparent 30%),
+              radial-gradient(circle at 78% 65%, rgba(235,189,118,0.28) 0%, transparent 37%),
+              repeating-radial-gradient(circle at 50% 50%, rgba(125,88,45,0.09) 0px, rgba(125,88,45,0.09) 2px, transparent 2px, transparent 12px)
+              `,
+            }}
+          />
+          <div
+            className="absolute bottom-0 left-0 w-full h-1/3"
+            style={{
+              pointerEvents: "none",
+              backgroundImage: `
+              linear-gradient(to bottom, rgba(70,180,230,0.88), rgba(9,89,150,0.95)),
+              repeating-linear-gradient(95deg, rgba(255,255,255,0.12) 0 6px, transparent 6px 18px)
+              `,
+            }}
+          />
+          <div
+            className="absolute left-0 w-full"
+            style={{
+              bottom: "31%",
+              height: 160,
+              pointerEvents: "none",
+              background: "radial-gradient(ellipse at 50% 45%, rgba(228,204,150,0.96) 30%, rgba(204,166,110,0.65) 44%, rgba(83,148,182,0.12) 58%, transparent 70%)",
+              filter: "blur(3px)",
+            }}
+          />
+          <div
+            className="absolute left-0 w-full"
+            style={{
+              bottom: "31%",
+              height: 100,
+              pointerEvents: "none",
+              backgroundImage: "repeating-linear-gradient(120deg, rgba(255,255,255,0.18) 0 2px, transparent 2px 12px)",
+              opacity: 0.2,
+            }}
+          />
         </div>
 
         {rocks.map((r) => (
           <div
             key={r.id}
-            className="absolute bg-gray-700 rounded-full border border-gray-900 shadow-lg"
-            style={{ width: r.size, height: r.size, left: r.x, top: r.y }}
+            className="absolute rounded-full border border-gray-900 shadow-lg"
+            style={{
+              width: r.size,
+              height: r.size,
+              left: r.x,
+              top: r.y,
+              backgroundImage: `
+              radial-gradient(circle at 28% 26%, rgba(196,203,215,0.9) 0 15%, rgba(124,131,143,0.88) 42%, rgba(62,68,81,0.95) 88%),
+              repeating-radial-gradient(circle at 65% 65%, rgba(255,255,255,0.18) 0 1px, rgba(0,0,0,0.18) 2px 4px, transparent 4px 7px)
+              `,
+            }}
           />
         ))}
 
@@ -538,7 +654,15 @@ export default function TanksGamePage() {
               zIndex: 9,
             }}
           >
-            <PlayerTank x={35} y={35} rotation={tank.rotation} health={tank.health} maxHealth={MAX_HEALTH} isEnemy />
+            <PlayerTank
+              x={35}
+              y={35}
+              rotation={tank.rotation}
+              health={tank.health}
+              maxHealth={MAX_HEALTH}
+              isEnemy
+              hitIntensity={remoteHitIntensity[id] ?? 0}
+            />
           </div>
         ))}
 
@@ -569,7 +693,15 @@ export default function TanksGamePage() {
               />
             </svg>
           )}
-          <PlayerTank x={35} y={35} rotation={rotation} health={health} maxHealth={MAX_HEALTH} isEnemy={false} />
+          <PlayerTank
+            x={35}
+            y={35}
+            rotation={rotation}
+            health={health}
+            maxHealth={MAX_HEALTH}
+            isEnemy={false}
+            hitIntensity={selfHitIntensity}
+          />
         </div>
 
         {Object.entries(renderRemotePlayers).flatMap(([id, tank]) =>
@@ -590,6 +722,7 @@ export default function TanksGamePage() {
       <div className="absolute top-4 left-4 p-4 bg-black/40 rounded-xl text-white flex flex-col gap-2 z-[9999]">
         <p className="text-lg font-bold">Bounty: ${bounty}</p>
         <p className="font-bold">Ammo: {ammo}/{MAX_AMMO}</p>
+        <p className="text-xs text-cyan-200">Terrain: {isWaterTile(pos.y) ? "Water (slowed)" : "Sand"}</p>
         <p className="text-xs text-gray-300">Player: {selfId ?? "..."}</p>
 
         <CashOutButton bountyRef={bountyRef} setBounty={setBounty} setCashOutCountdown={setCashOutCountdown} routeMatchId={routeMatchId} />
