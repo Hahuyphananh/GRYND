@@ -22,11 +22,16 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     const root = document.documentElement;
+    const body = document.body;
+
     if (theme === "dark") {
       root.classList.add("dark");
     } else {
       root.classList.remove("dark");
     }
+
+    root.setAttribute("data-theme", theme);
+    body?.setAttribute("data-theme", theme);
 
     window.localStorage.setItem(STORAGE_KEY, theme);
   }, [theme]);
