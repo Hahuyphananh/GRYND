@@ -244,8 +244,8 @@
 }
 
 :root[data-theme='light'] body {
-  background: #eaf4ff;
-  color: #10243f;
+  background: #e3e8f1;
+  color: #1a2f47;
 }
 
 :root[data-theme='light'] .bg-\[\#003366\],
@@ -253,19 +253,23 @@
 :root[data-theme='light'] .to-\[\#000814\],
 :root[data-theme='light'] .bg-black,
 :root[data-theme='light'] .animated-bg {
-  background-color: #dcecff !important;
-  background-image: none !important;
+  background-color: #dde3ed !important;
+  background-image: linear-gradient(180deg, #e8edf6 0%, #d8dee9 100%) !important;
+}
+
+:root[data-theme='light'] .bg-black\/65 {
+  background-color: rgba(216, 224, 236, 0.62) !important;
 }
 
 :root[data-theme='light'] .text-white,
 :root[data-theme='light'] .text-gray-300,
 :root[data-theme='light'] .text-gray-200,
 :root[data-theme='light'] .text-gray-400 {
-  color: #1b3554 !important;
+  color: #263b53 !important;
 }
 
 :root[data-theme='light'] .text-\[\#FFD700\] {
-  color: #9a6b00 !important;
+  color: #8d6807 !important;
 }
 
 :root[data-theme='light'] .border-\[\#FFD700\]\/20,
@@ -275,22 +279,35 @@
 }
 
 :root[data-theme='light'] .bg-\[\#FFD700\] {
-  background-color: #ffe58f !important;
-  color: #163455 !important;
+  background-color: #e2c979 !important;
+  color: #1b2f47 !important;
 }
 
 :root[data-theme='light'] .hover\:bg-\[\#FFD700\]\/80:hover {
-  background-color: #ffd86b !important;
+  background-color: #d5bc70 !important;
 }
 
 :root[data-theme='light'] input,
 :root[data-theme='light'] select,
 :root[data-theme='light'] textarea {
-  background-color: #f8fbff !important;
-  color: #10243f !important;
-  border-color: rgba(16, 36, 63, 0.22) !important;
+  background-color: #eef2f8 !important;
+  color: #1a2f47 !important;
+  border-color: rgba(26, 47, 71, 0.24) !important;
 }
 
 :root[data-theme='light'] ::placeholder {
-  color: #4e647f !important;
+  color: #5a6d84 !important;
+}
+
+:root[data-theme='light'] .commencer-hover {
+  background: linear-gradient(135deg, #ddc173, #ceb166) !important;
+}
+
+:root[data-theme='light'] .commencer-hover:hover {
+  background: linear-gradient(135deg, #ceb166, #c3a75f, #b9984f) !important;
+}
+
+:root[data-theme='light'] .decouvrir-hover:hover {
+  background: linear-gradient(135deg, #dcc381, #cfb061, #c69f4f) !important;
+  color: #1b2f47 !important;
 }

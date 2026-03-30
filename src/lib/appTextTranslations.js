@@ -42,7 +42,8 @@ export const APP_TEXT_TRANSLATIONS = {
     "Suivant": "Next",
     "Précédent": "Previous",
     "Victoire": "Victory",
-    "Défaite": "Defeat"
+    "Défaite": "Defeat",
+    "Pariez sur vos Sports Préférés et Jouez au Casino": "Bet on your favorite sports and play at the casino"
   },
   es: {
     "Casino en Ligne": "Casino en línea",
@@ -87,6 +88,7 @@ export const APP_TEXT_TRANSLATIONS = {
     "Suivant": "Siguiente",
     "Précédent": "Anterior",
     "Victoire": "Victoria",
-    "Défaite": "Derrota"
+    "Défaite": "Derrota",
+    "Pariez sur vos Sports Préférés et Jouez au Casino": "Apuesta en tus deportes favoritos y juega en el casino"
   }
 };
