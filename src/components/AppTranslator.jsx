@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useLanguage } from "../context/LanguageContext";
 import { APP_TEXT_TRANSLATIONS } from "../lib/appTextTranslations";
 
@@ -43,9 +43,12 @@ function applyTranslation(originalText, language) {
 
 export default function AppTranslator() {
   const { language } = useLanguage();
+  const textNodeOriginalsRef = useRef(new WeakMap());
 
   useEffect(() => {
-    const textNodeOriginals = new WeakMap();
+    const textNodeOriginals = textNodeOriginalsRef.current;
+    const pendingRoots = new Set();
+    let rafId = null;
 
     const shouldSkipNode = (node) => {
       if (!node?.parentElement) return true;
@@ -56,15 +59,19 @@ export default function AppTranslator() {
 
     const translateTextNode = (textNode) => {
       if (!textNode || !textNode.nodeValue || shouldSkipNode(textNode)) return;
-      const trimmed = textNode.nodeValue.trim();
+      const currentValue = textNode.nodeValue;
+      const trimmed = currentValue.trim();
       if (!trimmed) return;
 
       if (!textNodeOriginals.has(textNode)) {
-        textNodeOriginals.set(textNode, textNode.nodeValue);
+        textNodeOriginals.set(textNode, currentValue);
       }
 
       const original = textNodeOriginals.get(textNode);
-      textNode.nodeValue = applyTranslation(original, language);
+      const translated = applyTranslation(original, language);
+      if (translated !== currentValue) {
+        textNode.nodeValue = translated;
+      }
     };
 
     const translateAttributes = (root = document) => {
@@ -79,7 +86,10 @@ export default function AppTranslator() {
             node.setAttribute(sourceAttr, value);
           }
 
-          node.setAttribute(attr, applyTranslation(node.getAttribute(sourceAttr), language));
+          const translated = applyTranslation(node.getAttribute(sourceAttr), language);
+          if (translated !== value) {
+            node.setAttribute(attr, translated);
+          }
         });
       });
     };
@@ -96,19 +106,28 @@ export default function AppTranslator() {
       translateAttributes(root instanceof Document ? document : root);
     };
 
-    walkAndTranslate(document);
+    const flushQueue = () => {
+      rafId = null;
+      const roots = Array.from(pendingRoots);
+      pendingRoots.clear();
+      roots.forEach((root) => walkAndTranslate(root));
+    };
+
+    const queueTranslate = (root) => {
+      pendingRoots.add(root);
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(flushQueue);
+    };
+
+    queueTranslate(document);
 
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        if (mutation.type === "characterData") {
-          translateTextNode(mutation.target);
-        }
-
         mutation.addedNodes.forEach((addedNode) => {
           if (addedNode.nodeType === Node.TEXT_NODE) {
             translateTextNode(addedNode);
           } else if (addedNode.nodeType === Node.ELEMENT_NODE) {
-            walkAndTranslate(addedNode);
+            queueTranslate(addedNode);
           }
         });
       }
@@ -117,10 +136,14 @@ export default function AppTranslator() {
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      characterData: true,
     });
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
   }, [language]);
 
   return null;
