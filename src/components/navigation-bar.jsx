@@ -5,10 +5,23 @@ import AddFundsModal from './AddFundsModal';
 import LogoSmiley from "../images/logo1.png"; // Adjust the path if needed
 import Image from "next/image";
 import Link from "next/link";
+import { useLanguage } from "../context/LanguageContext";
+import { useTheme } from "../context/ThemeContext";
+import { useTranslation } from "../hooks/useTranslation";
+
+const NAV_TRANSLATION_KEYS = {
+  "/": "navHome",
+  "/sport": "navSport",
+  "/casino": "navCasino",
+  "/classement": "navClassement",
+};
 
 function NavigationBar({ currentPath }) {
   const { isLoaded, isSignedIn } = useUser();
   const { getToken } = useAuth();
+  const { language, setLanguage } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
+  const { t } = useTranslation();
   const [balance, setBalance] = useState(null);
   const [error, setError] = useState(null);
   const [showAddFunds, setShowAddFunds] = useState(false);
@@ -101,21 +114,42 @@ function NavigationBar({ currentPath }) {
                       : "text-white hover:text-[#FFD700]"
                   }`}
                 >
-                  {path === "/" ? "Accueil" : path.slice(1).charAt(0).toUpperCase() + path.slice(2)}
+                  {t(NAV_TRANSLATION_KEYS[path])}
                 </Link>
               ))}
             </div>
 
             <div className="flex items-center space-x-4">
+              <select
+                aria-label="Language selector"
+                value={language}
+                onChange={(event) => setLanguage(event.target.value)}
+                className="rounded-lg bg-[#003366] border border-[#FFD700]/40 px-2 py-1 text-sm text-white focus:outline-none"
+              >
+                <option value="en">EN 🇺🇸</option>
+                <option value="fr">FR 🇫🇷</option>
+                <option value="es">ES 🇪🇸</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="rounded-lg bg-[#FFD700] px-2 py-1 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
+                aria-label="Theme toggle"
+                title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              >
+                {theme === "dark" ? "☀️" : "🌙"}
+              </button>
+
               {isLoaded && isSignedIn ? (
                 <>
                   <div className="hidden sm:flex items-center space-x-4">
                     <span className="text-[#FFD700]">
                       {error
-                        ? `Erreur: ${error}`
+                        ? `${t("navError")}: ${error}`
                         : balance !== null
                         ? `$${balance}`
-                        : "Chargement..."}
+                        : t("navLoading")}
                     </span>
                     <Link
                       href="/profil"
@@ -125,12 +159,12 @@ function NavigationBar({ currentPath }) {
                           : "text-white hover:text-[#FFD700]"
                       }`}
                     >
-                      Profil
+                      {t("navProfile")}
                     </Link>
                   </div>
                   <SignOutButton>
                     <button className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80">
-                      Déconnexion
+                      {t("navSignOut")}
                     </button>
                   </SignOutButton>
                 </>
@@ -139,12 +173,12 @@ function NavigationBar({ currentPath }) {
                     href="/sign-up"
                     className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
                   >
-                    Créer un compte
+                    {t("navCreateAccount")}
                   </Link><Link
                     href="/sign-in"
                     className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
                   >
-                      Connexion
+                      {t("navSignIn")}
                     </Link></>
               )}
             </div>
