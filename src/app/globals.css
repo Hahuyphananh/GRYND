@@ -237,3 +237,60 @@
   animation: bombExplode 0.4s ease-out;
 }
 
+
+/* Light mode palette overrides (dark mode keeps original colors) */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='light'] body {
+  background: #eaf4ff;
+  color: #10243f;
+}
+
+:root[data-theme='light'] .bg-\[\#003366\],
+:root[data-theme='light'] .from-\[\#001a33\],
+:root[data-theme='light'] .to-\[\#000814\],
+:root[data-theme='light'] .bg-black,
+:root[data-theme='light'] .animated-bg {
+  background-color: #dcecff !important;
+  background-image: none !important;
+}
+
+:root[data-theme='light'] .text-white,
+:root[data-theme='light'] .text-gray-300,
+:root[data-theme='light'] .text-gray-200,
+:root[data-theme='light'] .text-gray-400 {
+  color: #1b3554 !important;
+}
+
+:root[data-theme='light'] .text-\[\#FFD700\] {
+  color: #9a6b00 !important;
+}
+
+:root[data-theme='light'] .border-\[\#FFD700\]\/20,
+:root[data-theme='light'] .border-\[\#FFD700\]\/40,
+:root[data-theme='light'] .border-\[\#FFD700\]\/50 {
+  border-color: rgba(154, 107, 0, 0.35) !important;
+}
+
+:root[data-theme='light'] .bg-\[\#FFD700\] {
+  background-color: #ffe58f !important;
+  color: #163455 !important;
+}
+
+:root[data-theme='light'] .hover\:bg-\[\#FFD700\]\/80:hover {
+  background-color: #ffd86b !important;
+}
+
+:root[data-theme='light'] input,
+:root[data-theme='light'] select,
+:root[data-theme='light'] textarea {
+  background-color: #f8fbff !important;
+  color: #10243f !important;
+  border-color: rgba(16, 36, 63, 0.22) !important;
+}
+
+:root[data-theme='light'] ::placeholder {
+  color: #4e647f !important;
+}
