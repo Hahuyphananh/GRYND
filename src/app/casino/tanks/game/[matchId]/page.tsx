@@ -327,7 +327,7 @@ export default function TanksGamePage() {
         setMaxPlayers(maxPlayersFromServer);
         setMinPlayersToStart(minRequired);
 
-        if (Number(data.currentPlayers ?? 0) >= minRequired) {
+        if (data?.gameStarted || (modeFromServer === "duel" && Number(data.currentPlayers ?? 0) >= minRequired)) {
           setIsMatchReady(true);
         }
 
@@ -600,6 +600,7 @@ export default function TanksGamePage() {
         onReady={() => setIsMatchReady(true)}
         minPlayersToStart={minPlayersToStart}
         maxPlayers={maxPlayers}
+        gameMode={gameMode}
       />
     );
   }
@@ -764,7 +765,9 @@ export default function TanksGamePage() {
         <p className="text-xs text-cyan-200">Terrain: {isWaterTile(pos.y) ? "Water (slowed)" : "Sand"}</p>
         <p className="text-xs text-gray-300">Player: {selfId ?? "..."}</p>
 
-        <CashOutButton bountyRef={bountyRef} setBounty={setBounty} setCashOutCountdown={setCashOutCountdown} routeMatchId={routeMatchId} />
+        {gameMode === "battle_royale" && (
+          <CashOutButton bountyRef={bountyRef} setBounty={setBounty} setCashOutCountdown={setCashOutCountdown} routeMatchId={routeMatchId} />
+        )}
       </div>
     </div>
   );

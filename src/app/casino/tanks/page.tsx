@@ -103,7 +103,7 @@ async function joinGame(matchId?: string) {
     try {
       setLoading(true);
 
-      const res = await fetch("/api/tanks/start-match", {
+      const res = await fetch(gameMode === "battle_royale" ? "/api/tanks/start-battle-royale" : "/api/tanks/start-match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ betAmount: wager, gameMode }),
