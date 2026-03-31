@@ -5,6 +5,13 @@ import { tankStats, users, tankMatches } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
+function getErrorMessage(error) {
+  if (!error) return "Unknown error";
+  if (typeof error === "string") return error;
+  if (typeof error.message === "string") return error.message;
+  return String(error);
+}
+
 export async function POST(req) {
   try {
     let userId;
@@ -70,18 +77,8 @@ export async function POST(req) {
     };
     const safePlayers = [userId];
 
-    let settingsValue = safeSettings;
-    let playersValue = safePlayers;
-
-    try {
-      // Defensive serialization for environments where JSON insertions are strict.
-      JSON.stringify(safeSettings);
-      JSON.stringify(safePlayers);
-    } catch (serializationError) {
-      console.error("[start-battle-royale] Failed to serialize settings/players:", serializationError);
-      settingsValue = JSON.stringify(safeSettings);
-      playersValue = JSON.stringify(safePlayers);
-    }
+    const settingsString = JSON.stringify(safeSettings);
+    const playersString = JSON.stringify(safePlayers);
 
     try {
       await db.update(users).set({ balance: newBalance }).where(eq(users.clerkId, userId));
@@ -90,22 +87,70 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unable to reserve bet amount" }, { status: 500 });
     }
 
-    const matchId = nanoid(12);
+    let settingsValue = safeSettings;
+    let playersValue = safePlayers;
+
+    const primaryMatchPayload = {
+      matchId,
+      hostClerkId: userId,
+      maxPlayers: 10,
+      currentPlayers: 1,
+      isOpen: true,
+      gameStarted: false,
+      settings: safeSettings,
+      players: safePlayers,
+    };
+
+    const fallbackJsonPayload = {
+      ...primaryMatchPayload,
+      settings: settingsString,
+      players: playersString,
+    };
+
+    const fallbackLegacyPayload = {
+      matchId,
+      hostClerkId: userId,
+      maxPlayers: 10,
+      isOpen: true,
+      settings: settingsString,
+      players: playersString,
+    };
 
     try {
-      await db.insert(tankMatches).values({
-        matchId,
-        hostClerkId: userId,
-        maxPlayers: 10,
-        currentPlayers: 1,
-        isOpen: true,
-        gameStarted: false,
-        settings: settingsValue,
-        players: playersValue,
-      });
-    } catch (matchInsertError) {
-      console.error("[start-battle-royale] Failed to create match:", matchInsertError);
-      return NextResponse.json({ error: "Unable to create match" }, { status: 500 });
+      await db.insert(tankMatches).values(primaryMatchPayload);
+    } catch (primaryInsertError) {
+      const primaryMessage = getErrorMessage(primaryInsertError);
+      console.error("[start-battle-royale] Match insert primary payload failed:", primaryInsertError);
+
+      try {
+        await db.insert(tankMatches).values(fallbackJsonPayload);
+      } catch (jsonFallbackError) {
+        const jsonFallbackMessage = getErrorMessage(jsonFallbackError);
+        console.error("[start-battle-royale] Match insert JSON fallback failed:", jsonFallbackError);
+
+        const looksLikeSchemaDrift =
+          primaryMessage.toLowerCase().includes("column") ||
+          primaryMessage.toLowerCase().includes("does not exist") ||
+          jsonFallbackMessage.toLowerCase().includes("column") ||
+          jsonFallbackMessage.toLowerCase().includes("does not exist");
+
+        if (looksLikeSchemaDrift) {
+          try {
+            await db.insert(tankMatches).values(fallbackLegacyPayload);
+          } catch (legacyFallbackError) {
+            console.error("[start-battle-royale] Match insert legacy fallback failed:", legacyFallbackError);
+            return NextResponse.json(
+              { error: "Unable to create match", detail: getErrorMessage(legacyFallbackError) },
+              { status: 400 }
+            );
+          }
+        } else {
+          return NextResponse.json(
+            { error: "Unable to create match", detail: jsonFallbackMessage },
+            { status: 400 }
+          );
+        }
+      }
     }
 
     let inserted;
@@ -124,7 +169,10 @@ export async function POST(req) {
         .returning();
     } catch (statsInsertError) {
       console.error("[start-battle-royale] Failed to create player stats:", statsInsertError);
-      return NextResponse.json({ error: "Match created, but failed to create player stats" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Match created, but failed to create player stats", detail: getErrorMessage(statsInsertError) },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json({ success: true, matchId, player: inserted?.[0] || null, newBalance }, { status: 200 });
