@@ -160,6 +160,19 @@ type PlayerState = {
   updatedAt?: number;
 };
 
+const BATTLE_ROYALE_TANK_COLORS = [
+  "#16a34a", // green
+  "#dc2626", // red
+  "#2563eb", // blue
+  "#f59e0b", // amber
+  "#9333ea", // purple
+  "#06b6d4", // cyan
+  "#ec4899", // pink
+  "#84cc16", // lime
+  "#f97316", // orange
+  "#6b7280", // gray
+];
+
 const MAP_PROFILES = {
   classic: {
     width: 3000,
@@ -222,6 +235,8 @@ export default function TanksGamePage() {
   const hasInitializedSpawnRef = useRef(false);
 
   const [mapSeed, setMapSeed] = useState<number>(12345);
+  const [playerNames, setPlayerNames] = useState<Record<string, string>>({});
+  const [playerJoinOrder, setPlayerJoinOrder] = useState<string[]>([]);
 
   const [rotation, setRotation] = useState(0);
   const rotationRef = useRef(rotation);
@@ -338,6 +353,20 @@ export default function TanksGamePage() {
         if (data?.bounty !== undefined && data?.bounty !== null) {
           setBounty(Number(data.bounty));
           bountyRef.current = Number(data.bounty);
+        }
+
+        if (Array.isArray(data?.players)) {
+          setPlayerJoinOrder(data.players.filter((playerId: unknown): playerId is string => typeof playerId === "string"));
+        }
+
+        if (Array.isArray(data?.playersStats)) {
+          const namesById: Record<string, string> = {};
+          for (const stat of data.playersStats) {
+            if (typeof stat?.clerkId === "string" && typeof stat?.username === "string") {
+              namesById[stat.clerkId] = stat.username;
+            }
+          }
+          setPlayerNames(namesById);
         }
       } catch (err) {
         console.error("Error fetching match:", err);
@@ -592,6 +621,18 @@ export default function TanksGamePage() {
 
   const cameraX = typeof window !== "undefined" ? window.innerWidth / 2 - pos.x : 0;
   const cameraY = typeof window !== "undefined" ? window.innerHeight / 2 - pos.y : 0;
+  const getTankColor = (playerId: string, isEnemy: boolean) => {
+    if (gameMode !== "battle_royale") {
+      return isEnemy ? "#dc2626" : "#16a34a";
+    }
+
+    const joinIndex = playerJoinOrder.indexOf(playerId);
+    if (joinIndex >= 0) {
+      return BATTLE_ROYALE_TANK_COLORS[joinIndex % BATTLE_ROYALE_TANK_COLORS.length];
+    }
+
+    return isEnemy ? "#dc2626" : "#16a34a";
+  };
 
   if (!isMatchReady || !matchId) {
     return (
@@ -699,6 +740,8 @@ export default function TanksGamePage() {
               maxHealth={MAX_HEALTH}
               isEnemy
               hitIntensity={remoteHitIntensity[id] ?? 0}
+              tankColor={getTankColor(id, true)}
+              playerName={playerNames[id] ?? id}
             />
           </div>
         ))}
@@ -738,6 +781,8 @@ export default function TanksGamePage() {
             maxHealth={MAX_HEALTH}
             isEnemy={false}
             hitIntensity={selfHitIntensity}
+            tankColor={selfId ? getTankColor(selfId, false) : "#16a34a"}
+            playerName={selfId ? (playerNames[selfId] ?? selfId) : undefined}
           />
         </div>
 

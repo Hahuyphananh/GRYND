@@ -6,6 +6,8 @@ export default function PlayerTank({
   maxHealth,
   isEnemy = false,
   hitIntensity = 0,
+  tankColor,
+  playerName,
 }: {
   x: number;
   y: number;
@@ -14,6 +16,8 @@ export default function PlayerTank({
   maxHealth: number;
   isEnemy?: boolean;
   hitIntensity?: number;
+  tankColor?: string;
+  playerName?: string;
 }) {
   const size = 50;
   const clampedHit = Math.max(0, Math.min(1, hitIntensity));
@@ -33,8 +37,20 @@ export default function PlayerTank({
         filter: clampedHit > 0 ? `drop-shadow(0 0 ${8 + clampedHit * 12}px rgba(255,120,60,0.55))` : "none",
       }}
       >
+      {playerName && (
+        <div
+          className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-black/70 text-white text-[10px] font-semibold whitespace-nowrap"
+          style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}
+          title={playerName}
+        >
+          {playerName}
+        </div>
+      )}
       {/* Tank body */}
-      <div className={`w-full h-full rounded-md border-2 border-black relative ${isEnemy ? "bg-red-600" : "bg-green-600"}`}>
+      <div
+        className="w-full h-full rounded-md border-2 border-black relative"
+        style={{ backgroundColor: tankColor ?? (isEnemy ? "#dc2626" : "#16a34a") }}
+      >
         {clampedHit > 0 && (
           <div
             className="absolute inset-0 rounded-md pointer-events-none"
