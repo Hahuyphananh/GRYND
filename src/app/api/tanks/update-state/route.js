@@ -11,30 +11,69 @@ const MAP_HEIGHT = 3000;
 const SPAWN_PADDING = 120;
 const MIN_SPAWN_DISTANCE = 450;
 
-function randomSpawnPosition() {
-  return {
-    x: SPAWN_PADDING + Math.random() * (MAP_WIDTH - SPAWN_PADDING * 2),
-    y: SPAWN_PADDING + Math.random() * (MAP_HEIGHT - SPAWN_PADDING * 2),
+function createSeededRandom(seed) {
+  let t = seed >>> 0;
+  return () => {
+    t += 0x6d2b79f5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-function getSpawnPosition(existingStates) {
+function generateRocks(seed, mapWidth, mapHeight, rockCount) {
+  const rand = createSeededRandom(seed);
+  return Array.from({ length: rockCount }).map((_, i) => {
+    const size = 36 + rand() * 58;
+    return {
+      id: i,
+      size,
+      x: rand() * (mapWidth - size),
+      y: rand() * (mapHeight - size),
+    };
+  });
+}
+
+function isSpawnBlockedByRock(point, rocks, tankRadius = 22) {
+  return rocks.some((rock) => {
+    const cx = rock.x + rock.size / 2;
+    const cy = rock.y + rock.size / 2;
+    const rockR = rock.size / 2;
+    return Math.hypot(point.x - cx, point.y - cy) < rockR + tankRadius;
+  });
+}
+
+function randomSpawnPosition(mapWidth, mapHeight) {
+  return {
+    x: SPAWN_PADDING + Math.random() * (mapWidth - SPAWN_PADDING * 2),
+    y: SPAWN_PADDING + Math.random() * (mapHeight - SPAWN_PADDING * 2),
+  };
+}
+
+function getSpawnPosition(existingStates, rocks, mapWidth, mapHeight) {
   const occupiedStates = Object.values(existingStates ?? {}).filter(
     (state) => Number.isFinite(Number(state?.x)) && Number.isFinite(Number(state?.y))
   );
 
-  for (let i = 0; i < 20; i += 1) {
-    const candidate = randomSpawnPosition();
+  for (let i = 0; i < 30; i += 1) {
+    const candidate = randomSpawnPosition(mapWidth, mapHeight);
     const tooClose = occupiedStates.some(
       (state) => Math.hypot(Number(state.x) - candidate.x, Number(state.y) - candidate.y) < MIN_SPAWN_DISTANCE
     );
 
-    if (!tooClose) {
+    if (!tooClose && !isSpawnBlockedByRock(candidate, rocks)) {
       return candidate;
     }
   }
 
-  return randomSpawnPosition();
+  for (let i = 0; i < 50; i += 1) {
+    const candidate = randomSpawnPosition(mapWidth, mapHeight);
+    if (!isSpawnBlockedByRock(candidate, rocks)) {
+      return candidate;
+    }
+  }
+
+  return { x: mapWidth / 2, y: mapHeight / 2 };
 }
 
 export async function POST(req) {
@@ -63,6 +102,12 @@ export async function POST(req) {
     const settings = match.settings ?? {};
     const playerStates = settings.playerStates ?? {};
     const matchPlayers = Array.isArray(match.players) ? match.players : [];
+    const mode = settings.mode === "battle_royale" ? "battle_royale" : "duel";
+    const mapProfile = settings.mapProfile === "duel_small" ? "duel_small" : "classic";
+    const profileMapWidth = mapProfile === "duel_small" ? 2200 : MAP_WIDTH;
+    const profileMapHeight = mapProfile === "duel_small" ? 2200 : MAP_HEIGHT;
+    const rockCount = mapProfile === "duel_small" ? 30 : 52;
+    const rocks = generateRocks(Number(settings.mapSeed ?? 12345), profileMapWidth, profileMapHeight, rockCount);
 
     if (matchPlayers.length > 0 && !matchPlayers.includes(userId)) {
       return NextResponse.json({ error: "Player is not in this match" }, { status: 403 });
@@ -83,7 +128,7 @@ export async function POST(req) {
       : [];
 
     const hasExistingPosition = Number.isFinite(Number(currentPlayerState.x)) && Number.isFinite(Number(currentPlayerState.y));
-    const spawnPosition = hasExistingPosition ? null : getSpawnPosition(playerStates);
+    const spawnPosition = hasExistingPosition ? null : getSpawnPosition(playerStates, rocks, profileMapWidth, profileMapHeight);
 
     playerStates[userId] = {
       x: hasExistingPosition ? Number(x ?? currentPlayerState.x) : spawnPosition.x,
@@ -107,8 +152,46 @@ export async function POST(req) {
       playerStates[targetId].health = Math.max(0, currentHealth - 1);
     }
 
+    const deadPlayerIds = matchPlayers.filter((id) => Number(playerStates[id]?.health ?? 5) <= 0);
+    const killerId = normalizedHits[0];
+    if (mode === "battle_royale" && killerId && deadPlayerIds.length > 0) {
+      const unresolvedStats = await db
+        .select({ clerkId: tankStats.clerkId, bounty: tankStats.bounty, kills: tankStats.kills })
+        .from(tankStats)
+        .where(and(eq(tankStats.matchId, matchId), isNull(tankStats.result)));
+
+      const killerStat = unresolvedStats.find((row) => row.clerkId === killerId);
+      if (killerStat) {
+        let bountyGain = 0;
+        let eliminations = 0;
+        for (const deadId of deadPlayerIds) {
+          if (deadId === killerId) continue;
+          const deadStat = unresolvedStats.find((row) => row.clerkId === deadId);
+          bountyGain += Number(deadStat?.bounty ?? 0);
+          eliminations += 1;
+          await db
+            .update(tankStats)
+            .set({ result: "lose", amountCashedOut: 0, bounty: "0.00" })
+            .where(and(eq(tankStats.matchId, matchId), eq(tankStats.clerkId, deadId), isNull(tankStats.result)));
+          delete playerStates[deadId];
+        }
+
+        if (bountyGain > 0 || eliminations > 0) {
+          await db
+            .update(tankStats)
+            .set({
+              bounty: String(Number(killerStat.bounty ?? 0) + bountyGain),
+              kills: sql`${tankStats.kills} + ${eliminations}`,
+            })
+            .where(and(eq(tankStats.matchId, matchId), eq(tankStats.clerkId, killerId), isNull(tankStats.result)));
+        }
+      }
+    }
+
+    const remainingPlayers = matchPlayers.filter((id) => Number(playerStates[id]?.health ?? 5) > 0);
+
     let gameOver = null;
-    const alivePlayers = matchPlayers.filter((id) => Number(playerStates[id]?.health ?? 5) > 0);
+    const alivePlayers = remainingPlayers;
 
     if (matchPlayers.length === 2 && alivePlayers.length === 1) {
       const winnerId = alivePlayers[0];
@@ -183,6 +266,10 @@ export async function POST(req) {
       await db
         .update(tankMatches)
         .set({
+          currentPlayers: remainingPlayers.length,
+          players: remainingPlayers,
+          isOpen: remainingPlayers.length < Number(match.maxPlayers ?? 2),
+          gameStarted: remainingPlayers.length >= 2 || mode === "battle_royale",
           settings: {
             ...settings,
             playerStates,

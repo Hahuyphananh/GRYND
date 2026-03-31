@@ -15,9 +15,9 @@ function createSeededRandom(seed: number) {
   };
 }
 
-function generateRocks(seed: number, mapWidth: number, mapHeight: number) {
+function generateRocks(seed: number, mapWidth: number, mapHeight: number, rockCount: number) {
   const rand = createSeededRandom(seed);
-  return Array.from({ length: 52 }).map((_, i) => {
+  return Array.from({ length: rockCount }).map((_, i) => {
     const size = 36 + rand() * 58;
     return {
       id: i,
@@ -160,13 +160,30 @@ type PlayerState = {
   updatedAt?: number;
 };
 
+const MAP_PROFILES = {
+  classic: {
+    width: 3000,
+    height: 3000,
+    rockCount: 52,
+  },
+  duel_small: {
+    width: 2200,
+    height: 2200,
+    rockCount: 30,
+  },
+} as const;
+
 export default function TanksGamePage() {
   const router = useRouter();
   const params = useParams<{ matchId: string }>();
   const routeMatchId = params?.matchId;
 
-  const MAP_WIDTH = 3000;
-  const MAP_HEIGHT = 3000;
+  const [mapProfile, setMapProfile] = useState<keyof typeof MAP_PROFILES>("classic");
+  const [minPlayersToStart, setMinPlayersToStart] = useState(2);
+  const [maxPlayers, setMaxPlayers] = useState(2);
+  const [gameMode, setGameMode] = useState<"duel" | "battle_royale">("duel");
+  const MAP_WIDTH = MAP_PROFILES[mapProfile].width;
+  const MAP_HEIGHT = MAP_PROFILES[mapProfile].height;
 
   const [pos, setPos] = useState({ x: 1500, y: 1500 });
   const posRef = useRef(pos);
@@ -220,7 +237,10 @@ export default function TanksGamePage() {
   const WATER_Y = MAP_HEIGHT * 0.67;
   const SHORE_TRANSITION = 130;
 
-  const rocks = useMemo(() => generateRocks(mapSeed, MAP_WIDTH, MAP_HEIGHT), [mapSeed]);
+  const rocks = useMemo(
+    () => generateRocks(mapSeed, MAP_WIDTH, MAP_HEIGHT, MAP_PROFILES[mapProfile].rockCount),
+    [mapSeed, MAP_WIDTH, MAP_HEIGHT, mapProfile]
+  );
   const hitSoundCtxRef = useRef<AudioContext | null>(null);
   const selfHitUntilRef = useRef(0);
   const [selfHitIntensity, setSelfHitIntensity] = useState(0);
@@ -298,7 +318,16 @@ export default function TanksGamePage() {
         const res = await fetch(`/api/tanks/get-match?matchId=${routeMatchId}`);
         const data = await res.json();
 
-        if (data.currentPlayers >= 2) {
+        const modeFromServer = data?.settings?.mode === "battle_royale" ? "battle_royale" : "duel";
+        const profileFromServer = data?.settings?.mapProfile === "duel_small" ? "duel_small" : "classic";
+        const maxPlayersFromServer = Number(data?.maxPlayers ?? (modeFromServer === "battle_royale" ? 10 : 2));
+        const minRequired = 2;
+        setGameMode(modeFromServer);
+        setMapProfile(profileFromServer);
+        setMaxPlayers(maxPlayersFromServer);
+        setMinPlayersToStart(minRequired);
+
+        if (Number(data.currentPlayers ?? 0) >= minRequired) {
           setIsMatchReady(true);
         }
 
@@ -565,7 +594,14 @@ export default function TanksGamePage() {
   const cameraY = typeof window !== "undefined" ? window.innerHeight / 2 - pos.y : 0;
 
   if (!isMatchReady || !matchId) {
-    return <WaitingRoom gameId={matchId ?? ""} onReady={() => setIsMatchReady(true)} />;
+    return (
+      <WaitingRoom
+        gameId={matchId ?? ""}
+        onReady={() => setIsMatchReady(true)}
+        minPlayersToStart={minPlayersToStart}
+        maxPlayers={maxPlayers}
+      />
+    );
   }
 
   return (
@@ -722,6 +758,9 @@ export default function TanksGamePage() {
       <div className="absolute top-4 left-4 p-4 bg-black/40 rounded-xl text-white flex flex-col gap-2 z-[9999]">
         <p className="text-lg font-bold">Bounty: ${bounty}</p>
         <p className="font-bold">Ammo: {ammo}/{MAX_AMMO}</p>
+        <p className="text-xs text-yellow-200">
+          Mode: {gameMode === "battle_royale" ? "Battle Royale" : "1v1"}
+        </p>
         <p className="text-xs text-cyan-200">Terrain: {isWaterTile(pos.y) ? "Water (slowed)" : "Sand"}</p>
         <p className="text-xs text-gray-300">Player: {selfId ?? "..."}</p>
 

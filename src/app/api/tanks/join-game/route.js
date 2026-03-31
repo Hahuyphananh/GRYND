@@ -97,18 +97,23 @@ export async function POST(req) {
       .where(eq(users.clerkId, userId));
 
     // 6️⃣ Atomic match update
+    const targetMaxPlayers = Number(selectedMatch.maxPlayers ?? 2);
+    const nextPlayerCount = Number(selectedMatch.currentPlayers ?? 0) + 1;
+    const shouldStartGame = nextPlayerCount >= 2;
+    const shouldCloseLobby = nextPlayerCount >= targetMaxPlayers;
+
     const updated = await db
       .update(tankMatches)
       .set({
         currentPlayers: sql`${tankMatches.currentPlayers} + 1`,
         players: sql`${tankMatches.players} || jsonb_build_array(${sql.raw(`'${userId}'`)})`,
-        isOpen: false,
-        gameStarted: true,
+        isOpen: shouldCloseLobby ? false : true,
+        gameStarted: shouldStartGame,
       })
       .where(
         and(
           eq(tankMatches.matchId, selectedMatch.matchId),
-          lt(tankMatches.currentPlayers, 2)
+          lt(tankMatches.currentPlayers, tankMatches.maxPlayers)
         )
       )
       .returning();
@@ -145,5 +150,4 @@ export async function POST(req) {
     );
   }
 }
-
 
