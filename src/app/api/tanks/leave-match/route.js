@@ -64,10 +64,14 @@ export async function POST(req) {
     const nextReadyPlayers = Array.isArray(currentSettings.readyPlayers)
       ? currentSettings.readyPlayers.filter((id) => id !== userId)
       : currentSettings.readyPlayers;
+    const readyCountAfterLeave = Array.isArray(nextReadyPlayers)
+      ? updatedPlayers.filter((id) => nextReadyPlayers.includes(id)).length
+      : 0;
     const nextPlayerStates =
       currentSettings.playerStates && typeof currentSettings.playerStates === "object"
         ? Object.fromEntries(Object.entries(currentSettings.playerStates).filter(([id]) => id !== userId))
         : currentSettings.playerStates;
+    const isBattleRoyaleWaiting = mode === "battle_royale" && !Boolean(match.gameStarted);
 
     await db
       .update(tankMatches)
@@ -79,10 +83,10 @@ export async function POST(req) {
           ...currentSettings,
           readyPlayers: nextReadyPlayers,
           playerStates: nextPlayerStates,
-          countdownEndsAt: mode === "battle_royale" ? null : currentSettings.countdownEndsAt ?? null,
-          countdownDuration: mode === "battle_royale" ? null : currentSettings.countdownDuration ?? null,
+          countdownEndsAt: isBattleRoyaleWaiting && readyCountAfterLeave < 2 ? null : currentSettings.countdownEndsAt ?? null,
+          countdownDuration: isBattleRoyaleWaiting && readyCountAfterLeave < 2 ? null : currentSettings.countdownDuration ?? null,
         },
-        gameStarted: mode === "battle_royale" ? true : updatedPlayers.length >= 2,
+        gameStarted: mode === "battle_royale" ? Boolean(match.gameStarted) : updatedPlayers.length >= 2,
       })
       .where(eq(tankMatches.matchId, gameId));
 
