@@ -72,7 +72,7 @@ export async function POST(req) {
       mode: "battle_royale",
       mapProfile: "classic",
       playerStates: {},
-      readyPlayers: [],
+      readyPlayers: null,
       countdownEndsAt: null,
       countdownDuration: null,
     };
@@ -97,7 +97,7 @@ export async function POST(req) {
       maxPlayers: 10,
       currentPlayers: 1,
       isOpen: true,
-      gameStarted: false,
+      gameStarted: true,
       settings: safeSettings,
       players: safePlayers,
     };
