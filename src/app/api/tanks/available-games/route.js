@@ -10,6 +10,8 @@ export async function GET() {
         matchId: tankMatches.matchId,
         currentPlayers: tankMatches.currentPlayers,
         maxPlayers: tankMatches.maxPlayers,
+        isOpen: tankMatches.isOpen,
+        gameStarted: tankMatches.gameStarted,
         createdAt: tankMatches.createdAt,
         settings: tankMatches.settings,
         bounty: tankStats.bounty,
