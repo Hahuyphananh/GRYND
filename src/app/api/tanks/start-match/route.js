@@ -14,8 +14,11 @@ export async function POST(req) {
     }
 
     const body = await req.json();
-    const { betAmount } = body;
+    const { betAmount, gameMode } = body;
     const bet = Number(betAmount);
+    const mode = gameMode === "battle_royale" ? "battle_royale" : "duel";
+    const maxPlayers = mode === "battle_royale" ? 10 : 2;
+    const mapProfile = mode === "battle_royale" ? "classic" : "duel_small";
 
     if (!bet || bet <= 0) {
       return NextResponse.json(
@@ -61,11 +64,14 @@ export async function POST(req) {
     await db.insert(tankMatches).values({
       matchId,
       hostClerkId: userId,
-      maxPlayers: 2,
+      maxPlayers,
       currentPlayers: 1,     // Host counts as the first player
       isOpen: true,
+      gameStarted: false,
       settings: {
         mapSeed: Math.floor(Math.random() * 1_000_000_000),
+        mode,
+        mapProfile,
         playerStates: {},
       },
       players: [userId],     // ⭐ Host automatically added to array

@@ -11,6 +11,7 @@ export async function GET() {
         currentPlayers: tankMatches.currentPlayers,
         maxPlayers: tankMatches.maxPlayers,
         createdAt: tankMatches.createdAt,
+        settings: tankMatches.settings,
         bounty: tankStats.bounty,
         hostName: tankStats.username,
       })

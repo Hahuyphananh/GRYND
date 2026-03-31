@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 type WaitingRoomProps = {
   gameId: string;
   onReady: () => void;
+  minPlayersToStart: number;
+  maxPlayers: number;
 };
 
-export default function WaitingRoom({ gameId, onReady }: WaitingRoomProps) {
+export default function WaitingRoom({ gameId, onReady, minPlayersToStart, maxPlayers }: WaitingRoomProps) {
   const [playerCount, setPlayerCount] = useState(1);
   const [status, setStatus] = useState("Waiting for players...");
   const [isReady, setIsReady] = useState(false);
@@ -27,7 +29,7 @@ export default function WaitingRoom({ gameId, onReady }: WaitingRoomProps) {
         const count = Number(data.currentPlayers ?? 1);
         setPlayerCount(count);
 
-        if (count >= 2) {
+        if (count >= minPlayersToStart) {
           setStatus("Match found! Starting game...");
           setIsReady(true);
           onReady();
@@ -49,7 +51,7 @@ export default function WaitingRoom({ gameId, onReady }: WaitingRoomProps) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [gameId, onReady]);
+  }, [gameId, minPlayersToStart, onReady]);
 
   /* ✅ CANCEL MATCHMAKING */
   const handleCancel = async () => {
@@ -93,7 +95,7 @@ export default function WaitingRoom({ gameId, onReady }: WaitingRoomProps) {
       <div className="bg-gray-900 px-6 py-3 rounded-2xl border border-gray-700 mb-6">
         Players joined:
         <span className="text-green-400 font-bold ml-2">
-          {playerCount}/2
+          {playerCount}/{maxPlayers}
         </span>
       </div>
 
