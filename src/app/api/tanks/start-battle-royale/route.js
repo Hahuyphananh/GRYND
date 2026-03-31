@@ -87,7 +87,8 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unable to reserve bet amount" }, { status: 500 });
     }
 
-    const matchId = nanoid(12);
+    let settingsValue = safeSettings;
+    let playersValue = safePlayers;
 
     const primaryMatchPayload = {
       matchId,
