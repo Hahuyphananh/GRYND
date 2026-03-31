@@ -17,11 +17,17 @@ export async function GET() {
       })
       .from(tankMatches)
       .leftJoin(tankStats, and(eq(tankStats.matchId, tankMatches.matchId), eq(tankStats.clerkId, tankMatches.hostClerkId)))
-      .where(and(eq(tankMatches.isOpen, true), lt(tankMatches.currentPlayers, tankMatches.maxPlayers)))
+      .where(lt(tankMatches.currentPlayers, tankMatches.maxPlayers))
       .orderBy(desc(tankMatches.createdAt))
-      .limit(20);
+      .limit(50);
 
-    return NextResponse.json({ success: true, games: matches });
+    const filtered = matches.filter((m) => {
+      const mode = m?.settings?.mode === "battle_royale" ? "battle_royale" : "duel";
+      if (mode === "battle_royale") return true;
+      return m.isOpen && !m.gameStarted;
+    });
+
+    return NextResponse.json({ success: true, games: filtered.slice(0, 20) });
   } catch (error) {
     console.error("Tanks available-games error", error);
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });

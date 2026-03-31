@@ -73,6 +73,9 @@ export async function POST(req) {
         mode,
         mapProfile,
         playerStates: {},
+        readyPlayers: mode === "battle_royale" ? [] : null,
+        countdownEndsAt: null,
+        countdownDuration: null,
       },
       players: [userId],     // ⭐ Host automatically added to array
     });

@@ -269,7 +269,7 @@ export async function POST(req) {
           currentPlayers: remainingPlayers.length,
           players: remainingPlayers,
           isOpen: remainingPlayers.length < Number(match.maxPlayers ?? 2),
-          gameStarted: remainingPlayers.length >= 2 || mode === "battle_royale",
+          gameStarted: mode === "battle_royale" ? Boolean(match.gameStarted) : remainingPlayers.length >= 2,
           settings: {
             ...settings,
             playerStates,
