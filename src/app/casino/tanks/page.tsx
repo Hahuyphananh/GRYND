@@ -14,6 +14,7 @@ export default function TanksLobby() {
   const [error, setError] = useState<string | null>(null);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   const [joiningMatchId, setJoiningMatchId] = useState<string | null>(null);
+  const [showModePopup, setShowModePopup] = useState(false);
   const router = useRouter();
 
   const fetchUserTokens = async () => {
@@ -93,7 +94,7 @@ async function joinGame(matchId?: string) {
   }
 }
 
-  async function startMatch() {
+  async function startMatch(gameMode: "duel" | "battle_royale") {
     if (wager > balance) {
       alert("You do not have enough tokens for this wager.");
       return;
@@ -105,7 +106,7 @@ async function joinGame(matchId?: string) {
       const res = await fetch("/api/tanks/start-match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ betAmount: wager }),
+        body: JSON.stringify({ betAmount: wager, gameMode }),
       });
 
       const data = await res.json();
@@ -125,6 +126,7 @@ async function joinGame(matchId?: string) {
       alert("Server error while starting match");
     } finally {
       setLoading(false);
+      setShowModePopup(false);
     }
   }
 
@@ -166,7 +168,7 @@ async function joinGame(matchId?: string) {
 
         <motion.button
           whileTap={{ scale: 0.96 }}
-          onClick={startMatch}
+          onClick={() => setShowModePopup(true)}
           disabled={loading || wager > balance}
           className="block text-center w-full p-3 bg-green-600 hover:bg-green-700 rounded-xl font-bold cursor-pointer disabled:bg-green-900"
         >
@@ -200,7 +202,9 @@ async function joinGame(matchId?: string) {
                 <div key={game.matchId} className="flex items-center justify-between bg-gray-900/70 rounded-lg px-2 py-2">
                   <div className="text-xs">
                     <p className="font-semibold">{game.hostName || "Host"} · {game.matchId}</p>
-                    <p className="text-gray-400">Bet: {Number(game.bounty || 0).toFixed(2)} · {game.currentPlayers}/{game.maxPlayers}</p>
+                    <p className="text-gray-400">
+                      {game?.settings?.mode === "battle_royale" ? "Battle Royale" : "1v1"} · Bet: {Number(game.bounty || 0).toFixed(2)} · {game.currentPlayers}/{game.maxPlayers}
+                    </p>
                   </div>
                   <button
                     onClick={() => joinGame(game.matchId)}
@@ -219,6 +223,37 @@ async function joinGame(matchId?: string) {
           Kill players → steal their bounty.<br />Survive 5s to cash out.
         </div>
       </motion.div>
+
+      {showModePopup && (
+        <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-20">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-5 w-full max-w-sm">
+            <h3 className="text-xl font-bold mb-3">Choose game mode</h3>
+            <div className="space-y-2">
+              <button
+                onClick={() => startMatch("duel")}
+                disabled={loading}
+                className="w-full p-3 rounded-lg bg-green-600 hover:bg-green-700 font-bold disabled:bg-green-900"
+              >
+                1v1 (small map)
+              </button>
+              <button
+                onClick={() => startMatch("battle_royale")}
+                disabled={loading}
+                className="w-full p-3 rounded-lg bg-purple-600 hover:bg-purple-700 font-bold disabled:bg-purple-900"
+              >
+                Battle Royale (up to 10 players)
+              </button>
+              <button
+                onClick={() => setShowModePopup(false)}
+                disabled={loading}
+                className="w-full p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
