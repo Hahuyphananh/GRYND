@@ -35,7 +35,8 @@ export async function POST(req) {
       );
     }
 
-    const players = match.players ?? [];
+    const players = Array.isArray(match.players) ? match.players : [];
+    const mode = match?.settings?.mode === "battle_royale" ? "battle_royale" : "duel";
 
     if (!players.includes(userId)) {
       return Response.json({ success: true });
@@ -54,11 +55,38 @@ export async function POST(req) {
     );
 
     /* ✅ ATOMIC PLAYER COUNT UPDATE */
+    const nextHostClerkId =
+      mode === "battle_royale" && updatedPlayers.length > 0
+        ? updatedPlayers[Math.floor(Math.random() * updatedPlayers.length)]
+        : match.hostClerkId;
+
+    const currentSettings = match?.settings ?? {};
+    const nextReadyPlayers = Array.isArray(currentSettings.readyPlayers)
+      ? currentSettings.readyPlayers.filter((id) => id !== userId)
+      : currentSettings.readyPlayers;
+    const readyCountAfterLeave = Array.isArray(nextReadyPlayers)
+      ? updatedPlayers.filter((id) => nextReadyPlayers.includes(id)).length
+      : 0;
+    const nextPlayerStates =
+      currentSettings.playerStates && typeof currentSettings.playerStates === "object"
+        ? Object.fromEntries(Object.entries(currentSettings.playerStates).filter(([id]) => id !== userId))
+        : currentSettings.playerStates;
+    const isBattleRoyaleWaiting = mode === "battle_royale" && !Boolean(match.gameStarted);
+
     await db
       .update(tankMatches)
       .set({
         players: updatedPlayers,
-        currentPlayers: sql`GREATEST(current_players - 1, 0)`
+        currentPlayers: sql`GREATEST(current_players - 1, 0)`,
+        hostClerkId: nextHostClerkId,
+        settings: {
+          ...currentSettings,
+          readyPlayers: nextReadyPlayers,
+          playerStates: nextPlayerStates,
+          countdownEndsAt: isBattleRoyaleWaiting && readyCountAfterLeave < 2 ? null : currentSettings.countdownEndsAt ?? null,
+          countdownDuration: isBattleRoyaleWaiting && readyCountAfterLeave < 2 ? null : currentSettings.countdownDuration ?? null,
+        },
+        gameStarted: mode === "battle_royale" ? Boolean(match.gameStarted) : updatedPlayers.length >= 2,
       })
       .where(eq(tankMatches.matchId, gameId));
 
