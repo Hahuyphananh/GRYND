@@ -66,6 +66,7 @@ export async function POST(req) {
     }
 
     const newBalance = balance - bet;
+    const matchId = nanoid(12);
     const safeSettings = {
       mapSeed: Math.floor(Math.random() * 1_000_000_000),
       mode: "battle_royale",
