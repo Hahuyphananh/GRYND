@@ -26,6 +26,33 @@ export async function GET(req) {
       return NextResponse.json({ error: "Match not found" }, { status: 404 });
     }
 
+    let matchRow = match[0];
+
+    const mode = matchRow?.settings?.mode === "battle_royale" ? "battle_royale" : "duel";
+    const countdownEndsAt = Number(matchRow?.settings?.countdownEndsAt ?? 0);
+    if (mode === "battle_royale" && !matchRow.gameStarted && countdownEndsAt > 0 && countdownEndsAt <= Date.now()) {
+      await db
+        .update(tankMatches)
+        .set({
+          gameStarted: true,
+          settings: {
+            ...(matchRow.settings ?? {}),
+            countdownEndsAt: null,
+            countdownDuration: null,
+          },
+        })
+        .where(eq(tankMatches.matchId, matchId));
+
+      const refreshed = await db
+        .select()
+        .from(tankMatches)
+        .where(eq(tankMatches.matchId, matchId))
+        .limit(1);
+      if (refreshed.length > 0) {
+        matchRow = refreshed[0];
+      }
+    }
+
     const stats = await db
       .select({
         clerkId: tankStats.clerkId,
@@ -49,7 +76,7 @@ export async function GET(req) {
 
     return NextResponse.json(
       {
-        ...match[0],
+        ...matchRow,
         bounty,
         playersStats: stats,
       },

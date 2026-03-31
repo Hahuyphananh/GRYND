@@ -11,13 +11,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const { amount, matchId: requestedMatchId } = body;
-
-    if (!amount || Number(amount) <= 0)
-      return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
-
-    // Apply 90% payout (10% house cut)
-    const payout = Number(amount) * 0.9;
+    const { matchId: requestedMatchId } = body;
 
     // Find this player's active stats row (prefer current match from client)
     const playerStats = await db
@@ -44,6 +38,29 @@ export async function POST(req) {
 
     const { matchId } = playerStats[0];
 
+    const statsRow = await db
+      .select({ bounty: tankStats.bounty })
+      .from(tankStats)
+      .where(and(eq(tankStats.clerkId, clerkId), eq(tankStats.matchId, matchId), isNull(tankStats.result)))
+      .limit(1);
+
+    if (statsRow.length === 0) {
+      return NextResponse.json({ error: "Active player stats not found" }, { status: 400 });
+    }
+
+    const matchRows = await db.select().from(tankMatches).where(eq(tankMatches.matchId, matchId)).limit(1);
+    if (matchRows.length === 0) {
+      return NextResponse.json({ error: "Match not found" }, { status: 404 });
+    }
+
+    const mode = matchRows[0]?.settings?.mode === "battle_royale" ? "battle_royale" : "duel";
+    if (mode !== "battle_royale") {
+      return NextResponse.json({ error: "Cash out is only available in battle royale" }, { status: 400 });
+    }
+
+    // Apply 90% payout (10% house cut) from authoritative server bounty
+    const payout = Number(statsRow[0].bounty) * 0.9;
+
     // Update user balance
     const updated = await db
       .update(users)
@@ -61,11 +78,7 @@ export async function POST(req) {
       .where(and(eq(tankStats.clerkId, clerkId), eq(tankStats.matchId, matchId)));
 
     // Manage match player count
-    const match = await db
-      .select()
-      .from(tankMatches)
-      .where(eq(tankMatches.matchId, matchId))
-      .limit(1);
+    const match = matchRows;
 
     if (match.length > 0) {
       const m = match[0];

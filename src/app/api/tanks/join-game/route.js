@@ -14,33 +14,36 @@ export async function POST(req) {
     const body = await req.json().catch(() => ({}));
     const requestedMatchId = body?.matchId || null;
 
-    // 1️⃣ Find open match
-    const match = await db
+    // 1️⃣ Find candidate matches (filtered down in JS to allow started BR lobbies)
+    const matches = await db
       .select()
       .from(tankMatches)
       .where(
         requestedMatchId
           ? and(
-              eq(tankMatches.isOpen, true),
               lt(tankMatches.currentPlayers, tankMatches.maxPlayers),
               eq(tankMatches.matchId, requestedMatchId)
             )
-          : and(
-              eq(tankMatches.isOpen, true),
-              lt(tankMatches.currentPlayers, tankMatches.maxPlayers)
-            )
+          : lt(tankMatches.currentPlayers, tankMatches.maxPlayers)
       )
       .orderBy(desc(tankMatches.currentPlayers))
-      .limit(1);
+      .limit(requestedMatchId ? 1 : 20);
 
-    if (match.length === 0) {
+    const selectedMatch = matches.find((candidate) => {
+      const mode = candidate?.settings?.mode === "battle_royale" ? "battle_royale" : "duel";
+      if (mode === "battle_royale") {
+        return true;
+      }
+      return candidate.isOpen && !candidate.gameStarted;
+    });
+
+    if (!selectedMatch) {
       return NextResponse.json(
         { error: requestedMatchId ? "Selected match is no longer available." : "No matches available." },
         { status: 404 }
       );
     }
-
-    const selectedMatch = match[0];
+    const mode = selectedMatch?.settings?.mode === "battle_royale" ? "battle_royale" : "duel";
 
     // 2️⃣ Prevent joining twice
     if (selectedMatch.players?.includes(userId)) {
@@ -99,14 +102,22 @@ export async function POST(req) {
     // 6️⃣ Atomic match update
     const targetMaxPlayers = Number(selectedMatch.maxPlayers ?? 2);
     const nextPlayerCount = Number(selectedMatch.currentPlayers ?? 0) + 1;
-    const shouldStartGame = nextPlayerCount >= 2;
+    const readyPlayers = selectedMatch?.settings?.readyPlayers ?? [];
+    const shouldStartGame = mode === "battle_royale" ? selectedMatch.gameStarted : nextPlayerCount >= 2;
     const shouldCloseLobby = nextPlayerCount >= targetMaxPlayers;
+
+    const updatedPlayers = [...(Array.isArray(selectedMatch.players) ? selectedMatch.players : []), userId];
+    const updatedSettings = {
+      ...(selectedMatch.settings ?? {}),
+      readyPlayers,
+    };
 
     const updated = await db
       .update(tankMatches)
       .set({
         currentPlayers: sql`${tankMatches.currentPlayers} + 1`,
-        players: sql`${tankMatches.players} || jsonb_build_array(${sql.raw(`'${userId}'`)})`,
+        players: updatedPlayers,
+        settings: updatedSettings,
         isOpen: shouldCloseLobby ? false : true,
         gameStarted: shouldStartGame,
       })
@@ -150,4 +161,3 @@ export async function POST(req) {
     );
   }
 }
-
