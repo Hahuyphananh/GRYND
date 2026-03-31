@@ -34,7 +34,8 @@ export async function POST(req) {
       if (mode === "battle_royale") {
         return true;
       }
-      return candidate.isOpen && !candidate.gameStarted;
+      const currentPlayers = Number(candidate.currentPlayers ?? 0);
+      return candidate.isOpen && !candidate.gameStarted && currentPlayers < 2;
     });
 
     if (!selectedMatch) {
@@ -100,7 +101,7 @@ export async function POST(req) {
       .where(eq(users.clerkId, userId));
 
     // 6️⃣ Atomic match update
-    const targetMaxPlayers = Number(selectedMatch.maxPlayers ?? 2);
+    const targetMaxPlayers = mode === "battle_royale" ? 10 : 2;
     const nextPlayerCount = Number(selectedMatch.currentPlayers ?? 0) + 1;
     const readyPlayers = selectedMatch?.settings?.readyPlayers ?? [];
     const shouldStartGame = mode === "battle_royale" ? selectedMatch.gameStarted : nextPlayerCount >= 2;
