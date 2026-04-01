@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 
 export async function POST(req) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
@@ -10,7 +10,7 @@ export async function POST(req) {
   }
 
   try {
-    const { eventId, betAmount, choice, odds } = await req.json();
+    const { eventId, betAmount, choice, odds, marketType = null, lineValue = null } = await req.json();
 
     if (!eventId || !betAmount || !choice || !odds) {
       return new Response(JSON.stringify({ error: "Missing fields" }), {
@@ -18,7 +18,6 @@ export async function POST(req) {
       });
     }
 
-    // Check user balance
     const balanceResult = await sql`
       SELECT balance FROM user_tokens WHERE user_id = ${userId}
     `;
@@ -30,23 +29,35 @@ export async function POST(req) {
       });
     }
 
-    // Insert bet
-    await sql`
-      INSERT INTO sports_bets (user_id, event_id, bet_amount, choice, odds)
-      VALUES (${userId}, ${eventId}, ${betAmount}, ${choice}, ${odds})
-    `;
+    try {
+      await sql`
+        INSERT INTO sports_bets (user_id, event_external_id, bet_amount, choice, odds, market_type, line_value)
+        VALUES (${userId}, ${String(eventId)}, ${betAmount}, ${choice}, ${odds}, ${marketType}, ${lineValue})
+      `;
+    } catch (migrationErr) {
+      const legacyEventId = Number(eventId);
+      if (!Number.isFinite(legacyEventId)) {
+        return new Response(
+          JSON.stringify({
+            error: "Database migration required: add event_external_id to sports_bets.",
+          }),
+          { status: 400 }
+        );
+      }
 
-    // Deduct balance
+      await sql`
+        INSERT INTO sports_bets (user_id, event_id, bet_amount, choice, odds)
+        VALUES (${userId}, ${legacyEventId}, ${betAmount}, ${choice}, ${odds})
+      `;
+    }
+
     const newBalance = userBalance - betAmount;
     await sql`
       UPDATE user_tokens SET balance = ${newBalance}
       WHERE user_id = ${userId}
     `;
 
-    return new Response(
-      JSON.stringify({ success: true, newBalance }),
-      { status: 200 }
-    );
+    return new Response(JSON.stringify({ success: true, newBalance }), { status: 200 });
   } catch (error) {
     console.error("Error placing sports bet:", error);
     return new Response(JSON.stringify({ error: "Internal server error" }), {
