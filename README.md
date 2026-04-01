@@ -34,11 +34,4 @@ _A preview of the main lobby interface (Roulette + Blackjack shown)_
 | **Database**    | Neon DB + Drizzle ORM |
 | **Hosting**     | Vercel |
 
----
-
-## 🏗️ Installation
-
-Clone the repository and install dependencies:
-
-```bash
 
