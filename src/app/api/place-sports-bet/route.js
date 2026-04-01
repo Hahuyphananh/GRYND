@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 
 export async function POST(req) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
