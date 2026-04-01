@@ -22,8 +22,8 @@ const setCached = (key: string, payload: CacheEntry["payload"]) => {
   cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload });
 };
 
-export async function GET(req: NextRequest, context: { params: { sport: string } }) {
-  const { sport } = context.params;
+export async function GET(req: NextRequest, context: { params: Promise<{ sport: string }> }) {
+  const { sport } = await context.params;
   const refresh = req.nextUrl.searchParams.get("refresh") === "1";
   const requestedMarkets = req.nextUrl.searchParams.get("markets") || "h2h,spreads,totals";
   const marketSet = new Set(requestedMarkets.split(",").map((m) => m.trim()).filter(Boolean));
