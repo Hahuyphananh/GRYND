@@ -40,9 +40,6 @@ export default function MatchPage() {
 
   useEffect(() => {
     fetchMatch();
-    // Refresh live score every 10 seconds
-    const interval = setInterval(fetchMatch, 10000);
-    return () => clearInterval(interval);
   }, [matchId]);
 
   // Fetch user tokens
@@ -134,7 +131,13 @@ export default function MatchPage() {
             {new Date(event.start_time).toLocaleString("fr-FR")}
           </p>
 
-          {/* Live Score */}
+          {/* Live Score (manual refresh) */}
+          <button
+            onClick={fetchMatch}
+            className="mt-3 rounded-lg border border-[#FFD700] px-3 py-1 text-sm text-[#FFD700] hover:bg-[#FFD700]/10"
+          >
+            Refresh match
+          </button>
           <div className="mt-2">
             {event.live_score ? (
               <p className="text-lg text-white">
