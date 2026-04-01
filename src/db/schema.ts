@@ -447,11 +447,15 @@ export const events = pgTable('events', {
 export const sportsBets = pgTable('sports_bets', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').notNull(),
-  eventId: integer('event_id').notNull(),
+  eventId: integer('event_id'),
+  eventExternalId: varchar('event_external_id', { length: 255 }),
   betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
-  choice: varchar('choice', { length: 100 }).notNull(), // "teamA", "teamB", "draw"
+  choice: varchar('choice', { length: 100 }).notNull(),
   odds: numeric('odds', { precision: 5, scale: 2 }).notNull(),
+  marketType: varchar('market_type', { length: 40 }),
+  lineValue: numeric('line_value', { precision: 8, scale: 2 }),
+  selectionMetadata: jsonb('selection_metadata').default(sql`'{}'::jsonb`),
   payout: numeric('payout', { precision: 10, scale: 2 }),
-  result: varchar('result', { length: 20 }), // "win", "loss", "pending"
+  result: varchar('result', { length: 20 }),
   placedAt: timestamp('placed_at').defaultNow(),
 });
