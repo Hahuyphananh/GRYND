@@ -1,21 +1,37 @@
 "use client";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 
-export default function BetSlip({ selectedBet, odds, onSubmit }) {
+const marketTitle = {
+  h2h: "Moneyline",
+  spreads: "Point Spread",
+  totals: "Over / Under",
+  props: "Prop Bet",
+};
+
+export default function BetSlip({ selectedBet, marketType, onSubmit }) {
   const [amount, setAmount] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState("");
 
-  const potentialWinnings = amount
-    ? (parseFloat(amount) * parseFloat(odds || 0)).toFixed(2)
-    : "0.00";
+  const odds = selectedBet?.odds;
+  const potentialWinnings = useMemo(() => {
+    if (!amount || !odds) return "0.00";
+    return (parseFloat(amount) * parseFloat(odds)).toFixed(2);
+  }, [amount, odds]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setSuccess("");
+
+    if (!selectedBet) {
+      setError("Select a market outcome first.");
+      return;
+    }
 
     if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
-      setError("Veuillez entrer un montant valide");
+      setError("Enter a valid stake amount.");
       return;
     }
 
@@ -23,68 +39,71 @@ export default function BetSlip({ selectedBet, odds, onSubmit }) {
     try {
       await onSubmit({
         amount: parseFloat(amount),
-        potentialWinnings: parseFloat(potentialWinnings),
+        selection: selectedBet,
+        odds: parseFloat(odds),
+        marketType: selectedBet.marketType || marketType,
+        line: selectedBet.line,
       });
-      setAmount(""); // Reset on successful bet
+
+      setAmount("");
+      setSuccess("Bet submitted successfully.");
     } catch (err) {
-      setError("Erreur lors du placement du pari");
+      setError(err.message || "Failed to place bet.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="rounded-lg border border-[#FFD700] bg-[#004080] p-6">
-      <h2 className="mb-6 text-xl font-bold text-white">Placer un pari</h2>
+    <div className="rounded-lg border border-[#FFD700] bg-[#004080] p-4">
+      <h2 className="mb-4 text-xl font-bold text-white">Bet Slip</h2>
 
-      {selectedBet ? (
+      {!selectedBet && <p className="text-sm text-white/90">Choose an outcome from the event cards to build your slip.</p>}
+
+      {selectedBet && (
         <>
-          <div className="mb-6 rounded-lg bg-[#004080]/50 p-4">
-            <div className="mb-2 text-sm text-[#FFD700]">Sélection</div>
-            <div className="text-lg text-white">{selectedBet}</div>
-            <div className="mt-2 text-xl font-bold text-[#FFD700]">
-              Cote: {odds}
-            </div>
+          <div className="mb-4 rounded-lg bg-[#003366] p-3 text-white">
+            <p className="text-xs uppercase tracking-wide text-[#FFD700]">Event</p>
+            <p className="font-semibold">{selectedBet.eventLabel}</p>
+            <p className="mt-2 text-xs uppercase tracking-wide text-[#FFD700]">Market</p>
+            <p>{marketTitle[selectedBet.marketType || marketType] || "Moneyline"}</p>
+            <p className="mt-2 text-xs uppercase tracking-wide text-[#FFD700]">Selection</p>
+            <p>{selectedBet.label}</p>
+            {selectedBet.line !== null && selectedBet.line !== undefined && (
+              <p className="text-sm text-white/80">Line: {selectedBet.line}</p>
+            )}
+            <p className="mt-2 text-lg font-bold text-[#FFD700]">Odds: {odds}</p>
           </div>
 
           <form onSubmit={handleSubmit}>
-            <div className="mb-6">
-              <label className="mb-2 block text-sm text-white">
-                Montant du pari (€)
-              </label>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full rounded-lg border border-[#FFD700] bg-[#004080]/50 px-4 py-2 text-white"
-                placeholder="0.00"
-                min="0"
-                step="0.01"
-              />
+            <label className="mb-1 block text-sm text-white">Stake</label>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="mb-4 w-full rounded-lg border border-[#FFD700] bg-[#003366] px-3 py-2 text-white"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+            />
+
+            <div className="mb-4 rounded-lg bg-[#003366] p-3">
+              <p className="text-sm text-white">Potential payout</p>
+              <p className="text-2xl font-bold text-[#FFD700]">{potentialWinnings}</p>
             </div>
 
-            <div className="mb-6 rounded-lg bg-[#004080]/50 p-4">
-              <div className="text-sm text-white">Gains potentiels</div>
-              <div className="text-2xl font-bold text-[#FFD700]">
-                {potentialWinnings}€
-              </div>
-            </div>
-
-            {error && (
-              <div className="mb-4 text-sm text-red-500">{error}</div>
-            )}
+            {error && <p className="mb-3 text-sm text-red-300">{error}</p>}
+            {success && <p className="mb-3 text-sm text-green-300">{success}</p>}
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-[#FFD700] px-6 py-3 text-center font-medium text-[#003366] transition-colors hover:bg-[#FFD700]/80"
+              className="w-full rounded-lg bg-[#FFD700] px-4 py-2 font-bold text-[#003366] hover:bg-[#FFD700]/90"
             >
-              {loading ? "Chargement..." : "Placer le pari"}
+              {loading ? "Submitting..." : "Place Bet"}
             </button>
           </form>
         </>
-      ) : (
-        <p className="text-center text-white">Aucune sélection pour le moment</p>
       )}
     </div>
   );
