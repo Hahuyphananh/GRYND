@@ -19,8 +19,8 @@ export async function POST(req) {
     }
 
     const balanceResult = await sql`
-      SELECT balance FROM user_tokens WHERE user_id = ${userId}
-    `;
+  SELECT balance FROM users WHERE clerk_id = ${userId}
+`;
 
     const userBalance = parseFloat(balanceResult.rows[0]?.balance ?? 0);
     if (userBalance < betAmount) {
@@ -35,27 +35,31 @@ export async function POST(req) {
         VALUES (${userId}, ${String(eventId)}, ${betAmount}, ${choice}, ${odds}, ${marketType}, ${lineValue})
       `;
     } catch (migrationErr) {
-      const legacyEventId = Number(eventId);
-      if (!Number.isFinite(legacyEventId)) {
-        return new Response(
-          JSON.stringify({
-            error: "Database migration required: add event_external_id to sports_bets.",
-          }),
-          { status: 400 }
-        );
-      }
+  console.error("🔥 REAL INSERT ERROR:", migrationErr);
 
-      await sql`
-        INSERT INTO sports_bets (user_id, event_id, bet_amount, choice, odds)
-        VALUES (${userId}, ${legacyEventId}, ${betAmount}, ${choice}, ${odds})
-      `;
-    }
+  const legacyEventId = Number(eventId);
+
+  if (!Number.isFinite(legacyEventId)) {
+    return new Response(
+      JSON.stringify({
+        error: "Insert failed",
+        detail: migrationErr.message, // 👈 SHOW REAL ERROR
+      }),
+      { status: 400 }
+    );
+  }
+
+  await sql`
+    INSERT INTO sports_bets (user_id, event_id, bet_amount, choice, odds)
+    VALUES (${userId}, ${legacyEventId}, ${betAmount}, ${choice}, ${odds})
+  `;
+}
 
     const newBalance = userBalance - betAmount;
     await sql`
-      UPDATE user_tokens SET balance = ${newBalance}
-      WHERE user_id = ${userId}
-    `;
+  UPDATE users SET balance = ${newBalance}
+  WHERE clerk_id = ${userId}
+`;
 
     return new Response(JSON.stringify({ success: true, newBalance }), { status: 200 });
   } catch (error) {
