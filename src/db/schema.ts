@@ -13,6 +13,12 @@ export const users = pgTable('users', {
   balance: numeric('balance', { precision: 10, scale: 2 }).default('1000.00').notNull(),
   gamesWon: integer('games_won').default(0),
   gamesLost: integer('games_lost').default(0),
+  referralCode: varchar('referral_code', { length: 30 }).unique(),
+  referredById: integer('referred_by_id'),
+  referralCount: integer('referral_count').default(0).notNull(),
+  referralEarnings: numeric('referral_earnings', { precision: 10, scale: 2 }).default('0.00').notNull(),
+  totalWagered: numeric('total_wagered', { precision: 14, scale: 2 }).default('0.00').notNull(),
+  level: integer('level').default(1).notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
