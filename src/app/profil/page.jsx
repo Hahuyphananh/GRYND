@@ -483,33 +483,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <div className="mt-8 border border-red-500 bg-red-950/30 rounded-lg p-6">
-          <h2 className="text-xl text-red-400 mb-2">Danger Zone — Delete Account</h2>
-          <p className="text-red-200 mb-4">
-            Warning: This action is permanent. Your account and data will be removed forever.
-          </p>
-
-          <label className="text-sm text-red-200">Confirm password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-2 w-full rounded border border-red-400/40 bg-red-900/20 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
-            placeholder="Enter your password"
-          />
-
-          <button
-            onClick={handleDeleteAccount}
-            disabled={!delayDone || !password || isDeleting}
-            className="mt-4 rounded bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50"
-          >
-            {isDeleting ? "Deleting..." : delayDone ? "Confirm permanent deletion" : `Confirm in ${countdown}s`}
-          </button>
-
-          {deleteError && <p className="mt-3 text-sm text-red-300">{deleteError}</p>}
-          {deleteStatus && <p className="mt-3 text-sm text-green-300">{deleteStatus}</p>}
-        </div>
-
         <div className="mt-12 border border-[#FFD700] rounded-lg p-6">
           <h2 className="text-xl text-[#FFD700] mb-4">Historique des Paris</h2>
           <div className="overflow-x-auto">
