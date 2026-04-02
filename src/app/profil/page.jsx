@@ -17,6 +17,7 @@ export default function ProfilePage() {
   const { signOut } = useClerk();
 
   const [userTokens, setUserTokens] = useState(null);
+  const [profileInfo, setProfileInfo] = useState({ name: "", email: "" });
   const [bets, setBets] = useState([]);
   const [error, setError] = useState(null);
   const [isResetting, setIsResetting] = useState(false);
@@ -34,69 +35,82 @@ export default function ProfilePage() {
   const [delayDone, setDelayDone] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", email: "", password: "" });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editStatus, setEditStatus] = useState("");
+
   const [levelUpModal, setLevelUpModal] = useState(null);
   const previousLevelRef = useRef(null);
+
+  const loadStats = async () => {
+    const res = await fetch("/api/user-stats", { credentials: "include" });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Failed to load stats");
+    }
+    setStats(data.stats);
+  };
+
+  const loadProfileData = async () => {
+    const tokensResponse = await fetch("/api/get-user-tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+    const tokensData = await tokensResponse.json();
+
+    if (tokensData.success && tokensData.data) {
+      setUserTokens(Number(tokensData.data.balance || 0));
+      const name = tokensData.data.name || user?.fullName || "Unknown user";
+      const email = tokensData.data.email || user?.emailAddresses?.[0]?.emailAddress || "";
+      setProfileInfo({ name, email });
+      setEditForm((prev) => ({ ...prev, name, email }));
+    }
+
+    const historyResponse = await fetch("/api/get-bet-history", {
+      method: "GET",
+      credentials: "include",
+    });
+    const historyData = await historyResponse.json();
+
+    if (historyData.success && Array.isArray(historyData.bets)) {
+      const sorted = historyData.bets.sort((a, b) => new Date(b.date) - new Date(a.date));
+      setBets(sorted.slice(0, 10));
+    } else {
+      setBets([]);
+    }
+  };
+
+  const initializeReferral = async () => {
+    const generateRes = await fetch("/api/referral/generate", { method: "POST", credentials: "include" });
+    const generateData = await generateRes.json();
+
+    if (!generateRes.ok || !generateData.success) {
+      throw new Error(generateData.error || "Could not generate referral code");
+    }
+
+    setStats((prev) => ({
+      ...(prev || {}),
+      referralCode: generateData.referralCode || prev?.referralCode || "",
+    }));
+
+    return generateData.referralCode;
+  };
 
   useEffect(() => {
     if (!isSignedIn || !user) return;
 
-    const fetchData = async () => {
+    const bootstrap = async () => {
       try {
-        const tokensResponse = await fetch("/api/get-user-tokens", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-        });
-        const tokensData = await tokensResponse.json();
-        if (tokensData.success && tokensData.data) {
-          setUserTokens(Number(tokensData.data.balance || 0));
-        }
-
-        const historyResponse = await fetch("/api/get-bet-history", {
-          method: "GET",
-          credentials: "include",
-        });
-        const historyData = await historyResponse.json();
-
-        if (historyData.success && Array.isArray(historyData.bets)) {
-          const sorted = historyData.bets.sort(
-            (a, b) => new Date(b.date) - new Date(a.date)
-          );
-          setBets(sorted.slice(0, 10));
-        } else {
-          setBets([]);
-        }
+        await Promise.all([loadProfileData(), loadStats(), initializeReferral()]);
       } catch (err) {
-        console.error("[FETCH_ERROR]", err);
-        setError("Erreur lors du chargement des données");
+        console.error("[PROFILE_BOOTSTRAP_ERROR]", err);
+        setError(err.message || "Erreur lors du chargement des données");
       }
     };
 
-    const fetchStats = async () => {
-      try {
-        const res = await fetch("/api/user-stats", { credentials: "include" });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || "Failed to load stats");
-        }
-        setStats(data.stats);
-      } catch (err) {
-        console.error("[PROFILE_STATS_ERROR]", err);
-        setStatsError("Unable to load profile stats");
-      }
-    };
-
-    const initReferralCode = async () => {
-      try {
-        await fetch("/api/referral/generate", { method: "POST", credentials: "include" });
-      } catch (err) {
-        console.error("[REFERRAL_INIT_ERROR]", err);
-      }
-    };
-
-    fetchData();
-    fetchStats();
-    initReferralCode();
+    bootstrap();
   }, [isSignedIn, user]);
 
   useEffect(() => {
@@ -163,14 +177,36 @@ export default function ProfilePage() {
     }
   };
 
+  const fallbackCopy = (text) => {
+    const tempInput = document.createElement("textarea");
+    tempInput.value = text;
+    document.body.appendChild(tempInput);
+    tempInput.select();
+    document.execCommand("copy");
+    document.body.removeChild(tempInput);
+  };
+
   const handleCopyReferralCode = async () => {
-    if (!stats?.referralCode) return;
+    if (!stats?.referralCode) {
+      setReferralStatus("No referral code found yet. Please wait a second and try again.");
+      return;
+    }
+
     try {
-      await navigator.clipboard.writeText(stats.referralCode);
-      setReferralStatus("Referral code copied!");
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(stats.referralCode);
+      } else {
+        fallbackCopy(stats.referralCode);
+      }
+      setReferralStatus(`Copied: ${stats.referralCode}`);
     } catch (err) {
       console.error("[COPY_REFERRAL_CODE_ERROR]", err);
-      setReferralStatus("Could not copy code");
+      try {
+        fallbackCopy(stats.referralCode);
+        setReferralStatus(`Copied with fallback: ${stats.referralCode}`);
+      } catch (fallbackError) {
+        setReferralStatus("Could not copy code. Please copy manually.");
+      }
     }
   };
 
@@ -188,7 +224,11 @@ export default function ProfilePage() {
         return;
       }
 
-      await navigator.clipboard.writeText(message);
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(message);
+      } else {
+        fallbackCopy(message);
+      }
       setReferralStatus("Share not available. Message copied to clipboard.");
     } catch (err) {
       console.error("[SHARE_REFERRAL_CODE_ERROR]", err);
@@ -214,13 +254,38 @@ export default function ProfilePage() {
 
       setReferralStatus(`Code redeemed! You got ${data.reward} bonus tokens.`);
       setReferralCodeInput("");
-
-      const statsRes = await fetch("/api/user-stats", { credentials: "include" });
-      const statsData = await statsRes.json();
-      if (statsData.success) setStats(statsData.stats);
+      await Promise.all([loadStats(), loadProfileData()]);
     } catch (err) {
       console.error("[REDEEM_REFERRAL_ERROR]", err);
       setReferralStatus(err.message || "Unable to redeem code");
+    }
+  };
+
+  const handleSaveEditProfile = async () => {
+    setEditStatus("");
+
+    try {
+      setIsSavingEdit(true);
+      const response = await fetch("/api/profile/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(editForm),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to update profile");
+      }
+
+      setProfileInfo({ name: data.profile.name, email: data.profile.email });
+      setEditForm((prev) => ({ ...prev, password: "" }));
+      setEditStatus("Profile updated successfully.");
+    } catch (err) {
+      console.error("[EDIT_PROFILE_ERROR]", err);
+      setEditStatus(err.message || "Could not save changes.");
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -293,8 +358,20 @@ export default function ProfilePage() {
 
         <div className="grid gap-8 md:grid-cols-2">
           <div className="border border-[#FFD700] rounded-lg p-6">
-            <h2 className="text-xl text-[#FFD700] mb-2">Infos Personnelles</h2>
-            <p>Email : {user.emailAddresses?.[0]?.emailAddress}</p>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xl text-[#FFD700]">Infos Personnelles</h2>
+              <button
+                onClick={() => {
+                  setEditStatus("");
+                  setIsEditOpen(true);
+                }}
+                className="rounded bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#FFD700]/80"
+              >
+                Edit Profile
+              </button>
+            </div>
+            <p>Name : {profileInfo.name || user.fullName || "Unknown user"}</p>
+            <p>Email : {profileInfo.email || user.emailAddresses?.[0]?.emailAddress}</p>
             <p>Membre depuis : {new Date(user.createdAt).toLocaleDateString()}</p>
           </div>
 
@@ -339,7 +416,7 @@ export default function ProfilePage() {
           <div className="grid gap-4 md:grid-cols-3 mb-4">
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
               <p className="text-sm text-gray-300">Your Referral Code</p>
-              <p className="text-2xl font-bold text-[#FFD700]">{stats?.referralCode || "N/A"}</p>
+              <p className="text-2xl font-bold text-[#FFD700]">{stats?.referralCode || "Generating..."}</p>
             </div>
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
               <p className="text-sm text-gray-300">Total Referrals</p>
@@ -350,6 +427,12 @@ export default function ProfilePage() {
               <p className="text-2xl font-bold">{stats?.referralEarnings ?? 0} tokens</p>
             </div>
           </div>
+
+          <input
+            readOnly
+            value={stats?.referralCode || ""}
+            className="w-full mb-4 rounded bg-white/10 border border-white/20 px-4 py-2 text-[#FFD700]"
+          />
 
           <div className="flex flex-wrap gap-3 mb-4">
             <button
@@ -386,9 +469,7 @@ export default function ProfilePage() {
 
         <div className="mt-8 border border-[#FFD700] rounded-lg p-6">
           <h2 className="text-xl text-[#FFD700] mb-4">User Statistics</h2>
-
           {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
-
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {statsCards.map((card) => (
               <div key={card.key} className="rounded-lg border border-[#FFD700]/30 bg-white/5 p-4">
@@ -422,87 +503,60 @@ export default function ProfilePage() {
             disabled={!delayDone || !password || isDeleting}
             className="mt-4 rounded bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50"
           >
-            {isDeleting
-              ? "Deleting..."
-              : delayDone
-              ? "Confirm permanent deletion"
-              : `Confirm in ${countdown}s`}
+            {isDeleting ? "Deleting..." : delayDone ? "Confirm permanent deletion" : `Confirm in ${countdown}s`}
           </button>
 
           {deleteError && <p className="mt-3 text-sm text-red-300">{deleteError}</p>}
           {deleteStatus && <p className="mt-3 text-sm text-green-300">{deleteStatus}</p>}
         </div>
+      </div>
 
-        <div className="mt-12 border border-[#FFD700] rounded-lg p-6">
-          <h2 className="text-xl text-[#FFD700] mb-4">Historique des Paris</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="border-b border-[#FFD700] text-[#FFD700]">
-                <tr>
-                  <th className="px-4 py-2">Date</th>
-                  <th className="px-4 py-2">Jeu / Événement</th>
-                  <th className="px-4 py-2">Mise</th>
-                  <th className="px-4 py-2">Résultat</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bets.length > 0 ? (
-                  bets.map((bet, idx) => (
-                    <tr key={idx} className="border-b border-[#FFD700]/20">
-                      <td className="px-4 py-2">{new Date(bet.date).toLocaleDateString()}</td>
-                      <td className="px-4 py-2">{bet.type || bet.event || bet.game_type || "Inconnu"}</td>
-                      <td className="px-4 py-2">{bet.amount} tokens</td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs ${
-                              bet.result === "won"
-                                ? "bg-green-600/20 text-green-400"
-                                : bet.result === "lost"
-                                ? "bg-red-600/20 text-red-400"
-                                : "bg-gray-500/20 text-gray-300"
-                            }`}
-                          >
-                            {bet.result === "won"
-                              ? "Gagné"
-                              : bet.result === "lost"
-                              ? "Perdu"
-                              : "Égalité"}
-                          </span>
+      {isEditOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0B2D55] p-6">
+            <h3 className="text-xl font-bold text-[#FFD700] mb-4">Edit Profile</h3>
+            <div className="space-y-3">
+              <input
+                value={editForm.name}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Name"
+                className="w-full rounded bg-white/10 border border-white/20 px-4 py-2"
+              />
+              <input
+                value={editForm.email}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
+                placeholder="Email"
+                className="w-full rounded bg-white/10 border border-white/20 px-4 py-2"
+              />
+              <input
+                type="password"
+                value={editForm.password}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, password: e.target.value }))}
+                placeholder="New password (optional)"
+                className="w-full rounded bg-white/10 border border-white/20 px-4 py-2"
+              />
+            </div>
 
-                          {bet.result !== "pending" && (
-                            <span
-                              className={`text-sm ${
-                                bet.tokenDiff > 0
-                                  ? "text-green-400"
-                                  : bet.tokenDiff < 0
-                                  ? "text-red-400"
-                                  : "text-gray-300"
-                              }`}
-                            >
-                              {bet.tokenDiff > 0
-                                ? `+${Number(bet.tokenDiff).toFixed(2)} tokens`
-                                : bet.tokenDiff < 0
-                                ? `${Number(bet.tokenDiff).toFixed(2)} tokens`
-                                : "±0.00 tokens"}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="4" className="text-center py-4 text-gray-400">
-                      Aucun pari trouvé
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+            {editStatus && <p className="mt-3 text-sm text-gray-200">{editStatus}</p>}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setIsEditOpen(false)}
+                className="rounded border border-white/30 px-4 py-2"
+              >
+                Close
+              </button>
+              <button
+                disabled={isSavingEdit}
+                onClick={handleSaveEditProfile}
+                className="rounded bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold disabled:opacity-50"
+              >
+                {isSavingEdit ? "Saving..." : "Save changes"}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {levelUpModal && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
