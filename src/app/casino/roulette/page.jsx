@@ -135,105 +135,29 @@ export default function RoulettePage() {
     setSpinning(true);
     setError(null);
 
-    const spinResultIndex = Math.floor(Math.random() * rouletteNumbers.length);
-    const spinResult = rouletteNumbers[spinResultIndex];
-    await spinWheel(spinResultIndex);
-
-    let win = false;
-    let winAmount = 0;
-
-    Object.keys(bets).forEach((bet) => {
-      const amount = bets[bet];
-      const betKey = isNaN(bet) ? bet : Number(bet);
-
-      if (typeof betKey === "number" && betKey === spinResult) {
-        win = true;
-        winAmount += amount * 35;
-      }
-      if (betKey === "red" && redNumbers.includes(spinResult)) {
-        win = true;
-        winAmount += amount * 2;
-      }
-      if (betKey === "black" && spinResult !== 0 && !redNumbers.includes(spinResult)) {
-        win = true;
-        winAmount += amount * 2;
-      }
-      if (betKey === "green" && spinResult === 0) {
-        win = true;
-        winAmount += amount * 35;
-      }
-      if (betKey === "even" && spinResult % 2 === 0 && spinResult !== 0) {
-        win = true;
-        winAmount += amount * 2;
-      }
-      if (betKey === "odd" && spinResult % 2 === 1) {
-        win = true;
-        winAmount += amount * 2;
-      }
-      if (betKey === "1-12" && spinResult >= 1 && spinResult <= 12) {
-        win = true;
-        winAmount += amount * 3;
-      }
-      if (betKey === "13-24" && spinResult >= 13 && spinResult <= 24) {
-        win = true;
-        winAmount += amount * 3;
-      }
-      if (betKey === "25-36" && spinResult >= 25 && spinResult <= 36) {
-        win = true;
-        winAmount += amount * 3;
-      }
-      if (betKey === "1-18" && spinResult >= 1 && spinResult <= 18) {
-        win = true;
-        winAmount += amount * 2;
-      }
-      if (betKey === "19-36" && spinResult >= 19 && spinResult <= 36) {
-        win = true;
-        winAmount += amount * 2;
-      }
-    });
-
-    // Deduct total bet amount
-    await fetch("/api/tokens/update", {
+    const response = await fetch("/api/roulette/save-game", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: -totalBetAmount }),
+      body: JSON.stringify({ bets }),
     });
-    setUserTokens((prev) => prev - totalBetAmount);
-
-    // Credit win amount if any
-    if (win) {
-      await fetch("/api/tokens/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: winAmount }),
-      });
-      setUserTokens((prev) => prev + winAmount);
+    const data = await response.json();
+    if (!response.ok || !data?.success) {
+      setError(data?.error || "Erreur lors du spin");
+      setSpinning(false);
+      return;
     }
 
-    setResult({ number: spinResult, win, amount: winAmount });
-    setHistory((prev) => [spinResult, ...prev].slice(0, 10));
+    await spinWheel(data.data.spinResultIndex);
+    setUserTokens(Number(data.data.newBalance));
+    setResult({ number: data.data.spinResult, win: data.data.win, amount: data.data.amount });
+    setHistory((prev) => [data.data.spinResult, ...prev].slice(0, 10));
     setStats((prev) => ({
-      biggestWin: win ? Math.max(prev.biggestWin, winAmount) : prev.biggestWin,
+      biggestWin: data.data.win ? Math.max(prev.biggestWin, data.data.amount) : prev.biggestWin,
       totalBets: prev.totalBets + 1,
-      totalWins: win ? prev.totalWins + 1 : prev.totalWins,
+      totalWins: data.data.win ? prev.totalWins + 1 : prev.totalWins,
     }));
     setBets({});
     setSelectedBets([]);
-    // 🧠 Save game to backend
-try {
-  await fetch("/api/roulette/save-game", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      betAmount: totalBetAmount,
-      result: win ? "won" : "lost",
-      payout: win ? winAmount : 0,
-    }),
-  });
-} catch (err) {
-  console.error("Failed to save roulette game:", err);
-}
-
 
     setSpinning(false);
 
