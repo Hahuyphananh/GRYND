@@ -1,8 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { chessGames, chessMoves, users } from "../../../../db/schema";
+
+const HOUSE_EDGE_PERCENT = 10;
 
 async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
@@ -37,6 +39,70 @@ async function resolveDisplayName(playerId) {
   return byNumericId?.name ?? null;
 }
 
+function computeClocks(game, moves) {
+  const initial = Number(game.initialTimeSeconds || 300);
+  let white = initial;
+  let black = initial;
+
+  let activeColor = "white";
+  let turnStart = game.startedAt ? new Date(game.startedAt).getTime() : Date.now();
+
+  for (const move of moves) {
+    const moveAt = new Date(move.createdAt).getTime();
+    const elapsed = Math.max(0, Math.floor((moveAt - turnStart) / 1000));
+
+    if (activeColor === "white") white = Math.max(0, white - elapsed);
+    else black = Math.max(0, black - elapsed);
+
+    activeColor = activeColor === "white" ? "black" : "white";
+    turnStart = moveAt;
+  }
+
+  if (game.status === "in_progress") {
+    const now = Date.now();
+    const elapsed = Math.max(0, Math.floor((now - turnStart) / 1000));
+    if (activeColor === "white") white = Math.max(0, white - elapsed);
+    else black = Math.max(0, black - elapsed);
+  }
+
+  return { whiteTimeRemaining: white, blackTimeRemaining: black, activeTurn: activeColor };
+}
+
+async function settleTimeoutIfNeeded(game, clocks) {
+  if (game.status !== "in_progress") return game;
+  if (clocks.whiteTimeRemaining > 0 && clocks.blackTimeRemaining > 0) return game;
+
+  const winnerId = clocks.whiteTimeRemaining <= 0 ? game.playerBlackId : game.playerWhiteId;
+  if (!winnerId) return game;
+
+  await db.transaction(async (tx) => {
+    const [lockedGame] = await tx.select().from(chessGames).where(eq(chessGames.id, game.id)).for("update");
+    if (!lockedGame || lockedGame.status !== "in_progress") return;
+
+    const pot = Number(lockedGame.betAmount) * 2;
+    const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
+    const winnerPayout = Number((pot - houseFee).toFixed(2));
+
+    await tx
+      .update(users)
+      .set({ balance: sql`${users.balance} + ${winnerPayout}` })
+      .where(eq(users.clerkId, winnerId));
+
+    await tx
+      .update(chessGames)
+      .set({
+        status: "finished",
+        winnerId,
+        result: "timeout",
+        payout: winnerPayout.toString(),
+      })
+      .where(and(eq(chessGames.id, game.id), eq(chessGames.status, "in_progress")));
+  });
+
+  const [updated] = await db.select().from(chessGames).where(eq(chessGames.id, game.id)).limit(1);
+  return updated || game;
+}
+
 export async function GET(req) {
   try {
     const { userId } = await auth();
@@ -51,7 +117,7 @@ export async function GET(req) {
 
     const userAliases = await getUserAliases(userId);
 
-    const [game] = await db
+    let [game] = await db
       .select()
       .from(chessGames)
       .where(eq(chessGames.id, gameId))
@@ -77,6 +143,10 @@ export async function GET(req) {
       .where(eq(chessMoves.gameId, gameId))
       .orderBy(asc(chessMoves.id));
 
+    let clocks = computeClocks(game, moves);
+    game = await settleTimeoutIfNeeded(game, clocks);
+    clocks = computeClocks(game, moves);
+
     const lastMove = moves[moves.length - 1] || null;
     const [whiteName, blackName] = await Promise.all([
       resolveDisplayName(game.playerWhiteId),
@@ -89,6 +159,11 @@ export async function GET(req) {
         gameId: game.id,
         status: game.status,
         betAmount: game.betAmount,
+        timerMode: game.timerMode,
+        initialTimeSeconds: game.initialTimeSeconds,
+        whiteTimeRemaining: clocks.whiteTimeRemaining,
+        blackTimeRemaining: clocks.blackTimeRemaining,
+        activeTurn: clocks.activeTurn,
         whitePlayerId: game.playerWhiteId,
         blackPlayerId: game.playerBlackId,
         whitePlayerName: whiteName || "White",
