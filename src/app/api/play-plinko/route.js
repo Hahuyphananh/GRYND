@@ -32,7 +32,7 @@ export async function POST(req) {
     }
 
     // Verify sufficient balance
-    if (user.balance < betAmount) {
+    if (Number(user.balance) < betAmount) {
       return NextResponse.json(
         { error: 'Insufficient balance' },
         { status: 400 }
@@ -153,4 +153,3 @@ const highRiskMultipliers = [
     slotIndex,
   };
 }
-

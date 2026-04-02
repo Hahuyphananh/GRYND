@@ -14,11 +14,7 @@ export async function POST(req) {
 
     const { betAmount, multiplier, gameWon, immediateDeduct } = await req.json();
 
-    if (
-      typeof betAmount !== 'number' ||
-      typeof multiplier !== 'number' ||
-      typeof gameWon !== 'boolean'
-    ) {
+    if (!Number.isFinite(betAmount) || betAmount <= 0 || !Number.isFinite(multiplier) || multiplier < 1 || typeof gameWon !== 'boolean') {
       return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
     }
 
@@ -29,11 +25,14 @@ export async function POST(req) {
     }
 
     const user = userData[0];
-    let newBalance = parseFloat(user.balance);
+    let newBalance = Number(user.balance);
     const payout = gameWon ? betAmount * multiplier : 0;
 
 // Deduct bet once at game start
 if (immediateDeduct) {
+  if (newBalance < betAmount) {
+    return NextResponse.json({ success: false, error: 'Insufficient balance' }, { status: 400 });
+  }
   newBalance -= betAmount;
 }
 
