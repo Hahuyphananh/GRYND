@@ -9,6 +9,7 @@ export async function GET() {
       .select({
         id: chessGames.id,
         betAmount: chessGames.betAmount,
+        timerMode: chessGames.timerMode,
         createdAt: chessGames.createdAt,
         playerWhiteId: chessGames.playerWhiteId,
         hostName: users.name,
