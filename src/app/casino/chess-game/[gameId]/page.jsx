@@ -12,6 +12,13 @@ const Chessboard = dynamic(
   { ssr: false }
 );
 
+function formatClock(seconds) {
+  const safe = Math.max(0, Number(seconds || 0));
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
 export default function ChessGamePage() {
   const { gameId } = useParams();
   const searchParams = useSearchParams();
@@ -21,9 +28,11 @@ export default function ChessGamePage() {
   const [liveFen, setLiveFen] = useState("start");
   const [status, setStatus] = useState("Loading match...");
   const [submittingMove, setSubmittingMove] = useState(false);
+  const [isResigning, setIsResigning] = useState(false);
   const [gameData, setGameData] = useState(null);
   const [moves, setMoves] = useState([]);
   const [moveIndex, setMoveIndex] = useState(-1);
+  const [showResultPopup, setShowResultPopup] = useState(false);
 
   const normalizeFen = (fen) => {
     if (typeof fen !== "string") return "start";
@@ -37,9 +46,9 @@ export default function ChessGamePage() {
     return normalizeFen(liveFen);
   }, [moveIndex, moves, liveFen]);
 
-const turn = useMemo(() => {
-  const safeFen = normalizeFen(liveFen);
-  const game = new Chess(safeFen === "start" ? undefined : safeFen);
+  const turn = useMemo(() => {
+    const safeFen = normalizeFen(liveFen);
+    const game = new Chess(safeFen === "start" ? undefined : safeFen);
     return game.turn() === "w" ? "white" : "black";
   }, [liveFen]);
 
@@ -73,6 +82,7 @@ const turn = useMemo(() => {
       } else {
         setStatus("Game over.");
       }
+      setShowResultPopup(true);
       return;
     }
 
@@ -82,9 +92,9 @@ const turn = useMemo(() => {
 
   useEffect(() => {
     fetchState();
-    const id = setInterval(fetchState, 1500);
+    const id = setInterval(fetchState, 1000);
     return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, color]);
 
   async function onDrop(sourceSquare, targetSquare) {
@@ -120,19 +130,51 @@ const turn = useMemo(() => {
     }
   }
 
+  async function resignGame() {
+    if (!gameData || gameData.status !== "in_progress" || isResigning) return;
+
+    setIsResigning(true);
+    try {
+      const res = await fetch("/api/chess/end-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId: Number(gameId), result: "loss" }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        alert(text || "Unable to resign");
+        return;
+      }
+
+      await fetchState();
+    } catch {
+      alert("Unable to resign");
+    } finally {
+      setIsResigning(false);
+    }
+  }
+
   const myName = color === "white" ? gameData?.whitePlayerName : gameData?.blackPlayerName;
   const opponentName = color === "white" ? gameData?.blackPlayerName : gameData?.whitePlayerName;
   const canReturnToLobby = gameData?.status === "finished" || gameData?.status === "expired";
+
+  const myClock = color === "white" ? gameData?.whiteTimeRemaining : gameData?.blackTimeRemaining;
+  const oppClock = color === "white" ? gameData?.blackTimeRemaining : gameData?.whiteTimeRemaining;
 
   return (
     <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center p-6">
       <h1 className="text-3xl font-bold text-[#FFD700] mb-4">♟️ Chess Game</h1>
       <p className="mb-2">Game #{gameId} · You are {color}</p>
-      <p className="mb-4 text-lg font-semibold text-[#FFD700]">Bet Amount: ${Number(gameData?.betAmount || 0)}</p>
+      <p className="mb-1 text-lg font-semibold text-[#FFD700]">Bet Amount: ${Number(gameData?.betAmount || 0)}</p>
+      <p className="mb-4 text-md text-white/90">Timer: {gameData?.timerMode || "blitz"}</p>
 
       <div className="flex flex-col md:flex-row gap-6 items-start">
         <div>
-          <p className="text-left font-semibold mb-2 text-yellow-200">{opponentName || "Opponent"}</p>
+          <div className="flex justify-between mb-2">
+            <p className="text-left font-semibold text-yellow-200">{opponentName || "Opponent"}</p>
+            <p className={`font-mono font-bold ${gameData?.activeTurn !== color ? "text-green-300" : "text-white"}`}>{formatClock(oppClock)}</p>
+          </div>
           <div className="mb-2">
             <Chessboard
               position={displayFen}
@@ -142,7 +184,10 @@ const turn = useMemo(() => {
               arePiecesDraggable={isMyTurn && !submittingMove && moveIndex === -1 && !canReturnToLobby}
             />
           </div>
-          <p className="text-right font-semibold text-yellow-200">{myName || "You"}</p>
+          <div className="flex justify-between">
+            <p className="text-right font-semibold text-yellow-200">{myName || "You"}</p>
+            <p className={`font-mono font-bold ${gameData?.activeTurn === color ? "text-green-300" : "text-white"}`}>{formatClock(myClock)}</p>
+          </div>
         </div>
 
         <div className="w-full md:w-72 bg-[#002147] rounded-xl p-4 border border-[#FFD700]/40">
@@ -178,21 +223,37 @@ const turn = useMemo(() => {
               →
             </button>
           </div>
-          <p className="text-xs mt-2 text-white/70">
-            {moveIndex === -1 ? "Live position" : `Viewing move ${moveIndex + 1}`}
-          </p>
+          <p className="text-xs mt-2 text-white/70">{moveIndex === -1 ? "Live position" : `Viewing move ${moveIndex + 1}`}</p>
+
+          {!canReturnToLobby && (
+            <button
+              onClick={resignGame}
+              disabled={isResigning}
+              className="w-full mt-4 bg-red-600 hover:bg-red-700 disabled:bg-red-900 px-4 py-2 rounded-lg font-bold"
+            >
+              {isResigning ? "Resigning..." : "Resign"}
+            </button>
+          )}
         </div>
       </div>
 
-      {status && <div className="text-lg text-yellow-300 mb-2">{status}</div>}
+      {status && <div className="text-lg text-yellow-300 mt-4 mb-2">{status}</div>}
 
-      {canReturnToLobby && (
-        <button
-          onClick={() => router.push("/casino/chess")}
-          className="bg-green-600 hover:bg-green-700 px-6 py-2 rounded-lg text-white font-bold"
-        >
-          Back to Chess Lobby
-        </button>
+      {showResultPopup && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+          <div className="bg-white text-[#003366] w-full max-w-md rounded-xl p-6 text-center">
+            <h2 className="text-2xl font-bold mb-3">Game Finished</h2>
+            <p className="text-xl mb-5">
+              {status.includes("won") ? "🎉 You won!" : status.includes("lost") ? "😞 You lost." : "🤝 Draw."}
+            </p>
+            <button
+              onClick={() => router.push("/casino/chess")}
+              className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-bold"
+            >
+              Return to Lobby
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -63,6 +63,7 @@ export async function POST(req) {
         .set({
           playerBlackId: userId,
           status: "in_progress",
+          startedAt: new Date(),
         })
         .where(and(eq(chessGames.id, parsedGameId), isNull(chessGames.playerBlackId)))
         .returning({ id: chessGames.id, playerWhiteId: chessGames.playerWhiteId, playerBlackId: chessGames.playerBlackId });

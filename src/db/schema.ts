@@ -192,11 +192,14 @@ export const chessGames = pgTable('chess_games', {
   playerWhiteId: varchar('player_white_id', { length: 255 }).notNull(),
   playerBlackId: varchar('player_black_id', { length: 255 }), // can be null if AI
   betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
+  timerMode: varchar('timer_mode', { length: 20 }).notNull().default('blitz'),
+  initialTimeSeconds: integer('initial_time_seconds').notNull().default(300),
   winnerId: varchar('winner_id', { length: 255 }), // Clerk ID or null if no result yet
   result: varchar('result', { length: 20 }),       // win, loss, draw
   payout: numeric('payout', { precision: 10, scale: 2 }),
   status: text("status").notNull().default("waiting"),
   isAiGame: boolean('is_ai_game').default(false).notNull(), // ✅ new column
+  startedAt: timestamp('started_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
