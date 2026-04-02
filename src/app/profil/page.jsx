@@ -509,6 +509,103 @@ export default function ProfilePage() {
           {deleteError && <p className="mt-3 text-sm text-red-300">{deleteError}</p>}
           {deleteStatus && <p className="mt-3 text-sm text-green-300">{deleteStatus}</p>}
         </div>
+
+        <div className="mt-12 border border-[#FFD700] rounded-lg p-6">
+          <h2 className="text-xl text-[#FFD700] mb-4">Historique des Paris</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="border-b border-[#FFD700] text-[#FFD700]">
+                <tr>
+                  <th className="px-4 py-2">Date</th>
+                  <th className="px-4 py-2">Jeu / Événement</th>
+                  <th className="px-4 py-2">Mise</th>
+                  <th className="px-4 py-2">Résultat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bets.length > 0 ? (
+                  bets.map((bet, idx) => (
+                    <tr key={idx} className="border-b border-[#FFD700]/20">
+                      <td className="px-4 py-2">{new Date(bet.date).toLocaleDateString()}</td>
+                      <td className="px-4 py-2">{bet.type || bet.event || bet.game_type || "Inconnu"}</td>
+                      <td className="px-4 py-2">{bet.amount} tokens</td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs ${
+                              bet.result === "won"
+                                ? "bg-green-600/20 text-green-400"
+                                : bet.result === "lost"
+                                ? "bg-red-600/20 text-red-400"
+                                : "bg-gray-500/20 text-gray-300"
+                            }`}
+                          >
+                            {bet.result === "won"
+                              ? "Gagné"
+                              : bet.result === "lost"
+                              ? "Perdu"
+                              : "Égalité"}
+                          </span>
+
+                          {bet.result !== "pending" && (
+                            <span
+                              className={`text-sm ${
+                                bet.tokenDiff > 0
+                                  ? "text-green-400"
+                                  : bet.tokenDiff < 0
+                                  ? "text-red-400"
+                                  : "text-gray-300"
+                              }`}
+                            >
+                              {bet.tokenDiff > 0
+                                ? `+${Number(bet.tokenDiff).toFixed(2)} tokens`
+                                : bet.tokenDiff < 0
+                                ? `${Number(bet.tokenDiff).toFixed(2)} tokens`
+                                : "±0.00 tokens"}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="4" className="text-center py-4 text-gray-400">
+                      Aucun pari trouvé
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="mt-8 border border-red-500 bg-red-950/30 rounded-lg p-6">
+          <h2 className="text-xl text-red-400 mb-2">Danger Zone — Delete Account</h2>
+          <p className="text-red-200 mb-4">
+            Warning: This action is permanent. Your account and data will be removed forever.
+          </p>
+
+          <label className="text-sm text-red-200">Confirm password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="mt-2 w-full rounded border border-red-400/40 bg-red-900/20 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
+            placeholder="Enter your password"
+          />
+
+          <button
+            onClick={handleDeleteAccount}
+            disabled={!delayDone || !password || isDeleting}
+            className="mt-4 rounded bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50"
+          >
+            {isDeleting ? "Deleting..." : delayDone ? "Confirm permanent deletion" : `Confirm in ${countdown}s`}
+          </button>
+
+          {deleteError && <p className="mt-3 text-sm text-red-300">{deleteError}</p>}
+          {deleteStatus && <p className="mt-3 text-sm text-green-300">{deleteStatus}</p>}
+        </div>
       </div>
 
       {isEditOpen && (
