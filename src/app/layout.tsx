@@ -2,6 +2,7 @@ import { Inter, Roboto_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers'; // Adjust path if needed
 import ChatWidget from '../components/ChatWidget';
+import DisableInspect from '../components/DisableInspect';
 
 const inter = Inter({
   variable: '--font-geist-sans',
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={`${inter.variable} ${robotoMono.variable} antialiased transition-colors duration-300`}>
         <Providers>
+          <DisableInspect />
           {children}
           <ChatWidget />
         </Providers>
