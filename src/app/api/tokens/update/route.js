@@ -1,10 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
-import { db } from '../../../../db/client';
-import { users } from '../../../../db/schema';
-import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 
-export async function POST(req) {
+export async function POST() {
   try {
     const { userId } = await auth();
 
@@ -15,44 +12,12 @@ export async function POST(req) {
       );
     }
 
-    const body = await req.json();
-    const amount = body.amount;
-
-    if (typeof amount !== 'number' || isNaN(amount)) {
-      return NextResponse.json(
-        { success: false, error: 'Le montant est requis et doit être un nombre' },
-        { status: 400 }
-      );
-    }
-
-    const userData = await db
-      .select()
-      .from(users)
-      .where(eq(users.clerkId, userId))
-      .limit(1);
-
-    if (userData.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    const user = userData[0];
-    const newBalance = parseFloat(user.balance) + amount;
-
-    // ✅ CORRECTION : pas besoin de crochets
-    await db
-      .update(users)
-      .set({ balance: newBalance })
-      .where(eq(users.clerkId, userId));
-
     return NextResponse.json(
       {
-        success: true,
-        data: { balance: newBalance }
+        success: false,
+        error: "Direct token updates are disabled. Use game-specific endpoints."
       },
-      { status: 200 }
+      { status: 403 }
     );
   } catch (err) {
     console.error("Erreur dans /api/tokens/update:", err);

@@ -47,9 +47,14 @@ export async function POST(req) {
     const { betAmount, mines, revealedCount, gameWon } = body;
 
     if (
-      typeof betAmount !== 'number' ||
-      typeof mines !== 'number' ||
-      typeof revealedCount !== 'number' ||
+      !Number.isFinite(betAmount) ||
+      betAmount <= 0 ||
+      !Number.isInteger(mines) ||
+      mines < 1 ||
+      mines > 24 ||
+      !Number.isInteger(revealedCount) ||
+      revealedCount < 0 ||
+      revealedCount > 24 ||
       typeof gameWon !== 'boolean'
     ) {
       return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });

@@ -195,14 +195,7 @@ const PLACEHOLDER_CARDS = [0, 1];
         body: JSON.stringify({ won, blackjack, amount: bet, winAmount: winAmount - bet }),
       });
 
-      if (winAmount > 0) {
-        await fetch("/api/tokens/update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount: winAmount }),
-        });
-        await fetchUserTokens();
-      }
+      await fetchUserTokens();
     } catch {
       setError("Erreur à la fin de la partie");
     }

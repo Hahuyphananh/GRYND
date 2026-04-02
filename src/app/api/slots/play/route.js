@@ -18,10 +18,10 @@ export async function POST(req) {
     const [user] = await db
       .update(users)
       .set({ balance: sql`balance - ${bet}` })
-      .where(eq(users.clerkId, userId))
-      .returning();
+      .where(sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${bet}`)
+      .returning({ balance: users.balance });
 
-    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (!user) return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 });
 
     const fruitIcons = [
       "🍉", "🍌", "🍍", "🍏", "🍓", "🥭", "🍈", "🍇", "🍒", "🍎",
@@ -86,7 +86,7 @@ else if (matchCount === 3) winAmount = bet * 3; // bet + 2x
   .set({ balance: sql`balance + ${winAmount}` })
   .where(eq(users.clerkId, userId));
 
-    const newBalance = parseFloat(user.balance) + winAmount;
+    const newBalance = Number(user.balance) + winAmount;
 
     return NextResponse.json({
       success: true,
