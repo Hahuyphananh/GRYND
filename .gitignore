@@ -26,7 +26,6 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
-.env*.local
 
 # vercel
 .vercel
@@ -36,3 +35,6 @@ yarn-error.log*
 next-env.d.ts
 # clerk configuration (can include secrets)
 /.clerk/
+
+# realtime server environment
+realtime-server/.env

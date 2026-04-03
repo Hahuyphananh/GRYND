@@ -44,3 +44,36 @@ _A preview of the main lobby interface (Roulette + Blackjack shown)_
 2. Fill all values with your own secrets.
 3. Never commit `.env.local` or production keys.
 4. If secrets were previously exposed, rotate them immediately in the provider dashboards.
+
+## 🔌 Realtime (Socket.IO) Setup
+
+This project now includes a **separate Socket.IO backend** at `realtime-server/` for PvP realtime messaging.
+
+### Frontend (Next.js on Vercel)
+Use `.env.local` (local) or Vercel environment variables (production):
+
+```bash
+# local
+NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
+
+# production (Vercel)
+NEXT_PUBLIC_SOCKET_URL=https://your-realtime-server.com
+```
+
+> `NEXT_PUBLIC_SOCKET_URL` must start with `NEXT_PUBLIC_` so the browser can read it.
+
+### Realtime server (separate deployment, not Vercel)
+Use `realtime-server/.env`:
+
+```bash
+# local
+PORT=3001
+CLIENT_URL=http://localhost:3000
+# optional for auth validation
+CLERK_SECRET_KEY=your_clerk_secret_key
+
+# production
+# CLIENT_URL=https://your-vercel-app.vercel.app
+```
+
+The realtime server only relays socket events (`join_game`, `move`, `leave_game`, disconnect notifications). It does not run casino/game business logic.
