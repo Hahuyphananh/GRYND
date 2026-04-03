@@ -19,13 +19,10 @@ function AppProviders({ children }: { children: React.ReactNode }) {
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
-  if (!publishableKey) {
-    return <AppProviders>{children}</AppProviders>;
-  }
+  const clerkProps = publishableKey ? { publishableKey } : {};
 
   return (
-    <ClerkProvider publishableKey={publishableKey}>
+    <ClerkProvider {...clerkProps}>
       <AppProviders>{children}</AppProviders>
     </ClerkProvider>
   );
