@@ -1,7 +1,7 @@
 import { Inter, Roboto_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers'; // Adjust path if needed
-import ChatWidget from '../components/ChatWidget';
+import ClerkSafeChatWidget from '../components/ClerkSafeChatWidget';
 import DisableInspect from '../components/DisableInspect';
 import CsrfFetchGuard from '../components/CsrfFetchGuard';
 
@@ -14,6 +14,9 @@ const robotoMono = Roboto_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
 });
+
+
+export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'Clerk Next.js Quickstart',
@@ -28,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <CsrfFetchGuard />
           <DisableInspect />
           {children}
-          <ChatWidget />
+          <ClerkSafeChatWidget />
         </Providers>
       </body>
     </html>
