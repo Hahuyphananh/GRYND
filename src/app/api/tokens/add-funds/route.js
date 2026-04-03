@@ -4,6 +4,7 @@ import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { auditLog } from "../../../../lib/security/auditLog";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 export async function POST(req) {
   try {
@@ -36,8 +37,11 @@ export async function POST(req) {
       );
     }
 
-    const body = await req.json();
-    const amount = parseFloat(body.amount);
+    const parsed = await parseAndValidateJson(req, {
+      amount: { type: "number", required: true, min: 5, max: 500 },
+    });
+    if (!parsed.ok) return parsed.response;
+    const amount = parsed.data.amount;
 
     // Server-side validation
     if (!amount || isNaN(amount) || amount < 5 || amount > 500) {
