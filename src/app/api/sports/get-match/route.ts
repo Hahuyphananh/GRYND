@@ -8,13 +8,13 @@ export async function POST(req: Request) {
     if (!ODDS_API_KEY) {
       return NextResponse.json({ success: false, error: "Missing ODDS_API_KEY" }, { status: 500 });
     }
-
-    const parsed = await parseAndValidateJson(req, {
-      slug: { type: "string", required: true, minLength: 3, maxLength: 128, pattern: /^[A-Za-z0-9_\-:.]+$/ },
-    });
-    if (!parsed.ok) return parsed.response;
-
-    const { slug } = parsed.data;
+    const body = await req.json();
+    const { slug } = body;
+    if (!slug)
+      return NextResponse.json(
+        { success: false, error: "Missing slug" },
+        { status: 400 }
+      );
 
     const sportsRes = await fetch(
       `https://api.the-odds-api.com/v4/sports/?apiKey=${ODDS_API_KEY}`
