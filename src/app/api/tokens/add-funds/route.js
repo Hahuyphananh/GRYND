@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { auditLog } from "../../../../lib/security/auditLog";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
+import { claimIdempotency } from "../../../../lib/security/idempotency";
 
 export async function POST(req) {
   try {
@@ -15,6 +16,11 @@ export async function POST(req) {
         { success: false, error: "Unauthorized" },
         { status: 401 }
       );
+    }
+
+    const idem = await claimIdempotency(req, "tokens:add-funds", 180);
+    if (idem.enforced && !idem.allowed) {
+      return NextResponse.json({ success: false, error: "Duplicate request" }, { status: 409 });
     }
 
     // Get user from Clerk to verify age
