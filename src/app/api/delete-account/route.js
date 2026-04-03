@@ -1,3 +1,4 @@
+import bcrypt from "bcrypt";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 
@@ -32,7 +33,15 @@ export async function POST(request) {
       });
     }
 
-    if (String(localUser.password) !== String(password)) {
+    const storedPassword = String(localUser.password || "");
+    const providedPassword = String(password);
+
+    const isBcryptHash = storedPassword.startsWith("$2a$") || storedPassword.startsWith("$2b$") || storedPassword.startsWith("$2y$");
+    const passwordMatches = isBcryptHash
+      ? await bcrypt.compare(providedPassword, storedPassword)
+      : storedPassword === providedPassword;
+
+    if (!passwordMatches) {
       return new Response(JSON.stringify({ success: false, error: "Password confirmation failed" }), {
         status: 403,
         headers: { "Content-Type": "application/json" },

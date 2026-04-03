@@ -66,7 +66,7 @@ function applySecurityHeaders(response: NextResponse) {
   // Keep CSP strict enough for safety but compatible with current UI.
   response.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    "default-src 'self'; script-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
   );
 
   if (process.env.NODE_ENV === 'production') {
@@ -101,9 +101,9 @@ export default clerkMiddleware(async (auth, req) => {
       const { userId } = await auth();
       const baseKey = `${req.method}:${pathname}`;
 
-      const ipResult = consumeRateLimit(`${baseKey}:ip:${ip}`, limit);
+      const ipResult = await consumeRateLimit(`${baseKey}:ip:${ip}`, limit);
       const userResult = userId
-        ? consumeRateLimit(`${baseKey}:user:${userId}`, {
+        ? await consumeRateLimit(`${baseKey}:user:${userId}`, {
             windowMs: limit.windowMs,
             max: Math.max(Math.floor(limit.max / 2), 30),
           })
