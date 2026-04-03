@@ -2,58 +2,63 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
+import { sanitizeString } from "../../../../lib/security/validation";
 
 export async function PATCH(req) {
   try {
     const body = await req.json();
-    console.log("PATCH body received:", body);
 
-    const { gameCode, playerId, hand } = body;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
 
-    // ✅ Allow empty arrays for hand, only reject null/undefined
+    const allowed = ["gameCode", "playerId", "hand", "name"];
+    const unexpected = Object.keys(body).filter((k) => !allowed.includes(k));
+    if (unexpected.length) {
+      return NextResponse.json({ error: `Unexpected field(s): ${unexpected.join(", ")}` }, { status: 400 });
+    }
+
+    const gameCode = sanitizeString(body.gameCode || "");
+    const playerId = sanitizeString(body.playerId || "");
+    const name = sanitizeString(body.name || "Unknown").slice(0, 80) || "Unknown";
+    const hand = Array.isArray(body.hand) ? body.hand : null;
+
     if (!gameCode || !playerId || hand == null) {
-      console.warn("PATCH validation failed:", { gameCode, playerId, hand });
       return NextResponse.json({ error: "Missing data" }, { status: 400 });
     }
 
-  const [game] = await db
-  .select()
-  .from(pokerGames)
-  .where(eq(pokerGames.gameCode, gameCode));
+    const [game] = await db
+      .select()
+      .from(pokerGames)
+      .where(eq(pokerGames.gameCode, gameCode));
 
-if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
-const players = Array.isArray(game.players) ? game.players : [];
+    const players = Array.isArray(game.players) ? game.players : [];
 
-// Merge or add player
-const updatedPlayers = players.map(p =>
-  p.id === playerId ? { ...p, hand } : p
-);
+    const updatedPlayers = players.map((p) =>
+      p.id === playerId ? { ...p, hand } : p
+    );
 
-if (!updatedPlayers.find(p => p.id === playerId)) {
-  // Append new player if not exists
-  updatedPlayers.push({
-    id: playerId,
-    hand,
-    isAI: false,
-    stack: 1000,
-    hasFolded: false,
-    currentBet: 0,
-    lastAction: "",
-    name: body.name || "Unknown",
-    isReady: false,
-  });
-}
+    if (!updatedPlayers.find((p) => p.id === playerId)) {
+      updatedPlayers.push({
+        id: playerId,
+        hand,
+        isAI: false,
+        stack: 1000,
+        hasFolded: false,
+        currentBet: 0,
+        lastAction: "",
+        name,
+        isReady: false,
+      });
+    }
 
-// Save updated array
-const [updatedGame] = await db
-  .update(pokerGames)
-  .set({ players: updatedPlayers })
-  .where(eq(pokerGames.gameCode, gameCode))
-  .returning();
-
-
-    console.log("PATCH update success:", updatedGame);
+    const [updatedGame] = await db
+      .update(pokerGames)
+      .set({ players: updatedPlayers })
+      .where(eq(pokerGames.gameCode, gameCode))
+      .returning();
 
     return NextResponse.json({ success: true, game: updatedGame });
   } catch (err) {

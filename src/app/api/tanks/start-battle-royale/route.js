@@ -141,13 +141,13 @@ export async function POST(req) {
           } catch (legacyFallbackError) {
             console.error("[start-battle-royale] Match insert legacy fallback failed:", legacyFallbackError);
             return NextResponse.json(
-              { error: "Unable to create match", detail: getErrorMessage(legacyFallbackError) },
+              { error: "Unable to create match" },
               { status: 400 }
             );
           }
         } else {
           return NextResponse.json(
-            { error: "Unable to create match", detail: jsonFallbackMessage },
+            { error: "Unable to create match" },
             { status: 400 }
           );
         }
@@ -171,7 +171,7 @@ export async function POST(req) {
     } catch (statsInsertError) {
       console.error("[start-battle-royale] Failed to create player stats:", statsInsertError);
       return NextResponse.json(
-        { error: "Match created, but failed to create player stats", detail: getErrorMessage(statsInsertError) },
+        { error: "Match created, but failed to create player stats" },
         { status: 400 }
       );
     }
@@ -179,6 +179,6 @@ export async function POST(req) {
     return NextResponse.json({ success: true, matchId, player: inserted?.[0] || null, newBalance }, { status: 200 });
   } catch (err) {
     console.error("Start battle royale error:", err);
-    return NextResponse.json({ error: "Server error", detail: String(err) }, { status: 500 });
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

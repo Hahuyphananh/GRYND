@@ -28,7 +28,6 @@ export async function POST(req: Request) {
         password = body.password;
         try {
           await clerkUsers.updateUser(clerkId, { password });
-          console.log('🔐 Password updated for Clerk user');
         } catch (err) {
           console.warn('⚠️ Clerk password update failed:', err);
           password = 'oauth-placeholder';
@@ -37,8 +36,6 @@ export async function POST(req: Request) {
     } catch (err) {
       console.warn('⚠️ Invalid JSON body:', err);
     }
-
-    console.log('📥 Inserting user:', { clerkId, name, email, password });
 
     const inserted = await db.insert(users).values({
       clerkId,
@@ -54,10 +51,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error('❌ Error in /api/sync-user:', error);
     return NextResponse.json(
-      {
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

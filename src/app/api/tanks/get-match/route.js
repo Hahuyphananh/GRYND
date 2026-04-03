@@ -85,7 +85,7 @@ export async function GET(req) {
   } catch (err) {
     console.error("Get match error:", err);
     return NextResponse.json(
-      { error: "Server error", detail: String(err) },
+      { error: "Server error" },
       { status: 500 }
     );
   }

@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 export async function POST(request) {
-  const { userId } = auth();
+  const { userId } = await auth();
 
   if (!userId) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -12,7 +13,18 @@ export async function POST(request) {
   }
 
   try {
-    const { won, blackjack, amount, winAmount } = await request.json();
+    const parsed = await parseAndValidateJson(request, {
+      won: { type: "number", required: false, min: 0, max: 1, default: 0 },
+      blackjack: { type: "number", required: false, min: 0, max: 1, default: 0 },
+      amount: { type: "number", required: true, min: 0, max: 1000000 },
+      winAmount: { type: "number", required: true, min: 0, max: 1000000 },
+    });
+
+    if (!parsed.ok) return parsed.response;
+
+    const { amount, winAmount } = parsed.data;
+    const won = Boolean(parsed.data.won);
+    const blackjack = Boolean(parsed.data.blackjack);
 
     const existingGames = await sql`
       SELECT * FROM blackjack_games 

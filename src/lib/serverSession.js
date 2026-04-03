@@ -1,13 +1,19 @@
 import crypto from "crypto";
 
-const SECRET = process.env.GAME_SESSION_SECRET || "local-dev-session-secret-change-me";
+const SECRET = process.env.GAME_SESSION_SECRET;
+
+if (!SECRET && process.env.NODE_ENV !== "development") {
+  throw new Error("GAME_SESSION_SECRET is required outside development.");
+}
+
+const EFFECTIVE_SECRET = SECRET || "development-only-insecure-secret";
 
 function b64url(input) {
   return Buffer.from(input).toString("base64url");
 }
 
 function signValue(payload) {
-  return crypto.createHmac("sha256", SECRET).update(payload).digest("base64url");
+  return crypto.createHmac("sha256", EFFECTIVE_SECRET).update(payload).digest("base64url");
 }
 
 export function createSignedSession(data) {
