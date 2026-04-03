@@ -35,3 +35,12 @@ _A preview of the main lobby interface (Roulette + Blackjack shown)_
 | **Hosting**     | Vercel |
 
 
+
+---
+
+## 🔐 Environment Setup
+
+1. Copy `.env.example` to `.env.local`.
+2. Fill all values with your own secrets.
+3. Never commit `.env.local` or production keys.
+4. If secrets were previously exposed, rotate them immediately in the provider dashboards.

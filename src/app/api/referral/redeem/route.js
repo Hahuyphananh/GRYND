@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 const REFERRAL_BONUS = 250;
 
@@ -14,15 +15,19 @@ export async function POST(request) {
   }
 
   try {
-    const { code } = await request.json();
-    const normalizedCode = String(code || "").trim().toUpperCase();
+    const parsed = await parseAndValidateJson(request, {
+      code: {
+        type: "string",
+        required: true,
+        minLength: 4,
+        maxLength: 24,
+        pattern: /^[A-Za-z0-9_-]+$/,
+      },
+    });
 
-    if (!normalizedCode) {
-      return new Response(JSON.stringify({ success: false, error: "Referral code is required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    if (!parsed.ok) return parsed.response;
+
+    const normalizedCode = parsed.data.code.toUpperCase();
 
     const currentUserResult = await sql`SELECT id, referred_by_id FROM users WHERE clerk_id = ${userId} LIMIT 1`;
     const currentUser = currentUserResult.rows[0];

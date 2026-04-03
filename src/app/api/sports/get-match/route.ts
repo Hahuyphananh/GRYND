@@ -4,6 +4,9 @@ const ODDS_API_KEY = process.env.ODDS_API_KEY;
 
 export async function POST(req: Request) {
   try {
+    if (!ODDS_API_KEY) {
+      return NextResponse.json({ success: false, error: "Missing ODDS_API_KEY" }, { status: 500 });
+    }
     const body = await req.json();
     const { slug } = body;
     if (!slug)
