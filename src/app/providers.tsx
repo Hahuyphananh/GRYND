@@ -6,8 +6,6 @@ import { LanguageProvider } from '../context/LanguageContext';
 import { ThemeProvider } from '../context/ThemeContext';
 import AppTranslator from '../components/AppTranslator';
 
-const FALLBACK_PUBLISHABLE_KEY = 'pk_test_build_fallback';
-
 function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
@@ -20,7 +18,11 @@ function AppProviders({ children }: { children: React.ReactNode }) {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || FALLBACK_PUBLISHABLE_KEY;
+  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+  if (!publishableKey) {
+    return <AppProviders>{children}</AppProviders>;
+  }
 
   return (
     <ClerkProvider publishableKey={publishableKey}>

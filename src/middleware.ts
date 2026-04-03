@@ -204,8 +204,13 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
 };
 
 const clerkProtectedMiddleware = clerkMiddleware(middlewareHandler);
+const hasClerkSecretKey = Boolean(process.env.CLERK_SECRET_KEY);
 
 export default async function middleware(req: NextRequest, event: NextFetchEvent) {
+  if (!hasClerkSecretKey) {
+    return applySecurityHeaders(NextResponse.next());
+  }
+
   try {
     return await clerkProtectedMiddleware(req, event);
   } catch (error) {
