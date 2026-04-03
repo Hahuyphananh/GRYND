@@ -1,12 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
 
-/**
- * @param {Request} request
- * @returns {Promise<Response>}
- */
 export async function POST(request) {
-  const { userId } = auth();
+  const { userId } = await auth();
 
   if (!userId) {
     return new Response(JSON.stringify({ error: "Utilisateur non authentifié" }), {
@@ -16,14 +13,15 @@ export async function POST(request) {
   }
 
   try {
-    const { betAmount, isWin } = await request.json();
+    const parsed = await parseAndValidateJson(request, {
+      betAmount: { type: "number", required: true, min: 0, max: 1000000 },
+      isWin: { type: "number", required: false, min: 0, max: 1, default: 0 },
+    });
 
-    if (typeof betAmount !== "number" || isNaN(betAmount)) {
-      return new Response(JSON.stringify({ error: "Montant de mise invalide" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    if (!parsed.ok) return parsed.response;
+
+    const betAmount = parsed.data.betAmount;
+    const isWin = Boolean(parsed.data.isWin);
 
     const updated = await sql.begin(async (tx) => {
       return await tx`

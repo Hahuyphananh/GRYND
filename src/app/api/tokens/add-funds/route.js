@@ -3,6 +3,7 @@ import { db } from "../../../../db/client";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { auditLog } from "../../../../lib/security/auditLog";
 
 export async function POST(req) {
   try {
@@ -69,8 +70,7 @@ export async function POST(req) {
       .set({ balance: newBalance.toString() })
       .where(eq(users.clerkId, userId));
 
-    // Log transaction for audit (optional - you can create a transactions table)
-    console.log(`[AUDIT] User ${userId} added $${amount} to balance. New balance: $${newBalance}`);
+    auditLog("tokens_add_funds", { userId, amount, previousBalance: currentBalance, newBalance });
 
     return NextResponse.json({
       success: true,
