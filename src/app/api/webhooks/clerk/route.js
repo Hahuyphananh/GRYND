@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { users } from "../../../../db/schema"; // adjust the import if needed
+import { auditLog } from "../../../../lib/security/auditLog";
 
 // Setup Drizzle DB
 const db = drizzle(process.env.DATABASE_URL || "");
@@ -33,7 +34,7 @@ export async function POST(req) {
     if (eventType === "user.created") {
       const { id, email_addresses, first_name, last_name } = evt.data;
 
-      await db.insert(usersTable).values({
+      await db.insert(users).values({
         clerkId: id,
         email: email_addresses[0]?.email_address || "",
         name: `${first_name || ""} ${last_name || ""}`.trim(),
@@ -42,7 +43,7 @@ export async function POST(req) {
         gamesLost: 0,
       });
 
-      console.log(`✅ New user ${email_addresses[0]?.email_address} added to DB`);
+      auditLog("webhook_user_created", { clerkId: id });
     }
 
     return NextResponse.json({ success: true });

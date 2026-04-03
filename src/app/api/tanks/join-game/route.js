@@ -158,7 +158,7 @@ export async function POST(req) {
   } catch (err) {
     console.error("Join game error FULL:", err);
     return NextResponse.json(
-      { error: "Server error", detail: String(err) },
+      { error: "Server error" },
       { status: 500 }
     );
   }

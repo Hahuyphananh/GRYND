@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
+import { parseAndValidateJson } from "../../../lib/security/validation";
 
 async function handler({ eventId }) {
-  const { userId } = auth();
+  const { userId } = await auth();
 
   if (!userId) {
     return new Response(
@@ -83,6 +84,10 @@ async function handler({ eventId }) {
 }
 
 export async function POST(request) {
-  const body = await request.json();
-  return handler(body);
+  const parsed = await parseAndValidateJson(request, {
+    eventId: { type: "number", required: true, integer: true, min: 1 },
+  });
+
+  if (!parsed.ok) return parsed.response;
+  return handler(parsed.data);
 }

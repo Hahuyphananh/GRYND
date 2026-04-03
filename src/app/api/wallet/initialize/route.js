@@ -7,7 +7,7 @@ import { sql } from "@vercel/postgres";
  * @returns {Promise<Response>}
  */
 export async function POST(request) {
-  const { userId } = auth();
+  const { userId } = await auth();
 
   if (!userId) {
     return new Response(JSON.stringify({ success: false, error: "Utilisateur non authentifié" }), {

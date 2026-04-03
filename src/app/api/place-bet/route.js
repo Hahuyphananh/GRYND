@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 import { getUserLevel } from "../../../lib/vipLevels";
+import { parseAndValidateJson } from "../../../lib/security/validation";
+import { claimIdempotency } from "../../../lib/security/idempotency";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -13,7 +15,23 @@ export async function POST(request) {
   }
 
   try {
-    const { amount, selectionId, source = "real" } = await request.json();
+    const idem = await claimIdempotency(request, "bets:place", 180);
+    if (idem.enforced && !idem.allowed) {
+      return new Response(JSON.stringify({ success: false, error: "Duplicate request" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const parsed = await parseAndValidateJson(request, {
+      amount: { type: "number", required: true, min: 0.01, max: 1000000 },
+      selectionId: { type: "number", required: false, integer: true, min: 1, default: null },
+      source: { type: "string", required: false, pattern: /^(real|demo)$/i, default: "real" },
+    });
+
+    if (!parsed.ok) return parsed.response;
+
+    const { amount, selectionId, source } = parsed.data;
 
     const betAmount = Number(amount);
     if (!betAmount || betAmount <= 0) {

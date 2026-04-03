@@ -1,18 +1,21 @@
 import { NextResponse } from "next/server";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 const ODDS_API_KEY = process.env.ODDS_API_KEY;
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { slug } = body;
-    if (!slug)
-      return NextResponse.json(
-        { success: false, error: "Missing slug" },
-        { status: 400 }
-      );
+    if (!ODDS_API_KEY) {
+      return NextResponse.json({ success: false, error: "Missing ODDS_API_KEY" }, { status: 500 });
+    }
 
-    // Fetch all sports
+    const parsed = await parseAndValidateJson(req, {
+      slug: { type: "string", required: true, minLength: 3, maxLength: 128, pattern: /^[A-Za-z0-9_\-:.]+$/ },
+    });
+    if (!parsed.ok) return parsed.response;
+
+    const { slug } = parsed.data;
+
     const sportsRes = await fetch(
       `https://api.the-odds-api.com/v4/sports/?apiKey=${ODDS_API_KEY}`
     );
@@ -27,10 +30,6 @@ export async function POST(req: Request) {
       );
       const eventsData = await eventsRes.json();
       const events = Array.isArray(eventsData) ? eventsData : [];
-
-      console.log("Current sport key:", sport.key);
-      console.log("Requested slug:", slug);
-      console.log("Events fetched:", events.map((e) => e.id));
 
       matchEvent = events.find((e: any) => e.id === slug || e.slug === slug);
 
@@ -53,7 +52,6 @@ export async function POST(req: Request) {
       [outcomes[1]?.name || "Team B"]: outcomes[1]?.price || null,
     };
 
-    // 🔹 Fetch live score for this match safely
     let liveScore = null;
     try {
       const scoreRes = await fetch(
@@ -68,7 +66,7 @@ export async function POST(req: Request) {
         liveScore = {
           team_a_score: scoreMatch.home_score ?? 0,
           team_b_score: scoreMatch.away_score ?? 0,
-          status: scoreMatch.status || "scheduled", // "inprogress", "completed", etc.
+          status: scoreMatch.status || "scheduled",
         };
       }
     } catch (err) {
@@ -83,7 +81,7 @@ export async function POST(req: Request) {
       start_time: matchEvent.commence_time,
       odds_map: oddsMap,
       raw_odds: outcomes,
-      live_score: liveScore, // 🔹 attach live score
+      live_score: liveScore,
     };
 
     return NextResponse.json({ success: true, event: eventData });

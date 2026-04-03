@@ -3,6 +3,9 @@ import { db } from "../../../../db/client";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { auditLog } from "../../../../lib/security/auditLog";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
+import { claimIdempotency } from "../../../../lib/security/idempotency";
 
 export async function POST(req) {
   try {
@@ -13,6 +16,11 @@ export async function POST(req) {
         { success: false, error: "Unauthorized" },
         { status: 401 }
       );
+    }
+
+    const idem = await claimIdempotency(req, "tokens:add-funds", 180);
+    if (idem.enforced && !idem.allowed) {
+      return NextResponse.json({ success: false, error: "Duplicate request" }, { status: 409 });
     }
 
     // Get user from Clerk to verify age
@@ -35,8 +43,11 @@ export async function POST(req) {
       );
     }
 
-    const body = await req.json();
-    const amount = parseFloat(body.amount);
+    const parsed = await parseAndValidateJson(req, {
+      amount: { type: "number", required: true, min: 5, max: 500 },
+    });
+    if (!parsed.ok) return parsed.response;
+    const amount = parsed.data.amount;
 
     // Server-side validation
     if (!amount || isNaN(amount) || amount < 5 || amount > 500) {
@@ -69,8 +80,7 @@ export async function POST(req) {
       .set({ balance: newBalance.toString() })
       .where(eq(users.clerkId, userId));
 
-    // Log transaction for audit (optional - you can create a transactions table)
-    console.log(`[AUDIT] User ${userId} added $${amount} to balance. New balance: $${newBalance}`);
+    auditLog("tokens_add_funds", { userId, amount, previousBalance: currentBalance, newBalance });
 
     return NextResponse.json({
       success: true,
