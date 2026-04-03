@@ -1,5 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
+import { parseAndValidateJson } from "../../../lib/security/validation";
+import { auditLog } from "../../../lib/security/auditLog";
 
 export async function POST(req) {
   const { userId } = await auth();
@@ -10,17 +12,27 @@ export async function POST(req) {
   }
 
   try {
-    const { eventId, betAmount, choice, odds, marketType = null, lineValue = null } = await req.json();
+    const parsed = await parseAndValidateJson(req, {
+      eventId: {
+        type: "string",
+        required: true,
+        minLength: 3,
+        maxLength: 128,
+        pattern: /^[a-z0-9_\-:.]+$/i,
+      },
+      betAmount: { type: "number", required: true, min: 1, max: 100000 },
+      choice: { type: "string", required: true, minLength: 1, maxLength: 64 },
+      odds: { type: "number", required: true, min: 1.01, max: 1000 },
+      marketType: { type: "string", required: false, maxLength: 64, default: null },
+      lineValue: { type: "number", required: false, min: -1000, max: 1000, default: null },
+    });
 
-    if (!eventId || !betAmount || !choice || !odds) {
-      return new Response(JSON.stringify({ error: "Missing fields" }), {
-        status: 400,
-      });
-    }
+    if (!parsed.ok) return parsed.response;
+    const { eventId, betAmount, choice, odds, marketType, lineValue } = parsed.data;
 
     const balanceResult = await sql`
-  SELECT balance FROM users WHERE clerk_id = ${userId}
-`;
+      SELECT balance FROM users WHERE clerk_id = ${userId}
+    `;
 
     const userBalance = parseFloat(balanceResult.rows[0]?.balance ?? 0);
     if (userBalance < betAmount) {
@@ -32,34 +44,31 @@ export async function POST(req) {
     try {
       await sql`
         INSERT INTO sports_bets (user_id, event_external_id, bet_amount, choice, odds, market_type, line_value)
-        VALUES (${userId}, ${String(eventId)}, ${betAmount}, ${choice}, ${odds}, ${marketType}, ${lineValue})
+        VALUES (${userId}, ${eventId}, ${betAmount}, ${choice}, ${odds}, ${marketType}, ${lineValue})
       `;
     } catch (migrationErr) {
-  console.error("🔥 REAL INSERT ERROR:", migrationErr);
+      console.error("Sports bet insert fallback triggered");
 
-  const legacyEventId = Number(eventId);
+      const legacyEventId = Number(eventId);
+      if (!Number.isFinite(legacyEventId)) {
+        return new Response(
+          JSON.stringify({ error: "Insert failed due to invalid event id format" }),
+          { status: 400 }
+        );
+      }
 
-  if (!Number.isFinite(legacyEventId)) {
-    return new Response(
-      JSON.stringify({
-        error: "Insert failed",
-        detail: migrationErr.message, // 👈 SHOW REAL ERROR
-      }),
-      { status: 400 }
-    );
-  }
-
-  await sql`
-    INSERT INTO sports_bets (user_id, event_id, bet_amount, choice, odds)
-    VALUES (${userId}, ${legacyEventId}, ${betAmount}, ${choice}, ${odds})
-  `;
-}
+      await sql`
+        INSERT INTO sports_bets (user_id, event_id, bet_amount, choice, odds)
+        VALUES (${userId}, ${legacyEventId}, ${betAmount}, ${choice}, ${odds})
+      `;
+    }
 
     const newBalance = userBalance - betAmount;
+    auditLog("sports_bet_placed", { userId, eventId, betAmount, previousBalance: userBalance, newBalance });
     await sql`
-  UPDATE users SET balance = ${newBalance}
-  WHERE clerk_id = ${userId}
-`;
+      UPDATE users SET balance = ${newBalance}
+      WHERE clerk_id = ${userId}
+    `;
 
     return new Response(JSON.stringify({ success: true, newBalance }), { status: 200 });
   } catch (error) {
