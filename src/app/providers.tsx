@@ -6,6 +6,8 @@ import { LanguageProvider } from '../context/LanguageContext';
 import { ThemeProvider } from '../context/ThemeContext';
 import AppTranslator from '../components/AppTranslator';
 
+const FALLBACK_PUBLISHABLE_KEY = 'pk_test_build_fallback';
+
 function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
@@ -18,17 +20,7 @@ function AppProviders({ children }: { children: React.ReactNode }) {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-  const isStaticErrorPage = pathname === '/_not-found' || pathname === '/404';
-
-  if (!publishableKey) {
-    return <AppProviders>{children}</AppProviders>;
-  }
-
-  if (isStaticErrorPage) {
-    return <AppProviders>{children}</AppProviders>;
-  }
+  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || FALLBACK_PUBLISHABLE_KEY;
 
   return (
     <ClerkProvider publishableKey={publishableKey}>
