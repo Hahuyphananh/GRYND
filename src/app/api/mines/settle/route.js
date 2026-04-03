@@ -3,6 +3,7 @@ import { db } from '../../../../db/client';
 import { users, minesGames } from '../../../../db/schema'; // ✅ added minesGames
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
+import { verifySignedSession } from '../../../../lib/serverSession';
 
 const multiplierTable = {
   1: {1:1.03,2:1.08,3:1.12,4:1.18,5:1.24,6:1.30,7:1.37,8:1.46,9:1.55,10:1.65,11:1.77,12:1.90,13:2.06,14:2.25,15:2.47,16:2.75,17:3.09,18:3.54,19:4.12,20:4.95,21:6.19,22:8.25,23:12.37,24:24.75},
@@ -43,21 +44,10 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { betAmount, mines, revealedCount, gameWon } = body;
-
-    if (
-      !Number.isFinite(betAmount) ||
-      betAmount <= 0 ||
-      !Number.isInteger(mines) ||
-      mines < 1 ||
-      mines > 24 ||
-      !Number.isInteger(revealedCount) ||
-      revealedCount < 0 ||
-      revealedCount > 24 ||
-      typeof gameWon !== 'boolean'
-    ) {
-      return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
+    const token = req.cookies.get('mines_session')?.value;
+    const session = verifySignedSession(token);
+    if (!session || session.userId !== userId) {
+      return NextResponse.json({ success: false, error: 'No active mines session' }, { status: 400 });
     }
 
     const userData = await db
@@ -71,20 +61,12 @@ export async function POST(req) {
     }
 
     const user = userData[0];
-    let newBalance = parseFloat(user.balance);
-    
-    if (betAmount > newBalance) {
-      return NextResponse.json({ success: false, error: 'Bet amount exceeds balance' }, { status: 400 });
-    }
-
-    newBalance -= betAmount; // subtract bet first
-    let payout = 0;
-
-    if (gameWon) {
-      const multiplier = calculateMultiplier(mines, revealedCount);
-      payout = betAmount * multiplier; // payout includes original bet
-      newBalance += payout; // add payout back
-    }
+    const revealedCount = Number(session.revealed?.length || 0);
+    const mines = Number(session.minesCount);
+    const betAmount = Number(session.bet);
+    const multiplier = calculateMultiplier(mines, revealedCount);
+    const payout = Number((betAmount * multiplier).toFixed(2));
+    const newBalance = Number(user.balance) + payout;
 
     // Update user balance
     await db
@@ -97,21 +79,23 @@ export async function POST(req) {
       userId: user.id,
       betAmount,
       payout,
-      result: gameWon ? 'win' : 'loss',
+      result: 'win',
       tilesRevealed: revealedCount,
       minesCount: mines,
       status: 'completed',
       createdAt: new Date(),
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: {
         newBalance: newBalance,
-        result: gameWon ? 'win' : 'loss',
-        payout: gameWon ? betAmount * calculateMultiplier(mines, revealedCount) : 0
+        result: 'win',
+        payout
       }
     });
+    response.cookies.set('mines_session', '', { httpOnly: true, path: '/', maxAge: 0 });
+    return response;
   } catch (err) {
     console.error("Error in /api/mines/settle:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
