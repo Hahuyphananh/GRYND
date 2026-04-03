@@ -1,3 +1,4 @@
+import bcrypt from 'bcrypt';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '../../../db/client';
 import { users } from '../../../db/schema';
@@ -21,27 +22,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'User already exists' }, { status: 200 });
     }
 
-    let password = 'oauth-placeholder';
+    let rawPassword = 'oauth-placeholder';
     try {
       const body = await req.json();
       if (body?.password) {
-        password = body.password;
+        rawPassword = String(body.password);
         try {
-          await clerkUsers.updateUser(clerkId, { password });
+          await clerkUsers.updateUser(clerkId, { password: rawPassword });
         } catch (err) {
           console.warn('⚠️ Clerk password update failed:', err);
-          password = 'oauth-placeholder';
+          rawPassword = 'oauth-placeholder';
         }
       }
     } catch (err) {
       console.warn('⚠️ Invalid JSON body:', err);
     }
 
+    const passwordHash = await bcrypt.hash(rawPassword, 12);
+
     const inserted = await db.insert(users).values({
       clerkId,
       name,
       email,
-      password,
+      password: passwordHash,
     }).returning();
 
     return NextResponse.json(
