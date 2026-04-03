@@ -3,6 +3,8 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '../../../../db/client';
 import { chatMessages } from '../../../../db/schema';
+import { parseAndValidateJson } from '../../../../lib/security/validation';
+import { auditLog } from '../../../../lib/security/auditLog';
 
 function isAdmin(userId) {
   const list = (process.env.CHAT_ADMIN_CLERK_IDS || '')
@@ -17,19 +19,22 @@ export async function POST(req) {
   try {
     const { userId } = await auth();
     if (!userId) {
+      auditLog('chat_moderation_unauthorized', { path: '/api/chat/moderate' });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     if (!isAdmin(userId)) {
+      auditLog('chat_moderation_forbidden', { userId, path: '/api/chat/moderate' });
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await req.json();
-    const messageId = Number(body.messageId);
+    const parsed = await parseAndValidateJson(req, {
+      messageId: { type: 'number', required: true, integer: true, min: 1 },
+    });
 
-    if (!Number.isInteger(messageId) || messageId <= 0) {
-      return NextResponse.json({ error: 'Invalid messageId.' }, { status: 400 });
-    }
+    if (!parsed.ok) return parsed.response;
+
+    const messageId = parsed.data.messageId;
 
     await db
       .update(chatMessages)
@@ -39,6 +44,8 @@ export async function POST(req) {
         deletedByClerkId: userId,
       })
       .where(and(eq(chatMessages.id, messageId), isNull(chatMessages.deletedAt)));
+
+    auditLog('chat_message_moderated', { userId, messageId, action: 'soft_delete' });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

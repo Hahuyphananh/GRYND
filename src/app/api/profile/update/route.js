@@ -1,10 +1,16 @@
+import bcrypt from "bcrypt";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
+import { auditLog } from "../../../../lib/security/auditLog";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(request) {
   const { userId } = await auth();
 
   if (!userId) {
+    auditLog("profile_update_unauthorized", { path: "/api/profile/update" });
     return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -12,24 +18,16 @@ export async function POST(request) {
   }
 
   try {
-    const { name, email, password } = await request.json();
+    const parsed = await parseAndValidateJson(request, {
+      name: { type: "string", required: true, minLength: 2, maxLength: 80 },
+      email: { type: "string", required: true, minLength: 5, maxLength: 254, pattern: EMAIL_REGEX },
+      password: { type: "string", required: false, minLength: 6, maxLength: 128, default: null },
+    });
 
-    const cleanName = String(name || "").trim();
-    const cleanEmail = String(email || "").trim();
+    if (!parsed.ok) return parsed.response;
 
-    if (!cleanName || !cleanEmail) {
-      return new Response(JSON.stringify({ success: false, error: "Name and email are required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (password && String(password).length < 6) {
-      return new Response(JSON.stringify({ success: false, error: "Password must be at least 6 characters" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const { name: cleanName, email: cleanEmail, password } = parsed.data;
+    const passwordHash = password ? await bcrypt.hash(password, 12) : null;
 
     const existingEmail = await sql`
       SELECT id FROM users WHERE email = ${cleanEmail} AND clerk_id <> ${userId} LIMIT 1
@@ -47,7 +45,7 @@ export async function POST(request) {
       SET name = ${cleanName},
           email = ${cleanEmail},
           password = CASE
-            WHEN ${password ? true : false} THEN ${password}
+            WHEN ${Boolean(passwordHash)} THEN ${passwordHash}
             ELSE password
           END
       WHERE clerk_id = ${userId}
@@ -60,6 +58,8 @@ export async function POST(request) {
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    auditLog("profile_updated", { userId, emailChangedTo: cleanEmail, passwordUpdated: Boolean(passwordHash) });
 
     return new Response(
       JSON.stringify({
