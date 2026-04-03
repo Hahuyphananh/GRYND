@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { claimIdempotency } from "../../../../lib/security/idempotency";
 import { sql } from "@vercel/postgres";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 
@@ -15,6 +16,14 @@ export async function POST(request) {
   }
 
   try {
+  const idem = await claimIdempotency(request, "referral:redeem", 180);
+  if (idem.enforced && !idem.allowed) {
+    return new Response(JSON.stringify({ success: false, error: "Duplicate request" }), {
+      status: 409,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
     const parsed = await parseAndValidateJson(request, {
       code: {
         type: "string",

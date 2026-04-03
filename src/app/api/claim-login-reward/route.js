@@ -5,16 +5,22 @@ import { db } from "../../../db";
 import { eq, sql } from "drizzle-orm";
 import { userLoginRewards, users } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
+import { claimIdempotency } from "../../../lib/security/idempotency";
 
 const LOGIN_REWARD_BASE = 100;
 const MAX_DAY = 14;
 const COOLDOWN_HOURS = 24;
 const STREAK_RESET_HOURS = 48;
 
-export async function POST() {
+export async function POST(req) {
   try {
 
     const { userId } = await auth();
+
+    const idem = await claimIdempotency(req, "rewards:claim-login", 180);
+    if (idem.enforced && !idem.allowed) {
+      return NextResponse.json({ success: false, error: "Duplicate request" }, { status: 409 });
+    }
 
     if (!userId) {
       return NextResponse.json(
