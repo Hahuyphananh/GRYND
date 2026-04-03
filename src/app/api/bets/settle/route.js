@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 async function handler({ betId, result }) {
-  const { userId } = auth();
+  const { userId } = await auth();
 
   if (!userId) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -87,6 +88,11 @@ async function handler({ betId, result }) {
 }
 
 export async function POST(request) {
-  const body = await request.json();
-  return handler(body);
+  const parsed = await parseAndValidateJson(request, {
+    betId: { type: "number", required: true, integer: true, min: 1 },
+    result: { type: "string", required: true, pattern: /^(won|lost)$/ },
+  });
+
+  if (!parsed.ok) return parsed.response;
+  return handler(parsed.data);
 }

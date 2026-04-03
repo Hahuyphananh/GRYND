@@ -106,7 +106,7 @@ export async function POST(req) {
   } catch (err) {
     console.error("Start match error:", err);
     return NextResponse.json(
-      { error: "Server error", detail: String(err) },
+      { error: "Server error" },
       { status: 500 }
     );
   }
