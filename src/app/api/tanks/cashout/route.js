@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { users, tankMatches, tankStats } from "../../../../db/schema";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { claimIdempotency } from "../../../../lib/security/idempotency";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 export async function POST(req) {
   try {
@@ -10,8 +12,16 @@ export async function POST(req) {
     if (!clerkId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = await req.json();
-    const { matchId: requestedMatchId } = body;
+    const idem = await claimIdempotency(req, "tanks:cashout", 180);
+    if (idem.enforced && !idem.allowed) {
+      return NextResponse.json({ error: "Duplicate request" }, { status: 409 });
+    }
+
+    const parsed = await parseAndValidateJson(req, {
+      matchId: { type: "string", required: false, minLength: 1, maxLength: 64, default: null },
+    });
+    if (!parsed.ok) return parsed.response;
+    const requestedMatchId = parsed.data.matchId;
 
     // Find this player's active stats row (prefer current match from client)
     const playerStats = await db
@@ -116,7 +126,7 @@ export async function POST(req) {
   } catch (err) {
     console.error("Error updating balance:", err);
     return NextResponse.json(
-      { error: "Server error", detail: String(err) },
+      { error: "Server error" },
       { status: 500 }
     );
   }

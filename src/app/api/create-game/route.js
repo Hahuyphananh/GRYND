@@ -1,12 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
+import { parseAndValidateJson } from "../../../lib/security/validation";
 
-/**
- * @param {Request} request
- * @returns {Promise<Response>}
- */
 export async function POST(request) {
-  const { userId } = auth();
+  const { userId } = await auth();
 
   if (!userId) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -15,17 +12,13 @@ export async function POST(request) {
     });
   }
 
-  const { tableAmount } = await request.json();
-
-  if (!tableAmount || typeof tableAmount !== "number" || tableAmount <= 0) {
-    return new Response(JSON.stringify({ error: "Invalid table amount" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  const parsed = await parseAndValidateJson(request, {
+    tableAmount: { type: "number", required: true, integer: true, min: 1, max: 100000 },
+  });
+  if (!parsed.ok) return parsed.response;
+  const { tableAmount } = parsed.data;
 
   try {
-    // Check for an opponent in the queue
     const { rows: opponents } = await sql`
       SELECT * FROM chess_queue
       WHERE bet_amount = ${tableAmount}
@@ -37,13 +30,11 @@ export async function POST(request) {
     if (opponents.length > 0) {
       const opponent = opponents[0];
 
-      // Remove the opponent from queue
       await sql`
         DELETE FROM chess_queue
         WHERE id = ${opponent.id}
       `;
 
-      // Insert new chess game
       const { rows: newGame } = await sql`
         INSERT INTO chess_games (
           player_white_id,
@@ -68,7 +59,6 @@ export async function POST(request) {
       );
     }
 
-    // No opponent found — enter matchmaking queue
     await sql`
       INSERT INTO chess_queue (user_id, bet_amount)
       VALUES (${userId}, ${tableAmount})
