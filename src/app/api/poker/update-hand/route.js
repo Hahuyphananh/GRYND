@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
@@ -6,6 +7,9 @@ import { sanitizeString } from "../../../../lib/security/validation";
 
 export async function PATCH(req) {
   try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const body = await req.json();
 
     if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -34,6 +38,14 @@ export async function PATCH(req) {
 
     if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
+    const hostClerkId = game?.playerPositions?.hostClerkId;
+    const isHost = hostClerkId === userId;
+    const isSelf = playerId === userId;
+
+    if (!isHost && !isSelf) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const players = Array.isArray(game.players) ? game.players : [];
 
     const updatedPlayers = players.map((p) =>
@@ -41,6 +53,9 @@ export async function PATCH(req) {
     );
 
     if (!updatedPlayers.find((p) => p.id === playerId)) {
+      if (!isSelf) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
       updatedPlayers.push({
         id: playerId,
         hand,

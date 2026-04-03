@@ -126,9 +126,9 @@ export default clerkMiddleware(async (auth, req) => {
       const { userId } = await auth();
       const baseKey = `${req.method}:${pathname}`;
 
-      const ipResult = consumeRateLimit(`${baseKey}:ip:${ip}`, limit);
+      const ipResult = await consumeRateLimit(`${baseKey}:ip:${ip}`, limit);
       const userResult = userId
-        ? consumeRateLimit(`${baseKey}:user:${userId}`, {
+        ? await consumeRateLimit(`${baseKey}:user:${userId}`, {
             windowMs: limit.windowMs,
             max: Math.max(Math.floor(limit.max / 2), 30),
           })
