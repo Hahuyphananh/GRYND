@@ -37,10 +37,20 @@ const isPublicRoute = createRouteMatcher([
 
 const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
   { pattern: /^\/api\/(webhooks\/clerk|debug-env)/, config: { windowMs: 60_000, max: 20 } },
+  { pattern: /^\/api\/(tokens\/add-funds|wallet\/|bets\/|place-sports-bet|tanks\/cashout)/, config: { windowMs: 60_000, max: 30 } },
   { pattern: /^\/api\//, config: { windowMs: 60_000, max: 120 } },
 ];
 
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+const HIGH_RISK_CSRF_PATTERNS: RegExp[] = [
+  /^\/api\/(tokens|wallet|bets|place-sports-bet|tanks|coin-flip|slots|mines|crash|roulette|blackjack|uno|rps|poker|chess)\//,
+  /^\/api\/(tokens|wallet|bets|place-sports-bet|tanks|coin-flip|slots|mines|crash|roulette|blackjack|uno|rps|poker|chess)$/,
+];
+
+function requiresStrictCsrf(pathname: string) {
+  return HIGH_RISK_CSRF_PATTERNS.some((pattern) => pattern.test(pathname));
+}
 
 function getClientIp(req: Request) {
   const forwardedFor = req.headers.get('x-forwarded-for');
@@ -170,8 +180,10 @@ export default clerkMiddleware(async (auth, req) => {
 
     if (MUTATION_METHODS.has(req.method) && !pathname.startsWith('/api/webhooks/')) {
       const validToken = hasValidCsrfToken(req);
-      if (!validToken && !isSameOriginMutation(req)) {
-        auditLog('csrf_blocked', { ip, path: pathname, method: req.method });
+      const strictCsrf = requiresStrictCsrf(pathname);
+
+      if ((strictCsrf && !validToken) || (!strictCsrf && !validToken && !isSameOriginMutation(req))) {
+        auditLog('csrf_blocked', { ip, path: pathname, method: req.method, strictCsrf });
         return finalizeResponse(
           req,
           NextResponse.json(

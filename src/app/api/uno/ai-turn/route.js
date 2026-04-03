@@ -4,6 +4,7 @@ import { getUnoGameById, drawUnoCard, updateUnoGameState } from "../../../lib/un
 import { applyUnoCard, isValidPlay } from "../../../lib/unoLogic";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 function safeParse(data) {
   if (!data) return [];
@@ -109,8 +110,12 @@ export async function POST(req) {
     const { userId: clerkId } = await auth();
     if (!clerkId) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
 
-    const { gameId } = await req.json();
-    if (!gameId) return new Response(JSON.stringify({ success: false, error: "Missing gameId" }), { status: 400 });
+    const parsed = await parseAndValidateJson(req, {
+      gameId: { type: "number", required: true, integer: true, min: 1 },
+    });
+    if (!parsed.ok) return parsed.response;
+
+    const { gameId } = parsed.data;
 
     const game = await getUnoGameById(gameId);
     if (!game) return new Response(JSON.stringify({ success: false, error: "Game not found" }), { status: 404 });
