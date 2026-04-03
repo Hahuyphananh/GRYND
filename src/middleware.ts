@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextResponse } from 'next/server';
+import { NextFetchEvent, NextRequest, NextResponse } from 'next/server';
 import { cleanupRateLimitStore, consumeRateLimit, type LimitConfig } from './lib/security/rateLimit';
 import { auditLog } from './lib/security/auditLog';
 
@@ -90,7 +90,7 @@ function isSameOriginMutation(req: Request) {
   return !origin && (fetchSite === 'same-origin' || fetchSite === 'same-site' || fetchSite === 'none' || fetchSite === '');
 }
 
-export default clerkMiddleware(async (auth, req) => {
+const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => {
   cleanupRateLimitStore();
   const pathname = req.nextUrl.pathname;
   const ip = getClientIp(req);
@@ -201,7 +201,23 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   return applySecurityHeaders(NextResponse.next());
-});
+};
+
+const clerkProtectedMiddleware = clerkMiddleware(middlewareHandler);
+const hasClerkSecretKey = Boolean(process.env.CLERK_SECRET_KEY);
+
+export default async function middleware(req: NextRequest, event: NextFetchEvent) {
+  if (!hasClerkSecretKey) {
+    return applySecurityHeaders(NextResponse.next());
+  }
+
+  try {
+    return await clerkProtectedMiddleware(req, event);
+  } catch (error) {
+    console.error('[middleware] Clerk middleware invocation failed; returning safe response.', error);
+    return applySecurityHeaders(NextResponse.next());
+  }
+}
 
 export const config = {
   matcher: [
