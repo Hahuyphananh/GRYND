@@ -4,8 +4,19 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { users } from "../../../../db/schema"; // adjust the import if needed
 import { auditLog } from "../../../../lib/security/auditLog";
 
-// Setup Drizzle DB
-const db = drizzle(process.env.DATABASE_URL || "");
+let dbInstance = null;
+
+function getDb() {
+  if (dbInstance) return dbInstance;
+
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is not defined in the environment variables");
+  }
+
+  dbInstance = drizzle(connectionString);
+  return dbInstance;
+}
 
 export async function POST(req) {
   try {
@@ -34,7 +45,7 @@ export async function POST(req) {
     if (eventType === "user.created") {
       const { id, email_addresses, first_name, last_name } = evt.data;
 
-      await db.insert(users).values({
+      await getDb().insert(users).values({
         clerkId: id,
         email: email_addresses[0]?.email_address || "",
         name: `${first_name || ""} ${last_name || ""}`.trim(),
