@@ -22,7 +22,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   const isStaticErrorPage = pathname === '/_not-found' || pathname === '/404';
 
-  if (!publishableKey || isStaticErrorPage) {
+  if (!publishableKey) {
+    return <AppProviders>{children}</AppProviders>;
+  }
+
+  if (isStaticErrorPage) {
     return <AppProviders>{children}</AppProviders>;
   }
 
