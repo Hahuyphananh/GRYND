@@ -5,9 +5,16 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { neon } from "@neondatabase/serverless";
 import * as schema from "./schema";
 
-let dbInstance: ReturnType<typeof drizzle> | null = null;
+function createDb(connectionString: string) {
+  const sql = neon(connectionString);
+  return drizzle(sql, { schema });
+}
 
-export function getDb() {
+type DbInstance = ReturnType<typeof createDb>;
+
+let dbInstance: DbInstance | null = null;
+
+export function getDb(): DbInstance {
   if (dbInstance) return dbInstance;
 
   const connectionString = process.env.DATABASE_URL;
@@ -18,12 +25,11 @@ export function getDb() {
     );
   }
 
-  const sql = neon(connectionString);
-  dbInstance = drizzle(sql, { schema });
+  dbInstance = createDb(connectionString);
   return dbInstance;
 }
 
-export const db = new Proxy({} as ReturnType<typeof drizzle>, {
+export const db: DbInstance = new Proxy({} as DbInstance, {
   get(_target, prop, receiver) {
     return Reflect.get(getDb(), prop, receiver);
   },
