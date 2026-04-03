@@ -1,5 +1,3 @@
-import { incrementAbuseMetric } from './abuseMetrics';
-
 type AuditPayload = Record<string, unknown>;
 
 const MASKED_KEYS = ['password', 'token', 'secret', 'apiKey', 'authorization'];
@@ -18,9 +16,6 @@ export function auditLog(event: string, payload: AuditPayload = {}) {
   for (const [key, value] of Object.entries(payload)) {
     sanitizedPayload[key] = maskValue(key, value);
   }
-
-  const path = typeof sanitizedPayload.path === 'string' ? sanitizedPayload.path : undefined;
-  incrementAbuseMetric(event, path);
 
   console.info(
     JSON.stringify({
