@@ -10,18 +10,20 @@ export async function POST(req) {
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { bet, choice } = await req.json();
-    if (typeof bet !== "number" || !["heads", "tails"].includes(choice)) {
+    if (!Number.isFinite(bet) || bet <= 0 || !["heads", "tails"].includes(choice)) {
       return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
     }
 
-    // ✅ Deduct bet from user's balance
+    // ✅ Deduct bet from user's balance only if sufficient
     const [user] = await db
       .update(users)
       .set({ balance: sql`balance - ${bet}` })
-      .where(eq(users.clerkId, userId))
-      .returning();
+      .where(sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${bet}`)
+      .returning({ balance: users.balance });
 
-    if (!user) throw new Error("User not found");
+    if (!user) {
+      return NextResponse.json({ error: "Insufficient balance" }, { status: 400 });
+    }
 
     // 🎲 Simulate coin flip
     const outcome = Math.random() < 0.5 ? "heads" : "tails";
@@ -37,7 +39,7 @@ export async function POST(req) {
         .where(eq(users.clerkId, userId));
     }
 
-    const newBalance = parseFloat(user.balance) - bet + payout;
+    const newBalance = Number(user.balance) + payout;
 
     // 🧾 Save coin flip record to database
     await db.insert(coinFlipGames).values({

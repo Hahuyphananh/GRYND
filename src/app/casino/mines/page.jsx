@@ -5,7 +5,7 @@ import NavigationBar from "../../../components/navigation-bar";
 export default function MinesGamePage() {
   const GRID_SIZE = 5;
   const [totalMines, setTotalMines] = useState(3);
-  const [grid, setGrid] = useState(generateGrid(totalMines));
+  const [grid, setGrid] = useState(Array(GRID_SIZE ** 2).fill("diamond"));
   const [revealed, setRevealed] = useState(Array(GRID_SIZE ** 2).fill(false));
   const [gameOver, setGameOver] = useState(false);
   const [multiplier, setMultiplier] = useState(1);
@@ -19,6 +19,7 @@ export default function MinesGamePage() {
   const [userTokens, setUserTokens] = useState(0); // user tokens balance
   const [loading, setLoading] = useState(false);
   const [betAmount, setBetAmount] = useState(10);
+  const [error, setError] = useState(null);
 const [gameStarted, setGameStarted] = useState(false);
 
   
@@ -78,7 +79,7 @@ const [gameStarted, setGameStarted] = useState(false);
 
   // Regenerate grid when totalMines changes
   useEffect(() => {
-    setGrid(generateGrid(totalMines));
+    setGrid(Array(GRID_SIZE ** 2).fill("diamond"));
     setRevealed(Array(GRID_SIZE ** 2).fill(false));
     setGameOver(false);
     setMultiplier(1);
@@ -244,49 +245,48 @@ async function handleClick(index) {
   const newRevealedCount = revealedCount + 1;
   setRevealedCount(newRevealedCount);
 
-  if (grid[index] === "mine") {
-    setGameOver(true);
-    setMultiplier(0);
-    setShowAllMines(true);
-    setAutoplayEnabled(false);
-
-    // 🔁 Call settle API for LOSS
-    try {
-      const res = await fetch("/api/mines/settle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          betAmount: betAmount,
-          mines: totalMines,
-          revealedCount,
-          gameWon: false,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        setUserTokens(data.data.newBalance);
-      } else {
-        console.error("Error updating balance (loss):", data.error);
-      }
-    } catch (err) {
-      console.error("Network error on loss:", err);
+  try {
+    const revealRes = await fetch("/api/mines/reveal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index }),
+    });
+    const revealData = await revealRes.json();
+    if (!revealData.success) {
+      console.error("Reveal failed:", revealData.error);
+      return false;
     }
 
-    return true;
-  } else {
-    const newMultiplier = calculateMultiplier(totalMines, newRevealedCount);
-    setMultiplier(newMultiplier);
-    
-    const safeCells = GRID_SIZE * GRID_SIZE - totalMines;
-    if (newRevealedCount >= safeCells) {
-      setHasWon(true);
+    if (revealData.data?.mineHit) {
       setGameOver(true);
+      setMultiplier(0);
       setShowAllMines(true);
       setAutoplayEnabled(false);
+      if (Array.isArray(revealData.data.minePositions)) {
+        const nextGrid = Array(GRID_SIZE * GRID_SIZE).fill("diamond");
+        revealData.data.minePositions.forEach((pos) => {
+          if (Number.isInteger(pos) && pos >= 0 && pos < nextGrid.length) nextGrid[pos] = "mine";
+        });
+        setGrid(nextGrid);
+      }
+      return true;
     }
+  } catch (err) {
+    console.error("Network error on reveal:", err);
     return false;
   }
+
+  const newMultiplier = calculateMultiplier(totalMines, newRevealedCount);
+  setMultiplier(newMultiplier);
+  
+  const safeCells = GRID_SIZE * GRID_SIZE - totalMines;
+  if (newRevealedCount >= safeCells) {
+    setHasWon(true);
+    setGameOver(true);
+    setShowAllMines(true);
+    setAutoplayEnabled(false);
+  }
+  return false;
 }
 
  async function handleCashOut() {
@@ -295,17 +295,12 @@ async function handleClick(index) {
   setShowAllMines(true);
   setAutoplayEnabled(false);
 
-  // 🔁 Call settle API for WIN
+  // 🔁 Call settle API for WIN (server-authoritative)
   try {
     const res = await fetch("/api/mines/settle", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        betAmount: betAmount, // You can make this a state later if needed
-        mines: totalMines,
-        revealedCount,
-        gameWon: true,
-      }),
+      body: JSON.stringify({ action: "cashout" }),
     });
 
     const data = await res.json();
@@ -319,8 +314,26 @@ async function handleClick(index) {
   }
 }
 
- function handleReset() {
-  setGrid(generateGrid(totalMines));
+ async function handleReset() {
+  try {
+    const res = await fetch("/api/mines/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ betAmount, mines: totalMines }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      setError(data.error || "Unable to start game");
+      return;
+    }
+    setUserTokens(data.data.newBalance);
+  } catch (err) {
+    console.error("Error starting mines game:", err);
+    setError("Unable to start game");
+    return;
+  }
+
+  setGrid(Array(GRID_SIZE ** 2).fill("diamond"));
   setRevealed(Array(GRID_SIZE ** 2).fill(false));
   setGameOver(false);
   setMultiplier(1);
