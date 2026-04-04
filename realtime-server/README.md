@@ -1,34 +1,48 @@
-# Realtime Socket.IO Server
+# Realtime Socket.IO Server (Standalone Service)
 
-## Local development
+This folder is an independent Node.js realtime backend service.
 
-1. Install dependencies:
+## Run locally
+
+1. Install dependencies in this folder only:
    ```bash
+   cd realtime-server
    npm install
    ```
-2. Configure `realtime-server/.env`:
+2. Configure environment variables in `realtime-server/.env`:
    ```env
    PORT=3001
    CLIENT_URL=http://localhost:3000
    CLERK_SECRET_KEY=your_clerk_secret_key
    ```
-3. Run:
+3. Start:
    ```bash
    npm run dev
    ```
 
-## Production environment mapping
+## Required events
 
-```env
-# Frontend (Vercel Environment Variables)
-NEXT_PUBLIC_SOCKET_URL=https://your-realtime-server.com
+This server relays realtime events only (no game logic):
+- `join_game`
+- `move`
+- `leave_game`
+- `disconnect`
 
-# Realtime server environment variables
-CLIENT_URL=https://your-vercel-app.vercel.app
-```
+## Deployment
 
-## Deployment rules
+- Deploy this server separately from Next.js (Render, Railway, Fly.io, VPS, etc.).
+- Do **not** deploy Socket.IO runtime on Vercel serverless routes.
+- Configure env vars in your host dashboard:
+  - `PORT`
+  - `CLIENT_URL` (your Vercel frontend URL; supports comma-separated origins for preview + production)
+  - `CLERK_SECRET_KEY`
 
-- Host this server separately from Next.js (Render, Railway, Fly.io, etc.).
-- Do not deploy the Socket.IO server on Vercel.
-- Keep secrets in deployment environment variables only.
+### Render quick setup (monorepo)
+
+If you connected the whole repo to Render, set:
+- **Root Directory**: `realtime-server`
+- **Build Command**: `npm install`
+- **Start Command**: `npm start`
+- **Health Check Path**: `/health`
+
+Or use the repository-level `render.yaml` file included at project root.
