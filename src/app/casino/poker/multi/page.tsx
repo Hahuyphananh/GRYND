@@ -38,6 +38,7 @@ type Game = {
   waiting?: boolean;
   lastAggressorIndex?: number;
   hostClerkId?: string;
+  actionLog?: { text: string; at: number }[];
 };
 
 const SUITS = ["♠", "♥", "♦", "♣"];
@@ -111,6 +112,7 @@ const [showJoinForm, setShowJoinForm] = useState(false);
 const [aiThinking, setAiThinking] = useState(false);
 const [aiInfoOpen, setAiInfoOpen] = useState(false);
 const [selectedAi, setSelectedAi] = useState<Player | null>(null);
+const [turnTimeLimit, setTurnTimeLimit] = useState(60);
 
   // UI modal / seat state
   const [seatModalOpen, setSeatModalOpen] = useState(false);
@@ -120,6 +122,10 @@ const [selectedAi, setSelectedAi] = useState<Player | null>(null);
 
 
   const maxCurrentBet = (players: Player[]) => Math.max(...players.map(p => p.currentBet || 0));
+  const appendActionLog = (state: Game, text: string): Game => ({
+    ...state,
+    actionLog: [{ text, at: Date.now() }, ...(state.actionLog ?? [])].slice(0, 5),
+  });
 
   const saveGameState = async (state: Game) => {
     if (!state?.inviteCode) return;
@@ -139,7 +145,37 @@ const [selectedAi, setSelectedAi] = useState<Player | null>(null);
       const res = await fetch(`/api/poker/game-state?code=${encodeURIComponent(code)}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (data?.game) setGame(data.game);
+      if (data?.game) {
+        setGame((prev) => {
+          if (!prev) return data.game;
+          if (!Array.isArray(prev.players) || !Array.isArray(data.game.players)) {
+            return data.game;
+          }
+
+          const localPlayersById = new Map(prev.players.map((p) => [p.id, p]));
+          const mergedPlayers = data.game.players.map((remotePlayer: Player) => {
+            const localPlayer = localPlayersById.get(remotePlayer.id);
+            if (!localPlayer) return remotePlayer;
+
+            // Preserve fold state if local action happened but remote poll has not caught up yet.
+            if (localPlayer.hasFolded && !remotePlayer.hasFolded) {
+              return {
+                ...remotePlayer,
+                hasFolded: true,
+                lastAction: localPlayer.lastAction || remotePlayer.lastAction || "Folded",
+                hasActed: true,
+              };
+            }
+
+            return remotePlayer;
+          });
+
+          return {
+            ...data.game,
+            players: mergedPlayers,
+          };
+        });
+      }
     } catch (err) {
       console.error("Failed to fetch game state", err);
     }
@@ -161,6 +197,20 @@ const [selectedAi, setSelectedAi] = useState<Player | null>(null);
       }
     } catch (err) {
       console.error("Error fetching tokens:", err);
+    }
+  };
+
+  const leaveCurrentGame = async () => {
+    if (!game?.inviteCode) return;
+    try {
+      await fetch("/api/poker/leave-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameCode: game.inviteCode }),
+      });
+      socket?.emit("room_event", { roomId: "lobby:poker", event: "lobby:updated" });
+    } catch (err) {
+      console.error("Failed to leave poker game", err);
     }
   };
 
@@ -280,13 +330,13 @@ useEffect(() => {
 
 
 // Turn timer effect — runs whenever the current turn changes
-useEffect(() => {
+  useEffect(() => {
   if (!game) return;
 
   const currentPlayer = game.players[game.currentTurn];
   const isPlayerTurn = currentPlayer && currentPlayer.id === myId;
   setIsMyTurn(isPlayerTurn);
-  setTurnTimer(60); // reset every time the turn changes
+  setTurnTimer(turnTimeLimit); // reset every time the turn changes
 
   if (!isPlayerTurn || game.stage === "showdown" || game.waiting) return;
 
@@ -295,7 +345,12 @@ useEffect(() => {
     setTurnTimer((t) => {
       if (t <= 1) {
         clearInterval(interval);
-        performAction("fold"); // auto fold when time runs out
+        const freshGame = game;
+        const timeoutPlayer = freshGame.players[freshGame.currentTurn];
+        if (!timeoutPlayer || timeoutPlayer.id !== myId) return 0;
+        const highestBet = Math.max(...freshGame.players.map((p) => p.currentBet || 0));
+        const myCurrentBet = timeoutPlayer.currentBet || 0;
+        performAction(myCurrentBet >= highestBet ? "check" : "call");
         return 0;
       }
       return t - 1;
@@ -304,7 +359,7 @@ useEffect(() => {
 
   // cleanup
   return () => clearInterval(interval);
-}, [game?.currentTurn]);
+}, [game?.currentTurn, game, myId, turnTimeLimit]);
 
   // -----------------------------
   // Seat positions (aligned around the table)
@@ -592,14 +647,19 @@ if (current.currentBet < highest) {
         fetchUserTokens();
       }
 
-      setGame(g => g ? ({
-        ...g,
-        players: updatedPlayers,
-        winnerId: winner.id,
-        pot: 0,
-        stage: "showdown",
-        replayVisible: true,
-      }) : g);
+      setGame(g => {
+        if (!g) return g;
+        const nextState = appendActionLog({
+          ...g,
+          players: updatedPlayers,
+          winnerId: winner.id,
+          pot: 0,
+          stage: "showdown",
+          replayVisible: true,
+        }, `${winner.name} wins by fold`);
+        saveGameState(nextState);
+        return nextState;
+      });
 
       return true;
     }
@@ -702,6 +762,7 @@ function getActiveIndices(players: Player[]): number[] {
 
 const activePlayers = players.filter(p => !p.hasFolded);
 const highestBet = Math.max(...players.map(p => p.currentBet));
+const actionSummary = `${current.name}: ${current.lastAction || action}`;
 
 // 🛑 If only one player remains → instant win
 if (activePlayers.length === 1) {
@@ -717,8 +778,8 @@ const bettingComplete = activePlayers.every(
 if (bettingComplete) {
   setGame(g => {
     if (!g) return g;
-    const nextState = { ...g, players, pot: potNew };
-    saveGameState(nextState as Game);
+    const nextState = appendActionLog({ ...g, players, pot: potNew } as Game, actionSummary);
+    saveGameState(nextState);
     return nextState;
   });
 
@@ -731,8 +792,8 @@ const nextTurn = nextActiveFrom(currentIndex, players);
 
 setGame(g => {
   if (!g) return g;
-  const nextState = { ...g, players, pot: potNew, currentTurn: nextTurn };
-  saveGameState(nextState as Game);
+  const nextState = appendActionLog({ ...g, players, pot: potNew, currentTurn: nextTurn } as Game, actionSummary);
+  saveGameState(nextState);
   return nextState;
 });
 }
@@ -827,12 +888,17 @@ saveGameState(nextGame);
       fetchUserTokens();
     }
 
-    const nextGame: Game = {...game,players:updated,winnerId:winner.id,pot:0,stage:"showdown",replayVisible:true};
+    const nextGame: Game = appendActionLog(
+      {...game,players:updated,winnerId:winner.id,pot:0,stage:"showdown",replayVisible:true},
+      `${winner.name} wins at showdown`
+    );
     setGame(nextGame);
     saveGameState(nextGame);
     if (leaveAfterHand) {
       setTimeout(() => {
-        window.location.href = "/casino/poker";
+        leaveCurrentGame().finally(() => {
+          window.location.href = "/casino/poker";
+        });
       }, 2000);
     }
   }
@@ -1122,8 +1188,9 @@ if (showJoinForm) {
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6">
      <div className="absolute top-4 left-4">
   <button
-    onClick={() => {
+    onClick={async () => {
       if (game?.stage === "showdown" || game?.waiting) {
+        await leaveCurrentGame();
         setGame(null); // go back to form page
       } else {
         alert("You can only return to the form after the hand ends!");
@@ -1141,6 +1208,18 @@ if (showJoinForm) {
 
 
       <h1 className="text-3xl mb-4">Texas Hold'em</h1>
+      <div className="mb-3 flex items-center gap-2 text-sm">
+        <span className="text-gray-300">Turn timer:</span>
+        <select
+          value={turnTimeLimit}
+          onChange={(e) => setTurnTimeLimit(Number(e.target.value) || 60)}
+          className="bg-slate-700 border border-slate-500 rounded px-2 py-1"
+        >
+          <option value={15}>15s</option>
+          <option value={30}>30s</option>
+          <option value={60}>60s</option>
+        </select>
+      </div>
 
      {game?.inviteCode && (
   <div className="mb-4 text-center flex items-center justify-center gap-4">
@@ -1186,6 +1265,17 @@ if (showJoinForm) {
     )}
   </div>
 )}
+
+      {(game.actionLog?.length ?? 0) > 0 && (
+        <div className="mb-3 w-full max-w-xl bg-slate-800/70 border border-slate-700 rounded p-2 text-xs">
+          <div className="font-bold text-yellow-300 mb-1">Recent actions</div>
+          <div className="space-y-1">
+            {game.actionLog!.map((entry, idx) => (
+              <div key={`${entry.at}-${idx}`} className="text-slate-200 truncate">• {entry.text}</div>
+            ))}
+          </div>
+        </div>
+      )}
 
 
       <div className="mb-4 flex flex-col items-center">
@@ -1425,6 +1515,18 @@ if (showJoinForm) {
                 )}
           </div>
 
+          <div className="text-[9px] mb-1">
+            {occupant.hasFolded ? (
+              <span className="px-1 py-[1px] rounded bg-red-700 text-white">Folded</span>
+            ) : occupant.stack <= 0 ? (
+              <span className="px-1 py-[1px] rounded bg-purple-700 text-white">All-in</span>
+            ) : game?.players?.[game.currentTurn]?.id === occupant.id ? (
+              <span className="px-1 py-[1px] rounded bg-yellow-500 text-black">Thinking</span>
+            ) : (
+              <span className="px-1 py-[1px] rounded bg-slate-600 text-gray-100">Active</span>
+            )}
+          </div>
+
           {/* Last action line */}
           {occupant.lastAction && (
             <div className="text-[9px] text-gray-300 italic truncate max-w-[100px]">
@@ -1441,7 +1543,7 @@ if (showJoinForm) {
               <div className="h-2 bg-yellow-800 rounded-b-lg overflow-hidden">
                 <div
                   className="h-full bg-yellow-300 transition-all duration-1000"
-                  style={{ width: `${(turnTimer / 60) * 100}%` }}
+                  style={{ width: `${(turnTimer / Math.max(turnTimeLimit, 1)) * 100}%` }}
                 />
               </div>
             </div>
