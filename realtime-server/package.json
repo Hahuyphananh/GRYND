@@ -1,0 +1,17 @@
+{
+  "name": "casino-realtime-server",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "NODE_ENV=production node server.js"
+  },
+  "dependencies": {
+    "@clerk/backend": "^2.29.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
