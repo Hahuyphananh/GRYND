@@ -234,6 +234,7 @@ export default function TanksGamePage() {
 
   const pendingHitsRef = useRef<string[]>([]);
   const gameFinishedRef = useRef(false);
+  const immediateSyncRef = useRef<(() => Promise<void>) | null>(null);
 
   const [mapSeed, setMapSeed] = useState<number>(12345);
   const [playerNames, setPlayerNames] = useState<Record<string, string>>({});
@@ -398,6 +399,7 @@ export default function TanksGamePage() {
     const handleHit = (payload: { attackerId?: string; targetId?: string }) => {
       if (payload?.attackerId === selfId && payload?.targetId) {
         pendingHitsRef.current.push(payload.targetId);
+        immediateSyncRef.current?.();
       }
     };
 
@@ -456,9 +458,14 @@ export default function TanksGamePage() {
       }
     };
 
+    immediateSyncRef.current = syncState;
+
     syncState();
     const interval = setInterval(syncState, 220);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      immediateSyncRef.current = null;
+    };
   }, [routeMatchId, router]);
 
   useEffect(() => {
