@@ -51,6 +51,7 @@ export async function POST(request) {
     return NextResponse.json({ success: true, events }, { status: 200 });
   } catch (err) {
     console.error("Error in /api/get-events:", err);
+    console.log("force redeploy");
     return NextResponse.json(
       { success: false, error: "Erreur serveur" },
       { status: 500 }
