@@ -139,7 +139,37 @@ const [selectedAi, setSelectedAi] = useState<Player | null>(null);
       const res = await fetch(`/api/poker/game-state?code=${encodeURIComponent(code)}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (data?.game) setGame(data.game);
+      if (data?.game) {
+        setGame((prev) => {
+          if (!prev) return data.game;
+          if (!Array.isArray(prev.players) || !Array.isArray(data.game.players)) {
+            return data.game;
+          }
+
+          const localPlayersById = new Map(prev.players.map((p) => [p.id, p]));
+          const mergedPlayers = data.game.players.map((remotePlayer: Player) => {
+            const localPlayer = localPlayersById.get(remotePlayer.id);
+            if (!localPlayer) return remotePlayer;
+
+            // Preserve fold state if local action happened but remote poll has not caught up yet.
+            if (localPlayer.hasFolded && !remotePlayer.hasFolded) {
+              return {
+                ...remotePlayer,
+                hasFolded: true,
+                lastAction: localPlayer.lastAction || remotePlayer.lastAction || "Folded",
+                hasActed: true,
+              };
+            }
+
+            return remotePlayer;
+          });
+
+          return {
+            ...data.game,
+            players: mergedPlayers,
+          };
+        });
+      }
     } catch (err) {
       console.error("Failed to fetch game state", err);
     }
