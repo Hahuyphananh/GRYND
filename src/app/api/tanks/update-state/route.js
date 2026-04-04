@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { tankMatches, tankStats, users } from "../../../../db/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -259,6 +259,78 @@ export async function POST(req) {
 
           await db.delete(tankMatches).where(eq(tankMatches.matchId, matchId));
         }
+      }
+    }
+
+    if (!gameOver && mode === "battle_royale" && alivePlayers.length === 1) {
+      const winnerId = alivePlayers[0];
+      const unresolvedStats = await db
+        .select({ clerkId: tankStats.clerkId, bounty: tankStats.bounty })
+        .from(tankStats)
+        .where(and(eq(tankStats.matchId, matchId), isNull(tankStats.result)));
+
+      const winnerStat = unresolvedStats.find((row) => row.clerkId === winnerId);
+      const winnerPayout = Number(winnerStat?.bounty ?? 0) * 0.9;
+
+      if (winnerStat) {
+        if (winnerPayout > 0) {
+          await db
+            .update(users)
+            .set({ balance: sql`${users.balance} + ${winnerPayout}` })
+            .where(eq(users.clerkId, winnerId));
+        }
+
+        await db
+          .update(tankStats)
+          .set({
+            result: "win",
+            amountCashedOut: winnerPayout,
+          })
+          .where(and(eq(tankStats.matchId, matchId), eq(tankStats.clerkId, winnerId), isNull(tankStats.result)));
+
+        const loserIds = unresolvedStats
+          .map((row) => row.clerkId)
+          .filter((id) => id !== winnerId);
+
+        if (loserIds.length > 0) {
+          await db
+            .update(tankStats)
+            .set({
+              result: "lose",
+              amountCashedOut: 0,
+              bounty: "0.00",
+            })
+            .where(
+              and(
+                eq(tankStats.matchId, matchId),
+                inArray(tankStats.clerkId, loserIds),
+                isNull(tankStats.result)
+              )
+            );
+        }
+
+        gameOver = {
+          winnerId,
+          loserId: null,
+          winnerPayout,
+        };
+
+        await db
+          .update(tankMatches)
+          .set({
+            isOpen: false,
+            gameStarted: false,
+            currentPlayers: 0,
+            players: [],
+            settings: {
+              ...settings,
+              playerStates: {},
+              gameOver,
+            },
+          })
+          .where(eq(tankMatches.matchId, matchId));
+
+        await db.delete(tankMatches).where(eq(tankMatches.matchId, matchId));
       }
     }
 
