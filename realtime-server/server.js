@@ -9,25 +9,54 @@ const { verifyToken } = require('@clerk/backend');
 const app = express();
 
 const PORT = Number(process.env.PORT || 3001);
-const CLIENT_URL = process.env.CLIENT_URL;
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY;
 
-if (!CLIENT_URL) {
+function normalizeOrigin(origin) {
+  return String(origin || '').trim().replace(/\/$/, '');
+}
+
+function getAllowedOrigins() {
+  return String(process.env.CLIENT_URL || '')
+    .split(',')
+    .map((origin) => normalizeOrigin(origin))
+    .filter(Boolean);
+}
+
+const allowedOrigins = getAllowedOrigins();
+
+if (allowedOrigins.length === 0) {
   throw new Error('Missing CLIENT_URL in realtime-server/.env');
 }
 
-app.use(cors({ origin: CLIENT_URL, credentials: true }));
+function isOriginAllowed(origin) {
+  if (!origin) return true; // allow non-browser/health tool requests
+  const normalized = normalizeOrigin(origin);
+  return allowedOrigins.includes(normalized);
+}
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (isOriginAllowed(origin)) return callback(null, true);
+    return callback(new Error('CORS origin not allowed'));
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'realtime-server' });
+  res.json({ ok: true, service: 'realtime-server', allowedOrigins });
 });
 
 const httpServer = http.createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: CLIENT_URL,
+    origin(origin, callback) {
+      if (isOriginAllowed(origin)) return callback(null, true);
+      return callback(new Error('Socket origin not allowed'));
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -102,7 +131,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    // Connection lifecycle event required for clients to handle disconnects.
+    for (const roomId of socket.rooms) {
+      if (roomId === socket.id) continue;
+      socket.to(roomId).emit('player_disconnected', { roomId, userId: socket.data.userId });
+    }
   });
 });
 
