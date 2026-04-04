@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: casino-realtime-server
+    runtime: node
+    rootDir: realtime-server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: CLIENT_URL
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
