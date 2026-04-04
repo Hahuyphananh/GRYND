@@ -140,10 +140,14 @@ const claimDailyReward = async () => {
   }
 
   try {
-    const res = await fetch("/api/claim-login-reward", {
-      method: "POST",
-      credentials: "include",
-    });
+   const res = await fetch("/api/claim-login-reward", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({}), // 👈 REQUIRED
+  credentials: "include",
+});
     const data = await res.json();
 
     if (!res.ok || !data.success) {
