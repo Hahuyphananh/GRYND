@@ -1,19 +1,18 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import type { Socket } from 'socket.io-client';
 import { useAuth } from '@clerk/nextjs';
-import { createSocketConnection, disconnectSocket } from '@/lib/socket';
+import { createSocketConnection, disconnectSocket, type RealtimeSocket } from '../lib/socket';
 
 type SocketContextValue = {
-  socket: Socket | null;
+  socket: RealtimeSocket | null;
 };
 
 const SocketContext = createContext<SocketContextValue>({ socket: null });
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
   const { getToken, isSignedIn } = useAuth();
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [socket, setSocket] = useState<RealtimeSocket | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -31,7 +30,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const instance = createSocketConnection(token);
+      const instance = await createSocketConnection(token);
       if (isMounted) {
         setSocket(instance);
       }

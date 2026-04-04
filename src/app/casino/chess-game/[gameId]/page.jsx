@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Chess } from "chess.js";
-import { useSocket } from "@/context/SocketProvider";
+import { useSocket } from "../../../../context/SocketProvider";
 
 const Chessboard = dynamic(
   async () => {

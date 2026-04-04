@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { LanguageProvider } from '../context/LanguageContext';
 import { ThemeProvider } from '../context/ThemeContext';
 import AppTranslator from '../components/AppTranslator';
-import { SocketProvider } from '@/context/SocketProvider';
+import { SocketProvider } from '../context/SocketProvider';
 
 function AppProviders({ children }: { children: React.ReactNode }) {
   return (
