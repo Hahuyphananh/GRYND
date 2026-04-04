@@ -4,8 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import UnoCard from "../../../components/UnoCard"; 
 import UnoBack from "../../../components/UnoBack"; 
 import NavigationBar from "../../../components/navigation-bar";
+import { useSocket } from "../../../context/SocketProvider";
 
 export default function UnoGamePage() {
+  const { socket } = useSocket();
   const [game, setGame] = useState(null);
   const [gameMode, setGameMode] = useState("ai");
   const [playerHand, setPlayerHand] = useState([]);
@@ -30,6 +32,18 @@ const waitingPollRef = useRef(null);
 useEffect(() => {
   fetchAvailableGames();
 }, []);
+
+useEffect(() => {
+  if (!socket) return;
+  const roomId = "lobby:uno";
+  const handleLobbyUpdate = () => fetchAvailableGames();
+  socket.emit("join_room", { roomId });
+  socket.on("lobby:updated", handleLobbyUpdate);
+  return () => {
+    socket.emit("leave_room", { roomId });
+    socket.off("lobby:updated", handleLobbyUpdate);
+  };
+}, [socket, game, waitingGameId]);
 
   // ✅ Load tokens on page mount
   useEffect(() => {
@@ -269,6 +283,7 @@ const cancelWaitingOnlineGame = async () => {
         setTokens({ balance: data.newBalance });
       }
       fetchAvailableGames();
+      socket?.emit("room_event", { roomId: "lobby:uno", event: "lobby:updated" });
     } else {
       setMessage(data.error || "Impossible d'annuler la partie.");
     }
@@ -305,9 +320,11 @@ const joinSpecificOnlineGame = async (gameId) => {
       setMessage(isMyTurn ? "✅ Partie en ligne trouvée ! Tu commences." : "✅ Partie en ligne trouvée ! L'adversaire commence.");
       setTokens({ balance: data.data.newBalance });
       fetchAvailableGames();
+      socket?.emit("room_event", { roomId: "lobby:uno", event: "lobby:updated" });
     } else {
       setMessage(data.error || "Impossible de rejoindre cette partie");
       fetchAvailableGames();
+      socket?.emit("room_event", { roomId: "lobby:uno", event: "lobby:updated" });
     }
   } catch (err) {
     console.error("Erreur joinSpecificOnlineGame:", err);
@@ -345,6 +362,7 @@ const joinOnlineGame = async () => {
       setMessage(isMyTurn ? "✅ Partie en ligne trouvée ! Tu commences." : "✅ Partie en ligne trouvée ! L'adversaire commence.");
       setTokens({ balance: data.data.newBalance });
       fetchAvailableGames();
+      socket?.emit("room_event", { roomId: "lobby:uno", event: "lobby:updated" });
     } else {
       setMessage(data.error || "Erreur lors de la recherche de partie");
     }

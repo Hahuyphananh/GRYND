@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
+import { useSocket } from '../context/SocketProvider';
 
 const GLOBAL_ROUTES = new Set(['/', '/casino', '/classement', '/rankings']);
 
@@ -64,6 +65,7 @@ export default function ChatWidget() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const { socket } = useSocket();
 
   const room = useMemo(() => {
     if (!pathname) return null;
@@ -119,6 +121,22 @@ export default function ChatWidget() {
     refresh();
   }, [room?.roomType, room?.roomId, isOpen]);
 
+  useEffect(() => {
+    if (!socket || !room || !isOpen) return;
+    const roomKey = `chat:${room.roomType}:${room.roomId}`;
+    const handleChatUpdate = () => {
+      loadMessages().catch(() => {});
+    };
+
+    socket.emit('join_room', { roomId: roomKey });
+    socket.on('chat:updated', handleChatUpdate);
+
+    return () => {
+      socket.emit('leave_room', { roomId: roomKey });
+      socket.off('chat:updated', handleChatUpdate);
+    };
+  }, [socket, room?.roomType, room?.roomId, isOpen]);
+
   async function handleRefresh() {
     setError('');
     try {
@@ -148,6 +166,11 @@ export default function ChatWidget() {
 
       setMessage('');
       await loadMessages();
+      socket?.emit('room_event', {
+        roomId: `chat:${room.roomType}:${room.roomId}`,
+        event: 'chat:updated',
+        payload: { roomType: room.roomType, roomId: room.roomId },
+      });
     } catch (err) {
       setError(err.message || 'Failed to send message.');
     } finally {
@@ -165,6 +188,11 @@ export default function ChatWidget() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Moderation request failed.');
       await loadMessages();
+      socket?.emit('room_event', {
+        roomId: `chat:${room.roomType}:${room.roomId}`,
+        event: 'chat:updated',
+        payload: { roomType: room.roomType, roomId: room.roomId },
+      });
     } catch (err) {
       setError(err.message || 'Could not moderate this message.');
     }
@@ -230,7 +258,7 @@ export default function ChatWidget() {
             )}
           </div>
 
-          <p className="mb-2 text-[11px] text-slate-400">Manual refresh mode enabled.</p>
+          <p className="mb-2 text-[11px] text-slate-400">Live updates enabled with refresh fallback.</p>
 
           {!isSignedIn ? (
             <p className="text-xs text-slate-400">Sign in to join chat.</p>
