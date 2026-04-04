@@ -434,7 +434,7 @@ useEffect(() => {
       setMyGameId(gameId);
       setChoiceDeadline(json.data.choiceDeadline || null);
       setGameStatus("matched");
-      setMessage("Choose heads or tails in 5 seconds.");
+      setMessage("Choose heads or tails in 10 seconds.");
       socket?.emit("room_event", { roomId: "lobby:coin-flip", event: "lobby:updated" });
     } else {
       setMessage(json.error);

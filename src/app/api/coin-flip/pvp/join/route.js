@@ -44,7 +44,7 @@ export async function POST(req) {
 
       if (!joiner) throw new Error("Insufficient balance");
 
-      const choiceDeadline = new Date(Date.now() + 5000);
+      const choiceDeadline = new Date(Date.now() + 10000);
 
       const [updatedGame] = await tx
         .update(coinFlipGames)
