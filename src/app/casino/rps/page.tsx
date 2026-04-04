@@ -1,10 +1,12 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import NavigationBar from "../../../components/navigation-bar";
+import { useSocket } from "../../../context/SocketProvider";
 
 const PVP_CHOICES = ["rock", "paper", "scissors"];
 
 export default function RPSGame() {
+  const { socket } = useSocket();
   const [tokens, setTokens] = useState(0);
   const [betAmount, setBetAmount] = useState(10);
   const [playerChoice, setPlayerChoice] = useState<string | null>(null);
@@ -59,6 +61,20 @@ export default function RPSGame() {
       fetchAvailablePvpGames();
     }
   }, [mode]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const roomId = "lobby:rps";
+    const handleLobbyUpdate = () => {
+      if (mode === "pvp") fetchAvailablePvpGames();
+    };
+    socket.emit("join_room", { roomId });
+    socket.on("lobby:updated", handleLobbyUpdate);
+    return () => {
+      socket.emit("leave_room", { roomId });
+      socket.off("lobby:updated", handleLobbyUpdate);
+    };
+  }, [socket, mode]);
 
   useEffect(() => {
     if (!pvpGameId) return;
@@ -292,6 +308,7 @@ export default function RPSGame() {
         setTokens(data.data.newBalance);
         setPvpMessage("Game created. Waiting for opponent...");
         fetchAvailablePvpGames();
+        socket?.emit("room_event", { roomId: "lobby:rps", event: "lobby:updated" });
       }
     } catch (err) {
       console.error("Failed to create RPS PvP game:", err);
@@ -329,6 +346,7 @@ export default function RPSGame() {
         setTokens(data.data.newBalance);
         setPvpMessage("Joined game. Pick your move.");
         fetchAvailablePvpGames();
+        socket?.emit("room_event", { roomId: "lobby:rps", event: "lobby:updated" });
       }
     } catch (err) {
       console.error("Failed to join RPS PvP game:", err);
@@ -392,6 +410,7 @@ export default function RPSGame() {
         setPvpCountdown(null);
         setPvpMessage("Game cancelled");
         fetchAvailablePvpGames();
+        socket?.emit("room_event", { roomId: "lobby:rps", event: "lobby:updated" });
       }
     } catch (err) {
       console.error("Failed to cancel RPS PvP game:", err);
