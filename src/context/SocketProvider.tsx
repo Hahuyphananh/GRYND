@@ -11,10 +11,12 @@ type SocketContextValue = {
 const SocketContext = createContext<SocketContextValue>({ socket: null });
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const { getToken, isSignedIn } = useAuth();
+  const { getToken, isSignedIn, isLoaded } = useAuth(); // ✅ added isLoaded
   const [socket, setSocket] = useState<RealtimeSocket | null>(null);
 
   useEffect(() => {
+    if (!isLoaded) return; // ✅ wait for Clerk hydration
+
     let isMounted = true;
 
     async function initSocket() {
@@ -25,10 +27,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       }
 
       const token = await getToken();
-      if (!token) {
-        setSocket(null);
-        return;
-      }
+      if (!token) return;
 
       const instance = await createSocketConnection(token);
       if (isMounted) {
@@ -41,7 +40,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [getToken, isSignedIn]);
+  }, [getToken, isSignedIn, isLoaded]);
 
   const value = useMemo(() => ({ socket }), [socket]);
 

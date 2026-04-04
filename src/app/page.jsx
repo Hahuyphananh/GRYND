@@ -57,9 +57,11 @@ const handleLoadSports = async () => {
     const res = await fetch("/api/sports/list");
     const data = await res.json();
 
-    const grouped = {};
+const sportsArray = Array.isArray(data?.sports) ? data.sports : [];
 
-    data.sports.forEach((sport) => {
+const grouped = {};
+
+sportsArray.forEach((sport) => {
       console.log("SPORT FROM API:", {
   key: sport.key,
   group: sport.group,
@@ -199,17 +201,21 @@ useEffect(() => {
 
 const fetchEventsByLeague = async (leagueKey) => {
   console.log("FETCHING EVENTS FOR LEAGUE:", leagueKey);
-console.log("API RESPONSE:", data);
 
   if (!leagueKey) return;
 
   try {
     setLoadingEvents(true);
+
     const res = await fetch(`/api/sports/${leagueKey}`);
     const data = await res.json();
 
-    if (data.success) {
+    console.log("API RESPONSE:", data);
+
+    if (data.success && Array.isArray(data.events)) {
       setEvents(data.events);
+    } else {
+      setEvents([]);
     }
   } catch (err) {
     setErrorEvents("Failed to load events");
@@ -522,7 +528,8 @@ useEffect(() => {
 
       {openGroup === groupKey && (
         <div className="p-4 bg-[#001a33] grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {sports[groupKey].map((league) => (
+          {Array.isArray(sports[groupKey]) &&
+  sports[groupKey].map((league) => (
             <SportCard
               key={league.key}
               icon="fa-trophy"
