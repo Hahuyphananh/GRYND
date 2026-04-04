@@ -157,6 +157,7 @@ type PlayerState = {
   y: number;
   rotation: number;
   health: number;
+  ammo?: number;
   bullets?: BulletState[];
   updatedAt?: number;
 };
@@ -216,7 +217,6 @@ export default function TanksGamePage() {
   bountyRef.current = bounty;
 
   const MAX_AMMO = 5;
-  const AMMO_RECHARGE_RATE = 1000;
   const [ammo, setAmmo] = useState(MAX_AMMO);
   const ammoRef = useRef(ammo);
   ammoRef.current = ammo;
@@ -234,7 +234,6 @@ export default function TanksGamePage() {
 
   const pendingHitsRef = useRef<string[]>([]);
   const gameFinishedRef = useRef(false);
-  const hasInitializedSpawnRef = useRef(false);
 
   const [mapSeed, setMapSeed] = useState<number>(12345);
   const [playerNames, setPlayerNames] = useState<Record<string, string>>({});
@@ -244,13 +243,11 @@ export default function TanksGamePage() {
   const rotationRef = useRef(rotation);
   rotationRef.current = rotation;
 
-  const [bullets, setBullets] = useState<{ x: number; y: number; angle: number }[]>([]);
-  const bulletsRef = useRef(bullets);
-  bulletsRef.current = bullets;
+  const [serverBullets, setServerBullets] = useState<BulletState[]>([]);
+  const targetBulletsRef = useRef<BulletState[]>([]);
 
   const keys = useRef<{ [key: string]: boolean }>({});
-  const speed = 2;
-  const BULLET_SPEED = 6;
+  const INPUT_TICK_MS = 33;
   const WATER_Y = MAP_HEIGHT * 0.67;
   const SHORE_TRANSITION = 130;
 
@@ -267,12 +264,7 @@ export default function TanksGamePage() {
   const lastFrameRef = useRef<number>(0);
 
   const isWaterTile = (y: number) => y >= WATER_Y;
-  const getSpeedFactor = (y: number) => {
-    if (y < WATER_Y - SHORE_TRANSITION) return 1;
-    if (y >= WATER_Y) return 0.56;
-    const t = (y - (WATER_Y - SHORE_TRANSITION)) / SHORE_TRANSITION;
-    return 1 - t * 0.44;
-  };
+
 
   const playHitSound = () => {
     if (typeof window === "undefined") return;
@@ -297,34 +289,6 @@ export default function TanksGamePage() {
       console.warn("Unable to play hit sound", err);
     }
   };
-
-  function lineIntersectsCircle(x1: number, y1: number, x2: number, y2: number, cx: number, cy: number, r: number) {
-    const vx = x2 - x1;
-    const vy = y2 - y1;
-    const wx = cx - x1;
-    const wy = cy - y1;
-    const len2 = vx * vx + vy * vy;
-
-    if (len2 === 0) return (cx - x1) ** 2 + (cy - y1) ** 2 <= r * r;
-
-    const t = Math.max(0, Math.min(1, (wx * vx + wy * vy) / len2));
-    const px = x1 + vx * t;
-    const py = y1 + vy * t;
-    const dx = px - cx;
-    const dy = py - cy;
-    return dx * dx + dy * dy <= r * r;
-  }
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (ammoRef.current < MAX_AMMO) {
-        ammoRef.current += 1;
-        setAmmo(ammoRef.current);
-      }
-    }, AMMO_RECHARGE_RATE);
-
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     setMatchId(routeMatchId ?? null);
@@ -382,18 +346,70 @@ export default function TanksGamePage() {
 
   useEffect(() => {
     if (!socket || !routeMatchId) return;
-    const roomId = `match:tanks:${routeMatchId}`;
-    const handleRemoteState = (payload: { userId?: string; state?: PlayerState }) => {
-      if (!payload?.userId || !payload?.state || payload.userId === selfId) return;
-      setRemotePlayers((prev) => ({ ...prev, [payload.userId as string]: payload.state as PlayerState }));
+
+    socket.emit("tanks:join_game", {
+      gameId: routeMatchId,
+      settings: {
+        mapWidth: MAP_WIDTH,
+        mapHeight: MAP_HEIGHT,
+        mapSeed,
+        rockCount: MAP_PROFILES[mapProfile].rockCount,
+        maxHealth: MAX_HEALTH,
+      },
+    });
+
+    const handleGameState = (payload: { players?: Record<string, PlayerState>; bullets?: BulletState[] }) => {
+      const players = payload?.players ?? {};
+      const bullets = Array.isArray(payload?.bullets) ? payload.bullets : [];
+
+      const currentSelfId = selfId;
+      if (currentSelfId && players[currentSelfId]) {
+        const own = players[currentSelfId];
+        if (own.health < healthRef.current) {
+          selfHitUntilRef.current = performance.now() + 220;
+          playHitSound();
+        }
+        healthRef.current = own.health;
+        setHealth(own.health);
+        if (typeof own.ammo === "number") {
+          ammoRef.current = own.ammo;
+          setAmmo(own.ammo);
+        }
+        posRef.current = { x: own.x, y: own.y };
+        setPos({ x: own.x, y: own.y });
+      }
+
+      const others = Object.fromEntries(
+        Object.entries(players).filter(([id]) => id !== currentSelfId)
+      ) as Record<string, PlayerState>;
+
+      for (const [id, nextState] of Object.entries(others)) {
+        const previous = remotePlayersRef.current[id];
+        if (previous && typeof nextState.health === "number" && nextState.health < previous.health) {
+          remoteHitUntilRef.current[id] = performance.now() + 220;
+          playHitSound();
+        }
+      }
+
+      setRemotePlayers(others);
+      targetBulletsRef.current = bullets;
     };
-    socket.emit("join_room", { roomId });
-    socket.on("tanks:state", handleRemoteState);
+
+    const handleHit = (payload: { attackerId?: string; targetId?: string }) => {
+      if (payload?.attackerId === selfId && payload?.targetId) {
+        pendingHitsRef.current.push(payload.targetId);
+      }
+    };
+
+    socket.on("tanks:game_state", handleGameState);
+    socket.on("tanks:hit", handleHit);
+
     return () => {
-      socket.emit("leave_room", { roomId });
-      socket.off("tanks:state", handleRemoteState);
+      socket.emit("tanks:leave_game", { gameId: routeMatchId });
+      socket.off("tanks:game_state", handleGameState);
+      socket.off("tanks:hit", handleHit);
     };
-  }, [socket, routeMatchId, selfId]);
+  }, [socket, routeMatchId, selfId, MAP_WIDTH, MAP_HEIGHT, mapSeed, mapProfile]);
 
   useEffect(() => {
     if (!routeMatchId) return;
@@ -409,7 +425,7 @@ export default function TanksGamePage() {
             y: posRef.current.y,
             rotation: rotationRef.current,
             hits: pendingHitsRef.current.splice(0),
-            bullets: bulletsRef.current,
+            bullets: [],
           }),
         });
 
@@ -425,88 +441,29 @@ export default function TanksGamePage() {
         const data = await res.json();
         setSelfId(data.selfId);
 
-        const ownState = data.playerStates?.[data.selfId];
-        if (ownState && typeof ownState.health === "number") {
-          if (ownState.health < healthRef.current) {
-            selfHitUntilRef.current = performance.now() + 220;
-            playHitSound();
-          }
-          setHealth(ownState.health);
-          healthRef.current = ownState.health;
-        }
-
-        if (
-          ownState &&
-          !hasInitializedSpawnRef.current &&
-          Number.isFinite(Number(ownState.x)) &&
-          Number.isFinite(Number(ownState.y))
-        ) {
-          const spawnedPos = { x: Number(ownState.x), y: Number(ownState.y) };
-          hasInitializedSpawnRef.current = true;
-          posRef.current = spawnedPos;
-          setPos(spawnedPos);
-        }
-
         if (data?.gameOver && !gameFinishedRef.current) {
           gameFinishedRef.current = true;
           if (data.gameOver.winnerId === data.selfId) {
-            showGameAlert(`🏆 Victory!\n+${Number(data.gameOver.winnerPayout).toFixed(2)} tokens`);
+            showGameAlert(`🏆 Victory!
++${Number(data.gameOver.winnerPayout).toFixed(2)} tokens`);
           } else {
             showGameAlert("💀 You were destroyed");
           }
           router.push("/casino/tanks");
-          return;
         }
-
-        const others = Object.fromEntries(
-          Object.entries(data.playerStates ?? {}).filter(([id]) => id !== data.selfId)
-        ) as Record<string, PlayerState>;
-
-        for (const [id, nextState] of Object.entries(others)) {
-          const previous = remotePlayersRef.current[id];
-          if (previous && typeof nextState.health === "number" && nextState.health < previous.health) {
-            remoteHitUntilRef.current[id] = performance.now() + 220;
-            playHitSound();
-          }
-        }
-
-        setRemotePlayers(others);
       } catch (err) {
         console.error("State sync error:", err);
       }
     };
 
     syncState();
-    const interval = setInterval(syncState, 180);
+    const interval = setInterval(syncState, 220);
     return () => clearInterval(interval);
-  }, [routeMatchId]);
+  }, [routeMatchId, router]);
 
   useEffect(() => {
-    if (!socket || !routeMatchId || !selfId) return;
-    const roomId = `match:tanks:${routeMatchId}`;
-    const interval = setInterval(() => {
-      socket.emit("room_event", {
-        roomId,
-        event: "tanks:state",
-        payload: {
-          state: {
-            x: posRef.current.x,
-            y: posRef.current.y,
-            rotation: rotationRef.current,
-            health: healthRef.current,
-            bullets: bulletsRef.current,
-            updatedAt: Date.now(),
-          },
-        },
-      });
-    }, 60);
-
-    return () => clearInterval(interval);
-  }, [socket, routeMatchId, selfId]);
-
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => (keys.current[e.key] = true);
-    const up = (e: KeyboardEvent) => (keys.current[e.key] = false);
+    const down = (e: KeyboardEvent) => (keys.current[e.key.toLowerCase()] = true);
+    const up = (e: KeyboardEvent) => (keys.current[e.key.toLowerCase()] = false);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     return () => {
@@ -526,34 +483,35 @@ export default function TanksGamePage() {
   }, []);
 
   useEffect(() => {
+    if (!socket || !routeMatchId) return;
+    const interval = setInterval(() => {
+      socket.emit("tanks:input", {
+        gameId: routeMatchId,
+        input: {
+          w: !!keys.current["w"],
+          a: !!keys.current["a"],
+          s: !!keys.current["s"],
+          d: !!keys.current["d"],
+        },
+        rotation: rotationRef.current,
+      });
+    }, INPUT_TICK_MS);
+
+    return () => clearInterval(interval);
+  }, [socket, routeMatchId]);
+
+  useEffect(() => {
+    if (!socket || !routeMatchId) return;
     const handleMouse = (e: MouseEvent) => {
-      if (e.button !== 0 || ammoRef.current <= 0) return;
-
-      ammoRef.current -= 1;
-      setAmmo(ammoRef.current);
-
-      const px = posRef.current.x;
-      const py = posRef.current.y;
-      const rot = rotationRef.current;
-      const rad = ((rot - 90) * Math.PI) / 180;
-      const spawnDist = 35;
-
-      const newBullet = {
-        x: px + Math.cos(rad) * spawnDist,
-        y: py + Math.sin(rad) * spawnDist,
-        angle: rot,
-      };
-
-      bulletsRef.current = [...bulletsRef.current, newBullet];
-      setBullets(bulletsRef.current);
+      if (e.button !== 0) return;
+      socket.emit("tanks:shoot", { gameId: routeMatchId });
     };
 
     window.addEventListener("mousedown", handleMouse);
     return () => window.removeEventListener("mousedown", handleMouse);
-  }, []);
+  }, [socket, routeMatchId]);
 
   useEffect(() => {
-    const TANK_RADIUS = 22;
     function gameLoop(frameTime: number) {
       const dt = lastFrameRef.current ? Math.min(2.2, (frameTime - lastFrameRef.current) / 16.6667) : 1;
       lastFrameRef.current = frameTime;
@@ -582,73 +540,19 @@ export default function TanksGamePage() {
 
       renderRemotePlayersRef.current = smoothed;
       setRenderRemotePlayers(smoothed);
-      let dx = 0;
-      let dy = 0;
-      if (keys.current["w"]) dy -= 1;
-      if (keys.current["s"]) dy += 1;
-      if (keys.current["a"]) dx -= 1;
-      if (keys.current["d"]) dx += 1;
-      if (dx && dy) {
-        dx *= 0.7;
-        dy *= 0.7;
-      }
 
-      const curPos = posRef.current;
-      const speedFactor = getSpeedFactor(curPos.y);
-      const nextX = curPos.x + dx * speed * speedFactor * dt;
-      const nextY = curPos.y + dy * speed * speedFactor * dt;
-
-      let blocked = false;
-      for (const rock of rocks) {
-        const cx = rock.x + rock.size / 2;
-        const cy = rock.y + rock.size / 2;
-        const rockR = rock.size / 2;
-        if (Math.hypot(nextX - cx, nextY - cy) < rockR + TANK_RADIUS) blocked = true;
-      }
-
-      if (!blocked) {
-        const newPos = {
-          x: Math.min(MAP_WIDTH, Math.max(0, nextX)),
-          y: Math.min(MAP_HEIGHT, Math.max(0, nextY)),
-        };
-        posRef.current = newPos;
-        setPos(newPos);
-      }
-
-      const nextBullets = bulletsRef.current.filter((b) => {
-        const rad = ((b.angle - 90) * Math.PI) / 180;
-        const nx = b.x + Math.cos(rad) * BULLET_SPEED;
-        const ny = b.y + Math.sin(rad) * BULLET_SPEED;
-
-        const hitRock = rocks.some((r) =>
-          lineIntersectsCircle(b.x, b.y, nx, ny, r.x + r.size / 2, r.y + r.size / 2, r.size / 2)
-        );
-
-        if (hitRock) return false;
-
-        const hitPlayerEntry = Object.entries(remotePlayersRef.current).find(([_, player]) =>
-          lineIntersectsCircle(b.x, b.y, nx, ny, player.x, player.y, TANK_RADIUS)
-        );
-
-        if (hitPlayerEntry) {
-          const [targetId] = hitPlayerEntry;
-          pendingHitsRef.current.push(targetId);
-          remoteHitUntilRef.current[targetId] = performance.now() + 220;
-          playHitSound();
-          return false;
-        }
-
-        if (nx >= 0 && nx <= MAP_WIDTH && ny >= 0 && ny <= MAP_HEIGHT) {
-          b.x = nx;
-          b.y = ny;
-          return true;
-        }
-
-        return false;
+      setServerBullets((prev) => {
+        const target = targetBulletsRef.current;
+        return target.map((bullet, i) => {
+          const current = prev[i] ?? bullet;
+          const smoothing = 0.35 * dt;
+          return {
+            ...bullet,
+            x: current.x + (bullet.x - current.x) * smoothing,
+            y: current.y + (bullet.y - current.y) * smoothing,
+          };
+        });
       });
-
-      bulletsRef.current = nextBullets;
-      setBullets(nextBullets);
 
       rafLoopRef.current = requestAnimationFrame(gameLoop);
     }
@@ -657,7 +561,7 @@ export default function TanksGamePage() {
     return () => {
       if (rafLoopRef.current !== null) cancelAnimationFrame(rafLoopRef.current);
     };
-  }, [rocks]);
+  }, []);
 
   const cameraX = typeof window !== "undefined" ? window.innerWidth / 2 - pos.x : 0;
   const cameraY = typeof window !== "undefined" ? window.innerHeight / 2 - pos.y : 0;
@@ -826,17 +730,7 @@ export default function TanksGamePage() {
           />
         </div>
 
-        {Object.entries(renderRemotePlayers).flatMap(([id, tank]) =>
-          (tank.bullets ?? []).map((b, i) => (
-            <div
-              key={`remote-${id}-${i}`}
-              className="absolute w-3 h-3 bg-zinc-800 rounded-full"
-              style={{ left: b.x - 2, top: b.y - 2 }}
-            />
-          ))
-        )}
-
-        {bullets.map((b, i) => (
+        {serverBullets.map((b, i) => (
           <div key={i} className="absolute w-3 h-3 bg-black rounded-full" style={{ left: b.x - 2, top: b.y - 2 }} />
         ))}
       </div>
