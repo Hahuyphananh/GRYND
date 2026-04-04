@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import PlayerTank from "../../../../../components/PlayerTank";
 import { useParams, useRouter } from "next/navigation";
 import WaitingRoom from "./components/WaitingRoom";
+import { useSocket } from "../../../../../context/SocketProvider";
 
 function createSeededRandom(seed: number) {
   let t = seed >>> 0;
@@ -190,6 +191,7 @@ export default function TanksGamePage() {
   const router = useRouter();
   const params = useParams<{ matchId: string }>();
   const routeMatchId = params?.matchId;
+  const { socket } = useSocket();
 
   const [mapProfile, setMapProfile] = useState<keyof typeof MAP_PROFILES>("classic");
   const [minPlayersToStart, setMinPlayersToStart] = useState(2);
@@ -374,9 +376,24 @@ export default function TanksGamePage() {
     };
 
     checkMatch();
-    const interval = setInterval(checkMatch, 1500);
+    const interval = setInterval(checkMatch, 4000);
     return () => clearInterval(interval);
   }, [routeMatchId]);
+
+  useEffect(() => {
+    if (!socket || !routeMatchId) return;
+    const roomId = `match:tanks:${routeMatchId}`;
+    const handleRemoteState = (payload: { userId?: string; state?: PlayerState }) => {
+      if (!payload?.userId || !payload?.state || payload.userId === selfId) return;
+      setRemotePlayers((prev) => ({ ...prev, [payload.userId as string]: payload.state as PlayerState }));
+    };
+    socket.emit("join_room", { roomId });
+    socket.on("tanks:state", handleRemoteState);
+    return () => {
+      socket.emit("leave_room", { roomId });
+      socket.off("tanks:state", handleRemoteState);
+    };
+  }, [socket, routeMatchId, selfId]);
 
   useEffect(() => {
     if (!routeMatchId) return;
@@ -460,9 +477,32 @@ export default function TanksGamePage() {
     };
 
     syncState();
-    const interval = setInterval(syncState, 70);
+    const interval = setInterval(syncState, 180);
     return () => clearInterval(interval);
   }, [routeMatchId]);
+
+  useEffect(() => {
+    if (!socket || !routeMatchId || !selfId) return;
+    const roomId = `match:tanks:${routeMatchId}`;
+    const interval = setInterval(() => {
+      socket.emit("room_event", {
+        roomId,
+        event: "tanks:state",
+        payload: {
+          state: {
+            x: posRef.current.x,
+            y: posRef.current.y,
+            rotation: rotationRef.current,
+            health: healthRef.current,
+            bullets: bulletsRef.current,
+            updatedAt: Date.now(),
+          },
+        },
+      });
+    }, 60);
+
+    return () => clearInterval(interval);
+  }, [socket, routeMatchId, selfId]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => (keys.current[e.key] = true);

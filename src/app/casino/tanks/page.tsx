@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
+import { useSocket } from "../../../context/SocketProvider";
 
 export default function TanksLobby() {
   const { isSignedIn, user } = useUser();
@@ -15,6 +16,7 @@ export default function TanksLobby() {
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   const [joiningMatchId, setJoiningMatchId] = useState<string | null>(null);
   const [showModePopup, setShowModePopup] = useState(false);
+  const { socket } = useSocket();
   const router = useRouter();
 
   const fetchUserTokens = async () => {
@@ -61,9 +63,16 @@ export default function TanksLobby() {
   }, [isSignedIn, user]);
 
   useEffect(() => {
-    const interval = setInterval(fetchAvailableGames, 4000);
-    return () => clearInterval(interval);
-  }, []);
+    if (!socket) return;
+    const roomId = "lobby:tanks";
+    const handleLobbyUpdate = () => fetchAvailableGames();
+    socket.emit("join_room", { roomId });
+    socket.on("lobby:updated", handleLobbyUpdate);
+    return () => {
+      socket.emit("leave_room", { roomId });
+      socket.off("lobby:updated", handleLobbyUpdate);
+    };
+  }, [socket]);
 
 async function joinGame(matchId?: string) {
   try {
@@ -84,6 +93,7 @@ async function joinGame(matchId?: string) {
     }
 
     // Redirect to game with the returned matchId
+    socket?.emit("room_event", { roomId: "lobby:tanks", event: "lobby:updated" });
     router.push(`/casino/tanks/game/${data.matchId}`);
   } catch (err) {
     console.error("Join match error:", err);
@@ -120,6 +130,7 @@ async function joinGame(matchId?: string) {
       setBalance(prev => prev - wager);
 
       // Redirect to game with matchId
+      socket?.emit("room_event", { roomId: "lobby:tanks", event: "lobby:updated" });
       router.push(`/casino/tanks/game/${data.matchId}`);
     } catch (err) {
       console.error("Start match error:", err);

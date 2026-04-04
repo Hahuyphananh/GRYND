@@ -57,6 +57,25 @@ io.use(async (socket, next) => {
 });
 
 io.on('connection', (socket) => {
+  socket.on('join_room', ({ roomId }) => {
+    if (!roomId) return;
+    socket.join(String(roomId));
+  });
+
+  socket.on('leave_room', ({ roomId }) => {
+    if (!roomId) return;
+    socket.leave(String(roomId));
+  });
+
+  socket.on('room_event', ({ roomId, event, payload }) => {
+    if (!roomId || !event) return;
+    io.to(String(roomId)).emit(String(event), {
+      ...(payload && typeof payload === 'object' ? payload : {}),
+      userId: socket.data.userId,
+      sentAt: new Date().toISOString(),
+    });
+  });
+
   socket.on('join_game', ({ gameId }) => {
     if (!gameId) return;
     const roomId = String(gameId);

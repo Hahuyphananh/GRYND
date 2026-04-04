@@ -2,6 +2,7 @@
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
 import { useEffect, useState } from "react";
+import { useSocket } from "../../../context/SocketProvider";
 
 const TABLES = [1, 5, 10, 20, 50, 100];
 const TIMER_OPTIONS = [
@@ -12,6 +13,7 @@ const TIMER_OPTIONS = [
 
 export default function ChessLobby() {
   const router = useRouter();
+  const { socket } = useSocket();
 
   const [showBetPopup, setShowBetPopup] = useState(false);
   const [betAmount, setBetAmount] = useState("");
@@ -25,6 +27,18 @@ export default function ChessLobby() {
   useEffect(() => {
     fetchAvailableGames();
   }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+    const roomId = "lobby:chess";
+    const handleLobbyUpdate = () => fetchAvailableGames();
+    socket.emit("join_room", { roomId });
+    socket.on("lobby:updated", handleLobbyUpdate);
+    return () => {
+      socket.emit("leave_room", { roomId });
+      socket.off("lobby:updated", handleLobbyUpdate);
+    };
+  }, [socket]);
 
   async function fetchAvailableGames() {
     setIsLoadingAvailableGames(true);
@@ -59,10 +73,12 @@ export default function ChessLobby() {
 
       const timerParam = data.timerMode || selectedTimer;
       if (data.ready || data.status === "in_progress") {
+        socket?.emit("room_event", { roomId: "lobby:chess", event: "lobby:updated" });
         router.push(`/casino/chess-game/${data.gameId}?color=${data.color}&timer=${timerParam}`);
         return;
       }
 
+      socket?.emit("room_event", { roomId: "lobby:chess", event: "lobby:updated" });
       router.push(`/casino/chess/${selectedTable}?gameId=${data.gameId}&color=${data.color}&timer=${timerParam}`);
     } catch (error) {
       console.error("Failed to create chess game", error);
@@ -88,6 +104,7 @@ export default function ChessLobby() {
         return;
       }
 
+      socket?.emit("room_event", { roomId: "lobby:chess", event: "lobby:updated" });
       router.push(`/casino/chess-game/${gameId}?color=black&timer=${targetGame?.timerMode || "blitz"}`);
     } catch (error) {
       console.error("Failed to join chess game", error);

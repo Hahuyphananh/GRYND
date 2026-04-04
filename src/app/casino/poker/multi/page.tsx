@@ -5,6 +5,7 @@ import { Card, evaluateHand } from "../../../lib/handEval";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
+import { useSocket } from "../../../../context/SocketProvider";
 
 type Player = {
   id: string;
@@ -90,6 +91,7 @@ function nextActiveFrom(currentIndex: number, players: Player[]): number {
 
 export default function PokerPage() {
   const { user } = useUser();
+  const { socket } = useSocket();
   const clerkId = user?.id; 
   const myId = clerkId;
   const router = useRouter();
@@ -247,6 +249,18 @@ useEffect(() => {
   fetchPublicGamesCount();
 }, []);
 
+useEffect(() => {
+  if (!socket) return;
+  const roomId = "lobby:poker";
+  const handleLobbyUpdate = () => fetchPublicGamesCount();
+  socket.emit("join_room", { roomId });
+  socket.on("lobby:updated", handleLobbyUpdate);
+  return () => {
+    socket.emit("leave_room", { roomId });
+    socket.off("lobby:updated", handleLobbyUpdate);
+  };
+}, [socket]);
+
 // Multiplayer Waiting List Auto-Refresh
 useEffect(() => {
   const interval = setInterval(() => {
@@ -344,6 +358,7 @@ useEffect(() => {
       setGame(newGame);
       if (data.gameCode) {
         await saveGameState(newGame);
+        socket?.emit("room_event", { roomId: "lobby:poker", event: "lobby:updated" });
         router.replace(`/casino/poker/multi?gameCode=${data.gameCode}`);
       }
 
@@ -447,6 +462,7 @@ async function joinGame(codeOverride?: string) {
     }
 
     const serverGame = data.game;
+    socket?.emit("room_event", { roomId: "lobby:poker", event: "lobby:updated" });
 
     const players: Player[] = (serverGame.players || [])
       .filter((p: any) => p.clerkId)
@@ -508,6 +524,7 @@ async function joinGame(codeOverride?: string) {
 
       setInviteCode(data.gameCode);
       await joinGame(data.gameCode);
+      socket?.emit("room_event", { roomId: "lobby:poker", event: "lobby:updated" });
     } catch (err) {
       console.error("Join public game error:", err);
       alert("Failed to join public game. See console.");
