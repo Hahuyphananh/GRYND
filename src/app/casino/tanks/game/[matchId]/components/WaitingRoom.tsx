@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
+import { useSocket } from "../../../../../../context/SocketProvider";
 
 type WaitingRoomProps = {
   gameId: string;
@@ -21,6 +22,7 @@ export default function WaitingRoom({ gameId, onReady, minPlayersToStart, maxPla
 
   const router = useRouter();
   const { user } = useUser();
+  const { socket } = useSocket();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -100,6 +102,7 @@ export default function WaitingRoom({ gameId, onReady, minPlayersToStart, maxPla
       }
       setIsReady(nextReady);
       setReadyCount(Number(data.readyCount ?? 0));
+      socket?.emit("room_event", { roomId: `match:tanks:${gameId}`, event: "match:updated" });
     } catch (err) {
       console.error("Failed toggling ready:", err);
     }
@@ -117,6 +120,7 @@ export default function WaitingRoom({ gameId, onReady, minPlayersToStart, maxPla
     }
 
     if (intervalRef.current) clearInterval(intervalRef.current);
+    socket?.emit("room_event", { roomId: `match:tanks:${gameId}`, event: "match:updated" });
     router.push("/casino/tanks");
   };
 

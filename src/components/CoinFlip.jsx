@@ -2,6 +2,7 @@
 import NavigationBar from "../components/navigation-bar";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; // ✅ For navigation
+import { useSocket } from "../context/SocketProvider";
 
 const HOUSE_EDGE = 0.98;
 const FEE = 0.02;
@@ -218,6 +219,7 @@ function SoloCoinFlip() {
 
 // ------------------- PvP Coin Flip ------------------- //
 function PvPCoinFlip() {
+  const { socket } = useSocket();
   const [bet, setBet] = useState(10);
   const [flipping, setFlipping] = useState(false);
   const [message, setMessage] = useState("");
@@ -261,6 +263,18 @@ function PvPCoinFlip() {
 useEffect(() => {
   fetchGames(); // load once
 }, []);
+
+useEffect(() => {
+  if (!socket) return;
+  const roomId = "lobby:coin-flip";
+  const handleLobbyUpdate = () => fetchGames();
+  socket.emit("join_room", { roomId });
+  socket.on("lobby:updated", handleLobbyUpdate);
+  return () => {
+    socket.emit("leave_room", { roomId });
+    socket.off("lobby:updated", handleLobbyUpdate);
+  };
+}, [socket]);
 
   useEffect(() => {
     if (!myGameId) return;
@@ -350,6 +364,7 @@ useEffect(() => {
       setMyGameId(json.data.gameId);
       setMyBet(json.data.betAmount);
       setMessage("Waiting for opponent...");
+      socket?.emit("room_event", { roomId: "lobby:coin-flip", event: "lobby:updated" });
     } else {
       setMessage(json.error);
     }
@@ -393,6 +408,7 @@ useEffect(() => {
       setGameStatus(null);
       setGames((prev) => prev.filter((g) => g.id !== myGameId));
       setMessage("Game cancelled.");
+      socket?.emit("room_event", { roomId: "lobby:coin-flip", event: "lobby:updated" });
     } else {
       setMessage(json.error);
     }
@@ -419,6 +435,7 @@ useEffect(() => {
       setChoiceDeadline(json.data.choiceDeadline || null);
       setGameStatus("matched");
       setMessage("Choose heads or tails in 5 seconds.");
+      socket?.emit("room_event", { roomId: "lobby:coin-flip", event: "lobby:updated" });
     } else {
       setMessage(json.error);
     }
@@ -595,4 +612,3 @@ useEffect(() => {
     </>
   );
 }
-
