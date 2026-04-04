@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Chess } from "chess.js";
+import { useSocket } from "@/context/SocketProvider";
 
 const Chessboard = dynamic(
   async () => {
@@ -33,6 +34,7 @@ export default function ChessGamePage() {
   const [moves, setMoves] = useState([]);
   const [moveIndex, setMoveIndex] = useState(-1);
   const [showResultPopup, setShowResultPopup] = useState(false);
+  const { socket } = useSocket();
 
   const normalizeFen = (fen) => {
     if (typeof fen !== "string") return "start";
@@ -97,6 +99,32 @@ export default function ChessGamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, color]);
 
+  useEffect(() => {
+    if (!socket || !gameId) return;
+
+    const gameRoomId = String(gameId);
+    socket.emit("join_game", { gameId: gameRoomId });
+
+    const handleOpponentMove = (payload) => {
+      if (String(payload?.gameId) !== gameRoomId) return;
+      fetchState();
+    };
+
+    const handleDisconnect = () => {
+      setStatus("Realtime connection lost. Reconnecting...");
+    };
+
+    socket.on("move", handleOpponentMove);
+    socket.on("disconnect", handleDisconnect);
+
+    return () => {
+      socket.emit("leave_game", { gameId: gameRoomId });
+      socket.off("move", handleOpponentMove);
+      socket.off("disconnect", handleDisconnect);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, gameId]);
+
   async function onDrop(sourceSquare, targetSquare) {
     if (!isMyTurn || submittingMove) return false;
 
@@ -121,6 +149,14 @@ export default function ChessGamePage() {
 
       setLiveFen(normalizeFen(data?.data?.fen));
       setStatus(data.data.isGameOver ? "Game over." : "Opponent's turn");
+      socket?.emit("move", {
+        gameId: String(gameId),
+        move: {
+          from: sourceSquare,
+          to: targetSquare,
+          promotion: "q",
+        },
+      });
       return true;
     } catch {
       setStatus("Failed to send move");
