@@ -85,6 +85,50 @@ function generateRocks(seed, mapWidth, mapHeight, rockCount) {
   });
 }
 
+const SPAWN_PADDING = 120;
+const MIN_SPAWN_DISTANCE = 450;
+
+function isSpawnBlockedByRock(point, rocks, tankRadius = 22) {
+  return rocks.some((rock) => {
+    const cx = rock.x + rock.size / 2;
+    const cy = rock.y + rock.size / 2;
+    const rockR = rock.size / 2;
+    return Math.hypot(point.x - cx, point.y - cy) < rockR + tankRadius;
+  });
+}
+
+function randomSpawnPosition(mapWidth, mapHeight) {
+  return {
+    x: SPAWN_PADDING + Math.random() * (mapWidth - SPAWN_PADDING * 2),
+    y: SPAWN_PADDING + Math.random() * (mapHeight - SPAWN_PADDING * 2),
+  };
+}
+
+function getSpawnPosition(room) {
+  const occupied = Array.from(room.players.values()).filter(
+    (state) => Number.isFinite(Number(state?.x)) && Number.isFinite(Number(state?.y))
+  );
+
+  for (let i = 0; i < 30; i += 1) {
+    const candidate = randomSpawnPosition(room.mapWidth, room.mapHeight);
+    const tooClose = occupied.some(
+      (state) => Math.hypot(Number(state.x) - candidate.x, Number(state.y) - candidate.y) < MIN_SPAWN_DISTANCE
+    );
+    if (!tooClose && !isSpawnBlockedByRock(candidate, room.rocks)) {
+      return candidate;
+    }
+  }
+
+  for (let i = 0; i < 50; i += 1) {
+    const candidate = randomSpawnPosition(room.mapWidth, room.mapHeight);
+    if (!isSpawnBlockedByRock(candidate, room.rocks)) {
+      return candidate;
+    }
+  }
+
+  return { x: room.mapWidth / 2, y: room.mapHeight / 2 };
+}
+
 function lineIntersectsCircle(x1, y1, x2, y2, cx, cy, r) {
   const vx = x2 - x1;
   const vy = y2 - y1;
@@ -324,10 +368,10 @@ io.on('connection', (socket) => {
 
     const room = tanksRooms.get(normalizedGameId);
     if (!room.players.has(socket.data.userId)) {
-      const spawnIndex = room.players.size;
+      const spawn = getSpawnPosition(room);
       room.players.set(socket.data.userId, {
-        x: room.mapWidth / 2 + (spawnIndex % 2 === 0 ? -120 : 120),
-        y: room.mapHeight / 2 + (Math.floor(spawnIndex / 2) % 2 === 0 ? -120 : 120),
+        x: spawn.x,
+        y: spawn.y,
         rotation: 0,
         health: room.maxHealth,
         ammo: 5,
