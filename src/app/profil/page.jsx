@@ -90,10 +90,13 @@ export default function ProfilePage() {
       throw new Error(generateData.error || "Could not generate referral code");
     }
 
-    setStats((prev) => ({
-      ...(prev || {}),
-      referralCode: generateData.referralCode || prev?.referralCode || "",
-    }));
+    setStats((prev) => {
+  if (!prev) return { referralCode: generateData.referralCode };
+  return {
+    ...prev,
+    referralCode: generateData.referralCode,
+  };
+});
 
     return generateData.referralCode;
   };
@@ -102,13 +105,19 @@ export default function ProfilePage() {
     if (!isSignedIn || !user) return;
 
     const bootstrap = async () => {
-      try {
-        await Promise.all([loadProfileData(), loadStats(), initializeReferral()]);
-      } catch (err) {
-        console.error("[PROFILE_BOOTSTRAP_ERROR]", err);
-        setError(err.message || "Erreur lors du chargement des données");
-      }
-    };
+  try {
+    await loadProfileData();
+    await loadStats();
+
+    if (!stats?.referralCode) {
+      await initializeReferral();
+      await loadStats();
+    }
+  } catch (err) {
+    console.error("[PROFILE_BOOTSTRAP_ERROR]", err);
+    setError(err.message || "Erreur lors du chargement des données");
+  }
+};
 
     bootstrap();
   }, [isSignedIn, user]);
@@ -416,7 +425,7 @@ export default function ProfilePage() {
           <div className="grid gap-4 md:grid-cols-3 mb-4">
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
               <p className="text-sm text-gray-300">Your Referral Code</p>
-              <p className="text-2xl font-bold text-[#FFD700]">{stats?.referralCode || "Generating..."}</p>
+              <p className="text-2xl font-bold text-[#FFD700]">{stats?.referralCode ? stats.referralCode : "No code yet"}</p>
             </div>
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
               <p className="text-sm text-gray-300">Total Referrals</p>
