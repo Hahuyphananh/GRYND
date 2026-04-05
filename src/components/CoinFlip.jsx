@@ -89,7 +89,11 @@ function SoloCoinFlip() {
 
   const fetchTokens = async () => {
     try {
-      const res = await fetch("/api/get-user-tokens", { method: "POST" });
+      const res = await fetch("/api/get-user-tokens", { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include"
+      });
       const json = await res.json();
       if (json.success) setUserTokens(parseFloat(json.data.balance));
     } catch {

@@ -36,7 +36,11 @@ const spinLockRef = useRef(false);
   useEffect(() => {
     const fetchTokens = async () => {
       try {
-        const res = await fetch("/api/get-user-tokens", { method: "POST" });
+        const res = await fetch("/api/get-user-tokens", { 
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include"
+        });
         const data = await res.json();
         if (data.success) {
           setBalance(parseFloat(data.data.balance));

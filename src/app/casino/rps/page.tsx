@@ -54,6 +54,7 @@ export default function RPSGame() {
     fetch("/api/get-user-tokens", { 
       method: "POST",
       credentials: "include",
+      headers: { "Content-Type": "application/json" },  
     })
       .then((res) => res.json())
       .then((data) => setTokens(data.data.balance))
