@@ -629,8 +629,9 @@ return (
     </button>
   )}
 </div>
+
 {/* Rules Section */}
-<div className="mb-4 bg-[#1A1B1F] rounded-lg border border-yellow-400">
+<div className="mb-4 mt-4 bg-[#1A1B1F] rounded-lg border border-yellow-400">
   <button
     onClick={() => setShowRules((prev) => !prev)}
     className="w-full flex justify-between items-center px-4 py-2 font-bold text-yellow-400"

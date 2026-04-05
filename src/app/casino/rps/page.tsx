@@ -51,7 +51,10 @@ export default function RPSGame() {
   const choices = ["rock", "paper", "scissors"];
 
   useEffect(() => {
-    fetch("/api/get-user-tokens", { method: "POST" })
+    fetch("/api/get-user-tokens", { 
+      method: "POST",
+      credentials: "include",
+    })
       .then((res) => res.json())
       .then((data) => setTokens(data.data.balance))
       .catch(() => setTokens(0));

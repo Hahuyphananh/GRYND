@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../context/SocketProvider";
+import NavigationBar from "../../../components/navigation-bar";
 
 export default function TanksLobby() {
   const { isSignedIn, user } = useUser();
@@ -143,16 +144,11 @@ async function joinGame(matchId?: string) {
   }
 
   return (
-    <div className="w-full h-screen bg-gradient-to-br from-gray-900 to-black flex flex-col items-center justify-center text-white p-6 relative">
-      <Link
-        href="/casino"
-        className="absolute top-4 left-4 px-4 py-2 bg-gray-700/80 hover:bg-gray-600 rounded-xl font-bold text-sm"
-      >
-        Return to Casino
-      </Link>
+    <div className="w-full min-h-screen bg-[#003366] flex flex-col items-center justify-center text-white p-6 relative">
+      <NavigationBar currentPath="/casino" />
 
       <motion.div
-        className="p-8 bg-gray-800/50 rounded-2xl shadow-2xl w-full max-w-md"
+        className="p-8 bg-gray-950/70 rounded-2xl shadow-2xl w-full max-w-md"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
@@ -230,11 +226,6 @@ async function joinGame(matchId?: string) {
             </div>
           )}
         </div>
-
-        {/* Playing info */}
-<div className="mt-6 text-center text-gray-400 text-sm">
-  Kill players → steal their bounty.<br />Survive 5s to cash out.
-</div>
 
 {/* Game Rules (Collapsible) */}
 <div className="mt-4 bg-black/30 border border-gray-700 rounded-xl p-3">

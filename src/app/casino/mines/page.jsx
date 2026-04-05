@@ -37,6 +37,8 @@ const [showRules, setShowRules] = useState(false);
       try {
         const response = await fetch("/api/get-user-tokens", {
           method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
         });
         const data = await response.json();
         if (data.success) {
@@ -621,7 +623,7 @@ return (
     <div className="max-w-4xl mx-auto mt-10 px-4">
       <button
         onClick={() => setShowRules(!showRules)}
-        className="w-full bg-[#FFD700] text-[#003366] font-bold py-3 rounded-lg text-lg mb-4"
+        className="w-full bg-[#FFD700] text-[#003366] font-bold py-3 rounded-lg text-lg mb-4 pl-10 pr-10 flex items-center justify-center"
       >
         {showRules ? "Hide Mines Rules ▲" : "Show Mines Rules ▼"}
       </button>
