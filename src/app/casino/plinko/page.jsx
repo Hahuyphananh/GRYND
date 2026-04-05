@@ -26,6 +26,7 @@ const [autoTakeProfit, setAutoTakeProfit] = useState(0);
 const autoIntervalRef = useRef(null);
 const [autoRunning, setAutoRunning] = useState(false);
 const [autoInfinite, setAutoInfinite] = useState(false);
+const [showRules, setShowRules] = useState(false);
 
 const lowRiskMultipliers = [
   20, 10, 6, 4, 2.5, 1.6, 1.2, 1, 0.7, 0.4,
@@ -517,7 +518,6 @@ return (
   </select>
 </div>
 
-
       {user && (
         <div className="mb-6">
           <span className="text-[#FFD700]">
@@ -627,6 +627,39 @@ return (
     >
       Stop
     </button>
+  )}
+</div>
+{/* Rules Section */}
+<div className="mb-4 bg-[#1A1B1F] rounded-lg border border-yellow-400">
+  <button
+    onClick={() => setShowRules((prev) => !prev)}
+    className="w-full flex justify-between items-center px-4 py-2 font-bold text-yellow-400"
+  >
+    📜 Plinko Rules
+    <span>{showRules ? "▲" : "▼"}</span>
+  </button>
+
+  {showRules && (
+    <div className="px-4 pb-4 text-sm text-gray-300 space-y-2">
+      <p>
+        🎯 Drop a ball from the top and watch it bounce through the pins.
+      </p>
+      <p>
+        💰 The slot where the ball lands determines your <strong>multiplier</strong>.
+      </p>
+      <p>
+        ⚠️ Higher multipliers are on the edges, but are <strong>harder to hit</strong>.
+      </p>
+      <p>
+        🎚️ Choose a <strong>risk level</strong> to change the multiplier distribution.
+      </p>
+      <p>
+        🤖 Use <strong>Auto Bet</strong> to automatically drop multiple balls.
+      </p>
+      <p>
+        📉 You can configure <strong>stop loss</strong> and <strong>take profit</strong> for safer autoplay.
+      </p>
+    </div>
   )}
 </div>
 

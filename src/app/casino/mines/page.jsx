@@ -21,7 +21,7 @@ export default function MinesGamePage() {
   const [betAmount, setBetAmount] = useState(10);
   const [error, setError] = useState(null);
 const [gameStarted, setGameStarted] = useState(false);
-
+const [showRules, setShowRules] = useState(false);
   
   // Autoplay references
   const autoplayTimerRef = useRef(null);
@@ -615,6 +615,80 @@ return (
           )}
         </div>
       </div>
+      </div>
+
+    {/* ===== MINES RULES SECTION ===== */}
+    <div className="max-w-4xl mx-auto mt-10 px-4">
+      <button
+        onClick={() => setShowRules(!showRules)}
+        className="w-full bg-[#FFD700] text-[#003366] font-bold py-3 rounded-lg text-lg mb-4"
+      >
+        {showRules ? "Hide Mines Rules ▲" : "Show Mines Rules ▼"}
+      </button>
+
+      {showRules && (
+        <div className="bg-[#004080] p-6 rounded-lg text-white space-y-4">
+          <h2 className="text-2xl font-bold text-[#FFD700]">
+            💣 Mines – How to Play
+          </h2>
+
+          <p>
+            Mines is a risk-based game where you reveal tiles to find diamonds 💎 
+            while avoiding hidden mines 💣.
+          </p>
+
+          <h3 className="text-xl font-semibold text-[#FFD700]">
+            🎯 Objective
+          </h3>
+          <p>
+            Reveal as many safe tiles as possible and cash out before hitting a mine.
+          </p>
+
+          <h3 className="text-xl font-semibold text-[#FFD700]">
+            🕹️ How It Works
+          </h3>
+          <ul className="list-disc ml-6 space-y-1">
+            <li>Select your bet amount</li>
+            <li>Choose how many mines are on the board</li>
+            <li>Click tiles to reveal diamonds 💎</li>
+            <li>Each safe tile increases your multiplier</li>
+            <li>You can cash out anytime to secure winnings</li>
+          </ul>
+
+          <h3 className="text-xl font-semibold text-[#FFD700]">
+            ⚠️ Mines
+          </h3>
+          <p>
+            If you hit a mine 💣, you instantly lose your entire bet.
+          </p>
+
+          <h3 className="text-xl font-semibold text-[#FFD700]">
+            💰 Multiplier
+          </h3>
+          <p>
+            The more tiles you safely reveal, the higher your multiplier becomes.
+            More mines = higher risk but bigger rewards.
+          </p>
+
+          <h3 className="text-xl font-semibold text-[#FFD700]">
+            🤖 Auto Play
+          </h3>
+          <p>
+            Auto Play automatically reveals tiles based on your settings and can
+            stop at a chosen multiplier using Auto Cashout.
+          </p>
+
+          <h3 className="text-xl font-semibold text-[#FFD700]">
+            🧠 Strategy Tips
+          </h3>
+          <ul className="list-disc ml-6 space-y-1">
+            <li>Low mines = safer, slower profit</li>
+            <li>High mines = risky but huge multipliers</li>
+            <li>Cash out early to avoid losing everything</li>
+            <li>Use Auto Cashout to secure profits automatically</li>
+          </ul>
+        </div>
+      )}
     </div>
   </div>
 );

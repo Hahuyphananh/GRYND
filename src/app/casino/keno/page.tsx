@@ -18,7 +18,7 @@ export default function KenoGame() {
   const router = useRouter();
   const { isSignedIn, user } = useUser();
 
-  const [betAmount, setBetAmount] = useState(1);
+  const [betAmount, setBetAmount] = useState(100);
   const [selectedNumbers, setSelectedNumbers] = useState<number[]>([]);
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +26,7 @@ export default function KenoGame() {
   const [loading, setLoading] = useState(false);
   const [highlightedWins, setHighlightedWins] = useState<number[]>([]);
   const [animationDone, setAnimationDone] = useState(false);
+  const [showRules, setShowRules] = useState(false);
 
   const fetchUserBalance = async () => {
     if (!user) return;
@@ -262,6 +263,59 @@ export default function KenoGame() {
           <p>💰 Payout: {result.payout} tokens</p>
         </div>
       )}
+      {/* Game Rules (Collapsible) */}
+<div className="w-full max-w-4xl mt-6 bg-[#001a33] border-2 border-yellow-500 rounded-xl p-4">
+  <button
+    onClick={() => setShowRules(!showRules)}
+    className="w-full text-left text-yellow-400 font-bold text-lg flex justify-between items-center"
+  >
+    📜 Game Rules
+    <span>{showRules ? '▲' : '▼'}</span>
+  </button>
+
+  {showRules && (
+    <div className="mt-4 text-sm leading-relaxed space-y-3 text-gray-200">
+      <p>
+        🎯 <strong>Objective:</strong> Pick numbers and match them with randomly drawn numbers to win rewards.
+      </p>
+
+      <p>
+        🔢 <strong>How to Play:</strong>
+        <br />
+        • Select between <strong>1 to 5 numbers</strong> from the 1–40 grid.  
+        • Choose your bet amount.  
+        • Click <strong>“Bet”</strong> to start the round.
+      </p>
+
+      <p>
+        🎲 <strong>Draw:</strong> 20 random numbers are drawn each round.
+      </p>
+
+      <p>
+        🏆 <strong>Winning:</strong>
+        <br />
+        • The more of your selected numbers that match the drawn numbers, the higher your payout.  
+        • Payout multipliers depend on how many numbers you picked and how many matched.
+      </p>
+
+      <p>
+        ⚠️ <strong>Important:</strong>
+        <br />
+        • You must select at least 1 number to play.  
+        • Maximum of 5 numbers can be selected.  
+        • You cannot bet more than your available balance.
+      </p>
+
+      <p>
+        🎮 <strong>Auto Pick:</strong> Automatically selects random numbers for you.
+      </p>
+
+      <p>
+        🔄 <strong>Clear Table:</strong> Resets your selected numbers and current round.
+      </p>
+    </div>
+  )}
+</div>
     </div>
   );
 }
