@@ -38,7 +38,11 @@ export default function PokerPage() {
 
   const fetchTokens = async () => {
     try {
-      const res = await fetch("/api/get-user-tokens", { method: "POST" });
+      const res = await fetch("/api/get-user-tokens", { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
       const data = await res.json();
       if (data.success) {
         setUserTokens(data.data.balance);
