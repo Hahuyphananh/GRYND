@@ -13,6 +13,7 @@ export default function RPSGame() {
   const [aiChoice, setAiChoice] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showRpsRules, setShowRpsRules] = useState(false);
 
   const [winStreak, setWinStreak] = useState(0);
   const [multiplier, setMultiplier] = useState(1.0);
@@ -537,6 +538,78 @@ export default function RPSGame() {
                 </>
               )}
             </div>
+            {/* RPS Game Rules */}
+<div className="mt-4 bg-[#001f3f] p-4 rounded-lg border border-yellow-400">
+  <button
+    onClick={() => setShowRpsRules(!showRpsRules)}
+    className="w-full text-left font-bold text-yellow-400 flex justify-between items-center"
+  >
+    📜 Game Rules
+    <span>{showRpsRules ? "▲" : "▼"}</span>
+  </button>
+
+  {showRpsRules && (
+    <div className="mt-3 text-sm text-gray-200 space-y-3 leading-relaxed">
+      <p>
+        ✊ <strong>Objective:</strong> Beat the AI by choosing Rock, Paper, or Scissors.
+      </p>
+
+      <p>
+        🔢 <strong>How to Play:</strong>
+        <br />
+        • Select your move (✊ Rock, ✋ Paper, ✌️ Scissors)  
+        • Choose your bet amount  
+        • Click <strong>“Place Bet”</strong> to play
+      </p>
+
+      <p>
+        ⚔️ <strong>Rules:</strong>
+        <br />
+        • Rock beats Scissors  
+        • Scissors beats Paper  
+        • Paper beats Rock
+      </p>
+
+      <p>
+        🏆 <strong>Results:</strong>
+        <br />
+        • Win → You earn a payout based on your bet and streak  
+        • Lose → You lose your bet  
+        • Tie → Your bet is returned
+      </p>
+
+      <p>
+        🔥 <strong>Win Streak:</strong>
+        <br />
+        • Winning multiple times in a row increases your multiplier  
+        • Higher streak = higher rewards
+      </p>
+
+      <p>
+        💰 <strong>Multiplier(pve):</strong>
+        <br />
+        • Your winnings increase with your streak  
+        • Lose or tie → multiplier resets to 1.0
+      </p>
+
+      <p>
+        🤖 <strong>Auto Bet:</strong>
+        <br />
+        • Automatically plays for you  
+        • Can run for a set number of rounds or infinitely  
+        • Stops on invalid settings or when you disable it
+      </p>
+
+      <p>
+        ⚠️ <strong>Important:</strong>
+        <br />
+        • You must have enough tokens to bet  
+        • You must select a move before betting  
+        • The game is based on chance
+      </p>
+    </div>
+  )}
+</div>
           </>
         )}
 

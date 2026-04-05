@@ -18,6 +18,7 @@ export default function TanksLobby() {
   const [showModePopup, setShowModePopup] = useState(false);
   const { socket } = useSocket();
   const router = useRouter();
+  const [showTanksRules, setShowTanksRules] = useState(false);
 
   const fetchUserTokens = async () => {
     if (!user) return;
@@ -230,9 +231,76 @@ async function joinGame(matchId?: string) {
           )}
         </div>
 
-        <div className="mt-6 text-center text-gray-400 text-sm">
-          Kill players → steal their bounty.<br />Survive 5s to cash out.
-        </div>
+        {/* Playing info */}
+<div className="mt-6 text-center text-gray-400 text-sm">
+  Kill players → steal their bounty.<br />Survive 5s to cash out.
+</div>
+
+{/* Game Rules (Collapsible) */}
+<div className="mt-4 bg-black/30 border border-gray-700 rounded-xl p-3">
+  <button
+    onClick={() => setShowTanksRules(!showTanksRules)}
+    className="w-full flex justify-between items-center font-semibold text-yellow-400"
+  >
+    📜 Game Rules
+    <span>{showTanksRules ? "▲" : "▼"}</span>
+  </button>
+
+  {showTanksRules && (
+    <div className="mt-3 text-sm text-gray-300 space-y-3 leading-relaxed">
+      <p>
+        🚗 <strong>Objective:</strong> Destroy other players and survive the arena to win tokens.
+      </p>
+
+      <p>
+        🎯 <strong>How to Play:</strong>
+        <br />
+        • Enter a wager (your entry stake)  
+        • Start or join a match  
+        • Control your tank and fight other players  
+        • Last player standing wins
+      </p>
+
+      <p>
+        💥 <strong>Combat:</strong>
+        <br />
+        • Shooting or hitting enemies eliminates them  
+        • Eliminated players drop their bounty  
+        • You gain tokens from players you eliminate
+      </p>
+
+      <p>
+        💰 <strong>Bounties:</strong>
+        <br />
+        • Each player contributes a wager to the pool  
+        • Winning players earn from the total pool  
+        • The longer you survive, the more you can earn
+      </p>
+
+      <p>
+        🏆 <strong>Win Conditions:</strong>
+        <br />
+        • Be the last player alive  
+        • Or survive long enough (5s+ depending on mode) to cash out
+      </p>
+
+      <p>
+        ⚔️ <strong>Game Modes:</strong>
+        <br />
+        • 1v1 Duel → Fast-paced small map  
+        • Battle Royale → Up to 10 players, last one standing wins
+      </p>
+
+      <p>
+        ⚠️ <strong>Important:</strong>
+        <br />
+        • You must have enough tokens to start a match  
+        • Leaving a match may forfeit your wager  
+        • Skill + strategy + survival determine winnings
+      </p>
+    </div>
+  )}
+</div>
       </motion.div>
 
       {showModePopup && (

@@ -28,6 +28,7 @@ const [isLoadingAvailableGames, setIsLoadingAvailableGames] = useState(false);
 const [waitingGameId, setWaitingGameId] = useState(null);
 const [isCancellingWaitingGame, setIsCancellingWaitingGame] = useState(false);
 const waitingPollRef = useRef(null);
+const [showRules, setShowRules] = useState(false);
 
 useEffect(() => {
   fetchAvailableGames();
@@ -658,6 +659,54 @@ return (
           <UnoBack key={i} />
         ))}
     </div>
+    
+    {/* 🎮 Game Rules Section */}
+<div className="w-full max-w-5xl mt-6">
+  <button
+    onClick={() => setShowRules(!showRules)}
+    className="w-full bg-green-800 hover:bg-green-900 text-white px-6 py-3 rounded-xl font-bold text-left flex justify-between items-center shadow-lg"
+  >
+    <span>📜 Règles du jeu (UNO)</span>
+    <span>{showRules ? "▲" : "▼"}</span>
+  </button>
+
+  {showRules && (
+    <div className="bg-green-900/80 mt-2 p-6 rounded-xl text-sm leading-relaxed border border-green-700">
+      
+      <h3 className="font-bold text-lg mb-2">🎯 Objectif</h3>
+      <p className="mb-4">
+        Être le premier joueur à se débarrasser de toutes ses cartes.
+      </p>
+
+      <h3 className="font-bold text-lg mb-2">🃏 Comment jouer</h3>
+      <ul className="list-disc ml-6 mb-4 space-y-1">
+        <li>Joue une carte de la même couleur ou du même chiffre que la carte centrale.</li>
+        <li>Si tu ne peux pas jouer, tu dois piocher une carte.</li>
+        <li>Si la carte piochée est jouable, tu peux la jouer immédiatement.</li>
+      </ul>
+
+      <h3 className="font-bold text-lg mb-2">⚡ Cartes spéciales</h3>
+      <ul className="list-disc ml-6 mb-4 space-y-1">
+        <li><b>Skip (⛔)</b> : Le joueur suivant passe son tour.</li>
+        <li><b>Reverse (🔄)</b> : Change le sens du jeu (utile en multi).</li>
+        <li><b>+2</b> : Le joueur suivant pioche 2 cartes et passe son tour.</li>
+        <li><b>Wild (🌈)</b> : Choisis la couleur.</li>
+        <li><b>Wild +4</b> : Choisis la couleur + le joueur pioche 4 cartes.</li>
+      </ul>
+
+      <h3 className="font-bold text-lg mb-2">🏆 Gagner</h3>
+      <p className="mb-4">
+        Le premier joueur à 0 carte gagne la partie.
+      </p>
+
+      <h3 className="font-bold text-lg mb-2">💰 Système de mise</h3>
+      <p>
+        Tu mises des tokens au début. Le gagnant remporte la mise (avec un léger edge casino).
+      </p>
+
+    </div>
+  )}
+</div>
 
 {showColorPicker && (
   <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
