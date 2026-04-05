@@ -364,122 +364,114 @@ const [showRules, setShowRules] = useState(false);
     >
       Miser
     </button>
-  </div>
-) : (
-  <div className="flex justify-center gap-4 mt-4 flex-wrap">
-    <button
-      onClick={hit}
-      className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
-    >
-      Carte
-    </button>
-    <button
-      onClick={stand}
-      className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
-    >
-      Rester
-    </button>
-    {canDouble && (
-      <button
-        onClick={doubleDown}
-        className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
-      >
-        Double
-      </button>
-    )}
-    {canSplit && (
-      <button
-        onClick={splitHand}
-        className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
-      >
-        Split
-      </button>
-    )}
-    {isSplit && (
-      <button
-        onClick={nextSplitHand}
-        className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
-      >
-        Next Hand
-      </button>
-    )}
-  </div>
-)}
-
-        </div>
-      </div>
-      <button
-  onClick={() => setShowRules(!showRules)}
-  className="mt-8 mb-2 text-[#FFD700] underline"
->
-  {showRules ? "Hide Rules" : "Show Rules"}
-</button>
+      <div className="flex justify-center mt-6">
+  <button
+    onClick={() => setShowRules(!showRules)}
+    className="px-4 py-2 bg-[#FFD700] text-[#003366] font-bold rounded-lg shadow hover:scale-105 transition"
+  >
+    {showRules ? "Hide Rules ▲" : "Show Rules ▼"}
+  </button>
+</div>
 
 {showRules && (
-  <div className="mt-10 bg-[#0e6b0e] border-[6px] border-[#5c3b15] rounded-lg p-6 text-white shadow-lg">
-  <h2 className="text-2xl font-bold text-[#FFD700] mb-4 text-center">
-    How to Play Blackjack
-  </h2>
-
-  <div className="space-y-4 text-sm leading-relaxed">
+  <div className="mt-4 w-full bg-[#003300] border-4 border-[#5c3b15] rounded-xl p-6 text-white shadow-lg">
     
-    <div>
-      <h3 className="text-[#FFD700] font-semibold">🎯 Objective</h3>
-      <p>
-        The goal is to beat the dealer by getting a hand value closer to 21 without going over.
-      </p>
-    </div>
+    <h2 className="text-2xl font-bold text-[#FFD700] mb-4 text-center">
+      Blackjack Rules
+    </h2>
 
-    <div>
-      <h3 className="text-[#FFD700] font-semibold">🃏 Card Values</h3>
-      <ul className="list-disc ml-5">
-        <li>Number cards = face value</li>
-        <li>Face cards (J, Q, K) = 10</li>
-        <li>Ace = 1 or 11 (automatically optimized)</li>
-      </ul>
-    </div>
+    <div className="space-y-4 text-sm leading-relaxed text-left">
 
-    <div>
-      <h3 className="text-[#FFD700] font-semibold">🎮 Gameplay</h3>
-      <ul className="list-disc ml-5">
-        <li>You and the dealer get 2 cards</li>
-        <li>One of the dealer’s cards is hidden</li>
-        <li>You can choose actions to improve your hand</li>
-      </ul>
-    </div>
+      <div>
+        <h3 className="text-[#FFD700] font-semibold">🎯 Objective</h3>
+        <p>Beat the dealer by getting as close to 21 as possible without going over.</p>
+      </div>
 
-    <div>
-      <h3 className="text-[#FFD700] font-semibold">⚡ Actions</h3>
-      <ul className="list-disc ml-5">
-        <li><strong>Hit:</strong> Take another card</li>
-        <li><strong>Stand:</strong> Keep your current hand</li>
-        <li><strong>Double:</strong> Double your bet and take 1 card</li>
-        <li><strong>Split:</strong> Split identical cards into 2 hands</li>
-      </ul>
-    </div>
+      <div>
+        <h3 className="text-[#FFD700] font-semibold">🃏 Card Values</h3>
+        <ul className="list-disc ml-5">
+          <li>2–10 = face value</li>
+          <li>J, Q, K = 10</li>
+          <li>Ace = 1 or 11</li>
+        </ul>
+      </div>
 
-    <div>
-      <h3 className="text-[#FFD700] font-semibold">🏆 Winning</h3>
-      <ul className="list-disc ml-5">
-        <li>Get closer to 21 than the dealer</li>
-        <li>Dealer busts (goes over 21)</li>
-        <li>Blackjack (21 with 2 cards) pays more</li>
-      </ul>
-    </div>
+      <div>
+        <h3 className="text-[#FFD700] font-semibold">🎮 Gameplay</h3>
+        <ul className="list-disc ml-5">
+          <li>You and dealer get 2 cards</li>
+          <li>One dealer card is hidden</li>
+          <li>Take actions to improve your hand</li>
+        </ul>
+      </div>
 
-    <div>
-      <h3 className="text-[#FFD700] font-semibold">💡 Tips</h3>
-      <ul className="list-disc ml-5">
-        <li>Stand on 17 or higher</li>
-        <li>Be careful when your total is 12–16</li>
-        <li>Use Double and Split wisely</li>
-      </ul>
-    </div>
+      <div>
+        <h3 className="text-[#FFD700] font-semibold">⚡ Actions</h3>
+        <ul className="list-disc ml-5">
+          <li><strong>Hit:</strong> Take a card</li>
+          <li><strong>Stand:</strong> End your turn</li>
+          <li><strong>Double:</strong> Double bet, take 1 card</li>
+          <li><strong>Split:</strong> Split pairs into 2 hands</li>
+        </ul>
+      </div>
 
+      <div>
+        <h3 className="text-[#FFD700] font-semibold">🏆 Winning</h3>
+        <ul className="list-disc ml-5">
+          <li>Get closer to 21 than dealer</li>
+          <li>Dealer busts ({">"}21)</li>
+          <li>Blackjack pays higher</li>
+        </ul>
+      </div>
+
+    </div>
   </div>
-</div>
 )}
-     
+  </div>
+) : (
+  <>
+    <div className="flex justify-center gap-4 mt-4 flex-wrap">
+      <button
+        onClick={hit}
+        className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+      >
+        Carte
+      </button>
+      <button
+        onClick={stand}
+        className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+      >
+        Rester
+      </button>
+      {canDouble && (
+        <button
+          onClick={doubleDown}
+          className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+        >
+          Double
+        </button>
+      )}
+      {canSplit && (
+        <button
+          onClick={splitHand}
+          className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+        >
+          Split
+        </button>
+      )}
+      {isSplit && (
+        <button
+          onClick={nextSplitHand}
+          className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+        >
+          Next Hand
+        </button>
+      )}
+    </div>
+  </>
+)}
+        </div>
+      </div>
     </div>
   );
 }

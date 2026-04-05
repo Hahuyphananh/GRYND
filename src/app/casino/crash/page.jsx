@@ -431,36 +431,6 @@ function toCanvasPoint(mult) {
             isCrashed={isCrashed}
             refreshTrigger={refreshCounter}
           />
-          {/* Rules Section */}
-<div className="mt-4 bg-[#111] rounded-lg border border-yellow-400">
-  <button
-    onClick={() => setShowRules((prev) => !prev)}
-    className="w-full flex justify-between items-center px-4 py-2 font-bold text-yellow-400"
-  >
-    📜 Crash Rules
-    <span>{showRules ? "▲" : "▼"}</span>
-  </button>
-
-  {showRules && (
-    <div className="px-4 pb-4 text-sm text-gray-300 space-y-2">
-      <p>
-        🚀 The multiplier starts at <strong>1.00x</strong> and increases over time.
-      </p>
-      <p>
-        💥 The game can <strong>crash at any moment</strong> — if it crashes before you cash out, you lose your bet.
-      </p>
-      <p>
-        💰 Click <strong>Cash Out</strong> before the crash to secure your winnings.
-      </p>
-      <p>
-        ⚙️ You can set an <strong>auto cashout</strong> to automatically exit at a chosen multiplier.
-      </p>
-      <p>
-        📈 The longer you wait, the higher the multiplier… but the higher the risk.
-      </p>
-    </div>
-  )}
-</div>
 
           <div className="mt-6 pt-4 border-t border-gray-700">
             <h3 className="text-lg font-bold mb-3">Recent Crashes</h3>
@@ -587,6 +557,36 @@ function toCanvasPoint(mult) {
           </div>
         </div>
       )}
+                {/* Rules Section */}
+<div className="mt-4 bg-[#111] rounded-lg border border-yellow-400">
+  <button
+    onClick={() => setShowRules((prev) => !prev)}
+    className="w-full flex justify-between items-center px-4 py-2 font-bold text-yellow-400"
+  >
+    📜 Crash Rules
+    <span>{showRules ? "▲" : "▼"}</span>
+  </button>
+
+  {showRules && (
+    <div className="px-4 pb-4 text-sm text-gray-300 space-y-2">
+      <p>
+        🚀 The multiplier starts at <strong>1.00x</strong> and increases over time.
+      </p>
+      <p>
+        💥 The game can <strong>crash at any moment</strong> — if it crashes before you cash out, you lose your bet.
+      </p>
+      <p>
+        💰 Click <strong>Cash Out</strong> before the crash to secure your winnings.
+      </p>
+      <p>
+        ⚙️ You can set an <strong>auto cashout</strong> to automatically exit at a chosen multiplier.
+      </p>
+      <p>
+        📈 The longer you wait, the higher the multiplier… but the higher the risk.
+      </p>
+    </div>
+  )}
+</div>
     </div>
   );
 }

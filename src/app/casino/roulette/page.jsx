@@ -32,7 +32,11 @@ export default function RoulettePage() {
     async function fetchTokens() {
       setLoading(true);
       try {
-        const res = await fetch("/api/get-user-tokens", { method: "POST" });
+        const res = await fetch("/api/get-user-tokens", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        });
         const data = await res.json();
         if (data.success) setUserTokens(data.data.balance);
         else throw new Error(data.error || "Unknown error");
@@ -332,6 +336,60 @@ export default function RoulettePage() {
             >
               Réinitialiser les mises
             </button>
+
+{/* Rules Toggle */}
+<div className="w-full mt-4">
+  <button
+    onClick={() => setShowRules(!showRules)}
+    className="w-full flex items-center justify-between px-4 py-3 bg-yellow-400 text-black font-bold rounded-lg shadow-lg hover:bg-yellow-300 transition"
+  >
+    <span>🎰 Game Rules</span>
+    <span className="text-xl">
+      {showRules ? "▲" : "▼"}
+    </span>
+  </button>
+
+  {/* 👇 Fixed-height container = no layout shift */}
+  {showRules && (
+    <div className="mt-3 bg-[#0a1e3a] border border-yellow-400 rounded-xl p-4 text-white shadow-2xl text-sm leading-relaxed max-h-64 overflow-y-auto">
+      <h2 className="text-lg font-bold text-yellow-400 mb-3 text-center">
+        🎰 How to Play Roulette
+      </h2>
+<p className="text-xs text-gray-400 mt-1 text-center mb-1">
+  Scroll to read all rules
+</p>
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-yellow-400 font-semibold">🎯 Objective</h3>
+          <p>Predict where the ball will land on the spinning wheel.</p>
+        </div>
+
+        <div>
+          <h3 className="text-yellow-400 font-semibold">🎲 Bets</h3>
+          <ul className="list-disc ml-5">
+            <li>Single number (x35)</li>
+            <li>Red / Black / Even / Odd (x2)</li>
+            <li>Ranges (x3)</li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 className="text-yellow-400 font-semibold">⚠️ Rule</h3>
+          <p>0 (green) loses most bets.</p>
+        </div>
+
+        <div>
+          <h3 className="text-yellow-400 font-semibold">💡 Tips</h3>
+          <ul className="list-disc ml-5">
+            <li>Safer bets win more often</li>
+            <li>High-risk bets pay more</li>
+            <li>Manage your balance wisely</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  )}
+</div>
           </div>
 
           {/* Result message */}
@@ -424,80 +482,6 @@ export default function RoulettePage() {
           </div>
         </div>
       </div>
-      {/* Roulette Rules Toggle */}
-<div className="w-full max-w-[1200px] mx-auto px-6 pb-10">
-  <button
-    onClick={() => setShowRules(!showRules)}
-    className="mt-8 mb-4 text-yellow-400 underline text-lg font-semibold"
-  >
-    {showRules ? "Hide Roulette Rules" : "Show Roulette Rules"}
-  </button>
-
-  {showRules && (
-    <div className="bg-[#0a1e3a] border-2 border-yellow-400 rounded-lg p-6 text-white shadow-lg">
-      <h2 className="text-2xl font-bold text-yellow-400 mb-4 text-center">
-        🎰 How to Play Roulette
-      </h2>
-
-      <div className="space-y-4 text-sm leading-relaxed">
-
-        <div>
-          <h3 className="text-yellow-400 font-semibold">🎯 Objective</h3>
-          <p>
-            Predict where the ball will land on the spinning wheel and place bets accordingly.
-          </p>
-        </div>
-
-        <div>
-          <h3 className="text-yellow-400 font-semibold">🎲 Types of Bets</h3>
-          <ul className="list-disc ml-5">
-            <li><strong>Single Number:</strong> Bet on one number (highest payout)</li>
-            <li><strong>Red / Black:</strong> Bet on color</li>
-            <li><strong>Even / Odd:</strong> Bet on number type</li>
-            <li><strong>1–18 / 19–36:</strong> Low or high numbers</li>
-            <li><strong>Dozens (1-12, 13-24, 25-36):</strong> Groups of 12 numbers</li>
-          </ul>
-        </div>
-
-        <div>
-          <h3 className="text-yellow-400 font-semibold">💰 Payouts</h3>
-          <ul className="list-disc ml-5">
-            <li>Single number: x35</li>
-            <li>Red/Black, Even/Odd: x2</li>
-            <li>Dozens / Ranges: x3</li>
-          </ul>
-        </div>
-
-        <div>
-          <h3 className="text-yellow-400 font-semibold">🎡 Gameplay</h3>
-          <ul className="list-disc ml-5">
-            <li>Place your bets on the table</li>
-            <li>Click "Spin"</li>
-            <li>The wheel spins and lands on a number</li>
-            <li>If your bet matches, you win!</li>
-          </ul>
-        </div>
-
-        <div>
-          <h3 className="text-yellow-400 font-semibold">⚠️ Special Rule</h3>
-          <p>
-            The number <strong>0 (green)</strong> is not red or black. If it lands on 0, most bets lose.
-          </p>
-        </div>
-
-        <div>
-          <h3 className="text-yellow-400 font-semibold">💡 Tips</h3>
-          <ul className="list-disc ml-5">
-            <li>Safer bets (red/black) win more often but pay less</li>
-            <li>Risky bets (single numbers) pay big but hit less often</li>
-            <li>Manage your bankroll wisely</li>
-          </ul>
-        </div>
-
-      </div>
-    </div>
-  )}
-</div>
     </div>
   );
 }

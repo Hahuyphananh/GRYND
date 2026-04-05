@@ -19,7 +19,11 @@ export default function BetPanel({
     async function fetchTokens() {
       setLoading(true);
       try {
-        const response = await fetch("/api/get-user-tokens", { method: "POST" });
+        const response = await fetch("/api/get-user-tokens", { 
+          method: "POST" ,
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        });
         const data = await response.json();
         if (data.success) {
           setUserTokens(parseFloat(data.data.balance));
