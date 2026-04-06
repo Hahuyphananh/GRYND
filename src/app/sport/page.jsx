@@ -113,34 +113,34 @@ const MainComponent = () => {
           <div className="mb-6 rounded-xl border border-[#FFD700] bg-[#002347] p-4 text-[#FFD700]">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <h1 className="text-2xl font-bold">Sportsbook</h1>
-                <p className="text-sm text-[#FFD700]/80">Manual loading enabled to reduce API usage.</p>
+                <h1 className="text-2xl font-bold">Paris Sportifs</h1>
+                <p className="text-sm text-[#FFD700]/80">Chargement manuel activé afin de réduire l'utilisation de l'API.</p>
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => fetchEvents()}
                   className="rounded-lg bg-[#FFD700] px-4 py-2 font-semibold text-[#003366] hover:bg-[#FFD700]/90"
                 >
-                  Show Events
+                  Afficher les Événements
                 </button>
                 <button
                   onClick={() => fetchEvents({ forceRefresh: true })}
                   className="rounded-lg border border-[#FFD700] px-4 py-2 font-semibold text-[#FFD700] hover:bg-[#FFD700]/10"
                 >
-                  Refresh
+                  Rafraîchir
                 </button>
               </div>
             </div>
-            {selectedSport && <p className="mt-2 text-sm">Selected league: {selectedSport}</p>}
-            <p className="text-sm">Loaded events: {eventCount}</p>
+            {selectedSport && <p className="mt-2 text-sm">Ligue Sélectionnée: {selectedSport}</p>}
+            <p className="text-sm">Événements chargés: {eventCount}</p>
             {error && <p className="mt-1 text-sm text-red-300">{error}</p>}
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr_360px]">
             <aside className="space-y-2 rounded-xl border border-[#FFD700] bg-[#002347] p-3">
-              <h2 className="px-2 py-1 text-sm font-bold uppercase tracking-wide text-[#FFD700]">Leagues</h2>
-              {loadingSports && <p className="px-2 text-sm text-[#FFD700]">Loading leagues...</p>}
-              {!loadingSports && Object.keys(sports).length === 0 && <p className="px-2 text-sm text-[#FFD700]">No leagues found.</p>}
+              <h2 className="px-2 py-1 text-sm font-bold uppercase tracking-wide text-[#FFD700]">Ligues</h2>
+              {loadingSports && <p className="px-2 text-sm text-[#FFD700]">Chargement des Ligues...</p>}
+              {!loadingSports && Object.keys(sports).length === 0 && <p className="px-2 text-sm text-[#FFD700]">Ligues pas trouvées.</p>}
 
               {Object.keys(sports).map((group) => (
                 <div key={group} className="overflow-hidden rounded-lg border border-[#FFD700]/40">
@@ -176,7 +176,7 @@ const MainComponent = () => {
 
             <section className="space-y-4">
               <div className="rounded-xl border border-[#FFD700] bg-[#002347] p-3">
-                <p className="mb-2 text-xs uppercase tracking-wide text-[#FFD700]">Bet Type</p>
+                <p className="mb-2 text-xs uppercase tracking-wide text-[#FFD700]">Type de Pari</p>
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                   {MARKET_TYPES.map((type) => (
                     <button
@@ -197,7 +197,7 @@ const MainComponent = () => {
               {loadingEvents && <p className="text-[#FFD700]">Loading events...</p>}
               {!loadingEvents && events.length === 0 && (
                 <div className="rounded-xl border border-dashed border-[#FFD700]/50 p-6 text-center text-[#FFD700]">
-                  Click <strong>Show Events</strong> to fetch odds on demand.
+                  Cliquez sur<strong>Afficher les Événements</strong> pour obtenir les cotes.
                 </div>
               )}
 
