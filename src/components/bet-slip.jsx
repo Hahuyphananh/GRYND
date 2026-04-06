@@ -56,27 +56,27 @@ export default function BetSlip({ selectedBet, marketType, onSubmit }) {
 
   return (
     <div className="rounded-lg border border-[#FFD700] bg-[#004080] p-4">
-      <h2 className="mb-4 text-xl font-bold text-white">Bet Slip</h2>
+      <h2 className="mb-4 text-xl font-bold text-white">Fiche de Pari</h2>
 
-      {!selectedBet && <p className="text-sm text-white/90">Choose an outcome from the event cards to build your slip.</p>}
+      {!selectedBet && <p className="text-sm text-white/90">Choisissez un résultat parmi les cartes Événement pour construire votre fiche.</p>}
 
       {selectedBet && (
         <>
           <div className="mb-4 rounded-lg bg-[#003366] p-3 text-white">
-            <p className="text-xs uppercase tracking-wide text-[#FFD700]">Event</p>
+            <p className="text-xs uppercase tracking-wide text-[#FFD700]">Événement</p>
             <p className="font-semibold">{selectedBet.eventLabel}</p>
-            <p className="mt-2 text-xs uppercase tracking-wide text-[#FFD700]">Market</p>
+            <p className="mt-2 text-xs uppercase tracking-wide text-[#FFD700]">Marché</p>
             <p>{marketTitle[selectedBet.marketType || marketType] || "Moneyline"}</p>
-            <p className="mt-2 text-xs uppercase tracking-wide text-[#FFD700]">Selection</p>
+            <p className="mt-2 text-xs uppercase tracking-wide text-[#FFD700]">Sélection</p>
             <p>{selectedBet.label}</p>
             {selectedBet.line !== null && selectedBet.line !== undefined && (
               <p className="text-sm text-white/80">Line: {selectedBet.line}</p>
             )}
-            <p className="mt-2 text-lg font-bold text-[#FFD700]">Odds: {odds}</p>
+            <p className="mt-2 text-lg font-bold text-[#FFD700]">Cotes: {odds}</p>
           </div>
 
           <form onSubmit={handleSubmit}>
-            <label className="mb-1 block text-sm text-white">Stake</label>
+            <label className="mb-1 block text-sm text-white">Mise</label>
             <input
               type="number"
               value={amount}
@@ -88,7 +88,7 @@ export default function BetSlip({ selectedBet, marketType, onSubmit }) {
             />
 
             <div className="mb-4 rounded-lg bg-[#003366] p-3">
-              <p className="text-sm text-white">Potential payout</p>
+              <p className="text-sm text-white">Gains Potentiels</p>
               <p className="text-2xl font-bold text-[#FFD700]">{potentialWinnings}</p>
             </div>
 
