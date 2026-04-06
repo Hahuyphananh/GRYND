@@ -98,7 +98,7 @@ const games = [
     href: "/casino/keno",
     leaderboardKey: "keno",
     image: Img10,
-    description: "Choisissez vos numéros fétiches et gagnez gros !",
+    description: "Choisissez des numéros gagnants et gagnez gros !",
   },
   {
     name: "Uno",
