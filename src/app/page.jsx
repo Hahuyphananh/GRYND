@@ -469,7 +469,7 @@ useEffect(() => {
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Poker</h3>
               <p className="text-gray-300">
-                Affrontez l'IA ou d'autres joueurs dans des parties passionnantes
+                Affrontez l'IA ou d'autres joueurs dans des parties intenses de poker
               </p>
             </a>
 
@@ -486,7 +486,7 @@ useEffect(() => {
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Plinko</h3>
               <p className="text-gray-300">
-                Regardez tomber votre jeton et multipliez vos gains
+                Regardez tomber les balles et multipliez vos gains!
               </p>
             </a>
           </div>
