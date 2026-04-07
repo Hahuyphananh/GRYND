@@ -72,7 +72,7 @@ export async function POST(req) {
       mode: "battle_royale",
       mapProfile: "classic",
       playerStates: {},
-      readyPlayers: null,
+      readyPlayers: [],
       countdownEndsAt: null,
       countdownDuration: null,
     };
@@ -97,7 +97,7 @@ export async function POST(req) {
       maxPlayers: 10,
       currentPlayers: 1,
       isOpen: true,
-      gameStarted: true,
+      gameStarted: false,
       settings: safeSettings,
       players: safePlayers,
     };
@@ -161,7 +161,7 @@ export async function POST(req) {
         .values({
           matchId,
           clerkId: userId,
-          username: dbUser?.name || "Anonymous",
+          username: dbUser?.name || dbUser?.email?.split?.("@")?.[0] || "Anonymous",
           bounty: bet,
           kills: 0,
           amountCashedOut: 0,
