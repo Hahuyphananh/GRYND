@@ -29,6 +29,7 @@ const [waitingGameId, setWaitingGameId] = useState(null);
 const [isCancellingWaitingGame, setIsCancellingWaitingGame] = useState(false);
 const waitingPollRef = useRef(null);
 const [showRules, setShowRules] = useState(false);
+const [isResigning, setIsResigning] = useState(false);
 
 useEffect(() => {
   fetchAvailableGames();
@@ -462,6 +463,49 @@ useEffect(() => {
   };
 }, []);
 
+ const resignGame = async () => {
+  if (!game?.id || isResigning) return;
+
+  setIsResigning(true);
+
+  try {
+    const res = await fetch("/api/uno/resign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        gameId: game.id,
+        gameMode, // "ai" or "online"
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Impossible d'abandonner");
+      return;
+    }
+
+    // Show result instantly
+    if (gameMode === "online") {
+      setMessage("😢 Tu as abandonné la partie.");
+    } else {
+      setMessage("😢 Tu as abandonné contre l'IA.");
+    }
+
+    setIsPlayerTurn(false);
+
+    // Optional: refresh tokens if backend returns them
+    if (data.newBalance) {
+      setTokens({ balance: data.newBalance });
+    }
+
+  } catch (err) {
+    console.error("Erreur resign:", err);
+    alert("Erreur lors de l'abandon");
+  }
+
+  setIsResigning(false);
+};
 
 const drawCard = async () => {
     if (!isPlayerTurn || loading) return;
@@ -772,7 +816,15 @@ return (
       >
         Piocher une carte
       </button>
-
+{game && !message.includes("gagné") && (
+  <button
+    onClick={resignGame}
+    disabled={isResigning}
+    className="mt-2 bg-red-600 hover:bg-red-700 disabled:bg-red-900 text-white px-6 py-2 rounded font-bold"
+  >
+    {isResigning ? "Abandon..." : "❌ Abandonner"}
+  </button>
+)}
       {!isPlayerTurn && game && message.includes("gagné") && (
   <div className="flex gap-3 mt-2">
         <button
