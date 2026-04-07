@@ -5,6 +5,7 @@ import PlayerTank from "../../../../../components/PlayerTank";
 import { useParams, useRouter } from "next/navigation";
 import WaitingRoom from "./components/WaitingRoom";
 import { useSocket } from "../../../../../context/SocketProvider";
+import { useUser } from "@clerk/nextjs";
 
 function createSeededRandom(seed: number) {
   let t = seed >>> 0;
@@ -193,6 +194,7 @@ export default function TanksGamePage() {
   const params = useParams<{ matchId: string }>();
   const routeMatchId = params?.matchId;
   const { socket } = useSocket();
+  const { user } = useUser();
 
   const [mapProfile, setMapProfile] = useState<keyof typeof MAP_PROFILES>("classic");
   const [minPlayersToStart, setMinPlayersToStart] = useState(2);
@@ -224,6 +226,8 @@ export default function TanksGamePage() {
   const [isMatchReady, setIsMatchReady] = useState(false);
   const [matchId, setMatchId] = useState<string | null>(routeMatchId ?? null);
   const [selfId, setSelfId] = useState<string | null>(null);
+  const selfIdRef = useRef<string | null>(null);
+  selfIdRef.current = selfId;
   const [remotePlayers, setRemotePlayers] = useState<Record<string, PlayerState>>({});
   const remotePlayersRef = useRef(remotePlayers);
   remotePlayersRef.current = remotePlayers;
@@ -292,6 +296,20 @@ export default function TanksGamePage() {
   };
 
   useEffect(() => {
+    if (!user?.id) return;
+    setSelfId((prev) => prev ?? user.id);
+    setPlayerNames((prev) => {
+      if (prev[user.id]) return prev;
+      const displayName =
+        user.username ||
+        [user.firstName, user.lastName].filter(Boolean).join(" ").trim() ||
+        user.primaryEmailAddress?.emailAddress?.split("@")[0] ||
+        "You";
+      return { ...prev, [user.id]: displayName };
+    });
+  }, [user]);
+
+  useEffect(() => {
     setMatchId(routeMatchId ?? null);
     if (!routeMatchId) return;
 
@@ -346,6 +364,39 @@ export default function TanksGamePage() {
   }, [routeMatchId]);
 
   useEffect(() => {
+    if (!routeMatchId) return;
+
+    const missingIds = [
+      ...(selfId ? [selfId] : []),
+      ...Object.keys(remotePlayers),
+    ].filter((id) => id && !playerNames[id]);
+
+    if (missingIds.length === 0) return;
+
+    const hydrateNames = async () => {
+      try {
+        const res = await fetch(`/api/tanks/get-match?matchId=${routeMatchId}`);
+        const data = await res.json();
+        if (!res.ok || !Array.isArray(data?.playersStats)) return;
+
+        const namesById: Record<string, string> = {};
+        for (const stat of data.playersStats) {
+          if (typeof stat?.clerkId === "string" && typeof stat?.username === "string" && stat.username.trim()) {
+            namesById[stat.clerkId] = stat.username;
+          }
+        }
+        if (Object.keys(namesById).length > 0) {
+          setPlayerNames((prev) => ({ ...prev, ...namesById }));
+        }
+      } catch (err) {
+        console.error("Failed hydrating tank names:", err);
+      }
+    };
+
+    hydrateNames();
+  }, [routeMatchId, selfId, remotePlayers, playerNames]);
+
+  useEffect(() => {
     if (!socket || !routeMatchId) return;
 
     socket.emit("tanks:join_game", {
@@ -363,7 +414,7 @@ export default function TanksGamePage() {
       const players = payload?.players ?? {};
       const bullets = Array.isArray(payload?.bullets) ? payload.bullets : [];
 
-      const currentSelfId = selfId;
+      const currentSelfId = selfIdRef.current;
       if (currentSelfId && players[currentSelfId]) {
         const own = players[currentSelfId];
         if (own.health < healthRef.current) {
@@ -397,7 +448,7 @@ export default function TanksGamePage() {
     };
 
     const handleHit = (payload: { attackerId?: string; targetId?: string }) => {
-      if (payload?.attackerId === selfId && payload?.targetId) {
+      if (payload?.attackerId === selfIdRef.current && payload?.targetId) {
         pendingHitsRef.current.push(payload.targetId);
         immediateSyncRef.current?.();
       }
@@ -411,7 +462,7 @@ export default function TanksGamePage() {
       socket.off("tanks:game_state", handleGameState);
       socket.off("tanks:hit", handleHit);
     };
-  }, [socket, routeMatchId, selfId, MAP_WIDTH, MAP_HEIGHT, mapSeed, mapProfile]);
+  }, [socket, routeMatchId, MAP_WIDTH, MAP_HEIGHT, mapSeed, mapProfile]);
 
   useEffect(() => {
     if (!routeMatchId) return;
@@ -692,7 +743,7 @@ export default function TanksGamePage() {
               isEnemy
               hitIntensity={remoteHitIntensity[id] ?? 0}
               tankColor={getTankColor(id, true)}
-              playerName={playerNames[id] ?? id}
+              playerName={playerNames[id] ?? "Player"}
             />
           </div>
         ))}
@@ -733,7 +784,7 @@ export default function TanksGamePage() {
             isEnemy={false}
             hitIntensity={selfHitIntensity}
             tankColor={selfId ? getTankColor(selfId, false) : "#16a34a"}
-            playerName={selfId ? (playerNames[selfId] ?? selfId) : undefined}
+            playerName={selfId ? (playerNames[selfId] ?? "You") : undefined}
           />
         </div>
 
@@ -749,7 +800,7 @@ export default function TanksGamePage() {
           Mode: {gameMode === "battle_royale" ? "Battle Royale" : "1v1"}
         </p>
         <p className="text-xs text-cyan-200">Terrain: {isWaterTile(pos.y) ? "Water (slowed)" : "Sand"}</p>
-        <p className="text-xs text-gray-300">Player: {selfId ?? "..."}</p>
+        <p className="text-xs text-gray-300">Player: {(selfId && playerNames[selfId]) || "..."}</p>
 
         {gameMode === "battle_royale" && (
           <CashOutButton bountyRef={bountyRef} setBounty={setBounty} setCashOutCountdown={setCashOutCountdown} routeMatchId={routeMatchId} />

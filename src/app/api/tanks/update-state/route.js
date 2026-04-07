@@ -193,7 +193,7 @@ export async function POST(req) {
     let gameOver = null;
     const alivePlayers = remainingPlayers;
 
-    if (matchPlayers.length === 2 && alivePlayers.length === 1) {
+    if (mode === "duel" && matchPlayers.length === 2 && alivePlayers.length === 1) {
       const winnerId = alivePlayers[0];
       const loserId = matchPlayers.find((id) => id !== winnerId);
 
@@ -262,7 +262,13 @@ export async function POST(req) {
       }
     }
 
-    if (!gameOver && mode === "battle_royale" && alivePlayers.length === 1) {
+    if (
+      !gameOver &&
+      mode === "battle_royale" &&
+      Boolean(match.gameStarted) &&
+      matchPlayers.length >= 2 &&
+      alivePlayers.length === 1
+    ) {
       const winnerId = alivePlayers[0];
       const unresolvedStats = await db
         .select({ clerkId: tankStats.clerkId, bounty: tankStats.bounty })
