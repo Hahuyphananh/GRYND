@@ -86,7 +86,7 @@ export async function POST(req) {
       .values({
         matchId,
         clerkId: userId,
-        username: dbUser.name,
+        username: dbUser?.name || dbUser?.email?.split?.("@")?.[0] || "Player",
         bounty: bet,
         kills: 0,
         amountCashedOut: 0,
