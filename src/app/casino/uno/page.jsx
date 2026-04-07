@@ -437,7 +437,6 @@ useEffect(() => {
 
   setIsPlayerTurn(false);
 }
-
       setTurnHistory((prev) => {
         const last = prev[prev.length - 1];
         const sameCard =
@@ -462,6 +461,12 @@ useEffect(() => {
     }
   };
 }, []);
+
+const isGameFinished =
+  game && !isPlayerTurn && (
+    message.includes("gagné") ||
+    message.includes("abandonné")
+  );
 
  const resignGame = async () => {
   if (!game?.id || isResigning) return;
@@ -825,7 +830,7 @@ return (
     {isResigning ? "Abandon..." : "❌ Abandonner"}
   </button>
 )}
-      {!isPlayerTurn && game && message.includes("gagné") && (
+      {isGameFinished && (
   <div className="flex gap-3 mt-2">
         <button
   onClick={async () => {
