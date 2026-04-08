@@ -367,6 +367,30 @@ export const keno_games = pgTable("keno_games", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
+
+export const connectFourGames = pgTable("connect_four_games", {
+  id: serial("id").primaryKey(),
+  hostClerkId: varchar("host_clerk_id", { length: 255 }).notNull(),
+  guestClerkId: varchar("guest_clerk_id", { length: 255 }),
+  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
+  status: varchar("status", { length: 30 }).notNull().default("waiting"),
+  board: jsonb("board").notNull().default(sql`'[[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]]'::jsonb`),
+  hostDiscsUsed: integer("host_discs_used").notNull().default(0),
+  guestDiscsUsed: integer("guest_discs_used").notNull().default(0),
+  currentTurn: varchar("current_turn", { length: 10 }).notNull().default("host"),
+  winnerClerkId: varchar("winner_clerk_id", { length: 255 }),
+  result: varchar("result", { length: 30 }),
+  payout: numeric("payout", { precision: 10, scale: 2 }),
+  moveDeadlineAt: timestamp("move_deadline_at"),
+  startedAt: timestamp("started_at"),
+  endedAt: timestamp("ended_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  connectFourStatusIdx: index("connect_four_status_idx").on(table.status, table.createdAt),
+  connectFourHostIdx: index("connect_four_host_idx").on(table.hostClerkId),
+  connectFourGuestIdx: index("connect_four_guest_idx").on(table.guestClerkId),
+}));
+
 //
 // RELATIONS
 //
