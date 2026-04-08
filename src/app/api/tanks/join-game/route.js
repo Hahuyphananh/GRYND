@@ -103,15 +103,15 @@ export async function POST(req) {
     // 6️⃣ Atomic match update
     const targetMaxPlayers = mode === "battle_royale" ? 10 : 2;
     const nextPlayerCount = Number(selectedMatch.currentPlayers ?? 0) + 1;
-    const shouldStartGame = mode === "battle_royale" ? false : nextPlayerCount >= 2;
+    const shouldStartGame = mode === "battle_royale" ? true : nextPlayerCount >= 2;
     const shouldCloseLobby = nextPlayerCount >= targetMaxPlayers;
 
     const updatedPlayers = [...(Array.isArray(selectedMatch.players) ? selectedMatch.players : []), userId];
     const updatedSettings = {
       ...(selectedMatch.settings ?? {}),
-      readyPlayers: mode === "battle_royale" ? null : selectedMatch?.settings?.readyPlayers ?? [],
-      countdownEndsAt: mode === "battle_royale" ? null : selectedMatch?.settings?.countdownEndsAt ?? null,
-      countdownDuration: mode === "battle_royale" ? null : selectedMatch?.settings?.countdownDuration ?? null,
+      readyPlayers: mode === "battle_royale" ? selectedMatch?.settings?.readyPlayers ?? [] : null,
+      countdownEndsAt: mode === "battle_royale" ? selectedMatch?.settings?.countdownEndsAt ?? null : null,
+      countdownDuration: mode === "battle_royale" ? selectedMatch?.settings?.countdownDuration ?? null : null,
     };
 
     const updated = await db
