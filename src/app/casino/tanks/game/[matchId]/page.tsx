@@ -5,6 +5,7 @@ import PlayerTank from "../../../../../components/PlayerTank";
 import { useParams, useRouter } from "next/navigation";
 import WaitingRoom from "./components/WaitingRoom";
 import { useSocket } from "../../../../../context/SocketProvider";
+import { useUser } from "@clerk/nextjs";
 
 function createSeededRandom(seed: number) {
   let t = seed >>> 0;
@@ -109,7 +110,8 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown, routeMatchId
             const res = await fetch("/api/tanks/cashout", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ amount: bountyRef.current, matchId: routeMatchId }),
+              credentials: "include",
+              body: JSON.stringify({ matchId: routeMatchId }),
             });
             const data = await res.json();
 
@@ -147,6 +149,7 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown, routeMatchId
 }
 
 type BulletState = {
+  id?: number;
   x: number;
   y: number;
   angle: number;
@@ -193,6 +196,7 @@ export default function TanksGamePage() {
   const params = useParams<{ matchId: string }>();
   const routeMatchId = params?.matchId;
   const { socket } = useSocket();
+  const { user } = useUser();
 
   const [mapProfile, setMapProfile] = useState<keyof typeof MAP_PROFILES>("classic");
   const [minPlayersToStart, setMinPlayersToStart] = useState(2);
@@ -211,6 +215,7 @@ export default function TanksGamePage() {
   healthRef.current = health;
 
   const [cashOutCountdown, setCashOutCountdown] = useState(0);
+  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
 
   const [bounty, setBounty] = useState(0);
   const bountyRef = useRef(bounty);
@@ -224,6 +229,8 @@ export default function TanksGamePage() {
   const [isMatchReady, setIsMatchReady] = useState(false);
   const [matchId, setMatchId] = useState<string | null>(routeMatchId ?? null);
   const [selfId, setSelfId] = useState<string | null>(null);
+  const selfIdRef = useRef<string | null>(null);
+  selfIdRef.current = selfId;
   const [remotePlayers, setRemotePlayers] = useState<Record<string, PlayerState>>({});
   const remotePlayersRef = useRef(remotePlayers);
   remotePlayersRef.current = remotePlayers;
@@ -292,12 +299,51 @@ export default function TanksGamePage() {
   };
 
   useEffect(() => {
+    if (!user?.id) return;
+    setSelfId((prev) => prev ?? user.id);
+    setPlayerNames((prev) => {
+      if (prev[user.id]) return prev;
+      const displayName =
+        user.username ||
+        [user.firstName, user.lastName].filter(Boolean).join(" ").trim() ||
+        user.primaryEmailAddress?.emailAddress?.split("@")[0] ||
+        "You";
+      return { ...prev, [user.id]: displayName };
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchTokens = async () => {
+      try {
+        const res = await fetch("/api/get-user-tokens", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (res.ok && data?.success) {
+          setTokenBalance(Number(data?.data?.balance ?? 0));
+        }
+      } catch (err) {
+        console.error("Failed loading token balance in tanks match:", err);
+      }
+    };
+    fetchTokens();
+  }, [user]);
+
+  useEffect(() => {
     setMatchId(routeMatchId ?? null);
     if (!routeMatchId) return;
 
     const checkMatch = async () => {
       try {
-        const res = await fetch(`/api/tanks/get-match?matchId=${routeMatchId}`);
+        const res = await fetch(`/api/tanks/get-match?matchId=${routeMatchId}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          cache: "no-store",
+        });
         const data = await res.json();
 
         const modeFromServer = data?.settings?.mode === "battle_royale" ? "battle_royale" : "duel";
@@ -346,6 +392,44 @@ export default function TanksGamePage() {
   }, [routeMatchId]);
 
   useEffect(() => {
+    if (!routeMatchId) return;
+
+    const missingIds = [
+      ...(selfId ? [selfId] : []),
+      ...Object.keys(remotePlayers),
+    ].filter((id) => id && !playerNames[id]);
+
+    if (missingIds.length === 0) return;
+
+    const hydrateNames = async () => {
+      try {
+        const res = await fetch(`/api/tanks/get-match?matchId=${routeMatchId}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = await res.json();
+        if (!res.ok || !Array.isArray(data?.playersStats)) return;
+
+        const namesById: Record<string, string> = {};
+        for (const stat of data.playersStats) {
+          if (typeof stat?.clerkId === "string" && typeof stat?.username === "string" && stat.username.trim()) {
+            namesById[stat.clerkId] = stat.username;
+          }
+        }
+        if (Object.keys(namesById).length > 0) {
+          setPlayerNames((prev) => ({ ...prev, ...namesById }));
+        }
+      } catch (err) {
+        console.error("Failed hydrating tank names:", err);
+      }
+    };
+
+    hydrateNames();
+  }, [routeMatchId, selfId, remotePlayers, playerNames]);
+
+  useEffect(() => {
     if (!socket || !routeMatchId) return;
 
     socket.emit("tanks:join_game", {
@@ -363,9 +447,20 @@ export default function TanksGamePage() {
       const players = payload?.players ?? {};
       const bullets = Array.isArray(payload?.bullets) ? payload.bullets : [];
 
-      const currentSelfId = selfId;
+      const currentSelfId = selfIdRef.current;
       if (currentSelfId && players[currentSelfId]) {
         const own = players[currentSelfId];
+        if (own.health <= 0 && !gameFinishedRef.current) {
+          gameFinishedRef.current = true;
+          showGameAlert("💀 You were destroyed");
+          fetch("/api/tanks/leave-match", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ gameId: routeMatchId }),
+          }).finally(() => router.push("/casino/tanks"));
+          return;
+        }
         if (own.health < healthRef.current) {
           selfHitUntilRef.current = performance.now() + 220;
           playHitSound();
@@ -397,7 +492,7 @@ export default function TanksGamePage() {
     };
 
     const handleHit = (payload: { attackerId?: string; targetId?: string }) => {
-      if (payload?.attackerId === selfId && payload?.targetId) {
+      if (payload?.attackerId === selfIdRef.current && payload?.targetId) {
         pendingHitsRef.current.push(payload.targetId);
         immediateSyncRef.current?.();
       }
@@ -411,7 +506,7 @@ export default function TanksGamePage() {
       socket.off("tanks:game_state", handleGameState);
       socket.off("tanks:hit", handleHit);
     };
-  }, [socket, routeMatchId, selfId, MAP_WIDTH, MAP_HEIGHT, mapSeed, mapProfile]);
+  }, [socket, routeMatchId, MAP_WIDTH, MAP_HEIGHT, mapSeed, mapProfile]);
 
   useEffect(() => {
     if (!routeMatchId) return;
@@ -421,6 +516,7 @@ export default function TanksGamePage() {
         const res = await fetch("/api/tanks/update-state", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             matchId: routeMatchId,
             x: posRef.current.x,
@@ -550,8 +646,9 @@ export default function TanksGamePage() {
 
       setServerBullets((prev) => {
         const target = targetBulletsRef.current;
+        const prevById = new Map(prev.map((b, i) => [b.id ?? i, b]));
         return target.map((bullet, i) => {
-          const current = prev[i] ?? bullet;
+          const current = prevById.get(bullet.id ?? i) ?? bullet;
           const smoothing = 0.35 * dt;
           return {
             ...bullet,
@@ -692,7 +789,7 @@ export default function TanksGamePage() {
               isEnemy
               hitIntensity={remoteHitIntensity[id] ?? 0}
               tankColor={getTankColor(id, true)}
-              playerName={playerNames[id] ?? id}
+              playerName={playerNames[id] ?? "Player"}
             />
           </div>
         ))}
@@ -733,7 +830,7 @@ export default function TanksGamePage() {
             isEnemy={false}
             hitIntensity={selfHitIntensity}
             tankColor={selfId ? getTankColor(selfId, false) : "#16a34a"}
-            playerName={selfId ? (playerNames[selfId] ?? selfId) : undefined}
+            playerName={selfId ? (playerNames[selfId] ?? "You") : undefined}
           />
         </div>
 
@@ -744,12 +841,13 @@ export default function TanksGamePage() {
 
       <div className="absolute top-4 left-4 p-4 bg-black/40 rounded-xl text-white flex flex-col gap-2 z-[9999]">
         <p className="text-lg font-bold">Bounty: ${bounty}</p>
+        <p className="text-xs text-green-300">Balance: {tokenBalance ?? "..."} tokens</p>
         <p className="font-bold">Ammo: {ammo}/{MAX_AMMO}</p>
         <p className="text-xs text-yellow-200">
           Mode: {gameMode === "battle_royale" ? "Battle Royale" : "1v1"}
         </p>
         <p className="text-xs text-cyan-200">Terrain: {isWaterTile(pos.y) ? "Water (slowed)" : "Sand"}</p>
-        <p className="text-xs text-gray-300">Player: {selfId ?? "..."}</p>
+        <p className="text-xs text-gray-300">Player: {(selfId && playerNames[selfId]) || "..."}</p>
 
         {gameMode === "battle_royale" && (
           <CashOutButton bountyRef={bountyRef} setBounty={setBounty} setCashOutCountdown={setCashOutCountdown} routeMatchId={routeMatchId} />

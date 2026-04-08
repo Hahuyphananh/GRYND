@@ -103,7 +103,7 @@ export async function POST(req) {
     // 6️⃣ Atomic match update
     const targetMaxPlayers = mode === "battle_royale" ? 10 : 2;
     const nextPlayerCount = Number(selectedMatch.currentPlayers ?? 0) + 1;
-    const shouldStartGame = mode === "battle_royale" ? true : nextPlayerCount >= 2;
+    const shouldStartGame = mode === "battle_royale" ? false : nextPlayerCount >= 2;
     const shouldCloseLobby = nextPlayerCount >= targetMaxPlayers;
 
     const updatedPlayers = [...(Array.isArray(selectedMatch.players) ? selectedMatch.players : []), userId];
@@ -142,7 +142,7 @@ export async function POST(req) {
     await db.insert(tankStats).values({
       matchId: selectedMatch.matchId,
       clerkId: userId,
-      username: dbUser.name,
+      username: dbUser?.name || dbUser?.email?.split?.("@")?.[0] || "Player",
       bounty: bet,
       kills: 0,
       amountCashedOut: 0,

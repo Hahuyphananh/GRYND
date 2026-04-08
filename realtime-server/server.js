@@ -171,6 +171,7 @@ function createTanksRoom(gameId, settings = {}) {
     rocks: generateRocks(mapSeed, mapWidth, mapHeight, rockCount),
     players: new Map(),
     bullets: [],
+    nextBulletId: 1,
     lastTickAt: Date.now(),
     interval: null,
   };
@@ -276,7 +277,7 @@ function ensureRoomLoop(room) {
       gameId: room.gameId,
       serverTime: now,
       players,
-      bullets: room.bullets.map(({ x, y, angle }) => ({ x, y, angle })),
+      bullets: room.bullets.map(({ id, x, y, angle }) => ({ id, x, y, angle })),
     });
   }, TANK_TICK_MS);
 }
@@ -409,6 +410,7 @@ io.on('connection', (socket) => {
     const rad = ((player.rotation - 90) * Math.PI) / 180;
     const spawnDist = 35;
     room.bullets.push({
+      id: room.nextBulletId++,
       ownerId: socket.data.userId,
       x: player.x + Math.cos(rad) * spawnDist,
       y: player.y + Math.sin(rad) * spawnDist,
