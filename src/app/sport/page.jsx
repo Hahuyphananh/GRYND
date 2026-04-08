@@ -160,7 +160,7 @@ const MainComponent = () => {
                           onClick={() => setSelectedSport(league.key)}
                           className={`cursor-pointer border-t border-[#00e5ff]/20 px-3 py-2 text-sm ${
                             selectedSport === league.key
-                              ? "bg-[#39ff14]/90 text-[#071421]"
+                              ? "bg-[#f5ff3b] text-[#071421]"
                               : "text-[#9dd8ff] hover:bg-[#003b8e]"
                           }`}
                         >

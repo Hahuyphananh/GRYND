@@ -74,7 +74,7 @@ export default function EventCard({
             {new Date(fallbackEvent.commence_time).toLocaleDateString()} · {new Date(fallbackEvent.commence_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </p>
         </div>
-        <span className="rounded-md border border-[#39ff14]/50 px-2 py-1 text-xs text-[#39ff14]">{label}</span>
+        <span className="rounded-md border border-[#00e5ff]/50 px-2 py-1 text-xs text-[#00e5ff]">{label}</span>
       </div>
 
       <div className="flex flex-wrap gap-2">

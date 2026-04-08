@@ -100,7 +100,7 @@ function MainComponent() {
             onClick={() => setSelectedLeaderboard("overall")}
             className={`rounded-md px-4 py-2 text-sm font-semibold transition-all ${
               selectedLeaderboard === "overall"
-                ? "bg-[#39ff14] text-[#06152c]"
+                ? "bg-[#f5ff3b] text-[#06152c]"
                 : "bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"
             }`}
           >
@@ -112,7 +112,7 @@ function MainComponent() {
               onClick={() => setSelectedLeaderboard(gameKey)}
               className={`rounded-md px-4 py-2 text-sm font-semibold transition-all ${
                 selectedLeaderboard === gameKey
-                  ? "bg-[#39ff14] text-[#06152c]"
+                  ? "bg-[#f5ff3b] text-[#06152c]"
                   : "bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"
               }`}
             >
@@ -167,7 +167,7 @@ function MainComponent() {
                         transition={{ duration: 0.25, delay: player.rank * 0.01 }}
                         className={`border-b border-[#00e5ff]/20 ${
                           isTop3
-                            ? "bg-[#39ff14]/10 hover:bg-[#39ff14]/20"
+                            ? "bg-[#f5ff3b]/10 hover:bg-[#f5ff3b]/20"
                             : player.rank % 2 === 0
                             ? "bg-[#0b224f]"
                             : "bg-[#08142f]"

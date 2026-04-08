@@ -65,7 +65,7 @@ export default function BetSlip({ selectedBet, marketType, onSubmit }) {
           <div className="mb-4 rounded-lg bg-[#061633] p-3 text-[#ecf8ff]">
             <p className="text-xs uppercase tracking-wide text-[#f5ff3b]">Événement</p>
             <p className="font-semibold">{selectedBet.eventLabel}</p>
-            <p className="mt-2 text-xs uppercase tracking-wide text-[#39ff14]">Marché</p>
+            <p className="mt-2 text-xs uppercase tracking-wide text-[#00e5ff]">Marché</p>
             <p>{marketTitle[selectedBet.marketType || marketType] || "Moneyline"}</p>
             <p className="mt-2 text-xs uppercase tracking-wide text-[#00e5ff]">Sélection</p>
             <p>{selectedBet.label}</p>
@@ -89,7 +89,7 @@ export default function BetSlip({ selectedBet, marketType, onSubmit }) {
 
             <div className="mb-4 rounded-lg bg-[#061633] p-3">
               <p className="text-sm text-[#95e4ff]">Gains Potentiels</p>
-              <p className="text-2xl font-bold text-[#39ff14]">{potentialWinnings}</p>
+              <p className="text-2xl font-bold text-[#f5ff3b]">{potentialWinnings}</p>
             </div>
 
             {error && <p className="mb-3 text-sm text-red-300">{error}</p>}
