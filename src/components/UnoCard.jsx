@@ -1,4 +1,4 @@
-export default function UnoCard({ color, value, onClick }) {
+export default function UnoCard({ color, value, onClick, className = "", style }) {
   const bgColors = {
     red: "#D32F2F",
     blue: "#1976D2",
@@ -22,11 +22,12 @@ export default function UnoCard({ color, value, onClick }) {
   return (
     <div className="flex flex-col items-center">
       <div
-        onClick={onClick}
-        className="w-14 h-20 rounded-lg shadow-lg flex flex-col justify-center items-center cursor-pointer select-none transform hover:scale-105 transition-transform relative overflow-hidden"
+        onClick={(event) => onClick?.(event)}
+        className={`w-14 h-20 rounded-lg shadow-lg flex flex-col justify-center items-center cursor-pointer select-none transform hover:scale-105 transition-transform relative overflow-hidden ${className}`}
         style={{
           backgroundColor: bgColors[color.toLowerCase()] || "#000",
           color: color.toLowerCase() === "yellow" ? "#000" : "#fff",
+          ...style,
         }}
       >
         {/* Centered symbol */}

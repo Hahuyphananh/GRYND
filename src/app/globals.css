@@ -305,3 +305,104 @@
 :root[data-theme='light'] .hover\:bg-\[\#FFD700\]\/80:hover {
   background-color: #f4c430 !important;
 }
+@keyframes connectFourDrop {
+  from {
+    transform: translateY(calc(-1 * var(--drop-distance, 66px)));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.connect-four-fall {
+  animation: connectFourDrop 0.42s cubic-bezier(0.2, 0.9, 0.35, 1) both;
+}
+
+@keyframes unoDrawPop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 24px) scale(0.65);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -8px) scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -20px) scale(1);
+  }
+}
+
+.uno-draw-pop {
+  animation: unoDrawPop 0.5s ease-out forwards;
+}
+
+@keyframes unoPlaySlide {
+  from {
+    opacity: 0.95;
+    transform: translate(-50%, 0) translate(var(--slide-x, 0px), var(--slide-y, 0px)) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, 0) translate(0, 0) scale(0.95);
+  }
+}
+
+.uno-play-slide {
+  animation: unoPlaySlide 0.42s ease-in forwards;
+}
+
+
+@keyframes pageFadeSlideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.page-enter {
+  animation: pageFadeSlideIn 0.2s ease-out;
+}
+
+@keyframes lowTimePulse {
+  0%, 100% { transform: scale(1); text-shadow: 0 0 0 rgba(248, 113, 113, 0); }
+  50% { transform: scale(1.06); text-shadow: 0 0 12px rgba(248, 113, 113, 0.8); }
+}
+
+.low-time-pulse {
+  animation: lowTimePulse 0.85s ease-in-out infinite;
+}
+
+.turn-active-glow {
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.45), 0 0 24px rgba(250, 204, 21, 0.2);
+  transition: box-shadow 0.2s ease;
+}
+
+.casino-surface {
+  background: rgba(3, 19, 43, 0.72);
+  border: 1px solid rgba(250, 204, 21, 0.22);
+  box-shadow: 0 18px 35px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(2px);
+}
+
+@keyframes confettiFall {
+  from { transform: translateY(-120px) rotate(0deg); opacity: 1; }
+  to { transform: translateY(420px) rotate(360deg); opacity: 0; }
+}
+
+.confetti-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.confetti-piece {
+  position: absolute;
+  width: 10px;
+  height: 14px;
+  top: -20px;
+  border-radius: 2px;
+  animation: confettiFall 1.6s linear forwards;
+}
+
+.hover-lift { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.hover-lift:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(0,0,0,0.28); }

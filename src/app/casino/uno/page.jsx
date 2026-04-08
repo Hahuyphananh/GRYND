@@ -6,6 +6,31 @@ import UnoBack from "../../../components/UnoBack";
 import NavigationBar from "../../../components/navigation-bar";
 import { useSocket } from "../../../context/SocketProvider";
 
+const CONFETTI_COLORS = ["#facc15", "#60a5fa", "#4ade80", "#f472b6", "#fb923c"];
+
+function playUiTone(type = "draw") {
+  if (typeof window === "undefined") return;
+  const context = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = context.createOscillator();
+  const gain = context.createGain();
+  osc.connect(gain);
+  gain.connect(context.destination);
+
+  const tones = {
+    draw: { freq: 430, duration: 0.08 },
+    play: { freq: 520, duration: 0.08 },
+    win: { freq: 700, duration: 0.18 },
+  };
+
+  const tone = tones[type] || tones.draw;
+  osc.frequency.value = tone.freq;
+  gain.gain.setValueAtTime(0.001, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.06, context.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + tone.duration);
+  osc.start();
+  osc.stop(context.currentTime + tone.duration);
+}
+
 export default function UnoGamePage() {
   const { socket } = useSocket();
   const [game, setGame] = useState(null);
@@ -28,8 +53,11 @@ const [isLoadingAvailableGames, setIsLoadingAvailableGames] = useState(false);
 const [waitingGameId, setWaitingGameId] = useState(null);
 const [isCancellingWaitingGame, setIsCancellingWaitingGame] = useState(false);
 const waitingPollRef = useRef(null);
+const centerCardRef = useRef(null);
 const [showRules, setShowRules] = useState(false);
 const [isResigning, setIsResigning] = useState(false);
+const [drawnCardAnimation, setDrawnCardAnimation] = useState(null);
+const [playedCardAnimation, setPlayedCardAnimation] = useState(null);
 
 useEffect(() => {
   fetchAvailableGames();
@@ -97,9 +125,11 @@ useEffect(() => {
       if (data.winner) {
         if (gameMode === "online") {
           const youWon = data.result === "win";
-          setMessage(youWon ? "🎉 Tu as gagné la partie !" : "😢 Ton adversaire a gagné la partie !");
+          setMessage(youWon ? "Tu as gagné la partie !" : "Ton adversaire a gagné la partie !");
+          if (youWon) playUiTone("win");
         } else {
-          setMessage(`🎉 ${data.winner} a gagné la partie !`);
+          setMessage(`${data.winner} a gagné la partie !`);
+          if (data.winner === "player") playUiTone("win");
         }
         setIsPlayerTurn(false);
       }
@@ -164,7 +194,7 @@ setHistoryIndex(null); // back to live mode
     }
   };
 
- const playCard = async (card) => {
+ const playCard = async (card, clickEvent = null) => {
   if (!isPlayerTurn || loading) return;
   if (historyIndex !== null) return; // block while browsing history
 
@@ -176,6 +206,18 @@ setHistoryIndex(null); // back to live mode
   }
 
   // Otherwise play as usual
+  if (clickEvent?.currentTarget && centerCardRef.current) {
+    const fromRect = clickEvent.currentTarget.getBoundingClientRect();
+    const toRect = centerCardRef.current.getBoundingClientRect();
+    setPlayedCardAnimation({
+      card,
+      dx: toRect.left - fromRect.left,
+      dy: toRect.top - fromRect.top,
+    });
+    window.setTimeout(() => setPlayedCardAnimation(null), 420);
+  }
+
+  playUiTone("play");
   await sendPlayCard(card);
 };
 
@@ -431,8 +473,8 @@ useEffect(() => {
 
   setMessage(
     youWon
-      ? "🎉 Tu as gagné la partie !"
-      : "😢 Ton adversaire a gagné la partie !"
+      ? "Tu as gagné la partie !"
+      : "Ton adversaire a gagné la partie !"
   );
 
   setIsPlayerTurn(false);
@@ -515,6 +557,7 @@ const isGameFinished =
 const drawCard = async () => {
     if (!isPlayerTurn || loading) return;
     if (historyIndex !== null) return; // block while browsing history
+    const previousHandLength = playerHand.length;
     setLoading(true);
     const res = await fetch("/api/uno/draw-card", {
       method: "POST",
@@ -525,6 +568,14 @@ const drawCard = async () => {
     const data = await res.json();
     if (data.success) {
   setPlayerHand(data.data.playerHand);
+  if (data.data.playerHand.length > previousHandLength) {
+    const latestCard = data.data.playerHand[data.data.playerHand.length - 1];
+    if (latestCard) {
+      setDrawnCardAnimation(latestCard);
+      playUiTone("draw");
+      window.setTimeout(() => setDrawnCardAnimation(null), 500);
+    }
+  }
   setTopCard(data.data.topCard);
 setTurnHistory((prev) => [...prev, data.data.topCard]);
 setHistoryIndex(null); // back to live mode
@@ -561,6 +612,8 @@ const displayedCard =
   setTurnHistory([]);
   setHistoryIndex(null);
   setWaitingGameId(null);
+  setDrawnCardAnimation(null);
+  setPlayedCardAnimation(null);
 
   // Optional: refresh available games when returning
   fetchAvailableGames();
@@ -568,18 +621,18 @@ const displayedCard =
 
 return (
 
-  <div className="bg-[#003366] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8">
+  <div className="bg-[#003366] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8 page-enter">
  <NavigationBar currentPath="/casino" />
     <h1 className="text-3xl mb-2 font-bold">{gameMode === "online" ? "UNO 1v1 en ligne" : "UNO vs IA"}</h1>
 
     {tokens && (
       <p className="text-yellow-300 mb-4 text-lg">
-        💰 Tokens : {tokens.balance}
+        Tokens : {tokens.balance}
       </p>
     )}
 
     {!game ? (
-  <div className="w-full max-w-4xl aspect-[2/1] bg-green-700 rounded-full flex flex-col items-center justify-center shadow-2xl border-8 border-green-900 p-8 text-center">
+  <div className="w-full max-w-4xl aspect-[2/1] bg-green-700/90 rounded-full flex flex-col items-center justify-center shadow-2xl border-8 border-green-950 p-8 text-center casino-surface">
     <h2 className="text-2xl font-bold mb-6 text-white">Prépare ta partie</h2>
 
     <label className="mb-6 text-lg font-semibold flex flex-col items-center">
@@ -670,14 +723,14 @@ return (
                 setShowGameModeModal(false);
                 initializeGame();
               }}
-              className="bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold"
+              className="bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold hover-lift"
             >
               Jouer contre l'IA
             </button>
             <button
               onClick={createOnlineGame}
               disabled={!!waitingGameId}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-bold"
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover-lift"
             >
               Créer une partie multijoueur
             </button>
@@ -698,9 +751,9 @@ return (
     )}
   </div>
 ) : (
-  <div className="w-full max-w-5xl aspect-[2/1] bg-green-700 rounded-full flex flex-col justify-between items-center shadow-2xl border-8 border-green-900 p-6 relative">
+  <div className="w-full max-w-5xl aspect-[2/1] bg-green-700/90 rounded-full flex flex-col justify-between items-center shadow-2xl border-8 border-green-950 p-6 relative casino-surface overflow-hidden">
     {/* Opponent hand */}
-    {gameMode === "online" ? "Main adverse:" : "Main de l'IA:"}
+    <div className={`px-4 py-1 rounded-full ${!isPlayerTurn ? "turn-active-glow" : ""}`}>{gameMode === "online" ? "Main adverse:" : "Main de l'IA:"}</div>
     <div className="flex justify-center gap-2">
       {Array(aiHandCount)
         .fill(0)
@@ -757,7 +810,7 @@ return (
 
 
   {/* Card in center */}
-  <div className="flex flex-col items-center">
+  <div className="flex flex-col items-center" ref={centerCardRef}>
     Carte actuelle :
     {displayedCard ? (
       <UnoCard
@@ -795,13 +848,13 @@ return (
 
 
     {/* Player hand */}
-    <div className="flex flex-wrap gap-2 justify-center">
+    <div className={`flex flex-wrap gap-2 justify-center px-3 py-2 rounded-2xl ${isPlayerTurn ? "turn-active-glow" : ""}`}>
       {playerHand.map((card, i) => (
         <UnoCard
           key={i}
           color={card.color}
           value={card.value}
-          onClick={() => playCard(card)}
+          onClick={(event) => playCard(card, event)}
         />
       ))}
     </div>
@@ -813,11 +866,48 @@ return (
   </p>
 )}
 
+    {drawnCardAnimation && (
+      <div className="absolute bottom-32 left-1/2 -translate-x-1/2 pointer-events-none z-40 uno-draw-pop">
+        <UnoCard color={drawnCardAnimation.color} value={drawnCardAnimation.value} onClick={() => {}} />
+      </div>
+    )}
+
+    {playedCardAnimation && (
+      <div
+        className="absolute pointer-events-none z-40 uno-play-slide"
+        style={{
+          left: "50%",
+          bottom: "5.5rem",
+          transform: `translate(-50%, 0) translate(${playedCardAnimation.dx}px, ${playedCardAnimation.dy}px)`,
+          ["--slide-x"]: `${-playedCardAnimation.dx}px`,
+          ["--slide-y"]: `${-playedCardAnimation.dy}px`,
+        }}
+      >
+        <UnoCard color={playedCardAnimation.card.color} value={playedCardAnimation.card.value} onClick={() => {}} />
+      </div>
+    )}
+
+    {(message.includes("gagné") || message.includes("won")) && (
+      <div className="confetti-overlay">
+        {Array.from({ length: 26 }).map((_, index) => (
+          <span
+            key={`uno-confetti-${index}`}
+            className="confetti-piece"
+            style={{
+              left: `${(index * 13) % 100}%`,
+              backgroundColor: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
+              animationDelay: `${(index % 7) * 0.05}s`,
+            }}
+          />
+        ))}
+      </div>
+    )}
+
     {/* Draw & replay buttons */}
     <div className="flex flex-col items-center mt-4">
       <button
         onClick={drawCard}
-        className="mb-2 bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded"
+        className="mb-2 bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded hover-lift"
       >
         Piocher une carte
       </button>
@@ -851,7 +941,7 @@ return (
   onClick={returnToLobby}
   className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded"
 >
-  🏠 Lobby
+  Lobby
 </button>
         </div>
       )}
@@ -864,7 +954,7 @@ return (
     onClick={() => setShowRules(!showRules)}
     className="w-full bg-green-900 hover:bg-green-950 text-white px-6 py-3 rounded-xl font-bold text-left flex justify-between"
   >
-    📜 Règles du jeu (UNO)
+    Règles du jeu (UNO)
     <span>{showRules ? "▲" : "▼"}</span>
   </button>
 
