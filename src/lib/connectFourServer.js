@@ -1,31 +1,30 @@
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { connectFourGames, users } from "../db/schema";
-import type { ConnectFourBoard } from "./connectFour";
 
 const HOUSE_EDGE_MULTIPLIER = 1.9;
 const MOVE_TIME_SECONDS = 60;
 
-export async function getUserAliases(clerkId: string) {
+export async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
   const [row] = await db.select({ id: users.id }).from(users).where(eq(users.clerkId, clerkId)).limit(1);
   if (row?.id) aliases.add(String(row.id));
   return aliases;
 }
 
-export async function resolveNameByClerkId(clerkId?: string | null) {
+export async function resolveNameByClerkId(clerkId) {
   if (!clerkId) return null;
   const [row] = await db.select({ name: users.name }).from(users).where(eq(users.clerkId, clerkId)).limit(1);
   return row?.name || null;
 }
 
-export function getPlayerRole(game: any, userAliases: Set<string>): "host" | "guest" | null {
+export function getPlayerRole(game, userAliases) {
   if (userAliases.has(String(game.hostClerkId))) return "host";
   if (game.guestClerkId && userAliases.has(String(game.guestClerkId))) return "guest";
   return null;
 }
 
-export async function settleConnectFourGame(gameId: number, winnerClerkId: string | null, result: string) {
+export async function settleConnectFourGame(gameId, winnerClerkId, result) {
   await db.transaction(async (tx) => {
     const [locked] = await tx
       .select()
@@ -88,7 +87,7 @@ export async function settleConnectFourGame(gameId: number, winnerClerkId: strin
   });
 }
 
-export async function settleTimeoutIfNeeded(game: any) {
+export async function settleTimeoutIfNeeded(game) {
   if (game.status !== "in_progress" || !game.moveDeadlineAt) return game;
 
   const deadline = new Date(game.moveDeadlineAt).getTime();
@@ -108,7 +107,7 @@ export async function settleTimeoutIfNeeded(game: any) {
   return updated || game;
 }
 
-export function computeMoveTimeRemaining(deadline?: Date | string | null) {
+export function computeMoveTimeRemaining(deadline) {
   if (!deadline) return 0;
   const endsAt = new Date(deadline).getTime();
   return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
@@ -118,8 +117,8 @@ export function nextMoveDeadline() {
   return new Date(Date.now() + MOVE_TIME_SECONDS * 1000);
 }
 
-export function ensureBoard(board: unknown): ConnectFourBoard {
-  const fallback: ConnectFourBoard = Array.from({ length: 6 }, () => Array.from({ length: 7 }, () => 0 as 0));
+export function ensureBoard(board) {
+  const fallback = Array.from({ length: 6 }, () => Array.from({ length: 7 }, () => 0));
   if (!Array.isArray(board) || board.length !== 6) return fallback;
 
   for (const row of board) {
@@ -127,5 +126,5 @@ export function ensureBoard(board: unknown): ConnectFourBoard {
     if (!row.every((cell) => cell === 0 || cell === 1 || cell === 2)) return fallback;
   }
 
-  return board as ConnectFourBoard;
+  return board;
 }
