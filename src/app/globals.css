@@ -35,7 +35,7 @@
 /* Smooth animated background gradient */
 .animated-bg {
   min-height: 100vh; /* Full page height */
-  background: linear-gradient(270deg, #003366, #004080, #003366);
+  background: linear-gradient(270deg, #030817, #071536, #003b8e, #050b1f);
   background-size: 600% 600%;
   animation: gradientBG 30s ease infinite;
 }
@@ -194,6 +194,60 @@
   font-family: 'Orbitron', sans-serif;
   font-weight: 700;
   letter-spacing: 1px;
+}
+
+.cyberpunk-grid {
+  position: relative;
+}
+
+.cyberpunk-grid::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0, 229, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 255, 0.07) 1px, transparent 1px);
+  background-size: 40px 40px;
+  z-index: 0;
+}
+
+@keyframes cyberButtonGlow {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.35), 0 0 16px rgba(245, 255, 59, 0.2);
+    transform: translateY(0);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(245, 255, 59, 0.45), 0 0 30px rgba(0, 229, 255, 0.45);
+    transform: translateY(-1px);
+  }
+}
+
+.cyber-glow-button {
+  animation: cyberButtonGlow 2.2s ease-in-out infinite;
+}
+
+/* Global casino button palette: convert blue action buttons to neon yellow */
+button[class*="bg-blue-"]:not(:disabled),
+a[class*="bg-blue-"]:not([aria-disabled="true"]),
+button.bg-\[\#004080\]:not(:disabled),
+a.bg-\[\#004080\]:not([aria-disabled="true"]),
+button.bg-\[\#003366\]:not(:disabled),
+a.bg-\[\#003366\]:not([aria-disabled="true"]) {
+  background-color: #f5ff3b !important;
+  border-color: rgba(245, 255, 59, 0.6) !important;
+  color: #031026 !important;
+  box-shadow: 0 0 14px rgba(245, 255, 59, 0.35);
+}
+
+button[class*="hover:bg-blue-"]:not(:disabled):hover,
+a[class*="hover:bg-blue-"]:not([aria-disabled="true"]):hover,
+button.hover\:bg-\[\#004080\]:not(:disabled):hover,
+a.hover\:bg-\[\#004080\]:not([aria-disabled="true"]):hover,
+button.hover\:bg-\[\#003366\]:not(:disabled):hover,
+a.hover\:bg-\[\#003366\]:not([aria-disabled="true"]):hover {
+  background-color: #edf734 !important;
+  color: #031026 !important;
 }
 
 /* Space background for crash rocket area only */
