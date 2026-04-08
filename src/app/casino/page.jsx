@@ -121,6 +121,13 @@ const games = [
     image: Img13,
     description: "Deviens le meilleur tank et empare-toi des primes !",
   },
+  {
+    name: "Connect Four",
+    href: "/casino/connect-four",
+    leaderboardKey: "connect-four",
+    image: Img13,
+    description: "Affrontez un joueur en 1v1 et alignez 4 disques.",
+  },
 ];
 
 const filteredGames = games.filter((game) =>
