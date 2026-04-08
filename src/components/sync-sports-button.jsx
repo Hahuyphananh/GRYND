@@ -53,8 +53,8 @@ export default function Index() {
           disabled={loading}
           className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors
             ${loading 
-              ? 'bg-[#FFD700]/50 text-[#003366] cursor-not-allowed' 
-              : 'bg-[#FFD700] text-[#003366] hover:bg-[#FFD700]/80'
+              ? 'bg-[#FFD700]/50 text-[#030817] cursor-not-allowed' 
+              : 'bg-[#FFD700] text-[#030817] hover:bg-[#FFD700]/80'
             }`}
         >
           {loading && (
@@ -71,7 +71,7 @@ export default function Index() {
           </p>
           <button
             onClick={handleSync}
-            className="inline-flex items-center justify-center rounded-md border border-[#FFD700] bg-transparent px-4 py-2 text-sm font-medium text-[#FFD700] transition-colors hover:bg-[#FFD700] hover:text-[#003366]"
+            className="inline-flex items-center justify-center rounded-md border border-[#FFD700] bg-transparent px-4 py-2 text-sm font-medium text-[#FFD700] transition-colors hover:bg-[#FFD700] hover:text-[#030817]"
           >
             Réessayer
           </button>

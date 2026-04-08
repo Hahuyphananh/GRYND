@@ -158,7 +158,7 @@ export default function ConnectFourLobbyPage() {
                   <button
                     onClick={() => joinGame(game.id)}
                     disabled={loading || joiningId === game.id}
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 font-bold disabled:bg-blue-900"
+                    className="px-4 py-2 rounded-lg bg-[#f5ff3b] hover:bg-[#f5ff3b] font-bold disabled:bg-[#7f8520]"
                   >
                     {joiningId === game.id ? "Joining..." : "Join"}
                   </button>

@@ -298,7 +298,7 @@ export default function ChessGamePage() {
   }, [selectedSquare, legalTargets]);
 
   return (
-    <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center p-8 page-enter">
+    <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center p-8 page-enter">
       <h1 className="text-3xl font-bold text-[#FFD700] mb-4">♟️ Chess Game</h1>
       <p className="mb-2">Game #{gameId} · You are {color}</p>
       <p className="mb-1 text-lg font-semibold text-[#FFD700]">Bet Amount: ${Number(gameData?.betAmount || 0)}</p>
@@ -337,7 +337,7 @@ export default function ChessGamePage() {
               moves.map((move, index) => (
                 <button
                   key={move.id}
-                  className={`block w-full text-left px-2 py-1 rounded ${moveIndex === index ? "bg-[#FFD700] text-[#003366] font-bold" : "hover:bg-white/10"}`}
+                  className={`block w-full text-left px-2 py-1 rounded ${moveIndex === index ? "bg-[#FFD700] text-[#030817] font-bold" : "hover:bg-white/10"}`}
                   onClick={() => setMoveIndex(index)}
                 >
                   {index + 1}. {move.moveSan}
@@ -348,14 +348,14 @@ export default function ChessGamePage() {
           <div className="flex items-center justify-between mt-3">
             <button
               onClick={() => setMoveIndex((prev) => Math.max(-1, prev - 1))}
-              className="bg-[#FFD700] text-[#003366] px-3 py-1 rounded font-bold disabled:opacity-50 hover-lift"
+              className="bg-[#FFD700] text-[#030817] px-3 py-1 rounded font-bold disabled:opacity-50 hover-lift"
               disabled={moveIndex <= -1}
             >
               ←
             </button>
             <button
               onClick={() => setMoveIndex((prev) => (prev >= moves.length - 1 ? -1 : prev + 1))}
-              className="bg-[#FFD700] text-[#003366] px-3 py-1 rounded font-bold disabled:opacity-50 hover-lift"
+              className="bg-[#FFD700] text-[#030817] px-3 py-1 rounded font-bold disabled:opacity-50 hover-lift"
               disabled={moves.length === 0}
             >
               →
@@ -379,7 +379,7 @@ export default function ChessGamePage() {
 
       {showResultPopup && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
-          <div className="bg-white text-[#003366] w-full max-w-md rounded-xl p-6 text-center relative overflow-hidden">
+          <div className="bg-white text-[#030817] w-full max-w-md rounded-xl p-6 text-center relative overflow-hidden">
             <h2 className="text-2xl font-bold mb-3">Game Finished</h2>
             <p className="text-xl mb-5">
               {status.includes("won") ? "You won!" : status.includes("lost") ? "You lost." : "Draw."}

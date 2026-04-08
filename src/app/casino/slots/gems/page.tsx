@@ -220,7 +220,7 @@ if (winningLine?.positions) {
 </Link>
 
       {/* Slot Frame */}
-      <div className="relative flex border-8 border-yellow-500 rounded-2xl bg-[#003366] p-4 mb-6 shadow-[0_0_30px_gold] overflow-hidden">
+      <div className="relative flex border-8 border-yellow-500 rounded-2xl bg-[#030817] p-4 mb-6 shadow-[0_0_30px_gold] overflow-hidden">
         {flashWin && (
           <div className="absolute inset-0 bg-yellow-400 bg-opacity-30 animate-flash pointer-events-none"></div>
         )}
@@ -257,7 +257,7 @@ if (winningLine?.positions) {
         ${
           isWinning
             ? "bg-yellow-400 border-yellow-500 shadow-[0_0_25px_gold] animate-pulse scale-110 z-10"
-            : "bg-gradient-to-br from-[#0b2a45] via-[#003366] to-[#001829] border-yellow-400 shadow-xl"
+            : "bg-gradient-to-br from-[#0b2a45] via-[#030817] to-[#001829] border-yellow-400 shadow-xl"
         }
         ${glowByGem[gem]}
       `}
@@ -308,7 +308,7 @@ if (winningLine?.positions) {
 
         <button
           onClick={setMaxBet}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded shadow"
+          className="bg-[#f5ff3b] hover:bg-[#f5ff3b] text-white font-semibold py-2 px-6 rounded shadow"
         >
           MAX BET
         </button>

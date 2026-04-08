@@ -1119,7 +1119,7 @@ if (showJoinForm) {
           <button
             onClick={() => joinPublicGame(g.gameCode)}
             disabled={joiningGame}
-            className="bg-blue-500 hover:bg-blue-400 disabled:bg-blue-800 px-2 py-1 rounded text-xs font-bold"
+            className="bg-[#f5ff3b] hover:bg-[#edf734] disabled:bg-[#9aa32a] px-2 py-1 rounded text-xs font-bold"
           >
             Join
           </button>
@@ -1167,7 +1167,7 @@ if (showJoinForm) {
   disabled={availablePublicGames === 0}
   className={`px-4 py-2 rounded w-full font-bold mb-2 transition ${
     availablePublicGames > 0
-      ? "bg-blue-500 hover:bg-blue-400"
+      ? "bg-[#f5ff3b] hover:bg-[#edf734]"
       : "bg-gray-500 cursor-not-allowed text-gray-300"
   }`}
 >
@@ -1228,7 +1228,7 @@ if (showJoinForm) {
       <span className="bg-yellow-300 text-black px-2 py-1 rounded">{game.inviteCode}</span>
       <button
         onClick={() => { navigator.clipboard.writeText(game.inviteCode || ""); alert("Invite code copied!"); }}
-        className="ml-2 bg-blue-500 px-3 py-1 rounded text-sm"
+        className="ml-2 bg-[#f5ff3b] px-3 py-1 rounded text-sm"
       >
         Copy
       </button>
@@ -1384,8 +1384,8 @@ if (showJoinForm) {
         disabled={!isMyTurn}
         className={`px-4 py-2 rounded w-24 transition ${
           isMyTurn
-            ? "bg-blue-600 hover:bg-blue-500"
-            : "bg-blue-900 text-gray-300 opacity-60 cursor-not-allowed"
+            ? "bg-[#f5ff3b] hover:bg-[#f5ff3b]"
+            : "bg-[#7f8520] text-gray-300 opacity-60 cursor-not-allowed"
         }`}
       >
         {canUseBetShortcut ? "Bet 20" : toCallAmount > 0 ? `Call ${toCallAmount}` : "Call"}
@@ -1750,7 +1750,7 @@ if (showJoinForm) {
               <button
                 onClick={() => joinPublicGame()}
                 disabled={joiningGame}
-                className={`flex-1 text-sm px-3 py-2 rounded font-bold transition ${joiningGame ? "bg-gray-600 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-500"}`}
+                className={`flex-1 text-sm px-3 py-2 rounded font-bold transition ${joiningGame ? "bg-gray-600 cursor-not-allowed" : "bg-[#f5ff3b] hover:bg-[#f5ff3b]"}`}
               >
                 Join Public
               </button>

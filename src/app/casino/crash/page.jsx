@@ -419,7 +419,7 @@ function toCanvasPoint(mult) {
   }
 
   return (
-    <div className="min-h-screen bg-[#004080] text-white flex flex-col items-center p-4">
+    <div className="min-h-screen bg-[#081a3d] text-white flex flex-col items-center p-4">
  <NavigationBar currentPath="/casino" />
       <div className="flex flex-col lg:flex-row w-full max-w-7xl gap-4 mt-16">
         {/* Left Panel - BetPanel + Crash History */}
@@ -528,7 +528,7 @@ function toCanvasPoint(mult) {
             )}
             <Link
               href="/casino"
-              className="bg-blue-500 hover:bg-blue-600 px-4 py-3 rounded-lg font-bold text-lg text-center"
+              className="bg-[#f5ff3b] hover:bg-[#f5ff3b] px-4 py-3 rounded-lg font-bold text-lg text-center"
             >
               Return to Casino
             </Link>

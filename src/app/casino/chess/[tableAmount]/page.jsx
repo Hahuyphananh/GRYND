@@ -125,7 +125,7 @@ export default function MatchmakingPage() {
   const showCancel = statusText === "Waiting for opponent..." && gameId && color === "white";
 
   return (
-    <div className="min-h-screen bg-[#003366] text-white flex items-center justify-center">
+    <div className="min-h-screen bg-[#030817] text-white flex items-center justify-center">
       <div className="text-center">
         <h2 className="text-3xl font-bold text-[#FFD700] mb-4">{statusText}</h2>
         <p className="mb-2">Stake: ${tableAmount}</p>
