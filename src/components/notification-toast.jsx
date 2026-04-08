@@ -33,7 +33,7 @@ export default function Index() {
   const typeStyles = {
     success: "bg-green-500 text-white",
     error: "bg-red-500 text-white",
-    info: "bg-blue-500 text-white",
+    info: "bg-[#f5ff3b] text-white",
     warning: "bg-yellow-500 text-white"
   };
 
@@ -118,7 +118,7 @@ function StoryComponent() {
         </button>
         <button
           onClick={() => setShowInfo(true)}
-          className="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
+          className="rounded bg-[#f5ff3b] px-4 py-2 text-white hover:bg-[#f5ff3b]"
         >
           Show Info
         </button>

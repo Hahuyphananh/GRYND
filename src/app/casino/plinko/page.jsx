@@ -494,7 +494,7 @@ const scaledBoardSize = {
 };
 
 return (
-  <div className="h-screen flex bg-[#003366] overflow-hidden">
+  <div className="h-screen flex bg-[#030817] overflow-hidden">
     <NavigationBar currentPath="/casino" />
     {/* Sidebar */}
     <aside

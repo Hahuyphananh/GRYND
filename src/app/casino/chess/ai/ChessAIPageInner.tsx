@@ -359,7 +359,7 @@ export default function ChessAIPageInner() {
   const isPlayerTurnNow = isPlayersTurn(game);
 
   return (
-    <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center p-6">
+    <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center p-6">
       <NavigationBar currentPath="/casino" />
 
       <h1 className="text-4xl font-bold text-[#FFD700] mb-2 mt-12">♟️ AI Chess Arena</h1>

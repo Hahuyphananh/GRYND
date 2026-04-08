@@ -179,7 +179,7 @@ spinLockRef.current = false;
 </Link>
 
       {/* Slot Frame */}
-      <div className="relative flex border-8 border-yellow-500 rounded-2xl bg-[#003366] p-4 mb-6 shadow-[0_0_30px_gold] overflow-hidden">
+      <div className="relative flex border-8 border-yellow-500 rounded-2xl bg-[#030817] p-4 mb-6 shadow-[0_0_30px_gold] overflow-hidden">
         {flashWin && (
           <div className="absolute inset-0 bg-yellow-400 bg-opacity-30 animate-flash pointer-events-none"></div>
         )}
@@ -213,7 +213,7 @@ spinLockRef.current = false;
         ${
           isWinning
             ? "bg-yellow-400 border-yellow-500 shadow-[0_0_20px_gold] animate-pulse"
-            : "bg-[#004080] border-yellow-300"
+            : "bg-[#081a3d] border-yellow-300"
         }
       `}
     >
@@ -254,7 +254,7 @@ spinLockRef.current = false;
         )}
         <button
           onClick={setMaxBet}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded shadow"
+          className="bg-[#f5ff3b] hover:bg-[#f5ff3b] text-white font-semibold py-2 px-6 rounded shadow"
         >
           MAX BET
         </button>
