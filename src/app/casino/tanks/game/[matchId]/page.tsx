@@ -111,7 +111,7 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown, routeMatchId
               method: "POST",
               headers: { "Content-Type": "application/json" },
               credentials: "include",
-              body: JSON.stringify({ amount: bountyRef.current, matchId: routeMatchId }),
+              body: JSON.stringify({ matchId: routeMatchId }),
             });
             const data = await res.json();
 

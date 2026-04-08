@@ -19,6 +19,7 @@ export async function POST(req) {
 
     const parsed = await parseAndValidateJson(req, {
       matchId: { type: "string", required: false, minLength: 1, maxLength: 64, default: null },
+      amount: { type: "number", required: false, min: 0, default: null },
     });
     if (!parsed.ok) return parsed.response;
     const requestedMatchId = parsed.data.matchId;
