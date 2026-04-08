@@ -364,7 +364,7 @@ useEffect(() => {
   };
 
   return (
-   <div className="animated-bg">
+   <div className="animated-bg cyberpunk-grid">
       <NavigationBar currentPath="/" />
 
      <section className="relative mt-8 px-4 min-h-[70vh] flex items-center overflow-hidden">
@@ -380,33 +380,33 @@ useEffect(() => {
   />
 
   {/* Dark overlay for readability */}
-  <div className="absolute inset-0 bg-black/65 z-10" />
+  <div className="absolute inset-0 bg-[#010612]/70 z-10" />
 
         <div className="relative z-20 mx-auto max-w-7xl text-center">
       <h1
   className="mb-4 text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text 
-  bg-gradient-to-r from-yellow-300 via-yellow-400 to-yellow-300
-  drop-shadow-[0_0_8px_rgba(255,215,0,0.6)] tracking-widest uppercase 
+  bg-gradient-to-r from-[#00e5ff] via-[#f5ff3b] to-[#39ff14]
+  drop-shadow-[0_0_10px_rgba(0,229,255,0.5)] tracking-widest uppercase 
   animate-[shimmerGradient_8s_ease-in-out_infinite]"
   style={{ backgroundSize: "200% auto" }}
 >
   Pariez sur vos Sports Préférés et Jouez au Casino
 </h1>
 
-          <p className="mb-8 text-xl text-white">
+          <p className="mb-8 text-xl text-[#d8fbff]">
             Des cotes compétitives, des paris en direct, des jeux de casino et
             des récompenses exclusives
           </p>
    <div className="flex flex-col space-y-4 sm:flex-row sm:justify-center sm:space-x-4 sm:space-y-0">
   <a
     href="/sign-up"
-    className="inline-block rounded-lg bg-[#FFD700] px-8 py-4 text-lg font-medium text-[#003366] transition-all glow-pulse commencer-hover"
+    className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-8 py-4 text-lg font-medium text-[#041125] transition-all glow-pulse commencer-hover cyber-glow-button"
   >
     Commencer à Parier
   </a>
   <a
     href="/casino"
-    className="inline-block rounded-lg border-2 border-[#FFD700] px-8 py-4 text-lg font-medium text-[#FFD700] transition-all glow-pulse decouvrir-hover"
+    className="inline-block rounded-lg border-2 border-[#00e5ff] px-8 py-4 text-lg font-medium text-[#00e5ff] transition-all glow-pulse decouvrir-hover cyber-glow-button"
   >
     Découvrir le Casino
   </a>
@@ -418,13 +418,13 @@ useEffect(() => {
       <div className="mx-auto max-w-7xl px-4 py-8">
         <section className="mb-16">
           <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-bold text-[#FFD700]">Casino en Ligne</h2>
+            <h2 className="text-2xl font-bold text-[#f5ff3b]">Casino en Ligne</h2>
           </div>
 
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
             <a
               href="/casino/roulette"
-              className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+              className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
@@ -433,15 +433,15 @@ useEffect(() => {
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
               </div>
-              <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Roulette</h3>
-              <p className="text-gray-300">
+              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Roulette</h3>
+              <p className="text-[#9dd8ff]">
                 Placez vos paris sur les numéros, couleurs ou sections
               </p>
             </a>
 
             <a
               href="/casino/blackjack"
-              className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+              className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
@@ -450,15 +450,15 @@ useEffect(() => {
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
               </div>
-              <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Blackjack</h3>
-              <p className="text-gray-300">
+              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Blackjack</h3>
+              <p className="text-[#9dd8ff]">
                 Affrontez le croupier dans ce jeu de cartes classique
               </p>
             </a>
 
             <a
               href="/casino/poker"
-              className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+              className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
@@ -467,15 +467,15 @@ useEffect(() => {
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
               </div>
-              <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Poker</h3>
-              <p className="text-gray-300">
+              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Poker</h3>
+              <p className="text-[#9dd8ff]">
                 Affrontez l'IA ou d'autres joueurs dans des parties intenses de poker
               </p>
             </a>
 
             <a
               href="/casino/plinko"
-              className="group relative cursor-pointer overflow-hidden rounded-lg bg-black p-4 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20"
+              className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
@@ -484,8 +484,8 @@ useEffect(() => {
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
               </div>
-              <h3 className="mb-2 text-xl font-bold text-[#FFD700]">Plinko</h3>
-              <p className="text-gray-300">
+              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Plinko</h3>
+              <p className="text-[#9dd8ff]">
                 Regardez tomber les balles et multipliez vos gains!
               </p>
             </a>
@@ -495,7 +495,7 @@ useEffect(() => {
           <div className="flex justify-center mt-8">
   <a
     href="/casino"
-    className="inline-block rounded-lg bg-[#FFD700] px-6 py-3 text-lg font-semibold text-[#003366] transition-all glow-pulse more-hover"
+    className="inline-block rounded-lg border border-[#39ff14]/40 bg-[#39ff14] px-6 py-3 text-lg font-semibold text-[#031026] transition-all glow-pulse more-hover cyber-glow-button"
   >
     Plus de jeux
   </a>
@@ -505,33 +505,33 @@ useEffect(() => {
 
         <section className="mb-16">
   <div className="mb-8 flex justify-between items-center">
-    <h2 className="text-2xl font-bold text-[#FFD700]">
+    <h2 className="text-2xl font-bold text-[#00e5ff]">
       Sports Populaires
     </h2>
   </div>
 
   {loadingSports ? (
-    <div className="text-center text-[#FFD700]">Chargement...</div>
+    <div className="text-center text-[#00e5ff]">Chargement...</div>
   ) : (
     <div className="space-y-4">
      {Object.keys(sports).map((groupKey) => (
     <div
       key={groupKey}
-      className="border border-[#FFD700]/30 rounded-lg overflow-hidden"
+      className="rounded-lg overflow-hidden border border-[#00e5ff]/30"
     >
       <button
         onClick={() =>
           setOpenGroup(openGroup === groupKey ? null : groupKey)
         }
         className="w-full flex justify-between items-center px-4 py-3
-                   bg-[#002347] text-[#FFD700] font-bold hover:bg-[#003366]"
+                   bg-[#06142f] text-[#00e5ff] font-bold hover:bg-[#0b224f]"
       >
         <span>{groupKey}</span>
         <span>{openGroup === groupKey ? "▲" : "▼"}</span>
       </button>
 
       {openGroup === groupKey && (
-        <div className="p-4 bg-[#001a33] grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 gap-4 bg-[#050f24] p-4 md:grid-cols-3 lg:grid-cols-5">
           {Array.isArray(sports[groupKey]) &&
   sports[groupKey].map((league) => (
             <SportCard
@@ -554,7 +554,7 @@ useEffect(() => {
 <div className="flex justify-center mt-8">
   <a
     href="/sport"
-    className="inline-block rounded-lg bg-[#FFD700] px-6 py-3 text-lg font-semibold text-[#003366] transition-all glow-pulse more-hover"
+    className="inline-block rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff] px-6 py-3 text-lg font-semibold text-[#041125] transition-all glow-pulse more-hover cyber-glow-button"
   >
     Plus de Sports
   </a>
