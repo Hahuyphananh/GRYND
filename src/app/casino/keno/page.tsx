@@ -136,10 +136,10 @@ export default function KenoGame() {
   const payoutTable = multiplierTable[selectedNumbers.length] || {};
 
   return (
-    <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center p-6 relative">
+    <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center p-6 relative">
       <NavigationBar currentPath="/casino" />
 
-      <div className="absolute top-4 right-4 bg-[#0055aa] px-4 py-2 rounded-lg shadow text-yellow-400 font-bold">
+      <div className="absolute top-4 right-4 bg-[#0f3f86] px-4 py-2 rounded-lg shadow text-yellow-400 font-bold">
         🪙 Balance: {userBalance ?? '...'}
       </div>
 
@@ -198,7 +198,7 @@ export default function KenoGame() {
         ? 'bg-yellow-400 text-black shadow-md scale-105'
         : isDisabled
         ? 'bg-[#002244] opacity-40 cursor-not-allowed'
-        : 'bg-[#003366] hover:bg-[#0055aa] border border-[#0066cc]'
+        : 'bg-[#030817] hover:bg-[#0f3f86] border border-[#00e5ff]'
     }`}
 >
   {num}
@@ -230,7 +230,7 @@ export default function KenoGame() {
                     ${
                       isActive
                         ? 'bg-green-400 text-black font-bold'
-                        : 'bg-[#003366]'
+                        : 'bg-[#030817]'
                     }`}
                 >
                   <span>{hits} hit{hits !== '1' ? 's' : ''}</span>

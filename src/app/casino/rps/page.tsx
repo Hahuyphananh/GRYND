@@ -428,7 +428,7 @@ export default function RPSGame() {
     <div className="flex flex-col md:flex-row min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
       <NavigationBar currentPath="/casino" />
 
-      <div className="w-full max-w-[380px] md:max-w-[380px] bg-[#002b55] rounded-xl p-6 flex flex-col gap-6 shadow-lg mx-auto md:mx-0 mb-6 md:mb-0">
+      <div className="w-full max-w-[380px] md:max-w-[380px] bg-[#0b224f] rounded-xl p-6 flex flex-col gap-6 shadow-lg mx-auto md:mx-0 mb-6 md:mb-0">
         <h1 className="text-3xl font-bold text-yellow-400 text-center whitespace-nowrap mt-20">
           ✊ Rock Paper Scissors
         </h1>
@@ -478,7 +478,7 @@ export default function RPSGame() {
               {loading ? "Betting..." : "Place Bet"}
             </button>
 
-            <div className="mt-4 bg-[#001f3f] p-4 rounded-lg border border-yellow-400">
+            <div className="mt-4 bg-[#08142f] p-4 rounded-lg border border-yellow-400">
               <label className="flex items-center gap-2 font-semibold mb-2">
                 <input
                   type="checkbox"
@@ -543,7 +543,7 @@ export default function RPSGame() {
               )}
             </div>
             {/* RPS Game Rules */}
-<div className="mt-4 bg-[#001f3f] p-4 rounded-lg border border-yellow-400">
+<div className="mt-4 bg-[#08142f] p-4 rounded-lg border border-yellow-400">
   <button
     onClick={() => setShowRpsRules(!showRpsRules)}
     className="w-full text-left font-bold text-yellow-400 flex justify-between items-center"
@@ -639,13 +639,13 @@ export default function RPSGame() {
               </button>
             )}
 
-            <div className="bg-[#001f3f] p-4 rounded-lg border border-blue-400">
+            <div className="bg-[#08142f] p-4 rounded-lg border border-[#00e5ff]">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-blue-200">Available Games</h3>
+                <h3 className="font-bold text-[#a8f4ff]">Available Games</h3>
                 <button
                   onClick={fetchAvailablePvpGames}
                   disabled={isLoadingPvpGames}
-                  className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm font-semibold disabled:opacity-50"
+                  className="bg-[#f5ff3b] hover:bg-[#d9e332] px-3 py-1 rounded text-sm font-semibold disabled:opacity-50"
                 >
                   {isLoadingPvpGames ? "Refreshing..." : "Refresh"}
                 </button>
@@ -666,7 +666,7 @@ export default function RPSGame() {
                       <button
                         onClick={() => joinPvpGame(game.id)}
                         disabled={pvpActionLoading || Boolean(pvpGameId)}
-                        className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm font-semibold disabled:opacity-50"
+                        className="bg-[#f5ff3b] hover:bg-[#d9e332] px-3 py-1 rounded text-sm font-semibold disabled:opacity-50"
                       >
                         Join
                       </button>
@@ -685,13 +685,13 @@ export default function RPSGame() {
         {mode === "pve" && (
           <>
             <div className="flex flex-col md:flex-row items-center gap-12">
-              <div className="bg-[#002b55] border border-yellow-500 w-32 h-44 flex items-center justify-center rounded-xl text-6xl">
+              <div className="bg-[#0b224f] border border-yellow-500 w-32 h-44 flex items-center justify-center rounded-xl text-6xl">
                 {getEmoji(playerChoice)}
               </div>
 
               <div className="text-3xl font-bold text-yellow-400">VS</div>
 
-              <div className="bg-[#002b55] border border-yellow-500 w-32 h-44 flex items-center justify-center rounded-xl text-6xl">
+              <div className="bg-[#0b224f] border border-yellow-500 w-32 h-44 flex items-center justify-center rounded-xl text-6xl">
                 {getEmoji(aiChoice)}
               </div>
             </div>
@@ -739,16 +739,16 @@ export default function RPSGame() {
 
         {mode === "pvp" && (
           <div className="w-full max-w-2xl flex flex-col items-center gap-4">
-            <div className="w-full flex justify-center gap-10 text-sm text-blue-200 font-semibold">
+            <div className="w-full flex justify-center gap-10 text-sm text-[#a8f4ff] font-semibold">
               <span>{pvpMyName}</span>
               <span>{pvpOpponentName}</span>
             </div>
             <div className="flex items-center gap-8">
-              <div className="bg-[#002b55] border border-blue-500 w-28 h-36 flex items-center justify-center rounded-xl text-5xl">
+              <div className="bg-[#0b224f] border border-[#00e5ff] w-28 h-36 flex items-center justify-center rounded-xl text-5xl">
                 {getEmoji(pvpMyChoice)}
               </div>
-              <div className="text-3xl font-bold text-blue-300">VS</div>
-              <div className="bg-[#002b55] border border-blue-500 w-28 h-36 flex items-center justify-center rounded-xl text-5xl">
+              <div className="text-3xl font-bold text-[#7cefff]">VS</div>
+              <div className="bg-[#0b224f] border border-[#00e5ff] w-28 h-36 flex items-center justify-center rounded-xl text-5xl">
                 {pvpStatus === "finished" ? getEmoji(pvpOpponentChoice) : "❔"}
               </div>
             </div>
@@ -768,7 +768,7 @@ export default function RPSGame() {
                       key={choice}
                       onClick={() => choosePvpMove(choice)}
                       disabled={pvpActionLoading}
-                      className="px-5 py-2 rounded-lg font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                      className="px-5 py-2 rounded-lg font-bold bg-[#f5ff3b] hover:bg-[#d9e332] disabled:opacity-50"
                     >
                       {choice}
                     </button>
@@ -804,7 +804,7 @@ export default function RPSGame() {
                 )}
                 <button
                   onClick={() => window.location.reload()}
-                  className="mt-3 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded font-semibold"
+                  className="mt-3 bg-[#f5ff3b] hover:bg-[#d9e332] px-4 py-2 rounded font-semibold"
                 >
                   Return
                 </button>

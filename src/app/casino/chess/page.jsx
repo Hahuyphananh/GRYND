@@ -135,7 +135,7 @@ export default function ChessLobby() {
   }
 
   return (
-    <div className="min-h-screen bg-[#003366] text-white p-6 text-center">
+    <div className="min-h-screen bg-[#030817] text-white p-6 text-center">
       <NavigationBar currentPath="/casino" />
       <h1 className="text-4xl font-bold text-[#FFD700] mb-8 mt-12">♟️ Chess Tables</h1>
 
@@ -152,8 +152,8 @@ export default function ChessLobby() {
                 onClick={() => setSelectedTable(amount)}
                 className={`px-6 py-4 rounded-lg text-xl font-semibold border-2 ${
                   selectedTable === amount
-                    ? "bg-[#FFD700] text-[#003366] border-[#FFD700]"
-                    : "bg-[#003366] text-[#FFD700] border-[#FFD700]/40 hover:bg-[#004080]"
+                    ? "bg-[#FFD700] text-[#030817] border-[#FFD700]"
+                    : "bg-[#030817] text-[#FFD700] border-[#FFD700]/40 hover:bg-[#081a3d]"
                 }`}
               >
                 ${amount} Table
@@ -171,8 +171,8 @@ export default function ChessLobby() {
                 onClick={() => setSelectedTimer(timer.id)}
                 className={`px-6 py-4 rounded-lg text-xl font-semibold border-2 min-w-[190px] ${
                   selectedTimer === timer.id
-                    ? "bg-[#FFD700] text-[#003366] border-[#FFD700]"
-                    : "bg-[#003366] text-[#FFD700] border-[#FFD700]/40 hover:bg-[#004080]"
+                    ? "bg-[#FFD700] text-[#030817] border-[#FFD700]"
+                    : "bg-[#030817] text-[#FFD700] border-[#FFD700]/40 hover:bg-[#081a3d]"
                 }`}
               >
                 <div>{timer.label}</div>
@@ -205,7 +205,7 @@ export default function ChessLobby() {
           <h2 className="text-2xl font-bold text-[#FFD700]">Available Games</h2>
           <button
             onClick={fetchAvailableGames}
-            className="bg-[#FFD700] text-[#003366] px-4 py-2 rounded-lg font-semibold hover:bg-[#FFD700]/80"
+            className="bg-[#FFD700] text-[#030817] px-4 py-2 rounded-lg font-semibold hover:bg-[#FFD700]/80"
           >
             {isLoadingAvailableGames ? "Refreshing..." : "Refresh"}
           </button>
@@ -216,7 +216,7 @@ export default function ChessLobby() {
         ) : (
           <div className="space-y-3">
             {availableGames.map((game) => (
-              <div key={game.id} className="flex items-center justify-between bg-[#003366] rounded-lg p-3">
+              <div key={game.id} className="flex items-center justify-between bg-[#030817] rounded-lg p-3">
                 <div>
                   <p className="font-semibold">Game #{game.id}</p>
                   <p className="text-sm text-white/80">

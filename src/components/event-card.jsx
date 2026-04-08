@@ -6,7 +6,7 @@ function OutcomeButton({ label, price, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="rounded-lg bg-[#FFD700] px-3 py-2 text-sm font-semibold text-[#003366] hover:bg-[#FFD700]/90"
+      className="rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-3 py-2 text-sm font-semibold text-[#041125] shadow-[0_0_14px_rgba(245,255,59,0.4)] hover:brightness-95"
     >
       {label} <span className="ml-1">{price}</span>
     </button>
@@ -64,17 +64,17 @@ export default function EventCard({
       : "Moneyline";
 
   return (
-    <div className="rounded-xl border border-[#FFD700] bg-[#003366] p-4">
+    <div className="rounded-xl border border-[#00e5ff]/45 bg-[#081734]/90 p-4 shadow-[0_0_18px_rgba(0,229,255,0.2)]">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-lg font-bold text-white">
+          <h3 className="text-lg font-bold text-[#ecf8ff]">
             {fallbackEvent.home_team} vs {fallbackEvent.away_team}
           </h3>
-          <p className="text-xs text-gray-300">
+          <p className="text-xs text-[#95e4ff]">
             {new Date(fallbackEvent.commence_time).toLocaleDateString()} · {new Date(fallbackEvent.commence_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </p>
         </div>
-        <span className="rounded-md border border-[#FFD700]/50 px-2 py-1 text-xs text-[#FFD700]">{label}</span>
+        <span className="rounded-md border border-[#00e5ff]/50 px-2 py-1 text-xs text-[#00e5ff]">{label}</span>
       </div>
 
       <div className="flex flex-wrap gap-2">

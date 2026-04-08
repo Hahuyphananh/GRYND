@@ -193,7 +193,7 @@ if (winAmount > 0 && winningLine?.positions) {
       </Link>
 
       {/* Slot Frame */}
-      <div className="relative flex border-8 border-yellow-500 rounded-2xl bg-[#003366] p-4 mb-6 shadow-[0_0_30px_gold] overflow-hidden">
+      <div className="relative flex border-8 border-yellow-500 rounded-2xl bg-[#030817] p-4 mb-6 shadow-[0_0_30px_gold] overflow-hidden">
         {flashWin && <div className="absolute inset-0 bg-yellow-400 bg-opacity-30 animate-flash pointer-events-none"></div>}
 
         {reels.map((column, colIdx) => {
@@ -247,7 +247,7 @@ if (winAmount > 0 && winningLine?.positions) {
           </button>
         )}
 
-        <button onClick={setMaxBet} className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded shadow">
+        <button onClick={setMaxBet} className="bg-[#f5ff3b] hover:bg-[#f5ff3b] text-white font-semibold py-2 px-6 rounded shadow">
           MAX BET
         </button>
       </div>

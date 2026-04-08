@@ -47,13 +47,13 @@ export default function SlotsLobby() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
         {slotGames.map((slot) => (
           <Link key={slot.id} href={slot.path}>
-            <div className="group cursor-pointer bg-[#003366] border-4 border-yellow-500 rounded-2xl p-6 shadow-[0_0_25px_gold] hover:scale-105 transition-transform">
+            <div className="group cursor-pointer bg-[#030817] border-4 border-yellow-500 rounded-2xl p-6 shadow-[0_0_25px_gold] hover:scale-105 transition-transform">
               {/* Fake slot preview */}
               <div className="flex justify-center gap-2 mb-4">
                {slot.preview.map((icon, i) => (
   <div
     key={i}
-    className={`w-14 h-14 flex items-center justify-center text-3xl bg-[#004080] border-2 border-yellow-300 rounded-lg transition-all duration-300 group-hover:shadow-[0_0_18px_rgba(255,255,255,0.9)]
+    className={`w-14 h-14 flex items-center justify-center text-3xl bg-[#081a3d] border-2 border-yellow-300 rounded-lg transition-all duration-300 group-hover:shadow-[0_0_18px_rgba(255,255,255,0.9)]
 ${glowBySlot[slot.id]}
   group-hover:scale-110
 `}

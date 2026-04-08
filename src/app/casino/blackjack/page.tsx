@@ -218,7 +218,7 @@ const [showRules, setShowRules] = useState(false);
   };
 
   return (
-    <div className="min-h-screen bg-[#003366] pt-20">
+    <div className="min-h-screen bg-[#030817] pt-20">
       <NavigationBar currentPath="/casino" />
       <div className="mx-auto max-w-4xl px-4 py-8">
         <div className="mb-4 flex justify-between text-[#FFD700]">
@@ -329,14 +329,14 @@ const [showRules, setShowRules] = useState(false);
           onChange={(e) =>
             setBet(Math.min(Number(e.target.value), userTokens ?? Number(e.target.value)))
           }
-          className="text-center text-[#003366] font-semibold rounded-lg px-4 py-2 w-32 outline-none border-2 border-[#FFD700] bg-[#fff9d6] focus:ring-2 focus:ring-[#FFD700]"
+          className="text-center text-[#030817] font-semibold rounded-lg px-4 py-2 w-32 outline-none border-2 border-[#FFD700] bg-[#fff9d6] focus:ring-2 focus:ring-[#FFD700]"
         />
 
         <button
           onClick={() => {
             if (userTokens) setBet(Math.max(1, Math.floor(userTokens / 2)));
           }}
-          className="bg-[#FFD700] px-3 py-1 rounded text-[#003366] font-semibold glow-pulse more-hover"
+          className="bg-[#FFD700] px-3 py-1 rounded text-[#030817] font-semibold glow-pulse more-hover"
         >
           ½
         </button>
@@ -345,7 +345,7 @@ const [showRules, setShowRules] = useState(false);
           onClick={() => {
             if (userTokens) setBet(userTokens);
           }}
-          className="bg-[#FFD700] px-3 py-1 rounded text-[#003366] font-semibold glow-pulse more-hover"
+          className="bg-[#FFD700] px-3 py-1 rounded text-[#030817] font-semibold glow-pulse more-hover"
         >
           ALL IN
         </button>
@@ -360,14 +360,14 @@ const [showRules, setShowRules] = useState(false);
 
     <button
       onClick={startGame}
-      className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold mt-3 glow-pulse more-hover animated-button"
+      className="bg-[#FFD700] px-6 py-2 rounded text-[#030817] font-semibold mt-3 glow-pulse more-hover animated-button"
     >
       Miser
     </button>
       <div className="flex justify-center mt-6">
   <button
     onClick={() => setShowRules(!showRules)}
-    className="px-4 py-2 bg-[#FFD700] text-[#003366] font-bold rounded-lg shadow hover:scale-105 transition"
+    className="px-4 py-2 bg-[#FFD700] text-[#030817] font-bold rounded-lg shadow hover:scale-105 transition"
   >
     {showRules ? "Hide Rules ▲" : "Show Rules ▼"}
   </button>
@@ -433,20 +433,20 @@ const [showRules, setShowRules] = useState(false);
     <div className="flex justify-center gap-4 mt-4 flex-wrap">
       <button
         onClick={hit}
-        className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+        className="bg-[#FFD700] px-6 py-2 rounded text-[#030817] font-semibold glow-pulse more-hover"
       >
         Carte
       </button>
       <button
         onClick={stand}
-        className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+        className="bg-[#FFD700] px-6 py-2 rounded text-[#030817] font-semibold glow-pulse more-hover"
       >
         Rester
       </button>
       {canDouble && (
         <button
           onClick={doubleDown}
-          className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+          className="bg-[#FFD700] px-6 py-2 rounded text-[#030817] font-semibold glow-pulse more-hover"
         >
           Double
         </button>
@@ -454,7 +454,7 @@ const [showRules, setShowRules] = useState(false);
       {canSplit && (
         <button
           onClick={splitHand}
-          className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+          className="bg-[#FFD700] px-6 py-2 rounded text-[#030817] font-semibold glow-pulse more-hover"
         >
           Split
         </button>
@@ -462,7 +462,7 @@ const [showRules, setShowRules] = useState(false);
       {isSplit && (
         <button
           onClick={nextSplitHand}
-          className="bg-[#FFD700] px-6 py-2 rounded text-[#003366] font-semibold glow-pulse more-hover"
+          className="bg-[#FFD700] px-6 py-2 rounded text-[#030817] font-semibold glow-pulse more-hover"
         >
           Next Hand
         </button>

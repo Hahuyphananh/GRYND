@@ -222,7 +222,7 @@ const getHighlightValues = (hand) => {
 };
 
 return (
-    <div className="min-h-screen bg-[#003366] pt-20">
+    <div className="min-h-screen bg-[#030817] pt-20">
         <NavigationBar currentPath="/casino" />
 
       <div className="mx-auto max-w-4xl px-4 py-8">
@@ -293,7 +293,7 @@ return (
             setGame(null);
             initializeAiGame();
           }}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-full text-sm sm:text-base"
+          className="bg-[#f5ff3b] hover:bg-[#d9e332] text-white font-bold px-6 py-3 rounded-full text-sm sm:text-base"
         >
           🔄 Replay
         </button>

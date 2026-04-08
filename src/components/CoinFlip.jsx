@@ -20,13 +20,13 @@ export default function CoinFlipPage() {
 
         <div className="flex justify-center space-x-4 mb-6">
           <button
-            className={`px-4 py-2 rounded ${mode === "solo" ? "bg-blue-600" : "bg-gray-600"}`}
+            className={`px-4 py-2 rounded ${mode === "solo" ? "bg-[#f5ff3b]" : "bg-gray-600"}`}
             onClick={() => setMode("solo")}
           >
             Solo vs House
           </button>
           <button
-            className={`px-4 py-2 rounded ${mode === "pvp" ? "bg-blue-600" : "bg-gray-600"}`}
+            className={`px-4 py-2 rounded ${mode === "pvp" ? "bg-[#f5ff3b]" : "bg-gray-600"}`}
             onClick={() => setMode("pvp")}
           >
             PvP
@@ -196,7 +196,7 @@ function SoloCoinFlip() {
         <button
           onClick={() => setAutoBet((prev) => !prev)}
           className={`w-full p-3 rounded font-bold ${
-            autoBet ? "bg-red-500" : "bg-blue-500"
+            autoBet ? "bg-red-500" : "bg-[#f5ff3b]"
           }`}
         >
           {autoBet ? "Stop Auto" : "Start Auto"}
@@ -216,7 +216,7 @@ function SoloCoinFlip() {
         </div>
       </div>
 
-      {message && <p className="text-center mt-4 text-blue-300">{message}</p>}
+      {message && <p className="text-center mt-4 text-[#7cefff]">{message}</p>}
     </>
   );
 }
@@ -478,7 +478,7 @@ useEffect(() => {
   className={`px-3 py-1 rounded text-sm font-semibold ${
     myGameId
       ? "bg-gray-500 cursor-not-allowed"
-      : "bg-blue-500 hover:bg-blue-600"
+      : "bg-[#f5ff3b] hover:bg-[#f5ff3b]"
   }`}
 >
   🔄 Refresh
@@ -579,7 +579,7 @@ useEffect(() => {
 
           <p className="text-center text-gray-400 mb-4">Bet Locked: {myBet} 🪙</p>
 
-          {message && <p className="text-center text-blue-300 mb-4">{message}</p>}
+          {message && <p className="text-center text-[#7cefff] mb-4">{message}</p>}
 
           {!flipping && !gameFinished && gameStatus !== "cancelled" && (
             <button
@@ -606,7 +606,7 @@ useEffect(() => {
                 setMessage("");
               }}
               className="mt-2 w-full p-3 rounded-lg font-bold
-               bg-blue-600 hover:bg-blue-500"
+               bg-[#f5ff3b] hover:bg-[#f5ff3b]"
             >
               Close
             </button>
