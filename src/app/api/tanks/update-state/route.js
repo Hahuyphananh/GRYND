@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { tankMatches, tankStats, users } from "../../../../db/schema";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -154,37 +154,39 @@ export async function POST(req) {
 
     const deadPlayerIds = matchPlayers.filter((id) => Number(playerStates[id]?.health ?? 5) <= 0);
     const killerId = normalizedHits[0];
-    if (mode === "battle_royale" && killerId && deadPlayerIds.length > 0) {
+    if (mode === "battle_royale" && deadPlayerIds.length > 0) {
       const unresolvedStats = await db
         .select({ clerkId: tankStats.clerkId, bounty: tankStats.bounty, kills: tankStats.kills })
         .from(tankStats)
         .where(and(eq(tankStats.matchId, matchId), isNull(tankStats.result)));
 
       const killerStat = unresolvedStats.find((row) => row.clerkId === killerId);
-      if (killerStat) {
-        let bountyGain = 0;
-        let eliminations = 0;
-        for (const deadId of deadPlayerIds) {
-          if (deadId === killerId) continue;
-          const deadStat = unresolvedStats.find((row) => row.clerkId === deadId);
-          bountyGain += Number(deadStat?.bounty ?? 0);
-          eliminations += 1;
-          await db
-            .update(tankStats)
-            .set({ result: "lose", amountCashedOut: 0, bounty: "0.00" })
-            .where(and(eq(tankStats.matchId, matchId), eq(tankStats.clerkId, deadId), isNull(tankStats.result)));
-          delete playerStates[deadId];
-        }
+      let bountyGain = 0;
+      let eliminations = 0;
 
-        if (bountyGain > 0 || eliminations > 0) {
-          await db
-            .update(tankStats)
-            .set({
-              bounty: String(Number(killerStat.bounty ?? 0) + bountyGain),
-              kills: sql`${tankStats.kills} + ${eliminations}`,
-            })
-            .where(and(eq(tankStats.matchId, matchId), eq(tankStats.clerkId, killerId), isNull(tankStats.result)));
-        }
+      for (const deadId of deadPlayerIds) {
+        if (deadId === killerId) continue;
+        const deadStat = unresolvedStats.find((row) => row.clerkId === deadId);
+        bountyGain += Number(deadStat?.bounty ?? 0);
+        eliminations += 1;
+        await db
+          .update(tankStats)
+          .set({ result: "lose", amountCashedOut: 0, bounty: "0.00" })
+          .where(and(eq(tankStats.matchId, matchId), eq(tankStats.clerkId, deadId), isNull(tankStats.result)));
+      }
+
+      deadPlayerIds.forEach((deadId) => {
+        delete playerStates[deadId];
+      });
+
+      if (killerStat && (bountyGain > 0 || eliminations > 0)) {
+        await db
+          .update(tankStats)
+          .set({
+            bounty: String(Number(killerStat.bounty ?? 0) + bountyGain),
+            kills: sql`${tankStats.kills} + ${eliminations}`,
+          })
+          .where(and(eq(tankStats.matchId, matchId), eq(tankStats.clerkId, killerId), isNull(tankStats.result)));
       }
     }
 
@@ -193,7 +195,7 @@ export async function POST(req) {
     let gameOver = null;
     const alivePlayers = remainingPlayers;
 
-    if (matchPlayers.length === 2 && alivePlayers.length === 1) {
+    if (mode === "duel" && matchPlayers.length === 2 && alivePlayers.length === 1) {
       const winnerId = alivePlayers[0];
       const loserId = matchPlayers.find((id) => id !== winnerId);
 
@@ -262,76 +264,22 @@ export async function POST(req) {
       }
     }
 
-    if (!gameOver && mode === "battle_royale" && alivePlayers.length === 1) {
-      const winnerId = alivePlayers[0];
-      const unresolvedStats = await db
-        .select({ clerkId: tankStats.clerkId, bounty: tankStats.bounty })
-        .from(tankStats)
-        .where(and(eq(tankStats.matchId, matchId), isNull(tankStats.result)));
+    if (!gameOver && mode === "battle_royale" && alivePlayers.length === 0) {
+      await db
+        .update(tankMatches)
+        .set({
+          isOpen: false,
+          gameStarted: false,
+          currentPlayers: 0,
+          players: [],
+          settings: {
+            ...settings,
+            playerStates: {},
+          },
+        })
+        .where(eq(tankMatches.matchId, matchId));
 
-      const winnerStat = unresolvedStats.find((row) => row.clerkId === winnerId);
-      const winnerPayout = Number(winnerStat?.bounty ?? 0) * 0.9;
-
-      if (winnerStat) {
-        if (winnerPayout > 0) {
-          await db
-            .update(users)
-            .set({ balance: sql`${users.balance} + ${winnerPayout}` })
-            .where(eq(users.clerkId, winnerId));
-        }
-
-        await db
-          .update(tankStats)
-          .set({
-            result: "win",
-            amountCashedOut: winnerPayout,
-          })
-          .where(and(eq(tankStats.matchId, matchId), eq(tankStats.clerkId, winnerId), isNull(tankStats.result)));
-
-        const loserIds = unresolvedStats
-          .map((row) => row.clerkId)
-          .filter((id) => id !== winnerId);
-
-        if (loserIds.length > 0) {
-          await db
-            .update(tankStats)
-            .set({
-              result: "lose",
-              amountCashedOut: 0,
-              bounty: "0.00",
-            })
-            .where(
-              and(
-                eq(tankStats.matchId, matchId),
-                inArray(tankStats.clerkId, loserIds),
-                isNull(tankStats.result)
-              )
-            );
-        }
-
-        gameOver = {
-          winnerId,
-          loserId: null,
-          winnerPayout,
-        };
-
-        await db
-          .update(tankMatches)
-          .set({
-            isOpen: false,
-            gameStarted: false,
-            currentPlayers: 0,
-            players: [],
-            settings: {
-              ...settings,
-              playerStates: {},
-              gameOver,
-            },
-          })
-          .where(eq(tankMatches.matchId, matchId));
-
-        await db.delete(tankMatches).where(eq(tankMatches.matchId, matchId));
-      }
+      await db.delete(tankMatches).where(eq(tankMatches.matchId, matchId));
     }
 
     if (!gameOver) {
