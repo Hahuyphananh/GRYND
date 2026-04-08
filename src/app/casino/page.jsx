@@ -15,6 +15,7 @@ import Img10 from "../../images/keno.png";
 import Img11 from "../../images/Uno.jpg";
 import Img12 from "../../images/Rps.png";
 import Img13 from "../../images/tanks.png"
+import Img14 from "../../images/connect-4.png"
 import Image from "next/image";
 import Link from "next/link";
 
@@ -125,7 +126,7 @@ const games = [
     name: "Connect Four",
     href: "/casino/connect-four",
     leaderboardKey: "connect-four",
-    image: Img13,
+    image: Img14,
     description: "Affrontez un joueur en 1v1 et alignez 4 disques.",
   },
 ];
