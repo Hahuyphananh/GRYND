@@ -43,10 +43,10 @@ function MainComponent() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#003366]">
+      <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e]">
         <NavigationBar currentPath="/rankings" />
         <div className="flex min-h-screen items-center justify-center">
-          <div className="rounded-lg bg-[#FFD700] px-6 py-3 text-[#003366] hover:bg-[#FFD700]/80">
+          <div className="rounded-lg border border-[#00e5ff]/50 bg-[#00e5ff]/20 px-6 py-3 text-[#d8fbff] hover:bg-[#00e5ff]/35">
             {error}
           </div>
         </div>
@@ -72,16 +72,16 @@ function MainComponent() {
       return <span className="text-3xl">🥈</span>;
     if (rank === 3)
       return <span className="text-3xl">🥉</span>;
-    return <span className="text-[#FFD700] font-bold">{rank}</span>;
+    return <span className="font-bold text-[#00e5ff]">{rank}</span>;
   };
 
   const formatAmount = (value) => Number(value || 0).toFixed(2);
 
   return (
-    <div className="min-h-screen bg-[#003366] text-gray-300">
+    <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] text-[#c9f7ff]">
       <NavigationBar currentPath="/rankings" />
       <div className="flex flex-col items-center px-6 py-24">
-        <h1 className="mb-6 text-center text-4xl font-bold text-[#FFD700] drop-shadow-[0_0_10px_rgba(255,215,0,0.5)]">
+        <h1 className="mb-6 text-center text-4xl font-bold text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)]">
           Classement des Meilleurs Parieurs
         </h1>
 
@@ -89,7 +89,7 @@ function MainComponent() {
         <div className="mb-6 flex flex-wrap justify-center gap-3">
           <button
             onClick={() => setShowTop100(!showTop100)}
-            className="rounded-lg bg-[#FFD700] px-6 py-3 text-lg font-semibold text-[#003366] transition-all hover:bg-[#e6c200] hover:scale-105 shadow-lg"
+            className="rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b] px-6 py-3 text-lg font-semibold text-[#041125] transition-all hover:brightness-95 hover:scale-105 shadow-[0_0_18px_rgba(245,255,59,0.4)]"
           >
             {showTop100 ? "Afficher le Top 10" : "Afficher le Top 100"}
           </button>
@@ -100,8 +100,8 @@ function MainComponent() {
             onClick={() => setSelectedLeaderboard("overall")}
             className={`rounded-md px-4 py-2 text-sm font-semibold transition-all ${
               selectedLeaderboard === "overall"
-                ? "bg-[#FFD700] text-[#003366]"
-                : "bg-[#004080] text-[#FFD700] hover:bg-[#005099]"
+                ? "bg-[#f5ff3b] text-[#06152c]"
+                : "bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"
             }`}
           >
             Global
@@ -112,8 +112,8 @@ function MainComponent() {
               onClick={() => setSelectedLeaderboard(gameKey)}
               className={`rounded-md px-4 py-2 text-sm font-semibold transition-all ${
                 selectedLeaderboard === gameKey
-                  ? "bg-[#FFD700] text-[#003366]"
-                  : "bg-[#004080] text-[#FFD700] hover:bg-[#005099]"
+                  ? "bg-[#f5ff3b] text-[#06152c]"
+                  : "bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"
               }`}
             >
               {data.gameLabel}
@@ -121,10 +121,10 @@ function MainComponent() {
           ))}
         </div>
 
-        <div className="w-full max-w-7xl rounded-lg border border-[#FFD700] bg-[#003366] p-6 shadow-lg overflow-hidden">
+        <div className="w-full max-w-7xl overflow-hidden rounded-lg border border-[#00e5ff]/50 bg-[#08142f]/95 p-6 shadow-[0_0_28px_rgba(0,229,255,0.2)]">
           {loading ? (
             <div className="flex justify-center py-8">
-              <div className="text-[#FFD700]">Chargement...</div>
+              <div className="text-[#00e5ff]">Chargement...</div>
             </div>
           ) : (
             <AnimatePresence mode="wait">
@@ -134,10 +134,10 @@ function MainComponent() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
                 transition={{ duration: 0.4, ease: "easeInOut" }}
-                className="w-full border-collapse text-left shadow-[0_0_20px_rgba(255,215,0,0.15)]"
+                className="w-full border-collapse text-left shadow-[0_0_20px_rgba(0,229,255,0.2)]"
               >
                 <thead>
-                  <tr className="border-b border-[#FFD700] text-sm md:text-base text-[#FFD700]">
+                  <tr className="border-b border-[#00e5ff]/50 text-sm text-[#f5ff3b] md:text-base">
                     <th className="px-4 py-3">Rang</th>
                     <th className="px-4 py-3">Utilisateur</th>
                     <th className="px-4 py-3">Montant Gagné</th>
@@ -165,13 +165,13 @@ function MainComponent() {
                         initial={{ opacity: 0, y: 15 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.25, delay: player.rank * 0.01 }}
-                        className={`border-b border-[#FFD700]/20 ${
+                        className={`border-b border-[#00e5ff]/20 ${
                           isTop3
-                            ? "bg-[#FFD700]/10 hover:bg-[#FFD700]/20"
+                            ? "bg-[#f5ff3b]/10 hover:bg-[#f5ff3b]/20"
                             : player.rank % 2 === 0
-                            ? "bg-[#004080]"
-                            : "bg-[#003366]"
-                        } ${isTop3 ? "shadow-[0_0_25px_rgba(255,215,0,0.3)]" : ""} transition-all`}
+                            ? "bg-[#0b224f]"
+                            : "bg-[#08142f]"
+                        } ${isTop3 ? "shadow-[0_0_25px_rgba(57,255,20,0.25)]" : ""} transition-all`}
                       >
                         <td className="px-4 py-4 font-bold text-center">{getMedal(player.rank)}</td>
                         <td className="px-4 py-4 font-semibold text-gray-100">
@@ -197,7 +197,7 @@ function MainComponent() {
                         <td className="px-4 py-4 text-red-400 font-semibold">
                           {player.gamesLost}
                         </td>
-                        <td className="px-4 py-4 text-[#FFD700] font-semibold">
+                        <td className="px-4 py-4 font-semibold text-[#00e5ff]">
                           {player.netGames}
                         </td>
                         <td className="px-4 py-4 text-green-400 font-semibold">
