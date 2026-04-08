@@ -146,7 +146,7 @@ async function joinGame(matchId?: string) {
   }
 
   return (
-    <div className="w-full min-h-screen bg-[#003366] flex flex-col items-center justify-center text-white p-6 relative">
+    <div className="w-full min-h-screen bg-[#030817] flex flex-col items-center justify-center text-white p-6 relative">
       <NavigationBar currentPath="/casino" />
 
       <motion.div
@@ -188,7 +188,7 @@ async function joinGame(matchId?: string) {
   whileTap={{ scale: 0.96 }}
   onClick={() => joinGame()}
   disabled={loading}
-  className="block text-center w-full p-3 mt-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-bold cursor-pointer disabled:bg-blue-900"
+  className="block text-center w-full p-3 mt-3 bg-[#f5ff3b] hover:bg-[#d9e332] rounded-xl font-bold cursor-pointer disabled:bg-[#7f8520]"
 >
   {loading ? "Joining..." : "Quick Join"}
 </motion.button>
@@ -219,7 +219,7 @@ async function joinGame(matchId?: string) {
                   <button
                     onClick={() => joinGame(game.matchId)}
                     disabled={loading || joiningMatchId === game.matchId}
-                    className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 text-xs font-bold"
+                    className="px-2 py-1 rounded bg-[#f5ff3b] hover:bg-[#f5ff3b] disabled:bg-[#7f8520] text-xs font-bold"
                   >
                     {joiningMatchId === game.matchId ? "Joining..." : "Join"}
                   </button>

@@ -621,7 +621,7 @@ const displayedCard =
 
 return (
 
-  <div className="bg-[#003366] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8 page-enter">
+  <div className="bg-[#030817] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8 page-enter">
  <NavigationBar currentPath="/casino" />
     <h1 className="text-3xl mb-2 font-bold">{gameMode === "online" ? "UNO 1v1 en ligne" : "UNO vs IA"}</h1>
 
@@ -657,7 +657,7 @@ return (
 <button
   onClick={joinOnlineGame}
   disabled={loading || !!waitingGameId}
-  className="mt-4 bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-lg transition"
+  className="mt-4 bg-[#f5ff3b] hover:bg-[#f5ff3b] text-white px-8 py-3 rounded-full font-bold shadow-lg transition"
 >
   {loading ? "Recherche..." : "Rejoindre une partie"}
 </button>
@@ -677,7 +677,7 @@ return (
   <button
     onClick={fetchAvailableGames}
     disabled={isLoadingAvailableGames}
-    className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md text-sm font-semibold"
+    className="bg-[#f5ff3b] hover:bg-[#f5ff3b] text-white px-3 py-1 rounded-md text-sm font-semibold"
   >
     {isLoadingAvailableGames ? "..." : "🔄 Refresh"}
   </button>
@@ -701,7 +701,7 @@ return (
                 disabled={!onlineGame.canAfford || loading || !!waitingGameId}
                 className={`px-3 py-1 rounded-md font-semibold ${
                   onlineGame.canAfford && !waitingGameId
-                    ? "bg-blue-500 hover:bg-blue-600 text-white"
+                    ? "bg-[#f5ff3b] hover:bg-[#f5ff3b] text-white"
                     : "bg-gray-600 text-gray-200 cursor-not-allowed"
                 }`}
               >
@@ -730,7 +730,7 @@ return (
             <button
               onClick={createOnlineGame}
               disabled={!!waitingGameId}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover-lift"
+              className="bg-[#f5ff3b] hover:bg-[#f5ff3b] text-white px-4 py-2 rounded-lg font-bold hover-lift"
             >
               Créer une partie multijoueur
             </button>
@@ -939,7 +939,7 @@ return (
 
 <button
   onClick={returnToLobby}
-  className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded"
+  className="bg-[#f5ff3b] hover:bg-[#f5ff3b] text-white px-6 py-2 rounded"
 >
   Lobby
 </button>

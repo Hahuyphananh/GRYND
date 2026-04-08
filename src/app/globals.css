@@ -250,6 +250,11 @@ a.hover\:bg-\[\#003366\]:not([aria-disabled="true"]):hover {
   color: #031026 !important;
 }
 
+button[class*="bg-[#f5ff3b]"],
+a[class*="bg-[#f5ff3b]"] {
+  color: #031026 !important;
+}
+
 /* Space background for crash rocket area only */
 .space-bg {
   pointer-events: none;

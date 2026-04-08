@@ -421,10 +421,10 @@ async function handleClick(index) {
 
 
 return (
-  <div className="min-h-screen bg-[#003366] text-white flex flex-col items-center justify-center p-4 relative">
+  <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center justify-center p-4 relative">
     <NavigationBar currentPath="/casino" />
   
-   <div className={`bg-[#004080] rounded-lg p-8 w-full max-w-6xl min-w-[80%] ${gameOver ? "relative" : ""}`}>
+   <div className={`bg-[#081a3d] rounded-lg p-8 w-full max-w-6xl min-w-[80%] ${gameOver ? "relative" : ""}`}>
       {gameOver && (
         <div className="absolute inset-0 bg-black bg-opacity-10 rounded-lg pointer-events-none"></div>
       )}
@@ -437,7 +437,7 @@ return (
            <h1 className="text-3xl font-bold text-yellow-400 text-center w-full mt-3">
             Mines
           </h1>
-  <div className="bg-[#0055aa] rounded-lg p-4">
+  <div className="bg-[#0f3f86] rounded-lg p-4">
     <label htmlFor="bet-input" className="block mb-2 text-center font-semibold">
       Bet Amount
     </label>
@@ -448,14 +448,14 @@ return (
       max={userTokens}
       value={betAmount} // you need to add betAmount state too
       onChange={(e) => setBetAmount(Number(e.target.value))}
-      className="w-full bg-[#004080] text-white rounded px-2 py-1 text-center"
+      className="w-full bg-[#081a3d] text-white rounded px-2 py-1 text-center"
       disabled={gameOver || autoplayEnabled}
       placeholder="Enter your bet"
     />
     <p className="text-xs text-gray-300 mt-1 text-center">Balance: {userTokens} tokens</p>
   </div>
           {/* Mine selection */}
-          <div className="bg-[#0055aa] rounded-lg p-4">
+          <div className="bg-[#0f3f86] rounded-lg p-4">
             <p className="text-lg mb-3 text-center">Select Mines</p>
             <div className="grid grid-cols-3 gap-2">
               {[1, 3, 5, 10, 15, 20].map((mineCount) => (
@@ -466,7 +466,7 @@ return (
                   className={`py-2 px-1 rounded text-sm ${
                     totalMines === mineCount
                       ? "bg-#1e3f5a-600 text-white"
-                      : "bg-[#004080] text-gray-300"
+                      : "bg-[#081a3d] text-gray-300"
                   } ${gameOver || autoplayEnabled ? "opacity-70" : ""}`}
                 >
                   {mineCount}
@@ -482,12 +482,12 @@ return (
                 min="1"
                 max={GRID_SIZE * GRID_SIZE - 1}
                 placeholder="Custom"
-                className="bg-[#004080] text-white rounded px-2 py-1 w-full text-sm"
+                className="bg-[#081a3d] text-white rounded px-2 py-1 w-full text-sm"
                 disabled={gameOver || autoplayEnabled}
               />
               <button
                 type="submit"
-                className={`px-2 py-1 rounded text-sm bg-blue-600 text-white
+                className={`px-2 py-1 rounded text-sm bg-[#f5ff3b] text-white
                   ${gameOver || autoplayEnabled ? "opacity-70 cursor-not-allowed" : ""}`}
                 disabled={gameOver || autoplayEnabled}
               >
@@ -497,7 +497,7 @@ return (
           </div>
 
           {/* Game stats */}
-          <div className="bg-[#0055aa] rounded-lg p-4">
+          <div className="bg-[#0f3f86] rounded-lg p-4">
             <div className="flex justify-between items-center mb-2">
               <span className="font-bold">Diamonds:</span>
               <span className="flex items-center">
@@ -558,13 +558,13 @@ return (
         {/* Right sidebar */}
         <div className="w-full lg:w-1/4 flex flex-col gap-4">
           {/* Tokens */}
-          <div className="bg-[#0055aa] rounded-lg p-4 text-center">
+          <div className="bg-[#0f3f86] rounded-lg p-4 text-center">
             <p className="text-lg font-semibold mb-1">🪙 Tokens</p>
             <p className="text-yellow-400 text-xl font-bold">{userTokens}</p>
           </div>
 
           {/* Multiplier display */}
-          <div className="bg-[#0055aa] rounded-lg p-4 text-center">
+          <div className="bg-[#0f3f86] rounded-lg p-4 text-center">
             <div className="text-3xl font-bold text-green-400 mb-1">
               {multiplier.toFixed(2)}x
             </div>
@@ -572,7 +572,7 @@ return (
           </div>
 
           {/* Action buttons */}
-          <div className="bg-[#0055aa] rounded-lg p-4 flex flex-col gap-3">
+          <div className="bg-[#0f3f86] rounded-lg p-4 flex flex-col gap-3">
             <button
               onClick={handleCashOut}
               className={`bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 px-4 rounded-lg text-lg
@@ -623,13 +623,13 @@ return (
     <div className="max-w-4xl mx-auto mt-10 px-4">
       <button
         onClick={() => setShowRules(!showRules)}
-        className="w-full bg-[#FFD700] text-[#003366] font-bold py-3 rounded-lg text-lg mb-4 pl-10 pr-10 flex items-center justify-center"
+        className="w-full bg-[#FFD700] text-[#030817] font-bold py-3 rounded-lg text-lg mb-4 pl-10 pr-10 flex items-center justify-center"
       >
         {showRules ? "Hide Mines Rules ▲" : "Show Mines Rules ▼"}
       </button>
 
       {showRules && (
-        <div className="bg-[#004080] p-6 rounded-lg text-white space-y-4">
+        <div className="bg-[#081a3d] p-6 rounded-lg text-white space-y-4">
           <h2 className="text-2xl font-bold text-[#FFD700]">
             💣 Mines – How to Play
           </h2>

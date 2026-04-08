@@ -60,7 +60,7 @@ export default function RecentGames() {
               <tr
                 key={index}
                 className={`border-b border-[#FFD700]/20 ${
-                  index % 2 === 0 ? "bg-[#003366]" : "bg-[#004080]"
+                  index % 2 === 0 ? "bg-[#030817]" : "bg-[#081a3d]"
                 } hover:bg-[#FFD700]/10 transition-colors`}
               >
                 <td className="px-4 py-4">{game.username}</td>
@@ -79,7 +79,7 @@ export default function RecentGames() {
         <div className="flex justify-center mt-6">
           <button
             onClick={handleLoadMore}
-            className="bg-[#FFD700] text-[#003366] px-6 py-3 rounded-lg font-bold hover:bg-[#FFD700]/80 transition-colors"
+            className="bg-[#FFD700] text-[#030817] px-6 py-3 rounded-lg font-bold hover:bg-[#FFD700]/80 transition-colors"
           >
             Charger Plus
           </button>

@@ -101,7 +101,7 @@ export default function GameBoard({ gameId, movesLeft, setMovesLeft }) {
       64: 'bg-orange-600 text-white',
       128: 'bg-green-400 text-white',
       256: 'bg-green-500 text-white',
-      512: 'bg-blue-400 text-white',
+      512: 'bg-[#edf734] text-white',
       1024: 'bg-purple-500 text-white',
       2048: 'bg-pink-600 text-white',
     };
