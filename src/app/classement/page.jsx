@@ -171,7 +171,7 @@ function MainComponent() {
                             : player.rank % 2 === 0
                             ? "bg-[#0b224f]"
                             : "bg-[#08142f]"
-                        } ${isTop3 ? "shadow-[0_0_25px_rgba(57,255,20,0.25)]" : ""} transition-all`}
+                        } ${isTop3 ? "shadow-[0_0_25px_rgba(245,255,59,0.25)]" : ""} transition-all`}
                       >
                         <td className="px-4 py-4 font-bold text-center">{getMedal(player.rank)}</td>
                         <td className="px-4 py-4 font-semibold text-gray-100">
