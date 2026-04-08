@@ -91,7 +91,7 @@ function NavigationBar({ currentPath }) {
 
   return (
     <>
-      <nav data-no-translate="true" className="fixed top-0 left-0 right-0 z-40 bg-[#003366] border-b border-[#FFD700]/20">
+      <nav data-no-translate="true" className="fixed top-0 left-0 right-0 z-40 border-b border-[#00e5ff]/40 bg-[#050b1e]/95 backdrop-blur-md shadow-[0_0_22px_rgba(0,229,255,0.25)]">
         <div className="mx-auto max-w-7xl px-4">
           <div className="flex h-16 items-center justify-between">
           <Link href="/" className="flex items-center space-x-2">
@@ -100,7 +100,7 @@ function NavigationBar({ currentPath }) {
   alt="GoonBet Logo"
   width={150}
   height={60}
-  className="drop-shadow-[0_0_8px_rgba(255,215,0,0.3)] rounded-lg object-contain"
+  className="rounded-lg object-contain drop-shadow-[0_0_10px_rgba(57,255,20,0.45)]"
 />
     </Link>
 
@@ -111,8 +111,8 @@ function NavigationBar({ currentPath }) {
                   href={path}
                   className={`px-3 py-2 text-sm font-medium ${
                     currentPath === path || (path === "/casino" && isCasinoPath)
-                      ? "text-[#FFD700]"
-                      : "text-white hover:text-[#FFD700]"
+                      ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]"
+                      : "text-[#9dd8ff] hover:text-[#00e5ff]"
                   }`}
                 >
                   {t(NAV_TRANSLATION_KEYS[path])}
@@ -125,7 +125,7 @@ function NavigationBar({ currentPath }) {
                 aria-label="Language selector"
                 value={language}
                 onChange={(event) => setLanguage(event.target.value)}
-                className="rounded-lg bg-[#003366] border border-[#FFD700]/40 px-2 py-1 text-sm text-white focus:outline-none"
+                className="rounded-lg border border-[#00e5ff]/50 bg-[#091737] px-2 py-1 text-sm text-[#c9f7ff] focus:outline-none"
               >
                 <option value="en">EN 🇺🇸</option>
                 <option value="fr">FR 🇫🇷</option>
@@ -135,7 +135,7 @@ function NavigationBar({ currentPath }) {
               <button
                 type="button"
                 onClick={toggleTheme}
-                className="rounded-lg bg-[#FFD700] px-2 py-1 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
+                className="rounded-lg border border-[#39ff14]/40 bg-[#39ff14]/20 px-2 py-1 text-sm font-medium text-[#d9ffe2] hover:bg-[#39ff14]/35"
                 aria-label="Theme toggle"
                 title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
               >
@@ -145,7 +145,7 @@ function NavigationBar({ currentPath }) {
               {isLoaded && isSignedIn ? (
                 <>
                   <div className="hidden sm:flex items-center space-x-4">
-                    <span className="text-[#FFD700]">
+                    <span className="text-[#00e5ff]">
                       {error
                         ? `${t("navError")}: ${error}`
                         : balance !== null
@@ -156,15 +156,15 @@ function NavigationBar({ currentPath }) {
                       href="/profil"
                       className={`px-3 py-2 text-sm font-medium ${
                         currentPath === "/profil"
-                          ? "text-[#FFD700]"
-                          : "text-white hover:text-[#FFD700]"
+                          ? "text-[#f5ff3b]"
+                          : "text-[#c9f7ff] hover:text-[#00e5ff]"
                       }`}
                     >
                       {t("navProfile")}
                     </Link>
                   </div>
                   <SignOutButton>
-                    <button className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80">
+                    <button className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35">
                       {t("navSignOut")}
                     </button>
                   </SignOutButton>
@@ -172,12 +172,12 @@ function NavigationBar({ currentPath }) {
               ) : (
                 <><Link
                     href="/sign-up"
-                    className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
+                    className="rounded-lg border border-[#39ff14]/40 bg-[#39ff14]/20 px-4 py-2 text-sm font-medium text-[#e6ffef] hover:bg-[#39ff14]/35"
                   >
                     {t("navCreateAccount")}
                   </Link><Link
                     href="/sign-in"
-                    className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-medium text-[#003366] hover:bg-[#FFD700]/80"
+                    className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35"
                   >
                       {t("navSignIn")}
                     </Link></>

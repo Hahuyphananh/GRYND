@@ -138,7 +138,7 @@ const filteredGames = games.filter((game) =>
 const popularGames = filteredGames.filter((g) => g.popular);
 const otherGames = filteredGames.filter((g) => !g.popular);
 const GameCard = ({ game }) => (
-  <div className="group relative overflow-hidden rounded-lg bg-black p-2 transition-all hover:shadow-lg hover:shadow-[#FFD700]/20">
+  <div className="group relative overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-2 transition-all hover:shadow-[0_0_24px_rgba(0,229,255,0.35)]">
     <Link href={game.href} className="block cursor-pointer">
       <div className="mb-2 h-28 overflow-hidden rounded-lg">
         <Image
@@ -148,13 +148,13 @@ const GameCard = ({ game }) => (
         />
       </div>
 
-      <h3 className="mb-2 text-md font-bold text-[#FFD700]">
+      <h3 className="mb-2 text-md font-bold text-[#f5ff3b]">
         {game.name}
       </h3>
 
-      <p className="text-gray-300">{game.description}</p>
+      <p className="text-[#9dd8ff]">{game.description}</p>
 
-      <div className="mt-4 flex items-center text-[#FFD700]">
+      <div className="mt-4 flex items-center text-[#00e5ff]">
         <span>Jouer maintenant</span>
         <i className="fas fa-arrow-right ml-2"></i>
       </div>
@@ -162,7 +162,7 @@ const GameCard = ({ game }) => (
     <div className="mt-2">
       <Link
         href={`/classement?game=${game.leaderboardKey}`}
-        className="text-xs text-[#FFD700]/90 underline underline-offset-2 hover:text-[#FFD700]"
+        className="text-xs text-[#39ff14] underline underline-offset-2 hover:text-[#9eff7f]"
       >
         Voir le leaderboard de {game.name}
       </Link>
@@ -171,15 +171,15 @@ const GameCard = ({ game }) => (
 );
 
   return (
-    <div className="min-h-screen bg-[#003366] pt-20">
+    <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] pt-20">
       <NavigationBar currentPath="/casino" />
 
       <div className="mx-auto max-w-7xl px-4 py-12">
         <section className="mb-5 text-center">
-  <h1 className="mb-4 text-4xl font-bold text-[#FFD700] md:text-6xl fade-slide-up shimmer-heading">
+  <h1 className="mb-4 text-4xl font-bold text-[#f5ff3b] md:text-6xl fade-slide-up shimmer-heading">
     Casino en Ligne
   </h1>
-  <p className="mb-2 text-xl text-white fade-slide-up" style={{ animationDelay: '0.3s' }}>
+  <p className="mb-2 text-xl text-[#d8fbff] fade-slide-up" style={{ animationDelay: '0.3s' }}>
     Découvrez nos jeux de casino et tentez votre chance
   </p>
   {error && (
@@ -213,15 +213,15 @@ const GameCard = ({ game }) => (
       placeholder="Rechercher un jeu..."
       value={search}
       onChange={(e) => setSearch(e.target.value)}
-      className="w-full rounded-xl border border-[#FFD700]/40 bg-black py-3 pl-12 pr-4 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FFD700] "
+      className="w-full rounded-xl border border-[#00e5ff]/45 bg-[#040d24] py-3 pl-12 pr-4 text-[#ecf8ff] placeholder-[#6aa4d8] focus:outline-none focus:ring-2 focus:ring-[#00e5ff] "
     />
   </div>
 </div>
 
 {popularGames.length > 0 && (
-  <div className="mb-8 rounded-2xl border border-[#FFD700]/40 bg-gradient-to-br from-[#001a33] to-[#000814] p-8 shadow-[0_0_40px_rgba(255,215,0,0.15)]">
+  <div className="mb-8 rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#08142f] to-[#020713] p-8 shadow-[0_0_40px_rgba(0,229,255,0.18)]">
 
-    <h2 className="mb-6 text-4xl font-extrabold text-[#FFD700] tracking-wide" style={{ textShadow: "0 0 12px rgba(255,215,0,0.7)" }}>
+    <h2 className="mb-6 text-4xl font-extrabold text-[#f5ff3b] tracking-wide" style={{ textShadow: "0 0 12px rgba(245,255,59,0.65)" }}>
       ⭐ Jeux les plus populaires
     </h2>
 
@@ -235,7 +235,7 @@ const GameCard = ({ game }) => (
 
       {otherGames.length > 0 && (
   <>
-    <h2 className="mb-6 text-3xl font-bold text-[#FFD700]">
+    <h2 className="mb-6 text-3xl font-bold text-[#00e5ff]">
       🎮 Tous les jeux
     </h2>
 
