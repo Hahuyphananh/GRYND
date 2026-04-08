@@ -227,6 +227,29 @@
   animation: cyberButtonGlow 2.2s ease-in-out infinite;
 }
 
+/* Global casino button palette: convert blue action buttons to neon yellow */
+button[class*="bg-blue-"]:not(:disabled),
+a[class*="bg-blue-"]:not([aria-disabled="true"]),
+button.bg-\[\#004080\]:not(:disabled),
+a.bg-\[\#004080\]:not([aria-disabled="true"]),
+button.bg-\[\#003366\]:not(:disabled),
+a.bg-\[\#003366\]:not([aria-disabled="true"]) {
+  background-color: #f5ff3b !important;
+  border-color: rgba(245, 255, 59, 0.6) !important;
+  color: #031026 !important;
+  box-shadow: 0 0 14px rgba(245, 255, 59, 0.35);
+}
+
+button[class*="hover:bg-blue-"]:not(:disabled):hover,
+a[class*="hover:bg-blue-"]:not([aria-disabled="true"]):hover,
+button.hover\:bg-\[\#004080\]:not(:disabled):hover,
+a.hover\:bg-\[\#004080\]:not([aria-disabled="true"]):hover,
+button.hover\:bg-\[\#003366\]:not(:disabled):hover,
+a.hover\:bg-\[\#003366\]:not([aria-disabled="true"]):hover {
+  background-color: #edf734 !important;
+  color: #031026 !important;
+}
+
 /* Space background for crash rocket area only */
 .space-bg {
   pointer-events: none;

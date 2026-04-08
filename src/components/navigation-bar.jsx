@@ -100,7 +100,7 @@ function NavigationBar({ currentPath }) {
   alt="GoonBet Logo"
   width={150}
   height={60}
-  className="rounded-lg object-contain drop-shadow-[0_0_10px_rgba(57,255,20,0.45)]"
+  className="rounded-lg object-contain drop-shadow-[0_0_10px_rgba(245,255,59,0.45)]"
 />
     </Link>
 
