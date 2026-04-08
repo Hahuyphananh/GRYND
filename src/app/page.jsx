@@ -364,7 +364,7 @@ useEffect(() => {
   };
 
   return (
-   <div className="animated-bg cyberpunk-grid">
+   <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] cyberpunk-grid">
       <NavigationBar currentPath="/" />
 
      <section className="relative mt-8 px-4 min-h-[70vh] flex items-center overflow-hidden">
@@ -385,7 +385,7 @@ useEffect(() => {
         <div className="relative z-20 mx-auto max-w-7xl text-center">
       <h1
   className="mb-4 text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text 
-  bg-gradient-to-r from-[#00e5ff] via-[#f5ff3b] to-[#39ff14]
+  bg-gradient-to-r from-yellow-300 via-yellow-400 to-yellow-300
   drop-shadow-[0_0_10px_rgba(0,229,255,0.5)] tracking-widest uppercase 
   animate-[shimmerGradient_8s_ease-in-out_infinite]"
   style={{ backgroundSize: "200% auto" }}
@@ -495,7 +495,7 @@ useEffect(() => {
           <div className="flex justify-center mt-8">
   <a
     href="/casino"
-    className="inline-block rounded-lg border border-[#39ff14]/40 bg-[#39ff14] px-6 py-3 text-lg font-semibold text-[#031026] transition-all glow-pulse more-hover cyber-glow-button"
+    className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-6 py-3 text-lg font-semibold text-[#031026] transition-all glow-pulse more-hover cyber-glow-button"
   >
     Plus de jeux
   </a>

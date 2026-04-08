@@ -162,7 +162,7 @@ const GameCard = ({ game }) => (
     <div className="mt-2">
       <Link
         href={`/classement?game=${game.leaderboardKey}`}
-        className="text-xs text-[#39ff14] underline underline-offset-2 hover:text-[#9eff7f]"
+        className="text-xs text-[#00e5ff] underline underline-offset-2 hover:text-[#d8fbff]"
       >
         Voir le leaderboard de {game.name}
       </Link>
