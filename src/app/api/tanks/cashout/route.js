@@ -24,23 +24,60 @@ export async function POST(req) {
     if (!parsed.ok) return parsed.response;
     const requestedMatchId = parsed.data.matchId;
 
-    // Find this player's active stats row (prefer current match from client)
+    // Find this player's active stats row (prefer current match from client).
+    // If a duplicate/delayed request arrives after a successful cashout, return the prior win payload.
+    const activeWhere = requestedMatchId
+      ? and(
+          eq(tankStats.clerkId, clerkId),
+          eq(tankStats.matchId, requestedMatchId),
+          isNull(tankStats.result)
+        )
+      : and(eq(tankStats.clerkId, clerkId), isNull(tankStats.result));
+
     const playerStats = await db
       .select({ matchId: tankStats.matchId })
       .from(tankStats)
-      .where(
-        requestedMatchId
-          ? and(
-              eq(tankStats.clerkId, clerkId),
-              eq(tankStats.matchId, requestedMatchId),
-              isNull(tankStats.result)
-            )
-          : and(eq(tankStats.clerkId, clerkId), isNull(tankStats.result))
-      )
+      .where(activeWhere)
       .orderBy(desc(tankStats.id))
       .limit(1);
 
     if (playerStats.length === 0) {
+      const settledWhere = requestedMatchId
+        ? and(
+            eq(tankStats.clerkId, clerkId),
+            eq(tankStats.matchId, requestedMatchId),
+            eq(tankStats.result, "win")
+          )
+        : and(eq(tankStats.clerkId, clerkId), eq(tankStats.result, "win"));
+
+      const settled = await db
+        .select({
+          amountCashedOut: tankStats.amountCashedOut,
+          matchId: tankStats.matchId,
+        })
+        .from(tankStats)
+        .where(settledWhere)
+        .orderBy(desc(tankStats.id))
+        .limit(1);
+
+      if (settled.length > 0) {
+        const userRows = await db
+          .select({ balance: users.balance })
+          .from(users)
+          .where(eq(users.clerkId, clerkId))
+          .limit(1);
+
+        return NextResponse.json(
+          {
+            success: true,
+            newBalance: userRows[0]?.balance ?? null,
+            payout: Number(settled[0].amountCashedOut ?? 0),
+            alreadySettled: true,
+          },
+          { status: 200 }
+        );
+      }
+
       return NextResponse.json(
         { error: "Player not in any active match" },
         { status: 400 }
@@ -100,6 +137,7 @@ export async function POST(req) {
       if (newCount === 0) {
         // Delete match if no players left
         await db.delete(tankMatches).where(eq(tankMatches.matchId, matchId));
+        await db.delete(tankStats).where(eq(tankStats.matchId, matchId));
       } else {
         const existingSettings = m.settings ?? {};
         const existingPlayerStates = existingSettings.playerStates ?? {};

@@ -97,7 +97,7 @@ export async function POST(req) {
       maxPlayers: 10,
       currentPlayers: 1,
       isOpen: true,
-      gameStarted: false,
+      gameStarted: true,
       settings: safeSettings,
       players: safePlayers,
     };

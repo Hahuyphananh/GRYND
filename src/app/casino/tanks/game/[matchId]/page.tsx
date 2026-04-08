@@ -208,6 +208,7 @@ export default function TanksGamePage() {
   const [pos, setPos] = useState({ x: 1500, y: 1500 });
   const posRef = useRef(pos);
   posRef.current = pos;
+  const positionInitializedRef = useRef(false);
 
   const MAX_HEALTH = 5;
   const [health, setHealth] = useState(MAX_HEALTH);
@@ -355,7 +356,7 @@ export default function TanksGamePage() {
         setMaxPlayers(maxPlayersFromServer);
         setMinPlayersToStart(minRequired);
 
-        if (data?.gameStarted || (modeFromServer === "duel" && Number(data.currentPlayers ?? 0) >= minRequired)) {
+        if (modeFromServer === "battle_royale" || data?.gameStarted || (modeFromServer === "duel" && Number(data.currentPlayers ?? 0) >= minRequired)) {
           setIsMatchReady(true);
         }
 
@@ -473,6 +474,7 @@ export default function TanksGamePage() {
         }
         posRef.current = { x: own.x, y: own.y };
         setPos({ x: own.x, y: own.y });
+        positionInitializedRef.current = true;
       }
 
       const others = Object.fromEntries(
@@ -519,8 +521,8 @@ export default function TanksGamePage() {
           credentials: "include",
           body: JSON.stringify({
             matchId: routeMatchId,
-            x: posRef.current.x,
-            y: posRef.current.y,
+            x: positionInitializedRef.current ? posRef.current.x : undefined,
+            y: positionInitializedRef.current ? posRef.current.y : undefined,
             rotation: rotationRef.current,
             hits: pendingHitsRef.current.splice(0),
             bullets: [],
@@ -538,6 +540,19 @@ export default function TanksGamePage() {
 
         const data = await res.json();
         setSelfId(data.selfId);
+
+        if (data?.playerStates && data?.selfId && data.playerStates[data.selfId]) {
+          const own = data.playerStates[data.selfId];
+          if (Number.isFinite(Number(own?.x)) && Number.isFinite(Number(own?.y))) {
+            posRef.current = { x: Number(own.x), y: Number(own.y) };
+            setPos({ x: Number(own.x), y: Number(own.y) });
+            positionInitializedRef.current = true;
+          }
+          if (Number.isFinite(Number(own?.health))) {
+            healthRef.current = Number(own.health);
+            setHealth(Number(own.health));
+          }
+        }
 
         if (data?.gameOver && !gameFinishedRef.current) {
           gameFinishedRef.current = true;
