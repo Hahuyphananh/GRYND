@@ -93,6 +93,7 @@ export default function WaitingRoom({ gameId, onReady, minPlayersToStart, maxPla
       const res = await fetch("/api/tanks/toggle-ready", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ matchId: gameId, ready: nextReady }),
       });
       const data = await res.json();
@@ -113,6 +114,7 @@ export default function WaitingRoom({ gameId, onReady, minPlayersToStart, maxPla
       await fetch("/api/tanks/leave-match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ gameId }),
       });
     } catch (err) {
