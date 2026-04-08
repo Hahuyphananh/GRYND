@@ -84,6 +84,7 @@ async function joinGame(matchId?: string) {
     const res = await fetch("/api/tanks/join-game", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify(matchId ? { matchId } : {}),
     });
 
@@ -118,6 +119,7 @@ async function joinGame(matchId?: string) {
       const res = await fetch(gameMode === "battle_royale" ? "/api/tanks/start-battle-royale" : "/api/tanks/start-match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ betAmount: wager, gameMode }),
       });
 

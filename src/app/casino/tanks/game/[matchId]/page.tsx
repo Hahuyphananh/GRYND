@@ -110,6 +110,7 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown, routeMatchId
             const res = await fetch("/api/tanks/cashout", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
+              credentials: "include",
               body: JSON.stringify({ amount: bountyRef.current, matchId: routeMatchId }),
             });
             const data = await res.json();
@@ -148,6 +149,7 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown, routeMatchId
 }
 
 type BulletState = {
+  id?: number;
   x: number;
   y: number;
   angle: number;
@@ -213,6 +215,7 @@ export default function TanksGamePage() {
   healthRef.current = health;
 
   const [cashOutCountdown, setCashOutCountdown] = useState(0);
+  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
 
   const [bounty, setBounty] = useState(0);
   const bountyRef = useRef(bounty);
@@ -310,12 +313,37 @@ export default function TanksGamePage() {
   }, [user]);
 
   useEffect(() => {
+    if (!user) return;
+    const fetchTokens = async () => {
+      try {
+        const res = await fetch("/api/get-user-tokens", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (res.ok && data?.success) {
+          setTokenBalance(Number(data?.data?.balance ?? 0));
+        }
+      } catch (err) {
+        console.error("Failed loading token balance in tanks match:", err);
+      }
+    };
+    fetchTokens();
+  }, [user]);
+
+  useEffect(() => {
     setMatchId(routeMatchId ?? null);
     if (!routeMatchId) return;
 
     const checkMatch = async () => {
       try {
-        const res = await fetch(`/api/tanks/get-match?matchId=${routeMatchId}`);
+        const res = await fetch(`/api/tanks/get-match?matchId=${routeMatchId}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          cache: "no-store",
+        });
         const data = await res.json();
 
         const modeFromServer = data?.settings?.mode === "battle_royale" ? "battle_royale" : "duel";
@@ -375,7 +403,12 @@ export default function TanksGamePage() {
 
     const hydrateNames = async () => {
       try {
-        const res = await fetch(`/api/tanks/get-match?matchId=${routeMatchId}`);
+        const res = await fetch(`/api/tanks/get-match?matchId=${routeMatchId}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          cache: "no-store",
+        });
         const data = await res.json();
         if (!res.ok || !Array.isArray(data?.playersStats)) return;
 
@@ -417,6 +450,17 @@ export default function TanksGamePage() {
       const currentSelfId = selfIdRef.current;
       if (currentSelfId && players[currentSelfId]) {
         const own = players[currentSelfId];
+        if (own.health <= 0 && !gameFinishedRef.current) {
+          gameFinishedRef.current = true;
+          showGameAlert("💀 You were destroyed");
+          fetch("/api/tanks/leave-match", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ gameId: routeMatchId }),
+          }).finally(() => router.push("/casino/tanks"));
+          return;
+        }
         if (own.health < healthRef.current) {
           selfHitUntilRef.current = performance.now() + 220;
           playHitSound();
@@ -472,6 +516,7 @@ export default function TanksGamePage() {
         const res = await fetch("/api/tanks/update-state", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             matchId: routeMatchId,
             x: posRef.current.x,
@@ -601,8 +646,9 @@ export default function TanksGamePage() {
 
       setServerBullets((prev) => {
         const target = targetBulletsRef.current;
+        const prevById = new Map(prev.map((b, i) => [b.id ?? i, b]));
         return target.map((bullet, i) => {
-          const current = prev[i] ?? bullet;
+          const current = prevById.get(bullet.id ?? i) ?? bullet;
           const smoothing = 0.35 * dt;
           return {
             ...bullet,
@@ -795,6 +841,7 @@ export default function TanksGamePage() {
 
       <div className="absolute top-4 left-4 p-4 bg-black/40 rounded-xl text-white flex flex-col gap-2 z-[9999]">
         <p className="text-lg font-bold">Bounty: ${bounty}</p>
+        <p className="text-xs text-green-300">Balance: {tokenBalance ?? "..."} tokens</p>
         <p className="font-bold">Ammo: {ammo}/{MAX_AMMO}</p>
         <p className="text-xs text-yellow-200">
           Mode: {gameMode === "battle_royale" ? "Battle Royale" : "1v1"}
