@@ -31,6 +31,7 @@ const isPublicRoute = createRouteMatcher([
   '/complete-profile',
   '/casino/poker/multi(.*)',
   '/casino/tanks(.*)',
+  '/casino/connect-four(.*)',
 ]);
 
 const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
