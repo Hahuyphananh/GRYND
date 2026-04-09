@@ -132,16 +132,6 @@ function NavigationBar({ currentPath }) {
                 <option value="es">ES 🇪🇸</option>
               </select>
 
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/20 px-2 py-1 text-sm font-medium text-[#fffec7] hover:bg-[#f5ff3b]/35"
-                aria-label="Theme toggle"
-                title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              >
-                {theme === "dark" ? "☀️" : "🌙"}
-              </button>
-
               {isLoaded && isSignedIn ? (
                 <>
                   <div className="hidden sm:flex items-center space-x-4">
@@ -172,7 +162,7 @@ function NavigationBar({ currentPath }) {
               ) : (
                 <><Link
                     href="/sign-up"
-                    className="rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/20 px-4 py-2 text-sm font-medium text-[#fffec7] hover:bg-[#f5ff3b]/35"
+                    className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/35"
                   >
                     {t("navCreateAccount")}
                   </Link><Link

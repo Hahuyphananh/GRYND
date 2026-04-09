@@ -212,15 +212,19 @@ export default function RoulettePage() {
                 <div key={num} className="relative">
                   <button
                     onClick={() => placeBet(num)}
-                    className={`w-10 h-10 flex items-center justify-center rounded border border-yellow-400
-                    ${
-                      isRed ? "bg-red-600 text-white" : "bg-black text-yellow-400"
-                    }`}
+                    className={`w-10 h-10 flex items-center justify-center rounded-lg border border-[#FFFF33]/40 text-sm font-medium
+transition-all duration-150
+${
+  isRed
+    ? "bg-red-600/80 text-white shadow-[0_0_10px_rgba(255,0,0,0.4)]"
+    : "bg-black text-[#FFFF33] shadow-[0_0_10px_rgba(255,255,51,0.3)]"
+}
+hover:scale-105 hover:brightness-110 active:scale-95`}
                   >
                     {num}
                   </button>
                   {bets[num] && (
-                    <span className="absolute -top-2 -right-2 bg-yellow-400 text-black text-xs font-bold px-1.5 py-0.5 rounded-full border border-yellow-500 shadow-lg">
+                    <span className="absolute -top-2 -right-2 bg-[#FFFF33]/80 text-[#000] border border-[#FFFF33]/40 shadow-[0_0_10px_rgba(255,255,51,0.4)] text-xs font-bold px-1.5 py-0.5 rounded-full border shadow-lg">
                       {bets[num]}
                     </span>
                   )}
@@ -241,16 +245,17 @@ export default function RoulettePage() {
         {/* Left sidebar */}
         <div className="flex flex-col items-start gap-6 w-full sm:w-[280px] flex-shrink-0">
           {/* Title below Retour au Casino */}
-          <h1 className="text-3xl font-bold text-yellow-400 text-center w-full mt-3">
+          <h1 className="text-3xl font-bold text-[#FFFF33] drop-shadow-[0_0_10px_rgba(255,255,51,0.6)] text-center w-full mt-3">
             🎰 Roulette Royale
           </h1>
           {/* Tokens display */}
-          <span className="inline-block bg-gradient-to-r from-yellow-400 via-yellow-300 to-yellow-500 text-black px-6 py-2 rounded-full font-extrabold shadow-lg text-lg border-2 border-yellow-400">
+          <span className="inline-block px-6 bg-[#FFFF33]/20 border border-[#FFFF33]/40 text-[#fffec7]
+shadow-[0_0_12px_rgba(255,255,51,0.5)] py-2 rounded-full font-extrabold shadow-lg text-lg border-2">
             Tokens: {userTokens}
           </span>
 
           {/* AutoBet controls */}
-          <div className="bg-[#0a1e3a] p-4 rounded-lg border border-yellow-400 w-full">
+          <div className="bg-[#001933] p-4 rounded-lg border border-[#FFFF33]/30 w-full backdrop-blur-md shadow-[0_0_20px_rgba(255,255,51,0.15)]">
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -269,7 +274,7 @@ export default function RoulettePage() {
                   onChange={(e) =>
                     setAutoBet((prev) => ({ ...prev, mode: e.target.value }))
                   }
-                  className="px-2 py-1 rounded border border-yellow-400 bg-[#102542]"
+                  className="px-2 py-1 rounded border border border-[#00e5ff]/30 bg-[#091737] text-white focus:border-[#00e5ff] focus:ring-1 focus:ring-[#00e5ff]"
                 >
                   <option value="finite">Finite</option>
                   <option value="infinite">Infinite</option>
@@ -286,7 +291,7 @@ export default function RoulettePage() {
                         spinsLeft: Number(e.target.value),
                       }))
                     }
-                    className="w-36 px-2 py-1 rounded border border-yellow-400 bg-[#102542] text-white"
+                    className="w-36 px-2 py-1 rounded border border border-[#00e5ff]/30 bg-[#091737] text-white focus:border-[#00e5ff] focus:ring-1 focus:ring-[#00e5ff]text-white"
                     placeholder="Number of spins"
                   />
                 )}
@@ -315,16 +320,16 @@ export default function RoulettePage() {
               min="1"
               value={betAmount}
               onChange={(e) => setBetAmount(Number(e.target.value))}
-              className="w-full rounded border-2 border-yellow-400 bg-[#102542] text-white px-2 py-1"
+              className="w-full rounded bg-[#001933] border border-[#FFFF33]/30 focus:border-[#FFFF33] focus:ring-1 focus:ring-[#FFFF33] px-2 py-1 text-white"
             />
             <button
               onClick={handleSpin}
               disabled={spinning}
-              className={`px-6 py-2 rounded-full font-bold border-2 border-yellow-400 ${
-                spinning
-                  ? "bg-gray-600"
-                  : "bg-yellow-400 text-black hover:bg-yellow-300"
-              }`}
+             className={`mt-3 px-6 py-2 rounded-full font-bold border border-[#FFFF33]/40 ${
+  spinning
+    ? "bg-gray-600"
+    : "bg-[#FFFF33]/20 text-[#FFFF33] hover:bg-[#FFFF33]/35 shadow-[0_0_15px_rgba(255,255,51,0.5)]"
+}`}
             >
               {spinning ? "La roue tourne..." : "Tourner la Roue!"}
             </button>
@@ -332,7 +337,7 @@ export default function RoulettePage() {
             <button
               onClick={resetBets}
               disabled={spinning}
-              className="mt-2 px-6 py-2 rounded-full font-bold border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition"
+              className="mt-2 px-6 py-2 rounded-full font-bold border border-red-500/40 text-red-400 hover:bg-red-500/20 hover:text-red-200 transition shadow-[0_0_10px_rgba(255,0,0,0.4)]"
             >
               Réinitialiser les mises
             </button>
@@ -341,7 +346,7 @@ export default function RoulettePage() {
 <div className="w-full mt-4">
   <button
     onClick={() => setShowRules(!showRules)}
-    className="w-full flex items-center justify-between px-4 py-3 bg-yellow-400 text-black font-bold rounded-lg shadow-lg hover:bg-yellow-300 transition"
+    className="w-full flex items-center justify-between px-4 py-3 bg-[#FFFF33]/20 text-[#FFFF33] font-bold rounded-lg border border-[#FFFF33]/40 shadow-[0_0_15px_rgba(255,255,51,0.4)] hover:bg-[#FFFF33]/35 transition"
   >
     <span>🎰 Game Rules</span>
     <span className="text-xl">
@@ -351,7 +356,7 @@ export default function RoulettePage() {
 
   {/* 👇 Fixed-height container = no layout shift */}
   {showRules && (
-    <div className="mt-3 bg-[#0a1e3a] border border-yellow-400 rounded-xl p-4 text-white shadow-2xl text-sm leading-relaxed max-h-64 overflow-y-auto">
+    <div className="mt-3 bg-[#020617] border border-[#FFFF33]/30 rounded-xl p-4 text-white shadow-[0_0_25px_rgba(255,255,51,0.15)] text-sm leading-relaxed max-h-64 overflow-y-auto backdrop-blur-md">
       <h2 className="text-lg font-bold text-yellow-400 mb-3 text-center">
         🎰 How to Play Roulette
       </h2>
@@ -394,7 +399,7 @@ export default function RoulettePage() {
 
           {/* Result message */}
           {result && (
-            <div className="mt-4 w-full bg-[#0a1e3a] p-3 rounded border border-yellow-400 text-center text-yellow-300 font-bold">
+            <div className="mt-4 w-full bg-[#020617] p-3 rounded border border-[#FFFF33]/30 text-center text-[#FFFF33] font-bold shadow-[0_0_15px_rgba(255,255,51,0.3)]">
               Résultat:{" "}
               <span className="text-yellow-300 font-extrabold">{result.number}</span>
               {result.win ? ` - Gagné ${result.amount} tokens! 🎉` : " - Perdu"}
@@ -406,11 +411,11 @@ export default function RoulettePage() {
         <div className="flex flex-col items-center w-full sm:w-[680px] flex-shrink-0">
           <div className="relative mx-auto mt-5 w-full max-w-[360px] h-[400px] sm:w-[360px] sm:h-[400px]">
             <canvas
-              ref={canvasRef}
-              width={360}
-              height={360}
-              className="rounded-full"
-            />
+  ref={canvasRef}
+  width={360}
+  height={360}
+  className="rounded-full shadow-[0_0_100px_rgba(255,255,51,0.25)]"
+/>
 
             {/* SVG pointer above the wheel */}
             <svg
@@ -459,7 +464,7 @@ export default function RoulettePage() {
               <button
                 key={zone}
                 onClick={() => placeBet(zone)}
-                className={`relative px-3 py-2 rounded border border-yellow-400 text-sm font-bold capitalize
+                className={`relative px-3 py-2 rounded border border-[#FFFF33]/40 text-sm font-bold capitalize
     ${
       zone === "red"
         ? "bg-red-600"
@@ -469,11 +474,11 @@ export default function RoulettePage() {
         ? "bg-green-500"
         : "bg-[#102542]"
     }
-    ${bets[zone] ? "ring-2 ring-yellow-300" : ""}`}
+    ${bets[zone] ? "ring-2 ring-[#FFFF33] shadow-[0_0_15px_rgba(255,255,51,0.6)]" : ""}`}
               >
                 {zone}
                 {bets[zone] && (
-                  <span className="absolute -top-2 -right-2 bg-yellow-400 text-black text-xs font-bold px-1.5 py-0.5 rounded-full border border-yellow-500 shadow-lg">
+                  <span className="absolute -top-2 -right-2 text-xs bg-[#FFFF33]/80 text-[black] border border-[#FFFF33]/40 shadow-[0_0_10px_rgba(255,255,51,0.4)] font-bold px-1.5 py-0.5 rounded-full border shadow-lg">
                     {bets[zone]}
                   </span>
                 )}
