@@ -35,7 +35,7 @@ const glowBySlot: Record<string, string> = {
 
 export default function SlotsLobby() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#001A33] to-[#002B5B] text-white p-6">
+    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-6">
       <NavigationBar currentPath="/slots" />
 
       {/* Title */}
@@ -47,7 +47,7 @@ export default function SlotsLobby() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
         {slotGames.map((slot) => (
           <Link key={slot.id} href={slot.path}>
-            <div className="group cursor-pointer bg-[#030817] border-4 border-yellow-500 rounded-2xl p-6 shadow-[0_0_25px_gold] hover:scale-105 transition-transform">
+            <div className="group cursor-pointer bg-[#0b224f]/85 border-2 border-[#00e5ff]/40 rounded-2xl p-6 shadow-[0_0_25px_rgba(0,229,255,0.2)] hover:scale-105 transition-transform">
               {/* Fake slot preview */}
               <div className="flex justify-center gap-2 mb-4">
                {slot.preview.map((icon, i) => (
@@ -73,7 +73,7 @@ ${glowBySlot[slot.id]}
               </p>
 
               <div className="flex justify-center">
-                <button className="bg-yellow-400 text-black font-bold px-6 py-2 rounded-full shadow hover:bg-yellow-500 animate-pulse">
+                <button className="bg-[#FFD700] text-[#030817] font-bold px-6 py-2 rounded-full shadow-[0_0_16px_rgba(255,215,0,0.45)] hover:bg-[#ffe14f] animate-pulse">
                   PLAY
                 </button>
               </div>
