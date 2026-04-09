@@ -253,13 +253,11 @@ const multipliers = multipliersByRisk[riskLevel];
   };
 
  const getMultiplierColorByIndex = (index, total) => {
-  // Distance from center (0 → center, 1 → edge)
   const center = (total - 1) / 2;
   const distance = Math.abs(index - center) / center;
 
-  // Yellow → Red interpolation
-  const start = { r: 255, g: 215, b: 0 };   // #e6c400 (yellow)
-  const end   = { r: 255, g: 68,  b: 68 };  // #450000 (red)
+  const start = { r: 0, g: 229, b: 255 };   // cyan (center)
+  const end   = { r: 255, g: 0, b: 128 };   // pink/red (edges)
 
   const r = Math.round(start.r + (end.r - start.r) * distance);
   const g = Math.round(start.g + (end.g - start.g) * distance);
@@ -494,15 +492,17 @@ const scaledBoardSize = {
 };
 
 return (
-  <div className="h-screen flex bg-[#030817] overflow-hidden">
+  <div className="h-screen flex bg-gradient-to-br from-[#020617] via-[#071A3A] to-[#0A2A5C] overflow-hidden">
     <NavigationBar currentPath="/casino" />
     {/* Sidebar */}
     <aside
       ref={sidebarRef}
-      className="flex flex-col w-64 p-6 bg-[#004B7C] text-white overflow-y-auto"
+      className="flex flex-col w-64 p-6 bg-gradient-to-b from-[#020617] via-[#071A3A] to-[#0A2A5C] text-white border-r border-[#00E5FF]/20 backdrop-blur-md overflow-y-auto"
     >
 
-      <h1 className="mb-8 text-3xl font-bold mt-12">Plinko</h1>
+      <h1 className="mb-8 text-3xl font-bold mt-12 text-[#00E5FF] drop-shadow-[0_0_10px_#00E5FF]">
+  Plinko
+</h1>
 
       {/* Risk Level Selector */}
       <div className="mb-4">
@@ -510,7 +510,7 @@ return (
   <select
     value={riskLevel}
     onChange={(e) => setRiskLevel(e.target.value)}
-    className="w-full rounded bg-[#1A1B1F] px-2 py-1 text-white"
+    className="w-full rounded bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF] px-2 py-1 text-white"
   >
     <option value="low">Risque Faible</option>
     <option value="medium">Risque Moyen</option>
@@ -532,7 +532,7 @@ return (
       <div className="mb-4 flex items-center gap-2">
         <button
           onClick={() => setBetAmount((prev) => Math.max(1, prev - 1))}
-          className="rounded bg-[#FFD700] px-3 py-1 text-black hover:bg-[#FFD700]/80"
+          className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-1 text-sm font-medium text-[#fffec7] hover:bg-[#FFFF33]/35"
         >
           -
         </button>
@@ -540,24 +540,24 @@ return (
           type="number"
           value={betAmount}
           onChange={(e) => setBetAmount(Math.max(1, Number(e.target.value)))}
-          className="w-20 rounded bg-[#1A1B1F] px-2 py-1 text-center text-white"
+          className="w-20 rounded bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF]px-2 py-1 text-center text-white"
         />
         <button
           onClick={() => setBetAmount((prev) => prev + 1)}
-          className="rounded bg-[#FFD700] px-3 py-1 text-black hover:bg-[#FFD700]/80"
+          className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-1 text-sm font-medium text-[#fffec7] hover:bg-[#FFFF33]/35"
         >
           +
         </button>
       </div>
 
    <button
-  className="w-full rounded px-4 py-2 text-white bg-[#4CAF50] hover:bg-[#45a049] active:scale-95 transition-transform"
+  className="w-full rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/35"
   onClick={handleDrop}
   disabled={autoRunning}
 >
   Lancer
 </button>
-<div className="mt-6 rounded-lg bg-[#1A1B1F] p-4">
+<div className="mt-6 rounded-lg bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF] p-4">
   <h3 className="text-[#FFD700] font-bold mb-3">Auto Bet</h3>
 
  <label className="text-sm text-gray-300">Nombre de paris</label>
@@ -576,7 +576,9 @@ return (
   <div
     onClick={() => setAutoInfinite(!autoInfinite)}
     className={`w-10 h-5 flex items-center rounded-full p-1 transition ${
-      autoInfinite ? "bg-[#FFD700]" : "bg-gray-600"
+      autoInfinite
+  ? "bg-[#f5ff3b]/30 border border-[#f5ff3b]/50 shadow-[0_0_10px_rgba(245,255,59,0.5)]"
+  : "bg-[#091737] border border-[#00e5ff]/30"
     }`}
   >
     <div
@@ -616,14 +618,14 @@ return (
   {!autoRunning ? (
     <button
       onClick={startAutoBet}
-      className="w-full rounded bg-[#FFD700] px-4 py-2 text-black hover:bg-[#FFD700]/80"
+     className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35 active:scale-95 transition"
     >
       Démarrer Auto
     </button>
   ) : (
     <button
       onClick={stopAutoBet}
-      className="w-full rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+      className="w-full rounded-lg border border-red-500/40 bg-red-500/20 px-4 py-2 text-sm font-medium text-red-200 hover:bg-red-500/35"
     >
       Stop
     </button>
@@ -631,10 +633,10 @@ return (
 </div>
 
 {/* Rules Section */}
-<div className="mb-4 mt-4 bg-[#1A1B1F] rounded-lg border border-yellow-400">
+<div className="mb-4 mt-4 bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF] rounded-lg border border-yellow-400">
   <button
     onClick={() => setShowRules((prev) => !prev)}
-    className="w-full flex justify-between items-center px-4 py-2 font-bold text-yellow-400"
+    className="w-full flex justify-between items-center px-4 py-2 rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/10 text-[#fffec7] font-medium hover:bg-[#FFFF33]/20"
   >
     📜 Plinko Rules
     <span>{showRules ? "▲" : "▼"}</span>
@@ -714,20 +716,27 @@ return (
             {/* Pins */}
             {Array.from({ length: 19 }).map((_, row) =>
               Array.from({ length: row + 2 }).map((_, col) => (
-                <g key={`pin-${row}-${col}`}>
-                  <circle
-                    cx={250 - (row + 1) * 12 + col * 24}
-                    cy={50 + row * 22}
-                    r={4}
-                    fill="url(#pinGlow)"
-                  />
-                  <circle
-                    cx={250 - (row + 1) * 12 + col * 24}
-                    cy={50 + row * 22}
-                    r={2}
-                    fill="#FFD700"
-                  />
-                </g>
+               <g key={`pin-${row}-${col}`}>
+  {/* Glow */}
+  <circle
+    cx={250 - (row + 1) * 12 + col * 24}
+    cy={50 + row * 22}
+    r={1}
+    fill="#00E5FF"
+    opacity="0.15"
+  />
+  
+  {/* Core */}
+  <circle
+    cx={250 - (row + 1) * 12 + col * 24}
+    cy={50 + row * 22}
+    r={3}
+    fill="#00E5FF"
+    style={{
+      filter: "drop-shadow(0 0 6px #00E5FF) drop-shadow(0 0 12px #00E5FF)"
+    }}
+  />
+</g>
               ))
             )}
 
@@ -737,22 +746,34 @@ return (
               const x = i * slotWidth + slotWidth / 2;
               return (
                 <g key={`mult-${i}`}>
-                  <rect
-                    x={i * slotWidth}
-                    y={460}
-                    width={slotWidth}
-                    height={30}
-                    fill={getMultiplierColorByIndex(i, multipliers.length)}
-                  />
-                  <text
-                    x={x}
-                    y={480}
-                    textAnchor="middle"
-                    fill="white"
-                    fontSize="10"
-                  >
-                    {multiplier}x
-                  </text>
+              <rect
+  x={i * slotWidth}
+  y={460}
+  width={slotWidth}
+  height={30}
+  rx={4}
+  fill={getMultiplierColorByIndex(i, multipliers.length)}
+  style={{
+    filter: "drop-shadow(0 0 10px rgba(255,255,255,0.15))",
+    opacity: 0.9
+  }}
+/>
+                <text
+  x={x}
+  y={480}
+  textAnchor="middle"
+  fontSize="9"
+  fontWeight="bold"
+  fill="#ffffff"
+  style={{
+    paintOrder: "stroke",
+    stroke: "#000",
+    strokeWidth: "2px",
+    filter: "drop-shadow(0 0 2px rgba(0,0,0,0.8))"
+  }}
+>
+  {multiplier}x
+</text>
                 </g>
               );
             })}
