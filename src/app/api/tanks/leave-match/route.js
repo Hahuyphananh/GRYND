@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
-import { tankMatches, tankStats } from "../../../../db/schema";
+import { tankMatches, tankStats, users } from "../../../../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 
 export async function POST(req) {
@@ -14,7 +14,7 @@ export async function POST(req) {
       );
     }
 
-    const { gameId } = await req.json();
+    const { gameId, reason = "left" } = await req.json();
 
     if (!gameId) {
       return Response.json(
@@ -37,6 +37,10 @@ export async function POST(req) {
 
     const players = Array.isArray(match.players) ? match.players : [];
     const mode = match?.settings?.mode === "battle_royale" ? "battle_royale" : "duel";
+    const preLeaveStats = await db
+      .select({ clerkId: tankStats.clerkId, bounty: tankStats.bounty })
+      .from(tankStats)
+      .where(eq(tankStats.matchId, gameId));
 
     if (!players.includes(userId)) {
       return Response.json({ success: true });
@@ -46,13 +50,20 @@ export async function POST(req) {
       (p) => p !== userId
     );
 
-    /* ✅ DELETE ONLY THIS PLAYER'S STATS */
-    await db.delete(tankStats).where(
-      and(
-        eq(tankStats.matchId, gameId),
-        eq(tankStats.clerkId, userId)
-      )
-    );
+    // Leaving/disconnecting from an active match counts as a forfeit.
+    await db
+      .update(tankStats)
+      .set({
+        result: "lose",
+        amountCashedOut: 0,
+        bounty: "0.00",
+      })
+      .where(
+        and(
+          eq(tankStats.matchId, gameId),
+          eq(tankStats.clerkId, userId)
+        )
+      );
 
     /* ✅ ATOMIC PLAYER COUNT UPDATE */
     const nextHostClerkId =
@@ -90,19 +101,41 @@ export async function POST(req) {
       })
       .where(eq(tankMatches.matchId, gameId));
 
+    if (mode === "duel" && updatedPlayers.length === 1) {
+      const winnerId = updatedPlayers[0];
+      const winnerBet = Number(preLeaveStats.find((s) => s.clerkId === winnerId)?.bounty ?? 0);
+      const loserBet = Number(preLeaveStats.find((s) => s.clerkId === userId)?.bounty ?? 0);
+      const payout = winnerBet + loserBet * 0.9;
+
+      await db
+        .update(tankStats)
+        .set({
+          result: "win",
+          amountCashedOut: payout,
+        })
+        .where(and(eq(tankStats.matchId, gameId), eq(tankStats.clerkId, winnerId)));
+
+      await db
+        .update(users)
+        .set({ balance: sql`${users.balance} + ${payout}` })
+        .where(eq(users.clerkId, winnerId));
+    }
+
     /* ✅ Check if match is now empty */
     const updatedMatch = await db.query.tankMatches.findFirst({
       where: eq(tankMatches.matchId, gameId),
     });
 
-    if (!updatedMatch || updatedMatch.currentPlayers === 0) {
+    const shouldDeleteMatch =
+      !updatedMatch ||
+      updatedMatch.currentPlayers === 0 ||
+      (mode === "duel" && updatedPlayers.length <= 1) ||
+      (reason === "eliminated" && mode === "duel");
+
+    if (shouldDeleteMatch) {
       await db
         .delete(tankMatches)
         .where(eq(tankMatches.matchId, gameId));
-
-      await db
-        .delete(tankStats)
-        .where(eq(tankStats.matchId, gameId));
 
       return Response.json({
         success: true,

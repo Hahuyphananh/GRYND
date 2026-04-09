@@ -174,6 +174,7 @@ function createTanksRoom(gameId, settings = {}) {
     nextBulletId: 1,
     lastTickAt: Date.now(),
     interval: null,
+    mode: settings.mode === 'battle_royale' ? 'battle_royale' : 'duel',
   };
 }
 
@@ -276,6 +277,11 @@ function ensureRoomLoop(room) {
     io.to(`${TANK_ROOM_PREFIX}${room.gameId}`).emit('tanks:game_state', {
       gameId: room.gameId,
       serverTime: now,
+      map: {
+        width: room.mapWidth,
+        height: room.mapHeight,
+        rocks: room.rocks,
+      },
       players,
       bullets: room.bullets.map(({ id, x, y, angle }) => ({ id, x, y, angle })),
     });
