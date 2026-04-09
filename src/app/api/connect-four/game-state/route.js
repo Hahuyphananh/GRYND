@@ -3,7 +3,13 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { connectFourGames } from "../../../../db/schema";
-import { computeMoveTimeRemaining, getPlayerRole, getUserAliases, resolveNameByClerkId, settleTimeoutIfNeeded } from "../../../../lib/connectFourServer";
+import { computeMoveTimeRemaining, getGameMoveSeconds, getPlayerRole, getUserAliases, resolveNameByClerkId, settleTimeoutIfNeeded } from "../../../../lib/connectFourServer";
+
+function computeReplayTimeRemaining(deadline) {
+  if (!deadline) return 0;
+  const endsAt = new Date(deadline).getTime();
+  return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+}
 
 export async function GET(req) {
   try {
@@ -38,7 +44,9 @@ export async function GET(req) {
         role,
         hostName: hostName || "Host",
         guestName: guestName || "Guest",
+        moveTimeLimit: getGameMoveSeconds(game),
         moveTimeRemaining: computeMoveTimeRemaining(game.moveDeadlineAt),
+        replayTimeRemaining: computeReplayTimeRemaining(game.replayDeadlineAt),
       },
     });
   } catch (error) {

@@ -3,7 +3,7 @@ import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { connectFourGames, users } from "../../../../db/schema";
-import { nextMoveDeadline } from "../../../../lib/connectFourServer";
+import { getGameMoveSeconds, nextMoveDeadline } from "../../../../lib/connectFourServer";
 
 export async function POST(req) {
   try {
@@ -63,7 +63,7 @@ export async function POST(req) {
           status: "in_progress",
           startedAt: new Date(),
           currentTurn: "host",
-          moveDeadlineAt: nextMoveDeadline(),
+          moveDeadlineAt: nextMoveDeadline(getGameMoveSeconds(game)),
         })
         .where(and(eq(connectFourGames.id, game.id), isNull(connectFourGames.guestClerkId), eq(connectFourGames.status, "waiting")))
         .returning({ id: connectFourGames.id, betAmount: connectFourGames.betAmount });

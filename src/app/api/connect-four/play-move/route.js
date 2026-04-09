@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { connectFourGames } from "../../../../db/schema";
 import { checkWinner, getDropRow, isBoardFull } from "../../../../lib/connectFour";
-import { ensureBoard, getPlayerRole, getUserAliases, nextMoveDeadline, settleConnectFourGame } from "../../../../lib/connectFourServer";
+import { ensureBoard, getGameMoveSeconds, getPlayerRole, getUserAliases, nextMoveDeadline, settleConnectFourGame } from "../../../../lib/connectFourServer";
 
 export async function POST(req) {
   try {
@@ -27,12 +27,19 @@ export async function POST(req) {
       if (game.status !== "in_progress") throw new Error("Game is not active");
 
       if (game.moveDeadlineAt && Date.now() > new Date(game.moveDeadlineAt).getTime()) {
-        throw new Error("Move timer expired");
+        return {
+          timeout: true,
+          role: null,
+          hostClerkId: game.hostClerkId,
+          guestClerkId: game.guestClerkId,
+        };
       }
 
       const role = getPlayerRole(game, userAliases);
       if (!role) throw new Error("Game not found");
-      if (game.currentTurn !== role) throw new Error("Not your turn");
+      if (game.currentTurn !== role) {
+        return { ignored: true };
+      }
 
       const board = ensureBoard(game.board);
       const row = getDropRow(board, column);
@@ -54,12 +61,26 @@ export async function POST(req) {
           hostDiscsUsed,
           guestDiscsUsed,
           currentTurn: nextTurn,
-          moveDeadlineAt: nextMoveDeadline(),
+          moveDeadlineAt: nextMoveDeadline(getGameMoveSeconds(game)),
         })
         .where(eq(connectFourGames.id, game.id));
 
       return { connected, fullBoard, role, hostClerkId: game.hostClerkId, guestClerkId: game.guestClerkId };
     });
+
+    if (result?.timeout) {
+      const winnerClerkId = result.hostClerkId && result.guestClerkId
+        ? result.hostClerkId === userId
+          ? result.guestClerkId
+          : result.hostClerkId
+        : null;
+      if (winnerClerkId) await settleConnectFourGame(gameId, winnerClerkId, "timeout");
+      return NextResponse.json({ success: true, ignored: true, reason: "timeout_resolved" });
+    }
+
+    if (result?.ignored) {
+      return NextResponse.json({ success: true, ignored: true, reason: "stale_turn" });
+    }
 
     if (result.connected) {
       const winnerClerkId = result.role === "host" ? result.hostClerkId : result.guestClerkId;

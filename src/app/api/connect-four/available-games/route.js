@@ -11,6 +11,7 @@ export async function GET() {
         betAmount: connectFourGames.betAmount,
         hostClerkId: connectFourGames.hostClerkId,
         hostName: users.name,
+        timerSeconds: connectFourGames.timerSeconds,
         createdAt: connectFourGames.createdAt,
       })
       .from(connectFourGames)
