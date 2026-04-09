@@ -3,7 +3,8 @@ import { db } from "../db/client";
 import { connectFourGames, users } from "../db/schema";
 
 const HOUSE_EDGE_MULTIPLIER = 1.9;
-const MOVE_TIME_SECONDS = 60;
+const DEFAULT_MOVE_TIME_SECONDS = 60;
+const REPLAY_DECISION_SECONDS = 20;
 
 export async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
@@ -58,6 +59,10 @@ export async function settleConnectFourGame(gameId, winnerClerkId, result) {
           payout: "0",
           endedAt: new Date(),
           moveDeadlineAt: null,
+          replayDeadlineAt: new Date(Date.now() + REPLAY_DECISION_SECONDS * 1000),
+          hostReplayDecision: null,
+          guestReplayDecision: null,
+          nextGameId: null,
         })
         .where(eq(connectFourGames.id, gameId));
 
@@ -82,6 +87,10 @@ export async function settleConnectFourGame(gameId, winnerClerkId, result) {
         payout: payout.toFixed(2),
         endedAt: new Date(),
         moveDeadlineAt: null,
+        replayDeadlineAt: new Date(Date.now() + REPLAY_DECISION_SECONDS * 1000),
+        hostReplayDecision: null,
+        guestReplayDecision: null,
+        nextGameId: null,
       })
       .where(eq(connectFourGames.id, gameId));
   });
@@ -113,8 +122,14 @@ export function computeMoveTimeRemaining(deadline) {
   return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
 }
 
-export function nextMoveDeadline() {
-  return new Date(Date.now() + MOVE_TIME_SECONDS * 1000);
+export function getGameMoveSeconds(game) {
+  const configured = Number(game?.timerSeconds);
+  if (!Number.isFinite(configured)) return DEFAULT_MOVE_TIME_SECONDS;
+  return Math.min(120, Math.max(10, Math.floor(configured)));
+}
+
+export function nextMoveDeadline(seconds = DEFAULT_MOVE_TIME_SECONDS) {
+  return new Date(Date.now() + seconds * 1000);
 }
 
 export function ensureBoard(board) {
