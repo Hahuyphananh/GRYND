@@ -146,31 +146,31 @@ async function joinGame(matchId?: string) {
   }
 
   return (
-    <div className="w-full min-h-screen bg-[#030817] flex flex-col items-center justify-center text-white p-6 relative">
+    <div className="w-full min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] flex flex-col items-center justify-center text-white p-6 relative">
       <NavigationBar currentPath="/casino" />
 
       <motion.div
-        className="p-8 bg-gray-950/70 rounded-2xl shadow-2xl w-full max-w-md"
+        className="p-8 bg-[#0b224f]/85 rounded-2xl shadow-[0_0_28px_rgba(0,229,255,0.2)] border border-[#00e5ff]/30 w-full max-w-md"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h1 className="text-3xl font-bold mb-4 text-center">
+        <h1 className="text-3xl font-bold mb-4 text-center text-[#FFD700] drop-shadow-[0_0_10px_rgba(255,215,0,0.55)]">
           TANKS — Battle Lobby
         </h1>
 
-        <div className="mb-2 text-center text-gray-300 font-medium">
+        <div className="mb-2 text-center text-[#a8f4ff] font-medium">
           {loading ? "Loading..." : `Your Balance: ${balance.toFixed(2)} tokens`}
         </div>
 
         {error && <div className="text-red-500 text-sm mb-2">{error}</div>}
 
         <div className="mb-4">
-          <label className="text-sm text-gray-300">Your Wager</label>
+          <label className="text-sm text-[#a8f4ff]">Your Wager</label>
           <input
             type="number"
             value={wager}
             onChange={(e) => setWager(Number(e.target.value))}
-            className="w-full p-3 mt-1 rounded bg-black/30 border border-gray-700"
+            className="w-full p-3 mt-1 rounded bg-[#08142f] border border-[#00e5ff]/40 text-white shadow-[0_0_10px_rgba(0,229,255,0.15)]"
             min={1}
             max={balance}
           />
@@ -180,7 +180,7 @@ async function joinGame(matchId?: string) {
           whileTap={{ scale: 0.96 }}
           onClick={() => setShowModePopup(true)}
           disabled={loading || wager > balance}
-          className="block text-center w-full p-3 bg-green-600 hover:bg-green-700 rounded-xl font-bold cursor-pointer disabled:bg-green-900"
+          className="block text-center w-full p-3 bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] rounded-xl font-bold cursor-pointer shadow-[0_0_16px_rgba(255,215,0,0.45)] disabled:bg-[#7f8520] disabled:text-[#c6c6c6]"
         >
           {loading ? "Starting..." : "Start Game"}
         </motion.button>
@@ -188,38 +188,38 @@ async function joinGame(matchId?: string) {
   whileTap={{ scale: 0.96 }}
   onClick={() => joinGame()}
   disabled={loading}
-  className="block text-center w-full p-3 mt-3 bg-[#f5ff3b] hover:bg-[#d9e332] rounded-xl font-bold cursor-pointer disabled:bg-[#7f8520]"
+  className="block text-center w-full p-3 mt-3 bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933] rounded-xl font-bold cursor-pointer shadow-[0_0_16px_rgba(0,229,255,0.45)] disabled:bg-[#246874] disabled:text-[#c6c6c6]"
 >
   {loading ? "Joining..." : "Quick Join"}
 </motion.button>
 
-        <div className="mt-4 bg-black/30 border border-gray-700 rounded-xl p-3">
+        <div className="mt-4 bg-[#08142f]/90 border border-[#00e5ff]/30 rounded-xl p-3 shadow-[0_0_16px_rgba(0,229,255,0.12)]">
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-semibold">Available Public Matches</h2>
             <button
               onClick={fetchAvailableGames}
-              className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600"
+              className="text-xs px-2 py-1 rounded bg-[#00e5ff] text-[#001933] font-semibold hover:bg-[#49eeff] shadow-[0_0_12px_rgba(0,229,255,0.35)]"
             >
               Refresh
             </button>
           </div>
 
           {availableGames.length === 0 ? (
-            <p className="text-sm text-gray-400">No public match is open right now.</p>
+            <p className="text-sm text-[#9ac1d3]">No public match is open right now.</p>
           ) : (
             <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
               {availableGames.map((game) => (
-                <div key={game.matchId} className="flex items-center justify-between bg-gray-900/70 rounded-lg px-2 py-2">
+                <div key={game.matchId} className="flex items-center justify-between bg-[#0a1c40]/80 border border-[#00e5ff]/20 rounded-lg px-2 py-2">
                   <div className="text-xs">
                     <p className="font-semibold">{game.hostName || "Host"} · {game.matchId}</p>
-                    <p className="text-gray-400">
+                    <p className="text-[#9ac1d3]">
                       {game?.settings?.mode === "battle_royale" ? "Battle Royale" : "1v1"} · Bet: {Number(game.bounty || 0).toFixed(2)} · {game.currentPlayers}/{game.maxPlayers}
                     </p>
                   </div>
                   <button
                     onClick={() => joinGame(game.matchId)}
                     disabled={loading || joiningMatchId === game.matchId}
-                    className="px-2 py-1 rounded bg-[#f5ff3b] hover:bg-[#f5ff3b] disabled:bg-[#7f8520] text-xs font-bold"
+                    className="px-2 py-1 rounded bg-[#00e5ff] hover:bg-[#49eeff] disabled:bg-[#246874] text-[#001933] text-xs font-bold shadow-[0_0_10px_rgba(0,229,255,0.4)]"
                   >
                     {joiningMatchId === game.matchId ? "Joining..." : "Join"}
                   </button>
@@ -230,17 +230,17 @@ async function joinGame(matchId?: string) {
         </div>
 
 {/* Game Rules (Collapsible) */}
-<div className="mt-4 bg-black/30 border border-gray-700 rounded-xl p-3">
+<div className="mt-4 bg-[#08142f]/90 border border-[#00e5ff]/30 rounded-xl p-3 shadow-[0_0_16px_rgba(0,229,255,0.12)]">
   <button
     onClick={() => setShowTanksRules(!showTanksRules)}
-    className="w-full flex justify-between items-center font-semibold text-yellow-400"
+    className="w-full flex justify-between items-center font-semibold text-[#FFD700]"
   >
     📜 Game Rules
     <span>{showTanksRules ? "▲" : "▼"}</span>
   </button>
 
   {showTanksRules && (
-    <div className="mt-3 text-sm text-gray-300 space-y-3 leading-relaxed">
+    <div className="mt-3 text-sm text-[#c4e8ff] space-y-3 leading-relaxed">
       <p>
         🚗 <strong>Objective:</strong> Destroy other players and survive the arena to win tokens.
       </p>
@@ -298,27 +298,27 @@ async function joinGame(matchId?: string) {
 
       {showModePopup && (
         <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-20">
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-5 w-full max-w-sm">
+          <div className="bg-[#08142f] border border-[#00e5ff]/40 rounded-2xl p-5 w-full max-w-sm shadow-[0_0_18px_rgba(0,229,255,0.22)]">
             <h3 className="text-xl font-bold mb-3">Choose game mode</h3>
             <div className="space-y-2">
               <button
                 onClick={() => startMatch("duel")}
                 disabled={loading}
-                className="w-full p-3 rounded-lg bg-green-600 hover:bg-green-700 font-bold disabled:bg-green-900"
+                className="w-full p-3 rounded-lg bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] font-bold disabled:bg-[#7f8520]"
               >
                 1v1 (small map)
               </button>
               <button
                 onClick={() => startMatch("battle_royale")}
                 disabled={loading}
-                className="w-full p-3 rounded-lg bg-purple-600 hover:bg-purple-700 font-bold disabled:bg-purple-900"
+                className="w-full p-3 rounded-lg bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933] font-bold disabled:bg-[#246874]"
               >
                 Battle Royale (up to 10 players)
               </button>
               <button
                 onClick={() => setShowModePopup(false)}
                 disabled={loading}
-                className="w-full p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm"
+                className="w-full p-2 rounded-lg bg-red-600 hover:bg-red-500 text-sm font-semibold shadow-[0_0_12px_rgba(239,68,68,0.35)]"
               >
                 Cancel
               </button>

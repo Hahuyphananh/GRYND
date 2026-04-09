@@ -136,14 +136,14 @@ export default function KenoGame() {
   const payoutTable = multiplierTable[selectedNumbers.length] || {};
 
   return (
-    <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center p-6 relative">
+    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white flex flex-col items-center p-6 relative">
       <NavigationBar currentPath="/casino" />
 
-      <div className="absolute top-4 right-4 bg-[#0f3f86] px-4 py-2 rounded-lg shadow text-yellow-400 font-bold">
+      <div className="absolute top-4 right-4 bg-[#0b224f]/90 border border-[#00e5ff]/30 px-4 py-2 rounded-lg shadow-[0_0_12px_rgba(0,229,255,0.2)] text-[#FFD700] font-bold">
         🪙 Balance: {userBalance ?? '...'}
       </div>
 
-      <h1 className="text-3xl font-bold mb-6 text-yellow-400 mt-12">🎯 Keno</h1>
+      <h1 className="text-3xl font-bold mb-6 text-[#FFD700] mt-12 drop-shadow-[0_0_12px_rgba(255,215,0,0.55)]">🎯 Keno</h1>
 
       {error && (
         <div className="bg-red-500/20 text-red-300 px-4 py-2 rounded mb-4">
@@ -159,20 +159,20 @@ export default function KenoGame() {
             min={1}
             value={betAmount}
             onChange={(e) => setBetAmount(Number(e.target.value))}
-            className="text-black rounded px-2 py-1 w-20"
+            className="bg-[#08142f] border border-[#00e5ff]/40 text-white rounded px-2 py-1 w-20"
           />
         </div>
 
-        <button onClick={handleAutoPick} className="bg-gray-600 px-4 py-1 rounded hover:bg-gray-500">
+        <button onClick={handleAutoPick} className="bg-[#00e5ff] text-[#001933] px-4 py-1 rounded hover:bg-[#49eeff] shadow-[0_0_12px_rgba(0,229,255,0.35)]">
           Auto Pick
         </button>
-        <button onClick={handleClear} className="bg-gray-600 px-4 py-1 rounded hover:bg-gray-500">
+        <button onClick={handleClear} className="bg-red-600 px-4 py-1 rounded hover:bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.35)]">
           Clear Table
         </button>
       </div>
 
       {/* Gameboard */}
-      <div className="mb-6 bg-[#001a33] border-4 border-yellow-500 rounded-2xl shadow-2xl p-6">
+      <div className="mb-6 bg-[#0b224f]/85 border-2 border-[#00e5ff]/35 rounded-2xl shadow-[0_0_24px_rgba(0,229,255,0.2)] p-6">
         <div className="flex gap-6">
 
           {/* Number grid */}
@@ -195,10 +195,10 @@ export default function KenoGame() {
         : isWinning
         ? 'bg-green-400/40 text-white'
         : isSelected
-        ? 'bg-yellow-400 text-black shadow-md scale-105'
+        ? 'bg-[#FFD700] text-[#030817] shadow-[0_0_16px_rgba(255,215,0,0.45)] scale-105'
         : isDisabled
         ? 'bg-[#002244] opacity-40 cursor-not-allowed'
-        : 'bg-[#030817] hover:bg-[#0f3f86] border border-[#00e5ff]'
+        : 'bg-[#08142f] hover:bg-[#0d335f] border border-[#00e5ff]/40'
     }`}
 >
   {num}
@@ -216,8 +216,8 @@ export default function KenoGame() {
           </div>
 
           {/* Multiplier panel */}
-          <div className="w-40 bg-[#002244] border-2 border-yellow-400 rounded-xl p-3 flex flex-col gap-2">
-            <h3 className="text-center font-bold text-yellow-400 mb-2">Payouts</h3>
+          <div className="w-40 bg-[#08142f] border-2 border-[#00e5ff]/35 rounded-xl p-3 flex flex-col gap-2 shadow-[0_0_12px_rgba(0,229,255,0.15)]">
+            <h3 className="text-center font-bold text-[#FFD700] mb-2">Payouts</h3>
 
             {Object.entries(payoutTable).map(([hits, mult]) => {
               const isActive =
@@ -230,7 +230,7 @@ export default function KenoGame() {
                     ${
                       isActive
                         ? 'bg-green-400 text-black font-bold'
-                        : 'bg-[#030817]'
+                        : 'bg-[#0d335f]'
                     }`}
                 >
                   <span>{hits} hit{hits !== '1' ? 's' : ''}</span>
@@ -252,23 +252,23 @@ export default function KenoGame() {
       <button
         onClick={handleBet}
         disabled={loading}
-        className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold px-6 py-2 rounded shadow-lg"
+        className="bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] font-bold px-6 py-2 rounded shadow-[0_0_16px_rgba(255,215,0,0.45)]"
       >
         {loading ? 'Playing...' : 'Bet'}
       </button>
 
       {result && (
-        <div className="mt-6 bg-white/10 p-4 rounded">
+        <div className="mt-6 bg-[#08142f] border border-[#00e5ff]/25 p-4 rounded shadow-[0_0_12px_rgba(0,229,255,0.15)]">
           <p>🎯 Winning Numbers: {result.winningNumbers.join(', ')}</p>
           <p>✅ Matches: {result.matches.length}</p>
           <p>💰 Payout: {result.payout} tokens</p>
         </div>
       )}
       {/* Game Rules (Collapsible) */}
-<div className="w-full max-w-4xl mt-6 bg-[#001a33] border-2 border-yellow-500 rounded-xl p-4">
+<div className="w-full max-w-4xl mt-6 bg-[#0b224f]/85 border-2 border-[#00e5ff]/35 rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.15)]">
   <button
     onClick={() => setShowRules(!showRules)}
-    className="w-full text-left text-yellow-400 font-bold text-lg flex justify-between items-center"
+    className="w-full text-left text-[#FFD700] font-bold text-lg flex justify-between items-center"
   >
     📜 Game Rules
     <span>{showRules ? '▲' : '▼'}</span>

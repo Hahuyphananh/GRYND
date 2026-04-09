@@ -1037,17 +1037,17 @@ const canUseBetShortcut = game?.stage !== "pre-flop" && highestBetInRound === 0;
 
 if (showJoinForm) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
       <div className="absolute top-4 left-4">
         <button
           onClick={() => setShowJoinForm(false)}
-          className="bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-2 rounded font-bold transition"
+          className="bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] px-4 py-2 rounded font-bold transition shadow-[0_0_14px_rgba(255,215,0,0.45)]"
         >
           ← Back
         </button>
       </div>
 
-      <div className="p-6 bg-slate-800 rounded shadow w-96 text-center">
+      <div className="p-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded shadow-[0_0_24px_rgba(0,229,255,0.2)] w-96 text-center">
         <h1 className="text-2xl mb-4">Join a Private Game</h1>
 
         <input
@@ -1059,14 +1059,14 @@ if (showJoinForm) {
 
         <button
           onClick={() => joinGame()}
-          className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
+          className="bg-[#00e5ff] text-[#001933] px-4 py-2 rounded w-full font-bold mb-2 shadow-[0_0_12px_rgba(0,229,255,0.35)]"
         >
           Join Game
         </button>
 
         <button
           onClick={() => setShowJoinForm(false)}
-          className="bg-red-500 px-4 py-2 rounded w-full font-bold"
+          className="bg-red-600 hover:bg-red-500 px-4 py-2 rounded w-full font-bold shadow-[0_0_12px_rgba(239,68,68,0.35)]"
         >
           Cancel
         </button>
@@ -1078,16 +1078,16 @@ if (showJoinForm) {
   // ==== RENDER ====
   if (!game) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
         <div className="absolute top-4 left-4">
   <a href="/casino">
-    <button className="bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-2 rounded font-bold transition">
+    <button className="bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] px-4 py-2 rounded font-bold transition shadow-[0_0_14px_rgba(255,215,0,0.45)]">
       ← Return to Casino
     </button>
   </a>
 </div>
 
-        <div className="p-6 bg-slate-800 rounded shadow w-96 text-center mb-4">
+        <div className="p-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded shadow-[0_0_24px_rgba(0,229,255,0.2)] w-96 text-center mb-4">
     <h1
   className="text-2xl mb-4 font-extrabold text-transparent bg-clip-text 
   bg-gradient-to-r from-yellow-300 via-amber-400 to-yellow-300 
@@ -1111,7 +1111,7 @@ if (showJoinForm) {
     <p className="text-xs text-slate-300 mb-2">Available Public Tables</p>
     <div className="space-y-2">
       {publicGameList.map((g) => (
-        <div key={g.gameCode} className="flex items-center justify-between bg-slate-700 rounded px-2 py-1">
+        <div key={g.gameCode} className="flex items-center justify-between bg-[#08142f] border border-[#00e5ff]/20 rounded px-2 py-1">
           <div className="text-xs">
             <p className="font-semibold">{g.hostName} · {g.gameCode}</p>
             <p className="text-slate-300">{g.occupiedSeats}/{g.maxPlayers} players</p>
@@ -1119,7 +1119,7 @@ if (showJoinForm) {
           <button
             onClick={() => joinPublicGame(g.gameCode)}
             disabled={joiningGame}
-            className="bg-[#f5ff3b] hover:bg-[#edf734] disabled:bg-[#9aa32a] px-2 py-1 rounded text-xs font-bold"
+            className="bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933] disabled:bg-[#9aa32a] px-2 py-1 rounded text-xs font-bold"
           >
             Join
           </button>
@@ -1149,14 +1149,14 @@ if (showJoinForm) {
 
           <button
             onClick={() => createGame()}
-            className="bg-yellow-500 px-4 py-2 rounded w-full font-bold mb-2"
+            className="bg-[#FFD700] text-[#030817] px-4 py-2 rounded w-full font-bold mb-2 shadow-[0_0_14px_rgba(255,215,0,0.45)]"
           >
             Create Game
           </button>
 
           <button
   onClick={() => setShowJoinForm(true)}
-  className="bg-green-500 px-4 py-2 rounded w-full font-bold mb-2"
+  className="bg-[#00e5ff] text-[#001933] px-4 py-2 rounded w-full font-bold mb-2 shadow-[0_0_12px_rgba(0,229,255,0.35)]"
 >
   Join Game
 </button>
@@ -1167,8 +1167,8 @@ if (showJoinForm) {
   disabled={availablePublicGames === 0}
   className={`px-4 py-2 rounded w-full font-bold mb-2 transition ${
     availablePublicGames > 0
-      ? "bg-[#f5ff3b] hover:bg-[#edf734]"
-      : "bg-gray-500 cursor-not-allowed text-gray-300"
+      ? "bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933]"
+      : "bg-[#3a4852] cursor-not-allowed text-gray-300"
   }`}
 >
   {availablePublicGames > 0 ? "Join Public Game" : "No Public Game Available"}
@@ -1176,7 +1176,7 @@ if (showJoinForm) {
 
 
           <a href="/casino/poker/">
-            <button className="bg-red-500 px-4 py-2 rounded w-full font-bold mb-2">Retour</button>
+            <button className="bg-red-600 hover:bg-red-500 px-4 py-2 rounded w-full font-bold shadow-[0_0_12px_rgba(239,68,68,0.35)] mb-2">Retour</button>
           </a>
         </div>
       </div>
@@ -1185,7 +1185,7 @@ if (showJoinForm) {
 
   // main UI when game exists
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-6">
      <div className="absolute top-4 left-4">
   <button
     onClick={async () => {

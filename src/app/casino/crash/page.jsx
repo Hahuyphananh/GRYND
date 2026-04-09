@@ -419,11 +419,11 @@ function toCanvasPoint(mult) {
   }
 
   return (
-    <div className="min-h-screen bg-[#081a3d] text-white flex flex-col items-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white flex flex-col items-center p-4">
  <NavigationBar currentPath="/casino" />
       <div className="flex flex-col lg:flex-row w-full max-w-7xl gap-4 mt-16">
         {/* Left Panel - BetPanel + Crash History */}
-        <div className="bg-[#1f1f1f] p-4 rounded-lg w-full lg:w-1/4 flex flex-col">
+        <div className="bg-[#0b224f]/85 border border-[#00e5ff]/30 shadow-[0_0_18px_rgba(0,229,255,0.18)] p-4 rounded-lg w-full lg:w-1/4 flex flex-col">
           <BetPanel
             placeBet={placeBet}
             hasBet={hasBet}
@@ -432,14 +432,14 @@ function toCanvasPoint(mult) {
             refreshTrigger={refreshCounter}
           />
 
-          <div className="mt-6 pt-4 border-t border-gray-700">
+          <div className="mt-6 pt-4 border-t border-[#00e5ff]/25">
             <h3 className="text-lg font-bold mb-3">Recent Crashes</h3>
             <div className="flex flex-wrap gap-2">
               {crashHistory.map((mult, index) => (
                 <div
                   key={index}
                   className={`px-3 py-1 rounded-full text-sm font-bold ${
-                    mult < 2 ? "bg-red-500" : mult < 5 ? "bg-green-500" : "bg-yellow-500"
+                    mult < 2 ? "bg-red-500" : mult < 5 ? "bg-[#00e5ff] text-[#001933]" : "bg-[#FFD700] text-[#030817]"
                   }`}
                 >
                   {mult}x
@@ -453,7 +453,7 @@ function toCanvasPoint(mult) {
         </div>
 
         {/* Center */}
-<div className="relative bg-[#1f1f1f] p-4 rounded-lg w-full lg:w-2/4 h-[600px] overflow-hidden flex items-center justify-center">
+<div className="relative bg-[#0b224f]/85 border border-[#00e5ff]/30 shadow-[0_0_18px_rgba(0,229,255,0.18)] p-4 rounded-lg w-full lg:w-2/4 h-[600px] overflow-hidden flex items-center justify-center">
 
   {/* Space background (NEW — does not affect anything else) */}
   <div className="absolute inset-0 space-bg" />
@@ -491,14 +491,14 @@ function toCanvasPoint(mult) {
         </div>
 
         {/* Right Panel */}
-        <div className="bg-[#1f1f1f] p-4 rounded-lg w-full lg:w-1/4 flex flex-col">
+        <div className="bg-[#0b224f]/85 border border-[#00e5ff]/30 shadow-[0_0_18px_rgba(0,229,255,0.18)] p-4 rounded-lg w-full lg:w-1/4 flex flex-col">
           <div className="mb-6 flex flex-col gap-3">
             {!gameRunning && !isCountingDown && (
               <button
                 onClick={startGame}
                 className={`px-4 py-3 rounded-lg font-bold text-lg w-full ${
                   hasBet && betAmount && betAmount !== "0"
-                    ? "bg-green-500 hover:bg-green-600"
+                    ? "bg-[#FFD700] text-[#030817] hover:bg-[#ffe14f] shadow-[0_0_16px_rgba(255,215,0,0.45)]"
                     : "bg-gray-500 cursor-not-allowed"
                 }`}
                 disabled={!hasBet || !betAmount || betAmount === "0"}
@@ -513,7 +513,7 @@ function toCanvasPoint(mult) {
             {isCountingDown && (
               <button
                 disabled
-                className="bg-gray-500 cursor-not-allowed px-4 py-3 rounded-lg font-bold text-lg w-full"
+                className="bg-[#3a4852] cursor-not-allowed px-4 py-3 rounded-lg font-bold text-lg w-full"
               >
                 Starting in {countdown}...
               </button>
@@ -521,14 +521,14 @@ function toCanvasPoint(mult) {
             {gameRunning && (
               <button
                 onClick={cashOut}
-                className="bg-yellow-500 hover:bg-yellow-600 px-4 py-3 rounded-lg font-bold text-lg w-full"
+                className="bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] px-4 py-3 rounded-lg font-bold text-lg w-full shadow-[0_0_14px_rgba(0,229,255,0.4)]"
               >
                 💰 Cash Out
               </button>
             )}
             <Link
               href="/casino"
-              className="bg-[#f5ff3b] hover:bg-[#f5ff3b] px-4 py-3 rounded-lg font-bold text-lg text-center"
+              className="bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] px-4 py-3 rounded-lg font-bold text-lg text-center shadow-[0_0_14px_rgba(255,215,0,0.45)]"
             >
               Return to Casino
             </Link>
@@ -545,12 +545,12 @@ function toCanvasPoint(mult) {
 
       {showCashoutPopup && cashoutPopupMultiplier !== null && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center px-4">
-          <div className="bg-[#1f1f1f] border border-yellow-500 rounded-xl p-6 text-center w-full max-w-sm shadow-2xl">
-            <h3 className="text-2xl font-bold text-yellow-400 mb-2">Cash Out Successful</h3>
+          <div className="bg-[#08142f] border border-[#00e5ff]/40 rounded-xl p-6 text-center w-full max-w-sm shadow-[0_0_20px_rgba(0,229,255,0.22)]">
+            <h3 className="text-2xl font-bold text-[#FFD700] mb-2">Cash Out Successful</h3>
             <p className="text-lg mb-6">You cashed out at {cashoutPopupMultiplier.toFixed(2)}x.</p>
             <button
               onClick={() => setShowCashoutPopup(false)}
-              className="bg-yellow-500 hover:bg-yellow-600 px-4 py-2 rounded-lg font-bold text-black"
+              className="bg-[#FFD700] hover:bg-[#ffe14f] px-4 py-2 rounded-lg font-bold text-[#030817]"
             >
               Close
             </button>
@@ -558,10 +558,10 @@ function toCanvasPoint(mult) {
         </div>
       )}
                 {/* Rules Section */}
-<div className="mt-4 bg-[#111] rounded-lg border border-yellow-400">
+<div className="mt-4 bg-[#08142f] rounded-lg border border-[#00e5ff]/30 shadow-[0_0_14px_rgba(0,229,255,0.15)]">
   <button
     onClick={() => setShowRules((prev) => !prev)}
-    className="w-full flex justify-between items-center px-4 py-2 font-bold text-yellow-400"
+    className="w-full flex justify-between items-center px-4 py-2 font-bold text-[#FFD700]"
   >
     📜 Crash Rules
     <span>{showRules ? "▲" : "▼"}</span>
