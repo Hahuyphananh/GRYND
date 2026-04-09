@@ -387,14 +387,22 @@ async function handleClick(index) {
     const baseStyle = gameOver ? "opacity-70" : "";
     
     if (revealed[index]) {
-      return `${baseStyle} ${cellType === "mine" ? "bg-red-600" : "bg-green-600"}`;
+      return `${baseStyle} ${
+        cellType === "mine"
+          ? "bg-[#3b1021] border border-[#ff4fd8] shadow-[0_0_14px_rgba(255,79,216,0.5)]"
+          : "bg-[#09243f] border border-[#00e5ff] shadow-[0_0_12px_rgba(0,229,255,0.45)]"
+      }`;
     }
     
     if (showAllMines && cellType === "mine") {
-      return `${baseStyle} bg-red-800 border border-red-400`;
+      return `${baseStyle} bg-[#3b1021] border border-[#ff4fd8] shadow-[0_0_14px_rgba(255,79,216,0.5)]`;
     }
     
-    return `${baseStyle} ${gameOver ? "bg-gray-800" : "bg-gray-700 hover:bg-gray-600"}`;
+    return `${baseStyle} ${
+      gameOver
+        ? "bg-[#0c1a33] border border-[#1f3a6a]"
+        : "bg-[#071226] border border-[#00e5ff]/20 hover:border-[#00e5ff]/70 hover:shadow-[0_0_16px_rgba(0,229,255,0.35)]"
+    }`;
   }
 
   const maxMultiplier = calculateMultiplier(totalMines, GRID_SIZE * GRID_SIZE - totalMines - 1);
@@ -424,7 +432,7 @@ return (
   <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center justify-center p-4 relative">
     <NavigationBar currentPath="/casino" />
   
-   <div className={`bg-[#081a3d] rounded-lg p-8 w-full max-w-6xl min-w-[80%] ${gameOver ? "relative" : ""}`}>
+   <div className={`bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] rounded-2xl border border-[#00e5ff]/40 p-8 w-full max-w-6xl min-w-[80%] shadow-[0_0_60px_rgba(0,229,255,0.2),inset_0_0_30px_rgba(0,229,255,0.08)] ${gameOver ? "relative" : ""}`}>
       {gameOver && (
         <div className="absolute inset-0 bg-black bg-opacity-10 rounded-lg pointer-events-none"></div>
       )}
@@ -437,7 +445,7 @@ return (
            <h1 className="text-3xl font-bold text-yellow-400 text-center w-full mt-3">
             Mines
           </h1>
-  <div className="bg-[#0f3f86] rounded-lg p-4">
+  <div className="rounded-xl border border-[#00e5ff]/30 bg-[#03142b] p-4 shadow-[inset_0_0_18px_rgba(0,229,255,0.1)]">
     <label htmlFor="bet-input" className="block mb-2 text-center font-semibold">
       Bet Amount
     </label>
@@ -448,14 +456,14 @@ return (
       max={userTokens}
       value={betAmount} // you need to add betAmount state too
       onChange={(e) => setBetAmount(Number(e.target.value))}
-      className="w-full bg-[#081a3d] text-white rounded px-2 py-1 text-center"
+      className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#071226] px-2 py-2 text-center text-white focus:border-[#00e5ff] focus:outline-none focus:shadow-[0_0_12px_rgba(0,229,255,0.45)]"
       disabled={gameOver || autoplayEnabled}
       placeholder="Enter your bet"
     />
     <p className="text-xs text-gray-300 mt-1 text-center">Balance: {userTokens} tokens</p>
   </div>
           {/* Mine selection */}
-          <div className="bg-[#0f3f86] rounded-lg p-4">
+          <div className="rounded-xl border border-[#00e5ff]/30 bg-[#03142b] p-4 shadow-[inset_0_0_18px_rgba(0,229,255,0.1)]">
             <p className="text-lg mb-3 text-center">Select Mines</p>
             <div className="grid grid-cols-3 gap-2">
               {[1, 3, 5, 10, 15, 20].map((mineCount) => (
@@ -463,10 +471,10 @@ return (
                   key={mineCount}
                   onClick={() => handleMineChange(mineCount)}
                   disabled={autoplayEnabled}
-                  className={`py-2 px-1 rounded text-sm ${
+                  className={`py-2 px-1 rounded-lg border text-sm transition-all ${
                     totalMines === mineCount
-                      ? "bg-#1e3f5a-600 text-white"
-                      : "bg-[#081a3d] text-gray-300"
+                      ? "border-[#00e5ff] bg-[#07325e] text-white shadow-[0_0_14px_rgba(0,229,255,0.45)]"
+                      : "border-[#00e5ff]/20 bg-[#071226] text-gray-300 hover:border-[#00e5ff]/60"
                   } ${gameOver || autoplayEnabled ? "opacity-70" : ""}`}
                 >
                   {mineCount}
@@ -482,12 +490,12 @@ return (
                 min="1"
                 max={GRID_SIZE * GRID_SIZE - 1}
                 placeholder="Custom"
-                className="bg-[#081a3d] text-white rounded px-2 py-1 w-full text-sm"
+                className="w-full rounded-lg border border-[#00e5ff]/30 bg-[#071226] px-2 py-1 text-sm text-white focus:border-[#00e5ff] focus:outline-none"
                 disabled={gameOver || autoplayEnabled}
               />
               <button
                 type="submit"
-                className={`px-2 py-1 rounded text-sm bg-[#f5ff3b] text-white
+                className={`rounded-lg border border-[#ff4fd8]/70 bg-[#39123b] px-2 py-1 text-sm font-semibold text-[#ffd7ff] shadow-[0_0_12px_rgba(255,79,216,0.35)] transition-all hover:shadow-[0_0_16px_rgba(255,79,216,0.55)]
                   ${gameOver || autoplayEnabled ? "opacity-70 cursor-not-allowed" : ""}`}
                 disabled={gameOver || autoplayEnabled}
               >
@@ -497,7 +505,7 @@ return (
           </div>
 
           {/* Game stats */}
-          <div className="bg-[#0f3f86] rounded-lg p-4">
+          <div className="rounded-xl border border-[#00e5ff]/30 bg-[#03142b] p-4 shadow-[inset_0_0_18px_rgba(0,229,255,0.1)]">
             <div className="flex justify-between items-center mb-2">
               <span className="font-bold">Diamonds:</span>
               <span className="flex items-center">
@@ -534,7 +542,7 @@ return (
   <div className={`grid grid-cols-5 gap-3 ${!gameStarted ? "pointer-events-none" : ""}`}>
 
             {grid.map((cell, i) => (
-             <button
+              <button
   key={i}
   onClick={() => handleClick(i)}
   disabled={
@@ -543,7 +551,7 @@ return (
     (showAllMines && cell === "mine") || 
     autoplayEnabled
   }
-                className={`w-full aspect-square rounded-lg flex items-center justify-center
+                className={`w-full aspect-square rounded-xl flex items-center justify-center
   transition-all duration-300 text-3xl
   ${getCellStyle(cell, i)}
   ${!gameStarted ? "opacity-50 cursor-not-allowed" : ""}
@@ -558,13 +566,13 @@ return (
         {/* Right sidebar */}
         <div className="w-full lg:w-1/4 flex flex-col gap-4">
           {/* Tokens */}
-          <div className="bg-[#0f3f86] rounded-lg p-4 text-center">
+          <div className="rounded-xl border border-[#00e5ff]/30 bg-[#03142b] p-4 text-center shadow-[inset_0_0_18px_rgba(0,229,255,0.1)]">
             <p className="text-lg font-semibold mb-1">🪙 Tokens</p>
             <p className="text-yellow-400 text-xl font-bold">{userTokens}</p>
           </div>
 
           {/* Multiplier display */}
-          <div className="bg-[#0f3f86] rounded-lg p-4 text-center">
+          <div className="rounded-xl border border-[#00e5ff]/30 bg-[#03142b] p-4 text-center shadow-[inset_0_0_18px_rgba(0,229,255,0.1)]">
             <div className="text-3xl font-bold text-green-400 mb-1">
               {multiplier.toFixed(2)}x
             </div>
@@ -572,10 +580,10 @@ return (
           </div>
 
           {/* Action buttons */}
-          <div className="bg-[#0f3f86] rounded-lg p-4 flex flex-col gap-3">
+          <div className="rounded-xl border border-[#00e5ff]/30 bg-[#03142b] p-4 flex flex-col gap-3 shadow-[inset_0_0_18px_rgba(0,229,255,0.1)]">
             <button
               onClick={handleCashOut}
-              className={`bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 px-4 rounded-lg text-lg
+              className={`rounded-xl border border-[#ff4fd8]/70 bg-[#39123b] px-4 py-3 text-lg font-bold text-[#ffd7ff] shadow-[0_0_16px_rgba(255,79,216,0.35)] transition-all hover:shadow-[0_0_22px_rgba(255,79,216,0.6)]
                 ${(!gameStarted || revealedCount === 0 || gameOver || autoplayEnabled)
   ? 'opacity-50 cursor-not-allowed'
   : ''}
@@ -591,15 +599,15 @@ return (
             </button>
             <button
               onClick={toggleAutoplay}
-              className={`${autoplayEnabled ? 'bg-yellow-600' : 'bg-gray-600'} hover:bg-gray-500 text-white 
-                font-bold py-3 px-4 rounded-lg text-lg ${gameOver ? 'opacity-70 cursor-not-allowed' : ''}`}
+              className={`${autoplayEnabled ? 'bg-[#4a3b05] border-[#ffe066]' : 'bg-[#0a2643] border-[#00e5ff]/55'} hover:border-[#00e5ff] text-white 
+                border font-bold py-3 px-4 rounded-xl text-lg shadow-[0_0_14px_rgba(0,229,255,0.2)] transition-all ${gameOver ? 'opacity-70 cursor-not-allowed' : ''}`}
               disabled={gameOver}
             >
               {autoplayEnabled ? 'STOP AUTO' : 'AUTO PLAY'}
             </button>
             <button
               onClick={handleReset}
-              className={`bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg text-lg
+              className={`rounded-xl border border-[#00e5ff]/70 bg-[#07325e] px-4 py-3 text-lg font-bold text-white shadow-[0_0_18px_rgba(0,229,255,0.35)] transition-all hover:shadow-[0_0_24px_rgba(0,229,255,0.6)]
                 ${autoplayEnabled ? 'opacity-70 cursor-not-allowed' : ''}`}
               disabled={autoplayEnabled}
             >
