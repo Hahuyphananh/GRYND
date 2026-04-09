@@ -13,20 +13,20 @@ export default function CoinFlipPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-start p-6 text-white relative"
-         style={{ backgroundColor: "#1e3f5a" }}> {/* ✅ Marine blue bg */}
+         style={{ backgroundImage: "linear-gradient(135deg, #001933 0%, #000d1a 100%)" }}> {/* ✅ Marine blue bg */}
 <NavigationBar currentPath="/casino" />
-      <div className="max-w-2xl w-full mt-16 p-6 bg-gray-800 text-white rounded shadow-lg">
+      <div className="max-w-2xl w-full mt-16 p-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 text-white rounded shadow-[0_0_24px_rgba(0,229,255,0.2)]">
         <h1 className="text-3xl font-bold text-center mb-6">Coin Flip</h1>
 
         <div className="flex justify-center space-x-4 mb-6">
           <button
-            className={`px-4 py-2 rounded ${mode === "solo" ? "bg-[#f5ff3b]" : "bg-gray-600"}`}
+            className={`px-4 py-2 rounded ${mode === "solo" ? "bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)]" : "bg-[#0d335f]"}`}
             onClick={() => setMode("solo")}
           >
             Solo vs House
           </button>
           <button
-            className={`px-4 py-2 rounded ${mode === "pvp" ? "bg-[#f5ff3b]" : "bg-gray-600"}`}
+            className={`px-4 py-2 rounded ${mode === "pvp" ? "bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)]" : "bg-[#0d335f]"}`}
             onClick={() => setMode("pvp")}
           >
             PvP
@@ -143,7 +143,7 @@ function SoloCoinFlip() {
   return (
     <>
       <div className="mb-4 flex justify-between items-center">
-        <p className="text-yellow-400 font-bold">
+        <p className="text-[#FFD700] font-bold">
           Balance: {userTokens !== null ? `${userTokens.toFixed(2)} 🪙` : "..."}
         </p>
         <div className="flex items-center gap-2">
@@ -151,7 +151,7 @@ function SoloCoinFlip() {
           <input
             type="number"
             min="100"
-            className="w-20 bg-gray-700 p-1 rounded"
+            className="w-20 bg-[#08142f] border border-[#00e5ff]/30 p-1 rounded"
             value={autoDelay}
             onChange={(e) => setAutoDelay(parseInt(e.target.value))}
           />
@@ -161,7 +161,7 @@ function SoloCoinFlip() {
       <label className="block mb-1">Bet Amount ($)</label>
       <input
         type="number"
-        className="w-full bg-gray-700 p-2 rounded mb-4"
+        className="w-full bg-[#08142f] border border-[#00e5ff]/30 p-2 rounded mb-4"
         value={bet}
         onChange={(e) => setBet(parseFloat(e.target.value))}
       />
@@ -170,7 +170,7 @@ function SoloCoinFlip() {
         <button
           onClick={() => setChoice("heads")}
           className={`w-full mr-2 p-2 rounded ${
-            choice === "heads" ? "bg-green-600" : "bg-gray-600"
+            choice === "heads" ? "bg-[#00e5ff] text-[#001933]" : "bg-[#0d335f]"
           }`}
         >
           Heads
@@ -178,7 +178,7 @@ function SoloCoinFlip() {
         <button
           onClick={() => setChoice("tails")}
           className={`w-full ml-2 p-2 rounded ${
-            choice === "tails" ? "bg-green-600" : "bg-gray-600"
+            choice === "tails" ? "bg-[#00e5ff] text-[#001933]" : "bg-[#0d335f]"
           }`}
         >
           Tails
@@ -189,14 +189,14 @@ function SoloCoinFlip() {
         <button
           onClick={() => flip(false)}
           disabled={flipping}
-          className="w-full p-3 bg-yellow-500 rounded font-bold"
+          className="w-full p-3 bg-[#FFD700] text-[#030817] rounded font-bold shadow-[0_0_14px_rgba(255,215,0,0.45)]"
         >
           {flipping ? "Flipping..." : "Flip Coin"}
         </button>
         <button
           onClick={() => setAutoBet((prev) => !prev)}
           className={`w-full p-3 rounded font-bold ${
-            autoBet ? "bg-red-500" : "bg-[#f5ff3b]"
+            autoBet ? "bg-red-500" : "bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)]"
           }`}
         >
           {autoBet ? "Stop Auto" : "Start Auto"}
@@ -207,7 +207,7 @@ function SoloCoinFlip() {
         <div className="relative w-24 h-24 perspective">
           <div
             key={flipKey}
-            className={`w-full h-full rounded-full text-4xl flex items-center justify-center bg-yellow-300 text-black font-bold ${
+            className={`w-full h-full rounded-full text-4xl flex items-center justify-center bg-[#FFD700] text-[#030817] shadow-[0_0_14px_rgba(255,215,0,0.45)] font-bold ${
               flipping ? "animate-coin-flip" : ""
             }`}
           >
@@ -454,7 +454,7 @@ useEffect(() => {
           <label className="block mb-1">Bet Amount</label>
           <input
             type="number"
-            className="w-full bg-gray-700 p-2 rounded mb-4"
+            className="w-full bg-[#08142f] border border-[#00e5ff]/30 p-2 rounded mb-4"
             value={bet}
             onChange={(e) => setBet(parseFloat(e.target.value))}
           />
@@ -478,7 +478,7 @@ useEffect(() => {
   className={`px-3 py-1 rounded text-sm font-semibold ${
     myGameId
       ? "bg-gray-500 cursor-not-allowed"
-      : "bg-[#f5ff3b] hover:bg-[#f5ff3b]"
+      : "bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)] hover:bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)]"
   }`}
 >
   🔄 Refresh
@@ -504,7 +504,7 @@ useEffect(() => {
                   <button
                     onClick={() => joinGame(game.id)}
                     className="px-4 py-2 rounded-lg font-bold
-                               bg-green-600 hover:bg-green-500
+                               bg-[#00e5ff] text-[#001933] hover:bg-green-500
                                transition"
                   >
                     Join
@@ -544,7 +544,7 @@ useEffect(() => {
                 onClick={() => submitChoice("heads")}
                 disabled={opponentChoice === "heads"}
                 className={`w-full mr-2 p-2 rounded ${
-                  opponentChoice === "heads" ? "bg-gray-500 cursor-not-allowed" : "bg-gray-600 hover:bg-green-700"
+                  opponentChoice === "heads" ? "bg-gray-500 cursor-not-allowed" : "bg-[#0d335f] hover:bg-green-700"
                 }`}
               >
                 Heads
@@ -554,7 +554,7 @@ useEffect(() => {
                 onClick={() => submitChoice("tails")}
                 disabled={opponentChoice === "tails"}
                 className={`w-full ml-2 p-2 rounded ${
-                  opponentChoice === "tails" ? "bg-gray-500 cursor-not-allowed" : "bg-gray-600 hover:bg-green-700"
+                  opponentChoice === "tails" ? "bg-gray-500 cursor-not-allowed" : "bg-[#0d335f] hover:bg-green-700"
                 }`}
               >
                 Tails
@@ -567,7 +567,7 @@ useEffect(() => {
               <div
                 key={flipKey}
                 className={`w-full h-full rounded-full flex items-center justify-center 
-          bg-yellow-300 text-black text-4xl font-bold
+          bg-[#FFD700] text-[#030817] shadow-[0_0_14px_rgba(255,215,0,0.45)] text-4xl font-bold
           ${flipping ? "animate-coin-flip" : ""}`}
               >
                 {!result && "🪙"}
@@ -606,7 +606,7 @@ useEffect(() => {
                 setMessage("");
               }}
               className="mt-2 w-full p-3 rounded-lg font-bold
-               bg-[#f5ff3b] hover:bg-[#f5ff3b]"
+               bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)] hover:bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)]"
             >
               Close
             </button>
