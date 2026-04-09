@@ -1,7 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { db } from '../../../../db/client';
 import { users, crashGames } from '../../../../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { createSignedSession, verifySignedSession } from '../../../../lib/serverSession';
 
@@ -29,13 +29,15 @@ export async function POST(req) {
 
     // 1) Place bet: reserve funds and create signed server session
     if (immediateDeduct) {
-      const currentBalance = Number(user.balance);
-      if (currentBalance < betAmount) {
+      const [deducted] = await db
+        .update(users)
+        .set({ balance: sql`${users.balance} - ${betAmount}` })
+        .where(sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${betAmount}`)
+        .returning({ balance: users.balance });
+
+      if (!deducted) {
         return NextResponse.json({ success: false, error: 'Insufficient balance' }, { status: 400 });
       }
-
-      const newBalance = currentBalance - betAmount;
-      await db.update(users).set({ balance: newBalance }).where(eq(users.clerkId, userId));
 
       const crashPoint = Number((Math.random() * 8 + 1.2).toFixed(2));
       const token = createSignedSession({
@@ -47,7 +49,7 @@ export async function POST(req) {
 
       const response = NextResponse.json({
         success: true,
-        data: { newBalance, payout: 0 },
+        data: { newBalance: Number(deducted.balance), payout: 0 },
       });
       response.cookies.set('crash_session', token, {
         httpOnly: true,
@@ -75,8 +77,11 @@ export async function POST(req) {
     const won = attemptedCashout >= 1 && attemptedCashout <= crashPoint;
     const payout = won ? Number((bet * attemptedCashout).toFixed(2)) : 0;
 
-    const newBalance = Number(user.balance) + payout;
-    await db.update(users).set({ balance: newBalance }).where(eq(users.clerkId, userId));
+    const [credited] = await db
+      .update(users)
+      .set({ balance: sql`${users.balance} + ${payout}` })
+      .where(eq(users.clerkId, userId))
+      .returning({ balance: users.balance });
 
     await db.insert(crashGames).values({
       userId: user.id,
@@ -89,7 +94,7 @@ export async function POST(req) {
 
     const response = NextResponse.json({
       success: true,
-      data: { newBalance, payout, crashPoint, result: won ? 'won' : 'lost' },
+      data: { newBalance: Number(credited?.balance ?? user.balance), payout, crashPoint, result: won ? 'won' : 'lost' },
     });
     response.cookies.set('crash_session', '', { httpOnly: true, path: '/', maxAge: 0 });
     return response;

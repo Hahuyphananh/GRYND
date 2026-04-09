@@ -1,5 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
+import { db } from "../../../db/client";
+import { users } from "../../../db/schema";
+import { eq } from "drizzle-orm";
 
 /**
  * @param {Request} request
@@ -19,29 +21,33 @@ export async function POST(request) {
   }
 
   try {
-    const { rows: existing } = await sql`
-      SELECT * FROM user_tokens WHERE user_id = ${userId}
-    `;
+    const existing = await db
+      .select({
+        balance: users.balance,
+        name: users.name,
+        email: users.email,
+      })
+      .from(users)
+      .where(eq(users.clerkId, userId))
+      .limit(1);
 
     if (existing.length === 0) {
-      const { rows: inserted } = await sql`
-        INSERT INTO user_tokens (user_id, balance)
-        VALUES (${userId}, 1000)
-        RETURNING *
-      `;
-
       return new Response(JSON.stringify({
-        success: true,
-        data: inserted[0],
+        success: false,
+        error: "Utilisateur introuvable",
       }), {
-        status: 200,
+        status: 404,
         headers: { "Content-Type": "application/json" },
       });
     }
 
     return new Response(JSON.stringify({
       success: true,
-      data: existing[0],
+      data: {
+        balance: existing[0].balance,
+        name: existing[0].name,
+        email: existing[0].email,
+      },
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" },

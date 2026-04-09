@@ -6,8 +6,13 @@ import { eq } from "drizzle-orm";
 import { userLoginRewards, users } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 
-const STREAK_RESET_HOURS = 48;
+const STREAK_RESET_DAYS = 2;
 const MAX_DAY = 14;
+
+function toUtcDayKey(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
 
 export async function GET() {
   try {
@@ -54,10 +59,9 @@ export async function GET() {
       const now = new Date();
       const lastClaim = new Date(rewardData.lastClaimedDate);
 
-      const hoursSinceClaim =
-        (now.getTime() - lastClaim.getTime()) / (1000 * 60 * 60);
+      const elapsedDays = Math.floor((toUtcDayKey(now) - toUtcDayKey(lastClaim)) / (1000 * 60 * 60 * 24));
 
-      if (hoursSinceClaim > STREAK_RESET_HOURS) {
+      if (elapsedDays > STREAK_RESET_DAYS) {
 
         await db.update(userLoginRewards)
           .set({ currentDay: 1 })
