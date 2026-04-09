@@ -1,15 +1,21 @@
 import crypto from "crypto";
 
-function getEffectiveSecret() {
-  const configured = process.env.GAME_SESSION_SECRET;
+let hasWarnedMissingSecret = false;
 
-  // Do not fail at module evaluation time (breaks builds on some platforms).
-  // Fail only when session signing/verification is actually invoked at runtime.
+function getEffectiveSecret() {
+  const configured =
+    process.env.GAME_SESSION_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    process.env.CLERK_SECRET_KEY;
+
   if (!configured) {
-    if (process.env.NODE_ENV === "development") {
-      return "development-only-insecure-secret";
+    if (!hasWarnedMissingSecret) {
+      console.warn(
+        "[serverSession] No session secret configured. Using development fallback secret."
+      );
+      hasWarnedMissingSecret = true;
     }
-    throw new Error("GAME_SESSION_SECRET is required outside development.");
+    return "development-only-insecure-secret";
   }
 
   return configured;
