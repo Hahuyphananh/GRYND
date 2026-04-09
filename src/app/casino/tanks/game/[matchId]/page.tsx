@@ -1,34 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PlayerTank from "../../../../../components/PlayerTank";
 import { useParams, useRouter } from "next/navigation";
 import WaitingRoom from "./components/WaitingRoom";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { useUser } from "@clerk/nextjs";
-
-function createSeededRandom(seed: number) {
-  let t = seed >>> 0;
-  return () => {
-    t += 0x6d2b79f5;
-    let r = Math.imul(t ^ (t >>> 15), 1 | t);
-    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function generateRocks(seed: number, mapWidth: number, mapHeight: number, rockCount: number) {
-  const rand = createSeededRandom(seed);
-  return Array.from({ length: rockCount }).map((_, i) => {
-    const size = 36 + rand() * 58;
-    return {
-      id: i,
-      size,
-      x: rand() * (mapWidth - size),
-      y: rand() * (mapHeight - size),
-    };
-  });
-}
 
 function showGameAlert(message: string) {
   const overlay = document.createElement("div");
@@ -155,6 +132,13 @@ type BulletState = {
   angle: number;
 };
 
+type RockState = {
+  id: number;
+  x: number;
+  y: number;
+  size: number;
+};
+
 type PlayerState = {
   x: number;
   y: number;
@@ -204,6 +188,10 @@ export default function TanksGamePage() {
   const [gameMode, setGameMode] = useState<"duel" | "battle_royale">("duel");
   const MAP_WIDTH = MAP_PROFILES[mapProfile].width;
   const MAP_HEIGHT = MAP_PROFILES[mapProfile].height;
+  const [serverMap, setServerMap] = useState<{ width: number; height: number; rocks: RockState[] } | null>(null);
+  const worldWidth = serverMap?.width ?? MAP_WIDTH;
+  const worldHeight = serverMap?.height ?? MAP_HEIGHT;
+  const rocks = serverMap?.rocks ?? [];
 
   const [pos, setPos] = useState({ x: 1500, y: 1500 });
   const posRef = useRef(pos);
@@ -254,16 +242,13 @@ export default function TanksGamePage() {
 
   const [serverBullets, setServerBullets] = useState<BulletState[]>([]);
   const targetBulletsRef = useRef<BulletState[]>([]);
+  const [duelResult, setDuelResult] = useState<{ didWin: boolean; amount: number } | null>(null);
 
   const keys = useRef<{ [key: string]: boolean }>({});
   const INPUT_TICK_MS = 33;
-  const WATER_Y = MAP_HEIGHT * 0.67;
+  const WATER_Y = worldHeight * 0.67;
   const SHORE_TRANSITION = 130;
 
-  const rocks = useMemo(
-    () => generateRocks(mapSeed, MAP_WIDTH, MAP_HEIGHT, MAP_PROFILES[mapProfile].rockCount),
-    [mapSeed, MAP_WIDTH, MAP_HEIGHT, mapProfile]
-  );
   const hitSoundCtxRef = useRef<AudioContext | null>(null);
   const selfHitUntilRef = useRef(0);
   const [selfHitIntensity, setSelfHitIntensity] = useState(0);
@@ -444,22 +429,37 @@ export default function TanksGamePage() {
       },
     });
 
-    const handleGameState = (payload: { players?: Record<string, PlayerState>; bullets?: BulletState[] }) => {
+    const handleGameState = (payload: {
+      players?: Record<string, PlayerState>;
+      bullets?: BulletState[];
+      map?: { width?: number; height?: number; rocks?: RockState[] };
+    }) => {
       const players = payload?.players ?? {};
       const bullets = Array.isArray(payload?.bullets) ? payload.bullets : [];
+      if (payload?.map && Array.isArray(payload.map.rocks)) {
+        setServerMap({
+          width: Number(payload.map.width ?? MAP_WIDTH),
+          height: Number(payload.map.height ?? MAP_HEIGHT),
+          rocks: payload.map.rocks,
+        });
+      }
 
       const currentSelfId = selfIdRef.current;
       if (currentSelfId && players[currentSelfId]) {
         const own = players[currentSelfId];
         if (own.health <= 0 && !gameFinishedRef.current) {
           gameFinishedRef.current = true;
-          showGameAlert("💀 You were destroyed");
-          fetch("/api/tanks/leave-match", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ gameId: routeMatchId }),
-          }).finally(() => router.push("/casino/tanks"));
+          if (gameMode === "duel") {
+            setDuelResult({ didWin: false, amount: 0 });
+          } else {
+            showGameAlert("💀 You were destroyed");
+            fetch("/api/tanks/leave-match", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ gameId: routeMatchId, reason: "eliminated" }),
+            }).finally(() => router.push("/casino/tanks"));
+          }
           return;
         }
         if (own.health < healthRef.current) {
@@ -508,7 +508,7 @@ export default function TanksGamePage() {
       socket.off("tanks:game_state", handleGameState);
       socket.off("tanks:hit", handleHit);
     };
-  }, [socket, routeMatchId, MAP_WIDTH, MAP_HEIGHT, mapSeed, mapProfile]);
+  }, [socket, routeMatchId, MAP_WIDTH, MAP_HEIGHT, mapSeed, mapProfile, gameMode, router]);
 
   useEffect(() => {
     if (!routeMatchId) return;
@@ -541,7 +541,7 @@ export default function TanksGamePage() {
         const data = await res.json();
         setSelfId(data.selfId);
 
-        if (data?.playerStates && data?.selfId && data.playerStates[data.selfId]) {
+        if (!positionInitializedRef.current && data?.playerStates && data?.selfId && data.playerStates[data.selfId]) {
           const own = data.playerStates[data.selfId];
           if (Number.isFinite(Number(own?.x)) && Number.isFinite(Number(own?.y))) {
             posRef.current = { x: Number(own.x), y: Number(own.y) };
@@ -556,13 +556,17 @@ export default function TanksGamePage() {
 
         if (data?.gameOver && !gameFinishedRef.current) {
           gameFinishedRef.current = true;
-          if (data.gameOver.winnerId === data.selfId) {
-            showGameAlert(`🏆 Victory!
-+${Number(data.gameOver.winnerPayout).toFixed(2)} tokens`);
+          if (gameMode === "duel") {
+            const didWin = data.gameOver.winnerId === data.selfId;
+            setDuelResult({ didWin, amount: didWin ? Number(data.gameOver.winnerPayout ?? 0) : 0 });
           } else {
-            showGameAlert("💀 You were destroyed");
+            if (data.gameOver.winnerId === data.selfId) {
+              showGameAlert(`🏆 Victory!\n+${Number(data.gameOver.winnerPayout).toFixed(2)} tokens`);
+            } else {
+              showGameAlert("💀 You were destroyed");
+            }
+            router.push("/casino/tanks");
           }
-          router.push("/casino/tanks");
         }
       } catch (err) {
         console.error("State sync error:", err);
@@ -577,7 +581,19 @@ export default function TanksGamePage() {
       clearInterval(interval);
       immediateSyncRef.current = null;
     };
-  }, [routeMatchId, router]);
+  }, [routeMatchId, router, gameMode]);
+
+  useEffect(() => {
+    if (!routeMatchId) return;
+    const handleBeforeUnload = () => {
+      const payload = new Blob([JSON.stringify({ gameId: routeMatchId, reason: "disconnect" })], {
+        type: "application/json",
+      });
+      navigator.sendBeacon("/api/tanks/leave-match", payload);
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [routeMatchId]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => (keys.current[e.key.toLowerCase()] = true);
@@ -714,8 +730,8 @@ export default function TanksGamePage() {
       <div
         className="absolute"
         style={{
-          width: MAP_WIDTH,
-          height: MAP_HEIGHT,
+          width: worldWidth,
+          height: worldHeight,
           transform: `translate(${cameraX}px, ${cameraY}px)`,
           zIndex: 1,
         }}
@@ -868,6 +884,23 @@ export default function TanksGamePage() {
           <CashOutButton bountyRef={bountyRef} setBounty={setBounty} setCashOutCountdown={setCashOutCountdown} routeMatchId={routeMatchId} />
         )}
       </div>
+
+      {duelResult && (
+        <div className="absolute inset-0 z-[10000] bg-black/75 flex items-center justify-center">
+          <div className="bg-[#101010] border-2 border-yellow-500 rounded-2xl p-8 text-white text-center max-w-md w-full">
+            <h2 className="text-3xl font-bold mb-3">{duelResult.didWin ? "🏆 You won!" : "💀 You lost"}</h2>
+            <p className="text-lg mb-6">
+              {duelResult.didWin ? `+${duelResult.amount.toFixed(2)} tokens` : "Better luck next round."}
+            </p>
+            <button
+              onClick={() => router.push("/casino/tanks")}
+              className="px-5 py-2 rounded-lg bg-yellow-600 hover:bg-yellow-700 font-semibold"
+            >
+              Return to Lobby
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
