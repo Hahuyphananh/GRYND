@@ -11,6 +11,8 @@ export async function POST(req) {
 
     const body = await req.json();
     const betAmount = Number(body.betAmount);
+    const requestedTimerSeconds = Number(body?.timerSeconds);
+    const timerSeconds = [10, 30, 60, 120].includes(requestedTimerSeconds) ? requestedTimerSeconds : 60;
 
     if (!Number.isFinite(betAmount) || betAmount <= 0) {
       return NextResponse.json({ error: "Invalid bet amount" }, { status: 400 });
@@ -31,6 +33,7 @@ export async function POST(req) {
           hostClerkId: userId,
           betAmount: betAmount.toFixed(2),
           status: "waiting",
+          timerSeconds,
         })
         .returning({ id: connectFourGames.id });
 
