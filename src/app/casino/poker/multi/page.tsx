@@ -1054,19 +1054,19 @@ if (showJoinForm) {
           placeholder="Enter Invite Code"
           value={inviteCode}
           onChange={(e) => setInviteCode(e.target.value)}
-          className="w-full p-2 rounded mb-3 text-black"
+          className="w-full rounded-lg border border-[#00e5ff]/30 bg-[#001933]/60 px-3 py-2 text-[#d8fbff] placeholder:text-[#7dd3fc]/40 focus:outline-none focus:border-[#00e5ff] focus:shadow-[0_0_10px_rgba(0,229,255,0.4)] transition mb-2"
         />
 
         <button
           onClick={() => joinGame()}
-          className="bg-[#00e5ff] text-[#001933] px-4 py-2 rounded w-full font-bold mb-2 shadow-[0_0_12px_rgba(0,229,255,0.35)]"
+          className="mb-2 w-full rounded-lg border border-[#00e5ff]/70 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/55 active:scale-95 transition shadow-[0_0_12px_rgba(0,229,255,0.3)]"
         >
           Join Game
         </button>
 
         <button
           onClick={() => setShowJoinForm(false)}
-          className="bg-red-600 hover:bg-red-500 px-4 py-2 rounded w-full font-bold shadow-[0_0_12px_rgba(239,68,68,0.35)]"
+          className="w-full rounded-lg border border-red-500/70 bg-red-500/20 px-4 py-2 text-sm font-medium text-red-200 hover:bg-red-500/55 active:scale-95 transition shadow-[0_0_14px_rgba(239,68,68,0.35)]"
         >
           Cancel
         </button>
@@ -1081,7 +1081,7 @@ if (showJoinForm) {
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
         <div className="absolute top-4 left-4">
   <a href="/casino">
-    <button className="bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] px-4 py-2 rounded font-bold transition shadow-[0_0_14px_rgba(255,215,0,0.45)]">
+    <button className="w-full rounded-lg border border-[#FFFF33]/70 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/55 active:scale-95 transition mb-2">
       ← Return to Casino
     </button>
   </a>
@@ -1119,7 +1119,7 @@ if (showJoinForm) {
           <button
             onClick={() => joinPublicGame(g.gameCode)}
             disabled={joiningGame}
-            className="bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933] disabled:bg-[#9aa32a] px-2 py-1 rounded text-xs font-bold"
+            className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-3 py-1 text-xs font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35 active:scale-95 transition shadow-[0_0_10px_rgba(0,229,255,0.25)]"
           >
             Join
           </button>
@@ -1134,14 +1134,13 @@ if (showJoinForm) {
             placeholder="Your display name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full p-2 rounded mb-3 text-black"
+            className="mb-2 w-full rounded-lg border border-[#00e5ff]/30 bg-[#001933]/60 px-3 py-2 text-[#d8fbff] placeholder:text-[#7dd3fc]/40 focus:outline-none focus:border-[#00e5ff] focus:shadow-[0_0_10px_rgba(0,229,255,0.4)] transition"
           />
 
-          <label className="block mb-2">Private Game:</label>
           <select
             value={isPrivate ? "true" : "false"}
             onChange={(e) => setIsPrivate(e.target.value === "true")}
-            className="border p-2 rounded mb-4 w-full text-black"
+            className="w-full mb-2 rounded-lg border border-[#00e5ff]/30 bg-[#001933]/60 px-3 py-2 text-[#d8fbff] focus:outline-none focus:border-[#00e5ff] focus:shadow-[0_0_10px_rgba(0,229,255,0.4)] transition"
           >
             <option value="true">Private</option>
             <option value="false">Public</option>
@@ -1149,14 +1148,14 @@ if (showJoinForm) {
 
           <button
             onClick={() => createGame()}
-            className="bg-[#FFD700] text-[#030817] px-4 py-2 rounded w-full font-bold mb-2 shadow-[0_0_14px_rgba(255,215,0,0.45)]"
+           className="w-full rounded-lg border border-[#FFFF33]/70 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/55 active:scale-95 transition mb-2"
           >
             Create Game
           </button>
 
           <button
   onClick={() => setShowJoinForm(true)}
-  className="bg-[#00e5ff] text-[#001933] px-4 py-2 rounded w-full font-bold mb-2 shadow-[0_0_12px_rgba(0,229,255,0.35)]"
+  className="w-full rounded-lg border border-[#00e5ff]/70 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/55 active:scale-95 transition mb-2"
 >
   Join Game
 </button>
@@ -1165,18 +1164,18 @@ if (showJoinForm) {
    <button
   onClick={availablePublicGames > 0 ? () => joinPublicGame() : undefined}
   disabled={availablePublicGames === 0}
-  className={`px-4 py-2 rounded w-full font-bold mb-2 transition ${
-    availablePublicGames > 0
-      ? "bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933]"
-      : "bg-[#3a4852] cursor-not-allowed text-gray-300"
-  }`}
+  className={`w-full rounded-lg border px-4 py-2 text-sm font-medium transition active:scale-95 ${
+  availablePublicGames > 0
+    ? "border-[#ff00cc]/70 bg-[#ff00cc]/20 text-[#ffe0fa] hover:bg-[#ff00cc]/55 shadow-[0_0_14px_rgba(255,0,204,0.35)]"
+    : "border-gray-500 bg-gray-700 text-gray-400 cursor-not-allowed"
+}`}
 >
   {availablePublicGames > 0 ? "Join Public Game" : "No Public Game Available"}
 </button>
 
 
           <a href="/casino/poker/">
-            <button className="bg-red-600 hover:bg-red-500 px-4 py-2 rounded w-full font-bold shadow-[0_0_12px_rgba(239,68,68,0.35)] mb-2">Retour</button>
+            <button className="mt-2 w-full rounded-lg border border-red-500/70 bg-red-500/30 px-4 py-2 text-sm font-medium text-red-200 hover:bg-red-500/55 active:scale-95 transition shadow-[0_0_14px_rgba(239,68,68,0.35)]">Retour</button>
           </a>
         </div>
       </div>
@@ -1348,11 +1347,9 @@ if (showJoinForm) {
       <button
         onClick={() => performAction("fold")}
         disabled={!isMyTurn}
-        className={`px-4 py-2 rounded w-24 transition ${
-          isMyTurn
-            ? "bg-red-600 hover:bg-red-500"
-            : "bg-red-800 text-gray-300 opacity-60 cursor-not-allowed"
-        }`}
+       className={`w-24 px-4 py-2 rounded-lg border border-red-500/70 bg-red-500/20 text-red-200 hover:bg-red-500/55 transition active:scale-95 ${
+  !isMyTurn && "opacity-50 cursor-not-allowed"
+}`}
       >
         Fold
       </button>
@@ -1360,11 +1357,9 @@ if (showJoinForm) {
       <button
         onClick={() => performAction("check")}
         disabled={!isMyTurn}
-        className={`px-4 py-2 rounded text-black w-24 transition ${
-          isMyTurn
-            ? "bg-yellow-500 hover:bg-yellow-400"
-            : "bg-yellow-900 text-gray-400 opacity-60 cursor-not-allowed"
-        }`}
+        className={`w-24 px-4 py-2 rounded-lg border border-yellow-400/70 bg-yellow-400/20 text-yellow-100 hover:bg-yellow-400/55 transition active:scale-95 ${
+  !isMyTurn && "opacity-50 cursor-not-allowed"
+}`}
       >
         Check
       </button>
@@ -1382,11 +1377,9 @@ if (showJoinForm) {
           performAction("call");
         }}
         disabled={!isMyTurn}
-        className={`px-4 py-2 rounded w-24 transition ${
-          isMyTurn
-            ? "bg-[#f5ff3b] hover:bg-[#f5ff3b]"
-            : "bg-[#7f8520] text-gray-300 opacity-60 cursor-not-allowed"
-        }`}
+        className={`w-24 px-4 py-2 rounded-lg border border-[#00e5ff]/70 bg-[#00e5ff]/20 text-[#d8fbff] hover:bg-[#00e5ff]/55 transition active:scale-95 ${
+  !isMyTurn && "opacity-50 cursor-not-allowed"
+}`}
       >
         {canUseBetShortcut ? "Bet 20" : toCallAmount > 0 ? `Call ${toCallAmount}` : "Call"}
       </button>
@@ -1406,11 +1399,9 @@ if (showJoinForm) {
         <button
           onClick={() => isMyTurn && performAction("raise")}
           disabled={!isMyTurn}
-          className={`px-4 py-2 rounded w-24 transition ${
-            isMyTurn
-              ? "bg-green-600 hover:bg-green-500"
-              : "bg-green-900 text-gray-300 opacity-60 cursor-not-allowed"
-          }`}
+          className={`w-24 px-4 py-2 rounded-lg border border-green-400/70 bg-green-400/20 text-green-100 hover:bg-green-400/55 transition active:scale-95 ${
+  !isMyTurn && "opacity-50 cursor-not-allowed"
+}`}
         >
           Raise
         </button>

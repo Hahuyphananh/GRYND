@@ -184,7 +184,7 @@ const renderCard = (card, i, highlight = { values: [], color: "yellow" }) => {
   return (
     <div
       key={i}
-      className={`h-20 w-14 sm:h-24 sm:w-16 md:h-28 md:w-20 bg-white text-lg flex items-center justify-center rounded shadow ${
+      className={`h-20 w-14 sm:h-24 sm:w-16 md:h-28 md:w-20 bg-white text-lg flex items-center justify-center rounded shadow-[0_0_10px_rgba(255,255,255,0.2)] ${
         isHighlighted ? "border-4 border-yellow-500" : ""
       }`}
       style={{
@@ -222,61 +222,63 @@ const getHighlightValues = (hand) => {
 };
 
 return (
-    <div className="min-h-screen bg-[#030817] pt-20">
+    <div className="min-h-screen bg-gradient-to-br from-[#020617] via-[#071A3A] to-[#0A2A5C] pt-20">
         <NavigationBar currentPath="/casino" />
 
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <h1 className="text-4xl font-bold text-[#FFD700] text-center mb-6">
+        <h1 className="text-4xl font-bold text-[#00E5FF] text-center mb-6 drop-shadow-[0_0_12px_#00E5FF]">
           ♠️ Poker Royale
         </h1>
-        <p className="text-lg font-semibold text-[#FFD700] text-center">
-          🪙 Tokens: {userTokens}
+        <p className="text-lg font-semibold text-[#00E5FF] text-center drop-shadow-[0_0_8px_#00E5FF]">
+        Tokens: {userTokens}
         </p>
 
-        {error && <div className="mb-4 rounded bg-red-500/10 p-3 text-red-500">{error}</div>}
+        {error && <div className="mb-4 mt-4 rounded bg-red-500/10 p-3 text-red-400 border border-red-500/30 shadow-[0_0_15px_rgba(255,0,0,0.3)]">{error}</div>}
 
         {!game && (
-  <div className="text-center mt-8 space-y-4">
+  <div className="text-center mt-8">
     
     {/* --- Bet Amount Input --- */}
     <div className="flex justify-center items-center gap-2">
-      <label className="text-[#FFD700] font-semibold">Bet Amount:</label>
+      <label className="text-[#00E5FF] font-semibold">Bet Amount:</label>
       <input
-        type="number"
-        value={betAmount}
-        min="1"
-        max={userTokens}
-        onChange={(e) => setBetAmount(parseInt(e.target.value))}
-        className="w-24 px-2 py-1 rounded text-black"
-      />
+  type="number"
+  value={betAmount}
+  min="1"
+  max={userTokens}
+  onChange={(e) => setBetAmount(parseInt(e.target.value))}
+  className="w-24 px-2 py-1 rounded bg-[#020617] border border-[#FFFF33]/30 text-white focus:border-[#FFFF33] focus:ring-1 focus:ring-[#FFFF33]"
+/>
     </div>
-<button
-  onClick={() => router.push("/casino/poker/multi")}
-  className="bg-yellow-400 hover:bg-yellow-300 text-black px-6 py-3 rounded-full font-bold"
->
-  Jouer au Texas Holdem ♦️
-</button>
+<div className="flex justify-center gap-4 mt-4 px-4">
+  <button
+    onClick={() => router.push("/casino/poker/multi")}
+    className="flex-1 rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#FFFF33] hover:bg-[#FFFF33]/35 transition"
+  >
+    Jouer au Texas Holdem ♦️
+  </button>
 
-    <button
-      onClick={() => initializeAiGame(betAmount)}
-      className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded shadow"
-    >
-      Jouer aux mains ♠️
-    </button>
+  <button
+    onClick={() => initializeAiGame(betAmount)}
+    className="flex-1 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35 active:scale-95 transition"
+  >
+    Jouer aux mains ♠️
+  </button>
+</div>
   </div>
 )}
 
 
       {game && (
-  <div className="mt-8 rounded-lg bg-[#0e6b0e] p-6 border-[10px] border-[#5c3b15] shadow-inner w-full max-w-6xl mx-auto">
+  <div className="mt-8 rounded-lg bg-[#020617] p-6 border border-[#FFFF33]/30 shadow-[0_0_30px_rgba(255,255,51,0.2)] w-full max-w-6xl mx-auto backdrop-blur-md">
 
     {/* --- Result & Replay (Top of Board) --- */}
     {result && (
       <div className="mb-6 text-center space-y-3">
-      <p className="text-xl font-bold text-[#FFD700]">
+      <p className="text-xl font-bold text-[#FFFF33] drop-shadow-[0_0_10px_#FFFF33]">
   {result.message}
   {result.kicker && result.aiKicker && (
-    <span className="text-[#FFD700] ml-2 text-sm">
+    <span className="text-[#FFFF33] ml-2 text-sm">
       (Kicker: {result.kicker} vs {result.aiKicker})
     </span>
   )}
@@ -293,7 +295,7 @@ return (
             setGame(null);
             initializeAiGame();
           }}
-          className="bg-[#f5ff3b] hover:bg-[#d9e332] text-white font-bold px-6 py-3 rounded-full text-sm sm:text-base"
+          className="bg-[#FFFF33]/20 hover:bg-[#FFFF33]/35 text-[#FFFF33] font-bold px-6 py-3 rounded-full text-sm sm:text-base border border-[#FFFF33]/40 shadow-[0_0_15px_rgba(255,255,51,0.5)]"
         >
           🔄 Replay
         </button>
@@ -304,7 +306,7 @@ return (
     <div className="flex flex-wrap justify-center items-center gap-4 mb-6">
       <button
         onClick={() => handleAction("fold")}
-        className="bg-red-600 hover:bg-red-700 px-5 py-2 rounded-full font-bold text-white text-sm sm:text-base"
+        className="bg-red-500/20 hover:bg-red-500/30 px-5 py-2 rounded-full font-bold text-red-300 border border-red-500/40 shadow-[0_0_10px_rgba(255,0,0,0.4)] text-sm sm:text-base"
       >
         Fold
       </button>
@@ -313,7 +315,7 @@ return (
           setRaiseAmount(pot / 10 * 2);
           handleAction("play");
         }}
-        className="bg-green-600 hover:bg-green-700 px-5 py-2 rounded-full font-bold text-white text-sm sm:text-base"
+        className="bg-green-500/20 hover:bg-green-500/30 px-5 py-2 rounded-full font-bold text-green-300 border border-green-500/40 shadow-[0_0_10px_rgba(0,255,0,0.4)] text-sm sm:text-base"
       >
         Play
       </button>
@@ -323,12 +325,12 @@ return (
     <div className="flex justify-center flex-wrap gap-4 mb-4">
       {/* Player Hand */}
       <div>
-        <h3 className="text-[#FFD700] text-center mb-2">Votre main</h3>
+        <h3 className="text-[#FFFF33] text-center mb-2">Votre main</h3>
         <div className="flex gap-2 justify-center">
           {playerHand.map((c, i) => renderCard(c, i, getHighlightValues(playerHand)))}
         </div>
         {playerHand.length === 5 && (
-          <div className="text-center mt-2 text-lg font-bold text-[#FFD700]">
+          <div className="text-center mt-2 text-lg font-bold text-[#FFFF33]">
             Votre main: {evaluateHand(playerHand)}
           </div>
         )}
@@ -336,12 +338,12 @@ return (
 
       {/* AI Hand */}
       <div>
-        <h3 className="text-[#FFD700] text-center mb-2">Main AI</h3>
+        <h3 className="text-[#FFFF33] text-center mb-2">Main AI</h3>
         <div className="flex gap-2 justify-center">
           {opponentHand.map((c, i) => renderCard(c, i, getHighlightValues(opponentHand)))}
         </div>
         {opponentHand.length === 5 && !opponentHand.some(c => c.value === "?") && (
-          <div className="text-center mt-2 text-lg font-bold text-[#FFD700]">
+          <div className="text-center mt-2 text-lg font-bold text-[#FFFF33]">
             Main AI: {evaluateHand(opponentHand)}
           </div>
         )}
@@ -349,7 +351,7 @@ return (
     </div>
 
     {/* --- Pot Info --- */}
-    <div className="text-center text-[#FFD700] font-semibold text-lg">
+    <div className="text-center text-[#FFFF33] font-semibold text-lg drop-shadow-[0_0_8px_#FFFF33]">
       Pot actuel: {pot} tokens
     </div>
   </div>
@@ -358,8 +360,8 @@ return (
 
 
 {/* Poker Hand Rankings Legend */}
-<div className="mt-6 w-full bg-[#222] text-white p-4 rounded shadow">
-  <h3 className="text-[#FFD700] font-bold mb-2 text-center">Poker Hands (Probabilities)</h3>
+<div className="mt-6 w-full bg-[#020617] text-white p-4 rounded border border-[#FFFF33]/30 shadow-[0_0_20px_rgba(255,255,51,0.2)] backdrop-blur-md">
+  <h3 className="text-[#FFFF33] font-bold mb-2 text-center drop-shadow-[0_0_8px_#FFFF33]">Poker Hands (Probabilities)</h3>
   <ul className="flex flex-wrap justify-center gap-6 text-sm">
     <li>Royal Flush (0.0001%)</li>
     <li>Straight Flush (0.001%)</li>
