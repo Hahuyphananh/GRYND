@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { getDropRow } from "../../../../../lib/connectFour";
 
-const MOVE_LIMIT_SECONDS = 60;
+const DEFAULT_MOVE_LIMIT_SECONDS = 60;
+const REPLAY_WINDOW_SECONDS = 20;
 
 const CONFETTI_COLORS = ["#facc15", "#4ade80", "#60a5fa", "#f472b6", "#f97316"];
 
@@ -25,7 +26,6 @@ function playUiTone(type: "drop" | "win" = "drop") {
   osc.stop(ctx.currentTime + settings.duration);
 }
 
-
 function Disc({ value, className = "", style }: { value: number; className?: string; style?: CSSProperties }) {
   const color = value === 1 ? "bg-green-500" : value === 2 ? "bg-red-500" : "bg-slate-900/60";
   return <div className={`w-11 h-11 md:w-14 md:h-14 rounded-full border border-black/50 shadow-inner ${color} ${className}`} style={style} />;
@@ -40,8 +40,9 @@ export default function ConnectFourGamePage() {
   const [loadingMove, setLoadingMove] = useState(false);
   const [statusText, setStatusText] = useState("Loading game...");
   const [fallingDisc, setFallingDisc] = useState<{ row: number; col: number; value: number } | null>(null);
+  const [sendingReplayDecision, setSendingReplayDecision] = useState(false);
+  const [replayMessage, setReplayMessage] = useState("");
   const previousBoardRef = useRef<number[][] | null>(null);
-
 
   const detectLatestDrop = (previousBoard: number[][] | null, nextBoard: number[][]) => {
     if (!previousBoard || previousBoard.length === 0) return null;
@@ -65,10 +66,11 @@ export default function ConnectFourGamePage() {
       return;
     }
 
-    const nextBoard = data?.data?.board || [];
+    const gameData = data.data;
+    const nextBoard = gameData?.board || [];
     const latestDrop = detectLatestDrop(previousBoardRef.current, nextBoard);
 
-    setGame(data.data);
+    setGame(gameData);
 
     if (latestDrop) {
       setFallingDisc(latestDrop);
@@ -78,23 +80,23 @@ export default function ConnectFourGamePage() {
 
     previousBoardRef.current = nextBoard.map((row: number[]) => [...row]);
 
-    if (data.data.status === "waiting") {
+    if (gameData.status === "waiting") {
       setStatusText("Waiting for opponent to join...");
       return;
     }
 
-    if (data.data.status === "finished") {
-      if (data.data.result === "draw") setStatusText("Draw game.");
-      else if (data.data.winnerClerkId && ((data.data.role === "host" && data.data.winnerClerkId === data.data.hostClerkId) || (data.data.role === "guest" && data.data.winnerClerkId === data.data.guestClerkId))) {
+    if (gameData.status === "finished") {
+      if (gameData.result === "draw") setStatusText("Draw game.");
+      else if (gameData.winnerClerkId && ((gameData.role === "host" && gameData.winnerClerkId === gameData.hostClerkId) || (gameData.role === "guest" && gameData.winnerClerkId === gameData.guestClerkId))) {
         setStatusText("You won!");
         playUiTone("win");
       } else {
-        setStatusText("You lost.");
+        setStatusText(gameData.result === "timeout" ? "You lost on time." : "You lost.");
       }
       return;
     }
 
-    const myTurn = data.data.currentTurn === data.data.role;
+    const myTurn = gameData.currentTurn === gameData.role;
     setStatusText(myTurn ? "Your move" : "Opponent's move");
   };
 
@@ -125,9 +127,22 @@ export default function ConnectFourGamePage() {
     return game.status === "in_progress" && game.currentTurn === game.role;
   }, [game]);
 
+  const playerWon = useMemo(() => {
+    if (!game || game.status !== "finished") return false;
+    if (!game.winnerClerkId) return false;
+    return (game.role === "host" && game.winnerClerkId === game.hostClerkId) || (game.role === "guest" && game.winnerClerkId === game.guestClerkId);
+  }, [game]);
+
+  const moveLimit = Number(game?.moveTimeLimit || game?.timerSeconds || DEFAULT_MOVE_LIMIT_SECONDS);
+  const activeTimer = game?.status === "in_progress" ? Math.min(moveLimit, Math.max(0, Number(game?.moveTimeRemaining || 0))) : 0;
+  const hostTimer = game?.status === "in_progress" ? (game.currentTurn === "host" ? activeTimer : moveLimit) : 0;
+  const guestTimer = game?.status === "in_progress" ? (game.currentTurn === "guest" ? activeTimer : moveLimit) : 0;
+
+  const replayCountdown = Math.max(0, Math.min(REPLAY_WINDOW_SECONDS, Number(game?.replayTimeRemaining || 0)));
+  const showResultPopup = game?.status === "finished" && !game?.nextGameId;
+
   const playColumn = async (column: number) => {
     if (!canPlay || loadingMove) return;
-
     if (getDropRow(game.board, column) < 0) return;
 
     setLoadingMove(true);
@@ -140,7 +155,7 @@ export default function ConnectFourGamePage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        alert(data.error || "Move rejected");
+        fetchState();
         return;
       }
 
@@ -168,7 +183,61 @@ export default function ConnectFourGamePage() {
     fetchState();
   };
 
-  const timer = game?.status === "in_progress" ? Math.min(MOVE_LIMIT_SECONDS, Math.max(0, Number(game.moveTimeRemaining || 0))) : 0;
+  const respondReplay = async (action: "replay" | "quit") => {
+    if (!game || sendingReplayDecision) return;
+
+    setSendingReplayDecision(true);
+    try {
+      const res = await fetch("/api/connect-four/replay-response", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId: Number(gameId), action }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setReplayMessage(data.error || "Unable to send your choice.");
+        return;
+      }
+
+      if (data.resolved === "replay" && data.gameId) {
+        socket?.emit("room_event", { roomId: `connect-four:${gameId}`, event: "match:updated" });
+        router.push(`/casino/connect-four/game/${data.gameId}`);
+        return;
+      }
+
+      if (data.resolved === "quit") {
+        setReplayMessage(data.reason || "Replay was not accepted.");
+        setTimeout(() => router.push("/casino/connect-four"), 900);
+        return;
+      }
+
+      setReplayMessage(action === "replay" ? "Replay requested. Waiting for opponent..." : "Quitting match...");
+      socket?.emit("room_event", { roomId: `connect-four:${gameId}`, event: "match:updated" });
+      fetchState();
+    } finally {
+      setSendingReplayDecision(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!game || game.status !== "finished") return;
+
+    if (game.nextGameId) {
+      router.push(`/casino/connect-four/game/${game.nextGameId}`);
+      return;
+    }
+
+    if (replayCountdown <= 0) {
+      if (game.hostReplayDecision === "replay" || game.guestReplayDecision === "replay") {
+        setReplayMessage("Replay was refused or expired. Returning to lobby...");
+      }
+      const timeoutId = setTimeout(() => router.push("/casino/connect-four"), 900);
+      return () => clearTimeout(timeoutId);
+    }
+
+    return undefined;
+  }, [game, replayCountdown, router]);
 
   return (
     <div className="min-h-screen bg-[#02142c] text-white px-4 py-8 page-enter">
@@ -180,7 +249,7 @@ export default function ConnectFourGamePage() {
           </button>
         </div>
 
-        {statusText.includes("You won") && (
+        {playerWon && (
           <div className="confetti-overlay">
             {Array.from({ length: 24 }).map((_, index) => (
               <span
@@ -202,10 +271,22 @@ export default function ConnectFourGamePage() {
               <div>
                 <p className="text-white/70 text-sm">{game?.hostName || "Host"} (Green) vs {game?.guestName || "Guest"} (Red)</p>
                 <p className="font-bold text-lg">Bet: {Number(game?.betAmount || 0).toFixed(2)} tokens each</p>
+                <p className="text-white/70 text-sm">Turn timer: {moveLimit}s</p>
               </div>
               <div className="text-right">
                 <p className="text-sm text-white/70">Move timer</p>
-                <p className={`text-3xl font-mono font-bold ${timer <= 10 ? "text-red-400 low-time-pulse" : "text-green-300"}`}>{timer}s</p>
+                <p className={`text-3xl font-mono font-bold ${activeTimer <= 10 ? "text-red-400 low-time-pulse" : "text-green-300"}`}>{activeTimer}s</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className={`rounded-lg p-2 border ${game?.currentTurn === "host" ? "border-green-400 bg-green-500/10" : "border-white/15 bg-white/5"}`}>
+                <p className="text-sm text-white/70">{game?.hostName || "Host"}</p>
+                <p className="text-2xl font-mono font-bold">{hostTimer}s</p>
+              </div>
+              <div className={`rounded-lg p-2 border ${game?.currentTurn === "guest" ? "border-red-400 bg-red-500/10" : "border-white/15 bg-white/5"}`}>
+                <p className="text-sm text-white/70">{game?.guestName || "Guest"}</p>
+                <p className="text-2xl font-mono font-bold">{guestTimer}s</p>
               </div>
             </div>
 
@@ -247,7 +328,7 @@ export default function ConnectFourGamePage() {
             </div>
           </div>
 
-          <div className={`casino-surface p-4 rounded-2xl ${canPlay ? "turn-active-glow" : ""}` }>
+          <div className={`casino-surface p-4 rounded-2xl ${canPlay ? "turn-active-glow" : ""}`}>
             <h2 className="text-xl font-bold text-yellow-300 mb-3">Match Details</h2>
             <p className="mb-2">Status: <span className="font-semibold">{statusText}</span></p>
             <p className="mb-2">Your color: <span className="font-semibold">{game?.role === "host" ? "Green" : game?.role === "guest" ? "Red" : "-"}</span></p>
@@ -267,6 +348,33 @@ export default function ConnectFourGamePage() {
             )}
           </div>
         </div>
+
+        {showResultPopup && (
+          <div className="fixed inset-0 z-50 bg-black/65 flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-2xl border border-white/20 bg-[#031a37] p-6 shadow-2xl">
+              <h3 className={`text-2xl font-extrabold mb-2 ${playerWon ? "text-green-300" : "text-red-300"}`}>{playerWon ? "🏆 You Won!" : "💥 You Lost"}</h3>
+              <p className="text-white/80 mb-3">Choose replay or quit. Auto-quit in <span className="font-mono font-bold text-yellow-300">{replayCountdown}s</span>.</p>
+              {replayMessage && <p className="text-sm text-cyan-300 mb-4">{replayMessage}</p>}
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => respondReplay("replay")}
+                  disabled={sendingReplayDecision}
+                  className="py-2 rounded-lg bg-yellow-400 text-[#08213d] font-bold hover:bg-yellow-300 disabled:bg-slate-500"
+                >
+                  Replay
+                </button>
+                <button
+                  onClick={() => respondReplay("quit")}
+                  disabled={sendingReplayDecision}
+                  className="py-2 rounded-lg bg-slate-700 text-white font-bold hover:bg-slate-600 disabled:bg-slate-500"
+                >
+                  Quit
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

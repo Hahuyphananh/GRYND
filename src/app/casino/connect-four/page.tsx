@@ -13,6 +13,7 @@ export default function ConnectFourLobbyPage() {
   const router = useRouter();
 
   const [betAmount, setBetAmount] = useState(10);
+  const [timerSeconds, setTimerSeconds] = useState(60);
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
@@ -65,7 +66,7 @@ export default function ConnectFourLobbyPage() {
       const res = await fetch("/api/connect-four/create-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ betAmount }),
+        body: JSON.stringify({ betAmount, timerSeconds }),
       });
       const data = await res.json();
 
@@ -118,7 +119,7 @@ export default function ConnectFourLobbyPage() {
             Balance: <span className="font-bold text-[#FFD700]">{balance.toFixed(2)}</span> tokens
           </div>
 
-          <div className="grid md:grid-cols-3 gap-3 items-end">
+          <div className="grid md:grid-cols-4 gap-3 items-end">
             <div className="md:col-span-1">
               <label className="text-sm text-white/80">Bet amount</label>
               <input
@@ -129,6 +130,19 @@ export default function ConnectFourLobbyPage() {
                 onChange={(e) => setBetAmount(Number(e.target.value))}
                 className="w-full mt-1 p-3 rounded-lg bg-[#08142f] border border-[#00e5ff]/40"
               />
+            </div>
+            <div className="md:col-span-1">
+              <label className="text-sm text-white/80">Turn timer</label>
+              <select
+                value={timerSeconds}
+                onChange={(e) => setTimerSeconds(Number(e.target.value))}
+                className="w-full mt-1 p-3 rounded-lg bg-[#08142f] border border-[#00e5ff]/40"
+              >
+                <option value={10}>10 seconds</option>
+                <option value={30}>30 seconds</option>
+                <option value={60}>60 seconds</option>
+                <option value={120}>120 seconds</option>
+              </select>
             </div>
             <button onClick={createGame} disabled={loading} className="p-3 rounded-xl bg-[#FFD700] text-[#030817] hover:bg-[#ffe14f] font-bold shadow-[0_0_14px_rgba(255,215,0,0.45)] disabled:bg-[#7f8520] disabled:text-[#c6c6c6]">
               {loading ? "Creating..." : "Create Game"}
@@ -153,7 +167,7 @@ export default function ConnectFourLobbyPage() {
                 <div key={game.id} className="flex items-center justify-between rounded-xl bg-[#08142f] p-3 border border-[#00e5ff]/20">
                   <div>
                     <p className="font-semibold">Game #{game.id}</p>
-                    <p className="text-sm text-white/75">Host: {game.hostName || "Player"} · Bet: {Number(game.betAmount).toFixed(2)}</p>
+                    <p className="text-sm text-white/75">Host: {game.hostName || "Player"} · Bet: {Number(game.betAmount).toFixed(2)} · Timer: {Number(game.timerSeconds || 60)}s</p>
                   </div>
                   <button
                     onClick={() => joinGame(game.id)}
