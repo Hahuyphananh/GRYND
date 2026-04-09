@@ -220,12 +220,14 @@ const [showRules, setShowRules] = useState(false);
       <NavigationBar currentPath="/casino" />
       <div className="mx-auto max-w-4xl px-4 py-8">
         <div className="mb-4 flex justify-between text-[#FFD700]">
-          <h1 className="text-xl font-bold">Blackjack</h1>
+          <h1 className="text-3xl font-bold">Blackjack</h1>
         </div>
 
         {error && <div className="mb-4 bg-red-500/10 p-3 text-red-500 rounded">{error}</div>}
 
-        <div className="bg-[#0e6b0e] p-6 border-[10px] border-[#5c3b15] rounded-lg shadow-inner bg-gradient-to-b from-[#117a11] to-[#0e6b0e]">
+        <div className="p-6 rounded-2xl border border-[#00e5ff]/40 
+bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814]
+shadow-[0_0_60px_rgba(0,229,255,0.35),inset_0_0_30px_rgba(0,229,255,0.1)]">
           {/* Dealer */}
           <h2 className="text-[#FFD700] mb-2 text-center">Dealer</h2>
           {gameState !== "playing" && dealerCards.length > 0 && (
@@ -327,14 +329,21 @@ const [showRules, setShowRules] = useState(false);
           onChange={(e) =>
             setBet(Math.min(Number(e.target.value), userTokens ?? Number(e.target.value)))
           }
-          className="text-center text-[#030817] font-semibold rounded-lg px-4 py-2 w-32 outline-none border-2 border-[#FFD700] bg-[#fff9d6] focus:ring-2 focus:ring-[#FFD700]"
+          className="text-center w-32 px-4 py-2 rounded-lg 
+bg-[#00111f] text-[#d8fbff] 
+border border-[#00e5ff]/40 
+focus:outline-none focus:ring-2 focus:ring-[#00e5ff]/60
+shadow-[inset_0_0_10px_rgba(0,229,255,0.2)]"
         />
 
         <button
           onClick={() => {
             if (userTokens) setBet(Math.max(1, Math.floor(userTokens / 2)));
           }}
-          className="bg-[#FFD700] px-3 py-1 rounded text-[#030817] font-semibold glow-pulse more-hover"
+          className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 
+px-6 py-2 text-[#d8fbff] font-semibold 
+hover:bg-[#00e5ff]/35 active:scale-95 transition 
+shadow-[0_0_12px_rgba(0,229,255,0.35)]"
         >
           ½
         </button>
@@ -343,7 +352,10 @@ const [showRules, setShowRules] = useState(false);
           onClick={() => {
             if (userTokens) setBet(userTokens);
           }}
-          className="bg-[#FFD700] px-3 py-1 rounded text-[#030817] font-semibold glow-pulse more-hover"
+          className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 
+px-6 py-2 text-[#d8fbff] font-semibold 
+hover:bg-[#00e5ff]/35 active:scale-95 transition 
+shadow-[0_0_12px_rgba(0,229,255,0.35)]"
         >
           ALL IN
         </button>
@@ -357,22 +369,32 @@ const [showRules, setShowRules] = useState(false);
     </div>
 
     <button
-      onClick={startGame}
-      className="bg-[#FFD700] px-6 py-2 rounded text-[#030817] font-semibold mt-3 glow-pulse more-hover animated-button"
-    >
-      Miser
-    </button>
+  onClick={startGame}
+  className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 
+  px-6 py-2 text-[#d8fbff] font-semibold 
+  hover:bg-[#00e5ff]/35 active:scale-95 transition 
+  shadow-[0_0_14px_rgba(0,229,255,0.4)] w-64 text-center"
+>
+  Miser
+</button>
       <div className="flex justify-center mt-6">
   <button
     onClick={() => setShowRules(!showRules)}
-    className="px-4 py-2 bg-[#FFD700] text-[#030817] font-bold rounded-lg shadow hover:scale-105 transition"
+    className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 
+px-6 py-2 text-[#d8fbff] font-semibold 
+hover:bg-[#00e5ff]/35 active:scale-95 transition 
+shadow-[0_0_12px_rgba(0,229,255,0.35)] w-64"
   >
     {showRules ? "Hide Rules ▲" : "Show Rules ▼"}
   </button>
 </div>
 
 {showRules && (
-  <div className="mt-4 w-full bg-[#003300] border-4 border-[#5c3b15] rounded-xl p-6 text-white shadow-lg">
+  <div className="mt-4 w-full 
+bg-[#00111f]/90 backdrop-blur-sm 
+border border-[#00e5ff]/30 
+rounded-xl p-6 text-[#d8fbff] 
+shadow-[0_0_25px_rgba(0,229,255,0.2)]">
     
     <h2 className="text-2xl font-bold text-[#FFD700] mb-4 text-center">
       Blackjack Rules
@@ -431,20 +453,29 @@ const [showRules, setShowRules] = useState(false);
     <div className="flex justify-center gap-4 mt-4 flex-wrap">
       <button
         onClick={hit}
-        className="bg-[#FFD700] px-6 py-2 rounded text-[#030817] font-semibold glow-pulse more-hover"
+        className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 
+px-6 py-2 text-[#d8fbff] font-semibold 
+hover:bg-[#00e5ff]/35 active:scale-95 transition 
+shadow-[0_0_12px_rgba(0,229,255,0.35)]"
       >
         Carte
       </button>
       <button
         onClick={stand}
-        className="bg-[#FFD700] px-6 py-2 rounded text-[#030817] font-semibold glow-pulse more-hover"
+        className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 
+px-6 py-2 text-[#d8fbff] font-semibold 
+hover:bg-[#00e5ff]/35 active:scale-95 transition 
+shadow-[0_0_12px_rgba(0,229,255,0.35)]"
       >
         Rester
       </button>
       {canDouble && (
         <button
           onClick={doubleDown}
-          className="bg-[#FFD700] px-6 py-2 rounded text-[#030817] font-semibold glow-pulse more-hover"
+          className="rounded-lg border border-[#c084fc]/40 bg-[#c084fc]/20 
+px-6 py-2 text-[#f5e9ff] font-semibold 
+hover:bg-[#c084fc]/35 active:scale-95 transition 
+shadow-[0_0_12px_rgba(192,132,252,0.4)]"
         >
           Double
         </button>
@@ -452,7 +483,10 @@ const [showRules, setShowRules] = useState(false);
       {canSplit && (
         <button
           onClick={splitHand}
-          className="bg-[#FFD700] px-6 py-2 rounded text-[#030817] font-semibold glow-pulse more-hover"
+          className="rounded-lg border border-[#ff4df0]/40 bg-[#ff4df0]/20 
+px-6 py-2 text-[#ffe6fb] font-semibold 
+hover:bg-[#ff4df0]/35 active:scale-95 transition 
+shadow-[0_0_12px_rgba(255,77,240,0.4)]"
         >
           Split
         </button>
@@ -460,7 +494,10 @@ const [showRules, setShowRules] = useState(false);
       {isSplit && (
         <button
           onClick={nextSplitHand}
-          className="bg-[#FFD700] px-6 py-2 rounded text-[#030817] font-semibold glow-pulse more-hover"
+          className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 
+px-6 py-2 text-[#d8fbff] font-semibold 
+hover:bg-[#00e5ff]/35 active:scale-95 transition 
+shadow-[0_0_12px_rgba(0,229,255,0.35)]"
         >
           Next Hand
         </button>

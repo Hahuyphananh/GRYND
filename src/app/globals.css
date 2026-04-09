@@ -326,6 +326,32 @@ a[class*="bg-[#f5ff3b]"] {
   border: 1px solid rgba(255,255,255,0.08);
 }
 
+@keyframes borderFlowX {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes borderFlowY {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+.animate-borderFlowX {
+  animation: borderFlowX 2s linear infinite;
+}
+
+.animate-borderFlowX.reverse {
+  animation-direction: reverse;
+}
+
+.animate-borderFlowY {
+  animation: borderFlowY 2s linear infinite;
+}
+
+.animate-borderFlowY.reverse {
+  animation-direction: reverse;
+}
+
 /* Secondary panels (like Mines sidebars) */
 :root[data-theme='light'] .bg-\[\#0055aa\] {
   background-color: #1565c0 !important;
