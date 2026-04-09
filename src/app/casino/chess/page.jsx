@@ -135,11 +135,11 @@ export default function ChessLobby() {
   }
 
   return (
-    <div className="min-h-screen bg-[#030817] text-white p-6 text-center">
+    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-6 text-center">
       <NavigationBar currentPath="/casino" />
-      <h1 className="text-4xl font-bold text-[#FFD700] mb-8 mt-12">♟️ Chess Tables</h1>
+      <h1 className="text-4xl font-bold text-[#FFD700] mb-8 mt-12 drop-shadow-[0_0_12px_rgba(255,215,0,0.55)]">♟️ Chess Tables</h1>
 
-      <div className="max-w-4xl mx-auto bg-[#002147] p-6 rounded-xl border border-[#FFD700]/40 mb-8">
+      <div className="max-w-4xl mx-auto bg-[#0b224f]/85 p-6 rounded-xl border border-[#00e5ff]/30 mb-8 shadow-[0_0_24px_rgba(0,229,255,0.18)]">
         <h2 className="text-2xl font-bold text-[#FFD700] mb-4">Create Multiplayer Game</h2>
         <p className="text-white/80 mb-5">Select exactly 1 table and 1 timer, then create your game.</p>
 
@@ -152,8 +152,8 @@ export default function ChessLobby() {
                 onClick={() => setSelectedTable(amount)}
                 className={`px-6 py-4 rounded-lg text-xl font-semibold border-2 ${
                   selectedTable === amount
-                    ? "bg-[#FFD700] text-[#030817] border-[#FFD700]"
-                    : "bg-[#030817] text-[#FFD700] border-[#FFD700]/40 hover:bg-[#081a3d]"
+                    ? "bg-[#FFD700] text-[#030817] border-[#FFD700] shadow-[0_0_14px_rgba(255,215,0,0.45)]"
+                    : "bg-[#08142f] text-[#a8f4ff] border-[#00e5ff]/40 hover:bg-[#0d335f]"
                 }`}
               >
                 ${amount} Table
@@ -171,8 +171,8 @@ export default function ChessLobby() {
                 onClick={() => setSelectedTimer(timer.id)}
                 className={`px-6 py-4 rounded-lg text-xl font-semibold border-2 min-w-[190px] ${
                   selectedTimer === timer.id
-                    ? "bg-[#FFD700] text-[#030817] border-[#FFD700]"
-                    : "bg-[#030817] text-[#FFD700] border-[#FFD700]/40 hover:bg-[#081a3d]"
+                    ? "bg-[#FFD700] text-[#030817] border-[#FFD700] shadow-[0_0_14px_rgba(255,215,0,0.45)]"
+                    : "bg-[#08142f] text-[#a8f4ff] border-[#00e5ff]/40 hover:bg-[#0d335f]"
                 }`}
               >
                 <div>{timer.label}</div>
@@ -185,7 +185,7 @@ export default function ChessLobby() {
         <button
           onClick={createGame}
           disabled={!selectedTable || !selectedTimer || creatingGame}
-          className="bg-green-600 text-white px-8 py-3 rounded-lg text-lg font-bold hover:bg-green-500 disabled:bg-green-900 disabled:cursor-not-allowed"
+          className="bg-[#FFD700] text-[#030817] px-8 py-3 rounded-lg text-lg font-bold hover:bg-[#ffe14f] shadow-[0_0_16px_rgba(255,215,0,0.45)] disabled:bg-[#7f8520] disabled:text-[#c6c6c6] disabled:cursor-not-allowed"
         >
           {creatingGame ? "Creating..." : "Create Game"}
         </button>
@@ -194,18 +194,18 @@ export default function ChessLobby() {
       <div className="flex justify-center mb-8">
         <button
           onClick={() => setShowBetPopup(true)}
-          className="bg-green-500 text-white px-6 py-4 rounded-lg text-xl font-semibold hover:bg-green-400"
+          className="bg-[#00e5ff] text-[#001933] px-6 py-4 rounded-lg text-xl font-semibold hover:bg-[#49eeff] shadow-[0_0_14px_rgba(0,229,255,0.45)]"
         >
           Play vs AI 🤖
         </button>
       </div>
 
-      <div className="max-w-3xl mx-auto mt-10 bg-[#002147] p-5 rounded-xl border border-[#FFD700]/40 text-left">
+      <div className="max-w-3xl mx-auto mt-10 bg-[#0b224f]/85 p-5 rounded-xl border border-[#00e5ff]/30 text-left shadow-[0_0_24px_rgba(0,229,255,0.18)]">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-bold text-[#FFD700]">Available Games</h2>
           <button
             onClick={fetchAvailableGames}
-            className="bg-[#FFD700] text-[#030817] px-4 py-2 rounded-lg font-semibold hover:bg-[#FFD700]/80"
+            className="bg-[#00e5ff] text-[#001933] px-4 py-2 rounded-lg font-semibold hover:bg-[#49eeff] shadow-[0_0_10px_rgba(0,229,255,0.35)]"
           >
             {isLoadingAvailableGames ? "Refreshing..." : "Refresh"}
           </button>
@@ -216,7 +216,7 @@ export default function ChessLobby() {
         ) : (
           <div className="space-y-3">
             {availableGames.map((game) => (
-              <div key={game.id} className="flex items-center justify-between bg-[#030817] rounded-lg p-3">
+              <div key={game.id} className="flex items-center justify-between bg-[#08142f] border border-[#00e5ff]/20 rounded-lg p-3">
                 <div>
                   <p className="font-semibold">Game #{game.id}</p>
                   <p className="text-sm text-white/80">
@@ -226,7 +226,7 @@ export default function ChessLobby() {
                 <button
                   onClick={() => joinSpecificGame(game.id)}
                   disabled={joiningGameId === game.id}
-                  className="bg-green-600 px-4 py-2 rounded-lg font-bold hover:bg-green-700 disabled:bg-green-800"
+                  className="bg-[#00e5ff] text-[#001933] px-4 py-2 rounded-lg font-bold hover:bg-[#49eeff] disabled:bg-[#246874]"
                 >
                   {joiningGameId === game.id ? "Joining..." : "Join"}
                 </button>
@@ -237,23 +237,23 @@ export default function ChessLobby() {
       </div>
 
       {showBetPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-          <div className="bg-white text-black p-8 rounded-lg w-96 shadow-lg">
-            <h2 className="text-2xl font-bold mb-4 text-center">Enter Your Bet Amount</h2>
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50">
+          <div className="bg-[#08142f] text-white p-8 rounded-lg w-96 border border-[#00e5ff]/40 shadow-[0_0_22px_rgba(0,229,255,0.25)]">
+            <h2 className="text-2xl font-bold mb-4 text-center text-[#FFD700]">Enter Your Bet Amount</h2>
 
             <input
               type="number"
               min="1"
               value={betAmount}
               onChange={(e) => setBetAmount(e.target.value)}
-              className="w-full border px-3 py-2 mb-4 rounded"
+              className="w-full border border-[#00e5ff]/40 bg-[#0d335f] px-3 py-2 mb-4 rounded"
               placeholder="Bet amount"
             />
 
             <div className="flex justify-between">
               <button
                 onClick={() => setShowBetPopup(false)}
-                className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.35)]"
               >
                 Cancel
               </button>
@@ -261,7 +261,7 @@ export default function ChessLobby() {
               <button
                 onClick={startAIGame}
                 disabled={!betAmount}
-                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:bg-green-300"
+                className="bg-[#FFD700] text-[#030817] px-4 py-2 rounded hover:bg-[#ffe14f] disabled:bg-[#7f8520] disabled:text-[#c6c6c6]"
               >
                 Start Game
               </button>

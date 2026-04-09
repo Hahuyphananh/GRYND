@@ -428,7 +428,7 @@ export default function RPSGame() {
     <div className="flex flex-col md:flex-row min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
       <NavigationBar currentPath="/casino" />
 
-      <div className="w-full max-w-[380px] md:max-w-[380px] bg-[#0b224f] rounded-xl p-6 flex flex-col gap-6 shadow-lg mx-auto md:mx-0 mb-6 md:mb-0">
+      <div className="w-full max-w-[380px] md:max-w-[380px] bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 flex flex-col gap-6 shadow-[0_0_24px_rgba(0,229,255,0.18)] mx-auto md:mx-0 mb-6 md:mb-0">
         <h1 className="text-3xl font-bold text-yellow-400 text-center whitespace-nowrap mt-20">
           ✊ Rock Paper Scissors
         </h1>
@@ -439,7 +439,7 @@ export default function RPSGame() {
           <button
             onClick={() => setMode("pve")}
             className={`px-4 py-2 rounded font-bold ${
-              mode === "pve" ? "bg-yellow-500 text-black" : "bg-gray-600"
+              mode === "pve" ? "bg-[#FFD700] text-[#030817] shadow-[0_0_12px_rgba(255,215,0,0.4)]" : "bg-[#0d335f]"
             }`}
           >
             PvE
@@ -448,7 +448,7 @@ export default function RPSGame() {
           <button
             onClick={() => setMode("pvp")}
             className={`px-4 py-2 rounded font-bold ${
-              mode === "pvp" ? "bg-yellow-500 text-black" : "bg-gray-600"
+              mode === "pvp" ? "bg-[#FFD700] text-[#030817] shadow-[0_0_12px_rgba(255,215,0,0.4)]" : "bg-[#0d335f]"
             }`}
           >
             PvP
@@ -463,7 +463,7 @@ export default function RPSGame() {
             max={tokens}
             value={betAmount}
             onChange={(e) => setBetAmount(Number(e.target.value))}
-            className="text-black rounded px-2 py-1 w-20 text-center"
+            className="bg-[#08142f] border border-[#00e5ff]/40 text-white rounded px-2 py-1 w-20 text-center"
           />
           <span>tokens</span>
         </div>
@@ -473,12 +473,12 @@ export default function RPSGame() {
             <button
               onClick={placeBet}
               disabled={loading}
-              className="bg-gradient-to-b from-yellow-400 to-yellow-600 text-black px-6 py-3 rounded-xl font-bold shadow-lg hover:from-yellow-300 hover:to-yellow-500 disabled:opacity-50"
+              className="bg-[#FFD700] text-[#030817] px-6 py-3 rounded-xl font-bold shadow-[0_0_16px_rgba(255,215,0,0.45)] hover:bg-[#ffe14f] disabled:opacity-50"
             >
               {loading ? "Betting..." : "Place Bet"}
             </button>
 
-            <div className="mt-4 bg-[#08142f] p-4 rounded-lg border border-yellow-400">
+            <div className="mt-4 bg-[#08142f] p-4 rounded-lg border border-[#00e5ff]/40 shadow-[0_0_16px_rgba(0,229,255,0.14)]">
               <label className="flex items-center gap-2 font-semibold mb-2">
                 <input
                   type="checkbox"
@@ -510,7 +510,7 @@ export default function RPSGame() {
                         mode: e.target.value as "finite" | "infinite",
                       }))
                     }
-                    className="w-full rounded border border-yellow-400 bg-[#102542] px-2 py-1 text-center text-white"
+                    className="w-full rounded border border-[#00e5ff]/40 bg-[#102542] px-2 py-1 text-center text-white"
                   >
                     <option value="finite">Finite</option>
                     <option value="infinite">Infinite</option>
@@ -527,7 +527,7 @@ export default function RPSGame() {
                           spinsLeft: Number(e.target.value),
                         }))
                       }
-                      className="w-full mt-2 rounded border border-yellow-400 bg-[#102542] px-2 py-1 text-center text-white"
+                      className="w-full mt-2 rounded border border-[#00e5ff]/40 bg-[#102542] px-2 py-1 text-center text-white"
                     />
                   )}
 
@@ -543,7 +543,7 @@ export default function RPSGame() {
               )}
             </div>
             {/* RPS Game Rules */}
-<div className="mt-4 bg-[#08142f] p-4 rounded-lg border border-yellow-400">
+<div className="mt-4 bg-[#08142f] p-4 rounded-lg border border-[#00e5ff]/40 shadow-[0_0_16px_rgba(0,229,255,0.14)]">
   <button
     onClick={() => setShowRpsRules(!showRpsRules)}
     className="w-full text-left font-bold text-yellow-400 flex justify-between items-center"
@@ -623,7 +623,7 @@ export default function RPSGame() {
               <button
                 onClick={createPvpGame}
                 disabled={pvpActionLoading}
-                className="bg-green-600 hover:bg-green-700 px-6 py-3 rounded font-bold disabled:opacity-50"
+                className="bg-[#FFD700] text-[#030817] hover:bg-[#ffe14f] px-6 py-3 rounded font-bold shadow-[0_0_14px_rgba(255,215,0,0.42)] disabled:opacity-50"
               >
                 Create Game
               </button>
@@ -645,7 +645,7 @@ export default function RPSGame() {
                 <button
                   onClick={fetchAvailablePvpGames}
                   disabled={isLoadingPvpGames}
-                  className="bg-[#f5ff3b] hover:bg-[#d9e332] px-3 py-1 rounded text-sm font-semibold disabled:opacity-50"
+                  className="bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] px-3 py-1 rounded text-sm font-semibold disabled:opacity-50"
                 >
                   {isLoadingPvpGames ? "Refreshing..." : "Refresh"}
                 </button>
@@ -666,7 +666,7 @@ export default function RPSGame() {
                       <button
                         onClick={() => joinPvpGame(game.id)}
                         disabled={pvpActionLoading || Boolean(pvpGameId)}
-                        className="bg-[#f5ff3b] hover:bg-[#d9e332] px-3 py-1 rounded text-sm font-semibold disabled:opacity-50"
+                        className="bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] px-3 py-1 rounded text-sm font-semibold disabled:opacity-50"
                       >
                         Join
                       </button>

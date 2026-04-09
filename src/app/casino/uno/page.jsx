@@ -621,7 +621,7 @@ const displayedCard =
 
 return (
 
-  <div className="bg-[#030817] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8 page-enter">
+  <div className="bg-gradient-to-br from-[#001933] to-[#000d1a] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8 page-enter">
  <NavigationBar currentPath="/casino" />
     <h1 className="text-3xl mb-2 font-bold">{gameMode === "online" ? "UNO 1v1 en ligne" : "UNO vs IA"}</h1>
 
@@ -632,7 +632,7 @@ return (
     )}
 
     {!game ? (
-  <div className="w-full max-w-4xl aspect-[2/1] bg-green-700/90 rounded-full flex flex-col items-center justify-center shadow-2xl border-8 border-green-950 p-8 text-center casino-surface">
+  <div className="w-full max-w-4xl aspect-[2/1] bg-[#0b224f]/85 rounded-[2rem] flex flex-col items-center justify-center shadow-[0_0_28px_rgba(0,229,255,0.2)] border-2 border-[#00e5ff]/35 p-8 text-center casino-surface">
     <h2 className="text-2xl font-bold mb-6 text-white">Prépare ta partie</h2>
 
     <label className="mb-6 text-lg font-semibold flex flex-col items-center">
@@ -641,7 +641,7 @@ return (
         type="number"
         value={betAmount}
         onChange={(e) => setBetAmount(Number(e.target.value))}
-        className="text-black px-3 py-1 rounded text-center w-32"
+        className="bg-[#08142f] border border-[#00e5ff]/40 text-white px-3 py-1 rounded text-center w-32"
         min={1}
         max={1000}
       />
@@ -650,14 +650,14 @@ return (
     <button
       onClick={() => setShowGameModeModal(true)}
       disabled={loading || !!waitingGameId}
-      className="bg-yellow-500 hover:bg-yellow-600 text-black px-8 py-3 rounded-full font-bold shadow-lg transition"
+      className="bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] px-8 py-3 rounded-full font-bold shadow-[0_0_16px_rgba(255,215,0,0.45)] transition"
     >
       {loading ? "Chargement..." : "Commencer une partie"}
     </button>
 <button
   onClick={joinOnlineGame}
   disabled={loading || !!waitingGameId}
-  className="mt-4 bg-[#f5ff3b] hover:bg-[#f5ff3b] text-white px-8 py-3 rounded-full font-bold shadow-lg transition"
+  className="mt-4 bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933] px-8 py-3 rounded-full font-bold shadow-[0_0_16px_rgba(0,229,255,0.45)] transition"
 >
   {loading ? "Recherche..." : "Rejoindre une partie"}
 </button>
@@ -665,19 +665,19 @@ return (
   <button
     onClick={cancelWaitingOnlineGame}
     disabled={isCancellingWaitingGame}
-    className="mt-3 bg-red-500 hover:bg-red-600 text-white px-8 py-2 rounded-full font-bold shadow-lg transition"
+    className="mt-3 bg-red-600 hover:bg-red-500 text-white px-8 py-2 rounded-full font-bold shadow-[0_0_12px_rgba(239,68,68,0.35)] transition"
   >
     {isCancellingWaitingGame ? "Annulation..." : "Annuler la partie en attente"}
   </button>
 )}
 
-    <div className="mt-6 w-full max-w-md bg-green-800/70 rounded-2xl p-4 border border-green-900">
+    <div className="mt-6 w-full max-w-md bg-[#08142f] rounded-2xl p-4 border border-[#00e5ff]/30 shadow-[0_0_16px_rgba(0,229,255,0.16)]">
       <div className="flex justify-between items-center mb-3">
   <h3 className="text-lg font-bold">Parties en ligne disponibles</h3>
   <button
     onClick={fetchAvailableGames}
     disabled={isLoadingAvailableGames}
-    className="bg-[#f5ff3b] hover:bg-[#f5ff3b] text-white px-3 py-1 rounded-md text-sm font-semibold"
+    className="bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933] px-3 py-1 rounded-md text-sm font-semibold shadow-[0_0_10px_rgba(0,229,255,0.35)]"
   >
     {isLoadingAvailableGames ? "..." : "🔄 Refresh"}
   </button>
@@ -691,7 +691,7 @@ return (
           {availableGames.slice(0, 6).map((onlineGame) => (
             <li
               key={onlineGame.id}
-              className="flex justify-between items-center bg-green-900/60 rounded-lg px-3 py-2"
+              className="flex justify-between items-center bg-[#0d335f]/80 border border-[#00e5ff]/20 rounded-lg px-3 py-2"
             >
               <span>
                 {onlineGame.hostName} • Mise: {onlineGame.betAmount}
@@ -701,7 +701,7 @@ return (
                 disabled={!onlineGame.canAfford || loading || !!waitingGameId}
                 className={`px-3 py-1 rounded-md font-semibold ${
                   onlineGame.canAfford && !waitingGameId
-                    ? "bg-[#f5ff3b] hover:bg-[#f5ff3b] text-white"
+                    ? "bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933]"
                     : "bg-gray-600 text-gray-200 cursor-not-allowed"
                 }`}
               >
@@ -715,28 +715,28 @@ return (
 
     {showGameModeModal && (
       <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-        <div className="bg-white text-black rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-          <h3 className="text-xl font-bold mb-4 text-center">Choisir un mode</h3>
+        <div className="bg-[#08142f] text-white border border-[#00e5ff]/40 rounded-2xl p-6 w-full max-w-sm shadow-[0_0_20px_rgba(0,229,255,0.22)]">
+          <h3 className="text-xl font-bold mb-4 text-center text-[#FFD700]">Choisir un mode</h3>
           <div className="flex flex-col gap-3">
             <button
               onClick={() => {
                 setShowGameModeModal(false);
                 initializeGame();
               }}
-              className="bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold hover-lift"
+              className="bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] px-4 py-2 rounded-lg font-bold hover-lift"
             >
               Jouer contre l'IA
             </button>
             <button
               onClick={createOnlineGame}
               disabled={!!waitingGameId}
-              className="bg-[#f5ff3b] hover:bg-[#f5ff3b] text-white px-4 py-2 rounded-lg font-bold hover-lift"
+              className="bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933] px-4 py-2 rounded-lg font-bold hover-lift"
             >
               Créer une partie multijoueur
             </button>
             <button
               onClick={() => setShowGameModeModal(false)}
-              className="bg-gray-300 hover:bg-gray-400 text-black px-4 py-2 rounded-lg font-semibold"
+              className="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-semibold shadow-[0_0_10px_rgba(239,68,68,0.35)]"
             >
               Annuler
             </button>

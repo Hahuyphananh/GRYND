@@ -107,15 +107,15 @@ export default function ConnectFourLobbyPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#06264c] to-[#021228] text-white px-6 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white px-6 py-8">
       <NavigationBar currentPath="/casino" />
       <div className="max-w-4xl mx-auto mt-12">
-        <h1 className="text-4xl font-extrabold text-center text-yellow-300 mb-3">🟡🔴 Connect Four Lobby</h1>
+        <h1 className="text-4xl font-extrabold text-center text-[#FFD700] mb-3 drop-shadow-[0_0_12px_rgba(255,215,0,0.55)]">🟡🔴 Connect Four Lobby</h1>
         <p className="text-center text-white/80 mb-8">Create, join, and wager in live multiplayer Connect Four games.</p>
 
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="bg-[#0a2f59]/80 border border-yellow-300/30 rounded-2xl p-6 shadow-2xl">
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-2xl p-6 shadow-[0_0_28px_rgba(0,229,255,0.2)]">
           <div className="text-center mb-4 text-lg">
-            Balance: <span className="font-bold text-yellow-300">{balance.toFixed(2)}</span> tokens
+            Balance: <span className="font-bold text-[#FFD700]">{balance.toFixed(2)}</span> tokens
           </div>
 
           <div className="grid md:grid-cols-3 gap-3 items-end">
@@ -127,22 +127,22 @@ export default function ConnectFourLobbyPage() {
                 min={1}
                 max={balance}
                 onChange={(e) => setBetAmount(Number(e.target.value))}
-                className="w-full mt-1 p-3 rounded-lg bg-black/30 border border-white/20"
+                className="w-full mt-1 p-3 rounded-lg bg-[#08142f] border border-[#00e5ff]/40"
               />
             </div>
-            <button onClick={createGame} disabled={loading} className="p-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold disabled:bg-emerald-900">
+            <button onClick={createGame} disabled={loading} className="p-3 rounded-xl bg-[#FFD700] text-[#030817] hover:bg-[#ffe14f] font-bold shadow-[0_0_14px_rgba(255,215,0,0.45)] disabled:bg-[#7f8520] disabled:text-[#c6c6c6]">
               {loading ? "Creating..." : "Create Game"}
             </button>
-            <button onClick={() => joinGame()} disabled={loading} className="p-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold disabled:bg-indigo-900">
+            <button onClick={() => joinGame()} disabled={loading} className="p-3 rounded-xl bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] font-bold shadow-[0_0_14px_rgba(0,229,255,0.45)] disabled:bg-[#246874] disabled:text-[#c6c6c6]">
               {loading ? "Joining..." : "Quick Join"}
             </button>
           </div>
         </motion.div>
 
-        <div className="mt-6 bg-[#0a2f59]/80 border border-yellow-300/20 rounded-2xl p-5">
+        <div className="mt-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-2xl p-5 shadow-[0_0_22px_rgba(0,229,255,0.15)]">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-yellow-300">Available Games</h2>
-            <button onClick={fetchGames} className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-sm">Refresh</button>
+            <h2 className="text-2xl font-bold text-[#FFD700]">Available Games</h2>
+            <button onClick={fetchGames} className="px-3 py-1 rounded-lg bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] text-sm font-semibold shadow-[0_0_10px_rgba(0,229,255,0.35)]">Refresh</button>
           </div>
 
           {availableGames.length === 0 ? (
@@ -150,7 +150,7 @@ export default function ConnectFourLobbyPage() {
           ) : (
             <div className="space-y-3">
               {availableGames.map((game) => (
-                <div key={game.id} className="flex items-center justify-between rounded-xl bg-black/30 p-3 border border-white/10">
+                <div key={game.id} className="flex items-center justify-between rounded-xl bg-[#08142f] p-3 border border-[#00e5ff]/20">
                   <div>
                     <p className="font-semibold">Game #{game.id}</p>
                     <p className="text-sm text-white/75">Host: {game.hostName || "Player"} · Bet: {Number(game.betAmount).toFixed(2)}</p>
@@ -158,7 +158,7 @@ export default function ConnectFourLobbyPage() {
                   <button
                     onClick={() => joinGame(game.id)}
                     disabled={loading || joiningId === game.id}
-                    className="px-4 py-2 rounded-lg bg-[#f5ff3b] hover:bg-[#f5ff3b] font-bold disabled:bg-[#7f8520]"
+                    className="px-4 py-2 rounded-lg bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] font-bold disabled:bg-[#246874]"
                   >
                     {joiningId === game.id ? "Joining..." : "Join"}
                   </button>
