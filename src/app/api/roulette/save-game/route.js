@@ -61,10 +61,6 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: "Invalid bet amount" }, { status: 400 });
     }
 
-    if (Number(user.balance) < totalBetAmount) {
-      return NextResponse.json({ success: false, error: "Insufficient balance" }, { status: 400 });
-    }
-
     const spinResultIndex = Math.floor(Math.random() * rouletteNumbers.length);
     const spinResult = rouletteNumbers[spinResultIndex];
     const payout = calculatePayout(bets, spinResult);
@@ -73,8 +69,12 @@ export async function POST(req) {
     const [updatedUser] = await db
       .update(users)
       .set({ balance: sql`${users.balance} - ${totalBetAmount} + ${payout}` })
-      .where(eq(users.clerkId, userId))
+      .where(sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${totalBetAmount}`)
       .returning({ balance: users.balance });
+
+    if (!updatedUser) {
+      return NextResponse.json({ success: false, error: "Insufficient balance" }, { status: 400 });
+    }
 
     // Record the game
     await db.insert(rouletteGames).values({

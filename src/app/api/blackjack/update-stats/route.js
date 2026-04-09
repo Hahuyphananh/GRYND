@@ -1,6 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
+import { db } from "../../../../db/client";
+import { users, blackjackGames } from "../../../../db/schema";
+import { eq, sql } from "drizzle-orm";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
+
+const RESULT_MAP = new Set(["win", "lose", "push", "bust"]);
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -14,50 +18,62 @@ export async function POST(request) {
 
   try {
     const parsed = await parseAndValidateJson(request, {
-      won: { type: "number", required: false, min: 0, max: 1, default: 0 },
-      blackjack: { type: "number", required: false, min: 0, max: 1, default: 0 },
+      result: { type: "string", required: true },
       amount: { type: "number", required: true, min: 0, max: 1000000 },
-      winAmount: { type: "number", required: true, min: 0, max: 1000000 },
+      payout: { type: "number", required: true, min: 0, max: 1000000 },
+      blackjack: { type: "number", required: false, min: 0, max: 1, default: 0 },
     });
 
     if (!parsed.ok) return parsed.response;
 
-    const { amount, winAmount } = parsed.data;
-    const won = Boolean(parsed.data.won);
-    const blackjack = Boolean(parsed.data.blackjack);
-
-    const existingGames = await sql`
-      SELECT * FROM blackjack_games 
-      WHERE user_id = ${userId}
-    `;
-
-    if (existingGames.rows.length === 0) {
-      await sql`
-        INSERT INTO blackjack_games 
-        (user_id, games_played, games_won, blackjacks, total_wagered, total_won)
-        VALUES 
-        (${userId}, 1, ${won ? 1 : 0}, ${blackjack ? 1 : 0}, ${amount}, ${winAmount})
-      `;
-    } else {
-      await sql`
-        UPDATE blackjack_games 
-        SET 
-          games_played = games_played + 1,
-          games_won = games_won + ${won ? 1 : 0},
-          blackjacks = blackjacks + ${blackjack ? 1 : 0},
-          total_wagered = total_wagered + ${amount},
-          total_won = total_won + ${winAmount}
-        WHERE user_id = ${userId}
-      `;
+    const result = String(parsed.data.result);
+    if (!RESULT_MAP.has(result)) {
+      return new Response(JSON.stringify({ error: "Invalid result" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
+    const amount = Number(parsed.data.amount);
+    const payout = Number(parsed.data.payout);
+
+    const user = await db.query.users.findFirst({
+      where: eq(users.clerkId, userId),
     });
+
+    if (!user) {
+      return new Response(JSON.stringify({ error: "User not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const [updatedUser] = await db
+      .update(users)
+      .set({ balance: sql`${users.balance} + ${payout}` })
+      .where(eq(users.id, user.id))
+      .returning({ balance: users.balance });
+
+    await db.insert(blackjackGames).values({
+      userId: user.id,
+      betAmount: amount.toFixed(2),
+      result: result === "push" ? "draw" : (result === "win" ? "win" : "lose"),
+      payout: payout.toFixed(2),
+    });
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: { newBalance: Number(updatedUser?.balance ?? user.balance), payout },
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   } catch (error) {
-    console.error("Error updating blackjack games:", error);
-    return new Response(JSON.stringify({ error: "Failed to update blackjack games" }), {
+    console.error("Error updating blackjack game:", error);
+    return new Response(JSON.stringify({ error: "Failed to settle blackjack game" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });

@@ -9,8 +9,13 @@ import { claimIdempotency } from "../../../lib/security/idempotency";
 
 const LOGIN_REWARD_BASE = 100;
 const MAX_DAY = 14;
-const COOLDOWN_HOURS = 24;
-const STREAK_RESET_HOURS = 48;
+const COOLDOWN_DAYS = 1;
+const STREAK_RESET_DAYS = 2;
+
+function toUtcDayKey(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
 
 export async function POST(req) {
   try {
@@ -61,16 +66,14 @@ export async function POST(req) {
     }
 
     const now = new Date();
+    const nowDayKey = toUtcDayKey(now);
 
     if (rewardData.lastClaimedDate) {
-
       const lastClaim = new Date(rewardData.lastClaimedDate);
-
-      const hoursSinceClaim =
-        (now.getTime() - lastClaim.getTime()) / (1000 * 60 * 60);
+      const elapsedDays = Math.floor((nowDayKey - toUtcDayKey(lastClaim)) / (1000 * 60 * 60 * 24));
 
       // ✅ RESET streak if missed too long
-      if (hoursSinceClaim > STREAK_RESET_HOURS) {
+      if (elapsedDays > STREAK_RESET_DAYS) {
 
         await db.update(userLoginRewards)
           .set({
@@ -82,18 +85,12 @@ export async function POST(req) {
       }
 
       // ✅ Cooldown check
-      if (hoursSinceClaim < COOLDOWN_HOURS) {
-
-        const remainingMs =
-          COOLDOWN_HOURS * 60 * 60 * 1000 -
-          (now.getTime() - lastClaim.getTime());
-
-        const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+      if (elapsedDays < COOLDOWN_DAYS) {
 
         return NextResponse.json(
           {
             success: false,
-            error: `Reward already claimed. Try again in ${remainingHours}h.`,
+            error: "Reward already claimed today. Try again tomorrow.",
           },
           { status: 400 }
         );
@@ -117,7 +114,7 @@ export async function POST(req) {
     await db.update(userLoginRewards)
       .set({
         currentDay: nextDay,
-        lastClaimedDate: now,
+        lastClaimedDate: now.toISOString().slice(0, 10),
       })
       .where(eq(userLoginRewards.userId, uid));
 
