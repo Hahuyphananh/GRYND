@@ -21,7 +21,14 @@ export async function POST(req) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
-    const { betAmount, mines } = await req.json();
+    let payload = {};
+    try {
+      payload = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
+    }
+
+    const { betAmount, mines } = payload;
     const bet = Number(betAmount);
     const minesCount = Number(mines);
 
@@ -61,6 +68,9 @@ export async function POST(req) {
     return response;
   } catch (error) {
     console.error('Error starting mines game:', error);
-    return NextResponse.json({ success: false, error: 'Server error' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : 'Server error' },
+      { status: 500 }
+    );
   }
 }
