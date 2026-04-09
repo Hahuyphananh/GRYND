@@ -168,14 +168,12 @@ const [showRules, setShowRules] = useState(false);
   const endGame = async (result: string) => {
     let winAmount = 0;
     let msg = "";
-    let won = false;
     let blackjack = playerCards.length === 2 && calculateHandValue(playerCards) === 21;
 
     switch (result) {
       case "win":
         winAmount = blackjack ? bet * 2.5 : bet * 2;
         msg = blackjack ? "Blackjack ! Vous avez gagné !" : "Vous avez gagné !";
-        won = true;
         break;
       case "push":
         winAmount = bet;
@@ -193,7 +191,7 @@ const [showRules, setShowRules] = useState(false);
       await fetch("/api/blackjack/update-stats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ won, blackjack, amount: bet, winAmount: winAmount - bet }),
+        body: JSON.stringify({ result, blackjack, amount: bet, payout: winAmount }),
       });
 
       await fetchUserTokens();

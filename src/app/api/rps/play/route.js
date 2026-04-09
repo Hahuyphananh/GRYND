@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { users, rpsGames } from "../../../../db/schema"; // ✅ import rpsGames
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 // Random AI choice
 function getAIChoice() {
@@ -53,22 +53,23 @@ export async function POST(req) {
     const aiChoice = getAIChoice();
     const result = getResult(choice, aiChoice);
 
-    let newBalance = Number(user.balance);
     let payout = 0;
     let newStreak = result === "win" ? winStreak + 1 : 0;
+    let balanceDelta = 0;
 
     if (result === "win") {
       payout = betAmount * FIXED_MULTIPLIER;
-      newBalance += payout;
+      balanceDelta = payout;
     } else if (result === "lose") {
-      newBalance -= betAmount;
+      balanceDelta = -betAmount;
     }
 
-    // ✅ Update balance
-    await db
+    // ✅ Update balance atomically
+    const [updated] = await db
       .update(users)
-      .set({ balance: newBalance.toString() })
-      .where(eq(users.id, user.id));
+      .set({ balance: sql`${users.balance} + ${balanceDelta}` })
+      .where(eq(users.id, user.id))
+      .returning({ balance: users.balance });
 
     // ✅ Insert into rps_games table
     await db.insert(rpsGames).values({
@@ -83,7 +84,7 @@ export async function POST(req) {
     return NextResponse.json({
       aiChoice,
       result,
-      newBalance,
+      newBalance: Number(updated?.balance ?? user.balance),
       payout: payout.toFixed(2),
       winStreak: newStreak,
       multiplier: FIXED_MULTIPLIER.toFixed(2),

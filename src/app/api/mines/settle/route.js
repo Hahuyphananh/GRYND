@@ -1,7 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { db } from '../../../../db/client';
 import { users, minesGames } from '../../../../db/schema'; // ✅ added minesGames
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { verifySignedSession } from '../../../../lib/serverSession';
 
@@ -66,13 +66,12 @@ export async function POST(req) {
     const betAmount = Number(session.bet);
     const multiplier = calculateMultiplier(mines, revealedCount);
     const payout = Number((betAmount * multiplier).toFixed(2));
-    const newBalance = Number(user.balance) + payout;
-
-    // Update user balance
-    await db
+    // Update user balance atomically
+    const [credited] = await db
       .update(users)
-      .set({ balance: newBalance })
-      .where(eq(users.clerkId, userId));
+      .set({ balance: sql`${users.balance} + ${payout}` })
+      .where(eq(users.clerkId, userId))
+      .returning({ balance: users.balance });
 
     // ✅ Record Mines game result
     await db.insert(minesGames).values({
@@ -89,7 +88,7 @@ export async function POST(req) {
     const response = NextResponse.json({
       success: true,
       data: {
-        newBalance: newBalance,
+        newBalance: Number(credited?.balance ?? user.balance),
         result: 'win',
         payout
       }
