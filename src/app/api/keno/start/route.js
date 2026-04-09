@@ -1,5 +1,5 @@
 import { getAuth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { users, keno_games } from "../../../../db/schema";
 
@@ -38,13 +38,10 @@ export async function POST(req) {
       });
     }
 
-    const userRows = await db
-      .select()
-      .from(users)
-      .where(eq(users.clerkId, userId))
-      .limit(1);
+    const user = await db.query.users.findFirst({
+      where: eq(users.clerkId, userId),
+    });
 
-    const user = userRows.length ? userRows[0] : null;
     if (!user) {
       return new Response(JSON.stringify({ error: "User not found" }), {
         status: 404,
@@ -52,18 +49,18 @@ export async function POST(req) {
       });
     }
 
-    if (Number(user.balance) < betAmount) {
+    const [deducted] = await db
+      .update(users)
+      .set({ balance: sql`${users.balance} - ${betAmount}` })
+      .where(sql`${users.id} = ${user.id} AND ${users.balance} >= ${betAmount}`)
+      .returning({ balance: users.balance });
+
+    if (!deducted) {
       return new Response(JSON.stringify({ error: "Not enough balance" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
     }
-
-    // Deduct bet amount
-    await db
-      .update(users)
-      .set({ balance: Number(user.balance) - betAmount })
-      .where(eq(users.id, user.id));
 
     // Draw 10 unique winning numbers (1-40)
     const available = Array.from({ length: 40 }, (_, i) => i + 1);
@@ -99,7 +96,7 @@ export async function POST(req) {
       await db
         .update(users)
         .set({
-          balance: Number(user.balance) - betAmount + payout,
+          balance: sql`${users.balance} + ${payout}`,
           gamesWon: (user.gamesWon ?? 0) + 1,
         })
         .where(eq(users.id, user.id));
