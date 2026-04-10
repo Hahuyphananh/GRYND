@@ -137,7 +137,7 @@ export default function ChessLobby() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-6 text-center">
       <NavigationBar currentPath="/casino" />
-      <h1 className="text-4xl font-bold text-[#FFD700] mb-8 mt-12 drop-shadow-[0_0_12px_rgba(255,215,0,0.55)]">♟️ Chess Tables</h1>
+      <h1 className="text-4xl font-bold text-[#FFD700] mb-4 mt-20 drop-shadow-[0_0_12px_rgba(255,215,0,0.55)]">♟️ Chess Tables</h1>
 
       <div className="max-w-4xl mx-auto bg-[#0b224f]/85 p-6 rounded-xl border border-[#00e5ff]/30 mb-8 shadow-[0_0_24px_rgba(0,229,255,0.18)]">
         <h2 className="text-2xl font-bold text-[#FFD700] mb-4">Create Multiplayer Game</h2>

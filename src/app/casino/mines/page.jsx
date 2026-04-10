@@ -427,9 +427,8 @@ async function handleClick(index) {
   );
 }
 
-
 return (
-  <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center justify-center p-4 relative">
+ <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center justify-start pt-24 p-4 relative">
     <NavigationBar currentPath="/casino" />
   
    <div className={`bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] rounded-2xl border border-[#00e5ff]/40 p-8 w-full max-w-6xl min-w-[80%] shadow-[0_0_60px_rgba(0,229,255,0.2),inset_0_0_30px_rgba(0,229,255,0.08)] ${gameOver ? "relative" : ""}`}>

@@ -650,14 +650,20 @@ return (
     <button
       onClick={() => setShowGameModeModal(true)}
       disabled={loading || !!waitingGameId}
-      className="bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] px-8 py-3 rounded-full font-bold shadow-[0_0_16px_rgba(255,215,0,0.45)] transition"
+      className="px-8 py-3 rounded-full font-bold text-[#031026]
+bg-[#f5ff3b] hover:bg-[#edf734]
+shadow-[0_0_18px_rgba(245,255,59,0.55),0_0_40px_rgba(245,255,59,0.25)]
+hover:scale-105 transition-all duration-300"
     >
       {loading ? "Chargement..." : "Commencer une partie"}
     </button>
 <button
   onClick={joinOnlineGame}
   disabled={loading || !!waitingGameId}
-  className="mt-4 bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933] px-8 py-3 rounded-full font-bold shadow-[0_0_16px_rgba(0,229,255,0.45)] transition"
+  className="mt-4 px-8 py-3 rounded-full font-bold text-[#001933]
+bg-[#00e5ff] hover:bg-[#49eeff]
+shadow-[0_0_18px_rgba(0,229,255,0.7),0_0_50px_rgba(0,229,255,0.3)]
+hover:scale-105 transition-all duration-300"
 >
   {loading ? "Recherche..." : "Rejoindre une partie"}
 </button>
@@ -723,14 +729,22 @@ return (
                 setShowGameModeModal(false);
                 initializeGame();
               }}
-              className="bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] px-4 py-2 rounded-lg font-bold hover-lift"
+              className="px-4 py-2 rounded-lg font-bold
+bg-[#00e5ff] hover:bg-[#49eeff]
+text-[#001933]
+shadow-[0_0_14px_rgba(0,229,255,0.6)]
+hover:scale-105 transition-all duration-300"
             >
               Jouer contre l'IA
             </button>
             <button
               onClick={createOnlineGame}
               disabled={!!waitingGameId}
-              className="bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933] px-4 py-2 rounded-lg font-bold hover-lift"
+              className="px-4 py-2 rounded-lg font-bold
+bg-[#00e5ff] hover:bg-[#49eeff]
+text-[#001933]
+shadow-[0_0_14px_rgba(0,229,255,0.6)]
+hover:scale-105 transition-all duration-300"
             >
               Créer une partie multijoueur
             </button>
@@ -751,7 +765,7 @@ return (
     )}
   </div>
 ) : (
-  <div className="w-full max-w-5xl aspect-[2/1] bg-green-700/90 rounded-full flex flex-col justify-between items-center shadow-2xl border-8 border-green-950 p-6 relative casino-surface overflow-hidden">
+  <div className="w-full max-w-5xl aspect-[2/1] bg-green-700/90 rounded-full flex flex-col justify-between items-center shadow-2xl border-8 border-green-950 p-6 relative casino-surface overflow-visible">
     {/* Opponent hand */}
     <div className={`px-4 py-1 rounded-full ${!isPlayerTurn ? "turn-active-glow" : ""}`}>{gameMode === "online" ? "Main adverse:" : "Main de l'IA:"}</div>
     <div className="flex justify-center gap-2">
@@ -904,10 +918,14 @@ return (
     )}
 
     {/* Draw & replay buttons */}
-    <div className="flex flex-col items-center mt-4">
+    <div className="flex flex-col items-center mt-6 relative z-50">
       <button
         onClick={drawCard}
-        className="mb-2 bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded hover-lift"
+        className="mb-2 px-5 py-2 rounded-full font-bold
+bg-[#f5ff3b] hover:bg-[#edf734]
+text-[#031026]
+shadow-[0_0_16px_rgba(245,255,59,0.5)]
+hover:scale-105 transition-all"
       >
         Piocher une carte
       </button>
@@ -915,7 +933,11 @@ return (
   <button
     onClick={resignGame}
     disabled={isResigning}
-    className="mt-2 bg-red-600 hover:bg-red-700 disabled:bg-red-900 text-white px-6 py-2 rounded font-bold"
+    className="mt-3 px-6 py-2 rounded-full font-bold text-white
+bg-red-600 hover:bg-red-500
+shadow-[0_0_18px_rgba(239,68,68,0.7),0_0_40px_rgba(239,68,68,0.3)]
+relative z-50
+transition-all duration-300"
   >
     {isResigning ? "Abandon..." : "❌ Abandonner"}
   </button>
@@ -952,14 +974,22 @@ return (
 <div className="mt-4 w-full max-w-md">
   <button
     onClick={() => setShowRules(!showRules)}
-    className="w-full bg-green-900 hover:bg-green-950 text-white px-6 py-3 rounded-xl font-bold text-left flex justify-between"
+    className="w-full px-6 py-3 rounded-xl font-bold text-left flex justify-between
+bg-[#001933] hover:bg-[#002b55]
+border border-[#00e5ff]/30
+shadow-[0_0_12px_rgba(0,229,255,0.25)]
+transition"
   >
     Règles du jeu (UNO)
     <span>{showRules ? "▲" : "▼"}</span>
   </button>
 
   {showRules && (
-    <div className="bg-green-900/80 mt-2 p-6 rounded-xl text-sm border border-green-700 text-left">
+    <div className="mt-2 p-6 rounded-2xl text-sm text-left
+bg-gradient-to-br from-[#000814] via-[#001933] to-[#000814]
+border border-[#00e5ff]/40
+shadow-[0_0_20px_rgba(0,229,255,0.25)]
+backdrop-blur-sm">
       <h3 className="font-bold mb-2">🎯 Objectif</h3>
       <p className="mb-3">
         Le but est d’être le premier joueur à se débarrasser de toutes ses cartes. 
