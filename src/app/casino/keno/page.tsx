@@ -143,7 +143,10 @@ export default function KenoGame() {
         🪙 Balance: {userBalance ?? '...'}
       </div>
 
-      <h1 className="text-3xl font-bold mb-6 text-[#FFD700] mt-12 drop-shadow-[0_0_12px_rgba(255,215,0,0.55)]">🎯 Keno</h1>
+      <h1 className="text-3xl font-extrabold tracking-wider text-transparent bg-clip-text 
+               bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] mt-20 mb-6">
+  ⚡ KENO
+</h1>
 
       {error && (
         <div className="bg-red-500/20 text-red-300 px-4 py-2 rounded mb-4">
@@ -151,25 +154,61 @@ export default function KenoGame() {
         </div>
       )}
 
-      <div className="mb-4 flex gap-4 items-center">
-        <div>
-          <label>Bet Amount:</label>
-          <input
-            type="number"
-            min={1}
-            value={betAmount}
-            onChange={(e) => setBetAmount(Number(e.target.value))}
-            className="bg-[#08142f] border border-[#00e5ff]/40 text-white rounded px-2 py-1 w-20"
-          />
-        </div>
+      <div className="bg-[#050d1f]/80 backdrop-blur-xl border border-[#00e5ff]/40 
+                shadow-[0_0_25px_rgba(0,229,255,0.25),inset_0_0_25px_rgba(0,229,255,0.08)]
+                p-5 rounded-2xl flex flex-wrap gap-4 items-end mb-6">
 
-        <button onClick={handleAutoPick} className="bg-[#00e5ff] text-[#001933] px-4 py-1 rounded hover:bg-[#49eeff] shadow-[0_0_12px_rgba(0,229,255,0.35)]">
-          Auto Pick
-        </button>
-        <button onClick={handleClear} className="bg-red-600 px-4 py-1 rounded hover:bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.35)]">
-          Clear Table
-        </button>
-      </div>
+  {/* Bet Input */}
+  <div className="flex flex-col gap-1">
+    <label className="text-sm text-gray-300">Bet Amount</label>
+    <input
+      type="number"
+      min={1}
+      value={betAmount}
+      onChange={(e) => setBetAmount(Number(e.target.value))}
+      className="bg-[#020617] border border-[#00e5ff]/30 
+                 focus:border-[#00e5ff] focus:shadow-[0_0_15px_rgba(0,229,255,0.6)]
+                 rounded-xl px-3 py-3 text-white outline-none transition-all duration-300 w-28"
+    />
+  </div>
+
+  <button
+        onClick={handleBet}
+        disabled={loading}
+       className={`py-3 px-8 rounded-xl font-bold text-lg transition-all duration-300
+  ${
+    loading
+      ? "bg-[#1a2333] text-gray-400 border border-gray-600"
+      : "bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-[#001933] border border-[#ff4fd8] shadow-[0_0_20px_#ff4fd8] hover:shadow-[0_0_35px_#a855f7] hover:scale-105"
+  }
+`}
+      >
+        {loading ? 'Playing...' : 'Bet'}
+      </button>
+
+  {/* Auto Pick */}
+  <button
+    onClick={handleAutoPick}
+    className="px-5 py-3 rounded-xl font-bold transition-all duration-300
+               bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933]
+               border border-[#00e5ff]
+               shadow-[0_0_20px_rgba(0,229,255,0.6)]
+               hover:shadow-[0_0_35px_rgba(0,255,166,1)] hover:scale-105"
+  >
+    AUTO PICK
+  </button>
+
+  {/* Clear */}
+  <button
+    onClick={handleClear}
+    className="px-5 py-3 rounded-xl font-bold transition-all duration-300
+               bg-[#1a2333] text-gray-400 border border-gray-600
+               hover:bg-[#2a3446] hover:text-white"
+  >
+    CLEAR
+  </button>
+
+</div>
 
       {/* Gameboard */}
       <div className="mb-6 bg-[#0b224f]/85 border-2 border-[#00e5ff]/35 rounded-2xl shadow-[0_0_24px_rgba(0,229,255,0.2)] p-6">
@@ -189,17 +228,18 @@ export default function KenoGame() {
   onClick={() => toggleNumber(num)}
   disabled={isDisabled}
   className={`relative w-16 h-16 flex items-center justify-center rounded-xl text-lg font-bold transition-all duration-300
-    ${
-      isMatch
-        ? 'bg-green-400 text-black scale-110 ring-4 ring-green-300 shadow-[0_0_25px_6px_rgba(34,197,94,0.9)] animate-pulse'
-        : isWinning
-        ? 'bg-green-400/40 text-white'
-        : isSelected
-        ? 'bg-[#FFD700] text-[#030817] shadow-[0_0_16px_rgba(255,215,0,0.45)] scale-105'
-        : isDisabled
-        ? 'bg-[#002244] opacity-40 cursor-not-allowed'
-        : 'bg-[#08142f] hover:bg-[#0d335f] border border-[#00e5ff]/40'
-    }`}
+
+${
+  isMatch
+    ? 'bg-[#00ffa6] text-[#001933] scale-110 ring-4 ring-[#00ffa6]/70 shadow-[0_0_30px_rgba(0,255,166,1)] animate-pulse'
+    : isWinning
+    ? 'bg-[#00ffa6]/30 text-white'
+    : isSelected
+    ? 'bg-[#00e5ff] text-[#001933] shadow-[0_0_20px_rgba(0,229,255,0.8)] scale-105'
+    : isDisabled
+    ? 'bg-[#002244] opacity-40 cursor-not-allowed'
+    : 'bg-[#020617] border border-[#00e5ff]/30 hover:border-[#00e5ff] hover:shadow-[0_0_15px_rgba(0,229,255,0.6)]'
+}`}
 >
   {num}
 
@@ -216,8 +256,11 @@ export default function KenoGame() {
           </div>
 
           {/* Multiplier panel */}
-          <div className="w-40 bg-[#08142f] border-2 border-[#00e5ff]/35 rounded-xl p-3 flex flex-col gap-2 shadow-[0_0_12px_rgba(0,229,255,0.15)]">
-            <h3 className="text-center font-bold text-[#FFD700] mb-2">Payouts</h3>
+          <div className="w-44 bg-[#020617]/80 backdrop-blur-xl border border-[#00e5ff]/40 
+                rounded-xl p-4 flex flex-col gap-2
+                shadow-[0_0_20px_rgba(0,229,255,0.2)] flex flex-col gap-2 shadow-[0_0_12px_rgba(0,229,255,0.15)]">
+            <h3 className="text-center font-bold text-transparent bg-clip-text 
+               bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] mb-2">Payouts</h3>
 
             {Object.entries(payoutTable).map(([hits, mult]) => {
               const isActive =
@@ -249,16 +292,10 @@ export default function KenoGame() {
         </div>
       </div>
 
-      <button
-        onClick={handleBet}
-        disabled={loading}
-        className="bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] font-bold px-6 py-2 rounded shadow-[0_0_16px_rgba(255,215,0,0.45)]"
-      >
-        {loading ? 'Playing...' : 'Bet'}
-      </button>
-
       {result && (
-        <div className="mt-6 bg-[#08142f] border border-[#00e5ff]/25 p-4 rounded shadow-[0_0_12px_rgba(0,229,255,0.15)]">
+        <div className="mt-6 bg-[#050d1f]/80 backdrop-blur-xl border border-[#00e5ff]/40 
+                p-4 rounded-xl 
+                shadow-[0_0_20px_rgba(0,229,255,0.2)]">
           <p>🎯 Winning Numbers: {result.winningNumbers.join(', ')}</p>
           <p>✅ Matches: {result.matches.length}</p>
           <p>💰 Payout: {result.payout} tokens</p>

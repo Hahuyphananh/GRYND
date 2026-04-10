@@ -423,7 +423,13 @@ function toCanvasPoint(mult) {
  <NavigationBar currentPath="/casino" />
       <div className="flex flex-col lg:flex-row w-full max-w-7xl gap-4 mt-16">
         {/* Left Panel - BetPanel + Crash History */}
-        <div className="bg-[#0b224f]/85 border border-[#00e5ff]/30 shadow-[0_0_18px_rgba(0,229,255,0.18)] p-4 rounded-lg w-full lg:w-1/4 flex flex-col">
+        <div className="bg-[#050d1f]/80 
+border border-[#00e5ff]/40 
+backdrop-blur-xl
+shadow-[0_0_25px_rgba(0,229,255,0.25),inset_0_0_25px_rgba(0,229,255,0.08)]
+p-4 rounded-2xl
+relative overflow-hidden w-full lg:w-1/4 flex flex-col">
+  <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent opacity-70" />
           <BetPanel
             placeBet={placeBet}
             hasBet={hasBet}
@@ -439,7 +445,7 @@ function toCanvasPoint(mult) {
                 <div
                   key={index}
                   className={`px-3 py-1 rounded-full text-sm font-bold ${
-                    mult < 2 ? "bg-red-500" : mult < 5 ? "bg-[#00e5ff] text-[#001933]" : "bg-[#FFD700] text-[#030817]"
+                    mult < 2 ? "bg-[#3b0a0a] border border-red-500 shadow-[0_0_10px_rgba(255,0,0,0.6)]" : mult < 5 ? "bg-[#031b2e] border border-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.6)] text-[#001933]" : "bg-[#2a2200] border border-[#FFD700] shadow-[0_0_10px_rgba(255,215,0,0.7)] text-[#030817]"
                   }`}
                 >
                   {mult}x
@@ -453,7 +459,12 @@ function toCanvasPoint(mult) {
         </div>
 
         {/* Center */}
-<div className="relative bg-[#0b224f]/85 border border-[#00e5ff]/30 shadow-[0_0_18px_rgba(0,229,255,0.18)] p-4 rounded-lg w-full lg:w-2/4 h-[600px] overflow-hidden flex items-center justify-center">
+<div className="relative bg-[#050d1f]/80 
+border border-[#00e5ff]/40 
+backdrop-blur-xl
+shadow-[0_0_25px_rgba(0,229,255,0.25),inset_0_0_25px_rgba(0,229,255,0.08)]
+p-4 rounded-2xl
+relative overflow-hidden w-full lg:w-2/4 h-[600px] overflow-hidden flex items-center justify-center">
 
   {/* Space background (NEW — does not affect anything else) */}
   <div className="absolute inset-0 space-bg" />
@@ -485,20 +496,29 @@ function toCanvasPoint(mult) {
 
           {isCrashed && <div className="absolute top-20 text-6xl">💥</div>}
 
-          <div className="text-5xl font-bold z-30 mt-12">
+          <div className="text-5xl font-extrabold z-30 mt-12 tracking-wider
+text-transparent bg-clip-text 
+bg-gradient-to-r from-[#00e5ff] via-[#00ffa6] to-[#FFD700]
+drop-shadow-[0_0_20px_rgba(0,229,255,0.8)]">
             {isCrashed ? "CRASHED!" : `${displayMultiplier.toFixed(2)}x`}
           </div>
         </div>
 
         {/* Right Panel */}
-        <div className="bg-[#0b224f]/85 border border-[#00e5ff]/30 shadow-[0_0_18px_rgba(0,229,255,0.18)] p-4 rounded-lg w-full lg:w-1/4 flex flex-col">
+        <div className="bg-[#050d1f]/80 
+border border-[#00e5ff]/40 
+backdrop-blur-xl
+shadow-[0_0_25px_rgba(0,229,255,0.25),inset_0_0_25px_rgba(0,229,255,0.08)]
+p-4 rounded-2xl
+relative overflow-hidden w-full lg:w-1/4 flex flex-col">
+  <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent opacity-70" />
           <div className="mb-6 flex flex-col gap-3">
             {!gameRunning && !isCountingDown && (
               <button
                 onClick={startGame}
                 className={`px-4 py-3 rounded-lg font-bold text-lg w-full ${
                   hasBet && betAmount && betAmount !== "0"
-                    ? "bg-[#FFD700] text-[#030817] hover:bg-[#ffe14f] shadow-[0_0_16px_rgba(255,215,0,0.45)]"
+                    ? "bg-gradient-to-r from-[#00e5ff] to-[#007cf0] text-white border border-[#00e5ff] shadow-[0_0_18px_rgba(0,229,255,0.5)] hover:shadow-[0_0_30px_rgba(0,229,255,0.9)] hover:scale-105 transition-all duration-300 shadow-[0_0_16px_rgba(255,215,0,0.45)]"
                     : "bg-gray-500 cursor-not-allowed"
                 }`}
                 disabled={!hasBet || !betAmount || betAmount === "0"}
@@ -521,14 +541,26 @@ function toCanvasPoint(mult) {
             {gameRunning && (
               <button
                 onClick={cashOut}
-                className="bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] px-4 py-3 rounded-lg font-bold text-lg w-full shadow-[0_0_14px_rgba(0,229,255,0.4)]"
+                className="bg-gradient-to-r from-[#00ffa6] to-[#00e5ff]
+text-[#001933]
+border border-[#00ffa6]
+shadow-[0_0_20px_rgba(0,255,166,0.6)]
+hover:shadow-[0_0_35px_rgba(0,255,166,1)]
+hover:scale-105
+transition-all duration-300 text-[#001933] hover:bg-[#49eeff] px-4 py-3 rounded-lg font-bold text-lg w-full shadow-[0_0_14px_rgba(0,229,255,0.4)]"
               >
                 💰 Cash Out
               </button>
             )}
             <Link
               href="/casino"
-              className="bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] px-4 py-3 rounded-lg font-bold text-lg text-center shadow-[0_0_14px_rgba(255,215,0,0.45)]"
+              className="bg-gradient-to-r from-[#ff4fd8] to-[#ff00aa]
+text-white
+border border-[#ff4fd8]
+shadow-[0_0_18px_rgba(255,79,216,0.5)]
+hover:shadow-[0_0_30px_rgba(255,79,216,0.9)]
+hover:scale-105
+transition-all duration-300 hover:bg-[#ffe14f] text-[#030817] px-4 py-3 rounded-lg font-bold text-lg text-center shadow-[0_0_14px_rgba(255,215,0,0.45)]"
             >
               Return to Casino
             </Link>
@@ -545,7 +577,10 @@ function toCanvasPoint(mult) {
 
       {showCashoutPopup && cashoutPopupMultiplier !== null && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center px-4">
-          <div className="bg-[#08142f] border border-[#00e5ff]/40 rounded-xl p-6 text-center w-full max-w-sm shadow-[0_0_20px_rgba(0,229,255,0.22)]">
+          <div className="bg-[#050d1f] 
+border border-[#00e5ff]/40 
+shadow-[0_0_30px_rgba(0,229,255,0.35)]
+backdrop-blur-xl border border-[#00e5ff]/40 rounded-xl p-6 text-center w-full max-w-sm shadow-[0_0_20px_rgba(0,229,255,0.22)]">
             <h3 className="text-2xl font-bold text-[#FFD700] mb-2">Cash Out Successful</h3>
             <p className="text-lg mb-6">You cashed out at {cashoutPopupMultiplier.toFixed(2)}x.</p>
             <button

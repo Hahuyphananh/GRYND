@@ -336,6 +336,16 @@ a[class*="bg-[#f5ff3b]"] {
   100% { transform: translateY(100%); }
 }
 
+.space-bg {
+  background: radial-gradient(circle at 50% 50%, rgba(0,229,255,0.08), transparent 60%);
+  animation: pulseGlow 4s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.9; }
+}
+
 .animate-borderFlowX {
   animation: borderFlowX 2s linear infinite;
 }

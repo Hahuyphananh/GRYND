@@ -385,9 +385,9 @@ useEffect(() => {
         <div className="relative z-20 mx-auto max-w-7xl text-center">
       <h1
   className="mb-4 text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text 
-  bg-gradient-to-r from-yellow-300 via-yellow-400 to-yellow-300
-  drop-shadow-[0_0_10px_rgba(0,229,255,0.5)] tracking-widest uppercase 
-  animate-[shimmerGradient_8s_ease-in-out_infinite]"
+bg-gradient-to-r from-[#ff4fd8] via-[#00e5ff] to-[#ff4fd8]
+drop-shadow-[0_0_50px_rgba(255,79,216,0.5)] tracking-widest uppercase 
+animate-[shimmerGradient_8s_ease-in-out_infinite]"
   style={{ backgroundSize: "200% auto" }}
 >
   Pariez sur vos Sports Préférés et Jouez au Casino
@@ -400,13 +400,13 @@ useEffect(() => {
    <div className="flex flex-col space-y-4 sm:flex-row sm:justify-center sm:space-x-4 sm:space-y-0">
   <a
     href="/sign-up"
-    className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-8 py-4 text-lg font-medium text-[#041125] transition-all glow-pulse commencer-hover cyber-glow-button"
+    className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] px-8 py-4 text-lg font-medium text-[#041125] transition-all shadow-[0_0_16px_#00ffa6] hover:shadow-[0_0_25px_rgba(0, 255, 166,0.65)] hover:scale-105"
   >
     Commencer à Parier
   </a>
   <a
     href="/casino"
-    className="inline-block rounded-lg border-2 border-[#00e5ff] px-8 py-4 text-lg font-medium text-[#00e5ff] transition-all glow-pulse decouvrir-hover cyber-glow-button"
+    className="inline-block rounded-lg border border-[#ff4fd8]/40 bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] px-8 py-4 text-lg font-medium text-[#041125] transition-all shadow-[0_0_16px_rgba(168,85,247,0.5)] hover:shadow-[0_0_25px_rgba(255,79,216,0.65)] hover:scale-105"
   >
     Découvrir le Casino
   </a>
