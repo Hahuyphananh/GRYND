@@ -27,6 +27,7 @@ export default function KenoGame() {
   const [highlightedWins, setHighlightedWins] = useState<number[]>([]);
   const [animationDone, setAnimationDone] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showWinScreen, setShowWinScreen] = useState(false);
 
   const fetchUserBalance = async () => {
     if (!user) return;
@@ -71,11 +72,16 @@ export default function KenoGame() {
 
     let i = 0;
     const interval = setInterval(() => {
-      if (i >= result.winningNumbers.length) {
-        clearInterval(interval);
-        setAnimationDone(true);
-        return;
-      }
+       if (i >= result.winningNumbers.length) {
+  clearInterval(interval);
+  setAnimationDone(true);
+
+  if (result.payout > 0) {
+    setTimeout(() => setShowWinScreen(true), 400);
+  }
+
+  return;
+}
       setHighlightedWins((prev) => [...prev, result.winningNumbers[i]]);
       i++;
     }, 300);
@@ -223,30 +229,33 @@ export default function KenoGame() {
               const isMatch = isSelected && isWinning;
 
               return (
-        <button
+<button
   key={num}
   onClick={() => toggleNumber(num)}
   disabled={isDisabled}
-  className={`relative w-16 h-16 flex items-center justify-center rounded-xl text-lg font-bold transition-all duration-300
+  className={`relative w-16 h-16 flex items-center justify-center rounded-xl text-lg font-bold transition-all duration-300 overflow-hidden
 
-${
-  isMatch
-    ? 'bg-[#00ffa6] text-[#001933] scale-110 ring-4 ring-[#00ffa6]/70 shadow-[0_0_30px_rgba(0,255,166,1)] animate-pulse'
-    : isWinning
-    ? 'bg-[#00ffa6]/30 text-white'
-    : isSelected
-    ? 'bg-[#00e5ff] text-[#001933] shadow-[0_0_20px_rgba(0,229,255,0.8)] scale-105'
-    : isDisabled
-    ? 'bg-[#002244] opacity-40 cursor-not-allowed'
-    : 'bg-[#020617] border border-[#00e5ff]/30 hover:border-[#00e5ff] hover:shadow-[0_0_15px_rgba(0,229,255,0.6)]'
-}`}
+  ${
+    isMatch
+      ? 'bg-[#00ffa6] text-[#001933] scale-110 ring-4 ring-[#00ffa6]/70 shadow-[0_0_30px_rgba(0,255,166,1)] animate-pulse'
+      : isWinning
+      ? 'bg-[#00ffa6]/30 text-white'
+      : isSelected
+      ? 'bg-[#00e5ff] text-[#001933] shadow-[0_0_20px_rgba(0,229,255,0.8)] scale-105'
+      : isDisabled
+      ? 'bg-[#002244] opacity-40 cursor-not-allowed'
+      : 'bg-[#020617] border border-[#00e5ff]/30 hover:border-[#00e5ff] hover:shadow-[0_0_15px_rgba(0,229,255,0.6)]'
+  }`}
 >
   {num}
 
+  {/* 🔥 Glow trail */}
+  {isWinning && (
+    <span className="absolute inset-0 bg-gradient-to-r from-transparent via-[#00ffa6]/60 to-transparent animate-[slide_0.6s_linear]" />
+  )}
+
   {isMatch && (
-    <span className="absolute top-1 right-1 text-xs">
-      🔥
-    </span>
+    <span className="absolute top-1 right-1 text-xs">🔥</span>
   )}
 </button>
 
@@ -354,6 +363,42 @@ ${
     </div>
   )}
 </div>
+{showWinScreen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md">
+
+    {/* Glow background */}
+    <div className="absolute w-[400px] h-[400px] bg-[#00ffa6]/20 blur-3xl animate-pulse"></div>
+
+    <div className="relative bg-[#050d1f]/90 border border-[#00e5ff]/40 
+                    shadow-[0_0_40px_rgba(0,229,255,0.4)]
+                    rounded-2xl p-8 text-center w-[320px]">
+
+      <h2 className="text-2xl font-extrabold mb-4 text-transparent bg-clip-text 
+                     bg-gradient-to-r from-[#00e5ff] to-[#00ffa6]">
+        🎉 YOU WON
+      </h2>
+
+      <p className="text-lg text-white mb-2">
+        Matches: <span className="text-[#00ffa6] font-bold">{result?.matches.length}</span>
+      </p>
+
+      <p className="text-xl font-bold text-[#00e5ff] drop-shadow-[0_0_12px_rgba(0,229,255,0.8)] mb-6">
+        +{result?.payout} TOKENS
+      </p>
+
+      <button
+        onClick={() => setShowWinScreen(false)}
+        className="w-full py-3 rounded-xl font-bold transition-all duration-300
+                   bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933]
+                   border border-[#00e5ff]
+                   shadow-[0_0_20px_rgba(0,229,255,0.6)]
+                   hover:shadow-[0_0_35px_rgba(0,255,166,1)] hover:scale-105"
+      >
+        CONTINUE
+      </button>
+    </div>
+  </div>
+)}
     </div>
   );
 }

@@ -428,44 +428,58 @@ export default function RPSGame() {
     <div className="flex flex-col md:flex-row min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
       <NavigationBar currentPath="/casino" />
 
-      <div className="w-full max-w-[380px] md:max-w-[380px] bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 flex flex-col gap-6 shadow-[0_0_24px_rgba(0,229,255,0.18)] mx-auto md:mx-0 mb-6 md:mb-0">
-        <h1 className="text-3xl font-bold text-yellow-400 text-center whitespace-nowrap mt-20">
-          ✊ Rock Paper Scissors
-        </h1>
+      <div className="w-full max-w-[380px] md:max-w-[380px] bg-[#050d1f]/80 backdrop-blur-xl border border-[#a855f7]/40 
+shadow-[0_0_25px_rgba(168,85,247,0.25),inset_0_0_25px_rgba(168,85,247,0.08)]
+rounded-2xl p-6 flex flex-col gap-6 shadow-[0_0_24px_rgba(0,229,255,0.18)] mx-auto md:mx-0 mb-6 md:mb-0">
+        <h1 className="text-3xl font-extrabold tracking-wider text-transparent bg-clip-text 
+               bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-center whitespace-nowrap mt-20">
+    Rock Paper Scissors
+</h1>
 
-        <p className="text-lg text-center md:text-left">Your Tokens: {tokens}</p>
+        <p className="text-lg text-[#00e5ff] font-semibold 
+              drop-shadow-[0_0_10px_rgba(0,229,255,0.8)] text-center md:text-left">Your Tokens: {tokens}</p>
 
         <div className="flex justify-center gap-4">
-          <button
-            onClick={() => setMode("pve")}
-            className={`px-4 py-2 rounded font-bold ${
-              mode === "pve" ? "bg-[#FFD700] text-[#030817] shadow-[0_0_12px_rgba(255,215,0,0.4)]" : "bg-[#0d335f]"
-            }`}
-          >
-            PvE
-          </button>
+        <button
+  onClick={() => setMode("pve")}
+  className={`px-5 py-2 rounded-xl font-bold transition-all duration-300
+    ${
+      mode === "pve"
+        ? "bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-white shadow-[0_0_20px_#a855f7]"
+        : "bg-[#1a2333] text-gray-400 border border-gray-600 hover:bg-[#2a3446]"
+    }
+  `}
+>
+  PvE
+</button>
 
           <button
-            onClick={() => setMode("pvp")}
-            className={`px-4 py-2 rounded font-bold ${
-              mode === "pvp" ? "bg-[#FFD700] text-[#030817] shadow-[0_0_12px_rgba(255,215,0,0.4)]" : "bg-[#0d335f]"
-            }`}
-          >
-            PvP
-          </button>
+  onClick={() => setMode("pvp")}
+  className={`px-5 py-2 rounded-xl font-bold transition-all duration-300
+    ${
+      mode === "pvp"
+        ? "bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-white shadow-[0_0_20px_#a855f7]"
+        : "bg-[#1a2333] text-gray-400 border border-gray-600 hover:bg-[#2a3446]"
+    }
+  `}
+>
+  PvP
+</button>
         </div>
 
         <div className="flex items-center justify-center gap-2">
-          <label className="font-semibold">Bet:</label>
+          <label className="text-lg text-[#00e5ff] font-semibold 
+              drop-shadow-[0_0_10px_rgba(0,229,255,0.8)] text-center md:text-left">Bet:</label>
           <input
             type="number"
             min={1}
             max={tokens}
             value={betAmount}
             onChange={(e) => setBetAmount(Number(e.target.value))}
-            className="bg-[#08142f] border border-[#00e5ff]/40 text-white rounded px-2 py-1 w-20 text-center"
+            className="bg-[#020617] border border-[#00e5ff]/30 
+focus:border-[#00e5ff] focus:shadow-[0_0_15px_rgba(0,229,255,0.6)]
+rounded-xl px-3 py-2 text-white outline-none text-center w-24"
           />
-          <span>tokens</span>
         </div>
 
         {mode === "pve" && (
@@ -473,12 +487,19 @@ export default function RPSGame() {
             <button
               onClick={placeBet}
               disabled={loading}
-              className="bg-[#FFD700] text-[#030817] px-6 py-3 rounded-xl font-bold shadow-[0_0_16px_rgba(255,215,0,0.45)] hover:bg-[#ffe14f] disabled:opacity-50"
+              className={`py-3 rounded-xl font-bold text-lg transition-all duration-300
+  ${
+    loading
+      ? "bg-[#1a2333] text-gray-400 border border-gray-600"
+      : "bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933] border border-[#00e5ff] shadow-[0_0_20px_rgba(0,229,255,0.6)] hover:shadow-[0_0_35px_rgba(0,255,166,1)] hover:scale-105"
+  }
+`}
             >
               {loading ? "Betting..." : "Place Bet"}
             </button>
 
-            <div className="mt-4 bg-[#08142f] p-4 rounded-lg border border-[#00e5ff]/40 shadow-[0_0_16px_rgba(0,229,255,0.14)]">
+            <div className="mt-4 bg-[#020617]/80 backdrop-blur-xl border border-[#00e5ff]/40 
+rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border border-[#00e5ff]/40 shadow-[0_0_16px_rgba(0,229,255,0.14)]">
               <label className="flex items-center gap-2 font-semibold mb-2">
                 <input
                   type="checkbox"
@@ -546,7 +567,7 @@ export default function RPSGame() {
 <div className="mt-4 bg-[#08142f] p-4 rounded-lg border border-[#00e5ff]/40 shadow-[0_0_16px_rgba(0,229,255,0.14)]">
   <button
     onClick={() => setShowRpsRules(!showRpsRules)}
-    className="w-full text-left font-bold text-yellow-400 flex justify-between items-center"
+    className="w-full text-left font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] flex justify-between items-center"
   >
     📜 Game Rules
     <span>{showRpsRules ? "▲" : "▼"}</span>
@@ -623,7 +644,11 @@ export default function RPSGame() {
               <button
                 onClick={createPvpGame}
                 disabled={pvpActionLoading}
-                className="bg-[#FFD700] text-[#030817] hover:bg-[#ffe14f] px-6 py-3 rounded font-bold shadow-[0_0_14px_rgba(255,215,0,0.42)] disabled:opacity-50"
+                className="px-4 py-2 rounded-xl font-bold transition-all duration-300
+           bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933]
+           border border-[#00e5ff]
+           shadow-[0_0_20px_rgba(0,229,255,0.6)]
+           hover:shadow-[0_0_35px_rgba(0,255,166,1)] hover:scale-105"
               >
                 Create Game
               </button>
@@ -666,7 +691,11 @@ export default function RPSGame() {
                       <button
                         onClick={() => joinPvpGame(game.id)}
                         disabled={pvpActionLoading || Boolean(pvpGameId)}
-                        className="bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] px-3 py-1 rounded text-sm font-semibold disabled:opacity-50"
+                        className="px-4 py-2 rounded-xl font-bold transition-all duration-300
+           bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933]
+           border border-[#00e5ff]
+           shadow-[0_0_20px_rgba(0,229,255,0.6)]
+           hover:shadow-[0_0_35px_rgba(0,255,166,1)] hover:scale-105"
                       >
                         Join
                       </button>
@@ -685,26 +714,30 @@ export default function RPSGame() {
         {mode === "pve" && (
           <>
             <div className="flex flex-col md:flex-row items-center gap-12">
-              <div className="bg-[#0b224f] border border-yellow-500 w-32 h-44 flex items-center justify-center rounded-xl text-6xl">
+              <div className="bg-[#020617]/80 backdrop-blur-xl border border-[#00e5ff]/40 
+shadow-[0_0_20px_rgba(0,229,255,0.2)] w-32 h-44 flex items-center justify-center rounded-xl text-6xl">
                 {getEmoji(playerChoice)}
               </div>
 
-              <div className="text-3xl font-bold text-yellow-400">VS</div>
+              <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8]">VS</div>
 
-              <div className="bg-[#0b224f] border border-yellow-500 w-32 h-44 flex items-center justify-center rounded-xl text-6xl">
+              <div className="bg-[#020617]/80 backdrop-blur-xl border border-[#00e5ff]/40 
+shadow-[0_0_20px_rgba(0,229,255,0.2)] w-32 h-44 flex items-center justify-center rounded-xl text-6xl">
                 {getEmoji(aiChoice)}
               </div>
             </div>
 
             {result && (
               <div
-                className={`text-2xl font-bold ${
-                  result === "win"
-                    ? "text-green-400"
-                    : result === "lose"
-                    ? "text-red-400"
-                    : "text-gray-400"
-                }`}
+               className={`text-2xl font-bold
+  ${
+    result === "win"
+      ? "text-[#00ffa6] drop-shadow-[0_0_15px_rgba(0,255,166,1)]"
+      : result === "lose"
+      ? "text-red-400"
+      : "text-gray-400"
+  }
+`}
               >
                 {result.toUpperCase()}
               </div>
@@ -715,11 +748,13 @@ export default function RPSGame() {
                 <button
                   key={choice}
                   onClick={() => setPlayerChoice(choice)}
-                  className={`px-6 py-3 rounded-xl font-bold ${
-                    playerChoice === choice
-                      ? "bg-yellow-500 text-black"
-                      : "bg-yellow-700 hover:bg-yellow-600 text-black"
-                  }`}
+                  className={`px-6 py-3 rounded-xl font-bold transition-all duration-300
+  ${
+    playerChoice === choice
+      ? "bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-white shadow-[0_0_25px_#ff4fd8] scale-105"
+      : "bg-[#020617] border border-[#00e5ff]/30 text-white hover:border-[#00e5ff] hover:shadow-[0_0_15px_rgba(0,229,255,0.6)]"
+  }
+`}
                 >
                   {choice}
                 </button>
@@ -728,10 +763,10 @@ export default function RPSGame() {
 
             <div className="text-center w-full max-w-[400px]">
               <p className="text-xl">
-                <span className="text-yellow-400 font-bold">Win Streak:</span> {winStreak}
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] font-bold">Win Streak:</span> {winStreak}
               </p>
               <p className="text-xl">
-                <span className="text-yellow-400 font-bold">Multiplier:</span> {multiplier.toFixed(2)}×
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] font-bold">Multiplier:</span> {multiplier.toFixed(2)}×
               </p>
             </div>
           </>
