@@ -111,12 +111,25 @@ export default function ConnectFourLobbyPage() {
     <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white px-6 py-8">
       <NavigationBar currentPath="/casino" />
       <div className="max-w-4xl mx-auto mt-12">
-        <h1 className="text-4xl font-extrabold text-center text-[#FFD700] mb-3 drop-shadow-[0_0_12px_rgba(255,215,0,0.55)]">🟡🔴 Connect Four Lobby</h1>
+        <motion.div
+  initial={{ opacity: 0, y: -20 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ duration: 0.5 }}
+>
+        <h1 className="text-4xl font-extrabold text-center mb-3 
+  text-transparent bg-clip-text 
+  bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500
+  drop-shadow-[0_0_18px_rgba(0,229,255,0.6)] tracking-wide">
+  CONNECT FOUR
+</h1>
+</motion.div>
         <p className="text-center text-white/80 mb-8">Create, join, and wager in live multiplayer Connect Four games.</p>
 
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-2xl p-6 shadow-[0_0_28px_rgba(0,229,255,0.2)]">
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="bg-[#0b224f]/70 backdrop-blur-xl 
+border border-[#00e5ff]/20 
+shadow-[0_0_40px_rgba(0,229,255,0.15)] rounded-2xl p-6 shadow-[0_0_28px_rgba(0,229,255,0.2)]">
           <div className="text-center mb-4 text-lg">
-            Balance: <span className="font-bold text-[#FFD700]">{balance.toFixed(2)}</span> tokens
+            Balance: <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500">{balance.toFixed(2)}</span> tokens
           </div>
 
           <div className="grid md:grid-cols-4 gap-3 items-end">
@@ -128,7 +141,10 @@ export default function ConnectFourLobbyPage() {
                 min={1}
                 max={balance}
                 onChange={(e) => setBetAmount(Number(e.target.value))}
-                className="w-full mt-1 p-3 rounded-lg bg-[#08142f] border border-[#00e5ff]/40"
+                className="w-full mt-1 p-3 rounded-lg 
+bg-[#020617] border border-[#00e5ff]/30 
+focus:border-[#00e5ff] focus:ring-0
+outline-none text-white"
               />
             </div>
             <div className="md:col-span-1">
@@ -136,7 +152,10 @@ export default function ConnectFourLobbyPage() {
               <select
                 value={timerSeconds}
                 onChange={(e) => setTimerSeconds(Number(e.target.value))}
-                className="w-full mt-1 p-3 rounded-lg bg-[#08142f] border border-[#00e5ff]/40"
+                className="w-full mt-1 p-3 rounded-lg 
+bg-[#020617] border border-[#00e5ff]/30 
+focus:border-[#00e5ff] focus:ring-0
+outline-none text-white"
               >
                 <option value={10}>10 seconds</option>
                 <option value={30}>30 seconds</option>
@@ -144,10 +163,18 @@ export default function ConnectFourLobbyPage() {
                 <option value={120}>120 seconds</option>
               </select>
             </div>
-            <button onClick={createGame} disabled={loading} className="p-3 rounded-xl bg-[#FFD700] text-[#030817] hover:bg-[#ffe14f] font-bold shadow-[0_0_14px_rgba(255,215,0,0.45)] disabled:bg-[#7f8520] disabled:text-[#c6c6c6]">
+            <button onClick={createGame} disabled={loading} className="p-3 rounded-xl font-bold text-black
+bg-gradient-to-r from-yellow-200 to-yellow-600
+hover:scale-105 active:scale-95
+transition-all duration-150
+shadow-[0_0_18px_rgba(255,215,0,0.6)]">
               {loading ? "Creating..." : "Create Game"}
             </button>
-            <button onClick={() => joinGame()} disabled={loading} className="p-3 rounded-xl bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] font-bold shadow-[0_0_14px_rgba(0,229,255,0.45)] disabled:bg-[#246874] disabled:text-[#c6c6c6]">
+            <button onClick={() => joinGame()} disabled={loading} className="p-3 rounded-xl font-bold text-[#001933]
+bg-gradient-to-r from-cyan-400 to-blue-500
+hover:scale-105 active:scale-95
+transition-all duration-150
+shadow-[0_0_18px_rgba(0,229,255,0.6)]">
               {loading ? "Joining..." : "Quick Join"}
             </button>
           </div>

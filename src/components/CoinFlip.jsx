@@ -13,20 +13,27 @@ export default function CoinFlipPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-start p-6 text-white relative"
-         style={{ backgroundImage: "linear-gradient(135deg, #001933 0%, #000d1a 100%)" }}> {/* ✅ Marine blue bg */}
+         style={{ backgroundImage: "linear-gradient(135deg, #020617 0%, #020617 40%, #0f172a 100%)" }}> 
+         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(168,85,247,0.15),transparent_70%)] pointer-events-none" />
 <NavigationBar currentPath="/casino" />
       <div className="max-w-2xl w-full mt-16 p-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 text-white rounded shadow-[0_0_24px_rgba(0,229,255,0.2)]">
-        <h1 className="text-3xl font-bold text-center mb-6">Coin Flip</h1>
+      <h1 className="text-3xl font-extrabold text-center mb-6 text-[#00e5ff] tracking-wide">
+  Coin Flip
+</h1>
 
         <div className="flex justify-center space-x-4 mb-6">
           <button
-            className={`px-4 py-2 rounded ${mode === "solo" ? "bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)]" : "bg-[#0d335f]"}`}
+            className={`px-4 py-2 rounded ${mode === "solo"
+  ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-[0_0_14px_rgba(236,72,153,0.5)]"
+  : "bg-[#0d335f] hover:bg-[#144a85]"}`}
             onClick={() => setMode("solo")}
           >
             Solo vs House
           </button>
           <button
-            className={`px-4 py-2 rounded ${mode === "pvp" ? "bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)]" : "bg-[#0d335f]"}`}
+            className={`px-4 py-2 rounded ${mode === "pvp"
+  ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-[0_0_14px_rgba(236,72,153,0.5)]"
+  : "bg-[#0d335f] hover:bg-[#144a85]"}`}
             onClick={() => setMode("pvp")}
           >
             PvP
@@ -35,7 +42,7 @@ export default function CoinFlipPage() {
 
         {mode === "solo" ? <SoloCoinFlip /> : <PvPCoinFlip />}
 
-        <style jsx global>{`
+        <style jsx>{`
           .perspective {
             perspective: 1000px;
           }
@@ -170,18 +177,22 @@ function SoloCoinFlip() {
         <button
           onClick={() => setChoice("heads")}
           className={`w-full mr-2 p-2 rounded ${
-            choice === "heads" ? "bg-[#00e5ff] text-[#001933]" : "bg-[#0d335f]"
+            choice === "heads"
+  ? "bg-gradient-to-r from-cyan-400 to-emerald-400 text-black shadow-[0_0_12px_rgba(16,185,129,0.6)]"
+  : "bg-[#0d335f] hover:bg-[#144a85]"
           }`}
         >
-          Heads
+          Heads ⚡
         </button>
         <button
           onClick={() => setChoice("tails")}
           className={`w-full ml-2 p-2 rounded ${
-            choice === "tails" ? "bg-[#00e5ff] text-[#001933]" : "bg-[#0d335f]"
+            choice === "tails"
+  ? "bg-gradient-to-r from-cyan-400 to-emerald-400 text-black shadow-[0_0_12px_rgba(16,185,129,0.6)]"
+  : "bg-[#0d335f] hover:bg-[#144a85]"
           }`}
         >
-          Tails
+          Tails 💠
         </button>
       </div>
 
@@ -189,14 +200,18 @@ function SoloCoinFlip() {
         <button
           onClick={() => flip(false)}
           disabled={flipping}
-          className="w-full p-3 bg-[#FFD700] text-[#030817] rounded font-bold shadow-[0_0_14px_rgba(255,215,0,0.45)]"
+          className="w-full p-3 bg-gradient-to-r from-purple-500 to-pink-500 
+hover:scale-105 transition transform 
+shadow-[0_0_18px_rgba(236,72,153,0.6)] text-[#030817] rounded font-bold shadow-[0_0_14px_rgba(255,215,0,0.45)]"
         >
           {flipping ? "Flipping..." : "Flip Coin"}
         </button>
         <button
           onClick={() => setAutoBet((prev) => !prev)}
           className={`w-full p-3 rounded font-bold ${
-            autoBet ? "bg-red-500" : "bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)]"
+            autoBet
+  ? "bg-gradient-to-r from-red-500 to-orange-500 shadow-[0_0_12px_rgba(239,68,68,0.6)]"
+  : "bg-gradient-to-r from-cyan-400 to-emerald-400 text-black shadow-[0_0_12px_rgba(16,185,129,0.6)]"
           }`}
         >
           {autoBet ? "Stop Auto" : "Start Auto"}
@@ -207,11 +222,14 @@ function SoloCoinFlip() {
         <div className="relative w-24 h-24 perspective">
           <div
             key={flipKey}
-            className={`w-full h-full rounded-full text-4xl flex items-center justify-center bg-[#FFD700] text-[#030817] shadow-[0_0_14px_rgba(255,215,0,0.45)] font-bold ${
-              flipping ? "animate-coin-flip" : ""
-            }`}
+           className={`w-full h-full rounded-full text-4xl flex items-center justify-center 
+bg-gradient-to-br from-purple-500 via-pink-500 to-indigo-500
+text-white font-bold
+shadow-[0_0_25px_rgba(168,85,247,0.8),inset_0_0_20px_rgba(255,255,255,0.2)]
+border border-pink-400/40
+${flipping ? "animate-coin-flip" : ""}`}
           >
-            {result === "heads" ? "H" : result === "tails" ? "T" : "?"}
+            {result === "heads" ? "⚡" : result === "tails" ? "💠" : "?"}
           </div>
         </div>
       </div>
@@ -462,9 +480,10 @@ useEffect(() => {
           <button
             onClick={createGame}
             className="w-full p-3 rounded font-bold text-lg 
-                       bg-gradient-to-r from-yellow-400 to-yellow-600
-                       hover:scale-105 transition transform
-                       text-black shadow-lg"
+                       bg-gradient-to-r from-purple-500 to-pink-500 
+hover:scale-105 
+shadow-[0_0_18px_rgba(236,72,153,0.6)]
+text-white"
           >
             🎲 Create PvP Game
           </button>
@@ -504,8 +523,9 @@ useEffect(() => {
                   <button
                     onClick={() => joinGame(game.id)}
                     className="px-4 py-2 rounded-lg font-bold
-                               bg-[#00e5ff] text-[#001933] hover:bg-green-500
-                               transition"
+                               bg-gradient-to-r from-cyan-400 to-emerald-400 
+text-black 
+shadow-[0_0_12px_rgba(16,185,129,0.6)]"
                   >
                     Join
                   </button>
@@ -547,7 +567,7 @@ useEffect(() => {
                   opponentChoice === "heads" ? "bg-gray-500 cursor-not-allowed" : "bg-[#0d335f] hover:bg-green-700"
                 }`}
               >
-                Heads
+                Heads ⚡
               </button>
 
               <button
@@ -557,7 +577,7 @@ useEffect(() => {
                   opponentChoice === "tails" ? "bg-gray-500 cursor-not-allowed" : "bg-[#0d335f] hover:bg-green-700"
                 }`}
               >
-                Tails
+                Tails 💠
               </button>
             </div>
           )}
@@ -566,9 +586,12 @@ useEffect(() => {
             <div className="relative w-24 h-24 perspective">
               <div
                 key={flipKey}
-                className={`w-full h-full rounded-full flex items-center justify-center 
-          bg-[#FFD700] text-[#030817] shadow-[0_0_14px_rgba(255,215,0,0.45)] text-4xl font-bold
-          ${flipping ? "animate-coin-flip" : ""}`}
+                className={`w-full h-full rounded-full text-4xl flex items-center justify-center 
+bg-gradient-to-br from-purple-500 via-pink-500 to-indigo-500
+text-white font-bold
+shadow-[0_0_25px_rgba(168,85,247,0.8),inset_0_0_20px_rgba(255,255,255,0.2)]
+border border-pink-400/40
+${flipping ? "animate-coin-flip" : ""}`}
               >
                 {!result && "🪙"}
                 {result === "heads" && "H"}
@@ -585,8 +608,8 @@ useEffect(() => {
             <button
               onClick={cancelGame}
               className="mt-2 w-full p-3 rounded-lg font-bold
-                   bg-red-600 hover:bg-red-500
-                   transition transform hover:scale-105"
+                   bg-gradient-to-r from-red-500 to-orange-500 
+shadow-[0_0_12px_rgba(239,68,68,0.6)]"
             >
               Cancel Game
             </button>
