@@ -42,6 +42,7 @@ export default function ProfilePage() {
   const [friendSearchResults, setFriendSearchResults] = useState([]);
   const [myFriends, setMyFriends] = useState([]);
   const [friendsStatus, setFriendsStatus] = useState("");
+  const [friendPresenceByFriend, setFriendPresenceByFriend] = useState({});
   const [isSearchingFriends, setIsSearchingFriends] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editStatus, setEditStatus] = useState("");
@@ -97,9 +98,18 @@ export default function ProfilePage() {
     setMyFriends(Array.isArray(data.friends) ? data.friends : []);
   };
 
-  const handleSearchFriends = async () => {
+  const loadFriendPresence = async () => {
+    const response = await fetch("/api/friends/game-presence", { credentials: "include" });
+    const data = await response.json();
+    if (response.ok && data.success) {
+      setFriendPresenceByFriend(data.byFriend || {});
+    }
+  };
+
+  const handleSearchFriends = async (searchValue = friendSearch) => {
     setFriendsStatus("");
-    if (!friendSearch.trim()) {
+    const normalized = String(searchValue || "").trim();
+    if (!normalized) {
       setFriendSearchResults([]);
       return;
     }
@@ -110,7 +120,7 @@ export default function ProfilePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ name: friendSearch.trim() }),
+        body: JSON.stringify({ name: normalized }),
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || "Search failed");
@@ -144,6 +154,17 @@ export default function ProfilePage() {
 
   const profileAvatar = (person) => person?.profile_picture || person?.profilePicture || "";
 
+  const spectateUrlForFriend = (friendId) => {
+    const presence = friendPresenceByFriend?.[friendId];
+    if (!presence?.gameId || !presence?.gameKey) return null;
+
+    if (presence.gameKey === "chess") return `/casino/chess-game/${presence.gameId}?spectator=1&focus=white`;
+    if (presence.gameKey === "connect-four") return `/casino/connect-four/game/${presence.gameId}?spectator=1&focus=host`;
+    if (presence.gameKey === "uno") return null;
+    if (presence.gameKey === "tanks") return null;
+    return null;
+  };
+
   const initializeReferral = async () => {
     const generateRes = await fetch("/api/referral/generate", { method: "POST", credentials: "include" });
     const generateData = await generateRes.json();
@@ -168,7 +189,7 @@ export default function ProfilePage() {
 
     const bootstrap = async () => {
   try {
-    await Promise.all([loadProfileData(), loadStats(), loadFriends()]);
+    await Promise.all([loadProfileData(), loadStats(), loadFriends(), loadFriendPresence()]);
 
     if (!stats?.referralCode) {
       await initializeReferral();
@@ -182,6 +203,23 @@ export default function ProfilePage() {
 
     bootstrap();
   }, [isSignedIn, user]);
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+
+    const timeout = setTimeout(() => {
+      handleSearchFriends(friendSearch);
+    }, 220);
+
+    return () => clearTimeout(timeout);
+  }, [friendSearch, isSignedIn]);
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+    loadFriendPresence();
+    const intervalId = setInterval(loadFriendPresence, 15000);
+    return () => clearInterval(intervalId);
+  }, [isSignedIn]);
 
   useEffect(() => {
     if (!isSignedIn) return undefined;
@@ -558,7 +596,7 @@ export default function ProfilePage() {
             <input
               value={friendSearch}
               onChange={(e) => setFriendSearch(e.target.value)}
-              placeholder="Type a name to find users"
+              placeholder="Type letters to search users (like Ctrl+F)"
               className="flex-1 rounded bg-white/10 border border-white/20 px-4 py-2"
             />
             <button
@@ -566,7 +604,7 @@ export default function ProfilePage() {
               disabled={isSearchingFriends}
               className="rounded bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold disabled:opacity-50"
             >
-              {isSearchingFriends ? "Searching..." : "Search"}
+              {isSearchingFriends ? "Searching..." : "Refresh"}
             </button>
           </div>
 
@@ -611,7 +649,20 @@ export default function ProfilePage() {
                     {friend.name?.charAt(0)?.toUpperCase() || "U"}
                   </div>
                 )}
-                <span>{friend.name}</span>
+                <div className="flex-1">
+                  <span>{friend.name}</span>
+                  {friendPresenceByFriend?.[friend.id]?.gameKey && (
+                    <p className="text-xs text-[#9dd8ff]">Playing: {friendPresenceByFriend[friend.id].gameKey}</p>
+                  )}
+                </div>
+                {spectateUrlForFriend(friend.id) && (
+                  <a
+                    href={spectateUrlForFriend(friend.id)}
+                    className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366]"
+                  >
+                    Spectate
+                  </a>
+                )}
               </div>
             )) : <p className="text-sm text-gray-300">No friends yet.</p>}
           </div>

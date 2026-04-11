@@ -36,6 +36,7 @@ export const userGamePresence = pgTable('user_game_presence', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   gameKey: varchar('game_key', { length: 80 }).notNull(),
+  gameId: integer('game_id'),
   lastSeenAt: timestamp('last_seen_at').notNull().defaultNow(),
 }, (table) => ({
   userGameIdx: index('user_game_presence_user_game_idx').on(table.userId, table.gameKey),

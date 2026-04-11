@@ -16,7 +16,7 @@ export async function GET() {
   const meId = current.rows[0].id;
 
   const rows = await sql`
-    SELECT p.game_key, u.id AS friend_id, u.name, u.profile_picture, p.last_seen_at
+    SELECT p.game_key, p.game_id, u.id AS friend_id, u.name, u.profile_picture, p.last_seen_at
     FROM friend_relations fr
     JOIN user_game_presence p ON p.user_id = fr.friend_id
     JOIN users u ON u.id = fr.friend_id
@@ -26,17 +26,21 @@ export async function GET() {
   `;
 
   const byGame = {};
+  const byFriend = {};
   for (const row of rows.rows) {
     const key = row.game_key;
     if (!byGame[key]) byGame[key] = [];
-    byGame[key].push({
+    const friendPayload = {
       id: row.friend_id,
       name: row.name,
       profilePicture: row.profile_picture,
-    });
+      gameId: row.game_id,
+    };
+    byGame[key].push(friendPayload);
+    byFriend[row.friend_id] = { ...friendPayload, gameKey: row.game_key };
   }
 
-  return new Response(JSON.stringify({ success: true, byGame }), {
+  return new Response(JSON.stringify({ success: true, byGame, byFriend }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
