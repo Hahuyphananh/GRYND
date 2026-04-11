@@ -92,10 +92,20 @@ export default function ProfilePage() {
 
 
   const loadFriends = async () => {
-    const response = await fetch("/api/friends/list", { credentials: "include" });
-    const data = await response.json();
-    if (!response.ok || !data.success) throw new Error(data.error || "Failed to load friends");
-    setMyFriends(Array.isArray(data.friends) ? data.friends : []);
+    try {
+      const response = await fetch("/api/friends/list", { credentials: "include" });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        setMyFriends([]);
+        return;
+      }
+
+      const friendRows = Array.isArray(data.friends) ? data.friends : Array.isArray(data.data) ? data.data : [];
+      setMyFriends(friendRows);
+    } catch (err) {
+      console.error("[LOAD_FRIENDS_ERROR]", err);
+      setMyFriends([]);
+    }
   };
 
   const loadFriendPresence = async () => {
@@ -127,8 +137,13 @@ export default function ProfilePage() {
         body: JSON.stringify({ name: normalized }),
       });
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || "Search failed");
-      setFriendSearchResults(Array.isArray(data.users) ? data.users : []);
+      if (!response.ok || !data.success) {
+        setFriendSearchResults([]);
+        return;
+      }
+
+      const users = Array.isArray(data.users) ? data.users : Array.isArray(data.data) ? data.data : [];
+      setFriendSearchResults(users);
     } catch (err) {
       console.error("[SEARCH_FRIENDS_ERROR]", err);
       setFriendsStatus(err.message || "Could not search users.");
@@ -147,8 +162,8 @@ export default function ProfilePage() {
         body: JSON.stringify({ friendId }),
       });
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || "Failed to send invite");
-      setFriendsStatus(data.message || "Invite sent.");
+      if (!response.ok || !data.success) throw new Error(data.error || "Failed to add friend");
+      setFriendsStatus(data.message || "Friend added.");
       await loadFriends();
     } catch (err) {
       console.error("[INVITE_FRIEND_ERROR]", err);
@@ -654,7 +669,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
                   onClick={() => handleInviteFriend(person.id)}
                   className="rounded bg-green-500 px-3 py-1 text-sm font-semibold hover:bg-green-600"
                 >
-                  Send Invite
+                  Add Friend
                 </button>
               </div>
             ))}
