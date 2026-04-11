@@ -64,10 +64,19 @@ export async function GET() {
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {
+    const code = String(error?.code || "");
     const message = String(error?.message || error || "").toLowerCase();
-    if (message.includes('user_stats')) {
-      try {
-        const fallback = await sql`
+    const schemaMismatch =
+      code === "42P01" ||
+      code === "42703" ||
+      message.includes("user_stats") ||
+      message.includes("referral_") ||
+      message.includes("total_wagered") ||
+      message.includes("level");
+
+    if (schemaMismatch) {
+      const fallbackCandidates = [
+        sql`
           SELECT
             id,
             COALESCE(referral_code, '') AS referral_code,
@@ -78,34 +87,65 @@ export async function GET() {
           FROM users
           WHERE clerk_id = ${userId}
           LIMIT 1
-        `;
-        const row = fallback.rows[0];
-        if (!row) {
-          return new Response(JSON.stringify({ success: false, error: "User not found" }), {
-            status: 404,
-            headers: { "Content-Type": "application/json" },
-          });
+        `,
+        sql`
+          SELECT
+            id,
+            '' AS referral_code,
+            0::integer AS referral_count,
+            0::numeric AS referral_earnings,
+            COALESCE(total_wagered, 0) AS total_wagered,
+            COALESCE(level, 1) AS level
+          FROM users
+          WHERE clerk_id = ${userId}
+          LIMIT 1
+        `,
+        sql`
+          SELECT
+            id,
+            '' AS referral_code,
+            0::integer AS referral_count,
+            0::numeric AS referral_earnings,
+            0::numeric AS total_wagered,
+            1::integer AS level
+          FROM users
+          WHERE clerk_id = ${userId}
+          LIMIT 1
+        `,
+      ];
+
+      for (const fallbackQuery of fallbackCandidates) {
+        try {
+          const fallback = await fallbackQuery;
+          const row = fallback.rows[0];
+          if (!row) {
+            return new Response(JSON.stringify({ success: false, error: "User not found" }), {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+
+          const progress = getLevelProgress(Number(row.total_wagered));
+          return new Response(JSON.stringify({
+            success: true,
+            stats: {
+              totalBets: 0,
+              totalWins: 0,
+              totalLosses: 0,
+              winRate: 0,
+              biggestWin: 0,
+              favoriteGame: 'N/A',
+              referrals: Number(row.referral_count),
+              referralEarnings: Number(row.referral_earnings),
+              referralCode: row.referral_code,
+              totalWagered: Number(row.total_wagered),
+              currentLevel: Number(row.level),
+              levelProgress: progress,
+            },
+          }), { status: 200, headers: { "Content-Type": "application/json" } });
+        } catch (fallbackError) {
+          console.error("[USER_STATS_FALLBACK_ATTEMPT_FAILED]", fallbackError);
         }
-        const progress = getLevelProgress(Number(row.total_wagered));
-        return new Response(JSON.stringify({
-          success: true,
-          stats: {
-            totalBets: 0,
-            totalWins: 0,
-            totalLosses: 0,
-            winRate: 0,
-            biggestWin: 0,
-            favoriteGame: 'N/A',
-            referrals: Number(row.referral_count),
-            referralEarnings: Number(row.referral_earnings),
-            referralCode: row.referral_code,
-            totalWagered: Number(row.total_wagered),
-            currentLevel: Number(row.level),
-            levelProgress: progress,
-          },
-        }), { status: 200, headers: { "Content-Type": "application/json" } });
-      } catch (fallbackError) {
-        console.error('[USER_STATS_FALLBACK_ERROR]', fallbackError);
       }
     }
 
