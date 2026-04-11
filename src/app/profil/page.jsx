@@ -436,7 +436,7 @@ export default function ProfilePage() {
   if (!isLoaded) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#003366]">
-        <div className="text-2xl text-[#FFD700]">Chargement...</div>
+        <div className="text-2xl text-[#00e5ff]">Chargement...</div>
       </div>
     );
   }
@@ -458,8 +458,13 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#003366] text-white">
-      <div className="container mx-auto px-4 pt-24 pb-20">
+    <div
+  className="min-h-screen text-white"
+  style={{
+    backgroundImage: "linear-gradient(135deg, #001933 0%, #000d1a 100%)",
+  }}
+>
+      <div className="max-w-6xl mx-auto px-6 pt-24 pb-20">
         <div className="mb-6 flex justify-between items-center">
           <a
             href="/casino"
@@ -470,12 +475,18 @@ export default function ProfilePage() {
           </a>
         </div>
 
-        <h1 className="text-3xl font-bold text-[#FFD700] mb-6">Profil</h1>
+        <h1 className="text-4xl font-extrabold text-center mb-8 
+  bg-gradient-to-r from-purple-400 to-pink-500 
+  bg-clip-text text-transparent">
+  👤 Profile
+</h1>
 
         <div className="grid gap-8 md:grid-cols-2">
-          <div className="border border-[#FFD700] rounded-lg p-6">
+          <div className="bg-[#0b224f]/85 border border-[#00e5ff]/30 
+rounded-xl p-6 
+shadow-[0_0_24px_rgba(0,229,255,0.15)]">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xl text-[#FFD700]">Infos Personnelles</h2>
+              <h2 className="text-xl text-[#00e5ff]">Infos Personnelles</h2>
               <button
                 onClick={() => {
                   setEditStatus("");
@@ -490,7 +501,8 @@ export default function ProfilePage() {
               {profileInfo.profilePicture ? (
                 <img src={profileInfo.profilePicture} alt="Profile" className="h-14 w-14 rounded-full object-cover border border-[#FFD700]" />
               ) : (
-                <div className="h-14 w-14 rounded-full bg-[#FFD700] text-[#003366] flex items-center justify-center text-lg font-bold">
+                <div className="h-14 w-14 rounded-full bg-[#00e5ff] text-[#001933] 
+shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-lg font-bold">
                   {(profileInfo.name || user.fullName || "U").charAt(0).toUpperCase()}
                 </div>
               )}
@@ -502,8 +514,10 @@ export default function ProfilePage() {
             <p>Membre depuis : {new Date(user.createdAt).toLocaleDateString()}</p>
           </div>
 
-          <div className="border border-[#FFD700] rounded-lg p-6 text-center">
-            <h2 className="text-xl text-[#FFD700] mb-2">Solde de Tokens</h2>
+          <div className="bg-[#0b224f]/85 border border-[#00e5ff]/30 
+rounded-xl p-6 
+shadow-[0_0_24px_rgba(0,229,255,0.15)] text-center">
+            <h2 className="text-xl text-[#00e5ff] mb-2">Solde de Tokens</h2>
             <p className="text-3xl font-bold">{userTokens ?? 0} tokens</p>
             <button
               onClick={handleResetTokens}
@@ -516,10 +530,13 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <div className="mt-8 border border-[#FFD700] rounded-lg p-6">
+        <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+rounded-xl p-6 
+shadow-[0_0_24px_rgba(0,229,255,0.15)]">
           <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="text-xl text-[#FFD700]">VIP Level</h2>
-            <div className="rounded-full px-3 py-1 bg-[#FFD700] text-[#003366] font-bold">
+            <h2 className="text-xl text-[#00e5ff]">VIP Level</h2>
+            <div className="rounded-full px-3 py-1 bg-[#00e5ff] text-[#001933] 
+shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold">
               Level {stats?.currentLevel ?? 1}
             </div>
           </div>
@@ -537,13 +554,15 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <div className="mt-8 border border-[#FFD700] rounded-lg p-6">
-          <h2 className="text-xl text-[#FFD700] mb-4">Referral System</h2>
+        <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+rounded-xl p-6 
+shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+          <h2 className="text-xl text-[#00e5ff] mb-4">Referral System</h2>
 
           <div className="grid gap-4 md:grid-cols-3 mb-4">
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
               <p className="text-sm text-gray-300">Your Referral Code</p>
-              <p className="text-2xl font-bold text-[#FFD700]">{stats?.referralCode ? stats.referralCode : "No code yet"}</p>
+              <p className="text-2xl font-bold text-[#00e5ff]">{stats?.referralCode ? stats.referralCode : "No code yet"}</p>
             </div>
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
               <p className="text-sm text-gray-300">Total Referrals</p>
@@ -558,7 +577,8 @@ export default function ProfilePage() {
           <input
             readOnly
             value={stats?.referralCode || ""}
-            className="w-full mb-4 rounded bg-white/10 border border-white/20 px-4 py-2 text-[#FFD700]"
+            className="w-full mb-4 rounded bg-[#08142f] border border-[#00e5ff]/30 
+focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
           />
 
           <div className="flex flex-wrap gap-3 mb-4">
@@ -570,7 +590,7 @@ export default function ProfilePage() {
             </button>
             <button
               onClick={handleShareReferralCode}
-              className="rounded border border-[#FFD700] px-4 py-2 text-[#FFD700] hover:bg-[#FFD700]/10"
+              className="rounded border border-[#FFD700] px-4 py-2 text-[#00e5ff] hover:bg-[#FFD700]/10"
             >
               Share Code
             </button>
@@ -581,7 +601,8 @@ export default function ProfilePage() {
               value={referralCodeInput}
               onChange={(e) => setReferralCodeInput(e.target.value)}
               placeholder="Enter referral code"
-              className="flex-1 rounded bg-white/10 border border-white/20 px-4 py-2 outline-none focus:ring-2 focus:ring-[#FFD700]"
+              className="flex-1 rounded bg-[#08142f] border border-[#00e5ff]/30 
+focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-none focus:ring-2 focus:ring-[#FFD700]"
             />
             <button
               onClick={handleRedeemCode}
@@ -594,14 +615,17 @@ export default function ProfilePage() {
           {referralStatus && <p className="mt-3 text-sm text-gray-200">{referralStatus}</p>}
         </div>
 
-        <div className="mt-8 border border-[#FFD700] rounded-lg p-6">
-          <h2 className="text-xl text-[#FFD700] mb-4">Add Friends</h2>
+        <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+rounded-xl p-6 
+shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+          <h2 className="text-xl text-[#00e5ff] mb-4">Add Friends</h2>
           <div className="flex gap-2 mb-4">
             <input
               value={friendSearch}
               onChange={(e) => setFriendSearch(e.target.value)}
               placeholder="Type letters to search users (like Ctrl+F)"
-              className="flex-1 rounded bg-white/10 border border-white/20 px-4 py-2"
+              className="flex-1 rounded bg-[#08142f] border border-[#00e5ff]/30 
+focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
             />
             <button
               onClick={handleSearchFriends}
@@ -619,7 +643,8 @@ export default function ProfilePage() {
                   {profileAvatar(person) ? (
                     <img src={profileAvatar(person)} alt={person.name} className="h-10 w-10 rounded-full object-cover" />
                   ) : (
-                    <div className="h-10 w-10 rounded-full bg-[#FFD700] text-[#003366] flex items-center justify-center font-bold">
+                    <div className="h-10 w-10 rounded-full bg-[#00e5ff] text-[#001933] 
+shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold">
                       {person.name?.charAt(0)?.toUpperCase() || "U"}
                     </div>
                   )}
@@ -641,15 +666,18 @@ export default function ProfilePage() {
           {friendsStatus && <p className="mt-3 text-sm text-gray-200">{friendsStatus}</p>}
         </div>
 
-        <div className="mt-8 border border-[#FFD700] rounded-lg p-6">
-          <h2 className="text-xl text-[#FFD700] mb-4">My Friends</h2>
+        <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+rounded-xl p-6 
+shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+          <h2 className="text-xl text-[#00e5ff] mb-4">My Friends</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {myFriends.length > 0 ? myFriends.map((friend) => (
               <div key={`${friend.id}-${friend.name}`} className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3">
                 {profileAvatar(friend) ? (
                   <img src={profileAvatar(friend)} alt={friend.name} className="h-10 w-10 rounded-full object-cover" />
                 ) : (
-                  <div className="h-10 w-10 rounded-full bg-[#FFD700] text-[#003366] flex items-center justify-center font-bold">
+                  <div className="h-10 w-10 rounded-full bg-[#00e5ff] text-[#001933] 
+shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold">
                     {friend.name?.charAt(0)?.toUpperCase() || "U"}
                   </div>
                 )}
@@ -673,8 +701,10 @@ export default function ProfilePage() {
         </div>
 
 
-        <div className="mt-8 border border-[#FFD700] rounded-lg p-6">
-          <h2 className="text-xl text-[#FFD700] mb-4">User Statistics</h2>
+        <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+rounded-xl p-6 
+shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+          <h2 className="text-xl text-[#00e5ff] mb-4">User Statistics</h2>
           {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {statsCards.map((card) => (
@@ -689,11 +719,13 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <div className="mt-12 border border-[#FFD700] rounded-lg p-6">
-          <h2 className="text-xl text-[#FFD700] mb-4">Historique des Paris</h2>
+        <div className="mt-12 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+rounded-xl p-6 
+shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+          <h2 className="text-xl text-[#00e5ff] mb-4">Historique des Paris</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="border-b border-[#FFD700] text-[#FFD700]">
+              <thead className="border-b border-[#FFD700] text-[#00e5ff]">
                 <tr>
                   <th className="px-4 py-2">Date</th>
                   <th className="px-4 py-2">Jeu / Événement</th>
@@ -759,7 +791,8 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <div className="mt-8 border border-red-500 bg-red-950/30 rounded-lg p-6">
+        <div className="mt-8 border border-red-500 bg-red-950/40 border border-red-500/40 
+shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6">
           <h2 className="text-xl text-red-400 mb-2">Danger Zone — Delete Account</h2>
           <p className="text-red-200 mb-4">
             Warning: This action is permanent. Your account and data will be removed forever.
@@ -789,33 +822,38 @@ export default function ProfilePage() {
 
       {isEditOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0B2D55] p-6">
-            <h3 className="text-xl font-bold text-[#FFD700] mb-4">Edit Profile</h3>
+          <div className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0b224f] border border-[#00e5ff]/30 
+shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6">
+            <h3 className="text-xl font-bold text-[#00e5ff] mb-4">Edit Profile</h3>
             <div className="space-y-3">
               <input
                 value={editForm.name}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="Name"
-                className="w-full rounded bg-white/10 border border-white/20 px-4 py-2"
+                className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
+focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
               <input
                 value={editForm.email}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
                 placeholder="Email"
-                className="w-full rounded bg-white/10 border border-white/20 px-4 py-2"
+                className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
+focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
               <input
                 value={editForm.profilePicture}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, profilePicture: e.target.value }))}
                 placeholder="Profile picture URL"
-                className="w-full rounded bg-white/10 border border-white/20 px-4 py-2"
+                className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
+focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
               <input
                 type="password"
                 value={editForm.password}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, password: e.target.value }))}
                 placeholder="New password (optional)"
-                className="w-full rounded bg-white/10 border border-white/20 px-4 py-2"
+                className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
+focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
             </div>
 
@@ -842,8 +880,9 @@ export default function ProfilePage() {
 
       {levelUpModal && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0B2D55] p-6 text-center">
-            <p className="text-2xl font-bold text-[#FFD700]">🎉 Level Up! You reached Level {levelUpModal.level}</p>
+          <div className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0b224f] border border-[#00e5ff]/30 
+shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center">
+            <p className="text-2xl font-bold text-[#00e5ff]">🎉 Level Up! You reached Level {levelUpModal.level}</p>
             <p className="mt-2 text-gray-200">Bonus received: {levelUpModal.bonus} tokens</p>
             <button
               onClick={() => setLevelUpModal(null)}
