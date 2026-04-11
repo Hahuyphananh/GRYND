@@ -1,0 +1,34 @@
+import { auth } from "@clerk/nextjs/server";
+import { sql } from "@vercel/postgres";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
+
+export async function POST(request) {
+  const { userId } = await auth();
+  if (!userId) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+
+  const parsed = await parseAndValidateJson(request, {
+    gameKey: { type: "string", required: true, minLength: 2, maxLength: 80 },
+  });
+
+  if (!parsed.ok) return parsed.response;
+
+  const me = await sql`SELECT id FROM users WHERE clerk_id = ${userId} LIMIT 1`;
+  if (!me.rows.length) return new Response(JSON.stringify({ success: false, error: "User not found" }), { status: 404 });
+
+  const meId = me.rows[0].id;
+  const gameKey = parsed.data.gameKey.trim().toLowerCase();
+
+  await sql`
+    INSERT INTO user_game_presence (user_id, game_key, last_seen_at)
+    VALUES (${meId}, ${gameKey}, NOW())
+    ON CONFLICT (user_id, game_key)
+    DO UPDATE SET last_seen_at = NOW()
+  `;
+
+  await sql`
+    DELETE FROM user_game_presence
+    WHERE last_seen_at < NOW() - INTERVAL '20 minutes'
+  `;
+
+  return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+}

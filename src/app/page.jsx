@@ -49,6 +49,62 @@ const [streakData, setStreakData] = useState({
 });
 
 const [claimedDay, setClaimedDay] = useState(null);
+const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
+
+const fetchFriendPresence = async () => {
+  try {
+    const response = await fetch("/api/friends/game-presence", { credentials: "include" });
+    const data = await response.json();
+    if (response.ok && data.success) setFriendPresenceByGame(data.byGame || {});
+  } catch (err) {
+    console.error("[FRIEND_PRESENCE_ERROR]", err);
+  }
+};
+
+const handleGameEntry = async (gameKey) => {
+  try {
+    await fetch("/api/presence/game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ gameKey }),
+    });
+  } catch (err) {
+    console.error("[SET_GAME_PRESENCE_ERROR]", err);
+  }
+};
+
+const renderFriendWidget = (gameKey) => {
+  const friends = Array.isArray(friendPresenceByGame[gameKey]) ? friendPresenceByGame[gameKey] : [];
+  if (!friends.length) return null;
+
+  return (
+    <div
+      className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1"
+      title={friends.map((f) => f.name).join(", ")}
+    >
+      {friends.slice(0, 4).map((friend) =>
+        friend.profilePicture ? (
+          <img
+            key={`${friend.id}-${friend.name}`}
+            src={friend.profilePicture}
+            alt={friend.name}
+            className="h-6 w-6 rounded-full border border-white/30 object-cover"
+            title={friend.name}
+          />
+        ) : (
+          <div
+            key={`${friend.id}-${friend.name}`}
+            className="h-6 w-6 rounded-full bg-[#FFD700] text-[#003366] text-xs font-bold flex items-center justify-center"
+            title={friend.name}
+          >
+            {friend.name?.charAt(0)?.toUpperCase() || "U"}
+          </div>
+        )
+      )}
+    </div>
+  );
+};
 
 const handleLoadSports = async () => {
   try {
@@ -232,6 +288,13 @@ const fetchEventsByLeague = async (leagueKey) => {
 useEffect(() => {
   handleLoadSports();
 }, []);
+
+useEffect(() => {
+  if (!user) return;
+  fetchFriendPresence();
+  const id = setInterval(fetchFriendPresence, 30000);
+  return () => clearInterval(id);
+}, [user]);
 
 
   const handleLoadEvents = async () => {
@@ -424,6 +487,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
             <a
               href="/casino/roulette"
+              onClick={() => handleGameEntry("roulette")}
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
@@ -437,10 +501,12 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               <p className="text-[#9dd8ff]">
                 Placez vos paris sur les numéros, couleurs ou sections
               </p>
+              {renderFriendWidget("roulette")}
             </a>
 
             <a
               href="/casino/blackjack"
+              onClick={() => handleGameEntry("blackjack")}
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
@@ -454,10 +520,12 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               <p className="text-[#9dd8ff]">
                 Affrontez le croupier dans ce jeu de cartes classique
               </p>
+              {renderFriendWidget("blackjack")}
             </a>
 
             <a
               href="/casino/poker"
+              onClick={() => handleGameEntry("poker")}
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
@@ -471,10 +539,12 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               <p className="text-[#9dd8ff]">
                 Affrontez l'IA ou d'autres joueurs dans des parties intenses de poker
               </p>
+              {renderFriendWidget("poker")}
             </a>
 
             <a
               href="/casino/plinko"
+              onClick={() => handleGameEntry("plinko")}
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
@@ -488,6 +558,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               <p className="text-[#9dd8ff]">
                 Regardez tomber les balles et multipliez vos gains!
               </p>
+              {renderFriendWidget("plinko")}
             </a>
           </div>
 
