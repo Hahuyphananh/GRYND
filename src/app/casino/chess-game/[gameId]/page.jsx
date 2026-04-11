@@ -47,6 +47,8 @@ export default function ChessGamePage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const color = searchParams.get("color") || "white";
+  const isSpectator = searchParams.get("spectator") === "1";
+  const [spectatorFocus, setSpectatorFocus] = useState(searchParams.get("focus") || "white");
 
   const [liveFen, setLiveFen] = useState("start");
   const [status, setStatus] = useState("Loading match...");
@@ -56,6 +58,7 @@ export default function ChessGamePage() {
   const [moves, setMoves] = useState([]);
   const [moveIndex, setMoveIndex] = useState(-1);
   const [showResultPopup, setShowResultPopup] = useState(false);
+  const [spectatorCount, setSpectatorCount] = useState(0);
 
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [legalTargets, setLegalTargets] = useState([]);
@@ -79,7 +82,8 @@ export default function ChessGamePage() {
     return game.turn() === "w" ? "white" : "black";
   }, [liveFen]);
 
-  const isMyTurn = turn === color;
+  const activeColor = isSpectator ? spectatorFocus : color;
+  const isMyTurn = turn === activeColor;
 
   const fetchState = async () => {
     const res = await fetch(`/api/chess/game-state?gameId=${gameId}`, { cache: "no-store" });
@@ -160,6 +164,59 @@ export default function ChessGamePage() {
     }
   }, [moveIndex]);
 
+  useEffect(() => {
+    if (isSpectator) return;
+    const pingPresence = async () => {
+      await fetch("/api/presence/game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameKey: "chess", gameId: Number(gameId) }),
+      });
+    };
+    pingPresence();
+    const id = setInterval(pingPresence, 15000);
+    return () => clearInterval(id);
+  }, [gameId, isSpectator]);
+
+
+  useEffect(() => {
+    if (!gameData) return;
+    const targetClerkId = activeColor === "white" ? gameData.whitePlayerId : gameData.blackPlayerId;
+    if (!targetClerkId) return;
+
+    const pollSpectators = async () => {
+      try {
+        const res = await fetch(`/api/spectators/count?gameKey=chess&gameId=${gameId}`, { credentials: "include" });
+        const data = await res.json();
+        if (res.ok && data.success) setSpectatorCount(Number(data.count || 0));
+      } catch {}
+    };
+
+    pollSpectators();
+    const id = setInterval(pollSpectators, 5000);
+
+    let hb;
+    if (isSpectator) {
+      const beat = async () => {
+        await fetch("/api/spectators/heartbeat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ gameKey: "chess", gameId: Number(gameId), targetClerkId }),
+        });
+      };
+      beat();
+      hb = setInterval(beat, 5000);
+    }
+
+    return () => {
+      clearInterval(id);
+      if (hb) clearInterval(hb);
+    };
+  }, [gameData, activeColor, gameId, isSpectator]);
+
+
   async function onDrop(sourceSquare, targetSquare) {
     if (!isMyTurn || submittingMove) return false;
 
@@ -227,14 +284,14 @@ export default function ChessGamePage() {
     }
   }
 
-  const myName = color === "white" ? gameData?.whitePlayerName : gameData?.blackPlayerName;
-  const opponentName = color === "white" ? gameData?.blackPlayerName : gameData?.whitePlayerName;
+  const myName = activeColor === "white" ? gameData?.whitePlayerName : gameData?.blackPlayerName;
+  const opponentName = activeColor === "white" ? gameData?.blackPlayerName : gameData?.whitePlayerName;
   const canReturnToLobby = gameData?.status === "finished" || gameData?.status === "expired";
 
-  const myClock = color === "white" ? gameData?.whiteTimeRemaining : gameData?.blackTimeRemaining;
-  const oppClock = color === "white" ? gameData?.blackTimeRemaining : gameData?.whiteTimeRemaining;
+  const myClock = activeColor === "white" ? gameData?.whiteTimeRemaining : gameData?.blackTimeRemaining;
+  const oppClock = activeColor === "white" ? gameData?.blackTimeRemaining : gameData?.whiteTimeRemaining;
 
-  const isInteractiveBoard = isMyTurn && !submittingMove && moveIndex === -1 && !canReturnToLobby;
+  const isInteractiveBoard = !isSpectator && isMyTurn && !submittingMove && moveIndex === -1 && !canReturnToLobby;
 
   const selectSquare = (square) => {
     if (!isInteractiveBoard) return;
@@ -257,7 +314,7 @@ export default function ChessGamePage() {
     }
 
     const pieceColor = piece.color === "w" ? "white" : "black";
-    if (pieceColor !== color) {
+    if (pieceColor !== activeColor) {
       setSelectedSquare(null);
       setLegalTargets([]);
       return;
@@ -300,15 +357,21 @@ export default function ChessGamePage() {
   return (
     <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center p-8 page-enter">
       <h1 className="text-3xl font-bold text-[#FFD700] mb-4">♟️ Chess Game</h1>
-      <p className="mb-2">Game #{gameId} · You are {color}</p>
+      <p className="mb-2">Game #{gameId} · {isSpectator ? `Spectating ${activeColor}` : `You are ${color}`}</p>
+      {isSpectator && (
+        <div className="mb-2 flex gap-2">
+          <button onClick={() => setSpectatorFocus("white")} className="px-2 py-1 rounded bg-white/10 text-xs">View White</button>
+          <button onClick={() => setSpectatorFocus("black")} className="px-2 py-1 rounded bg-white/10 text-xs">View Black</button>
+        </div>
+      )}
       <p className="mb-1 text-lg font-semibold text-[#FFD700]">Bet Amount: ${Number(gameData?.betAmount || 0)}</p>
       <p className="mb-4 text-md text-white/90">Timer: {gameData?.timerMode || "blitz"}</p>
 
       <div className="flex flex-col md:flex-row gap-6 items-start">
         <div className="casino-surface rounded-2xl p-4">
-          <div className={`flex justify-between mb-2 rounded-lg px-2 py-1 ${gameData?.activeTurn !== color ? "turn-active-glow" : ""}`}>
+          <div className={`flex justify-between mb-2 rounded-lg px-2 py-1 ${gameData?.activeTurn !== activeColor ? "turn-active-glow" : ""}`}>
             <p className="text-left font-semibold text-yellow-200">{opponentName || "Opponent"}</p>
-            <p className={`font-mono font-bold ${gameData?.activeTurn !== color ? "text-green-300" : "text-white"} ${Number(oppClock || 0) <= 10 ? "low-time-pulse" : ""}`}>{formatClock(oppClock)}</p>
+            <p className={`font-mono font-bold ${gameData?.activeTurn !== activeColor ? "text-green-300" : "text-white"} ${Number(oppClock || 0) <= 10 ? "low-time-pulse" : ""}`}>{formatClock(oppClock)}</p>
           </div>
           <div className="mb-2 rounded-xl overflow-hidden shadow-2xl">
             <Chessboard
@@ -316,14 +379,14 @@ export default function ChessGamePage() {
               onPieceDrop={onDrop}
               onSquareClick={selectSquare}
               boardWidth={400}
-              boardOrientation={color}
+              boardOrientation={activeColor}
               arePiecesDraggable={isInteractiveBoard}
               customSquareStyles={customSquareStyles}
             />
           </div>
-          <div className={`flex justify-between rounded-lg px-2 py-1 ${gameData?.activeTurn === color ? "turn-active-glow" : ""}`}>
+          <div className={`flex justify-between rounded-lg px-2 py-1 ${gameData?.activeTurn === activeColor ? "turn-active-glow" : ""}`}>
             <p className="text-right font-semibold text-yellow-200">{myName || "You"}</p>
-            <p className={`font-mono font-bold ${gameData?.activeTurn === color ? "text-green-300" : "text-white"} ${Number(myClock || 0) <= 10 ? "low-time-pulse" : ""}`}>{formatClock(myClock)}</p>
+            <p className={`font-mono font-bold ${gameData?.activeTurn === activeColor ? "text-green-300" : "text-white"} ${Number(myClock || 0) <= 10 ? "low-time-pulse" : ""}`}>{formatClock(myClock)}</p>
           </div>
         </div>
           <p className="text-xs text-white/80 mt-2">Click a piece to preview moves. <span className="text-green-300">Green</span> = legal move, <span className="text-red-300">Red</span> = capture.</p>
@@ -376,6 +439,7 @@ export default function ChessGamePage() {
       </div>
 
       {status && <div className="text-lg text-yellow-300 mt-4 mb-2">{status}</div>}
+      {!isSpectator && spectatorCount > 0 && <div className="text-xs text-cyan-300 mb-2">👀 {spectatorCount} spectator{spectatorCount > 1 ? "s" : ""}</div>}
 
       {showResultPopup && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">

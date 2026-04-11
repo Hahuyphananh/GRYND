@@ -1,7 +1,7 @@
 "use client";
 
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { getDropRow } from "../../../../../lib/connectFour";
 
@@ -34,6 +34,9 @@ function Disc({ value, className = "", style }: { value: number; className?: str
 export default function ConnectFourGamePage() {
   const { gameId } = useParams<{ gameId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isSpectator = searchParams.get("spectator") === "1";
+  const [spectatorFocus, setSpectatorFocus] = useState<"host" | "guest">((searchParams.get("focus") as any) === "guest" ? "guest" : "host");
   const { socket } = useSocket();
 
   const [game, setGame] = useState<any>(null);
@@ -42,6 +45,7 @@ export default function ConnectFourGamePage() {
   const [fallingDisc, setFallingDisc] = useState<{ row: number; col: number; value: number } | null>(null);
   const [sendingReplayDecision, setSendingReplayDecision] = useState(false);
   const [replayMessage, setReplayMessage] = useState("");
+  const [spectatorCount, setSpectatorCount] = useState(0);
   const previousBoardRef = useRef<number[][] | null>(null);
 
   const detectLatestDrop = (previousBoard: number[][] | null, nextBoard: number[][]) => {
@@ -122,16 +126,69 @@ export default function ConnectFourGamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, gameId]);
 
+  useEffect(() => {
+    if (isSpectator) return;
+    const pingPresence = async () => {
+      await fetch("/api/presence/game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameKey: "connect-four", gameId: Number(gameId) }),
+      });
+    };
+    pingPresence();
+    const id = setInterval(pingPresence, 15000);
+    return () => clearInterval(id);
+  }, [gameId, isSpectator]);
+
+  useEffect(() => {
+    if (!game) return;
+    const focusId = spectatorFocus === "host" ? game.hostClerkId : game.guestClerkId;
+    if (!focusId) return;
+
+    const pollSpectators = async () => {
+      try {
+        const res = await fetch(`/api/spectators/count?gameKey=connect-four&gameId=${gameId}`, { credentials: "include" });
+        const data = await res.json();
+        if (res.ok && data.success) setSpectatorCount(Number(data.count || 0));
+      } catch {}
+    };
+
+    pollSpectators();
+    const id = setInterval(pollSpectators, 5000);
+
+    let hb;
+    if (isSpectator) {
+      const beat = async () => {
+        await fetch("/api/spectators/heartbeat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ gameKey: "connect-four", gameId: Number(gameId), targetClerkId: focusId }),
+        });
+      };
+      beat();
+      hb = setInterval(beat, 5000);
+    }
+
+    return () => {
+      clearInterval(id);
+      if (hb) clearInterval(hb);
+    };
+  }, [game, spectatorFocus, isSpectator, gameId]);
+
+
   const canPlay = useMemo(() => {
     if (!game) return false;
+    if (isSpectator) return false;
     return game.status === "in_progress" && game.currentTurn === game.role;
-  }, [game]);
+  }, [game, isSpectator]);
 
   const playerWon = useMemo(() => {
     if (!game || game.status !== "finished") return false;
     if (!game.winnerClerkId) return false;
     return (game.role === "host" && game.winnerClerkId === game.hostClerkId) || (game.role === "guest" && game.winnerClerkId === game.guestClerkId);
-  }, [game]);
+  }, [game, isSpectator]);
 
   const moveLimit = Number(game?.moveTimeLimit || game?.timerSeconds || DEFAULT_MOVE_LIMIT_SECONDS);
   const activeTimer = game?.status === "in_progress" ? Math.min(moveLimit, Math.max(0, Number(game?.moveTimeRemaining || 0))) : 0;
@@ -243,7 +300,16 @@ export default function ConnectFourGamePage() {
     <div className="min-h-screen bg-[#02142c] text-white px-4 py-8 page-enter">
       <div className="max-w-5xl mx-auto relative overflow-hidden rounded-2xl">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-extrabold text-yellow-300">Connect Four — Match #{gameId}</h1>
+          <div>
+            <h1 className="text-3xl font-extrabold text-yellow-300">Connect Four — Match #{gameId}</h1>
+            {isSpectator && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs rounded bg-cyan-500/20 px-2 py-1">Spectator mode</span>
+                <button onClick={() => setSpectatorFocus("host")} className="px-2 py-1 text-xs rounded bg-white/10">View Host</button>
+                <button onClick={() => setSpectatorFocus("guest")} className="px-2 py-1 text-xs rounded bg-white/10">View Guest</button>
+              </div>
+            )}
+          </div>
           <button onClick={() => router.push("/casino/connect-four")} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 hover-lift">
             Back to Lobby
           </button>
@@ -331,6 +397,7 @@ export default function ConnectFourGamePage() {
           <div className={`casino-surface p-4 rounded-2xl ${canPlay ? "turn-active-glow" : ""}`}>
             <h2 className="text-xl font-bold text-yellow-300 mb-3">Match Details</h2>
             <p className="mb-2">Status: <span className="font-semibold">{statusText}</span></p>
+            {!isSpectator && spectatorCount > 0 && (<p className="text-xs text-cyan-300 mb-2">👀 {spectatorCount} spectator{spectatorCount > 1 ? "s" : ""}</p>)}
             <p className="mb-2">Your color: <span className="font-semibold">{game?.role === "host" ? "Green" : game?.role === "guest" ? "Red" : "-"}</span></p>
             <p className="mb-2">Discs used: {game?.role === "host" ? game?.hostDiscsUsed : game?.guestDiscsUsed} / 21</p>
             <p className="mb-4">Opponent discs: {game?.role === "host" ? game?.guestDiscsUsed : game?.hostDiscsUsed} / 21</p>
