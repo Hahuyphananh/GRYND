@@ -14,16 +14,35 @@ export async function GET() {
   }
 
   const meId = current.rows[0].id;
+  let rows;
+  try {
+    rows = await sql`
+      SELECT p.game_key, p.game_id, u.id AS friend_id, u.name, u.profile_picture, p.last_seen_at
+      FROM friend_relations fr
+      JOIN user_game_presence p ON p.user_id = fr.friend_id
+      JOIN users u ON u.id = fr.friend_id
+      WHERE fr.user_id = ${meId}
+        AND p.last_seen_at >= NOW() - INTERVAL '20 minutes'
+      ORDER BY p.last_seen_at DESC
+    `;
+  } catch (error) {
+    const message = String(error?.message || error || "");
+    if (!message.toLowerCase().includes("game_id")) {
+      console.error("[FRIENDS_GAME_PRESENCE_ERROR]", error);
+      return new Response(JSON.stringify({ success: false, error: "Failed to load friend presence" }), { status: 500 });
+    }
 
-  const rows = await sql`
-    SELECT p.game_key, p.game_id, u.id AS friend_id, u.name, u.profile_picture, p.last_seen_at
-    FROM friend_relations fr
-    JOIN user_game_presence p ON p.user_id = fr.friend_id
-    JOIN users u ON u.id = fr.friend_id
-    WHERE fr.user_id = ${meId}
-      AND p.last_seen_at >= NOW() - INTERVAL '20 minutes'
-    ORDER BY p.last_seen_at DESC
-  `;
+    rows = await sql`
+      SELECT p.game_key, NULL::integer AS game_id, u.id AS friend_id, u.name, u.profile_picture, p.last_seen_at
+      FROM friend_relations fr
+      JOIN user_game_presence p ON p.user_id = fr.friend_id
+      JOIN users u ON u.id = fr.friend_id
+      WHERE fr.user_id = ${meId}
+        AND p.last_seen_at >= NOW() - INTERVAL '20 minutes'
+      ORDER BY p.last_seen_at DESC
+    `;
+  }
+
 
   const byGame = {};
   const byFriend = {};

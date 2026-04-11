@@ -99,10 +99,14 @@ export default function ProfilePage() {
   };
 
   const loadFriendPresence = async () => {
-    const response = await fetch("/api/friends/game-presence", { credentials: "include" });
-    const data = await response.json();
-    if (response.ok && data.success) {
-      setFriendPresenceByFriend(data.byFriend || {});
+    try {
+      const response = await fetch("/api/friends/game-presence", { credentials: "include" });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setFriendPresenceByFriend(data.byFriend || {});
+      }
+    } catch (err) {
+      console.error("[LOAD_FRIEND_PRESENCE_ERROR]", err);
     }
   };
 
