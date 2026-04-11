@@ -22,11 +22,12 @@ export async function POST(request) {
       name: { type: "string", required: true, minLength: 2, maxLength: 80 },
       email: { type: "string", required: true, minLength: 5, maxLength: 254, pattern: EMAIL_REGEX },
       password: { type: "string", required: false, minLength: 6, maxLength: 128, default: null },
+      profilePicture: { type: "string", required: false, maxLength: 1000, default: "" },
     });
 
     if (!parsed.ok) return parsed.response;
 
-    const { name: cleanName, email: cleanEmail, password } = parsed.data;
+    const { name: cleanName, email: cleanEmail, password, profilePicture } = parsed.data;
     const passwordHash = password ? await bcrypt.hash(password, 12) : null;
 
     const existingEmail = await sql`
@@ -47,9 +48,10 @@ export async function POST(request) {
           password = CASE
             WHEN ${Boolean(passwordHash)} THEN ${passwordHash}
             ELSE password
-          END
+          END,
+          profile_picture = ${profilePicture || null}
       WHERE clerk_id = ${userId}
-      RETURNING name, email
+      RETURNING name, email, profile_picture AS "profilePicture"
     `;
 
     if (!updated.rows.length) {

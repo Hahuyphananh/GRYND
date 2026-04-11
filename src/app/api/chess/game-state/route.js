@@ -126,16 +126,9 @@ export async function GET(req) {
     if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
     const canAccess = userAliases.has(String(game.playerWhiteId)) || userAliases.has(String(game.playerBlackId));
-    if (!canAccess) {
-      console.warn("chess game-state forbidden", {
-        gameId,
-        requester: userId,
-        requesterAliases: Array.from(userAliases),
-        playerWhiteId: game.playerWhiteId,
-        playerBlackId: game.playerBlackId,
-      });
-      return NextResponse.json({ error: "Game not found" }, { status: 404 });
-    }
+    const viewerRole = canAccess
+      ? (userAliases.has(String(game.playerWhiteId)) ? "white" : "black")
+      : "spectator";
 
     const moves = await db
       .select()
@@ -168,6 +161,7 @@ export async function GET(req) {
         blackPlayerId: game.playerBlackId,
         whitePlayerName: whiteName || "White",
         blackPlayerName: blackName || (game.isAiGame ? "Chess AI" : "Waiting..."),
+        viewerRole,
         winnerId: game.winnerId,
         result: game.result,
         fen: lastMove?.fenAfter ?? null,
