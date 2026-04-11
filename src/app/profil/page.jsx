@@ -123,6 +123,10 @@ export default function ProfilePage() {
   const handleSearchFriends = async (searchValue = friendSearch) => {
     setFriendsStatus("");
     const normalized = String(searchValue || "").trim();
+
+    console.log("FRONTEND SEARCH INPUT:", `"${searchValue}"`);
+  console.log("FRONTEND NORMALIZED:", `"${normalized}"`);
+  
     if (!normalized) {
       setFriendSearchResults([]);
       return;
