@@ -27,8 +27,7 @@ export async function GET(req) {
     let [game] = await db.select().from(connectFourGames).where(eq(connectFourGames.id, gameId)).limit(1);
     if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
-    const role = getPlayerRole(game, userAliases);
-    if (!role) return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    const role = getPlayerRole(game, userAliases) || "spectator";
 
     game = await settleTimeoutIfNeeded(game);
 

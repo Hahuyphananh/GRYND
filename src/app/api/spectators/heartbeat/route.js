@@ -1,0 +1,28 @@
+import { auth } from "@clerk/nextjs/server";
+import { sql } from "@vercel/postgres";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
+
+export async function POST(request) {
+  const { userId } = await auth();
+  if (!userId) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+
+  const parsed = await parseAndValidateJson(request, {
+    gameKey: { type: "string", required: true, minLength: 2, maxLength: 80 },
+    gameId: { type: "number", required: true },
+    targetClerkId: { type: "string", required: true, minLength: 2, maxLength: 255 },
+  });
+  if (!parsed.ok) return parsed.response;
+
+  const { gameKey, gameId, targetClerkId } = parsed.data;
+
+  await sql`
+    INSERT INTO spectator_presence (spectator_clerk_id, target_clerk_id, game_key, game_id, last_seen_at)
+    VALUES (${userId}, ${targetClerkId}, ${gameKey.toLowerCase()}, ${Number(gameId)}, NOW())
+    ON CONFLICT (spectator_clerk_id, target_clerk_id, game_key, game_id)
+    DO UPDATE SET last_seen_at = NOW()
+  `;
+
+  await sql`DELETE FROM spectator_presence WHERE last_seen_at < NOW() - INTERVAL '20 seconds'`;
+
+  return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+}

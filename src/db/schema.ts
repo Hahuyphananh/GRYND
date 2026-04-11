@@ -8,6 +8,7 @@ export const users = pgTable('users', {
   clerkId: varchar('clerk_id', { length: 255 }).notNull().unique(),
   name: varchar('name', { length: 255 }).notNull(),
   email: varchar('email', { length: 255 }).notNull().unique(),
+  profilePicture: text('profile_picture'),
   password: varchar('password', { length: 255 }).notNull(),
   age: integer('age'),
   balance: numeric('balance', { precision: 10, scale: 2 }).default('1000.00').notNull(),
@@ -21,6 +22,25 @@ export const users = pgTable('users', {
   level: integer('level').default(1).notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
+
+export const friendRelations = pgTable('friend_relations', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  friendId: integer('friend_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  uniqueFriendship: index('friend_relations_user_friend_idx').on(table.userId, table.friendId),
+}));
+
+export const userGamePresence = pgTable('user_game_presence', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  gameKey: varchar('game_key', { length: 80 }).notNull(),
+  gameId: integer('game_id'),
+  lastSeenAt: timestamp('last_seen_at').notNull().defaultNow(),
+}, (table) => ({
+  userGameIdx: index('user_game_presence_user_game_idx').on(table.userId, table.gameKey),
+}));
 
 export const userLoginRewards = pgTable("user_login_rewards", {
   userId: integer("user_id").primaryKey().references(() => users.id), // INT to match users.id
