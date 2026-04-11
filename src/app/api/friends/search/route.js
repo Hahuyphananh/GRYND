@@ -27,11 +27,11 @@ export async function POST(request) {
     const found = await sql`
       SELECT id, name, profile_picture
       FROM users
-      WHERE LOWER(name) LIKE LOWER(${`%${searchName}%`})
-        AND id != ${currentUserId}
+      WHERE LOWER(TRIM(name)) LIKE '%' || LOWER(TRIM(${searchName})) || '%'
       ORDER BY name ASC, id ASC
       LIMIT 10
     `;
+    console.log("FOUND USERS:", found.rows);
 
     return new Response(JSON.stringify({ success: true, data: found.rows, users: found.rows }), {
       status: 200,
