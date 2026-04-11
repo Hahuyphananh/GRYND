@@ -19,7 +19,8 @@ export async function POST(req: Request) {
       .select({
         balance: users.balance,
         name: users.name,
-        email: users.email
+        email: users.email,
+        profilePicture: users.profilePicture
       })
       .from(users)
       .where(eq(users.clerkId, clerkId))
@@ -44,7 +45,8 @@ export async function POST(req: Request) {
         data: {
           balance: user.balance,
           name: user.name,
-          email: user.email
+          email: user.email,
+          profilePicture: user.profilePicture
         }
       },
       { status: 200 }
