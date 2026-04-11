@@ -20,12 +20,24 @@ export async function POST(request) {
   const gameKey = parsed.data.gameKey.trim().toLowerCase();
   const gameId = Number.isFinite(parsed.data.gameId) ? Number(parsed.data.gameId) : null;
 
-  await sql`
-    INSERT INTO user_game_presence (user_id, game_key, game_id, last_seen_at)
-    VALUES (${meId}, ${gameKey}, ${gameId}, NOW())
-    ON CONFLICT (user_id, game_key)
-    DO UPDATE SET last_seen_at = NOW(), game_id = EXCLUDED.game_id
-  `;
+  try {
+    await sql`
+      INSERT INTO user_game_presence (user_id, game_key, game_id, last_seen_at)
+      VALUES (${meId}, ${gameKey}, ${gameId}, NOW())
+      ON CONFLICT (user_id, game_key)
+      DO UPDATE SET last_seen_at = NOW(), game_id = EXCLUDED.game_id
+    `;
+  } catch (error) {
+    const message = String(error?.message || error || "");
+    if (!message.toLowerCase().includes("game_id")) throw error;
+
+    await sql`
+      INSERT INTO user_game_presence (user_id, game_key, last_seen_at)
+      VALUES (${meId}, ${gameKey}, NOW())
+      ON CONFLICT (user_id, game_key)
+      DO UPDATE SET last_seen_at = NOW()
+    `;
+  }
 
   await sql`
     DELETE FROM user_game_presence
