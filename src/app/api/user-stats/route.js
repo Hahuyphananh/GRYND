@@ -64,6 +64,51 @@ export async function GET() {
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {
+    const message = String(error?.message || error || "").toLowerCase();
+    if (message.includes('user_stats')) {
+      try {
+        const fallback = await sql`
+          SELECT
+            id,
+            COALESCE(referral_code, '') AS referral_code,
+            COALESCE(referral_count, 0) AS referral_count,
+            COALESCE(referral_earnings, 0) AS referral_earnings,
+            COALESCE(total_wagered, 0) AS total_wagered,
+            COALESCE(level, 1) AS level
+          FROM users
+          WHERE clerk_id = ${userId}
+          LIMIT 1
+        `;
+        const row = fallback.rows[0];
+        if (!row) {
+          return new Response(JSON.stringify({ success: false, error: "User not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const progress = getLevelProgress(Number(row.total_wagered));
+        return new Response(JSON.stringify({
+          success: true,
+          stats: {
+            totalBets: 0,
+            totalWins: 0,
+            totalLosses: 0,
+            winRate: 0,
+            biggestWin: 0,
+            favoriteGame: 'N/A',
+            referrals: Number(row.referral_count),
+            referralEarnings: Number(row.referral_earnings),
+            referralCode: row.referral_code,
+            totalWagered: Number(row.total_wagered),
+            currentLevel: Number(row.level),
+            levelProgress: progress,
+          },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      } catch (fallbackError) {
+        console.error('[USER_STATS_FALLBACK_ERROR]', fallbackError);
+      }
+    }
+
     console.error("[USER_STATS_ERROR]", error);
     return new Response(JSON.stringify({ success: false, error: "Failed to load stats" }), {
       status: 500,

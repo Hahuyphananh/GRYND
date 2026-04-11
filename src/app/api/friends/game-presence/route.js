@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 
 export async function GET() {
+  try {
   const { userId } = await auth();
 
   if (!userId) {
@@ -63,4 +64,8 @@ export async function GET() {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
+  } catch (error) {
+    console.error("[FRIENDS_GAME_PRESENCE_FATAL]", error);
+    return new Response(JSON.stringify({ success: false, error: "Failed to load friend presence" }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }
 }

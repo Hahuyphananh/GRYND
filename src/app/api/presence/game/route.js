@@ -3,6 +3,7 @@ import { sql } from "@vercel/postgres";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 export async function POST(request) {
+  try {
   const { userId } = await auth();
   if (!userId) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
 
@@ -45,4 +46,8 @@ export async function POST(request) {
   `;
 
   return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+  } catch (error) {
+    console.error("[PRESENCE_GAME_ERROR]", error);
+    return new Response(JSON.stringify({ success: false, error: "Failed to update presence" }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }
 }
