@@ -16,6 +16,7 @@ export async function POST(req: Request) {
     const clerkUser = await clerkUsers.getUser(clerkId);
     const name = `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim();
     const email = clerkUser.emailAddresses?.[0]?.emailAddress || 'unknown@example.com';
+    const profilePicture = clerkUser.imageUrl || null;
 
     const existing = await db.select().from(users).where(eq(users.clerkId, clerkId)).limit(1);
     if (existing.length > 0) {
@@ -45,6 +46,7 @@ export async function POST(req: Request) {
       name,
       email,
       password: passwordHash,
+      profilePicture,
     }).returning();
 
     return NextResponse.json(
