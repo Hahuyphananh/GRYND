@@ -17,7 +17,7 @@ export default function ProfilePage() {
   const { signOut } = useClerk();
 
   const [userTokens, setUserTokens] = useState(null);
-  const [profileInfo, setProfileInfo] = useState({ name: "", email: "" });
+  const [profileInfo, setProfileInfo] = useState({ name: "", email: "", profilePicture: "" });
   const [bets, setBets] = useState([]);
   const [error, setError] = useState(null);
   const [isResetting, setIsResetting] = useState(false);
@@ -36,7 +36,13 @@ export default function ProfilePage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", email: "", password: "" });
+  const [editForm, setEditForm] = useState({ name: "", email: "", password: "", profilePicture: "" });
+
+  const [friendSearch, setFriendSearch] = useState("");
+  const [friendSearchResults, setFriendSearchResults] = useState([]);
+  const [myFriends, setMyFriends] = useState([]);
+  const [friendsStatus, setFriendsStatus] = useState("");
+  const [isSearchingFriends, setIsSearchingFriends] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editStatus, setEditStatus] = useState("");
 
@@ -64,8 +70,9 @@ export default function ProfilePage() {
       setUserTokens(Number(tokensData.data.balance || 0));
       const name = tokensData.data.name || user?.fullName || "Unknown user";
       const email = tokensData.data.email || user?.emailAddresses?.[0]?.emailAddress || "";
-      setProfileInfo({ name, email });
-      setEditForm((prev) => ({ ...prev, name, email }));
+      const profilePicture = tokensData.data.profilePicture || "";
+      setProfileInfo({ name, email, profilePicture });
+      setEditForm((prev) => ({ ...prev, name, email, profilePicture }));
     }
 
     const historyResponse = await fetch("/api/get-bet-history", {
@@ -81,6 +88,61 @@ export default function ProfilePage() {
       setBets([]);
     }
   };
+
+
+  const loadFriends = async () => {
+    const response = await fetch("/api/friends/list", { credentials: "include" });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || "Failed to load friends");
+    setMyFriends(Array.isArray(data.friends) ? data.friends : []);
+  };
+
+  const handleSearchFriends = async () => {
+    setFriendsStatus("");
+    if (!friendSearch.trim()) {
+      setFriendSearchResults([]);
+      return;
+    }
+
+    try {
+      setIsSearchingFriends(true);
+      const response = await fetch("/api/friends/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: friendSearch.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "Search failed");
+      setFriendSearchResults(Array.isArray(data.users) ? data.users : []);
+    } catch (err) {
+      console.error("[SEARCH_FRIENDS_ERROR]", err);
+      setFriendsStatus(err.message || "Could not search users.");
+    } finally {
+      setIsSearchingFriends(false);
+    }
+  };
+
+  const handleInviteFriend = async (friendId) => {
+    setFriendsStatus("");
+    try {
+      const response = await fetch("/api/friends/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ friendId }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "Failed to send invite");
+      setFriendsStatus(data.message || "Invite sent.");
+      await loadFriends();
+    } catch (err) {
+      console.error("[INVITE_FRIEND_ERROR]", err);
+      setFriendsStatus(err.message || "Could not send invite.");
+    }
+  };
+
+  const profileAvatar = (person) => person?.profile_picture || person?.profilePicture || "";
 
   const initializeReferral = async () => {
     const generateRes = await fetch("/api/referral/generate", { method: "POST", credentials: "include" });
@@ -106,8 +168,7 @@ export default function ProfilePage() {
 
     const bootstrap = async () => {
   try {
-    await loadProfileData();
-    await loadStats();
+    await Promise.all([loadProfileData(), loadStats(), loadFriends()]);
 
     if (!stats?.referralCode) {
       await initializeReferral();
@@ -287,7 +348,11 @@ export default function ProfilePage() {
         throw new Error(data.error || "Failed to update profile");
       }
 
-      setProfileInfo({ name: data.profile.name, email: data.profile.email });
+      setProfileInfo({
+        name: data.profile.name,
+        email: data.profile.email,
+        profilePicture: data.profile.profilePicture || "",
+      });
       setEditForm((prev) => ({ ...prev, password: "" }));
       setEditStatus("Profile updated successfully.");
     } catch (err) {
@@ -379,8 +444,19 @@ export default function ProfilePage() {
                 Edit Profile
               </button>
             </div>
-            <p>Name : {profileInfo.name || user.fullName || "Unknown user"}</p>
-            <p>Email : {profileInfo.email || user.emailAddresses?.[0]?.emailAddress}</p>
+            <div className="mb-3 flex items-center gap-3">
+              {profileInfo.profilePicture ? (
+                <img src={profileInfo.profilePicture} alt="Profile" className="h-14 w-14 rounded-full object-cover border border-[#FFD700]" />
+              ) : (
+                <div className="h-14 w-14 rounded-full bg-[#FFD700] text-[#003366] flex items-center justify-center text-lg font-bold">
+                  {(profileInfo.name || user.fullName || "U").charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <p>Name : {profileInfo.name || user.fullName || "Unknown user"}</p>
+                <p>Email : {profileInfo.email || user.emailAddresses?.[0]?.emailAddress}</p>
+              </div>
+            </div>
             <p>Membre depuis : {new Date(user.createdAt).toLocaleDateString()}</p>
           </div>
 
@@ -475,6 +551,72 @@ export default function ProfilePage() {
 
           {referralStatus && <p className="mt-3 text-sm text-gray-200">{referralStatus}</p>}
         </div>
+
+        <div className="mt-8 border border-[#FFD700] rounded-lg p-6">
+          <h2 className="text-xl text-[#FFD700] mb-4">Add Friends</h2>
+          <div className="flex gap-2 mb-4">
+            <input
+              value={friendSearch}
+              onChange={(e) => setFriendSearch(e.target.value)}
+              placeholder="Type a name to find users"
+              className="flex-1 rounded bg-white/10 border border-white/20 px-4 py-2"
+            />
+            <button
+              onClick={handleSearchFriends}
+              disabled={isSearchingFriends}
+              className="rounded bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold disabled:opacity-50"
+            >
+              {isSearchingFriends ? "Searching..." : "Search"}
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {friendSearchResults.map((person) => (
+              <div key={person.id} className="flex items-center justify-between rounded border border-[#FFD700]/40 p-3">
+                <div className="flex items-center gap-3">
+                  {profileAvatar(person) ? (
+                    <img src={profileAvatar(person)} alt={person.name} className="h-10 w-10 rounded-full object-cover" />
+                  ) : (
+                    <div className="h-10 w-10 rounded-full bg-[#FFD700] text-[#003366] flex items-center justify-center font-bold">
+                      {person.name?.charAt(0)?.toUpperCase() || "U"}
+                    </div>
+                  )}
+                  <span>{person.name}</span>
+                </div>
+                <button
+                  onClick={() => handleInviteFriend(person.id)}
+                  className="rounded bg-green-500 px-3 py-1 text-sm font-semibold hover:bg-green-600"
+                >
+                  Send Invite
+                </button>
+              </div>
+            ))}
+            {friendSearch && friendSearchResults.length === 0 && !isSearchingFriends && (
+              <p className="text-sm text-gray-300">No users found for this name.</p>
+            )}
+          </div>
+
+          {friendsStatus && <p className="mt-3 text-sm text-gray-200">{friendsStatus}</p>}
+        </div>
+
+        <div className="mt-8 border border-[#FFD700] rounded-lg p-6">
+          <h2 className="text-xl text-[#FFD700] mb-4">My Friends</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {myFriends.length > 0 ? myFriends.map((friend) => (
+              <div key={`${friend.id}-${friend.name}`} className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3">
+                {profileAvatar(friend) ? (
+                  <img src={profileAvatar(friend)} alt={friend.name} className="h-10 w-10 rounded-full object-cover" />
+                ) : (
+                  <div className="h-10 w-10 rounded-full bg-[#FFD700] text-[#003366] flex items-center justify-center font-bold">
+                    {friend.name?.charAt(0)?.toUpperCase() || "U"}
+                  </div>
+                )}
+                <span>{friend.name}</span>
+              </div>
+            )) : <p className="text-sm text-gray-300">No friends yet.</p>}
+          </div>
+        </div>
+
 
         <div className="mt-8 border border-[#FFD700] rounded-lg p-6">
           <h2 className="text-xl text-[#FFD700] mb-4">User Statistics</h2>
@@ -605,6 +747,12 @@ export default function ProfilePage() {
                 value={editForm.email}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
                 placeholder="Email"
+                className="w-full rounded bg-white/10 border border-white/20 px-4 py-2"
+              />
+              <input
+                value={editForm.profilePicture}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, profilePicture: e.target.value }))}
+                placeholder="Profile picture URL"
                 className="w-full rounded bg-white/10 border border-white/20 px-4 py-2"
               />
               <input
