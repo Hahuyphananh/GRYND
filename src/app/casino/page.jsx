@@ -1,7 +1,7 @@
 "use client";
 import NavigationBar from "../../components/navigation-bar";
 import { useUser } from "@clerk/nextjs";
-import { useState, React } from "react";
+import React, { useEffect, useState } from "react";
 import Img1 from "../../images/roulette.jpg";
 import Img2 from "../../images/blackjack.jpg";
 import Img3 from "../../images/poker.jpg";
@@ -20,10 +20,34 @@ import Image from "next/image";
 import Link from "next/link";
 
 function MainComponent() {
-  const { data: user } = useUser();
+  const { user } = useUser();
   const [selectedGame, setSelectedGame] = useState(null);
   const [error, setError] = useState(null);
 const [search, setSearch] = useState("");
+const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
+
+const fetchFriendPresence = async () => {
+  try {
+    const response = await fetch("/api/friends/game-presence", { credentials: "include" });
+    const data = await response.json();
+    if (response.ok && data.success) setFriendPresenceByGame(data.byGame || {});
+  } catch (err) {
+    console.error("[FRIEND_PRESENCE_ERROR]", err);
+  }
+};
+
+const handleGameEntry = async (gameKey) => {
+  try {
+    await fetch("/api/presence/game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ gameKey }),
+    });
+  } catch (err) {
+    console.error("[SET_GAME_PRESENCE_ERROR]", err);
+  }
+};
 
 const games = [
   {
@@ -137,9 +161,16 @@ const filteredGames = games.filter((game) =>
 
 const popularGames = filteredGames.filter((g) => g.popular);
 const otherGames = filteredGames.filter((g) => !g.popular);
+useEffect(() => {
+  if (!user) return;
+  fetchFriendPresence();
+  const id = setInterval(fetchFriendPresence, 30000);
+  return () => clearInterval(id);
+}, [user]);
+
 const GameCard = ({ game }) => (
   <div className="group relative overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-2 transition-all hover:shadow-[0_0_24px_rgba(0,229,255,0.35)]">
-    <Link href={game.href} className="block cursor-pointer">
+    <Link href={game.href} onClick={() => handleGameEntry(game.leaderboardKey)} className="block cursor-pointer">
       <div className="mb-2 h-28 overflow-hidden rounded-lg">
         <Image
           src={game.image}
@@ -167,6 +198,20 @@ const GameCard = ({ game }) => (
         Voir le leaderboard de {game.name}
       </Link>
     </div>
+
+    {Array.isArray(friendPresenceByGame[game.leaderboardKey]) && friendPresenceByGame[game.leaderboardKey].length > 0 && (
+      <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1" title={friendPresenceByGame[game.leaderboardKey].map((f) => f.name).join(", ")}>
+        {friendPresenceByGame[game.leaderboardKey].slice(0, 4).map((friend) => (
+          friend.profilePicture ? (
+            <img key={`${friend.id}-${friend.name}`} src={friend.profilePicture} alt={friend.name} className="h-6 w-6 rounded-full border border-white/30 object-cover" title={friend.name} />
+          ) : (
+            <div key={`${friend.id}-${friend.name}`} className="h-6 w-6 rounded-full bg-[#FFD700] text-[#003366] text-xs font-bold flex items-center justify-center" title={friend.name}>
+              {friend.name?.charAt(0)?.toUpperCase() || "U"}
+            </div>
+          )
+        ))}
+      </div>
+    )}
   </div>
 );
 

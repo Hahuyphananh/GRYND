@@ -1,0 +1,38 @@
+import { auth } from "@clerk/nextjs/server";
+import { sql } from "@vercel/postgres";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
+
+export async function POST(request) {
+  const { userId } = await auth();
+
+  if (!userId) {
+    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+  }
+
+  const parsed = await parseAndValidateJson(request, {
+    name: { type: "string", required: true, minLength: 1, maxLength: 80 },
+  });
+
+  if (!parsed.ok) return parsed.response;
+
+  const current = await sql`SELECT id FROM users WHERE clerk_id = ${userId} LIMIT 1`;
+  if (!current.rows.length) {
+    return new Response(JSON.stringify({ success: false, error: "User not found" }), { status: 404 });
+  }
+
+  const searchName = parsed.data.name.trim();
+
+  const found = await sql`
+    SELECT id, name, profile_picture
+    FROM users
+    WHERE LOWER(name) LIKE LOWER(${`%${searchName}%`})
+      AND id <> ${current.rows[0].id}
+    ORDER BY name ASC, id ASC
+    LIMIT 20
+  `;
+
+  return new Response(JSON.stringify({ success: true, users: found.rows }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
