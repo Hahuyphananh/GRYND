@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
+import { neon } from "@neondatabase/serverless";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
+
+const sql = neon(process.env.DATABASE_URL);
 
 export async function POST(request) {
   try {
