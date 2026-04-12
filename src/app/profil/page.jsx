@@ -124,6 +124,9 @@ export default function ProfilePage() {
     setFriendsStatus("");
     const normalized = String(searchValue || "").trim();
 
+    console.log("🟦 FRONT INPUT:", searchValue);
+  console.log("🟦 FRONT NORMALIZED:", normalized);
+
     console.log("FRONTEND SEARCH INPUT:", `"${searchValue}"`);
   console.log("FRONTEND NORMALIZED:", `"${normalized}"`);
   

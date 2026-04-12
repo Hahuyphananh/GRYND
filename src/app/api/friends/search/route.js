@@ -22,6 +22,8 @@ export async function POST(request) {
 
     if (!parsed.ok) return parsed.response;
 
+    console.log("🟥 BACKEND RAW INPUT:", parsed.data.name);
+
     // ✅ FIXED normalization (NOW INSIDE FUNCTION)
     const searchName = removeAccents(
       String(parsed.data.name)
@@ -29,6 +31,8 @@ export async function POST(request) {
         .replace(/\s+/g, "")
         .trim()
     );
+
+console.log("🟥 BACKEND NORMALIZED:", searchName);
 
     let currentUserId = null;
 
@@ -40,6 +44,8 @@ export async function POST(request) {
       currentUserId = current.rows[0].id;
     }
 
+    console.log("🟥 FINAL SQL SEARCH VALUE:", searchName);
+
     const found = await sql`
       SELECT id, name, profile_picture
       FROM users
@@ -50,6 +56,8 @@ export async function POST(request) {
       LIMIT 10
     `;
 
+    console.log("🟥 DB RESULT:", found.rows);
+    
     return Response.json({
       success: true,
       users: found?.rows ?? [],
