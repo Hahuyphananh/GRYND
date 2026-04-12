@@ -52,15 +52,14 @@ export async function POST(request) {
     // 🧠 DEBUG 3
     const queryString = normalized;
 
-    const found = await sql`
-      SELECT id, name, profile_picture
-      FROM users
-WHERE LOWER(REGEXP_REPLACE(name, '\\s+', '', 'g'))
-      LIKE '%' || ${queryString} || '%'
-      ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
-      ORDER BY name ASC
-      LIMIT 10
-    `;
+   const found = await sql`
+  SELECT id, name, profile_picture
+  FROM users
+  WHERE search_name LIKE '%' || ${queryString} || '%'
+  ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
+  ORDER BY name ASC
+  LIMIT 10
+`;
 
     const users = found?.rows ?? [];
 
