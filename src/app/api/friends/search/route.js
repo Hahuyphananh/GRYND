@@ -61,12 +61,12 @@ const found = await sql`
   LIMIT 10
 `;
 
-    console.log("FOUND USERS:", found.rows);
+    console.log("FOUND USERS:", found);
 
    return new Response(
   JSON.stringify({
     success: true,
-    users: found.rows,
+    users: found,
     debug: {
       clerkUserId: userId,
       dbClerkIds: debugUsers.rows,
