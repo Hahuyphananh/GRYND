@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { neon } from "@neondatabase/serverless";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
+import removeAccents from "remove-accents";
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -21,11 +22,13 @@ export async function POST(request) {
 
     if (!parsed.ok) return parsed.response;
 
-    // normalize search input
-    const searchName = String(parsed.data.name)
-      .toLowerCase()
-      .replace(/\s+/g, "")
-      .trim();
+    // ✅ FIXED normalization (NOW INSIDE FUNCTION)
+    const searchName = removeAccents(
+      String(parsed.data.name)
+        .toLowerCase()
+        .replace(/\s+/g, "")
+        .trim()
+    );
 
     let currentUserId = null;
 
@@ -37,19 +40,19 @@ export async function POST(request) {
       currentUserId = current.rows[0].id;
     }
 
- const found = await sql`
-  SELECT id, name, profile_picture
-  FROM users
-  WHERE LOWER(REPLACE(name, ' ', '')) LIKE '%' || ${searchName} || '%'
-  ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
-  ORDER BY name ASC
-  LIMIT 10
-`;
-    const users = found?.rows ?? [];
+    const found = await sql`
+      SELECT id, name, profile_picture
+      FROM users
+      WHERE LOWER(REPLACE(unaccent(name), ' ', ''))
+            LIKE '%' || ${searchName} || '%'
+      ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
+      ORDER BY name ASC
+      LIMIT 10
+    `;
 
     return Response.json({
       success: true,
-      users, // ✅ ALWAYS ARRAY
+      users: found?.rows ?? [],
     });
 
   } catch (error) {
