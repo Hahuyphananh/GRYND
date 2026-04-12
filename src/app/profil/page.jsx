@@ -144,6 +144,8 @@ export default function ProfilePage() {
         body: JSON.stringify({ name: normalized }),
       });
       const data = await response.json();
+
+console.log("🔥 FRIEND SEARCH FULL RESPONSE:", data);
       if (!response.ok || !data.success) {
         setFriendSearchResults([]);
         return;
