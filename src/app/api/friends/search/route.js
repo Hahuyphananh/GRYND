@@ -31,37 +31,36 @@ export async function POST(request) {
     // 🧠 DEBUG 1
     const rawInput = parsed.data.name;
 
-    // 🧠 DEBUG 2
-    const normalized = removeAccents(
-      String(rawInput)
-        .toLowerCase()
-        .replace(/\s+/g, "")
-        .trim()
-    );
+const normalized = removeAccents(
+  String(rawInput)
+    .toLowerCase()
+    .replace(/\s+/g, '') // 🔥 important
+    .trim()
+);
 
     let currentUserId = null;
 
-    const current = await sql`
-      SELECT id FROM users WHERE clerk_id = ${userId} LIMIT 1
-    `;
+   const current = await sql`
+  SELECT id FROM users WHERE clerk_id = ${userId} LIMIT 1
+`;
 
-    if (current?.rows?.length) {
-      currentUserId = current.rows[0].id;
-    }
+if (current.length > 0) {
+  currentUserId = current[0].id;
+}
 
     // 🧠 DEBUG 3
     const queryString = normalized;
 
-   const found = await sql`
+const found = await sql`
   SELECT id, name, profile_picture
   FROM users
-  WHERE search_name LIKE '%' || ${queryString} || '%'
+  WHERE REPLACE(LOWER(search_name), ' ', '') LIKE '%' || ${queryString} || '%'
   ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
   ORDER BY name ASC
   LIMIT 10
 `;
 
-    const users = found?.rows ?? [];
+const users = found ?? [];
 
     // 🚀 EVERYTHING DEBUGGED HERE
     return Response.json({
