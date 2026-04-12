@@ -13,10 +13,10 @@
     "test:runtime": "node --test tests/runtime-security-http.test.mjs"
   },
   "dependencies": {
-    "@clerk/backend": "^2.29.7",
+    "@clerk/backend": "^3.2.8",
     "@clerk/clerk-react": "^5.28.2",
-    "@clerk/clerk-sdk-node": "^4.13.23",
-    "@clerk/nextjs": "^6.37.1",
+    "@clerk/nextjs": "^7.0.12",
+    "@clerk/react": "^6.2.1",
     "@neondatabase/serverless": "^1.0.1",
     "@supabase/supabase-js": "^2.101.1",
     "@vercel/postgres": "^0.10.0",
