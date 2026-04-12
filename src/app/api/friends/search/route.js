@@ -49,10 +49,10 @@ if (current.rows.length) {
 
     console.log("SEARCH NORMALIZED:", `"${searchName}"`);
 
- const found = await sql`
+const found = await sql`
   SELECT id, name, profile_picture
   FROM users
-  WHERE REPLACE(LOWER(name), ' ', '') 
+  WHERE LOWER(REPLACE(name, ' ', ''))
         LIKE '%' || ${searchName.replace(/\s+/g, "")} || '%'
   ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
   ORDER BY name ASC
@@ -61,27 +61,15 @@ if (current.rows.length) {
 
     console.log("FOUND USERS:", found.rows);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        users: found.rows, // ✅ cleaner response
-      }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-  } catch (error) {
-    console.error("[FRIENDS_SEARCH_ERROR]", error);
-
-    // 🔥 NEVER crash search
-    return new Response(
+   return new Response(
   JSON.stringify({
     success: true,
     users: found.rows,
     debug: {
       clerkUserId: userId,
       dbClerkIds: debugUsers.rows,
+      currentUserId,
+      searchName,
     },
   }),
   {
@@ -89,5 +77,18 @@ if (current.rows.length) {
     headers: { "Content-Type": "application/json" },
   }
 );
+  } catch (error) {
+  console.error("[FRIENDS_SEARCH_ERROR]", error);
+
+  return new Response(
+    JSON.stringify({
+      success: false,
+      error: String(error),
+    }),
+    {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    }
+  );
   }
 }
