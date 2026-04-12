@@ -55,7 +55,7 @@ export async function POST(request) {
     const found = await sql`
       SELECT id, name, profile_picture
       FROM users
-      WHERE LOWER(REPLACE(unaccent(name), ' ', ''))
+      LOWER(REGEXP_REPLACE(unaccent(name), '\\s+', '', 'g'))
             LIKE '%' || ${queryString} || '%'
       ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
       ORDER BY name ASC
