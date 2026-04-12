@@ -690,10 +690,22 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
           {friendsStatus && <p className="mt-3 text-sm text-gray-200">{friendsStatus}</p>}
         </div>
 
-        <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
-rounded-xl p-6 
+        <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 
 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
-          <h2 className="text-xl text-[#00e5ff] mb-4">My Friends</h2>
+  
+  <div className="flex items-center justify-between mb-4">
+    <h2 className="text-xl text-[#00e5ff]">My Friends</h2>
+
+    <button
+      onClick={async () => {
+        await loadFriends();
+        await loadFriendPresence(); // optional but keeps status updated
+      }}
+      className="rounded bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80"
+    >
+      Refresh
+    </button>
+  </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {myFriends.length > 0 ? myFriends.map((friend) => (
               <div key={`${friend.id}-${friend.name}`} className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3">
