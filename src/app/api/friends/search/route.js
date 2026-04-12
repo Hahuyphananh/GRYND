@@ -37,10 +37,10 @@ export async function POST(request) {
       currentUserId = current.rows[0].id;
     }
 
-    const found = await sql`
+ const found = await sql`
   SELECT id, name, profile_picture
   FROM users
-  WHERE LOWER(name) LIKE '%' || ${searchName} || '%'
+  WHERE LOWER(REPLACE(name, ' ', '')) LIKE '%' || ${searchName} || '%'
   ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
   ORDER BY name ASC
   LIMIT 10
