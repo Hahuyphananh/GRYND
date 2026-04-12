@@ -21,7 +21,7 @@
     "@neondatabase/serverless": "^1.0.1",
     "@supabase/supabase-js": "^2.101.1",
     "@vercel/postgres": "^0.10.0",
-    "axios": "^1.13.5",
+    "axios": "^1.15.0",
     "bcrypt": "^6.0.0",
     "cheerio": "^1.0.0",
     "chess.js": "^1.2.0",
