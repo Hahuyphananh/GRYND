@@ -38,14 +38,13 @@ export async function POST(request) {
     }
 
     const found = await sql`
-      SELECT id, name, profile_picture
-      FROM users
-      WHERE LOWER(REPLACE(name, ' ', '')) LIKE '%' || ${searchName} || '%'
-      ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
-      ORDER BY name ASC
-      LIMIT 10
-    `;
-
+  SELECT id, name, profile_picture
+  FROM users
+  WHERE LOWER(name) LIKE '%' || ${searchName} || '%'
+  ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
+  ORDER BY name ASC
+  LIMIT 10
+`;
     const users = found?.rows ?? [];
 
     return Response.json({
