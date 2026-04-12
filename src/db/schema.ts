@@ -21,6 +21,7 @@ export const users = pgTable('users', {
   totalWagered: numeric('total_wagered', { precision: 14, scale: 2 }).default('0.00').notNull(),
   level: integer('level').default(1).notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
+  searchName: varchar('search_name', { length: 255 }),
 });
 
 export const friendRelations = pgTable('friend_relations', {
