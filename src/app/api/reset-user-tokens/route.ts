@@ -4,13 +4,10 @@ import { NextResponse } from "next/server";
 
 export async function POST() {
   try {
-    const { userId } = await auth(); // Added await here
+    const { userId } = await auth();
 
     if (!userId) {
-      return NextResponse.json(
-        { error: "Non autorisé" }, 
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
     }
 
     const result = await sql`
@@ -20,27 +17,30 @@ export async function POST() {
       RETURNING balance
     `;
 
-    if (result.rowCount === 0) {
+    if (!result || result.rowCount === 0) {
       return NextResponse.json(
         { error: "Utilisateur non trouvé" },
         { status: 404 }
       );
     }
 
+    const balance = result.rows?.[0]?.balance;
+
     return NextResponse.json(
-      { 
+      {
         success: true,
-        balance: result.rows[0].balance
+        balance: balance ? Number(balance) : 1000,
       },
       { status: 200 }
     );
 
   } catch (error) {
-    console.error("Erreur dans reset-user-token:", error);
+    console.error("❌ RESET TOKEN ERROR:", error);
+
     return NextResponse.json(
-      { 
+      {
         error: "Erreur interne du serveur",
-        details: error instanceof Error ? error.message : 'Erreur inconnue'
+        details: error instanceof Error ? error.message : "Erreur inconnue",
       },
       { status: 500 }
     );
