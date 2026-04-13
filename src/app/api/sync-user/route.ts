@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '../../../db/client';
 import { users } from '../../../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { users as clerkUsers } from '@clerk/clerk-sdk-node';
 
@@ -48,6 +48,15 @@ export async function POST(req: Request) {
       password: passwordHash,
       profilePicture,
     }).returning();
+
+    const newUser = inserted[0];
+
+// 🔥 CREATE USER_STATS ROW
+await db.execute(sql`
+  INSERT INTO user_stats (user_id)
+  VALUES (${newUser.id})
+  ON CONFLICT (user_id) DO NOTHING
+`);
 
     return NextResponse.json(
       { message: 'User synced successfully', user: inserted[0] },

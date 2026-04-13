@@ -59,6 +59,13 @@ export default function ProfilePage() {
     setStats(data.stats);
   };
 
+  const cyberButton =
+  "relative overflow-hidden rounded-lg px-4 py-2 font-semibold text-white " +
+  "bg-gradient-to-r from-[#00e5ff] via-[#00ffcc] to-[#8a2be2] " +
+  "shadow-[0_0_10px_rgba(0,229,255,0.6)] " +
+  "hover:shadow-[0_0_20px_rgba(138,43,226,0.9)] " +
+  "hover:scale-105 active:scale-95 transition-all duration-300";
+
   const loadProfileData = async () => {
     const tokensResponse = await fetch("/api/get-user-tokens", {
       method: "POST",
@@ -550,7 +557,7 @@ const getFriendStatus = (friendId) => {
         <div className="mb-6 flex justify-between items-center">
           <a
             href="/casino"
-            className="flex items-center rounded-lg bg-[#FFD700] px-4 py-2 text-[#003366] hover:bg-[#FFD700]/80"
+            className={cyberButton}
           >
             <i className="fas fa-arrow-left mr-2"></i>
             Retour au Casino
@@ -560,7 +567,7 @@ const getFriendStatus = (friendId) => {
         <h1 className="text-4xl font-extrabold text-center mb-8 
   bg-gradient-to-r from-purple-400 to-pink-500 
   bg-clip-text text-transparent">
-  👤 Profile
+  Your Profile
 </h1>
 
         <div className="grid gap-8 md:grid-cols-2">
@@ -570,14 +577,14 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-xl text-[#00e5ff]">Infos Personnelles</h2>
               <button
-                onClick={() => {
-                  setEditStatus("");
-                  setIsEditOpen(true);
-                }}
-                className="rounded bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#FFD700]/80"
-              >
-                Edit Profile
-              </button>
+  onClick={() => {
+    setEditStatus("");
+    setIsEditOpen(true);
+  }}
+  className={cyberButton + " text-sm px-3 py-1"}
+>
+  Edit Profile
+</button>
             </div>
             <div className="mb-3 flex items-center gap-3">
               {profileInfo.profilePicture ? (
@@ -604,7 +611,11 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)] text-center">
             <button
               onClick={handleResetTokens}
               disabled={isResetting}
-              className="mt-4 rounded bg-red-500 px-4 py-2 hover:bg-red-600 disabled:opacity-50"
+              className="rounded-lg px-4 py-2 font-semibold text-white 
+bg-gradient-to-r from-red-500 to-pink-500 
+shadow-[0_0_10px_rgba(255,0,100,0.6)] 
+hover:shadow-[0_0_20px_rgba(255,0,100,1)] 
+hover:scale-105 transition-all duration-300"
             >
               {isResetting ? "Réinitialisation..." : "Réinitialiser les tokens"}
             </button>
@@ -664,18 +675,19 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
           />
 
           <div className="flex flex-wrap gap-3 mb-4">
-            <button
-              onClick={handleCopyReferralCode}
-              className="rounded bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold hover:bg-[#ffd700]/80"
-            >
-              Copy Code
-            </button>
-            <button
-              onClick={handleShareReferralCode}
-              className="rounded border border-[#FFD700] px-4 py-2 text-[#00e5ff] hover:bg-[#FFD700]/10"
-            >
-              Share Code
-            </button>
+            <button onClick={handleCopyReferralCode} className={cyberButton}>
+  Copy Code
+</button>
+
+<button
+  onClick={handleShareReferralCode}
+  className="rounded-lg px-4 py-2 font-semibold text-white 
+  border border-[#00e5ff] 
+  hover:bg-[#00e5ff]/10 
+  shadow-[0_0_10px_rgba(0,229,255,0.4)]"
+>
+  Share Code
+</button>
           </div>
 
           <div className="flex flex-col md:flex-row gap-3">
@@ -734,7 +746,10 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
                 </div>
                 <button
                   onClick={() => handleInviteFriend(person.id)}
-                  className="rounded bg-green-500 px-3 py-1 text-sm font-semibold hover:bg-green-600"
+                  className="rounded-lg px-3 py-1 text-sm font-semibold text-white 
+bg-gradient-to-r from-[#00ffcc] to-[#00e5ff] 
+shadow-[0_0_10px_rgba(0,255,200,0.6)] 
+hover:scale-105 transition-all"
                 >
                   Add Friend
                 </button>
@@ -814,7 +829,10 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
 
   <button
     onClick={() => handleRemoveFriend(friend.id)}
-    className="rounded bg-red-500 px-2 py-1 text-xs font-semibold hover:bg-red-600"
+    className="rounded-lg px-2 py-1 text-xs font-semibold text-white 
+bg-gradient-to-r from-red-500 to-red-700 
+shadow-[0_0_10px_rgba(255,0,0,0.6)] 
+hover:scale-105 transition-all"
   >
     Remove
   </button>
@@ -993,7 +1011,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               <button
                 disabled={isSavingEdit}
                 onClick={handleSaveEditProfile}
-                className="rounded bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold disabled:opacity-50"
+                className={cyberButton}
               >
                 {isSavingEdit ? "Saving..." : "Save changes"}
               </button>
@@ -1010,7 +1028,7 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center">
             <p className="mt-2 text-gray-200">Bonus received: {levelUpModal.bonus} tokens</p>
             <button
               onClick={() => setLevelUpModal(null)}
-              className="mt-4 rounded bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold"
+              className={cyberButton}
             >
               Awesome!
             </button>
