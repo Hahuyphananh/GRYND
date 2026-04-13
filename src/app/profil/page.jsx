@@ -161,6 +161,64 @@ console.log("🔥 FRIEND SEARCH FULL RESPONSE:", data);
     }
   };
 
+  const handleRemoveFriend = async (friendId) => {
+  const confirmed = window.confirm("Remove this friend?");
+  if (!confirmed) return;
+
+  setFriendsStatus("");
+
+  try {
+    const response = await fetch("/api/friends/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ friendId }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || "Failed to remove friend");
+    }
+
+    setFriendsStatus("Friend removed.");
+    await loadFriends();
+    await loadFriendPresence(); // keep UI in sync
+  } catch (err) {
+    console.error("[REMOVE_FRIEND_ERROR]", err);
+    setFriendsStatus(err.message || "Could not remove friend.");
+  }
+};
+
+const getFriendStatus = (friendId) => {
+  const presence = friendPresenceByFriend?.[friendId];
+
+  // ❌ No presence at all → OFFLINE
+  if (!presence) {
+    return {
+      state: "offline",
+      label: "Offline",
+      color: "text-gray-400",
+    };
+  }
+
+  // 🎮 Playing a game → PLAYING
+  if (presence.gameKey) {
+    return {
+      state: "playing",
+      label: `Playing ${presence.gameKey}`,
+      color: "text-yellow-400",
+    };
+  }
+
+  // 🟢 Connected but not playing → ONLINE
+  return {
+    state: "online",
+    label: "Online",
+    color: "text-green-400",
+  };
+};
+
   const handleInviteFriend = async (friendId) => {
     setFriendsStatus("");
     try {
@@ -719,18 +777,41 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
                 )}
                 <div className="flex-1">
                   <span>{friend.name}</span>
-                  {friendPresenceByFriend?.[friend.id]?.gameKey && (
-                    <p className="text-xs text-[#9dd8ff]">Playing: {friendPresenceByFriend[friend.id].gameKey}</p>
-                  )}
+                 {(() => {
+  const status = getFriendStatus(friend.id);
+  return (
+    <p className={`text-xs flex items-center gap-2 ${status.color}`}>
+  <span
+    className={`h-2 w-2 rounded-full ${
+      status.state === "online"
+        ? "bg-green-400"
+        : status.state === "playing"
+        ? "bg-yellow-400"
+        : "bg-gray-400"
+    }`}
+  />
+  {status.label}
+</p>
+  );
+})()}
                 </div>
-                {spectateUrlForFriend(friend.id) && (
-                  <a
-                    href={spectateUrlForFriend(friend.id)}
-                    className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366]"
-                  >
-                    Spectate
-                  </a>
-                )}
+                <div className="flex flex-col gap-1 items-end">
+  {status.state !== "offline" && spectateUrlForFriend(friend.id) && (
+    <a
+      href={spectateUrlForFriend(friend.id)}
+      className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366]"
+    >
+      Spectate
+    </a>
+  )}
+
+  <button
+    onClick={() => handleRemoveFriend(friend.id)}
+    className="rounded bg-red-500 px-2 py-1 text-xs font-semibold hover:bg-red-600"
+  >
+    Remove
+  </button>
+</div>
               </div>
             )) : <p className="text-sm text-gray-300">No friends yet.</p>}
           </div>
