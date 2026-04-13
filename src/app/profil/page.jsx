@@ -795,15 +795,22 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
   );
 })()}
                 </div>
-                <div className="flex flex-col gap-1 items-end">
-  {status.state !== "offline" && spectateUrlForFriend(friend.id) && (
-    <a
-      href={spectateUrlForFriend(friend.id)}
-      className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366]"
-    >
-      Spectate
-    </a>
-  )}
+               <div className="flex flex-col gap-1 items-end">
+  {(() => {
+    const status = getFriendStatus(friend.id);
+    const spectateUrl = spectateUrlForFriend(friend.id);
+
+    if (status.state === "offline" || !spectateUrl) return null;
+
+    return (
+      <a
+        href={spectateUrl}
+        className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse"
+      >
+        Watch Live
+      </a>
+    );
+  })()}
 
   <button
     onClick={() => handleRemoveFriend(friend.id)}
