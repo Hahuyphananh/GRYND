@@ -16,7 +16,8 @@ import {
   slotGames,
   coinFlipGames,
   keno_games,
-  tankStats
+  tankStats,
+  connectFourGames,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 
@@ -50,7 +51,8 @@ export async function GET() {
       slots,
       coinflipRows,
       kenoRows,
-      tankRows // <-- NEW
+      tankRows, // <-- NEW
+      connectFourRows
     ] = await Promise.all([
       db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)),
       db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid)),
@@ -68,6 +70,12 @@ export async function GET() {
       db.select().from(coinFlipGames).where(or(eq(coinFlipGames.player1Id, clerkId), eq(coinFlipGames.player2Id, clerkId))),
       db.select().from(keno_games).where(eq(keno_games.user_id, uid)),
       db.select().from(tankStats).where(eq(tankStats.clerkId, clerkId)), // NEW
+      db.select().from(connectFourGames).where(
+  or(
+    eq(connectFourGames.hostClerkId, clerkId),
+    eq(connectFourGames.guestClerkId, clerkId)
+  )
+),
     ]);
 
     // Generic formatter (unchanged)
@@ -202,6 +210,31 @@ export async function GET() {
       };
     });
 
+    // Connect Four mapping
+   const connectFourFormatted = connectFourRows
+  .map((game) => {
+    if (!game.winnerClerkId) return null; // ✅ ignore unfinished games
+
+    const amount = Number(game.betAmount ?? 0);
+    const payout = Number(game.payout ?? 0);
+
+    const result =
+      game.winnerClerkId === clerkId ? "won" : "lost";
+
+    const tokenDiff =
+      result === "won" ? payout - amount : -amount;
+
+    return {
+      type: "🔴 Connect Four",
+      date: game.endedAt || game.createdAt || new Date().toISOString(),
+      amount,
+      payout,
+      result,
+      tokenDiff,
+    };
+  })
+  .filter(Boolean); // ✅ removes nulls);
+
     // Combine all bets
     const allBets = [
       ...roulette.map((b) => formatBet("🎡 Roulette", b)),
@@ -216,10 +249,11 @@ export async function GET() {
       ...slots.map((b) => formatBet("🎰 Slots", b)),
       ...coinflipFormatted,
       ...kenoFormatted,
-      ...tankFormatted, // <-- ADDED
-    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      ...tankFormatted, 
+      ...connectFourFormatted,
+].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    return NextResponse.json({ success: true, bets: allBets });
+return NextResponse.json({ success: true, bets: allBets });
   } catch (err) {
     console.error("[GET_BET_HISTORY_ERROR]", err);
     return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });

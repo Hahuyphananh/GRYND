@@ -621,7 +621,7 @@ const displayedCard =
 
 return (
 
-  <div className="bg-gradient-to-br from-[#001933] to-[#000d1a] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8 page-enter">
+  <div className="bg-gradient-to-br from-[#001933] mt-12 to-[#000d1a] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8 page-enter">
  <NavigationBar currentPath="/casino" />
     <h1 className="text-3xl mb-2 font-bold">{gameMode === "online" ? "UNO 1v1 en ligne" : "UNO vs IA"}</h1>
 

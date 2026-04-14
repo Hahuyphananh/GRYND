@@ -44,7 +44,7 @@ function MainComponent() {
   if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e]">
-        <NavigationBar currentPath="/rankings" />
+        <NavigationBar currentPath="/classement" />
         <div className="flex min-h-screen items-center justify-center">
           <div className="rounded-lg border border-[#00e5ff]/50 bg-[#00e5ff]/20 px-6 py-3 text-[#d8fbff] hover:bg-[#00e5ff]/35">
             {error}
