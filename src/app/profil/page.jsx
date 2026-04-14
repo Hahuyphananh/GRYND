@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useUser, useClerk } from "@clerk/nextjs";
+import NavigationBar from "../../components/navigation-bar";
 
 const statsCards = [
   { key: "totalBets", label: "Total Bets" },
@@ -554,16 +555,7 @@ const getFriendStatus = (friendId) => {
   }}
 >
       <div className="max-w-6xl mx-auto px-6 pt-24 pb-20">
-        <div className="mb-6 flex justify-between items-center">
-          <a
-            href="/casino"
-            className={cyberButton}
-          >
-            <i className="fas fa-arrow-left mr-2"></i>
-            Retour au Casino
-          </a>
-        </div>
-
+<NavigationBar currentPath="/profil" />
         <h1 className="text-4xl font-extrabold text-center mb-8 
   bg-gradient-to-r from-purple-400 to-pink-500 
   bg-clip-text text-transparent">
@@ -611,7 +603,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)] text-center">
             <button
               onClick={handleResetTokens}
               disabled={isResetting}
-              className="rounded-lg px-4 py-2 font-semibold text-white 
+              className="mt-2 rounded-lg px-4 py-2 font-semibold text-white 
 bg-gradient-to-r from-red-500 to-pink-500 
 shadow-[0_0_10px_rgba(255,0,100,0.6)] 
 hover:shadow-[0_0_20px_rgba(255,0,100,1)] 
