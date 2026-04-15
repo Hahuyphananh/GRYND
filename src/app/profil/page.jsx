@@ -42,8 +42,11 @@ export default function ProfilePage() {
   const [friendSearch, setFriendSearch] = useState("");
   const [friendSearchResults, setFriendSearchResults] = useState([]);
   const [myFriends, setMyFriends] = useState([]);
+  const [receivedInvites, setReceivedInvites] = useState([]);
+  const [activeFriendsTab, setActiveFriendsTab] = useState("friends");
   const [friendsStatus, setFriendsStatus] = useState("");
   const [friendPresenceByFriend, setFriendPresenceByFriend] = useState({});
+  const [spectateOverlayUrl, setSpectateOverlayUrl] = useState("");
   const [isSearchingFriends, setIsSearchingFriends] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editStatus, setEditStatus] = useState("");
@@ -125,6 +128,22 @@ export default function ProfilePage() {
       }
     } catch (err) {
       console.error("[LOAD_FRIEND_PRESENCE_ERROR]", err);
+    }
+  };
+
+  const loadFriendInvites = async () => {
+    try {
+      const response = await fetch("/api/friends/invites", { credentials: "include" });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        setReceivedInvites([]);
+        return;
+      }
+
+      setReceivedInvites(Array.isArray(data.invites) ? data.invites : []);
+    } catch (err) {
+      console.error("[LOAD_FRIEND_INVITES_ERROR]", err);
+      setReceivedInvites([]);
     }
   };
 
@@ -238,8 +257,8 @@ const getFriendStatus = (friendId) => {
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || "Failed to add friend");
-      setFriendsStatus(data.message || "Friend added.");
-      await loadFriends();
+      setFriendsStatus(data.message || "Friend invite sent.");
+      await loadFriendInvites();
     } catch (err) {
       console.error("[INVITE_FRIEND_ERROR]", err);
       setFriendsStatus(err.message || "Could not send invite.");
@@ -254,9 +273,29 @@ const getFriendStatus = (friendId) => {
 
     if (presence.gameKey === "chess") return `/casino/chess-game/${presence.gameId}?spectator=1&focus=white`;
     if (presence.gameKey === "connect-four") return `/casino/connect-four/game/${presence.gameId}?spectator=1&focus=host`;
-    if (presence.gameKey === "uno") return null;
-    if (presence.gameKey === "tanks") return null;
+    if (presence.gameKey === "poker") return `/casino/poker/multi?spectator=1&gameId=${presence.gameId}`;
+    if (presence.gameKey === "uno") return `/casino/uno?spectator=1&gameId=${presence.gameId}`;
+    if (presence.gameKey === "tanks") return `/casino/tanks/game/${presence.gameId}?spectator=1`;
     return null;
+  };
+
+  const handleRespondToInvite = async (inviteId, action) => {
+    setFriendsStatus("");
+    try {
+      const response = await fetch("/api/friends/invites/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ inviteId, action }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "Failed to respond to invite");
+      setFriendsStatus(data.message || "Invite updated.");
+      await Promise.all([loadFriends(), loadFriendInvites(), loadFriendPresence()]);
+    } catch (err) {
+      console.error("[RESPOND_FRIEND_INVITE_ERROR]", err);
+      setFriendsStatus(err.message || "Could not update invite.");
+    }
   };
 
   const initializeReferral = async () => {
@@ -283,7 +322,7 @@ const getFriendStatus = (friendId) => {
 
     const bootstrap = async () => {
   try {
-    await Promise.all([loadProfileData(), loadStats(), loadFriends(), loadFriendPresence()]);
+    await Promise.all([loadProfileData(), loadStats(), loadFriends(), loadFriendPresence(), loadFriendInvites()]);
 
     if (!stats?.referralCode) {
       await initializeReferral();
@@ -311,7 +350,11 @@ const getFriendStatus = (friendId) => {
   useEffect(() => {
     if (!isSignedIn) return;
     loadFriendPresence();
-    const intervalId = setInterval(loadFriendPresence, 15000);
+    loadFriendInvites();
+    const intervalId = setInterval(() => {
+      loadFriendPresence();
+      loadFriendInvites();
+    }, 15000);
     return () => clearInterval(intervalId);
   }, [isSignedIn]);
 
@@ -764,13 +807,29 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]">
     <button
       onClick={async () => {
         await loadFriends();
-        await loadFriendPresence(); // optional but keeps status updated
+        await loadFriendPresence();
+        await loadFriendInvites();
       }}
       className="rounded bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80"
     >
       Refresh
     </button>
   </div>
+          <div className="mb-4 flex gap-2">
+            <button
+              onClick={() => setActiveFriendsTab("friends")}
+              className={`rounded px-3 py-1 text-sm font-semibold ${activeFriendsTab === "friends" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
+            >
+              Friends
+            </button>
+            <button
+              onClick={() => setActiveFriendsTab("invites")}
+              className={`rounded px-3 py-1 text-sm font-semibold ${activeFriendsTab === "invites" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
+            >
+              Invites ({receivedInvites.length})
+            </button>
+          </div>
+          {activeFriendsTab === "friends" && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {myFriends.length > 0 ? myFriends.map((friend) => (
               <div key={`${friend.id}-${friend.name}`} className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3">
@@ -806,16 +865,20 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
   {(() => {
     const status = getFriendStatus(friend.id);
     const spectateUrl = spectateUrlForFriend(friend.id);
+    const gameKey = friendPresenceByFriend?.[friend.id]?.gameKey;
 
     if (status.state === "offline" || !spectateUrl) return null;
 
+    const allowedSpectateGames = new Set(["chess", "connect-four", "poker", "uno", "tanks"]);
+    if (!allowedSpectateGames.has(gameKey)) return null;
+
     return (
-      <a
-        href={spectateUrl}
+      <button
+        onClick={() => setSpectateOverlayUrl(spectateUrl)}
         className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse"
       >
-        Watch Live
-      </a>
+        Spectate
+      </button>
     );
   })()}
 
@@ -832,7 +895,41 @@ hover:scale-105 transition-all"
               </div>
             )) : <p className="text-sm text-gray-300">No friends yet.</p>}
           </div>
+          )}
+          {activeFriendsTab === "invites" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {receivedInvites.length > 0 ? receivedInvites.map((invite) => (
+                <div key={invite.id} className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3">
+                  {invite.sender_profile_picture ? (
+                    <img src={invite.sender_profile_picture} alt={invite.sender_name} className="h-10 w-10 rounded-full object-cover" />
+                  ) : (
+                    <div className="h-10 w-10 rounded-full bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold">
+                      {invite.sender_name?.charAt(0)?.toUpperCase() || "U"}
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold">{invite.sender_name}</p>
+                    <p className="text-xs text-gray-300">Sent {new Date(invite.created_at).toLocaleString()}</p>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button onClick={() => handleRespondToInvite(invite.id, "accept")} className="rounded bg-green-500 px-2 py-1 text-xs font-semibold text-white">Accept</button>
+                    <button onClick={() => handleRespondToInvite(invite.id, "decline")} className="rounded bg-red-500 px-2 py-1 text-xs font-semibold text-white">Decline</button>
+                  </div>
+                </div>
+              )) : <p className="text-sm text-gray-300">No pending invites.</p>}
+            </div>
+          )}
         </div>
+        {spectateOverlayUrl && (
+          <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4">
+            <div className="relative h-[90vh] w-[95vw] rounded-xl border border-[#00e5ff]/40 bg-black overflow-hidden">
+              <button onClick={() => setSpectateOverlayUrl("")} className="absolute right-3 top-3 z-10 rounded bg-red-600 px-3 py-1 text-sm font-semibold text-white">
+                Close Spectate
+              </button>
+              <iframe src={spectateOverlayUrl} className="h-full w-full border-0" title="Friend spectate view" />
+            </div>
+          </div>
+        )}
 
 
         <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
