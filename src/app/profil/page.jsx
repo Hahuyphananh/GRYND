@@ -38,6 +38,7 @@ export default function ProfilePage() {
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", email: "", password: "", profilePicture: "" });
+  const [selectedProfileImageName, setSelectedProfileImageName] = useState("");
 
   const [friendSearch, setFriendSearch] = useState("");
   const [friendSearchResults, setFriendSearchResults] = useState([]);
@@ -220,8 +221,8 @@ console.log("🔥 FRIEND SEARCH FULL RESPONSE:", data);
 const getFriendStatus = (friendId) => {
   const presence = friendPresenceByFriend?.[friendId];
 
-  // ❌ No presence at all → OFFLINE
-  if (!presence) {
+  // ❌ No recent presence heartbeat → OFFLINE
+  if (!presence?.lastSeenAt) {
     return {
       state: "offline",
       label: "Offline",
@@ -274,8 +275,6 @@ const getFriendStatus = (friendId) => {
     if (presence.gameKey === "chess") return `/casino/chess-game/${presence.gameId}?spectator=1&focus=white`;
     if (presence.gameKey === "connect-four") return `/casino/connect-four/game/${presence.gameId}?spectator=1&focus=host`;
     if (presence.gameKey === "poker") return `/casino/poker/multi?spectator=1&gameId=${presence.gameId}`;
-    if (presence.gameKey === "uno") return `/casino/uno?spectator=1&gameId=${presence.gameId}`;
-    if (presence.gameKey === "tanks") return `/casino/tanks/game/${presence.gameId}?spectator=1`;
     return null;
   };
 
@@ -538,6 +537,33 @@ const getFriendStatus = (friendId) => {
     }
   };
 
+  const handleProfileImageFileChange = (event) => {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setEditStatus("Please select a valid image file.");
+      return;
+    }
+
+    const maxBytes = 2 * 1024 * 1024; // 2MB safety cap for DB text storage
+    if (file.size > maxBytes) {
+      setEditStatus("Image is too large. Please pick an image under 2MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setEditForm((prev) => ({ ...prev, profilePicture: String(reader.result || "") }));
+      setSelectedProfileImageName(file.name);
+      setEditStatus("");
+    };
+    reader.onerror = () => {
+      setEditStatus("Could not read the selected file.");
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleDeleteAccount = async () => {
     setDeleteError("");
     setDeleteStatus("");
@@ -614,6 +640,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]">
               <button
   onClick={() => {
     setEditStatus("");
+    setSelectedProfileImageName("");
     setIsEditOpen(true);
   }}
   className={cyberButton + " text-sm px-3 py-1"}
@@ -869,7 +896,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
 
     if (status.state === "offline" || !spectateUrl) return null;
 
-    const allowedSpectateGames = new Set(["chess", "connect-four", "poker", "uno", "tanks"]);
+    const allowedSpectateGames = new Set(["chess", "connect-four", "poker"]);
     if (!allowedSpectateGames.has(gameKey)) return null;
 
     return (
@@ -1071,13 +1098,37 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                 className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
-              <input
-                value={editForm.profilePicture}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, profilePicture: e.target.value }))}
-                placeholder="Profile picture URL"
-                className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
-              />
+              <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
+                <label className="block mb-2 text-sm text-gray-200">Profile picture</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProfileImageFileChange}
+                  className="w-full text-sm"
+                />
+                {selectedProfileImageName && (
+                  <p className="mt-2 text-xs text-gray-300">Selected file: {selectedProfileImageName}</p>
+                )}
+                {editForm.profilePicture && (
+                  <div className="mt-3 flex items-center gap-3">
+                    <img
+                      src={editForm.profilePicture}
+                      alt="Profile preview"
+                      className="h-14 w-14 rounded-full object-cover border border-[#FFD700]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditForm((prev) => ({ ...prev, profilePicture: "" }));
+                        setSelectedProfileImageName("");
+                      }}
+                      className="rounded border border-white/30 px-3 py-1 text-sm"
+                    >
+                      Remove image
+                    </button>
+                  </div>
+                )}
+              </div>
               <input
                 type="password"
                 value={editForm.password}

@@ -24,7 +24,7 @@ export async function GET() {
 
     // ✅ IMPORTANT: keep LEFT JOIN and REMOVE filtering
     const rows = await sql`
-      SELECT 
+      SELECT
         u.id AS friend_id,
         u.name,
         u.profile_picture,
@@ -32,12 +32,17 @@ export async function GET() {
         p.game_id,
         p.last_seen_at
       FROM friend_relations fr
-      LEFT JOIN users u ON u.id = fr.friend_id
-      LEFT JOIN user_game_presence p
-        ON p.user_id = fr.friend_id
-       AND p.last_seen_at >= NOW() - INTERVAL '20 minutes'
+      JOIN users u ON u.id = fr.friend_id
+      LEFT JOIN LATERAL (
+        SELECT game_key, game_id, last_seen_at
+        FROM user_game_presence
+        WHERE user_id = fr.friend_id
+          AND last_seen_at >= NOW() - INTERVAL '20 minutes'
+        ORDER BY last_seen_at DESC
+        LIMIT 1
+      ) p ON TRUE
       WHERE fr.user_id = ${meId}
-      ORDER BY 
+      ORDER BY
         p.last_seen_at DESC NULLS LAST,
         u.name ASC
     `;

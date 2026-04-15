@@ -781,7 +781,7 @@ hover:scale-105 transition-all duration-300"
     )}
   </div>
 ) : (
-  <div className="w-full max-w-5xl aspect-[2/1] bg-green-700/90 rounded-full flex flex-col justify-between items-center shadow-2xl border-8 border-green-950 p-6 relative casino-surface overflow-visible">
+  <div className="w-full max-w-5xl min-h-[640px] md:aspect-[2/1] bg-green-700/90 rounded-[2.5rem] flex flex-col justify-between items-center shadow-2xl border-8 border-green-950 p-6 pb-36 relative casino-surface overflow-hidden">
     {/* Opponent hand */}
     <div className={`px-4 py-1 rounded-full ${!isPlayerTurn ? "turn-active-glow" : ""}`}>{gameMode === "online" ? "Main adverse:" : "Main de l'IA:"}</div>
     <div className="flex justify-center gap-2">
@@ -934,7 +934,7 @@ hover:scale-105 transition-all duration-300"
     )}
 
     {/* Draw & replay buttons */}
-    <div className="flex flex-col items-center mt-6 relative z-50">
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center relative z-50">
       <button
         onClick={drawCard}
         className="mb-2 px-5 py-2 rounded-full font-bold
