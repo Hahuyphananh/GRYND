@@ -596,6 +596,25 @@ export default function TanksGamePage() {
   }, [routeMatchId]);
 
   useEffect(() => {
+    if (!routeMatchId) return;
+    const parsedGameId = Number(routeMatchId);
+    if (!Number.isFinite(parsedGameId)) return;
+
+    const pingPresence = async () => {
+      await fetch("/api/presence/game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameKey: "tanks", gameId: parsedGameId }),
+      });
+    };
+
+    pingPresence();
+    const id = setInterval(pingPresence, 15000);
+    return () => clearInterval(id);
+  }, [routeMatchId]);
+
+  useEffect(() => {
     const down = (e: KeyboardEvent) => (keys.current[e.key.toLowerCase()] = true);
     const up = (e: KeyboardEvent) => (keys.current[e.key.toLowerCase()] = false);
     window.addEventListener("keydown", down);
