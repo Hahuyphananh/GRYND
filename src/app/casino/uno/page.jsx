@@ -64,6 +64,22 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
+  if (!game?.id) return;
+  const pingPresence = async () => {
+    await fetch("/api/presence/game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ gameKey: "uno", gameId: Number(game.id) }),
+    });
+  };
+
+  pingPresence();
+  const id = setInterval(pingPresence, 15000);
+  return () => clearInterval(id);
+}, [game?.id]);
+
+useEffect(() => {
   if (!socket) return;
   const roomId = "lobby:uno";
   const handleLobbyUpdate = () => fetchAvailableGames();

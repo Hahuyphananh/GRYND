@@ -24,9 +24,17 @@ function normalizePlayersFromSeats(seats: Seat[]) {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
-  if (!code) return NextResponse.json({ error: "Missing code" }, { status: 400 });
+  const gameIdParam = searchParams.get("gameId");
+  const gameId = Number(gameIdParam);
 
-  const [game] = await db.select().from(pokerGames).where(eq(pokerGames.gameCode, code));
+  if (!code && !Number.isFinite(gameId)) {
+    return NextResponse.json({ error: "Missing code or gameId" }, { status: 400 });
+  }
+
+  const gameRows = code
+    ? await db.select().from(pokerGames).where(eq(pokerGames.gameCode, code))
+    : await db.select().from(pokerGames).where(eq(pokerGames.id, gameId));
+  const [game] = gameRows;
   if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
   const meta = (game.playerPositions ?? {}) as StoredMeta;

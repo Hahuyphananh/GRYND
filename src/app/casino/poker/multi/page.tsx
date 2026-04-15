@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
 import { motion, AnimatePresence } from "framer-motion";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../../context/SocketProvider";
 
@@ -96,6 +96,9 @@ export default function PokerPage() {
   const clerkId = user?.id; 
   const myId = clerkId;
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isSpectator = searchParams.get("spectator") === "1";
+  const spectatorGameId = searchParams.get("gameId");
   const [name,setName] = useState("");
   const [game,setGame] = useState<Game|null>(null);
   const [raiseAmount,setRaiseAmount] = useState(50);
@@ -178,6 +181,17 @@ const [turnTimeLimit, setTurnTimeLimit] = useState(60);
       }
     } catch (err) {
       console.error("Failed to fetch game state", err);
+    }
+  };
+
+  const fetchGameStateById = async (id: number) => {
+    try {
+      const res = await fetch(`/api/poker/game-state?gameId=${id}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.game) setGame(data.game);
+    } catch (err) {
+      console.error("Failed to fetch game state by id", err);
     }
   };
 
@@ -271,14 +285,15 @@ function findFirstActorIndex(
     }
   };
 
-  useEffect(() => {
+useEffect(() => {
+  if (isSpectator) return;
   const params = new URLSearchParams(window.location.search);
   const code = params.get("gameCode");
   if (code) {
     setInviteCode(code);
     joinGame(code);
   }
-}, []);
+}, [isSpectator]);
 
   const fetchPublicGamesCount = async () => {
     try {
@@ -295,11 +310,13 @@ function findFirstActorIndex(
   };
 
 useEffect(() => {
+  if (isSpectator) return;
   fetchUserTokens();
   fetchPublicGamesCount();
-}, []);
+}, [isSpectator]);
 
 useEffect(() => {
+  if (isSpectator) return;
   if (!socket) return;
   const roomId = "lobby:poker";
   const handleLobbyUpdate = () => fetchPublicGamesCount();
@@ -309,24 +326,49 @@ useEffect(() => {
     socket.emit("leave_room", { roomId });
     socket.off("lobby:updated", handleLobbyUpdate);
   };
-}, [socket]);
+}, [socket, isSpectator]);
 
 // Multiplayer Waiting List Auto-Refresh
 useEffect(() => {
+  if (isSpectator) return;
   const interval = setInterval(() => {
     fetchPublicGamesCount();
   }, 3000);
 
   return () => clearInterval(interval);
-}, []);
+}, [isSpectator]);
 
 useEffect(() => {
-  if (!game?.inviteCode) return;
+  if (!isSpectator || !spectatorGameId) return;
+  const parsedId = Number(spectatorGameId);
+  if (!Number.isFinite(parsedId)) return;
+  fetchGameStateById(parsedId);
+  const interval = setInterval(() => fetchGameStateById(parsedId), 1500);
+  return () => clearInterval(interval);
+}, [isSpectator, spectatorGameId]);
+
+useEffect(() => {
+  if (isSpectator || !game?.inviteCode) return;
   const interval = setInterval(() => {
     fetchGameState(game.inviteCode!);
   }, 1500);
   return () => clearInterval(interval);
-}, [game?.inviteCode]);
+}, [game?.inviteCode, isSpectator]);
+
+useEffect(() => {
+  if (isSpectator || !game?.id) return;
+  const pingPresence = async () => {
+    await fetch("/api/presence/game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ gameKey: "poker", gameId: Number(game.id) }),
+    });
+  };
+  pingPresence();
+  const id = setInterval(pingPresence, 15000);
+  return () => clearInterval(id);
+}, [isSpectator, game?.id]);
 
 
 // Turn timer effect — runs whenever the current turn changes
@@ -1070,6 +1112,40 @@ if (showJoinForm) {
         >
           Cancel
         </button>
+      </div>
+    </div>
+  );
+}
+
+if (isSpectator) {
+  if (!game) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
+        Loading poker match...
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-6">
+      <h1 className="text-3xl font-bold mb-2">Poker Spectate</h1>
+      <p className="text-sm text-slate-300 mb-4">Live POV overlay</p>
+      <div className="mb-4 rounded border border-yellow-500/30 bg-black/30 px-4 py-2">💰 Pot: {game.pot}</div>
+      <div className="mb-4 flex gap-2">
+        {(game.community || []).map((c: Card, i: number) => (
+          <div key={`${c?.suit}-${c?.value}-${i}`} className="w-16 h-24 bg-white rounded text-black flex items-center justify-center">
+            {c?.value}{c?.suit}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {(game.players || []).map((p: Player) => (
+          <div key={p.id} className="rounded border border-cyan-400/30 bg-black/25 p-3">
+            <p className="font-semibold">{p.name}</p>
+            <p className="text-xs text-slate-300">Stack: {p.stack} • Bet: {p.currentBet}</p>
+            <p className="text-xs text-slate-300">{p.hasFolded ? "Folded" : p.lastAction || "Active"}</p>
+          </div>
+        ))}
       </div>
     </div>
   );
