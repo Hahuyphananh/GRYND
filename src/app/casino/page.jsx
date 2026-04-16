@@ -16,6 +16,7 @@ import Img11 from "../../images/Uno.jpg";
 import Img12 from "../../images/Rps.png";
 import Img13 from "../../images/tanks.png"
 import Img14 from "../../images/connect-4.png"
+import Img15 from "../../images/lane-runner.png"
 import Image from "next/image";
 import Link from "next/link";
 
@@ -94,7 +95,7 @@ const games = [
     name: "Lane Runner",
     href: "/casino/lane-runner",
     leaderboardKey: "lane-runner",
-    image: Img6,
+    image: Img15,
     description: "Traverse les voies et évite de te faire écraser !",
     popular: true,
   },

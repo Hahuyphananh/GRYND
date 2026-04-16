@@ -11,12 +11,30 @@ export const LANE_RUNNER_DIFFICULTIES = {
   extreme: { label: 'Extreme', pFail: 0.4, safeTiles: 2 },
 };
 
-export function getMultiplier(step, pFail, rtp = LANE_RUNNER_RTP) {
-  if (!Number.isInteger(step) || step < 0) return 1;
-  const pSurvive = 1 - pFail;
-  if (pSurvive <= 0) return 1;
-  // EV(step) = pSurvive^step * multiplier(step) ~= RTP
-  return Number((rtp / (pSurvive ** step)).toFixed(4));
+export function getMultiplier(step, pFail, difficulty = 'easy') {
+  if (step <= 0) return 1;
+
+  // base growth (this is what creates “uncrossable feel”)
+  const baseGrowth = 1.32;
+
+  // difficulty amplifier (hard = faster rewards)
+  const difficultyMap = {
+    easy: 0.92,
+    medium: 1.0,
+    hard: 1.12,
+    extreme: 1.28,
+  };
+
+  const diff = difficultyMap[difficulty] ?? 1;
+
+  // exponential curve
+  const raw = Math.pow(baseGrowth * diff, step);
+
+  // soft damping so it doesn’t explode too early
+  const damped = raw * (1 - pFail * step * 0.08);
+
+  // minimum safety floor
+  return Number(Math.max(1, damped).toFixed(4));
 }
 
 export function simulateOutcome(seed, nonce, step) {
