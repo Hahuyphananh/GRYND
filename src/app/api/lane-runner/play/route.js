@@ -1,9 +1,9 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
-import { db } from '../../../../../db/client';
-import { laneRunnerGames, users } from '../../../../../db/schema';
-import { createSignedSession, verifySignedSession } from '../../../../../lib/serverSession';
+import { db } from '../../../../db/client';
+import { laneRunnerGames, users } from '../../../../db/schema';
+import { createSignedSession, verifySignedSession } from '../../../../lib/serverSession';
 import {
   buildProvablyFairSequence,
   DEFAULT_LANES,
@@ -13,7 +13,7 @@ import {
   LANE_RUNNER_RTP,
   LANE_RUNNER_TILES,
   randomHex,
-} from '../../../../../lib/laneRunner';
+} from '../../../../lib/laneRunner';
 
 const COOKIE_NAME = 'lane_runner_session';
 
