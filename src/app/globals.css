@@ -501,3 +501,34 @@ a[class*="bg-[#f5ff3b]"] {
 
 .hover-lift { transition: transform 0.2s ease, box-shadow 0.2s ease; }
 .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(0,0,0,0.28); }
+
+@keyframes laneRunnerHop {
+  0% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-8px) scale(1.06); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+@keyframes laneRunnerTileShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  50% { transform: translateX(3px); }
+  75% { transform: translateX(-2px); }
+}
+
+@keyframes laneRunnerCarHit {
+  0% { transform: translateX(120%); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: translateX(0%); opacity: 1; }
+}
+
+.lane-runner-hop {
+  animation: laneRunnerHop 0.32s ease-out;
+}
+
+.lane-runner-tile-shake {
+  animation: laneRunnerTileShake 0.35s ease-in-out infinite;
+}
+
+.lane-runner-car-hit {
+  animation: laneRunnerCarHit 0.45s ease-out;
+}
