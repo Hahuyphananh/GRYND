@@ -196,6 +196,25 @@ export const minesGames = pgTable('mines_games', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+
+export const laneRunnerGames = pgTable('lane_runner_games', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  betAmount: numeric('bet_amount', { precision: 10, scale: 2 }).notNull(),
+  payout: numeric('payout', { precision: 10, scale: 2 }).notNull().default('0.00'),
+  result: varchar('result', { length: 20 }).notNull().default('pending'),
+  difficulty: varchar('difficulty', { length: 20 }).notNull(),
+  currentLane: integer('current_lane').notNull().default(0),
+  multiplier: numeric('multiplier', { precision: 12, scale: 4 }).notNull().default('1.0000'),
+  clientSeed: varchar('client_seed', { length: 255 }).notNull(),
+  serverSeedHash: varchar('server_seed_hash', { length: 255 }).notNull(),
+  serverSeed: varchar('server_seed', { length: 255 }),
+  nonce: varchar('nonce', { length: 255 }).notNull(),
+  outcomeSequence: jsonb('outcome_sequence').notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('completed'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 export const plinkoGames = pgTable('plinko_games', {
   id: serial('id').primaryKey(),
   userId: varchar('user_id', { length: 255 }).notNull(),
@@ -428,6 +447,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   blackjackGames: many(blackjackGames),
   minesGames: many(minesGames),
   plinkoGames: many(plinkoGames),
+  laneRunnerGames: many(laneRunnerGames),
 }));
 
 export const rouletteGamesRelations = relations(rouletteGames, ({ one }) => ({
@@ -454,6 +474,14 @@ export const blackjackGamesRelations = relations(blackjackGames, ({ one }) => ({
 export const minesGamesRelations = relations(minesGames, ({ one }) => ({
   user: one(users, {
     fields: [minesGames.userId],
+    references: [users.id],
+  }),
+}));
+
+
+export const laneRunnerGamesRelations = relations(laneRunnerGames, ({ one }) => ({
+  user: one(users, {
+    fields: [laneRunnerGames.userId],
     references: [users.id],
   }),
 }));

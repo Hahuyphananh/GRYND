@@ -91,6 +91,15 @@ const games = [
     description: "Affrontez l'IA ou d'autres joueurs.",
   },
   {
+    name: "Lane Runner",
+    href: "/casino/lane-runner",
+    leaderboardKey: "lane-runner",
+    image: Img6,
+    description: "Traverse les voies et évite de te faire écraser !",
+    popular: true,
+  },
+
+  {
     name: "Crash",
     href: "/casino/crash",
     leaderboardKey: "crash",
