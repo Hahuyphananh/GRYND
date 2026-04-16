@@ -5,6 +5,7 @@ import NavigationBar from '../../../components/navigation-bar';
 
 const MAX_LANES = 12;
 const LANE_RUNNER_TILES = 24;
+
 const LANE_RUNNER_DIFFICULTIES = {
   easy: { label: 'Easy', pFail: 0.04, safeTiles: 8 },
   medium: { label: 'Medium', pFail: 0.12, safeTiles: 6 },
@@ -16,31 +17,81 @@ export default function LaneRunnerPage() {
   const [betAmount, setBetAmount] = useState(10);
   const [difficulty, setDifficulty] = useState('easy');
   const [clientSeed, setClientSeed] = useState(`client-${Date.now()}`);
+
   const [currentLane, setCurrentLane] = useState(0);
   const [multiplier, setMultiplier] = useState(1);
   const [payout, setPayout] = useState(0);
+
   const [hasLost, setHasLost] = useState(false);
   const [hasCashedOut, setHasCashedOut] = useState(false);
+
   const [outcomeSequence, setOutcomeSequence] = useState([]);
   const [safeTilesByLane, setSafeTilesByLane] = useState({});
+  const [selectedTileByLane, setSelectedTileByLane] = useState({});
+
   const [error, setError] = useState('');
   const [running, setRunning] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedTileByLane, setSelectedTileByLane] = useState({});
+
   const [fairData, setFairData] = useState(null);
   const [history, setHistory] = useState([]);
+
   const [autoplayTarget, setAutoplayTarget] = useState(2);
   const [autoplayEnabled, setAutoplayEnabled] = useState(false);
+
   const [userTokens, setUserTokens] = useState(0);
   const [isBalanceLoading, setIsBalanceLoading] = useState(false);
+
   const [animatingTile, setAnimatingTile] = useState(null);
   const [crashLane, setCrashLane] = useState(null);
 
   const loseSoundRef = useRef(null);
   const winSoundRef = useRef(null);
+  const [showCashoutPopup, setShowCashoutPopup] = useState(false);
 
-  const difficultyConfig = useMemo(() => LANE_RUNNER_DIFFICULTIES[difficulty], [difficulty]);
+  const difficultyConfig = useMemo(
+    () => LANE_RUNNER_DIFFICULTIES[difficulty],
+    [difficulty]
+  );
 
+const difficultyStyle = useMemo(() => {
+  switch (difficulty) {
+    case 'easy':
+      return {
+        glow: 'shadow-green-400/20',
+        bg: 'bg-gradient-to-b from-green-950/40 to-slate-900',
+        label: '🟢 SAFE ROUTE',
+        road: 'border-green-400/30',
+      };
+    case 'medium':
+      return {
+        glow: 'shadow-yellow-400/20',
+        bg: 'bg-gradient-to-b from-yellow-950/40 to-slate-900',
+        label: '🟡 HIGHWAY',
+        road: 'border-yellow-400/30',
+      };
+    case 'hard':
+      return {
+        glow: 'shadow-orange-500/30',
+        bg: 'bg-gradient-to-b from-orange-950/40 to-slate-900',
+        label: '🟠 DANGER ZONE',
+        road: 'border-orange-500/30',
+      };
+    case 'extreme':
+      return {
+        glow: 'shadow-red-500/40',
+        bg: 'bg-gradient-to-b from-red-950/50 to-black',
+        label: '🔴 WAR ZONE',
+        road: 'border-red-500/40 animate-pulse',
+      };
+  }
+}, [difficulty]);
+
+  const [showWinPopup, setShowWinPopup] = useState(false);
+const [showLosePopup, setShowLosePopup] = useState(false);
+const [popupData, setPopupData] = useState(null);
+
+  // ---------------- BALANCE ----------------
   useEffect(() => {
     fetchUserTokens();
   }, []);
@@ -53,25 +104,29 @@ export default function LaneRunnerPage() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
       });
+
       const json = await res.json();
       if (res.ok && json.success) {
         setUserTokens(Number(json.data.balance));
       }
-    } catch (fetchErr) {
-      console.error('Failed to fetch user tokens', fetchErr);
+    } catch (e) {
+      console.error(e);
     } finally {
       setIsBalanceLoading(false);
     }
   }
 
+  // ---------------- START GAME ----------------
   async function startGame() {
     setIsLoading(true);
     setError('');
     setHasLost(false);
     setHasCashedOut(false);
+
     setCurrentLane(0);
     setMultiplier(1);
     setPayout(Number(betAmount));
+
     setSelectedTileByLane({});
     setSafeTilesByLane({});
     setOutcomeSequence([]);
@@ -81,9 +136,16 @@ export default function LaneRunnerPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ action: 'start', betAmount, difficulty, clientSeed }),
+      body: JSON.stringify({
+        action: 'start',
+        betAmount,
+        difficulty,
+        clientSeed,
+      }),
     });
+
     const json = await res.json();
+
     if (!res.ok || !json.success) {
       setError(json.error || 'Unable to start game');
       setRunning(false);
@@ -92,18 +154,22 @@ export default function LaneRunnerPage() {
     }
 
     setRunning(true);
-    setPayout(json.data.potentialPayout);
+    setPayout(Number(betAmount * json.data.multiplier || betAmount));
     setUserTokens(Number(json.data.newBalance ?? userTokens));
+
     setFairData({
       clientSeed: json.data.clientSeed,
       serverSeedHash: json.data.serverSeedHash,
       nonce: json.data.nonce,
     });
+
     setIsLoading(false);
   }
 
+  // ---------------- PICK TILE ----------------
   async function pickTile(tileIndex) {
     if (!running || hasLost || hasCashedOut || isLoading) return;
+
     setIsLoading(true);
     setAnimatingTile(`${currentLane}-${tileIndex}`);
 
@@ -113,55 +179,93 @@ export default function LaneRunnerPage() {
       credentials: 'include',
       body: JSON.stringify({ action: 'pick', tileIndex }),
     });
+
     const json = await res.json();
     setIsLoading(false);
 
     if (!res.ok || !json.success) {
-      setAnimatingTile(null);
       setError(json.error || 'Pick failed');
+      setAnimatingTile(null);
       return;
     }
 
     const data = json.data;
-    setSelectedTileByLane((prev) => ({ ...prev, [data.lane]: tileIndex }));
-    setSafeTilesByLane((prev) => ({ ...prev, [data.lane]: data.safeTiles || [] }));
+
+    setSelectedTileByLane(prev => ({
+      ...prev,
+      [data.lane]: tileIndex,
+    }));
+
+    setSafeTilesByLane(prev => ({
+      ...prev,
+      [data.lane]: data.safeTiles || [],
+    }));
+
     setMultiplier(data.multiplier);
-    setPayout(data.payout ?? 0);
+    setPayout(Number(betAmount * (data.multiplier ?? multiplier)));
     setCurrentLane(data.currentLane ?? data.lane);
-    setFairData(data.fair);
-    setOutcomeSequence((prev) => [...prev, data]);
+
+    setOutcomeSequence(prev => [...prev, data]);
 
     if (typeof data.newBalance === 'number') {
       setUserTokens(data.newBalance);
     }
 
     if (data.hasLost) {
+      triggerLosePopup(data);
       setCrashLane(data.lane);
       setHasLost(true);
       setRunning(false);
       loseSoundRef.current?.play().catch(() => {});
-      setHistory((prev) => [{ id: Date.now(), result: 'lost', lane: data.lane + 1, payout: 0, multiplier: data.multiplier }, ...prev].slice(0, 10));
+
+      setHistory(prev => [
+        {
+          id: Date.now(),
+          result: 'lost',
+          lane: data.lane + 1,
+          multiplier: data.multiplier,
+          payout: 0,
+        },
+        ...prev,
+      ].slice(0, 10));
+
       setAnimatingTile(null);
       return;
     }
 
     if (data.hasCashedOut) {
+      triggerWinPopup(data);
       setHasCashedOut(true);
       setRunning(false);
-      if (typeof data.newBalance === 'number') {
-        setUserTokens(data.newBalance);
-      }
-      setHistory((prev) => [{ id: Date.now(), result: 'completed', lane: data.currentLane, payout: data.payout, multiplier: data.multiplier }, ...prev].slice(0, 10));
+
+      triggerWinPopup({
+  payout: json.data.payout,
+  multiplier: json.data.multiplier,
+});
+
+      setHistory(prev => [
+        {
+          id: Date.now(),
+          result: 'cashed_out',
+          lane: data.currentLane,
+          multiplier: data.multiplier,
+          payout: data.payout,
+        },
+        ...prev,
+      ].slice(0, 10));
+
       setAnimatingTile(null);
       return;
     }
 
     winSoundRef.current?.play().catch(() => {});
-    setTimeout(() => setAnimatingTile(null), 300);
+    setTimeout(() => setAnimatingTile(null), 250);
   }
 
+  // ---------------- CASHOUT ----------------
   async function cashOut() {
     if (!running || hasLost || hasCashedOut) return;
+
     setIsLoading(true);
 
     const res = await fetch('/api/lane-runner/play', {
@@ -179,15 +283,44 @@ export default function LaneRunnerPage() {
       return;
     }
 
-    setHasCashedOut(true);
-    setRunning(false);
+setHasCashedOut(true);
+setRunning(false);
+
+setPopupData({
+  payout: json.data.payout,
+  multiplier: json.data.multiplier,
+});
+
+setShowCashoutPopup(true);
+
     setMultiplier(json.data.multiplier);
-    setPayout(json.data.payout);
-    setFairData(json.data.fair);
+    setPayout(Number(json.data.payout || betAmount * json.data.multiplier || 0));
+
     setUserTokens(Number(json.data.newBalance ?? userTokens));
-    setHistory((prev) => [{ id: Date.now(), result: 'cashed_out', lane: currentLane, payout: json.data.payout, multiplier: json.data.multiplier }, ...prev].slice(0, 10));
+
+    setHistory(prev => [
+      {
+        id: Date.now(),
+        result: 'cashed_out',
+        lane: currentLane,
+        multiplier: json.data.multiplier,
+        payout: json.data.payout,
+      },
+      ...prev,
+    ].slice(0, 10));
   }
 
+  function triggerWinPopup(data) {
+  setPopupData(data);
+  setShowWinPopup(true);
+}
+
+function triggerLosePopup(data) {
+  setPopupData(data);
+  setShowLosePopup(true);
+}
+
+  // ---------------- AUTOPLAY ----------------
   useEffect(() => {
     if (!autoplayEnabled || !running || hasLost || hasCashedOut) return;
 
@@ -196,158 +329,237 @@ export default function LaneRunnerPage() {
       return;
     }
 
-    const timer = setTimeout(() => {
-      const pick = Math.floor(Math.random() * LANE_RUNNER_TILES);
-      pickTile(pick);
-    }, 500);
+    const t = setTimeout(() => {
+      pickTile(Math.floor(Math.random() * LANE_RUNNER_TILES));
+    }, 450);
 
-    return () => clearTimeout(timer);
+    return () => clearTimeout(t);
   }, [autoplayEnabled, running, hasLost, hasCashedOut, multiplier, autoplayTarget]);
 
+  // ---------------- TILE STYLE ----------------
   function getTileClass(laneIndex, tileIndex) {
     const picked = selectedTileByLane[laneIndex] === tileIndex;
-    const isSafeReveal = Array.isArray(safeTilesByLane[laneIndex]) && safeTilesByLane[laneIndex].includes(tileIndex);
-    const isActiveLane = laneIndex === currentLane && running && !hasLost && !hasCashedOut;
+    const isSafe = safeTilesByLane[laneIndex]?.includes(tileIndex);
+    const isActive = laneIndex === currentLane && running;
 
-    if (picked && laneIndex === crashLane) {
-      return 'bg-red-600 border-red-300 lane-runner-tile-shake';
-    }
+    if (picked && laneIndex === crashLane) return 'bg-red-600';
+    if (picked && isSafe) return 'bg-emerald-500';
+    if (picked) return 'bg-cyan-500';
+    if (isSafe) return 'bg-emerald-900/70';
+    if (isActive) return 'bg-slate-700 hover:bg-slate-600';
 
-    if (picked && isSafeReveal) {
-      return 'bg-emerald-500 border-emerald-200 lane-runner-hop';
-    }
-
-    if (picked) {
-      return 'bg-cyan-500 border-cyan-200 lane-runner-hop';
-    }
-
-    if (isSafeReveal) {
-      return 'bg-emerald-900/70 border-emerald-600';
-    }
-
-    if (isActiveLane) {
-      return 'bg-slate-700 border-cyan-400 hover:bg-slate-600 hover:scale-105';
-    }
-
-    return 'bg-slate-800 border-slate-600';
+    return 'bg-slate-800';
   }
 
+  // ================= UI =================
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black pt-20 text-white">
       <NavigationBar currentPath="/casino/lane-runner" />
-      <audio src="/sounds/coin-flip.mp3" ref={winSoundRef} preload="auto" />
-      <audio src="/sounds/coin-flip.mp3" ref={loseSoundRef} preload="auto" />
 
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pb-10 md:flex-row">
-        <div className="w-full rounded-xl border border-cyan-500/30 bg-slate-900/60 p-4 md:w-80">
-          <h1 className="mb-4 text-2xl font-bold text-yellow-300">Lane Runner 🐔</h1>
-          <p className="mb-2 text-sm text-cyan-100">Cross lanes and cash out before a car wipes you out.</p>
-          <p className="mb-3 text-sm text-yellow-200">Balance: {isBalanceLoading ? 'Loading...' : userTokens.toFixed(2)} tokens</p>
+      <audio ref={winSoundRef} src="/sounds/coin-flip.mp3" />
+      <audio ref={loseSoundRef} src="/sounds/coin-flip.mp3" />
 
-          <label className="mb-1 block text-sm">Bet Amount</label>
-          <input
-            className="mb-3 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2"
+      <div className="mx-auto flex max-w-7xl flex-col md:flex-row gap-6 px-4 pb-10">
+
+        {/* LEFT PANEL */}
+        <div className="w-full md:w-80 bg-slate-900/60 border border-cyan-500/30 p-4 rounded-xl">
+          <h1 className="text-2xl font-bold text-yellow-300">Lane Runner 🐔</h1>
+
+          <p className="text-sm mt-2">Balance: {isBalanceLoading ? '...' : userTokens.toFixed(2)}</p>
+
+          <input className="w-full mt-3 p-2 bg-slate-950 border rounded"
             type="number"
-            min="1"
             value={betAmount}
-            onChange={(e) => setBetAmount(Math.max(1, Number(e.target.value) || 1))}
+            onChange={(e) => setBetAmount(Number(e.target.value))}
           />
 
-          <label className="mb-1 block text-sm">Difficulty</label>
-          <select className="mb-3 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
-            {Object.entries(LANE_RUNNER_DIFFICULTIES).map(([key, cfg]) => (
-              <option key={key} value={key}>{cfg.label} ({Math.round(cfg.pFail * 100)}% fail)</option>
+          <select className="w-full mt-3 p-2 bg-slate-950 border rounded"
+            value={difficulty}
+            onChange={(e) => setDifficulty(e.target.value)}
+          >
+            {Object.entries(LANE_RUNNER_DIFFICULTIES).map(([k, v]) => (
+              <option key={k} value={k}>{v.label}</option>
             ))}
           </select>
 
-          <label className="mb-1 block text-sm">Client Seed</label>
-          <input className="mb-3 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2" value={clientSeed} onChange={(e) => setClientSeed(e.target.value)} />
+          <button onClick={startGame} disabled={running || isLoading}
+            className="w-full mt-3 bg-cyan-500 text-black py-2 rounded">
+            Start
+          </button>
 
-          <label className="mb-1 block text-sm">Auto cashout at x</label>
-          <input className="mb-3 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2" type="number" min="1" step="0.1" value={autoplayTarget} onChange={(e) => setAutoplayTarget(Number(e.target.value) || 1)} />
+          <button onClick={cashOut} disabled={!running}
+            className="w-full mt-2 bg-emerald-500 text-black py-2 rounded">
+            Cash Out
+          </button>
 
-          <div className="mb-3 flex items-center gap-2">
-            <input id="autoplay" type="checkbox" checked={autoplayEnabled} onChange={(e) => setAutoplayEnabled(e.target.checked)} />
-            <label htmlFor="autoplay" className="text-sm">Enable auto-play</label>
-          </div>
+          <p className="mt-3 text-xs">Lane: {currentLane + 1}/{MAX_LANES}</p>
+          <p className="text-xs">x{multiplier.toFixed(4)}</p>
+          <p className="text-xs">Payout: {payout.toFixed(2)}</p>
 
-          <button disabled={isLoading || running || betAmount > userTokens} onClick={startGame} className="mb-2 w-full rounded bg-cyan-500 px-3 py-2 font-semibold text-black disabled:opacity-50">Start Run</button>
-          <button disabled={!running || hasLost || hasCashedOut || isLoading} onClick={cashOut} className="w-full rounded bg-emerald-500 px-3 py-2 font-semibold text-black disabled:opacity-50">Cash Out</button>
-
-          {betAmount > userTokens && <p className="mt-2 text-xs text-red-400">Insufficient tokens for this bet.</p>}
-
-          <div className="mt-4 space-y-1 text-sm">
-            <p>Current lane: <b>{Math.min(currentLane + 1, MAX_LANES)}</b> / {MAX_LANES}</p>
-            <p>Current multiplier: <b>x{multiplier.toFixed(4)}</b></p>
-            <p>Potential payout: <b>{payout.toFixed(2)}</b></p>
-            <p>Failure rate: <b>{(difficultyConfig.pFail * 100).toFixed(0)}%</b></p>
-            <p>Displayed safe tiles per lane: <b>{difficultyConfig.safeTiles}</b></p>
-          </div>
-
-          {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-
-          <div className="mt-4 rounded border border-slate-700 bg-slate-950/70 p-2 text-xs">
-            <p className="font-semibold text-cyan-200">Provably fair</p>
-            <p className="truncate">Client seed: {fairData?.clientSeed || '-'}</p>
-            <p className="truncate">Server seed hash: {fairData?.serverSeedHash || '-'}</p>
-            <p className="truncate">Nonce: {fairData?.nonce || '-'}</p>
-            {fairData?.serverSeed && <p className="truncate text-emerald-300">Server seed: {fairData.serverSeed}</p>}
-          </div>
+          {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
         </div>
 
-        <div className="flex-1 rounded-xl border border-slate-700 bg-slate-900/40 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-cyan-300">Lane Grid</h2>
-            {hasLost && (
-              <div className="rounded bg-red-700 px-3 py-1 text-sm font-semibold text-white lane-runner-car-hit">🚗💥 The chicken got run over!</div>
-            )}
-            {hasCashedOut && (
-              <div className="rounded bg-emerald-700 px-3 py-1 text-sm font-semibold text-white">✅ Cashed out safely</div>
-            )}
+        {/* RIGHT PANEL (HORIZONTAL PROGRESSION FIX) */}
+        <div className={`flex-1 border rounded-xl p-4 overflow-x-auto transition 
+${difficultyStyle.bg} ${difficultyStyle.glow} ${difficultyStyle.road}`}>
+          <h2 className="text-cyan-300 font-bold mb-4">Lane Progress</h2>
+          <p className="text-xs mb-4 opacity-80">
+  Mode: {difficultyStyle.label}
+</p>
+
+          <div className="flex gap-2">
+            {Array.from({ length: MAX_LANES }).map((_, laneIndex) => {
+              const isCurrent = laneIndex === currentLane;
+              const isPassed = laneIndex < currentLane;
+              const isCrash = laneIndex === crashLane;
+              const isJackpot = laneIndex === MAX_LANES - 1;
+
+              return (
+                <div
+  className={`
+    w-16 h-10 relative rounded-md border transition-all duration-300
+    ${isJackpot ? 'bg-gradient-to-r from-yellow-400 to-yellow-600 shadow-lg animate-pulse' : ''}
+    ${isCrash ? 'bg-red-700' : ''}
+    ${isPassed ? 'bg-emerald-600' : ''}
+    ${isCurrent ? 'bg-cyan-500 scale-110 shadow-[0_0_12px_#22d3ee]' : ''}
+    ${!isPassed && !isCurrent ? 'bg-slate-800' : ''}
+  `}
+>
+  {/* ROAD MARKINGS */}
+  <div className="absolute inset-0 flex items-center justify-center">
+    <div className="w-full h-[2px] bg-white/20" />
+  </div>
+
+  {/* PLAYER / OBJECTS */}
+  <div className="absolute inset-0 flex items-center justify-center">
+    {isJackpot && <span className="text-xl">💰</span>}
+    {isCurrent && !hasLost && !hasCashedOut && <span className="text-xl animate-bounce">🐔</span>}
+    {isPassed && !isCurrent && <span className="text-lg">🛣️</span>}
+    {isCrash && <span className="text-xl">🚗</span>}
+  </div>
+</div>
+              );
+            })}
           </div>
 
-          <div className="space-y-2">
-            {Array.from({ length: MAX_LANES }).map((_, laneIndex) => (
-              <div key={laneIndex} className="rounded border border-slate-700 bg-slate-950/60 p-2">
-                <div className="mb-1 text-xs text-slate-300">Lane {laneIndex + 1}</div>
-                <div className="grid grid-cols-8 gap-1 md:grid-cols-12">
-                  {Array.from({ length: LANE_RUNNER_TILES }).map((_, tileIndex) => (
-                    <button
-                      key={`${laneIndex}-${tileIndex}`}
-                      onClick={() => (laneIndex === currentLane ? pickTile(tileIndex) : null)}
-                      disabled={laneIndex !== currentLane || !running || hasLost || hasCashedOut || isLoading}
-                      className={`relative h-8 rounded border text-[10px] transition-all duration-200 ${getTileClass(laneIndex, tileIndex)} ${animatingTile === `${laneIndex}-${tileIndex}` ? 'ring-2 ring-yellow-300' : ''}`}
-                      title={`Lane ${laneIndex + 1} - Tile ${tileIndex + 1}`}
-                    >
-                      {selectedTileByLane[laneIndex] === tileIndex ? '🐔' : ''}
-                      {laneIndex === crashLane && selectedTileByLane[laneIndex] === tileIndex && (
-                        <span className="absolute inset-0 flex items-center justify-center text-base">🚗</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
+          <button
+            onClick={() => pickTile(currentLane)}
+            disabled={!running}
+            className="mt-4 w-full bg-cyan-400 text-black py-3 rounded font-bold"
+          >
+            Step Forward
+          </button>
+
+          {/* HISTORY */}
+          <div className="mt-6 text-xs">
+            {history.map(h => (
+              <p key={h.id}>
+                {h.result} • lane {h.lane} • x{h.multiplier?.toFixed?.(4)} • {h.payout}
+              </p>
             ))}
           </div>
-
-          <div className="mt-4 rounded border border-slate-700 bg-slate-950/50 p-3">
-            <h3 className="mb-2 text-sm font-semibold text-yellow-300">Recent Runs</h3>
-            <div className="space-y-1 text-xs">
-              {history.length === 0 && <p className="text-slate-400">No runs yet.</p>}
-              {history.map((item) => (
-                <p key={item.id} className="text-slate-200">
-                  {item.result} • lane {item.lane} • x{Number(item.multiplier).toFixed(4)} • payout {Number(item.payout).toFixed(2)}
-                </p>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-4 rounded border border-slate-700 bg-slate-950/50 p-3 text-xs text-slate-300">
-            <p>Math: multiplier_n = RTP / (p_survive^n), with RTP = 0.96 and p_survive = 1 - p_fail.</p>
-            <p>State trace entries: {outcomeSequence.length}</p>
-          </div>
         </div>
+
       </div>
+      {/* WIN POPUP */}
+{showWinPopup && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-fade-in">
+    <div className="relative rounded-2xl bg-emerald-500 p-8 text-center shadow-2xl animate-bounce w-80">
+
+      {/* CLOSE BUTTON */}
+      <button
+        onClick={() => {
+          setShowWinPopup(false);
+          setPopupData(null);
+        }}
+        className="absolute top-2 right-2 text-black text-lg font-bold hover:scale-110"
+      >
+        ✕
+      </button>
+
+      <h2 className="text-2xl font-bold">CASHED OUT!</h2>
+
+      <p className="mt-2 text-black">
+        +{popupData?.payout?.toFixed?.(2)} tokens
+      </p>
+
+      <p className="text-sm">
+        x{popupData?.multiplier?.toFixed?.(2)}
+      </p>
+
+      {/* REPLAY BUTTON */}
+      <button
+        onClick={() => {
+          setShowWinPopup(false);
+          setPopupData(null);
+          startGame();
+        }}
+        className="mt-4 w-full bg-black text-white py-2 rounded font-bold hover:bg-slate-800"
+      >
+        🔁 Replay
+      </button>
+
+    </div>
+  </div>
+)}
+
+{/* LOSE POPUP */}
+{showLosePopup && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-fade-in">
+    <div className="relative rounded-2xl bg-red-600 p-8 text-center shadow-2xl animate-pulse w-80">
+
+      {/* CLOSE BUTTON */}
+      <button
+        onClick={() => {
+          setShowLosePopup(false);
+          setPopupData(null);
+        }}
+        className="absolute top-2 right-2 text-white text-lg font-bold hover:scale-110"
+      >
+        ✕
+      </button>
+
+      <h2 className="text-2xl font-bold">CRASHED!</h2>
+
+      <p className="mt-2 text-white">
+        You lost this run
+      </p>
+
+      <p className="text-sm opacity-80">
+        lane {popupData?.lane + 1}
+      </p>
+    </div>
+  </div>
+)}
+{/* CASHOUT POPUP */}
+{showCashoutPopup && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-fade-in">
+    <div className="relative w-80 rounded-2xl bg-cyan-500 p-8 text-center shadow-2xl">
+
+      {/* CLOSE */}
+      <button
+        onClick={() => {
+          setShowCashoutPopup(false);
+          setPopupData(null);
+        }}
+        className="absolute top-2 right-2 text-black text-lg font-bold hover:scale-110"
+      >
+        ✕
+      </button>
+
+      <h2 className="text-2xl font-bold">CASHED OUT</h2>
+
+      <p className="mt-2 text-black">
+        +{popupData?.payout?.toFixed?.(2)} tokens
+      </p>
+
+      <p className="text-sm text-black">
+        x{popupData?.multiplier?.toFixed?.(2)}
+      </p>
+
+    </div>
+  </div>
+)}
     </div>
   );
 }
