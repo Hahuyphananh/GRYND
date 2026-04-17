@@ -1,17 +1,19 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import NavigationBar from '../../../components/navigation-bar';
+import GameTrack from './components/GameTrack';
+import {
+  DEFAULT_LANES,
+  LANE_RUNNER_DIFFICULTIES,
+  LANE_RUNNER_TILES,
+  getMultiplier,
+} from '../../../lib/laneRunner';
 
-const MAX_LANES = 12;
-const LANE_RUNNER_TILES = 24;
+const MAX_LANES = DEFAULT_LANES;
 
-const LANE_RUNNER_DIFFICULTIES = {
-  easy: { label: 'Easy', pFail: 0.04, safeTiles: 8 },
-  medium: { label: 'Medium', pFail: 0.12, safeTiles: 6 },
-  hard: { label: 'Hard', pFail: 0.2, safeTiles: 4 },
-  extreme: { label: 'Extreme', pFail: 0.4, safeTiles: 2 },
-};
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function LaneRunnerPage() {
   const [betAmount, setBetAmount] = useState(10);
@@ -42,56 +44,22 @@ export default function LaneRunnerPage() {
   const [userTokens, setUserTokens] = useState(0);
   const [isBalanceLoading, setIsBalanceLoading] = useState(false);
 
-  const [animatingTile, setAnimatingTile] = useState(null);
   const [crashLane, setCrashLane] = useState(null);
 
   const loseSoundRef = useRef(null);
   const winSoundRef = useRef(null);
   const [showCashoutPopup, setShowCashoutPopup] = useState(false);
+  const [showWinPopup, setShowWinPopup] = useState(false);
+  const [showLosePopup, setShowLosePopup] = useState(false);
+  const [popupData, setPopupData] = useState(null);
 
-  const difficultyConfig = useMemo(
-    () => LANE_RUNNER_DIFFICULTIES[difficulty],
-    [difficulty]
+  const difficultyConfig = useMemo(() => LANE_RUNNER_DIFFICULTIES[difficulty], [difficulty]);
+
+  const laneMultipliers = useMemo(
+    () => Array.from({ length: MAX_LANES }, (_, lane) => getMultiplier(lane + 1, difficultyConfig.pFail, difficulty)),
+    [difficultyConfig.pFail, difficulty]
   );
 
-const difficultyStyle = useMemo(() => {
-  switch (difficulty) {
-    case 'easy':
-      return {
-        glow: 'shadow-green-400/20',
-        bg: 'bg-gradient-to-b from-green-950/40 to-slate-900',
-        label: '🟢 SAFE ROUTE',
-        road: 'border-green-400/30',
-      };
-    case 'medium':
-      return {
-        glow: 'shadow-yellow-400/20',
-        bg: 'bg-gradient-to-b from-yellow-950/40 to-slate-900',
-        label: '🟡 HIGHWAY',
-        road: 'border-yellow-400/30',
-      };
-    case 'hard':
-      return {
-        glow: 'shadow-orange-500/30',
-        bg: 'bg-gradient-to-b from-orange-950/40 to-slate-900',
-        label: '🟠 DANGER ZONE',
-        road: 'border-orange-500/30',
-      };
-    case 'extreme':
-      return {
-        glow: 'shadow-red-500/40',
-        bg: 'bg-gradient-to-b from-red-950/50 to-black',
-        label: '🔴 WAR ZONE',
-        road: 'border-red-500/40 animate-pulse',
-      };
-  }
-}, [difficulty]);
-
-  const [showWinPopup, setShowWinPopup] = useState(false);
-const [showLosePopup, setShowLosePopup] = useState(false);
-const [popupData, setPopupData] = useState(null);
-
-  // ---------------- BALANCE ----------------
   useEffect(() => {
     fetchUserTokens();
   }, []);
@@ -116,12 +84,14 @@ const [popupData, setPopupData] = useState(null);
     }
   }
 
-  // ---------------- START GAME ----------------
   async function startGame() {
     setIsLoading(true);
     setError('');
     setHasLost(false);
     setHasCashedOut(false);
+    setShowCashoutPopup(false);
+    setShowWinPopup(false);
+    setShowLosePopup(false);
 
     setCurrentLane(0);
     setMultiplier(1);
@@ -166,12 +136,10 @@ const [popupData, setPopupData] = useState(null);
     setIsLoading(false);
   }
 
-  // ---------------- PICK TILE ----------------
   async function pickTile(tileIndex) {
     if (!running || hasLost || hasCashedOut || isLoading) return;
 
     setIsLoading(true);
-    setAnimatingTile(`${currentLane}-${tileIndex}`);
 
     const res = await fetch('/api/lane-runner/play', {
       method: 'POST',
@@ -181,22 +149,22 @@ const [popupData, setPopupData] = useState(null);
     });
 
     const json = await res.json();
+    await delay(220);
     setIsLoading(false);
 
     if (!res.ok || !json.success) {
       setError(json.error || 'Pick failed');
-      setAnimatingTile(null);
       return;
     }
 
     const data = json.data;
 
-    setSelectedTileByLane(prev => ({
+    setSelectedTileByLane((prev) => ({
       ...prev,
       [data.lane]: tileIndex,
     }));
 
-    setSafeTilesByLane(prev => ({
+    setSafeTilesByLane((prev) => ({
       ...prev,
       [data.lane]: data.safeTiles || [],
     }));
@@ -204,8 +172,7 @@ const [popupData, setPopupData] = useState(null);
     setMultiplier(data.multiplier);
     setPayout(Number(betAmount * (data.multiplier ?? multiplier)));
     setCurrentLane(data.currentLane ?? data.lane);
-
-    setOutcomeSequence(prev => [...prev, data]);
+    setOutcomeSequence((prev) => [...prev, data]);
 
     if (typeof data.newBalance === 'number') {
       setUserTokens(data.newBalance);
@@ -218,7 +185,7 @@ const [popupData, setPopupData] = useState(null);
       setRunning(false);
       loseSoundRef.current?.play().catch(() => {});
 
-      setHistory(prev => [
+      setHistory((prev) => [
         {
           id: Date.now(),
           result: 'lost',
@@ -228,8 +195,6 @@ const [popupData, setPopupData] = useState(null);
         },
         ...prev,
       ].slice(0, 10));
-
-      setAnimatingTile(null);
       return;
     }
 
@@ -237,13 +202,9 @@ const [popupData, setPopupData] = useState(null);
       triggerWinPopup(data);
       setHasCashedOut(true);
       setRunning(false);
+      setShowCashoutPopup(true);
 
-      triggerWinPopup({
-  payout: json.data.payout,
-  multiplier: json.data.multiplier,
-});
-
-      setHistory(prev => [
+      setHistory((prev) => [
         {
           id: Date.now(),
           result: 'cashed_out',
@@ -253,16 +214,12 @@ const [popupData, setPopupData] = useState(null);
         },
         ...prev,
       ].slice(0, 10));
-
-      setAnimatingTile(null);
       return;
     }
 
     winSoundRef.current?.play().catch(() => {});
-    setTimeout(() => setAnimatingTile(null), 250);
   }
 
-  // ---------------- CASHOUT ----------------
   async function cashOut() {
     if (!running || hasLost || hasCashedOut) return;
 
@@ -283,22 +240,20 @@ const [popupData, setPopupData] = useState(null);
       return;
     }
 
-setHasCashedOut(true);
-setRunning(false);
+    setHasCashedOut(true);
+    setRunning(false);
 
-setPopupData({
-  payout: json.data.payout,
-  multiplier: json.data.multiplier,
-});
+    setPopupData({
+      payout: json.data.payout,
+      multiplier: json.data.multiplier,
+    });
 
-setShowCashoutPopup(true);
-
+    setShowCashoutPopup(true);
     setMultiplier(json.data.multiplier);
     setPayout(Number(json.data.payout || betAmount * json.data.multiplier || 0));
-
     setUserTokens(Number(json.data.newBalance ?? userTokens));
 
-    setHistory(prev => [
+    setHistory((prev) => [
       {
         id: Date.now(),
         result: 'cashed_out',
@@ -311,16 +266,23 @@ setShowCashoutPopup(true);
   }
 
   function triggerWinPopup(data) {
-  setPopupData(data);
-  setShowWinPopup(true);
-}
+    setPopupData(data);
+    setShowWinPopup(true);
+  }
 
-function triggerLosePopup(data) {
-  setPopupData(data);
-  setShowLosePopup(true);
-}
+  function triggerLosePopup(data) {
+    setPopupData(data);
+    setShowLosePopup(true);
+  }
 
-  // ---------------- AUTOPLAY ----------------
+  function pickByLaneClick(laneIndex, event) {
+    if (laneIndex !== currentLane) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const pct = Math.min(0.999, Math.max(0, (event.clientY - rect.top) / rect.height));
+    const tileIndex = Math.floor(pct * LANE_RUNNER_TILES);
+    pickTile(tileIndex);
+  }
+
   useEffect(() => {
     if (!autoplayEnabled || !running || hasLost || hasCashedOut) return;
 
@@ -331,235 +293,161 @@ function triggerLosePopup(data) {
 
     const t = setTimeout(() => {
       pickTile(Math.floor(Math.random() * LANE_RUNNER_TILES));
-    }, 450);
+    }, 600);
 
     return () => clearTimeout(t);
   }, [autoplayEnabled, running, hasLost, hasCashedOut, multiplier, autoplayTarget]);
 
-  // ---------------- TILE STYLE ----------------
-  function getTileClass(laneIndex, tileIndex) {
-    const picked = selectedTileByLane[laneIndex] === tileIndex;
-    const isSafe = safeTilesByLane[laneIndex]?.includes(tileIndex);
-    const isActive = laneIndex === currentLane && running;
+  const playerTile = selectedTileByLane[Math.max(0, currentLane - 1)] ?? Math.floor(LANE_RUNNER_TILES / 2);
 
-    if (picked && laneIndex === crashLane) return 'bg-red-600';
-    if (picked && isSafe) return 'bg-emerald-500';
-    if (picked) return 'bg-cyan-500';
-    if (isSafe) return 'bg-emerald-900/70';
-    if (isActive) return 'bg-slate-700 hover:bg-slate-600';
-
-    return 'bg-slate-800';
-  }
-
-  // ================= UI =================
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black pt-20 text-white">
+    <div className="min-h-screen bg-gradient-to-b from-[#050716] via-[#080c27] to-black pt-20 text-white">
       <NavigationBar currentPath="/casino/lane-runner" />
-
       <audio ref={winSoundRef} src="/sounds/coin-flip.mp3" />
       <audio ref={loseSoundRef} src="/sounds/coin-flip.mp3" />
 
-      <div className="mx-auto flex max-w-7xl flex-col md:flex-row gap-6 px-4 pb-10">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 pb-10 md:flex-row">
+        <div className="w-full rounded-xl border border-cyan-400/20 bg-slate-900/70 p-4 md:w-80">
+          <h1 className="text-2xl font-black text-cyan-200">Lane Runner: Mission Style</h1>
+          <p className="mt-2 text-sm">Balance: {isBalanceLoading ? '...' : userTokens.toFixed(2)}</p>
 
-        {/* LEFT PANEL */}
-        <div className="w-full md:w-80 bg-slate-900/60 border border-cyan-500/30 p-4 rounded-xl">
-          <h1 className="text-2xl font-bold text-yellow-300">Lane Runner 🐔</h1>
-
-          <p className="text-sm mt-2">Balance: {isBalanceLoading ? '...' : userTokens.toFixed(2)}</p>
-
-          <input className="w-full mt-3 p-2 bg-slate-950 border rounded"
+          <label className="mt-3 block text-xs uppercase text-white/60">Bet Amount</label>
+          <input
+            className="w-full rounded border border-white/15 bg-slate-950 p-2"
             type="number"
+            min={1}
             value={betAmount}
             onChange={(e) => setBetAmount(Number(e.target.value))}
           />
 
-          <select className="w-full mt-3 p-2 bg-slate-950 border rounded"
+          <label className="mt-3 block text-xs uppercase text-white/60">Difficulty</label>
+          <select
+            className="w-full rounded border border-white/15 bg-slate-950 p-2"
             value={difficulty}
             onChange={(e) => setDifficulty(e.target.value)}
           >
             {Object.entries(LANE_RUNNER_DIFFICULTIES).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
+              <option key={k} value={k}>
+                {v.label}
+              </option>
             ))}
           </select>
 
-          <button onClick={startGame} disabled={running || isLoading}
-            className="w-full mt-3 bg-cyan-500 text-black py-2 rounded">
-            Start
-          </button>
-
-          <button onClick={cashOut} disabled={!running}
-            className="w-full mt-2 bg-emerald-500 text-black py-2 rounded">
-            Cash Out
-          </button>
-
-          <p className="mt-3 text-xs">Lane: {currentLane + 1}/{MAX_LANES}</p>
-          <p className="text-xs">x{multiplier.toFixed(4)}</p>
-          <p className="text-xs">Payout: {payout.toFixed(2)}</p>
-
-          {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
-        </div>
-
-        {/* RIGHT PANEL (HORIZONTAL PROGRESSION FIX) */}
-        <div className={`flex-1 border rounded-xl p-4 overflow-x-auto transition 
-${difficultyStyle.bg} ${difficultyStyle.glow} ${difficultyStyle.road}`}>
-          <h2 className="text-cyan-300 font-bold mb-4">Lane Progress</h2>
-          <p className="text-xs mb-4 opacity-80">
-  Mode: {difficultyStyle.label}
-</p>
-
-          <div className="flex gap-2">
-            {Array.from({ length: MAX_LANES }).map((_, laneIndex) => {
-              const isCurrent = laneIndex === currentLane;
-              const isPassed = laneIndex < currentLane;
-              const isCrash = laneIndex === crashLane;
-              const isJackpot = laneIndex === MAX_LANES - 1;
-
-              return (
-                <div
-  className={`
-    w-16 h-10 relative rounded-md border transition-all duration-300
-    ${isJackpot ? 'bg-gradient-to-r from-yellow-400 to-yellow-600 shadow-lg animate-pulse' : ''}
-    ${isCrash ? 'bg-red-700' : ''}
-    ${isPassed ? 'bg-emerald-600' : ''}
-    ${isCurrent ? 'bg-cyan-500 scale-110 shadow-[0_0_12px_#22d3ee]' : ''}
-    ${!isPassed && !isCurrent ? 'bg-slate-800' : ''}
-  `}
->
-  {/* ROAD MARKINGS */}
-  <div className="absolute inset-0 flex items-center justify-center">
-    <div className="w-full h-[2px] bg-white/20" />
-  </div>
-
-  {/* PLAYER / OBJECTS */}
-  <div className="absolute inset-0 flex items-center justify-center">
-    {isJackpot && <span className="text-xl">💰</span>}
-    {isCurrent && !hasLost && !hasCashedOut && <span className="text-xl animate-bounce">🐔</span>}
-    {isPassed && !isCurrent && <span className="text-lg">🛣️</span>}
-    {isCrash && <span className="text-xl">🚗</span>}
-  </div>
-</div>
-              );
-            })}
-          </div>
+          <label className="mt-3 block text-xs uppercase text-white/60">Client Seed</label>
+          <input
+            className="w-full rounded border border-white/15 bg-slate-950 p-2 text-xs"
+            value={clientSeed}
+            onChange={(e) => setClientSeed(e.target.value)}
+          />
 
           <button
-            onClick={() => pickTile(currentLane)}
-            disabled={!running}
-            className="mt-4 w-full bg-cyan-400 text-black py-3 rounded font-bold"
+            onClick={startGame}
+            disabled={running || isLoading}
+            className="mt-3 w-full rounded bg-cyan-500 py-2 font-bold text-black transition hover:bg-cyan-400 disabled:opacity-60"
           >
-            Step Forward
+            {isLoading && !running ? 'Starting...' : 'Start Run'}
           </button>
 
-          {/* HISTORY */}
-          <div className="mt-6 text-xs">
-            {history.map(h => (
-              <p key={h.id}>
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <p className="rounded bg-black/30 p-2">Lane: {currentLane + 1}/{MAX_LANES}</p>
+            <p className="rounded bg-black/30 p-2">x{multiplier.toFixed(4)}</p>
+            <p className="col-span-2 rounded bg-black/30 p-2">Payout: {payout.toFixed(2)}</p>
+          </div>
+
+          <div className="mt-4 space-y-2 rounded bg-black/25 p-2 text-xs">
+            <label className="flex items-center justify-between gap-2">
+              <span>Autoplay</span>
+              <input type="checkbox" checked={autoplayEnabled} onChange={(e) => setAutoplayEnabled(e.target.checked)} />
+            </label>
+            <label className="flex items-center justify-between gap-2">
+              <span>Auto cashout at</span>
+              <input
+                type="number"
+                min="1"
+                step="0.1"
+                className="w-24 rounded bg-slate-900 p-1"
+                value={autoplayTarget}
+                onChange={(e) => setAutoplayTarget(Number(e.target.value))}
+              />
+            </label>
+          </div>
+
+          {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+          {fairData && <p className="mt-2 text-[11px] text-white/50">Fair nonce: {fairData.nonce}</p>}
+        </div>
+
+        <div className="flex-1">
+          <GameTrack
+            lanes={Array.from({ length: MAX_LANES }, (_, i) => i)}
+            currentLane={currentLane}
+            currentMultiplier={multiplier}
+            running={running}
+            hasLost={hasLost}
+            hasCashedOut={hasCashedOut}
+            crashLane={crashLane}
+            laneMultipliers={laneMultipliers}
+            onAttemptLane={(laneIndex, event) => pickByLaneClick(laneIndex, event)}
+            onCashout={cashOut}
+            playerTile={playerTile}
+            tileCount={LANE_RUNNER_TILES}
+          />
+
+          <motion.div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3 text-xs" layout>
+            <p className="mb-2 text-sm font-semibold text-cyan-200">Recent Runs</p>
+            {history.length === 0 && <p className="text-white/50">No runs yet.</p>}
+            {history.map((h) => (
+              <p key={h.id} className="border-b border-white/10 py-1 last:border-0">
                 {h.result} • lane {h.lane} • x{h.multiplier?.toFixed?.(4)} • {h.payout}
               </p>
             ))}
-          </div>
+          </motion.div>
         </div>
-
       </div>
-      {/* WIN POPUP */}
-{showWinPopup && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-fade-in">
-    <div className="relative rounded-2xl bg-emerald-500 p-8 text-center shadow-2xl animate-bounce w-80">
 
-      {/* CLOSE BUTTON */}
-      <button
-        onClick={() => {
-          setShowWinPopup(false);
-          setPopupData(null);
-        }}
-        className="absolute top-2 right-2 text-black text-lg font-bold hover:scale-110"
-      >
-        ✕
-      </button>
+      {showWinPopup && (
+        <PopupShell tone="emerald" title="CASHED OUT!" onClose={() => setShowWinPopup(false)}>
+          <p className="mt-2 text-black">+{popupData?.payout?.toFixed?.(2)} tokens</p>
+          <p className="text-sm text-black">x{popupData?.multiplier?.toFixed?.(2)}</p>
+        </PopupShell>
+      )}
 
-      <h2 className="text-2xl font-bold">CASHED OUT!</h2>
+      {showLosePopup && (
+        <PopupShell tone="red" title="CRASHED!" onClose={() => setShowLosePopup(false)}>
+          <p className="mt-2 text-white">You lost this run.</p>
+          <p className="text-sm text-white/85">Lane {popupData?.lane + 1}</p>
+        </PopupShell>
+      )}
 
-      <p className="mt-2 text-black">
-        +{popupData?.payout?.toFixed?.(2)} tokens
-      </p>
-
-      <p className="text-sm">
-        x{popupData?.multiplier?.toFixed?.(2)}
-      </p>
-
-      {/* REPLAY BUTTON */}
-      <button
-        onClick={() => {
-          setShowWinPopup(false);
-          setPopupData(null);
-          startGame();
-        }}
-        className="mt-4 w-full bg-black text-white py-2 rounded font-bold hover:bg-slate-800"
-      >
-        🔁 Replay
-      </button>
-
+      {showCashoutPopup && (
+        <PopupShell tone="cyan" title="CASHED OUT" onClose={() => setShowCashoutPopup(false)}>
+          <p className="mt-2 text-black">+{popupData?.payout?.toFixed?.(2)} tokens</p>
+          <p className="text-sm text-black">x{popupData?.multiplier?.toFixed?.(2)}</p>
+        </PopupShell>
+      )}
     </div>
-  </div>
-)}
+  );
+}
 
-{/* LOSE POPUP */}
-{showLosePopup && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-fade-in">
-    <div className="relative rounded-2xl bg-red-600 p-8 text-center shadow-2xl animate-pulse w-80">
+function PopupShell({ title, children, tone, onClose }) {
+  const palette = {
+    red: 'bg-red-600 text-white',
+    cyan: 'bg-cyan-500 text-black',
+    emerald: 'bg-emerald-500 text-black',
+  };
 
-      {/* CLOSE BUTTON */}
-      <button
-        onClick={() => {
-          setShowLosePopup(false);
-          setPopupData(null);
-        }}
-        className="absolute top-2 right-2 text-white text-lg font-bold hover:scale-110"
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.86, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className={`relative w-80 rounded-2xl p-8 text-center shadow-2xl ${palette[tone]}`}
       >
-        ✕
-      </button>
-
-      <h2 className="text-2xl font-bold">CRASHED!</h2>
-
-      <p className="mt-2 text-white">
-        You lost this run
-      </p>
-
-      <p className="text-sm opacity-80">
-        lane {popupData?.lane + 1}
-      </p>
-    </div>
-  </div>
-)}
-{/* CASHOUT POPUP */}
-{showCashoutPopup && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-fade-in">
-    <div className="relative w-80 rounded-2xl bg-cyan-500 p-8 text-center shadow-2xl">
-
-      {/* CLOSE */}
-      <button
-        onClick={() => {
-          setShowCashoutPopup(false);
-          setPopupData(null);
-        }}
-        className="absolute top-2 right-2 text-black text-lg font-bold hover:scale-110"
-      >
-        ✕
-      </button>
-
-      <h2 className="text-2xl font-bold">CASHED OUT</h2>
-
-      <p className="mt-2 text-black">
-        +{popupData?.payout?.toFixed?.(2)} tokens
-      </p>
-
-      <p className="text-sm text-black">
-        x{popupData?.multiplier?.toFixed?.(2)}
-      </p>
-
-    </div>
-  </div>
-)}
+        <button onClick={onClose} className="absolute right-2 top-2 text-lg font-bold">
+          ✕
+        </button>
+        <h2 className="text-2xl font-bold">{title}</h2>
+        {children}
+      </motion.div>
     </div>
   );
 }
