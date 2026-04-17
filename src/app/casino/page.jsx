@@ -97,7 +97,6 @@ const games = [
     leaderboardKey: "lane-runner",
     image: Img15,
     description: "Traverse les voies et évite de te faire écraser !",
-    popular: true,
   },
 
   {
@@ -179,7 +178,7 @@ useEffect(() => {
 }, [user]);
 
 const GameCard = ({ game }) => (
-  <div className="group relative overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-2 transition-all hover:shadow-[0_0_24px_rgba(0,229,255,0.35)]">
+<div className="group relative overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-2 transition-all duration-300 hover:-translate-y-2 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,229,255,0.4)]">
     <Link href={game.href} onClick={() => handleGameEntry(game.leaderboardKey)} className="block cursor-pointer">
       <div className="mb-2 h-28 overflow-hidden rounded-lg">
         <Image
@@ -231,10 +230,13 @@ const GameCard = ({ game }) => (
 
       <div className="mx-auto max-w-7xl px-4 py-12">
         <section className="mb-5 text-center">
-  <h1 className="mb-4 text-4xl font-bold text-[#f5ff3b] md:text-6xl fade-slide-up shimmer-heading">
+  <h1 className="mb-4 text-4xl font-bold text-[#f5ff3b] md:text-6xl fade-slide-up">
     Casino en Ligne
   </h1>
-  <p className="mb-2 text-xl text-[#d8fbff] fade-slide-up" style={{ animationDelay: '0.3s' }}>
+  <p
+  className="mb-2 text-xl text-[#d8fbff] fade-slide-up"
+  style={{ animationDelay: "0.2s" }}
+>
     Découvrez nos jeux de casino et tentez votre chance
   </p>
   {error && (
@@ -280,11 +282,13 @@ const GameCard = ({ game }) => (
       ⭐ Jeux les plus populaires
     </h2>
 
-    <div className="mb-5 grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4">
-      {popularGames.map((game) => (
-        <GameCard key={game.name} game={game} />
-      ))}
+    <div className="mb-5 grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4 stagger-container">
+  {popularGames.map((game, index) => (
+    <div key={game.name} style={{ "--i": index }}>
+      <GameCard game={game} />
     </div>
+  ))}
+</div>
   </div>
 )}
 
@@ -294,44 +298,47 @@ const GameCard = ({ game }) => (
       🎮 Tous les jeux
     </h2>
 
-    <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
-      {otherGames.map((game) => (
-        <GameCard key={game.name} game={game} />
-      ))}
+    <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 stagger-container">
+  {otherGames.map((game, index) => (
+    <div key={game.name} style={{ "--i": index }}>
+      <GameCard game={game} />
     </div>
+  ))}
+</div>
   </>
 )}
 
       </div>
 
       <style jsx global>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
+       @keyframes fadeSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(30px) scale(0.98);
+    filter: blur(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
 
-        .grid > * {
-          animation: fadeIn 0.5s ease-out forwards;
-        }
+.fade-slide-up {
+  opacity: 0;
+  animation: fadeSlideUp 0.6s ease-out forwards;
+}
 
-        .grid > *:nth-child(1) {
-          animation-delay: 0.1s;
-        }
-        .grid > *:nth-child(2) {
-          animation-delay: 0.2s;
-        }
-        .grid > *:nth-child(3) {
-          animation-delay: 0.3s;
-        }
-        .grid > *:nth-child(4) {
-          animation-delay: 0.4s;
-        }
+/* Stagger utility */
+.stagger-container > * {
+  opacity: 0;
+  animation: fadeSlideUp 0.6s ease-out forwards;
+}
+
+/* Automatically stagger children */
+.stagger-container > *:nth-child(n) {
+  animation-delay: calc(0.08s * var(--i));
+}
       `}</style>
     </div>
   );

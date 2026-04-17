@@ -10,7 +10,6 @@ import Img3 from "../images/poker.jpg";
 import Img4 from "../images/plinko.jpg";
 import HeroBg from "../images/casino-bg.png";
 import SportCard from "../components/sport-card";
-import EventCard from "../components/event-card";
 
 const MAIN_SPORT_GROUPS = [
   "American Football",
@@ -375,52 +374,31 @@ useEffect(() => {
     if (user && jwt) fetchUserTokens();
   }, [user, jwt]);
 
-  const handleBetSelect = (team, odds) => {
-    setSelectedBet(team);
-    setSelectedOdds(odds);
-  };
+const useRevealOnScroll = (deps = []) => {
+  useEffect(() => {
+    const elements = document.querySelectorAll(".reveal, .reveal-stagger");
 
-  const handleBetSubmit = async (betData) => {
-    if (!user) {
-      window.location.href = "/account/signin?callbackUrl=/";
-      return;
-    }
-
-    if (!userTokens || userTokens < betData.amount) {
-      showNotification("Solde insuffisant pour placer ce pari", "error");
-      return;
-    }
-
-    setBetInProgress(true);
-    setError(null);
-
-    try {
-      const res = await fetch("/api/bets/place", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${jwt}`,
-        },
-        body: JSON.stringify(betData),
-        credentials: "include",
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Erreur lors du placement du pari");
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("visible");
+          }
+        });
+      },
+      {
+        threshold: 0.1,
+        rootMargin: "0px 0px -50px 0px", // 👈 triggers earlier
       }
+    );
 
-      setSelectedBet(null);
-      setSelectedOdds(null);
-      setUserTokens(data.data.newBalance);
-      showNotification("Pari placé avec succès!", "success");
-    } catch (err) {
-      console.error("Bet error:", err);
-      showNotification(err.message || "Erreur lors du placement du pari", "error");
-    } finally {
-      setBetInProgress(false);
-    }
-  };
+    elements.forEach((el) => observer.observe(el));
+
+    return () => observer.disconnect();
+  }, deps);
+};
+
+  useRevealOnScroll([sports]);
 
   const showNotification = (message, type = "info") => {
     setNotification({ message, type });
@@ -445,7 +423,7 @@ useEffect(() => {
   {/* Dark overlay for readability */}
   <div className="absolute inset-0 bg-[#010612]/70 z-10" />
 
-        <div className="relative z-20 mx-auto max-w-7xl text-center">
+        <div className="relative z-20 mx-auto max-w-7xl text-center reveal">
       <h1
   className="mb-4 text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text 
 bg-gradient-to-r from-[#ff4fd8] via-[#00e5ff] to-[#ff4fd8]
@@ -479,12 +457,12 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
       </section>
 
       <div className="mx-auto max-w-7xl px-4 py-8">
-        <section className="mb-16">
+        <section className="mb-16 reveal">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-2xl font-bold text-[#f5ff3b]">Casino en Ligne</h2>
           </div>
 
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 reveal-stagger">
             <a
               href="/casino/roulette"
               onClick={() => handleGameEntry("roulette")}
@@ -563,7 +541,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           </div>
 
           {/* Bouton More centré sous la grille */}
-          <div className="flex justify-center mt-8">
+          <div className="flex justify-center mt-8 reveal" style={{ animationDelay: "0.2s" }}>
   <a
     href="/casino"
     className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-6 py-3 text-lg font-semibold text-[#031026] transition-all glow-pulse more-hover cyber-glow-button"
@@ -574,7 +552,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
 
         </section>
 
-        <section className="mb-16">
+        <section className="mb-16 reveal">
   <div className="mb-8 flex justify-between items-center">
     <h2 className="text-2xl font-bold text-[#00e5ff]">
       Sports Populaires
@@ -588,7 +566,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
      {Object.keys(sports).map((groupKey) => (
     <div
       key={groupKey}
-      className="rounded-lg overflow-hidden border border-[#00e5ff]/30"
+      className="rounded-lg overflow-hidden border border-[#00e5ff]/30 reveal"
     >
       <button
         onClick={() =>
@@ -602,7 +580,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
       </button>
 
       {openGroup === groupKey && (
-        <div className="grid grid-cols-2 gap-4 bg-[#050f24] p-4 md:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 bg-[#050f24] p-4 md:grid-cols-3 lg:grid-cols-5 reveal-stagger">
           {Array.isArray(sports[groupKey]) &&
   sports[groupKey].map((league) => (
             <SportCard
