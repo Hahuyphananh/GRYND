@@ -275,9 +275,10 @@ export default function LaneRunnerPage() {
     setShowLosePopup(true);
   }
 
-  function pickByLaneClick(event) {
+  function pickByLaneClick(laneIndex, event) {
+    if (laneIndex !== currentLane) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const pct = Math.min(0.999, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const pct = Math.min(0.999, Math.max(0, (event.clientY - rect.top) / rect.height));
     const tileIndex = Math.floor(pct * LANE_RUNNER_TILES);
     pickTile(tileIndex);
   }
@@ -296,6 +297,8 @@ export default function LaneRunnerPage() {
 
     return () => clearTimeout(t);
   }, [autoplayEnabled, running, hasLost, hasCashedOut, multiplier, autoplayTarget]);
+
+  const playerTile = selectedTileByLane[Math.max(0, currentLane - 1)] ?? Math.floor(LANE_RUNNER_TILES / 2);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#050716] via-[#080c27] to-black pt-20 text-white">
@@ -383,8 +386,10 @@ export default function LaneRunnerPage() {
             hasCashedOut={hasCashedOut}
             crashLane={crashLane}
             laneMultipliers={laneMultipliers}
-            onAttemptLane={(_, event) => pickByLaneClick(event)}
+            onAttemptLane={(laneIndex, event) => pickByLaneClick(laneIndex, event)}
             onCashout={cashOut}
+            playerTile={playerTile}
+            tileCount={LANE_RUNNER_TILES}
           />
 
           <motion.div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3 text-xs" layout>

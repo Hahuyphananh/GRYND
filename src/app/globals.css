@@ -707,3 +707,39 @@ a[class*="bg-[#f5ff3b]"] {
 .lane-runner-screen-shake {
   animation: laneRunnerShake 0.35s ease-in-out 1;
 }
+
+@keyframes laneVerticalSweep {
+  0% { transform: translateY(-120%); }
+  100% { transform: translateY(760%); }
+}
+
+@keyframes laneCarDown {
+  0% { transform: translateY(-12%); }
+  100% { transform: translateY(420px); }
+}
+
+@keyframes laneCarUp {
+  0% { transform: translateY(420px); }
+  100% { transform: translateY(-12%); }
+}
+
+.lane-runner-column-lines {
+  background-image:
+    repeating-linear-gradient(to bottom, transparent 0, transparent 16px, rgba(255,255,255,0.15) 16px, rgba(255,255,255,0.15) 18px),
+    linear-gradient(to right, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 50%);
+  background-size: 100% 18px, 2px 100%;
+  background-repeat: repeat, no-repeat;
+  background-position: center, center;
+}
+
+.lane-runner-car-down {
+  animation-name: laneCarDown;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.lane-runner-car-up {
+  animation-name: laneCarUp;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
