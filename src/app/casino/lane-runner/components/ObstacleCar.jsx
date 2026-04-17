@@ -2,29 +2,27 @@
 
 import { motion } from 'framer-motion';
 
-export default function ObstacleCar({ laneIndex, active, crashed, direction = 'left', speedMs = 2600 }) {
+export default function ObstacleCar({ laneIndex, laneWidth = 74, active, crashed, direction = 'down', speedMs = 2600, playerY = 220 }) {
   if (!active && !crashed) return null;
 
-  const baseClass = direction === 'left' ? 'lane-runner-car lane-runner-car-left' : 'lane-runner-car lane-runner-car-right';
+  const left = laneIndex * laneWidth + 18;
+  const moveClass = direction === 'down' ? 'lane-runner-car-down' : 'lane-runner-car-up';
 
   return (
-    <div
-      className="pointer-events-none absolute left-0 right-0"
-      style={{ top: laneIndex * 58 + 12 }}
-      aria-hidden="true"
-    >
+    <div className="pointer-events-none absolute top-0 bottom-0 z-20" style={{ left }} aria-hidden="true">
       {crashed ? (
         <motion.div
-          className="text-2xl"
-          initial={{ x: direction === 'left' ? 260 : -260, opacity: 0.5, scale: 0.8 }}
-          animate={{ x: 0, opacity: 1, scale: 1.12 }}
-          transition={{ duration: 0.28, ease: 'easeOut' }}
+          className="absolute text-2xl"
+          style={{ top: playerY }}
+          initial={{ x: -30, opacity: 0.5, scale: 0.85 }}
+          animate={{ x: 0, opacity: 1, scale: 1.1 }}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
         >
           🚗
         </motion.div>
       ) : (
-        <div className={baseClass} style={{ animationDuration: `${speedMs}ms` }}>
-          <span className="text-xl md:text-2xl">🚙</span>
+        <div className={`absolute left-0 text-2xl ${moveClass}`} style={{ animationDuration: `${speedMs}ms` }}>
+          🚙
         </div>
       )}
     </div>
