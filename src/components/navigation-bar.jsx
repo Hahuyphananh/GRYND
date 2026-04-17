@@ -25,6 +25,17 @@ function NavigationBar({ currentPath }) {
   const [balance, setBalance] = useState(null);
   const [error, setError] = useState(null);
   const [showAddFunds, setShowAddFunds] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
+const [langClosing, setLangClosing] = useState(false);
+
+const closeLang = () => {
+  setLangClosing(true);
+  setLangOpen(false);
+
+  setTimeout(() => {
+    setLangClosing(false);
+  }, 400); // match your CSS duration
+};
 
   const fetchBalance = async () => {
     try {
@@ -87,6 +98,17 @@ function NavigationBar({ currentPath }) {
     }
   }, [isSignedIn]);
 
+  useEffect(() => {
+  const handleClickOutside = (e) => {
+    if (!e.target.closest(".relative")) {
+      setLangOpen(false);
+    }
+  };
+
+  document.addEventListener("mousedown", handleClickOutside);
+  return () => document.removeEventListener("mousedown", handleClickOutside);
+}, []);
+
   const isCasinoPath = currentPath.startsWith("/casino");
 
   return (
@@ -121,16 +143,49 @@ function NavigationBar({ currentPath }) {
             </div>
 
             <div className="flex items-center space-x-4">
-              <select
-                aria-label="Language selector"
-                value={language}
-                onChange={(event) => setLanguage(event.target.value)}
-                className="rounded-lg border border-[#00e5ff]/50 bg-[#091737] px-2 py-1 text-sm text-[#c9f7ff] focus:outline-none"
-              >
-                <option value="en">EN 🇺🇸</option>
-                <option value="fr">FR 🇫🇷</option>
-                <option value="es">ES 🇪🇸</option>
-              </select>
+             <div className="relative">
+  <div
+    onClick={() => {
+  if (langOpen) {
+    closeLang();
+  } else {
+    setLangOpen(true);
+  }
+}}
+    className="rounded-lg border border-[#00e5ff]/50 bg-[#091737] px-2 py-1 text-sm text-[#c9f7ff] focus:outline-none cursor-pointer"
+  >
+    {language === "en" && "EN 🇺🇸 🌐" }
+    {language === "fr" && "FR 🇫🇷 🌐"}
+    {language === "es" && "ES 🇪🇸 🌐"}
+  </div>
+
+  {(langOpen || langClosing) && (
+    <div
+  className={`absolute right-0 mt-2 w-full ${
+    langOpen ? "animate-parchment" : "animate-parchment-close"
+  }`}
+>
+      <div className="rounded-lg border border-[#00e5ff]/50 bg-[#091737] overflow-hidden shadow-lg">
+        {[
+          { value: "en", label: "EN 🇺🇸 🌐" },
+          { value: "fr", label: "FR 🇫🇷 🌐" },
+          { value: "es", label: "ES 🇪🇸 🌐" },
+        ].map((lang) => (
+          <div
+            key={lang.value}
+            onClick={() => {
+  setLanguage(lang.value);
+  closeLang();
+}}
+            className="px-2 py-1 text-sm text-[#c9f7ff] hover:bg-[#00e5ff]/20 cursor-pointer"
+          >
+            {lang.label}
+          </div>
+        ))}
+      </div>
+    </div>
+  )}
+</div>
 
               {isLoaded && isSignedIn ? (
                 <>

@@ -23,7 +23,7 @@ export const APP_TEXT_TRANSLATIONS = {
     "Affrontez l'IA ou d'autres joueurs.": "Play against AI or other players.",
     "Placez vos paris sur les numéros, couleurs ou sections": "Place your bets on numbers, colors, or sections",
     "Regardez tomber votre jeton et multipliez vos gains !": "Watch your token fall and multiply your winnings!",
-    "Regardez tomber les balles et multipliez vos gains !": "Watch your token fall and multiply your winnings!",
+    "Regardez tomber les balles et multipliez vos gains!": "Watch your token fall and multiply your winnings!",
     "Évitez les bombes et trouvez les diamants !": "Avoid the bombs and find diamonds!",
     "Cash out avant que la fusée crash !": "Cash out before the rocket crashes!",
     "Affrontez d'autres joueurs dans un match d'échecs.": "Play against others in a chess match.",
@@ -70,6 +70,7 @@ export const APP_TEXT_TRANSLATIONS = {
     "Mise": "Stake",
     "Gains Potentiels": "Potential payout",
     "Cliquez sur Afficher les Événements pour obtenir les cotes.": "Click Show Events to fetch odds.",
+   "Traverse les voies et évite de te faire écraser !": 'Navigate the lanes and avoid getting crushed!',
   },
   es: {
     "Casino en Ligne": "Casino en línea",
@@ -95,7 +96,7 @@ export const APP_TEXT_TRANSLATIONS = {
     "Affrontez l'IA ou d'autres joueurs.": "Juega contra la IA u otros jugadores.",
     "Placez vos paris sur les numéros, couleurs ou sections": "Haz tus apuestas en números, colores o secciones",
     "Regardez tomber votre jeton et multipliez vos gains !": "¡Mira caer tu ficha y multiplica tus ganancias!",
-    "Regardez tomber les balles et multipliez vos gains !": "¡Mira caer tu ficha y multiplica tus ganancias!",
+    "Regardez tomber les balles et multipliez vos gains!": "¡Mira caer tu ficha y multiplica tus ganancias!",
     "Évitez les bombes et trouvez les diamants !": "¡Evita las bombas y encuentra diamantes!",
     "Cash out avant que la fusée crash !": "¡Retírate antes de que el cohete se estrelle!",
     "Affrontez d'autres joueurs dans un match d'échecs.": "Enfréntate a otros jugadores en una partida de ajedrez.",
@@ -142,5 +143,6 @@ export const APP_TEXT_TRANSLATIONS = {
     "Mise": "Apuesta",
     "Gains Potentiels": "Ganancias potenciales",
     "Cliquez sur Afficher les Événements pour obtenir les cotes.": "Haz clic en Mostrar eventos para obtener las cuotas.",
+    "Traverse les voies et évite de te faire écraser !": '¡Navega por los carriles y evita ser aplastado!',
   }
 };

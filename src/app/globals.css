@@ -346,6 +346,111 @@ a[class*="bg-[#f5ff3b]"] {
   50% { opacity: 0.9; }
 }
 
+@keyframes liftFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.98);
+    filter: blur(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* Hidden state BEFORE scroll */
+.reveal {
+  opacity: 0;
+  transform: translateY(40px);
+}
+
+/* When visible */
+.reveal.visible {
+  animation: liftFadeIn 0.7s ease-out forwards;
+}
+
+/* Stagger children */
+.reveal-stagger.visible > * {
+  animation: liftFadeIn 0.7s ease-out forwards;
+  animation-delay: 0.1s;
+}
+
+.reveal-stagger.visible > * {
+  animation: liftFadeIn 0.7s ease-out forwards;
+}
+
+.reveal-stagger.visible > *:nth-child(n) {
+  animation-delay: calc(0.08s * var(--i));
+}
+
+@keyframes parchmentUnroll {
+  0% {
+    transform: scaleY(0.2);
+    opacity: 0;
+  }
+  60% {
+    transform: scaleY(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes parchmentBounce {
+  0% { transform: scaleY(0.2); }
+  70% { transform: scaleY(1.08); }
+  100% { transform: scaleY(1); }
+}
+
+.animate-parchment {
+  transform-origin: top;
+  animation: parchmentBounce 0.4s ease-out;
+}
+
+.lang-active {
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+}
+
+.cursor-pointer:hover {
+  transform: translateY(-1px);
+  transition: 0.15s ease;
+}
+
+.animate-parchment-close {
+  transform-origin: top;
+  animation: parchmentClose 0.35s ease-in forwards;
+}
+
+@keyframes parchmentClose {
+  0% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(0.2);
+    opacity: 0;
+  }
+}
+
+.rotate-open {
+  transform: rotate(180deg);
+  transition: 0.2s ease;
+}
+
+@keyframes parchmentWobble {
+  0% { transform: scaleY(0.2); }
+  60% { transform: scaleY(1.05); }
+  80% { transform: scaleY(0.98); }
+  100% { transform: scaleY(1); }
+}
+
+@keyframes parchmentBlur {
+  0% { filter: blur(6px); opacity: 0; }
+  100% { filter: blur(0); opacity: 1; }
+}
+
 .animate-borderFlowX {
   animation: borderFlowX 2s linear infinite;
 }
