@@ -30,6 +30,7 @@ export default function LaneRunnerPage() {
   const [outcomeSequence, setOutcomeSequence] = useState([]);
   const [safeTilesByLane, setSafeTilesByLane] = useState({});
   const [selectedTileByLane, setSelectedTileByLane] = useState({});
+  const [aimTile, setAimTile] = useState(Math.floor(LANE_RUNNER_TILES / 2));
 
   const [error, setError] = useState('');
   const [running, setRunning] = useState(false);
@@ -101,6 +102,7 @@ export default function LaneRunnerPage() {
     setSafeTilesByLane({});
     setOutcomeSequence([]);
     setCrashLane(null);
+    setAimTile(Math.floor(LANE_RUNNER_TILES / 2));
 
     const res = await fetch('/api/lane-runner/play', {
       method: 'POST',
@@ -280,7 +282,12 @@ export default function LaneRunnerPage() {
     const rect = event.currentTarget.getBoundingClientRect();
     const pct = Math.min(0.999, Math.max(0, (event.clientY - rect.top) / rect.height));
     const tileIndex = Math.floor(pct * LANE_RUNNER_TILES);
+    setAimTile(tileIndex);
     pickTile(tileIndex);
+  }
+
+  function stepForward() {
+    pickTile(aimTile);
   }
 
   useEffect(() => {
@@ -297,8 +304,6 @@ export default function LaneRunnerPage() {
 
     return () => clearTimeout(t);
   }, [autoplayEnabled, running, hasLost, hasCashedOut, multiplier, autoplayTarget]);
-
-  const playerTile = selectedTileByLane[Math.max(0, currentLane - 1)] ?? Math.floor(LANE_RUNNER_TILES / 2);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#050716] via-[#080c27] to-black pt-20 text-white">
@@ -348,6 +353,14 @@ export default function LaneRunnerPage() {
             {isLoading && !running ? 'Starting...' : 'Start Run'}
           </button>
 
+          <button
+            onClick={stepForward}
+            disabled={!running || isLoading}
+            className="mt-2 w-full rounded bg-zinc-200 py-2 font-bold text-black transition hover:bg-white disabled:opacity-60"
+          >
+            Step Forward
+          </button>
+
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
             <p className="rounded bg-black/30 p-2">Lane: {currentLane + 1}/{MAX_LANES}</p>
             <p className="rounded bg-black/30 p-2">x{multiplier.toFixed(4)}</p>
@@ -388,8 +401,6 @@ export default function LaneRunnerPage() {
             laneMultipliers={laneMultipliers}
             onAttemptLane={(laneIndex, event) => pickByLaneClick(laneIndex, event)}
             onCashout={cashOut}
-            playerTile={playerTile}
-            tileCount={LANE_RUNNER_TILES}
           />
 
           <motion.div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3 text-xs" layout>

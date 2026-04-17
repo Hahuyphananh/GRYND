@@ -2,41 +2,35 @@
 
 import React from 'react';
 
-export default function LaneStrip({
-  laneIndex,
-  multiplier,
-  isCurrent,
-  isPassed,
-  isCrash,
-  running,
-  onAttempt,
-}) {
+const VISUAL_SEWERS = 8;
+
+export default function LaneStrip({ laneIndex, multiplier, isCurrent, isPassed, isCrash, running, onAttempt }) {
   return (
     <button
       type="button"
       onClick={onAttempt}
       disabled={!isCurrent || !running}
-      className={`group relative h-full w-[74px] shrink-0 overflow-hidden rounded-xl border transition-all duration-300 ${
-        isCurrent
-          ? 'border-cyan-300/90 shadow-[0_0_18px_rgba(34,211,238,0.55)]'
-          : 'border-white/15'
-      } ${isCrash ? 'bg-red-900/45' : isPassed ? 'bg-slate-900/80 opacity-70' : 'bg-[#1b2a7a]/85'} ${
+      className={`group relative h-full w-[84px] shrink-0 overflow-hidden border-y border-r border-white/20 transition-all duration-300 first:rounded-l-xl first:border-l first:border-l-white/20 last:rounded-r-xl ${
+        isCrash ? 'bg-zinc-700' : isPassed ? 'bg-zinc-800/95' : 'bg-zinc-700/95'
+      } ${isCurrent ? 'shadow-[inset_0_0_0_1px_rgba(34,211,238,0.75)]' : ''} ${
         isCurrent && running ? 'cursor-pointer hover:brightness-110' : 'cursor-default'
       }`}
       aria-label={`Lane ${laneIndex + 1}, multiplier ${multiplier.toFixed(2)}x`}
     >
-      <div className="lane-runner-column-lines absolute inset-0" />
+      <div className="lane-runner-asphalt absolute inset-0" />
 
-      <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-black/30 px-2 py-1 text-[11px] font-bold text-white/85">
+      <div className="absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-full bg-black/45 px-2 py-1 text-[11px] font-black text-white">
         x{multiplier.toFixed(2)}
       </div>
 
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[10px] font-semibold uppercase tracking-wide text-white/60">
-        L{laneIndex + 1}
+      <div className="absolute inset-y-12 left-1/2 z-10 flex -translate-x-1/2 flex-col justify-between py-2">
+        {Array.from({ length: VISUAL_SEWERS }).map((_, idx) => (
+          <span key={`${laneIndex}-${idx}`} className="lane-runner-sewer" />
+        ))}
       </div>
 
       {isCurrent && running && (
-        <div className="absolute inset-x-1 top-0 h-12 rounded-b-xl bg-gradient-to-b from-white/20 to-transparent animate-[laneVerticalSweep_1.7s_linear_infinite]" />
+        <div className="absolute inset-x-1 top-0 h-10 rounded-b bg-gradient-to-b from-cyan-200/20 to-transparent animate-[laneVerticalSweep_1.8s_linear_infinite]" />
       )}
     </button>
   );
