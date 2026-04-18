@@ -350,9 +350,11 @@ const getFriendStatus = (friendId) => {
 
   useEffect(() => {
     if (!isSignedIn) return;
+    loadFriends();
     loadFriendPresence();
     loadFriendInvites();
     const intervalId = setInterval(() => {
+      loadFriends();
       loadFriendPresence();
       loadFriendInvites();
     }, 15000);
@@ -511,12 +513,31 @@ const getFriendStatus = (friendId) => {
     setEditStatus("");
 
     try {
+      const payload = {};
+      const normalizedName = String(editForm.name || "").trim();
+      const normalizedEmail = String(editForm.email || "").trim();
+      const normalizedPassword = String(editForm.password || "").trim();
+      const normalizedCurrentName = String(profileInfo.name || "").trim();
+      const normalizedCurrentEmail = String(profileInfo.email || "").trim();
+      const normalizedCurrentPicture = String(profileInfo.profilePicture || "");
+      const normalizedNewPicture = String(editForm.profilePicture || "");
+
+      if (normalizedName && normalizedName !== normalizedCurrentName) payload.name = normalizedName;
+      if (normalizedEmail && normalizedEmail !== normalizedCurrentEmail) payload.email = normalizedEmail;
+      if (normalizedPassword) payload.password = normalizedPassword;
+      if (normalizedNewPicture !== normalizedCurrentPicture) payload.profilePicture = normalizedNewPicture;
+
+      if (!Object.keys(payload).length) {
+        setEditStatus("No changes to save.");
+        return;
+      }
+
       setIsSavingEdit(true);
       const response = await fetch("/api/profile/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(editForm),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -529,7 +550,13 @@ const getFriendStatus = (friendId) => {
         email: data.profile.email,
         profilePicture: data.profile.profilePicture || "",
       });
-      setEditForm((prev) => ({ ...prev, password: "" }));
+      setEditForm((prev) => ({
+        ...prev,
+        name: data.profile.name,
+        email: data.profile.email,
+        profilePicture: data.profile.profilePicture || "",
+        password: "",
+      }));
       setEditStatus("Profile updated successfully.");
     } catch (err) {
       console.error("[EDIT_PROFILE_ERROR]", err);
@@ -539,7 +566,7 @@ const getFriendStatus = (friendId) => {
     }
   };
 
-  const handleProfileImageFileChange = (event) => {
+  const handleProfileImageFileChange = async (event) => {
     const file = event?.target?.files?.[0];
     if (!file) return;
 
@@ -554,16 +581,52 @@ const getFriendStatus = (friendId) => {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setEditForm((prev) => ({ ...prev, profilePicture: String(reader.result || "") }));
+    const readFileAsDataUrl = (fileToRead) =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Could not read the selected file."));
+        reader.readAsDataURL(fileToRead);
+      });
+
+    const compressImageDataUrl = (dataUrl, maxSide = 640, quality = 0.82) =>
+      new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const width = img.width || 1;
+          const height = img.height || 1;
+          const scale = Math.min(1, maxSide / Math.max(width, height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(width * scale));
+          canvas.height = Math.max(1, Math.round(height * scale));
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return reject(new Error("Image processing is not supported in this browser."));
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = () => reject(new Error("Could not process the selected image."));
+        img.src = dataUrl;
+      });
+
+    try {
+      const originalDataUrl = await readFileAsDataUrl(file);
+      let finalDataUrl = originalDataUrl;
+
+      try {
+        const compressed = await compressImageDataUrl(originalDataUrl);
+        if (compressed?.length && compressed.length < originalDataUrl.length) {
+          finalDataUrl = compressed;
+        }
+      } catch (compressionError) {
+        console.warn("[PROFILE_IMAGE_COMPRESSION_WARNING]", compressionError);
+      }
+
+      setEditForm((prev) => ({ ...prev, profilePicture: finalDataUrl }));
       setSelectedProfileImageName(file.name);
       setEditStatus("");
-    };
-    reader.onerror = () => {
-      setEditStatus("Could not read the selected file.");
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      setEditStatus(err.message || "Could not read the selected file.");
+    }
   };
 
   const handleDeleteAccount = async () => {
