@@ -220,9 +220,9 @@ console.log("🔥 FRIEND SEARCH FULL RESPONSE:", data);
 
 const getFriendStatus = (friendId) => {
   const presence = friendPresenceByFriend?.[friendId];
+  const normalizedGameKey = String(presence?.gameKey || "").toLowerCase().trim();
 
-  // ❌ No recent presence heartbeat → OFFLINE
-  if (!presence?.lastSeenAt) {
+  if (presence?.presenceState === "offline" || !presence?.lastSeenAt) {
     return {
       state: "offline",
       label: "Offline",
@@ -230,16 +230,17 @@ const getFriendStatus = (friendId) => {
     };
   }
 
-  // 🎮 Playing a game → PLAYING
-  if (presence.gameKey) {
+  if (
+    presence?.presenceState === "playing" ||
+    (normalizedGameKey && presence?.gameId !== null && presence?.gameId !== undefined)
+  ) {
     return {
       state: "playing",
-      label: `Playing ${presence.gameKey}`,
+      label: `Playing ${normalizedGameKey}`,
       color: "text-yellow-400",
     };
   }
 
-  // 🟢 Connected but not playing → ONLINE
   return {
     state: "online",
     label: "Online",
@@ -270,11 +271,12 @@ const getFriendStatus = (friendId) => {
 
   const spectateUrlForFriend = (friendId) => {
     const presence = friendPresenceByFriend?.[friendId];
-    if (!presence?.gameId || !presence?.gameKey) return null;
+    const gameKey = String(presence?.gameKey || "").toLowerCase().trim();
+    if (!presence?.gameId || !gameKey) return null;
 
-    if (presence.gameKey === "chess") return `/casino/chess-game/${presence.gameId}?spectator=1&focus=white`;
-    if (presence.gameKey === "connect-four") return `/casino/connect-four/game/${presence.gameId}?spectator=1&focus=host`;
-    if (presence.gameKey === "poker") return `/casino/poker/multi?spectator=1&gameId=${presence.gameId}`;
+    if (gameKey === "chess") return `/casino/chess-game/${presence.gameId}?spectator=1&focus=white`;
+    if (gameKey === "connect-four") return `/casino/connect-four/game/${presence.gameId}?spectator=1&focus=host`;
+    if (gameKey === "poker") return `/casino/poker/multi?spectator=1&gameId=${presence.gameId}`;
     return null;
   };
 
@@ -888,13 +890,13 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
   );
 })()}
                 </div>
-               <div className="flex flex-col gap-1 items-end">
+               <div className="flex items-center gap-2">
   {(() => {
     const status = getFriendStatus(friend.id);
     const spectateUrl = spectateUrlForFriend(friend.id);
-    const gameKey = friendPresenceByFriend?.[friend.id]?.gameKey;
+    const gameKey = String(friendPresenceByFriend?.[friend.id]?.gameKey || "").toLowerCase().trim();
 
-    if (status.state === "offline" || !spectateUrl) return null;
+    if (status.state !== "playing" || !spectateUrl) return null;
 
     const allowedSpectateGames = new Set(["chess", "connect-four", "poker"]);
     if (!allowedSpectateGames.has(gameKey)) return null;
