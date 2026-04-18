@@ -220,9 +220,9 @@ console.log("🔥 FRIEND SEARCH FULL RESPONSE:", data);
 
 const getFriendStatus = (friendId) => {
   const presence = friendPresenceByFriend?.[friendId];
+  const normalizedGameKey = String(presence?.gameKey || "").toLowerCase().trim();
 
-  // ❌ No recent presence heartbeat → OFFLINE
-  if (!presence?.lastSeenAt) {
+  if (presence?.presenceState === "offline" || !presence?.lastSeenAt) {
     return {
       state: "offline",
       label: "Offline",
@@ -230,16 +230,17 @@ const getFriendStatus = (friendId) => {
     };
   }
 
-  // 🎮 Playing a game → PLAYING
-  if (presence.gameKey) {
+  if (
+    presence?.presenceState === "playing" ||
+    (normalizedGameKey && presence?.gameId !== null && presence?.gameId !== undefined)
+  ) {
     return {
       state: "playing",
-      label: `Playing ${presence.gameKey}`,
+      label: `Playing ${normalizedGameKey}`,
       color: "text-yellow-400",
     };
   }
 
-  // 🟢 Connected but not playing → ONLINE
   return {
     state: "online",
     label: "Online",
@@ -270,11 +271,12 @@ const getFriendStatus = (friendId) => {
 
   const spectateUrlForFriend = (friendId) => {
     const presence = friendPresenceByFriend?.[friendId];
-    if (!presence?.gameId || !presence?.gameKey) return null;
+    const gameKey = String(presence?.gameKey || "").toLowerCase().trim();
+    if (!presence?.gameId || !gameKey) return null;
 
-    if (presence.gameKey === "chess") return `/casino/chess-game/${presence.gameId}?spectator=1&focus=white`;
-    if (presence.gameKey === "connect-four") return `/casino/connect-four/game/${presence.gameId}?spectator=1&focus=host`;
-    if (presence.gameKey === "poker") return `/casino/poker/multi?spectator=1&gameId=${presence.gameId}`;
+    if (gameKey === "chess") return `/casino/chess-game/${presence.gameId}?spectator=1&focus=white`;
+    if (gameKey === "connect-four") return `/casino/connect-four/game/${presence.gameId}?spectator=1&focus=host`;
+    if (gameKey === "poker") return `/casino/poker/multi?spectator=1&gameId=${presence.gameId}`;
     return null;
   };
 
@@ -348,9 +350,11 @@ const getFriendStatus = (friendId) => {
 
   useEffect(() => {
     if (!isSignedIn) return;
+    loadFriends();
     loadFriendPresence();
     loadFriendInvites();
     const intervalId = setInterval(() => {
+      loadFriends();
       loadFriendPresence();
       loadFriendInvites();
     }, 15000);
@@ -509,12 +513,31 @@ const getFriendStatus = (friendId) => {
     setEditStatus("");
 
     try {
+      const payload = {};
+      const normalizedName = String(editForm.name || "").trim();
+      const normalizedEmail = String(editForm.email || "").trim();
+      const normalizedPassword = String(editForm.password || "").trim();
+      const normalizedCurrentName = String(profileInfo.name || "").trim();
+      const normalizedCurrentEmail = String(profileInfo.email || "").trim();
+      const normalizedCurrentPicture = String(profileInfo.profilePicture || "");
+      const normalizedNewPicture = String(editForm.profilePicture || "");
+
+      if (normalizedName && normalizedName !== normalizedCurrentName) payload.name = normalizedName;
+      if (normalizedEmail && normalizedEmail !== normalizedCurrentEmail) payload.email = normalizedEmail;
+      if (normalizedPassword) payload.password = normalizedPassword;
+      if (normalizedNewPicture !== normalizedCurrentPicture) payload.profilePicture = normalizedNewPicture;
+
+      if (!Object.keys(payload).length) {
+        setEditStatus("No changes to save.");
+        return;
+      }
+
       setIsSavingEdit(true);
       const response = await fetch("/api/profile/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(editForm),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -527,7 +550,13 @@ const getFriendStatus = (friendId) => {
         email: data.profile.email,
         profilePicture: data.profile.profilePicture || "",
       });
-      setEditForm((prev) => ({ ...prev, password: "" }));
+      setEditForm((prev) => ({
+        ...prev,
+        name: data.profile.name,
+        email: data.profile.email,
+        profilePicture: data.profile.profilePicture || "",
+        password: "",
+      }));
       setEditStatus("Profile updated successfully.");
     } catch (err) {
       console.error("[EDIT_PROFILE_ERROR]", err);
@@ -537,7 +566,7 @@ const getFriendStatus = (friendId) => {
     }
   };
 
-  const handleProfileImageFileChange = (event) => {
+  const handleProfileImageFileChange = async (event) => {
     const file = event?.target?.files?.[0];
     if (!file) return;
 
@@ -552,16 +581,52 @@ const getFriendStatus = (friendId) => {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setEditForm((prev) => ({ ...prev, profilePicture: String(reader.result || "") }));
+    const readFileAsDataUrl = (fileToRead) =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Could not read the selected file."));
+        reader.readAsDataURL(fileToRead);
+      });
+
+    const compressImageDataUrl = (dataUrl, maxSide = 640, quality = 0.82) =>
+      new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const width = img.width || 1;
+          const height = img.height || 1;
+          const scale = Math.min(1, maxSide / Math.max(width, height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(width * scale));
+          canvas.height = Math.max(1, Math.round(height * scale));
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return reject(new Error("Image processing is not supported in this browser."));
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = () => reject(new Error("Could not process the selected image."));
+        img.src = dataUrl;
+      });
+
+    try {
+      const originalDataUrl = await readFileAsDataUrl(file);
+      let finalDataUrl = originalDataUrl;
+
+      try {
+        const compressed = await compressImageDataUrl(originalDataUrl);
+        if (compressed?.length && compressed.length < originalDataUrl.length) {
+          finalDataUrl = compressed;
+        }
+      } catch (compressionError) {
+        console.warn("[PROFILE_IMAGE_COMPRESSION_WARNING]", compressionError);
+      }
+
+      setEditForm((prev) => ({ ...prev, profilePicture: finalDataUrl }));
       setSelectedProfileImageName(file.name);
       setEditStatus("");
-    };
-    reader.onerror = () => {
-      setEditStatus("Could not read the selected file.");
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      setEditStatus(err.message || "Could not read the selected file.");
+    }
   };
 
   const handleDeleteAccount = async () => {
@@ -888,13 +953,13 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
   );
 })()}
                 </div>
-               <div className="flex flex-col gap-1 items-end">
+               <div className="flex items-center gap-2">
   {(() => {
     const status = getFriendStatus(friend.id);
     const spectateUrl = spectateUrlForFriend(friend.id);
-    const gameKey = friendPresenceByFriend?.[friend.id]?.gameKey;
+    const gameKey = String(friendPresenceByFriend?.[friend.id]?.gameKey || "").toLowerCase().trim();
 
-    if (status.state === "offline" || !spectateUrl) return null;
+    if (status.state !== "playing" || !spectateUrl) return null;
 
     const allowedSpectateGames = new Set(["chess", "connect-four", "poker"]);
     if (!allowedSpectateGames.has(gameKey)) return null;

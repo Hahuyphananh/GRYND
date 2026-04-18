@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
+import { neon } from "@neondatabase/serverless";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
+
+const sql = neon(process.env.DATABASE_URL);
 
 export async function POST(request) {
   try {
@@ -15,9 +17,9 @@ export async function POST(request) {
   if (!parsed.ok) return parsed.response;
 
   const me = await sql`SELECT id FROM users WHERE clerk_id = ${userId} LIMIT 1`;
-  if (!me.rows.length) return new Response(JSON.stringify({ success: false, error: "User not found" }), { status: 404 });
+  if (!me.length) return new Response(JSON.stringify({ success: false, error: "User not found" }), { status: 404 });
 
-  const meId = me.rows[0].id;
+  const meId = Number(me[0].id);
   const gameKey = parsed.data.gameKey.trim().toLowerCase();
   const gameId = Number.isFinite(parsed.data.gameId) ? Number(parsed.data.gameId) : null;
 
