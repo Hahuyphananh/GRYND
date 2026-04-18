@@ -51,6 +51,10 @@ export async function GET() {
     const byFriend = {};
 
     for (const row of rows) {
+      const hasRecentHeartbeat = Boolean(row.last_seen_at);
+      const isPlayingGame = hasRecentHeartbeat && Boolean(row.game_key) && row.game_id !== null && row.game_id !== undefined;
+      const presenceState = !hasRecentHeartbeat ? "offline" : isPlayingGame ? "playing" : "online";
+
       const friendPayload = {
         id: row.friend_id,
         name: row.name,
@@ -69,6 +73,7 @@ export async function GET() {
         ...friendPayload,
         gameKey: row.game_key || null,
         lastSeenAt: row.last_seen_at || null,
+        presenceState,
       };
     }
 
