@@ -231,12 +231,12 @@ const getFriendStatus = (friendId) => {
   }
 
   if (
-    presence?.presenceState === "playing" ||
+    presence?.presenceState === "in_game" ||
     (normalizedGameKey && presence?.gameId !== null && presence?.gameId !== undefined)
   ) {
     return {
-      state: "playing",
-      label: `Playing ${normalizedGameKey}`,
+      state: "in_game",
+      label: `In game: ${normalizedGameKey}`,
       color: "text-yellow-400",
     };
   }
@@ -943,7 +943,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
     className={`h-2 w-2 rounded-full ${
       status.state === "online"
         ? "bg-green-400"
-        : status.state === "playing"
+        : status.state === "in_game"
         ? "bg-yellow-400"
         : "bg-gray-400"
     }`}
@@ -959,7 +959,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
     const spectateUrl = spectateUrlForFriend(friend.id);
     const gameKey = String(friendPresenceByFriend?.[friend.id]?.gameKey || "").toLowerCase().trim();
 
-    if (status.state !== "playing" || !spectateUrl) return null;
+    if (status.state !== "in_game" || !spectateUrl) return null;
 
     const allowedSpectateGames = new Set(["chess", "connect-four", "poker"]);
     if (!allowedSpectateGames.has(gameKey)) return null;
