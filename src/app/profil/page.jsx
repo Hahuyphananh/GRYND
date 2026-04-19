@@ -218,6 +218,31 @@ console.log("🔥 FRIEND SEARCH FULL RESPONSE:", data);
   }
 };
 
+useEffect(() => {
+  if (!isSignedIn) return;
+
+  let interval;
+
+  const sendHeartbeat = async () => {
+    try {
+      await fetch("/api/presence/heartbeat", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("[HEARTBEAT_ERROR]", err);
+    }
+  };
+
+  // send immediately
+  sendHeartbeat();
+
+  // then repeat every 25 seconds
+  interval = setInterval(sendHeartbeat, 25000);
+
+  return () => clearInterval(interval);
+}, [isSignedIn]);
+
 const getFriendStatus = (friendId) => {
   const presence = friendPresenceByFriend?.[friendId];
   const normalizedGameKey = String(presence?.gameKey || "").toLowerCase().trim();

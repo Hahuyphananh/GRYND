@@ -41,7 +41,7 @@ export async function GET() {
         p.current_game_id,
         CASE
           WHEN p.last_seen IS NULL THEN 'offline'::text
-          WHEN p.last_seen < NOW() - INTERVAL '60 seconds' THEN 'offline'::text
+          WHEN p.last_seen < NOW() - INTERVAL '120 seconds' THEN 'offline'::text
           ELSE p.status::text
         END AS computed_status
       FROM friend_relations fr
@@ -51,7 +51,7 @@ export async function GET() {
       ORDER BY
         CASE
           WHEN p.last_seen IS NULL THEN 0
-          WHEN p.last_seen < NOW() - INTERVAL '60 seconds' THEN 0
+          WHEN p.last_seen < NOW() - INTERVAL '120 seconds' THEN 0
           ELSE 1
         END DESC,
         p.last_seen DESC NULLS LAST,
