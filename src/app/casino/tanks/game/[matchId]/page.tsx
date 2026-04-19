@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import WaitingRoom from "./components/WaitingRoom";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { useUser } from "@clerk/nextjs";
+import useGamePresence from '../../../../../hooks/useGamePresence';
 
 function showGameAlert(message: string) {
   const overlay = document.createElement("div");
@@ -243,6 +244,8 @@ export default function TanksGamePage() {
   const [serverBullets, setServerBullets] = useState<BulletState[]>([]);
   const targetBulletsRef = useRef<BulletState[]>([]);
   const [duelResult, setDuelResult] = useState<{ didWin: boolean; amount: number } | null>(null);
+
+  useGamePresence({ gameKey: "tanks", gameId: Number(routeMatchId), enabled: Boolean(routeMatchId) });
 
   const keys = useRef<{ [key: string]: boolean }>({});
   const INPUT_TICK_MS = 33;
@@ -595,24 +598,6 @@ export default function TanksGamePage() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [routeMatchId]);
 
-  useEffect(() => {
-    if (!routeMatchId) return;
-    const parsedGameId = Number(routeMatchId);
-    if (!Number.isFinite(parsedGameId)) return;
-
-    const pingPresence = async () => {
-      await fetch("/api/presence/game", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ gameKey: "tanks", gameId: parsedGameId }),
-      });
-    };
-
-    pingPresence();
-    const id = setInterval(pingPresence, 15000);
-    return () => clearInterval(id);
-  }, [routeMatchId]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => (keys.current[e.key.toLowerCase()] = true);

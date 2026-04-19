@@ -3,6 +3,16 @@ import { neon } from "@neondatabase/serverless";
 
 const sql = neon(process.env.DATABASE_URL);
 
+function parseCurrentGameId(currentGameId) {
+  if (!currentGameId) return { gameKey: null, gameId: null };
+  const raw = String(currentGameId);
+  const [gameKeyPart, gameIdPart] = raw.split(":");
+  return {
+    gameKey: gameKeyPart || null,
+    gameId: gameIdPart ? Number(gameIdPart) || gameIdPart : null,
+  };
+}
+
 export async function GET() {
   try {
     const { userId } = await auth();
@@ -11,7 +21,6 @@ export async function GET() {
       return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
     }
 
-    // 🔍 Get current user
     const meRes = await sql`
       SELECT id FROM users WHERE clerk_id = ${userId} LIMIT 1
     `;
@@ -22,28 +31,30 @@ export async function GET() {
 
     const meId = Number(meRes[0].id);
 
-    // ✅ IMPORTANT: keep LEFT JOIN and REMOVE filtering
     const rows = await sql`
       SELECT
         u.id AS friend_id,
         u.name,
         u.profile_picture,
-        p.game_key,
-        p.game_id,
-        p.last_seen_at
+        p.last_seen,
+        p.status,
+        p.current_game_id,
+        CASE
+          WHEN p.last_seen IS NULL THEN 'offline'::text
+          WHEN p.last_seen < NOW() - INTERVAL '60 seconds' THEN 'offline'::text
+          ELSE p.status::text
+        END AS computed_status
       FROM friend_relations fr
       JOIN users u ON u.id = fr.friend_id
-      LEFT JOIN LATERAL (
-        SELECT game_key, game_id, last_seen_at
-        FROM user_game_presence
-        WHERE user_id = fr.friend_id
-          AND last_seen_at >= NOW() - INTERVAL '20 minutes'
-        ORDER BY last_seen_at DESC
-        LIMIT 1
-      ) p ON TRUE
+      LEFT JOIN user_presence p ON p.clerk_id = u.clerk_id
       WHERE fr.user_id = ${meId}
       ORDER BY
-        p.last_seen_at DESC NULLS LAST,
+        CASE
+          WHEN p.last_seen IS NULL THEN 0
+          WHEN p.last_seen < NOW() - INTERVAL '60 seconds' THEN 0
+          ELSE 1
+        END DESC,
+        p.last_seen DESC NULLS LAST,
         u.name ASC
     `;
 
@@ -51,28 +62,25 @@ export async function GET() {
     const byFriend = {};
 
     for (const row of rows) {
-      const hasRecentHeartbeat = Boolean(row.last_seen_at);
-      const isPlayingGame = hasRecentHeartbeat && Boolean(row.game_key) && row.game_id !== null && row.game_id !== undefined;
-      const presenceState = !hasRecentHeartbeat ? "offline" : isPlayingGame ? "playing" : "online";
+      const parsed = parseCurrentGameId(row.current_game_id);
+      const presenceState = row.computed_status || "offline";
 
       const friendPayload = {
         id: row.friend_id,
         name: row.name,
         profilePicture: row.profile_picture,
-        gameId: row.game_id || null,
+        gameId: parsed.gameId,
       };
 
-      // 🧠 Only add to byGame if actively playing
-      if (row.game_key) {
-        if (!byGame[row.game_key]) byGame[row.game_key] = [];
-        byGame[row.game_key].push(friendPayload);
+      if (presenceState === "in_game" && parsed.gameKey) {
+        if (!byGame[parsed.gameKey]) byGame[parsed.gameKey] = [];
+        byGame[parsed.gameKey].push(friendPayload);
       }
 
-      // ✅ Always include friend (even offline)
       byFriend[row.friend_id] = {
         ...friendPayload,
-        gameKey: row.game_key || null,
-        lastSeenAt: row.last_seen_at || null,
+        gameKey: parsed.gameKey,
+        lastSeenAt: row.last_seen || null,
         presenceState,
       };
     }
@@ -86,7 +94,6 @@ export async function GET() {
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
-
   } catch (error) {
     console.error("[FRIENDS_GAME_PRESENCE_ERROR]", error);
 

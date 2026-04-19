@@ -60,18 +60,6 @@ const fetchFriendPresence = async () => {
   }
 };
 
-const handleGameEntry = async (gameKey) => {
-  try {
-    await fetch("/api/presence/game", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ gameKey }),
-    });
-  } catch (err) {
-    console.error("[SET_GAME_PRESENCE_ERROR]", err);
-  }
-};
 
 const renderFriendWidget = (gameKey) => {
   const friends = Array.isArray(friendPresenceByGame[gameKey]) ? friendPresenceByGame[gameKey] : [];
@@ -465,7 +453,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 reveal-stagger">
             <a
               href="/casino/roulette"
-              onClick={() => handleGameEntry("roulette")}
+              
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
@@ -484,7 +472,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
 
             <a
               href="/casino/blackjack"
-              onClick={() => handleGameEntry("blackjack")}
+              
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
@@ -503,7 +491,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
 
             <a
               href="/casino/poker"
-              onClick={() => handleGameEntry("poker")}
+              
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
@@ -522,7 +510,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
 
             <a
               href="/casino/plinko"
-              onClick={() => handleGameEntry("plinko")}
+              
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
