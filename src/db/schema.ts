@@ -43,6 +43,19 @@ export const userGamePresence = pgTable('user_game_presence', {
   userGameIdx: index('user_game_presence_user_game_idx').on(table.userId, table.gameKey),
 }));
 
+
+export const presenceStatusEnum = pgEnum('presence_status', ['online', 'in_game', 'offline']);
+
+export const userPresence = pgTable('user_presence', {
+  clerkId: varchar('clerk_id', { length: 255 }).primaryKey(),
+  lastSeen: timestamp('last_seen').notNull().defaultNow(),
+  status: presenceStatusEnum('status').notNull().default('offline'),
+  currentGameId: varchar('current_game_id', { length: 255 }),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  statusSeenIdx: index('user_presence_status_seen_idx').on(table.status, table.lastSeen),
+}));
+
 export const userLoginRewards = pgTable("user_login_rewards", {
   userId: integer("user_id").primaryKey().references(() => users.id), // INT to match users.id
   currentDay: integer("current_day").default(1),

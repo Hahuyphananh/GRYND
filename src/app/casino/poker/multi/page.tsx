@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../../context/SocketProvider";
+import useGamePresence from '../../../../hooks/useGamePresence';
 
 type Player = {
   id: string;
@@ -98,9 +99,11 @@ export default function PokerPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isSpectator = searchParams.get("spectator") === "1";
+
   const spectatorGameId = searchParams.get("gameId");
   const [name,setName] = useState("");
   const [game,setGame] = useState<Game|null>(null);
+useGamePresence({ gameKey: "poker", gameId: Number(game?.id), enabled: !isSpectator && Boolean(game?.id) });
   const [raiseAmount,setRaiseAmount] = useState(50);
   const [balance, setBalance] = useState<number>(0);
   const [inviteCode, setInviteCode] = useState("");
@@ -355,20 +358,7 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, [game?.inviteCode, isSpectator]);
 
-useEffect(() => {
-  if (isSpectator || !game?.id) return;
-  const pingPresence = async () => {
-    await fetch("/api/presence/game", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ gameKey: "poker", gameId: Number(game.id) }),
-    });
-  };
-  pingPresence();
-  const id = setInterval(pingPresence, 15000);
-  return () => clearInterval(id);
-}, [isSpectator, game?.id]);
+
 
 
 // Turn timer effect — runs whenever the current turn changes
