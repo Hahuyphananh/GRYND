@@ -4,6 +4,7 @@ import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { getDropRow } from "../../../../../lib/connectFour";
+import useGamePresence from '../../../../../hooks/useGamePresence';
 
 const DEFAULT_MOVE_LIMIT_SECONDS = 60;
 const REPLAY_WINDOW_SECONDS = 20;
@@ -46,6 +47,8 @@ export default function ConnectFourGamePage() {
   const [sendingReplayDecision, setSendingReplayDecision] = useState(false);
   const [replayMessage, setReplayMessage] = useState("");
   const [spectatorCount, setSpectatorCount] = useState(0);
+
+  useGamePresence({ gameKey: "connect-four", gameId: Number(gameId), enabled: !isSpectator && Boolean(gameId) });
   const previousBoardRef = useRef<number[][] | null>(null);
 
   const detectLatestDrop = (previousBoard: number[][] | null, nextBoard: number[][]) => {
@@ -126,20 +129,6 @@ export default function ConnectFourGamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, gameId]);
 
-  useEffect(() => {
-    if (isSpectator) return;
-    const pingPresence = async () => {
-      await fetch("/api/presence/game", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ gameKey: "connect-four", gameId: Number(gameId) }),
-      });
-    };
-    pingPresence();
-    const id = setInterval(pingPresence, 15000);
-    return () => clearInterval(id);
-  }, [gameId, isSpectator]);
 
   useEffect(() => {
     if (!game) return;

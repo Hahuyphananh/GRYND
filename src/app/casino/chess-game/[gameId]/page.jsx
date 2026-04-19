@@ -4,6 +4,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Chess } from "chess.js";
 import { useSocket } from "../../../../context/SocketProvider";
+import useGamePresence from '../../../../hooks/useGamePresence';
 
 const Chessboard = dynamic(
   async () => {
@@ -59,6 +60,8 @@ export default function ChessGamePage() {
   const [moveIndex, setMoveIndex] = useState(-1);
   const [showResultPopup, setShowResultPopup] = useState(false);
   const [spectatorCount, setSpectatorCount] = useState(0);
+
+  useGamePresence({ gameKey: "chess", gameId: Number(gameId), enabled: !isSpectator && Boolean(gameId) });
 
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [legalTargets, setLegalTargets] = useState([]);
@@ -164,20 +167,6 @@ export default function ChessGamePage() {
     }
   }, [moveIndex]);
 
-  useEffect(() => {
-    if (isSpectator) return;
-    const pingPresence = async () => {
-      await fetch("/api/presence/game", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ gameKey: "chess", gameId: Number(gameId) }),
-      });
-    };
-    pingPresence();
-    const id = setInterval(pingPresence, 15000);
-    return () => clearInterval(id);
-  }, [gameId, isSpectator]);
 
 
   useEffect(() => {
