@@ -70,7 +70,8 @@ export async function POST(req) {
 
     if (rewardData.lastClaimedDate) {
       const lastClaim = new Date(rewardData.lastClaimedDate);
-      const elapsedDays = Math.floor((nowDayKey - toUtcDayKey(lastClaim)) / (1000 * 60 * 60 * 24));
+      const lastDayKey = toUtcDayKey(lastClaim);
+const elapsedDays = Math.floor((nowDayKey - lastDayKey) / (1000 * 60 * 60 * 24));
 
       // ✅ RESET streak if missed too long
       if (elapsedDays > STREAK_RESET_DAYS) {
@@ -85,7 +86,7 @@ export async function POST(req) {
       }
 
       // ✅ Cooldown check
-      if (elapsedDays < COOLDOWN_DAYS) {
+      if (elapsedDays === 0) {
 
         return NextResponse.json(
           {
@@ -114,7 +115,7 @@ export async function POST(req) {
     await db.update(userLoginRewards)
       .set({
         currentDay: nextDay,
-        lastClaimedDate: now.toISOString().slice(0, 10),
+        lastClaimedDate: now.toISOString(),
       })
       .where(eq(userLoginRewards.userId, uid));
 

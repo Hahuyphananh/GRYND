@@ -1,56 +1,54 @@
-export const VIP_LEVELS = [
-  { level: 1, required: 0 },
-  { level: 2, required: 1000 },
-  { level: 3, required: 5000 },
-  { level: 4, required: 20000 },
-  { level: 5, required: 50000 },
-  { level: 6, required: 100000 },
-];
+// Infinite VIP system (exponential growth)
 
+const BASE_REQUIREMENT = 1000; // tokens for level 2
+const GROWTH_FACTOR = 1.35; // tweak this (1.25–1.5 is good)
+
+// total wager required to REACH a level
+export function getRequiredForLevel(level) {
+  if (level <= 1) return 0;
+
+  return Math.floor(
+    BASE_REQUIREMENT * Math.pow(GROWTH_FACTOR, level - 2)
+  );
+}
+
+// get level from total wagered (infinite)
 export function getUserLevel(totalWagered = 0) {
   const wagered = Number(totalWagered) || 0;
 
-  let current = VIP_LEVELS[0];
-  for (const level of VIP_LEVELS) {
-    if (wagered >= level.required) {
-      current = level;
-    } else {
-      break;
-    }
+  let level = 1;
+
+  while (true) {
+    const nextRequirement = getRequiredForLevel(level + 1);
+
+    if (wagered < nextRequirement) break;
+
+    level++;
   }
 
-  return current.level;
+  return level;
 }
 
 export function getLevelProgress(totalWagered = 0) {
   const wagered = Number(totalWagered) || 0;
+
   const currentLevel = getUserLevel(wagered);
 
-  const currentLevelData =
-    VIP_LEVELS.find((item) => item.level === currentLevel) ?? VIP_LEVELS[0];
+  const prevRequired = getRequiredForLevel(currentLevel);
+  const nextRequired = getRequiredForLevel(currentLevel + 1);
 
-  const nextLevelData =
-    VIP_LEVELS.find((item) => item.level === currentLevel + 1) ?? null;
+  const range = nextRequired - prevRequired;
+  const progress = wagered - prevRequired;
 
-  if (!nextLevelData) {
-    return {
-      currentLevel,
-      progressPercent: 100,
-      prevLevelRequired: currentLevelData.required,
-      nextLevelRequired: currentLevelData.required,
-      remainingToNext: 0,
-    };
-  }
-
-  const range = nextLevelData.required - currentLevelData.required;
-  const currentInRange = Math.max(0, wagered - currentLevelData.required);
-  const progressPercent = Math.min(100, (currentInRange / range) * 100);
+  const progressPercent = range > 0
+    ? Math.min(100, (progress / range) * 100)
+    : 100;
 
   return {
     currentLevel,
     progressPercent,
-    prevLevelRequired: currentLevelData.required,
-    nextLevelRequired: nextLevelData.required,
-    remainingToNext: Math.max(0, nextLevelData.required - wagered),
+    prevLevelRequired: prevRequired,
+    nextLevelRequired: nextRequired,
+    remainingToNext: Math.max(0, nextRequired - wagered),
   };
 }

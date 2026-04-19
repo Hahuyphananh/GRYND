@@ -413,7 +413,7 @@ const getFriendStatus = (friendId) => {
     if (previousLevel !== null && stats.currentLevel > previousLevel) {
       setLevelUpModal({
         level: stats.currentLevel,
-        bonus: stats.currentLevel * 100,
+        bonus: Math.floor(500 * Math.pow(1.2, stats.currentLevel)),
       });
     }
 
@@ -614,7 +614,7 @@ const getFriendStatus = (friendId) => {
         reader.readAsDataURL(fileToRead);
       });
 
-    const compressImageDataUrl = (dataUrl, maxSide = 640, quality = 0.82) =>
+    const compressImageDataUrl = (dataUrl, maxSide = 256, quality = 0.7) =>
       new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
