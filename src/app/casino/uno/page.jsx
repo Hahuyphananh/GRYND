@@ -5,6 +5,7 @@ import UnoCard from "../../../components/UnoCard";
 import UnoBack from "../../../components/UnoBack"; 
 import NavigationBar from "../../../components/navigation-bar";
 import { useSocket } from "../../../context/SocketProvider";
+import useGamePresence from '../../../hooks/useGamePresence';
 
 const CONFETTI_COLORS = ["#facc15", "#60a5fa", "#4ade80", "#f472b6", "#fb923c"];
 
@@ -59,25 +60,13 @@ const [isResigning, setIsResigning] = useState(false);
 const [drawnCardAnimation, setDrawnCardAnimation] = useState(null);
 const [playedCardAnimation, setPlayedCardAnimation] = useState(null);
 
+useGamePresence({ gameKey: "uno", gameId: Number(game?.id), enabled: Boolean(game?.id) });
+
 useEffect(() => {
   fetchAvailableGames();
 }, []);
 
-useEffect(() => {
-  if (!game?.id) return;
-  const pingPresence = async () => {
-    await fetch("/api/presence/game", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ gameKey: "uno", gameId: Number(game.id) }),
-    });
-  };
 
-  pingPresence();
-  const id = setInterval(pingPresence, 15000);
-  return () => clearInterval(id);
-}, [game?.id]);
 
 useEffect(() => {
   if (!socket) return;
