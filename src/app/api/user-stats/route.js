@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { neon } from "@neondatabase/serverless";
-import { getLevelProgress } from "../../../lib/vipLevels";
+import { getLevelProgress, getUserLevel  } from "../../../lib/vipLevels";
 
 // 👇 ADD THESE (from your history route)
 import { db } from "../../../db";
@@ -206,7 +206,15 @@ export async function GET() {
 
     const row = rows[0];
 
-    const progress = getLevelProgress(Number(totalWagered));
+const computedLevel = getUserLevel(totalWagered);
+const progress = getLevelProgress(totalWagered);
+
+await sql`
+  UPDATE users
+  SET level = ${computedLevel},
+      total_wagered = ${totalWagered}
+  WHERE clerk_id = ${userId}
+`;
 
     return new Response(JSON.stringify({
       success: true,
@@ -221,7 +229,7 @@ export async function GET() {
         referralEarnings: Number(row?.referral_earnings || 0),
         referralCode: row?.referral_code || "",
         totalWagered,
-        currentLevel: Number(row?.level || 1),
+        currentLevel: computedLevel,
         levelProgress: progress,
       },
     }), { status: 200 });

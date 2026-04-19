@@ -157,7 +157,10 @@ const fetchRewardStatus = async () => {
       const lastClaimed = new Date(data.lastClaimedDate);
       const now = new Date();
 
-      if (lastClaimed.toDateString() === now.toDateString()) {
+      const toUtcDayKey = (d) =>
+  Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+
+if (toUtcDayKey(lastClaimed) === toUtcDayKey(now)) {
         setDailyRewardCooldown(true);
 
         const nextTime = new Date(lastClaimed);
@@ -609,22 +612,20 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           {notification.message}
         </div>
       )}
-{isSignedIn && (
+{isSignedIn && !dailyRewardCooldown && (
   <button
     onClick={claimDailyReward}
-    disabled={dailyRewardCooldown}
-    className={`fixed right-4 bottom-16 z-50 rounded-lg px-4 py-3 text-lg font-semibold text-white transition-all shadow-lg
-      ${dailyRewardCooldown ? "bg-gray-400 cursor-not-allowed" : "bg-[#FFD700] hover:scale-110 animate-pulse"}`}
-    title={
-      dailyRewardCooldown
-        ? `Récompense déjà réclamée. Disponible dans ${cooldownTimeLeft}`
-        : "Réclamer Récompense Quotidienne"
-    }
+    className="fixed right-4 bottom-16 z-50 rounded-lg px-4 py-3 text-lg font-semibold text-white transition-all shadow-lg bg-[#FFD700] hover:scale-110 animate-pulse"
+    title="Réclamer Récompense Quotidienne"
   >
-    {dailyRewardCooldown
-      ? `Cooldown: ${cooldownTimeLeft}`
-      : "Réclamer Récompense"}
+    Réclamer Récompense
   </button>
+)}
+
+{isSignedIn && dailyRewardCooldown && (
+  <div className="fixed right-4 bottom-16 z-50 text-sm text-[#FFD700] bg-black/60 px-3 py-2 rounded-lg">
+    ⏳ Prochaine récompense dans {cooldownTimeLeft}
+  </div>
 )}
 {rewardPopupVisible && (
   <div className="fixed inset-0 flex items-center justify-center bg-black/80 z-50">

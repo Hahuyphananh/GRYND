@@ -17,16 +17,23 @@ const NAV_TRANSLATION_KEYS = {
 };
 
 function NavigationBar({ currentPath }) {
-  const { isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn, user } = useUser();
   const { getToken } = useAuth();
   const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const { t } = useTranslation();
   const [balance, setBalance] = useState(null);
+  const [profile, setProfile] = useState({
+  name: "",
+  profilePicture: "",
+  level: 1,
+});
+
   const [error, setError] = useState(null);
   const [showAddFunds, setShowAddFunds] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
 const [langClosing, setLangClosing] = useState(false);
+const [level, setLevel] = useState(null);
 
 const closeLang = () => {
   setLangClosing(true);
@@ -36,6 +43,11 @@ const closeLang = () => {
     setLangClosing(false);
   }, 400); // match your CSS duration
 };
+
+const avatarSrc =
+  profile?.profilePicture?.startsWith("data:image")
+    ? profile.profilePicture
+    : profile?.profilePicture || user?.imageUrl || "/default-avatar.png";
 
   const fetchBalance = async () => {
     try {
@@ -63,9 +75,27 @@ const closeLang = () => {
         return;
       }
 
-      if (data.success) {
-        setBalance(data.data.balance);
-      } else if (data.shouldInitialize) {
+if (data.success) {
+  setBalance(data.data.balance);
+
+  // ✅ ADD THIS (IMPORTANT)
+  setProfile((prev) => ({
+    ...prev,
+    profilePicture: data.data.profilePicture || "",
+  }));
+
+  // ✅ fetch level from user-stats
+  try {
+    const statsRes = await fetch("/api/user-stats");
+    const statsData = await statsRes.json();
+
+    if (statsData.success) {
+      setLevel(statsData.stats.currentLevel);
+    }
+  } catch (e) {
+    console.error("Failed to fetch level", e);
+  }
+} else if (data.shouldInitialize) {
         const initResponse = await fetch("/api/tokens/initialize", {
           method: "POST",
           headers: {
@@ -190,24 +220,40 @@ const closeLang = () => {
               {isLoaded && isSignedIn ? (
                 <>
                   <div className="hidden sm:flex items-center space-x-4">
-                    <span className="text-[#00e5ff]">
-                      {error
-                        ? `${t("navError")}: ${error}`
-                        : balance !== null
-                        ? `$${balance}`
-                        : t("navLoading")}
-                    </span>
-                    <Link
-                      href="/profil"
-                      className={`px-3 py-2 text-sm font-medium ${
-                        currentPath === "/profil"
-                          ? "text-[#f5ff3b]"
-                          : "text-[#c9f7ff] hover:text-[#00e5ff]"
-                      }`}
-                    >
-                      {t("navProfile")}
-                    </Link>
-                  </div>
+
+  {/* ✅ USER INFO */}
+  <Link href="/profil" className="flex items-center space-x-2 group">
+{avatarSrc ? (
+  <img
+    src={avatarSrc}
+    alt="profile"
+    className="w-8 h-8 rounded-full border border-[#00e5ff]/50 object-cover group-hover:scale-105 transition"
+  />
+) : (
+  <div className="w-8 h-8 rounded-full bg-[#00e5ff] flex items-center justify-center text-xs font-bold text-black">
+    {user?.firstName?.[0] || "U"}
+  </div>
+)}
+    <div className="flex flex-col leading-tight">
+      <span className="text-xs text-[#c9f7ff]">
+        {user?.username || user?.firstName || "User"}
+      </span>
+      <span className="text-[10px] text-[#f5ff3b]">
+        LVL {level ?? "..."}
+      </span>
+    </div>
+  </Link>
+
+  {/* ✅ BALANCE */}
+  <span className="text-[#00e5ff]">
+    {error
+      ? `${t("navError")}: ${error}`
+      : balance !== null
+      ? `$${balance}`
+      : t("navLoading")}
+  </span>
+
+</div>
                   <SignOutButton>
                     <button className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35">
                       {t("navSignOut")}
