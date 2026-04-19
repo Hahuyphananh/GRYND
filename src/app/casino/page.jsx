@@ -37,18 +37,6 @@ const fetchFriendPresence = async () => {
   }
 };
 
-const handleGameEntry = async (gameKey) => {
-  try {
-    await fetch("/api/presence/game", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ gameKey }),
-    });
-  } catch (err) {
-    console.error("[SET_GAME_PRESENCE_ERROR]", err);
-  }
-};
 
 const games = [
   {
@@ -179,7 +167,7 @@ useEffect(() => {
 
 const GameCard = ({ game }) => (
 <div className="group relative overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-2 transition-all duration-300 hover:-translate-y-2 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,229,255,0.4)]">
-    <Link href={game.href} onClick={() => handleGameEntry(game.leaderboardKey)} className="block cursor-pointer">
+    <Link href={game.href} className="block cursor-pointer">
       <div className="mb-2 h-28 overflow-hidden rounded-lg">
         <Image
           src={game.image}

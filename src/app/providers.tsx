@@ -2,11 +2,11 @@
 
 import { ClerkProvider } from '@clerk/nextjs';
 import { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
 import { LanguageProvider } from '../context/LanguageContext';
 import { ThemeProvider } from '../context/ThemeContext';
 import AppTranslator from '../components/AppTranslator';
 import { SocketProvider } from '../context/SocketProvider';
+import PresenceHeartbeat from '../components/PresenceHeartbeat';
 
 function AppProviders({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
@@ -22,6 +22,7 @@ function AppProviders({ children }: { children: React.ReactNode }) {
       <LanguageProvider>
         <SocketProvider>
           <AppTranslator />
+          <PresenceHeartbeat />
           {children}
         </SocketProvider>
       </LanguageProvider>
