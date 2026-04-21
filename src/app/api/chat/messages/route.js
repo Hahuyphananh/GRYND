@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { and, desc, eq } from 'drizzle-orm';
-import { auth, currentUser } from '@clerk/nextjs/server';
+import { and, desc, eq, gte, lt } from 'drizzle-orm';
+import { auth } from '@clerk/nextjs/server';
 import { db } from '../../../../db/client';
-import { chatMessages } from '../../../../db/schema';
+import { chatMessages, users } from '../../../../db/schema';
 
 const ALLOWED_ROOM_TYPES = new Set(['global', 'game']);
+const MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function normalizeRoom(roomType, roomId) {
   if (!ALLOWED_ROOM_TYPES.has(roomType)) {
@@ -19,12 +20,20 @@ function normalizeRoom(roomType, roomId) {
   return { roomType, roomId: safeRoomId };
 }
 
+async function purgeExpiredMessages() {
+  const cutoff = new Date(Date.now() - MESSAGE_TTL_MS);
+  await db.delete(chatMessages).where(lt(chatMessages.createdAt, cutoff));
+  return cutoff;
+}
+
 export async function GET(req) {
   try {
+    const cutoff = await purgeExpiredMessages();
     const url = new URL(req.url);
     const roomType = url.searchParams.get('roomType') || 'global';
     const roomId = url.searchParams.get('roomId') || 'main-lobby';
-    const limit = Math.min(Number(url.searchParams.get('limit') || '50'), 200);
+    const rawLimit = Number(url.searchParams.get('limit') || '50');
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 200) : 50;
 
     const room = normalizeRoom(roomType, roomId);
     if (room.error) {
@@ -34,7 +43,13 @@ export async function GET(req) {
     const rows = await db
       .select()
       .from(chatMessages)
-      .where(and(eq(chatMessages.roomType, room.roomType), eq(chatMessages.roomId, room.roomId)))
+      .where(
+        and(
+          eq(chatMessages.roomType, room.roomType),
+          eq(chatMessages.roomId, room.roomId),
+          gte(chatMessages.createdAt, cutoff),
+        ),
+      )
       .orderBy(desc(chatMessages.createdAt))
       .limit(limit);
 
@@ -49,6 +64,7 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
+    await purgeExpiredMessages();
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -69,12 +85,14 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Message too long.' }, { status: 400 });
     }
 
-    const user = await currentUser();
-    const displayName =
-      user?.username ||
-      [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() ||
-      user?.primaryEmailAddress?.emailAddress ||
-      'Player';
+    const [appUser] = await db
+      .select({ name: users.name, profilePicture: users.profilePicture })
+      .from(users)
+      .where(eq(users.clerkId, userId))
+      .limit(1);
+
+    const displayName = appUser?.name?.trim() || 'Player';
+    const profileImageUrl = appUser?.profilePicture || null;
 
     const inserted = await db
       .insert(chatMessages)
@@ -83,6 +101,7 @@ export async function POST(req) {
         roomId: room.roomId,
         clerkId: userId,
         displayName,
+        profileImageUrl,
         content,
       })
       .returning();
