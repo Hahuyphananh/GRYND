@@ -72,6 +72,7 @@ export const chatMessages = pgTable('chat_messages', {
   roomId: varchar('room_id', { length: 255 }).notNull(),
   clerkId: varchar('clerk_id', { length: 255 }).notNull(),
   displayName: varchar('display_name', { length: 255 }).notNull(),
+  profileImageUrl: text('profile_image_url'),
   content: text('content').notNull(),
   isDeleted: boolean('is_deleted').notNull().default(false),
   deletedAt: timestamp('deleted_at'),
