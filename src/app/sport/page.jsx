@@ -5,6 +5,7 @@ import NavigationBar from "../../components/navigation-bar";
 import { useUser } from "@clerk/nextjs";
 import EventCard from "../../components/event-card";
 import BetSlip from "../../components/bet-slip";
+import BetTracker from "../../components/BetTracker";
 
 const MARKET_TYPES = [
   { key: "h2h", label: "Moneyline" },
@@ -24,6 +25,8 @@ const MainComponent = () => {
   const [loadingSports, setLoadingSports] = useState(false);
   const [openGroup, setOpenGroup] = useState(null);
   const [error, setError] = useState("");
+  const [currentBets, setCurrentBets] = useState([]);
+const [betHistory, setBetHistory] = useState([]);
 
   useEffect(() => {
     const fetchSports = async () => {
@@ -83,27 +86,52 @@ const MainComponent = () => {
     setSelectedBet(betSelection);
   };
 
-  const handleBetSubmit = async ({ amount, selection, odds, marketType, line }) => {
-    const res = await fetch("/api/place-sports-bet", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        eventId: selection.eventId,
-        betAmount: amount,
-        choice: `${marketType}:${selection.label}${line ? ` (${line})` : ""}`,
-        odds,
-        marketType,
-        lineValue: line,
-      }),
-    });
+ const handleBetSubmit = async ({ amount, selection, odds, marketType, line }) => {
+  const res = await fetch("/api/place-sports-bet", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      eventId: selection.eventId,
+      betAmount: amount,
+      choice: `${marketType}:${selection.label}${line ? ` (${line})` : ""}`,
+      odds,
+      marketType,
+      lineValue: line,
+    }),
+  });
 
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || "Bet placement failed");
-    }
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Bet placement failed");
 
-    return data;
+  // ✅ CREATE BET OBJECT
+  const newBet = {
+    id: Date.now(),
+    choice: `${marketType}:${selection.label}`,
+    amount,
+    odds,
+    status: "pending",
   };
+
+  // ✅ ADD TO CURRENT BETS
+  setCurrentBets((prev) => [...prev, newBet]);
+
+  // 🔁 SIMULATE RESULT (replace later with real backend)
+  setTimeout(() => {
+    const isWin = Math.random() > 0.5;
+
+    setCurrentBets((prev) => prev.filter((b) => b.id !== newBet.id));
+
+    setBetHistory((prev) => [
+      ...prev,
+      {
+        ...newBet,
+        result: isWin ? "win" : "loss",
+      },
+    ]);
+  }, 5000);
+
+  return data;
+};
 
   return (
     <div>
@@ -116,20 +144,7 @@ const MainComponent = () => {
                 <h1 className="text-2xl font-bold">Paris Sportifs</h1>
                 <p className="text-sm text-[#95e4ff]">Chargement manuel activé afin de réduire l'utilisation de l'API.</p>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => fetchEvents()}
-                  className="rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b] px-4 py-2 font-semibold text-[#031026] shadow-[0_0_18px_rgba(245,255,59,0.45)] hover:brightness-95"
-                >
-                  Afficher les Événements
-                </button>
-                <button
-                  onClick={() => fetchEvents({ forceRefresh: true })}
-                  className="rounded-lg border border-[#00e5ff] px-4 py-2 font-semibold text-[#00e5ff] hover:bg-[#00e5ff]/10"
-                >
-                  Rafraîchir
-                </button>
-              </div>
+              
             </div>
             {selectedSport && <p className="mt-2 text-sm">Ligue Sélectionnée: {selectedSport}</p>}
             <p className="text-sm">Événements chargés: {eventCount}</p>
@@ -154,19 +169,55 @@ const MainComponent = () => {
 
                   {openGroup === group && (
                     <ul className="bg-[#0c1d45]">
+                      {selectedSport && (
+  <div className="flex items-center justify-between rounded-xl border border-[#00e5ff]/45 bg-[#08142f]/95 p-3">
+    <div>
+      <p className="text-sm text-[#95e4ff]">Ligue</p>
+      <p className="font-bold text-[#f5ff3b]">{selectedSport}</p>
+    </div>
+
+    <button
+      onClick={() => fetchEvents({ forceRefresh: true })}
+      className="rounded-lg border border-[#00e5ff] px-3 py-2 text-sm font-semibold text-[#00e5ff] hover:bg-[#00e5ff]/10"
+    >
+      Rafraîchir
+    </button>
+  </div>
+)}
                       {sports[group].map((league) => (
                         <li
-                          key={league.key}
-                          onClick={() => setSelectedSport(league.key)}
-                          className={`cursor-pointer border-t border-[#00e5ff]/20 px-3 py-2 text-sm ${
-                            selectedSport === league.key
-                              ? "bg-[#f5ff3b] text-[#071421]"
-                              : "text-[#9dd8ff] hover:bg-[#003b8e]"
-                          }`}
-                        >
-                          <p className="font-semibold">{league.title}</p>
-                          <p className="text-xs opacity-80">{league.description || "Live and upcoming odds"}</p>
-                        </li>
+  key={league.key}
+  onClick={() => {
+    setSelectedSport(league.key);
+    fetchEvents(); // 🔥 auto load events
+  }}
+  className={`cursor-pointer border-t border-[#00e5ff]/20 px-3 py-2 text-sm ${
+    selectedSport === league.key
+      ? "bg-[#f5ff3b] text-[#071421]"
+      : "text-[#9dd8ff] hover:bg-[#003b8e]"
+  }`}
+>
+  <div className="flex items-center justify-between">
+    <div>
+      <p className="font-semibold">{league.title}</p>
+      <p className="text-xs opacity-80">
+        {league.description || "Live and upcoming odds"}
+      </p>
+    </div>
+
+    {/* 🔥 NEW BUTTON */}
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        setSelectedSport(league.key);
+        fetchEvents();
+      }}
+      className="ml-2 rounded-md border border-[#f5ff3b]/50 bg-[#f5ff3b] px-2 py-1 text-xs font-bold text-[#031026] hover:brightness-95"
+    >
+      Voir
+    </button>
+  </div>
+</li>
                       ))}
                     </ul>
                   )}
@@ -197,7 +248,9 @@ const MainComponent = () => {
               {loadingEvents && <p className="text-[#00e5ff]">Loading events...</p>}
               {!loadingEvents && events.length === 0 && (
                 <div className="rounded-xl border border-dashed border-[#00e5ff]/50 p-6 text-center text-[#00e5ff]">
-                  Cliquez sur<strong>Afficher les Événements</strong> pour obtenir les cotes.
+                {!selectedSport
+  ? "Sélectionnez une ligue pour voir les événements."
+  : "Aucun événement trouvé. Essayez de rafraîchir."}
                 </div>
               )}
 
@@ -213,9 +266,18 @@ const MainComponent = () => {
               </div>
             </section>
 
-            <aside className="sticky top-24 h-fit rounded-xl border border-[#00e5ff]/45 bg-[#08142f]/95 p-4 shadow-[0_0_18px_rgba(0,229,255,0.2)]">
-              <BetSlip selectedBet={selectedBet} marketType={selectedMarket} onSubmit={handleBetSubmit} user={user} />
-            </aside>
+           <aside className="sticky top-24 h-fit space-y-4">
+  <div className="rounded-xl border border-[#00e5ff]/45 bg-[#08142f]/95 p-4">
+    <BetSlip
+      selectedBet={selectedBet}
+      marketType={selectedMarket}
+      onSubmit={handleBetSubmit}
+      user={user}
+    />
+  </div>
+
+  <BetTracker currentBets={currentBets} betHistory={betHistory} />
+</aside>
           </div>
         </div>
       </div>
