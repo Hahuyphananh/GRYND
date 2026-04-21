@@ -36,7 +36,7 @@ const BetTracker = ({ currentBets, betHistory }) => {
             <div
               key={bet.id}
               className={`mb-2 rounded-lg border p-2 text-sm ${
-                bet.result === "win"
+                bet.result === "win" || bet.result === "won"
                   ? "border-green-400 text-green-300"
                   : "border-red-400 text-red-300"
               }`}
@@ -44,7 +44,7 @@ const BetTracker = ({ currentBets, betHistory }) => {
               <p>{bet.choice}</p>
               <p>Amount: {bet.amount}</p>
               <p>Odds: {bet.odds}</p>
-              <p>Result: {bet.result.toUpperCase()}</p>
+              <p>Result: {(bet.result || "pending").toUpperCase()}</p>
             </div>
           ))
         )}

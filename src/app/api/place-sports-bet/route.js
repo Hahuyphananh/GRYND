@@ -30,11 +30,18 @@ export async function POST(req) {
     if (!parsed.ok) return parsed.response;
     const { eventId, betAmount, choice, odds, marketType, lineValue } = parsed.data;
 
-    const balanceResult = await sql`
-      SELECT balance FROM users WHERE clerk_id = ${userId}
+    const userResult = await sql`
+      SELECT id, balance FROM users WHERE clerk_id = ${userId}
     `;
 
-    const userBalance = parseFloat(balanceResult.rows[0]?.balance ?? 0);
+    const dbUser = userResult.rows[0];
+    if (!dbUser) {
+      return new Response(JSON.stringify({ error: "User not found" }), {
+        status: 404,
+      });
+    }
+
+    const userBalance = parseFloat(dbUser.balance ?? 0);
     if (userBalance < betAmount) {
       return new Response(JSON.stringify({ error: "Insufficient balance" }), {
         status: 400,
@@ -43,8 +50,28 @@ export async function POST(req) {
 
     try {
       await sql`
-        INSERT INTO sports_bets (user_id, event_external_id, bet_amount, choice, odds, market_type, line_value)
-        VALUES (${userId}, ${eventId}, ${betAmount}, ${choice}, ${odds}, ${marketType}, ${lineValue})
+        INSERT INTO sports_bets (
+          user_id,
+          event_external_id,
+          bet_amount,
+          choice,
+          odds,
+          market_type,
+          line_value,
+          payout,
+          result
+        )
+        VALUES (
+          ${dbUser.id},
+          ${eventId},
+          ${betAmount},
+          ${choice},
+          ${odds},
+          ${marketType},
+          ${lineValue},
+          0,
+          'pending'
+        )
       `;
     } catch (migrationErr) {
       console.error("Sports bet insert fallback triggered");
@@ -58,8 +85,8 @@ export async function POST(req) {
       }
 
       await sql`
-        INSERT INTO sports_bets (user_id, event_id, bet_amount, choice, odds)
-        VALUES (${userId}, ${legacyEventId}, ${betAmount}, ${choice}, ${odds})
+        INSERT INTO sports_bets (user_id, event_id, bet_amount, choice, odds, payout, result)
+        VALUES (${dbUser.id}, ${legacyEventId}, ${betAmount}, ${choice}, ${odds}, 0, 'pending')
       `;
     }
 
