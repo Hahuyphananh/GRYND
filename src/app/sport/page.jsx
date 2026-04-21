@@ -26,7 +26,33 @@ const MainComponent = () => {
   const [openGroup, setOpenGroup] = useState(null);
   const [error, setError] = useState("");
   const [currentBets, setCurrentBets] = useState([]);
-const [betHistory, setBetHistory] = useState([]);
+  const [betHistory, setBetHistory] = useState([]);
+
+  const fetchMyBets = async () => {
+    const res = await fetch("/api/sports/my-bets", { cache: "no-store" });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Failed to fetch bets");
+    }
+    setCurrentBets(Array.isArray(data.currentBets) ? data.currentBets : []);
+    setBetHistory(Array.isArray(data.betHistory) ? data.betHistory : []);
+  };
+
+  const settleAndRefreshBets = async () => {
+    await fetch("/api/sports/settle", { method: "POST" });
+    await fetchMyBets();
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    settleAndRefreshBets().catch((err) => {
+      console.error(err);
+    });
+    const id = setInterval(() => {
+      settleAndRefreshBets().catch((err) => console.error(err));
+    }, 45000);
+    return () => clearInterval(id);
+  }, [user]);
 
   useEffect(() => {
     const fetchSports = async () => {
@@ -103,32 +129,7 @@ const [betHistory, setBetHistory] = useState([]);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Bet placement failed");
 
-  // ✅ CREATE BET OBJECT
-  const newBet = {
-    id: Date.now(),
-    choice: `${marketType}:${selection.label}`,
-    amount,
-    odds,
-    status: "pending",
-  };
-
-  // ✅ ADD TO CURRENT BETS
-  setCurrentBets((prev) => [...prev, newBet]);
-
-  // 🔁 SIMULATE RESULT (replace later with real backend)
-  setTimeout(() => {
-    const isWin = Math.random() > 0.5;
-
-    setCurrentBets((prev) => prev.filter((b) => b.id !== newBet.id));
-
-    setBetHistory((prev) => [
-      ...prev,
-      {
-        ...newBet,
-        result: isWin ? "win" : "loss",
-      },
-    ]);
-  }, 5000);
+  await fetchMyBets();
 
   return data;
 };
