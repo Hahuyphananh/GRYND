@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { useSocket } from '../context/SocketProvider';
@@ -66,6 +66,7 @@ export default function ChatWidget() {
   const [error, setError] = useState('');
   const [isSending, setIsSending] = useState(false);
   const { socket } = useSocket();
+  const messagesContainerRef = useRef(null);
 
   const room = useMemo(() => {
     if (!pathname) return null;
@@ -137,6 +138,13 @@ export default function ChatWidget() {
     };
   }, [socket, room?.roomType, room?.roomId, isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages, isOpen]);
+
   async function handleRefresh() {
     setError('');
     try {
@@ -148,6 +156,7 @@ export default function ChatWidget() {
 
   async function handleSend(e) {
     e.preventDefault();
+    if (!room || isSending) return;
     const clean = message.trim();
     if (!clean) return;
 
@@ -215,7 +224,7 @@ export default function ChatWidget() {
         <div className="mt-2 w-[320px] rounded-xl border border-slate-700 bg-slate-900/95 p-3 text-sm text-slate-100 shadow-2xl backdrop-blur">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="font-semibold">{room.title}</p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={handleRefresh}
@@ -224,17 +233,41 @@ export default function ChatWidget() {
                 Refresh
               </button>
               <span className="text-[11px] text-slate-400">History enabled</span>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="ml-1 rounded px-1.5 py-0.5 text-sm text-slate-300 hover:bg-slate-700 hover:text-white"
+                aria-label="Close chat"
+                title="Close chat"
+              >
+                ✕
+              </button>
             </div>
           </div>
 
-          <div className="mb-2 h-64 overflow-y-auto rounded border border-slate-700 bg-slate-950 p-2">
+          <div ref={messagesContainerRef} className="mb-2 h-64 overflow-y-auto rounded border border-slate-700 bg-slate-950 p-2">
             {messages.length === 0 ? (
               <p className="text-slate-500">No messages yet.</p>
             ) : (
               messages.map((msg) => (
                 <div key={msg.id} className="mb-2 rounded bg-slate-800 px-2 py-1">
                   <div className="mb-1 flex items-center justify-between text-[11px] text-slate-400">
-                    <span className="font-medium text-emerald-300">{msg.displayName || 'Player'}</span>
+                    <span className="flex items-center gap-1.5 font-medium text-emerald-300">
+                      {msg.profileImageUrl ? (
+                        <img
+                          src={msg.profileImageUrl}
+                          alt={`${msg.displayName || 'Player'} profile`}
+                          className="h-5 w-5 rounded-full border border-slate-600 object-cover"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-600 bg-slate-700 text-[10px] uppercase text-slate-200">
+                          {(msg.displayName || 'P').charAt(0)}
+                        </span>
+                      )}
+                      <span>{msg.displayName || 'Player'}</span>
+                    </span>
                     <span>{new Date(msg.createdAt).toLocaleTimeString()}</span>
                   </div>
                   <div className="break-words text-[13px]">
