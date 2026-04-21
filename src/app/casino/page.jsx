@@ -13,7 +13,7 @@ import Img8 from "../../images/slots.jpg";
 import Img9 from "../../images/coin-flip.jpg";
 import Img10 from "../../images/keno.png";
 import Img11 from "../../images/uno.png";
-import Img12 from "../../images/rps.png";
+import Img12 from "../../images/rps.png"
 import Img13 from "../../images/tanks.png"
 import Img14 from "../../images/connect-4.png"
 import Img15 from "../../images/lane-runner.jpg"
