@@ -1,20 +1,8 @@
-import { Inter, Roboto_Mono } from 'next/font/google';
 import './globals.css';
-import { Providers } from './providers'; // Adjust path if needed
+import { Providers } from './providers';
 import ClerkSafeChatWidget from '../components/ClerkSafeChatWidget';
 import DisableInspect from '../components/DisableInspect';
 import CsrfFetchGuard from '../components/CsrfFetchGuard';
-
-const inter = Inter({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-
-const robotoMono = Roboto_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-});
-
 
 export const dynamic = 'force-dynamic';
 
@@ -25,8 +13,8 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className={`${inter.variable} ${robotoMono.variable} antialiased transition-colors duration-300`}>
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className="antialiased transition-colors duration-300 bg-[#030817] text-[#d8fbff]">
         <Providers>
           <CsrfFetchGuard />
           <DisableInspect />
