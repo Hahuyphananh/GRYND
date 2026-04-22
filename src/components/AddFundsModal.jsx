@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { AnimatePresence, motion } from "framer-motion";
 
 export default function AddFundsModal({ isOpen, onClose, onSuccess }) {
   const [amount, setAmount] = useState("");
@@ -16,7 +17,6 @@ export default function AddFundsModal({ isOpen, onClose, onSuccess }) {
 
     const numAmount = parseFloat(amount);
 
-    // Client-side validation
     if (!numAmount || numAmount < 5 || numAmount > 500) {
       setError("Amount must be between $5 and $500");
       setLoading(false);
@@ -29,7 +29,7 @@ export default function AddFundsModal({ isOpen, onClose, onSuccess }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ amount: numAmount }),
       });
@@ -50,77 +50,89 @@ export default function AddFundsModal({ isOpen, onClose, onSuccess }) {
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-gray-800">Add Funds</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl"
+    <AnimatePresence>
+      {isOpen ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
           >
-            ×
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Amount (USD)
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                $
-              </span>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="5.00"
-                min="5"
-                max="500"
-                step="0.01"
-                className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              />
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-800">Add Funds</h2>
+              <motion.button
+                onClick={onClose}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="text-2xl text-gray-500 hover:text-gray-700"
+              >
+                ×
+              </motion.button>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Minimum: $5.00 • Maximum: $500.00
-            </p>
-          </div>
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-              {error}
+            <form onSubmit={handleSubmit}>
+              <div className="mb-4">
+                <label className="mb-2 block text-sm font-medium text-gray-700">Amount (USD)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-500">$</span>
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="5.00"
+                    min="5"
+                    max="500"
+                    step="0.01"
+                    className="w-full rounded-lg border border-gray-300 py-2 pl-8 pr-4 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">Minimum: $5.00 • Maximum: $500.00</p>
+              </div>
+
+              {error && (
+                <div className="mb-4 rounded border border-red-400 bg-red-100 p-3 text-red-700">{error}</div>
+              )}
+
+              <div className="flex gap-3">
+                <motion.button
+                  type="button"
+                  onClick={onClose}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  type="submit"
+                  disabled={loading}
+                  whileHover={loading ? undefined : { scale: 1.02 }}
+                  whileTap={loading ? undefined : { scale: 0.98 }}
+                  className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loading ? "Processing..." : "Add Funds"}
+                </motion.button>
+              </div>
+            </form>
+
+            <div className="mt-4 rounded border border-yellow-200 bg-yellow-50 p-3">
+              <p className="text-xs text-yellow-800">
+                🔒 Secure transaction • Funds will be added to your casino wallet immediately
+              </p>
             </div>
-          )}
-
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? "Processing..." : "Add Funds"}
-            </button>
-          </div>
-        </form>
-
-        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-          <p className="text-xs text-yellow-800">
-            🔒 Secure transaction • Funds will be added to your casino wallet immediately
-          </p>
-        </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }

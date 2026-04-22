@@ -1,15 +1,36 @@
 "use client";
 
 import React, { useMemo } from "react";
+import { motion } from "framer-motion";
+
+const outcomeListVariants = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.05,
+    },
+  },
+};
+
+const outcomeItemVariants = {
+  hidden: { opacity: 0, y: 6 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.2, ease: "easeOut" },
+  },
+};
 
 function OutcomeButton({ label, price, onClick }) {
   return (
-    <button
+    <motion.button
       onClick={onClick}
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
       className="rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-3 py-2 text-sm font-semibold text-[#041125] shadow-[0_0_14px_rgba(245,255,59,0.4)] hover:brightness-95"
     >
       {label} <span className="ml-1">{price}</span>
-    </button>
+    </motion.button>
   );
 }
 
@@ -64,7 +85,12 @@ export default function EventCard({
       : "Moneyline";
 
   return (
-    <div className="rounded-xl border border-[#00e5ff]/45 bg-[#081734]/90 p-4 shadow-[0_0_18px_rgba(0,229,255,0.2)]">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className="rounded-xl border border-[#00e5ff]/45 bg-[#081734]/90 p-4 shadow-[0_0_18px_rgba(0,229,255,0.2)]"
+    >
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <h3 className="text-lg font-bold text-[#ecf8ff]">
@@ -77,25 +103,34 @@ export default function EventCard({
         <span className="rounded-md border border-[#00e5ff]/50 px-2 py-1 text-xs text-[#00e5ff]">{label}</span>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <motion.div
+        variants={outcomeListVariants}
+        initial="hidden"
+        animate="visible"
+        className="flex flex-wrap gap-2"
+      >
         {outcomes.map((outcome) => (
-          <OutcomeButton
+          <motion.div
             key={`${fallbackEvent.id}-${selectedMarket}-${outcome.name}`}
-            label={outcome.name}
-            price={outcome.price}
-            onClick={() =>
-              onBetSelect?.({
-                eventId: fallbackEvent.id,
-                marketType: selectedMarket,
-                label: outcome.name,
-                odds: outcome.price,
-                line: outcome.point ?? null,
-                eventLabel: `${fallbackEvent.home_team} vs ${fallbackEvent.away_team}`,
-              })
-            }
-          />
+            variants={outcomeItemVariants}
+          >
+            <OutcomeButton
+              label={outcome.name}
+              price={outcome.price}
+              onClick={() =>
+                onBetSelect?.({
+                  eventId: fallbackEvent.id,
+                  marketType: selectedMarket,
+                  label: outcome.name,
+                  odds: outcome.price,
+                  line: outcome.point ?? null,
+                  eventLabel: `${fallbackEvent.home_team} vs ${fallbackEvent.away_team}`,
+                })
+              }
+            />
+          </motion.div>
         ))}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

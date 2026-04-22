@@ -1,15 +1,28 @@
 "use client";
-import React from "react";
 
+import React, { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 
+const typeStyles = {
+  success: "bg-green-500 text-white",
+  error: "bg-red-500 text-white",
+  info: "bg-[#f5ff3b] text-white",
+  warning: "bg-yellow-500 text-white",
+};
 
-export default function Index() {
-  return (function MainComponent({ 
-  message, 
-  type = "info", 
-  duration = 5000, 
+const icons = {
+  success: "fa-check-circle",
+  error: "fa-exclamation-circle",
+  info: "fa-info-circle",
+  warning: "fa-exclamation-triangle",
+};
+
+export default function NotificationToast({
+  message,
+  type = "info",
+  duration = 5000,
   onClose,
-  isVisible = true 
+  isVisible = true,
 }) {
   const [show, setShow] = useState(isVisible);
 
@@ -27,109 +40,33 @@ export default function Index() {
     }
   }, [show, duration, onClose]);
 
-  if (!show) return null;
-
-  const baseStyles = "fixed top-4 right-4 z-50 flex items-center justify-between rounded-lg p-4 shadow-lg transition-all duration-300 transform";
-  const typeStyles = {
-    success: "bg-green-500 text-white",
-    error: "bg-red-500 text-white",
-    info: "bg-[#f5ff3b] text-white",
-    warning: "bg-yellow-500 text-white"
-  };
-
-  const icons = {
-    success: "fa-check-circle",
-    error: "fa-exclamation-circle",
-    info: "fa-info-circle",
-    warning: "fa-exclamation-triangle"
-  };
-
   return (
-    <div className={`${baseStyles} ${typeStyles[type]}`}>
-      <div className="flex items-center space-x-2">
-        <i className={`fas ${icons[type]}`}></i>
-        <span className="text-sm font-medium">{message}</span>
-      </div>
-      <button
-        onClick={() => {
-          setShow(false);
-          onClose?.();
-        }}
-        className="ml-4 text-white hover:text-gray-200 focus:outline-none"
-      >
-        <i className="fas fa-times"></i>
-      </button>
-    </div>
+    <AnimatePresence>
+      {show ? (
+        <motion.div
+          initial={{ opacity: 0, y: -8, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -8, scale: 0.98 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className={`fixed right-4 top-4 z-50 flex items-center justify-between rounded-lg p-4 shadow-lg ${typeStyles[type]}`}
+        >
+          <div className="flex items-center space-x-2">
+            <i className={`fas ${icons[type]}`}></i>
+            <span className="text-sm font-medium">{message}</span>
+          </div>
+          <motion.button
+            onClick={() => {
+              setShow(false);
+              onClose?.();
+            }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="ml-4 text-white hover:text-gray-200 focus:outline-none"
+          >
+            <i className="fas fa-times"></i>
+          </motion.button>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
-}
-
-function StoryComponent() {
-  const [showSuccess, setShowSuccess] = useState(true);
-  const [showError, setShowError] = useState(true);
-  const [showInfo, setShowInfo] = useState(true);
-  const [showWarning, setShowWarning] = useState(true);
-
-  return (
-    <div className="space-y-4 p-4">
-      <h2 className="mb-4 text-xl font-bold">Notification Toast Examples</h2>
-      
-      <div className="space-y-2">
-        <MainComponent
-          message="Opération réussie !"
-          type="success"
-          isVisible={showSuccess}
-          onClose={() => setShowSuccess(false)}
-        />
-
-        <MainComponent
-          message="Une erreur est survenue"
-          type="error"
-          isVisible={showError}
-          onClose={() => setShowError(false)}
-        />
-
-        <MainComponent
-          message="Information importante"
-          type="info"
-          isVisible={showInfo}
-          onClose={() => setShowInfo(false)}
-        />
-
-        <MainComponent
-          message="Attention requise"
-          type="warning"
-          isVisible={showWarning}
-          onClose={() => setShowWarning(false)}
-        />
-      </div>
-
-      <div className="mt-8 space-x-4">
-        <button
-          onClick={() => setShowSuccess(true)}
-          className="rounded bg-green-500 px-4 py-2 text-white hover:bg-green-600"
-        >
-          Show Success
-        </button>
-        <button
-          onClick={() => setShowError(true)}
-          className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600"
-        >
-          Show Error
-        </button>
-        <button
-          onClick={() => setShowInfo(true)}
-          className="rounded bg-[#f5ff3b] px-4 py-2 text-white hover:bg-[#f5ff3b]"
-        >
-          Show Info
-        </button>
-        <button
-          onClick={() => setShowWarning(true)}
-          className="rounded bg-yellow-500 px-4 py-2 text-white hover:bg-yellow-600"
-        >
-          Show Warning
-        </button>
-      </div>
-    </div>
-  );
-});
 }
