@@ -10,6 +10,13 @@ import Img3 from "../images/poker.jpg";
 import Img4 from "../images/plinko.jpg";
 import HeroBg from "../images/casino-bg.png";
 import SportCard from "../components/sport-card";
+import { motion, useReducedMotion } from "framer-motion";
+import {
+  fadeIn,
+  fadeUp,
+  scaleOnHover,
+  staggerContainer,
+} from "../lib/motionPresets";
 
 const MAIN_SPORT_GROUPS = [
   "American Football",
@@ -20,6 +27,7 @@ const MAIN_SPORT_GROUPS = [
 
 function MainComponent() {
     const router = useRouter();
+  const reducedMotion = useReducedMotion();
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user } = useUser();
 const [openGroup, setOpenGroup] = useState(null);
@@ -395,11 +403,27 @@ const useRevealOnScroll = (deps = []) => {
     setNotification({ message, type });
   };
 
+  const staticVariant = {
+    hidden: { opacity: 1, y: 0, scale: 1 },
+    show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0 } },
+    rest: { scale: 1 },
+    hover: { scale: 1 },
+  };
+  const cardVariants = reducedMotion
+    ? staticVariant
+    : { ...fadeUp, ...scaleOnHover };
+
   return (
    <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] cyberpunk-grid">
       <NavigationBar currentPath="/" />
 
-     <section className="relative mt-8 px-4 min-h-[70vh] flex items-center overflow-hidden">
+     <motion.section
+      className="relative mt-8 px-4 min-h-[70vh] flex items-center overflow-hidden"
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, amount: 0.15 }}
+      variants={reducedMotion ? staticVariant : fadeIn}
+    >
   
   {/* Background Image */}
   <Image
@@ -414,7 +438,10 @@ const useRevealOnScroll = (deps = []) => {
   {/* Dark overlay for readability */}
   <div className="absolute inset-0 bg-[#010612]/70 z-10" />
 
-        <div className="relative z-20 mx-auto max-w-7xl text-center reveal">
+        <motion.div
+          className="relative z-20 mx-auto max-w-7xl text-center reveal"
+          variants={reducedMotion ? staticVariant : fadeUp}
+        >
       <h1
   className="mb-4 text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text 
 bg-gradient-to-r from-[#ff4fd8] via-[#00e5ff] to-[#ff4fd8]
@@ -444,20 +471,37 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
   </a>
 </div>
 
-        </div>
-      </section>
+        </motion.div>
+      </motion.section>
 
       <div className="mx-auto max-w-7xl px-4 py-8">
-        <section className="mb-16 reveal">
+        <motion.section
+          className="mb-16 reveal"
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, amount: 0.15 }}
+          variants={reducedMotion ? staticVariant : fadeUp}
+        >
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-2xl font-bold text-[#f5ff3b]">Casino en Ligne</h2>
           </div>
 
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 reveal-stagger">
-            <a
+          <motion.div
+            className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 reveal-stagger"
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, amount: 0.15 }}
+            variants={reducedMotion ? staticVariant : staggerContainer}
+          >
+            <motion.a
               href="/casino/roulette"
               
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
+              variants={cardVariants}
+              initial="hidden"
+              whileHover="hover"
+              whileInView="show"
+              viewport={{ once: true, amount: 0.15 }}
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
@@ -471,12 +515,17 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 Placez vos paris sur les numéros, couleurs ou sections
               </p>
               {renderFriendWidget("roulette")}
-            </a>
+            </motion.a>
 
-            <a
+            <motion.a
               href="/casino/blackjack"
               
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
+              initial="hidden"
+              whileHover="hover"
+              whileInView="show"
+              viewport={{ once: true, amount: 0.15 }}
+              variants={cardVariants}
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
@@ -490,12 +539,17 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 Affrontez le croupier dans ce jeu de cartes classique
               </p>
               {renderFriendWidget("blackjack")}
-            </a>
+            </motion.a>
 
-            <a
+            <motion.a
               href="/casino/poker"
               
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
+              initial="hidden"
+              whileHover="hover"
+              whileInView="show"
+              viewport={{ once: true, amount: 0.15 }}
+              variants={cardVariants}
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
@@ -509,12 +563,17 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 Affrontez l'IA ou d'autres joueurs dans des parties intenses de poker
               </p>
               {renderFriendWidget("poker")}
-            </a>
+            </motion.a>
 
-            <a
+            <motion.a
               href="/casino/plinko"
               
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
+              initial="hidden"
+              whileHover="hover"
+              whileInView="show"
+              viewport={{ once: true, amount: 0.15 }}
+              variants={cardVariants}
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
@@ -528,8 +587,8 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 Regardez tomber les balles et multipliez vos gains!
               </p>
               {renderFriendWidget("plinko")}
-            </a>
-          </div>
+            </motion.a>
+          </motion.div>
 
           {/* Bouton More centré sous la grille */}
           <div className="flex justify-center mt-8 reveal" style={{ animationDelay: "0.2s" }}>
@@ -541,9 +600,15 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
   </a>
 </div>
 
-        </section>
+        </motion.section>
 
-        <section className="mb-16 reveal">
+        <motion.section
+          className="mb-16 reveal"
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, amount: 0.15 }}
+          variants={reducedMotion ? staticVariant : fadeUp}
+        >
   <div className="mb-8 flex justify-between items-center">
     <h2 className="text-2xl font-bold text-[#00e5ff]">
       Sports Populaires
@@ -555,9 +620,13 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
   ) : (
     <div className="space-y-4">
      {Object.keys(sports).map((groupKey) => (
-    <div
+    <motion.div
       key={groupKey}
       className="rounded-lg overflow-hidden border border-[#00e5ff]/30 reveal"
+      variants={reducedMotion ? staticVariant : fadeUp}
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, amount: 0.15 }}
     >
       <button
         onClick={() =>
@@ -586,7 +655,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           ))}
         </div>
       )}
-    </div>
+    </motion.div>
   ))}
     </div>
   )}
@@ -600,7 +669,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
   </a>
 </div>
 
-</section>
+</motion.section>
       </div>
 
       {notification && (
