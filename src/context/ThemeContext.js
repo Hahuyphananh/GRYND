@@ -11,33 +11,30 @@ const ThemeContext = createContext({
 const STORAGE_KEY = "casino_app_theme";
 
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState("dark");
-
-  useEffect(() => {
-    const storedTheme = window.localStorage.getItem(STORAGE_KEY);
-    if (storedTheme === "light" || storedTheme === "dark") {
-      setTheme(storedTheme);
-    }
-  }, []);
+  const [theme, setThemeState] = useState("dark");
 
   useEffect(() => {
     const root = document.documentElement;
     const body = document.body;
 
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
+    root.classList.add("dark");
+    root.setAttribute("data-theme", "dark");
+    body?.setAttribute("data-theme", "dark");
+    window.localStorage.setItem(STORAGE_KEY, "dark");
+  }, []);
 
-    root.setAttribute("data-theme", theme);
-    body?.setAttribute("data-theme", theme);
-
-    window.localStorage.setItem(STORAGE_KEY, theme);
-  }, [theme]);
+  const setTheme = () => {
+    setThemeState("dark");
+    const root = document.documentElement;
+    const body = document.body;
+    root.classList.add("dark");
+    root.setAttribute("data-theme", "dark");
+    body?.setAttribute("data-theme", "dark");
+    window.localStorage.setItem(STORAGE_KEY, "dark");
+  };
 
   const toggleTheme = () => {
-    setTheme((prevTheme) => (prevTheme === "dark" ? "light" : "dark"));
+    setTheme();
   };
 
   const value = useMemo(() => ({ theme, setTheme, toggleTheme }), [theme]);
