@@ -12,7 +12,7 @@ export default function Page() {
             colorPrimary: "#FFD700", // gold
             colorBackground: "#033360ff",
             colorText: "#FFD700",
-            colorInputBackground: "#ffffffff",
+            colorInputBackground: "#002b55",
             colorInputText: "#FFD700",
             borderRadius: "0.75rem",
             fontFamily: "Inter, sans-serif",

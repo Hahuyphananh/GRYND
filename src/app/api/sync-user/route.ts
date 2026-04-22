@@ -1,10 +1,9 @@
 import bcrypt from 'bcrypt';
-import { auth } from '@clerk/nextjs/server';
+import { auth, clerkClient } from '@clerk/nextjs/server';
 import { db } from '../../../db/client';
 import { users } from '../../../db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
-import { users as clerkUsers } from '@clerk/clerk-sdk-node';
 
 export async function POST(req: Request) {
   try {
@@ -13,7 +12,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized - No session' }, { status: 401 });
     }
 
-    const clerkUser = await clerkUsers.getUser(clerkId);
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(clerkId);
     const name = `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim();
     const email = clerkUser.emailAddresses?.[0]?.emailAddress || 'unknown@example.com';
     const profilePicture = clerkUser.imageUrl || null;
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       if (body?.password) {
         rawPassword = String(body.password);
         try {
-          await clerkUsers.updateUser(clerkId, { password: rawPassword });
+          await client.users.updateUser(clerkId, { password: rawPassword });
         } catch (err) {
           console.warn('⚠️ Clerk password update failed:', err);
           rawPassword = 'oauth-placeholder';
