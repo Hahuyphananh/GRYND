@@ -10,8 +10,6 @@ import {
   getMultiplier,
   getServerSeedHash,
   LANE_RUNNER_DIFFICULTIES,
-  LANE_RUNNER_RTP,
-  LANE_RUNNER_TILES,
   randomHex,
 } from '../../../../lib/laneRunner';
 
@@ -57,9 +55,7 @@ export async function POST(req) {
         serverSeed,
         clientSeed,
         nonce,
-        pFail: config.pFail,
-        safeTiles: config.safeTiles,
-        tiles: LANE_RUNNER_TILES,
+        difficulty,
         lanes: DEFAULT_LANES,
       });
 
@@ -68,9 +64,7 @@ export async function POST(req) {
         userId,
         betAmount: Number(betAmount.toFixed(2)),
         difficulty,
-        pFail: config.pFail,
-        safeTilesCount: config.safeTiles,
-        tilesPerLane: LANE_RUNNER_TILES,
+        tilesPerLane: config.width,
         currentLane: 0,
         nonce,
         clientSeed,
@@ -91,7 +85,7 @@ export async function POST(req) {
           multiplier: 1,
           potentialPayout: Number(betAmount.toFixed(2)),
           maxLanes: DEFAULT_LANES,
-          tilesPerLane: LANE_RUNNER_TILES,
+          tilesPerLane: config.width,
           newBalance: Number(deducted.balance),
           difficultyConfig: config,
         },
@@ -114,7 +108,7 @@ export async function POST(req) {
 
     if (action === 'pick') {
       const tileIndex = Number(body.tileIndex);
-      if (!Number.isInteger(tileIndex) || tileIndex < 0 || tileIndex >= (session.tilesPerLane || LANE_RUNNER_TILES)) {
+      if (!Number.isInteger(tileIndex) || tileIndex < 0 || tileIndex >= session.tilesPerLane) {
         return withError('Invalid tile index');
       }
 
@@ -122,7 +116,7 @@ export async function POST(req) {
       if (!laneOutcome) return withError('No more lanes. Cash out.');
 
       const lane = session.currentLane;
-      const didFail = laneOutcome.isFailure;
+      const didFail = tileIndex === laneOutcome.badTile;
       const baseFair = {
         clientSeed: session.clientSeed,
         serverSeedHash: session.serverSeedHash,
@@ -138,11 +132,11 @@ export async function POST(req) {
             hasCashedOut: false,
             lane,
             tileIndex,
-            laneRoll: laneOutcome.roll,
+            badTile: laneOutcome.badTile,
             safeTiles: laneOutcome.safeTiles,
-            multiplier: getMultiplier(lane, session.pFail, LANE_RUNNER_RTP),
+            multiplier: getMultiplier(Math.max(lane, 0), 0, session.difficulty),
             payout: 0,
-            gameOverReason: 'car_crash',
+            gameOverReason: 'bad_tile',
             fair: {
               ...baseFair,
               serverSeed: session.serverSeed,
@@ -157,7 +151,7 @@ export async function POST(req) {
           result: 'lost',
           difficulty: session.difficulty,
           currentLane: lane,
-          multiplier: String(getMultiplier(lane, session.pFail, LANE_RUNNER_RTP)),
+          multiplier: String(getMultiplier(Math.max(lane, 0), 0, session.difficulty)),
           clientSeed: session.clientSeed,
           serverSeedHash: session.serverSeedHash,
           serverSeed: session.serverSeed,
@@ -171,7 +165,7 @@ export async function POST(req) {
       }
 
       session.currentLane += 1;
-      const multiplier = getMultiplier(session.currentLane, session.pFail, LANE_RUNNER_RTP);
+      const multiplier = getMultiplier(session.currentLane, 0, session.difficulty);
       const payout = Number((session.betAmount * multiplier).toFixed(2));
       const completedAllLanes = session.currentLane >= DEFAULT_LANES;
 
@@ -205,7 +199,7 @@ export async function POST(req) {
             hasCashedOut: true,
             lane,
             tileIndex,
-            laneRoll: laneOutcome.roll,
+            badTile: laneOutcome.badTile,
             safeTiles: laneOutcome.safeTiles,
             currentLane: session.currentLane,
             multiplier,
@@ -228,7 +222,7 @@ export async function POST(req) {
           hasCashedOut: false,
           lane,
           tileIndex,
-          laneRoll: laneOutcome.roll,
+          badTile: laneOutcome.badTile,
           safeTiles: laneOutcome.safeTiles,
           currentLane: session.currentLane,
           multiplier,
@@ -248,7 +242,7 @@ export async function POST(req) {
     }
 
     if (action === 'cashout') {
-      const multiplier = getMultiplier(session.currentLane, session.pFail, LANE_RUNNER_RTP);
+      const multiplier = getMultiplier(session.currentLane, 0, session.difficulty);
       const payout = Number((session.betAmount * multiplier).toFixed(2));
 
       const [credited] = await db
