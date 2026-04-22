@@ -2,16 +2,18 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import LaneStrip from './LaneStrip';
-import PlayerSprite from './PlayerSprite';
-import ObstacleCar from './ObstacleCar';
 
-const LANE_WIDTH = 84;
-const TRACK_HEIGHT = 460;
-const PLAYER_Y = 214;
+function tileClasses({ clickable, selected, isCurrent, isSafeReveal, isBadReveal, isLosingPick }) {
+  if (isBadReveal) return 'bg-gradient-to-br from-rose-600 to-red-800 border-red-300/60 text-white';
+  if (isSafeReveal) return 'bg-gradient-to-br from-emerald-500 to-green-700 border-emerald-300/70 text-white';
+  if (selected && isCurrent) return 'bg-gradient-to-br from-cyan-400 to-blue-600 border-cyan-100/70 text-white';
+  if (clickable) return 'bg-gradient-to-br from-indigo-700 to-indigo-900 border-cyan-300/35 text-cyan-100 hover:brightness-125';
+  return 'bg-gradient-to-br from-slate-700 to-slate-900 border-white/10 text-white/70';
+}
 
 export default function GameTrack({
-  lanes,
+  towerRows,
+  towerWidth,
   currentLane,
   currentMultiplier,
   running,
@@ -19,70 +21,100 @@ export default function GameTrack({
   hasCashedOut,
   crashLane,
   laneMultipliers,
-  onAttemptLane,
+  selectedTileByLane,
+  safeTilesByLane,
+  onAttemptTile,
   onCashout,
 }) {
-  const visualLane = hasLost ? crashLane : currentLane - 1;
-  const cameraShift = Math.max(0, currentLane - 4) * 28;
-  const playerX = Math.max(4, (visualLane + 1) * LANE_WIDTH - 54 - cameraShift);
+  const rowsTopFirst = [...towerRows].reverse();
 
   return (
-    <div className={`relative rounded-2xl border border-zinc-400/30 bg-zinc-800 p-4 shadow-2xl ${hasLost ? 'lane-runner-screen-shake' : ''}`}>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-zinc-100">Mission Uncrossable Mode</h2>
-        <span className="rounded bg-black/40 px-2 py-1 text-xs text-zinc-100">Current x{currentMultiplier.toFixed(2)}</span>
+    <div className={`relative overflow-hidden rounded-3xl border border-cyan-300/20 bg-slate-950/85 p-5 shadow-[0_0_55px_rgba(0,215,255,0.22)] ${hasLost ? 'lane-runner-screen-shake' : ''}`}>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-black uppercase tracking-[0.24em] text-cyan-100">Tower Climb</h2>
+        <span className="rounded-full border border-cyan-300/40 bg-cyan-300/15 px-3 py-1 text-xs font-bold text-cyan-100">
+          Current x{currentMultiplier.toFixed(2)}
+        </span>
       </div>
 
-      <div className="relative h-[460px] overflow-hidden rounded-xl border border-white/15 bg-zinc-700">
-        <div className="lane-runner-road-parallax absolute inset-0 opacity-55" />
+      <div className="relative rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900 via-[#111735] to-[#060916] p-3">
+        <div className="pointer-events-none absolute inset-0 opacity-50 [background-image:radial-gradient(rgba(56,189,248,0.14)_1px,transparent_1px)] [background-size:10px_10px]" />
 
-        <motion.div
-          className="relative z-10 flex h-full items-stretch gap-0 py-2"
-          animate={{ x: -cameraShift }}
-          transition={{ type: 'spring', stiffness: 120, damping: 24 }}
-        >
-          {lanes.map((laneIndex) => {
-            const isCurrent = laneIndex === currentLane;
-            const isPassed = laneIndex < currentLane;
-            const isCrash = crashLane === laneIndex;
+        <div className="relative z-10 space-y-2">
+          {rowsTopFirst.map((lane) => {
+            const isCurrent = lane === currentLane;
+            const isCompleted = lane < currentLane;
+            const isFuture = lane > currentLane;
+            const selectedTile = selectedTileByLane[lane];
+            const safeTiles = safeTilesByLane[lane] || [];
+            const isCrashRow = crashLane === lane;
+
             return (
-              <div key={laneIndex} className="relative h-full">
-                <LaneStrip
-                  laneIndex={laneIndex}
-                  multiplier={laneMultipliers[laneIndex]}
-                  isCurrent={isCurrent}
-                  isPassed={isPassed}
-                  isCrash={isCrash}
-                  running={running}
-                  onAttempt={(event) => onAttemptLane(laneIndex, event)}
-                />
-                <ObstacleCar laneIndex={laneIndex} laneWidth={LANE_WIDTH} crashed={isCrash} playerY={PLAYER_Y} />
-              </div>
+              <motion.div
+                key={lane}
+                layout
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`relative rounded-xl border p-2 ${
+                  isCurrent
+                    ? 'border-cyan-300/65 bg-cyan-400/10'
+                    : isCompleted
+                      ? 'border-emerald-400/35 bg-emerald-500/10'
+                      : 'border-white/10 bg-black/20'
+                }`}
+              >
+                <div className="mb-2 flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-white/75">Level {lane + 1}</span>
+                  <span className="rounded-full bg-black/35 px-2 py-1 font-bold text-cyan-100">x{laneMultipliers[lane].toFixed(2)}</span>
+                </div>
+
+                <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${towerWidth}, minmax(0, 1fr))` }}>
+                  {Array.from({ length: towerWidth }, (_, tileIndex) => {
+                    const clickable = running && isCurrent;
+                    const isSelected = selectedTile === tileIndex;
+                    const isSafeReveal = (isCompleted || (isCrashRow && hasLost)) && safeTiles.includes(tileIndex);
+                    const isBadReveal = isCrashRow && hasLost && !safeTiles.includes(tileIndex);
+                    const isLosingPick = isCrashRow && hasLost && isSelected;
+
+                    return (
+                      <motion.button
+                        key={`${lane}-${tileIndex}`}
+                        type="button"
+                        whileHover={clickable ? { scale: 1.04 } : undefined}
+                        whileTap={clickable ? { scale: 0.95 } : undefined}
+                        onClick={() => onAttemptTile(lane, tileIndex)}
+                        disabled={!clickable || isFuture || hasLost || hasCashedOut}
+                        className={`h-12 rounded-lg border text-sm font-black shadow transition-all ${tileClasses({
+                          clickable,
+                          selected: isSelected,
+                          isCurrent,
+                          isSafeReveal,
+                          isBadReveal,
+                          isLosingPick,
+                        })}`}
+                      >
+                        {isLosingPick ? '☠' : isSafeReveal ? '✓' : isSelected ? '●' : '?'}
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </motion.div>
             );
           })}
-        </motion.div>
-
-        <PlayerSprite
-          x={playerX}
-          y={PLAYER_Y}
-          crashed={Boolean(hasLost)}
-          cashedOut={Boolean(hasCashedOut)}
-          running={Boolean(running)}
-        />
-
-        {running && !hasLost && !hasCashedOut && (
-          <motion.button
-            type="button"
-            className="absolute z-40 rounded-md bg-emerald-400 px-4 py-2 text-sm font-black text-black shadow-[0_0_14px_rgba(74,222,128,0.85)]"
-            style={{ left: Math.max(8, playerX - 4), top: 164 }}
-            onClick={onCashout}
-            animate={{ scale: [1, 1.06, 1] }}
-            transition={{ duration: 0.75, repeat: Infinity }}
-          >
-            CASH OUT
-          </motion.button>
-        )}
+        </div>
       </div>
+
+      {running && !hasLost && !hasCashedOut && (
+        <motion.button
+          type="button"
+          className="mt-4 w-full rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 py-3 text-sm font-black uppercase tracking-wide text-black shadow-[0_0_25px_rgba(45,212,191,0.55)]"
+          onClick={onCashout}
+          animate={{ scale: [1, 1.03, 1] }}
+          transition={{ repeat: Infinity, duration: 1.2 }}
+        >
+          Cash Out
+        </motion.button>
+      )}
     </div>
   );
 }
