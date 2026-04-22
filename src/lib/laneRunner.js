@@ -1,40 +1,58 @@
 import crypto from 'crypto';
 
 export const LANE_RUNNER_RTP = 0.96;
-export const LANE_RUNNER_TILES = 24;
-export const DEFAULT_LANES = 12;
+export const DEFAULT_LANES = 8;
 
 export const LANE_RUNNER_DIFFICULTIES = {
-  easy: { label: 'Easy', pFail: 0.04, safeTiles: 8 },
-  medium: { label: 'Medium', pFail: 0.12, safeTiles: 6 },
-  hard: { label: 'Hard', pFail: 0.2, safeTiles: 4 },
-  extreme: { label: 'Extreme', pFail: 0.4, safeTiles: 2 },
+  easy: {
+    label: 'Easy',
+    width: 4,
+    badTiles: 1,
+    startMultiplier: 1.28,
+    endMultiplier: 7.21,
+  },
+  medium: {
+    label: 'Medium',
+    width: 3,
+    badTiles: 1,
+    startMultiplier: 1.44,
+    endMultiplier: 18.49,
+  },
+  hard: {
+    label: 'Hard',
+    width: 2,
+    badTiles: 1,
+    startMultiplier: 1.92,
+    endMultiplier: 184.68,
+  },
 };
 
-export function getMultiplier(step, pFail, difficulty = 'easy') {
+export const LANE_RUNNER_TILES = LANE_RUNNER_DIFFICULTIES.easy.width;
+
+export function getDifficultyMultipliers(difficulty = 'easy') {
+  const config = LANE_RUNNER_DIFFICULTIES[difficulty] ?? LANE_RUNNER_DIFFICULTIES.easy;
+  const multipliers = [];
+
+  if (DEFAULT_LANES <= 1) return [Number(config.endMultiplier.toFixed(2))];
+
+  const ratio = Math.pow(config.endMultiplier / config.startMultiplier, 1 / (DEFAULT_LANES - 1));
+
+  for (let step = 0; step < DEFAULT_LANES; step += 1) {
+    const value = config.startMultiplier * Math.pow(ratio, step);
+    multipliers.push(Number(value.toFixed(2)));
+  }
+
+  multipliers[0] = Number(config.startMultiplier.toFixed(2));
+  multipliers[DEFAULT_LANES - 1] = Number(config.endMultiplier.toFixed(2));
+
+  return multipliers;
+}
+
+export function getMultiplier(step, _pFail, difficulty = 'easy') {
   if (step <= 0) return 1;
-
-  // base growth (this is what creates “uncrossable feel”)
-  const baseGrowth = 1.32;
-
-  // difficulty amplifier (hard = faster rewards)
-  const difficultyMap = {
-    easy: 0.92,
-    medium: 1.0,
-    hard: 1.12,
-    extreme: 1.28,
-  };
-
-  const diff = difficultyMap[difficulty] ?? 1;
-
-  // exponential curve
-  const raw = Math.pow(baseGrowth * diff, step);
-
-  // soft damping so it doesn’t explode too early
-  const damped = raw * (1 - pFail * step * 0.08);
-
-  // minimum safety floor
-  return Number(Math.max(1, damped).toFixed(4));
+  const list = getDifficultyMultipliers(difficulty);
+  const idx = Math.min(step - 1, list.length - 1);
+  return Number(list[idx].toFixed(2));
 }
 
 export function simulateOutcome(seed, nonce, step) {
@@ -47,39 +65,33 @@ export function simulateOutcome(seed, nonce, step) {
   return { roll, digest };
 }
 
-function pickSafeTiles(digest, safeTiles, totalTiles = LANE_RUNNER_TILES) {
-  const selected = new Set();
-  let cursor = 0;
+function pickBadTile(digest, totalTiles) {
+  return Number.parseInt(digest.slice(0, 6), 16) % totalTiles;
+}
 
-  while (selected.size < Math.max(1, Math.min(safeTiles, totalTiles))) {
-    const piece = digest.slice(cursor, cursor + 4);
-    const parsed = Number.parseInt(piece || digest.slice(0, 4), 16) % totalTiles;
-    selected.add(parsed);
-    cursor += 4;
-    if (cursor >= digest.length) cursor = 0;
-  }
-
-  return Array.from(selected).sort((a, b) => a - b);
+function buildSafeTiles(badTile, totalTiles) {
+  return Array.from({ length: totalTiles }, (_, idx) => idx).filter((idx) => idx !== badTile);
 }
 
 export function buildProvablyFairSequence({
   serverSeed,
   clientSeed,
   nonce,
-  pFail,
-  safeTiles,
-  tiles = LANE_RUNNER_TILES,
+  difficulty = 'easy',
   lanes = DEFAULT_LANES,
 }) {
+  const config = LANE_RUNNER_DIFFICULTIES[difficulty] ?? LANE_RUNNER_DIFFICULTIES.easy;
+
   const sequence = [];
   for (let lane = 0; lane < lanes; lane += 1) {
     const { roll, digest } = simulateOutcome(`${serverSeed}:${clientSeed}`, nonce, lane);
+    const badTile = pickBadTile(digest, config.width);
     sequence.push({
       lane,
       roll,
       digest,
-      safeTiles: pickSafeTiles(digest, safeTiles, tiles),
-      isFailure: roll < pFail,
+      badTile,
+      safeTiles: buildSafeTiles(badTile, config.width),
     });
   }
   return sequence;
