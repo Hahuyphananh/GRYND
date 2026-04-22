@@ -7,6 +7,7 @@ import { ThemeProvider } from '../context/ThemeContext';
 import AppTranslator from '../components/AppTranslator';
 import { SocketProvider } from '../context/SocketProvider';
 import PresenceHeartbeat from '../components/PresenceHeartbeat';
+import RouteTransition from '../components/RouteTransition';
 
 function AppProviders({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
@@ -23,7 +24,7 @@ function AppProviders({ children }: { children: React.ReactNode }) {
         <SocketProvider>
           <AppTranslator />
           <PresenceHeartbeat />
-          {children}
+          <RouteTransition>{children}</RouteTransition>
         </SocketProvider>
       </LanguageProvider>
     </ThemeProvider>
