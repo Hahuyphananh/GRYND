@@ -1,9 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // experimental features
-  experimental: {
-    turbo: false, // keep Turbopack disabled if needed
-  },
+  turbopack: {},
   webpack: (config) => {
     // keep your PDF.js fix intact
     config.externals = [...config.externals, { canvas: "canvas" }];
