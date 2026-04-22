@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useRouter } from "next/navigation"; // add this at the top
 import NavigationBar from "../components/navigation-bar";
 import { useUser, useAuth } from "@clerk/nextjs";
@@ -10,6 +11,8 @@ import Img3 from "../images/poker.jpg";
 import Img4 from "../images/plinko.jpg";
 import HeroBg from "../images/casino-bg.png";
 import SportCard from "../components/sport-card";
+import { fadeIn, fadeUp, hoverScale, modalMotion, stagger, withReducedMotion } from "../lib/animations";
+import { UIPro06PrimaryButton, UIPro07SecondaryButton, UIPro16ToastShell, UIPro17ModalBackdrop, UIPro18ModalPanel } from "../components/uipro";
 
 const MAIN_SPORT_GROUPS = [
   "American Football",
@@ -49,6 +52,11 @@ const [streakData, setStreakData] = useState({
 
 const [claimedDay, setClaimedDay] = useState(null);
 const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
+const shouldReduceMotion = useReducedMotion();
+const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
+const fadeInVariant = withReducedMotion(shouldReduceMotion, fadeIn);
+const modalBackdropVariant = withReducedMotion(shouldReduceMotion, modalMotion.backdrop);
+const modalPanelVariant = withReducedMotion(shouldReduceMotion, modalMotion.panel);
 
 const fetchFriendPresence = async () => {
   try {
@@ -399,7 +407,7 @@ const useRevealOnScroll = (deps = []) => {
    <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] cyberpunk-grid">
       <NavigationBar currentPath="/" />
 
-     <section className="relative mt-8 px-4 min-h-[70vh] flex items-center overflow-hidden">
+     <motion.section initial={fadeInVariant.initial} animate={fadeInVariant.animate} transition={fadeInVariant.transition} className="relative mt-8 px-4 min-h-[70vh] flex items-center overflow-hidden">
   
   {/* Background Image */}
   <Image
@@ -415,7 +423,7 @@ const useRevealOnScroll = (deps = []) => {
   <div className="absolute inset-0 bg-[#010612]/70 z-10" />
 
         <div className="relative z-20 mx-auto max-w-7xl text-center reveal">
-      <h1
+      <motion.h1 initial={fadeUpVariant.initial} animate={fadeUpVariant.animate} transition={fadeUpVariant.transition}
   className="mb-4 text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text 
 bg-gradient-to-r from-[#ff4fd8] via-[#00e5ff] to-[#ff4fd8]
 drop-shadow-[0_0_50px_rgba(255,79,216,0.5)] tracking-widest uppercase 
@@ -423,29 +431,29 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
   style={{ backgroundSize: "200% auto" }}
 >
   Pariez sur vos Sports Préférés et Jouez au Casino
-</h1>
+</motion.h1>
 
-          <p className="mb-8 text-xl text-[#d8fbff]">
+          <motion.p initial={fadeUpVariant.initial} animate={fadeUpVariant.animate} transition={{...fadeUpVariant.transition, delay: shouldReduceMotion ? 0 : 0.05}} className="mb-8 text-xl text-[#d8fbff]">
             Des cotes compétitives, des paris en direct, des jeux de casino et
             des récompenses exclusives
-          </p>
-   <div className="flex flex-col space-y-4 sm:flex-row sm:justify-center sm:space-x-4 sm:space-y-0">
-  <a
+          </motion.p>
+   <motion.div variants={stagger} initial="initial" animate="animate" className="flex flex-col space-y-4 sm:flex-row sm:justify-center sm:space-x-4 sm:space-y-0">
+  <motion.div whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover} whileTap={shouldReduceMotion ? undefined : hoverScale.whileTap} transition={hoverScale.transition}><UIPro06PrimaryButton
     href="/sign-up"
     className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] px-8 py-4 text-lg font-medium text-[#041125] transition-all shadow-[0_0_16px_#00ffa6] hover:shadow-[0_0_25px_rgba(0, 255, 166,0.65)] hover:scale-105"
   >
     Commencer à Parier
-  </a>
-  <a
+  </UIPro06PrimaryButton></motion.div>
+  <motion.div whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover} whileTap={shouldReduceMotion ? undefined : hoverScale.whileTap} transition={hoverScale.transition}><UIPro07SecondaryButton
     href="/casino"
     className="inline-block rounded-lg border border-[#ff4fd8]/40 bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] px-8 py-4 text-lg font-medium text-[#041125] transition-all shadow-[0_0_16px_rgba(168,85,247,0.5)] hover:shadow-[0_0_25px_rgba(255,79,216,0.65)] hover:scale-105"
   >
     Découvrir le Casino
-  </a>
-</div>
+  </UIPro07SecondaryButton></motion.div>
 
+        </motion.div>
         </div>
-      </section>
+      </motion.section>
 
       <div className="mx-auto max-w-7xl px-4 py-8">
         <section className="mb-16 reveal">
@@ -454,7 +462,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           </div>
 
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 reveal-stagger">
-            <a
+            <motion.a initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.25 }} whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }} transition={{ duration: 0.25 }}
               href="/casino/roulette"
               
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
@@ -471,9 +479,9 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 Placez vos paris sur les numéros, couleurs ou sections
               </p>
               {renderFriendWidget("roulette")}
-            </a>
+            </motion.a>
 
-            <a
+            <motion.a initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.25 }} whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }} transition={{ duration: 0.25 }}
               href="/casino/blackjack"
               
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
@@ -490,9 +498,9 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 Affrontez le croupier dans ce jeu de cartes classique
               </p>
               {renderFriendWidget("blackjack")}
-            </a>
+            </motion.a>
 
-            <a
+            <motion.a initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.25 }} whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }} transition={{ duration: 0.25 }}
               href="/casino/poker"
               
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
@@ -509,9 +517,9 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 Affrontez l'IA ou d'autres joueurs dans des parties intenses de poker
               </p>
               {renderFriendWidget("poker")}
-            </a>
+            </motion.a>
 
-            <a
+            <motion.a initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.25 }} whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }} transition={{ duration: 0.25 }}
               href="/casino/plinko"
               
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
@@ -528,7 +536,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 Regardez tomber les balles et multipliez vos gains!
               </p>
               {renderFriendWidget("plinko")}
-            </a>
+            </motion.a>
           </div>
 
           {/* Bouton More centré sous la grille */}
@@ -559,7 +567,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
       key={groupKey}
       className="rounded-lg overflow-hidden border border-[#00e5ff]/30 reveal"
     >
-      <button
+      <motion.button whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover} transition={hoverScale.transition}
         onClick={() =>
           setOpenGroup(openGroup === groupKey ? null : groupKey)
         }
@@ -568,7 +576,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
       >
         <span>{groupKey}</span>
         <span>{openGroup === groupKey ? "▲" : "▼"}</span>
-      </button>
+      </motion.button>
 
       {openGroup === groupKey && (
         <div className="grid grid-cols-2 gap-4 bg-[#050f24] p-4 md:grid-cols-3 lg:grid-cols-5 reveal-stagger">
@@ -603,15 +611,17 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
 </section>
       </div>
 
+      <AnimatePresence>
       {notification && (
-        <div
-          className={`fixed bottom-4 right-4 p-4 rounded-lg text-white ${
+        <motion.div initial={fadeUpVariant.initial} animate={fadeUpVariant.animate} exit={fadeUpVariant.exit} transition={fadeUpVariant.transition}>
+          <UIPro16ToastShell className={`fixed bottom-4 right-4 p-4 rounded-lg text-white ${
             notification.type === "success" ? "bg-green-600" : "bg-red-600"
-          }`}
-        >
-          {notification.message}
-        </div>
+          }`}>
+            {notification.message}
+          </UIPro16ToastShell>
+        </motion.div>
       )}
+      </AnimatePresence>
 {isSignedIn && !dailyRewardCooldown && (
   <button
     onClick={claimDailyReward}
@@ -627,10 +637,13 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
     ⏳ Prochaine récompense dans {cooldownTimeLeft}
   </div>
 )}
+{/* reward modal */}
+<AnimatePresence>
 {rewardPopupVisible && (
-  <div className="fixed inset-0 flex items-center justify-center bg-black/80 z-50">
-    
-    <div className="bg-gradient-to-b from-[#003366] to-[#001a33] 
+  <UIPro17ModalBackdrop className="fixed inset-0 flex items-center justify-center bg-black/80 z-50">
+    <motion.div initial={modalBackdropVariant.initial} animate={modalBackdropVariant.animate} exit={modalBackdropVariant.exit} transition={modalBackdropVariant.transition} className="absolute inset-0" />
+    <motion.div initial={modalPanelVariant.initial} animate={modalPanelVariant.animate} exit={modalPanelVariant.exit} transition={modalPanelVariant.transition} className="relative z-10">
+    <UIPro18ModalPanel className="bg-gradient-to-b from-[#003366] to-[#001a33] 
                 border-2 border-[#FFD700]
                 p-6 rounded-2xl text-white 
                 max-w-4xl w-[95%] text-center shadow-2xl
@@ -720,9 +733,11 @@ const isToday = day === claimedDay;
         Continuer
       </button>
 
-    </div>
-  </div>
+    </UIPro18ModalPanel>
+    </motion.div>
+  </UIPro17ModalBackdrop>
 )}
+</AnimatePresence>
 
 
     </div>
