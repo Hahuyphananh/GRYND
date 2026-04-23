@@ -15,7 +15,6 @@ const MAX_LANES = DEFAULT_LANES;
 export default function LaneRunnerPage() {
   const [betAmount, setBetAmount] = useState(10);
   const [difficulty, setDifficulty] = useState('easy');
-  const [clientSeed, setClientSeed] = useState(`client-${Date.now()}`);
 
   const [currentLane, setCurrentLane] = useState(0);
   const [multiplier, setMultiplier] = useState(1);
@@ -99,7 +98,6 @@ export default function LaneRunnerPage() {
         action: 'start',
         betAmount,
         difficulty,
-        clientSeed,
       }),
     });
 
@@ -117,7 +115,6 @@ export default function LaneRunnerPage() {
     setUserTokens(Number(json.data.newBalance ?? userTokens));
 
     setFairData({
-      clientSeed: json.data.clientSeed,
       serverSeedHash: json.data.serverSeedHash,
       nonce: json.data.nonce,
     });
@@ -275,7 +272,7 @@ export default function LaneRunnerPage() {
 
       <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 pb-10 md:flex-row">
         <div className="w-full rounded-3xl border border-cyan-300/20 bg-slate-900/70 p-5 backdrop-blur md:w-96">
-          <h1 className="text-2xl font-black text-cyan-100">Tower Bet</h1>
+          <h1 className="text-2xl font-black text-cyan-100">Towers</h1>
           <p className="mt-2 text-sm text-white/75">Carve a safe path to the top. One bad tile ends the run.</p>
           <p className="mt-1 text-sm">Balance: {isBalanceLoading ? '...' : userTokens.toFixed(2)}</p>
 
@@ -307,17 +304,11 @@ export default function LaneRunnerPage() {
             ))}
           </div>
 
-          <div className="mt-3 rounded-xl bg-black/25 p-3 text-xs">
-            <p>{difficultyConfig.width} tiles per level • 1 bad tile each level</p>
-            <p>Start: x{difficultyConfig.startMultiplier.toFixed(2)} • Top: x{difficultyConfig.endMultiplier.toFixed(2)}</p>
+            <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <p className="rounded-xl bg-black/30 p-2">Level: {Math.min(currentLane + 1, MAX_LANES)}/{MAX_LANES}</p>
+            <p className="rounded-xl bg-black/30 p-2">x{multiplier.toFixed(2)}</p>
+            <p className="col-span-2 rounded-xl bg-black/30 p-2">Payout: {payout.toFixed(2)}</p>
           </div>
-
-          <label className="mt-4 block text-xs uppercase tracking-wider text-white/60">Client Seed</label>
-          <input
-            className="w-full rounded-xl border border-white/15 bg-slate-950 p-2 text-xs"
-            value={clientSeed}
-            onChange={(e) => setClientSeed(e.target.value)}
-          />
 
           <button
             onClick={startGame}
@@ -327,14 +318,22 @@ export default function LaneRunnerPage() {
             {isLoading && !running ? 'Starting...' : 'Start Tower'}
           </button>
 
-          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-            <p className="rounded-xl bg-black/30 p-2">Level: {Math.min(currentLane + 1, MAX_LANES)}/{MAX_LANES}</p>
-            <p className="rounded-xl bg-black/30 p-2">x{multiplier.toFixed(2)}</p>
-            <p className="col-span-2 rounded-xl bg-black/30 p-2">Payout: {payout.toFixed(2)}</p>
-          </div>
-
           {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
-          {fairData && <p className="mt-3 text-[11px] text-white/50">Fair nonce: {fairData.nonce}</p>}
+                <div className="rounded-3xl border border-white/10 bg-black/30 p-4 text-xs h-fit mt-4">
+  <p className="mb-2 text-sm font-semibold text-cyan-200">Recent Runs</p>
+
+  <div className="max-h-[60vh] overflow-y-auto pr-1">
+    {history.length === 0 && (
+      <p className="text-white/50">No runs yet.</p>
+    )}
+
+    {history.map((h) => (
+      <p key={h.id} className="border-b border-white/10 py-1 last:border-0">
+        {h.result} • level {h.lane} • x{h.multiplier?.toFixed?.(2)} • {h.payout}
+      </p>
+    ))}
+  </div>
+</div>
         </div>
 
         <div className="flex-1">
@@ -353,16 +352,6 @@ export default function LaneRunnerPage() {
             onAttemptTile={handleTowerPick}
             onCashout={cashOut}
           />
-
-          <motion.div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-3 text-xs" layout>
-            <p className="mb-2 text-sm font-semibold text-cyan-200">Recent Runs</p>
-            {history.length === 0 && <p className="text-white/50">No runs yet.</p>}
-            {history.map((h) => (
-              <p key={h.id} className="border-b border-white/10 py-1 last:border-0">
-                {h.result} • level {h.lane} • x{h.multiplier?.toFixed?.(2)} • {h.payout}
-              </p>
-            ))}
-          </motion.div>
         </div>
       </div>
 
