@@ -43,10 +43,24 @@ function NavigationBar({ currentPath }) {
     setTimeout(() => setLangClosing(false), 400);
   };
 
+  const isValidDataUrl = (url) => {
+    return typeof url === 'string' && url.startsWith('data:image/');
+  };
+
+  useEffect(() => {
+  const handler = () => fetchBalance();
+  window.addEventListener("profileUpdated", handler);
+  return () => window.removeEventListener("profileUpdated", handler);
+}, []);
+
   const avatarSrc =
-    profile?.profilePicture?.startsWith("data:image")
+    isValidDataUrl(profile?.profilePicture)
       ? profile.profilePicture
-      : profile?.profilePicture || user?.imageUrl || "/default-avatar.png";
+      : (typeof profile?.profilePicture === 'string' && profile.profilePicture.startsWith('http'))
+      ? profile.profilePicture
+      : (typeof user?.imageUrl === 'string' && user.imageUrl.startsWith('http'))
+      ? user.imageUrl
+      : "/default-avatar.png";
 
   const fetchBalance = async () => {
     try {
@@ -64,7 +78,11 @@ function NavigationBar({ currentPath }) {
 
       if (data.success) {
         setBalance(data.data.balance);
-        setProfile((prev) => ({ ...prev, profilePicture: data.data.profilePicture || "" }));
+        setProfile((prev) => ({
+  ...prev,
+  name: data.data.name || "", // ✅ ADD THIS LINE
+  profilePicture: data.data.profilePicture || "",
+}));
         try {
           const statsRes = await fetch("/api/user-stats");
           const statsData = await statsRes.json();
@@ -148,7 +166,9 @@ function NavigationBar({ currentPath }) {
                     <Link href="/profil" className="group flex items-center space-x-2">
                       {avatarSrc ? <img src={avatarSrc} alt="profile" className="h-8 w-8 rounded-full border border-[#00e5ff]/50 object-cover transition group-hover:scale-105" /> : <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#00e5ff] text-xs font-bold text-black">{user?.firstName?.[0] || "U"}</div>}
                       <div className="flex flex-col leading-tight">
-                        <span className="text-xs text-[#c9f7ff]">{user?.username || user?.firstName || "User"}</span>
+                        <span className="text-xs text-[#c9f7ff]">
+  {profile?.name || user?.username || user?.firstName || "User"}
+</span>
                         <span className="text-[10px] text-[#f5ff3b]">LVL {level ?? "..."}</span>
                       </div>
                     </Link>

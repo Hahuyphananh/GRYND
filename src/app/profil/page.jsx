@@ -583,6 +583,7 @@ const getFriendStatus = (friendId) => {
         password: "",
       }));
       setEditStatus("Profile updated successfully.");
+      window.dispatchEvent(new Event("profileUpdated")); // ✅ ADD THIS
     } catch (err) {
       console.error("[EDIT_PROFILE_ERROR]", err);
       setEditStatus(err.message || "Could not save changes.");
