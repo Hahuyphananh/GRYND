@@ -27,6 +27,18 @@ export default function GameTrack({
   onCashout,
 }) {
   const rowsTopFirst = [...towerRows].reverse();
+  const scrollRef = React.useRef(null);
+  const laneRefs = React.useRef({});
+
+React.useEffect(() => {
+  const el = laneRefs.current[currentLane];
+  if (el) {
+    el.scrollIntoView({
+  behavior: 'smooth',
+  block: 'nearest', // or try 'center' vs 'nearest'
+});
+  }
+}, [currentLane]);
 
   return (
     <div className={`relative overflow-hidden rounded-3xl border border-cyan-300/20 bg-slate-950/85 p-5 shadow-[0_0_55px_rgba(0,215,255,0.22)] ${hasLost ? 'lane-runner-screen-shake' : ''}`}>
@@ -40,7 +52,10 @@ export default function GameTrack({
       <div className="relative rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900 via-[#111735] to-[#060916] p-3">
         <div className="pointer-events-none absolute inset-0 opacity-50 [background-image:radial-gradient(rgba(56,189,248,0.14)_1px,transparent_1px)] [background-size:10px_10px]" />
 
-        <div className="relative z-10 space-y-2">
+        <div
+  ref={scrollRef}
+  className="relative z-10 space-y-1 max-h-[65vh] overflow-y-auto pr-1"
+>
           {rowsTopFirst.map((lane) => {
             const isCurrent = lane === currentLane;
             const isCompleted = lane < currentLane;
@@ -52,10 +67,11 @@ export default function GameTrack({
             return (
               <motion.div
                 key={lane}
+                 ref={(el) => (laneRefs.current[lane] = el)}
                 layout
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`relative rounded-xl border p-2 ${
+                className={`relative rounded-xl border p-1.5 ${
                   isCurrent
                     ? 'border-cyan-300/65 bg-cyan-400/10'
                     : isCompleted
@@ -84,7 +100,7 @@ export default function GameTrack({
                         whileTap={clickable ? { scale: 0.95 } : undefined}
                         onClick={() => onAttemptTile(lane, tileIndex)}
                         disabled={!clickable || isFuture || hasLost || hasCashedOut}
-                        className={`h-12 rounded-lg border text-sm font-black shadow transition-all ${tileClasses({
+                        className={`h-7 md:h-8 rounded-md border text-xs font-bold shadow transition-all ${tileClasses({
                           clickable,
                           selected: isSelected,
                           isCurrent,
