@@ -423,6 +423,179 @@ useEffect(() => {
     }
   };
 
+  const fetchUnoMultiplayerPublicGames = async () => {
+    try {
+      const res = await fetch("/api/uno/multiplayer", {
+        method: "GET",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUnoMultiPublicGames(data.rooms || []);
+      }
+    } catch (err) {
+      console.error("Unable to fetch UNO multiplayer public games:", err);
+      setUnoMultiPublicGames([]);
+    }
+  };
+
+  useEffect(() => {
+    fetchUnoMultiplayerPublicGames();
+  }, []);
+
+  useEffect(() => {
+    if (!unoMultiTableCode || unoMultiStarted) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/uno/multiplayer?code=${unoMultiTableCode}`, {
+          method: "GET",
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (!data.success) return;
+        setUnoMultiPlayers(data.room.players || []);
+        setUnoMultiSettings((prev) => ({ ...prev, ...(data.room.settings || {}) }));
+        setUnoMultiHostId(data.room.players.find((p) => p.isHost)?.id ?? null);
+        const me = data.room.players.find((p) => p.id === unoMultiMyId || p.name === "You");
+        if (me) setUnoMultiMyId(me.id);
+        if (data.room.started) {
+          setUnoMultiStarted(true);
+          setGameMode("multi-online");
+          setUnoMultiMessage("UNO multiplayer table started.");
+        }
+      } catch (err) {
+        console.error("Unable to sync UNO multiplayer room:", err);
+      }
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [unoMultiTableCode, unoMultiStarted, unoMultiMyId]);
+
+  const resetUnoMultiplayerLobby = async () => {
+    if (unoMultiTableCode) {
+      try {
+        await fetch("/api/uno/multiplayer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ action: "leave", code: unoMultiTableCode }),
+        });
+      } catch (err) {
+        console.error("Unable to leave UNO multiplayer table:", err);
+      }
+    }
+    setUnoMultiTableCode("");
+    setUnoMultiPlayers([]);
+    setUnoMultiHostId(null);
+    setUnoMultiMyId(null);
+    setUnoMultiStarted(false);
+    setUnoMultiMessage("");
+    await fetchUnoMultiplayerPublicGames();
+  };
+
+  const createUnoMultiplayerTable = async () => {
+    try {
+      const res = await fetch("/api/uno/multiplayer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "create", settings: unoMultiSettings }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setUnoMultiMessage(data.error || "Unable to create multiplayer table.");
+        return;
+      }
+
+      const myPlayer = data.room.players.find((p) => p.userId === data.currentUserId) ?? data.room.players[0];
+      setUnoMultiTableCode(data.room.code);
+      setUnoMultiPlayers(data.room.players || []);
+      setUnoMultiHostId(myPlayer?.id ?? null);
+      setUnoMultiMyId(myPlayer?.id ?? null);
+      setUnoMultiStarted(Boolean(data.room.started));
+      setUnoMultiMessage("Table created. Add players or bots, then start the game.");
+      await fetchUnoMultiplayerPublicGames();
+    } catch (err) {
+      console.error("Unable to create UNO multiplayer table:", err);
+      setUnoMultiMessage("Unable to create multiplayer table.");
+    }
+  };
+
+  const joinUnoPublicTable = async (tableCode) => {
+    try {
+      const res = await fetch("/api/uno/multiplayer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "join", code: tableCode }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setUnoMultiMessage(data.error || "Unable to join table.");
+        return;
+      }
+      const myPlayer = data.room.players.find((p) => p.userId === data.currentUserId) || data.room.players[data.room.players.length - 1];
+      setUnoMultiTableCode(data.room.code);
+      setUnoMultiPlayers(data.room.players || []);
+      setUnoMultiHostId(data.room.players.find((p) => p.isHost)?.id ?? null);
+      setUnoMultiMyId(myPlayer?.id ?? null);
+      setUnoMultiStarted(Boolean(data.room.started));
+      setUnoMultiSettings((prev) => ({ ...prev, ...(data.room.settings || {}) }));
+      setUnoMultiMessage(`Joined public table ${data.room.code}. Waiting for host to start.`);
+      await fetchUnoMultiplayerPublicGames();
+    } catch (err) {
+      console.error("Unable to join UNO multiplayer table:", err);
+      setUnoMultiMessage("Unable to join table.");
+    }
+  };
+
+  const addUnoMultiAiToSeat = async (seatIndex) => {
+    if (!unoMultiHostId || unoMultiStarted || !unoMultiTableCode) return;
+    try {
+      const res = await fetch("/api/uno/multiplayer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "add-ai", code: unoMultiTableCode, seatIndex }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setUnoMultiMessage(data.error || "Unable to add AI.");
+        return;
+      }
+      setUnoMultiPlayers(data.room.players || []);
+    } catch (err) {
+      console.error("Unable to add UNO AI to seat:", err);
+    }
+  };
+
+  const startUnoMultiplayerGame = async () => {
+    if (unoMultiPlayers.length < 2) {
+      setUnoMultiMessage("Add at least one more player or AI before starting.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/uno/multiplayer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "start", code: unoMultiTableCode }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setUnoMultiMessage(data.error || "Unable to start UNO table.");
+        return;
+      }
+      setUnoMultiStarted(true);
+      setGameMode("multi-online");
+      setUnoMultiPlayers(data.room.players || []);
+      setUnoMultiMessage("UNO multiplayer table started.");
+      await fetchUnoMultiplayerPublicGames();
+    } catch (err) {
+      console.error("Unable to start UNO multiplayer table:", err);
+    }
+  };
+
   const fetchAvailableGames = async () => {
     if (typeof document !== "undefined" && document.hidden) return;
     if (game || waitingGameId) return;
@@ -1275,6 +1448,35 @@ hover:scale-105 transition-all duration-300"
       {unoMultiGameState?.status === "finished" && (
         <p className="text-sm text-green-300 mt-2">Round finished. Winner seat ID: {unoMultiGameState.winnerId || "none"}</p>
       )}
+    </div>
+  </div>
+) : showUnoMultiBoard ? (
+  <div className="w-full max-w-5xl min-h-[640px] bg-green-700/90 rounded-[2.5rem] shadow-2xl border-8 border-green-950 p-6 relative casino-surface overflow-hidden">
+    <div className="flex items-center justify-between">
+      <h2 className="text-xl font-bold">UNO Multiplayer Table</h2>
+      <button onClick={returnToLobby} className="bg-[#f5ff3b] text-[#031026] px-4 py-2 rounded font-bold">Lobby</button>
+    </div>
+    <p className="text-sm text-[#d1fae5] mt-1">Mode: {unoMultiSettings.visibility} · Bet: {unoMultiSettings.betAmount} · Turn timer: {unoMultiSettings.turnTimeSeconds}s</p>
+    <div className="relative w-full h-[520px] mt-4 rounded-full border-8 border-yellow-900/80 bg-green-800/80">
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
+        <p className="text-yellow-300 font-semibold mb-2">UNO Draw / Discard</p>
+        <div className="flex gap-3 justify-center">
+          <UnoBack />
+          {topCard ? <UnoCard color={topCard.color} value={topCard.value} onClick={() => {}} /> : <div className="w-16 h-24 rounded-lg bg-[#0f172a]/60 border border-white/25" />}
+        </div>
+      </div>
+      {UNO_MULTI_SEAT_POSITIONS.map((pos, seatIndex) => {
+        const player = unoMultiPlayers.find((p) => p.seatIndex === seatIndex);
+        if (!player || seatIndex >= unoMultiSettings.maxPlayers) return null;
+        return (
+          <div key={`${player.id}-${seatIndex}`} className="absolute" style={{ left: pos.left, top: pos.top, transform: "translate(-50%, -50%)" }}>
+            <div className={`w-32 rounded-xl border px-2 py-2 text-center ${player.id === unoMultiMyId ? "bg-yellow-300 text-black border-yellow-100" : "bg-[#08142f] border-[#00e5ff]/35 text-white"}`}>
+              <p className="text-xs font-bold truncate">{player.type === "ai" ? "🤖" : "👤"} {player.name}</p>
+              <p className="text-[11px] opacity-80">Seat {seatIndex + 1}</p>
+            </div>
+          </div>
+        );
+      })}
     </div>
   </div>
 ) : (
