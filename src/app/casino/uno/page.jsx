@@ -83,6 +83,9 @@ const [unoMultiHostId, setUnoMultiHostId] = useState(null);
 const [unoMultiMyId, setUnoMultiMyId] = useState(null);
 const [unoMultiStarted, setUnoMultiStarted] = useState(false);
 const [unoMultiMessage, setUnoMultiMessage] = useState("");
+const [unoMultiJoinCode, setUnoMultiJoinCode] = useState("");
+const [unoMultiSkipRound, setUnoMultiSkipRound] = useState(false);
+const [unoMultiBackendMode, setUnoMultiBackendMode] = useState(null);
 
 useGamePresence({ gameKey: "uno", gameId: Number(game?.id), enabled: Boolean(game?.id) });
 
@@ -144,8 +147,27 @@ useEffect(() => {
     fetchUnoMultiplayerPublicGames();
   }, []);
 
+  const hydrateUnoTableGame = (tableGame) => {
+    if (!tableGame?.id) return;
+    setGame({ id: tableGame.id, role: tableGame.role });
+    setGameMode("multi-online");
+    setUnoMultiBackendMode(tableGame.mode);
+    setUnoMultiStarted(true);
+    setTopCard(tableGame.topCard || null);
+    setTurnHistory(tableGame.topCard ? [tableGame.topCard] : []);
+    setHistoryIndex(null);
+    const isAiMode = tableGame.mode === "ai";
+    const normalizedHand = Array.isArray(tableGame.playerHand) ? tableGame.playerHand : [];
+    setPlayerHand(normalizedHand);
+    setAiHandCount(isAiMode ? (tableGame.aiHandCount ?? 0) : (tableGame.opponentHandCount ?? 0));
+    const turnRole = tableGame.turn;
+    const myTurn = isAiMode ? turnRole === "player" : turnRole === tableGame.role;
+    setIsPlayerTurn(Boolean(myTurn));
+    setMessage(myTurn ? "À ton tour !" : "Tour adverse...");
+  };
+
   useEffect(() => {
-    if (!unoMultiTableCode || unoMultiStarted) return;
+    if (!unoMultiTableCode) return;
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/uno/multiplayer?code=${unoMultiTableCode}`, {
@@ -161,8 +183,16 @@ useEffect(() => {
         if (me) setUnoMultiMyId(me.id);
         if (data.room.started) {
           setUnoMultiStarted(true);
-          setGameMode("multi-online");
-          setUnoMultiMessage("UNO multiplayer table started.");
+          const stateRes = await fetch("/api/uno/multiplayer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ action: "sync-active-game", code: unoMultiTableCode }),
+          });
+          const stateData = await stateRes.json();
+          if (stateData.success && stateData.game) {
+            hydrateUnoTableGame(stateData.game);
+          }
         }
       } catch (err) {
         console.error("Unable to sync UNO multiplayer room:", err);
@@ -175,12 +205,17 @@ useEffect(() => {
   const resetUnoMultiplayerLobby = async () => {
     if (unoMultiTableCode) {
       try {
-        await fetch("/api/uno/multiplayer", {
+        const res = await fetch("/api/uno/multiplayer", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({ action: "leave", code: unoMultiTableCode }),
         });
+        const data = await res.json();
+        if (!data.success) {
+          setUnoMultiMessage(data.error || "Unable to leave table.");
+          return;
+        }
       } catch (err) {
         console.error("Unable to leave UNO multiplayer table:", err);
       }
@@ -191,8 +226,27 @@ useEffect(() => {
     setUnoMultiMyId(null);
     setUnoMultiStarted(false);
     setUnoMultiMessage("");
+    setUnoMultiBackendMode(null);
+    setUnoMultiSkipRound(false);
     await fetchUnoMultiplayerPublicGames();
   };
+
+  useEffect(() => {
+    if (!unoMultiTableCode) return;
+    const syncSkip = async () => {
+      try {
+        await fetch("/api/uno/multiplayer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ action: "toggle-skip", code: unoMultiTableCode, skipNextRound: unoMultiSkipRound }),
+        });
+      } catch (err) {
+        console.error("Unable to toggle skip round:", err);
+      }
+    };
+    syncSkip();
+  }, [unoMultiSkipRound, unoMultiTableCode]);
 
   const createUnoMultiplayerTable = async () => {
     try {
@@ -214,6 +268,7 @@ useEffect(() => {
       setUnoMultiHostId(myPlayer?.id ?? null);
       setUnoMultiMyId(myPlayer?.id ?? null);
       setUnoMultiStarted(Boolean(data.room.started));
+      setUnoMultiBackendMode(null);
       setUnoMultiMessage("Table created. Add players or bots, then start the game.");
       await fetchUnoMultiplayerPublicGames();
     } catch (err) {
@@ -248,6 +303,14 @@ useEffect(() => {
       console.error("Unable to join UNO multiplayer table:", err);
       setUnoMultiMessage("Unable to join table.");
     }
+  };
+
+  const joinUnoPrivateTable = async () => {
+    if (!unoMultiJoinCode.trim()) {
+      setUnoMultiMessage("Enter an invite code to join a private table.");
+      return;
+    }
+    await joinUnoPublicTable(unoMultiJoinCode.trim().toUpperCase());
   };
 
   const addUnoMultiAiToSeat = async (seatIndex) => {
@@ -288,8 +351,13 @@ useEffect(() => {
         return;
       }
       setUnoMultiStarted(true);
-      setGameMode("multi-online");
       setUnoMultiPlayers(data.room.players || []);
+      if (data.game) {
+        hydrateUnoTableGame(data.game);
+      }
+      if (data.game?.newBalance) {
+        setTokens({ balance: data.game.newBalance });
+      }
       setUnoMultiMessage("UNO multiplayer table started.");
       await fetchUnoMultiplayerPublicGames();
     } catch (err) {
@@ -461,7 +529,7 @@ const sendPlayCard = async (card, chosenColor = null) => {
     setShowColorPicker(false);  // ✅ make sure popup closes
     await checkForWinner(game.id);
 
-    if (!data.data.isPlayerTurn && gameMode === "ai") {
+    if (!data.data.isPlayerTurn && (gameMode === "ai" || (gameMode === "multi-online" && unoMultiBackendMode === "ai"))) {
       setTimeout(() => handleAITurn(game.id), 1000);
     }
   } else {
@@ -652,7 +720,7 @@ const createOnlineGame = async () => {
 };
 
 useEffect(() => {
-  if (!game?.id || gameMode !== "online") return;
+  if (!game?.id || !["online", "multi-online"].includes(gameMode)) return;
 
   const interval = setInterval(async () => {
     try {
@@ -666,9 +734,10 @@ useEffect(() => {
       if (!data.success || !data.data) return;
 
       setPlayerHand(data.data.playerHand);
-      setAiHandCount(data.data.opponentHandCount);
+      const multiplayerAi = gameMode === "multi-online" && unoMultiBackendMode === "ai";
+      setAiHandCount(multiplayerAi ? (data.data.aiHandCount ?? 0) : data.data.opponentHandCount);
       setTopCard(data.data.topCard);
-      setIsPlayerTurn(data.data.turn === data.data.role);
+      setIsPlayerTurn(multiplayerAi ? data.data.turn === "player" : data.data.turn === data.data.role);
 
      if (data.status === "finished") {
   const youWon = data.data.winner === data.data.role;
@@ -695,7 +764,7 @@ useEffect(() => {
   }, 2000);
 
   return () => clearInterval(interval);
-}, [game?.id, gameMode]);
+}, [game?.id, gameMode, unoMultiBackendMode]);
 
 useEffect(() => {
   return () => {
@@ -735,7 +804,7 @@ const isGameFinished =
     }
 
     // Show result instantly
-    if (gameMode === "online") {
+    if (gameMode === "online" || gameMode === "multi-online") {
       setMessage("😢 Tu as abandonné la partie.");
     } else {
       setMessage("😢 Tu as abandonné contre l'IA.");
@@ -787,7 +856,8 @@ setHistoryIndex(null); // back to live mode
   setMessage(gameMode === "ai" ? "L'IA joue..." : "Tour adverse...");
   await checkForWinner(game.id);
 
-  if (gameMode === "ai") {
+  const shouldTriggerAiTurn = gameMode === "ai" || (gameMode === "multi-online" && unoMultiBackendMode === "ai");
+  if (shouldTriggerAiTurn) {
     setTimeout(() => handleAITurn(game.id), 1000);
   }
 }
@@ -801,7 +871,7 @@ const displayedCard =
     ? topCard
     : turnHistory[historyIndex];
 
-const showUnoMultiBoard = gameMode === "multi-online" && unoMultiStarted;
+const showUnoMultiBoard = false;
 
     const returnToLobby = () => {
   setGame(null);
@@ -819,6 +889,7 @@ const showUnoMultiBoard = gameMode === "multi-online" && unoMultiStarted;
   setWaitingGameId(null);
   setDrawnCardAnimation(null);
   setPlayedCardAnimation(null);
+  setUnoMultiBackendMode(null);
   resetUnoMultiplayerLobby();
 
   // Optional: refresh available games when returning
@@ -1017,6 +1088,10 @@ hover:scale-105 transition-all duration-300"
               </select>
             </div>
             <button onClick={createUnoMultiplayerTable} className="mt-4 w-full rounded-lg bg-[#f5ff3b] text-[#031026] font-bold py-2">Create Multiplayer Table</button>
+            <div className="mt-3 flex gap-2">
+              <input value={unoMultiJoinCode} onChange={(e) => setUnoMultiJoinCode(e.target.value.toUpperCase())} className="flex-1 bg-[#001933] border border-[#00e5ff]/35 rounded px-3 py-2" placeholder="Invite code" />
+              <button onClick={joinUnoPrivateTable} className="px-4 py-2 rounded bg-[#00e5ff] text-[#001933] font-semibold">Join Private Game</button>
+            </div>
 
             {unoMultiPublicGames.length > 0 && (
               <div className="mt-4 rounded-lg border border-[#00e5ff]/30 p-3 bg-[#001933]">
@@ -1036,6 +1111,10 @@ hover:scale-105 transition-all duration-300"
           <div>
             <p className="text-sm text-[#a5f3fc] mb-2">Table code: <span className="font-bold text-yellow-300">{unoMultiTableCode}</span> · {unoMultiSettings.visibility}</p>
             <p className="text-xs text-gray-300 mb-3">Click empty seats to add AI players (host only), then start the table.</p>
+            <label className="inline-flex items-center gap-2 mb-3 text-sm text-yellow-100">
+              <input type="checkbox" checked={unoMultiSkipRound} onChange={(e) => setUnoMultiSkipRound(e.target.checked)} />
+              Skip next round (you stay at table but won't be selected in next game)
+            </label>
             <div className="relative w-full h-[320px] rounded-3xl bg-green-800/70 border-4 border-green-950">
               {UNO_MULTI_SEAT_POSITIONS.map((pos, seatIndex) => {
                 const isEnabledSeat = seatIndex < unoMultiSettings.maxPlayers;
@@ -1059,8 +1138,21 @@ hover:scale-105 transition-all duration-300"
             </div>
             <div className="mt-4 flex gap-3">
               <button onClick={startUnoMultiplayerGame} disabled={!unoMultiHostId} className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 px-4 py-2 rounded font-bold">Start Game</button>
-              <button onClick={resetUnoMultiplayerLobby} className="flex-1 bg-red-600 hover:bg-red-500 px-4 py-2 rounded font-bold">Leave Table</button>
+              <button onClick={resetUnoMultiplayerLobby} className="flex-1 bg-red-600 hover:bg-red-500 px-4 py-2 rounded font-bold">Leave Table (out of game only)</button>
             </div>
+            {unoMultiPublicGames.length > 0 && (
+              <div className="mt-4 rounded-lg border border-[#00e5ff]/30 p-3 bg-[#001933]">
+                <p className="font-semibold mb-2">Available multiplayer games</p>
+                <div className="space-y-2">
+                  {unoMultiPublicGames.slice(0, 6).map((entry) => (
+                    <div key={entry.code} className="flex items-center justify-between bg-[#0d335f]/80 rounded px-3 py-2">
+                      <span className="text-sm">{entry.name} ({entry.occupiedSeats}/{entry.maxPlayers}) • Bet {entry.betAmount}</span>
+                      <button onClick={() => joinUnoPublicTable(entry.code)} className="px-3 py-1 rounded bg-[#00e5ff] text-[#001933] font-semibold">Join Game</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {unoMultiMessage && <p className="text-sm text-yellow-200 mt-3">{unoMultiMessage}</p>}
           </div>
         )}
@@ -1098,6 +1190,11 @@ hover:scale-105 transition-all duration-300"
   </div>
 ) : (
   <div className="w-full max-w-5xl min-h-[640px] md:aspect-[2/1] bg-green-700/90 rounded-[2.5rem] flex flex-col justify-between items-center shadow-2xl border-8 border-green-950 p-6 pb-36 relative casino-surface overflow-hidden">
+    {gameMode === "multi-online" && unoMultiSettings.visibility === "private" && unoMultiTableCode && (
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-black/40 border border-yellow-300/60 rounded px-3 py-1 text-sm">
+        Invite code: <span className="font-bold text-yellow-300">{unoMultiTableCode}</span>
+      </div>
+    )}
     {/* Opponent hand */}
     <div className={`px-4 py-1 rounded-full ${!isPlayerTurn ? "turn-active-glow" : ""}`}>{gameMode === "online" ? "Main adverse:" : "Main de l'IA:"}</div>
     <div className="flex justify-center gap-2">
