@@ -86,6 +86,8 @@ const [unoMultiMessage, setUnoMultiMessage] = useState("");
 const [unoMultiJoinCode, setUnoMultiJoinCode] = useState("");
 const [unoMultiSkipRound, setUnoMultiSkipRound] = useState(false);
 const [unoMultiBackendMode, setUnoMultiBackendMode] = useState(null);
+const [unoMultiHandCounts, setUnoMultiHandCounts] = useState([]);
+const [unoMultiTurnPlayerId, setUnoMultiTurnPlayerId] = useState(null);
 
 useGamePresence({ gameKey: "uno", gameId: Number(game?.id), enabled: Boolean(game?.id) });
 
@@ -154,14 +156,17 @@ useEffect(() => {
     setUnoMultiBackendMode(tableGame.mode);
     setUnoMultiStarted(true);
     setTopCard(tableGame.topCard || null);
+    setUnoMultiHandCounts(Array.isArray(tableGame.handCounts) ? tableGame.handCounts : []);
+    setUnoMultiTurnPlayerId(tableGame.turnPlayerId || null);
     setTurnHistory(tableGame.topCard ? [tableGame.topCard] : []);
     setHistoryIndex(null);
     const isAiMode = tableGame.mode === "ai";
+    const isTableMode = tableGame.mode === "table";
     const normalizedHand = Array.isArray(tableGame.playerHand) ? tableGame.playerHand : [];
     setPlayerHand(normalizedHand);
     setAiHandCount(isAiMode ? (tableGame.aiHandCount ?? 0) : (tableGame.opponentHandCount ?? 0));
-    const turnRole = tableGame.turn;
-    const myTurn = isAiMode ? turnRole === "player" : turnRole === tableGame.role;
+    const turnRole = tableGame.turn || tableGame.turnPlayerId;
+    const myTurn = isTableMode ? tableGame.turnPlayerId === tableGame.role : (isAiMode ? turnRole === "player" : turnRole === tableGame.role);
     setIsPlayerTurn(Boolean(myTurn));
     setMessage(myTurn ? "À ton tour !" : "Tour adverse...");
   };
@@ -228,6 +233,8 @@ useEffect(() => {
     setUnoMultiMessage("");
     setUnoMultiBackendMode(null);
     setUnoMultiSkipRound(false);
+    setUnoMultiHandCounts([]);
+    setUnoMultiTurnPlayerId(null);
     await fetchUnoMultiplayerPublicGames();
   };
 
@@ -385,6 +392,7 @@ useEffect(() => {
   };
   // ✅ Winner check helper
   const checkForWinner = async (gameId) => {
+    if (gameMode === "multi-online" && unoMultiBackendMode === "table") return;
     try {
       const res = await fetch("/api/uno/determine-winner", {
         method: "POST",
@@ -502,10 +510,11 @@ const sendPlayCard = async (card, chosenColor = null) => {
     return;
   }
 
-  const res = await fetch("/api/uno/play-card", {
+  const playEndpoint = gameMode === "multi-online" && unoMultiBackendMode === "table" ? "/api/uno/multiplayer/play-card" : "/api/uno/play-card";
+  const res = await fetch(playEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ gameId: game.id, card, chosenColor }),
+    body: JSON.stringify(gameMode === "multi-online" && unoMultiBackendMode === "table" ? { code: unoMultiTableCode, card, chosenColor } : { gameId: game.id, card, chosenColor }),
   });
 
   const data = await res.json();
@@ -523,7 +532,9 @@ const sendPlayCard = async (card, chosenColor = null) => {
     setTurnHistory((prev) => [...prev, data.data.topCard]);
     setHistoryIndex(null); // back to live mode
     setAiHandCount(data.data.aiHandCount ?? data.data.opponentHandCount ?? 0);
-    setIsPlayerTurn(data.data.isPlayerTurn);
+    setUnoMultiHandCounts(Array.isArray(data.data.handCounts) ? data.data.handCounts : unoMultiHandCounts);
+    setUnoMultiTurnPlayerId(data.data.turnPlayerId || null);
+    setIsPlayerTurn((gameMode === "multi-online" && unoMultiBackendMode === "table") ? data.data.turnPlayerId === data.data.role : data.data.isPlayerTurn);
     setMessage(data.data.message || "À ton tour !");
     setPendingCard(null);       // ✅ clear pending card
     setShowColorPicker(false);  // ✅ make sure popup closes
@@ -724,20 +735,24 @@ useEffect(() => {
 
   const interval = setInterval(async () => {
     try {
-      const res = await fetch("/api/uno/check-game", {
+      const isTableMode = gameMode === "multi-online" && unoMultiBackendMode === "table";
+      const res = await fetch(isTableMode ? "/api/uno/multiplayer/check-game" : "/api/uno/check-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId: game.id }),
+        body: JSON.stringify(isTableMode ? { code: unoMultiTableCode } : { gameId: game.id }),
       });
       const data = await res.json();
 
       if (!data.success || !data.data) return;
 
-      setPlayerHand(data.data.playerHand);
+      setPlayerHand(data.data.playerHand || []);
       const multiplayerAi = gameMode === "multi-online" && unoMultiBackendMode === "ai";
-      setAiHandCount(multiplayerAi ? (data.data.aiHandCount ?? 0) : data.data.opponentHandCount);
+      const tableMode = gameMode === "multi-online" && unoMultiBackendMode === "table";
+      setAiHandCount(multiplayerAi ? (data.data.aiHandCount ?? 0) : (data.data.opponentHandCount ?? aiHandCount));
       setTopCard(data.data.topCard);
-      setIsPlayerTurn(multiplayerAi ? data.data.turn === "player" : data.data.turn === data.data.role);
+      setUnoMultiHandCounts(Array.isArray(data.data.handCounts) ? data.data.handCounts : []);
+      setUnoMultiTurnPlayerId(data.data.turnPlayerId || null);
+      setIsPlayerTurn(tableMode ? data.data.turnPlayerId === data.data.role : (multiplayerAi ? data.data.turn === "player" : data.data.turn === data.data.role));
 
      if (data.status === "finished") {
   const youWon = data.data.winner === data.data.role;
@@ -764,7 +779,7 @@ useEffect(() => {
   }, 2000);
 
   return () => clearInterval(interval);
-}, [game?.id, gameMode, unoMultiBackendMode]);
+}, [game?.id, gameMode, unoMultiBackendMode, unoMultiTableCode, aiHandCount]);
 
 useEffect(() => {
   return () => {
@@ -787,10 +802,10 @@ const isGameFinished =
   setIsResigning(true);
 
   try {
-    const res = await fetch("/api/uno/resign", {
+    const res = await fetch(gameMode === "multi-online" && unoMultiBackendMode === "table" ? "/api/uno/multiplayer/resign" : "/api/uno/resign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: JSON.stringify(gameMode === "multi-online" && unoMultiBackendMode === "table" ? { code: unoMultiTableCode } : {
         gameId: game.id,
         gameMode, // "ai" or "online"
       }),
@@ -830,10 +845,11 @@ const drawCard = async () => {
     if (historyIndex !== null) return; // block while browsing history
     const previousHandLength = playerHand.length;
     setLoading(true);
-    const res = await fetch("/api/uno/draw-card", {
+    const drawEndpoint = gameMode === "multi-online" && unoMultiBackendMode === "table" ? "/api/uno/multiplayer/draw-card" : "/api/uno/draw-card";
+    const res = await fetch(drawEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gameId: game.id }),
+      body: JSON.stringify(gameMode === "multi-online" && unoMultiBackendMode === "table" ? { code: unoMultiTableCode } : { gameId: game.id }),
     });
 
     const data = await res.json();
@@ -853,7 +869,7 @@ setHistoryIndex(null); // back to live mode
 
   setAiHandCount(data.data.aiHandCount ?? data.data.opponentHandCount ?? aiHandCount);
   setIsPlayerTurn(data.data.isPlayerTurn);
-  setMessage(gameMode === "ai" ? "L'IA joue..." : "Tour adverse...");
+  setMessage(gameMode === "ai" ? "L'IA joue..." : "Tour suivant...");
   await checkForWinner(game.id);
 
   const shouldTriggerAiTurn = gameMode === "ai" || (gameMode === "multi-online" && unoMultiBackendMode === "ai");
@@ -871,7 +887,7 @@ const displayedCard =
     ? topCard
     : turnHistory[historyIndex];
 
-const showUnoMultiBoard = false;
+const showUnoMultiBoard = gameMode === "multi-online" && unoMultiBackendMode === "table";
 
     const returnToLobby = () => {
   setGame(null);
@@ -1196,13 +1212,24 @@ hover:scale-105 transition-all duration-300"
       </div>
     )}
     {/* Opponent hand */}
-    <div className={`px-4 py-1 rounded-full ${!isPlayerTurn ? "turn-active-glow" : ""}`}>{gameMode === "online" ? "Main adverse:" : "Main de l'IA:"}</div>
-    <div className="flex justify-center gap-2">
-      {Array(aiHandCount)
-        .fill(0)
-        .map((_, i) => (
-          <UnoBack key={i} />
-        ))}
+    <div className={`px-4 py-1 rounded-full ${!isPlayerTurn ? "turn-active-glow" : ""}`}>{gameMode === "online" ? "Main adverse:" : gameMode === "multi-online" ? "Autres joueurs:" : "Main de l'IA:"}</div>
+    <div className="flex justify-center gap-2 flex-wrap max-w-4xl">
+      {gameMode === "multi-online" && unoMultiBackendMode === "table"
+        ? unoMultiHandCounts
+            .filter((entry) => entry.playerId !== game?.role)
+            .sort((a, b) => a.seatIndex - b.seatIndex)
+            .map((entry) => (
+              <div key={entry.playerId} className={`rounded-xl px-2 py-2 border min-w-[120px] ${unoMultiTurnPlayerId === entry.playerId ? "border-yellow-300 bg-yellow-300/20" : "border-white/25 bg-black/20"}`}>
+                <p className="text-xs font-semibold truncate">{entry.type === "ai" ? "🤖" : "👤"} {entry.name}</p>
+                <div className="flex gap-1 mt-1 justify-center">{Array(Math.min(entry.count, 8)).fill(0).map((_, i) => <UnoBack key={`${entry.playerId}-${i}`} />)}</div>
+                <p className="text-[10px] text-center mt-1">{entry.count} cartes</p>
+              </div>
+            ))
+        : Array(aiHandCount)
+            .fill(0)
+            .map((_, i) => (
+              <UnoBack key={i} />
+            ))}
     </div>
     
 {showColorPicker && (
