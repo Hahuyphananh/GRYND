@@ -430,11 +430,11 @@ drop-shadow-[0_0_50px_rgba(255,79,216,0.5)] tracking-widest uppercase
 animate-[shimmerGradient_8s_ease-in-out_infinite]"
   style={{ backgroundSize: "200% auto" }}
 >
-  Pariez sur vos Sports Préférés et Jouez au Casino
+  Pariez sur vos Sports Préférés et Testez vos habilités au Casino
 </motion.h1>
 
           <motion.p initial={fadeUpVariant.initial} animate={fadeUpVariant.animate} transition={{...fadeUpVariant.transition, delay: shouldReduceMotion ? 0 : 0.05}} className="mb-8 text-xl text-[#d8fbff]">
-            Des cotes compétitives, des paris en direct, des jeux de casino et
+            Des cotes compétitives, des paris en direct, des jeux d'habilités et
             des récompenses exclusives
           </motion.p>
    <motion.div variants={stagger} initial="initial" animate="animate" className="flex flex-col space-y-4 sm:flex-row sm:justify-center sm:space-x-4 sm:space-y-0">
