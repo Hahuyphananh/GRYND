@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
+import { useTranslation } from "../hooks/useTranslation";
 
 function OutcomeButton({ label, price, onClick }) {
   return (
@@ -25,6 +26,7 @@ export default function EventCard({
   oddsDraw,
   odds2,
 }) {
+  const { t } = useTranslation();
   const fallbackEvent = useMemo(() => {
     if (event) return event;
 
@@ -56,12 +58,12 @@ export default function EventCard({
 
   const label =
     selectedMarket === "spreads"
-      ? "Spread"
+      ? t("sports.point_spread")
       : selectedMarket === "totals"
-      ? "Total"
+      ? t("sports.over_under")
       : selectedMarket === "props"
-      ? "Prop"
-      : "Moneyline";
+      ? t("sports.prop_bets")
+      : t("sports.moneyline");
 
   return (
     <div className="rounded-xl border border-[#00e5ff]/45 bg-[#081734]/90 p-4 shadow-[0_0_18px_rgba(0,229,255,0.2)]">
