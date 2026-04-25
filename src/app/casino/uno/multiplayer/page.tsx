@@ -24,6 +24,7 @@ export default function UnoMultiplayerPage() {
 
   const [game, setGame] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [tokens, setTokens] = useState<{ balance: number } | null>(null);
   const [unoMultiSettings, setUnoMultiSettings] = useState({
     gameName: "UNO Table",
     visibility: "private",
@@ -56,6 +57,23 @@ export default function UnoMultiplayerPage() {
   const [pendingCard, setPendingCard] = useState<any>(null);
 
   useGamePresence({ gameKey: "uno", gameId: Number(game?.id), enabled: Boolean(game?.id) });
+
+  useEffect(() => {
+    const fetchTokens = async () => {
+      try {
+        const res = await fetch("/api/get-user-tokens", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (data.success) setTokens({ balance: Number(data.data.balance) });
+      } catch (error) {
+        console.error("Unable to load tokens", error);
+      }
+    };
+    fetchTokens();
+  }, []);
 
   const fetchUnoMultiplayerPublicGames = async () => {
     try {
@@ -115,7 +133,7 @@ export default function UnoMultiplayerPage() {
         setUnoMultiPlayers(data.room.players || []);
         setUnoMultiSettings((prev) => ({ ...prev, ...(data.room.settings || {}) }));
         setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
-        const me = data.room.players.find((p: any) => p.id === unoMultiMyId || p.name === "You");
+        const me = data.room.players.find((p: any) => p.userId === data.currentUserId) || data.room.players.find((p: any) => p.id === unoMultiMyId);
         if (me) setUnoMultiMyId(me.id);
 
         if (data.room.started) {
@@ -210,7 +228,7 @@ export default function UnoMultiplayerPage() {
       const myPlayer = data.room.players.find((p: any) => p.userId === data.currentUserId) ?? data.room.players[0];
       setUnoMultiTableCode(data.room.code);
       setUnoMultiPlayers(data.room.players || []);
-      setUnoMultiHostId(myPlayer?.id ?? null);
+      setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
       setUnoMultiMyId(myPlayer?.id ?? null);
       setUnoMultiStarted(Boolean(data.room.started));
       setUnoMultiMessage("Table created. Add players or AI, then start.");
@@ -256,8 +274,14 @@ export default function UnoMultiplayerPage() {
     joinUnoPublicTable(unoMultiJoinCode.trim().toUpperCase());
   };
 
+  const isHost = useMemo(() => {
+    const me = unoMultiPlayers.find((p) => p.id === unoMultiMyId);
+    if (me?.isHost) return true;
+    return Boolean(unoMultiMyId && unoMultiHostId && unoMultiMyId === unoMultiHostId);
+  }, [unoMultiPlayers, unoMultiMyId, unoMultiHostId]);
+
   const addUnoMultiAiToSeat = async (seatIndex: number) => {
-    if (!unoMultiHostId || unoMultiStarted || !unoMultiTableCode) return;
+    if (!isHost || unoMultiStarted || !unoMultiTableCode) return;
     try {
       const res = await fetch("/api/uno/multiplayer", {
         method: "POST",
@@ -271,6 +295,7 @@ export default function UnoMultiplayerPage() {
         return;
       }
       setUnoMultiPlayers(data.room.players || []);
+      setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
     } catch (error) {
       console.error("Unable to add AI", error);
     }
@@ -296,7 +321,11 @@ export default function UnoMultiplayerPage() {
       }
       setUnoMultiStarted(true);
       setUnoMultiPlayers(data.room.players || []);
+      setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
       if (data.game) hydrateUnoTableGame(data.game);
+      if (typeof data.game?.newBalance !== "undefined") {
+        setTokens({ balance: Number(data.game.newBalance) });
+      }
       setUnoMultiMessage("Game started.");
       fetchUnoMultiplayerPublicGames();
     } catch (error) {
@@ -429,6 +458,9 @@ export default function UnoMultiplayerPage() {
         setMessage(data.error || "Unable to resign.");
         return;
       }
+      if (typeof data.newBalance !== "undefined") {
+        setTokens({ balance: Number(data.newBalance) });
+      }
       setMessage("You resigned. Returning to lobby...");
       setTimeout(() => resetUnoMultiplayerLobby(), 800);
     } finally {
@@ -446,6 +478,7 @@ export default function UnoMultiplayerPage() {
     <div className="bg-gradient-to-br from-[#001933] mt-12 to-[#000d1a] min-h-screen flex flex-col items-center text-white px-4 py-8">
       <NavigationBar currentPath="/casino" />
       <h1 className="text-3xl mb-6 font-bold">UNO Multiplayer Table</h1>
+      {tokens && <p className="text-yellow-300 mb-4 text-lg">Tokens : {tokens.balance}</p>}
 
       {!game ? (
         <div className="w-full max-w-4xl rounded-[2rem] bg-[#0b224f]/85 border-2 border-[#00e5ff]/35 shadow-[0_0_28px_rgba(0,229,255,0.2)] p-6">
@@ -492,7 +525,13 @@ export default function UnoMultiplayerPage() {
                             {occupant.type === "ai" ? "🤖" : "👤"} {occupant.name}
                           </div>
                         ) : (
-                          <button onClick={() => addUnoMultiAiToSeat(seatIndex)} className="w-28 h-12 rounded-xl border border-dashed border-[#00e5ff]/45 text-xs hover:bg-[#00e5ff]/20">+ Add AI</button>
+                          <button
+                            onClick={() => addUnoMultiAiToSeat(seatIndex)}
+                            disabled={!isHost}
+                            className={`w-28 h-12 rounded-xl border border-dashed text-xs ${isHost ? "border-[#00e5ff]/45 hover:bg-[#00e5ff]/20" : "border-gray-500 text-gray-400 cursor-not-allowed"}`}
+                          >
+                            {isHost ? "+ Add AI" : "Host only"}
+                          </button>
                         )
                       ) : <div className="w-28 h-12 rounded-xl border border-gray-600 bg-gray-800/40 text-[10px] flex items-center justify-center text-gray-400">Disabled</div>}
                     </div>
@@ -501,7 +540,7 @@ export default function UnoMultiplayerPage() {
               </div>
 
               <div className="mt-4 flex gap-3">
-                <button onClick={startUnoMultiplayerGame} disabled={unoMultiHostId !== unoMultiMyId} className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 px-4 py-2 rounded font-bold">Start</button>
+                <button onClick={startUnoMultiplayerGame} disabled={!isHost} className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 px-4 py-2 rounded font-bold">Start</button>
                 <button onClick={resetUnoMultiplayerLobby} className="flex-1 bg-red-600 hover:bg-red-500 px-4 py-2 rounded font-bold">Leave</button>
               </div>
             </>
