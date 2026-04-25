@@ -88,6 +88,7 @@ const [unoMultiSkipRound, setUnoMultiSkipRound] = useState(false);
 const [unoMultiBackendMode, setUnoMultiBackendMode] = useState(null);
 const [unoMultiHandCounts, setUnoMultiHandCounts] = useState([]);
 const [unoMultiTurnPlayerId, setUnoMultiTurnPlayerId] = useState(null);
+const [isLeavingToLobby, setIsLeavingToLobby] = useState(false);
 
 useGamePresence({ gameKey: "uno", gameId: Number(game?.id), enabled: Boolean(game?.id) });
 
@@ -520,6 +521,12 @@ const sendPlayCard = async (card, chosenColor = null) => {
   const data = await res.json();
 
   if (data.success) {
+    if (data.shouldReturnToLobby || !data.data?.role) {
+      setMessage("Partie terminée. Retour au lobby...");
+      setLoading(false);
+      setTimeout(() => returnToLobby(), 1000);
+      return;
+    }
     if (data.needsColorChoice) {
       setPendingCard(data.card);
       setShowColorPicker(true);
@@ -743,7 +750,18 @@ useEffect(() => {
       });
       const data = await res.json();
 
-      if (!data.success || !data.data) return;
+      if (!data.success) return;
+      if (data.shouldReturnToLobby || !data.data?.role) {
+        if (!isLeavingToLobby) {
+          setIsLeavingToLobby(true);
+          setMessage("Partie terminée. Retour au lobby...");
+          setTimeout(() => {
+            returnToLobby();
+            setIsLeavingToLobby(false);
+          }, 1200);
+        }
+        return;
+      }
 
       setPlayerHand(data.data.playerHand || []);
       const multiplayerAi = gameMode === "multi-online" && unoMultiBackendMode === "ai";
@@ -779,7 +797,7 @@ useEffect(() => {
   }, 2000);
 
   return () => clearInterval(interval);
-}, [game?.id, gameMode, unoMultiBackendMode, unoMultiTableCode, aiHandCount]);
+}, [game?.id, gameMode, unoMultiBackendMode, unoMultiTableCode, aiHandCount, isLeavingToLobby]);
 
 useEffect(() => {
   return () => {
@@ -802,7 +820,7 @@ const isGameFinished =
   setIsResigning(true);
 
   try {
-    const res = await fetch(gameMode === "multi-online" && unoMultiBackendMode === "table" ? "/api/uno/multiplayer/resign" : "/api/uno/resign", {
+    const res = await fetch(gameMode === "multi-online" && unoMultiBackendMode === "table" ? "/api/uno/multiplayer/resign-and-leave" : "/api/uno/resign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(gameMode === "multi-online" && unoMultiBackendMode === "table" ? { code: unoMultiTableCode } : {
@@ -815,6 +833,12 @@ const isGameFinished =
 
     if (!res.ok) {
       alert(data.error || "Impossible d'abandonner");
+      return;
+    }
+
+    if (gameMode === "multi-online" && unoMultiBackendMode === "table") {
+      setMessage("😢 Tu as abandonné. Retour au lobby...");
+      setTimeout(() => returnToLobby(), 1000);
       return;
     }
 
@@ -854,6 +878,12 @@ const drawCard = async () => {
 
     const data = await res.json();
     if (data.success) {
+  if (data.shouldReturnToLobby || !data.data?.role) {
+    setMessage("Partie terminée. Retour au lobby...");
+    setLoading(false);
+    setTimeout(() => returnToLobby(), 1000);
+    return;
+  }
   setPlayerHand(data.data.playerHand);
   if (data.data.playerHand.length > previousHandLength) {
     const latestCard = data.data.playerHand[data.data.playerHand.length - 1];
@@ -887,7 +917,7 @@ const displayedCard =
     ? topCard
     : turnHistory[historyIndex];
 
-const showUnoMultiBoard = gameMode === "multi-online" && unoMultiBackendMode === "table";
+const showUnoMultiBoard = false;
 
     const returnToLobby = () => {
   setGame(null);

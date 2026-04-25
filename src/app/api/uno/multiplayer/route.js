@@ -4,7 +4,7 @@ import { db } from "../../../../db/client";
 import { users } from "../../../../db/schema";
 
 const MAX_SEATS = 6;
-const HOUSE_EDGE_PERCENT = 2;
+const HOUSE_EDGE_PERCENT = 5;
 
 function getStore() {
   if (!globalThis.__unoMultiplayerRooms) {
@@ -443,7 +443,7 @@ export async function POST(request) {
       discardPile: [topCard],
       currentColor: topCard?.color || "red",
       direction: 1,
-      turnIndex: Math.floor(Math.random() * contenders.length),
+      turnIndex: 0,
       status: "active",
       winnerId: null,
       betAmount,
@@ -498,12 +498,14 @@ export async function POST(request) {
       room.started = false;
     }
 
+    const data = serializeGameForUser(room, user.id);
     return Response.json({
       success: true,
       room: { ...tableSummary(room), players: room.players },
-      game: serializeGameForUser(room, user.id),
+      game: data,
       status: room.activeState.status,
-      data: serializeGameForUser(room, user.id),
+      data,
+      shouldReturnToLobby: !data?.role,
     });
   }
 
@@ -541,7 +543,13 @@ export async function POST(request) {
       room.started = false;
     }
 
-    return Response.json({ success: true, data: serializeGameForUser(room, user.id), status: state.status });
+    const data = serializeGameForUser(room, user.id);
+    return Response.json({
+      success: true,
+      data,
+      status: state.status,
+      shouldReturnToLobby: state.status === "finished" || !data?.role,
+    });
   }
 
   if (action === "draw-card") {
@@ -561,7 +569,13 @@ export async function POST(request) {
       room.started = false;
     }
 
-    return Response.json({ success: true, data: serializeGameForUser(room, user.id), status: state.status });
+    const data = serializeGameForUser(room, user.id);
+    return Response.json({
+      success: true,
+      data,
+      status: state.status,
+      shouldReturnToLobby: state.status === "finished" || !data?.role,
+    });
   }
 
   if (action === "resign") {
@@ -571,15 +585,51 @@ export async function POST(request) {
     const me = state.players.find((p) => p.userId === user.id);
     if (!me) return new Response(JSON.stringify({ success: false, error: "Forbidden" }), { status: 403 });
 
+    const leavingTurnIndex = state.players.findIndex((p) => p.id === me.id);
+    const wasCurrentTurn = state.players[state.turnIndex]?.id === me.id;
     const remaining = state.players.filter((p) => p.id !== me.id);
-    const winner = remaining.find((p) => p.type === "human") || remaining[0];
-    state.status = "finished";
-    state.winnerId = winner?.id || null;
 
-    await settleWinner(room, state.winnerId);
-    room.started = false;
+    delete state.hands[me.id];
+    state.players = remaining;
+    room.players = room.players.filter((p) => p.userId !== user.id);
 
-    return Response.json({ success: true, data: serializeGameForUser(room, user.id), status: state.status });
+    if (room.hostUserId === user.id && room.players.length > 0) {
+      const newHost = room.players.find((p) => p.type === "human") || room.players[0];
+      room.hostUserId = newHost.userId;
+      room.hostName = newHost.name;
+      room.players = room.players.map((p) => ({ ...p, isHost: p.userId === room.hostUserId }));
+    }
+
+    if (state.players.length <= 1) {
+      state.status = "finished";
+      state.winnerId = state.players[0]?.id || null;
+      await settleWinner(room, state.winnerId);
+      room.started = false;
+    } else {
+      if (wasCurrentTurn) {
+        const len = state.players.length;
+        if (state.direction === 1) {
+          state.turnIndex = leavingTurnIndex % len;
+        } else {
+          state.turnIndex = (((leavingTurnIndex - 1) % len) + len) % len;
+        }
+      } else if (leavingTurnIndex >= 0 && leavingTurnIndex < state.turnIndex) {
+        state.turnIndex -= 1;
+      }
+
+      if (state.turnIndex < 0 || state.turnIndex >= state.players.length) {
+        state.turnIndex = 0;
+      }
+      runAiTurns(room);
+    }
+
+    return Response.json({
+      success: true,
+      resigned: true,
+      status: state.status,
+      shouldReturnToLobby: true,
+      room: { ...tableSummary(room), players: room.players },
+    });
   }
 
   return new Response(JSON.stringify({ success: false, error: "Unknown action" }), { status: 400 });
