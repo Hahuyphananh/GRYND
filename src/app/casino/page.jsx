@@ -219,13 +219,13 @@ const GameCard = ({ game }) => (
       <div className="mx-auto max-w-7xl px-4 py-12">
         <section className="mb-5 text-center">
   <h1 className="mb-4 text-4xl font-bold text-[#f5ff3b] md:text-6xl fade-slide-up">
-    Casino en Ligne
+    Affrontez. Surpassez. Gagnez.
   </h1>
   <p
   className="mb-2 text-xl text-[#d8fbff] fade-slide-up"
   style={{ animationDelay: "0.2s" }}
 >
-    Découvrez nos jeux de casino et tentez votre chance
+    Découvrez nos jeux de casino et tentez votre chance ou vos abilités!
   </p>
   {error && (
     <div className="mx-auto mb-4 max-w-md rounded-lg bg-red-500/10 p-3 text-sm text-red-500 fade-slide-up" style={{ animationDelay: '0.6s' }}>
