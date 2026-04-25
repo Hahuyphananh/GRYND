@@ -2,15 +2,13 @@
 
 import { useCallback } from "react";
 import { useLanguage } from "../context/LanguageContext";
-import { translations } from "../lib/translations";
+import { t as translate } from "../lib/appTextTranslations";
 
 export function useTranslation() {
   const { language } = useLanguage();
 
   const t = useCallback(
-    (key) => {
-      return translations?.[language]?.[key] ?? translations.en?.[key] ?? key;
-    },
+    (key) => translate(language, key),
     [language]
   );
 
