@@ -19,6 +19,7 @@ import Img14 from "../../images/connect-4.png"
 import Img15 from "../../images/towers.png"
 import Image from "next/image";
 import Link from "next/link";
+import { useTranslation } from "../../hooks/useTranslation";
 
 function MainComponent() {
   const { user } = useUser();
@@ -26,6 +27,7 @@ function MainComponent() {
   const [error, setError] = useState(null);
 const [search, setSearch] = useState("");
 const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
+const { t } = useTranslation();
 
 const fetchFriendPresence = async () => {
   try {
@@ -44,7 +46,7 @@ const games = [
     href: "/casino/roulette",
     leaderboardKey: "roulette",
     image: Img1,
-    description: "Placez vos paris sur les numéros, couleurs ou sections",
+    descriptionKey: "games.roulette_desc",
     popular: true,
   },
   {
@@ -52,7 +54,7 @@ const games = [
     href: "/casino/blackjack",
     leaderboardKey: "blackjack",
     image: Img2,
-    description: "Affrontez le croupier dans ce jeu classique.",
+    descriptionKey: "games.blackjack_desc",
     popular: true,
   },
    {
@@ -60,7 +62,7 @@ const games = [
     href: "/casino/mines",
     leaderboardKey: "mines",
     image: Img5,
-    description: "Évitez les bombes et trouvez les diamants !",
+    descriptionKey: "games.mines_desc",
     popular: true,
   },
 
@@ -69,7 +71,7 @@ const games = [
     href: "/casino/plinko",
     leaderboardKey: "plinko",
     image: Img4,
-    description: "Regardez tomber votre jeton et multipliez vos gains !",
+    descriptionKey: "games.plinko_desc",
     popular: true,
   },
    {
@@ -77,14 +79,14 @@ const games = [
     href: "/casino/poker",
     leaderboardKey: "poker",
     image: Img3,
-    description: "Affrontez l'IA ou d'autres joueurs.",
+    descriptionKey: "games.poker_desc",
   },
   {
     name: "Lane Runner",
     href: "/casino/lane-runner",
     leaderboardKey: "lane-runner",
     image: Img15,
-    description: "Trace un chemin sûr jusqu'au sommet. Une seule erreur et c'est la fin de la partie.",
+    descriptionKey: "games.lane_runner_desc",
   },
 
   {
@@ -92,68 +94,70 @@ const games = [
     href: "/casino/crash",
     leaderboardKey: "crash",
     image: Img6,
-    description: "Cash out avant que la fusée crash !",
+    descriptionKey: "games.crash_desc",
   },
   {
     name: "Échecs",
     href: "/casino/chess",
     leaderboardKey: "chess",
     image: Img7,
-    description: "Affrontez d'autres joueurs dans un match d'échecs.",
+    descriptionKey: "games.chess_desc",
+    nameKey: "games.chess_name",
   },
   {
     name: "Slots",
     href: "/casino/slots",
     leaderboardKey: "slots",
     image: Img8,
-    description: "Pariez votre chance dans les jeux de slots !",
+    descriptionKey: "games.slots_desc",
   },
   {
     name: "Coin Flip",
     href: "/casino/coin-flip",
     leaderboardKey: "coin-flip",
     image: Img9,
-    description: "Faites tourner votre chance avec un pile ou face !",
+    descriptionKey: "games.coin_flip_desc",
   },
   {
     name: "Keno",
     href: "/casino/keno",
     leaderboardKey: "keno",
     image: Img10,
-    description: "Choisissez des numéros gagnants et gagnez gros !",
+    descriptionKey: "games.keno_desc",
   },
   {
     name: "Uno",
     href: "/casino/uno",
     leaderboardKey: "uno",
     image: Img11,
-    description: "Défie l’IA dans ce jeu rapide et stratégique.",
+    descriptionKey: "games.uno_desc",
   },
   {
     name: "Roche-Papier-Ciseaux",
     href: "/casino/rps",
     leaderboardKey: "rps",
     image: Img12,
-    description: "Parie tes jetons dans ce jeu rapide et stratégique.",
+    descriptionKey: "games.rps_desc",
+    nameKey: "games.rps_name",
   },
   {
     name: "Tanks",
     href: "/casino/tanks",
     leaderboardKey: "tanks",
     image: Img13,
-    description: "Deviens le meilleur tank et empare-toi des primes !",
+    descriptionKey: "games.tanks_desc",
   },
   {
     name: "Connect Four",
     href: "/casino/connect-four",
     leaderboardKey: "connect-four",
     image: Img14,
-    description: "Affrontez un joueur en 1v1 et alignez 4 disques.",
+    descriptionKey: "games.connect_four_desc",
   },
 ];
 
 const filteredGames = games.filter((game) =>
-  game.name.toLowerCase().includes(search.toLowerCase())
+  (game.nameKey ? t(game.nameKey) : game.name).toLowerCase().includes(search.toLowerCase())
 );
 
 const popularGames = filteredGames.filter((g) => g.popular);
@@ -171,19 +175,19 @@ const GameCard = ({ game }) => (
       <div className="mb-2 h-28 overflow-hidden rounded-lg">
         <Image
           src={game.image}
-          alt={game.name}
+          alt={game.nameKey ? t(game.nameKey) : game.name}
           className="h-full w-full object-cover transition-transform group-hover:scale-110"
         />
       </div>
 
       <h3 className="mb-2 text-md font-bold text-[#f5ff3b]">
-        {game.name}
+        {game.nameKey ? t(game.nameKey) : game.name}
       </h3>
 
-      <p className="text-[#9dd8ff]">{game.description}</p>
+      <p className="text-[#9dd8ff]">{t(game.descriptionKey)}</p>
 
       <div className="mt-4 flex items-center text-[#00e5ff]">
-        <span>Jouer maintenant</span>
+        <span>{t("home.play_now")}</span>
         <i className="fas fa-arrow-right ml-2"></i>
       </div>
     </Link>
@@ -192,7 +196,7 @@ const GameCard = ({ game }) => (
         href={`/classement?game=${game.leaderboardKey}`}
         className="text-xs text-[#00e5ff] underline underline-offset-2 hover:text-[#d8fbff]"
       >
-        Voir le leaderboard de {game.name}
+        {t("home.view_leaderboard")} {game.nameKey ? t(game.nameKey) : game.name}
       </Link>
     </div>
 
@@ -218,14 +222,17 @@ const GameCard = ({ game }) => (
 
       <div className="mx-auto max-w-7xl px-4 py-12">
         <section className="mb-5 text-center">
-  <h1 className="mb-4 text-4xl font-bold text-[#f5ff3b] md:text-6xl fade-slide-up">
-    Affrontez. Surpassez. Gagnez.
+  <h1 className="mb-2 text-4xl font-bold text-[#f5ff3b] md:text-6xl fade-slide-up">
+    {t("home.title")}
   </h1>
+  <p className="mb-2 text-xl text-[#d8fbff] fade-slide-up" style={{ animationDelay: "0.15s" }}>
+    {t("home.subtitle")}
+  </p>
   <p
   className="mb-2 text-xl text-[#d8fbff] fade-slide-up"
   style={{ animationDelay: "0.2s" }}
 >
-    Découvrez nos jeux de casino et tentez votre chance ou vos abilités!
+    {t("home.description")}
   </p>
   {error && (
     <div className="mx-auto mb-4 max-w-md rounded-lg bg-red-500/10 p-3 text-sm text-red-500 fade-slide-up" style={{ animationDelay: '0.6s' }}>
@@ -255,7 +262,7 @@ const GameCard = ({ game }) => (
 
     <input
       type="text"
-      placeholder="Rechercher un jeu..."
+      placeholder={t("home.search_placeholder")}
       value={search}
       onChange={(e) => setSearch(e.target.value)}
       className="w-full rounded-xl border border-[#00e5ff]/45 bg-[#040d24] py-3 pl-12 pr-4 text-[#ecf8ff] placeholder-[#6aa4d8] focus:outline-none focus:ring-2 focus:ring-[#00e5ff] "
@@ -267,12 +274,12 @@ const GameCard = ({ game }) => (
   <div className="mb-8 rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#08142f] to-[#020713] p-8 shadow-[0_0_40px_rgba(0,229,255,0.18)]">
 
     <h2 className="mb-6 text-4xl font-extrabold text-[#f5ff3b] tracking-wide" style={{ textShadow: "0 0 12px rgba(245,255,59,0.65)" }}>
-      ⭐ Jeux les plus populaires
+      {t("home.popular_games")}
     </h2>
 
     <div className="mb-5 grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4 stagger-container">
   {popularGames.map((game, index) => (
-    <div key={game.name} style={{ "--i": index }}>
+    <div key={game.nameKey ? t(game.nameKey) : game.name} style={{ "--i": index }}>
       <GameCard game={game} />
     </div>
   ))}
@@ -283,12 +290,12 @@ const GameCard = ({ game }) => (
       {otherGames.length > 0 && (
   <>
     <h2 className="mb-6 text-3xl font-bold text-[#00e5ff]">
-      🎮 Tous les jeux
+      {t("home.all_games")}
     </h2>
 
     <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 stagger-container">
   {otherGames.map((game, index) => (
-    <div key={game.name} style={{ "--i": index }}>
+    <div key={game.nameKey ? t(game.nameKey) : game.name} style={{ "--i": index }}>
       <GameCard game={game} />
     </div>
   ))}

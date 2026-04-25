@@ -6,12 +6,13 @@ import { useUser } from "@clerk/nextjs";
 import EventCard from "../../components/event-card";
 import BetSlip from "../../components/bet-slip";
 import BetTracker from "../../components/BetTracker";
+import { useTranslation } from "../../hooks/useTranslation";
 
 const MARKET_TYPES = [
-  { key: "h2h", label: "Moneyline" },
-  { key: "spreads", label: "Point Spread" },
-  { key: "totals", label: "Over / Under" },
-  { key: "props", label: "Prop Bets" },
+  { key: "h2h", labelKey: "sports.moneyline" },
+  { key: "spreads", labelKey: "sports.point_spread" },
+  { key: "totals", labelKey: "sports.over_under" },
+  { key: "props", labelKey: "sports.prop_bets" },
 ];
 
 const MainComponent = () => {
@@ -27,12 +28,13 @@ const MainComponent = () => {
   const [error, setError] = useState("");
   const [currentBets, setCurrentBets] = useState([]);
   const [betHistory, setBetHistory] = useState([]);
+  const { t } = useTranslation();
 
   const fetchMyBets = async () => {
     const res = await fetch("/api/sports/my-bets", { cache: "no-store" });
     const data = await res.json();
     if (!res.ok || !data.success) {
-      throw new Error(data.error || "Failed to fetch bets");
+      throw new Error(data.error || t("sports.fetch_bets_failed"));
     }
     setCurrentBets(Array.isArray(data.currentBets) ? data.currentBets : []);
     setBetHistory(Array.isArray(data.betHistory) ? data.betHistory : []);
@@ -60,7 +62,7 @@ const MainComponent = () => {
       try {
         const res = await fetch("/api/sports/list");
         const data = await res.json();
-        if (!data.success) throw new Error(data.error || "Failed to load sports");
+        if (!data.success) throw new Error(data.error || t("sports.load_sports_failed"));
 
         const grouped = {};
         data.sports.forEach((sport) => {
@@ -71,7 +73,7 @@ const MainComponent = () => {
         setSports(grouped);
       } catch (err) {
         console.error(err);
-        setError("Unable to load leagues.");
+        setError(t("sports.load_sports_failed"));
       } finally {
         setLoadingSports(false);
       }
@@ -82,7 +84,7 @@ const MainComponent = () => {
 
   const fetchEvents = async ({ forceRefresh = false } = {}) => {
     if (!selectedSport) {
-      setError("Select a league first.");
+      setError(t("sports.select_league_first"));
       return;
     }
 
@@ -95,11 +97,11 @@ const MainComponent = () => {
         `/api/sports/${selectedSport}?markets=h2h,spreads,totals${forceRefresh ? "&refresh=1" : ""}`
       );
       const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Failed to load events");
+      if (!data.success) throw new Error(data.error || t("sports.load_events_failed"));
       setEvents(Array.isArray(data.events) ? data.events : []);
     } catch (err) {
       console.error(err);
-      setError("Could not fetch events. Try refresh.");
+      setError(t("sports.load_events_failed"));
       setEvents([]);
     } finally {
       setLoadingEvents(false);
@@ -127,7 +129,7 @@ const MainComponent = () => {
   });
 
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Bet placement failed");
+  if (!res.ok) throw new Error(data.error || t("sports.bet_failed"));
 
   await fetchMyBets();
 
@@ -142,21 +144,21 @@ const MainComponent = () => {
           <div className="mb-6 rounded-xl border border-[#00e5ff]/50 bg-[#091537]/90 p-4 text-[#f5ff3b] shadow-[0_0_24px_rgba(0,229,255,0.2)]">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <h1 className="text-2xl font-bold">Paris Sportifs</h1>
-                <p className="text-sm text-[#95e4ff]">Chargement manuel activé afin de réduire l'utilisation de l'API.</p>
+                <h1 className="text-2xl font-bold">{t("sports.title")}</h1>
+                <p className="text-sm text-[#95e4ff]">{t("sports.manual_loading")}</p>
               </div>
               
             </div>
-            {selectedSport && <p className="mt-2 text-sm">Ligue Sélectionnée: {selectedSport}</p>}
-            <p className="text-sm">Événements chargés: {eventCount}</p>
+            {selectedSport && <p className="mt-2 text-sm">{t("sports.selected_league")} {selectedSport}</p>}
+            <p className="text-sm">{t("sports.events_loaded")} {eventCount}</p>
             {error && <p className="mt-1 text-sm text-red-300">{error}</p>}
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr_360px]">
             <aside className="space-y-2 rounded-xl border border-[#00e5ff]/50 bg-[#08142f]/95 p-3">
-              <h2 className="px-2 py-1 text-sm font-bold uppercase tracking-wide text-[#f5ff3b]">Ligues</h2>
-              {loadingSports && <p className="px-2 text-sm text-[#00e5ff]">Chargement des Ligues...</p>}
-              {!loadingSports && Object.keys(sports).length === 0 && <p className="px-2 text-sm text-[#00e5ff]">Ligues pas trouvées.</p>}
+              <h2 className="px-2 py-1 text-sm font-bold uppercase tracking-wide text-[#f5ff3b]">{t("sports.leagues")}</h2>
+              {loadingSports && <p className="px-2 text-sm text-[#00e5ff]">{t("sports.loading_leagues")}</p>}
+              {!loadingSports && Object.keys(sports).length === 0 && <p className="px-2 text-sm text-[#00e5ff]">{t("sports.leagues_not_found")}</p>}
 
               {Object.keys(sports).map((group) => (
                 <div key={group} className="overflow-hidden rounded-lg border border-[#00e5ff]/35">
@@ -173,7 +175,7 @@ const MainComponent = () => {
                       {selectedSport && (
   <div className="flex items-center justify-between rounded-xl border border-[#00e5ff]/45 bg-[#08142f]/95 p-3">
     <div>
-      <p className="text-sm text-[#95e4ff]">Ligue</p>
+      <p className="text-sm text-[#95e4ff]">{t("sports.select_league")}</p>
       <p className="font-bold text-[#f5ff3b]">{selectedSport}</p>
     </div>
 
@@ -181,7 +183,7 @@ const MainComponent = () => {
       onClick={() => fetchEvents({ forceRefresh: true })}
       className="rounded-lg border border-[#00e5ff] px-3 py-2 text-sm font-semibold text-[#00e5ff] hover:bg-[#00e5ff]/10"
     >
-      Rafraîchir
+      {t("sports.refresh")}
     </button>
   </div>
 )}
@@ -202,7 +204,7 @@ const MainComponent = () => {
     <div>
       <p className="font-semibold">{league.title}</p>
       <p className="text-xs opacity-80">
-        {league.description || "Live and upcoming odds"}
+        {league.description || t("sports.live_odds_fallback")}
       </p>
     </div>
 
@@ -215,7 +217,7 @@ const MainComponent = () => {
       }}
       className="ml-2 rounded-md border border-[#f5ff3b]/50 bg-[#f5ff3b] px-2 py-1 text-xs font-bold text-[#031026] hover:brightness-95"
     >
-      Voir
+      {t("sports.view")}
     </button>
   </div>
 </li>
@@ -228,7 +230,7 @@ const MainComponent = () => {
 
             <section className="space-y-4">
               <div className="rounded-xl border border-[#00e5ff]/45 bg-[#08142f]/95 p-3">
-                <p className="mb-2 text-xs uppercase tracking-wide text-[#f5ff3b]">Type de Pari</p>
+                <p className="mb-2 text-xs uppercase tracking-wide text-[#f5ff3b]">{t("sports.bet_type")}</p>
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                   {MARKET_TYPES.map((type) => (
                     <button
@@ -240,18 +242,18 @@ const MainComponent = () => {
                           : "border-[#00e5ff]/50 text-[#00e5ff] hover:bg-[#003b8e]/50"
                       }`}
                     >
-                      {type.label}
+                      {t(type.labelKey)}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {loadingEvents && <p className="text-[#00e5ff]">Loading events...</p>}
+              {loadingEvents && <p className="text-[#00e5ff]">{t("sports.loading_events")}</p>}
               {!loadingEvents && events.length === 0 && (
                 <div className="rounded-xl border border-dashed border-[#00e5ff]/50 p-6 text-center text-[#00e5ff]">
                 {!selectedSport
-  ? "Sélectionnez une ligue pour voir les événements."
-  : "Aucun événement trouvé. Essayez de rafraîchir."}
+  ? t("sports.select_league_prompt")
+  : t("sports.no_events")}
                 </div>
               )}
 
