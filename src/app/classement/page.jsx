@@ -3,6 +3,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import NavigationBar from "../../components/navigation-bar";
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "../../hooks/useTranslation";
 
 function MainComponent() {
   const [stats, setStats] = useState([]);
@@ -12,6 +13,7 @@ function MainComponent() {
   const [showTop100, setShowTop100] = useState(false);
   const [selectedLeaderboard, setSelectedLeaderboard] = useState("overall");
   const { user } = useUser();
+  const { t } = useTranslation();
 
   const loadStats = async () => {
     setLoading(true);
@@ -23,7 +25,7 @@ function MainComponent() {
       setGameStats(data.games || {});
     } catch (err) {
       console.error(err);
-      setError("Impossible de charger les données du classement");
+      setError(t("leaderboard.load_error"));
     }
     setLoading(false);
   };
@@ -82,7 +84,7 @@ function MainComponent() {
       <NavigationBar currentPath="/rankings" />
       <div className="flex flex-col items-center px-6 py-24">
         <h1 className="mb-6 text-center text-4xl font-bold text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)]">
-          Classement des Meilleurs Parieurs
+          {t("leaderboard.title")}
         </h1>
 
         {/* Toggle Button */}
@@ -91,7 +93,7 @@ function MainComponent() {
             onClick={() => setShowTop100(!showTop100)}
             className="rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b] px-6 py-3 text-lg font-semibold text-[#041125] transition-all hover:brightness-95 hover:scale-105 shadow-[0_0_18px_rgba(245,255,59,0.4)]"
           >
-            {showTop100 ? "Afficher le Top 10" : "Afficher le Top 100"}
+            {showTop100 ? t("leaderboard.top_10") : t("leaderboard.top_100")}
           </button>
         </div>
 
@@ -104,7 +106,7 @@ function MainComponent() {
                 : "bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"
             }`}
           >
-            Global
+            {t("leaderboard.overall")}
           </button>
           {gameButtons.map(([gameKey, data]) => (
             <button
@@ -124,7 +126,7 @@ function MainComponent() {
         <div className="w-full max-w-7xl overflow-hidden rounded-lg border border-[#00e5ff]/50 bg-[#08142f]/95 p-6 shadow-[0_0_28px_rgba(0,229,255,0.2)]">
           {loading ? (
             <div className="flex justify-center py-8">
-              <div className="text-[#00e5ff]">Chargement...</div>
+              <div className="text-[#00e5ff]">{t("ui.loading")}</div>
             </div>
           ) : (
             <AnimatePresence mode="wait">
@@ -138,15 +140,15 @@ function MainComponent() {
               >
                 <thead>
                   <tr className="border-b border-[#00e5ff]/50 text-sm text-[#f5ff3b] md:text-base">
-                    <th className="px-4 py-3">Rang</th>
-                    <th className="px-4 py-3">Utilisateur</th>
-                    <th className="px-4 py-3">Montant Gagné</th>
-                    <th className="px-4 py-3">Montant Perdu</th>
-                    <th className="px-4 py-3">Profit Total</th>
-                    <th className="px-4 py-3">Parties Gagnées</th>
-                    <th className="px-4 py-3">Parties Perdues</th>
-                    <th className="px-4 py-3">Net Games</th>
-                    <th className="px-4 py-3">Win Rate (%)</th>
+                    <th className="px-4 py-3">{t("leaderboard.rank")}</th>
+                    <th className="px-4 py-3">{t("leaderboard.user")}</th>
+                    <th className="px-4 py-3">{t("leaderboard.amount_won")}</th>
+                    <th className="px-4 py-3">{t("leaderboard.amount_lost")}</th>
+                    <th className="px-4 py-3">{t("leaderboard.total_profit")}</th>
+                    <th className="px-4 py-3">{t("leaderboard.games_won")}</th>
+                    <th className="px-4 py-3">{t("leaderboard.games_lost")}</th>
+                    <th className="px-4 py-3">{t("leaderboard.net_games")}</th>
+                    <th className="px-4 py-3">{t("leaderboard.win_rate")}</th>
                   </tr>
                 </thead>
                 <tbody>

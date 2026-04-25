@@ -4,7 +4,6 @@ import { ClerkProvider } from '@clerk/nextjs';
 import { useState, useEffect } from 'react';
 import { LanguageProvider } from '../context/LanguageContext';
 import { ThemeProvider } from '../context/ThemeContext';
-import AppTranslator from '../components/AppTranslator';
 import { SocketProvider } from '../context/SocketProvider';
 import PresenceHeartbeat from '../components/PresenceHeartbeat';
 import RouteTransition from '../components/RouteTransition';
@@ -22,7 +21,6 @@ function AppProviders({ children }: { children: React.ReactNode }) {
     <ThemeProvider>
       <LanguageProvider>
         <SocketProvider>
-          <AppTranslator />
           <PresenceHeartbeat />
           <RouteTransition>{children}</RouteTransition>
         </SocketProvider>
