@@ -489,7 +489,7 @@ export default function UnoGamePage() {
           <button onClick={joinOnlineGame} disabled={loading || !!waitingGameId} className="mt-4 px-8 py-3 rounded-full font-bold text-[#001933] bg-[#00e5ff] hover:bg-[#49eeff]">
             {loading ? "Recherche..." : "Rejoindre une partie"}
           </button>
-          <button onClick={() => router.push("/uno/multiplayer")} className="mt-4 px-8 py-3 rounded-full font-bold text-[#001933] bg-green-300 hover:bg-green-200">
+          <button onClick={() => router.push("casino/uno/multiplayer")} className="mt-4 px-8 py-3 rounded-full font-bold text-[#001933] bg-green-300 hover:bg-green-200">
             Multiplayer Table Mode
           </button>
 
