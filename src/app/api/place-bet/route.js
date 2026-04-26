@@ -4,6 +4,7 @@ import { getUserLevel } from "../../../lib/vipLevels";
 import { parseAndValidateJson } from "../../../lib/security/validation";
 import { claimIdempotency } from "../../../lib/security/idempotency";
 import { getHighestTitle } from "../../../lib/titles";
+import { checkUnlocks } from "../../../lib/specialTitles";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -50,6 +51,7 @@ export async function POST(request) {
     `;
 
     const dbUser = userResult.rows[0];
+    const startingBalance = Number(userResult.rows[0]?.balance || 0);
     if (!dbUser) {
       return new Response(JSON.stringify({ success: false, error: "User not found" }), {
         status: 404,
@@ -111,8 +113,13 @@ export async function POST(request) {
       `;
     });
 
+    const unlockedSpecialTitles = await checkUnlocks(userId, "bet_placed", {
+      isAllIn: startingBalance > 0 && betAmount >= startingBalance,
+      balanceAfter: Math.max(0, startingBalance - betAmount),
+    });
+
     return new Response(
-      JSON.stringify({ success: true, event }),
+      JSON.stringify({ success: true, event, unlockedSpecialTitles }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {

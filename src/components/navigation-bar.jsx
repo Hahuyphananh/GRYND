@@ -97,7 +97,7 @@ function NavigationBar({ currentPath }) {
           const titlesRes = await fetch("/api/titles", { credentials: "include" });
           const titlesData = await titlesRes.json();
           if (titlesData.success) {
-            setProfile((prev) => ({ ...prev, selectedTitle: titlesData.selectedTitle || "" }));
+            setProfile((prev) => ({ ...prev, selectedTitle: titlesData.selectedSpecialTitle || titlesData.selectedTitle || "" }));
           }
         } catch {}
       } else if (data.shouldInitialize) {

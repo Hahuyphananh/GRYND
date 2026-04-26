@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
+import { checkUnlocks } from "../../../../lib/specialTitles";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -16,12 +17,18 @@ export async function POST(request) {
     const parsed = await parseAndValidateJson(request, {
       betAmount: { type: "number", required: true, min: 0, max: 1000000 },
       isWin: { type: "number", required: false, min: 0, max: 1, default: 0 },
+      isAllIn: { type: "boolean", required: false, default: false },
+      isJackpot: { type: "boolean", required: false, default: false },
+      balanceAfter: { type: "number", required: false, min: 0, max: 1000000000, default: 0 },
     });
 
     if (!parsed.ok) return parsed.response;
 
     const betAmount = parsed.data.betAmount;
     const isWin = Boolean(parsed.data.isWin);
+    const isAllIn = Boolean(parsed.data.isAllIn);
+    const isJackpot = Boolean(parsed.data.isJackpot);
+    const balanceAfter = Number(parsed.data.balanceAfter || 0);
 
     const updated = await sql.begin(async (tx) => {
       return await tx`
@@ -53,9 +60,17 @@ export async function POST(request) {
       `;
     });
 
+    const unlockedSpecialTitles = await checkUnlocks(userId, "game_result", {
+      won: isWin,
+      isAllIn,
+      isJackpot,
+      balanceAfter,
+    });
+
     return new Response(JSON.stringify({
       success: true,
       stats: updated[0],
+      unlockedSpecialTitles,
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" },

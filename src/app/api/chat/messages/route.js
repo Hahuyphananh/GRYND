@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '../../../../db/client';
-import { chatMessages, users } from '../../../../db/schema';
+import { chatMessages, specialTitles, users } from '../../../../db/schema';
+import { checkUnlocks } from '../../../../lib/specialTitles';
 
 const ALLOWED_ROOM_TYPES = new Set(['global', 'game']);
 const MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -40,6 +41,9 @@ export async function GET(req) {
       return NextResponse.json({ error: room.error }, { status: 400 });
     }
 
+    const specialTitleRows = await db.select({ key: specialTitles.key, name: specialTitles.name }).from(specialTitles);
+    const specialTitleNameByKey = new Map(specialTitleRows.map((row) => [row.key, row.name]));
+
     const rows = await db
       .select({
         id: chatMessages.id,
@@ -54,6 +58,7 @@ export async function GET(req) {
         deletedByClerkId: chatMessages.deletedByClerkId,
         createdAt: chatMessages.createdAt,
         selectedTitle: users.selectedTitle,
+        selectedSpecialTitle: users.selectedSpecialTitle,
       })
       .from(chatMessages)
       .leftJoin(users, eq(chatMessages.clerkId, users.clerkId))
@@ -67,7 +72,10 @@ export async function GET(req) {
       .orderBy(desc(chatMessages.createdAt))
       .limit(limit);
 
-    const messages = rows.reverse();
+    const messages = rows.reverse().map((msg) => ({
+      ...msg,
+      equippedTitle: (msg.selectedSpecialTitle ? specialTitleNameByKey.get(msg.selectedSpecialTitle) : null) || msg.selectedTitle || null,
+    }));
 
     return NextResponse.json({ messages });
   } catch (error) {
@@ -100,7 +108,7 @@ export async function POST(req) {
     }
 
     const [appUser] = await db
-      .select({ name: users.name, profilePicture: users.profilePicture, selectedTitle: users.selectedTitle })
+      .select({ name: users.name, profilePicture: users.profilePicture, selectedTitle: users.selectedTitle, selectedSpecialTitle: users.selectedSpecialTitle, balance: users.balance })
       .from(users)
       .where(eq(users.clerkId, userId))
       .limit(1);
@@ -108,6 +116,11 @@ export async function POST(req) {
     const displayName = appUser?.name?.trim() || 'Player';
     const profileImageUrl = appUser?.profilePicture || null;
     const selectedTitle = appUser?.selectedTitle || null;
+    const selectedSpecialTitle = appUser?.selectedSpecialTitle || null;
+    const specialTitleRow = selectedSpecialTitle
+      ? await db.query.specialTitles.findFirst({ where: eq(specialTitles.key, selectedSpecialTitle), columns: { name: true } })
+      : null;
+    const equippedTitle = specialTitleRow?.name || selectedTitle;
 
     const inserted = await db
       .insert(chatMessages)
@@ -121,7 +134,12 @@ export async function POST(req) {
       })
       .returning();
 
-    return NextResponse.json({ message: { ...inserted[0], selectedTitle } }, { status: 201 });
+    const unlockedSpecialTitles = await checkUnlocks(userId, "chat_message", {
+      message: content,
+      balanceAfter: Number(appUser?.balance || 0),
+    });
+
+    return NextResponse.json({ message: { ...inserted[0], selectedTitle, selectedSpecialTitle, equippedTitle }, unlockedSpecialTitles }, { status: 201 });
   } catch (error) {
     console.error('CHAT_MESSAGES_POST_ERROR', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

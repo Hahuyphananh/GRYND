@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../db";
 import { eq } from "drizzle-orm";
-import { users } from "../../../db/schema";
+import { specialTitles, users } from "../../../db/schema";
 import { TITLE_MILESTONES, getUnlockedTitles, getHighestTitle, getNextTitle } from "../../../lib/titles";
 
 export async function GET() {
@@ -21,6 +21,7 @@ export async function GET() {
         level: true,
         selectedTitle: true,
         highestTitle: true,
+        selectedSpecialTitle: true,
       },
     });
 
@@ -35,6 +36,15 @@ export async function GET() {
     const unlockedTitles = getUnlockedTitles(level);
     const computedHighest = getHighestTitle(level);
     const nextTitle = getNextTitle(level);
+    let selectedSpecialTitle = null;
+
+    if (dbUser.selectedSpecialTitle) {
+      const specialTitleRow = await db.query.specialTitles.findFirst({
+        where: eq(specialTitles.key, dbUser.selectedSpecialTitle),
+        columns: { name: true },
+      });
+      selectedSpecialTitle = specialTitleRow?.name || null;
+    }
 
     return new Response(
       JSON.stringify({
@@ -44,6 +54,7 @@ export async function GET() {
         selectedTitle: dbUser.selectedTitle || null,
         highestTitle: dbUser.highestTitle || computedHighest?.title || null,
         nextTitle,
+        selectedSpecialTitle: selectedSpecialTitle || null,
         allTitles: TITLE_MILESTONES,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
