@@ -411,18 +411,20 @@ const useRevealOnScroll = (deps = []) => {
 
      <motion.section initial={fadeInVariant.initial} animate={fadeInVariant.animate} transition={fadeInVariant.transition} className="relative mt-8 px-4 min-h-[70vh] flex items-center overflow-hidden">
   
-  {/* Background Image */}
-  <Image
-    src={HeroBg}
-    alt="Casino background"
-    fill
-    priority
-    quality={100}
-    className="object-cover object-center z-0"
-  />
+  {/* Background Video */}
+<video
+  autoPlay
+  muted
+  loop
+  playsInline
+  className="absolute inset-0 h-full w-full object-cover z-0"
+>
+  <source src="/videos/casino-bg-video.mp4" type="video/mp4" />
+</video>
 
   {/* Dark overlay for readability */}
-  <div className="absolute inset-0 bg-[#010612]/70 z-10" />
+  <div className="absolute inset-0 bg-black/80 z-10" />
+  <div className="absolute inset-0 z-10 pointer-events-none bg-[radial-gradient(circle_at_30%_20%,rgba(0,229,255,0.15),transparent_60%)] mix-blend-screen" />
 
         <div className="relative z-20 mx-auto max-w-7xl text-center reveal">
       <motion.h1 initial={fadeUpVariant.initial} animate={fadeUpVariant.animate} transition={fadeUpVariant.transition}
