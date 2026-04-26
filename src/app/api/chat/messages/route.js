@@ -41,8 +41,22 @@ export async function GET(req) {
     }
 
     const rows = await db
-      .select()
+      .select({
+        id: chatMessages.id,
+        roomType: chatMessages.roomType,
+        roomId: chatMessages.roomId,
+        clerkId: chatMessages.clerkId,
+        displayName: chatMessages.displayName,
+        profileImageUrl: chatMessages.profileImageUrl,
+        content: chatMessages.content,
+        isDeleted: chatMessages.isDeleted,
+        deletedAt: chatMessages.deletedAt,
+        deletedByClerkId: chatMessages.deletedByClerkId,
+        createdAt: chatMessages.createdAt,
+        selectedTitle: users.selectedTitle,
+      })
       .from(chatMessages)
+      .leftJoin(users, eq(chatMessages.clerkId, users.clerkId))
       .where(
         and(
           eq(chatMessages.roomType, room.roomType),
@@ -86,13 +100,14 @@ export async function POST(req) {
     }
 
     const [appUser] = await db
-      .select({ name: users.name, profilePicture: users.profilePicture })
+      .select({ name: users.name, profilePicture: users.profilePicture, selectedTitle: users.selectedTitle })
       .from(users)
       .where(eq(users.clerkId, userId))
       .limit(1);
 
     const displayName = appUser?.name?.trim() || 'Player';
     const profileImageUrl = appUser?.profilePicture || null;
+    const selectedTitle = appUser?.selectedTitle || null;
 
     const inserted = await db
       .insert(chatMessages)
@@ -106,7 +121,7 @@ export async function POST(req) {
       })
       .returning();
 
-    return NextResponse.json({ message: inserted[0] }, { status: 201 });
+    return NextResponse.json({ message: { ...inserted[0], selectedTitle } }, { status: 201 });
   } catch (error) {
     console.error('CHAT_MESSAGES_POST_ERROR', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

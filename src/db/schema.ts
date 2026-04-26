@@ -20,6 +20,8 @@ export const users = pgTable('users', {
   referralEarnings: numeric('referral_earnings', { precision: 10, scale: 2 }).default('0.00').notNull(),
   totalWagered: numeric('total_wagered', { precision: 14, scale: 2 }).default('0.00').notNull(),
   level: integer('level').default(1).notNull(),
+  selectedTitle: text('selected_title').default(null),
+  highestTitle: text('highest_title').default(null),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   searchName: varchar('search_name', { length: 255 }),
 });
