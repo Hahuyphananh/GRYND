@@ -5,33 +5,49 @@ import { useUser } from "@clerk/nextjs";
 
 export default function SyncPage() {
   const router = useRouter();
-  const { isSignedIn } = useUser();
   const [status, setStatus] = useState("Syncing your account...");
 
-  useEffect(() => {
-    if (isSignedIn) {
-      fetch("/api/sync-user", {
+const { isLoaded, isSignedIn } = useUser();
+
+useEffect(() => {
+  if (!isLoaded || !isSignedIn) return;
+
+  let cancelled = false;
+
+  const syncUser = async () => {
+    try {
+      const res = await fetch("/api/sync-user", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-      })
-        .then(async (res) => {
-          const data = await res.json();
-          if (!res.ok) {
-            console.error("🔴 Sync failed with response:", res.status, data);
-            throw new Error("Sync failed");
-          }
-          console.log("✅ User sync success:", data);
-          setStatus("Redirecting...");
-          router.push("/");
-        })
-        .catch((err) => {
-          console.error("❌ User sync failed:", err);
-          setStatus("Something went wrong.");
-        });
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error("🔴 Sync failed:", res.status, data);
+        throw new Error("Sync failed");
+      }
+
+      console.log("✅ Sync success:", data);
+
+      if (!cancelled) {
+        setStatus("Redirecting...");
+        router.replace("/"); // IMPORTANT: replace, not push
+      }
+    } catch (err) {
+      console.error("❌ Sync error:", err);
+      if (!cancelled) setStatus("Something went wrong.");
     }
-  }, [isSignedIn, router]);
+  };
+
+  syncUser();
+
+  return () => {
+    cancelled = true;
+  };
+}, [isLoaded, isSignedIn, router]);
 
   return (
     <div
