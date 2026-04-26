@@ -3,6 +3,7 @@ import { sql } from "@vercel/postgres";
 import { getUserLevel } from "../../../lib/vipLevels";
 import { parseAndValidateJson } from "../../../lib/security/validation";
 import { claimIdempotency } from "../../../lib/security/idempotency";
+import { getHighestTitle } from "../../../lib/titles";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -78,16 +79,28 @@ export async function POST(request) {
         const nextLevel = getUserLevel(updatedWagered);
 
         let bonus = 0;
+        const newHighestTitle = getHighestTitle(nextLevel)?.title || null;
+        const previousHighestTitle = getHighestTitle(previousLevel)?.title || null;
+
         if (nextLevel > previousLevel) {
           bonus = nextLevel * 100;
           event = { type: "LEVEL_UP", level: nextLevel, bonus };
+        }
+
+        if (newHighestTitle && newHighestTitle !== previousHighestTitle) {
+          event = {
+            ...(event || {}),
+            type: event?.type || "TITLE_UNLOCK",
+            newUnlockedTitle: newHighestTitle,
+          };
         }
 
         await tx`
           UPDATE users
           SET total_wagered = ${updatedWagered},
               level = ${nextLevel},
-              balance = balance + ${bonus}
+              balance = balance + ${bonus},
+              highest_title = COALESCE(${newHighestTitle}, highest_title)
           WHERE id = ${dbUser.id}
         `;
       }

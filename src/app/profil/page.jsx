@@ -25,6 +25,7 @@ export default function ProfilePage() {
 
   const [stats, setStats] = useState(null);
   const [statsError, setStatsError] = useState(null);
+  const [titleMeta, setTitleMeta] = useState({ selectedTitle: "", highestTitle: "" });
 
   const [referralCodeInput, setReferralCodeInput] = useState("");
   const [referralStatus, setReferralStatus] = useState("");
@@ -62,6 +63,18 @@ export default function ProfilePage() {
       throw new Error(data.error || "Failed to load stats");
     }
     setStats(data.stats);
+  };
+
+
+  const loadTitles = async () => {
+    const response = await fetch("/api/titles", { credentials: "include" });
+    const data = await response.json();
+    if (response.ok && data.success) {
+      setTitleMeta({
+        selectedTitle: data.selectedTitle || "",
+        highestTitle: data.highestTitle || "",
+      });
+    }
   };
 
   const cyberButton =
@@ -348,7 +361,7 @@ const getFriendStatus = (friendId) => {
 
     const bootstrap = async () => {
   try {
-    await Promise.all([loadProfileData(), loadStats(), loadFriends(), loadFriendPresence(), loadFriendInvites()]);
+    await Promise.all([loadProfileData(), loadStats(), loadTitles(), loadFriends(), loadFriendPresence(), loadFriendInvites()]);
 
     if (!stats?.referralCode) {
       await initializeReferral();
@@ -362,6 +375,15 @@ const getFriendStatus = (friendId) => {
 
     bootstrap();
   }, [isSignedIn, user]);
+
+  useEffect(() => {
+    const refreshTitles = () => {
+      loadTitles();
+    };
+
+    window.addEventListener("titleUpdated", refreshTitles);
+    return () => window.removeEventListener("titleUpdated", refreshTitles);
+  }, []);
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -749,8 +771,16 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-lg f
                 </div>
               )}
               <div>
-                <p>Name : {profileInfo.name || user.fullName || "Unknown user"}</p>
+                <div className="flex items-center gap-2">
+                  <p>Name : {profileInfo.name || user.fullName || "Unknown user"}</p>
+                  {titleMeta.selectedTitle && (
+                    <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
+                      {titleMeta.selectedTitle}
+                    </span>
+                  )}
+                </div>
                 <p>Email : {profileInfo.email || user.emailAddresses?.[0]?.emailAddress}</p>
+                <a href="/profile/titles" className="text-xs text-cyan-300 underline underline-offset-4">Manage titles</a>
               </div>
             </div>
             <p>Membre depuis : {new Date(user.createdAt).toLocaleDateString()}</p>
