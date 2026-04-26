@@ -1,3 +1,5 @@
+"use client";
+
 import { SignUp } from "@clerk/nextjs";
 
 export default function Page() {
@@ -5,27 +7,50 @@ export default function Page() {
     <div className="min-h-screen flex items-center justify-center bg-[#001a33]">
       <SignUp
         afterSignUpUrl="/sync"
-        appearance={{
-          variables: {
-            colorPrimary: "#FFD700", // gold
-            colorBackground: "#033360ff",
-            colorText: "#FFD700",
-            colorInputBackground: "#002b55",
-            colorInputText: "#FFD700",
-            borderRadius: "0.75rem",
-            fontFamily: "Inter, sans-serif",
-          },
-          elements: {
-            card: "shadow-2xl border border-[#FFD700]/30",
-            headerTitle: "text-[#FFD700]",
-            headerSubtitle: "text-[#FFD700]/70",
-            socialButtonsBlockButton:
-              "bg-[#002b55] border border-[#FFD700]/30 hover:bg-[#003366]",
-            formButtonPrimary:
-              "bg-[#FFD700] text-[#001a33] hover:bg-[#ffdf33]",
-            footerActionLink: "text-[#FFD700] hover:text-[#ffdf33]",
-          },
-        }}
+   appearance={{
+  variables: {
+  colorPrimary: "#00fff7",
+  colorBackground: "#050b1e",
+
+  // ✅ FIX: main text should be bright white, not neon
+  colorText: "#f5f9ff",
+
+  // inputs
+  colorInputBackground: "#071a33",
+
+  // ❗ FIX: input text was neon cyan (bad contrast on dark UI)
+  colorInputText: "#f5f9ff",
+
+  borderRadius: "0.5rem",
+  fontFamily: "Orbitron, Inter, sans-serif",
+},
+ elements: {
+  card:
+    "backdrop-blur-xl shadow-[0_0_40px_rgba(0,255,247,0.15)] border border-[#00fff7]/20",
+
+  headerTitle:
+    "text-[#00fff7] tracking-widest uppercase font-bold",
+
+  // ✅ FIX: make subtitle readable
+  headerSubtitle:
+    "text-white/80",
+
+  socialButtonsBlockButton:
+    "bg-[#071a33] text-white border border-[#00fff7]/30 hover:shadow-[0_0_15px_#00fff7] transition-all",
+
+  formButtonPrimary:
+    "bg-[#00fff7] text-black font-bold hover:shadow-[0_0_20px_#00fff7] transition-all",
+
+  formFieldLabel:
+    "text-white/80", // 👈 IMPORTANT FIX
+
+  formFieldInput:
+    "bg-[#071a33] text-white border border-[#00fff7]/30 focus:border-[#00fff7] focus:shadow-[0_0_10px_#00fff7]",
+
+  footerActionLink:
+    "text-white/70 hover:text-[#00fff7] underline underline-offset-4",
+},
+}}
       />
     </div>
   );

@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { db } from '../../../db/client';
 import { users } from '../../../db/schema';
@@ -13,7 +14,24 @@ export async function POST(req: Request) {
     }
 
     const client = await clerkClient();
-    const clerkUser = await client.users.getUser(clerkId);
+    let clerkUser = null;
+
+for (let i = 0; i < 3; i++) {
+  try {
+    clerkUser = await client.users.getUser(clerkId);
+    if (clerkUser) break;
+  } catch (e) {
+    console.warn("Retrying Clerk user fetch...", i);
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
+if (!clerkUser) {
+  return NextResponse.json(
+    { error: "Clerk user not ready yet" },
+    { status: 400 }
+  );
+}
     const name = `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim();
     const email = clerkUser.emailAddresses?.[0]?.emailAddress || 'unknown@example.com';
     const profilePicture = clerkUser.imageUrl || null;
@@ -23,7 +41,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'User already exists' }, { status: 200 });
     }
 
-    let rawPassword = 'oauth-placeholder';
+    let rawPassword = crypto.randomBytes(32).toString('hex');
     try {
       const body = await req.json();
       if (body?.password) {
@@ -32,7 +50,7 @@ export async function POST(req: Request) {
           await client.users.updateUser(clerkId, { password: rawPassword });
         } catch (err) {
           console.warn('⚠️ Clerk password update failed:', err);
-          rawPassword = 'oauth-placeholder';
+          rawPassword = crypto.randomBytes(32).toString('hex');
         }
       }
     } catch (err) {
