@@ -116,10 +116,25 @@ function advanceIndex(state, steps = 1) {
 
 function applyCardEffect(state, playerId, playedCard, chosenColor) {
   const value = norm(playedCard.value);
-  state.discardPile.push(playedCard);
-  state.currentColor = value === "wild" || value === "wild draw four" ? norm(chosenColor) : norm(playedCard.color);
+
+  // ✅ Inject chosen color INTO the card for UI
+  let finalCard = { ...playedCard };
+
+  if (value === "wild" || value === "wild draw four") {
+    finalCard.color = norm(chosenColor); // 🔥 THIS FIXES DISPLAY
+  }
+
+  // ✅ Push ONLY ONCE
+  state.discardPile.push(finalCard);
+
+  // ✅ Update rule color
+  state.currentColor =
+    value === "wild" || value === "wild draw four"
+      ? norm(chosenColor)
+      : norm(playedCard.color);
 
   const playerHand = state.hands[playerId] || [];
+
   if (playerHand.length === 0) {
     state.status = "finished";
     state.winnerId = playerId;
@@ -130,7 +145,7 @@ function applyCardEffect(state, playerId, playedCard, chosenColor) {
     if (state.players.length === 2) {
       advanceIndex(state, 2);
     } else {
-      state.direction = state.direction * -1;
+      state.direction *= -1;
       advanceIndex(state, 1);
     }
     return;
@@ -142,14 +157,24 @@ function applyCardEffect(state, playerId, playedCard, chosenColor) {
   }
 
   if (value === "draw two" || value === "+2") {
-    const target = state.players[(((state.turnIndex + state.direction) % state.players.length) + state.players.length) % state.players.length];
+    const target =
+      state.players[
+        (((state.turnIndex + state.direction) % state.players.length) +
+          state.players.length) %
+          state.players.length
+      ];
     drawFor(state, target.id, 2);
     advanceIndex(state, 2);
     return;
   }
 
   if (value === "wild draw four" || value === "+4") {
-    const target = state.players[(((state.turnIndex + state.direction) % state.players.length) + state.players.length) % state.players.length];
+    const target =
+      state.players[
+        (((state.turnIndex + state.direction) % state.players.length) +
+          state.players.length) %
+          state.players.length
+      ];
     drawFor(state, target.id, 4);
     advanceIndex(state, 2);
     return;
@@ -221,37 +246,67 @@ async function getCurrentUser() {
   return user;
 }
 
-function runAiTurns(room) {
+function runSingleAiTurn(room) {
   const state = room.activeState;
-  if (!state || state.status !== "active") return;
+  if (!state || state.status !== "active") return false;
 
-  let safety = 0;
-  while (state.status === "active" && safety < 32) {
-    safety++;
-    const current = state.players[state.turnIndex];
-    if (!current || current.type !== "ai") break;
+  const current = state.players[state.turnIndex];
+  if (!current || current.type !== "ai") return false;
 
-    const card = chooseAiCard(state, current.id);
-    if (!card) {
-      drawFor(state, current.id, 1);
-      const fresh = state.hands[current.id][state.hands[current.id].length - 1];
-      const top = state.discardPile[state.discardPile.length - 1];
-      if (fresh && isPlayable(fresh, top, state.currentColor, state.hands[current.id])) {
-        state.hands[current.id].pop();
-        const chosenColor = norm(fresh.color) === "black" ? aiChooseColor(state.hands[current.id]) : fresh.color;
-        applyCardEffect(state, current.id, { ...fresh, color: norm(fresh.color) === "black" ? chosenColor : fresh.color }, chosenColor);
-      } else {
-        advanceIndex(state, 1);
-      }
-      continue;
+  const card = chooseAiCard(state, current.id);
+
+  if (!card) {
+    drawFor(state, current.id, 1);
+
+    const fresh = state.hands[current.id].at(-1);
+    const top = state.discardPile.at(-1);
+
+    if (fresh && isPlayable(fresh, top, state.currentColor, state.hands[current.id])) {
+      state.hands[current.id].pop();
+
+      const chosenColor =
+        norm(fresh.color) === "black"
+          ? aiChooseColor(state.hands[current.id])
+          : null;
+
+      applyCardEffect(state, current.id, fresh, chosenColor);
+    } else {
+      advanceIndex(state, 1);
     }
 
-    const hand = state.hands[current.id];
-    const idx = hand.findIndex((c) => c.color === card.color && c.value === card.value);
-    if (idx >= 0) hand.splice(idx, 1);
-    const chosenColor = norm(card.color) === "black" ? aiChooseColor(hand) : card.color;
-    applyCardEffect(state, current.id, { ...card, color: norm(card.color) === "black" ? chosenColor : card.color }, chosenColor);
+    return true;
   }
+
+  const hand = state.hands[current.id];
+  const idx = hand.findIndex((c) => c.color === card.color && c.value === card.value);
+  if (idx >= 0) hand.splice(idx, 1);
+
+  const chosenColor =
+    norm(card.color) === "black"
+      ? aiChooseColor(hand)
+      : null;
+
+  applyCardEffect(state, current.id, card, chosenColor);
+
+  return true;
+}
+
+function scheduleAi(room) {
+  if (room.aiTimeout) return;
+
+  room.aiTimeout = setTimeout(() => {
+    room.aiTimeout = null;
+
+    const didPlay = runSingleAiTurn(room);
+
+    if (!didPlay) return;
+
+    // Chain next AI if still AI turn
+    const state = room.activeState;
+    if (state && state.players[state.turnIndex]?.type === "ai") {
+      scheduleAi(room);
+    }
+  }, 1200); // 🔥 delay here (1.2s)
 }
 
 export async function GET(request) {
@@ -455,7 +510,7 @@ export async function POST(request) {
     room.activeState = activeState;
     room.players = room.players.map((p) => ({ ...p, skipNextRound: false }));
 
-    runAiTurns(room);
+    scheduleAi(room);
 
     return Response.json({
       success: true,
@@ -491,7 +546,7 @@ export async function POST(request) {
     if (!room.activeState) {
       return Response.json({ success: true, room: { ...tableSummary(room), players: room.players }, game: null });
     }
-    runAiTurns(room);
+    scheduleAi(room);
 
     if (room.activeState.status === "finished") {
       await settleWinner(room, room.activeState.winnerId);
@@ -536,7 +591,7 @@ export async function POST(request) {
     hand.splice(idx, 1);
     const payloadCard = (value === "wild" || value === "wild draw four") ? { ...card, color: chosenColor } : card;
     applyCardEffect(state, me.id, payloadCard, chosenColor || card.color);
-    runAiTurns(room);
+    scheduleAi(room);
 
     if (state.status === "finished") {
       await settleWinner(room, state.winnerId);
@@ -562,7 +617,7 @@ export async function POST(request) {
 
     drawFor(state, me.id, 1);
     advanceIndex(state, 1);
-    runAiTurns(room);
+    scheduleAi(room);
 
     if (state.status === "finished") {
       await settleWinner(room, state.winnerId);
@@ -620,7 +675,7 @@ export async function POST(request) {
       if (state.turnIndex < 0 || state.turnIndex >= state.players.length) {
         state.turnIndex = 0;
       }
-      runAiTurns(room);
+      scheduleAi(room);
     }
 
     return Response.json({

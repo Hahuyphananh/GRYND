@@ -19,6 +19,7 @@ const isPublicRoute = createRouteMatcher([
   '/casino/blackjack',
   '/casino/roulette',
   '/casino/uno(.*)',
+  '/uno/multiplayer(.*)',
   '/casino/plinko',
   '/casino/mines',
   '/casino/crash',
