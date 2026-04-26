@@ -70,6 +70,13 @@ if (!clerkUser) {
     const newUser = inserted[0];
 
 // 🔥 CREATE USER_STATS ROW
+
+await db.execute(sql`
+  INSERT INTO user_secret_stats (user_id, day_key, day_start_balance, last_known_balance)
+  VALUES (${newUser.id}, ${new Date().toISOString().slice(0, 10)}, ${newUser.balance ?? '1000.00'}, ${newUser.balance ?? '1000.00'})
+  ON CONFLICT (user_id) DO NOTHING
+`);
+
 await db.execute(sql`
   INSERT INTO user_stats (user_id)
   VALUES (${newUser.id})

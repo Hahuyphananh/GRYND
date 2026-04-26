@@ -20,6 +20,9 @@ export const users = pgTable('users', {
   referralEarnings: numeric('referral_earnings', { precision: 10, scale: 2 }).default('0.00').notNull(),
   totalWagered: numeric('total_wagered', { precision: 14, scale: 2 }).default('0.00').notNull(),
   level: integer('level').default(1).notNull(),
+  selectedTitle: text('selected_title').default(null),
+  highestTitle: text('highest_title').default(null),
+  selectedSpecialTitle: text('selected_special_title').default(null),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   searchName: varchar('search_name', { length: 255 }),
 });
@@ -62,6 +65,43 @@ export const userLoginRewards = pgTable("user_login_rewards", {
   lastClaimedDate: date("last_claimed_date").default(null),
 });
 
+
+
+export const specialTitles = pgTable('special_titles', {
+  id: serial('id').primaryKey(),
+  key: varchar('key', { length: 120 }).notNull().unique(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description').notNull(),
+  rarity: varchar('rarity', { length: 40 }).notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const userSpecialTitles = pgTable('user_special_titles', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  titleKey: varchar('title_key', { length: 120 }).notNull(),
+  unlockedAt: timestamp('unlocked_at').notNull().defaultNow(),
+}, (table) => ({
+  uniqUserTitle: index('user_special_titles_user_title_idx').on(table.userId, table.titleKey),
+}));
+
+export const userSecretStats = pgTable('user_secret_stats', {
+  userId: integer('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  chatMessagesCount: integer('chat_messages_count').notNull().default(0),
+  goonbetMentions: integer('goonbet_mentions').notNull().default(0),
+  allInPhraseMentions: integer('all_in_phrase_mentions').notNull().default(0),
+  gamesPlayed: integer('games_played').notNull().default(0),
+  winStreak: integer('win_streak').notNull().default(0),
+  lossStreak: integer('loss_streak').notNull().default(0),
+  allInCount: integer('all_in_count').notNull().default(0),
+  allInLossStreak: integer('all_in_loss_streak').notNull().default(0),
+  jackpotsWon: integer('jackpots_won').notNull().default(0),
+  lastKnownBalance: numeric('last_known_balance', { precision: 14, scale: 2 }).notNull().default('0.00'),
+  dayStartBalance: numeric('day_start_balance', { precision: 14, scale: 2 }).notNull().default('0.00'),
+  dayKey: varchar('day_key', { length: 10 }),
+  loginDays: integer('login_days').notNull().default(0),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
 
 
 export const chatRoomTypeEnum = pgEnum('chat_room_type', ['global', 'game']);
