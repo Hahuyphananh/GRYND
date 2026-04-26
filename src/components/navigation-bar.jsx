@@ -27,7 +27,7 @@ function NavigationBar({ currentPath }) {
   const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
   const [balance, setBalance] = useState(null);
-  const [profile, setProfile] = useState({ name: "", profilePicture: "", level: 1 });
+  const [profile, setProfile] = useState({ name: "", profilePicture: "", selectedTitle: "" });
   const [error, setError] = useState(null);
   const [showAddFunds, setShowAddFunds] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -50,7 +50,11 @@ function NavigationBar({ currentPath }) {
   useEffect(() => {
   const handler = () => fetchBalance();
   window.addEventListener("profileUpdated", handler);
-  return () => window.removeEventListener("profileUpdated", handler);
+  window.addEventListener("titleUpdated", handler);
+  return () => {
+    window.removeEventListener("profileUpdated", handler);
+    window.removeEventListener("titleUpdated", handler);
+  };
 }, []);
 
   const avatarSrc =
@@ -87,6 +91,14 @@ function NavigationBar({ currentPath }) {
           const statsRes = await fetch("/api/user-stats");
           const statsData = await statsRes.json();
           if (statsData.success) setLevel(statsData.stats.currentLevel);
+        } catch {}
+
+        try {
+          const titlesRes = await fetch("/api/titles", { credentials: "include" });
+          const titlesData = await titlesRes.json();
+          if (titlesData.success) {
+            setProfile((prev) => ({ ...prev, selectedTitle: titlesData.selectedTitle || "" }));
+          }
         } catch {}
       } else if (data.shouldInitialize) {
         const initResponse = await fetch("/api/tokens/initialize", {
@@ -169,7 +181,8 @@ function NavigationBar({ currentPath }) {
                         <span className="text-xs text-[#c9f7ff]">
   {profile?.name || user?.username || user?.firstName || t("nav.user_fallback")}
 </span>
-                        <span className="text-[10px] text-[#f5ff3b]">{t("nav.level_short")} {level ?? "..."}</span>
+                        <span className="text-[10px] text-[#f5ff3b]">{profile?.selectedTitle || "No title equipped"}</span>
+                        <span className="text-[10px] text-[#7dd3fc]">{t("nav.level_short")} {level ?? "..."}</span>
                       </div>
                     </Link>
                     <span className="text-[#00e5ff]">{error ? `${t("nav.error")}: ${error}` : balance !== null ? `$${balance}` : t("nav.loading")}</span>
