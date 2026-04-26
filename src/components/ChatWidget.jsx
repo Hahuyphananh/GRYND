@@ -257,20 +257,25 @@ export default function ChatWidget() {
               messages.map((msg) => (
                 <div key={msg.id} className="mb-2 rounded border border-cyan-400/10 bg-gradient-to-r from-black/60 to-cyan-950/20 px-2 py-1 hover:border-cyan-400/30 transition">
                   <div className="mb-1 flex items-center justify-between text-[11px] text-cyan-300/70">
-                    <span className="flex items-center gap-1.5 font-medium text-fuchsia-300 drop-shadow-[0_0_6px_rgba(217,70,239,0.5)]">
-                      {msg.profileImageUrl && /^https?:\/\//.test(msg.profileImageUrl) ? (
-                        <img
-                          src={msg.profileImageUrl}
-                          alt={`${msg.displayName || 'Player'} profile`}
-                          className="h-5 w-5 rounded-full border border-slate-600 object-cover"
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-600 bg-slate-700 text-[10px] uppercase text-slate-200">
-                          {(msg.displayName || 'P').charAt(0)}
-                        </span>
-                      )}
+                    <span className="flex items-center gap-3 font-medium text-fuchsia-300 drop-shadow-[0_0_6px_rgba(217,70,239,0.5)]">
+                      {(() => {
+  const avatarSrc =
+    (typeof msg.profileImageUrl === "string" &&
+      (msg.profileImageUrl.startsWith("http") ||
+        msg.profileImageUrl.startsWith("data:image/")))
+      ? msg.profileImageUrl
+      : "/default-avatar.png";
+
+  return (
+    <img
+      src={avatarSrc}
+      alt={`${msg.displayName || "Player"} profile`}
+      className="h-9 w-9 rounded-full border-2 border-cyan-400/60 object-cover shadow-[0_0_12px_rgba(34,211,238,0.45)]"
+      loading="lazy"
+      referrerPolicy="no-referrer"
+    />
+  );
+})()}
                       <span>{msg.displayName || 'Player'}</span>
                       {msg.selectedTitle ? (
                         <span className="rounded-full border border-fuchsia-400/60 bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fuchsia-200 shadow-[0_0_10px_rgba(217,70,239,0.35)]">
