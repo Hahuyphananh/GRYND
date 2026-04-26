@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { claimIdempotency } from "../../../../lib/security/idempotency";
 import { sql } from "@vercel/postgres";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
+import { checkUnlocks } from "../../../../lib/specialTitles";
 
 const REFERRAL_BONUS = 250;
 
@@ -96,11 +97,14 @@ export async function POST(request) {
       `;
     });
 
+    const unlockedSpecialTitles = await checkUnlocks(referrer.clerk_id, "referral_invite", {});
+
     return new Response(
       JSON.stringify({
         success: true,
         message: "Referral redeemed",
         reward: REFERRAL_BONUS,
+        unlockedSpecialTitles,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );

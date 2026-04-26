@@ -3,6 +3,8 @@ import { sql } from "@vercel/postgres";
 import { getUserLevel } from "../../../lib/vipLevels";
 import { parseAndValidateJson } from "../../../lib/security/validation";
 import { claimIdempotency } from "../../../lib/security/idempotency";
+import { getHighestTitle } from "../../../lib/titles";
+import { checkUnlocks } from "../../../lib/specialTitles";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -49,6 +51,7 @@ export async function POST(request) {
     `;
 
     const dbUser = userResult.rows[0];
+    const startingBalance = Number(userResult.rows[0]?.balance || 0);
     if (!dbUser) {
       return new Response(JSON.stringify({ success: false, error: "User not found" }), {
         status: 404,
@@ -78,16 +81,28 @@ export async function POST(request) {
         const nextLevel = getUserLevel(updatedWagered);
 
         let bonus = 0;
+        const newHighestTitle = getHighestTitle(nextLevel)?.title || null;
+        const previousHighestTitle = getHighestTitle(previousLevel)?.title || null;
+
         if (nextLevel > previousLevel) {
           bonus = nextLevel * 100;
           event = { type: "LEVEL_UP", level: nextLevel, bonus };
+        }
+
+        if (newHighestTitle && newHighestTitle !== previousHighestTitle) {
+          event = {
+            ...(event || {}),
+            type: event?.type || "TITLE_UNLOCK",
+            newUnlockedTitle: newHighestTitle,
+          };
         }
 
         await tx`
           UPDATE users
           SET total_wagered = ${updatedWagered},
               level = ${nextLevel},
-              balance = balance + ${bonus}
+              balance = balance + ${bonus},
+              highest_title = COALESCE(${newHighestTitle}, highest_title)
           WHERE id = ${dbUser.id}
         `;
       }
@@ -98,8 +113,13 @@ export async function POST(request) {
       `;
     });
 
+    const unlockedSpecialTitles = await checkUnlocks(userId, "bet_placed", {
+      isAllIn: startingBalance > 0 && betAmount >= startingBalance,
+      balanceAfter: Math.max(0, startingBalance - betAmount),
+    });
+
     return new Response(
-      JSON.stringify({ success: true, event }),
+      JSON.stringify({ success: true, event, unlockedSpecialTitles }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {
