@@ -13,10 +13,10 @@ import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animation
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 
 const NAV_TRANSLATION_KEYS = {
-  "/": "navHome",
-  "/sport": "navSport",
-  "/casino": "navCasino",
-  "/classement": "navClassement",
+  "/": "nav.home",
+  "/sport": "nav.sport",
+  "/casino": "nav.casino",
+  "/classement": "nav.leaderboard",
 };
 
 function NavigationBar({ currentPath }) {
@@ -65,7 +65,7 @@ function NavigationBar({ currentPath }) {
   const fetchBalance = async () => {
     try {
       const token = await getToken({ template: "app_token" });
-      if (!token) return setError("Token manquant");
+      if (!token) return setError(t("nav.token_missing"));
 
       const response = await fetch("/api/get-user-tokens", {
         method: "POST",
@@ -74,7 +74,7 @@ function NavigationBar({ currentPath }) {
       });
 
       const data = await response.json();
-      if (response.status === 403) return setError("Jeton invalide ou expiré.");
+      if (response.status === 403) return setError(t("nav.invalid_token"));
 
       if (data.success) {
         setBalance(data.data.balance);
@@ -94,12 +94,12 @@ function NavigationBar({ currentPath }) {
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         });
         if (initResponse.ok) fetchBalance();
-        else setError("Échec de l'initialisation");
+        else setError(t("nav.init_failed"));
       } else {
-        setError(data.error || "Erreur inconnue");
+        setError(data.error || t("nav.unknown_error"));
       }
     } catch {
-      setError("Erreur réseau");
+      setError(t("nav.network_error"));
     }
   };
 
@@ -167,21 +167,21 @@ function NavigationBar({ currentPath }) {
                       {avatarSrc ? <img src={avatarSrc} alt="profile" className="h-8 w-8 rounded-full border border-[#00e5ff]/50 object-cover transition group-hover:scale-105" /> : <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#00e5ff] text-xs font-bold text-black">{user?.firstName?.[0] || "U"}</div>}
                       <div className="flex flex-col leading-tight">
                         <span className="text-xs text-[#c9f7ff]">
-  {profile?.name || user?.username || user?.firstName || "User"}
+  {profile?.name || user?.username || user?.firstName || t("nav.user_fallback")}
 </span>
-                        <span className="text-[10px] text-[#f5ff3b]">LVL {level ?? "..."}</span>
+                        <span className="text-[10px] text-[#f5ff3b]">{t("nav.level_short")} {level ?? "..."}</span>
                       </div>
                     </Link>
-                    <span className="text-[#00e5ff]">{error ? `${t("navError")}: ${error}` : balance !== null ? `$${balance}` : t("navLoading")}</span>
+                    <span className="text-[#00e5ff]">{error ? `${t("nav.error")}: ${error}` : balance !== null ? `$${balance}` : t("nav.loading")}</span>
                   </div>
                   <SignOutButton>
-                    <UIPro02NavItem className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35">{t("navSignOut")}</UIPro02NavItem>
+                    <UIPro02NavItem className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35">{t("nav.sign_out")}</UIPro02NavItem>
                   </SignOutButton>
                 </>
               ) : (
                 <>
-                  <UIPro02NavItem href="/sign-up" className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/35">{t("navCreateAccount")}</UIPro02NavItem>
-                  <UIPro02NavItem href="/sign-in" className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35">{t("navSignIn")}</UIPro02NavItem>
+                  <UIPro02NavItem href="/sign-up" className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/35">{t("nav.create_account")}</UIPro02NavItem>
+                  <UIPro02NavItem href="/sign-in" className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35">{t("nav.sign_in")}</UIPro02NavItem>
                 </>
               )}
             </div>
