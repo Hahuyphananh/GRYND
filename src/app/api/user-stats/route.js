@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { neon } from "@neondatabase/serverless";
 import { getLevelProgress, getUserLevel  } from "../../../lib/vipLevels";
+import { getHighestTitle } from "../../../lib/titles";
 
 // 👇 ADD THESE (from your history route)
 import { db } from "../../../db";
@@ -208,11 +209,13 @@ export async function GET() {
 
 const computedLevel = getUserLevel(totalWagered);
 const progress = getLevelProgress(totalWagered);
+const computedHighestTitle = getHighestTitle(computedLevel)?.title || null;
 
 await sql`
   UPDATE users
   SET level = ${computedLevel},
-      total_wagered = ${totalWagered}
+      total_wagered = ${totalWagered},
+      highest_title = COALESCE(${computedHighestTitle}, highest_title)
   WHERE clerk_id = ${userId}
 `;
 
