@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { userLoginRewards, users } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 import { claimIdempotency } from "../../../lib/security/idempotency";
+import { checkUnlocks } from "../../../lib/specialTitles";
 
 const LOGIN_REWARD_BASE = 100;
 const MAX_DAY = 14;
@@ -119,11 +120,15 @@ const elapsedDays = Math.floor((nowDayKey - lastDayKey) / (1000 * 60 * 60 * 24))
       })
       .where(eq(userLoginRewards.userId, uid));
 
+    const updatedBalance = Number(dbUser.balance || 0) + reward;
+    const unlockedSpecialTitles = await checkUnlocks(userId, "login_claim", { balanceAfter: updatedBalance });
+
     return NextResponse.json({
       success: true,
       reward,
       claimedDay: rewardData.currentDay,
       nextDay,
+      unlockedSpecialTitles,
     });
 
   } catch (err) {

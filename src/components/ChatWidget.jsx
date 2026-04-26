@@ -173,6 +173,10 @@ export default function ChatWidget() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to send message.');
 
+      if (Array.isArray(data.unlockedSpecialTitles) && data.unlockedSpecialTitles.length) {
+        setError(`NEW SECRET TITLE UNLOCKED: ${data.unlockedSpecialTitles.join(', ')}`);
+      }
+
       setMessage('');
       await loadMessages();
       socket?.emit('room_event', {
@@ -277,9 +281,9 @@ export default function ChatWidget() {
   );
 })()}
                       <span>{msg.displayName || 'Player'}</span>
-                      {msg.selectedTitle ? (
+                      {msg.equippedTitle ? (
                         <span className="rounded-full border border-fuchsia-400/60 bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fuchsia-200 shadow-[0_0_10px_rgba(217,70,239,0.35)]">
-                          {msg.selectedTitle}
+                          {msg.equippedTitle}
                         </span>
                       ) : null}
                     </span>

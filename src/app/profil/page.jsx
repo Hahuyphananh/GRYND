@@ -26,6 +26,7 @@ export default function ProfilePage() {
   const [stats, setStats] = useState(null);
   const [statsError, setStatsError] = useState(null);
   const [titleMeta, setTitleMeta] = useState({ selectedTitle: "", highestTitle: "" });
+  const [specialTitles, setSpecialTitles] = useState({ selectedSpecialTitle: "", selectedSpecialTitleName: "", titles: [] });
 
   const [referralCodeInput, setReferralCodeInput] = useState("");
   const [referralStatus, setReferralStatus] = useState("");
@@ -74,6 +75,34 @@ export default function ProfilePage() {
         selectedTitle: data.selectedTitle || "",
         highestTitle: data.highestTitle || "",
       });
+    }
+  };
+
+
+  const loadSpecialTitles = async () => {
+    const response = await fetch("/api/titles/special", { credentials: "include" });
+    const data = await response.json();
+    if (response.ok && data.success) {
+      setSpecialTitles({
+        selectedSpecialTitle: data.selectedSpecialTitle || "",
+        selectedSpecialTitleName: data.selectedSpecialTitleName || "",
+        titles: Array.isArray(data.titles) ? data.titles : [],
+      });
+    }
+  };
+
+  const handleEquipSpecialTitle = async (titleKey) => {
+    const response = await fetch("/api/titles/equip-special", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ titleKey }),
+    });
+    const data = await response.json();
+    if (response.ok && data.success) {
+      await Promise.all([loadSpecialTitles(), loadTitles(), loadProfileData()]);
+      window.dispatchEvent(new Event("titleUpdated"));
+      window.dispatchEvent(new Event("profileUpdated"));
     }
   };
 
@@ -361,7 +390,7 @@ const getFriendStatus = (friendId) => {
 
     const bootstrap = async () => {
   try {
-    await Promise.all([loadProfileData(), loadStats(), loadTitles(), loadFriends(), loadFriendPresence(), loadFriendInvites()]);
+    await Promise.all([loadProfileData(), loadStats(), loadTitles(), loadSpecialTitles(), loadFriends(), loadFriendPresence(), loadFriendInvites()]);
 
     if (!stats?.referralCode) {
       await initializeReferral();
@@ -379,6 +408,7 @@ const getFriendStatus = (friendId) => {
   useEffect(() => {
     const refreshTitles = () => {
       loadTitles();
+      loadSpecialTitles();
     };
 
     window.addEventListener("titleUpdated", refreshTitles);
@@ -773,9 +803,9 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-lg f
               <div>
                 <div className="flex items-center gap-2">
                   <p>Name : {profileInfo.name || user.fullName || "Unknown user"}</p>
-                  {titleMeta.selectedTitle && (
+                  {(specialTitles.selectedSpecialTitleName || titleMeta.selectedTitle) && (
                     <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
-                      {titleMeta.selectedTitle}
+                      {specialTitles.selectedSpecialTitleName || titleMeta.selectedTitle}
                     </span>
                   )}
                 </div>
@@ -829,6 +859,44 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold">
             <span>{Number(stats?.levelProgress?.nextLevelRequired ?? 0).toLocaleString()} next level</span>
           </div>
         </div>
+
+        <div className="mt-8 rounded-xl border border-fuchsia-400/35 bg-[#0d0a28]/85 p-6 shadow-[0_0_24px_rgba(217,70,239,0.2)]">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl text-fuchsia-300">Secret Titles</h2>
+            <span className="rounded-full border border-fuchsia-300/50 px-3 py-1 text-xs text-fuchsia-200">
+              Equipped: {specialTitles.selectedSpecialTitleName || "None"}
+            </span>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {(specialTitles.titles || []).map((title) => {
+              const isUnlocked = !!title.unlocked;
+              const isEquipped = specialTitles.selectedSpecialTitle === title.key;
+
+              return (
+                <button
+                  key={title.key}
+                  disabled={!isUnlocked}
+                  onClick={() => handleEquipSpecialTitle(title.key)}
+                  className={[
+                    "rounded-lg border p-3 text-left transition",
+                    isUnlocked ? "border-fuchsia-300/45 bg-fuchsia-500/10 hover:bg-fuchsia-500/20" : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
+                    isEquipped ? "ring-2 ring-yellow-300" : "",
+                  ].join(" ")}
+                  title={isUnlocked ? `Unlocked ${title.unlockedAt ? new Date(title.unlockedAt).toLocaleDateString() : ""}` : "Locked"}
+                >
+                  <p className="text-xs uppercase tracking-widest text-slate-300">{title.rarity}</p>
+                  <p className="font-semibold text-white">{isUnlocked ? title.name : "?????"}</p>
+                  <p className="text-xs text-slate-300">{isUnlocked ? title.description : "Locked secret title"}</p>
+                  {isUnlocked && title.unlockedAt ? (
+                    <p className="mt-1 text-[11px] text-fuchsia-200">Unlocked: {new Date(title.unlockedAt).toLocaleDateString()}</p>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
 
         <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
 rounded-xl p-6 
