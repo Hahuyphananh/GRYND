@@ -272,6 +272,11 @@ export default function ChatWidget() {
                         </span>
                       )}
                       <span>{msg.displayName || 'Player'}</span>
+                      {msg.selectedTitle ? (
+                        <span className="rounded-full border border-fuchsia-400/60 bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fuchsia-200 shadow-[0_0_10px_rgba(217,70,239,0.35)]">
+                          {msg.selectedTitle}
+                        </span>
+                      ) : null}
                     </span>
                     <span>{new Date(msg.createdAt).toLocaleTimeString()}</span>
                   </div>
