@@ -117,9 +117,13 @@ export async function POST(req) {
     const profileImageUrl = appUser?.profilePicture || null;
     const selectedTitle = appUser?.selectedTitle || null;
     const selectedSpecialTitle = appUser?.selectedSpecialTitle || null;
-    const specialTitleRow = selectedSpecialTitle
-      ? await db.query.specialTitles.findFirst({ where: eq(specialTitles.key, selectedSpecialTitle), columns: { name: true } })
-      : null;
+    const [specialTitleRow] = selectedSpecialTitle
+  ? await db
+      .select({ name: specialTitles.name })
+      .from(specialTitles)
+      .where(eq(specialTitles.key, selectedSpecialTitle))
+      .limit(1)
+  : [];
     const equippedTitle = specialTitleRow?.name || selectedTitle;
 
     const inserted = await db

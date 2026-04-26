@@ -60,7 +60,9 @@ export async function checkUnlocks(clerkId: string, actionType: ActionType, meta
   if (!stats) return [];
 
   const dayKey = utcDayKey();
-  let statsPatch: Record<string, number | string> = { updatedAt: new Date().toISOString() };
+  let statsPatch: Record<string, number | string | Date> = {
+  updatedAt: new Date()
+};
 
   if (stats.dayKey !== dayKey) {
     statsPatch.dayKey = dayKey;
