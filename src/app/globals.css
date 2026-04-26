@@ -451,6 +451,34 @@ a[class*="bg-[#f5ff3b]"] {
   100% { filter: blur(0); opacity: 1; }
 }
 
+@keyframes neonButton {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.4),
+                0 0 40px rgba(217, 70, 239, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 35px rgba(34, 211, 238, 0.7),
+                0 0 60px rgba(217, 70, 239, 0.4);
+  }
+}
+@keyframes neonPulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.15),
+                0 0 40px rgba(217, 70, 239, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 35px rgba(34, 211, 238, 0.35),
+                0 0 60px rgba(217, 70, 239, 0.2);
+  }
+}
+
+.animate-neonPulse {
+  animation: neonPulse 3s ease-in-out infinite;
+}
+.animate-neonButton {
+  animation: neonButton 2.5s ease-in-out infinite;
+}
+
 .animate-borderFlowX {
   animation: borderFlowX 2s linear infinite;
 }

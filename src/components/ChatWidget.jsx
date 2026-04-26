@@ -212,23 +212,28 @@ export default function ChatWidget() {
   return (
     <div className="fixed bottom-4 left-4 z-[70]">
       <button
-        type="button"
-        onClick={() => setIsOpen((v) => !v)}
-        className="h-12 w-12 rounded-full bg-emerald-500 text-2xl shadow-lg transition hover:bg-emerald-400"
-        aria-label="Toggle chat"
-      >
-        💬
-      </button>
+  type="button"
+  onClick={() => setIsOpen((v) => !v)}
+  className="relative h-16 w-16 rounded-full bg-gradient-to-br from-cyan-400 via-fuchsia-500 to-purple-600 text-2xl text-black shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(217,70,239,0.7)] active:scale-95 animate-neonButton"
+  aria-label="Toggle chat"
+>
+  💬
+
+  {/* pulsing ring */}
+  <span className="absolute inset-0 rounded-full border border-cyan-300/40 animate-ping" />
+</button>
 
       {isOpen ? (
-        <div className="mt-2 w-[320px] rounded-xl border border-slate-700 bg-slate-900/95 p-3 text-sm text-slate-100 shadow-2xl backdrop-blur">
-          <div className="mb-2 flex items-center justify-between gap-2">
+       <div className="mt-2 w-[420px] rounded-xl border border-cyan-400/30 bg-black/70 p-4 text-sm text-cyan-50 shadow-[0_0_35px_rgba(34,211,238,0.25)] backdrop-blur-xl relative overflow-hidden animate-neonPulse">
+          {/* scanline overlay */}
+<div className="pointer-events-none absolute inset-0 z-0 opacity-[0.08] mix-blend-overlay bg-[repeating-linear-gradient(0deg,black,black_2px,transparent_2px,transparent_4px)] animate-scanlines" />
+          <div className="mb-2 flex items-center justify-between gap-2 text-cyan-300">
             <p className="font-semibold">{room.title}</p>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={handleRefresh}
-                className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-100 hover:bg-slate-600"
+                className="rounded border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[11px] text-cyan-200 hover:bg-cyan-400/20"
               >
                 Refresh
               </button>
@@ -236,7 +241,7 @@ export default function ChatWidget() {
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="ml-1 rounded px-1.5 py-0.5 text-sm text-slate-300 hover:bg-slate-700 hover:text-white"
+                className="ml-1 rounded px-1.5 py-0.5 text-sm text-cyan-300 hover:bg-fuchsia-500/20 hover:text-fuchsia-200"
                 aria-label="Close chat"
                 title="Close chat"
               >
@@ -245,15 +250,15 @@ export default function ChatWidget() {
             </div>
           </div>
 
-          <div ref={messagesContainerRef} className="mb-2 h-64 overflow-y-auto rounded border border-slate-700 bg-slate-950 p-2">
+          <div ref={messagesContainerRef} className="mb-2 h-64 overflow-y-auto rounded border border-cyan-400/20 bg-black/60 p-2 shadow-inner shadow-cyan-500/10">
             {messages.length === 0 ? (
-              <p className="text-slate-500">No messages yet.</p>
+              <p className="text-cyan-400/40">No messages yet.</p>
             ) : (
               messages.map((msg) => (
-                <div key={msg.id} className="mb-2 rounded bg-slate-800 px-2 py-1">
-                  <div className="mb-1 flex items-center justify-between text-[11px] text-slate-400">
-                    <span className="flex items-center gap-1.5 font-medium text-emerald-300">
-                      {msg.profileImageUrl ? (
+                <div key={msg.id} className="mb-2 rounded border border-cyan-400/10 bg-gradient-to-r from-black/60 to-cyan-950/20 px-2 py-1 hover:border-cyan-400/30 transition">
+                  <div className="mb-1 flex items-center justify-between text-[11px] text-cyan-300/70">
+                    <span className="flex items-center gap-1.5 font-medium text-fuchsia-300 drop-shadow-[0_0_6px_rgba(217,70,239,0.5)]">
+                      {msg.profileImageUrl && /^https?:\/\//.test(msg.profileImageUrl) ? (
                         <img
                           src={msg.profileImageUrl}
                           alt={`${msg.displayName || 'Player'} profile`}
@@ -303,12 +308,12 @@ export default function ChatWidget() {
                 rows={3}
                 maxLength={500}
                 placeholder="Say something... Emojis 😀 and formatting **bold** *italic* `code`"
-                className="w-full resize-none rounded border border-slate-700 bg-slate-950 p-2 text-sm outline-none focus:border-emerald-500"
+                className="w-full resize-none rounded border border-cyan-400/20 bg-black/60 p-2 text-sm text-cyan-50 outline-none focus:border-fuchsia-400 focus:shadow-[0_0_12px_rgba(217,70,239,0.4)]"
               />
               <button
                 type="submit"
                 disabled={isSending}
-                className="w-full rounded bg-emerald-600 py-1 font-medium text-white hover:bg-emerald-500 disabled:opacity-60"
+                className="w-full rounded bg-gradient-to-r from-cyan-500 to-fuchsia-500 py-1 font-medium text-black hover:from-fuchsia-500 hover:to-cyan-500 shadow-[0_0_20px_rgba(34,211,238,0.4)] disabled:opacity-60"
               >
                 {isSending ? 'Sending...' : 'Send'}
               </button>
