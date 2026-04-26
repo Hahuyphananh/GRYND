@@ -109,6 +109,10 @@ export default function UnoMultiplayerPage() {
     setUnoMultiBackendMode(tableGame.mode || "table");
     setUnoMultiStarted(true);
     setTopCard(tableGame.topCard || null);
+    setGame((prev: any) => ({
+  ...prev,
+  currentColor: tableGame.currentColor,
+}));
     setUnoMultiHandCounts(Array.isArray(tableGame.handCounts) ? tableGame.handCounts : []);
     setUnoMultiTurnPlayerId(tableGame.turnPlayerId || null);
     setTurnHistory(tableGame.topCard ? [tableGame.topCard] : []);
@@ -195,6 +199,10 @@ export default function UnoMultiplayerPage() {
 
         setPlayerHand(data.data.playerHand || []);
         setTopCard(data.data.topCard || null);
+        setGame((prev: any) => ({
+  ...prev,
+  currentColor: data.data.currentColor,
+}));
         setUnoMultiHandCounts(Array.isArray(data.data.handCounts) ? data.data.handCounts : []);
         setUnoMultiTurnPlayerId(data.data.turnPlayerId || null);
         setIsPlayerTurn(data.data.turnPlayerId === data.data.role);
@@ -370,11 +378,15 @@ export default function UnoMultiplayerPage() {
   const sendPlayCard = async (card: any, chosenColor: string | null = null) => {
     if (!isPlayerTurn || loading || historyIndex !== null) return;
 
-    if ((card.color === "wild" || card.color === "black") && !chosenColor) {
-      setPendingCard(card);
-      setShowColorPicker(true);
-      return;
-    }
+   const isWild =
+  card.value.toLowerCase() === "wild" ||
+  card.value.toLowerCase() === "wild draw four";
+
+if (isWild && !chosenColor) {
+  setPendingCard(card);
+  setShowColorPicker(true);
+  return;
+}
 
     setLoading(true);
     try {
@@ -474,6 +486,13 @@ export default function UnoMultiplayerPage() {
     [unoMultiHandCounts, game?.role],
   );
 
+  const currentPlayer = unoMultiPlayers.find(
+  (p) => p.id === unoMultiTurnPlayerId
+);
+
+const isAiThinking =
+  currentPlayer?.type === "ai" && !loading;
+
   return (
     <div className="bg-gradient-to-br from-[#001933] mt-12 to-[#000d1a] min-h-screen flex flex-col items-center text-white px-4 py-8">
       <NavigationBar currentPath="/casino" />
@@ -571,7 +590,12 @@ export default function UnoMultiplayerPage() {
 
           <div className="relative w-full h-[480px] mt-2 rounded-full border-8 border-yellow-900/80 bg-green-800/80">
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-              <p className="text-yellow-300 font-semibold mb-2">Deck / Discard</p>
+<p className="text-xs text-white/70">
+  Current color:{" "}
+  <span className="font-bold uppercase">
+    {game?.currentColor || topCard?.color}
+  </span>
+</p>
               <div className="flex gap-3 justify-center">
                 <button onClick={drawCard}><UnoBack /></button>
                 {displayedCard ? <UnoCard color={displayedCard.color} value={displayedCard.value} onClick={() => {}} style={{}} /> : <div className="w-16 h-24 rounded-lg bg-[#0f172a]/60 border border-white/25" />}
@@ -606,7 +630,13 @@ export default function UnoMultiplayerPage() {
             </div>
           )}
 
-          <div className="absolute bottom-28 left-1/2 -translate-x-1/2 text-sm text-yellow-200">{message || (isPlayerTurn ? "Your turn" : "Wait your turn")}</div>
+         <div className="absolute bottom-28 left-1/2 -translate-x-1/2 text-sm text-yellow-200">
+  {isPlayerTurn
+  ? "Your turn"
+  : isAiThinking
+  ? `🤖 ${currentPlayer?.name} is thinking...`
+  : "Waiting for player..."}
+</div>
 
           <div className="absolute bottom-4 w-full px-6">
             <div className="flex justify-center items-center gap-3 mb-2">
