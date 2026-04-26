@@ -66,10 +66,20 @@ function applySecurityHeaders(response: NextResponse) {
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
   // Keep CSP strict enough for safety but compatible with current UI.
-  response.headers.set(
-    'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https: wss:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-  );
+response.headers.set(
+  'Content-Security-Policy',
+  "default-src 'self'; " +
+  "script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https:; " +
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+  "img-src 'self' data: blob: https:; " +
+  "font-src 'self' data: https://fonts.gstatic.com; " +
+  "connect-src 'self' https: wss:; " +
+  "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev; " +
+  "worker-src 'self' blob:; " +
+  "frame-ancestors 'none'; " +
+  "base-uri 'self'; " +
+  "form-action 'self'"
+);
 
   if (process.env.NODE_ENV === 'production') {
     response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
@@ -185,22 +195,37 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
 
   const { userId, sessionClaims } = await auth();
 
-  if (!userId) {
-    auditLog('auth_required_redirect', { ip, path: pathname });
-    return applySecurityHeaders(NextResponse.redirect(new URL('/sign-in', req.url)));
-  }
+if (!userId) {
+  auditLog('auth_required_redirect', { ip, path: pathname });
+  return applySecurityHeaders(
+    NextResponse.redirect(new URL('/sign-in', req.url))
+  );
+}
 
+// ONLY enforce age on protected app routes, NOT on /sync or onboarding
+const isOnboardingOrSync =
+  pathname.startsWith('/sync') ||
+  pathname.startsWith('/complete-profile');
+
+if (!isOnboardingOrSync) {
   const age = sessionClaims?.age;
 
   if (!age) {
     auditLog('missing_age_claim', { userId, ip, path: pathname });
-    return applySecurityHeaders(NextResponse.redirect(new URL('/complete-profile', req.url)));
+
+    return applySecurityHeaders(
+      NextResponse.redirect(new URL('/complete-profile', req.url))
+    );
   }
 
   if (Number(age) < 18) {
     auditLog('underage_redirect', { userId, ip, path: pathname, age: Number(age) });
-    return applySecurityHeaders(NextResponse.redirect(new URL('/access-denied', req.url)));
+
+    return applySecurityHeaders(
+      NextResponse.redirect(new URL('/access-denied', req.url))
+    );
   }
+}
 
   return applySecurityHeaders(NextResponse.next());
 };
