@@ -13,6 +13,7 @@ import HeroBg from "../images/casino-bg.png";
 import SportCard from "../components/sport-card";
 import { fadeIn, fadeUp, hoverScale, modalMotion, stagger, withReducedMotion } from "../lib/animations";
 import { UIPro06PrimaryButton, UIPro07SecondaryButton, UIPro16ToastShell, UIPro17ModalBackdrop, UIPro18ModalPanel } from "../components/uipro";
+import { useTranslation } from "../hooks/useTranslation";
 
 const MAIN_SPORT_GROUPS = [
   "American Football",
@@ -52,6 +53,7 @@ const [streakData, setStreakData] = useState({
 
 const [claimedDay, setClaimedDay] = useState(null);
 const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
+const { t } = useTranslation();
 const shouldReduceMotion = useReducedMotion();
 const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
 const fadeInVariant = withReducedMotion(shouldReduceMotion, fadeIn);
@@ -140,7 +142,7 @@ sportsArray.forEach((sport) => {
     setSports(grouped);
   } catch (err) {
     console.error(err);
-    setErrorSports("Failed to load sports");
+    setErrorSports(t("home.errors.load_sports"));
   } finally {
     setLoadingSports(false);
   }
@@ -189,7 +191,7 @@ useEffect(() => {
 
 const claimDailyReward = async () => {
   if (!user || !isSignedIn) {
-    showNotification("Vous devez être connecté pour réclamer la récompense", "error");
+    showNotification(t("home.rewards.must_sign_in"), "error");
     return;
   }
 
@@ -205,7 +207,7 @@ const claimDailyReward = async () => {
     const data = await res.json();
 
     if (!res.ok || !data.success) {
-      showNotification(data.error || "Erreur lors de la réclamation", "error");
+      showNotification(data.error || t("home.rewards.claim_error"), "error");
       return;
     }
 
@@ -224,7 +226,7 @@ setRewardPopupVisible(true);
 
   } catch (err) {
     console.error(err);
-    showNotification(err.message || "Erreur lors de la réclamation", "error");
+    showNotification(err.message || t("home.rewards.claim_error"), "error");
   }
 };
 
@@ -276,7 +278,7 @@ const fetchEventsByLeague = async (leagueKey) => {
       setEvents([]);
     }
   } catch (err) {
-    setErrorEvents("Failed to load events");
+    setErrorEvents(t("home.errors.load_events"));
     console.error(err);
   } finally {
     setLoadingEvents(false);
@@ -307,7 +309,7 @@ useEffect(() => {
       const data = await res.json();
       setEvents(data);
     } catch (error) {
-      setErrorEvents("Failed to load events");
+      setErrorEvents(t("home.errors.load_events"));
       console.error(error);
     } finally {
       setLoadingEvents(false);
@@ -362,7 +364,7 @@ useEffect(() => {
       }
     } catch (err) {
       console.error("Token fetch error:", err);
-      setError("Impossible de gérer vos tokens");
+      setError(t("home.errors.manage_tokens"));
       setUserTokens(null);
     } finally {
       setLoading(false);
@@ -430,25 +432,24 @@ drop-shadow-[0_0_50px_rgba(255,79,216,0.5)] tracking-widest uppercase
 animate-[shimmerGradient_8s_ease-in-out_infinite]"
   style={{ backgroundSize: "200% auto" }}
 >
-  Pariez sur vos Sports Préférés et Testez vos habilités au Casino
+  {t("home.landing.title")}
 </motion.h1>
 
           <motion.p initial={fadeUpVariant.initial} animate={fadeUpVariant.animate} transition={{...fadeUpVariant.transition, delay: shouldReduceMotion ? 0 : 0.05}} className="mb-8 text-xl text-[#d8fbff]">
-            Des cotes compétitives, des paris en direct, des jeux d'habilités et
-            des récompenses exclusives
+            {t("home.landing.subtitle")}
           </motion.p>
    <motion.div variants={stagger} initial="initial" animate="animate" className="flex flex-col space-y-4 sm:flex-row sm:justify-center sm:space-x-4 sm:space-y-0">
   <motion.div whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover} whileTap={shouldReduceMotion ? undefined : hoverScale.whileTap} transition={hoverScale.transition}><UIPro06PrimaryButton
     href="/sign-up"
     className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] px-8 py-4 text-lg font-medium text-[#041125] transition-all shadow-[0_0_16px_#00ffa6] hover:shadow-[0_0_25px_rgba(0, 255, 166,0.65)] hover:scale-105"
   >
-    Commencer à Parier
+    {t("home.landing.start_betting")}
   </UIPro06PrimaryButton></motion.div>
   <motion.div whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover} whileTap={shouldReduceMotion ? undefined : hoverScale.whileTap} transition={hoverScale.transition}><UIPro07SecondaryButton
     href="/casino"
     className="inline-block rounded-lg border border-[#ff4fd8]/40 bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] px-8 py-4 text-lg font-medium text-[#041125] transition-all shadow-[0_0_16px_rgba(168,85,247,0.5)] hover:shadow-[0_0_25px_rgba(255,79,216,0.65)] hover:scale-105"
   >
-    Découvrir le Casino
+    {t("home.landing.discover_casino")}
   </UIPro07SecondaryButton></motion.div>
 
         </motion.div>
@@ -458,7 +459,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
       <div className="mx-auto max-w-7xl px-4 py-8">
         <section className="mb-16 reveal">
           <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-bold text-[#f5ff3b]">Casino en Ligne</h2>
+            <h2 className="text-2xl font-bold text-[#f5ff3b]">{t("home.title")}</h2>
           </div>
 
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 reveal-stagger">
@@ -470,13 +471,13 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
                   src={Img1}
-                  alt="Table de roulette avec jetons"
+                  alt={t("home.game_cards.roulette_alt")}
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Roulette</h3>
               <p className="text-[#9dd8ff]">
-                Placez vos paris sur les numéros, couleurs ou sections
+                {t("games.roulette_desc")}
               </p>
               {renderFriendWidget("roulette")}
             </motion.a>
@@ -489,13 +490,13 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
                   src={Img2}
-                  alt="Table de blackjack avec cartes"
+                  alt={t("home.game_cards.blackjack_alt")}
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Blackjack</h3>
               <p className="text-[#9dd8ff]">
-                Affrontez le croupier dans ce jeu de cartes classique
+                {t("home.game_cards.blackjack_desc")}
               </p>
               {renderFriendWidget("blackjack")}
             </motion.a>
@@ -508,13 +509,13 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
                   src={Img3}
-                  alt="Table de poker avec cartes et jetons"
+                  alt={t("home.game_cards.poker_alt")}
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Poker</h3>
               <p className="text-[#9dd8ff]">
-                Affrontez l'IA ou d'autres joueurs dans des parties intenses de poker
+                {t("home.game_cards.poker_desc")}
               </p>
               {renderFriendWidget("poker")}
             </motion.a>
@@ -527,13 +528,13 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
                   src={Img4}
-                  alt="Jeu Plinko avec des jetons qui tombent"
+                  alt={t("home.game_cards.plinko_alt")}
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Plinko</h3>
               <p className="text-[#9dd8ff]">
-                Regardez tomber les balles et multipliez vos gains!
+                {t("home.game_cards.plinko_desc")}
               </p>
               {renderFriendWidget("plinko")}
             </motion.a>
@@ -545,7 +546,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
     href="/casino"
     className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-6 py-3 text-lg font-semibold text-[#031026] transition-all glow-pulse more-hover cyber-glow-button"
   >
-    Plus de jeux
+    {t("home.more_games")}
   </a>
 </div>
 
@@ -554,12 +555,12 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
         <section className="mb-16 reveal">
   <div className="mb-8 flex justify-between items-center">
     <h2 className="text-2xl font-bold text-[#00e5ff]">
-      Sports Populaires
+      {t("home.popular_sports")}
     </h2>
   </div>
 
   {loadingSports ? (
-    <div className="text-center text-[#00e5ff]">Chargement...</div>
+    <div className="text-center text-[#00e5ff]">{t("ui.loading")}</div>
   ) : (
     <div className="space-y-4">
      {Object.keys(sports).map((groupKey) => (
@@ -598,13 +599,13 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
   ))}
     </div>
   )}
-  {/* Bouton Plus de Sports centré sous la grille */}
+  {/* Bouton {t("home.more_sports")} centré sous la grille */}
 <div className="flex justify-center mt-8">
   <a
     href="/sport"
     className="inline-block rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff] px-6 py-3 text-lg font-semibold text-[#041125] transition-all glow-pulse more-hover cyber-glow-button"
   >
-    Plus de Sports
+    {t("home.more_sports")}
   </a>
 </div>
 
@@ -626,15 +627,15 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
   <button
     onClick={claimDailyReward}
     className="fixed right-4 bottom-16 z-50 rounded-lg px-4 py-3 text-lg font-semibold text-white transition-all shadow-lg bg-[#FFD700] hover:scale-110 animate-pulse"
-    title="Réclamer Récompense Quotidienne"
+    title={t("home.rewards.claim_daily_title")}
   >
-    Réclamer Récompense
+    {t("home.rewards.claim_button")}
   </button>
 )}
 
 {isSignedIn && dailyRewardCooldown && (
   <div className="fixed right-4 bottom-16 z-50 text-sm text-[#FFD700] bg-black/60 px-3 py-2 rounded-lg">
-    ⏳ Prochaine récompense dans {cooldownTimeLeft}
+    ⏳ {t("home.rewards.next_reward_in")} {cooldownTimeLeft}
   </div>
 )}
 {/* reward modal */}
@@ -650,13 +651,13 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 max-h-[90vh] overflow-y-auto">
 
       <h2 className="text-3xl font-extrabold text-[#FFD700] mb-2">
-        🎉 Récompense Quotidienne !
+        🎉 {t("home.rewards.modal_title")}
       </h2>
 
       <p className="mb-6 text-lg">
-  Jour <span className="text-[#FFD700] font-bold">
+  {t("home.rewards.day")} <span className="text-[#FFD700] font-bold">
     {claimedDay}
-  </span> réclamé !
+  </span> {t("home.rewards.claimed")}!
 </p>
 
 
@@ -694,7 +695,7 @@ const isToday = day === claimedDay;
     </div>
   )}
 
-  <div className="text-sm">Jour {day}</div>
+  <div className="text-sm">{t("home.rewards.day")} {day}</div>
 
   <div className="text-2xl">
     {"💰".repeat(Math.min(day, 5))}
@@ -712,10 +713,10 @@ const isToday = day === claimedDay;
 
       {/* Streak message */}
       <div className="mb-4 text-lg">
-        🔥 Streak actuel : 
+        🔥 {t("home.rewards.current_streak")}: 
         <span className="text-[#FFD700] font-bold">
           {" "}
-          {streakData.currentDay} jours
+          {streakData.currentDay} {t("home.rewards.days")}
         </span>
       </div>
 
@@ -730,7 +731,7 @@ const isToday = day === claimedDay;
                    font-bold rounded-lg
                    hover:scale-105 transition-all"
       >
-        Continuer
+        {t("ui.confirm")}
       </button>
 
     </UIPro18ModalPanel>
