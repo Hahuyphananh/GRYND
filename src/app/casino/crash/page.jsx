@@ -147,49 +147,36 @@ fixedMaxMultiplierRef.current = Math.max(autoCashout || 2, 2);
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(drawFrozenCrashFrame);
 
-    try {
-      const res = await fetch("/api/crash/settle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          betAmount: parseFloat(betAmount),
-          multiplier: lossMultiplier,
-          gameWon: false,
-        }),
-      });
-
-      await res.json(); // even if not used, consume the response
-    } catch (err) {
-      console.error("Crash loss network error:", err);
-    }
-
     setRefreshCounter((prev) => prev + 1); // 🔁 trigger BetPanel to refresh
     resetBet();
   }
 
- async function placeBet(amount, autoCashoutValue) {
+async function placeBet(amount, autoCashoutValue) {
   setBetAmount(amount.toString());
   setAutoCashout(autoCashoutValue);
   setHasBet(true);
   setCashedOut(false);
 
   try {
-    const res = await fetch("/api/crash/settle", {
+    const res = await fetch("/api/crash", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         betAmount: amount,
         multiplier: 0,
-        gameWon: false,
-        immediateDeduct: true
+        immediateDeduct: true,
       }),
     });
+
     const data = await res.json();
+
     if (data.success) {
       setRefreshCounter(prev => prev + 1);
+    } else {
+      alert(data.error || "Failed to place bet");
     }
   } catch (err) {
-    console.error("Error deducting on bet:", err);
+    console.error("Error placing bet:", err);
   }
 }
 

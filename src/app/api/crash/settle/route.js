@@ -10,36 +10,64 @@ export async function POST(req) {
     const { userId } = await auth();
 
     if (!userId) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { betAmount, multiplier, immediateDeduct } = await req.json();
 
-    if (!Number.isFinite(betAmount) || betAmount <= 0 || !Number.isFinite(multiplier) || multiplier < 0) {
-      return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
+    if (
+      !Number.isFinite(betAmount) ||
+      betAmount <= 0 ||
+      (multiplier !== undefined && !Number.isFinite(multiplier))
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid request body' },
+        { status: 400 }
+      );
     }
 
-    const userData = await db.select().from(users).where(eq(users.clerkId, userId)).limit(1);
+    const userData = await db
+      .select()
+      .from(users)
+      .where(eq(users.clerkId, userId))
+      .limit(1);
 
     if (!userData.length) {
-      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      );
     }
 
     const user = userData[0];
 
-    // 1) Place bet: reserve funds and create signed server session
+    // ======================================================
+    // 1) PLACE BET (ONLY ONCE, STRICT DEDUCTION)
+    // ======================================================
     if (immediateDeduct) {
-      const [deducted] = await db
+      const result = await db
         .update(users)
-        .set({ balance: sql`${users.balance} - ${betAmount}` })
-        .where(sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${betAmount}`)
+        .set({
+          balance: sql`${users.balance} - ${betAmount}`,
+        })
+        .where(
+          sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${betAmount}`
+        )
         .returning({ balance: users.balance });
 
-      if (!deducted) {
-        return NextResponse.json({ success: false, error: 'Insufficient balance' }, { status: 400 });
+      // ❌ BLOCK IF DEDUCTION FAILED
+      if (result.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Insufficient balance' },
+          { status: 400 }
+        );
       }
 
       const crashPoint = Number((Math.random() * 8 + 1.2).toFixed(2));
+
       const token = createSignedSession({
         userId,
         betAmount: Number(betAmount.toFixed(2)),
@@ -49,8 +77,12 @@ export async function POST(req) {
 
       const response = NextResponse.json({
         success: true,
-        data: { newBalance: Number(deducted.balance), payout: 0 },
+        data: {
+          newBalance: Number(result[0].balance),
+          payout: 0,
+        },
       });
+
       response.cookies.set('crash_session', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
@@ -58,48 +90,101 @@ export async function POST(req) {
         path: '/',
         maxAge: 60 * 10,
       });
+
       return response;
     }
 
-    // 2) Settle: use only signed server session as source of truth
+    // ======================================================
+    // 2) SETTLE GAME (CASHOUT ONLY)
+    // ======================================================
     const token = req.cookies.get('crash_session')?.value;
     const session = verifySignedSession(token);
 
     if (!session || session.userId !== userId) {
-      return NextResponse.json({ success: false, error: 'No active crash session' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'No active crash session' },
+        { status: 400 }
+      );
+    }
+
+    if (session.claimed) {
+      return NextResponse.json(
+        { success: false, error: 'Session already settled' },
+        { status: 400 }
+      );
     }
 
     const bet = Number(session.betAmount);
     const crashPoint = Number(session.crashPoint);
+    const cashoutMultiplier = Number(multiplier);
 
-    // multiplier sent by client is treated as cashout attempt only
-    const attemptedCashout = Number(multiplier);
-    const won = attemptedCashout >= 1 && attemptedCashout <= crashPoint;
-    const payout = won ? Number((bet * attemptedCashout).toFixed(2)) : 0;
+    // ❌ INVALID CASHOUT GUARD
+    if (!Number.isFinite(cashoutMultiplier) || cashoutMultiplier < 1) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid cashout attempt' },
+        { status: 400 }
+      );
+    }
 
-    const [credited] = await db
+    // ======================================================
+    // 3) RESULT CALCULATION (SERVER TRUSTED)
+    // ======================================================
+    const isValidCashout = cashoutMultiplier <= crashPoint;
+
+    const payout = isValidCashout
+      ? Number((bet * cashoutMultiplier).toFixed(2))
+      : 0;
+
+    const result = isValidCashout ? 'won' : 'lost';
+
+    // ======================================================
+    // 4) UPDATE BALANCE (ONLY WINNINGS ADDED)
+    // ======================================================
+    const credited = await db
       .update(users)
-      .set({ balance: sql`${users.balance} + ${payout}` })
+      .set({
+        balance: sql`${users.balance} + ${payout}`,
+      })
       .where(eq(users.clerkId, userId))
       .returning({ balance: users.balance });
 
+    // ======================================================
+    // 5) GAME HISTORY (ALWAYS LOG LOSS OR WIN)
+    // ======================================================
     await db.insert(crashGames).values({
       userId: user.id,
       betAmount: bet.toFixed(2),
-      cashedOutAt: won ? attemptedCashout.toFixed(2) : null,
+      cashedOutAt: isValidCashout ? cashoutMultiplier.toFixed(2) : null,
       payout: payout.toFixed(2),
-      result: won ? 'won' : 'lost',
+      result,
       status: 'completed',
     });
 
+    // ======================================================
+    // 6) CLEAR SESSION
+    // ======================================================
     const response = NextResponse.json({
       success: true,
-      data: { newBalance: Number(credited?.balance ?? user.balance), payout, crashPoint, result: won ? 'won' : 'lost' },
+      data: {
+        newBalance: Number(credited?.balance ?? user.balance),
+        payout,
+        crashPoint,
+        result,
+      },
     });
-    response.cookies.set('crash_session', '', { httpOnly: true, path: '/', maxAge: 0 });
+
+    response.cookies.set('crash_session', '', {
+      httpOnly: true,
+      path: '/',
+      maxAge: 0,
+    });
+
     return response;
   } catch (err) {
     console.error('Crash API error:', err);
-    return NextResponse.json({ success: false, error: 'Server error' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Server error' },
+      { status: 500 }
+    );
   }
 }

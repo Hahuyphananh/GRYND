@@ -53,17 +53,17 @@ export async function POST(req) {
     const aiChoice = getAIChoice();
     const result = getResult(choice, aiChoice);
 
-    let payout = 0;
-    let newStreak = result === "win" ? winStreak + 1 : 0;
-    let balanceDelta = 0;
+let payout = 0;
+let newStreak = result === "win" ? winStreak + 1 : 0;
+let balanceDelta = 0;
 
-    if (result === "win") {
-      payout = betAmount * FIXED_MULTIPLIER;
-      balanceDelta = payout;
-    } else if (result === "lose") {
-      balanceDelta = -betAmount;
-    }
-
+if (result === "win") {
+  // 💰 ONLY 90% PROFIT (NOT INCLUDING BET)
+  payout = betAmount * 0.9;
+  balanceDelta = payout;
+} else if (result === "lose") {
+  balanceDelta = -betAmount;
+}
     // ✅ Update balance atomically
     const [updated] = await db
       .update(users)
