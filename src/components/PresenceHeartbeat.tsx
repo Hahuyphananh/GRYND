@@ -12,8 +12,10 @@ export default function PresenceHeartbeat() {
     const ping = () => {
       fetch('/api/presence/heartbeat', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         keepalive: true,
+        body: '{}' 
       }).catch((error) => {
         console.error('[PRESENCE_HEARTBEAT_CLIENT_ERROR]', error);
       });
