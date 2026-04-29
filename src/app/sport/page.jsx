@@ -31,7 +31,7 @@ const MainComponent = () => {
   const { t } = useTranslation();
 
   const fetchMyBets = async () => {
-    const res = await fetch("/api/sports/my-bets", { cache: "no-store" });
+    const res = await fetch("/api/sports/my-bets?limit=60", { cache: "no-store" });
     const data = await res.json();
     if (!res.ok || !data.success) {
       throw new Error(data.error || t("sports.fetch_bets_failed"));
@@ -51,8 +51,9 @@ const MainComponent = () => {
       console.error(err);
     });
     const id = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       settleAndRefreshBets().catch((err) => console.error(err));
-    }, 45000);
+    }, 120000);
     return () => clearInterval(id);
   }, [user]);
 

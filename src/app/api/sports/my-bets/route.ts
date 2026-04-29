@@ -1,11 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
+import { getNeonSql } from "@/db/neon";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const sql = getNeonSql();
     const { userId } = await auth();
 
     if (!userId) {
@@ -32,8 +33,52 @@ export async function GET() {
 
     const dbUser = userResult.rows[0];
 
-    // Get bets
-    const betsResult = await sql`
+    const { searchParams } = new URL(req.url);
+    const status = String(searchParams.get("status") || "all").toLowerCase();
+    const rawLimit = Number(searchParams.get("limit") || 100);
+    const limit = Math.max(1, Math.min(rawLimit, 100));
+
+    let betsResult;
+    if (status === "pending") {
+      betsResult = await sql`
+      SELECT
+        id,
+        event_external_id,
+        event_id,
+        bet_amount,
+        choice,
+        odds,
+        market_type,
+        line_value,
+        payout,
+        result,
+        placed_at
+      FROM sports_bets
+      WHERE user_id = ${dbUser.id} AND result = 'pending'
+      ORDER BY placed_at DESC, id DESC
+      LIMIT ${limit}
+    `;
+    } else if (status === "history") {
+      betsResult = await sql`
+      SELECT
+        id,
+        event_external_id,
+        event_id,
+        bet_amount,
+        choice,
+        odds,
+        market_type,
+        line_value,
+        payout,
+        result,
+        placed_at
+      FROM sports_bets
+      WHERE user_id = ${dbUser.id} AND result <> 'pending'
+      ORDER BY placed_at DESC, id DESC
+      LIMIT ${limit}
+    `;
+    } else {
+      betsResult = await sql`
       SELECT
         id,
         event_external_id,
@@ -49,8 +94,9 @@ export async function GET() {
       FROM sports_bets
       WHERE user_id = ${dbUser.id}
       ORDER BY placed_at DESC, id DESC
-      LIMIT 200
+      LIMIT ${limit}
     `;
+    }
 
     const normalized = betsResult.rows.map((row) => {
       const result = String(row.result || "pending").toLowerCase();

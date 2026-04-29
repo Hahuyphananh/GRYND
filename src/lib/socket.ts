@@ -14,7 +14,7 @@ function getSocketUrl(): string | null {
     return null;
   }
 
-  return socketUrl;
+  return socketUrl.trim().replace(/\/$/, '');
 }
 
 export async function createSocketConnection(token: string): Promise<RealtimeSocket | null> {
@@ -37,9 +37,25 @@ export async function createSocketConnection(token: string): Promise<RealtimeSoc
   socketInstance = io(socketUrl, {
     autoConnect: true,
     transports: ['websocket', 'polling'],
+    timeout: 15000,
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000,
     auth: {
       token,
     },
+  });
+
+  socketInstance.on('connect_error', (error) => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[socket] connect_error:', error.message);
+    }
+  });
+
+  socketInstance.on('disconnect', (reason) => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[socket] disconnected:', reason);
+    }
   });
 
   return socketInstance;
