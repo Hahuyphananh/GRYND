@@ -46,7 +46,13 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'realtime-server', allowedOrigins });
+  res.json({
+    ok: true,
+    service: 'realtime-server',
+    allowedOrigins,
+    clerkConfigured: Boolean(CLERK_SECRET_KEY),
+    wsPath: '/socket.io',
+  });
 });
 
 const httpServer = http.createServer(app);
@@ -319,6 +325,11 @@ io.use(async (socket, next) => {
 });
 
 io.on('connection', (socket) => {
+  socket.emit('server:hello', {
+    userId: socket.data.userId,
+    at: new Date().toISOString(),
+  });
+
   socket.on('join_room', ({ roomId }) => {
     if (!roomId) return;
     socket.join(String(roomId));
