@@ -41,7 +41,11 @@ const MainComponent = () => {
   };
 
   const settleAndRefreshBets = async () => {
-    await fetch("/api/sports/settle", { method: "POST" });
+    await fetch("/api/sports/settle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
     await fetchMyBets();
   };
 
