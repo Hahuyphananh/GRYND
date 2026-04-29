@@ -50,77 +50,104 @@ export async function POST(req) {
       return Response.json({ error: "Invalid odds" }, { status: 400 });
     }
 
-    // Get user
-    const userResult = await sql`
-      SELECT id, balance
-      FROM users
-      WHERE clerk_id = ${userId}
-      LIMIT 1
-    `;
+    const placeBetWithMarketCols = async () => {
+      return sql`
+        WITH debited AS (
+          UPDATE users
+          SET balance = balance - ${betAmount}
+          WHERE clerk_id = ${userId}
+            AND balance >= ${betAmount}
+          RETURNING id, balance
+        ),
+        placed AS (
+          INSERT INTO sports_bets (
+            user_id,
+            event_external_id,
+            bet_amount,
+            choice,
+            odds,
+            market_type,
+            line_value,
+            payout,
+            result
+          )
+          SELECT
+            debited.id,
+            ${eventId},
+            ${betAmount},
+            ${choice},
+            ${odds},
+            ${marketType},
+            ${lineValue},
+            0,
+            'pending'
+          FROM debited
+          RETURNING id
+        )
+        SELECT debited.balance AS new_balance, placed.id AS bet_id
+        FROM debited
+        LEFT JOIN placed ON true
+      `;
+    };
 
-    if (userResult.rows.length === 0) {
-      return Response.json({ error: "User not found" }, { status: 404 });
-    }
+    const placeBetLegacy = async () => {
+      return sql`
+        WITH debited AS (
+          UPDATE users
+          SET balance = balance - ${betAmount}
+          WHERE clerk_id = ${userId}
+            AND balance >= ${betAmount}
+          RETURNING id, balance
+        ),
+        placed AS (
+          INSERT INTO sports_bets (
+            user_id,
+            event_external_id,
+            bet_amount,
+            choice,
+            odds,
+            payout,
+            result
+          )
+          SELECT
+            debited.id,
+            ${eventId},
+            ${betAmount},
+            ${choice},
+            ${odds},
+            0,
+            'pending'
+          FROM debited
+          RETURNING id
+        )
+        SELECT debited.balance AS new_balance, placed.id AS bet_id
+        FROM debited
+        LEFT JOIN placed ON true
+      `;
+    };
 
-    const dbUser = userResult.rows[0];
-    const balance = Number(dbUser.balance || 0);
-
-    if (balance < betAmount) {
-      return Response.json(
-        { error: "Insufficient balance" },
-        { status: 400 }
-      );
-    }
-
-    const newBalance = balance - betAmount;
-
-    // Transaction style flow
-    await sql`BEGIN`;
-
+    let placeResult;
     try {
-      // Insert bet
-      await sql`
-        INSERT INTO sports_bets (
-          user_id,
-          event_external_id,
-          bet_amount,
-          choice,
-          odds,
-          market_type,
-          line_value,
-          payout,
-          result
-        )
-        VALUES (
-          ${dbUser.id},
-          ${eventId},
-          ${betAmount},
-          ${choice},
-          ${odds},
-          ${marketType},
-          ${lineValue},
-          0,
-          'pending'
-        )
-      `;
-
-      // Update balance
-      await sql`
-        UPDATE users
-        SET balance = ${newBalance}
-        WHERE clerk_id = ${userId}
-      `;
-
-      await sql`COMMIT`;
+      placeResult = await placeBetWithMarketCols();
     } catch (dbErr) {
-      await sql`ROLLBACK`;
-      console.error("DB ERROR:", dbErr);
-
-      return Response.json(
-        { error: "Database transaction failed" },
-        { status: 500 }
-      );
+      if (dbErr?.code === "42703") {
+        // Production schema may not have latest optional columns yet.
+        console.warn("[PLACE_BET_SCHEMA_FALLBACK]", dbErr?.message || dbErr);
+        placeResult = await placeBetLegacy();
+      } else {
+        throw dbErr;
+      }
     }
+
+    if (!placeResult.rows?.length) {
+      const exists = await sql`SELECT 1 FROM users WHERE clerk_id = ${userId} LIMIT 1`;
+      if (!exists.rows?.length) {
+        return Response.json({ error: "User not found" }, { status: 404 });
+      }
+      return Response.json({ error: "Insufficient balance" }, { status: 400 });
+    }
+
+    const newBalance = Number(placeResult.rows[0].new_balance);
 
     return Response.json({
       success: true,

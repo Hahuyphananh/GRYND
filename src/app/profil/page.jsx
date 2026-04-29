@@ -284,7 +284,9 @@ useEffect(() => {
     try {
       await fetch("/api/presence/heartbeat", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({}),
       });
     } catch (err) {
       console.error("[HEARTBEAT_ERROR]", err);
