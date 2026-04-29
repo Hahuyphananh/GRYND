@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { getNeonSql } from "@/db/neon";
+import { getNeonSql } from "../../../../db/neon";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
