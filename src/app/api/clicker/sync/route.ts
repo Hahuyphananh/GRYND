@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { cashoutRound } from "../../../../lib/goonbet-clicker-db";
+import { syncRound } from "../../../../lib/goonbet-clicker-db";
 
 export const runtime = "nodejs";
 
@@ -12,14 +12,8 @@ export async function POST(req: NextRequest) {
   if (!roundId) return NextResponse.json({ error: "roundId required" }, { status: 400 });
 
   try {
-    const result = await cashoutRound(
-      userId,
-      Number(roundId),
-      Number(clientClicks ?? 0),
-      Number(clientMultiplier ?? 1),
-      Number(durationMs ?? 0),
-    ) as any;
-    return NextResponse.json({ ...result, payout: result.payout.toString() });
+    const result = await syncRound(userId, Number(roundId), Number(clientClicks ?? 0), Number(clientMultiplier ?? 1), Number(durationMs ?? 0));
+    return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "FAILED";
     return NextResponse.json({ error: message }, { status: 400 });

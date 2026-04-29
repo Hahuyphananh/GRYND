@@ -1,6 +1,5 @@
 import { getNeonSql } from "../db/neon";
-import { CLICKER_CLICK_COOLDOWN_MS, getNextMultiplier, isBustRoll, payoutFrom } from "./goonbet-clicker";
-
+import { maxAllowedClicks, multiplierFromClicks, payoutFrom } from "./goonbet-clicker";
 
 function asRows<T = Record<string, any>>(result: any): T[] {
   if (Array.isArray(result)) return result as T[];
@@ -36,7 +35,7 @@ export async function startRound(userId: string, betAmount: bigint) {
     await sql`UPDATE clicker_users SET tokens = tokens - ${betAmount} WHERE id = ${userId}`;
     const createdResult = await sql`INSERT INTO clicker_rounds (user_id, bet_amount, multiplier, clicks, status, payout)
                                     VALUES (${userId}, ${betAmount}, 1.0, 0, 'active', 0)
-                                    RETURNING id, bet_amount, multiplier, clicks, status`;
+                                    RETURNING id, bet_amount, multiplier, clicks, status, created_at`;
 
     const created = asRows(createdResult);
     await sql`COMMIT`;
@@ -47,7 +46,7 @@ export async function startRound(userId: string, betAmount: bigint) {
   }
 }
 
-export async function processClick(userId: string, roundId: number) {
+export async function cashoutRound(userId: string, roundId: number, clientClicks: number, clientMultiplier: number, durationMs: number) {
   const sql = getNeonSql();
 
   await sql`BEGIN`;
@@ -59,53 +58,44 @@ export async function processClick(userId: string, roundId: number) {
     const round = rounds[0] as any;
     if (round.status !== "active") throw new Error("ROUND_NOT_ACTIVE");
 
-    const lastActionResult = await sql`SELECT created_at FROM clicker_actions WHERE round_id = ${roundId} ORDER BY id DESC LIMIT 1`;
-    const lastAction = asRows<{ created_at: string | Date }>(lastActionResult);
-    if (lastAction.length > 0) {
-      const elapsedMs = Date.now() - new Date(lastAction[0].created_at).getTime();
-      if (elapsedMs < CLICKER_CLICK_COOLDOWN_MS) throw new Error("RATE_LIMITED");
-    }
+    const elapsedMs = Date.now() - new Date(round.created_at).getTime();
+    const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
+    const boundedClicks = Math.max(0, Math.floor(clientClicks));
+    const maxClicks = maxAllowedClicks(effectiveDurationMs);
+    if (boundedClicks > maxClicks) throw new Error("INVALID_CLICK_RATE");
 
-    const clicks = Number(round.clicks) + 1;
-    const multiplier = getNextMultiplier(Number(round.multiplier));
-    const busted = isBustRoll();
-    const status = busted ? "bust" : "active";
+    const expectedMultiplier = multiplierFromClicks(boundedClicks);
+    if (Math.abs(expectedMultiplier - Number(clientMultiplier)) > 0.001) throw new Error("MULTIPLIER_MISMATCH");
 
-    await sql`UPDATE clicker_rounds SET clicks = ${clicks}, multiplier = ${multiplier}, status = ${status} WHERE id = ${roundId}`;
-    await sql`INSERT INTO clicker_actions (round_id, click_index, multiplier, busted)
-              VALUES (${roundId}, ${clicks}, ${multiplier}, ${busted})`;
+    const payout = payoutFrom(BigInt(round.bet_amount), expectedMultiplier);
+
+    await sql`UPDATE clicker_rounds SET status = 'cashed_out', payout = ${payout}, clicks = ${boundedClicks}, multiplier = ${expectedMultiplier} WHERE id = ${roundId}`;
+    await sql`UPDATE clicker_users SET tokens = tokens + ${payout} WHERE id = ${userId}`;
 
     await sql`COMMIT`;
-    return { busted, clicks, multiplier, status };
+    return { payout, multiplier: expectedMultiplier, clicks: boundedClicks };
   } catch (error) {
     await sql`ROLLBACK`;
     throw error;
   }
 }
 
-export async function cashoutRound(userId: string, roundId: number) {
+export async function syncRound(userId: string, roundId: number, clientClicks: number, clientMultiplier: number, durationMs: number) {
   const sql = getNeonSql();
+  const rounds = await sql`SELECT id, created_at, status FROM clicker_rounds WHERE id = ${roundId} AND user_id = ${userId} LIMIT 1`;
+  if (!rounds[0]) throw new Error("ROUND_NOT_FOUND");
+  if (rounds[0].status !== "active") throw new Error("ROUND_NOT_ACTIVE");
 
-  await sql`BEGIN`;
-  try {
-    const roundsResult = await sql`SELECT * FROM clicker_rounds WHERE id = ${roundId} AND user_id = ${userId} FOR UPDATE`;
-    const rounds = asRows(roundsResult);
-    if (rounds.length === 0) throw new Error("ROUND_NOT_FOUND");
+  const elapsedMs = Date.now() - new Date(rounds[0].created_at).getTime();
+  const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
+  const expectedMultiplier = multiplierFromClicks(clientClicks);
+  const maxClicks = maxAllowedClicks(effectiveDurationMs);
 
-    const round = rounds[0] as any;
-    if (round.status !== "active") throw new Error("ROUND_NOT_ACTIVE");
-
-    const payout = payoutFrom(BigInt(round.bet_amount), Number(round.multiplier));
-
-    await sql`UPDATE clicker_rounds SET status = 'cashed_out', payout = ${payout} WHERE id = ${roundId}`;
-    await sql`UPDATE clicker_users SET tokens = tokens + ${payout} WHERE id = ${userId}`;
-
-    await sql`COMMIT`;
-    return { payout, multiplier: Number(round.multiplier), clicks: Number(round.clicks) };
-  } catch (error) {
-    await sql`ROLLBACK`;
-    throw error;
-  }
+  return {
+    ok: clientClicks <= maxClicks && Math.abs(expectedMultiplier - Number(clientMultiplier)) <= 0.001,
+    expectedMultiplier,
+    maxClicks,
+  };
 }
 
 export async function getRecentRounds(userId: string) {
