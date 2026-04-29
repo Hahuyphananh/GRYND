@@ -170,7 +170,9 @@ const filteredGames = games.filter((game) =>
 );
 
 const popularGames = filteredGames.filter((g) => g.popular);
-const otherGames = filteredGames.filter((g) => !g.popular);
+const skillGameKeys = new Set(["connect-four", "uno", "poker", "tanks", "chess", "rps"]);
+const skillGames = filteredGames.filter((g) => skillGameKeys.has(g.leaderboardKey));
+const otherGames = filteredGames.filter((g) => !g.popular && !skillGameKeys.has(g.leaderboardKey));
 useEffect(() => {
   if (!user) return;
   fetchFriendPresence();
@@ -293,6 +295,20 @@ const GameCard = ({ game }) => (
     </div>
   ))}
 </div>
+  </div>
+)}
+
+      
+{skillGames.length > 0 && (
+  <div className="my-8 rounded-2xl border border-purple-400/40 bg-gradient-to-br from-[#1a1140] to-[#09051f] p-8 shadow-[0_0_40px_rgba(168,85,247,0.18)]">
+    <h2 className="mb-6 text-4xl font-extrabold text-purple-300 tracking-wide">Skill-Based Games</h2>
+    <div className="mb-5 grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4 stagger-container">
+      {skillGames.map((game, index) => (
+        <div key={game.nameKey ? t(game.nameKey) : game.name} style={{ "--i": index }}>
+          <GameCard game={game} />
+        </div>
+      ))}
+    </div>
   </div>
 )}
 

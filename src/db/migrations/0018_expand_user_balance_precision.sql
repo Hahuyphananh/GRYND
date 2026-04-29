@@ -1,0 +1,2 @@
+ALTER TABLE users
+  ALTER COLUMN balance TYPE NUMERIC(30,2);
