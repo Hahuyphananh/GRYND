@@ -1,4 +1,6 @@
-import crypto from "node:crypto";
+export const CLICKER_GROWTH_RATE = 0.005;
+export const CLICKER_SYNC_INTERVAL_MS = 8000;
+export const CLICKER_MAX_CLICKS_PER_SECOND = 120;
 
 export const CLICKER_GROWTH_RATE = 0.005;
 export const CLICKER_SYNC_INTERVAL_MS = 8000;
