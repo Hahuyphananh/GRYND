@@ -78,6 +78,7 @@ export const APP_TEXT_TRANSLATIONS = {
       rps_desc: "Bet your tokens in this fast strategic game.",
       tanks_desc: "Become the best tank and claim bounties!",
       connect_four_desc: "Challenge another player 1v1 and align 4 discs.",
+      goonbet_clicker_desc: "Click to earn tokens and climb the leaderboard!",
       lane_runner_desc: "Find a safe path to the top. One mistake ends the run.",
       chess_name: "Chess",
       rps_name: "Rock-Paper-Scissors",

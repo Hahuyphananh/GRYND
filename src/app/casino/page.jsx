@@ -17,6 +17,7 @@ import Img12 from "../../images/rps.png"
 import Img13 from "../../images/tanks.png"
 import Img14 from "../../images/connect-4.png"
 import Img15 from "../../images/towers.png"
+import Img16 from "../../images/clicker.png";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -80,13 +81,6 @@ const games = [
     leaderboardKey: "poker",
     image: Img3,
     descriptionKey: "games.poker_desc",
-  },
-  {
-    name: "Lane Runner",
-    href: "/casino/lane-runner",
-    leaderboardKey: "lane-runner",
-    image: Img15,
-    descriptionKey: "games.lane_runner_desc",
   },
 
   {
@@ -153,6 +147,21 @@ const games = [
     leaderboardKey: "connect-four",
     image: Img14,
     descriptionKey: "games.connect_four_desc",
+ },
+
+     {
+    name: "Lane Runner",
+    href: "/casino/lane-runner",
+    leaderboardKey: "lane-runner",
+    image: Img15,
+    descriptionKey: "games.lane_runner_desc",
+  },
+ {
+    name: "Clicker",
+    href: "/casino/goonbet-clicker",
+    leaderboardKey: "goonbet-clicker",
+    image: Img16,
+    descriptionKey: "games.goonbet_clicker_desc",
   },
 ];
 
