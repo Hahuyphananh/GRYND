@@ -4,6 +4,12 @@ import { getNeonSql } from "../../../../db/neon";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function extractRows<T = Record<string, any>>(result: any): T[] {
+  if (Array.isArray(result)) return result as T[];
+  if (result && Array.isArray(result.rows)) return result.rows as T[];
+  return [];
+}
+
 export async function GET(req: Request) {
   try {
     const sql = getNeonSql();
@@ -24,14 +30,16 @@ export async function GET(req: Request) {
       LIMIT 1
     `;
 
-    if (userResult.rows.length === 0) {
+    const userRows = extractRows<{ id: number }>(userResult);
+
+    if (userRows.length === 0) {
       return Response.json(
         { success: false, error: "User not found" },
         { status: 404 }
       );
     }
 
-    const dbUser = userResult.rows[0];
+    const dbUser = userRows[0];
 
     const { searchParams } = new URL(req.url);
     const status = String(searchParams.get("status") || "all").toLowerCase();
@@ -98,7 +106,9 @@ export async function GET(req: Request) {
     `;
     }
 
-    const normalized = betsResult.rows.map((row) => {
+    const betRows = extractRows<Record<string, any>>(betsResult);
+
+    const normalized = betRows.map((row) => {
       const result = String(row.result || "pending").toLowerCase();
 
       return {
