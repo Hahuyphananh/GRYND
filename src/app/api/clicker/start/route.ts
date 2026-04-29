@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { ensureClickerUser, startRound } from "../../../../lib/goonbet-clicker-db";
@@ -17,7 +18,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const round = await startRound(userId, betAmount) as any;
-    return NextResponse.json({ round });
+    return NextResponse.json({
+      roundId: round.id,
+      startTime: round.created_at,
+      betAmount: round.bet_amount,
+      serverSeed: crypto.randomUUID(),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "FAILED";
     const status = message === "INSUFFICIENT_TOKENS" ? 400 : 500;
