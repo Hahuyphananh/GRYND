@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CLICKER_GROWTH_RATE, CLICKER_SYNC_INTERVAL_MS, multiplierFromClicks } from "../../lib/goonbet-clicker";
+import { bustChanceAtClick, CLICKER_GROWTH_RATE, CLICKER_SYNC_INTERVAL_MS, multiplierFromClicks } from "../../lib/goonbet-clicker";
 
 type RoundHistory = { id: number; bet_amount: string; multiplier: number; clicks: number; status: string; payout: string; created_at: string };
 
@@ -67,6 +67,17 @@ export default function GoonBetClickerClient() {
   function clickRound() {
     if (!roundId) return;
     const nextClicks = clicks + 1;
+    const failChance = bustChanceAtClick(nextClicks);
+    if (Math.random() < failChance) {
+      setClicks(nextClicks);
+      setMultiplier(multiplierFromClicks(nextClicks));
+      setBusted(true);
+      setRoundId(null);
+      setRoundStartTime(null);
+      refresh();
+      return;
+    }
+
     setClicks(nextClicks);
     setMultiplier(multiplierFromClicks(nextClicks));
   }
@@ -108,12 +119,13 @@ export default function GoonBetClickerClient() {
         <p className="text-lg">Multiplier: <span className="text-cyan-300 text-3xl inline-block transition-transform duration-100" style={{ transform: `scale(${1 + clicks * 0.002})` }}>{multiplier.toFixed(4)}x</span></p>
         <p>Clicks: {clicks}</p>
         <p>Potential payout: {potentialPayout.toString()}</p>
+        <p className="text-amber-300">Next click bust chance: {(bustChanceAtClick(clicks + 1) * 100).toFixed(2)}%</p>
         {busted && <p className="text-red-400 text-2xl font-black">BUST</p>}
       </div>
 
       <div className="mt-6 flex gap-3">
         <button onClick={clickRound} disabled={!roundId} className="px-8 py-4 rounded-full bg-cyan-500 text-black font-bold shadow-[0_0_30px_rgba(34,211,238,0.7)] disabled:opacity-50">CLICK</button>
-        {roundId && <button onClick={cashout} className="px-4 py-2 rounded bg-emerald-500 text-black font-bold">Cash Out</button>}
+        {roundId && !busted && <button onClick={cashout} className="px-4 py-2 rounded bg-emerald-500 text-black font-bold">Cash Out</button>}
       </div>
 
       <h2 className="mt-10 text-xl font-semibold">Last Rounds</h2>

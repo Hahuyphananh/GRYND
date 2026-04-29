@@ -1,6 +1,23 @@
 import { getNeonSql } from "../db/neon";
-import { maxAllowedClicks, multiplierFromClicks, payoutFrom } from "./goonbet-clicker";
+import crypto from "node:crypto";
+import { bustChanceAtClick, maxAllowedClicks, multiplierFromClicks, payoutFrom } from "./goonbet-clicker";
 
+
+function deterministicRoll(seed: string): number {
+  const hash = crypto.createHash("sha256").update(seed).digest("hex");
+  const bucket = Number.parseInt(hash.slice(0, 13), 16);
+  return bucket / 0x1fffffffffffff;
+}
+
+function didBustByClick(seed: string, clicks: number): boolean {
+  const roll = deterministicRoll(seed);
+  let survive = 1;
+  for (let i = 1; i <= Math.max(0, Math.floor(clicks)); i += 1) {
+    survive *= 1 - bustChanceAtClick(i);
+    if (roll > survive) return true;
+  }
+  return false;
+}
 function asRows<T = Record<string, any>>(result: any): T[] {
   if (Array.isArray(result)) return result as T[];
   if (result && Array.isArray(result.rows)) return result.rows as T[];
@@ -67,13 +84,20 @@ export async function cashoutRound(userId: string, roundId: number, clientClicks
     const expectedMultiplier = multiplierFromClicks(boundedClicks);
     if (Math.abs(expectedMultiplier - Number(clientMultiplier)) > 0.001) throw new Error("MULTIPLIER_MISMATCH");
 
+    const bustSeed = `${round.id}:${userId}:${new Date(round.created_at).toISOString()}`;
+    if (didBustByClick(bustSeed, boundedClicks)) {
+      await sql`UPDATE clicker_rounds SET status = 'bust', clicks = ${boundedClicks}, multiplier = ${expectedMultiplier}, payout = 0 WHERE id = ${roundId}`;
+      await sql`COMMIT`;
+      return { payout: BigInt(0), multiplier: expectedMultiplier, clicks: boundedClicks, busted: true };
+    }
+
     const payout = payoutFrom(BigInt(round.bet_amount), expectedMultiplier);
 
     await sql`UPDATE clicker_rounds SET status = 'cashed_out', payout = ${payout}, clicks = ${boundedClicks}, multiplier = ${expectedMultiplier} WHERE id = ${roundId}`;
     await sql`UPDATE clicker_users SET tokens = tokens + ${payout} WHERE id = ${userId}`;
 
     await sql`COMMIT`;
-    return { payout, multiplier: expectedMultiplier, clicks: boundedClicks };
+    return { payout, multiplier: expectedMultiplier, clicks: boundedClicks, busted: false };
   } catch (error) {
     await sql`ROLLBACK`;
     throw error;
@@ -90,9 +114,10 @@ export async function syncRound(userId: string, roundId: number, clientClicks: n
   const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
   const expectedMultiplier = multiplierFromClicks(clientClicks);
   const maxClicks = maxAllowedClicks(effectiveDurationMs);
+  const bustSeed = `${roundId}:${userId}:${new Date(rounds[0].created_at).toISOString()}`;
 
   return {
-    ok: clientClicks <= maxClicks && Math.abs(expectedMultiplier - Number(clientMultiplier)) <= 0.001,
+    ok: clientClicks <= maxClicks && Math.abs(expectedMultiplier - Number(clientMultiplier)) <= 0.001 && !didBustByClick(bustSeed, clientClicks),
     expectedMultiplier,
     maxClicks,
   };
