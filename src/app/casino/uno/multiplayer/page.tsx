@@ -44,7 +44,8 @@ export default function UnoMultiplayerPage() {
   const [unoMultiSkipRound, setUnoMultiSkipRound] = useState(false);
   const [unoMultiBackendMode, setUnoMultiBackendMode] = useState<string | null>(null);
   const [unoMultiHandCounts, setUnoMultiHandCounts] = useState<any[]>([]);
-  const [unoMultiTurnPlayerId, setUnoMultiTurnPlayerId] = useState<number | null>(null);
+  const [unoMultiTurnPlayerId, setUnoMultiTurnPlayerId] = useState<any>(null);
+  const [showSeatPopup, setShowSeatPopup] = useState(false);
 
   const [playerHand, setPlayerHand] = useState<any[]>([]);
   const [topCard, setTopCard] = useState<any>(null);
@@ -267,7 +268,8 @@ export default function UnoMultiplayerPage() {
       setUnoMultiMyId(myPlayer?.id ?? null);
       setUnoMultiStarted(Boolean(data.room.started));
       setUnoMultiSettings((prev) => ({ ...prev, ...(data.room.settings || {}) }));
-      setUnoMultiMessage(`Joined table ${data.room.code}.`);
+      setUnoMultiMessage(`Joined table ${data.room.code}. Choose a seat to play.`);
+      setShowSeatPopup(true);
       fetchUnoMultiplayerPublicGames();
     } catch (error) {
       console.error("Unable to join multiplayer table", error);
@@ -287,6 +289,27 @@ export default function UnoMultiplayerPage() {
     if (me?.isHost) return true;
     return Boolean(unoMultiMyId && unoMultiHostId && unoMultiMyId === unoMultiHostId);
   }, [unoMultiPlayers, unoMultiMyId, unoMultiHostId]);
+
+  const meSeated = useMemo(() => unoMultiPlayers.some((p) => p.userId === unoMultiMyId || p.id === unoMultiMyId), [unoMultiPlayers, unoMultiMyId]);
+
+  const sitAsHuman = async (seatIndex: number) => {
+    try {
+      const res = await fetch("/api/uno/multiplayer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "sit-human", code: unoMultiTableCode, seatIndex }),
+      });
+      const data = await res.json();
+      if (!data.success) return setUnoMultiMessage(data.error || "Unable to sit.");
+      setUnoMultiPlayers(data.room.players || []);
+      const me = data.room.players.find((p: any) => p.userId === data.currentUserId);
+      if (me) setUnoMultiMyId(me.id);
+      setShowSeatPopup(false);
+    } catch (error) {
+      console.error("Unable to sit as human", error);
+    }
+  };
 
   const addUnoMultiAiToSeat = async (seatIndex: number) => {
     if (!isHost || unoMultiStarted || !unoMultiTableCode) return;
@@ -545,11 +568,11 @@ const isAiThinking =
                           </div>
                         ) : (
                           <button
-                            onClick={() => addUnoMultiAiToSeat(seatIndex)}
-                            disabled={!isHost}
+                            onClick={() => (!meSeated ? sitAsHuman(seatIndex) : addUnoMultiAiToSeat(seatIndex))}
+                            disabled={meSeated ? !isHost : false}
                             className={`w-28 h-12 rounded-xl border border-dashed text-xs ${isHost ? "border-[#00e5ff]/45 hover:bg-[#00e5ff]/20" : "border-gray-500 text-gray-400 cursor-not-allowed"}`}
                           >
-                            {isHost ? "+ Add AI" : "Host only"}
+                            {!meSeated ? "Sit as Human" : isHost ? "+ Add AI" : "Open seat"}
                           </button>
                         )
                       ) : <div className="w-28 h-12 rounded-xl border border-gray-600 bg-gray-800/40 text-[10px] flex items-center justify-center text-gray-400">Disabled</div>}
@@ -559,7 +582,7 @@ const isAiThinking =
               </div>
 
               <div className="mt-4 flex gap-3">
-                <button onClick={startUnoMultiplayerGame} disabled={!isHost} className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 px-4 py-2 rounded font-bold">Start</button>
+                <button onClick={startUnoMultiplayerGame} disabled={meSeated ? !isHost : false} className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 px-4 py-2 rounded font-bold">Start</button>
                 <button onClick={resetUnoMultiplayerLobby} className="flex-1 bg-red-600 hover:bg-red-500 px-4 py-2 rounded font-bold">Leave</button>
               </div>
             </>
@@ -581,6 +604,18 @@ const isAiThinking =
             </div>
           </div>
 
+          {showSeatPopup && unoMultiTableCode && (
+            <div className="mt-4 rounded-xl border border-yellow-300/40 bg-[#2a1a00]/60 p-3">
+              <p className="text-sm text-yellow-100 mb-2">Choose an open seat. Hosts can also add AI players.</p>
+              <div className="flex gap-2 flex-wrap">
+                {Array.from({ length: unoMultiSettings.maxPlayers }).map((_, seatIndex) => {
+                  const occupied = unoMultiPlayers.some((p) => p.seatIndex === seatIndex);
+                  if (occupied) return null;
+                  return <button key={seatIndex} onClick={() => sitAsHuman(seatIndex)} className="px-3 py-1 rounded bg-yellow-300 text-black text-sm font-semibold">Sit seat {seatIndex + 1}</button>;
+                })}
+              </div>
+            </div>
+          )}
           {unoMultiMessage && <p className="mt-4 text-yellow-200 text-sm">{unoMultiMessage}</p>}
         </div>
       ) : (

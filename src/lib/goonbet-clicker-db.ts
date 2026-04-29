@@ -79,25 +79,23 @@ export async function cashoutRound(userId: string, roundId: number, clientClicks
     const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
     const boundedClicks = Math.max(0, Math.floor(clientClicks));
     const maxClicks = maxAllowedClicks(effectiveDurationMs);
-    if (boundedClicks > maxClicks) throw new Error("INVALID_CLICK_RATE");
-
-    const expectedMultiplier = multiplierFromClicks(boundedClicks);
-    if (Math.abs(expectedMultiplier - Number(clientMultiplier)) > 0.001) throw new Error("MULTIPLIER_MISMATCH");
+    const verifiedClicks = Math.min(boundedClicks, maxClicks);
+    const expectedMultiplier = multiplierFromClicks(verifiedClicks);
 
     const bustSeed = `${round.id}:${userId}:${new Date(round.created_at).toISOString()}`;
-    if (didBustByClick(bustSeed, boundedClicks)) {
-      await sql`UPDATE clicker_rounds SET status = 'bust', clicks = ${boundedClicks}, multiplier = ${expectedMultiplier}, payout = 0 WHERE id = ${roundId}`;
+    if (didBustByClick(bustSeed, verifiedClicks)) {
+      await sql`UPDATE clicker_rounds SET status = 'bust', clicks = ${verifiedClicks}, multiplier = ${expectedMultiplier}, payout = 0 WHERE id = ${roundId}`;
       await sql`COMMIT`;
-      return { payout: BigInt(0), multiplier: expectedMultiplier, clicks: boundedClicks, busted: true };
+      return { payout: BigInt(0), multiplier: expectedMultiplier, clicks: verifiedClicks, busted: true };
     }
 
     const payout = payoutFrom(BigInt(round.bet_amount), expectedMultiplier);
 
-    await sql`UPDATE clicker_rounds SET status = 'cashed_out', payout = ${payout}, clicks = ${boundedClicks}, multiplier = ${expectedMultiplier} WHERE id = ${roundId}`;
+    await sql`UPDATE clicker_rounds SET status = 'cashed_out', payout = ${payout}, clicks = ${verifiedClicks}, multiplier = ${expectedMultiplier} WHERE id = ${roundId}`;
     await sql`UPDATE clicker_users SET tokens = tokens + ${payout} WHERE id = ${userId}`;
 
     await sql`COMMIT`;
-    return { payout, multiplier: expectedMultiplier, clicks: boundedClicks, busted: false };
+    return { payout, multiplier: expectedMultiplier, clicks: verifiedClicks, busted: false };
   } catch (error) {
     await sql`ROLLBACK`;
     throw error;
