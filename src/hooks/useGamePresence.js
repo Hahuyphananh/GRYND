@@ -30,8 +30,10 @@ export default function useGamePresence({ gameKey, gameId, enabled = true }) {
       clearInterval(id);
       fetch('/api/presence/leave-game', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         keepalive: true,
+        body: JSON.stringify({}),
       }).catch((error) => {
         console.error('[LEAVE_GAME_PRESENCE_ERROR]', error);
       });
