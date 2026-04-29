@@ -6,20 +6,20 @@ export default function Page() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#001a33]">
       <SignIn
-        afterSignInUrl="/sync"
+        fallbackRedirectUrl="/sync"
         appearance={{
  variables: {
   colorPrimary: "#00fff7",
   colorBackground: "#050b1e",
 
   // ✅ FIX: main text should be bright white, not neon
-  colorText: "#f5f9ff",
+  colorForeground: "#f5f9ff",
 
   // inputs
-  colorInputBackground: "#071a33",
+  colorInput: "#071a33",
 
   // ❗ FIX: input text was neon cyan (bad contrast on dark UI)
-  colorInputText: "#f5f9ff",
+  colorInputForeground: "#f5f9ff",
 
   borderRadius: "0.5rem",
   fontFamily: "Orbitron, Inter, sans-serif",
