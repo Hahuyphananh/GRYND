@@ -1,11 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
+import { getNeonSql } from "../../../db/neon";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req) {
   try {
+    const sql = getNeonSql();
     const { userId } = await auth();
 
     if (!userId) {
