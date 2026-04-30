@@ -1,5 +1,5 @@
 // src/db/schema.ts
-import { pgTable, serial, varchar, integer, numeric, timestamp, jsonb, text, json, boolean, date, pgEnum, index} from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, integer, numeric, timestamp, jsonb, text, json, boolean, date, pgEnum, index, uuid, bigint} from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
 // USERS TABLE
@@ -311,6 +311,60 @@ export const chessMoves = pgTable("chess_moves", {
   gameIdx: index("chess_moves_game_idx").on(table.gameId),
 }));
 
+export const diceLobbies = pgTable("dice_lobbies", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  hostUserId: varchar("host_user_id", { length: 255 }).notNull(),
+  opponentUserId: varchar("opponent_user_id", { length: 255 }),
+  wager: integer("wager").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("waiting"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const diceMatches = pgTable("dice_matches", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  lobbyId: uuid("lobby_id").references(() => diceLobbies.id, { onDelete: "cascade" }),
+  player1Id: varchar("player1_id", { length: 255 }).notNull(),
+  player2Id: varchar("player2_id", { length: 255 }).notNull(),
+  winnerId: varchar("winner_id", { length: 255 }),
+  wager: integer("wager").notNull(),
+  prizePaid: integer("prize_paid").notNull().default(0),
+  houseFee: integer("house_fee").notNull().default(0),
+  hp1: integer("hp1").notNull().default(20),
+  hp2: integer("hp2").notNull().default(20),
+  turnUserId: varchar("turn_user_id", { length: 255 }).notNull(),
+  round: integer("round").notNull().default(1),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  endedAt: timestamp("ended_at"),
+});
+
+export const diceTurns = pgTable("dice_turns", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  matchId: uuid("match_id").notNull().references(() => diceMatches.id, { onDelete: "cascade" }),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  round: integer("round").notNull(),
+  actionType: varchar("action_type", { length: 30 }).notNull(),
+  roll1: integer("roll_1"),
+  roll2: integer("roll_2"),
+  damageDealt: integer("damage_dealt").notNull().default(0),
+  selfDamage: integer("self_damage").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const dicePlayerStats = pgTable("dice_player_stats", {
+  userId: varchar("user_id", { length: 255 }).primaryKey(),
+  wins: integer("wins").notNull().default(0),
+  losses: integer("losses").notNull().default(0),
+  gamesPlayed: integer("games_played").notNull().default(0),
+  totalWagered: bigint("total_wagered", { mode: "number" }).notNull().default(0),
+  totalWon: bigint("total_won", { mode: "number" }).notNull().default(0),
+  highestWin: integer("highest_win").notNull().default(0),
+  currentStreak: integer("current_streak").notNull().default(0),
+  bestStreak: integer("best_streak").notNull().default(0),
+});
+
+
+// Legacy exports kept to prevent build/runtime import failures while Tanks routes are deprecated.
 export const tankStats = pgTable("tank_stats", {
   id: serial("id").primaryKey(),
   matchId: varchar("match_id", { length: 255 }).notNull(),
@@ -319,7 +373,7 @@ export const tankStats = pgTable("tank_stats", {
   bounty: numeric("bounty", { precision: 12, scale: 2 }).notNull().default("1.00"),
   kills: integer("kills").notNull().default(0),
   amountCashedOut: numeric("amount_cashed_out", { precision: 12, scale: 2 }).default("0.00"),
-  result: varchar("result", { length: 20 }), 
+  result: varchar("result", { length: 20 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -328,10 +382,7 @@ export const tankMatches = pgTable("tank_matches", {
   matchId: varchar("match_id", { length: 255 }).notNull(),
   hostClerkId: varchar("host_clerk_id", { length: 255 }).notNull(),
   maxPlayers: integer("max_players").notNull().default(2),
-  // NEW COLUMN
-  currentPlayers: integer("current_players")
-    .notNull()
-    .default(1), // since the host counts as the first player
+  currentPlayers: integer("current_players").notNull().default(1),
   isOpen: boolean("is_open").notNull().default(true),
   settings: jsonb("settings").default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
