@@ -14,10 +14,15 @@ export async function POST(request) {
   if (!parsed.ok) return parsed.response;
 
   const { gameKey, gameId, targetClerkId } = parsed.data;
+  const normalizedGameKey = String(gameKey || "").toLowerCase().trim();
+  const allowedGameKeys = new Set(["chess", "connect-four", "poker"]);
+  if (!allowedGameKeys.has(normalizedGameKey)) {
+    return new Response(JSON.stringify({ success: false, error: "Unsupported gameKey" }), { status: 400 });
+  }
 
   await sql`
     INSERT INTO spectator_presence (spectator_clerk_id, target_clerk_id, game_key, game_id, last_seen_at)
-    VALUES (${userId}, ${targetClerkId}, ${gameKey.toLowerCase()}, ${Number(gameId)}, NOW())
+    VALUES (${userId}, ${targetClerkId}, ${normalizedGameKey}, ${Number(gameId)}, NOW())
     ON CONFLICT (spectator_clerk_id, target_clerk_id, game_key, game_id)
     DO UPDATE SET last_seen_at = NOW()
   `;

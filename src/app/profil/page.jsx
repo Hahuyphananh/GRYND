@@ -65,12 +65,22 @@ const loadVipTitles = async () => {
   const [friendsStatus, setFriendsStatus] = useState("");
   const [friendPresenceByFriend, setFriendPresenceByFriend] = useState({});
   const [spectateOverlayUrl, setSpectateOverlayUrl] = useState("");
+  const [spectateLoadError, setSpectateLoadError] = useState("");
+  const [spectateIsLoaded, setSpectateIsLoaded] = useState(false);
   const [isSearchingFriends, setIsSearchingFriends] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editStatus, setEditStatus] = useState("");
 
   const [levelUpModal, setLevelUpModal] = useState(null);
   const previousLevelRef = useRef(null);
+
+  useEffect(() => {
+    if (!spectateOverlayUrl || spectateIsLoaded || spectateLoadError) return;
+    const timeoutId = setTimeout(() => {
+      setSpectateLoadError("Spectate view timed out. Please retry or ask your friend to reopen the game.");
+    }, 10000);
+    return () => clearTimeout(timeoutId);
+  }, [spectateOverlayUrl, spectateIsLoaded, spectateLoadError]);
 
   const loadStats = async () => {
     const res = await fetch("/api/user-stats", { credentials: "include" });
@@ -353,13 +363,26 @@ const getFriendStatus = (friendId) => {
 
   const profileAvatar = (person) => person?.profile_picture || person?.profilePicture || "";
 
+  const isAllowedSpectateUrl = (url) => {
+    if (!url || typeof url !== "string") return false;
+    if (!url.startsWith("/")) return false;
+
+    const allowedPrefixes = [
+      "/casino/chess-game/",
+      "/casino/connect-four/game/",
+      "/casino/poker/multi",
+    ];
+
+    return allowedPrefixes.some((prefix) => url.startsWith(prefix));
+  };
+
   const spectateUrlForFriend = (friendId) => {
     const presence = friendPresenceByFriend?.[friendId];
     const gameKey = String(presence?.gameKey || "").toLowerCase().trim();
     if (!presence?.gameId || !gameKey) return null;
 
-    if (gameKey === "chess") return `/casino/chess-game/${presence.gameId}?spectator=1&focus=white`;
-    if (gameKey === "connect-four") return `/casino/connect-four/game/${presence.gameId}?spectator=1&focus=host`;
+    if (gameKey === "chess") return `/casino/chess-game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
+    if (gameKey === "connect-four") return `/casino/connect-four/game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
     if (gameKey === "poker") return `/casino/poker/multi?spectator=1&gameId=${presence.gameId}`;
     return null;
   };
@@ -1242,7 +1265,15 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
 
     return (
       <button
-        onClick={() => setSpectateOverlayUrl(spectateUrl)}
+        onClick={() => {
+          if (!isAllowedSpectateUrl(spectateUrl)) {
+            setFriendsStatus("This spectate link is invalid.");
+            return;
+          }
+          setSpectateLoadError("");
+          setSpectateIsLoaded(false);
+          setSpectateOverlayUrl(spectateUrl);
+        }}
         className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse"
       >
         Spectate
@@ -1291,10 +1322,46 @@ hover:scale-105 transition-all"
         {spectateOverlayUrl && (
           <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4">
             <div className="relative h-[90vh] w-[95vw] rounded-xl border border-[#00e5ff]/40 bg-black overflow-hidden">
-              <button onClick={() => setSpectateOverlayUrl("")} className="absolute right-3 top-3 z-10 rounded bg-red-600 px-3 py-1 text-sm font-semibold text-white">
+              <button onClick={() => {
+                setSpectateOverlayUrl("");
+                setSpectateLoadError("");
+                setSpectateIsLoaded(false);
+              }} className="absolute right-3 top-3 z-10 rounded bg-red-600 px-3 py-1 text-sm font-semibold text-white">
                 Close Spectate
               </button>
-              <iframe src={spectateOverlayUrl} className="h-full w-full border-0" title="Friend spectate view" />
+              {!spectateIsLoaded && !spectateLoadError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-sm text-gray-200">
+                  Loading spectate view...
+                </div>
+              )}
+              {spectateLoadError && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/90 p-6 text-center">
+                  <p className="text-red-300">{spectateLoadError}</p>
+                  <button
+                    onClick={() => {
+                      setSpectateLoadError("");
+                      setSpectateIsLoaded(false);
+                      setSpectateOverlayUrl((prev) => `${prev.split("#")[0]}#retry-${Date.now()}`);
+                    }}
+                    className="rounded bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366]"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+              {isAllowedSpectateUrl(spectateOverlayUrl) ? (
+                <iframe
+                  src={spectateOverlayUrl}
+                  className="h-full w-full border-0"
+                  title="Friend spectate view"
+                  onLoad={() => setSpectateIsLoaded(true)}
+                  onError={() => setSpectateLoadError("Unable to render spectate page. The game may have ended or embedding is blocked.")}
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/90 p-6 text-center text-red-300">
+                  Invalid spectate destination.
+                </div>
+              )}
             </div>
           </div>
         )}
