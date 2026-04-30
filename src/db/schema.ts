@@ -11,7 +11,7 @@ export const users = pgTable('users', {
   profilePicture: text('profile_picture'),
   password: varchar('password', { length: 255 }).notNull(),
   age: integer('age'),
-  balance: numeric('balance', { precision: 10, scale: 2 }).default('1000.00').notNull(),
+  balance: numeric('balance', { precision: 30, scale: 2 }).default('1000.00').notNull(),
   gamesWon: integer('games_won').default(0),
   gamesLost: integer('games_lost').default(0),
   referralCode: varchar('referral_code', { length: 30 }).unique(),
