@@ -1,6 +1,10 @@
 require('dotenv').config();
 
-const http = require('http');
+con
+  socket.on('dice:lobby:create', ({ lobbyId, hostUserId, wager }) => { diceLobbies.set(lobbyId,{ id:lobbyId, hostUserId, wager, status:'waiting'}); io.emit('dice:lobby:list', Array.from(diceLobbies.values())); });
+  socket.on('dice:lobby:join', ({ lobbyId, userId }) => { const l=diceLobbies.get(lobbyId); if(!l) return; if(!l.opponentUserId && userId && userId!==l.hostUserId) l.opponentUserId=userId; socket.join(`dice:${lobbyId}`); if(l.opponentUserId){ const first=Math.random()<0.5?l.hostUserId:l.opponentUserId; const m={ id:lobbyId, lobbyId, player1Id:l.hostUserId, player2Id:l.opponentUserId, hp1:20,hp2:20,round:1,turnUserId:first,me:userId,shields:{} }; diceMatches.set(lobbyId,m); io.to(`dice:${lobbyId}`).emit('dice:match:start', m);} });
+  socket.on('dice:turn:submit', ({ matchId, actionType, userId }) => { const m=diceMatches.get(String(matchId)); if(!m||m.turnUserId!==userId) return; resolveTurn(m, actionType); io.to(`dice:${matchId}`).emit('dice:state:update', m); if(m.hp1<=0||m.hp2<=0){ io.to(`dice:${matchId}`).emit('dice:match:end', m); } });
+st http = require('http');
 const express = require('express');
 const cors = require('cors');
 const { Server } = require('socket.io');
@@ -462,3 +466,18 @@ io.on('connection', (socket) => {
 httpServer.listen(PORT, () => {
   console.log(`[realtime-server] listening on port ${PORT}`);
 });
+const diceLobbies = new Map();
+const diceMatches = new Map();
+const roll = () => Math.floor(Math.random()*6)+1;
+function resolveTurn(match, action){
+  const me = match.turnUserId;
+  const enemy = match.player1Id===me?match.player2Id:match.player1Id;
+  let dmg=0,self=0,r1=null,r2=null;
+  if(action==='SAFE_ROLL'){r1=roll();dmg=r1<=2?0:r1<=4?2:4;}
+  if(action==='POWER_ROLL'){r1=roll();r2=roll();const t=r1+r2; if(t<=4) self=3; else if(t<=7) dmg=3; else if(t<=10) dmg=6; else dmg=8;}
+  if(action==='SHIELD'){match.shields[me]=(match.shields[me]||0)+1;}
+  if(dmg>0 && (match.shields[enemy]||0)>0){dmg=Math.floor(dmg/2); match.shields[enemy]=0;}
+  if(match.player1Id===me){match.hp2=Math.max(0,match.hp2-dmg); match.hp1=Math.max(0,match.hp1-self);} else {match.hp1=Math.max(0,match.hp1-dmg); match.hp2=Math.max(0,match.hp2-self);} 
+  match.round += 1; match.turnUserId = enemy; return {dmg,self,r1,r2};
+}
+
