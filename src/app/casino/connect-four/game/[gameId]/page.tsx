@@ -37,6 +37,7 @@ export default function ConnectFourGamePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isSpectator = searchParams.get("spectator") === "1";
+  const focusTarget = searchParams.get("focusTarget") || "";
   const [spectatorFocus, setSpectatorFocus] = useState<"host" | "guest">((searchParams.get("focus") as any) === "guest" ? "guest" : "host");
   const { socket } = useSocket();
 
@@ -74,6 +75,10 @@ export default function ConnectFourGamePage() {
     }
 
     const gameData = data.data;
+    if (isSpectator && focusTarget) {
+      if (String(focusTarget) === String(gameData.hostClerkId)) setSpectatorFocus("host");
+      else if (String(focusTarget) === String(gameData.guestClerkId)) setSpectatorFocus("guest");
+    }
     const nextBoard = gameData?.board || [];
     const latestDrop = detectLatestDrop(previousBoardRef.current, nextBoard);
 

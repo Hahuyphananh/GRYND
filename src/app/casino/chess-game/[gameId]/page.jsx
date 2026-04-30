@@ -56,9 +56,8 @@ export default function ChessGamePage() {
   const color = searchParams.get("color") || "white";
   const isSpectator = searchParams.get("spectator") === "1";
 
-  const [spectatorFocus] = useState(
-    searchParams.get("focus") || "white"
-  );
+  const focusTarget = searchParams.get("focusTarget") || "";
+  const [spectatorFocus, setSpectatorFocus] = useState(searchParams.get("focus") || "white");
 
   const [liveFen, setLiveFen] = useState("start");
   const [status, setStatus] = useState("Loading match...");
@@ -104,6 +103,11 @@ async function fetchState() {
   }
 
   const game = data.data;
+  if (isSpectator && focusTarget) {
+    const normalizedTarget = String(focusTarget);
+    if (normalizedTarget === String(game.whitePlayerId)) setSpectatorFocus("white");
+    else if (normalizedTarget === String(game.blackPlayerId)) setSpectatorFocus("black");
+  }
 
   setGameData(game);
   setMoves(game.moves || []);

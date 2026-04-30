@@ -65,7 +65,7 @@ function getLimitForPath(pathname: string): LimitConfig | null {
 function applySecurityHeaders(response: NextResponse) {
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-Frame-Options', 'SAMEORIGIN');
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
   // Keep CSP strict enough for safety but compatible with current UI.
@@ -79,7 +79,7 @@ response.headers.set(
   "connect-src 'self' https: wss:; " +
   "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev; " +
   "worker-src 'self' blob:; " +
-  "frame-ancestors 'none'; " +
+  "frame-ancestors 'self'; " +
   "base-uri 'self'; " +
   "form-action 'self'"
 );
