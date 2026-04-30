@@ -297,16 +297,20 @@ function scheduleAi(room) {
   room.aiTimeout = setTimeout(() => {
     room.aiTimeout = null;
 
-    const didPlay = runSingleAiTurn(room);
+    let safety = 0;
+    while (safety < 8) {
+      const didPlay = runSingleAiTurn(room);
+      if (!didPlay) return;
+      const state = room.activeState;
+      if (!state || state.status !== "active" || state.players[state.turnIndex]?.type !== "ai") break;
+      safety += 1;
+    }
 
-    if (!didPlay) return;
-
-    // Chain next AI if still AI turn
     const state = room.activeState;
-    if (state && state.players[state.turnIndex]?.type === "ai") {
+    if (state && state.status === "active" && state.players[state.turnIndex]?.type === "ai") {
       scheduleAi(room);
     }
-  }, 1200); // 🔥 delay here (1.2s)
+  }, 900);
 }
 
 export async function GET(request) {
@@ -393,30 +397,41 @@ export async function POST(request) {
     const alreadyIn = room.players.find((p) => p.userId === user.id);
     if (alreadyIn) return Response.json({ success: true, currentUserId: user.id, room: { ...tableSummary(room), players: room.players } });
 
-    if (room.players.length >= room.settings.maxPlayers) {
-      return new Response(JSON.stringify({ success: false, error: "Room is full" }), { status: 409 });
-    }
-
-    const seatIndex = getNextOpenSeat(room.players, room.settings.maxPlayers);
-    if (seatIndex == null) {
-      return new Response(JSON.stringify({ success: false, error: "No seat available" }), { status: 409 });
-    }
-
-    room.players.push({
-      id: `${user.id}-${Date.now()}`,
-      userId: user.id,
-      name: user.name,
-      type: "human",
-      seatIndex,
-      isHost: false,
-      skipNextRound: false,
-    });
-
-    return Response.json({ success: true, currentUserId: user.id, room: { ...tableSummary(room), players: room.players } });
+    return Response.json({ success: true, currentUserId: user.id, room: { ...tableSummary(room), players: room.players }, needsSeatSelection: true });
   }
 
   if (action === "toggle-skip") {
     room.players = room.players.map((p) => (p.userId !== user.id ? p : { ...p, skipNextRound: Boolean(body?.skipNextRound) }));
+    return Response.json({ success: true, currentUserId: user.id, room: { ...tableSummary(room), players: room.players } });
+  }
+
+
+  if (action === "sit-human") {
+    if (room.started) return new Response(JSON.stringify({ success: false, error: "Game already started" }), { status: 409 });
+
+    const existing = room.players.find((p) => p.userId === user.id);
+    const seatIndex = Number(body?.seatIndex);
+    if (!Number.isInteger(seatIndex) || seatIndex < 0 || seatIndex >= room.settings.maxPlayers) {
+      return new Response(JSON.stringify({ success: false, error: "Invalid seat" }), { status: 400 });
+    }
+    if (room.players.some((p) => p.seatIndex === seatIndex && p.userId !== user.id)) {
+      return new Response(JSON.stringify({ success: false, error: "Seat occupied" }), { status: 409 });
+    }
+
+    if (existing) {
+      existing.seatIndex = seatIndex;
+    } else {
+      room.players.push({
+        id: `${user.id}-${Date.now()}`,
+        userId: user.id,
+        name: user.name,
+        type: "human",
+        seatIndex,
+        isHost: false,
+        skipNextRound: false,
+      });
+    }
+
     return Response.json({ success: true, currentUserId: user.id, room: { ...tableSummary(room), players: room.players } });
   }
 
@@ -616,8 +631,14 @@ export async function POST(request) {
     if (state.players[state.turnIndex]?.id !== me.id) return new Response(JSON.stringify({ success: false, error: "Not your turn" }), { status: 400 });
 
     drawFor(state, me.id, 1);
-    advanceIndex(state, 1);
-    scheduleAi(room);
+    const hand = state.hands[me.id] || [];
+    const drawn = hand[hand.length - 1];
+    const topCard = state.discardPile[state.discardPile.length - 1];
+
+    if (!drawn || !isPlayable(drawn, topCard, state.currentColor, hand)) {
+      advanceIndex(state, 1);
+      scheduleAi(room);
+    }
 
     if (state.status === "finished") {
       await settleWinner(room, state.winnerId);
