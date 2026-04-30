@@ -363,6 +363,33 @@ export const dicePlayerStats = pgTable("dice_player_stats", {
   bestStreak: integer("best_streak").notNull().default(0),
 });
 
+
+// Legacy exports kept to prevent build/runtime import failures while Tanks routes are deprecated.
+export const tankStats = pgTable("tank_stats", {
+  id: serial("id").primaryKey(),
+  matchId: varchar("match_id", { length: 255 }).notNull(),
+  clerkId: varchar("clerk_id", { length: 255 }).notNull(),
+  username: varchar("username", { length: 255 }),
+  bounty: numeric("bounty", { precision: 12, scale: 2 }).notNull().default("1.00"),
+  kills: integer("kills").notNull().default(0),
+  amountCashedOut: numeric("amount_cashed_out", { precision: 12, scale: 2 }).default("0.00"),
+  result: varchar("result", { length: 20 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const tankMatches = pgTable("tank_matches", {
+  id: serial("id").primaryKey(),
+  matchId: varchar("match_id", { length: 255 }).notNull(),
+  hostClerkId: varchar("host_clerk_id", { length: 255 }).notNull(),
+  maxPlayers: integer("max_players").notNull().default(2),
+  currentPlayers: integer("current_players").notNull().default(1),
+  isOpen: boolean("is_open").notNull().default(true),
+  settings: jsonb("settings").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  players: jsonb("players").$type<string[]>().notNull().default([]),
+  gameStarted: boolean("game_started").notNull().default(false),
+});
+
 export const coinFlipStatusEnum = pgEnum("coin_flip_status", [
   "active",
   "matched",
