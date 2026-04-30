@@ -135,11 +135,11 @@ const games = [
     nameKey: "games.rps_name",
   },
   {
-    name: "Tanks",
-    href: "/casino/tanks",
-    leaderboardKey: "tanks",
+    name: "Dice Duel Arena",
+    href: "/casino/dice-duel",
+    leaderboardKey: "dice-duel",
     image: Img13,
-    descriptionKey: "games.tanks_desc",
+    descriptionKey: "games.dice_duel_desc",
   },
   {
     name: "Connect Four",
@@ -170,7 +170,7 @@ const filteredGames = games.filter((game) =>
 );
 
 const popularGames = filteredGames.filter((g) => g.popular);
-const skillGameKeys = new Set(["connect-four", "uno", "poker", "tanks", "chess", "rps"]);
+const skillGameKeys = new Set(["connect-four", "uno", "poker", "dice-duel", "chess", "rps"]);
 const skillGames = filteredGames.filter((g) => skillGameKeys.has(g.leaderboardKey));
 const otherGames = filteredGames.filter((g) => !g.popular && !skillGameKeys.has(g.leaderboardKey));
 useEffect(() => {
