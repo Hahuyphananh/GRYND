@@ -1120,13 +1120,25 @@ if (isSpectator) {
     <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-6">
       <h1 className="text-3xl font-bold mb-2">Poker Spectate</h1>
       <p className="text-sm text-slate-300 mb-4">Live POV overlay</p>
-      <div className="mb-4 rounded border border-yellow-500/30 bg-black/30 px-4 py-2">💰 Pot: {game.pot}</div>
+      <div className="mb-4 rounded border border-yellow-500/30 bg-black/30 px-4 py-2">💰 POT: {game.pot}</div>
       <div className="mb-4 flex gap-2">
         {(game.community || []).map((c: Card, i: number) => (
-          <div key={`${c?.suit}-${c?.value}-${i}`} className="w-16 h-24 bg-white rounded text-black flex items-center justify-center">
-            {c?.value}{c?.suit}
-          </div>
-        ))}
+  <motion.div
+    key={`${c?.suit}-${c?.value}-${i}`}
+    initial={{ rotateY: 90, opacity: 0, y: -20 }}
+    animate={{ rotateY: 0, opacity: 1, y: 0 }}
+    transition={{ duration: 0.45, delay: i * 0.12 }}
+    className={`w-16 h-24 rounded-xl flex items-center justify-center font-bold text-xl shadow-xl border-2
+      ${
+        c?.suit === "♥" || c?.suit === "♦"
+          ? "bg-white text-red-600 border-red-300"
+          : "bg-white text-black border-slate-400"
+      }
+    `}
+  >
+    {c?.value}{c?.suit}
+  </motion.div>
+))}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {(game.players || []).map((p: Player) => (
@@ -1250,7 +1262,7 @@ if (isSpectator) {
 
   // main UI when game exists
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-6">
+   <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#05010f] via-[#0a1633] to-[#12001f] text-white p-6 overflow-hidden relative">
      <div className="absolute top-4 left-4">
   <button
     onClick={async () => {
@@ -1272,7 +1284,9 @@ if (isSpectator) {
 </div>
 
 
-      <h1 className="text-3xl mb-4">Texas Hold'em</h1>
+      <h1 className="text-5xl mb-6 font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-fuchsia-400 to-cyan-300 drop-shadow-[0_0_20px_rgba(0,255,255,0.7)] animate-pulse">
+  TEXAS HOLD'EM
+</h1>
       <div className="mb-3 flex items-center gap-2 text-sm">
         <span className="text-gray-300">Turn timer:</span>
         <select
@@ -1348,136 +1362,17 @@ if (isSpectator) {
       </div>
 
       {/* The poker table itself */}
-      <div className="relative w-[700px] h-[400px] bg-green-700 rounded-full border-8 border-yellow-800 flex items-center justify-center mb-6 mt-12 shadow-[0_0_40px_rgba(255,215,0,0.3)]">
-        {/* community cards in center */}
-       {/* Centered pot display */}
-{game && (
-  <div
-    className="absolute text-yellow-300 text-sm font-bold bg-black/50 px-3 py-1.5 rounded-full border border-yellow-400 shadow-lg"
-    style={{
-      left: "50%",                 // perfectly centered horizontally
-      top: "27%",                  // moved up so it won't overlap community cards
-      transform: "translate(-50%, 0)", // keep centered but avoid vertical translate that overlaps cards
-      zIndex: 15,                  // adjust stacking; lower than cards if you want cards on top
-      padding: "6px 10px",         // slightly smaller/more compact
-    }}
-  >
-    💰 Pot: ${game.pot}
-  </div>
-)}
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <div className="flex gap-2 relative">
-            <AnimatePresence>
-              {(game?.community || [])
-  .filter((c): c is Card => !!c && !!c.suit && !!c.value)
-  .map((c, i) => (
-                <motion.div
-                  key={`${c.suit}-${c.value}-${i}`}
-                  initial={{ opacity: 0, y: -200, x: Math.random() * 200 - 100, rotate: Math.random() * 40 - 20, scale: 0.5 }}
-                  animate={{ opacity: 1, y: 0, x: 0, rotate: 0, scale: 1, transition: { delay: i * 0.2, type: "spring", stiffness: 120 } }}
-                  exit={{ opacity: 0, scale: 0.8, y: 50 }}
-                  className={`w-16 h-24 bg-white flex items-center justify-center rounded shadow ${c.suit === "♥" || c.suit === "♦" ? "text-red-600" : "text-black"}`}
-                >
-                  {c.value}{c.suit}
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        </div>
-     {/* Your Best Hand (always visible, centered below community cards) */}
-{game && (
-  <div
-    className="absolute text-white text-sm font-semibold mt-6 bg-black/40 px-3 py-1 rounded-lg border border-yellow-400"
-    style={{
-      top: "58%", // slightly below community cards
-      left: "50%",
-      transform: "translateX(-50%)",
-      zIndex: 30,
-    }}
-  >
-    Your Best Hand:{" "}
-    {evaluateHand(
-      game.players.find((p) => p.id === myId)?.hand || [],
-      game.community
-    )}
-  </div>
-)}
+    <div className="relative w-[760px] h-[430px] rounded-full flex items-center justify-center mb-6 mt-12
+bg-gradient-to-br from-[#08111f] via-[#07192d] to-[#050816]
+border-[6px] border-cyan-400/70
+shadow-[0_0_60px_rgba(0,255,255,0.35),inset_0_0_40px_rgba(255,0,255,0.12)]">
 
+{/* neon ring */}
+<div className="absolute inset-4 rounded-full border border-fuchsia-500/40 shadow-[0_0_30px_rgba(255,0,255,0.35)]"></div>
 
-
-{/* ACTION BUTTONS — moved outside the gameboard (2 per side) */}
-{!game?.waiting && game?.stage !== "showdown" && (
-  <>
-    {/* LEFT SIDE BUTTONS */}
-    <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col gap-3 ml-[-100px] z-40 pointer-events-auto">
-      <button
-        onClick={() => performAction("fold")}
-        disabled={!isMyTurn}
-       className={`w-24 px-4 py-2 rounded-lg border border-red-500/70 bg-red-500/20 text-red-200 hover:bg-red-500/55 transition active:scale-95 ${
-  !isMyTurn && "opacity-50 cursor-not-allowed"
-}`}
-      >
-        Fold
-      </button>
-
-      <button
-        onClick={() => performAction("check")}
-        disabled={!isMyTurn}
-        className={`w-24 px-4 py-2 rounded-lg border border-yellow-400/70 bg-yellow-400/20 text-yellow-100 hover:bg-yellow-400/55 transition active:scale-95 ${
-  !isMyTurn && "opacity-50 cursor-not-allowed"
-}`}
-      >
-        Check
-      </button>
-    </div>
-
-    {/* RIGHT SIDE BUTTONS */}
-    <div className="absolute right-0 top-1/2 -translate-y-1/2 flex flex-col gap-3 mr-[-100px] z-40 pointer-events-auto">
-      <button
-        onClick={() => {
-          if (!isMyTurn) return;
-          if (canUseBetShortcut) {
-            performAction("bet20");
-            return;
-          }
-          performAction("call");
-        }}
-        disabled={!isMyTurn}
-        className={`w-24 px-4 py-2 rounded-lg border border-[#00e5ff]/70 bg-[#00e5ff]/20 text-[#d8fbff] hover:bg-[#00e5ff]/55 transition active:scale-95 ${
-  !isMyTurn && "opacity-50 cursor-not-allowed"
-}`}
-      >
-        {canUseBetShortcut ? "Bet 20" : toCallAmount > 0 ? `Call ${toCallAmount}` : "Call"}
-      </button>
-
-      <div className="flex flex-col items-center">
-        <input
-          type="number"
-          min={10}
-          max={game?.players?.[0]?.stack ?? 1000}
-          value={raiseAmount}
-          onChange={(e) => setRaiseAmount(Number(e.target.value))}
-          disabled={!isMyTurn}
-          className={`w-20 text-black px-2 py-1 rounded mb-1 ${
-            !isMyTurn ? "opacity-50 cursor-not-allowed" : ""
-          }`}
-        />
-        <button
-          onClick={() => isMyTurn && performAction("raise")}
-          disabled={!isMyTurn}
-          className={`w-24 px-4 py-2 rounded-lg border border-green-400/70 bg-green-400/20 text-green-100 hover:bg-green-400/55 transition active:scale-95 ${
-  !isMyTurn && "opacity-50 cursor-not-allowed"
-}`}
-        >
-          Raise
-        </button>
-      </div>
-    </div>
-  </>
-)}
-
-
-      </div>
+{/* hologram center */}
+<div className="absolute w-[320px] h-[140px] rounded-full bg-cyan-400/5 blur-2xl"></div>
+</div>
 
   {/* Seat positions absolutely positioned around the board */}
 <div className="relative w-[900px] h-[600px] -mt-[480px] pointer-events-none">
@@ -1505,7 +1400,7 @@ if (isSpectator) {
       }
     }}
     className={`flex flex-col items-center gap-1 w-[120px] p-1.5 rounded-xl text-[10px] font-semibold cursor-pointer
-      ${isPlayer ? "bg-yellow-400 text-black" : "bg-slate-800 text-white"}
+      ${isPlayer ? "bg-yellow-400 text-black" : "bg-yellow-400 text-black shadow-[0_0_18px_rgba(255,255,0,0.5)]"}
       ${occupant.hasFolded ? "opacity-50" : ""}
       ${
         game?.winnerId === occupant.id
@@ -1578,7 +1473,9 @@ if (isSpectator) {
             ) : occupant.stack <= 0 ? (
               <span className="px-1 py-[1px] rounded bg-purple-700 text-white">All-in</span>
             ) : game?.players?.[game.currentTurn]?.id === occupant.id ? (
-              <span className="px-1 py-[1px] rounded bg-yellow-500 text-black">Thinking</span>
+              <span className="px-2 py-[2px] rounded bg-pink-500 text-white animate-pulse shadow-[0_0_12px_rgba(255,0,255,0.8)]">
+⚡ THINKING
+</span>
             ) : (
               <span className="px-1 py-[1px] rounded bg-slate-600 text-gray-100">Active</span>
             )}
@@ -1729,7 +1626,7 @@ if (isSpectator) {
 )}
 {aiInfoOpen && selectedAi && (
   <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-    <div className="bg-slate-800 text-white p-6 rounded-xl w-80 shadow-xl border border-yellow-500">
+    <div className="bg-black/70 backdrop-blur-md border border-cyan-400/40 shadow-[0_0_15px_rgba(0,255,255,0.25)] p-6 rounded-xl w-80 shadow-xl border border-yellow-500">
       <h2 className="text-xl font-bold mb-4 text-center text-yellow-400">
         🤖 AI Player Info
       </h2>
