@@ -1,12 +1,27 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import NavigationBar from "../../../components/navigation-bar";
 
 export default function DiceDuelLobbyPage() {
   const [lobbies, setLobbies] = useState<any[]>([]);
   const [wager, setWager] = useState(10);
   const [loading, setLoading] = useState(false);
+  const [tokens, setTokens] = useState<number | null>(null);
   const router = useRouter();
+
+  const loadTokens = async () => {
+  const res = await fetch("/api/get-user-tokens", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    setTokens(data.data.balance);
+  }
+};
 
   const load = async () => {
     const res = await fetch("/api/dice-duel/lobbies", { cache: "no-store" });
@@ -14,7 +29,17 @@ export default function DiceDuelLobbyPage() {
     setLobbies(data.lobbies || []);
   };
 
-  useEffect(() => { load(); const id = setInterval(load, 3000); return () => clearInterval(id); }, []);
+  useEffect(() => {
+  load();
+  loadTokens();
+
+  const id = setInterval(() => {
+    load();
+    loadTokens();
+  }, 3000);
+
+  return () => clearInterval(id);
+}, []);
 
   const createLobby = async () => {
     setLoading(true);
@@ -33,13 +58,21 @@ export default function DiceDuelLobbyPage() {
   const playAI = async () => {
     const res = await fetch("/api/dice-duel/create-ai-match", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) });
     const data = await res.json();
-    if (data.matchId) router.push(`/casino/dice-duel/game/${data.matchId}`);
+    if (data.matchId) {
+  router.push(`/casino/dice-duel/game/${data.matchId}`);
+} else {
+  alert(data.message || "Unable to start game");
+}
   };
 
   return <div className="min-h-screen bg-gradient-to-b from-[#090217] to-[#041433] text-white p-4 md:p-8">
-    <div className="max-w-6xl mx-auto">
+    <NavigationBar currentPath="/casino" />
+    <div className="max-w-6xl mx-auto mt-10 rounded-2xl border border-cyan-800 bg-black/30 p-5">
       <h1 className="text-4xl font-black text-fuchsia-400">Dice Duel Arena</h1>
       <p className="text-cyan-300 mt-2">Turn-based cyberpunk PvP with wagered tokens.</p>
+      <p className="text-yellow-400 mt-1 font-semibold">
+  Tokens: {tokens ?? "--"}
+</p>
       <div className="mt-6 grid lg:grid-cols-3 gap-4">
         <div className="col-span-1 rounded-xl border border-fuchsia-500/50 bg-black/30 p-4">
           <h2 className="font-bold text-xl">Create Game</h2>
