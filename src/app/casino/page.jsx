@@ -27,6 +27,7 @@ function MainComponent() {
   const [selectedGame, setSelectedGame] = useState(null);
   const [error, setError] = useState(null);
 const [search, setSearch] = useState("");
+const [activeFilter, setActiveFilter] = useState("all");
 const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
 const { t } = useTranslation();
 
@@ -166,13 +167,59 @@ const games = [
 ];
 
 const filteredGames = games.filter((game) =>
-  (game.nameKey ? t(game.nameKey) : game.name).toLowerCase().includes(search.toLowerCase())
+  (game.nameKey ? t(game.nameKey) : game.name)
+    .toLowerCase()
+    .includes(search.toLowerCase())
 );
 
-const popularGames = filteredGames.filter((g) => g.popular);
-const skillGameKeys = new Set(["connect-four", "uno", "poker", "dice-duel", "chess", "rps"]);
-const skillGames = filteredGames.filter((g) => skillGameKeys.has(g.leaderboardKey));
-const otherGames = filteredGames.filter((g) => !g.popular && !skillGameKeys.has(g.leaderboardKey));
+const skillGameKeys = new Set([
+  "connect-four",
+  "uno",
+  "poker",
+  "dice-duel",
+  "chess",
+  "rps",
+]);
+
+const newestOrder = [
+  "goonbet-clicker",
+  "lane-runner",
+  "connect-four",
+  "dice-duel",
+  "rps",
+  "uno",
+  "keno",
+  "coin-flip",
+  "slots",
+  "chess",
+  "crash",
+  "poker",
+  "plinko",
+  "mines",
+  "blackjack",
+  "roulette",
+];
+
+let displayedGames = [...filteredGames];
+
+if (activeFilter === "popular") {
+  displayedGames = displayedGames.filter((g) => g.popular);
+}
+
+if (activeFilter === "skill") {
+  displayedGames = displayedGames.filter((g) =>
+    skillGameKeys.has(g.leaderboardKey)
+  );
+}
+
+if (activeFilter === "newest") {
+  displayedGames.sort(
+    (a, b) =>
+      newestOrder.indexOf(a.leaderboardKey) -
+      newestOrder.indexOf(b.leaderboardKey)
+  );
+}
+
 useEffect(() => {
   if (!user) return;
   fetchFriendPresence();
@@ -278,53 +325,53 @@ const GameCard = ({ game }) => (
       onChange={(e) => setSearch(e.target.value)}
       className="w-full rounded-xl border border-[#00e5ff]/45 bg-[#040d24] py-3 pl-12 pr-4 text-[#ecf8ff] placeholder-[#6aa4d8] focus:outline-none focus:ring-2 focus:ring-[#00e5ff] "
     />
-  </div>
+ </div>
 </div>
 
-{popularGames.length > 0 && (
-  <div className="mb-8 rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#08142f] to-[#020713] p-8 shadow-[0_0_40px_rgba(0,229,255,0.18)]">
-
-    <h2 className="mb-6 text-4xl font-extrabold text-[#f5ff3b] tracking-wide" style={{ textShadow: "0 0 12px rgba(245,255,59,0.65)" }}>
-      {t("home.popular_games")}
-    </h2>
-
-    <div className="mb-5 grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4 stagger-container">
-  {popularGames.map((game, index) => (
-    <div key={game.nameKey ? t(game.nameKey) : game.name} style={{ "--i": index }}>
-      <GameCard game={game} />
-    </div>
+<div className="mb-8 flex flex-wrap justify-center gap-3">
+  <p className="flex flex-wrap justify-center gap-3 mt-2">Sort By:</p> 
+  {[
+    { key: "all", label: "All Games" },
+    { key: "popular", label: "Popular Games" },
+    { key: "skill", label: "Skill-Based Games" },
+    { key: "newest", label: "Newest Games" },
+  ].map((btn) => (
+    <button
+      key={btn.key}
+      onClick={() => setActiveFilter(btn.key)}
+      className={`rounded-xl px-5 py-2 font-semibold transition-all duration-300 ${
+        activeFilter === btn.key
+          ? "bg-[#00e5ff] text-black shadow-[0_0_15px_rgba(0,229,255,0.7)]"
+          : "bg-[#08142f] text-[#d8fbff] border border-[#00e5ff]/30 hover:bg-[#10234a]"
+      }`}
+    >
+      {btn.label}
+    </button>
   ))}
 </div>
-  </div>
-)}
 
-      
-{skillGames.length > 0 && (
-  <div className="my-8 rounded-2xl border border-purple-400/40 bg-gradient-to-br from-[#1a1140] to-[#09051f] p-8 shadow-[0_0_40px_rgba(168,85,247,0.18)]">
-    <h2 className="mb-6 text-4xl font-extrabold text-purple-300 tracking-wide">Skill-Based Games</h2>
-    <div className="mb-5 grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4 stagger-container">
-      {skillGames.map((game, index) => (
-        <div key={game.nameKey ? t(game.nameKey) : game.name} style={{ "--i": index }}>
+{displayedGames.length > 0 && (
+  <>
+    <h2 className="mb-6 text-3xl font-bold text-[#00e5ff]">
+      {activeFilter === "popular"
+        ? "Popular Games"
+        : activeFilter === "skill"
+        ? "Skill-Based Games"
+        : activeFilter === "newest"
+        ? "Newest Games"
+        : t("home.all_games")}
+    </h2>
+
+    <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 stagger-container">
+      {displayedGames.map((game, index) => (
+        <div
+          key={game.nameKey ? t(game.nameKey) : game.name}
+          style={{ "--i": index }}
+        >
           <GameCard game={game} />
         </div>
       ))}
     </div>
-  </div>
-)}
-
-      {otherGames.length > 0 && (
-  <>
-    <h2 className="mb-6 text-3xl font-bold text-[#00e5ff]">
-      {t("home.all_games")}
-    </h2>
-
-    <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 stagger-container">
-  {otherGames.map((game, index) => (
-    <div key={game.nameKey ? t(game.nameKey) : game.name} style={{ "--i": index }}>
-      <GameCard game={game} />
-    </div>
-  ))}
-</div>
   </>
 )}
 
