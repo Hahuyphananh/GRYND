@@ -118,6 +118,8 @@ useEffect(() => {
     return () => clearInterval(id);
   }, [matchId]);
 
+  const activeMatchId = match?.id || matchId;
+
   const myTurn = useMemo(() => {
     return Boolean(
       match?.turnUserId &&
@@ -184,7 +186,7 @@ spawnFloat(
   const res = await fetch("/api/dice-duel/submit-turn", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ matchId, actionType }),
+    body: JSON.stringify({ matchId: activeMatchId, actionType }),
   });
 
   const data = await res.json();
@@ -216,7 +218,7 @@ if (data.aiTurn) {
   await fetch("/api/dice-duel/ai-turn", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ matchId }),
+    body: JSON.stringify({ matchId: activeMatchId }),
   });
 
   await load();
@@ -233,7 +235,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ matchId }),
+      body: JSON.stringify({ matchId: activeMatchId }),
     });
 
     router.push("/casino/dice-duel");
