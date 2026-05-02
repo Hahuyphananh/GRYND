@@ -3,6 +3,7 @@ import { Providers } from './providers';
 import ClerkSafeChatWidget from '../components/ClerkSafeChatWidget';
 import DisableInspect from '../components/DisableInspect';
 import CsrfFetchGuard from '../components/CsrfFetchGuard';
+import TawkProvider from '../components/TawkProvider';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <CsrfFetchGuard />
           <DisableInspect />
+          <TawkProvider />
           {children}
           <ClerkSafeChatWidget />
         </Providers>
