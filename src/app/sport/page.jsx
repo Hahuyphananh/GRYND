@@ -87,8 +87,8 @@ const MainComponent = () => {
     fetchSports();
   }, []);
 
-  const fetchEvents = async ({ forceRefresh = false } = {}) => {
-    if (!selectedSport) {
+  const fetchEvents = async ({ forceRefresh = false, sportKey = selectedSport } = {}) => {
+    if (!sportKey) {
       setError(t("sports.select_league_first"));
       return;
     }
@@ -99,10 +99,10 @@ const MainComponent = () => {
 
     try {
       const res = await fetch(
-        `/api/sports/${selectedSport}?markets=h2h,spreads,totals${forceRefresh ? "&refresh=1" : ""}`
+        `/api/sports/${sportKey}?markets=h2h,spreads,totals${forceRefresh ? "&refresh=1" : ""}`
       );
       const data = await res.json();
-      if (!data.success) throw new Error(data.error || t("sports.load_events_failed"));
+      if (!res.ok || !data.success) throw new Error(data.error || t("sports.load_events_failed"));
       setEvents(Array.isArray(data.events) ? data.events : []);
     } catch (err) {
       console.error(err);
@@ -197,7 +197,7 @@ const MainComponent = () => {
   key={league.key}
   onClick={() => {
     setSelectedSport(league.key);
-    fetchEvents(); // 🔥 auto load events
+    fetchEvents({ sportKey: league.key }); // auto load events
   }}
   className={`cursor-pointer border-t border-[#00e5ff]/20 px-3 py-2 text-sm ${
     selectedSport === league.key
@@ -218,7 +218,7 @@ const MainComponent = () => {
       onClick={(e) => {
         e.stopPropagation();
         setSelectedSport(league.key);
-        fetchEvents();
+        fetchEvents({ sportKey: league.key });
       }}
       className="ml-2 rounded-md border border-[#f5ff3b]/50 bg-[#f5ff3b] px-2 py-1 text-xs font-bold text-[#031026] hover:brightness-95"
     >
