@@ -56,6 +56,7 @@ export default function UnoMultiplayerPage() {
 
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [pendingCard, setPendingCard] = useState<any>(null);
+  const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
 
   useGamePresence({ gameKey: "uno", gameId: Number(game?.id), enabled: Boolean(game?.id) });
 
@@ -133,7 +134,10 @@ export default function UnoMultiplayerPage() {
           credentials: "include",
         });
         const data = await res.json();
-        if (!data.success) return;
+        if (!data.success) {
+   setUnoMultiMessage(data.error || "Unable to sync room");
+   return;
+}
 
         setUnoMultiPlayers(data.room.players || []);
         setUnoMultiSettings((prev) => ({ ...prev, ...(data.room.settings || {}) }));
@@ -234,11 +238,12 @@ export default function UnoMultiplayerPage() {
         return;
       }
 
-      const myPlayer = data.room.players.find((p: any) => p.userId === data.currentUserId) ?? data.room.players[0];
-      setUnoMultiTableCode(data.room.code);
-      setUnoMultiPlayers(data.room.players || []);
-      setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
-      setUnoMultiMyId(myPlayer?.id ?? null);
+    setUnoMultiTableCode(data.room.code);
+setUnoMultiPlayers(data.room.players || []);
+setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
+setUnoMultiMyId(data.currentUserId); // store current user id only
+setShowSeatPopup(false);
+
       setUnoMultiStarted(Boolean(data.room.started));
       setUnoMultiMessage("Table created. Add players or AI, then start.");
       fetchUnoMultiplayerPublicGames();
@@ -290,7 +295,10 @@ export default function UnoMultiplayerPage() {
     return Boolean(unoMultiMyId && unoMultiHostId && unoMultiMyId === unoMultiHostId);
   }, [unoMultiPlayers, unoMultiMyId, unoMultiHostId]);
 
-  const meSeated = useMemo(() => unoMultiPlayers.some((p) => p.userId === unoMultiMyId || p.id === unoMultiMyId), [unoMultiPlayers, unoMultiMyId]);
+ const meSeated = useMemo(
+  () => unoMultiPlayers.some((p) => p.userId === unoMultiMyId),
+  [unoMultiPlayers, unoMultiMyId]
+);
 
   const sitAsHuman = async (seatIndex: number) => {
     try {
@@ -326,7 +334,9 @@ export default function UnoMultiplayerPage() {
         return;
       }
       setUnoMultiPlayers(data.room.players || []);
-      setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
+setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
+setShowSeatPopup(false);
+setSelectedSeat(null);
     } catch (error) {
       console.error("Unable to add AI", error);
     }
@@ -568,7 +578,10 @@ const isAiThinking =
                           </div>
                         ) : (
                           <button
-                            onClick={() => (!meSeated ? sitAsHuman(seatIndex) : addUnoMultiAiToSeat(seatIndex))}
+  onClick={() => {
+    setSelectedSeat(seatIndex);
+    setShowSeatPopup(true);
+  }}
                             disabled={meSeated ? !isHost : false}
                             className={`w-28 h-12 rounded-xl border border-dashed text-xs ${isHost ? "border-[#00e5ff]/45 hover:bg-[#00e5ff]/20" : "border-gray-500 text-gray-400 cursor-not-allowed"}`}
                           >
@@ -604,18 +617,43 @@ const isAiThinking =
             </div>
           </div>
 
-          {showSeatPopup && unoMultiTableCode && (
-            <div className="mt-4 rounded-xl border border-yellow-300/40 bg-[#2a1a00]/60 p-3">
-              <p className="text-sm text-yellow-100 mb-2">Choose an open seat. Hosts can also add AI players.</p>
-              <div className="flex gap-2 flex-wrap">
-                {Array.from({ length: unoMultiSettings.maxPlayers }).map((_, seatIndex) => {
-                  const occupied = unoMultiPlayers.some((p) => p.seatIndex === seatIndex);
-                  if (occupied) return null;
-                  return <button key={seatIndex} onClick={() => sitAsHuman(seatIndex)} className="px-3 py-1 rounded bg-yellow-300 text-black text-sm font-semibold">Sit seat {seatIndex + 1}</button>;
-                })}
-              </div>
-            </div>
-          )}
+          {showSeatPopup && selectedSeat !== null && (
+  <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+    <div className="bg-[#08142f] border border-[#00e5ff]/40 rounded-2xl p-6 w-[320px] text-center">
+      <h2 className="text-xl font-bold mb-4">
+        Seat {selectedSeat + 1}
+      </h2>
+
+      {!meSeated && (
+        <button
+          onClick={() => sitAsHuman(selectedSeat)}
+          className="w-full mb-3 py-2 rounded bg-yellow-300 text-black font-bold"
+        >
+          Sit Here
+        </button>
+      )}
+
+      {isHost && (
+        <button
+          onClick={() => addUnoMultiAiToSeat(selectedSeat)}
+          className="w-full mb-3 py-2 rounded bg-cyan-400 text-black font-bold"
+        >
+          Add AI Here
+        </button>
+      )}
+
+      <button
+        onClick={() => {
+          setShowSeatPopup(false);
+          setSelectedSeat(null);
+        }}
+        className="w-full py-2 rounded bg-red-600 font-bold"
+      >
+        Cancel
+      </button>
+    </div>
+  </div>
+)}
           {unoMultiMessage && <p className="mt-4 text-yellow-200 text-sm">{unoMultiMessage}</p>}
         </div>
       ) : (

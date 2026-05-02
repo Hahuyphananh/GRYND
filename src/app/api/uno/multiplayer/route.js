@@ -2,15 +2,13 @@ import { auth } from "@clerk/nextjs/server";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { users } from "../../../../db/schema";
+import { unoRoomStore } from "../../../../lib/unoRoomStore";
 
 const MAX_SEATS = 6;
 const HOUSE_EDGE_PERCENT = 5;
 
 function getStore() {
-  if (!globalThis.__unoMultiplayerRooms) {
-    globalThis.__unoMultiplayerRooms = new Map();
-  }
-  return globalThis.__unoMultiplayerRooms;
+  return unoRoomStore;
 }
 
 function tableSummary(room) {
@@ -19,7 +17,7 @@ function tableSummary(room) {
     name: room.settings.gameName,
     hostName: room.hostName,
     maxPlayers: room.settings.maxPlayers,
-    occupiedSeats: room.players.length,
+    occupiedSeats: room.players.filter(p => p.seatIndex !== null).length,
     betAmount: room.settings.betAmount,
     visibility: room.settings.visibility,
     started: room.started,
@@ -326,9 +324,23 @@ export async function GET(request) {
     if (!room) return new Response(JSON.stringify({ success: false, error: "Room not found" }), { status: 404 });
 
     const isParticipant = room.players.some((p) => p.userId === user.id);
-    if (room.settings.visibility === "private" && !isParticipant) {
-      return new Response(JSON.stringify({ success: false, error: "Room is private" }), { status: 403 });
-    }
+    // Allow code lookup for private rooms.
+// Actual joining still handled in POST action join.
+if (
+  room.settings.visibility === "private" &&
+  !isParticipant
+) {
+  return Response.json({
+    success: true,
+    currentUserId: user.id,
+    room: {
+      ...tableSummary(room),
+      players: room.players,
+      started: room.started,
+      requiresJoin: true,
+    },
+  });
+}
 
     return Response.json({
       success: true,
@@ -359,16 +371,15 @@ export async function POST(request) {
   if (action === "create") {
     const settings = sanitizeSettings(body?.settings || {});
     const code = Math.random().toString(36).slice(2, 8).toUpperCase();
-    const hostSeat = getNextOpenSeat([], settings.maxPlayers) ?? 0;
-    const hostPlayer = {
-      id: `${user.id}-host`,
-      userId: user.id,
-      name: user.name,
-      type: "human",
-      seatIndex: hostSeat,
-      isHost: true,
-      skipNextRound: false,
-    };
+   const hostPlayer = {
+  id: `${user.id}-host`,
+  userId: user.id,
+  name: user.name,
+  type: "human",
+  seatIndex: null,
+  isHost: true,
+  skipNextRound: false,
+};
 
     const room = {
       code,
@@ -465,9 +476,10 @@ export async function POST(request) {
     if (room.activeState?.status === "active") return new Response(JSON.stringify({ success: false, error: "A game is already running at this table." }), { status: 409 });
 
     const contenders = room.players
-      .filter((p) => p.type === "human" || p.type === "ai")
-      .filter((p) => !p.skipNextRound)
-      .sort((a, b) => a.seatIndex - b.seatIndex);
+  .filter((p) => p.seatIndex !== null)
+  .filter((p) => p.type === "human" || p.type === "ai")
+  .filter((p) => !p.skipNextRound)
+  .sort((a, b) => a.seatIndex - b.seatIndex);
 
     if (contenders.length < 2) {
       return new Response(JSON.stringify({ success: false, error: "Need at least 2 active players (unchecked skip round)." }), { status: 400 });

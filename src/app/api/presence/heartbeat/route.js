@@ -29,37 +29,37 @@ export async function POST(req) {
       );
     }
 
-    const rows = await sql`
-      INSERT INTO user_presence (
-        clerk_id,
-        last_seen,
-        status,
-        current_game_id,
-        updated_at
-      )
-      VALUES (
-        ${userId},
-        NOW(),
-        'online',
-        NULL,
-        NOW()
-      )
-      ON CONFLICT (clerk_id)
-      DO UPDATE SET
-        last_seen = NOW(),
-        status = CASE
-          WHEN user_presence.status = 'in_game'
-          THEN 'in_game'
-          ELSE 'online'
-        END,
-        updated_at = NOW()
-      RETURNING
-        clerk_id,
-        status,
-        current_game_id,
-        last_seen,
-        updated_at
-    `;
+  const rows = await sql`
+  INSERT INTO user_presence (
+    clerk_id,
+    last_seen,
+    status,
+    current_game_id,
+    updated_at
+  )
+  VALUES (
+    ${userId},
+    NOW(),
+    'online'::presence_status,
+    NULL,
+    NOW()
+  )
+  ON CONFLICT (clerk_id)
+  DO UPDATE SET
+    last_seen = NOW(),
+    status = CASE
+      WHEN user_presence.status = 'in_game'::presence_status
+      THEN 'in_game'::presence_status
+      ELSE 'online'::presence_status
+    END,
+    updated_at = NOW()
+  RETURNING
+    clerk_id,
+    status,
+    current_game_id,
+    last_seen,
+    updated_at
+`;
 
     return Response.json({
       success: true,

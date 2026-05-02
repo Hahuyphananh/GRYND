@@ -20,7 +20,7 @@ import {
   slotGames,
   coinFlipGames,
   keno_games,
-  tankStats,
+  diceMatches,
   connectFourGames,
 } from "../../../db/schema";
 
@@ -65,7 +65,7 @@ export async function GET() {
       slots,
       coinflipRows,
       kenoRows,
-      tankRows,
+      diceRows,
       connectFourRows,
     ] = await Promise.all([
       db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)),
@@ -84,7 +84,12 @@ export async function GET() {
         or(eq(coinFlipGames.player1Id, clerkId), eq(coinFlipGames.player2Id, clerkId))
       ),
       db.select().from(keno_games).where(eq(keno_games.user_id, uid)),
-      db.select().from(tankStats).where(eq(tankStats.clerkId, clerkId)),
+      db.select().from(diceMatches).where(
+  or(
+    eq(diceMatches.player1Id, clerkId),
+    eq(diceMatches.player2Id, clerkId)
+  )
+),
       db.select().from(connectFourGames).where(
   or(
     eq(connectFourGames.hostClerkId, clerkId),
@@ -127,6 +132,30 @@ export async function GET() {
   })
   .filter(Boolean); // ✅ removes nulls);
 
+  const diceNormalized = diceRows
+  .map((game) => {
+    if (game.status !== "finished" && game.status !== "completed") return null;
+    if (!game.winnerId) return null;
+
+    const amount = Number(game.wager || 0);
+    const payout = Number(game.prizePaid || 0);
+
+    const result =
+      game.winnerId === clerkId ? "won" : "lost";
+
+    return {
+      type: "Dice Duel",
+      amount,
+      payout,
+      result,
+      tokenDiff:
+        result === "won"
+          ? payout - amount
+          : -amount,
+    };
+  })
+  .filter(Boolean);
+
     const allBets = [
       ...normalize(roulette, "Roulette"),
       ...normalize(blackjack, "Blackjack"),
@@ -140,7 +169,7 @@ export async function GET() {
       ...normalize(slots, "Slots"),
       ...normalize(coinflipRows, "Coinflip"),
       ...normalize(kenoRows, "Keno"),
-      ...normalize(tankRows, "Tank"),
+      ...diceNormalized,
       ...connectFourNormalized,
     ];
 
