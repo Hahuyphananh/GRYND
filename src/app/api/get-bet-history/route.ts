@@ -16,7 +16,7 @@ import {
   slotGames,
   coinFlipGames,
   keno_games,
-  tankStats,
+  diceMatches,
   connectFourGames,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
@@ -51,7 +51,7 @@ export async function GET() {
       slots,
       coinflipRows,
       kenoRows,
-      tankRows, // <-- NEW
+      diceRows,
       connectFourRows
     ] = await Promise.all([
       db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)),
@@ -69,7 +69,12 @@ export async function GET() {
       db.select().from(slotGames).where(eq(slotGames.userId, userId)),
       db.select().from(coinFlipGames).where(or(eq(coinFlipGames.player1Id, clerkId), eq(coinFlipGames.player2Id, clerkId))),
       db.select().from(keno_games).where(eq(keno_games.user_id, uid)),
-      db.select().from(tankStats).where(eq(tankStats.clerkId, clerkId)), // NEW
+      db.select().from(diceMatches).where(
+  or(
+    eq(diceMatches.player1Id, clerkId),
+    eq(diceMatches.player2Id, clerkId)
+  )
+),
       db.select().from(connectFourGames).where(
   or(
     eq(connectFourGames.hostClerkId, clerkId),
@@ -189,26 +194,31 @@ export async function GET() {
       };
     });
 
-    // -------------------------------------
-    // 🛢️ NEW — Tank Survival History
-    // -------------------------------------
-    const tankFormatted = tankRows.map((row) => {
-      const amount = Number(row.bounty ?? 0); // cost to enter
-      const cashed = Number(row.amountCashedOut ?? 0);
+    const diceFormatted = diceRows
+  .map((game) => {
+    if (!game.winnerId) return null;
 
-      const result = cashed > 0 ? "won" : "lost";
-      const payout = cashed;
-      const tokenDiff = payout - amount;
+    const amount = Number(game.wager ?? 0);
+    const payout = Number(game.prizePaid ?? 0);
 
-      return {
-        type: "🛢️ Tank Survival",
-        date: row.createdAt || new Date().toISOString(),
-        amount,
-        payout,
-        result,
-        tokenDiff,
-      };
-    });
+    const result =
+      game.winnerId === clerkId ? "won" : "lost";
+
+    const tokenDiff =
+      result === "won"
+        ? payout - amount
+        : -amount;
+
+    return {
+      type: "🎲 Dice Duel",
+      date: game.endedAt || game.createdAt || new Date().toISOString(),
+      amount,
+      payout,
+      result,
+      tokenDiff,
+    };
+  })
+  .filter(Boolean);
 
     // Connect Four mapping
    const connectFourFormatted = connectFourRows
@@ -249,7 +259,7 @@ export async function GET() {
       ...slots.map((b) => formatBet("🎰 Slots", b)),
       ...coinflipFormatted,
       ...kenoFormatted,
-      ...tankFormatted, 
+      ...diceFormatted,
       ...connectFourFormatted,
 ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
