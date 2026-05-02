@@ -65,6 +65,7 @@ export default function ChatWidget() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [activeTab, setActiveTab] = useState('chat');
   const { socket } = useSocket();
   const messagesContainerRef = useRef(null);
 
@@ -211,6 +212,22 @@ export default function ChatWidget() {
     }
   }
 
+  function openSupportChat() {
+    setActiveTab('support');
+
+    const openTawk = () => {
+      if (typeof window === 'undefined') return;
+      if (window.Tawk_API && window.Tawk_API.maximize) {
+        window.Tawk_API.showWidget?.();
+        window.Tawk_API.maximize();
+      } else {
+        setTimeout(openTawk, 200);
+      }
+    };
+
+    openTawk();
+  }
+
   if (!room) return null;
 
   return (
@@ -232,7 +249,30 @@ export default function ChatWidget() {
           {/* scanline overlay */}
 <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.08] mix-blend-overlay bg-[repeating-linear-gradient(0deg,black,black_2px,transparent_2px,transparent_4px)] animate-scanlines" />
           <div className="mb-2 flex items-center justify-between gap-2 text-cyan-300">
-            <p className="font-semibold">{room.title}</p>
+            <div className="flex items-center gap-1 rounded-lg border border-cyan-400/25 bg-black/40 p-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab('chat')}
+                className={`rounded px-2 py-1 text-[12px] font-medium transition ${
+                  activeTab === 'chat'
+                    ? 'bg-cyan-400/20 text-cyan-100'
+                    : 'text-cyan-300/70 hover:bg-cyan-500/10 hover:text-cyan-200'
+                }`}
+              >
+                {room.title}
+              </button>
+              <button
+                type="button"
+                onClick={openSupportChat}
+                className={`rounded px-2 py-1 text-[12px] font-medium transition ${
+                  activeTab === 'support'
+                    ? 'bg-cyan-400/20 text-cyan-100'
+                    : 'text-cyan-300/70 hover:bg-cyan-500/10 hover:text-cyan-200'
+                }`}
+              >
+                Support
+              </button>
+            </div>
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -254,15 +294,17 @@ export default function ChatWidget() {
             </div>
           </div>
 
-          <div ref={messagesContainerRef} className="mb-2 h-64 overflow-y-auto rounded border border-cyan-400/20 bg-black/60 p-2 shadow-inner shadow-cyan-500/10">
-            {messages.length === 0 ? (
-              <p className="text-cyan-400/40">No messages yet.</p>
-            ) : (
-              messages.map((msg) => (
-                <div key={msg.id} className="mb-2 rounded border border-cyan-400/10 bg-gradient-to-r from-black/60 to-cyan-950/20 px-2 py-1 hover:border-cyan-400/30 transition">
-                  <div className="mb-1 flex items-center justify-between text-[11px] text-cyan-300/70">
-                    <span className="flex items-center gap-3 font-medium text-fuchsia-300 drop-shadow-[0_0_6px_rgba(217,70,239,0.5)]">
-                      {(() => {
+          {activeTab === 'chat' ? (
+            <>
+              <div ref={messagesContainerRef} className="mb-2 h-64 overflow-y-auto rounded border border-cyan-400/20 bg-black/60 p-2 shadow-inner shadow-cyan-500/10">
+                {messages.length === 0 ? (
+                  <p className="text-cyan-400/40">No messages yet.</p>
+                ) : (
+                  messages.map((msg) => (
+                    <div key={msg.id} className="mb-2 rounded border border-cyan-400/10 bg-gradient-to-r from-black/60 to-cyan-950/20 px-2 py-1 hover:border-cyan-400/30 transition">
+                      <div className="mb-1 flex items-center justify-between text-[11px] text-cyan-300/70">
+                        <span className="flex items-center gap-3 font-medium text-fuchsia-300 drop-shadow-[0_0_6px_rgba(217,70,239,0.5)]">
+                          {(() => {
   const avatarSrc =
     (typeof msg.profileImageUrl === "string" &&
       (msg.profileImageUrl.startsWith("http") ||
@@ -280,58 +322,65 @@ export default function ChatWidget() {
     />
   );
 })()}
-                      <span>{msg.displayName || 'Player'}</span>
-                      {msg.equippedTitle ? (
-                        <span className="rounded-full border border-fuchsia-400/60 bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fuchsia-200 shadow-[0_0_10px_rgba(217,70,239,0.35)]">
-                          {msg.equippedTitle}
+                          <span>{msg.displayName || 'Player'}</span>
+                          {msg.equippedTitle ? (
+                            <span className="rounded-full border border-fuchsia-400/60 bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fuchsia-200 shadow-[0_0_10px_rgba(217,70,239,0.35)]">
+                              {msg.equippedTitle}
+                            </span>
+                          ) : null}
                         </span>
+                        <span>{new Date(msg.createdAt).toLocaleTimeString()}</span>
+                      </div>
+                      <div className="break-words text-[13px]">
+                        {msg.isDeleted ? (
+                          <em className="text-slate-500">Message removed by moderator.</em>
+                        ) : (
+                          <MessageText content={msg.content} />
+                        )}
+                      </div>
+                      {isAdmin && !msg.isDeleted ? (
+                        <button
+                          type="button"
+                          onClick={() => handleModerationDelete(msg.id)}
+                          className="mt-1 text-[11px] text-rose-300 hover:text-rose-200"
+                        >
+                          Remove
+                        </button>
                       ) : null}
-                    </span>
-                    <span>{new Date(msg.createdAt).toLocaleTimeString()}</span>
-                  </div>
-                  <div className="break-words text-[13px]">
-                    {msg.isDeleted ? (
-                      <em className="text-slate-500">Message removed by moderator.</em>
-                    ) : (
-                      <MessageText content={msg.content} />
-                    )}
-                  </div>
-                  {isAdmin && !msg.isDeleted ? (
-                    <button
-                      type="button"
-                      onClick={() => handleModerationDelete(msg.id)}
-                      className="mt-1 text-[11px] text-rose-300 hover:text-rose-200"
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </div>
-              ))
-            )}
-          </div>
+                    </div>
+                  ))
+                )}
+              </div>
 
-          <p className="mb-2 text-[11px] text-slate-400">Live updates enabled with refresh fallback.</p>
+              <p className="mb-2 text-[11px] text-slate-400">Live updates enabled with refresh fallback.</p>
 
-          {!isSignedIn ? (
-            <p className="text-xs text-slate-400">Sign in to join chat.</p>
+              {!isSignedIn ? (
+                <p className="text-xs text-slate-400">Sign in to join chat.</p>
+              ) : (
+                <form onSubmit={handleSend} className="space-y-2">
+                  <textarea
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    rows={3}
+                    maxLength={500}
+                    placeholder="Say something... Emojis 😀 and formatting **bold** *italic* `code`"
+                    className="w-full resize-none rounded border border-cyan-400/20 bg-black/60 p-2 text-sm text-cyan-50 outline-none focus:border-fuchsia-400 focus:shadow-[0_0_12px_rgba(217,70,239,0.4)]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSending}
+                    className="w-full rounded bg-gradient-to-r from-cyan-500 to-fuchsia-500 py-1 font-medium text-black hover:from-fuchsia-500 hover:to-cyan-500 shadow-[0_0_20px_rgba(34,211,238,0.4)] disabled:opacity-60"
+                  >
+                    {isSending ? 'Sending...' : 'Send'}
+                  </button>
+                </form>
+              )}
+            </>
           ) : (
-            <form onSubmit={handleSend} className="space-y-2">
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                rows={3}
-                maxLength={500}
-                placeholder="Say something... Emojis 😀 and formatting **bold** *italic* `code`"
-                className="w-full resize-none rounded border border-cyan-400/20 bg-black/60 p-2 text-sm text-cyan-50 outline-none focus:border-fuchsia-400 focus:shadow-[0_0_12px_rgba(217,70,239,0.4)]"
-              />
-              <button
-                type="submit"
-                disabled={isSending}
-                className="w-full rounded bg-gradient-to-r from-cyan-500 to-fuchsia-500 py-1 font-medium text-black hover:from-fuchsia-500 hover:to-cyan-500 shadow-[0_0_20px_rgba(34,211,238,0.4)] disabled:opacity-60"
-              >
-                {isSending ? 'Sending...' : 'Send'}
-              </button>
-            </form>
+            <div className="rounded border border-cyan-400/20 bg-black/60 p-3 text-xs text-cyan-200">
+              <p className="mb-2">Support chat is opening…</p>
+              <p className="text-slate-400">If it did not open yet, click Support again in a second.</p>
+            </div>
           )}
 
           {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
