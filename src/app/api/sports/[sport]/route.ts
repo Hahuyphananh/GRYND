@@ -22,6 +22,9 @@ const setCached = (key: string, payload: CacheEntry["payload"]) => {
   cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload });
 };
 
+const buildOddsUrl = (sport: string, markets: string) =>
+  `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=us&markets=${markets}&oddsFormat=decimal`;
+
 export async function GET(req: NextRequest, context: { params: Promise<{ sport: string }> }) {
   const { sport } = await context.params;
   const refresh = req.nextUrl.searchParams.get("refresh") === "1";
@@ -46,12 +49,19 @@ export async function GET(req: NextRequest, context: { params: Promise<{ sport: 
       );
     }
 
-    const res = await fetch(
-      `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=us&markets=${markets}&oddsFormat=decimal`,
-      { cache: "no-store" }
-    );
+    let res = await fetch(buildOddsUrl(sport, markets), { cache: "no-store" });
 
-    if (!res.ok) throw new Error(`Failed to fetch odds (${res.status})`);
+    // Some futures/outright sports reject spreads/totals (422). Fall back to h2h-only.
+    if (res.status === 422 && markets !== "h2h") {
+      res = await fetch(buildOddsUrl(sport, "h2h"), { cache: "no-store" });
+    }
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { success: false, error: `Failed to fetch odds (${res.status})` },
+        { status: res.status === 422 ? 422 : 500 }
+      );
+    }
 
     const data = await res.json();
     const payload = { success: true, events: data, source: "the-odds-api" };
