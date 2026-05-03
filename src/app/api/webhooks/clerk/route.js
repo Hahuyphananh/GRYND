@@ -1,22 +1,13 @@
 import { NextResponse } from "next/server";
 import { Webhook } from "svix";
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { users } from "../../../../db/schema"; // adjust the import if needed
+import { drizzle } from "drizzle-orm/node-postgres";
+import { eq } from "drizzle-orm";
+import { users, userAutomationState } from "../../../../db/schema";
 import { auditLog } from "../../../../lib/security/auditLog";
+import { sendWelcomeEmail } from "../../../../lib/emails/welcome";
 
 let dbInstance = null;
-
-function getDb() {
-  if (dbInstance) return dbInstance;
-
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("DATABASE_URL is not defined in the environment variables");
-  }
-
-  dbInstance = drizzle(connectionString);
-  return dbInstance;
-}
+const getDb = () => (dbInstance ??= drizzle(process.env.DATABASE_URL));
 
 export async function POST(req) {
   try {
@@ -24,42 +15,31 @@ export async function POST(req) {
     const svixId = req.headers.get("svix-id");
     const svixTimestamp = req.headers.get("svix-timestamp");
     const svixSignature = req.headers.get("svix-signature");
+    if (!svixId || !svixTimestamp || !svixSignature) return new Response("Missing Svix headers", { status: 400 });
 
-    if (!svixId || !svixTimestamp || !svixSignature) {
-      return new Response("Missing Svix headers", { status: 400 });
-    }
-
-    if (!process.env.CLERK_WEBHOOK_SECRET) {
-      throw new Error("CLERK_WEBHOOK_SECRET is not defined in the environment variables");
-    }
     const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET);
-    const payload = body;
-    const evt = wh.verify(JSON.stringify(payload), {
-      "svix-id": svixId,
-      "svix-timestamp": svixTimestamp,
-      "svix-signature": svixSignature,
-    });
+    const evt = wh.verify(JSON.stringify(body), { "svix-id": svixId, "svix-timestamp": svixTimestamp, "svix-signature": svixSignature });
 
-    const eventType = evt.type;
-
-    if (eventType === "user.created") {
-      const { id, email_addresses, first_name, last_name } = evt.data;
-
-      await getDb().insert(users).values({
-        clerkId: id,
-        email: email_addresses[0]?.email_address || "",
-        name: `${first_name || ""} ${last_name || ""}`.trim(),
-        balance: 1000, // Default starting tokens
-        gamesWon: 0,
-        gamesLost: 0,
-      });
-
+    if (evt.type === "user.created") {
+      const { id, email_addresses, username, first_name, last_name } = evt.data;
+      const email = email_addresses?.[0]?.email_address;
+      if (email) {
+        await getDb().insert(users).values({ clerkId: id, email, name: username || `${first_name || ""} ${last_name || ""}`.trim() || "Player", balance: 1000, gamesWon: 0, gamesLost: 0 }).onConflictDoNothing();
+        await getDb().insert(userAutomationState).values({ clerkId: id, lastLoginAt: new Date(), inactivityCycleStartAt: new Date() }).onConflictDoNothing();
+        await sendWelcomeEmail({ clerkId: id, email, username: username || first_name || "Player" });
+      }
       auditLog("webhook_user_created", { clerkId: id });
+    }
+
+    if (evt.type === "session.created") {
+      const clerkId = evt.data.user_id;
+      await getDb().insert(userAutomationState).values({ clerkId, lastLoginAt: new Date(), inactivityCycleStartAt: new Date(), lastInactivityEmailSentAt: null }).onConflictDoUpdate({ target: userAutomationState.clerkId, set: { lastLoginAt: new Date(), inactivityCycleStartAt: new Date(), lastInactivityEmailSentAt: null, updatedAt: new Date() } });
+      auditLog("webhook_session_created", { clerkId });
     }
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("❌ Error processing webhook:", err);
+    console.error("Webhook Error", err);
     return new Response("Webhook Error", { status: 500 });
   }
 }

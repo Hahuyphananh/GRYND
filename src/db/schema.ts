@@ -651,3 +651,23 @@ export const sportsBets = pgTable('sports_bets', {
   result: varchar('result', { length: 20 }),
   placedAt: timestamp('placed_at').defaultNow(),
 });
+
+export const emailEvents = pgTable('email_events', {
+  id: serial('id').primaryKey(),
+  clerkId: varchar('clerk_id', { length: 255 }),
+  userEmail: varchar('user_email', { length: 255 }).notNull(),
+  type: varchar('type', { length: 80 }).notNull(),
+  category: varchar('category', { length: 30 }).notNull().default('marketing'),
+  dedupeKey: varchar('dedupe_key', { length: 255 }),
+  status: varchar('status', { length: 20 }).notNull().default('sent'),
+  meta: jsonb('meta'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const userAutomationState = pgTable('user_automation_state', {
+  clerkId: varchar('clerk_id', { length: 255 }).primaryKey(),
+  lastLoginAt: timestamp('last_login_at').notNull().defaultNow(),
+  lastInactivityEmailSentAt: timestamp('last_inactivity_email_sent_at'),
+  inactivityCycleStartAt: timestamp('inactivity_cycle_start_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
