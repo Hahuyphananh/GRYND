@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { and, eq, isNull, lte } from "drizzle-orm";
-import { db } from "@/db";
-import { userAutomationState, users } from "@/db/schema";
-import { sendInactivityEmail } from "@/lib/emails/inactivity";
+import { db } from "../../../../db/index";
+import { userAutomationState, users } from "../../../../db/schema";
+import { sendInactivityEmail } from "../../../../lib/emails/inactivity";
 
 export async function POST() {
   const threshold = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
