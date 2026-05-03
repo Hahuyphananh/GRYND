@@ -1,0 +1,4 @@
+import { renderTemplate, sendEmailSafely } from "./base";
+export const sendLoginAlertEmail = (user: any, device: string, location: string) => sendEmailSafely({ user, type: "security_new_login", category: "security", subject: "New device login alert", html: renderTemplate("Security Alert", `<p>New login from ${device} in ${location}.</p>`) });
+export const sendPasswordChangedEmail = (user: any) => sendEmailSafely({ user, type: "security_password_changed", category: "security", subject: "Password changed", html: renderTemplate("Password Updated", "<p>Your password was changed. If not you, secure account now.</p>") });
+export const sendSuspiciousActivityEmail = (user: any, details: string) => sendEmailSafely({ user, type: "security_suspicious", category: "security", subject: "Suspicious activity detected", html: renderTemplate("Urgent Security Notice", `<p>${details}</p>`) });
