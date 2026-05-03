@@ -48,14 +48,23 @@ function NavigationBar({ currentPath }) {
   };
 
   useEffect(() => {
-  const handler = () => fetchBalance();
-  window.addEventListener("profileUpdated", handler);
-  window.addEventListener("titleUpdated", handler);
-  return () => {
-    window.removeEventListener("profileUpdated", handler);
-    window.removeEventListener("titleUpdated", handler);
-  };
-}, []);
+    const handler = () => fetchBalance({ includeMeta: false });
+    const balanceHandler = (event) => {
+      const nextBalance = Number(event?.detail?.balance);
+      if (Number.isFinite(nextBalance)) {
+        setBalance(nextBalance.toFixed(2));
+      }
+    };
+
+    window.addEventListener("profileUpdated", handler);
+    window.addEventListener("titleUpdated", handler);
+    window.addEventListener("balanceUpdated", balanceHandler);
+    return () => {
+      window.removeEventListener("profileUpdated", handler);
+      window.removeEventListener("titleUpdated", handler);
+      window.removeEventListener("balanceUpdated", balanceHandler);
+    };
+  }, []);
 
   const avatarSrc =
     isValidDataUrl(profile?.profilePicture)
@@ -66,7 +75,7 @@ function NavigationBar({ currentPath }) {
       ? user.imageUrl
       : "/default-avatar.png";
 
-  const fetchBalance = async () => {
+  const fetchBalance = async ({ includeMeta = true } = {}) => {
     try {
       const token = await getToken({ template: "app_token" });
       if (!token) return setError(t("nav.token_missing"));
@@ -87,19 +96,21 @@ function NavigationBar({ currentPath }) {
   name: data.data.name || "", // ✅ ADD THIS LINE
   profilePicture: data.data.profilePicture || "",
 }));
-        try {
-          const statsRes = await fetch("/api/user-stats");
-          const statsData = await statsRes.json();
-          if (statsData.success) setLevel(statsData.stats.currentLevel);
-        } catch {}
+        if (includeMeta) {
+          try {
+            const statsRes = await fetch("/api/user-stats");
+            const statsData = await statsRes.json();
+            if (statsData.success) setLevel(statsData.stats.currentLevel);
+          } catch {}
 
-        try {
-          const titlesRes = await fetch("/api/titles", { credentials: "include" });
-          const titlesData = await titlesRes.json();
-          if (titlesData.success) {
-            setProfile((prev) => ({ ...prev, selectedTitle: titlesData.selectedSpecialTitle || titlesData.selectedTitle || "" }));
-          }
-        } catch {}
+          try {
+            const titlesRes = await fetch("/api/titles", { credentials: "include" });
+            const titlesData = await titlesRes.json();
+            if (titlesData.success) {
+              setProfile((prev) => ({ ...prev, selectedTitle: titlesData.selectedSpecialTitle || titlesData.selectedTitle || "" }));
+            }
+          } catch {}
+        }
       } else if (data.shouldInitialize) {
         const initResponse = await fetch("/api/tokens/initialize", {
           method: "POST",
@@ -116,7 +127,7 @@ function NavigationBar({ currentPath }) {
   };
 
   useEffect(() => {
-    if (isSignedIn) fetchBalance();
+    if (isSignedIn) fetchBalance({ includeMeta: true });
   }, [isSignedIn]);
 
   useEffect(() => {
@@ -185,7 +196,12 @@ function NavigationBar({ currentPath }) {
                         <span className="text-[10px] text-[#7dd3fc]">{t("nav.level_short")} {level ?? "..."}</span>
                       </div>
                     </Link>
-                    <span className="text-[#00e5ff]">{error ? `${t("nav.error")}: ${error}` : balance !== null ? `$${balance}` : t("nav.loading")}</span>
+                    <div className="rounded-md border border-[#00e5ff]/50 bg-gradient-to-r from-[#091737] to-[#0e1f4d] px-3 py-1 shadow-[0_0_12px_rgba(0,229,255,0.35)]">
+                      <span className="mr-1 text-[10px] uppercase tracking-[0.2em] text-[#7dd3fc]">Tokens</span>
+                      <span className="font-mono text-sm font-semibold text-[#67f9ff] drop-shadow-[0_0_8px_rgba(0,229,255,0.65)]">
+                        {error ? `${t("nav.error")}: ${error}` : balance !== null ? Number(balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : t("nav.loading")}
+                      </span>
+                    </div>
                   </div>
                   <SignOutButton>
                     <UIPro02NavItem className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35">{t("nav.sign_out")}</UIPro02NavItem>
