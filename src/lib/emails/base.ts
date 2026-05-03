@@ -1,6 +1,6 @@
-import { resend } from "@/lib/resend";
-import { db } from "@/db";
-import { emailEvents } from "@/db/schema";
+import { resend } from "../resend";
+import { db } from "../../db/index";
+import { emailEvents } from "../../db/schema";
 import { and, eq, gte } from "drizzle-orm";
 
 export const EMAIL_FROM = "GoonBet <noreply@mail.goonbet.dedyn.io>";
