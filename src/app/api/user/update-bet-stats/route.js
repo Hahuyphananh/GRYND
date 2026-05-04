@@ -15,74 +15,59 @@ export async function POST(request) {
 
   try {
     const parsed = await parseAndValidateJson(request, {
+      game: { type: "string", required: false, default: "casino" },
       betAmount: { type: "number", required: true, min: 0, max: 1000000 },
-      isWin: { type: "number", required: false, min: 0, max: 1, default: 0 },
+      payout: { type: "number", required: false, min: 0, max: 1000000000, default: 0 },
       isAllIn: { type: "boolean", required: false, default: false },
       isJackpot: { type: "boolean", required: false, default: false },
+      isPvpWin: { type: "boolean", required: false, default: false },
       balanceAfter: { type: "number", required: false, min: 0, max: 1000000000, default: 0 },
     });
 
     if (!parsed.ok) return parsed.response;
 
-    const betAmount = parsed.data.betAmount;
-    const isWin = Boolean(parsed.data.isWin);
-    const isAllIn = Boolean(parsed.data.isAllIn);
-    const isJackpot = Boolean(parsed.data.isJackpot);
-    const balanceAfter = Number(parsed.data.balanceAfter || 0);
+    const betAmount = Math.floor(parsed.data.betAmount);
+    const payout = Math.floor(parsed.data.payout || 0);
+    const multiplier = betAmount > 0 ? payout / betAmount : 0;
+    const isWin = payout > betAmount;
 
-    const updated = await sql.begin(async (tx) => {
-      return await tx`
-        INSERT INTO user_stats (
-          user_id, total_bets, wins, losses, total_wagered, total_won, win_rate
-        )
-        VALUES (
-          ${userId},
-          1,
-          ${isWin ? 1 : 0},
-          ${isWin ? 0 : 1},
-          ${betAmount},
-          ${isWin ? betAmount : 0},
-          ${isWin ? 100 : 0}
-        )
-        ON CONFLICT (user_id)
-        DO UPDATE SET
-          total_bets = user_stats.total_bets + 1,
-          wins = user_stats.wins + ${isWin ? 1 : 0},
-          losses = user_stats.losses + ${isWin ? 0 : 1},
-          total_wagered = user_stats.total_wagered + ${betAmount},
-          total_won = user_stats.total_won + ${isWin ? betAmount : 0},
-          win_rate = ROUND(
-            (user_stats.wins + ${isWin ? 1 : 0})::numeric / 
-            (user_stats.total_bets + 1) * 100, 
-            2
-          )
-        RETURNING *
+    const [updated] = await sql`
+      UPDATE users
+      SET total_wagered = total_wagered + ${betAmount},
+          weekly_wagered = weekly_wagered + ${betAmount},
+          total_won = total_won + ${payout},
+          weekly_won = weekly_won + ${payout},
+          weekly_profit = weekly_profit + ${payout - betAmount},
+          biggest_win = GREATEST(biggest_win, ${payout}),
+          best_multiplier = GREATEST(best_multiplier, ${multiplier}),
+          current_streak = CASE WHEN ${isWin} THEN current_streak + 1 ELSE 0 END,
+          best_streak = GREATEST(best_streak, CASE WHEN ${isWin} THEN current_streak + 1 ELSE best_streak END),
+          weekly_wins = weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END,
+          pvp_wins = pvp_wins + CASE WHEN ${Boolean(parsed.data.isPvpWin)} THEN 1 ELSE 0 END
+      WHERE clerk_id = ${userId}
+      RETURNING *
+    `;
+
+    if (multiplier >= 10) {
+      await sql`
+        INSERT INTO big_wins (id, user_id, username, game, bet_amount, win_amount, multiplier)
+        SELECT gen_random_uuid(), clerk_id, name, ${parsed.data.game}, ${betAmount}, ${payout}, ${multiplier}
+        FROM users
+        WHERE clerk_id = ${userId}
       `;
-    });
+    }
 
     const unlockedSpecialTitles = await checkUnlocks(userId, "game_result", {
       won: isWin,
-      isAllIn,
-      isJackpot,
-      balanceAfter,
+      isAllIn: Boolean(parsed.data.isAllIn),
+      isJackpot: Boolean(parsed.data.isJackpot),
+      balanceAfter: Number(parsed.data.balanceAfter || 0),
     });
 
-    return new Response(JSON.stringify({
-      success: true,
-      stats: updated[0],
-      unlockedSpecialTitles,
-    }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-
+    return Response.json({ success: true, stats: updated, unlockedSpecialTitles });
   } catch (error) {
     console.error("❌ Failed to update user stats:", error);
-
-    return new Response(JSON.stringify({
-      success: false,
-      error: "Erreur lors de la mise à jour des statistiques",
-    }), {
+    return new Response(JSON.stringify({ success: false, error: "Erreur lors de la mise à jour des statistiques" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
