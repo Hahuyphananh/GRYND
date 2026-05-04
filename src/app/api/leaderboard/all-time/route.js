@@ -6,6 +6,7 @@ const sortMap = {
   total_wagered: "total_wagered DESC, level DESC, id ASC",
   biggest_win: "biggest_win DESC, total_wagered DESC, id ASC",
   best_streak: "best_streak DESC, level DESC, id ASC",
+  win_rate: "CASE WHEN total_wagered > 0 THEN (total_won::numeric / total_wagered::numeric) ELSE 0 END DESC, total_wagered DESC, id ASC",
 };
 
 const clampLimit = (value) => Math.min(50, Math.max(20, Number(value) || 20));
@@ -26,6 +27,7 @@ export async function GET(request) {
       u.total_wagered,
       u.biggest_win,
       u.best_streak,
+      CASE WHEN u.total_wagered > 0 THEN ((u.total_won::numeric / u.total_wagered::numeric) * 100) ELSE 0 END AS win_rate,
       ROW_NUMBER() OVER (ORDER BY ${orderBy})::int AS rank
     FROM users u
     ORDER BY ${orderBy}
@@ -35,7 +37,7 @@ export async function GET(request) {
   let me = null;
   if (userId) {
     const mine = await sql.query(`
-      SELECT rank, clerk_id, name, level, total_wagered, biggest_win, best_streak
+      SELECT rank, clerk_id, name, level, total_wagered, biggest_win, best_streak, win_rate
       FROM (
         SELECT
           u.clerk_id,
@@ -44,6 +46,7 @@ export async function GET(request) {
           u.total_wagered,
           u.biggest_win,
           u.best_streak,
+          CASE WHEN u.total_wagered > 0 THEN ((u.total_won::numeric / u.total_wagered::numeric) * 100) ELSE 0 END AS win_rate,
           ROW_NUMBER() OVER (ORDER BY ${orderBy})::int AS rank
         FROM users u
       ) ranked
