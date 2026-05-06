@@ -29,6 +29,7 @@ export default function LeaderboardPage() {
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [myStats, setMyStats] = useState(null);
+  const [error, setError] = useState(null);
 
   const endpoint = useMemo(() => {
     if (tab === "weekly") return `/api/leaderboard/weekly?limit=50&category=${category}`;
@@ -37,17 +38,40 @@ export default function LeaderboardPage() {
   }, [tab, category]);
 
   useEffect(() => {
+    const safeJson = async (response) => {
+      const text = await response.text();
+      if (!text) return {};
+
+      try {
+        return JSON.parse(text);
+      } catch {
+        return {};
+      }
+    };
+
     const load = async () => {
       setLoading(true);
-      await fetch("/api/get-bet-history");
-      const [res, statsRes] = await Promise.all([fetch(endpoint), fetch("/api/user/stats")]);
-      const data = await res.json();
-      const statsData = await statsRes.json();
-      setItems(data.items || []);
-      setMe(data.me || null);
-      setMyStats(statsData.userStats || null);
-      setLoading(false);
+      setError(null);
+
+      try {
+        await fetch("/api/get-bet-history").catch(() => null);
+        const [res, statsRes] = await Promise.all([fetch(endpoint), fetch("/api/user/stats")]);
+        const [data, statsData] = await Promise.all([safeJson(res), safeJson(statsRes)]);
+
+        if (!res.ok) setError(data.error || t("leaderboard.load_error"));
+
+        setItems(Array.isArray(data.items) ? data.items : []);
+        setMe(data.me || null);
+        setMyStats(statsData.userStats || null);
+      } catch {
+        setItems([]);
+        setMe(null);
+        setError(t("leaderboard.load_error"));
+      } finally {
+        setLoading(false);
+      }
     };
+
     load();
   }, [endpoint]);
 
@@ -74,6 +98,7 @@ export default function LeaderboardPage() {
         )}
 
         <div className="w-full overflow-hidden rounded-lg border border-[#00e5ff]/50 bg-[#08142f]/95 p-4 shadow-[0_0_28px_rgba(0,229,255,0.2)]">
+          {error && <div className="mb-4 rounded-md border border-red-400/40 bg-red-950/40 px-4 py-3 text-center text-sm text-red-200">{error}</div>}
           {loading ? <div className="py-8 text-center text-[#00e5ff]">{t("ui.loading")}</div> : (
             <AnimatePresence mode="wait">
               {tab !== "wins" ? (
