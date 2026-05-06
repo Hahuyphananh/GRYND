@@ -6,6 +6,20 @@ import NavigationBar from "../../components/navigation-bar";
 import { useTranslation } from "../../hooks/useTranslation";
 
 const TABS = ["weekly", "all-time", "wins"];
+const LEADERBOARD_CATEGORIES = ["level", "total_wagered", "biggest_win", "best_streak", "win_rate"];
+
+function getMetricValue(item, tab, category) {
+  if (tab === "weekly") {
+    if (category === "level") return Number(item.weekly_level_gain || 0).toLocaleString();
+    if (category === "win_rate") return `${Number(item.weekly_win_rate || 0).toFixed(2)}%`;
+    const weeklyMetric = `weekly_${category}`;
+    return Number(item[weeklyMetric] || 0).toLocaleString();
+  }
+
+  if (category === "level") return `${Number(item.level || 0).toLocaleString()} (${Number(item.xp || 0).toLocaleString()} XP)`;
+  if (category === "win_rate") return `${Number(item.win_rate || 0).toFixed(2)}%`;
+  return Number(item[category] || 0).toLocaleString();
+}
 
 export default function LeaderboardPage() {
   const { t } = useTranslation();
@@ -17,7 +31,7 @@ export default function LeaderboardPage() {
   const [myStats, setMyStats] = useState(null);
 
   const endpoint = useMemo(() => {
-    if (tab === "weekly") return "/api/leaderboard/weekly?limit=50";
+    if (tab === "weekly") return `/api/leaderboard/weekly?limit=50&category=${category}`;
     if (tab === "wins") return "/api/leaderboard/wins?limit=50";
     return `/api/leaderboard/all-time?limit=50&category=${category}`;
   }, [tab, category]);
@@ -51,9 +65,9 @@ export default function LeaderboardPage() {
           ))}
         </div>
 
-        {tab === "all-time" && (
+        {tab !== "wins" && (
           <div className="mb-4 flex flex-wrap justify-center gap-2">
-            {["level", "total_wagered", "biggest_win", "best_streak", "win_rate"].map((x) => (
+            {LEADERBOARD_CATEGORIES.map((x) => (
               <button key={x} onClick={() => setCategory(x)} className={`rounded-md px-4 py-2 text-xs font-semibold ${category === x ? "bg-[#f5ff3b] text-[#06152c]" : "bg-[#0a214d] text-[#00e5ff]"}`}>{x}</button>
             ))}
           </div>
@@ -70,8 +84,8 @@ export default function LeaderboardPage() {
                   <tbody>
                     {items.map((item, i) => (
                       <tr key={`${item.clerk_id}-${item.rank}`} className={`border-b border-[#00e5ff]/20 ${i % 2 ? "bg-[#08142f]" : "bg-[#0b224f]"}`}>
-                        <td className="px-3 py-3 font-bold text-[#00e5ff]">{item.rank}</td><td className="px-3 py-3 font-semibold">{item.name}</td>
-                        <td className="px-3 py-3 text-green-300">{tab === "weekly" ? Number(item.weekly_wagered).toLocaleString() : category === "level" ? item.level : category === "win_rate" ? `${Number(item.win_rate || 0).toFixed(2)}%` : Number(item[category]).toLocaleString()}</td>
+                        <td className="px-3 py-3 font-bold text-[#00e5ff]">{item.rank}</td><td className="px-3 py-3 font-semibold">{item.user?.name || item.name}</td>
+                        <td className="px-3 py-3 text-green-300">{getMetricValue(item, tab, category)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -79,9 +93,9 @@ export default function LeaderboardPage() {
               ) : (
                 <motion.div key="wins" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-2">
                   {items.map((w) => (
-                    <div key={w.id} className="flex items-center justify-between rounded-md border border-[#00e5ff]/30 bg-[#0b224f] p-3">
-                      <div className="font-semibold text-gray-100">{w.username} • {w.game}</div>
-                      <div className="text-right"><span className="animate-pulse rounded bg-[#f5ff3b] px-2 py-1 font-bold text-[#041125]">{Number(w.multiplier).toFixed(1)}x 💥</span><div className="mt-1 text-green-300">{Number(w.win_amount).toLocaleString()}</div></div>
+                    <div key={`${w.clerk_id}-${w.rank}`} className="flex items-center justify-between rounded-md border border-[#00e5ff]/30 bg-[#0b224f] p-3">
+                      <div className="font-semibold text-gray-100">#{w.rank} • {w.user?.name || w.name}</div>
+                      <div className="text-right"><span className="animate-pulse rounded bg-[#f5ff3b] px-2 py-1 font-bold text-[#041125]">Gross Wins 💥</span><div className="mt-1 text-green-300">{Number(w.total_won || 0).toLocaleString()}</div><div className="text-xs text-cyan-200">{Number(w.wins || 0).toLocaleString()} wins</div></div>
                     </div>
                   ))}
                 </motion.div>
