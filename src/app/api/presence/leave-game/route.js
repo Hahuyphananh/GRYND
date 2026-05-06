@@ -1,7 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { neon } from "@neondatabase/serverless";
-
-const sql = neon(process.env.DATABASE_URL);
+import { getNeonSql } from "../../../../db/neon";
 
 export async function POST() {
   try {

@@ -4,6 +4,7 @@ import { users, crashGames } from '../../../../db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { createSignedSession, verifySignedSession } from '../../../../lib/serverSession';
+import { applyLeaderboardCounters } from '../../../../lib/leaderboardCounters';
 
 export async function POST(req) {
   try {
@@ -159,6 +160,8 @@ export async function POST(req) {
       result,
       status: 'completed',
     });
+
+    await applyLeaderboardCounters({ clerkId: userId, game: 'crash', betAmount: bet, payout });
 
     // ======================================================
     // 6) CLEAR SESSION

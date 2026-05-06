@@ -1,12 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
-import { neon } from "@neondatabase/serverless";
+import { getNeonSql } from "../../../../db/neon";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const sql = neon(process.env.DATABASE_URL);
-
 export async function POST(req) {
+  const sql = getNeonSql();
   try {
     // Prevent 415 issues on Vercel by safely accepting requests
     // even when frontend sends no body or wrong content-type.

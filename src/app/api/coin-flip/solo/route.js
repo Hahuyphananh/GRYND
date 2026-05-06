@@ -3,6 +3,7 @@ import { db } from "../../../../db/client";
 import { users, coinFlipGames } from "../../../../db/schema"; // ✅ include coinFlipGames
 import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 export async function POST(req) {
   try {
@@ -51,6 +52,8 @@ export async function POST(req) {
       result,
       status: "completed",
     });
+
+    await applyLeaderboardCounters({ clerkId: userId, game: "coin-flip", betAmount: bet, payout });
 
     // ✅ Respond with game result
     return NextResponse.json({
