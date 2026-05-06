@@ -1,10 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
-import { neon } from "@neondatabase/serverless";
+import { getNeonSql } from "../../../../db/neon";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 
-const sql = neon(process.env.DATABASE_URL);
-
 export async function POST(request) {
+  const sql = getNeonSql();
   try {
     const { userId } = await auth();
 
