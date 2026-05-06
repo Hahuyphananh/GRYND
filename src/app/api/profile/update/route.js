@@ -1,14 +1,13 @@
 import bcrypt from "bcrypt";
 import { auth } from "@clerk/nextjs/server";
-import { neon } from "@neondatabase/serverless";
+import { getNeonSql } from "../../../../db/neon";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { auditLog } from "../../../../lib/security/auditLog";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_PROFILE_PICTURE_LENGTH = 3_000_000;
-const sql = neon(process.env.DATABASE_URL);
-
 export async function POST(request) {
+  const sql = getNeonSql();
   const { userId } = await auth();
 
   if (!userId) {

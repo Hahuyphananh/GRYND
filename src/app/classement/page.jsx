@@ -1,221 +1,98 @@
 "use client";
-import React, { useMemo, useState, useEffect } from "react";
-import NavigationBar from "../../components/navigation-bar";
-import { useUser } from "@clerk/nextjs";
+
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import NavigationBar from "../../components/navigation-bar";
 import { useTranslation } from "../../hooks/useTranslation";
 
-function MainComponent() {
-  const [stats, setStats] = useState([]);
-  const [gameStats, setGameStats] = useState({});
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [showTop100, setShowTop100] = useState(false);
-  const [selectedLeaderboard, setSelectedLeaderboard] = useState("overall");
-  const { user } = useUser();
+const TABS = ["weekly", "all-time", "wins"];
+
+export default function LeaderboardPage() {
   const { t } = useTranslation();
+  const [tab, setTab] = useState("weekly");
+  const [category, setCategory] = useState("level");
+  const [items, setItems] = useState([]);
+  const [me, setMe] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [myStats, setMyStats] = useState(null);
 
-  const loadStats = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/get-user-stats");
-      if (!response.ok) throw new Error(`Error fetching stats: ${response.status}`);
-      const data = await response.json();
-      setStats(data.users || []);
-      setGameStats(data.games || {});
-    } catch (err) {
-      console.error(err);
-      setError(t("leaderboard.load_error"));
-    }
-    setLoading(false);
-  };
+  const endpoint = useMemo(() => {
+    if (tab === "weekly") return "/api/leaderboard/weekly?limit=50";
+    if (tab === "wins") return "/api/leaderboard/wins?limit=50";
+    return `/api/leaderboard/all-time?limit=50&category=${category}`;
+  }, [tab, category]);
 
   useEffect(() => {
-    const queryGame = new URLSearchParams(window.location.search).get("game");
-    if (queryGame) {
-      setSelectedLeaderboard(queryGame);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadStats();
-    const interval = setInterval(loadStats, 300000);
-    return () => clearInterval(interval);
-  }, [user?.id]);
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e]">
-        <NavigationBar currentPath="/classement" />
-        <div className="flex min-h-screen items-center justify-center">
-          <div className="rounded-lg border border-[#00e5ff]/50 bg-[#00e5ff]/20 px-6 py-3 text-[#d8fbff] hover:bg-[#00e5ff]/35">
-            {error}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const displayedStats =
-    selectedLeaderboard === "overall"
-      ? showTop100
-        ? stats.slice(0, 100)
-        : stats.slice(0, 10)
-      : showTop100
-      ? (gameStats[selectedLeaderboard]?.players || []).slice(0, 100)
-      : (gameStats[selectedLeaderboard]?.players || []).slice(0, 10);
-
-  const gameButtons = useMemo(() => Object.entries(gameStats), [gameStats]);
-
-  const getMedal = (rank) => {
-    if (rank === 1)
-      return <span className="text-4xl">🥇</span>;
-    if (rank === 2)
-      return <span className="text-3xl">🥈</span>;
-    if (rank === 3)
-      return <span className="text-3xl">🥉</span>;
-    return <span className="font-bold text-[#00e5ff]">{rank}</span>;
-  };
-
-  const formatAmount = (value) => Number(value || 0).toFixed(2);
+    const load = async () => {
+      setLoading(true);
+      await fetch("/api/get-bet-history");
+      const [res, statsRes] = await Promise.all([fetch(endpoint), fetch("/api/user/stats")]);
+      const data = await res.json();
+      const statsData = await statsRes.json();
+      setItems(data.items || []);
+      setMe(data.me || null);
+      setMyStats(statsData.userStats || null);
+      setLoading(false);
+    };
+    load();
+  }, [endpoint]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] text-[#c9f7ff]">
-      <NavigationBar currentPath="/rankings" />
-      <div className="flex flex-col items-center px-6 py-24">
-        <h1 className="mb-6 text-center text-4xl font-bold text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)]">
-          {t("leaderboard.title")}
-        </h1>
+      <NavigationBar currentPath="/classement" />
+      <div className="mx-auto max-w-6xl px-6 py-24">
+        <h1 className="mb-6 text-center text-4xl font-bold text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)]">{t("leaderboard.title")}</h1>
 
-        {/* Toggle Button */}
         <div className="mb-6 flex flex-wrap justify-center gap-3">
-          <button
-            onClick={() => setShowTop100(!showTop100)}
-            className="rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b] px-6 py-3 text-lg font-semibold text-[#041125] transition-all hover:brightness-95 hover:scale-105 shadow-[0_0_18px_rgba(245,255,59,0.4)]"
-          >
-            {showTop100 ? t("leaderboard.top_10") : t("leaderboard.top_100")}
-          </button>
-        </div>
-
-        <div className="mb-6 flex flex-wrap justify-center gap-2">
-          <button
-            onClick={() => setSelectedLeaderboard("overall")}
-            className={`rounded-md px-4 py-2 text-sm font-semibold transition-all ${
-              selectedLeaderboard === "overall"
-                ? "bg-[#f5ff3b] text-[#06152c]"
-                : "bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"
-            }`}
-          >
-            {t("leaderboard.overall")}
-          </button>
-          {gameButtons.map(([gameKey, data]) => (
-            <button
-              key={gameKey}
-              onClick={() => setSelectedLeaderboard(gameKey)}
-              className={`rounded-md px-4 py-2 text-sm font-semibold transition-all ${
-                selectedLeaderboard === gameKey
-                  ? "bg-[#f5ff3b] text-[#06152c]"
-                  : "bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"
-              }`}
-            >
-              {data.gameLabel}
+          {TABS.map((x) => (
+            <button key={x} onClick={() => setTab(x)} className={`rounded-lg border px-5 py-2 text-sm font-semibold transition-all ${tab === x ? "border-[#f5ff3b]/60 bg-[#f5ff3b] text-[#041125]" : "border-[#00e5ff]/50 bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"}`}>
+              {x === "wins" ? "Wins 💥" : x === "all-time" ? "All-Time" : "Weekly"}
             </button>
           ))}
         </div>
 
-        <div className="w-full max-w-7xl overflow-hidden rounded-lg border border-[#00e5ff]/50 bg-[#08142f]/95 p-6 shadow-[0_0_28px_rgba(0,229,255,0.2)]">
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="text-[#00e5ff]">{t("ui.loading")}</div>
-            </div>
-          ) : (
+        {tab === "all-time" && (
+          <div className="mb-4 flex flex-wrap justify-center gap-2">
+            {["level", "total_wagered", "biggest_win", "best_streak", "win_rate"].map((x) => (
+              <button key={x} onClick={() => setCategory(x)} className={`rounded-md px-4 py-2 text-xs font-semibold ${category === x ? "bg-[#f5ff3b] text-[#06152c]" : "bg-[#0a214d] text-[#00e5ff]"}`}>{x}</button>
+            ))}
+          </div>
+        )}
+
+        <div className="w-full overflow-hidden rounded-lg border border-[#00e5ff]/50 bg-[#08142f]/95 p-4 shadow-[0_0_28px_rgba(0,229,255,0.2)]">
+          {loading ? <div className="py-8 text-center text-[#00e5ff]">{t("ui.loading")}</div> : (
             <AnimatePresence mode="wait">
-              <motion.table
-                key={`${selectedLeaderboard}-${showTop100 ? "top100" : "top10"}`}
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ duration: 0.4, ease: "easeInOut" }}
-                className="w-full border-collapse text-left shadow-[0_0_20px_rgba(0,229,255,0.2)]"
-              >
-                <thead>
-                  <tr className="border-b border-[#00e5ff]/50 text-sm text-[#f5ff3b] md:text-base">
-                    <th className="px-4 py-3">{t("leaderboard.rank")}</th>
-                    <th className="px-4 py-3">{t("leaderboard.user")}</th>
-                    <th className="px-4 py-3">{t("leaderboard.amount_won")}</th>
-                    <th className="px-4 py-3">{t("leaderboard.amount_lost")}</th>
-                    <th className="px-4 py-3">{t("leaderboard.total_profit")}</th>
-                    <th className="px-4 py-3">{t("leaderboard.games_won")}</th>
-                    <th className="px-4 py-3">{t("leaderboard.games_lost")}</th>
-                    <th className="px-4 py-3">{t("leaderboard.net_games")}</th>
-                    <th className="px-4 py-3">{t("leaderboard.win_rate")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedStats.map((player) => {
-                    const totalGames = player.gamesWon + player.gamesLost;
-                    const winRate =
-                      totalGames > 0
-                        ? ((player.gamesWon / totalGames) * 100).toFixed(1)
-                        : "0.0";
-
-                    const isTop3 = player.rank <= 3;
-
-                    return (
-                      <motion.tr
-                        key={`${selectedLeaderboard}-${player.rank}-${player.name}`}
-                        initial={{ opacity: 0, y: 15 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.25, delay: player.rank * 0.01 }}
-                        className={`border-b border-[#00e5ff]/20 ${
-                          isTop3
-                            ? "bg-[#f5ff3b]/10 hover:bg-[#f5ff3b]/20"
-                            : player.rank % 2 === 0
-                            ? "bg-[#0b224f]"
-                            : "bg-[#08142f]"
-                        } ${isTop3 ? "shadow-[0_0_25px_rgba(245,255,59,0.25)]" : ""} transition-all`}
-                      >
-                        <td className="px-4 py-4 font-bold text-center">{getMedal(player.rank)}</td>
-                        <td className="px-4 py-4 font-semibold text-gray-100">
-                          {player.name}
-                        </td>
-                        <td className="px-4 py-4 text-green-400 font-semibold">
-                          {formatAmount(player.amountWon)}
-                        </td>
-                        <td className="px-4 py-4 text-red-400 font-semibold">
-                          {formatAmount(player.amountLost)}
-                        </td>
-                        <td
-                          className={`px-4 py-4 font-semibold ${
-                            Number(player.totalProfit) >= 0 ? "text-green-400" : "text-red-400"
-                          }`}
-                        >
-                          {Number(player.totalProfit) >= 0 ? "+" : ""}
-                          {formatAmount(player.totalProfit)}
-                        </td>
-                        <td className="px-4 py-4 text-green-400 font-semibold">
-                          {player.gamesWon}
-                        </td>
-                        <td className="px-4 py-4 text-red-400 font-semibold">
-                          {player.gamesLost}
-                        </td>
-                        <td className="px-4 py-4 font-semibold text-[#00e5ff]">
-                          {player.netGames}
-                        </td>
-                        <td className="px-4 py-4 text-green-400 font-semibold">
-                          {winRate}%
-                        </td>
-                      </motion.tr>
-                    );
-                  })}
-                </tbody>
-              </motion.table>
+              {tab !== "wins" ? (
+                <motion.table key={`${tab}-${category}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-[#00e5ff]/50 text-[#f5ff3b]"><th className="px-3 py-2">#</th><th className="px-3 py-2">User</th><th className="px-3 py-2">Value</th></tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, i) => (
+                      <tr key={`${item.clerk_id}-${item.rank}`} className={`border-b border-[#00e5ff]/20 ${i % 2 ? "bg-[#08142f]" : "bg-[#0b224f]"}`}>
+                        <td className="px-3 py-3 font-bold text-[#00e5ff]">{item.rank}</td><td className="px-3 py-3 font-semibold">{item.name}</td>
+                        <td className="px-3 py-3 text-green-300">{tab === "weekly" ? Number(item.weekly_wagered).toLocaleString() : category === "level" ? item.level : category === "win_rate" ? `${Number(item.win_rate || 0).toFixed(2)}%` : Number(item[category]).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </motion.table>
+              ) : (
+                <motion.div key="wins" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-2">
+                  {items.map((w) => (
+                    <div key={w.id} className="flex items-center justify-between rounded-md border border-[#00e5ff]/30 bg-[#0b224f] p-3">
+                      <div className="font-semibold text-gray-100">{w.username} • {w.game}</div>
+                      <div className="text-right"><span className="animate-pulse rounded bg-[#f5ff3b] px-2 py-1 font-bold text-[#041125]">{Number(w.multiplier).toFixed(1)}x 💥</span><div className="mt-1 text-green-300">{Number(w.win_amount).toLocaleString()}</div></div>
+                    </div>
+                  ))}
+                </motion.div>
+              )}
             </AnimatePresence>
           )}
         </div>
+
+        {me && <p className="mt-5 text-center text-[#00e5ff]">You are <span className="font-bold text-[#f5ff3b]">#{me.rank}</span></p>}
+        {myStats && <p className="mt-2 text-center text-cyan-200 text-sm">Streak: {myStats.currentStreak} (best {myStats.bestStreak}) • Winrate: {Number(myStats.winRate || 0).toFixed(2)}%</p>}
       </div>
     </div>
   );
 }
-
-export default MainComponent;
