@@ -77,6 +77,32 @@ export const userLoginRewards = pgTable("user_login_rewards", {
 });
 
 
+export const userStats = pgTable('user_stats', {
+  userId: integer('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  totalBets: integer('total_bets').notNull().default(0),
+  wins: integer('wins').notNull().default(0),
+  losses: integer('losses').notNull().default(0),
+  winRate: numeric('win_rate', { precision: 5, scale: 2 }).notNull().default('0'),
+  totalWagered: numeric('total_wagered', { precision: 14, scale: 2 }).notNull().default('0'),
+  totalWon: numeric('total_won', { precision: 14, scale: 2 }).notNull().default('0'),
+  biggestWin: numeric('biggest_win', { precision: 14, scale: 2 }).notNull().default('0'),
+  favoriteGame: varchar('favorite_game', { length: 100 }).notNull().default('N/A'),
+  currentStreak: integer('current_streak').notNull().default(0),
+  bestStreak: integer('best_streak').notNull().default(0),
+  level: integer('level').notNull().default(1),
+  xp: integer('xp').notNull().default(0),
+  weeklyWagered: bigint('weekly_wagered', { mode: 'number' }).notNull().default(0),
+  weeklyWon: bigint('weekly_won', { mode: 'number' }).notNull().default(0),
+  weeklyWins: integer('weekly_wins').notNull().default(0),
+  weeklyLosses: integer('weekly_losses').notNull().default(0),
+  weeklyLevelGain: integer('weekly_level_gain').notNull().default(0),
+  weeklyBestStreak: integer('weekly_best_streak').notNull().default(0),
+  weeklyBiggestWin: bigint('weekly_biggest_win', { mode: 'number' }).notNull().default(0),
+  weeklyWinRate: numeric('weekly_win_rate', { precision: 5, scale: 2 }).notNull().default('0'),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+
 
 export const specialTitles = pgTable('special_titles', {
   id: serial('id').primaryKey(),
