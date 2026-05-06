@@ -23,7 +23,7 @@ async function getLeaderboardColumns() {
     users: new Set(),
   };
 
-  for (const row of result.rows) {
+  for (const row of result) {
     if (columns[row.table_name]) columns[row.table_name].add(row.column_name);
   }
 
@@ -180,10 +180,12 @@ async function fetchRankedRows({ fields, orderBy, limit, offset, clerkId = null 
     params,
   );
 
-  return {
-    items: result.rows[0]?.items ?? [],
-    me: result.rows[0]?.me ?? null,
-  };
+ const row = result?.[0];
+
+return {
+  items: row?.items ?? [],
+  me: row?.me ?? null,
+};
 }
 
 export async function fetchAllTimeLeaderboard({ category, limit, offset, clerkId }) {
