@@ -106,6 +106,16 @@ export async function POST(request) {
               highest_title = COALESCE(${newHighestTitle}, highest_title)
           WHERE id = ${dbUser.id}
         `;
+
+        await tx`
+          INSERT INTO user_stats (user_id, total_wagered, level, weekly_level_gain)
+          VALUES (${dbUser.id}, ${updatedWagered}, ${nextLevel}, ${Math.max(0, nextLevel - previousLevel)})
+          ON CONFLICT (user_id) DO UPDATE SET
+            total_wagered = GREATEST(user_stats.total_wagered, EXCLUDED.total_wagered),
+            level = EXCLUDED.level,
+            weekly_level_gain = user_stats.weekly_level_gain + EXCLUDED.weekly_level_gain,
+            updated_at = NOW()
+        `;
       }
 
       await tx`
