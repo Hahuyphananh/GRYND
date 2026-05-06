@@ -11,7 +11,13 @@ export async function GET(request) {
   const limit = clampLeaderboardLimit(searchParams.get("limit"));
   const offset = normalizeLeaderboardOffset(searchParams.get("offset"));
 
-  const { items, me } = await fetchWinsLeaderboard({ limit, offset, clerkId: userId });
+  try {
+    const { userId } = await auth();
+    const { items, me } = await fetchWinsLeaderboard({ limit, offset, clerkId: userId });
 
-  return Response.json({ items, me, limit, offset });
+    return Response.json({ items, me, limit, offset });
+  } catch (error) {
+    console.error("❌ Failed to load wins leaderboard:", error);
+    return Response.json({ items: [], me: null, limit, offset, error: "Unable to load leaderboard" }, { status: 500 });
+  }
 }
