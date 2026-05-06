@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { connectFourGames, users } from "../db/schema";
+import { applyLeaderboardCounters } from "./leaderboardCounters";
 
 const HOUSE_EDGE_MULTIPLIER = 1.9;
 const DEFAULT_MOVE_TIME_SECONDS = 60;
@@ -77,6 +78,8 @@ export async function settleConnectFourGame(gameId, winnerClerkId, result) {
       .update(users)
       .set({ balance: sql`${users.balance} + ${payout}` })
       .where(eq(users.clerkId, winnerClerkId));
+
+    await applyLeaderboardCounters({ clerkId: winnerClerkId, game: "connect-four", betAmount: bet, payout, isPvpWin: true });
 
     await tx
       .update(connectFourGames)

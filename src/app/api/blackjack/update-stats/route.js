@@ -3,6 +3,7 @@ import { db } from "../../../../db/client";
 import { users, blackjackGames } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 const RESULT_MAP = new Set(["win", "lose", "push", "bust"]);
 
@@ -60,6 +61,8 @@ export async function POST(request) {
       result: result === "push" ? "draw" : (result === "win" ? "win" : "lose"),
       payout: payout.toFixed(2),
     });
+
+    await applyLeaderboardCounters({ clerkId: userId, game: "blackjack", betAmount: amount, payout });
 
     return new Response(
       JSON.stringify({

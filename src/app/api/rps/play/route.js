@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { getAuth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { users, rpsGames } from "../../../../db/schema"; // ✅ import rpsGames
@@ -29,8 +30,9 @@ const FIXED_MULTIPLIER = 1.9;
 export async function POST(req) {
   try {
     const { userId } = getAuth(req);
-    if (!userId)
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const body = await req.json();
     const { betAmount, choice, winStreak = 0 } = body;
@@ -80,6 +82,8 @@ if (result === "win") {
       result,
       payout,
     });
+
+    await applyLeaderboardCounters({ clerkId: userId, game: "rps", betAmount, payout });
 
     return NextResponse.json({
       aiChoice,

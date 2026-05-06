@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
 import { and, eq } from "drizzle-orm";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 function safeParse(value, fallback = []) {
   if (value == null) return fallback;
@@ -122,6 +123,8 @@ export async function POST(req) {
         });
       }
 
+      await applyLeaderboardCounters({ clerkId: winnerUser.clerkId, game: "uno", betAmount: Number(game.betAmount || 0), payout: Number(payout), isPvpWin: true });
+
       const didRequesterWin = winner === role;
       const updatedRequester = didRequesterWin
         ? parseFloat(requester.balance) + parseFloat(payout)
@@ -184,6 +187,7 @@ export async function POST(req) {
     }
 
     if (result === "win") {
+      await applyLeaderboardCounters({ clerkId: userId, game: "uno-ai", betAmount: Number(game.betAmount || 0), payout: Number((parseFloat(game.pot || "0") * 0.95).toFixed(2)) });
       await db
         .update(users)
         .set({ balance: newBalance.toFixed(2) })

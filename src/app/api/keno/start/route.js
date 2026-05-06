@@ -1,6 +1,7 @@
 import { getAuth } from "@clerk/nextjs/server";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { users, keno_games } from "../../../../db/schema";
 
 const multiplierTable = {
@@ -106,6 +107,8 @@ export async function POST(req) {
         .set({ gamesLost: (user.gamesLost ?? 0) + 1 })
         .where(eq(users.id, user.id));
     }
+
+    await applyLeaderboardCounters({ clerkId: userId, game: "keno", betAmount, payout });
 
     return new Response(
       JSON.stringify({ winningNumbers, matches, payout }),

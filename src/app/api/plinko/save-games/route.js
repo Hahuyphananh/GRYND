@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { plinkoGames } from "../../../../db/schema";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 export async function POST(req) {
   try {
@@ -39,6 +40,8 @@ export async function POST(req) {
       result,
       status: "completed",
     });
+
+    await applyLeaderboardCounters({ clerkId: userId, game: "plinko", betAmount: numericBet, payout: numericPayout });
 
     return NextResponse.json({ success: true });
   } catch (error) {

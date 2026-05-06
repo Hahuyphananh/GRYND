@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { neon } from "@neondatabase/serverless";
+import { getNeonSql } from "../../../db/neon";
 import { getLevelProgress, getUserLevel  } from "../../../lib/vipLevels";
 import { getHighestTitle } from "../../../lib/titles";
 
@@ -24,9 +24,8 @@ import {
   connectFourGames,
 } from "../../../db/schema";
 
-const sql = neon(process.env.DATABASE_URL);
-
 export async function GET() {
+  const sql = getNeonSql();
   const { userId } = await auth();
 
   if (!userId) {

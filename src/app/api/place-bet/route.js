@@ -5,6 +5,7 @@ import { parseAndValidateJson } from "../../../lib/security/validation";
 import { claimIdempotency } from "../../../lib/security/idempotency";
 import { getHighestTitle } from "../../../lib/titles";
 import { checkUnlocks } from "../../../lib/specialTitles";
+import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -112,6 +113,8 @@ export async function POST(request) {
         VALUES (${dbUser.id}, ${selectionId ?? null}, ${betAmount}, 0, 'pending')
       `;
     });
+
+    await applyLeaderboardCounters({ clerkId: userId, game: "sports", betAmount, payout: 0 });
 
     const unlockedSpecialTitles = await checkUnlocks(userId, "bet_placed", {
       isAllIn: startingBalance > 0 && betAmount >= startingBalance,

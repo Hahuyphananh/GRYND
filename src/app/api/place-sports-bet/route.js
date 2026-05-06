@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../db/neon";
+import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -148,6 +149,7 @@ export async function POST(req) {
     }
 
     const newBalance = Number(placeResult.rows[0].new_balance);
+    await applyLeaderboardCounters({ clerkId: userId, game: "sports", betAmount, payout: 0 });
 
     return Response.json({
       success: true,

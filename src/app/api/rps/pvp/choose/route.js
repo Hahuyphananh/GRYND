@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../../db/client";
 import { rpsPvpGames, users } from "../../../../../db/schema";
+import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { eq, sql } from "drizzle-orm";
 
 const HOUSE_EDGE_PERCENT = 10;
@@ -72,7 +73,9 @@ export async function POST(req) {
       if (outcome === "player2") winnerId = updatedGame.player2Id;
 
       if (winnerId) {
-        await tx
+        await applyLeaderboardCounters({ clerkId: winnerId, game: "rps-pvp", betAmount: Number(updatedGame.betAmount), payout: winnerPayout, isPvpWin: true });
+
+      await tx
           .update(users)
           .set({ balance: sql`${users.balance} + ${winnerPayout}` })
           .where(eq(users.clerkId, winnerId));
