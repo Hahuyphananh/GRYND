@@ -1,4 +1,6 @@
-import { sql } from "@vercel/postgres";
+import { neon } from "@neondatabase/serverless";
+
+const sql = neon(process.env.DATABASE_URL);
 
 export const LEADERBOARD_CATEGORIES = ["level", "total_wagered", "biggest_win", "best_streak", "win_rate"];
 

@@ -1,4 +1,6 @@
-import { sql } from "@vercel/postgres";
+import { neon } from "@neondatabase/serverless";
+
+const sql = neon(process.env.DATABASE_URL);
 
 export async function applyLeaderboardCounters({ clerkId, game = "casino", betAmount = 0, payout = 0, isPvpWin = false }) {
   const bet = Math.max(0, Math.floor(Number(betAmount) || 0));
