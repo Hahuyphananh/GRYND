@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import NavigationBar from "../../components/navigation-bar";
 
 export default function PoolMastersClient() {
   const [difficulty, setDifficulty] = useState("beginner");
@@ -7,6 +8,7 @@ export default function PoolMastersClient() {
   const accent = useMemo(() => difficulty === "hard" ? "#ff4dcb" : "#4de3ff", [difficulty]);
   return (
     <div className="rounded-2xl border p-5" style={{ borderColor: accent, boxShadow: `0 0 24px ${accent}66` }}>
+      <NavigationBar currentPath="/casino" />
       <h2 className="text-2xl font-bold text-fuchsia-300">🎱 Pool Masters</h2>
       <p className="mt-2 text-sm text-cyan-100">Input-sync multiplayer: only shot vectors and final snapshots are networked.</p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">

@@ -18,6 +18,7 @@ import Img13 from "../../images/dice.png"
 import Img14 from "../../images/connect-4.png"
 import Img15 from "../../images/towers.png"
 import Img16 from "../../images/clicker.png";
+import Img17 from "../../images/pool.png";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -164,6 +165,13 @@ const games = [
     image: Img16,
     descriptionKey: "games.goonbet_clicker_desc",
   },
+   {
+    name: "Pool Masters",
+    href: "/casino/pool-masters",
+    leaderboardKey: "pool-masters",
+    image: Img17,
+    descriptionKey: "games.pool_masters_desc",
+  },
 ];
 
 const filteredGames = games.filter((game) =>
@@ -179,9 +187,11 @@ const skillGameKeys = new Set([
   "dice-duel",
   "chess",
   "rps",
+  "pool-masters",
 ]);
 
 const newestOrder = [
+  "pool-masters",
   "goonbet-clicker",
   "lane-runner",
   "connect-four",
