@@ -3,103 +3,46 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import NavigationBar from "../../../../../components/navigation-bar";
 
-type Ball = { id:number; x:number; y:number; vx:number; vy:number; color:string; striped?:boolean; pocketed?:boolean; };
-const R = 10;
-const W = 900;
-const H = 500;
+type Team = "solids" | "stripes" | null;
+type Ball = { id:number; x:number; y:number; vx:number; vy:number; color:string; striped?:boolean; pocketed?:boolean; number?:number; };
+const R = 11; const W = 900; const H = 500; const FRICTION = 0.992;
+const BALLS = [
+  { n:1,c:"#facc15",s:false },{ n:2,c:"#2563eb",s:false },{ n:3,c:"#dc2626",s:false },{ n:4,c:"#7c3aed",s:false },{ n:5,c:"#f97316",s:false },{ n:6,c:"#16a34a",s:false },{ n:7,c:"#a16207",s:false },{ n:8,c:"#111827",s:false },
+  { n:9,c:"#facc15",s:true },{ n:10,c:"#2563eb",s:true },{ n:11,c:"#dc2626",s:true },{ n:12,c:"#7c3aed",s:true },{ n:13,c:"#f97316",s:true },{ n:14,c:"#16a34a",s:true },{ n:15,c:"#a16207",s:true },
+];
+function setupBalls(): Ball[] { const balls=[{id:0,number:0,x:180,y:250,vx:0,vy:0,color:"#fff"} as Ball]; let k=1; for(let row=0;row<5;row++) for(let col=0;col<=row;col++){ const d=BALLS[k-1]; balls.push({id:k,number:d.n,x:620+row*19,y:250-row*11+col*22,vx:0,vy:0,color:d.c,striped:d.s});k++;} return balls; }
+const moving=(balls:Ball[])=>balls.some((b)=>Math.abs(b.vx)+Math.abs(b.vy)>0.03);
+export default function PoolGamePage(){
+  const { matchId } = useParams<{matchId:string}>(); const aiMode = useSearchParams().get("ai")==="1";
+  const canvasRef=useRef<HTMLCanvasElement|null>(null); const dragRef=useRef<{x:number;y:number}|null>(null);
+  const [balls,setBalls]=useState<Ball[]>(setupBalls()); const [status,setStatus]=useState("Waiting..."); const [started,setStarted]=useState(aiMode);
+  const [myTeam,setMyTeam]=useState<Team>(null); const [oppTeam,setOppTeam]=useState<Team>(null); const [turn,setTurn]=useState<1|2>(1); const [owner,setOwner]=useState<1|2>(1);
+  const [pull,setPull]=useState(0); const [aim,setAim]=useState(0); const [syncVersion,setSyncVersion]=useState(0);
+  const pockets = useMemo(()=>[[34,34],[W/2,28],[W-34,34],[34,H-34],[W/2,H-28],[W-34,H-34]],[]);
 
-function setupBalls(): Ball[] {
-  const balls: Ball[] = [{ id: 0, x: 180, y: 250, vx: 0, vy: 0, color: "#fff" }];
-  const colors = ["#f6d32d", "#2d5ff6", "#e33535", "#7d35e3", "#ff8936", "#22c55e", "#b91c1c", "#111827", "#f6d32d", "#2d5ff6", "#e33535", "#7d35e3", "#ff8936", "#22c55e", "#b91c1c"];
-  let k = 1;
-  for (let row = 0; row < 5; row++) for (let col = 0; col <= row; col++) balls.push({ id: k, x: 620 + row * 18, y: 250 - row * 10 + col * 20, vx: 0, vy: 0, color: colors[k - 1], striped: k > 8 }), k++;
-  return balls;
-}
-
-export default function PoolGamePage() {
-  const { matchId } = useParams<{ matchId: string }>();
-  const aiMode = useSearchParams().get("ai") === "1";
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [balls, setBalls] = useState<Ball[]>(setupBalls());
-  const [angle, setAngle] = useState(0);
-  const [power, setPower] = useState(0.55);
-  const [status, setStatus] = useState("Waiting for opponent to join...");
-  const [started, setStarted] = useState(aiMode);
-
-  const pockets = useMemo(() => [[30,30],[W/2,25],[W-30,30],[30,H-30],[W/2,H-25],[W-30,H-30]], []);
-  const tick = (next: Ball[]) => {
-    for (const b of next) {
-      if (b.pocketed) continue;
-      b.x += b.vx; b.y += b.vy; b.vx *= 0.99; b.vy *= 0.99;
-      if (Math.abs(b.vx) < 0.02) b.vx = 0; if (Math.abs(b.vy) < 0.02) b.vy = 0;
-      if (b.x < 45 || b.x > W - 45) b.vx *= -1;
-      if (b.y < 45 || b.y > H - 45) b.vy *= -1;
-      for (const [px, py] of pockets) if ((b.x - px) ** 2 + (b.y - py) ** 2 < 18 ** 2) b.pocketed = true;
-    }
-    for (let i = 0; i < next.length; i++) for (let j = i + 1; j < next.length; j++) {
-      const a = next[i], b = next[j]; if (a.pocketed || b.pocketed) continue;
-      const dx = b.x - a.x, dy = b.y - a.y; const d = Math.hypot(dx, dy); if (d > 0 && d < R * 2) {
-        const nx = dx / d, ny = dy / d; const p = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
-        a.vx -= p * nx; a.vy -= p * ny; b.vx += p * nx; b.vy += p * ny;
-      }
-    }
+  const physics=(next:Ball[])=>{ for(const b of next){ if(b.pocketed) continue; b.x+=b.vx; b.y+=b.vy; b.vx*=FRICTION; b.vy*=FRICTION; if(Math.abs(b.vx)<0.02)b.vx=0; if(Math.abs(b.vy)<0.02)b.vy=0; if(b.x<52||b.x>W-52){b.x=Math.max(52,Math.min(W-52,b.x));b.vx*=-0.93;} if(b.y<52||b.y>H-52){b.y=Math.max(52,Math.min(H-52,b.y));b.vy*=-0.93;} for(const [px,py] of pockets){ if((b.x-px)**2+(b.y-py)**2<24**2){b.pocketed=true;b.vx=0;b.vy=0;} } }
+    for(let i=0;i<next.length;i++)for(let j=i+1;j<next.length;j++){const a=next[i],b=next[j]; if(a.pocketed||b.pocketed)continue; const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy); if(d>0&&d<R*2){const nx=dx/d,ny=dy/d; const overlap=R*2-d; a.x-=nx*overlap/2; a.y-=ny*overlap/2; b.x+=nx*overlap/2; b.y+=ny*overlap/2; const p=2*((a.vx-b.vx)*nx+(a.vy-b.vy)*ny)/2; a.vx-=p*nx; a.vy-=p*ny; b.vx+=p*nx; b.vy+=p*ny;}}
   };
 
-  useEffect(() => {
-    const i = setInterval(() => setBalls((prev) => { const next = prev.map((b) => ({ ...b })); tick(next); return next; }), 16);
-    return () => clearInterval(i);
-  }, []);
+  useEffect(()=>{ const id=setInterval(()=>setBalls((p)=>{const n=p.map((b)=>({...b})); physics(n); return n;}),16); return ()=>clearInterval(id);},[]);
+  useEffect(()=>{ const c=canvasRef.current; if(!c) return; const x=c.getContext("2d"); if(!x)return; x.clearRect(0,0,W,H); x.fillStyle="#0e2f22"; x.fillRect(40,40,W-80,H-80); x.strokeStyle="#5c3a1c"; x.lineWidth=28; x.strokeRect(30,30,W-60,H-60); for(const [px,py] of pockets){x.fillStyle="#050505"; x.beginPath(); x.arc(px,py,24,0,Math.PI*2); x.fill();}
+    const cue=balls[0]; if(cue&&!cue.pocketed&&!moving(balls)){ x.strokeStyle="rgba(255,255,255,.4)"; x.lineWidth=2; x.beginPath(); x.moveTo(cue.x,cue.y); x.lineTo(cue.x+Math.cos(aim)*260,cue.y+Math.sin(aim)*260); x.stroke(); x.strokeStyle="#d6ba8d"; x.lineWidth=7; x.beginPath(); x.moveTo(cue.x-Math.cos(aim)*(62+pull),cue.y-Math.sin(aim)*(62+pull)); x.lineTo(cue.x-Math.cos(aim)*12,cue.y-Math.sin(aim)*12); x.stroke(); }
+    for(const b of balls){ if(b.pocketed)continue; x.fillStyle=b.color; x.beginPath(); x.arc(b.x,b.y,R,0,Math.PI*2); x.fill(); if(b.striped){x.fillStyle="#fff"; x.fillRect(b.x-R+1,b.y-4,R*2-2,8);} if(b.number){x.fillStyle="#fff"; x.font="9px sans-serif"; x.fillText(String(b.number),b.x-3,b.y+3);} }
+  },[balls,aim,pull,pockets]);
 
-  useEffect(() => {
-    const c = canvasRef.current; if (!c) return; const x = c.getContext("2d"); if (!x) return;
-    x.clearRect(0,0,W,H); x.fillStyle = "#1a6b45"; x.fillRect(40,40,W-80,H-80); x.strokeStyle = "#5b3419"; x.lineWidth = 24; x.strokeRect(30,30,W-60,H-60);
-    for (const [px,py] of pockets) { x.fillStyle = "#050505"; x.beginPath(); x.arc(px,py,18,0,Math.PI*2); x.fill(); }
-    const cue = balls[0]; if (cue && !cue.pocketed) {
-      x.strokeStyle = "rgba(255,255,255,.5)"; x.lineWidth = 2; x.beginPath(); x.moveTo(cue.x, cue.y); x.lineTo(cue.x + Math.cos(angle) * 220, cue.y + Math.sin(angle) * 220); x.stroke();
-      x.strokeStyle = "#d7b37d"; x.lineWidth = 6; x.beginPath(); x.moveTo(cue.x - Math.cos(angle) * (60 + power * 70), cue.y - Math.sin(angle) * (60 + power * 70)); x.lineTo(cue.x - Math.cos(angle) * 10, cue.y - Math.sin(angle) * 10); x.stroke();
-    }
-    for (const b of balls) { if (b.pocketed) continue; x.fillStyle = b.color; x.beginPath(); x.arc(b.x,b.y,R,0,Math.PI*2); x.fill(); }
-  }, [balls, angle, power, pockets]);
+  const sendState=async(nextBalls:Ball[],t:1|2,mt:Team,ot:Team)=>{ if(aiMode) return; await fetch('/api/pool/update-state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({matchId,state:{balls:nextBalls,turn:t,myTeam:mt,oppTeam:ot,version:Date.now()}})}); };
+  useEffect(()=>{ if(aiMode)return; const id=setInterval(async()=>{ const res=await fetch(`/api/pool/get-match?matchId=${matchId}`,{cache:'no-store'}); const data=await res.json(); if(data.match?.status==="active") setStarted(true); const gs=data.match?.gameState; if(gs?.version && gs.version>syncVersion){ setSyncVersion(gs.version); if(gs.balls) setBalls(gs.balls); if(gs.turn) setTurn(gs.turn); if(gs.myTeam!==undefined) setMyTeam(gs.myTeam); if(gs.oppTeam!==undefined) setOppTeam(gs.oppTeam);} },1200); return ()=>clearInterval(id); },[matchId,aiMode,syncVersion]);
 
-  useEffect(() => {
-    if (aiMode && started) {
-      const moving = balls.some((b) => Math.abs(b.vx) + Math.abs(b.vy) > 0.01);
-      if (moving) return;
-      const cue = balls[0]; if (!cue || cue.pocketed) return;
-      const target = balls.find((b) => b.id !== 0 && !b.pocketed);
-      if (!target) return;
-      const a = Math.atan2(target.y - cue.y, target.x - cue.x);
-      setTimeout(() => {
-        setBalls((prev) => prev.map((b) => b.id === 0 ? { ...b, vx: Math.cos(a) * 8.5, vy: Math.sin(a) * 8.5 } : b));
-        setStatus("AI took a shot.");
-      }, 1200);
-    }
-  }, [balls, aiMode, started]);
+  const shoot=(shotAim:number,shotPull:number)=>{ if(!started||moving(balls)||turn!==owner) return; const p=Math.min(1,Math.max(0.2,shotPull/90)); const speed=4+p*9; const prev=balls; const next=prev.map((b)=>b.id===0?{...b,vx:Math.cos(shotAim)*speed,vy:Math.sin(shotAim)*speed}:b); setBalls(next); setStatus("Shot taken");
+    setTimeout(()=>{ const now=next; const beforePocketed=prev.filter(b=>b.pocketed).length; const afterPocketed=now.filter(b=>b.pocketed).length; const sunk=afterPocketed>beforePocketed;
+      let mt=myTeam,ot=oppTeam; if(!myTeam){ const scored=now.find(b=>b.pocketed && !prev.find(p=>p.id===b.id)?.pocketed && b.id>0 && b.id!==8); if(scored){ mt=scored.striped?"stripes":"solids"; ot=mt==="solids"?"stripes":"solids"; setMyTeam(mt); setOppTeam(ot);} }
+      const nt = sunk?turn:(turn===1?2:1); setTurn(nt); void sendState(now,nt,mt,ot); },1300);
+  };
+  useEffect(()=>{ if(!aiMode||turn!==2||moving(balls)) return; const cue=balls[0]; const target=balls.find(b=>b.id!==0&&!b.pocketed&&(myTeam? (myTeam==="solids"?!b.striped:b.striped):true)); if(!cue||!target)return; const a=Math.atan2(target.y-cue.y,target.x-cue.x)+(Math.random()-0.5)*0.08; setTimeout(()=>shoot(a,70),900); },[balls,turn,aiMode,myTeam]);
 
-  useEffect(() => {
-    if (aiMode) return;
-    const check = async () => {
-      const res = await fetch(`/api/pool/get-match?matchId=${matchId}`, { cache: "no-store" });
-      const data = await res.json();
-      if (data.match?.status === "active") { setStarted(true); setStatus("Match started. Your turn."); }
-    };
-    check();
-    const id = setInterval(check, 2000);
-    return () => clearInterval(id);
-  }, [matchId, aiMode]);
+  const onDown=(e:any)=>{const r=e.currentTarget.getBoundingClientRect();dragRef.current={x:e.clientX-r.left,y:e.clientY-r.top};};
+  const onMove=(e:any)=>{const cue=balls[0]; if(!cue)return; const r=e.currentTarget.getBoundingClientRect(); const mx=e.clientX-r.left,my=e.clientY-r.top; setAim(Math.atan2(my-cue.y,mx-cue.x)); if(dragRef.current){ setPull(Math.min(95,Math.hypot(mx-dragRef.current.x,my-dragRef.current.y))); }};
+  const onUp=()=>{ if(dragRef.current){ shoot(aim,pull); setPull(0);} dragRef.current=null; };
 
-  return <div className="min-h-screen bg-[#09121a] p-4 text-white">
-    <NavigationBar currentPath="/casino" />
-    <div className="mx-auto mt-6 max-w-6xl rounded-xl border border-cyan-500/40 bg-black/30 p-4">
-      <h1 className="text-3xl font-black text-fuchsia-300">Pool Match</h1>
-      <p className="text-cyan-200">{status}</p>
-      {!started ? <div className="mt-4 rounded bg-yellow-500/20 p-3">Game will start when another player joins this lobby.</div> : null}
-      <div className="mt-4 overflow-x-auto"><canvas ref={canvasRef} width={W} height={H} className="rounded-xl border border-emerald-600 bg-[#0f3f2a]"/></div>
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <label>Aiming bar: {Math.round((angle + Math.PI) / (Math.PI * 2) * 360)}°<input className="w-full" type="range" min={-Math.PI} max={Math.PI} step={0.01} value={angle} onChange={(e) => setAngle(Number(e.target.value))} /></label>
-        <label>Shot power: {power.toFixed(2)}<input className="w-full" type="range" min={0.2} max={1} step={0.01} value={power} onChange={(e) => setPower(Number(e.target.value))} /></label>
-      </div>
-      <button disabled={!started} onClick={() => setBalls((prev) => prev.map((b) => b.id === 0 ? { ...b, vx: Math.cos(angle) * (4 + power * 8), vy: Math.sin(angle) * (4 + power * 8) } : b))} className="mt-3 rounded bg-fuchsia-500 px-4 py-2 font-bold text-black disabled:opacity-40">Take Shot</button>
-    </div>
-  </div>;
+  return <div className="min-h-screen bg-[#09121a] p-4 text-white"><NavigationBar currentPath="/casino" /><div className="mx-auto mt-6 max-w-6xl rounded-xl border border-cyan-500/40 bg-black/30 p-4"><h1 className="text-3xl font-black text-fuchsia-300">Pool Match</h1><p>{status} • Turn: Player {turn}</p><p className="text-cyan-200">You: {myTeam||"unassigned"} | Opponent: {oppTeam||"unassigned"}</p><div className="mt-4 overflow-x-auto"><canvas onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} ref={canvasRef} width={W} height={H} className="rounded-xl border border-emerald-600 bg-[#0f3f2a] cursor-crosshair"/></div></div></div>;
 }
