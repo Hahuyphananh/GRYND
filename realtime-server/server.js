@@ -481,3 +481,66 @@ function resolveTurn(match, action){
   match.round += 1; match.turnUserId = enemy; return {dmg,self,r1,r2};
 }
 
+
+// ---- Pool Masters (input-sync, low-bandwidth) ----
+const poolLobbies = new Map();
+const poolMatches = new Map();
+const processedShotIds = new Set();
+const MATCH_TTL_MS = 10 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, m] of poolMatches) {
+    if (m.status !== 'active' || (m.lastActivityAt && now - m.lastActivityAt > MATCH_TTL_MS)) poolMatches.delete(id);
+  }
+  for (const [id, l] of poolLobbies) {
+    if (now - l.createdAt > 5 * 60 * 1000) poolLobbies.delete(id);
+  }
+}, 30000);
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, Number(v))); }
+
+io.on('connection', (socket) => {
+  socket.on('pool:lobbies:list', () => {
+    socket.emit('pool:lobbies:list', Array.from(poolLobbies.values()).filter((l) => l.status === 'waiting'));
+  });
+
+  socket.on('pool:lobby:create', (payload) => {
+    const lobby = {
+      id: String(payload.lobbyId), hostUserId: String(payload.hostUserId), opponentUserId: null,
+      wager: clamp(payload.wager, 1, 1000000), gameMode: payload.gameMode || 'pvp', status: 'waiting', createdAt: Date.now(),
+    };
+    poolLobbies.set(lobby.id, lobby);
+    io.emit('pool:lobbies:list', Array.from(poolLobbies.values()).filter((l) => l.status === 'waiting'));
+  });
+
+  socket.on('pool:lobby:join', ({ lobbyId, userId }) => {
+    const lobby = poolLobbies.get(String(lobbyId));
+    if (!lobby || lobby.status !== 'waiting' || userId === lobby.hostUserId) return;
+    lobby.opponentUserId = String(userId); lobby.status = 'active';
+    const matchId = `pool-${lobby.id}`;
+    const turn = Math.random() < 0.5 ? lobby.hostUserId : lobby.opponentUserId;
+    const match = { id: matchId, lobbyId: lobby.id, players: [lobby.hostUserId, lobby.opponentUserId], turnUserId: turn, shotLock: false, status: 'active', lastActivityAt: Date.now() };
+    poolMatches.set(matchId, match);
+    socket.join(`pool:${matchId}`);
+    io.to(`pool:${matchId}`).emit('pool:match:start', match);
+  });
+
+  socket.on('pool:shoot', ({ matchId, userId, shotId, angle, power, cueBallPosition }) => {
+    const m = poolMatches.get(String(matchId));
+    if (!m || m.status !== 'active' || m.shotLock) return;
+    if (m.turnUserId !== userId || processedShotIds.has(shotId)) return;
+    const sanitized = { angle: clamp(angle, 0, 360), power: clamp(power, 0.05, 1), cueBallPosition };
+    processedShotIds.add(shotId); m.shotLock = true; m.lastActivityAt = Date.now();
+    io.to(`pool:${matchId}`).emit('pool:shoot', { matchId, userId, shot: sanitized, shotId });
+  });
+
+  socket.on('pool:physics:end', ({ matchId, shotId, nextTurnUserId, snapshot, eventSummary }) => {
+    const m = poolMatches.get(String(matchId));
+    if (!m || !m.shotLock || !processedShotIds.has(shotId)) return;
+    m.turnUserId = nextTurnUserId || m.turnUserId;
+    m.shotLock = false;
+    m.lastSnapshot = snapshot;
+    io.to(`pool:${matchId}`).emit('pool:state:update', { matchId, shotId, snapshot, eventSummary, turnUserId: m.turnUserId });
+    io.to(`pool:${matchId}`).emit('pool:turn:start', { matchId, turnUserId: m.turnUserId, turnSeconds: 45 });
+  });
+});
