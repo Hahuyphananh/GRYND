@@ -1,21 +1,18 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import NavigationBar from "../../components/navigation-bar";
 
 export default function PoolMastersClient() {
-  const [difficulty, setDifficulty] = useState("beginner");
-  const [power, setPower] = useState(0.5);
-  const accent = useMemo(() => difficulty === "hard" ? "#ff4dcb" : "#4de3ff", [difficulty]);
+  const router = useRouter();
   return (
-    <div className="rounded-2xl border p-5" style={{ borderColor: accent, boxShadow: `0 0 24px ${accent}66` }}>
+    <div className="mx-auto max-w-5xl rounded-2xl border border-cyan-400/40 bg-black/30 p-6 shadow-[0_0_30px_rgba(34,211,238,.25)]">
       <NavigationBar currentPath="/casino" />
-      <h2 className="text-2xl font-bold text-fuchsia-300">🎱 Pool Masters</h2>
-      <p className="mt-2 text-sm text-cyan-100">Input-sync multiplayer: only shot vectors and final snapshots are networked.</p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <select className="rounded bg-black/40 p-2" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
-          <option value="beginner">AI Beginner</option><option value="medium">AI Medium</option><option value="hard">AI Hard</option>
-        </select>
-        <label className="text-sm">Shot power: {power.toFixed(2)}<input type="range" min={0.05} max={1} step={0.01} value={power} onChange={(e) => setPower(Number(e.target.value))} className="w-full"/></label>
+      <h2 className="mt-3 text-4xl font-black text-fuchsia-300">🎱 Pool Masters</h2>
+      <p className="mt-2 text-cyan-100">Play multiplayer or challenge the AI in a full pool-table experience.</p>
+      <div className="mt-6 rounded-xl border border-cyan-500/40 bg-[#021a14] p-5">
+        <h3 className="text-xl font-bold">Lobby</h3>
+        <p className="mt-1 text-sm text-cyan-100/90">Create or join a game before jumping into the table.</p>
+        <button onClick={() => router.push("/casino/pool-masters/lobby")} className="mt-4 rounded bg-fuchsia-500 px-4 py-2 font-bold text-black">Open Pool Lobby</button>
       </div>
     </div>
   );
