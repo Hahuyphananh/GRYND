@@ -17,6 +17,7 @@ import {
   coinFlipGames,
   keno_games,
   diceMatches,
+  poolMatches,
   connectFourGames,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
@@ -32,7 +33,7 @@ export async function GET() {
     const uid = dbUser.id;
     const clerkId = userId;
 
-    const [roulette, blackjack, mines, plinko, crash, rps, uno, chess, sports, slots, coinflipRows, kenoRows, diceRows, connectFourRows] = await Promise.all([
+    const [roulette, blackjack, mines, plinko, crash, rps, uno, chess, sports, slots, coinflipRows, kenoRows, diceRows, poolRows, connectFourRows] = await Promise.all([
       db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)),
       db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid)),
       db.select().from(minesGames).where(eq(minesGames.userId, uid)),
@@ -46,6 +47,7 @@ export async function GET() {
       db.select().from(coinFlipGames).where(or(eq(coinFlipGames.player1Id, clerkId), eq(coinFlipGames.player2Id, clerkId))),
       db.select().from(keno_games).where(eq(keno_games.user_id, uid)),
       db.select().from(diceMatches).where(or(eq(diceMatches.player1Id, clerkId), eq(diceMatches.player2Id, clerkId))),
+      db.select().from(poolMatches).where(or(eq(poolMatches.player1Id, clerkId), eq(poolMatches.player2Id, clerkId))),
       db.select().from(connectFourGames).where(or(eq(connectFourGames.hostClerkId, clerkId), eq(connectFourGames.guestClerkId, clerkId))),
     ]);
 
@@ -110,6 +112,14 @@ export async function GET() {
       return { type: "🔴 Connect Four", date: game.endedAt || game.createdAt || new Date().toISOString(), amount, payout, result, tokenDiff: result === "won" ? payout - amount : -amount };
     }).filter(Boolean);
 
+    const poolFormatted = poolRows.map((game) => {
+      if (!game.winnerId) return null;
+      const amount = Number(game.wager ?? 0);
+      const payout = Number(game.prizePaid ?? 0);
+      const result = game.winnerId === clerkId ? "won" : "lost";
+      return { type: "🎱 Pool Masters", date: game.endedAt || game.createdAt || new Date().toISOString(), amount, payout, result, tokenDiff: result === "won" ? payout - amount : -amount };
+    }).filter(Boolean);
+
     const allBets = [
       ...roulette.map((b) => formatBet("🎡 Roulette", b)),
       ...blackjack.map((b) => formatBet("🃏 Blackjack", b)),
@@ -124,6 +134,7 @@ export async function GET() {
       ...coinflipFormatted,
       ...kenoFormatted,
       ...diceFormatted,
+      ...poolFormatted,
       ...connectFourFormatted,
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
