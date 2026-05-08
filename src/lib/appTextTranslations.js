@@ -80,6 +80,7 @@ export const APP_TEXT_TRANSLATIONS = {
       connect_four_desc: "Challenge another player 1v1 and align 4 discs.",
       goonbet_clicker_desc: "Click to earn tokens and climb the leaderboard!",
       lane_runner_desc: "Find a safe path to the top. One mistake ends the run.",
+      pool_masters_desc: "Compete in a strategic game of pool. Sink the 8-ball to win!",
       chess_name: "Chess",
       rps_name: "Rock-Paper-Scissors",
     },
