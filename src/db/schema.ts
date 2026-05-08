@@ -400,6 +400,62 @@ export const dicePlayerStats = pgTable("dice_player_stats", {
   bestStreak: integer("best_streak").notNull().default(0),
 });
 
+export const poolLobbies = pgTable("pool_lobbies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  hostUserId: text("host_user_id").notNull(),
+  opponentUserId: text("opponent_user_id"),
+  wager: integer("wager").notNull(),
+  gameMode: text("game_mode").notNull(),
+  status: text("status").notNull().default("waiting"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  statusIdx: index("idx_pool_lobbies_status").on(table.status, table.createdAt),
+}));
+
+export const poolMatches = pgTable("pool_matches", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  lobbyId: uuid("lobby_id").references(() => poolLobbies.id, { onDelete: "set null" }),
+  player1Id: text("player1_id").notNull(),
+  player2Id: text("player2_id"),
+  winnerId: text("winner_id"),
+  wager: integer("wager").notNull(),
+  prizePaid: integer("prize_paid").default(0),
+  houseFee: integer("house_fee").default(0),
+  gameState: jsonb("game_state"),
+  currentTurnUserId: text("current_turn_user_id"),
+  status: text("status").default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+  endedAt: timestamp("ended_at"),
+}, (table) => ({
+  player1Idx: index("idx_pool_matches_player1").on(table.player1Id),
+  player2Idx: index("idx_pool_matches_player2").on(table.player2Id),
+  createdIdx: index("idx_pool_matches_created").on(table.createdAt),
+}));
+
+export const poolShots = pgTable("pool_shots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  matchId: uuid("match_id").notNull().references(() => poolMatches.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  angle: numeric("angle").notNull(),
+  power: numeric("power").notNull(),
+  result: jsonb("result"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  matchIdx: index("idx_pool_shots_match").on(table.matchId, table.createdAt),
+}));
+
+export const poolPlayerStats = pgTable("pool_player_stats", {
+  userId: text("user_id").primaryKey(),
+  wins: integer("wins").default(0),
+  losses: integer("losses").default(0),
+  gamesPlayed: integer("games_played").default(0),
+  totalWagered: bigint("total_wagered", { mode: "number" }).default(0),
+  totalWon: bigint("total_won", { mode: "number" }).default(0),
+  biggestWin: integer("biggest_win").default(0),
+  currentStreak: integer("current_streak").default(0),
+  bestStreak: integer("best_streak").default(0),
+});
+
 
 // Legacy exports kept to prevent build/runtime import failures while Tanks routes are deprecated.
 export const tankStats = pgTable("tank_stats", {
