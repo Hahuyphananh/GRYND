@@ -241,7 +241,11 @@ export default function UnoMultiplayerPage() {
     setUnoMultiTableCode(data.room.code);
 setUnoMultiPlayers(data.room.players || []);
 setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
-setUnoMultiMyId(data.currentUserId); // store current user id only
+const myPlayer = data.room.players.find(
+  (p: any) => p.userId === data.currentUserId
+);
+
+setUnoMultiMyId(myPlayer?.id ?? null);
 setShowSeatPopup(false);
 
       setUnoMultiStarted(Boolean(data.room.started));
@@ -295,10 +299,13 @@ setShowSeatPopup(false);
     return Boolean(unoMultiMyId && unoMultiHostId && unoMultiMyId === unoMultiHostId);
   }, [unoMultiPlayers, unoMultiMyId, unoMultiHostId]);
 
- const meSeated = useMemo(
-  () => unoMultiPlayers.some((p) => p.userId === unoMultiMyId),
+const mePlayer = useMemo(
+  () => unoMultiPlayers.find((p) => p.id === unoMultiMyId),
   [unoMultiPlayers, unoMultiMyId]
 );
+
+const meSeated = mePlayer?.seatIndex !== null &&
+                 mePlayer?.seatIndex !== undefined;
 
   const sitAsHuman = async (seatIndex: number) => {
     try {
@@ -577,16 +584,20 @@ const isAiThinking =
                             {occupant.type === "ai" ? "🤖" : "👤"} {occupant.name}
                           </div>
                         ) : (
-                          <button
+                         <button
   onClick={() => {
     setSelectedSeat(seatIndex);
     setShowSeatPopup(true);
   }}
-                            disabled={meSeated ? !isHost : false}
-                            className={`w-28 h-12 rounded-xl border border-dashed text-xs ${isHost ? "border-[#00e5ff]/45 hover:bg-[#00e5ff]/20" : "border-gray-500 text-gray-400 cursor-not-allowed"}`}
-                          >
-                            {!meSeated ? "Sit as Human" : isHost ? "+ Add AI" : "Open seat"}
-                          </button>
+  disabled={Boolean(occupant)}
+  className="w-28 h-12 rounded-xl border border-dashed text-xs border-[#00e5ff]/45 hover:bg-[#00e5ff]/20"
+>
+  {!meSeated
+    ? "Sit as Human"
+    : isHost
+    ? "+ Add AI"
+    : "Open seat"}
+</button>
                         )
                       ) : <div className="w-28 h-12 rounded-xl border border-gray-600 bg-gray-800/40 text-[10px] flex items-center justify-center text-gray-400">Disabled</div>}
                     </div>
