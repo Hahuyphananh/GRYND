@@ -1,10 +1,6 @@
 require('dotenv').config();
 
-con
-  socket.on('dice:lobby:create', ({ lobbyId, hostUserId, wager }) => { diceLobbies.set(lobbyId,{ id:lobbyId, hostUserId, wager, status:'waiting'}); io.emit('dice:lobby:list', Array.from(diceLobbies.values())); });
-  socket.on('dice:lobby:join', ({ lobbyId, userId }) => { const l=diceLobbies.get(lobbyId); if(!l) return; if(!l.opponentUserId && userId && userId!==l.hostUserId) l.opponentUserId=userId; socket.join(`dice:${lobbyId}`); if(l.opponentUserId){ const first=Math.random()<0.5?l.hostUserId:l.opponentUserId; const m={ id:lobbyId, lobbyId, player1Id:l.hostUserId, player2Id:l.opponentUserId, hp1:20,hp2:20,round:1,turnUserId:first,me:userId,shields:{} }; diceMatches.set(lobbyId,m); io.to(`dice:${lobbyId}`).emit('dice:match:start', m);} });
-  socket.on('dice:turn:submit', ({ matchId, actionType, userId }) => { const m=diceMatches.get(String(matchId)); if(!m||m.turnUserId!==userId) return; resolveTurn(m, actionType); io.to(`dice:${matchId}`).emit('dice:state:update', m); if(m.hp1<=0||m.hp2<=0){ io.to(`dice:${matchId}`).emit('dice:match:end', m); } });
-st http = require('http');
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const { Server } = require('socket.io');
@@ -449,6 +445,8 @@ io.on('connection', (socket) => {
     cleanupRoomIfEmpty(normalizedGameId);
   });
 
+  registerPoolSocketHandlers(socket);
+
   socket.on('disconnect', () => {
     for (const roomId of socket.rooms) {
       if (roomId === socket.id) continue;
@@ -499,48 +497,71 @@ setInterval(() => {
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, Number(v))); }
 
-io.on('connection', (socket) => {
+function registerPoolSocketHandlers(socket) {
   socket.on('pool:lobbies:list', () => {
     socket.emit('pool:lobbies:list', Array.from(poolLobbies.values()).filter((l) => l.status === 'waiting'));
   });
 
-  socket.on('pool:lobby:create', (payload) => {
+  socket.on('pool:lobby:create', (payload = {}) => {
+    const lobbyId = String(payload.lobbyId || `lobby-${Date.now()}-${Math.random().toString(36).slice(2,7)}`);
+    if (poolLobbies.has(lobbyId)) return;
     const lobby = {
-      id: String(payload.lobbyId), hostUserId: String(payload.hostUserId), opponentUserId: null,
+      id: lobbyId, hostUserId: String(payload.hostUserId), opponentUserId: null,
       wager: clamp(payload.wager, 1, 1000000), gameMode: payload.gameMode || 'pvp', status: 'waiting', createdAt: Date.now(),
     };
     poolLobbies.set(lobby.id, lobby);
+    console.log('[pool] lobby created', lobby.id, lobby.hostUserId, lobby.gameMode);
     io.emit('pool:lobbies:list', Array.from(poolLobbies.values()).filter((l) => l.status === 'waiting'));
   });
 
   socket.on('pool:lobby:join', ({ lobbyId, userId }) => {
     const lobby = poolLobbies.get(String(lobbyId));
-    if (!lobby || lobby.status !== 'waiting' || userId === lobby.hostUserId) return;
+    if (!lobby || lobby.status !== 'waiting' || String(userId) === lobby.hostUserId || lobby.opponentUserId) return;
     lobby.opponentUserId = String(userId); lobby.status = 'active';
     const matchId = `pool-${lobby.id}`;
+    const roomId = `pool:${matchId}`;
     const turn = Math.random() < 0.5 ? lobby.hostUserId : lobby.opponentUserId;
-    const match = { id: matchId, lobbyId: lobby.id, players: [lobby.hostUserId, lobby.opponentUserId], turnUserId: turn, shotLock: false, status: 'active', lastActivityAt: Date.now() };
+    const match = { id: matchId, lobbyId: lobby.id, players: [lobby.hostUserId, lobby.opponentUserId], turnUserId: turn, gameStarted: true, shotLock: false, status: 'active', lastActivityAt: Date.now(), shotSeq: 0 };
     poolMatches.set(matchId, match);
-    socket.join(`pool:${matchId}`);
-    io.to(`pool:${matchId}`).emit('pool:match:start', match);
+    io.in(roomId).socketsJoin(roomId);
+    io.to(roomId).emit('pool:match:start', { ...match, activePlayer: turn });
+    io.to(roomId).emit('pool:turn:start', { matchId, turnUserId: turn, turnSeconds: 45 });
+    console.log('[pool] match started', matchId, 'turn', turn);
+  });
+
+  socket.on('pool:room:join', ({ matchId, userId }) => {
+    const roomId = `pool:${String(matchId)}`;
+    socket.join(roomId);
+    const m = poolMatches.get(String(matchId));
+    if (m) {
+      socket.emit('pool:match:start', { ...m, activePlayer: m.turnUserId });
+      socket.emit('pool:turn:start', { matchId: m.id, turnUserId: m.turnUserId, turnSeconds: 45 });
+    }
+    console.log('[pool] room join', matchId, userId);
   });
 
   socket.on('pool:shoot', ({ matchId, userId, shotId, angle, power, cueBallPosition }) => {
     const m = poolMatches.get(String(matchId));
     if (!m || m.status !== 'active' || m.shotLock) return;
-    if (m.turnUserId !== userId || processedShotIds.has(shotId)) return;
+    if (m.turnUserId !== String(userId) || processedShotIds.has(String(shotId))) return;
+    m.shotSeq += 1;
+    const effectiveShotId = String(shotId || `${m.id}:${m.shotSeq}`);
+    if (processedShotIds.has(effectiveShotId)) return;
     const sanitized = { angle: clamp(angle, 0, 360), power: clamp(power, 0.05, 1), cueBallPosition };
-    processedShotIds.add(shotId); m.shotLock = true; m.lastActivityAt = Date.now();
-    io.to(`pool:${matchId}`).emit('pool:shoot', { matchId, userId, shot: sanitized, shotId });
+    processedShotIds.add(effectiveShotId); m.shotLock = true; m.lastActivityAt = Date.now();
+    io.to(`pool:${matchId}`).emit('pool:shoot', { matchId, userId: String(userId), shot: sanitized, shotId: effectiveShotId });
+    console.log('[pool] shot', matchId, userId, effectiveShotId);
   });
 
   socket.on('pool:physics:end', ({ matchId, shotId, nextTurnUserId, snapshot, eventSummary }) => {
     const m = poolMatches.get(String(matchId));
-    if (!m || !m.shotLock || !processedShotIds.has(shotId)) return;
-    m.turnUserId = nextTurnUserId || m.turnUserId;
+    if (!m || !m.shotLock || !processedShotIds.has(String(shotId))) return;
+    if (nextTurnUserId && m.players.includes(String(nextTurnUserId))) m.turnUserId = String(nextTurnUserId);
     m.shotLock = false;
     m.lastSnapshot = snapshot;
-    io.to(`pool:${matchId}`).emit('pool:state:update', { matchId, shotId, snapshot, eventSummary, turnUserId: m.turnUserId });
+    m.lastActivityAt = Date.now();
+    io.to(`pool:${matchId}`).emit('pool:state:update', { matchId, shotId, snapshot, eventSummary, turnUserId: m.turnUserId, activePlayer: m.turnUserId });
     io.to(`pool:${matchId}`).emit('pool:turn:start', { matchId, turnUserId: m.turnUserId, turnSeconds: 45 });
+    console.log('[pool] turn switched', matchId, m.turnUserId);
   });
-});
+}
