@@ -7,6 +7,7 @@ export default function PoolLobbyPage() {
   const router = useRouter();
   const [lobbies, setLobbies] = useState<any[]>([]);
   const [wager, setWager] = useState(10);
+  const [createdLobbyId, setCreatedLobbyId] = useState<string | null>(null);
 
   const load = async () => {
     const res = await fetch("/api/pool/lobbies", { cache: "no-store" });
@@ -16,10 +17,28 @@ export default function PoolLobbyPage() {
 
   useEffect(() => { load(); const id = setInterval(load, 3000); return () => clearInterval(id); }, []);
 
+
+
+  useEffect(() => {
+    if (!createdLobbyId) return;
+    const id = setInterval(async () => {
+      const res = await fetch(`/api/pool/get-match?matchId=${createdLobbyId}`, { cache: "no-store" });
+      const data = await res.json();
+      const match = data?.match;
+      if (match?.status === "active" && match?.id && match.id !== createdLobbyId) {
+        router.push(`/casino/pool-masters/game/${match.id}`);
+      }
+    }, 1200);
+
+    return () => clearInterval(id);
+  }, [createdLobbyId, router]);
   const createLobby = async () => {
     const res = await fetch("/api/pool/create-lobby", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) });
     const data = await res.json();
-    if (data.lobbyId) router.push(`/casino/pool-masters/game/${data.lobbyId}`);
+    if (data.lobbyId) {
+      setCreatedLobbyId(data.lobbyId);
+      router.push(`/casino/pool-masters/game/${data.lobbyId}`);
+    }
   };
 
   const joinLobby = async (lobbyId: string) => {
