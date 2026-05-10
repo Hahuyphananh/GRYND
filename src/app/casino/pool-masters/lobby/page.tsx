@@ -40,6 +40,7 @@ export default function PoolLobbyPage() {
       router.push(`/casino/pool-masters/game/${data.lobbyId}`);
     }
   };
+  
 
   const joinLobby = async (lobbyId: string) => {
     const res = await fetch("/api/pool/join-lobby", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lobbyId }) });
