@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import NavigationBar from "../../../../../components/navigation-bar";
-import { BALL_LAYOUT, MAX_PULL, TABLE_H, TABLE_W } from "@/lib/pool/constants";
-import { applyShotPower, isMoving, tickPhysics } from "@/lib/pool/physics";
-import { evaluateRules } from "@/lib/pool/rules";
-import { drawBalls, drawTable } from "@/lib/pool/render";
-import { isNewerVersion, pushPoolState } from "@/lib/pool/multiplayer";
-import { Ball, PlayerTurn, ShotMeta, Team } from "@/lib/pool/types";
+import { BALL_LAYOUT, MAX_PULL, TABLE_H, TABLE_W } from "../../../../../lib/pool/constants";
+import { applyShotPower, isMoving, tickPhysics } from "../../../../../lib/pool/physics";
+import { evaluateRules } from "../../../../../lib/pool/rules";
+import { drawBalls, drawTable } from "../../../../../lib/pool/render";
+import { isNewerVersion, pushPoolState } from "../../../../../lib/pool/multiplayer";
+import { Ball, PlayerTurn, ShotMeta, Team } from "../../../../../lib/pool/types";
 
 function setupBalls(): Ball[] { const balls: Ball[] = [{ id: 0, number: 0, x: 180, y: 250, vx: 0, vy: 0, color: "#f5f5f5", striped: false, pocketed: false }]; let k = 1; for (let r = 0; r < 5; r++) for (let c = 0; c <= r; c++) { const d = BALL_LAYOUT[k - 1]; balls.push({ id: k, number: d.n, x: 620 + r * 19, y: 250 - r * 11 + c * 22, vx: 0, vy: 0, color: d.c, striped: d.s, pocketed: false }); k++; } return balls; }
 const touchPoint = (e: any, rect: DOMRect) => e.touches ? ({ x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top }) : ({ x: e.clientX - rect.left, y: e.clientY - rect.top });
