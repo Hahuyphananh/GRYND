@@ -6,9 +6,12 @@ import { useSocket } from "../../../context/SocketProvider";
 
 const TABLES = [1, 5, 10, 20, 50, 100];
 const TIMER_OPTIONS = [
-  { id: "bullet", label: "Bullet", range: "1-2 min" },
-  { id: "blitz", label: "Blitz", range: "3-5 min" },
-  { id: "normal", label: "Normal", range: "10-30 min" },
+  { id: "1min", label: "1 Min", time: 60 },
+  { id: "2min", label: "2 Min", time: 120 },
+  { id: "3min", label: "3 Min", time: 180 },
+  { id: "5min", label: "5 Min", time: 300 },
+  { id: "10min", label: "10 Min", time: 600 },
+  { id: "30min", label: "30 Min", time: 1800 },
 ];
 
 export default function ChessLobby() {
@@ -54,6 +57,8 @@ export default function ChessLobby() {
     setIsLoadingAvailableGames(false);
   }
 
+  const selectedTimerObj = TIMER_OPTIONS.find(t => t.id === selectedTimer);
+
   async function createGame() {
     if (!selectedTable || !selectedTimer || creatingGame) return;
 
@@ -62,7 +67,11 @@ export default function ChessLobby() {
       const res = await fetch("/api/chess/create-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tableAmount: selectedTable, timerMode: selectedTimer }),
+        body: JSON.stringify({
+  tableAmount: selectedTable,
+  timerMode: selectedTimer,
+  timeLimit: selectedTimerObj?.time, // 👈 IMPORTANT FIX
+}),
       });
       const data = await res.json();
 
@@ -71,7 +80,8 @@ export default function ChessLobby() {
         return;
       }
 
-      const timerParam = data.timerMode || selectedTimer;
+      const timerObj = TIMER_OPTIONS.find(t => t.id === (data.timerMode || selectedTimer));
+const timerParam = timerObj?.time;
       if (data.ready || data.status === "in_progress") {
         socket?.emit("room_event", { roomId: "lobby:chess", event: "lobby:updated" });
         router.push(`/casino/chess-game/${data.gameId}?color=${data.color}&timer=${timerParam}`);
@@ -105,7 +115,11 @@ export default function ChessLobby() {
       }
 
       socket?.emit("room_event", { roomId: "lobby:chess", event: "lobby:updated" });
-      router.push(`/casino/chess-game/${gameId}?color=black&timer=${targetGame?.timerMode || "blitz"}`);
+     const joinTimer = TIMER_OPTIONS.find(t => t.id === targetGame?.timerMode);
+
+router.push(
+  `/casino/chess-game/${gameId}?color=black&timer=${joinTimer?.time || 300}`
+);
     } catch (error) {
       console.error("Failed to join chess game", error);
       alert("Unable to join game");
@@ -191,15 +205,6 @@ export default function ChessLobby() {
         </button>
       </div>
 
-      <div className="flex justify-center mb-8">
-        <button
-          onClick={() => setShowBetPopup(true)}
-          className="bg-[#00e5ff] text-[#001933] px-6 py-4 rounded-lg text-xl font-semibold hover:bg-[#49eeff] shadow-[0_0_14px_rgba(0,229,255,0.45)]"
-        >
-          Play vs AI 🤖
-        </button>
-      </div>
-
       <div className="max-w-3xl mx-auto mt-10 bg-[#0b224f]/85 p-5 rounded-xl border border-[#00e5ff]/30 text-left shadow-[0_0_24px_rgba(0,229,255,0.18)]">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-bold text-[#FFD700]">Available Games</h2>
@@ -220,7 +225,9 @@ export default function ChessLobby() {
                 <div>
                   <p className="font-semibold">Game #{game.id}</p>
                   <p className="text-sm text-white/80">
-                    Host: {game.hostName || "Player"} · Bet: ${Number(game.betAmount)} · Timer: {game.timerMode}
+                    Host: {game.hostName || "Player"} · Bet: ${Number(game.betAmount)} · Timer: {
+  TIMER_OPTIONS.find(t => t.id === game.timerMode)?.label || "Unknown"
+}
                   </p>
                 </div>
                 <button

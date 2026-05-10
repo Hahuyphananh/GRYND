@@ -72,7 +72,6 @@ const [floatingText, setFloatingText] = useState<
   { id: number; text: string; side: "left" | "right" }[]
 >([]);
 const [endPopup, setEndPopup] = useState<null | "win" | "loss">(null);
-const [resultPopup, setResultPopup] = useState<null | "win" | "lose">(null);
 
 const spawnFloat = (text: string, className: string, side: "left" | "right") => {
   const id = Date.now() + Math.random();
@@ -88,16 +87,12 @@ const spawnFloat = (text: string, className: string, side: "left" | "right") => 
 };
 
 useEffect(() => {
-  if (!match) return;
+  if (!match || !viewerId) return;
 
   if (match.status === "finished") {
-    if (match.winnerId === viewerId) {
-      setEndPopup("win");
-    } else {
-      setEndPopup("loss");
-    }
+    setEndPopup(match.winnerId === viewerId ? "win" : "loss");
   }
-}, [match]);
+}, [match, viewerId]);
 
   const load = async () => {
     const res = await fetch(`/api/dice-duel/get-match?matchId=${matchId}`, {
@@ -110,6 +105,9 @@ useEffect(() => {
     setMatch(data.match);
     setTurns(data.turns || []);
     setViewerId(data.viewerId || null);
+    if (data.match?.status === "finished") {
+  setEndPopup(data.match.winnerId === data.viewerId ? "win" : "loss");
+}
   };
 
   useEffect(() => {
@@ -174,23 +172,21 @@ setLastAction(
   `${prettyMove(actionType)} → rolled ${total}`
 );
 
-triggerEffect(actionType);
-
-// 🎯 PLAYER FLOATING FEEDBACK
-spawnFloat(
-  `-${match?.lastDamage ?? "?"}`,
-  "text-fuchsia-400",
-  "right"
-);
-
   const res = await fetch("/api/dice-duel/submit-turn", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ matchId: activeMatchId, actionType }),
   });
 
+triggerEffect(actionType);
   const data = await res.json();
 
+// 🎯 PLAYER FLOATING FEEDBACK
+const damage = data?.damageDealt ?? data?.damage ?? 0;
+
+if (damage > 0) {
+  spawnFloat(`-${damage}`, "text-fuchsia-400", "right");
+}
   load();
 
   // 2. AI TURN DELAY + VISUAL SYNC
@@ -229,23 +225,27 @@ if (data.aiTurn) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  const resign = async () => {
-    await fetch("/api/dice-duel/resign", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ matchId: activeMatchId }),
-    });
+const resign = async () => {
+  await fetch("/api/dice-duel/resign", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ matchId: activeMatchId }),
+  });
 
-    router.push("/casino/dice-duel");
-  };
+  // trigger loss popup instead of redirect
+  setEndPopup("loss");
+};
 
-  const prettyName = (id: string) => {
-    if (id === viewerId) return "You";
-    if (id === "AI_BOT") return "AI Bot";
-    return "Opponent";
-  };
+const prettyName = (id: string) => {
+  if (!match) return "Loading...";
+
+  if (id === match.player1Id) return match.player1Name || "Player 1";
+  if (id === match.player2Id) return match.player2Name || "Player 2";
+
+  return "Unknown";
+};
 
   const prettyMove = (move: string) =>
     move
@@ -311,42 +311,60 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
           </div>
         </div>
 
-        {/* HP */}
-        <div className="grid md:grid-cols-2 gap-4 mt-6">
+        {/* HP / Player Cards */}
+<div className="grid md:grid-cols-2 gap-4 mt-6">
 
-         <div className="relative rounded-xl border border-fuchsia-500 p-4">
-  {floatingText
-    .filter((f) => f.side === "left")
-    .map((f) => (
-      <div
-        key={f.id}
-        className="absolute -top-6 left-1/2 -translate-x-1/2 text-green-400 font-bold animate-bounce"
-      >
-        {f.text}
-      </div>
-    ))}
-
-  <p className="text-sm text-slate-300">Player HP</p>
-  <p className="text-3xl font-bold">{match?.hp1 ?? "--"}</p>
-</div>
-
-      <div className="relative rounded-xl border border-cyan-500 p-4">
-  {floatingText
-    .filter((f) => f.side === "right")
-    .map((f) => (
-      <div
-        key={f.id}
-        className="absolute -top-6 left-1/2 -translate-x-1/2 text-red-400 font-bold animate-bounce"
-      >
-        {f.text}
-      </div>
-    ))}
-
-  <p className="text-sm text-slate-300">Enemy HP</p>
-  <p className="text-3xl font-bold">{match?.hp2 ?? "--"}</p>
-</div>
-
+  {/* PLAYER */}
+  <div className="relative rounded-xl border border-fuchsia-500 p-4">
+    
+    {floatingText
+      .filter((f) => f.side === "left")
+      .map((f) => (
+        <div
+          key={f.id}
+          className="absolute -top-6 left-1/2 -translate-x-1/2 text-green-400 font-bold animate-bounce"
+        >
+          {f.text}
         </div>
+      ))}
+
+    <p className="text-sm text-fuchsia-300 font-bold">
+      {match?.player1Id === viewerId
+        ? match?.player1Name
+        : match?.player2Name}
+    </p>
+
+    <p className="text-3xl font-bold">
+      HP: {match?.hp1 ?? "--"}
+    </p>
+  </div>
+
+  {/* ENEMY */}
+  <div className="relative rounded-xl border border-cyan-500 p-4">
+
+    {floatingText
+      .filter((f) => f.side === "right")
+      .map((f) => (
+        <div
+          key={f.id}
+          className="absolute -top-6 left-1/2 -translate-x-1/2 text-red-400 font-bold animate-bounce"
+        >
+          {f.text}
+        </div>
+      ))}
+
+    <p className="text-sm text-cyan-300 font-bold">
+      {match?.player1Id === viewerId
+        ? match?.player2Name
+        : match?.player1Name}
+    </p>
+
+    <p className="text-3xl font-bold">
+      HP: {match?.hp2 ?? "--"}
+    </p>
+  </div>
+
+</div>
 
         {/* Status */}
         <div className="mt-4 text-sm text-slate-300">
