@@ -421,9 +421,9 @@ export default function Page() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white flex flex-col items-center p-4">
+    <div className="flex min-h-screen flex-col items-center overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
-      <div className="flex flex-col lg:flex-row w-full max-w-7xl gap-4 mt-16">
+      <div className="mt-4 flex w-full max-w-7xl flex-col gap-4 lg:mt-8 lg:flex-row">
         {/* Left Panel - BetPanel + Crash History */}
         <div
           className="bg-[#050d1f]/80 

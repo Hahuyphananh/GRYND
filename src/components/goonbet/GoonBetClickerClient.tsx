@@ -125,9 +125,9 @@ export default function GoonBetClickerClient() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white p-8">
-      <div className="mx-auto max-w-3xl rounded-2xl border border-fuchsia-500/40 bg-zinc-950 p-6 shadow-[0_0_40px_rgba(217,70,239,0.25)]">
-        <h1 className="text-4xl font-bold text-fuchsia-400">GoonBet Clicker</h1>
+    <main className="min-h-screen overflow-x-clip bg-black px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8 md:pt-24 md:px-8">
+      <div className="mx-auto max-w-3xl rounded-2xl border border-fuchsia-500/40 bg-zinc-950 p-4 shadow-[0_0_40px_rgba(217,70,239,0.25)] sm:p-6">
+        <h1 className="text-3xl font-bold text-fuchsia-400 sm:text-4xl">GoonBet Clicker</h1>
         <p className="mt-2 text-zinc-300">
           Tokens: <span className="text-emerald-400">{tokens.toString()}</span>
         </p>

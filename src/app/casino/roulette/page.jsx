@@ -255,14 +255,14 @@ hover:scale-105 hover:brightness-110 active:scale-95`}
   };
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-[#001933] to-[#000d1a] text-white overflow-hidden">
+    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] pb-24 pt-20 text-white md:pb-8">
       <NavigationBar currentPath="/casino" />
       {/* Container with responsive flex */}
-      <div className="flex flex-col sm:flex-row gap-10 p-6 w-full max-w-[1200px] mx-auto mt-12">
+      <div className="mx-auto mt-2 flex w-full max-w-[1200px] flex-col gap-6 px-3 sm:mt-8 sm:flex-row sm:gap-10 sm:p-6">
         {/* Left sidebar */}
-        <div className="flex flex-col items-start gap-6 w-full sm:w-[280px] flex-shrink-0">
+        <div className="flex w-full flex-shrink-0 flex-col items-start gap-4 sm:w-[280px] sm:gap-6">
           {/* Title below Retour au Casino */}
-          <h1 className="text-3xl font-bold text-[#FFFF33] drop-shadow-[0_0_10px_rgba(255,255,51,0.6)] text-center w-full mt-3">
+          <h1 className="mt-3 w-full text-center text-2xl font-bold text-[#FFFF33] drop-shadow-[0_0_10px_rgba(255,255,51,0.6)] sm:text-3xl">
             🎰 Roulette Royale
           </h1>
           {/* Tokens display */}
@@ -433,8 +433,8 @@ shadow-[0_0_12px_rgba(255,255,51,0.5)] py-2 rounded-full font-extrabold shadow-l
         </div>
 
         {/* Right side (roulette + numbers + betting zones) */}
-        <div className="flex flex-col items-center w-full sm:w-[680px] flex-shrink-0">
-          <div className="relative mx-auto mt-5 w-full max-w-[360px] h-[400px] sm:w-[360px] sm:h-[400px]">
+        <div className="flex w-full flex-shrink-0 flex-col items-center sm:w-[680px]">
+          <div className="relative mx-auto mt-3 h-[340px] w-full max-w-[340px] sm:mt-5 sm:h-[400px] sm:max-w-[360px]">
             <canvas
               ref={canvasRef}
               width={360}
