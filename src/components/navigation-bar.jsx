@@ -39,6 +39,7 @@ function NavigationBar({ currentPath }) {
   });
   const [error, setError] = useState(null);
   const [showAddFunds, setShowAddFunds] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const [langClosing, setLangClosing] = useState(false);
   const [level, setLevel] = useState(null);
@@ -172,15 +173,15 @@ function NavigationBar({ currentPath }) {
         data-no-translate="true"
         className="fixed top-0 left-0 right-0 z-40 border-b border-[#00e5ff]/40 bg-[#050b1e]/95 backdrop-blur-md shadow-[0_0_22px_rgba(0,229,255,0.25)]"
       >
-        <UIPro01NavShell className="mx-auto max-w-7xl px-4">
-          <div className="flex h-16 items-center justify-between">
+        <UIPro01NavShell className="mx-auto max-w-7xl px-3 sm:px-4">
+          <div className="flex h-16 items-center justify-between gap-2">
             <Link href="/" className="flex items-center space-x-2">
               <Image
                 src={LogoSmiley}
                 alt="GoonBet Logo"
                 width={150}
                 height={60}
-                className="rounded-lg object-contain drop-shadow-[0_0_10px_rgba(245,255,59,0.45)]"
+                className="h-auto w-[120px] rounded-lg object-contain drop-shadow-[0_0_10px_rgba(245,255,59,0.45)] sm:w-[150px]"
               />
             </Link>
 
@@ -210,11 +211,11 @@ function NavigationBar({ currentPath }) {
               ))}
             </motion.div>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <div className="relative">
                 <div
                   onClick={() => (langOpen ? closeLang() : setLangOpen(true))}
-                  className="cursor-pointer rounded-lg border border-[#00e5ff]/50 bg-[#091737] px-2 py-1 text-sm text-[#c9f7ff] focus:outline-none"
+                  className="cursor-pointer rounded-lg border border-[#00e5ff]/50 bg-[#091737] px-2 py-1 text-xs text-[#c9f7ff] focus:outline-none sm:text-sm"
                 >
                   {language === "en" && "EN 🇺🇸 🌐"}
                   {language === "fr" && "FR 🇫🇷 🌐"}
@@ -249,7 +250,7 @@ function NavigationBar({ currentPath }) {
 
               {isLoaded && isSignedIn ? (
                 <>
-                  <div className="hidden items-center space-x-4 sm:flex">
+                  <div className="hidden items-center space-x-4 lg:flex">
                     <Link
                       href="/profil"
                       className="group flex items-center space-x-2"
@@ -296,6 +297,13 @@ function NavigationBar({ currentPath }) {
                       </span>
                     </div>
                   </div>
+                  <button
+                    onClick={() => setMobileMenuOpen((v) => !v)}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] lg:hidden"
+                    aria-label="Toggle menu"
+                  >
+                    ☰
+                  </button>
                   <SignOutButton>
                     <UIPro02NavItem className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35">
                       {t("nav.sign_out")}
@@ -304,15 +312,22 @@ function NavigationBar({ currentPath }) {
                 </>
               ) : (
                 <>
+                  <button
+                    onClick={() => setMobileMenuOpen((v) => !v)}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] md:hidden"
+                    aria-label="Toggle menu"
+                  >
+                    ☰
+                  </button>
                   <UIPro02NavItem
                     href="/sign-up"
-                    className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/35"
+                    className="hidden rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/35 md:inline-flex"
                   >
                     {t("nav.create_account")}
                   </UIPro02NavItem>
                   <UIPro02NavItem
                     href="/sign-in"
-                    className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35"
+                    className="hidden rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35 md:inline-flex"
                   >
                     {t("nav.sign_in")}
                   </UIPro02NavItem>
@@ -321,6 +336,27 @@ function NavigationBar({ currentPath }) {
             </div>
           </div>
         </UIPro01NavShell>
+        <div className="md:hidden">
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#00e5ff]/40 bg-[#050b1e]/95 px-2 py-2 backdrop-blur-md">
+            <div className="grid grid-cols-4 gap-2">
+              {["/", "/sport", "/casino", "/classement"].map((path) => (
+                <Link key={path} href={path} className={`rounded-lg px-2 py-3 text-center text-xs ${currentPath === path || (path === "/casino" && isCasinoPath) ? "bg-[#00e5ff]/25 text-[#f5ff3b]" : "bg-[#091737] text-[#9dd8ff]"}`}>
+                  {t(NAV_TRANSLATION_KEYS[path])}
+                </Link>
+              ))}
+            </div>
+          </div>
+          {mobileMenuOpen && (
+            <div className="border-t border-[#00e5ff]/30 bg-[#08142f] p-3">
+              {!isSignedIn ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <Link href="/sign-up" className="rounded-lg bg-[#FFFF33]/20 px-3 py-2 text-center text-sm text-[#d8fbff]">Sign up</Link>
+                  <Link href="/sign-in" className="rounded-lg bg-[#00e5ff]/20 px-3 py-2 text-center text-sm text-[#d8fbff]">Sign in</Link>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
       </motion.nav>
 
       <AddFundsModal

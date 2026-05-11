@@ -451,7 +451,7 @@ export default function RPSGame() {
   };
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
+    <div className="flex min-h-screen flex-col overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] pb-24 pt-20 text-white md:flex-row md:pb-8">
       <NavigationBar currentPath="/casino" />
 
       <div

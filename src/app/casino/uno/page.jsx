@@ -513,7 +513,7 @@ export default function UnoGamePage() {
     historyIndex === null ? topCard : turnHistory[historyIndex];
 
   return (
-    <div className="bg-gradient-to-br from-[#001933] mt-12 to-[#000d1a] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8 page-enter">
+    <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
       <h1 className="text-3xl mb-2 font-bold">
         {gameMode === "online" ? "UNO 1v1 en ligne" : "UNO vs IA"}
@@ -526,7 +526,7 @@ export default function UnoGamePage() {
       )}
 
       {!game ? (
-        <div className="w-full max-w-4xl aspect-[2/1] bg-[#0b224f]/85 rounded-[2rem] flex flex-col items-center justify-center shadow-[0_0_28px_rgba(0,229,255,0.2)] border-2 border-[#00e5ff]/35 p-8 text-center casino-surface">
+        <div className="casino-surface flex w-full max-w-4xl flex-col items-center justify-center rounded-[1.5rem] border-2 border-[#00e5ff]/35 bg-[#0b224f]/85 p-4 text-center shadow-[0_0_28px_rgba(0,229,255,0.2)] sm:aspect-[2/1] sm:rounded-[2rem] sm:p-8">
           <h2 className="text-2xl font-bold mb-6 text-white">
             Prépare ta partie
           </h2>
@@ -661,7 +661,7 @@ export default function UnoGamePage() {
           )}
         </div>
       ) : (
-        <div className="w-full max-w-5xl min-h-[640px] bg-green-700/90 rounded-[2.5rem] flex flex-col justify-between items-center shadow-2xl border-8 border-green-950 p-6 pb-36 relative casino-surface overflow-hidden">
+        <div className="casino-surface relative flex min-h-[560px] w-full max-w-5xl flex-col items-center justify-between overflow-hidden rounded-[1.5rem] border-4 border-green-950 bg-green-700/90 p-3 pb-32 shadow-2xl sm:min-h-[640px] sm:rounded-[2.5rem] sm:border-8 sm:p-6 sm:pb-36">
           <div
             className={`px-4 py-1 rounded-full ${!isPlayerTurn ? "turn-active-glow" : ""}`}
           >

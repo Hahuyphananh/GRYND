@@ -279,12 +279,12 @@ export default function LaneRunnerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#1b2150_0%,#080b1f_35%,#03040d_100%)] pt-20 text-white">
+    <div className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top,#1b2150_0%,#080b1f_35%,#03040d_100%)] pb-24 pt-20 text-white md:pb-8">
       <NavigationBar currentPath="/casino/lane-runner" />
       <audio ref={winSoundRef} src="/sounds/coin-flip.mp3" />
       <audio ref={loseSoundRef} src="/sounds/coin-flip.mp3" />
 
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 pb-10 md:flex-row">
+      <div className="mx-auto flex max-w-7xl flex-col gap-4 px-3 pb-10 sm:px-4 md:flex-row md:gap-6">
         <div className="w-full rounded-3xl border border-cyan-300/20 bg-slate-900/70 p-5 backdrop-blur md:w-96">
           <h1 className="text-2xl font-black text-cyan-100">Towers</h1>
           <p className="mt-2 text-sm text-white/75">

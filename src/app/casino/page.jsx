@@ -240,7 +240,7 @@ function MainComponent() {
   }, [user]);
 
   const GameCard = ({ game }) => (
-    <div className="group relative overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-2 transition-all duration-300 hover:-translate-y-2 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,229,255,0.4)]">
+    <div className="group relative overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-2 transition-all duration-300 hover:-translate-y-1 sm:hover:-translate-y-2 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,229,255,0.4)]">
       <Link href={game.href} className="block cursor-pointer">
         <div className="mb-2 h-28 overflow-hidden rounded-lg">
           <Image
@@ -250,11 +250,11 @@ function MainComponent() {
           />
         </div>
 
-        <h3 className="mb-2 text-md font-bold text-[#f5ff3b]">
+        <h3 className="mb-2 text-base font-bold text-[#f5ff3b] md:text-lg">
           {game.nameKey ? t(game.nameKey) : game.name}
         </h3>
 
-        <p className="text-[#9dd8ff]">{t(game.descriptionKey)}</p>
+        <p className="line-clamp-2 text-sm text-[#9dd8ff] md:text-base">{t(game.descriptionKey)}</p>
 
         <div className="mt-4 flex items-center text-[#00e5ff]">
           <span>{t("home.play_now")}</span>
@@ -306,22 +306,22 @@ function MainComponent() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] pt-20">
+    <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] pb-24 pt-20 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
-      <div className="mx-auto max-w-7xl px-4 py-12">
+      <div className="mx-auto max-w-7xl px-3 py-8 sm:px-4 sm:py-12">
         <section className="mb-5 text-center">
-          <h1 className="mb-2 text-4xl font-bold text-[#f5ff3b] md:text-6xl fade-slide-up">
+          <h1 className="mb-2 text-3xl font-bold text-[#f5ff3b] sm:text-4xl md:text-6xl fade-slide-up">
             {t("home.title")}
           </h1>
           <p
-            className="mb-2 text-xl text-[#d8fbff] fade-slide-up"
+            className="mb-2 text-base text-[#d8fbff] sm:text-lg md:text-xl fade-slide-up"
             style={{ animationDelay: "0.15s" }}
           >
             {t("home.subtitle")}
           </p>
           <p
-            className="mb-2 text-xl text-[#d8fbff] fade-slide-up"
+            className="mb-2 text-base text-[#d8fbff] sm:text-lg md:text-xl fade-slide-up"
             style={{ animationDelay: "0.2s" }}
           >
             {t("home.description")}
@@ -364,7 +364,7 @@ function MainComponent() {
           </div>
         </div>
 
-        <div className="mb-8 flex flex-wrap justify-center gap-3">
+        <div className="mb-8 flex flex-wrap justify-center gap-2 sm:gap-3">
           <p className="flex flex-wrap justify-center gap-3 mt-2">Sort By:</p>
           {[
             { key: "all", label: "All Games" },
@@ -375,7 +375,7 @@ function MainComponent() {
             <button
               key={btn.key}
               onClick={() => setActiveFilter(btn.key)}
-              className={`rounded-xl px-5 py-2 font-semibold transition-all duration-300 ${
+              className={`rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-300 sm:px-5 sm:text-base ${
                 activeFilter === btn.key
                   ? "bg-[#00e5ff] text-black shadow-[0_0_15px_rgba(0,229,255,0.7)]"
                   : "bg-[#08142f] text-[#d8fbff] border border-[#00e5ff]/30 hover:bg-[#10234a]"
@@ -388,7 +388,7 @@ function MainComponent() {
 
         {displayedGames.length > 0 && (
           <>
-            <h2 className="mb-6 text-3xl font-bold text-[#00e5ff]">
+            <h2 className="mb-6 text-2xl font-bold text-[#00e5ff] sm:text-3xl">
               {activeFilter === "popular"
                 ? "Popular Games"
                 : activeFilter === "skill"
@@ -398,7 +398,7 @@ function MainComponent() {
                     : t("home.all_games")}
             </h2>
 
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 stagger-container">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4 stagger-container">
               {displayedGames.map((game, index) => (
                 <div
                   key={game.nameKey ? t(game.nameKey) : game.name}

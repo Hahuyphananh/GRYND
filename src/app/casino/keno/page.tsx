@@ -140,10 +140,10 @@ export default function KenoGame() {
   const payoutTable = multiplierTable[selectedNumbers.length] || {};
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white flex flex-col items-center p-6 relative">
+    <div className="relative flex min-h-screen flex-col items-center overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
-      <div className="absolute top-4 right-4 bg-[#0b224f]/90 border border-[#00e5ff]/30 px-4 py-2 rounded-lg shadow-[0_0_12px_rgba(0,229,255,0.2)] text-[#FFD700] font-bold">
+      <div className="absolute right-3 top-24 rounded-lg border border-[#00e5ff]/30 bg-[#0b224f]/90 px-3 py-2 text-sm font-bold text-[#FFD700] shadow-[0_0_12px_rgba(0,229,255,0.2)] sm:right-4 sm:text-base">
         🪙 Balance: {userBalance ?? "..."}
       </div>
 
