@@ -74,21 +74,21 @@ export default function PoolLobbyPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#06120f] to-[#050816] p-6 text-white">
+    <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#06120f] to-[#050816] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
-      <div className="mx-auto mt-10 max-w-6xl rounded-2xl border border-cyan-500/40 bg-black/30 p-5">
-        <h1 className="text-4xl font-black text-fuchsia-300">
+      <div className="mx-auto mt-4 max-w-6xl rounded-2xl border border-cyan-500/40 bg-black/30 p-4 sm:mt-8 sm:p-5">
+        <h1 className="text-2xl font-black text-fuchsia-300 sm:text-3xl md:text-4xl">
           Pool Masters Lobby
         </h1>
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
           <div className="rounded-xl border border-fuchsia-500/40 bg-black/30 p-4">
             <h2 className="text-xl font-bold">Create game</h2>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               {[10, 25, 50, 100].map((v) => (
                 <button
                   key={v}
                   onClick={() => setWager(v)}
-                  className={`rounded px-3 py-2 ${wager === v ? "bg-fuchsia-600" : "bg-slate-800"}`}
+                  className={`min-h-11 rounded px-3 py-2 ${wager === v ? "bg-fuchsia-600" : "bg-slate-800"}`}
                 >
                   {v}
                 </button>
@@ -116,7 +116,7 @@ export default function PoolLobbyPage() {
               {lobbies.map((l) => (
                 <div
                   key={l.id}
-                  className="flex items-center justify-between rounded border border-slate-700 p-3"
+                  className="flex flex-col gap-2 rounded border border-slate-700 p-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div>
                     <p>Wager: {l.wager}</p>
@@ -126,7 +126,7 @@ export default function PoolLobbyPage() {
                   </div>
                   <button
                     onClick={() => joinLobby(l.id)}
-                    className="rounded bg-fuchsia-600 px-3 py-2"
+                    className="min-h-11 rounded bg-fuchsia-600 px-3 py-2"
                   >
                     Join
                   </button>

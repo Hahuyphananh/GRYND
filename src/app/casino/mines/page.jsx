@@ -400,7 +400,7 @@ export default function MinesGamePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center justify-start pt-24 p-4 relative">
+    <div className="relative flex min-h-screen flex-col items-center justify-start overflow-x-clip bg-[#030817] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
       <div

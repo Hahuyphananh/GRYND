@@ -252,11 +252,11 @@ export default function ChatWidget() {
   if (!room) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 z-[70]">
+    <div className="fixed bottom-20 left-3 z-[70] sm:bottom-4 sm:left-4">
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
-        className="relative h-16 w-16 rounded-full bg-gradient-to-br from-cyan-400 via-fuchsia-500 to-purple-600 text-2xl text-black shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(217,70,239,0.7)] active:scale-95 animate-neonButton"
+        className="relative h-14 w-14 touch-manipulation rounded-full bg-gradient-to-br from-cyan-400 via-fuchsia-500 to-purple-600 text-xl text-black shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(217,70,239,0.7)] active:scale-95 animate-neonButton sm:h-16 sm:w-16 sm:text-2xl"
         aria-label="Toggle chat"
       >
         💬
@@ -265,7 +265,7 @@ export default function ChatWidget() {
       </button>
 
       {isOpen ? (
-        <div className="mt-2 w-[420px] rounded-xl border border-cyan-400/30 bg-black/70 p-4 text-sm text-cyan-50 shadow-[0_0_35px_rgba(34,211,238,0.25)] backdrop-blur-xl relative overflow-hidden animate-neonPulse">
+        <div className="mt-2 w-[calc(100vw-1.5rem)] max-w-[420px] rounded-xl border border-cyan-400/30 bg-black/70 p-3 text-sm text-cyan-50 shadow-[0_0_35px_rgba(34,211,238,0.25)] backdrop-blur-xl relative overflow-hidden animate-neonPulse sm:p-4">
           {/* scanline overlay */}
           <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.08] mix-blend-overlay bg-[repeating-linear-gradient(0deg,black,black_2px,transparent_2px,transparent_4px)] animate-scanlines" />
           <div className="mb-2 flex items-center justify-between gap-2 text-cyan-300">
@@ -320,7 +320,7 @@ export default function ChatWidget() {
             <>
               <div
                 ref={messagesContainerRef}
-                className="mb-2 h-64 overflow-y-auto rounded border border-cyan-400/20 bg-black/60 p-2 shadow-inner shadow-cyan-500/10"
+                className="mb-2 h-[45vh] max-h-72 overflow-y-auto rounded border border-cyan-400/20 bg-black/60 p-2 shadow-inner shadow-cyan-500/10"
               >
                 {messages.length === 0 ? (
                   <p className="text-cyan-400/40">No messages yet.</p>

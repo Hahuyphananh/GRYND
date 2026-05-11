@@ -19,11 +19,11 @@ const glowBySlot: Record<string, string> = {
 
 export default function SlotsLobby() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-6">
+    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/slots" />
 
       {/* Title */}
-      <h1 className="text-4xl font-extrabold text-yellow-400 text-center mt-24 mb-12 drop-shadow-[0_0_12px_gold]">
+      <h1 className="mb-8 mt-4 text-center text-3xl font-extrabold text-yellow-400 drop-shadow-[0_0_12px_gold] sm:mb-12 sm:text-4xl">
         🎰 SLOT MACHINE LOBBY 🎰
       </h1>
 
