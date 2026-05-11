@@ -168,9 +168,9 @@ export default function ChessLobby() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-6 text-center">
+    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-center text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
-      <h1 className="text-4xl font-bold text-[#FFD700] mb-4 mt-20 drop-shadow-[0_0_12px_rgba(255,215,0,0.55)]">
+      <h1 className="mb-4 mt-4 text-3xl font-bold text-[#FFD700] drop-shadow-[0_0_12px_rgba(255,215,0,0.55)] sm:text-4xl">
         ♟️ Chess Tables
       </h1>
 

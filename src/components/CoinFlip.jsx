@@ -13,7 +13,7 @@ export default function CoinFlipPage() {
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-start p-6 text-white relative"
+      className="relative flex min-h-screen flex-col items-center justify-start overflow-x-clip px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
       style={{
         backgroundImage:
           "linear-gradient(135deg, #020617 0%, #020617 40%, #0f172a 100%)",
@@ -21,12 +21,12 @@ export default function CoinFlipPage() {
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(168,85,247,0.15),transparent_70%)] pointer-events-none" />
       <NavigationBar currentPath="/casino" />
-      <div className="max-w-2xl w-full mt-16 p-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 text-white rounded shadow-[0_0_24px_rgba(0,229,255,0.2)]">
-        <h1 className="text-3xl font-extrabold text-center mb-6 text-[#00e5ff] tracking-wide">
+      <div className="mt-6 w-full max-w-2xl rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-4 text-white shadow-[0_0_24px_rgba(0,229,255,0.2)] sm:mt-10 sm:p-6">
+        <h1 className="mb-6 text-center text-2xl font-extrabold tracking-wide text-[#00e5ff] sm:text-3xl">
           Coin Flip
         </h1>
 
-        <div className="flex justify-center space-x-4 mb-6">
+        <div className="mb-6 grid grid-cols-2 gap-2 sm:flex sm:justify-center sm:space-x-4 sm:gap-0">
           <button
             className={`px-4 py-2 rounded ${
               mode === "solo"
@@ -158,7 +158,7 @@ function SoloCoinFlip() {
 
   return (
     <>
-      <div className="mb-4 flex justify-between items-center">
+      <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
         <p className="text-[#FFD700] font-bold">
           Balance: {userTokens !== null ? `${userTokens.toFixed(2)} 🪙` : "..."}
         </p>
@@ -182,10 +182,10 @@ function SoloCoinFlip() {
         onChange={(e) => setBet(parseFloat(e.target.value))}
       />
 
-      <div className="flex justify-between mb-4">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:justify-between">
         <button
           onClick={() => setChoice("heads")}
-          className={`w-full mr-2 p-2 rounded ${
+            className={`w-full rounded p-3 text-base ${
             choice === "heads"
               ? "bg-gradient-to-r from-cyan-400 to-emerald-400 text-black shadow-[0_0_12px_rgba(16,185,129,0.6)]"
               : "bg-[#0d335f] hover:bg-[#144a85]"
@@ -195,7 +195,7 @@ function SoloCoinFlip() {
         </button>
         <button
           onClick={() => setChoice("tails")}
-          className={`w-full ml-2 p-2 rounded ${
+            className={`w-full rounded p-3 text-base ${
             choice === "tails"
               ? "bg-gradient-to-r from-cyan-400 to-emerald-400 text-black shadow-[0_0_12px_rgba(16,185,129,0.6)]"
               : "bg-[#0d335f] hover:bg-[#144a85]"
@@ -205,7 +205,7 @@ function SoloCoinFlip() {
         </button>
       </div>
 
-      <div className="flex gap-2 mb-4">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row">
         <button
           onClick={() => flip(false)}
           disabled={flipping}

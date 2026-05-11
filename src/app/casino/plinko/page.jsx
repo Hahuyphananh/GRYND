@@ -540,12 +540,12 @@ function MainComponent() {
   };
 
   return (
-    <div className="h-screen flex bg-gradient-to-br from-[#020617] via-[#071A3A] to-[#0A2A5C] overflow-hidden">
+    <div className="flex min-h-screen flex-col overflow-x-clip bg-gradient-to-br from-[#020617] via-[#071A3A] to-[#0A2A5C] pb-24 pt-20 lg:h-screen lg:flex-row lg:pb-0">
       <NavigationBar currentPath="/casino" />
       {/* Sidebar */}
       <aside
         ref={sidebarRef}
-        className="flex flex-col w-64 p-6 bg-gradient-to-b from-[#020617] via-[#071A3A] to-[#0A2A5C] text-white border-r border-[#00E5FF]/20 backdrop-blur-md overflow-y-auto"
+        className="flex w-full flex-col overflow-y-auto border-b border-[#00E5FF]/20 bg-gradient-to-b from-[#020617] via-[#071A3A] to-[#0A2A5C] p-4 text-white backdrop-blur-md lg:w-64 lg:border-b-0 lg:border-r lg:p-6"
       >
         <h1 className="mb-8 text-3xl font-bold mt-12 text-[#00E5FF] drop-shadow-[0_0_10px_#00E5FF]">
           Plinko

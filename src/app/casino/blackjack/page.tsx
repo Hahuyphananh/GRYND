@@ -239,10 +239,10 @@ export default function BlackjackPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#030817] pt-20">
+    <div className="min-h-screen overflow-x-clip bg-[#030817] pb-24 pt-20 md:pb-8">
       <NavigationBar currentPath="/casino" />
-      <div className="mx-auto max-w-4xl px-4 py-8">
-        <div className="mb-4 flex justify-between text-[#FFD700]">
+      <div className="mx-auto max-w-4xl px-3 py-6 sm:px-4 sm:py-8">
+        <div className="mb-4 flex flex-col gap-2 text-[#FFD700] sm:flex-row sm:justify-between">
           <h1 className="text-3xl font-bold">Blackjack</h1>
         </div>
 

@@ -116,9 +116,9 @@ export default function ConnectFourLobbyPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white px-6 py-8">
+    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
-      <div className="max-w-4xl mx-auto mt-12">
+      <div className="mx-auto mt-4 max-w-4xl sm:mt-8">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}

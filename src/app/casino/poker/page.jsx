@@ -279,10 +279,10 @@ export default function PokerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#020617] via-[#071A3A] to-[#0A2A5C] pt-20">
+    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#020617] via-[#071A3A] to-[#0A2A5C] pb-24 pt-20 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
-      <div className="mx-auto max-w-4xl px-4 py-8">
+      <div className="mx-auto max-w-4xl px-3 py-6 sm:px-4 sm:py-8">
         <h1 className="text-4xl font-bold text-[#00E5FF] text-center mb-6 drop-shadow-[0_0_12px_#00E5FF]">
           ♠️ Poker Royale
         </h1>
@@ -331,7 +331,7 @@ export default function PokerPage() {
         )}
 
         {game && (
-          <div className="mt-8 rounded-lg bg-[#020617] p-6 border border-[#FFFF33]/30 shadow-[0_0_30px_rgba(255,255,51,0.2)] w-full max-w-6xl mx-auto backdrop-blur-md">
+          <div className="mx-auto mt-6 w-full max-w-6xl rounded-lg border border-[#FFFF33]/30 bg-[#020617] p-3 shadow-[0_0_30px_rgba(255,255,51,0.2)] backdrop-blur-md sm:mt-8 sm:p-6">
             {/* --- Result & Replay (Top of Board) --- */}
             {result && (
               <div className="mb-6 text-center space-y-3">
