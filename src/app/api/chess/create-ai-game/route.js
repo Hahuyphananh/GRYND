@@ -16,8 +16,8 @@ export async function POST(req) {
     const [newGame] = await db
       .insert(chessGames)
       .values({
-        playerWhiteId: userId,  // always user for AI games (you can randomize later if needed)
-        playerBlackId: null,    // AI takes this spot
+        playerWhiteId: userId, // always user for AI games (you can randomize later if needed)
+        playerBlackId: null, // AI takes this spot
         betAmount: tableAmount,
         isAiGame: true,
         status: "in_progress",
@@ -27,6 +27,9 @@ export async function POST(req) {
     return NextResponse.json({ gameId: newGame.id });
   } catch (err) {
     console.error("Create-AI-game error:", err);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 },
+    );
   }
 }

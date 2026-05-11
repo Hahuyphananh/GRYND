@@ -19,7 +19,7 @@ export async function POST(request) {
       {
         status: 401,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
   }
 
@@ -40,7 +40,7 @@ export async function POST(request) {
         {
           status: 404,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -59,7 +59,7 @@ export async function POST(request) {
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
   }
 }

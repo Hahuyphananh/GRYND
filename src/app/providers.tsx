@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { ClerkProvider } from '@clerk/nextjs';
-import { useState, useEffect } from 'react';
-import { LanguageProvider } from '../context/LanguageContext';
-import { ThemeProvider } from '../context/ThemeContext';
-import { SocketProvider } from '../context/SocketProvider';
-import PresenceHeartbeat from '../components/PresenceHeartbeat';
-import RouteTransition from '../components/RouteTransition';
+import { ClerkProvider } from "@clerk/nextjs";
+import { useState, useEffect } from "react";
+import { LanguageProvider } from "../context/LanguageContext";
+import { ThemeProvider } from "../context/ThemeContext";
+import { SocketProvider } from "../context/SocketProvider";
+import PresenceHeartbeat from "../components/PresenceHeartbeat";
+import RouteTransition from "../components/RouteTransition";
 
 function AppProviders({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);

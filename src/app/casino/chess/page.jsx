@@ -46,7 +46,9 @@ export default function ChessLobby() {
   async function fetchAvailableGames() {
     setIsLoadingAvailableGames(true);
     try {
-      const res = await fetch("/api/chess/available-games", { cache: "no-store" });
+      const res = await fetch("/api/chess/available-games", {
+        cache: "no-store",
+      });
       const data = await res.json();
       if (data.success) {
         setAvailableGames(data.data.games || []);
@@ -57,7 +59,7 @@ export default function ChessLobby() {
     setIsLoadingAvailableGames(false);
   }
 
-  const selectedTimerObj = TIMER_OPTIONS.find(t => t.id === selectedTimer);
+  const selectedTimerObj = TIMER_OPTIONS.find((t) => t.id === selectedTimer);
 
   async function createGame() {
     if (!selectedTable || !selectedTimer || creatingGame) return;
@@ -68,10 +70,10 @@ export default function ChessLobby() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-  tableAmount: selectedTable,
-  timerMode: selectedTimer,
-  timeLimit: selectedTimerObj?.time, // 👈 IMPORTANT FIX
-}),
+          tableAmount: selectedTable,
+          timerMode: selectedTimer,
+          timeLimit: selectedTimerObj?.time, // 👈 IMPORTANT FIX
+        }),
       });
       const data = await res.json();
 
@@ -80,16 +82,28 @@ export default function ChessLobby() {
         return;
       }
 
-      const timerObj = TIMER_OPTIONS.find(t => t.id === (data.timerMode || selectedTimer));
-const timerParam = timerObj?.time;
+      const timerObj = TIMER_OPTIONS.find(
+        (t) => t.id === (data.timerMode || selectedTimer),
+      );
+      const timerParam = timerObj?.time;
       if (data.ready || data.status === "in_progress") {
-        socket?.emit("room_event", { roomId: "lobby:chess", event: "lobby:updated" });
-        router.push(`/casino/chess-game/${data.gameId}?color=${data.color}&timer=${timerParam}`);
+        socket?.emit("room_event", {
+          roomId: "lobby:chess",
+          event: "lobby:updated",
+        });
+        router.push(
+          `/casino/chess-game/${data.gameId}?color=${data.color}&timer=${timerParam}`,
+        );
         return;
       }
 
-      socket?.emit("room_event", { roomId: "lobby:chess", event: "lobby:updated" });
-      router.push(`/casino/chess/${selectedTable}?gameId=${data.gameId}&color=${data.color}&timer=${timerParam}`);
+      socket?.emit("room_event", {
+        roomId: "lobby:chess",
+        event: "lobby:updated",
+      });
+      router.push(
+        `/casino/chess/${selectedTable}?gameId=${data.gameId}&color=${data.color}&timer=${timerParam}`,
+      );
     } catch (error) {
       console.error("Failed to create chess game", error);
       alert("Unable to create game");
@@ -114,12 +128,17 @@ const timerParam = timerObj?.time;
         return;
       }
 
-      socket?.emit("room_event", { roomId: "lobby:chess", event: "lobby:updated" });
-     const joinTimer = TIMER_OPTIONS.find(t => t.id === targetGame?.timerMode);
+      socket?.emit("room_event", {
+        roomId: "lobby:chess",
+        event: "lobby:updated",
+      });
+      const joinTimer = TIMER_OPTIONS.find(
+        (t) => t.id === targetGame?.timerMode,
+      );
 
-router.push(
-  `/casino/chess-game/${gameId}?color=black&timer=${joinTimer?.time || 300}`
-);
+      router.push(
+        `/casino/chess-game/${gameId}?color=black&timer=${joinTimer?.time || 300}`,
+      );
     } catch (error) {
       console.error("Failed to join chess game", error);
       alert("Unable to join game");
@@ -151,14 +170,22 @@ router.push(
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-6 text-center">
       <NavigationBar currentPath="/casino" />
-      <h1 className="text-4xl font-bold text-[#FFD700] mb-4 mt-20 drop-shadow-[0_0_12px_rgba(255,215,0,0.55)]">♟️ Chess Tables</h1>
+      <h1 className="text-4xl font-bold text-[#FFD700] mb-4 mt-20 drop-shadow-[0_0_12px_rgba(255,215,0,0.55)]">
+        ♟️ Chess Tables
+      </h1>
 
       <div className="max-w-4xl mx-auto bg-[#0b224f]/85 p-6 rounded-xl border border-[#00e5ff]/30 mb-8 shadow-[0_0_24px_rgba(0,229,255,0.18)]">
-        <h2 className="text-2xl font-bold text-[#FFD700] mb-4">Create Multiplayer Game</h2>
-        <p className="text-white/80 mb-5">Select exactly 1 table and 1 timer, then create your game.</p>
+        <h2 className="text-2xl font-bold text-[#FFD700] mb-4">
+          Create Multiplayer Game
+        </h2>
+        <p className="text-white/80 mb-5">
+          Select exactly 1 table and 1 timer, then create your game.
+        </p>
 
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-left mb-3">1) Choose Table</h3>
+          <h3 className="text-lg font-semibold text-left mb-3">
+            1) Choose Table
+          </h3>
           <div className="flex flex-wrap justify-center gap-4">
             {TABLES.map((amount) => (
               <button
@@ -177,7 +204,9 @@ router.push(
         </div>
 
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-left mb-3">2) Choose Timer</h3>
+          <h3 className="text-lg font-semibold text-left mb-3">
+            2) Choose Timer
+          </h3>
           <div className="flex flex-wrap justify-center gap-4">
             {TIMER_OPTIONS.map((timer) => (
               <button
@@ -217,17 +246,23 @@ router.push(
         </div>
 
         {availableGames.length === 0 ? (
-          <p className="text-white/80">No open games right now. Create one from the options above.</p>
+          <p className="text-white/80">
+            No open games right now. Create one from the options above.
+          </p>
         ) : (
           <div className="space-y-3">
             {availableGames.map((game) => (
-              <div key={game.id} className="flex items-center justify-between bg-[#08142f] border border-[#00e5ff]/20 rounded-lg p-3">
+              <div
+                key={game.id}
+                className="flex items-center justify-between bg-[#08142f] border border-[#00e5ff]/20 rounded-lg p-3"
+              >
                 <div>
                   <p className="font-semibold">Game #{game.id}</p>
                   <p className="text-sm text-white/80">
-                    Host: {game.hostName || "Player"} · Bet: ${Number(game.betAmount)} · Timer: {
-  TIMER_OPTIONS.find(t => t.id === game.timerMode)?.label || "Unknown"
-}
+                    Host: {game.hostName || "Player"} · Bet: $
+                    {Number(game.betAmount)} · Timer:{" "}
+                    {TIMER_OPTIONS.find((t) => t.id === game.timerMode)
+                      ?.label || "Unknown"}
                   </p>
                 </div>
                 <button
@@ -246,7 +281,9 @@ router.push(
       {showBetPopup && (
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50">
           <div className="bg-[#08142f] text-white p-8 rounded-lg w-96 border border-[#00e5ff]/40 shadow-[0_0_22px_rgba(0,229,255,0.25)]">
-            <h2 className="text-2xl font-bold mb-4 text-center text-[#FFD700]">Enter Your Bet Amount</h2>
+            <h2 className="text-2xl font-bold mb-4 text-center text-[#FFD700]">
+              Enter Your Bet Amount
+            </h2>
 
             <input
               type="number"

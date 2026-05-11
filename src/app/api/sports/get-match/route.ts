@@ -6,18 +6,21 @@ const ODDS_API_KEY = process.env.ODDS_API_KEY;
 export async function POST(req: Request) {
   try {
     if (!ODDS_API_KEY) {
-      return NextResponse.json({ success: false, error: "Missing ODDS_API_KEY" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Missing ODDS_API_KEY" },
+        { status: 500 },
+      );
     }
     const body = await req.json();
     const { slug } = body;
     if (!slug)
       return NextResponse.json(
         { success: false, error: "Missing slug" },
-        { status: 400 }
+        { status: 400 },
       );
 
     const sportsRes = await fetch(
-      `https://api.the-odds-api.com/v4/sports/?apiKey=${ODDS_API_KEY}`
+      `https://api.the-odds-api.com/v4/sports/?apiKey=${ODDS_API_KEY}`,
     );
     const sports = await sportsRes.json();
 
@@ -26,7 +29,7 @@ export async function POST(req: Request) {
 
     for (const sport of sports) {
       const eventsRes = await fetch(
-        `https://api.the-odds-api.com/v4/sports/${sport.key}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h`
+        `https://api.the-odds-api.com/v4/sports/${sport.key}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h`,
       );
       const eventsData = await eventsRes.json();
       const events = Array.isArray(eventsData) ? eventsData : [];
@@ -42,7 +45,7 @@ export async function POST(req: Request) {
     if (!matchEvent)
       return NextResponse.json(
         { success: false, error: "Match not found" },
-        { status: 404 }
+        { status: 404 },
       );
 
     const outcomes = matchEvent.bookmakers?.[0]?.markets?.[0]?.outcomes || [];
@@ -55,7 +58,7 @@ export async function POST(req: Request) {
     let liveScore = null;
     try {
       const scoreRes = await fetch(
-        `https://api.the-odds-api.com/v4/sports/${sportKey}/scores/?apiKey=${ODDS_API_KEY}&daysFrom=0&dateFormat=iso`
+        `https://api.the-odds-api.com/v4/sports/${sportKey}/scores/?apiKey=${ODDS_API_KEY}&daysFrom=0&dateFormat=iso`,
       );
       const scoresData = await scoreRes.json();
       const scores = Array.isArray(scoresData) ? scoresData : [];
@@ -89,7 +92,7 @@ export async function POST(req: Request) {
     console.error(err);
     return NextResponse.json(
       { success: false, error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

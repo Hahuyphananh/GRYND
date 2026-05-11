@@ -20,18 +20,20 @@ function toUtcDayKey(value) {
 
 export async function POST(req) {
   try {
-
     const { userId } = await auth();
 
     const idem = await claimIdempotency(req, "rewards:claim-login", 180);
     if (idem.enforced && !idem.allowed) {
-      return NextResponse.json({ success: false, error: "Duplicate request" }, { status: 409 });
+      return NextResponse.json(
+        { success: false, error: "Duplicate request" },
+        { status: 409 },
+      );
     }
 
     if (!userId) {
       return NextResponse.json(
         { success: false, error: "Not authenticated" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -42,7 +44,7 @@ export async function POST(req) {
     if (!dbUser) {
       return NextResponse.json(
         { success: false, error: "User not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -72,12 +74,14 @@ export async function POST(req) {
     if (rewardData.lastClaimedDate) {
       const lastClaim = new Date(rewardData.lastClaimedDate);
       const lastDayKey = toUtcDayKey(lastClaim);
-const elapsedDays = Math.floor((nowDayKey - lastDayKey) / (1000 * 60 * 60 * 24));
+      const elapsedDays = Math.floor(
+        (nowDayKey - lastDayKey) / (1000 * 60 * 60 * 24),
+      );
 
       // ✅ RESET streak if missed too long
       if (elapsedDays > STREAK_RESET_DAYS) {
-
-        await db.update(userLoginRewards)
+        await db
+          .update(userLoginRewards)
           .set({
             currentDay: 1,
           })
@@ -88,13 +92,12 @@ const elapsedDays = Math.floor((nowDayKey - lastDayKey) / (1000 * 60 * 60 * 24))
 
       // ✅ Cooldown check
       if (elapsedDays === 0) {
-
         return NextResponse.json(
           {
             success: false,
             error: "Reward already claimed today. Try again tomorrow.",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -102,18 +105,18 @@ const elapsedDays = Math.floor((nowDayKey - lastDayKey) / (1000 * 60 * 60 * 24))
     // ⭐ Calculate reward AFTER reset logic
     const reward = LOGIN_REWARD_BASE * 2 ** (rewardData.currentDay - 1);
 
-    await db.update(users)
+    await db
+      .update(users)
       .set({
         balance: sql`${users.balance} + ${reward}`,
       })
       .where(eq(users.id, uid));
 
     const nextDay =
-      rewardData.currentDay >= MAX_DAY
-        ? 1
-        : rewardData.currentDay + 1;
+      rewardData.currentDay >= MAX_DAY ? 1 : rewardData.currentDay + 1;
 
-    await db.update(userLoginRewards)
+    await db
+      .update(userLoginRewards)
       .set({
         currentDay: nextDay,
         lastClaimedDate: now.toISOString(),
@@ -121,7 +124,9 @@ const elapsedDays = Math.floor((nowDayKey - lastDayKey) / (1000 * 60 * 60 * 24))
       .where(eq(userLoginRewards.userId, uid));
 
     const updatedBalance = Number(dbUser.balance || 0) + reward;
-    const unlockedSpecialTitles = await checkUnlocks(userId, "login_claim", { balanceAfter: updatedBalance });
+    const unlockedSpecialTitles = await checkUnlocks(userId, "login_claim", {
+      balanceAfter: updatedBalance,
+    });
 
     return NextResponse.json({
       success: true,
@@ -130,13 +135,12 @@ const elapsedDays = Math.floor((nowDayKey - lastDayKey) / (1000 * 60 * 60 * 24))
       nextDay,
       unlockedSpecialTitles,
     });
-
   } catch (err) {
     console.error("[CLAIM_LOGIN_REWARD_ERROR]", err);
 
     return NextResponse.json(
       { success: false, error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

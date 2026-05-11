@@ -5,7 +5,21 @@ import { eq, and, ne, isNull } from "drizzle-orm";
 
 function generateDeck() {
   const colors = ["red", "yellow", "green", "blue"];
-  const values = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Skip", "Reverse", "Draw Two"];
+  const values = [
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "Skip",
+    "Reverse",
+    "Draw Two",
+  ];
   const wilds = ["Wild", "Wild Draw Four"];
   const deck = [];
 
@@ -45,7 +59,13 @@ async function joinOpenGame({ user, clerkId, openGame }) {
   const balance = parseFloat(user.balance);
 
   if (balance < joinBet) {
-    return new Response(JSON.stringify({ success: false, error: "Insufficient balance for this game" }), { status: 400 });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Insufficient balance for this game",
+      }),
+      { status: 400 },
+    );
   }
 
   const deck = safeParse(openGame.deck, []);
@@ -56,11 +76,13 @@ async function joinOpenGame({ user, clerkId, openGame }) {
     const firstTurn = Math.random() > 0.5 ? "player1" : "player2";
 
     const updated = await db.transaction(async (tx) => {
-      await tx.update(users)
+      await tx
+        .update(users)
         .set({ balance: (balance - joinBet).toFixed(2) })
         .where(eq(users.clerkId, clerkId));
 
-      const [game] = await tx.update(unoGames)
+      const [game] = await tx
+        .update(unoGames)
         .set({
           player2Id: user.id,
           player2Hand,
@@ -68,32 +90,47 @@ async function joinOpenGame({ user, clerkId, openGame }) {
           status: "active",
           turn: firstTurn,
         })
-        .where(and(eq(unoGames.id, openGame.id), isNull(unoGames.player2Id), eq(unoGames.status, "waiting")))
+        .where(
+          and(
+            eq(unoGames.id, openGame.id),
+            isNull(unoGames.player2Id),
+            eq(unoGames.status, "waiting"),
+          ),
+        )
         .returning();
 
       if (!game) throw new Error("GAME_ALREADY_FILLED");
       return game;
     });
 
-    return new Response(JSON.stringify({
-      success: true,
-      data: {
-        id: updated.id,
-        mode: "online",
-        role: "player2",
-        newBalance: (balance - joinBet).toFixed(2),
-        playerHand: player2Hand,
-        opponentHandCount: player1Hand.length,
-        topCard: safeParse(updated.topCard, null),
-        currentColor: updated.currentColor,
-        turn: updated.turn,
-        firstTurn,
-        betAmount: openGame.betAmount,
-      }
-    }), { status: 200 });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          id: updated.id,
+          mode: "online",
+          role: "player2",
+          newBalance: (balance - joinBet).toFixed(2),
+          playerHand: player2Hand,
+          opponentHandCount: player1Hand.length,
+          topCard: safeParse(updated.topCard, null),
+          currentColor: updated.currentColor,
+          turn: updated.turn,
+          firstTurn,
+          betAmount: openGame.betAmount,
+        },
+      }),
+      { status: 200 },
+    );
   } catch (error) {
     if (error?.message === "GAME_ALREADY_FILLED") {
-      return new Response(JSON.stringify({ success: false, error: "Game is no longer available" }), { status: 409 });
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Game is no longer available",
+        }),
+        { status: 409 },
+      );
     }
     throw error;
   }
@@ -101,12 +138,18 @@ async function joinOpenGame({ user, clerkId, openGame }) {
 
 async function createWaitingGame({ user, clerkId, betAmount }) {
   if (!betAmount || isNaN(betAmount) || betAmount <= 0 || betAmount > 1000) {
-    return new Response(JSON.stringify({ success: false, error: "Invalid bet amount" }), { status: 400 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Invalid bet amount" }),
+      { status: 400 },
+    );
   }
 
   const balance = parseFloat(user.balance);
   if (balance < betAmount) {
-    return new Response(JSON.stringify({ success: false, error: "Insufficient balance" }), { status: 400 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Insufficient balance" }),
+      { status: 400 },
+    );
   }
 
   const deck = generateDeck();
@@ -122,98 +165,163 @@ async function createWaitingGame({ user, clerkId, betAmount }) {
   const pot = (betAmount * 2).toFixed(2);
 
   const [inserted] = await db.transaction(async (tx) => {
-    await tx.update(users)
+    await tx
+      .update(users)
       .set({ balance: (balance - betAmount).toFixed(2) })
       .where(eq(users.clerkId, clerkId));
 
-    return await tx.insert(unoGames).values({
-      userId: user.id,
-      player2Id: null,
-      betAmount: betAmount.toFixed(2),
-      pot,
-      result: "pending",
-      payout: "0.00",
-      winner: "pending",
-      playerHand: [],
-      aiHand: [],
-      player1Hand,
-      player2Hand: [],
-      deck,
-      discardPile,
-      topCard,
-      currentColor,
-      turn: "player1",
-      status: "waiting",
-    }).returning();
+    return await tx
+      .insert(unoGames)
+      .values({
+        userId: user.id,
+        player2Id: null,
+        betAmount: betAmount.toFixed(2),
+        pot,
+        result: "pending",
+        payout: "0.00",
+        winner: "pending",
+        playerHand: [],
+        aiHand: [],
+        player1Hand,
+        player2Hand: [],
+        deck,
+        discardPile,
+        topCard,
+        currentColor,
+        turn: "player1",
+        status: "waiting",
+      })
+      .returning();
   });
 
-  return new Response(JSON.stringify({
-    success: true,
-    waiting: true,
-    message: "⏳ Waiting for another player to join...",
-    gameId: inserted.id,
-    newBalance: (balance - betAmount).toFixed(2),
-    role: "player1",
-  }), { status: 200 });
+  return new Response(
+    JSON.stringify({
+      success: true,
+      waiting: true,
+      message: "⏳ Waiting for another player to join...",
+      gameId: inserted.id,
+      newBalance: (balance - betAmount).toFixed(2),
+      role: "player1",
+    }),
+    { status: 200 },
+  );
 }
 
 export async function POST(request) {
   const { userId } = await auth();
-  if (!userId) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+  if (!userId)
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      { status: 401 },
+    );
 
   const { betAmount, mode = "join_or_create", gameId } = await request.json();
 
   try {
-    const user = await db.query.users.findFirst({ where: eq(users.clerkId, userId) });
-    if (!user) return new Response(JSON.stringify({ success: false, error: "User not found" }), { status: 404 });
+    const user = await db.query.users.findFirst({
+      where: eq(users.clerkId, userId),
+    });
+    if (!user)
+      return new Response(
+        JSON.stringify({ success: false, error: "User not found" }),
+        { status: 404 },
+      );
 
     const waitingGames = await db.query.unoGames.findMany({
       where: and(
         eq(unoGames.status, "waiting"),
         isNull(unoGames.player2Id),
-        ne(unoGames.userId, user.id)
+        ne(unoGames.userId, user.id),
       ),
     });
 
-    const affordableWaitingGames = waitingGames.filter((game) => parseFloat(user.balance) >= parseFloat(game.betAmount));
+    const affordableWaitingGames = waitingGames.filter(
+      (game) => parseFloat(user.balance) >= parseFloat(game.betAmount),
+    );
 
     if (mode === "join-random") {
       if (affordableWaitingGames.length === 0) {
-        return new Response(JSON.stringify({ success: false, error: "No available online games" }), { status: 404 });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "No available online games",
+          }),
+          { status: 404 },
+        );
       }
-      const randomGame = affordableWaitingGames[Math.floor(Math.random() * affordableWaitingGames.length)];
-      return await joinOpenGame({ user, clerkId: userId, openGame: randomGame });
+      const randomGame =
+        affordableWaitingGames[
+          Math.floor(Math.random() * affordableWaitingGames.length)
+        ];
+      return await joinOpenGame({
+        user,
+        clerkId: userId,
+        openGame: randomGame,
+      });
     }
 
     if (mode === "join-specific") {
       if (!gameId) {
-        return new Response(JSON.stringify({ success: false, error: "Missing gameId" }), { status: 400 });
+        return new Response(
+          JSON.stringify({ success: false, error: "Missing gameId" }),
+          { status: 400 },
+        );
       }
 
       const targetedGame = waitingGames.find((g) => g.id === Number(gameId));
       if (!targetedGame) {
-        return new Response(JSON.stringify({ success: false, error: "Game is not available" }), { status: 404 });
+        return new Response(
+          JSON.stringify({ success: false, error: "Game is not available" }),
+          { status: 404 },
+        );
       }
 
       if (parseFloat(user.balance) < parseFloat(targetedGame.betAmount)) {
-        return new Response(JSON.stringify({ success: false, error: "Insufficient balance for this game" }), { status: 400 });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Insufficient balance for this game",
+          }),
+          { status: 400 },
+        );
       }
 
-      return await joinOpenGame({ user, clerkId: userId, openGame: targetedGame });
+      return await joinOpenGame({
+        user,
+        clerkId: userId,
+        openGame: targetedGame,
+      });
     }
 
     if (mode === "create") {
-      return await createWaitingGame({ user, clerkId: userId, betAmount: Number(betAmount) });
+      return await createWaitingGame({
+        user,
+        clerkId: userId,
+        betAmount: Number(betAmount),
+      });
     }
 
-    const matchedByBet = affordableWaitingGames.find((game) => game.betAmount === Number(betAmount).toFixed(2));
+    const matchedByBet = affordableWaitingGames.find(
+      (game) => game.betAmount === Number(betAmount).toFixed(2),
+    );
     if (matchedByBet) {
-      return await joinOpenGame({ user, clerkId: userId, openGame: matchedByBet });
+      return await joinOpenGame({
+        user,
+        clerkId: userId,
+        openGame: matchedByBet,
+      });
     }
 
-    return await createWaitingGame({ user, clerkId: userId, betAmount: Number(betAmount) });
+    return await createWaitingGame({
+      user,
+      clerkId: userId,
+      betAmount: Number(betAmount),
+    });
   } catch (err) {
     console.error("UNO online error:", err);
-    return new Response(JSON.stringify({ success: false, error: "Server error" }), { status: 500 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Server error" }),
+      { status: 500 },
+    );
   }
 }

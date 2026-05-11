@@ -18,30 +18,37 @@ export default function ProfilePage() {
   const { signOut } = useClerk();
 
   const [userTokens, setUserTokens] = useState(null);
-  const [profileInfo, setProfileInfo] = useState({ name: "", email: "", profilePicture: "" });
+  const [profileInfo, setProfileInfo] = useState({
+    name: "",
+    email: "",
+    profilePicture: "",
+  });
   const [bets, setBets] = useState([]);
   const [error, setError] = useState(null);
   const [isResetting, setIsResetting] = useState(false);
 
   const [stats, setStats] = useState(null);
   const [statsError, setStatsError] = useState(null);
-  const [titleMeta, setTitleMeta] = useState({ selectedTitle: "", highestTitle: "" });
+  const [titleMeta, setTitleMeta] = useState({
+    selectedTitle: "",
+    highestTitle: "",
+  });
   const [specialTitles, setSpecialTitles] = useState({
-  selectedSpecialTitle: "",
-  selectedSpecialTitleName: "",
-  titles: [],
-});
+    selectedSpecialTitle: "",
+    selectedSpecialTitleName: "",
+    titles: [],
+  });
 
-const [titlesView, setTitlesView] = useState("special");
-const [vipTitles, setVipTitles] = useState(null);
-const loadVipTitles = async () => {
-  const response = await fetch("/api/titles", { credentials: "include" });
-  const data = await response.json();
+  const [titlesView, setTitlesView] = useState("special");
+  const [vipTitles, setVipTitles] = useState(null);
+  const loadVipTitles = async () => {
+    const response = await fetch("/api/titles", { credentials: "include" });
+    const data = await response.json();
 
-  if (response.ok && data.success) {
-    setVipTitles(data);
-  }
-};
+    if (response.ok && data.success) {
+      setVipTitles(data);
+    }
+  };
 
   const [referralCodeInput, setReferralCodeInput] = useState("");
   const [referralStatus, setReferralStatus] = useState("");
@@ -54,7 +61,12 @@ const loadVipTitles = async () => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", email: "", password: "", profilePicture: "" });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    profilePicture: "",
+  });
   const [selectedProfileImageName, setSelectedProfileImageName] = useState("");
 
   const [friendSearch, setFriendSearch] = useState("");
@@ -77,7 +89,9 @@ const loadVipTitles = async () => {
   useEffect(() => {
     if (!spectateOverlayUrl || spectateIsLoaded || spectateLoadError) return;
     const timeoutId = setTimeout(() => {
-      setSpectateLoadError("Spectate view timed out. Please retry or ask your friend to reopen the game.");
+      setSpectateLoadError(
+        "Spectate view timed out. Please retry or ask your friend to reopen the game.",
+      );
     }, 10000);
     return () => clearTimeout(timeoutId);
   }, [spectateOverlayUrl, spectateIsLoaded, spectateLoadError]);
@@ -91,7 +105,6 @@ const loadVipTitles = async () => {
     setStats(data.stats);
   };
 
-
   const loadTitles = async () => {
     const response = await fetch("/api/titles", { credentials: "include" });
     const data = await response.json();
@@ -103,9 +116,10 @@ const loadVipTitles = async () => {
     }
   };
 
-
   const loadSpecialTitles = async () => {
-    const response = await fetch("/api/titles/special", { credentials: "include" });
+    const response = await fetch("/api/titles/special", {
+      credentials: "include",
+    });
     const data = await response.json();
     if (response.ok && data.success) {
       setSpecialTitles({
@@ -132,11 +146,11 @@ const loadVipTitles = async () => {
   };
 
   const cyberButton =
-  "relative overflow-hidden rounded-lg px-4 py-2 font-semibold text-white " +
-  "bg-gradient-to-r from-[#00e5ff] via-[#00ffcc] to-[#8a2be2] " +
-  "shadow-[0_0_10px_rgba(0,229,255,0.6)] " +
-  "hover:shadow-[0_0_20px_rgba(138,43,226,0.9)] " +
-  "hover:scale-105 active:scale-95 transition-all duration-300";
+    "relative overflow-hidden rounded-lg px-4 py-2 font-semibold text-white " +
+    "bg-gradient-to-r from-[#00e5ff] via-[#00ffcc] to-[#8a2be2] " +
+    "shadow-[0_0_10px_rgba(0,229,255,0.6)] " +
+    "hover:shadow-[0_0_20px_rgba(138,43,226,0.9)] " +
+    "hover:scale-105 active:scale-95 transition-all duration-300";
 
   const loadProfileData = async () => {
     const tokensResponse = await fetch("/api/get-user-tokens", {
@@ -149,7 +163,8 @@ const loadVipTitles = async () => {
     if (tokensData.success && tokensData.data) {
       setUserTokens(Number(tokensData.data.balance || 0));
       const name = tokensData.data.name || user?.fullName || "Unknown user";
-      const email = tokensData.data.email || user?.emailAddresses?.[0]?.emailAddress || "";
+      const email =
+        tokensData.data.email || user?.emailAddresses?.[0]?.emailAddress || "";
       const profilePicture = tokensData.data.profilePicture || "";
       setProfileInfo({ name, email, profilePicture });
       setEditForm((prev) => ({ ...prev, name, email, profilePicture }));
@@ -162,24 +177,31 @@ const loadVipTitles = async () => {
     const historyData = await historyResponse.json();
 
     if (historyData.success && Array.isArray(historyData.bets)) {
-      const sorted = historyData.bets.sort((a, b) => new Date(b.date) - new Date(a.date));
+      const sorted = historyData.bets.sort(
+        (a, b) => new Date(b.date) - new Date(a.date),
+      );
       setBets(sorted.slice(0, 10));
     } else {
       setBets([]);
     }
   };
 
-
   const loadFriends = async () => {
     try {
-      const response = await fetch("/api/friends/list", { credentials: "include" });
+      const response = await fetch("/api/friends/list", {
+        credentials: "include",
+      });
       const data = await response.json();
       if (!response.ok || !data.success) {
         setMyFriends([]);
         return;
       }
 
-      const friendRows = Array.isArray(data.friends) ? data.friends : Array.isArray(data.data) ? data.data : [];
+      const friendRows = Array.isArray(data.friends)
+        ? data.friends
+        : Array.isArray(data.data)
+          ? data.data
+          : [];
       setMyFriends(friendRows);
     } catch (err) {
       console.error("[LOAD_FRIENDS_ERROR]", err);
@@ -189,7 +211,9 @@ const loadVipTitles = async () => {
 
   const loadFriendPresence = async () => {
     try {
-      const response = await fetch("/api/friends/game-presence", { credentials: "include" });
+      const response = await fetch("/api/friends/game-presence", {
+        credentials: "include",
+      });
       const data = await response.json();
       if (response.ok && data.success) {
         setFriendPresenceByFriend(data.byFriend || {});
@@ -201,7 +225,9 @@ const loadVipTitles = async () => {
 
   const loadFriendInvites = async () => {
     try {
-      const response = await fetch("/api/friends/invites", { credentials: "include" });
+      const response = await fetch("/api/friends/invites", {
+        credentials: "include",
+      });
       const data = await response.json();
       if (!response.ok || !data.success) {
         setReceivedInvites([]);
@@ -220,11 +246,11 @@ const loadVipTitles = async () => {
     const normalized = String(searchValue || "").trim();
 
     console.log("🟦 FRONT INPUT:", searchValue);
-  console.log("🟦 FRONT NORMALIZED:", normalized);
+    console.log("🟦 FRONT NORMALIZED:", normalized);
 
     console.log("FRONTEND SEARCH INPUT:", `"${searchValue}"`);
-  console.log("FRONTEND NORMALIZED:", `"${normalized}"`);
-  
+    console.log("FRONTEND NORMALIZED:", `"${normalized}"`);
+
     if (!normalized) {
       setFriendSearchResults([]);
       return;
@@ -240,13 +266,17 @@ const loadVipTitles = async () => {
       });
       const data = await response.json();
 
-console.log("🔥 FRIEND SEARCH FULL RESPONSE:", data);
+      console.log("🔥 FRIEND SEARCH FULL RESPONSE:", data);
       if (!response.ok || !data.success) {
         setFriendSearchResults([]);
         return;
       }
 
-      const users = Array.isArray(data.users) ? data.users : Array.isArray(data.data) ? data.data : [];
+      const users = Array.isArray(data.users)
+        ? data.users
+        : Array.isArray(data.data)
+          ? data.data
+          : [];
       setFriendSearchResults(users);
     } catch (err) {
       console.error("[SEARCH_FRIENDS_ERROR]", err);
@@ -257,90 +287,94 @@ console.log("🔥 FRIEND SEARCH FULL RESPONSE:", data);
   };
 
   const handleRemoveFriend = async (friendId) => {
-  const confirmed = window.confirm("Remove this friend?");
-  if (!confirmed) return;
+    const confirmed = window.confirm("Remove this friend?");
+    if (!confirmed) return;
 
-  setFriendsStatus("");
+    setFriendsStatus("");
 
-  try {
-    const response = await fetch("/api/friends/remove", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ friendId }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || "Failed to remove friend");
-    }
-
-    setFriendsStatus("Friend removed.");
-    await loadFriends();
-    await loadFriendPresence(); // keep UI in sync
-  } catch (err) {
-    console.error("[REMOVE_FRIEND_ERROR]", err);
-    setFriendsStatus(err.message || "Could not remove friend.");
-  }
-};
-
-useEffect(() => {
-  if (!isSignedIn) return;
-
-  let interval;
-
-  const sendHeartbeat = async () => {
     try {
-      await fetch("/api/presence/heartbeat", {
+      const response = await fetch("/api/friends/remove", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ friendId }),
       });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to remove friend");
+      }
+
+      setFriendsStatus("Friend removed.");
+      await loadFriends();
+      await loadFriendPresence(); // keep UI in sync
     } catch (err) {
-      console.error("[HEARTBEAT_ERROR]", err);
+      console.error("[REMOVE_FRIEND_ERROR]", err);
+      setFriendsStatus(err.message || "Could not remove friend.");
     }
   };
 
-  // send immediately
-  sendHeartbeat();
+  useEffect(() => {
+    if (!isSignedIn) return;
 
-  // then repeat every 25 seconds
-  interval = setInterval(sendHeartbeat, 25000);
+    let interval;
 
-  return () => clearInterval(interval);
-}, [isSignedIn]);
-
-const getFriendStatus = (friendId) => {
-  const presence = friendPresenceByFriend?.[friendId];
-  const normalizedGameKey = String(presence?.gameKey || "").toLowerCase().trim();
-
-  if (presence?.presenceState === "offline" || !presence?.lastSeenAt) {
-    return {
-      state: "offline",
-      label: "Offline",
-      color: "text-gray-400",
+    const sendHeartbeat = async () => {
+      try {
+        await fetch("/api/presence/heartbeat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({}),
+        });
+      } catch (err) {
+        console.error("[HEARTBEAT_ERROR]", err);
+      }
     };
-  }
 
-  if (
-    presence?.presenceState === "in_game" ||
-    (normalizedGameKey && presence?.gameId !== null && presence?.gameId !== undefined)
-  ) {
+    // send immediately
+    sendHeartbeat();
+
+    // then repeat every 25 seconds
+    interval = setInterval(sendHeartbeat, 25000);
+
+    return () => clearInterval(interval);
+  }, [isSignedIn]);
+
+  const getFriendStatus = (friendId) => {
+    const presence = friendPresenceByFriend?.[friendId];
+    const normalizedGameKey = String(presence?.gameKey || "")
+      .toLowerCase()
+      .trim();
+
+    if (presence?.presenceState === "offline" || !presence?.lastSeenAt) {
+      return {
+        state: "offline",
+        label: "Offline",
+        color: "text-gray-400",
+      };
+    }
+
+    if (
+      presence?.presenceState === "in_game" ||
+      (normalizedGameKey &&
+        presence?.gameId !== null &&
+        presence?.gameId !== undefined)
+    ) {
+      return {
+        state: "in_game",
+        label: `In game: ${normalizedGameKey}`,
+        color: "text-yellow-400",
+      };
+    }
+
     return {
-      state: "in_game",
-      label: `In game: ${normalizedGameKey}`,
-      color: "text-yellow-400",
+      state: "online",
+      label: "Online",
+      color: "text-green-400",
     };
-  }
-
-  return {
-    state: "online",
-    label: "Online",
-    color: "text-green-400",
   };
-};
 
   const handleInviteFriend = async (friendId) => {
     setFriendsStatus("");
@@ -352,7 +386,8 @@ const getFriendStatus = (friendId) => {
         body: JSON.stringify({ friendId }),
       });
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || "Failed to add friend");
+      if (!response.ok || !data.success)
+        throw new Error(data.error || "Failed to add friend");
       setFriendsStatus(data.message || "Friend invite sent.");
       await loadFriendInvites();
     } catch (err) {
@@ -361,7 +396,8 @@ const getFriendStatus = (friendId) => {
     }
   };
 
-  const profileAvatar = (person) => person?.profile_picture || person?.profilePicture || "";
+  const profileAvatar = (person) =>
+    person?.profile_picture || person?.profilePicture || "";
 
   const isAllowedSpectateUrl = (url) => {
     if (!url || typeof url !== "string") return false;
@@ -378,12 +414,17 @@ const getFriendStatus = (friendId) => {
 
   const spectateUrlForFriend = (friendId) => {
     const presence = friendPresenceByFriend?.[friendId];
-    const gameKey = String(presence?.gameKey || "").toLowerCase().trim();
+    const gameKey = String(presence?.gameKey || "")
+      .toLowerCase()
+      .trim();
     if (!presence?.gameId || !gameKey) return null;
 
-    if (gameKey === "chess") return `/casino/chess-game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
-    if (gameKey === "connect-four") return `/casino/connect-four/game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
-    if (gameKey === "poker") return `/casino/poker/multi?spectator=1&gameId=${presence.gameId}`;
+    if (gameKey === "chess")
+      return `/casino/chess-game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
+    if (gameKey === "connect-four")
+      return `/casino/connect-four/game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
+    if (gameKey === "poker")
+      return `/casino/poker/multi?spectator=1&gameId=${presence.gameId}`;
     return null;
   };
 
@@ -397,9 +438,14 @@ const getFriendStatus = (friendId) => {
         body: JSON.stringify({ inviteId, action }),
       });
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || "Failed to respond to invite");
+      if (!response.ok || !data.success)
+        throw new Error(data.error || "Failed to respond to invite");
       setFriendsStatus(data.message || "Invite updated.");
-      await Promise.all([loadFriends(), loadFriendInvites(), loadFriendPresence()]);
+      await Promise.all([
+        loadFriends(),
+        loadFriendInvites(),
+        loadFriendPresence(),
+      ]);
     } catch (err) {
       console.error("[RESPOND_FRIEND_INVITE_ERROR]", err);
       setFriendsStatus(err.message || "Could not update invite.");
@@ -407,7 +453,10 @@ const getFriendStatus = (friendId) => {
   };
 
   const initializeReferral = async () => {
-    const generateRes = await fetch("/api/referral/generate", { method: "POST", credentials: "include" });
+    const generateRes = await fetch("/api/referral/generate", {
+      method: "POST",
+      credentials: "include",
+    });
     const generateData = await generateRes.json();
 
     if (!generateRes.ok || !generateData.success) {
@@ -415,12 +464,12 @@ const getFriendStatus = (friendId) => {
     }
 
     setStats((prev) => {
-  if (!prev) return { referralCode: generateData.referralCode };
-  return {
-    ...prev,
-    referralCode: generateData.referralCode,
-  };
-});
+      if (!prev) return { referralCode: generateData.referralCode };
+      return {
+        ...prev,
+        referralCode: generateData.referralCode,
+      };
+    });
 
     return generateData.referralCode;
   };
@@ -429,37 +478,37 @@ const getFriendStatus = (friendId) => {
     if (!isSignedIn || !user) return;
 
     const bootstrap = async () => {
-  try {
-   await Promise.all([
-  loadProfileData(),
-  loadStats(),
-  loadTitles(),
-  loadSpecialTitles(),
-  loadVipTitles(),
-  loadFriends(),
-  loadFriendPresence(),
-  loadFriendInvites(),
-]);
+      try {
+        await Promise.all([
+          loadProfileData(),
+          loadStats(),
+          loadTitles(),
+          loadSpecialTitles(),
+          loadVipTitles(),
+          loadFriends(),
+          loadFriendPresence(),
+          loadFriendInvites(),
+        ]);
 
-    if (!stats?.referralCode) {
-      await initializeReferral();
-      await loadStats();
-    }
-  } catch (err) {
-    console.error("[PROFILE_BOOTSTRAP_ERROR]", err);
-    setError(err.message || "Erreur lors du chargement des données");
-  }
-};
+        if (!stats?.referralCode) {
+          await initializeReferral();
+          await loadStats();
+        }
+      } catch (err) {
+        console.error("[PROFILE_BOOTSTRAP_ERROR]", err);
+        setError(err.message || "Erreur lors du chargement des données");
+      }
+    };
 
     bootstrap();
   }, [isSignedIn, user]);
 
   useEffect(() => {
     const refreshTitles = () => {
-  loadTitles();
-  loadSpecialTitles();
-  loadVipTitles();
-};
+      loadTitles();
+      loadSpecialTitles();
+      loadVipTitles();
+    };
 
     window.addEventListener("titleUpdated", refreshTitles);
     return () => window.removeEventListener("titleUpdated", refreshTitles);
@@ -542,7 +591,8 @@ const getFriendStatus = (friendId) => {
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || `Erreur ${response.status}`);
+      if (!response.ok)
+        throw new Error(data.error || `Erreur ${response.status}`);
       setUserTokens(Number(data.balance || 0));
     } catch (err) {
       console.error("[RESET_TOKENS_ERROR]", err);
@@ -563,7 +613,9 @@ const getFriendStatus = (friendId) => {
 
   const handleCopyReferralCode = async () => {
     if (!stats?.referralCode) {
-      setReferralStatus("No referral code found yet. Please wait a second and try again.");
+      setReferralStatus(
+        "No referral code found yet. Please wait a second and try again.",
+      );
       return;
     }
 
@@ -649,10 +701,13 @@ const getFriendStatus = (friendId) => {
       const normalizedCurrentPicture = String(profileInfo.profilePicture || "");
       const normalizedNewPicture = String(editForm.profilePicture || "");
 
-      if (normalizedName && normalizedName !== normalizedCurrentName) payload.name = normalizedName;
-      if (normalizedEmail && normalizedEmail !== normalizedCurrentEmail) payload.email = normalizedEmail;
+      if (normalizedName && normalizedName !== normalizedCurrentName)
+        payload.name = normalizedName;
+      if (normalizedEmail && normalizedEmail !== normalizedCurrentEmail)
+        payload.email = normalizedEmail;
       if (normalizedPassword) payload.password = normalizedPassword;
-      if (normalizedNewPicture !== normalizedCurrentPicture) payload.profilePicture = normalizedNewPicture;
+      if (normalizedNewPicture !== normalizedCurrentPicture)
+        payload.profilePicture = normalizedNewPicture;
 
       if (!Object.keys(payload).length) {
         setEditStatus("No changes to save.");
@@ -713,7 +768,8 @@ const getFriendStatus = (friendId) => {
       new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(new Error("Could not read the selected file."));
+        reader.onerror = () =>
+          reject(new Error("Could not read the selected file."));
         reader.readAsDataURL(fileToRead);
       });
 
@@ -728,11 +784,15 @@ const getFriendStatus = (friendId) => {
           canvas.width = Math.max(1, Math.round(width * scale));
           canvas.height = Math.max(1, Math.round(height * scale));
           const ctx = canvas.getContext("2d");
-          if (!ctx) return reject(new Error("Image processing is not supported in this browser."));
+          if (!ctx)
+            return reject(
+              new Error("Image processing is not supported in this browser."),
+            );
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           resolve(canvas.toDataURL("image/jpeg", quality));
         };
-        img.onerror = () => reject(new Error("Could not process the selected image."));
+        img.onerror = () =>
+          reject(new Error("Could not process the selected image."));
         img.src = dataUrl;
       });
 
@@ -797,7 +857,9 @@ const getFriendStatus = (friendId) => {
     return (
       <div className="flex h-screen items-center justify-center bg-[#003366]">
         <div className="text-center">
-          <p className="mb-4 text-xl text-gray-300">Connectez-vous pour voir votre profil</p>
+          <p className="mb-4 text-xl text-gray-300">
+            Connectez-vous pour voir votre profil
+          </p>
           <a
             href="/sign-in?redirect_url=/profil"
             className="rounded-lg bg-[#FFD700] px-6 py-3 text-[#003366] hover:bg-[#FFD700]/80"
@@ -811,63 +873,86 @@ const getFriendStatus = (friendId) => {
 
   return (
     <div
-  className="min-h-screen text-white"
-  style={{
-    backgroundImage: "linear-gradient(135deg, #001933 0%, #000d1a 100%)",
-  }}
->
+      className="min-h-screen text-white"
+      style={{
+        backgroundImage: "linear-gradient(135deg, #001933 0%, #000d1a 100%)",
+      }}
+    >
       <div className="max-w-6xl mx-auto px-6 pt-24 pb-20">
-<NavigationBar currentPath="/profil" />
-        <h1 className="text-4xl font-extrabold text-center mb-8 
+        <NavigationBar currentPath="/profil" />
+        <h1
+          className="text-4xl font-extrabold text-center mb-8 
   bg-gradient-to-r from-purple-400 to-pink-500 
-  bg-clip-text text-transparent">
-  Your Profile
-</h1>
+  bg-clip-text text-transparent"
+        >
+          Your Profile
+        </h1>
 
         <div className="grid gap-8 md:grid-cols-2">
-          <div className="bg-[#0b224f]/85 border border-[#00e5ff]/30 
+          <div
+            className="bg-[#0b224f]/85 border border-[#00e5ff]/30 
 rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+          >
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-xl text-[#00e5ff]">Infos Personnelles</h2>
               <button
-  onClick={() => {
-    setEditStatus("");
-    setSelectedProfileImageName("");
-    setIsEditOpen(true);
-  }}
-  className={cyberButton + " text-sm px-3 py-1"}
->
-  Edit Profile
-</button>
+                onClick={() => {
+                  setEditStatus("");
+                  setSelectedProfileImageName("");
+                  setIsEditOpen(true);
+                }}
+                className={cyberButton + " text-sm px-3 py-1"}
+              >
+                Edit Profile
+              </button>
             </div>
             <div className="mb-3 flex items-center gap-3">
               {profileInfo.profilePicture ? (
-                <img src={profileInfo.profilePicture} alt="Profile" className="h-14 w-14 rounded-full object-cover border border-[#FFD700]" />
+                <img
+                  src={profileInfo.profilePicture}
+                  alt="Profile"
+                  className="h-14 w-14 rounded-full object-cover border border-[#FFD700]"
+                />
               ) : (
-                <div className="h-14 w-14 rounded-full bg-[#00e5ff] text-[#001933] 
-shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-lg font-bold">
-                  {(profileInfo.name || user.fullName || "U").charAt(0).toUpperCase()}
+                <div
+                  className="h-14 w-14 rounded-full bg-[#00e5ff] text-[#001933] 
+shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-lg font-bold"
+                >
+                  {(profileInfo.name || user.fullName || "U")
+                    .charAt(0)
+                    .toUpperCase()}
                 </div>
               )}
               <div>
                 <div className="flex items-center gap-2">
-                  <p>Name : {profileInfo.name || user.fullName || "Unknown user"}</p>
-                  {(specialTitles.selectedSpecialTitleName || titleMeta.selectedTitle) && (
+                  <p>
+                    Name : {profileInfo.name || user.fullName || "Unknown user"}
+                  </p>
+                  {(specialTitles.selectedSpecialTitleName ||
+                    titleMeta.selectedTitle) && (
                     <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
-                      {specialTitles.selectedSpecialTitleName || titleMeta.selectedTitle}
+                      {specialTitles.selectedSpecialTitleName ||
+                        titleMeta.selectedTitle}
                     </span>
                   )}
                 </div>
-                <p>Email : {profileInfo.email || user.emailAddresses?.[0]?.emailAddress}</p>
+                <p>
+                  Email :{" "}
+                  {profileInfo.email || user.emailAddresses?.[0]?.emailAddress}
+                </p>
               </div>
             </div>
-            <p>Membre depuis : {new Date(user.createdAt).toLocaleDateString()}</p>
+            <p>
+              Membre depuis : {new Date(user.createdAt).toLocaleDateString()}
+            </p>
           </div>
 
-          <div className="bg-[#0b224f]/85 border border-[#00e5ff]/30 
+          <div
+            className="bg-[#0b224f]/85 border border-[#00e5ff]/30 
 rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)] text-center">
+shadow-[0_0_24px_rgba(0,229,255,0.15)] text-center"
+          >
             <h2 className="text-xl text-[#00e5ff] mb-2">Solde de Tokens</h2>
             <p className="text-3xl font-bold">{userTokens ?? 0} tokens</p>
             <button
@@ -885,13 +970,17 @@ hover:scale-105 transition-all duration-300"
           </div>
         </div>
 
-        <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+        <div
+          className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
 rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+        >
           <div className="flex items-center justify-between gap-4 mb-4">
             <h2 className="text-xl text-[#00e5ff]">VIP Level</h2>
-            <div className="rounded-full px-3 py-1 bg-[#00e5ff] text-[#001933] 
-shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold">
+            <div
+              className="rounded-full px-3 py-1 bg-[#00e5ff] text-[#001933] 
+shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
+            >
               Level {stats?.currentLevel ?? 1}
             </div>
           </div>
@@ -903,185 +992,176 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold">
             />
           </div>
           <div className="mt-2 flex justify-between text-sm text-gray-300">
-            <span>{Number(stats?.levelProgress?.prevLevelRequired ?? 0).toLocaleString()} wagered</span>
+            <span>
+              {Number(
+                stats?.levelProgress?.prevLevelRequired ?? 0,
+              ).toLocaleString()}{" "}
+              wagered
+            </span>
             <span>{levelProgressPercent.toFixed(2)}%</span>
-            <span>{Number(stats?.levelProgress?.nextLevelRequired ?? 0).toLocaleString()} next level</span>
+            <span>
+              {Number(
+                stats?.levelProgress?.nextLevelRequired ?? 0,
+              ).toLocaleString()}{" "}
+              next level
+            </span>
           </div>
         </div>
 
-      <div className="mt-8 rounded-xl border border-fuchsia-400/35 bg-[#0d0a28]/85 p-6 shadow-[0_0_24px_rgba(217,70,239,0.2)]">
-  <div className="flex items-center justify-between mb-4">
-    <h2 className="text-xl text-fuchsia-300">Titles</h2>
+        <div className="mt-8 rounded-xl border border-fuchsia-400/35 bg-[#0d0a28]/85 p-6 shadow-[0_0_24px_rgba(217,70,239,0.2)]">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl text-fuchsia-300">Titles</h2>
 
-    <div className="flex gap-2">
-      <button
-        onClick={() => setTitlesView("special")}
-        className={`rounded px-3 py-1 text-sm ${
-          titlesView === "special"
-            ? "bg-fuchsia-500 text-white"
-            : "bg-white/10 text-gray-300"
-        }`}
-      >
-        Special Titles
-      </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setTitlesView("special")}
+                className={`rounded px-3 py-1 text-sm ${
+                  titlesView === "special"
+                    ? "bg-fuchsia-500 text-white"
+                    : "bg-white/10 text-gray-300"
+                }`}
+              >
+                Special Titles
+              </button>
 
-      <button
-        onClick={() => setTitlesView("vip")}
-        className={`rounded px-3 py-1 text-sm ${
-          titlesView === "vip"
-            ? "bg-cyan-500 text-white"
-            : "bg-white/10 text-gray-300"
-        }`}
-      >
-        VIP Titles
-      </button>
-    </div>
-  </div>
+              <button
+                onClick={() => setTitlesView("vip")}
+                className={`rounded px-3 py-1 text-sm ${
+                  titlesView === "vip"
+                    ? "bg-cyan-500 text-white"
+                    : "bg-white/10 text-gray-300"
+                }`}
+              >
+                VIP Titles
+              </button>
+            </div>
+          </div>
 
-  {titlesView === "special" && (
-    <div className="grid gap-3 md:grid-cols-2">
-      {(specialTitles.titles || []).map((title) => {
-        const isUnlocked = !!title.unlocked;
-        const isEquipped =
-          specialTitles.selectedSpecialTitle === title.key;
+          {titlesView === "special" && (
+            <div className="grid gap-3 md:grid-cols-2">
+              {(specialTitles.titles || []).map((title) => {
+                const isUnlocked = !!title.unlocked;
+                const isEquipped =
+                  specialTitles.selectedSpecialTitle === title.key;
 
-        return (
-          <button
-            key={title.key}
-            disabled={!isUnlocked}
-            onClick={() =>
-              handleEquipSpecialTitle(
-                isEquipped ? "" : title.key
-              )
-            }
-            className={[
-              "rounded-lg border p-3 text-left transition",
-              isUnlocked
-                ? "border-fuchsia-300/45 bg-fuchsia-500/10 hover:bg-fuchsia-500/20"
-                : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
-              isEquipped ? "ring-2 ring-yellow-300" : "",
-            ].join(" ")}
-          >
-            <p className="text-xs uppercase tracking-widest text-slate-300">
-              {title.rarity}
-            </p>
+                return (
+                  <button
+                    key={title.key}
+                    disabled={!isUnlocked}
+                    onClick={() =>
+                      handleEquipSpecialTitle(isEquipped ? "" : title.key)
+                    }
+                    className={[
+                      "rounded-lg border p-3 text-left transition",
+                      isUnlocked
+                        ? "border-fuchsia-300/45 bg-fuchsia-500/10 hover:bg-fuchsia-500/20"
+                        : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
+                      isEquipped ? "ring-2 ring-yellow-300" : "",
+                    ].join(" ")}
+                  >
+                    <p className="text-xs uppercase tracking-widest text-slate-300">
+                      {title.rarity}
+                    </p>
 
-            <p className="font-semibold text-white">
-              {isUnlocked ? title.name : "?????"}
-            </p>
+                    <p className="font-semibold text-white">
+                      {isUnlocked ? title.name : "?????"}
+                    </p>
 
-            <p className="text-xs text-slate-300">
-              {isUnlocked
-                ? title.description
-                : "Locked secret title"}
-            </p>
+                    <p className="text-xs text-slate-300">
+                      {isUnlocked ? title.description : "Locked secret title"}
+                    </p>
 
-            {isEquipped && (
-              <p className="mt-2 text-yellow-300 text-xs">
-                Click again to unequip
-              </p>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  )}
-
-  {titlesView === "vip" && (
-    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-      {(vipTitles?.allTitles || []).map((title) => {
-        const unlocked =
-          (vipTitles?.unlockedTitles || []).some(
-            (x) => x.title === title.title
-          );
-
-        const equipped =
-          vipTitles?.selectedTitle === title.title;
-
-        return (
-          <button
-            key={title.title}
-            disabled={!unlocked}
-            onClick={async () => {
-              const response = await fetch(
-                "/api/titles/select",
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type":
-                      "application/json",
-                  },
-                  credentials: "include",
-                  body: JSON.stringify({
-                    title: equipped
-                      ? ""
-                      : title.title,
-                  }),
-                }
-              );
-
-              const data =
-                await response.json();
-
-              if (
-                response.ok &&
-                data.success
-              ) {
-                await loadVipTitles();
-                await loadTitles();
-                await loadProfileData();
-
-                window.dispatchEvent(
-                  new Event("titleUpdated")
+                    {isEquipped && (
+                      <p className="mt-2 text-yellow-300 text-xs">
+                        Click again to unequip
+                      </p>
+                    )}
+                  </button>
                 );
-              }
-            }}
-            className={[
-              "rounded-lg border p-3 text-left transition",
-              unlocked
-                ? "border-cyan-300/45 bg-cyan-500/10 hover:bg-cyan-500/20"
-                : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
-              equipped
-                ? "ring-2 ring-yellow-300"
-                : "",
-            ].join(" ")}
-          >
-            <p className="text-xs uppercase tracking-widest text-slate-300">
-              {title.rarity}
-            </p>
+              })}
+            </div>
+          )}
 
-            <p className="font-semibold text-white">
-              {unlocked
-                ? title.title
-                : "Locked"}
-            </p>
+          {titlesView === "vip" && (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {(vipTitles?.allTitles || []).map((title) => {
+                const unlocked = (vipTitles?.unlockedTitles || []).some(
+                  (x) => x.title === title.title,
+                );
 
-            <p className="text-xs text-slate-300">
-              Unlock at Level {title.level}
-            </p>
+                const equipped = vipTitles?.selectedTitle === title.title;
 
-            {equipped && (
-              <p className="mt-2 text-yellow-300 text-xs">
-                Click again to unequip
-              </p>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  )}
-</div>
+                return (
+                  <button
+                    key={title.title}
+                    disabled={!unlocked}
+                    onClick={async () => {
+                      const response = await fetch("/api/titles/select", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                        },
+                        credentials: "include",
+                        body: JSON.stringify({
+                          title: equipped ? "" : title.title,
+                        }),
+                      });
 
+                      const data = await response.json();
 
-        <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+                      if (response.ok && data.success) {
+                        await loadVipTitles();
+                        await loadTitles();
+                        await loadProfileData();
+
+                        window.dispatchEvent(new Event("titleUpdated"));
+                      }
+                    }}
+                    className={[
+                      "rounded-lg border p-3 text-left transition",
+                      unlocked
+                        ? "border-cyan-300/45 bg-cyan-500/10 hover:bg-cyan-500/20"
+                        : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
+                      equipped ? "ring-2 ring-yellow-300" : "",
+                    ].join(" ")}
+                  >
+                    <p className="text-xs uppercase tracking-widest text-slate-300">
+                      {title.rarity}
+                    </p>
+
+                    <p className="font-semibold text-white">
+                      {unlocked ? title.title : "Locked"}
+                    </p>
+
+                    <p className="text-xs text-slate-300">
+                      Unlock at Level {title.level}
+                    </p>
+
+                    {equipped && (
+                      <p className="mt-2 text-yellow-300 text-xs">
+                        Click again to unequip
+                      </p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div
+          className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
 rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+        >
           <h2 className="text-xl text-[#00e5ff] mb-4">Referral System</h2>
 
           <div className="grid gap-4 md:grid-cols-3 mb-4">
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
               <p className="text-sm text-gray-300">Your Referral Code</p>
-              <p className="text-2xl font-bold text-[#00e5ff]">{stats?.referralCode ? stats.referralCode : "No code yet"}</p>
+              <p className="text-2xl font-bold text-[#00e5ff]">
+                {stats?.referralCode ? stats.referralCode : "No code yet"}
+              </p>
             </div>
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
               <p className="text-sm text-gray-300">Total Referrals</p>
@@ -1089,7 +1169,9 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]">
             </div>
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
               <p className="text-sm text-gray-300">Referral Earnings</p>
-              <p className="text-2xl font-bold">{stats?.referralEarnings ?? 0} tokens</p>
+              <p className="text-2xl font-bold">
+                {stats?.referralEarnings ?? 0} tokens
+              </p>
             </div>
           </div>
 
@@ -1102,18 +1184,18 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
 
           <div className="flex flex-wrap gap-3 mb-4">
             <button onClick={handleCopyReferralCode} className={cyberButton}>
-  Copy Code
-</button>
+              Copy Code
+            </button>
 
-<button
-  onClick={handleShareReferralCode}
-  className="rounded-lg px-4 py-2 font-semibold text-white 
+            <button
+              onClick={handleShareReferralCode}
+              className="rounded-lg px-4 py-2 font-semibold text-white 
   border border-[#00e5ff] 
   hover:bg-[#00e5ff]/10 
   shadow-[0_0_10px_rgba(0,229,255,0.4)]"
->
-  Share Code
-</button>
+            >
+              Share Code
+            </button>
           </div>
 
           <div className="flex flex-col md:flex-row gap-3">
@@ -1132,12 +1214,16 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-none focus:ring-2 focus:ring
             </button>
           </div>
 
-          {referralStatus && <p className="mt-3 text-sm text-gray-200">{referralStatus}</p>}
+          {referralStatus && (
+            <p className="mt-3 text-sm text-gray-200">{referralStatus}</p>
+          )}
         </div>
 
-        <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+        <div
+          className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
 rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+        >
           <h2 className="text-xl text-[#00e5ff] mb-4">Add Friends</h2>
           <div className="flex gap-2 mb-4">
             <input
@@ -1158,13 +1244,22 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
 
           <div className="space-y-2">
             {friendSearchResults.map((person) => (
-              <div key={person.id} className="flex items-center justify-between rounded border border-[#FFD700]/40 p-3">
+              <div
+                key={person.id}
+                className="flex items-center justify-between rounded border border-[#FFD700]/40 p-3"
+              >
                 <div className="flex items-center gap-3">
                   {profileAvatar(person) ? (
-                    <img src={profileAvatar(person)} alt={person.name} className="h-10 w-10 rounded-full object-cover" />
+                    <img
+                      src={profileAvatar(person)}
+                      alt={person.name}
+                      className="h-10 w-10 rounded-full object-cover"
+                    />
                   ) : (
-                    <div className="h-10 w-10 rounded-full bg-[#00e5ff] text-[#001933] 
-shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold">
+                    <div
+                      className="h-10 w-10 rounded-full bg-[#00e5ff] text-[#001933] 
+shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold"
+                    >
                       {person.name?.charAt(0)?.toUpperCase() || "U"}
                     </div>
                   )}
@@ -1181,31 +1276,38 @@ hover:scale-105 transition-all"
                 </button>
               </div>
             ))}
-            {friendSearch && friendSearchResults.length === 0 && !isSearchingFriends && (
-              <p className="text-sm text-gray-300">No users found for this name.</p>
-            )}
+            {friendSearch &&
+              friendSearchResults.length === 0 &&
+              !isSearchingFriends && (
+                <p className="text-sm text-gray-300">
+                  No users found for this name.
+                </p>
+              )}
           </div>
 
-          {friendsStatus && <p className="mt-3 text-sm text-gray-200">{friendsStatus}</p>}
+          {friendsStatus && (
+            <p className="mt-3 text-sm text-gray-200">{friendsStatus}</p>
+          )}
         </div>
 
-        <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]">
-  
-  <div className="flex items-center justify-between mb-4">
-    <h2 className="text-xl text-[#00e5ff]">My Friends</h2>
+        <div
+          className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 
+shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl text-[#00e5ff]">My Friends</h2>
 
-    <button
-      onClick={async () => {
-        await loadFriends();
-        await loadFriendPresence();
-        await loadFriendInvites();
-      }}
-      className="rounded bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80"
-    >
-      Refresh
-    </button>
-  </div>
+            <button
+              onClick={async () => {
+                await loadFriends();
+                await loadFriendPresence();
+                await loadFriendInvites();
+              }}
+              className="rounded bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80"
+            >
+              Refresh
+            </button>
+          </div>
           <div className="mb-4 flex gap-2">
             <button
               onClick={() => setActiveFriendsTab("friends")}
@@ -1221,112 +1323,170 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]">
             </button>
           </div>
           {activeFriendsTab === "friends" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {myFriends.length > 0 ? myFriends.map((friend) => (
-              <div key={`${friend.id}-${friend.name}`} className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3">
-                {profileAvatar(friend) ? (
-                  <img src={profileAvatar(friend)} alt={friend.name} className="h-10 w-10 rounded-full object-cover" />
-                ) : (
-                  <div className="h-10 w-10 rounded-full bg-[#00e5ff] text-[#001933] 
-shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold">
-                    {friend.name?.charAt(0)?.toUpperCase() || "U"}
-                  </div>
-                )}
-                <div className="flex-1">
-                  <span>{friend.name}</span>
-                 {(() => {
-  const status = getFriendStatus(friend.id);
-  return (
-    <p className={`text-xs flex items-center gap-2 ${status.color}`}>
-  <span
-    className={`h-2 w-2 rounded-full ${
-      status.state === "online"
-        ? "bg-green-400"
-        : status.state === "in_game"
-        ? "bg-yellow-400"
-        : "bg-gray-400"
-    }`}
-  />
-  {status.label}
-</p>
-  );
-})()}
-                </div>
-               <div className="flex items-center gap-2">
-  {(() => {
-    const status = getFriendStatus(friend.id);
-    const spectateUrl = spectateUrlForFriend(friend.id);
-    const gameKey = String(friendPresenceByFriend?.[friend.id]?.gameKey || "").toLowerCase().trim();
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {myFriends.length > 0 ? (
+                myFriends.map((friend) => (
+                  <div
+                    key={`${friend.id}-${friend.name}`}
+                    className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3"
+                  >
+                    {profileAvatar(friend) ? (
+                      <img
+                        src={profileAvatar(friend)}
+                        alt={friend.name}
+                        className="h-10 w-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div
+                        className="h-10 w-10 rounded-full bg-[#00e5ff] text-[#001933] 
+shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold"
+                      >
+                        {friend.name?.charAt(0)?.toUpperCase() || "U"}
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <span>{friend.name}</span>
+                      {(() => {
+                        const status = getFriendStatus(friend.id);
+                        return (
+                          <p
+                            className={`text-xs flex items-center gap-2 ${status.color}`}
+                          >
+                            <span
+                              className={`h-2 w-2 rounded-full ${
+                                status.state === "online"
+                                  ? "bg-green-400"
+                                  : status.state === "in_game"
+                                    ? "bg-yellow-400"
+                                    : "bg-gray-400"
+                              }`}
+                            />
+                            {status.label}
+                          </p>
+                        );
+                      })()}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const status = getFriendStatus(friend.id);
+                        const spectateUrl = spectateUrlForFriend(friend.id);
+                        const gameKey = String(
+                          friendPresenceByFriend?.[friend.id]?.gameKey || "",
+                        )
+                          .toLowerCase()
+                          .trim();
 
-    if (status.state !== "in_game" || !spectateUrl) return null;
+                        if (status.state !== "in_game" || !spectateUrl)
+                          return null;
 
-    const allowedSpectateGames = new Set(["chess", "connect-four", "poker"]);
-    if (!allowedSpectateGames.has(gameKey)) return null;
+                        const allowedSpectateGames = new Set([
+                          "chess",
+                          "connect-four",
+                          "poker",
+                        ]);
+                        if (!allowedSpectateGames.has(gameKey)) return null;
 
-    return (
-      <button
-        onClick={() => {
-          if (!isAllowedSpectateUrl(spectateUrl)) {
-            setFriendsStatus("This spectate link is invalid.");
-            return;
-          }
-          setSpectateLoadError("");
-          setSpectateIsLoaded(false);
-          setSpectateOverlayUrl(spectateUrl);
-        }}
-        className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse"
-      >
-        Spectate
-      </button>
-    );
-  })()}
+                        return (
+                          <button
+                            onClick={() => {
+                              if (!isAllowedSpectateUrl(spectateUrl)) {
+                                setFriendsStatus(
+                                  "This spectate link is invalid.",
+                                );
+                                return;
+                              }
+                              setSpectateLoadError("");
+                              setSpectateIsLoaded(false);
+                              setSpectateOverlayUrl(spectateUrl);
+                            }}
+                            className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse"
+                          >
+                            Spectate
+                          </button>
+                        );
+                      })()}
 
-  <button
-    onClick={() => handleRemoveFriend(friend.id)}
-    className="rounded-lg px-2 py-1 text-xs font-semibold text-white 
+                      <button
+                        onClick={() => handleRemoveFriend(friend.id)}
+                        className="rounded-lg px-2 py-1 text-xs font-semibold text-white 
 bg-gradient-to-r from-red-500 to-red-700 
 shadow-[0_0_10px_rgba(255,0,0,0.6)] 
 hover:scale-105 transition-all"
-  >
-    Remove
-  </button>
-</div>
-              </div>
-            )) : <p className="text-sm text-gray-300">No friends yet.</p>}
-          </div>
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-gray-300">No friends yet.</p>
+              )}
+            </div>
           )}
           {activeFriendsTab === "invites" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {receivedInvites.length > 0 ? receivedInvites.map((invite) => (
-                <div key={invite.id} className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3">
-                  {invite.sender_profile_picture ? (
-                    <img src={invite.sender_profile_picture} alt={invite.sender_name} className="h-10 w-10 rounded-full object-cover" />
-                  ) : (
-                    <div className="h-10 w-10 rounded-full bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold">
-                      {invite.sender_name?.charAt(0)?.toUpperCase() || "U"}
+              {receivedInvites.length > 0 ? (
+                receivedInvites.map((invite) => (
+                  <div
+                    key={invite.id}
+                    className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3"
+                  >
+                    {invite.sender_profile_picture ? (
+                      <img
+                        src={invite.sender_profile_picture}
+                        alt={invite.sender_name}
+                        className="h-10 w-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 rounded-full bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold">
+                        {invite.sender_name?.charAt(0)?.toUpperCase() || "U"}
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold">
+                        {invite.sender_name}
+                      </p>
+                      <p className="text-xs text-gray-300">
+                        Sent {new Date(invite.created_at).toLocaleString()}
+                      </p>
                     </div>
-                  )}
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold">{invite.sender_name}</p>
-                    <p className="text-xs text-gray-300">Sent {new Date(invite.created_at).toLocaleString()}</p>
+                    <div className="flex flex-col gap-1">
+                      <button
+                        onClick={() =>
+                          handleRespondToInvite(invite.id, "accept")
+                        }
+                        className="rounded bg-green-500 px-2 py-1 text-xs font-semibold text-white"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleRespondToInvite(invite.id, "decline")
+                        }
+                        className="rounded bg-red-500 px-2 py-1 text-xs font-semibold text-white"
+                      >
+                        Decline
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <button onClick={() => handleRespondToInvite(invite.id, "accept")} className="rounded bg-green-500 px-2 py-1 text-xs font-semibold text-white">Accept</button>
-                    <button onClick={() => handleRespondToInvite(invite.id, "decline")} className="rounded bg-red-500 px-2 py-1 text-xs font-semibold text-white">Decline</button>
-                  </div>
-                </div>
-              )) : <p className="text-sm text-gray-300">No pending invites.</p>}
+                ))
+              ) : (
+                <p className="text-sm text-gray-300">No pending invites.</p>
+              )}
             </div>
           )}
         </div>
         {spectateOverlayUrl && (
           <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4">
             <div className="relative h-[90vh] w-[95vw] rounded-xl border border-[#00e5ff]/40 bg-black overflow-hidden">
-              <button onClick={() => {
-                setSpectateOverlayUrl("");
-                setSpectateLoadError("");
-                setSpectateIsLoaded(false);
-              }} className="absolute right-3 top-3 z-10 rounded bg-red-600 px-3 py-1 text-sm font-semibold text-white">
+              <button
+                onClick={() => {
+                  setSpectateOverlayUrl("");
+                  setSpectateLoadError("");
+                  setSpectateIsLoaded(false);
+                }}
+                className="absolute right-3 top-3 z-10 rounded bg-red-600 px-3 py-1 text-sm font-semibold text-white"
+              >
                 Close Spectate
               </button>
               {!spectateIsLoaded && !spectateLoadError && (
@@ -1341,7 +1501,9 @@ hover:scale-105 transition-all"
                     onClick={() => {
                       setSpectateLoadError("");
                       setSpectateIsLoaded(false);
-                      setSpectateOverlayUrl((prev) => `${prev.split("#")[0]}#retry-${Date.now()}`);
+                      setSpectateOverlayUrl(
+                        (prev) => `${prev.split("#")[0]}#retry-${Date.now()}`,
+                      );
                     }}
                     className="rounded bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366]"
                   >
@@ -1355,7 +1517,11 @@ hover:scale-105 transition-all"
                   className="h-full w-full border-0"
                   title="Friend spectate view"
                   onLoad={() => setSpectateIsLoaded(true)}
-                  onError={() => setSpectateLoadError("Unable to render spectate page. The game may have ended or embedding is blocked.")}
+                  onError={() =>
+                    setSpectateLoadError(
+                      "Unable to render spectate page. The game may have ended or embedding is blocked.",
+                    )
+                  }
                 />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/90 p-6 text-center text-red-300">
@@ -1366,15 +1532,19 @@ hover:scale-105 transition-all"
           </div>
         )}
 
-
-        <div className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+        <div
+          className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
 rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+        >
           <h2 className="text-xl text-[#00e5ff] mb-4">User Statistics</h2>
           {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {statsCards.map((card) => (
-              <div key={card.key} className="rounded-lg border border-[#FFD700]/30 bg-white/5 p-4">
+              <div
+                key={card.key}
+                className="rounded-lg border border-[#FFD700]/30 bg-white/5 p-4"
+              >
                 <p className="text-sm text-gray-300">{card.label}</p>
                 <p className="text-2xl font-bold text-white mt-1">
                   {stats?.[card.key] ?? 0}
@@ -1385,9 +1555,11 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]">
           </div>
         </div>
 
-        <div className="mt-12 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+        <div
+          className="mt-12 bg-[#0b224f]/85 border border-[#00e5ff]/30 
 rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+        >
           <h2 className="text-xl text-[#00e5ff] mb-4">Historique des Paris</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -1403,8 +1575,12 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]">
                 {bets.length > 0 ? (
                   bets.map((bet, idx) => (
                     <tr key={idx} className="border-b border-[#FFD700]/20">
-                      <td className="px-4 py-2">{new Date(bet.date).toLocaleDateString()}</td>
-                      <td className="px-4 py-2">{bet.type || bet.event || bet.game_type || "Inconnu"}</td>
+                      <td className="px-4 py-2">
+                        {new Date(bet.date).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-2">
+                        {bet.type || bet.event || bet.game_type || "Inconnu"}
+                      </td>
                       <td className="px-4 py-2">{bet.amount} tokens</td>
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
@@ -1413,15 +1589,15 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]">
                               bet.result === "won"
                                 ? "bg-green-600/20 text-green-400"
                                 : bet.result === "lost"
-                                ? "bg-red-600/20 text-red-400"
-                                : "bg-gray-500/20 text-gray-300"
+                                  ? "bg-red-600/20 text-red-400"
+                                  : "bg-gray-500/20 text-gray-300"
                             }`}
                           >
                             {bet.result === "won"
                               ? "Gagné"
                               : bet.result === "lost"
-                              ? "Perdu"
-                              : "Égalité"}
+                                ? "Perdu"
+                                : "Égalité"}
                           </span>
 
                           {bet.result !== "pending" && (
@@ -1430,15 +1606,15 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]">
                                 bet.tokenDiff > 0
                                   ? "text-green-400"
                                   : bet.tokenDiff < 0
-                                  ? "text-red-400"
-                                  : "text-gray-300"
+                                    ? "text-red-400"
+                                    : "text-gray-300"
                               }`}
                             >
                               {bet.tokenDiff > 0
                                 ? `+${Number(bet.tokenDiff).toFixed(2)} tokens`
                                 : bet.tokenDiff < 0
-                                ? `${Number(bet.tokenDiff).toFixed(2)} tokens`
-                                : "±0.00 tokens"}
+                                  ? `${Number(bet.tokenDiff).toFixed(2)} tokens`
+                                  : "±0.00 tokens"}
                             </span>
                           )}
                         </div>
@@ -1457,11 +1633,16 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]">
           </div>
         </div>
 
-        <div className="mt-8 border border-red-500 bg-red-950/40 border border-red-500/40 
-shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6">
-          <h2 className="text-xl text-red-400 mb-2">Danger Zone — Delete Account</h2>
+        <div
+          className="mt-8 border border-red-500 bg-red-950/40 border border-red-500/40 
+shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
+        >
+          <h2 className="text-xl text-red-400 mb-2">
+            Danger Zone — Delete Account
+          </h2>
           <p className="text-red-200 mb-4">
-            Warning: This action is permanent. Your account and data will be removed forever.
+            Warning: This action is permanent. Your account and data will be
+            removed forever.
           </p>
 
           <label className="text-sm text-red-200">Confirm password</label>
@@ -1478,36 +1659,54 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6">
             disabled={!delayDone || !password || isDeleting}
             className="mt-4 rounded bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50"
           >
-            {isDeleting ? "Deleting..." : delayDone ? "Confirm permanent deletion" : `Confirm in ${countdown}s`}
+            {isDeleting
+              ? "Deleting..."
+              : delayDone
+                ? "Confirm permanent deletion"
+                : `Confirm in ${countdown}s`}
           </button>
 
-          {deleteError && <p className="mt-3 text-sm text-red-300">{deleteError}</p>}
-          {deleteStatus && <p className="mt-3 text-sm text-green-300">{deleteStatus}</p>}
+          {deleteError && (
+            <p className="mt-3 text-sm text-red-300">{deleteError}</p>
+          )}
+          {deleteStatus && (
+            <p className="mt-3 text-sm text-green-300">{deleteStatus}</p>
+          )}
         </div>
       </div>
 
       {isEditOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0b224f] border border-[#00e5ff]/30 
-shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6">
-            <h3 className="text-xl font-bold text-[#00e5ff] mb-4">Edit Profile</h3>
+          <div
+            className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0b224f] border border-[#00e5ff]/30 
+shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6"
+          >
+            <h3 className="text-xl font-bold text-[#00e5ff] mb-4">
+              Edit Profile
+            </h3>
             <div className="space-y-3">
               <input
                 value={editForm.name}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, name: e.target.value }))
+                }
                 placeholder="Name"
                 className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
               <input
                 value={editForm.email}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, email: e.target.value }))
+                }
                 placeholder="Email"
                 className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
               <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
-                <label className="block mb-2 text-sm text-gray-200">Profile picture</label>
+                <label className="block mb-2 text-sm text-gray-200">
+                  Profile picture
+                </label>
                 <input
                   type="file"
                   accept="image/*"
@@ -1515,7 +1714,9 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   className="w-full text-sm"
                 />
                 {selectedProfileImageName && (
-                  <p className="mt-2 text-xs text-gray-300">Selected file: {selectedProfileImageName}</p>
+                  <p className="mt-2 text-xs text-gray-300">
+                    Selected file: {selectedProfileImageName}
+                  </p>
                 )}
                 {editForm.profilePicture && (
                   <div className="mt-3 flex items-center gap-3">
@@ -1527,7 +1728,10 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     <button
                       type="button"
                       onClick={() => {
-                        setEditForm((prev) => ({ ...prev, profilePicture: "" }));
+                        setEditForm((prev) => ({
+                          ...prev,
+                          profilePicture: "",
+                        }));
                         setSelectedProfileImageName("");
                       }}
                       className="rounded border border-white/30 px-3 py-1 text-sm"
@@ -1540,14 +1744,18 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               <input
                 type="password"
                 value={editForm.password}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, password: e.target.value }))}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, password: e.target.value }))
+                }
                 placeholder="New password (optional)"
                 className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
             </div>
 
-            {editStatus && <p className="mt-3 text-sm text-gray-200">{editStatus}</p>}
+            {editStatus && (
+              <p className="mt-3 text-sm text-gray-200">{editStatus}</p>
+            )}
 
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -1570,10 +1778,16 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
 
       {levelUpModal && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0b224f] border border-[#00e5ff]/30 
-shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center">
-            <p className="text-2xl font-bold text-[#00e5ff]">🎉 Level Up! You reached Level {levelUpModal.level}</p>
-            <p className="mt-2 text-gray-200">Bonus received: {levelUpModal.bonus} tokens</p>
+          <div
+            className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0b224f] border border-[#00e5ff]/30 
+shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
+          >
+            <p className="text-2xl font-bold text-[#00e5ff]">
+              🎉 Level Up! You reached Level {levelUpModal.level}
+            </p>
+            <p className="mt-2 text-gray-200">
+              Bonus received: {levelUpModal.bonus} tokens
+            </p>
             <button
               onClick={() => setLevelUpModal(null)}
               className={cyberButton}

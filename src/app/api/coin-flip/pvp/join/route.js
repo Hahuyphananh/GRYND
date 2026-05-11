@@ -21,13 +21,14 @@ export async function POST(req) {
           and(
             eq(coinFlipGames.id, gameId),
             isNull(coinFlipGames.player2Id),
-            eq(coinFlipGames.status, "active")
-          )
+            eq(coinFlipGames.status, "active"),
+          ),
         )
         .for("update");
 
       if (!game) throw new Error("Game already joined");
-      if (game.player1Id === userId) throw new Error("Cannot join your own game");
+      if (game.player1Id === userId)
+        throw new Error("Cannot join your own game");
 
       const [joiner] = await tx
         .update(users)
@@ -37,8 +38,8 @@ export async function POST(req) {
         .where(
           and(
             eq(users.clerkId, userId),
-            sql`${users.balance} >= ${game.betAmount}`
-          )
+            sql`${users.balance} >= ${game.betAmount}`,
+          ),
         )
         .returning();
 

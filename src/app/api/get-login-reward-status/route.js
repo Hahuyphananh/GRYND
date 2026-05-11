@@ -16,13 +16,12 @@ function toUtcDayKey(value) {
 
 export async function GET() {
   try {
-
     const { userId } = await auth();
 
     if (!userId)
       return NextResponse.json(
         { success: false, error: "Not authenticated" },
-        { status: 401 }
+        { status: 401 },
       );
 
     const dbUser = await db.query.users.findFirst({
@@ -32,7 +31,7 @@ export async function GET() {
     if (!dbUser)
       return NextResponse.json(
         { success: false, error: "User not found" },
-        { status: 404 }
+        { status: 404 },
       );
 
     let rewardData = await db.query.userLoginRewards.findFirst({
@@ -55,15 +54,16 @@ export async function GET() {
 
     // ✅ Reset streak if missed
     if (rewardData.lastClaimedDate) {
-
       const now = new Date();
       const lastClaim = new Date(rewardData.lastClaimedDate);
 
-      const elapsedDays = Math.floor((toUtcDayKey(now) - toUtcDayKey(lastClaim)) / (1000 * 60 * 60 * 24));
+      const elapsedDays = Math.floor(
+        (toUtcDayKey(now) - toUtcDayKey(lastClaim)) / (1000 * 60 * 60 * 24),
+      );
 
       if (elapsedDays > STREAK_RESET_DAYS) {
-
-        await db.update(userLoginRewards)
+        await db
+          .update(userLoginRewards)
           .set({ currentDay: 1 })
           .where(eq(userLoginRewards.userId, dbUser.id));
 
@@ -77,13 +77,12 @@ export async function GET() {
       lastClaimedDate: rewardData.lastClaimedDate,
       maxDay: MAX_DAY,
     });
-
   } catch (err) {
     console.error(err);
 
     return NextResponse.json(
       { success: false, error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

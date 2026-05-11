@@ -6,7 +6,7 @@ export async function POST() {
     if (!apiKey) {
       return NextResponse.json(
         { success: false, error: "ODDS_API_KEY is not configured" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -16,7 +16,7 @@ export async function POST() {
     if (!res.ok) {
       return NextResponse.json(
         { success: false, error: "Failed to fetch odds data" },
-        { status: res.status }
+        { status: res.status },
       );
     }
 
@@ -26,7 +26,7 @@ export async function POST() {
     console.error("Odds API fetch error:", err);
     return NextResponse.json(
       { success: false, error: "Failed to fetch odds data" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

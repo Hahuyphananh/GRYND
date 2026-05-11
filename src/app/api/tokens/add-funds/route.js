@@ -14,13 +14,16 @@ export async function POST(req) {
     if (!userId) {
       return NextResponse.json(
         { success: false, error: "Unauthorized" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
     const idem = await claimIdempotency(req, "tokens:add-funds", 180);
     if (idem.enforced && !idem.allowed) {
-      return NextResponse.json({ success: false, error: "Duplicate request" }, { status: 409 });
+      return NextResponse.json(
+        { success: false, error: "Duplicate request" },
+        { status: 409 },
+      );
     }
 
     // Get user from Clerk to verify age
@@ -29,17 +32,26 @@ export async function POST(req) {
 
     if (!birthDate) {
       return NextResponse.json(
-        { success: false, error: "Birth date not found. Please complete your profile." },
-        { status: 400 }
+        {
+          success: false,
+          error: "Birth date not found. Please complete your profile.",
+        },
+        { status: 400 },
       );
     }
 
     // Verify age (must be 18+)
-    const age = Math.floor((Date.now() - new Date(birthDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    const age = Math.floor(
+      (Date.now() - new Date(birthDate).getTime()) /
+        (365.25 * 24 * 60 * 60 * 1000),
+    );
     if (age < 18) {
       return NextResponse.json(
-        { success: false, error: "You must be at least 18 years old to add funds." },
-        { status: 403 }
+        {
+          success: false,
+          error: "You must be at least 18 years old to add funds.",
+        },
+        { status: 403 },
       );
     }
 
@@ -52,8 +64,11 @@ export async function POST(req) {
     // Server-side validation
     if (!amount || isNaN(amount) || amount < 5 || amount > 500) {
       return NextResponse.json(
-        { success: false, error: "Invalid amount. Must be between $5 and $500." },
-        { status: 400 }
+        {
+          success: false,
+          error: "Invalid amount. Must be between $5 and $500.",
+        },
+        { status: 400 },
       );
     }
 
@@ -67,7 +82,7 @@ export async function POST(req) {
     if (!user) {
       return NextResponse.json(
         { success: false, error: "User not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -80,20 +95,24 @@ export async function POST(req) {
       .set({ balance: newBalance.toString() })
       .where(eq(users.clerkId, userId));
 
-    auditLog("tokens_add_funds", { userId, amount, previousBalance: currentBalance, newBalance });
+    auditLog("tokens_add_funds", {
+      userId,
+      amount,
+      previousBalance: currentBalance,
+      newBalance,
+    });
 
     return NextResponse.json({
       success: true,
       message: `Successfully added $${amount.toFixed(2)} to your account`,
       newBalance: newBalance,
-      addedAmount: amount
+      addedAmount: amount,
     });
-
   } catch (error) {
     console.error("Add funds error:", error);
     return NextResponse.json(
       { success: false, error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

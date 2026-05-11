@@ -5,7 +5,21 @@ import { eq } from "drizzle-orm";
 
 function generateCardDeck() {
   const suits = ["hearts", "diamonds", "clubs", "spades"];
-  const values = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
+  const values = [
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "J",
+    "Q",
+    "K",
+    "A",
+  ];
   const deck = [];
 
   for (const suit of suits) {
@@ -26,17 +40,22 @@ function generateCardDeck() {
 export async function POST(request) {
   const { userId } = await auth();
   if (!userId)
-    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { 
-      status: 401, 
-      headers: { "Content-Type": "application/json" } 
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
 
   try {
     const { betAmount } = await request.json();
     if (!betAmount || isNaN(betAmount) || betAmount <= 0)
       throw new Error("Invalid bet amount");
 
-    const user = await db.query.users.findFirst({ where: eq(users.clerkId, userId) });
+    const user = await db.query.users.findFirst({
+      where: eq(users.clerkId, userId),
+    });
     if (!user) throw new Error("User not found");
 
     const balance = parseFloat(user.balance);
@@ -52,42 +71,51 @@ export async function POST(request) {
     // Store game in DB transaction
     const newGame = await db.transaction(async (tx) => {
       // Deduct player's bet
-      await tx.update(users)
+      await tx
+        .update(users)
         .set({ balance: (balance - betAmount).toString() })
         .where(eq(users.clerkId, userId));
 
-      const [insertedGame] = await tx.insert(pokerGames).values({
-        userId: user.id,
-        betAmount: betAmount.toString(),
-        result: "pending",
-        payout: "0.00",
-        playerHand,
-        aiHand,
-        deck,   // remaining cards in deck
-        pot,
-        status: "active",
-        minBet: betAmount,
-      }).returning();
+      const [insertedGame] = await tx
+        .insert(pokerGames)
+        .values({
+          userId: user.id,
+          betAmount: betAmount.toString(),
+          result: "pending",
+          payout: "0.00",
+          playerHand,
+          aiHand,
+          deck, // remaining cards in deck
+          pot,
+          status: "active",
+          minBet: betAmount,
+        })
+        .returning();
 
       return insertedGame;
     });
 
-    return new Response(JSON.stringify({
-      success: true,
-      data: {
-        gameId: newGame.id,
-        newBalance: balance - betAmount,
-        playerHand,                  // full 5-card hand for player
-        aiHand: ["?", "?", "?", "?", "?"], // hide AI hand for frontend
-        pot
-      }
-    }), { status: 200, headers: { "Content-Type": "application/json" } });
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          gameId: newGame.id,
+          newBalance: balance - betAmount,
+          playerHand, // full 5-card hand for player
+          aiHand: ["?", "?", "?", "?", "?"], // hide AI hand for frontend
+          pot,
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
   } catch (err) {
     console.error("❌ Poker AI init error:", err);
-    return new Response(JSON.stringify({ success: false, error: err.message || "Server error" }), { 
-      status: 500, 
-      headers: { "Content-Type": "application/json" } 
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: err.message || "Server error" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

@@ -1,7 +1,11 @@
 import { getNeonSql } from "../db/neon";
 import crypto from "node:crypto";
-import { bustChanceAtClick, maxAllowedClicks, multiplierFromClicks, payoutFrom } from "./goonbet-clicker";
-
+import {
+  bustChanceAtClick,
+  maxAllowedClicks,
+  multiplierFromClicks,
+  payoutFrom,
+} from "./goonbet-clicker";
 
 function deterministicRoll(seed: string): number {
   const hash = crypto.createHash("sha256").update(seed).digest("hex");
@@ -33,7 +37,8 @@ export async function ensureClickerUser(userId: string, email: string | null) {
 
 export async function getTokens(userId: string): Promise<bigint> {
   const sql = getNeonSql();
-  const rows = await sql`SELECT tokens FROM clicker_users WHERE id = ${userId} LIMIT 1`;
+  const rows =
+    await sql`SELECT tokens FROM clicker_users WHERE id = ${userId} LIMIT 1`;
   return BigInt(rows[0]?.tokens ?? 0);
 }
 
@@ -42,15 +47,18 @@ export async function startRound(userId: string, betAmount: bigint) {
 
   await sql`BEGIN`;
   try {
-    const usersResult = await sql`SELECT tokens FROM clicker_users WHERE id = ${userId} FOR UPDATE`;
+    const usersResult =
+      await sql`SELECT tokens FROM clicker_users WHERE id = ${userId} FOR UPDATE`;
     const users = asRows<{ tokens: string | number }>(usersResult);
     if (users.length === 0) throw new Error("USER_NOT_FOUND");
 
     const tokens = BigInt(users[0].tokens);
-    if (tokens <= BigInt(0) || tokens < betAmount) throw new Error("INSUFFICIENT_TOKENS");
+    if (tokens <= BigInt(0) || tokens < betAmount)
+      throw new Error("INSUFFICIENT_TOKENS");
 
     await sql`UPDATE clicker_users SET tokens = tokens - ${betAmount} WHERE id = ${userId}`;
-    const createdResult = await sql`INSERT INTO clicker_rounds (user_id, bet_amount, multiplier, clicks, status, payout)
+    const createdResult =
+      await sql`INSERT INTO clicker_rounds (user_id, bet_amount, multiplier, clicks, status, payout)
                                     VALUES (${userId}, ${betAmount}, 1.0, 0, 'active', 0)
                                     RETURNING id, bet_amount, multiplier, clicks, status, created_at`;
 
@@ -63,12 +71,19 @@ export async function startRound(userId: string, betAmount: bigint) {
   }
 }
 
-export async function cashoutRound(userId: string, roundId: number, clientClicks: number, clientMultiplier: number, durationMs: number) {
+export async function cashoutRound(
+  userId: string,
+  roundId: number,
+  clientClicks: number,
+  clientMultiplier: number,
+  durationMs: number,
+) {
   const sql = getNeonSql();
 
   await sql`BEGIN`;
   try {
-    const roundsResult = await sql`SELECT * FROM clicker_rounds WHERE id = ${roundId} AND user_id = ${userId} FOR UPDATE`;
+    const roundsResult =
+      await sql`SELECT * FROM clicker_rounds WHERE id = ${roundId} AND user_id = ${userId} FOR UPDATE`;
     const rounds = asRows(roundsResult);
     if (rounds.length === 0) throw new Error("ROUND_NOT_FOUND");
 
@@ -76,7 +91,10 @@ export async function cashoutRound(userId: string, roundId: number, clientClicks
     if (round.status !== "active") throw new Error("ROUND_NOT_ACTIVE");
 
     const elapsedMs = Date.now() - new Date(round.created_at).getTime();
-    const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
+    const effectiveDurationMs = Math.min(
+      Math.max(durationMs, 0),
+      Math.max(elapsedMs + 500, 0),
+    );
     const boundedClicks = Math.max(0, Math.floor(clientClicks));
     const maxClicks = maxAllowedClicks(effectiveDurationMs);
     const verifiedClicks = Math.min(boundedClicks, maxClicks);
@@ -86,7 +104,12 @@ export async function cashoutRound(userId: string, roundId: number, clientClicks
     if (didBustByClick(bustSeed, verifiedClicks)) {
       await sql`UPDATE clicker_rounds SET status = 'bust', clicks = ${verifiedClicks}, multiplier = ${expectedMultiplier}, payout = 0 WHERE id = ${roundId}`;
       await sql`COMMIT`;
-      return { payout: BigInt(0), multiplier: expectedMultiplier, clicks: verifiedClicks, busted: true };
+      return {
+        payout: BigInt(0),
+        multiplier: expectedMultiplier,
+        clicks: verifiedClicks,
+        busted: true,
+      };
     }
 
     const payout = payoutFrom(BigInt(round.bet_amount), expectedMultiplier);
@@ -95,27 +118,45 @@ export async function cashoutRound(userId: string, roundId: number, clientClicks
     await sql`UPDATE clicker_users SET tokens = tokens + ${payout} WHERE id = ${userId}`;
 
     await sql`COMMIT`;
-    return { payout, multiplier: expectedMultiplier, clicks: verifiedClicks, busted: false };
+    return {
+      payout,
+      multiplier: expectedMultiplier,
+      clicks: verifiedClicks,
+      busted: false,
+    };
   } catch (error) {
     await sql`ROLLBACK`;
     throw error;
   }
 }
 
-export async function syncRound(userId: string, roundId: number, clientClicks: number, clientMultiplier: number, durationMs: number) {
+export async function syncRound(
+  userId: string,
+  roundId: number,
+  clientClicks: number,
+  clientMultiplier: number,
+  durationMs: number,
+) {
   const sql = getNeonSql();
-  const rounds = await sql`SELECT id, created_at, status FROM clicker_rounds WHERE id = ${roundId} AND user_id = ${userId} LIMIT 1`;
+  const rounds =
+    await sql`SELECT id, created_at, status FROM clicker_rounds WHERE id = ${roundId} AND user_id = ${userId} LIMIT 1`;
   if (!rounds[0]) throw new Error("ROUND_NOT_FOUND");
   if (rounds[0].status !== "active") throw new Error("ROUND_NOT_ACTIVE");
 
   const elapsedMs = Date.now() - new Date(rounds[0].created_at).getTime();
-  const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
+  const effectiveDurationMs = Math.min(
+    Math.max(durationMs, 0),
+    Math.max(elapsedMs + 500, 0),
+  );
   const expectedMultiplier = multiplierFromClicks(clientClicks);
   const maxClicks = maxAllowedClicks(effectiveDurationMs);
   const bustSeed = `${roundId}:${userId}:${new Date(rounds[0].created_at).toISOString()}`;
 
   return {
-    ok: clientClicks <= maxClicks && Math.abs(expectedMultiplier - Number(clientMultiplier)) <= 0.001 && !didBustByClick(bustSeed, clientClicks),
+    ok:
+      clientClicks <= maxClicks &&
+      Math.abs(expectedMultiplier - Number(clientMultiplier)) <= 0.001 &&
+      !didBustByClick(bustSeed, clientClicks),
     expectedMultiplier,
     maxClicks,
   };

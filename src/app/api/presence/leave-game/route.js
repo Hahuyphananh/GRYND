@@ -5,7 +5,10 @@ export async function POST() {
   try {
     const { userId } = await auth();
     if (!userId) {
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401 },
+      );
     }
 
     const rows = await sql`
@@ -20,15 +23,24 @@ export async function POST() {
       RETURNING clerk_id, status, current_game_id, last_seen, updated_at
     `;
 
-    return new Response(JSON.stringify({ success: true, data: rows[0] || null }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: true, data: rows[0] || null }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   } catch (error) {
     console.error("[PRESENCE_LEAVE_GAME_ERROR]", error);
-    return new Response(JSON.stringify({ success: false, error: "Failed to leave game presence" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Failed to leave game presence",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

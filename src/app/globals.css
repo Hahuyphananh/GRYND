@@ -1,12 +1,17 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @keyframes glow {
-  0%, 100% { box-shadow: 0 0 8px 2px #22c55e; }
-  50% { box-shadow: 0 0 16px 6px #22c55e; }
+  0%,
+  100% {
+    box-shadow: 0 0 8px 2px #22c55e;
+  }
+  50% {
+    box-shadow: 0 0 16px 6px #22c55e;
+  }
 }
 .animate-glow {
   animation: glow 1s ease-in-out infinite;
@@ -19,7 +24,9 @@
   }
   50% {
     background-position: 100% center;
-    text-shadow: 0 0 12px rgba(255, 200, 50, 0.7), 0 0 20px rgba(255, 180, 0, 0.5);
+    text-shadow:
+      0 0 12px rgba(255, 200, 50, 0.7),
+      0 0 20px rgba(255, 180, 0, 0.5);
   }
   100% {
     background-position: -100% center;
@@ -41,22 +48,39 @@
 }
 
 @keyframes gradientBG {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 /* Button bounce/shimmer animation */
 @keyframes bounceScale {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
 }
 
 /* Gradient hover animation for casino button */
 @keyframes gradientHover {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 .animated-button {
@@ -64,7 +88,7 @@
 }
 
 .gradient-hover {
-  background: linear-gradient(90deg, #FFD700, #FFEA00, #FFD700);
+  background: linear-gradient(90deg, #ffd700, #ffea00, #ffd700);
   background-size: 200% 200%;
   transition: all 0.3s ease;
 }
@@ -98,19 +122,26 @@
 
 /* Commencer à Parier hover gradient with smooth transition */
 .commencer-hover {
-  background: linear-gradient(135deg, #FFD700, #FFD700); /* solid initial color as gradient */
+  background: linear-gradient(
+    135deg,
+    #ffd700,
+    #ffd700
+  ); /* solid initial color as gradient */
   background-size: 200% 200%;
-  transition: background 0.5s ease, color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  transition:
+    background 0.5s ease,
+    color 0.3s ease,
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
 }
 
 .commencer-hover:hover {
-  background: linear-gradient(135deg, #FFD700, #FFB700, #FFC34D);
+  background: linear-gradient(135deg, #ffd700, #ffb700, #ffc34d);
 }
-
 
 /* Découvrir le Casino hover gradient */
 .decouvrir-hover:hover {
-  background: linear-gradient(135deg, #FFB347, #FFCC33, #FFD700);
+  background: linear-gradient(135deg, #ffb347, #ffcc33, #ffd700);
   color: #003366;
 }
 
@@ -153,11 +184,14 @@
 
 /* Optional: subtle shimmer glow for headings */
 @keyframes textGlowShimmer {
-  0%, 100% {
+  0%,
+  100% {
     text-shadow: 0 0 4px rgba(255, 215, 0, 0.5);
   }
   50% {
-    text-shadow: 0 0 12px rgba(255, 215, 0, 0.7), 0 0 20px rgba(255, 180, 0, 0.5);
+    text-shadow:
+      0 0 12px rgba(255, 215, 0, 0.7),
+      0 0 20px rgba(255, 180, 0, 0.5);
   }
 }
 
@@ -167,11 +201,16 @@
 
 /* Glow pulse animation */
 @keyframes glowPulse {
-  0%, 100% {
-    box-shadow: 0 0 10px rgba(255, 215, 0, 0.6), 0 0 20px rgba(255, 215, 0, 0.4);
+  0%,
+  100% {
+    box-shadow:
+      0 0 10px rgba(255, 215, 0, 0.6),
+      0 0 20px rgba(255, 215, 0, 0.4);
   }
   50% {
-    box-shadow: 0 0 20px rgba(255, 215, 0, 0.9), 0 0 40px rgba(255, 215, 0, 0.6);
+    box-shadow:
+      0 0 20px rgba(255, 215, 0, 0.9),
+      0 0 40px rgba(255, 215, 0, 0.6);
   }
 }
 
@@ -181,7 +220,10 @@
 
 /* Fix flicker on hover in/out */
 .more-hover {
-  transition: background-color 0.3s ease, transform 0.2s ease, box-shadow 0.4s ease;
+  transition:
+    background-color 0.3s ease,
+    transform 0.2s ease,
+    box-shadow 0.4s ease;
 }
 
 .more-hover:hover {
@@ -191,7 +233,7 @@
 }
 
 .logo-text {
-  font-family: 'Orbitron', sans-serif;
+  font-family: "Orbitron", sans-serif;
   font-weight: 700;
   letter-spacing: 1px;
 }
@@ -213,12 +255,17 @@
 }
 
 @keyframes cyberButtonGlow {
-  0%, 100% {
-    box-shadow: 0 0 8px rgba(0, 229, 255, 0.35), 0 0 16px rgba(245, 255, 59, 0.2);
+  0%,
+  100% {
+    box-shadow:
+      0 0 8px rgba(0, 229, 255, 0.35),
+      0 0 16px rgba(245, 255, 59, 0.2);
     transform: translateY(0);
   }
   50% {
-    box-shadow: 0 0 18px rgba(245, 255, 59, 0.45), 0 0 30px rgba(0, 229, 255, 0.45);
+    box-shadow:
+      0 0 18px rgba(245, 255, 59, 0.45),
+      0 0 30px rgba(0, 229, 255, 0.45);
     transform: translateY(-1px);
   }
 }
@@ -278,14 +325,25 @@ a[class*="bg-[#f5ff3b]"] {
 }
 
 @keyframes bombFuse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
 }
 
 @keyframes bombExplode {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.4) rotate(10deg); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.4) rotate(10deg);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .animate-bomb-fuse {
@@ -296,54 +354,70 @@ a[class*="bg-[#f5ff3b]"] {
   animation: bombExplode 0.4s ease-out;
 }
 
-
 /* Light mode palette overrides (dark mode keeps original colors) */
-:root[data-theme='light'] {
+:root[data-theme="light"] {
   color-scheme: light;
 }
 
 /* 🔵 BLUE LIGHT MODE (casino style) */
-:root[data-theme='light'] {
+:root[data-theme="light"] {
   color-scheme: dark; /* keep dark UI behavior */
 }
 
 /* Page background */
-:root[data-theme='light'] body {
+:root[data-theme="light"] body {
   background: #0a3d62;
   color: #e6f0ff;
 }
 
 /* Main backgrounds */
-:root[data-theme='light'] .bg-\[\#003366\],
-:root[data-theme='light'] .animated-bg {
+:root[data-theme="light"] .bg-\[\#003366\],
+:root[data-theme="light"] .animated-bg {
   background: linear-gradient(180deg, #0a3d62, #0d4f8b) !important;
 }
 
 /* Cards / containers */
-:root[data-theme='light'] .bg-\[\#004080\],
-:root[data-theme='light'] .bg-black {
+:root[data-theme="light"] .bg-\[\#004080\],
+:root[data-theme="light"] .bg-black {
   background-color: #0d4f8b !important;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 @keyframes borderFlowX {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 @keyframes borderFlowY {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100%); }
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
 }
 
 .space-bg {
-  background: radial-gradient(circle at 50% 50%, rgba(0,229,255,0.08), transparent 60%);
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 229, 255, 0.08),
+    transparent 60%
+  );
   animation: pulseGlow 4s ease-in-out infinite;
 }
 
 @keyframes pulseGlow {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.9; }
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.9;
+  }
 }
 
 @keyframes liftFadeIn {
@@ -399,9 +473,15 @@ a[class*="bg-[#f5ff3b]"] {
 }
 
 @keyframes parchmentBounce {
-  0% { transform: scaleY(0.2); }
-  70% { transform: scaleY(1.08); }
-  100% { transform: scaleY(1); }
+  0% {
+    transform: scaleY(0.2);
+  }
+  70% {
+    transform: scaleY(1.08);
+  }
+  100% {
+    transform: scaleY(1);
+  }
 }
 
 .animate-parchment {
@@ -440,35 +520,55 @@ a[class*="bg-[#f5ff3b]"] {
 }
 
 @keyframes parchmentWobble {
-  0% { transform: scaleY(0.2); }
-  60% { transform: scaleY(1.05); }
-  80% { transform: scaleY(0.98); }
-  100% { transform: scaleY(1); }
+  0% {
+    transform: scaleY(0.2);
+  }
+  60% {
+    transform: scaleY(1.05);
+  }
+  80% {
+    transform: scaleY(0.98);
+  }
+  100% {
+    transform: scaleY(1);
+  }
 }
 
 @keyframes parchmentBlur {
-  0% { filter: blur(6px); opacity: 0; }
-  100% { filter: blur(0); opacity: 1; }
+  0% {
+    filter: blur(6px);
+    opacity: 0;
+  }
+  100% {
+    filter: blur(0);
+    opacity: 1;
+  }
 }
 
 @keyframes neonButton {
-  0%, 100% {
-    box-shadow: 0 0 20px rgba(34, 211, 238, 0.4),
-                0 0 40px rgba(217, 70, 239, 0.2);
+  0%,
+  100% {
+    box-shadow:
+      0 0 20px rgba(34, 211, 238, 0.4),
+      0 0 40px rgba(217, 70, 239, 0.2);
   }
   50% {
-    box-shadow: 0 0 35px rgba(34, 211, 238, 0.7),
-                0 0 60px rgba(217, 70, 239, 0.4);
+    box-shadow:
+      0 0 35px rgba(34, 211, 238, 0.7),
+      0 0 60px rgba(217, 70, 239, 0.4);
   }
 }
 @keyframes neonPulse {
-  0%, 100% {
-    box-shadow: 0 0 20px rgba(34, 211, 238, 0.15),
-                0 0 40px rgba(217, 70, 239, 0.05);
+  0%,
+  100% {
+    box-shadow:
+      0 0 20px rgba(34, 211, 238, 0.15),
+      0 0 40px rgba(217, 70, 239, 0.05);
   }
   50% {
-    box-shadow: 0 0 35px rgba(34, 211, 238, 0.35),
-                0 0 60px rgba(217, 70, 239, 0.2);
+    box-shadow:
+      0 0 35px rgba(34, 211, 238, 0.35),
+      0 0 60px rgba(217, 70, 239, 0.2);
   }
 }
 
@@ -496,41 +596,41 @@ a[class*="bg-[#f5ff3b]"] {
 }
 
 /* Secondary panels (like Mines sidebars) */
-:root[data-theme='light'] .bg-\[\#0055aa\] {
+:root[data-theme="light"] .bg-\[\#0055aa\] {
   background-color: #1565c0 !important;
 }
 
 /* Text */
-:root[data-theme='light'] .text-white {
+:root[data-theme="light"] .text-white {
   color: #e6f0ff !important;
 }
 
-:root[data-theme='light'] .text-gray-300,
-:root[data-theme='light'] .text-gray-200,
-:root[data-theme='light'] .text-gray-400 {
+:root[data-theme="light"] .text-gray-300,
+:root[data-theme="light"] .text-gray-200,
+:root[data-theme="light"] .text-gray-400 {
   color: #bcd3ff !important;
 }
 
 /* Inputs */
-:root[data-theme='light'] input,
-:root[data-theme='light'] select,
-:root[data-theme='light'] textarea {
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea {
   background-color: #0d4f8b !important;
   color: #ffffff !important;
-  border: 1px solid rgba(255,255,255,0.15);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 /* Gold accents */
-:root[data-theme='light'] .text-\[\#FFD700\] {
+:root[data-theme="light"] .text-\[\#FFD700\] {
   color: #ffd95a !important;
 }
 
-:root[data-theme='light'] .bg-\[\#FFD700\] {
+:root[data-theme="light"] .bg-\[\#FFD700\] {
   background: linear-gradient(135deg, #ffd95a, #f4c430) !important;
   color: #0a3d62 !important;
 }
 
-:root[data-theme='light'] .hover\:bg-\[\#FFD700\]\/80:hover {
+:root[data-theme="light"] .hover\:bg-\[\#FFD700\]\/80:hover {
   background-color: #f4c430 !important;
 }
 @keyframes connectFourDrop {
@@ -568,7 +668,8 @@ a[class*="bg-[#f5ff3b]"] {
 @keyframes unoPlaySlide {
   from {
     opacity: 0.95;
-    transform: translate(-50%, 0) translate(var(--slide-x, 0px), var(--slide-y, 0px)) scale(1);
+    transform: translate(-50%, 0)
+      translate(var(--slide-x, 0px), var(--slide-y, 0px)) scale(1);
   }
   to {
     opacity: 0;
@@ -580,10 +681,15 @@ a[class*="bg-[#f5ff3b]"] {
   animation: unoPlaySlide 0.42s ease-in forwards;
 }
 
-
 @keyframes pageFadeSlideIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .page-enter {
@@ -591,8 +697,15 @@ a[class*="bg-[#f5ff3b]"] {
 }
 
 @keyframes lowTimePulse {
-  0%, 100% { transform: scale(1); text-shadow: 0 0 0 rgba(248, 113, 113, 0); }
-  50% { transform: scale(1.06); text-shadow: 0 0 12px rgba(248, 113, 113, 0.8); }
+  0%,
+  100% {
+    transform: scale(1);
+    text-shadow: 0 0 0 rgba(248, 113, 113, 0);
+  }
+  50% {
+    transform: scale(1.06);
+    text-shadow: 0 0 12px rgba(248, 113, 113, 0.8);
+  }
 }
 
 .low-time-pulse {
@@ -600,7 +713,9 @@ a[class*="bg-[#f5ff3b]"] {
 }
 
 .turn-active-glow {
-  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.45), 0 0 24px rgba(250, 204, 21, 0.2);
+  box-shadow:
+    0 0 0 1px rgba(250, 204, 21, 0.45),
+    0 0 24px rgba(250, 204, 21, 0.2);
   transition: box-shadow 0.2s ease;
 }
 
@@ -612,8 +727,14 @@ a[class*="bg-[#f5ff3b]"] {
 }
 
 @keyframes confettiFall {
-  from { transform: translateY(-120px) rotate(0deg); opacity: 1; }
-  to { transform: translateY(420px) rotate(360deg); opacity: 0; }
+  from {
+    transform: translateY(-120px) rotate(0deg);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(420px) rotate(360deg);
+    opacity: 0;
+  }
 }
 
 .confetti-overlay {
@@ -632,26 +753,56 @@ a[class*="bg-[#f5ff3b]"] {
   animation: confettiFall 1.6s linear forwards;
 }
 
-.hover-lift { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-.hover-lift:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(0,0,0,0.28); }
+.hover-lift {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+}
 
 @keyframes laneRunnerHop {
-  0% { transform: translateY(0) scale(1); }
-  40% { transform: translateY(-8px) scale(1.06); }
-  100% { transform: translateY(0) scale(1); }
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  40% {
+    transform: translateY(-8px) scale(1.06);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes laneRunnerTileShake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-3px); }
-  50% { transform: translateX(3px); }
-  75% { transform: translateX(-2px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  50% {
+    transform: translateX(3px);
+  }
+  75% {
+    transform: translateX(-2px);
+  }
 }
 
 @keyframes laneRunnerCarHit {
-  0% { transform: translateX(120%); opacity: 0; }
-  30% { opacity: 1; }
-  100% { transform: translateX(0%); opacity: 1; }
+  0% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0%);
+    opacity: 1;
+  }
 }
 
 .lane-runner-hop {
@@ -667,38 +818,67 @@ a[class*="bg-[#f5ff3b]"] {
 }
 
 @keyframes laneParallax {
-  0% { background-position: 0 0; }
-  100% { background-position: 160px 0; }
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 160px 0;
+  }
 }
 
 @keyframes laneSweep {
-  0% { transform: translateX(-115%); }
-  100% { transform: translateX(115%); }
+  0% {
+    transform: translateX(-115%);
+  }
+  100% {
+    transform: translateX(115%);
+  }
 }
 
 @keyframes laneCarLeft {
-  0% { transform: translateX(102%); }
-  100% { transform: translateX(-12%); }
+  0% {
+    transform: translateX(102%);
+  }
+  100% {
+    transform: translateX(-12%);
+  }
 }
 
 @keyframes laneCarRight {
-  0% { transform: translateX(-12%); }
-  100% { transform: translateX(102%); }
+  0% {
+    transform: translateX(-12%);
+  }
+  100% {
+    transform: translateX(102%);
+  }
 }
 
 @keyframes laneRunnerShake {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-4px); }
-  40% { transform: translateX(4px); }
-  60% { transform: translateX(-3px); }
-  80% { transform: translateX(3px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
 }
 
 .lane-runner-road-parallax {
   background-image:
     linear-gradient(to right, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 46px 100%, 100% 58px;
+  background-size:
+    46px 100%,
+    100% 58px;
   animation: laneParallax 2.2s linear infinite;
 }
 
@@ -737,25 +917,49 @@ a[class*="bg-[#f5ff3b]"] {
 }
 
 @keyframes laneVerticalSweep {
-  0% { transform: translateY(-120%); }
-  100% { transform: translateY(760%); }
+  0% {
+    transform: translateY(-120%);
+  }
+  100% {
+    transform: translateY(760%);
+  }
 }
 
 @keyframes laneCarDown {
-  0% { transform: translateY(-12%); }
-  100% { transform: translateY(420px); }
+  0% {
+    transform: translateY(-12%);
+  }
+  100% {
+    transform: translateY(420px);
+  }
 }
 
 @keyframes laneCarUp {
-  0% { transform: translateY(420px); }
-  100% { transform: translateY(-12%); }
+  0% {
+    transform: translateY(420px);
+  }
+  100% {
+    transform: translateY(-12%);
+  }
 }
 
 .lane-runner-column-lines {
   background-image:
-    repeating-linear-gradient(to bottom, transparent 0, transparent 16px, rgba(255,255,255,0.15) 16px, rgba(255,255,255,0.15) 18px),
-    linear-gradient(to right, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 50%);
-  background-size: 100% 18px, 2px 100%;
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 16px,
+      rgba(255, 255, 255, 0.15) 16px,
+      rgba(255, 255, 255, 0.15) 18px
+    ),
+    linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.45) 50%,
+      rgba(255, 255, 255, 0) 50%
+    );
+  background-size:
+    100% 18px,
+    2px 100%;
   background-repeat: repeat, no-repeat;
   background-position: center, center;
 }
@@ -774,8 +978,14 @@ a[class*="bg-[#f5ff3b]"] {
 
 .lane-runner-asphalt {
   background:
-    linear-gradient(to bottom, rgba(255,255,255,0.07), rgba(0,0,0,0.07)),
-    repeating-linear-gradient(to bottom, rgba(255,255,255,0.04) 0, rgba(255,255,255,0.04) 2px, transparent 2px, transparent 8px);
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.07)),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.04) 0,
+      rgba(255, 255, 255, 0.04) 2px,
+      transparent 2px,
+      transparent 8px
+    );
 }
 
 .lane-runner-sewer {
@@ -783,7 +993,11 @@ a[class*="bg-[#f5ff3b]"] {
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  border: 2px solid rgba(0,0,0,0.4);
-  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.18), rgba(15,23,42,0.88));
+  border: 2px solid rgba(0, 0, 0, 0.4);
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgba(255, 255, 255, 0.18),
+    rgba(15, 23, 42, 0.88)
+  );
   box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.55);
 }

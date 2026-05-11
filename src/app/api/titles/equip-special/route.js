@@ -6,7 +6,10 @@ import { userSpecialTitles, users } from "../../../../db/schema";
 export async function POST(request) {
   const { userId } = await auth();
   if (!userId) {
-    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      { status: 401 },
+    );
   }
 
   const { titleKey } = await request.json();
@@ -18,25 +21,48 @@ export async function POST(request) {
   });
 
   if (!appUser) {
-    return new Response(JSON.stringify({ success: false, error: "User not found" }), { status: 404 });
+    return new Response(
+      JSON.stringify({ success: false, error: "User not found" }),
+      { status: 404 },
+    );
   }
 
   if (!normalizedKey) {
-    await db.update(users).set({ selectedSpecialTitle: null }).where(eq(users.id, appUser.id));
-    return new Response(JSON.stringify({ success: true, selectedSpecialTitle: null }), { status: 200 });
+    await db
+      .update(users)
+      .set({ selectedSpecialTitle: null })
+      .where(eq(users.id, appUser.id));
+    return new Response(
+      JSON.stringify({ success: true, selectedSpecialTitle: null }),
+      { status: 200 },
+    );
   }
 
   const unlocked = await db
     .select({ id: userSpecialTitles.id })
     .from(userSpecialTitles)
-    .where(and(eq(userSpecialTitles.userId, appUser.id), eq(userSpecialTitles.titleKey, normalizedKey)))
+    .where(
+      and(
+        eq(userSpecialTitles.userId, appUser.id),
+        eq(userSpecialTitles.titleKey, normalizedKey),
+      ),
+    )
     .limit(1);
 
   if (!unlocked.length) {
-    return new Response(JSON.stringify({ success: false, error: "Title not unlocked" }), { status: 403 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Title not unlocked" }),
+      { status: 403 },
+    );
   }
 
-  await db.update(users).set({ selectedSpecialTitle: normalizedKey }).where(eq(users.id, appUser.id));
+  await db
+    .update(users)
+    .set({ selectedSpecialTitle: normalizedKey })
+    .where(eq(users.id, appUser.id));
 
-  return new Response(JSON.stringify({ success: true, selectedSpecialTitle: normalizedKey }), { status: 200 });
+  return new Response(
+    JSON.stringify({ success: true, selectedSpecialTitle: normalizedKey }),
+    { status: 200 },
+  );
 }

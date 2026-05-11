@@ -46,10 +46,10 @@ export default function MatchPage() {
   useEffect(() => {
     if (!user) return;
     const fetchTokens = async () => {
-      const res = await fetch("/api/get-user-tokens", { 
+      const res = await fetch("/api/get-user-tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include"
+        credentials: "include",
       });
       const data = await res.json();
       if (data.success) setUserTokens(data.data.balance);
@@ -60,12 +60,12 @@ export default function MatchPage() {
   // Countdown timer
   useEffect(() => {
     const interval = setInterval(() => {
-      setCountdown(prev => (prev > 0 ? prev - 1 : 0));
+      setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(interval);
   }, []);
 
-  const formatTime = s => {
+  const formatTime = (s) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
     return `${m}:${sec.toString().padStart(2, "0")}`;
@@ -92,7 +92,9 @@ export default function MatchPage() {
       if (!res.ok) throw new Error(data.error || "Erreur");
 
       setUserTokens(data.newBalance);
-      setMessage(`✅ Pari placé sur ${selected} à ${event.odds_map[selected]}x`);
+      setMessage(
+        `✅ Pari placé sur ${selected} à ${event.odds_map[selected]}x`,
+      );
       setSelected(null);
       setBetAmount("");
     } catch (err) {
@@ -111,7 +113,9 @@ export default function MatchPage() {
   if (!event) {
     return (
       <div className="min-h-screen bg-[#003366] text-white p-6 flex justify-center items-center">
-        <p className="text-yellow-400 text-lg">{message || "Match introuvable."}</p>
+        <p className="text-yellow-400 text-lg">
+          {message || "Match introuvable."}
+        </p>
       </div>
     );
   }
@@ -169,7 +173,7 @@ export default function MatchPage() {
               >
                 {key.toUpperCase()} ({value})
               </button>
-            ) : null
+            ) : null,
           )}
         </div>
 
@@ -177,7 +181,7 @@ export default function MatchPage() {
           <input
             type="number"
             value={betAmount}
-            onChange={e => setBetAmount(e.target.value)}
+            onChange={(e) => setBetAmount(e.target.value)}
             placeholder="Montant à parier"
             className="px-4 py-2 rounded-l-lg bg-gray-800 text-white border border-yellow-500 w-48"
           />

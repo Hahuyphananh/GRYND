@@ -5,11 +5,11 @@ export async function GET() {
   const { userId } = await auth();
 
   if (!userId) {
-    return NextResponse.json({ success:false });
+    return NextResponse.json({ success: false });
   }
 
   return NextResponse.json({
-    success:true,
-    data:{ userId }
+    success: true,
+    data: { userId },
   });
 }

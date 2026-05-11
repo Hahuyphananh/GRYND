@@ -7,10 +7,13 @@ export async function GET() {
     const { userId } = await auth();
 
     if (!userId) {
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized", invites: [] }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized", invites: [] }),
+        {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const current = await sql`
@@ -21,10 +24,17 @@ export async function GET() {
     `;
 
     if (!current.length) {
-      return new Response(JSON.stringify({ success: false, error: "User not found", invites: [] }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "User not found",
+          invites: [],
+        }),
+        {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const meId = Number(current[0].id);
@@ -45,9 +55,16 @@ export async function GET() {
   } catch (error) {
     console.error("[FRIENDS_INVITES_LIST_ERROR]", error);
 
-    return new Response(JSON.stringify({ success: false, error: "Failed to load invites", invites: [] }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Failed to load invites",
+        invites: [],
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

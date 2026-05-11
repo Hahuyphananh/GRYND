@@ -19,7 +19,7 @@ export function isValidPlay(
   card: UnoCard,
   topCard: UnoCard,
   currentColor: string,
-  hand?: UnoCard[]
+  hand?: UnoCard[],
 ): boolean {
   const normalizedValue = card.value.toLowerCase();
   const normalizedTopValue = topCard.value.toLowerCase();
@@ -32,20 +32,20 @@ export function isValidPlay(
     if (!hand) return true; // AI safety fallback
 
     // Can only play if no matching color exists
-    const hasMatch = hand.some(c => c.color === currentColor);
+    const hasMatch = hand.some((c) => c.color === currentColor);
     return !hasMatch;
   }
 
-  return (
-    card.color === currentColor ||
-    normalizedValue === normalizedTopValue
-  );
+  return card.color === currentColor || normalizedValue === normalizedTopValue;
 }
 
 /**
  * Draws one card from the deck into the given hand.
  */
-export function drawCard(deck: UnoCard[], hand: UnoCard[]): {
+export function drawCard(
+  deck: UnoCard[],
+  hand: UnoCard[],
+): {
   deck: UnoCard[];
   hand: UnoCard[];
   drawn: UnoCard | null;
@@ -63,13 +63,13 @@ export function drawCard(deck: UnoCard[], hand: UnoCard[]): {
 export function playCard(
   card: UnoCard,
   hand: UnoCard[],
-  discardPile: UnoCard[]
+  discardPile: UnoCard[],
 ): {
   hand: UnoCard[];
   discardPile: UnoCard[];
 } {
   const index = hand.findIndex(
-    (c) => c.color === card.color && c.value === card.value
+    (c) => c.color === card.color && c.value === card.value,
   );
   if (index !== -1) {
     hand.splice(index, 1);
@@ -84,9 +84,8 @@ export function playCard(
 export function getPlayableCard(
   hand: UnoCard[],
   topCard: UnoCard,
-  currentColor: string
+  currentColor: string,
 ): UnoCard | null {
-
   for (const card of hand) {
     if (isValidPlay(card, topCard, currentColor, hand)) {
       return card;
@@ -102,7 +101,8 @@ export function getPlayableCard(
 export function getDrawCount(card: UnoCard): number {
   const normalizedValue = card.value.toLowerCase();
   if (normalizedValue === "draw two" || normalizedValue === "+2") return 2;
-  if (normalizedValue === "wild draw four" || normalizedValue === "+4") return 4;
+  if (normalizedValue === "wild draw four" || normalizedValue === "+4")
+    return 4;
   return 0;
 }
 
@@ -111,7 +111,7 @@ export function getDrawCount(card: UnoCard): number {
  */
 export function getNextTurn(
   current: "player" | "ai",
-  cardPlayed: UnoCard
+  cardPlayed: UnoCard,
 ): "player" | "ai" {
   const normalizedValue = cardPlayed.value.toLowerCase();
   if (normalizedValue === "skip" || normalizedValue === "reverse") {
@@ -120,7 +120,6 @@ export function getNextTurn(
   }
   return current === "player" ? "ai" : "player";
 }
-
 
 export function applyUnoCard(game, card, currentPlayer, chosenColor = null) {
   let { playerHand, aiHand, deck, discardPile = [], turn, currentColor } = game;
@@ -142,14 +141,17 @@ export function applyUnoCard(game, card, currentPlayer, chosenColor = null) {
   // ✅ Wilds must have a chosen color
   const normalizedValue = card.value.toLowerCase();
 
-  if (normalizedValue === "wild" || normalizedValue === "wild draw four" || normalizedValue === "+4") {
+  if (
+    normalizedValue === "wild" ||
+    normalizedValue === "wild draw four" ||
+    normalizedValue === "+4"
+  ) {
     if (!chosenColor) {
       throw new Error("Wild cards must have a chosen color!");
     }
     currentColor = chosenColor.toLowerCase();
     // Keep discard pile visually aligned with the selected color.
     playedCard = { ...playedCard, color: currentColor };
-
   } else {
     currentColor = card.color.toLowerCase();
   }

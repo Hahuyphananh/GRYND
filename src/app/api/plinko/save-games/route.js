@@ -10,7 +10,7 @@ export async function POST(req) {
     if (!userId)
       return NextResponse.json(
         { success: false, error: "Not authenticated" },
-        { status: 401 }
+        { status: 401 },
       );
 
     const body = await req.json();
@@ -19,7 +19,7 @@ export async function POST(req) {
     if (!totalBet || !multipliers?.length) {
       return NextResponse.json(
         { success: false, error: "Invalid data" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -41,14 +41,19 @@ export async function POST(req) {
       status: "completed",
     });
 
-    await applyLeaderboardCounters({ clerkId: userId, game: "plinko", betAmount: numericBet, payout: numericPayout });
+    await applyLeaderboardCounters({
+      clerkId: userId,
+      game: "plinko",
+      betAmount: numericBet,
+      payout: numericPayout,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error saving Plinko games:", error);
     return NextResponse.json(
       { success: false, error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

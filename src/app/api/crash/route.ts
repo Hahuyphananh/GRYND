@@ -1,22 +1,31 @@
-import { auth } from '@clerk/nextjs/server';
-import { db } from '../../../db/client';
-import { users, crashGames } from '../../../db/schema';
-import { eq, sql } from 'drizzle-orm';
-import { NextResponse } from 'next/server';
-import { createSignedSession, verifySignedSession } from '../../../lib/serverSession';
+import { auth } from "@clerk/nextjs/server";
+import { db } from "../../../db/client";
+import { users, crashGames } from "../../../db/schema";
+import { eq, sql } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import {
+  createSignedSession,
+  verifySignedSession,
+} from "../../../lib/serverSession";
 
 export async function POST(req) {
   try {
     const { userId } = await auth();
 
     if (!userId) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
     }
 
     const { betAmount, multiplier, immediateDeduct } = await req.json();
 
     if (!Number.isFinite(betAmount) || betAmount <= 0) {
-      return NextResponse.json({ success: false, error: 'Invalid bet' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "Invalid bet" },
+        { status: 400 },
+      );
     }
 
     const userData = await db
@@ -26,7 +35,10 @@ export async function POST(req) {
       .limit(1);
 
     if (!userData.length) {
-      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: "User not found" },
+        { status: 404 },
+      );
     }
 
     const user = userData[0];
@@ -38,11 +50,16 @@ export async function POST(req) {
       const [deducted] = await db
         .update(users)
         .set({ balance: sql`${users.balance} - ${betAmount}` })
-        .where(sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${betAmount}`)
+        .where(
+          sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${betAmount}`,
+        )
         .returning({ balance: users.balance });
 
       if (!deducted) {
-        return NextResponse.json({ success: false, error: 'Insufficient balance' }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "Insufficient balance" },
+          { status: 400 },
+        );
       }
 
       const crashPoint = Number((Math.random() * 8 + 1.2).toFixed(2));
@@ -59,10 +76,10 @@ export async function POST(req) {
         newBalance: Number(deducted.balance),
       });
 
-      res.cookies.set('crash_session', token, {
+      res.cookies.set("crash_session", token, {
         httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
+        sameSite: "lax",
+        path: "/",
         maxAge: 600,
       });
 
@@ -72,11 +89,14 @@ export async function POST(req) {
     // =========================
     // 2. SETTLE (CASHOUT / LOSS)
     // =========================
-    const token = req.cookies.get('crash_session')?.value;
+    const token = req.cookies.get("crash_session")?.value;
     const session = verifySignedSession(token);
 
     if (!session || session.userId !== userId) {
-      return NextResponse.json({ success: false, error: 'No active session' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "No active session" },
+        { status: 400 },
+      );
     }
 
     const bet = Number(session.betAmount);
@@ -84,7 +104,10 @@ export async function POST(req) {
     const cashoutMultiplier = Number(multiplier);
 
     if (!Number.isFinite(cashoutMultiplier) || cashoutMultiplier < 1) {
-      return NextResponse.json({ success: false, error: 'Invalid cashout' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "Invalid cashout" },
+        { status: 400 },
+      );
     }
 
     const won = cashoutMultiplier <= crashPoint;
@@ -102,8 +125,8 @@ export async function POST(req) {
       betAmount: bet.toFixed(2),
       cashedOutAt: won ? cashoutMultiplier.toFixed(2) : null,
       payout: payout.toFixed(2),
-      result: won ? 'won' : 'lost',
-      status: 'completed',
+      result: won ? "won" : "lost",
+      status: "completed",
     });
 
     const res = NextResponse.json({
@@ -111,18 +134,21 @@ export async function POST(req) {
       newBalance: Number(updated.balance),
       payout,
       crashPoint,
-      result: won ? 'won' : 'lost',
+      result: won ? "won" : "lost",
     });
 
-    res.cookies.set('crash_session', '', {
+    res.cookies.set("crash_session", "", {
       httpOnly: true,
-      path: '/',
+      path: "/",
       maxAge: 0,
     });
 
     return res;
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ success: false, error: 'Server error' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Server error" },
+      { status: 500 },
+    );
   }
 }

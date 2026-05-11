@@ -11,7 +11,7 @@ const Chessboard = dynamic(
     const mod = await import("react-chessboard");
     return mod.Chessboard;
   },
-  { ssr: false }
+  { ssr: false },
 );
 
 const CONFETTI_COLORS = ["#facc15", "#22c55e", "#38bdf8", "#fb7185", "#a78bfa"];
@@ -35,7 +35,10 @@ function playUiTone(type = "move") {
 
   gain.gain.setValueAtTime(0.001, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + config.duration);
+  gain.gain.exponentialRampToValueAtTime(
+    0.001,
+    ctx.currentTime + config.duration,
+  );
 
   osc.start();
   osc.stop(ctx.currentTime + config.duration);
@@ -57,7 +60,9 @@ export default function ChessGamePage() {
   const isSpectator = searchParams.get("spectator") === "1";
 
   const focusTarget = searchParams.get("focusTarget") || "";
-  const [spectatorFocus, setSpectatorFocus] = useState(searchParams.get("focus") || "white");
+  const [spectatorFocus, setSpectatorFocus] = useState(
+    searchParams.get("focus") || "white",
+  );
 
   const [liveFen, setLiveFen] = useState("start");
   const [status, setStatus] = useState("Loading match...");
@@ -65,8 +70,8 @@ export default function ChessGamePage() {
   const [moves, setMoves] = useState([]);
   const [moveIndex, setMoveIndex] = useState(-1);
   const [isResigning, setIsResigning] = useState(false);
-const [showResultPopup, setShowResultPopup] = useState(false);
-const [resultText, setResultText] = useState("");
+  const [showResultPopup, setShowResultPopup] = useState(false);
+  const [resultText, setResultText] = useState("");
 
   const { socket } = useSocket();
 
@@ -79,9 +84,7 @@ const [resultText, setResultText] = useState("");
   });
 
   const boardSize =
-    typeof window !== "undefined"
-      ? Math.min(window.innerWidth - 32, 640)
-      : 640;
+    typeof window !== "undefined" ? Math.min(window.innerWidth - 32, 640) : 640;
 
   const displayFen = useMemo(() => {
     if (moveIndex >= 0 && moves[moveIndex]?.fenAfter) {
@@ -90,63 +93,60 @@ const [resultText, setResultText] = useState("");
     return liveFen;
   }, [moveIndex, moves, liveFen]);
 
-async function fetchState() {
-  const res = await fetch(`/api/chess/game-state?gameId=${gameId}`, {
-    cache: "no-store",
-  });
+  async function fetchState() {
+    const res = await fetch(`/api/chess/game-state?gameId=${gameId}`, {
+      cache: "no-store",
+    });
 
-  const data = await res.json();
+    const data = await res.json();
 
-  if (!res.ok) {
-    setStatus("Unable to load game");
-    return;
-  }
-
-  const game = data.data;
-  if (isSpectator && focusTarget) {
-    const normalizedTarget = String(focusTarget);
-    if (normalizedTarget === String(game.whitePlayerId)) setSpectatorFocus("white");
-    else if (normalizedTarget === String(game.blackPlayerId)) setSpectatorFocus("black");
-  }
-
-  setGameData(game);
-  setMoves(game.moves || []);
-  setLiveFen(game.fen || "start");
-
-  if (!game.blackPlayerId) {
-    setStatus("Waiting for opponent...");
-    return;
-  }
-
-  if (game.status === "finished" || game.status === "expired") {
-    const myId =
-      color === "white"
-        ? game.whitePlayerId
-        : game.blackPlayerId;
-
-    let text = "Game Over.";
-
-    if (game.result === "draw") {
-      text = "Draw.";
-    } else if (game.winnerId) {
-      text = game.winnerId === myId
-        ? "You won!"
-        : "You lost.";
+    if (!res.ok) {
+      setStatus("Unable to load game");
+      return;
     }
 
-    setResultText(text);
-    setStatus(text);
-    setShowResultPopup(true);
-
-    if (text.includes("won")) {
-      playUiTone("win");
+    const game = data.data;
+    if (isSpectator && focusTarget) {
+      const normalizedTarget = String(focusTarget);
+      if (normalizedTarget === String(game.whitePlayerId))
+        setSpectatorFocus("white");
+      else if (normalizedTarget === String(game.blackPlayerId))
+        setSpectatorFocus("black");
     }
 
-    return;
-  }
+    setGameData(game);
+    setMoves(game.moves || []);
+    setLiveFen(game.fen || "start");
 
-  setStatus("Game active");
-}
+    if (!game.blackPlayerId) {
+      setStatus("Waiting for opponent...");
+      return;
+    }
+
+    if (game.status === "finished" || game.status === "expired") {
+      const myId = color === "white" ? game.whitePlayerId : game.blackPlayerId;
+
+      let text = "Game Over.";
+
+      if (game.result === "draw") {
+        text = "Draw.";
+      } else if (game.winnerId) {
+        text = game.winnerId === myId ? "You won!" : "You lost.";
+      }
+
+      setResultText(text);
+      setStatus(text);
+      setShowResultPopup(true);
+
+      if (text.includes("won")) {
+        playUiTone("win");
+      }
+
+      return;
+    }
+
+    setStatus("Game active");
+  }
 
   useEffect(() => {
     fetchState();
@@ -193,35 +193,35 @@ async function fetchState() {
     return true;
   }
 
-async function resignGame() {
-  if (!gameData || gameData.status !== "in_progress" || isResigning) return;
+  async function resignGame() {
+    if (!gameData || gameData.status !== "in_progress" || isResigning) return;
 
-  setIsResigning(true);
+    setIsResigning(true);
 
-  try {
-    const res = await fetch("/api/chess/end-game", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        gameId: Number(gameId),
-        result: "loss",
-      }),
-    });
+    try {
+      const res = await fetch("/api/chess/end-game", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gameId: Number(gameId),
+          result: "loss",
+        }),
+      });
 
-    if (!res.ok) {
+      if (!res.ok) {
+        setStatus("Failed to resign.");
+        return;
+      }
+
+      await fetchState();
+    } catch {
       setStatus("Failed to resign.");
-      return;
+    } finally {
+      setIsResigning(false);
     }
-
-    await fetchState();
-  } catch {
-    setStatus("Failed to resign.");
-  } finally {
-    setIsResigning(false);
   }
-}
 
   const myName =
     activeColor === "white"
@@ -246,7 +246,6 @@ async function resignGame() {
   return (
     <div className="min-h-screen bg-[#050816] text-white px-4 py-8 overflow-x-hidden">
       <div className="max-w-7xl mx-auto">
-
         {/* HEADER */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-black tracking-widest text-cyan-400 drop-shadow-[0_0_20px_#00ffff]">
@@ -254,17 +253,16 @@ async function resignGame() {
           </h1>
 
           <p className="text-white/70 mt-3">
-            Game #{gameId} • {isSpectator ? "Spectating" : `Playing as ${color}`}
+            Game #{gameId} •{" "}
+            {isSpectator ? "Spectating" : `Playing as ${color}`}
           </p>
         </div>
 
         {/* MAIN */}
         <div className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
-
           {/* BOARD AREA */}
           <div className="flex justify-center">
             <div className="w-full max-w-[660px]">
-
               {/* OPPONENT */}
               <div className="mb-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 flex justify-between backdrop-blur-md">
                 <span className="font-bold text-cyan-300">
@@ -275,34 +273,32 @@ async function resignGame() {
                 </span>
               </div>
 
-             
               {/* BOARD */}
-<div className="p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full max-w-[90vh] aspect-square mx-auto">
-  <div className="rounded-2xl overflow-hidden bg-[#0b1020] w-full h-full">
-    <Chessboard
-      id="CyberBoard"
-      animationDuration={320}
-      arePiecesDraggable={!isSpectator}
-      boardOrientation={activeColor}
-      position={displayFen}
-      onPieceDrop={onDrop}
-      customDarkSquareStyle={{
-        background: "linear-gradient(135deg,#131b3a,#1b2554)",
-      }}
-      customLightSquareStyle={{
-        background: "linear-gradient(135deg,#0ff6,#13d8ff)",
-      }}
-      // Removed fixed boardWidth
-      // Added styling to ensure it fills the container
-      customBoardStyle={{
-        width: "100%",
-        height: "100%",
-        display: "block",
-      }}
-    />
-  </div>
-</div>
-
+              <div className="p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full max-w-[90vh] aspect-square mx-auto">
+                <div className="rounded-2xl overflow-hidden bg-[#0b1020] w-full h-full">
+                  <Chessboard
+                    id="CyberBoard"
+                    animationDuration={320}
+                    arePiecesDraggable={!isSpectator}
+                    boardOrientation={activeColor}
+                    position={displayFen}
+                    onPieceDrop={onDrop}
+                    customDarkSquareStyle={{
+                      background: "linear-gradient(135deg,#131b3a,#1b2554)",
+                    }}
+                    customLightSquareStyle={{
+                      background: "linear-gradient(135deg,#0ff6,#13d8ff)",
+                    }}
+                    // Removed fixed boardWidth
+                    // Added styling to ensure it fills the container
+                    customBoardStyle={{
+                      width: "100%",
+                      height: "100%",
+                      display: "block",
+                    }}
+                  />
+                </div>
+              </div>
 
               {/* YOU */}
               <div className="mt-3 rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-3 flex justify-between backdrop-blur-md">
@@ -323,7 +319,6 @@ async function resignGame() {
 
           {/* SIDEBAR */}
           <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-
             <h2 className="text-2xl font-bold text-cyan-400 mb-4">
               Move History
             </h2>
@@ -362,21 +357,17 @@ async function resignGame() {
             >
               Return Lobby
             </button>
-
           </div>
         </div>
       </div>
-         {showResultPopup && (
+      {showResultPopup && (
         <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center px-4">
           <div className="relative w-full max-w-md rounded-2xl border border-cyan-400/30 bg-[#0b1020] p-6 text-center overflow-hidden shadow-[0_0_40px_rgba(0,255,255,0.25)]">
-
             <h2 className="text-3xl font-black text-cyan-300 mb-3">
               MATCH FINISHED
             </h2>
 
-            <p className="text-xl text-white mb-6">
-              {resultText}
-            </p>
+            <p className="text-xl text-white mb-6">{resultText}</p>
 
             {resultText.includes("won") && (
               <div className="absolute inset-0 pointer-events-none">
@@ -402,7 +393,6 @@ async function resignGame() {
             >
               Return to Lobby
             </button>
-
           </div>
         </div>
       )}

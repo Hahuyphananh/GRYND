@@ -6,22 +6,22 @@ async function handler({ eventId }) {
   const { userId } = await auth();
 
   if (!userId) {
-    return new Response(
-      JSON.stringify({ error: "Unauthorized" }),
-      { status: 401, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
     const [event] = await sql`
       SELECT * FROM events WHERE id = ${eventId}
-    `.then(res => res.rows);
+    `.then((res) => res.rows);
 
     if (!event) {
-      return new Response(
-        JSON.stringify({ error: "Event not found" }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Event not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const historicalData = await sql`
@@ -45,14 +45,10 @@ async function handler({ eventId }) {
     const total = historicalData.rows.length || 1;
     const BASE_MARGIN = 0.05;
 
-    const probabilities = [
-      homeWins / total,
-      draws / total,
-      awayWins / total
-    ];
+    const probabilities = [homeWins / total, draws / total, awayWins / total];
 
     const adjustedOdds = probabilities.map(
-      (prob) => 1 / (prob * (1 + BASE_MARGIN))
+      (prob) => 1 / (prob * (1 + BASE_MARGIN)),
     );
 
     await sql`
@@ -69,16 +65,16 @@ async function handler({ eventId }) {
         odds: {
           teamA: adjustedOdds[0].toFixed(2),
           draw: adjustedOdds[1].toFixed(2),
-          teamB: adjustedOdds[2].toFixed(2)
-        }
+          teamB: adjustedOdds[2].toFixed(2),
+        },
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (error) {
     console.error("Odds calculation error:", error);
     return new Response(
       JSON.stringify({ error: "Failed to calculate optimal odds" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }

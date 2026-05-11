@@ -8,7 +8,8 @@ import { sanitizeString } from "../../../../lib/security/validation";
 export async function PATCH(req) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
 
@@ -19,12 +20,16 @@ export async function PATCH(req) {
     const allowed = ["gameCode", "playerId", "hand", "name"];
     const unexpected = Object.keys(body).filter((k) => !allowed.includes(k));
     if (unexpected.length) {
-      return NextResponse.json({ error: `Unexpected field(s): ${unexpected.join(", ")}` }, { status: 400 });
+      return NextResponse.json(
+        { error: `Unexpected field(s): ${unexpected.join(", ")}` },
+        { status: 400 },
+      );
     }
 
     const gameCode = sanitizeString(body.gameCode || "");
     const playerId = sanitizeString(body.playerId || "");
-    const name = sanitizeString(body.name || "Unknown").slice(0, 80) || "Unknown";
+    const name =
+      sanitizeString(body.name || "Unknown").slice(0, 80) || "Unknown";
     const hand = Array.isArray(body.hand) ? body.hand : null;
 
     if (!gameCode || !playerId || hand == null) {
@@ -36,7 +41,8 @@ export async function PATCH(req) {
       .from(pokerGames)
       .where(eq(pokerGames.gameCode, gameCode));
 
-    if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    if (!game)
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
     const hostClerkId = game?.playerPositions?.hostClerkId;
     const isHost = hostClerkId === userId;
@@ -49,7 +55,7 @@ export async function PATCH(req) {
     const players = Array.isArray(game.players) ? game.players : [];
 
     const updatedPlayers = players.map((p) =>
-      p.id === playerId ? { ...p, hand } : p
+      p.id === playerId ? { ...p, hand } : p,
     );
 
     if (!updatedPlayers.find((p) => p.id === playerId)) {

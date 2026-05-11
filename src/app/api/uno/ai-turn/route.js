@@ -1,6 +1,10 @@
 import { db } from "../../../../db/client";
 import { auth } from "@clerk/nextjs/server";
-import { getUnoGameById, drawUnoCard, updateUnoGameState } from "../../../lib/unoGameUtils";
+import {
+  getUnoGameById,
+  drawUnoCard,
+  updateUnoGameState,
+} from "../../../lib/unoGameUtils";
 import { applyUnoCard, isValidPlay } from "../../../lib/unoLogic";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
@@ -24,7 +28,15 @@ function normalize(value) {
 
 function isActionCard(card) {
   const value = normalize(card.value);
-  return ["skip", "reverse", "draw two", "+2", "wild", "wild draw four", "+4"].includes(value);
+  return [
+    "skip",
+    "reverse",
+    "draw two",
+    "+2",
+    "wild",
+    "wild draw four",
+    "+4",
+  ].includes(value);
 }
 
 function aiChooseColor(hand) {
@@ -37,8 +49,9 @@ function aiChooseColor(hand) {
   }
 
   return Object.keys(colorCount).reduce(
-    (best, current) => (colorCount[current] > colorCount[best] ? current : best),
-    "red"
+    (best, current) =>
+      colorCount[current] > colorCount[best] ? current : best,
+    "red",
   );
 }
 
@@ -52,7 +65,9 @@ function scoreCard(card, gameState) {
   const value = normalize(card.value);
 
   const aiColorCount = aiHand.filter((c) => c.color === card.color).length;
-  const playerLikelyColorPressure = playerHand.filter((c) => c.color === currentColor).length;
+  const playerLikelyColorPressure = playerHand.filter(
+    (c) => c.color === currentColor,
+  ).length;
   const playerCardCount = playerHand.length;
 
   let score = 0;
@@ -108,7 +123,11 @@ function chooseBestPlay(aiHand, playerHand, topCard, currentColor) {
 export async function POST(req) {
   try {
     const { userId: clerkId } = await auth();
-    if (!clerkId) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+    if (!clerkId)
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401 },
+      );
 
     const parsed = await parseAndValidateJson(req, {
       gameId: { type: "number", required: true, integer: true, min: 1 },
@@ -118,13 +137,28 @@ export async function POST(req) {
     const { gameId } = parsed.data;
 
     const game = await getUnoGameById(gameId);
-    if (!game) return new Response(JSON.stringify({ success: false, error: "Game not found" }), { status: 404 });
+    if (!game)
+      return new Response(
+        JSON.stringify({ success: false, error: "Game not found" }),
+        { status: 404 },
+      );
 
-    const [currentUser] = await db.select().from(users).where(eq(users.clerkId, clerkId)).limit(1);
-    if (!currentUser) return new Response(JSON.stringify({ success: false, error: "User not found" }), { status: 404 });
+    const [currentUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.clerkId, clerkId))
+      .limit(1);
+    if (!currentUser)
+      return new Response(
+        JSON.stringify({ success: false, error: "User not found" }),
+        { status: 404 },
+      );
 
     if (String(game.userId) !== String(currentUser.id)) {
-      return new Response(JSON.stringify({ success: false, error: "Forbidden" }), { status: 403 });
+      return new Response(
+        JSON.stringify({ success: false, error: "Forbidden" }),
+        { status: 403 },
+      );
     }
 
     let deck = safeParse(game.deck);
@@ -132,12 +166,22 @@ export async function POST(req) {
     let playerHand = safeParse(game.playerHand);
     let discardPile = safeParse(game.discardPile);
     let topCard = discardPile[discardPile.length - 1] || null;
-    let currentColor = (game.currentColor || topCard?.color || "red").toLowerCase();
+    let currentColor = (
+      game.currentColor ||
+      topCard?.color ||
+      "red"
+    ).toLowerCase();
     let message = "";
     let isPlayerTurn = false;
 
     if (!topCard) {
-      return new Response(JSON.stringify({ success: false, error: "Invalid game state: missing top card" }), { status: 400 });
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Invalid game state: missing top card",
+        }),
+        { status: 400 },
+      );
     }
 
     let loopCounter = 0;
@@ -145,11 +189,17 @@ export async function POST(req) {
     while (!isPlayerTurn && loopCounter < 20) {
       loopCounter++;
 
-      const chosenCard = chooseBestPlay(aiHand, playerHand, topCard, currentColor);
+      const chosenCard = chooseBestPlay(
+        aiHand,
+        playerHand,
+        topCard,
+        currentColor,
+      );
 
       if (chosenCard) {
         const playableIndex = aiHand.findIndex(
-          (card) => card.color === chosenCard.color && card.value === chosenCard.value
+          (card) =>
+            card.color === chosenCard.color && card.value === chosenCard.value,
         );
 
         let playedCard = aiHand.splice(playableIndex, 1)[0];
@@ -159,7 +209,10 @@ export async function POST(req) {
             ? aiChooseColor(aiHand)
             : playedCard.color;
 
-        if (playedCard.color === "black" || normalize(playedCard.color) === "wild") {
+        if (
+          playedCard.color === "black" ||
+          normalize(playedCard.color) === "wild"
+        ) {
           message = `IA joue ${playedCard.value} et choisit ${chosenColor}`;
         } else {
           message = `IA joue ${playedCard.color} ${playedCard.value}`;
@@ -169,7 +222,7 @@ export async function POST(req) {
           { deck, playerHand, aiHand, discardPile, currentColor, turn: "ai" },
           playedCard,
           "ai",
-          chosenColor
+          chosenColor,
         );
 
         deck = updatedGame.deck;
@@ -210,7 +263,7 @@ export async function POST(req) {
             { deck, playerHand, aiHand, discardPile, currentColor, turn: "ai" },
             card,
             "ai",
-            chosenColor
+            chosenColor,
           );
 
           deck = updatedGame.deck;
@@ -241,7 +294,9 @@ export async function POST(req) {
 
     await updateUnoGameState(gameId, updatedGameState);
 
-    const user = await db.query.users.findFirst({ where: eq(users.id, game.userId) });
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, game.userId),
+    });
 
     return new Response(
       JSON.stringify({
@@ -256,10 +311,13 @@ export async function POST(req) {
           currentColor,
         },
       }),
-      { status: 200 }
+      { status: 200 },
     );
   } catch (err) {
     console.error("AI Turn Error:", err);
-    return new Response(JSON.stringify({ success: false, error: "Internal Server Error" }), { status: 500 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Internal Server Error" }),
+      { status: 500 },
+    );
   }
 }

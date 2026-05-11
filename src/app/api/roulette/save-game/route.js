@@ -5,11 +5,12 @@ import { rouletteGames, users } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 
 const rouletteNumbers = [
-  0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27,
-  13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1,
-  20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
+  0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24,
+  16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26,
 ];
-const redNumbers = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
+const redNumbers = [
+  1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36,
+];
 
 function calculatePayout(bets, spinResult) {
   let winAmount = 0;
@@ -18,17 +19,30 @@ function calculatePayout(bets, spinResult) {
     if (!Number.isFinite(betAmount) || betAmount <= 0) continue;
     const betKey = Number.isNaN(Number(bet)) ? bet : Number(bet);
 
-    if (typeof betKey === "number" && betKey === spinResult) winAmount += betAmount * 35;
-    if (betKey === "red" && redNumbers.includes(spinResult)) winAmount += betAmount * 2;
-    if (betKey === "black" && spinResult !== 0 && !redNumbers.includes(spinResult)) winAmount += betAmount * 2;
+    if (typeof betKey === "number" && betKey === spinResult)
+      winAmount += betAmount * 35;
+    if (betKey === "red" && redNumbers.includes(spinResult))
+      winAmount += betAmount * 2;
+    if (
+      betKey === "black" &&
+      spinResult !== 0 &&
+      !redNumbers.includes(spinResult)
+    )
+      winAmount += betAmount * 2;
     if (betKey === "green" && spinResult === 0) winAmount += betAmount * 35;
-    if (betKey === "even" && spinResult % 2 === 0 && spinResult !== 0) winAmount += betAmount * 2;
+    if (betKey === "even" && spinResult % 2 === 0 && spinResult !== 0)
+      winAmount += betAmount * 2;
     if (betKey === "odd" && spinResult % 2 === 1) winAmount += betAmount * 2;
-    if (betKey === "1-12" && spinResult >= 1 && spinResult <= 12) winAmount += betAmount * 3;
-    if (betKey === "13-24" && spinResult >= 13 && spinResult <= 24) winAmount += betAmount * 3;
-    if (betKey === "25-36" && spinResult >= 25 && spinResult <= 36) winAmount += betAmount * 3;
-    if (betKey === "1-18" && spinResult >= 1 && spinResult <= 18) winAmount += betAmount * 2;
-    if (betKey === "19-36" && spinResult >= 19 && spinResult <= 36) winAmount += betAmount * 2;
+    if (betKey === "1-12" && spinResult >= 1 && spinResult <= 12)
+      winAmount += betAmount * 3;
+    if (betKey === "13-24" && spinResult >= 13 && spinResult <= 24)
+      winAmount += betAmount * 3;
+    if (betKey === "25-36" && spinResult >= 25 && spinResult <= 36)
+      winAmount += betAmount * 3;
+    if (betKey === "1-18" && spinResult >= 1 && spinResult <= 18)
+      winAmount += betAmount * 2;
+    if (betKey === "19-36" && spinResult >= 19 && spinResult <= 36)
+      winAmount += betAmount * 2;
   }
   return Number(winAmount.toFixed(2));
 }
@@ -37,18 +51,31 @@ export async function POST(req) {
   try {
     const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
     }
 
     const { bets } = await req.json();
     if (!bets || typeof bets !== "object") {
-      return NextResponse.json({ success: false, error: "Invalid bets" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "Invalid bets" },
+        { status: 400 },
+      );
     }
 
     // Get user data
-    const userData = await db.select().from(users).where(eq(users.clerkId, userId)).limit(1);
+    const userData = await db
+      .select()
+      .from(users)
+      .where(eq(users.clerkId, userId))
+      .limit(1);
     if (!userData.length) {
-      return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: "User not found" },
+        { status: 404 },
+      );
     }
 
     const user = userData[0];
@@ -58,7 +85,10 @@ export async function POST(req) {
       return sum + numeric;
     }, 0);
     if (totalBetAmount <= 0) {
-      return NextResponse.json({ success: false, error: "Invalid bet amount" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "Invalid bet amount" },
+        { status: 400 },
+      );
     }
 
     const spinResultIndex = Math.floor(Math.random() * rouletteNumbers.length);
@@ -69,11 +99,16 @@ export async function POST(req) {
     const [updatedUser] = await db
       .update(users)
       .set({ balance: sql`${users.balance} - ${totalBetAmount} + ${payout}` })
-      .where(sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${totalBetAmount}`)
+      .where(
+        sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${totalBetAmount}`,
+      )
       .returning({ balance: users.balance });
 
     if (!updatedUser) {
-      return NextResponse.json({ success: false, error: "Insufficient balance" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "Insufficient balance" },
+        { status: 400 },
+      );
     }
 
     // Record the game
@@ -96,6 +131,9 @@ export async function POST(req) {
     });
   } catch (error) {
     console.error("Roulette save-game error:", error);
-    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Server error" },
+      { status: 500 },
+    );
   }
 }

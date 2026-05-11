@@ -254,7 +254,9 @@ const TRACKED_GAMES = [
   },
 ];
 
-const gameStatsUnion = TRACKED_GAMES.map((game) => game.selectSql).join(" UNION ALL ");
+const gameStatsUnion = TRACKED_GAMES.map((game) => game.selectSql).join(
+  " UNION ALL ",
+);
 
 export async function GET() {
   try {
@@ -388,7 +390,7 @@ export async function GET() {
             players: rankedPlayers,
           },
         ];
-      })
+      }),
     );
 
     return NextResponse.json({
@@ -400,7 +402,7 @@ export async function GET() {
     console.error("Error fetching user stats:", error);
     return NextResponse.json(
       { success: false, error: "Failed to fetch user stats" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

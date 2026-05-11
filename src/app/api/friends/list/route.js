@@ -9,7 +9,7 @@ export async function GET() {
     if (!userId) {
       return new Response(
         JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
+        { status: 401, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -24,7 +24,7 @@ export async function GET() {
     if (!current.length) {
       return new Response(
         JSON.stringify({ success: false, error: "User not found" }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
+        { status: 404, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -47,9 +47,8 @@ export async function GET() {
       {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
-
   } catch (error) {
     console.error("[FRIENDS_LIST_ERROR]", error);
 
@@ -62,7 +61,7 @@ export async function GET() {
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
   }
 }

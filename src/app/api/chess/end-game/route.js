@@ -20,15 +20,20 @@ export async function POST(req) {
     }
 
     const requestedGameId = Number(body?.gameId);
-    const hasRequestedGameId = Number.isFinite(requestedGameId) && requestedGameId > 0;
-    const normalizedResult = typeof body?.result === "string" ? body.result.toLowerCase() : null;
+    const hasRequestedGameId =
+      Number.isFinite(requestedGameId) && requestedGameId > 0;
+    const normalizedResult =
+      typeof body?.result === "string" ? body.result.toLowerCase() : null;
     const allowedResult = ["win", "loss", "draw"].includes(normalizedResult)
       ? normalizedResult
       : null;
 
     const whereBase = and(
-      or(eq(chessGames.playerWhiteId, userId), eq(chessGames.playerBlackId, userId)),
-      inArray(chessGames.status, ["waiting", "active", "in_progress"])
+      or(
+        eq(chessGames.playerWhiteId, userId),
+        eq(chessGames.playerBlackId, userId),
+      ),
+      inArray(chessGames.status, ["waiting", "active", "in_progress"]),
     );
 
     const openGame = hasRequestedGameId
@@ -47,11 +52,18 @@ export async function POST(req) {
     const gameId = game.id;
 
     await db.transaction(async (tx) => {
-      const [lockedGame] = await tx.select().from(chessGames).where(eq(chessGames.id, gameId)).for("update");
+      const [lockedGame] = await tx
+        .select()
+        .from(chessGames)
+        .where(eq(chessGames.id, gameId))
+        .for("update");
       if (!lockedGame) return;
 
       if (lockedGame.isAiGame) {
-        await tx.update(chessGames).set({ status: "expired" }).where(eq(chessGames.id, gameId));
+        await tx
+          .update(chessGames)
+          .set({ status: "expired" })
+          .where(eq(chessGames.id, gameId));
         return;
       }
 
@@ -72,9 +84,15 @@ export async function POST(req) {
       }
 
       if (lockedGame.status === "in_progress") {
-        const opponentId = lockedGame.playerWhiteId === userId ? lockedGame.playerBlackId : lockedGame.playerWhiteId;
+        const opponentId =
+          lockedGame.playerWhiteId === userId
+            ? lockedGame.playerBlackId
+            : lockedGame.playerWhiteId;
         if (!opponentId) {
-          await tx.update(chessGames).set({ status: "expired" }).where(eq(chessGames.id, gameId));
+          await tx
+            .update(chessGames)
+            .set({ status: "expired" })
+            .where(eq(chessGames.id, gameId));
           return;
         }
 

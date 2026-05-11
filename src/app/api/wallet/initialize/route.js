@@ -10,10 +10,13 @@ export async function POST(request) {
   const { userId } = await auth();
 
   if (!userId) {
-    return new Response(JSON.stringify({ success: false, error: "Utilisateur non authentifié" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Utilisateur non authentifié" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   try {
@@ -22,10 +25,13 @@ export async function POST(request) {
     `;
 
     if (existing.length > 0) {
-      return new Response(JSON.stringify({ success: true, wallet: existing[0] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: true, wallet: existing[0] }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const [newWallet] = await sql.begin(async (tx) => {
@@ -47,15 +53,17 @@ export async function POST(request) {
       status: 201,
       headers: { "Content-Type": "application/json" },
     });
-
   } catch (err) {
     console.error("❌ Error creating wallet with bonus:", err);
-    return new Response(JSON.stringify({
-      success: false,
-      error: "Erreur serveur lors de la création du portefeuille",
-    }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Erreur serveur lors de la création du portefeuille",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

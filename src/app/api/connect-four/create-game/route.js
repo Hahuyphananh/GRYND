@@ -7,22 +7,30 @@ import { connectFourGames, users } from "../../../../db/schema";
 export async function POST(req) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
     const betAmount = Number(body.betAmount);
     const requestedTimerSeconds = Number(body?.timerSeconds);
-    const timerSeconds = [10, 30, 60, 120].includes(requestedTimerSeconds) ? requestedTimerSeconds : 60;
+    const timerSeconds = [10, 30, 60, 120].includes(requestedTimerSeconds)
+      ? requestedTimerSeconds
+      : 60;
 
     if (!Number.isFinite(betAmount) || betAmount <= 0) {
-      return NextResponse.json({ error: "Invalid bet amount" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid bet amount" },
+        { status: 400 },
+      );
     }
 
     const game = await db.transaction(async (tx) => {
       const [updated] = await tx
         .update(users)
         .set({ balance: sql`${users.balance} - ${betAmount}` })
-        .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${betAmount}`))
+        .where(
+          and(eq(users.clerkId, userId), sql`${users.balance} >= ${betAmount}`),
+        )
         .returning({ balance: users.balance });
 
       if (!updated) throw new Error("Insufficient balance");
@@ -40,7 +48,11 @@ export async function POST(req) {
       return { id: created.id, balance: Number(updated.balance) };
     });
 
-    return NextResponse.json({ success: true, gameId: game.id, balance: game.balance });
+    return NextResponse.json({
+      success: true,
+      gameId: game.id,
+      balance: game.balance,
+    });
   } catch (error) {
     const message = error?.message || "Internal Server Error";
     const status = message === "Insufficient balance" ? 400 : 500;

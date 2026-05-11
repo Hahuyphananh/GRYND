@@ -7,13 +7,20 @@ import { pokerGames } from "../../../../db/schema";
 export async function POST(req) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const gameCode = String(body?.gameCode ?? "").trim().toUpperCase();
-    if (!gameCode) return NextResponse.json({ error: "Missing gameCode" }, { status: 400 });
+    const gameCode = String(body?.gameCode ?? "")
+      .trim()
+      .toUpperCase();
+    if (!gameCode)
+      return NextResponse.json({ error: "Missing gameCode" }, { status: 400 });
 
-    const [game] = await db.select().from(pokerGames).where(eq(pokerGames.gameCode, gameCode));
+    const [game] = await db
+      .select()
+      .from(pokerGames)
+      .where(eq(pokerGames.gameCode, gameCode));
     if (!game) return NextResponse.json({ success: true, deleted: true });
 
     const seats = Array.isArray(game.players) ? game.players : [];
@@ -28,9 +35,11 @@ export async function POST(req) {
       };
     });
 
-    const currentState = game?.playerPositions?.state && typeof game.playerPositions.state === "object"
-      ? game.playerPositions.state
-      : null;
+    const currentState =
+      game?.playerPositions?.state &&
+      typeof game.playerPositions.state === "object"
+        ? game.playerPositions.state
+        : null;
 
     const updatedState = currentState
       ? {

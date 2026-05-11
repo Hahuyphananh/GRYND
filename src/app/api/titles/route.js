@@ -2,16 +2,24 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../db";
 import { eq } from "drizzle-orm";
 import { specialTitles, users } from "../../../db/schema";
-import { TITLE_MILESTONES, getUnlockedTitles, getHighestTitle, getNextTitle } from "../../../lib/titles";
+import {
+  TITLE_MILESTONES,
+  getUnlockedTitles,
+  getHighestTitle,
+  getNextTitle,
+} from "../../../lib/titles";
 
 export async function GET() {
   const { userId } = await auth();
 
   if (!userId) {
-    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   try {
@@ -26,10 +34,13 @@ export async function GET() {
     });
 
     if (!dbUser) {
-      return new Response(JSON.stringify({ success: false, error: "User not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "User not found" }),
+        {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const level = Number(dbUser.level || 1);
@@ -57,13 +68,16 @@ export async function GET() {
         selectedSpecialTitle: selectedSpecialTitle || null,
         allTitles: TITLE_MILESTONES,
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (error) {
     console.error("[GET_TITLES_ERROR]", error);
-    return new Response(JSON.stringify({ success: false, error: "Failed to load titles" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Failed to load titles" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

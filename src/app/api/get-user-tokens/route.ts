@@ -1,8 +1,8 @@
-import { auth } from '@clerk/nextjs/server';
-import { db } from '../../../db/client';
-import { users } from '../../../db/schema';
-import { eq } from 'drizzle-orm';
-import { NextResponse } from 'next/server';
+import { auth } from "@clerk/nextjs/server";
+import { db } from "../../../db/client";
+import { users } from "../../../db/schema";
+import { eq } from "drizzle-orm";
+import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
@@ -10,8 +10,8 @@ export async function POST(req: Request) {
 
     if (!clerkId) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
       );
     }
 
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
         balance: users.balance,
         name: users.name,
         email: users.email,
-        profilePicture: users.profilePicture
+        profilePicture: users.profilePicture,
       })
       .from(users)
       .where(eq(users.clerkId, clerkId))
@@ -30,10 +30,10 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: 'User not found',
-          shouldInitialize: true
+          error: "User not found",
+          shouldInitialize: true,
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -46,20 +46,20 @@ export async function POST(req: Request) {
           balance: user.balance,
           name: user.name,
           email: user.email,
-          profilePicture: user.profilePicture
-        }
+          profilePicture: user.profilePicture,
+        },
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
-    console.error('❌ Error in /api/get-user-tokens:', error);
+    console.error("❌ Error in /api/get-user-tokens:", error);
     return NextResponse.json(
       {
         success: false,
-        error: 'Server error',
-        details: error instanceof Error ? error.message : 'Unknown'
+        error: "Server error",
+        details: error instanceof Error ? error.message : "Unknown",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

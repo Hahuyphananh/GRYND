@@ -8,10 +8,13 @@ export async function POST(request) {
     const { userId } = await auth();
 
     if (!userId) {
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const parsed = await parseAndValidateJson(request, {
@@ -25,10 +28,13 @@ export async function POST(request) {
     const action = String(parsed.data.action || "").toLowerCase();
 
     if (action !== "accept" && action !== "decline") {
-      return new Response(JSON.stringify({ success: false, error: "Invalid action" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid action" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const meRes = await sql`
@@ -39,10 +45,13 @@ export async function POST(request) {
     `;
 
     if (!meRes.length) {
-      return new Response(JSON.stringify({ success: false, error: "User not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "User not found" }),
+        {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const meId = Number(meRes[0].id);
@@ -55,26 +64,35 @@ export async function POST(request) {
     `;
 
     if (!inviteRows.length) {
-      return new Response(JSON.stringify({ success: false, error: "Invite not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Invite not found" }),
+        {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const invite = inviteRows[0];
 
     if (Number(invite.receiver_id) !== meId) {
-      return new Response(JSON.stringify({ success: false, error: "Forbidden" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Forbidden" }),
+        {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     if (invite.status !== "pending") {
-      return new Response(JSON.stringify({ success: false, error: "Invite already handled" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Invite already handled" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const senderId = Number(invite.sender_id);
@@ -99,19 +117,25 @@ export async function POST(request) {
     return new Response(
       JSON.stringify({
         success: true,
-        message: action === "accept" ? "Friend invite accepted." : "Friend invite declined.",
+        message:
+          action === "accept"
+            ? "Friend invite accepted."
+            : "Friend invite declined.",
       }),
       {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
   } catch (error) {
     console.error("[FRIEND_INVITE_RESPOND_ERROR]", error);
 
-    return new Response(JSON.stringify({ success: false, error: "Failed to respond to invite" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Failed to respond to invite" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

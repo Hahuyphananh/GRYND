@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 export async function GET() {
   try {
     const res = await fetch(
-      `https://api.the-odds-api.com/v4/sports/?apiKey=${process.env.ODDS_API_KEY}`
+      `https://api.the-odds-api.com/v4/sports/?apiKey=${process.env.ODDS_API_KEY}`,
     );
 
     if (!res.ok) throw new Error("Failed to fetch sports list");
@@ -14,7 +14,7 @@ export async function GET() {
   } catch (err: any) {
     return NextResponse.json(
       { success: false, error: err.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -8,6 +8,6 @@ export async function POST() {
       success: false,
       error: "This endpoint is deprecated. Use /api/place-bet.",
     },
-    { status: 410 }
+    { status: 410 },
   );
 }

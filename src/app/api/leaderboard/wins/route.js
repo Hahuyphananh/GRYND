@@ -13,11 +13,24 @@ export async function GET(request) {
 
   try {
     const { userId } = await auth();
-    const { items, me } = await fetchWinsLeaderboard({ limit, offset, clerkId: userId });
+    const { items, me } = await fetchWinsLeaderboard({
+      limit,
+      offset,
+      clerkId: userId,
+    });
 
     return Response.json({ items, me, limit, offset });
   } catch (error) {
     console.error("❌ Failed to load wins leaderboard:", error);
-    return Response.json({ items: [], me: null, limit, offset, error: "Unable to load leaderboard" }, { status: 500 });
+    return Response.json(
+      {
+        items: [],
+        me: null,
+        limit,
+        offset,
+        error: "Unable to load leaderboard",
+      },
+      { status: 500 },
+    );
   }
 }

@@ -5,10 +5,13 @@ export async function POST(request) {
   const { userId } = await auth();
 
   if (!userId) {
-    return new Response(JSON.stringify({ error: "Utilisateur non authentifié" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: "Utilisateur non authentifié" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   try {
@@ -19,7 +22,7 @@ export async function POST(request) {
     if (!parsed.ok) return parsed.response;
 
     const response = await fetch(
-      `https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${encodeURIComponent(parsed.data.search)}`
+      `https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${encodeURIComponent(parsed.data.search)}`,
     );
 
     if (!response.ok) {

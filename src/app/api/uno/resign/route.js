@@ -111,8 +111,7 @@ export async function POST(req) {
           .update(unoGames)
           .set({
             status: "finished",
-            winner:
-              lockedGame.userId === userId ? "player2" : "player1",
+            winner: lockedGame.userId === userId ? "player2" : "player1",
             result: "loss",
             payout: payout.toString(),
           })

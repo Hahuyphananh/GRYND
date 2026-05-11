@@ -19,7 +19,8 @@ const store = new Map<string, Entry>();
 
 function getRemoteRedisConfig() {
   const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  const token =
+    process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
   if (!url || !token) return null;
 
@@ -29,7 +30,10 @@ function getRemoteRedisConfig() {
   };
 }
 
-async function consumeRemoteRateLimit(key: string, config: LimitConfig): Promise<LimitResult | null> {
+async function consumeRemoteRateLimit(
+  key: string,
+  config: LimitConfig,
+): Promise<LimitResult | null> {
   const redis = getRemoteRedisConfig();
   if (!redis) return null;
 
@@ -40,7 +44,10 @@ async function consumeRemoteRateLimit(key: string, config: LimitConfig): Promise
     Authorization: `Bearer ${redis.token}`,
   };
 
-  const incrRes = await fetch(`${redis.url}/incr/${encodedKey}`, { headers, cache: "no-store" });
+  const incrRes = await fetch(`${redis.url}/incr/${encodedKey}`, {
+    headers,
+    cache: "no-store",
+  });
   if (!incrRes.ok) return null;
 
   const incrJson = await incrRes.json();
@@ -48,10 +55,16 @@ async function consumeRemoteRateLimit(key: string, config: LimitConfig): Promise
   if (!Number.isFinite(count) || count <= 0) return null;
 
   if (count === 1) {
-    await fetch(`${redis.url}/expire/${encodedKey}/${ttlSeconds}`, { headers, cache: "no-store" });
+    await fetch(`${redis.url}/expire/${encodedKey}/${ttlSeconds}`, {
+      headers,
+      cache: "no-store",
+    });
   }
 
-  const ttlRes = await fetch(`${redis.url}/ttl/${encodedKey}`, { headers, cache: "no-store" });
+  const ttlRes = await fetch(`${redis.url}/ttl/${encodedKey}`, {
+    headers,
+    cache: "no-store",
+  });
   const ttlJson = ttlRes.ok ? await ttlRes.json() : null;
   const ttl = Number(ttlJson?.result ?? ttlSeconds);
   const safeTtlSeconds = ttl > 0 ? ttl : ttlSeconds;
@@ -64,7 +77,10 @@ async function consumeRemoteRateLimit(key: string, config: LimitConfig): Promise
   };
 }
 
-function consumeInMemoryRateLimit(key: string, config: LimitConfig): LimitResult {
+function consumeInMemoryRateLimit(
+  key: string,
+  config: LimitConfig,
+): LimitResult {
   const now = Date.now();
   const current = store.get(key);
 
@@ -90,7 +106,10 @@ function consumeInMemoryRateLimit(key: string, config: LimitConfig): LimitResult
   };
 }
 
-export async function consumeRateLimit(key: string, config: LimitConfig): Promise<LimitResult> {
+export async function consumeRateLimit(
+  key: string,
+  config: LimitConfig,
+): Promise<LimitResult> {
   try {
     const remoteResult = await consumeRemoteRateLimit(key, config);
     if (remoteResult) return remoteResult;

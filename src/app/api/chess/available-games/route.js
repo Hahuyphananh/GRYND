@@ -20,8 +20,8 @@ export async function GET() {
         and(
           eq(chessGames.status, "waiting"),
           isNull(chessGames.playerBlackId),
-          eq(chessGames.isAiGame, false)
-        )
+          eq(chessGames.isAiGame, false),
+        ),
       )
       .orderBy(desc(chessGames.createdAt))
       .limit(30);
@@ -29,6 +29,9 @@ export async function GET() {
     return NextResponse.json({ success: true, data: { games } });
   } catch (error) {
     console.error("chess available-games error", error);
-    return NextResponse.json({ success: false, error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Internal Server Error" },
+      { status: 500 },
+    );
   }
 }

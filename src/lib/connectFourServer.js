@@ -9,20 +9,29 @@ const REPLAY_DECISION_SECONDS = 20;
 
 export async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
-  const [row] = await db.select({ id: users.id }).from(users).where(eq(users.clerkId, clerkId)).limit(1);
+  const [row] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkId))
+    .limit(1);
   if (row?.id) aliases.add(String(row.id));
   return aliases;
 }
 
 export async function resolveNameByClerkId(clerkId) {
   if (!clerkId) return null;
-  const [row] = await db.select({ name: users.name }).from(users).where(eq(users.clerkId, clerkId)).limit(1);
+  const [row] = await db
+    .select({ name: users.name })
+    .from(users)
+    .where(eq(users.clerkId, clerkId))
+    .limit(1);
   return row?.name || null;
 }
 
 export function getPlayerRole(game, userAliases) {
   if (userAliases.has(String(game.hostClerkId))) return "host";
-  if (game.guestClerkId && userAliases.has(String(game.guestClerkId))) return "guest";
+  if (game.guestClerkId && userAliases.has(String(game.guestClerkId)))
+    return "guest";
   return null;
 }
 
@@ -34,7 +43,12 @@ export async function settleConnectFourGame(gameId, winnerClerkId, result) {
       .where(eq(connectFourGames.id, gameId))
       .for("update");
 
-    if (!locked || locked.status === "finished" || locked.status === "cancelled") return;
+    if (
+      !locked ||
+      locked.status === "finished" ||
+      locked.status === "cancelled"
+    )
+      return;
 
     const bet = Number(locked.betAmount);
 
@@ -60,7 +74,9 @@ export async function settleConnectFourGame(gameId, winnerClerkId, result) {
           payout: "0",
           endedAt: new Date(),
           moveDeadlineAt: null,
-          replayDeadlineAt: new Date(Date.now() + REPLAY_DECISION_SECONDS * 1000),
+          replayDeadlineAt: new Date(
+            Date.now() + REPLAY_DECISION_SECONDS * 1000,
+          ),
           hostReplayDecision: null,
           guestReplayDecision: null,
           nextGameId: null,
@@ -79,7 +95,13 @@ export async function settleConnectFourGame(gameId, winnerClerkId, result) {
       .set({ balance: sql`${users.balance} + ${payout}` })
       .where(eq(users.clerkId, winnerClerkId));
 
-    await applyLeaderboardCounters({ clerkId: winnerClerkId, game: "connect-four", betAmount: bet, payout, isPvpWin: true });
+    await applyLeaderboardCounters({
+      clerkId: winnerClerkId,
+      game: "connect-four",
+      betAmount: bet,
+      payout,
+      isPvpWin: true,
+    });
 
     await tx
       .update(connectFourGames)
@@ -105,7 +127,8 @@ export async function settleTimeoutIfNeeded(game) {
   const deadline = new Date(game.moveDeadlineAt).getTime();
   if (Date.now() <= deadline) return game;
 
-  const winnerClerkId = game.currentTurn === "host" ? game.guestClerkId : game.hostClerkId;
+  const winnerClerkId =
+    game.currentTurn === "host" ? game.guestClerkId : game.hostClerkId;
   if (!winnerClerkId) return game;
 
   await settleConnectFourGame(game.id, winnerClerkId, "timeout");
@@ -136,12 +159,15 @@ export function nextMoveDeadline(seconds = DEFAULT_MOVE_TIME_SECONDS) {
 }
 
 export function ensureBoard(board) {
-  const fallback = Array.from({ length: 6 }, () => Array.from({ length: 7 }, () => 0));
+  const fallback = Array.from({ length: 6 }, () =>
+    Array.from({ length: 7 }, () => 0),
+  );
   if (!Array.isArray(board) || board.length !== 6) return fallback;
 
   for (const row of board) {
     if (!Array.isArray(row) || row.length !== 7) return fallback;
-    if (!row.every((cell) => cell === 0 || cell === 1 || cell === 2)) return fallback;
+    if (!row.every((cell) => cell === 0 || cell === 1 || cell === 2))
+      return fallback;
   }
 
   return board;

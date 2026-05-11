@@ -12,8 +12,16 @@ export default function RoulettePage() {
   const [history, setHistory] = useState([]);
   const [userTokens, setUserTokens] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState({ biggestWin: 0, totalBets: 0, totalWins: 0 });
-  const [autoBet, setAutoBet] = useState({ enabled: false, mode: "finite", spinsLeft: 0 });
+  const [stats, setStats] = useState({
+    biggestWin: 0,
+    totalBets: 0,
+    totalWins: 0,
+  });
+  const [autoBet, setAutoBet] = useState({
+    enabled: false,
+    mode: "finite",
+    spinsLeft: 0,
+  });
   const [bets, setBets] = useState({});
   const [showRules, setShowRules] = useState(false);
 
@@ -21,8 +29,8 @@ export default function RoulettePage() {
   const autoBetRef = useRef(autoBet);
 
   const rouletteNumbers = [
-    0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23,
-    10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26,
+    0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5,
+    24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26,
   ];
   const redNumbers = [
     1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36,
@@ -71,7 +79,8 @@ export default function RoulettePage() {
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.arc(0, 0, radius, startAngle, startAngle + segmentAngle);
-      ctx.fillStyle = num === 0 ? "#0f0" : redNumbers.includes(num) ? "#c00" : "#000";
+      ctx.fillStyle =
+        num === 0 ? "#0f0" : redNumbers.includes(num) ? "#c00" : "#000";
       ctx.fill();
       ctx.strokeStyle = "#fff";
       ctx.stroke();
@@ -105,7 +114,9 @@ export default function RoulettePage() {
       // Fixed final angle aligned to center of target segment (no randomness)
       const initialSegment0Offset = Math.PI / 2; // 90 degrees in radians
 
-      const finalAngle = (totalSegments - finalIndex - 0.5) * segmentAngle - initialSegment0Offset;
+      const finalAngle =
+        (totalSegments - finalIndex - 0.5) * segmentAngle -
+        initialSegment0Offset;
 
       const totalAngle = fullRotations * 2 * Math.PI + finalAngle;
       const duration = 4000;
@@ -125,7 +136,7 @@ export default function RoulettePage() {
 
   const handleBetClick = (bet) => {
     setSelectedBets((prev) =>
-      prev.includes(bet) ? prev.filter((b) => b !== bet) : [...prev, bet]
+      prev.includes(bet) ? prev.filter((b) => b !== bet) : [...prev, bet],
     );
   };
 
@@ -154,10 +165,16 @@ export default function RoulettePage() {
 
     await spinWheel(data.data.spinResultIndex);
     setUserTokens(Number(data.data.newBalance));
-    setResult({ number: data.data.spinResult, win: data.data.win, amount: data.data.amount });
+    setResult({
+      number: data.data.spinResult,
+      win: data.data.win,
+      amount: data.data.amount,
+    });
     setHistory((prev) => [data.data.spinResult, ...prev].slice(0, 10));
     setStats((prev) => ({
-      biggestWin: data.data.win ? Math.max(prev.biggestWin, data.data.amount) : prev.biggestWin,
+      biggestWin: data.data.win
+        ? Math.max(prev.biggestWin, data.data.amount)
+        : prev.biggestWin,
       totalBets: prev.totalBets + 1,
       totalWins: data.data.win ? prev.totalWins + 1 : prev.totalWins,
     }));
@@ -249,8 +266,10 @@ hover:scale-105 hover:brightness-110 active:scale-95`}
             🎰 Roulette Royale
           </h1>
           {/* Tokens display */}
-          <span className="inline-block px-6 bg-[#FFFF33]/20 border border-[#FFFF33]/40 text-[#fffec7]
-shadow-[0_0_12px_rgba(255,255,51,0.5)] py-2 rounded-full font-extrabold shadow-lg text-lg border-2">
+          <span
+            className="inline-block px-6 bg-[#FFFF33]/20 border border-[#FFFF33]/40 text-[#fffec7]
+shadow-[0_0_12px_rgba(255,255,51,0.5)] py-2 rounded-full font-extrabold shadow-lg text-lg border-2"
+          >
             Tokens: {userTokens}
           </span>
 
@@ -297,13 +316,17 @@ shadow-[0_0_12px_rgba(255,255,51,0.5)] py-2 rounded-full font-extrabold shadow-l
                 )}
 
                 <button
-                  onClick={() => setAutoBet((prev) => ({ ...prev, enabled: true }))}
+                  onClick={() =>
+                    setAutoBet((prev) => ({ ...prev, enabled: true }))
+                  }
                   className="px-4 py-1 rounded bg-yellow-400 text-black font-bold"
                 >
                   Start
                 </button>
                 <button
-                  onClick={() => setAutoBet((prev) => ({ ...prev, enabled: false }))}
+                  onClick={() =>
+                    setAutoBet((prev) => ({ ...prev, enabled: false }))
+                  }
                   className="px-4 py-1 rounded bg-red-500 text-white font-bold"
                 >
                   Stop
@@ -325,15 +348,14 @@ shadow-[0_0_12px_rgba(255,255,51,0.5)] py-2 rounded-full font-extrabold shadow-l
             <button
               onClick={handleSpin}
               disabled={spinning}
-             className={`mt-3 px-6 py-2 rounded-full font-bold border border-[#FFFF33]/40 ${
-  spinning
-    ? "bg-gray-600"
-    : "bg-[#FFFF33]/20 text-[#FFFF33] hover:bg-[#FFFF33]/35 shadow-[0_0_15px_rgba(255,255,51,0.5)]"
-}`}
+              className={`mt-3 px-6 py-2 rounded-full font-bold border border-[#FFFF33]/40 ${
+                spinning
+                  ? "bg-gray-600"
+                  : "bg-[#FFFF33]/20 text-[#FFFF33] hover:bg-[#FFFF33]/35 shadow-[0_0_15px_rgba(255,255,51,0.5)]"
+              }`}
             >
               {spinning ? "La roue tourne..." : "Tourner la Roue!"}
             </button>
-
             <button
               onClick={resetBets}
               disabled={spinning}
@@ -341,67 +363,70 @@ shadow-[0_0_12px_rgba(255,255,51,0.5)] py-2 rounded-full font-extrabold shadow-l
             >
               Réinitialiser les mises
             </button>
+            {/* Rules Toggle */}
+            <div className="w-full mt-4">
+              <button
+                onClick={() => setShowRules(!showRules)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-[#FFFF33]/20 text-[#FFFF33] font-bold rounded-lg border border-[#FFFF33]/40 shadow-[0_0_15px_rgba(255,255,51,0.4)] hover:bg-[#FFFF33]/35 transition"
+              >
+                <span>🎰 Game Rules</span>
+                <span className="text-xl">{showRules ? "▲" : "▼"}</span>
+              </button>
 
-{/* Rules Toggle */}
-<div className="w-full mt-4">
-  <button
-    onClick={() => setShowRules(!showRules)}
-    className="w-full flex items-center justify-between px-4 py-3 bg-[#FFFF33]/20 text-[#FFFF33] font-bold rounded-lg border border-[#FFFF33]/40 shadow-[0_0_15px_rgba(255,255,51,0.4)] hover:bg-[#FFFF33]/35 transition"
-  >
-    <span>🎰 Game Rules</span>
-    <span className="text-xl">
-      {showRules ? "▲" : "▼"}
-    </span>
-  </button>
+              {/* 👇 Fixed-height container = no layout shift */}
+              {showRules && (
+                <div className="mt-3 bg-[#020617] border border-[#FFFF33]/30 rounded-xl p-4 text-white shadow-[0_0_25px_rgba(255,255,51,0.15)] text-sm leading-relaxed max-h-64 overflow-y-auto backdrop-blur-md">
+                  <h2 className="text-lg font-bold text-yellow-400 mb-3 text-center">
+                    🎰 How to Play Roulette
+                  </h2>
+                  <p className="text-xs text-gray-400 mt-1 text-center mb-1">
+                    Scroll to read all rules
+                  </p>
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-yellow-400 font-semibold">
+                        🎯 Objective
+                      </h3>
+                      <p>
+                        Predict where the ball will land on the spinning wheel.
+                      </p>
+                    </div>
 
-  {/* 👇 Fixed-height container = no layout shift */}
-  {showRules && (
-    <div className="mt-3 bg-[#020617] border border-[#FFFF33]/30 rounded-xl p-4 text-white shadow-[0_0_25px_rgba(255,255,51,0.15)] text-sm leading-relaxed max-h-64 overflow-y-auto backdrop-blur-md">
-      <h2 className="text-lg font-bold text-yellow-400 mb-3 text-center">
-        🎰 How to Play Roulette
-      </h2>
-<p className="text-xs text-gray-400 mt-1 text-center mb-1">
-  Scroll to read all rules
-</p>
-      <div className="space-y-4">
-        <div>
-          <h3 className="text-yellow-400 font-semibold">🎯 Objective</h3>
-          <p>Predict where the ball will land on the spinning wheel.</p>
-        </div>
+                    <div>
+                      <h3 className="text-yellow-400 font-semibold">🎲 Bets</h3>
+                      <ul className="list-disc ml-5">
+                        <li>Single number (x35)</li>
+                        <li>Red / Black / Even / Odd (x2)</li>
+                        <li>Ranges (x3)</li>
+                      </ul>
+                    </div>
 
-        <div>
-          <h3 className="text-yellow-400 font-semibold">🎲 Bets</h3>
-          <ul className="list-disc ml-5">
-            <li>Single number (x35)</li>
-            <li>Red / Black / Even / Odd (x2)</li>
-            <li>Ranges (x3)</li>
-          </ul>
-        </div>
+                    <div>
+                      <h3 className="text-yellow-400 font-semibold">⚠️ Rule</h3>
+                      <p>0 (green) loses most bets.</p>
+                    </div>
 
-        <div>
-          <h3 className="text-yellow-400 font-semibold">⚠️ Rule</h3>
-          <p>0 (green) loses most bets.</p>
-        </div>
-
-        <div>
-          <h3 className="text-yellow-400 font-semibold">💡 Tips</h3>
-          <ul className="list-disc ml-5">
-            <li>Safer bets win more often</li>
-            <li>High-risk bets pay more</li>
-            <li>Manage your balance wisely</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  )}
-</div>
+                    <div>
+                      <h3 className="text-yellow-400 font-semibold">💡 Tips</h3>
+                      <ul className="list-disc ml-5">
+                        <li>Safer bets win more often</li>
+                        <li>High-risk bets pay more</li>
+                        <li>Manage your balance wisely</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Result message */}
           {result && (
             <div className="mt-4 w-full bg-[#020617] p-3 rounded border border-[#FFFF33]/30 text-center text-[#FFFF33] font-bold shadow-[0_0_15px_rgba(255,255,51,0.3)]">
               Résultat:{" "}
-              <span className="text-yellow-300 font-extrabold">{result.number}</span>
+              <span className="text-yellow-300 font-extrabold">
+                {result.number}
+              </span>
               {result.win ? ` - Gagné ${result.amount} tokens! 🎉` : " - Perdu"}
             </div>
           )}
@@ -411,11 +436,11 @@ shadow-[0_0_12px_rgba(255,255,51,0.5)] py-2 rounded-full font-extrabold shadow-l
         <div className="flex flex-col items-center w-full sm:w-[680px] flex-shrink-0">
           <div className="relative mx-auto mt-5 w-full max-w-[360px] h-[400px] sm:w-[360px] sm:h-[400px]">
             <canvas
-  ref={canvasRef}
-  width={360}
-  height={360}
-  className="rounded-full shadow-[0_0_100px_rgba(255,255,51,0.25)]"
-/>
+              ref={canvasRef}
+              width={360}
+              height={360}
+              className="rounded-full shadow-[0_0_100px_rgba(255,255,51,0.25)]"
+            />
 
             {/* SVG pointer above the wheel */}
             <svg
@@ -469,10 +494,10 @@ shadow-[0_0_12px_rgba(255,255,51,0.5)] py-2 rounded-full font-extrabold shadow-l
       zone === "red"
         ? "bg-red-600"
         : zone === "black"
-        ? "bg-black"
-        : zone === "green"
-        ? "bg-green-500"
-        : "bg-[#102542]"
+          ? "bg-black"
+          : zone === "green"
+            ? "bg-green-500"
+            : "bg-[#102542]"
     }
     ${bets[zone] ? "ring-2 ring-[#FFFF33] shadow-[0_0_15px_rgba(255,255,51,0.6)]" : ""}`}
               >

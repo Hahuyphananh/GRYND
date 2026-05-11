@@ -24,11 +24,11 @@ export async function POST(req) {
     if (!userId) {
       return Response.json(
         { success: false, error: "Unauthorized" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
-  const rows = await sql`
+    const rows = await sql`
   INSERT INTO user_presence (
     clerk_id,
     last_seen,
@@ -72,7 +72,7 @@ export async function POST(req) {
         success: false,
         error: "Failed to update heartbeat",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

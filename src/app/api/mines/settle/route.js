@@ -1,10 +1,10 @@
-import { auth } from '@clerk/nextjs/server';
-import { db } from '../../../../db/client';
-import { users, minesGames } from '../../../../db/schema'; // ✅ added minesGames
-import { eq, sql } from 'drizzle-orm';
-import { NextResponse } from 'next/server';
-import { verifySignedSession } from '../../../../lib/serverSession';
-import { getMinesMultiplier } from '../../../../lib/minesMath';
+import { auth } from "@clerk/nextjs/server";
+import { db } from "../../../../db/client";
+import { users, minesGames } from "../../../../db/schema"; // ✅ added minesGames
+import { eq, sql } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import { verifySignedSession } from "../../../../lib/serverSession";
+import { getMinesMultiplier } from "../../../../lib/minesMath";
 
 function calculateMultiplier(mines, revealed) {
   return getMinesMultiplier(mines, revealed);
@@ -15,13 +15,19 @@ export async function POST(req) {
     const { userId } = await auth();
 
     if (!userId) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
     }
 
-    const token = req.cookies.get('mines_session')?.value;
+    const token = req.cookies.get("mines_session")?.value;
     const session = verifySignedSession(token);
     if (!session || session.userId !== userId) {
-      return NextResponse.json({ success: false, error: 'No active mines session' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "No active mines session" },
+        { status: 400 },
+      );
     }
 
     const userData = await db
@@ -31,7 +37,10 @@ export async function POST(req) {
       .limit(1);
 
     if (userData.length === 0) {
-      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: "User not found" },
+        { status: 404 },
+      );
     }
 
     const user = userData[0];
@@ -52,10 +61,10 @@ export async function POST(req) {
       userId: user.id,
       betAmount,
       payout,
-      result: 'win',
+      result: "win",
       tilesRevealed: revealedCount,
       minesCount: mines,
-      status: 'completed',
+      status: "completed",
       createdAt: new Date(),
     });
 
@@ -63,11 +72,15 @@ export async function POST(req) {
       success: true,
       data: {
         newBalance: Number(credited?.balance ?? user.balance),
-        result: 'win',
-        payout
-      }
+        result: "win",
+        payout,
+      },
     });
-    response.cookies.set('mines_session', '', { httpOnly: true, path: '/', maxAge: 0 });
+    response.cookies.set("mines_session", "", {
+      httpOnly: true,
+      path: "/",
+      maxAge: 0,
+    });
     return response;
   } catch (err) {
     console.error("Error in /api/mines/settle:", err);

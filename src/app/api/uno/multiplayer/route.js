@@ -17,7 +17,7 @@ function tableSummary(room) {
     name: room.settings.gameName,
     hostName: room.hostName,
     maxPlayers: room.settings.maxPlayers,
-    occupiedSeats: room.players.filter(p => p.seatIndex !== null).length,
+    occupiedSeats: room.players.filter((p) => p.seatIndex !== null).length,
     betAmount: room.settings.betAmount,
     visibility: room.settings.visibility,
     started: room.started,
@@ -27,25 +27,48 @@ function tableSummary(room) {
 }
 
 function sanitizeSettings(settings = {}) {
-  const maxPlayers = Math.min(Math.max(Number(settings.maxPlayers) || 4, 2), MAX_SEATS);
+  const maxPlayers = Math.min(
+    Math.max(Number(settings.maxPlayers) || 4, 2),
+    MAX_SEATS,
+  );
   return {
     gameName: String(settings.gameName || "UNO Table").slice(0, 60),
     visibility: settings.visibility === "public" ? "public" : "private",
     betAmount: Math.min(Math.max(Number(settings.betAmount) || 100, 1), 1000),
     maxPlayers,
-    startingCards: [5, 7, 9].includes(Number(settings.startingCards)) ? Number(settings.startingCards) : 7,
-    turnTimeSeconds: [20, 30, 45].includes(Number(settings.turnTimeSeconds)) ? Number(settings.turnTimeSeconds) : 30,
+    startingCards: [5, 7, 9].includes(Number(settings.startingCards))
+      ? Number(settings.startingCards)
+      : 7,
+    turnTimeSeconds: [20, 30, 45].includes(Number(settings.turnTimeSeconds))
+      ? Number(settings.turnTimeSeconds)
+      : 30,
   };
 }
 
 function getNextOpenSeat(players, maxPlayers) {
   const preferred = [3, 2, 4, 1, 5, 0];
-  return preferred.find((seat) => seat < maxPlayers && !players.some((p) => p.seatIndex === seat));
+  return preferred.find(
+    (seat) => seat < maxPlayers && !players.some((p) => p.seatIndex === seat),
+  );
 }
 
 function generateDeck() {
   const colors = ["red", "yellow", "green", "blue"];
-  const values = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Skip", "Reverse", "Draw Two"];
+  const values = [
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "Skip",
+    "Reverse",
+    "Draw Two",
+  ];
   const wilds = ["Wild", "Wild Draw Four"];
   const deck = [];
 
@@ -79,7 +102,9 @@ function isPlayable(card, topCard, currentColor, hand = []) {
     const hasMatch = hand.some((c) => norm(c.color) === norm(currentColor));
     return !hasMatch;
   }
-  return norm(card.color) === norm(currentColor) || value === norm(topCard.value);
+  return (
+    norm(card.color) === norm(currentColor) || value === norm(topCard.value)
+  );
 }
 
 function ensureDeck(state) {
@@ -184,7 +209,10 @@ function applyCardEffect(state, playerId, playedCard, chosenColor) {
 function chooseAiCard(state, aiId) {
   const topCard = state.discardPile[state.discardPile.length - 1];
   const hand = state.hands[aiId] || [];
-  return hand.find((card) => isPlayable(card, topCard, state.currentColor, hand)) || null;
+  return (
+    hand.find((card) => isPlayable(card, topCard, state.currentColor, hand)) ||
+    null
+  );
 }
 
 function aiChooseColor(hand) {
@@ -200,8 +228,13 @@ async function settleWinner(room, winnerId) {
   const winner = room.activeState.players.find((p) => p.id === winnerId);
   if (!winner || winner.type === "ai" || !winner.userId) return;
 
-  const payout = Number((room.activeState.pot * ((100 - HOUSE_EDGE_PERCENT) / 100)).toFixed(2));
-  await db.update(users).set({ balance: sql`${users.balance} + ${payout}` }).where(eq(users.id, winner.userId));
+  const payout = Number(
+    (room.activeState.pot * ((100 - HOUSE_EDGE_PERCENT) / 100)).toFixed(2),
+  );
+  await db
+    .update(users)
+    .set({ balance: sql`${users.balance} + ${payout}` })
+    .where(eq(users.id, winner.userId));
 }
 
 function serializeGameForUser(room, userId) {
@@ -239,7 +272,9 @@ function serializeGameForUser(room, userId) {
 async function getCurrentUser() {
   const { userId } = await auth();
   if (!userId) return null;
-  const user = await db.query.users.findFirst({ where: eq(users.clerkId, userId) });
+  const user = await db.query.users.findFirst({
+    where: eq(users.clerkId, userId),
+  });
   if (!user) return null;
   return user;
 }
@@ -259,7 +294,10 @@ function runSingleAiTurn(room) {
     const fresh = state.hands[current.id].at(-1);
     const top = state.discardPile.at(-1);
 
-    if (fresh && isPlayable(fresh, top, state.currentColor, state.hands[current.id])) {
+    if (
+      fresh &&
+      isPlayable(fresh, top, state.currentColor, state.hands[current.id])
+    ) {
       state.hands[current.id].pop();
 
       const chosenColor =
@@ -276,13 +314,12 @@ function runSingleAiTurn(room) {
   }
 
   const hand = state.hands[current.id];
-  const idx = hand.findIndex((c) => c.color === card.color && c.value === card.value);
+  const idx = hand.findIndex(
+    (c) => c.color === card.color && c.value === card.value,
+  );
   if (idx >= 0) hand.splice(idx, 1);
 
-  const chosenColor =
-    norm(card.color) === "black"
-      ? aiChooseColor(hand)
-      : null;
+  const chosenColor = norm(card.color) === "black" ? aiChooseColor(hand) : null;
 
   applyCardEffect(state, current.id, card, chosenColor);
 
@@ -300,12 +337,21 @@ function scheduleAi(room) {
       const didPlay = runSingleAiTurn(room);
       if (!didPlay) return;
       const state = room.activeState;
-      if (!state || state.status !== "active" || state.players[state.turnIndex]?.type !== "ai") break;
+      if (
+        !state ||
+        state.status !== "active" ||
+        state.players[state.turnIndex]?.type !== "ai"
+      )
+        break;
       safety += 1;
     }
 
     const state = room.activeState;
-    if (state && state.status === "active" && state.players[state.turnIndex]?.type === "ai") {
+    if (
+      state &&
+      state.status === "active" &&
+      state.players[state.turnIndex]?.type === "ai"
+    ) {
       scheduleAi(room);
     }
   }, 900);
@@ -313,7 +359,11 @@ function scheduleAi(room) {
 
 export async function GET(request) {
   const user = await getCurrentUser();
-  if (!user) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+  if (!user)
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      { status: 401 },
+    );
 
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
@@ -321,26 +371,27 @@ export async function GET(request) {
 
   if (code) {
     const room = store.get(code.toUpperCase());
-    if (!room) return new Response(JSON.stringify({ success: false, error: "Room not found" }), { status: 404 });
+    if (!room)
+      return new Response(
+        JSON.stringify({ success: false, error: "Room not found" }),
+        { status: 404 },
+      );
 
     const isParticipant = room.players.some((p) => p.userId === user.id);
     // Allow code lookup for private rooms.
-// Actual joining still handled in POST action join.
-if (
-  room.settings.visibility === "private" &&
-  !isParticipant
-) {
-  return Response.json({
-    success: true,
-    currentUserId: user.id,
-    room: {
-      ...tableSummary(room),
-      players: room.players,
-      started: room.started,
-      requiresJoin: true,
-    },
-  });
-}
+    // Actual joining still handled in POST action join.
+    if (room.settings.visibility === "private" && !isParticipant) {
+      return Response.json({
+        success: true,
+        currentUserId: user.id,
+        room: {
+          ...tableSummary(room),
+          players: room.players,
+          started: room.started,
+          requiresJoin: true,
+        },
+      });
+    }
 
     return Response.json({
       success: true,
@@ -357,12 +408,20 @@ if (
     .filter((room) => room.settings.visibility === "public" && !room.started)
     .map(tableSummary);
 
-  return Response.json({ success: true, currentUserId: user.id, rooms: publicRooms });
+  return Response.json({
+    success: true,
+    currentUserId: user.id,
+    rooms: publicRooms,
+  });
 }
 
 export async function POST(request) {
   const user = await getCurrentUser();
-  if (!user) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+  if (!user)
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      { status: 401 },
+    );
 
   const body = await request.json();
   const action = body?.action;
@@ -371,15 +430,15 @@ export async function POST(request) {
   if (action === "create") {
     const settings = sanitizeSettings(body?.settings || {});
     const code = Math.random().toString(36).slice(2, 8).toUpperCase();
-   const hostPlayer = {
-  id: `${user.id}-host`,
-  userId: user.id,
-  name: user.name,
-  type: "human",
-  seatIndex: null,
-  isHost: true,
-  skipNextRound: false,
-};
+    const hostPlayer = {
+      id: `${user.id}-host`,
+      userId: user.id,
+      name: user.name,
+      type: "human",
+      seatIndex: null,
+      isHost: true,
+      skipNextRound: false,
+    };
 
     const room = {
       code,
@@ -395,38 +454,85 @@ export async function POST(request) {
     };
     store.set(code, room);
 
-    return Response.json({ success: true, currentUserId: user.id, room: { ...tableSummary(room), players: room.players } });
+    return Response.json({
+      success: true,
+      currentUserId: user.id,
+      room: { ...tableSummary(room), players: room.players },
+    });
   }
 
   const code = String(body?.code || "").toUpperCase();
   const room = store.get(code);
-  if (!room) return new Response(JSON.stringify({ success: false, error: "Room not found" }), { status: 404 });
+  if (!room)
+    return new Response(
+      JSON.stringify({ success: false, error: "Room not found" }),
+      { status: 404 },
+    );
 
   if (action === "join") {
-    if (room.started) return new Response(JSON.stringify({ success: false, error: "Game already started" }), { status: 409 });
+    if (room.started)
+      return new Response(
+        JSON.stringify({ success: false, error: "Game already started" }),
+        { status: 409 },
+      );
 
     const alreadyIn = room.players.find((p) => p.userId === user.id);
-    if (alreadyIn) return Response.json({ success: true, currentUserId: user.id, room: { ...tableSummary(room), players: room.players } });
+    if (alreadyIn)
+      return Response.json({
+        success: true,
+        currentUserId: user.id,
+        room: { ...tableSummary(room), players: room.players },
+      });
 
-    return Response.json({ success: true, currentUserId: user.id, room: { ...tableSummary(room), players: room.players }, needsSeatSelection: true });
+    return Response.json({
+      success: true,
+      currentUserId: user.id,
+      room: { ...tableSummary(room), players: room.players },
+      needsSeatSelection: true,
+    });
   }
 
   if (action === "toggle-skip") {
-    room.players = room.players.map((p) => (p.userId !== user.id ? p : { ...p, skipNextRound: Boolean(body?.skipNextRound) }));
-    return Response.json({ success: true, currentUserId: user.id, room: { ...tableSummary(room), players: room.players } });
+    room.players = room.players.map((p) =>
+      p.userId !== user.id
+        ? p
+        : { ...p, skipNextRound: Boolean(body?.skipNextRound) },
+    );
+    return Response.json({
+      success: true,
+      currentUserId: user.id,
+      room: { ...tableSummary(room), players: room.players },
+    });
   }
 
-
   if (action === "sit-human") {
-    if (room.started) return new Response(JSON.stringify({ success: false, error: "Game already started" }), { status: 409 });
+    if (room.started)
+      return new Response(
+        JSON.stringify({ success: false, error: "Game already started" }),
+        { status: 409 },
+      );
 
     const existing = room.players.find((p) => p.userId === user.id);
     const seatIndex = Number(body?.seatIndex);
-    if (!Number.isInteger(seatIndex) || seatIndex < 0 || seatIndex >= room.settings.maxPlayers) {
-      return new Response(JSON.stringify({ success: false, error: "Invalid seat" }), { status: 400 });
+    if (
+      !Number.isInteger(seatIndex) ||
+      seatIndex < 0 ||
+      seatIndex >= room.settings.maxPlayers
+    ) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid seat" }),
+        { status: 400 },
+      );
     }
-    if (room.players.some((p) => p.seatIndex === seatIndex && p.userId !== user.id)) {
-      return new Response(JSON.stringify({ success: false, error: "Seat occupied" }), { status: 409 });
+    if (
+      room.players.some(
+        (p) => p.seatIndex === seatIndex && p.userId !== user.id,
+      )
+    ) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Seat occupied" }),
+        { status: 409 },
+      );
     }
 
     if (existing) {
@@ -443,19 +549,41 @@ export async function POST(request) {
       });
     }
 
-    return Response.json({ success: true, currentUserId: user.id, room: { ...tableSummary(room), players: room.players } });
+    return Response.json({
+      success: true,
+      currentUserId: user.id,
+      room: { ...tableSummary(room), players: room.players },
+    });
   }
 
   if (action === "add-ai") {
-    if (room.hostUserId !== user.id) return new Response(JSON.stringify({ success: false, error: "Only host can add AI" }), { status: 403 });
-    if (room.started) return new Response(JSON.stringify({ success: false, error: "Game already started" }), { status: 409 });
+    if (room.hostUserId !== user.id)
+      return new Response(
+        JSON.stringify({ success: false, error: "Only host can add AI" }),
+        { status: 403 },
+      );
+    if (room.started)
+      return new Response(
+        JSON.stringify({ success: false, error: "Game already started" }),
+        { status: 409 },
+      );
 
     const seatIndex = Number(body?.seatIndex);
-    if (!Number.isInteger(seatIndex) || seatIndex < 0 || seatIndex >= room.settings.maxPlayers) {
-      return new Response(JSON.stringify({ success: false, error: "Invalid seat" }), { status: 400 });
+    if (
+      !Number.isInteger(seatIndex) ||
+      seatIndex < 0 ||
+      seatIndex >= room.settings.maxPlayers
+    ) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid seat" }),
+        { status: 400 },
+      );
     }
     if (room.players.some((p) => p.seatIndex === seatIndex)) {
-      return new Response(JSON.stringify({ success: false, error: "Seat occupied" }), { status: 409 });
+      return new Response(
+        JSON.stringify({ success: false, error: "Seat occupied" }),
+        { status: 409 },
+      );
     }
 
     room.players.push({
@@ -468,41 +596,76 @@ export async function POST(request) {
       skipNextRound: false,
     });
 
-    return Response.json({ success: true, currentUserId: user.id, room: { ...tableSummary(room), players: room.players } });
+    return Response.json({
+      success: true,
+      currentUserId: user.id,
+      room: { ...tableSummary(room), players: room.players },
+    });
   }
 
   if (action === "start") {
-    if (room.hostUserId !== user.id) return new Response(JSON.stringify({ success: false, error: "Only host can start" }), { status: 403 });
-    if (room.activeState?.status === "active") return new Response(JSON.stringify({ success: false, error: "A game is already running at this table." }), { status: 409 });
+    if (room.hostUserId !== user.id)
+      return new Response(
+        JSON.stringify({ success: false, error: "Only host can start" }),
+        { status: 403 },
+      );
+    if (room.activeState?.status === "active")
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "A game is already running at this table.",
+        }),
+        { status: 409 },
+      );
 
     const contenders = room.players
-  .filter((p) => p.seatIndex !== null)
-  .filter((p) => p.type === "human" || p.type === "ai")
-  .filter((p) => !p.skipNextRound)
-  .sort((a, b) => a.seatIndex - b.seatIndex);
+      .filter((p) => p.seatIndex !== null)
+      .filter((p) => p.type === "human" || p.type === "ai")
+      .filter((p) => !p.skipNextRound)
+      .sort((a, b) => a.seatIndex - b.seatIndex);
 
     if (contenders.length < 2) {
-      return new Response(JSON.stringify({ success: false, error: "Need at least 2 active players (unchecked skip round)." }), { status: 400 });
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Need at least 2 active players (unchecked skip round).",
+        }),
+        { status: 400 },
+      );
     }
 
     const betAmount = Number(room.settings.betAmount);
-    const humanIds = contenders.filter((p) => p.type === "human").map((p) => p.userId);
+    const humanIds = contenders
+      .filter((p) => p.type === "human")
+      .map((p) => p.userId);
     const balances = humanIds.length
-      ? await db.select({ id: users.id, balance: users.balance }).from(users).where(inArray(users.id, humanIds))
+      ? await db
+          .select({ id: users.id, balance: users.balance })
+          .from(users)
+          .where(inArray(users.id, humanIds))
       : [];
     const byId = new Map(balances.map((u) => [u.id, Number(u.balance)]));
 
     for (const p of contenders.filter((p) => p.type === "human")) {
       const b = byId.get(p.userId) ?? 0;
       if (b < betAmount) {
-        return new Response(JSON.stringify({ success: false, error: `${p.name} has insufficient balance for this bet.` }), { status: 400 });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `${p.name} has insufficient balance for this bet.`,
+          }),
+          { status: 400 },
+        );
       }
     }
 
     if (humanIds.length) {
       await db.transaction(async (tx) => {
         for (const id of humanIds) {
-          await tx.update(users).set({ balance: sql`${users.balance} - ${betAmount}` }).where(eq(users.id, id));
+          await tx
+            .update(users)
+            .set({ balance: sql`${users.balance} - ${betAmount}` })
+            .where(eq(users.id, id));
         }
       });
     }
@@ -516,7 +679,10 @@ export async function POST(request) {
     let topCard;
     do {
       topCard = deck.pop();
-    } while (topCard && (topCard.value === "Wild" || topCard.value === "Wild Draw Four"));
+    } while (
+      topCard &&
+      (topCard.value === "Wild" || topCard.value === "Wild Draw Four")
+    );
 
     const activeState = {
       players: contenders,
@@ -548,30 +714,56 @@ export async function POST(request) {
   }
 
   if (action === "leave") {
-    if (room.activeState?.status === "active" && room.activeState.players.some((p) => p.userId === user.id)) {
-      return new Response(JSON.stringify({ success: false, error: "You must finish or resign the game before leaving this table." }), { status: 409 });
+    if (
+      room.activeState?.status === "active" &&
+      room.activeState.players.some((p) => p.userId === user.id)
+    ) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error:
+            "You must finish or resign the game before leaving this table.",
+        }),
+        { status: 409 },
+      );
     }
 
     room.players = room.players.filter((p) => p.userId !== user.id);
 
     if (room.players.length === 0) {
       store.delete(code);
-      return Response.json({ success: true, currentUserId: user.id, removed: true });
+      return Response.json({
+        success: true,
+        currentUserId: user.id,
+        removed: true,
+      });
     }
 
     if (room.hostUserId === user.id) {
-      const newHost = room.players.find((p) => p.type === "human") || room.players[0];
+      const newHost =
+        room.players.find((p) => p.type === "human") || room.players[0];
       room.hostUserId = newHost.userId;
       room.hostName = newHost.name;
-      room.players = room.players.map((p) => ({ ...p, isHost: p.userId === room.hostUserId }));
+      room.players = room.players.map((p) => ({
+        ...p,
+        isHost: p.userId === room.hostUserId,
+      }));
     }
 
-    return Response.json({ success: true, currentUserId: user.id, room: { ...tableSummary(room), players: room.players } });
+    return Response.json({
+      success: true,
+      currentUserId: user.id,
+      room: { ...tableSummary(room), players: room.players },
+    });
   }
 
   if (action === "sync-active-game" || action === "check-game") {
     if (!room.activeState) {
-      return Response.json({ success: true, room: { ...tableSummary(room), players: room.players }, game: null });
+      return Response.json({
+        success: true,
+        room: { ...tableSummary(room), players: room.players },
+        game: null,
+      });
     }
     scheduleAi(room);
 
@@ -593,30 +785,63 @@ export async function POST(request) {
 
   if (action === "play-card") {
     const state = room.activeState;
-    if (!state || state.status !== "active") return new Response(JSON.stringify({ success: false, error: "No active game" }), { status: 400 });
+    if (!state || state.status !== "active")
+      return new Response(
+        JSON.stringify({ success: false, error: "No active game" }),
+        { status: 400 },
+      );
 
     const me = state.players.find((p) => p.userId === user.id);
-    if (!me) return new Response(JSON.stringify({ success: false, error: "Forbidden" }), { status: 403 });
-    if (state.players[state.turnIndex]?.id !== me.id) return new Response(JSON.stringify({ success: false, error: "Not your turn" }), { status: 400 });
+    if (!me)
+      return new Response(
+        JSON.stringify({ success: false, error: "Forbidden" }),
+        { status: 403 },
+      );
+    if (state.players[state.turnIndex]?.id !== me.id)
+      return new Response(
+        JSON.stringify({ success: false, error: "Not your turn" }),
+        { status: 400 },
+      );
 
     const card = body?.card;
     const chosenColor = norm(body?.chosenColor || "");
     const hand = state.hands[me.id] || [];
-    const idx = hand.findIndex((c) => c.color === card?.color && c.value === card?.value);
-    if (idx < 0) return new Response(JSON.stringify({ success: false, error: "Invalid card" }), { status: 400 });
+    const idx = hand.findIndex(
+      (c) => c.color === card?.color && c.value === card?.value,
+    );
+    if (idx < 0)
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid card" }),
+        { status: 400 },
+      );
 
     const topCard = state.discardPile[state.discardPile.length - 1];
     if (!isPlayable(card, topCard, state.currentColor, hand)) {
-      return new Response(JSON.stringify({ success: false, error: "Card not playable" }), { status: 400 });
+      return new Response(
+        JSON.stringify({ success: false, error: "Card not playable" }),
+        { status: 400 },
+      );
     }
 
     const value = norm(card.value);
-    if ((value === "wild" || value === "wild draw four") && !["red", "yellow", "green", "blue"].includes(chosenColor)) {
-      return new Response(JSON.stringify({ success: false, error: "Choose a color for wild card" }), { status: 400 });
+    if (
+      (value === "wild" || value === "wild draw four") &&
+      !["red", "yellow", "green", "blue"].includes(chosenColor)
+    ) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Choose a color for wild card",
+        }),
+        { status: 400 },
+      );
     }
 
     hand.splice(idx, 1);
-    const payloadCard = (value === "wild" || value === "wild draw four") ? { ...card, color: chosenColor } : card;
+    const payloadCard =
+      value === "wild" || value === "wild draw four"
+        ? { ...card, color: chosenColor }
+        : card;
     applyCardEffect(state, me.id, payloadCard, chosenColor || card.color);
     scheduleAi(room);
 
@@ -636,11 +861,23 @@ export async function POST(request) {
 
   if (action === "draw-card") {
     const state = room.activeState;
-    if (!state || state.status !== "active") return new Response(JSON.stringify({ success: false, error: "No active game" }), { status: 400 });
+    if (!state || state.status !== "active")
+      return new Response(
+        JSON.stringify({ success: false, error: "No active game" }),
+        { status: 400 },
+      );
 
     const me = state.players.find((p) => p.userId === user.id);
-    if (!me) return new Response(JSON.stringify({ success: false, error: "Forbidden" }), { status: 403 });
-    if (state.players[state.turnIndex]?.id !== me.id) return new Response(JSON.stringify({ success: false, error: "Not your turn" }), { status: 400 });
+    if (!me)
+      return new Response(
+        JSON.stringify({ success: false, error: "Forbidden" }),
+        { status: 403 },
+      );
+    if (state.players[state.turnIndex]?.id !== me.id)
+      return new Response(
+        JSON.stringify({ success: false, error: "Not your turn" }),
+        { status: 400 },
+      );
 
     drawFor(state, me.id, 1);
     const hand = state.hands[me.id] || [];
@@ -668,10 +905,18 @@ export async function POST(request) {
 
   if (action === "resign") {
     const state = room.activeState;
-    if (!state || state.status !== "active") return new Response(JSON.stringify({ success: false, error: "No active game" }), { status: 400 });
+    if (!state || state.status !== "active")
+      return new Response(
+        JSON.stringify({ success: false, error: "No active game" }),
+        { status: 400 },
+      );
 
     const me = state.players.find((p) => p.userId === user.id);
-    if (!me) return new Response(JSON.stringify({ success: false, error: "Forbidden" }), { status: 403 });
+    if (!me)
+      return new Response(
+        JSON.stringify({ success: false, error: "Forbidden" }),
+        { status: 403 },
+      );
 
     const leavingTurnIndex = state.players.findIndex((p) => p.id === me.id);
     const wasCurrentTurn = state.players[state.turnIndex]?.id === me.id;
@@ -682,10 +927,14 @@ export async function POST(request) {
     room.players = room.players.filter((p) => p.userId !== user.id);
 
     if (room.hostUserId === user.id && room.players.length > 0) {
-      const newHost = room.players.find((p) => p.type === "human") || room.players[0];
+      const newHost =
+        room.players.find((p) => p.type === "human") || room.players[0];
       room.hostUserId = newHost.userId;
       room.hostName = newHost.name;
-      room.players = room.players.map((p) => ({ ...p, isHost: p.userId === room.hostUserId }));
+      room.players = room.players.map((p) => ({
+        ...p,
+        isHost: p.userId === room.hostUserId,
+      }));
     }
 
     if (state.players.length <= 1) {
@@ -720,5 +969,8 @@ export async function POST(request) {
     });
   }
 
-  return new Response(JSON.stringify({ success: false, error: "Unknown action" }), { status: 400 });
+  return new Response(
+    JSON.stringify({ success: false, error: "Unknown action" }),
+    { status: 400 },
+  );
 }

@@ -9,44 +9,46 @@ async function resolveGameIfReady(game) {
   if (game.status !== "matched") return game;
 
   const now = Date.now();
-  const deadline = game.choiceDeadline ? new Date(game.choiceDeadline).getTime() : null;
+  const deadline = game.choiceDeadline
+    ? new Date(game.choiceDeadline).getTime()
+    : null;
   const bothChosen = Boolean(game.player1Choice && game.player2Choice);
 
-if (!bothChosen && deadline && now >= deadline) {
-  return db.transaction(async (tx) => {
-    const [locked] = await tx
-      .select()
-      .from(coinFlipGames)
-      .where(eq(coinFlipGames.id, game.id))
-      .for("update");
+  if (!bothChosen && deadline && now >= deadline) {
+    return db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(coinFlipGames)
+        .where(eq(coinFlipGames.id, game.id))
+        .for("update");
 
-    if (!locked || locked.status !== "matched") return locked || game;
+      if (!locked || locked.status !== "matched") return locked || game;
 
-    let player1Choice = locked.player1Choice;
-    let player2Choice = locked.player2Choice;
+      let player1Choice = locked.player1Choice;
+      let player2Choice = locked.player2Choice;
 
-    // Force opposite choice if one player didn't choose
-    if (player1Choice && !player2Choice) {
-      player2Choice = player1Choice === "heads" ? "tails" : "heads";
-    }
+      // Force opposite choice if one player didn't choose
+      if (player1Choice && !player2Choice) {
+        player2Choice = player1Choice === "heads" ? "tails" : "heads";
+      }
 
-    if (player2Choice && !player1Choice) {
-      player1Choice = player2Choice === "heads" ? "tails" : "heads";
-    }
+      if (player2Choice && !player1Choice) {
+        player1Choice = player2Choice === "heads" ? "tails" : "heads";
+      }
 
-    // Save forced choice
-    const [updated] = await tx
-      .update(coinFlipGames)
-      .set({
-        player1Choice,
-        player2Choice
-      })
-      .where(eq(coinFlipGames.id, game.id))
-      .returning();
+      // Save forced choice
+      const [updated] = await tx
+        .update(coinFlipGames)
+        .set({
+          player1Choice,
+          player2Choice,
+        })
+        .where(eq(coinFlipGames.id, game.id))
+        .returning();
 
-    return updated;
-  });
-}
+      return updated;
+    });
+  }
 
   if (!bothChosen) return game;
 
@@ -61,7 +63,8 @@ if (!bothChosen && deadline && now >= deadline) {
     if (!(locked.player1Choice && locked.player2Choice)) return locked;
 
     const outcome = crypto.randomInt(0, 2) === 0 ? "heads" : "tails";
-    const winnerId = outcome === locked.player1Choice ? locked.player1Id : locked.player2Id;
+    const winnerId =
+      outcome === locked.player1Choice ? locked.player1Id : locked.player2Id;
     const payout = Number(locked.betAmount) * 2;
 
     await tx
@@ -121,7 +124,12 @@ export async function GET(req) {
       player2Choice: game.player2Choice,
       choiceDeadline: game.choiceDeadline,
       outcome: game.outcome,
-      winner: game.status === "finished" ? (game.winnerId === userId ? "you" : "opponent") : null,
+      winner:
+        game.status === "finished"
+          ? game.winnerId === userId
+            ? "you"
+            : "opponent"
+          : null,
       result: game.result,
     },
   });

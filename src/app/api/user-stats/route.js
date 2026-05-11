@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../db/neon";
-import { getLevelProgress, getUserLevel  } from "../../../lib/vipLevels";
+import { getLevelProgress, getUserLevel } from "../../../lib/vipLevels";
 import { getHighestTitle } from "../../../lib/titles";
 
 // 👇 ADD THESE (from your history route)
@@ -29,10 +29,13 @@ export async function GET() {
   const { userId } = await auth();
 
   if (!userId) {
-    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   try {
@@ -42,9 +45,12 @@ export async function GET() {
     });
 
     if (!dbUser) {
-      return new Response(JSON.stringify({ success: false, error: "User not found" }), {
-        status: 404,
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "User not found" }),
+        {
+          status: 404,
+        },
+      );
     }
 
     const uid = dbUser.id;
@@ -74,27 +80,45 @@ export async function GET() {
       db.select().from(crashGames).where(eq(crashGames.userId, uid)),
       db.select().from(rpsGames).where(eq(rpsGames.userId, clerkId)),
       db.select().from(unoGames).where(eq(unoGames.userId, uid)),
-      db.select().from(chessGames).where(
-        or(eq(chessGames.playerWhiteId, clerkId), eq(chessGames.playerBlackId, clerkId))
-      ),
+      db
+        .select()
+        .from(chessGames)
+        .where(
+          or(
+            eq(chessGames.playerWhiteId, clerkId),
+            eq(chessGames.playerBlackId, clerkId),
+          ),
+        ),
       db.select().from(sportsBets).where(eq(sportsBets.userId, uid)),
       db.select().from(slotGames).where(eq(slotGames.userId, userId)),
-      db.select().from(coinFlipGames).where(
-        or(eq(coinFlipGames.player1Id, clerkId), eq(coinFlipGames.player2Id, clerkId))
-      ),
+      db
+        .select()
+        .from(coinFlipGames)
+        .where(
+          or(
+            eq(coinFlipGames.player1Id, clerkId),
+            eq(coinFlipGames.player2Id, clerkId),
+          ),
+        ),
       db.select().from(keno_games).where(eq(keno_games.user_id, uid)),
-      db.select().from(diceMatches).where(
-  or(
-    eq(diceMatches.player1Id, clerkId),
-    eq(diceMatches.player2Id, clerkId)
-  )
-),
-      db.select().from(connectFourGames).where(
-  or(
-    eq(connectFourGames.hostClerkId, clerkId),
-    eq(connectFourGames.guestClerkId, clerkId)
-  )
-),
+      db
+        .select()
+        .from(diceMatches)
+        .where(
+          or(
+            eq(diceMatches.player1Id, clerkId),
+            eq(diceMatches.player2Id, clerkId),
+          ),
+        ),
+      db
+        .select()
+        .from(connectFourGames)
+        .where(
+          or(
+            eq(connectFourGames.hostClerkId, clerkId),
+            eq(connectFourGames.guestClerkId, clerkId),
+          ),
+        ),
     ]);
 
     // ✅ SIMPLE formatter (light version)
@@ -110,50 +134,45 @@ export async function GET() {
         return { type, amount, payout, result, tokenDiff: payout - amount };
       });
 
- const connectFourNormalized = connectFourRows
-  .map((game) => {
-    if (!game.winnerClerkId) return null; // ✅ ignore unfinished games
+    const connectFourNormalized = connectFourRows
+      .map((game) => {
+        if (!game.winnerClerkId) return null; // ✅ ignore unfinished games
 
-    const amount = Number(game.betAmount ?? 0);
-    const payout = Number(game.payout ?? 0);
+        const amount = Number(game.betAmount ?? 0);
+        const payout = Number(game.payout ?? 0);
 
-    const result =
-      game.winnerClerkId === clerkId ? "won" : "lost";
+        const result = game.winnerClerkId === clerkId ? "won" : "lost";
 
-    return {
-      type: "Connect Four",
-      amount,
-      payout,
-      result,
-      tokenDiff:
-        result === "won" ? payout - amount : -amount,
-    };
-  })
-  .filter(Boolean); // ✅ removes nulls);
+        return {
+          type: "Connect Four",
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      })
+      .filter(Boolean); // ✅ removes nulls);
 
-  const diceNormalized = diceRows
-  .map((game) => {
-    if (game.status !== "finished" && game.status !== "completed") return null;
-    if (!game.winnerId) return null;
+    const diceNormalized = diceRows
+      .map((game) => {
+        if (game.status !== "finished" && game.status !== "completed")
+          return null;
+        if (!game.winnerId) return null;
 
-    const amount = Number(game.wager || 0);
-    const payout = Number(game.prizePaid || 0);
+        const amount = Number(game.wager || 0);
+        const payout = Number(game.prizePaid || 0);
 
-    const result =
-      game.winnerId === clerkId ? "won" : "lost";
+        const result = game.winnerId === clerkId ? "won" : "lost";
 
-    return {
-      type: "Dice Duel",
-      amount,
-      payout,
-      result,
-      tokenDiff:
-        result === "won"
-          ? payout - amount
-          : -amount,
-    };
-  })
-  .filter(Boolean);
+        return {
+          type: "Dice Duel",
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      })
+      .filter(Boolean);
 
     const allBets = [
       ...normalize(roulette, "Roulette"),
@@ -174,12 +193,12 @@ export async function GET() {
 
     // ✅ COMPUTE STATS
     const totalBets = allBets.length;
-    const wins = allBets.filter(b => b.result === "won").length;
-    const losses = allBets.filter(b => b.result === "lost").length;
+    const wins = allBets.filter((b) => b.result === "won").length;
+    const losses = allBets.filter((b) => b.result === "lost").length;
 
     const winRate = totalBets > 0 ? (wins / totalBets) * 100 : 0;
 
-    const biggestWin = Math.max(0, ...allBets.map(b => b.tokenDiff || 0));
+    const biggestWin = Math.max(0, ...allBets.map((b) => b.tokenDiff || 0));
     const totalWagered = allBets.reduce((sum, b) => sum + b.amount, 0);
 
     const gameCount = {};
@@ -235,11 +254,11 @@ export async function GET() {
 
     const row = rows[0];
 
-const computedLevel = getUserLevel(totalWagered);
-const progress = getLevelProgress(totalWagered);
-const computedHighestTitle = getHighestTitle(computedLevel)?.title || null;
+    const computedLevel = getUserLevel(totalWagered);
+    const progress = getLevelProgress(totalWagered);
+    const computedHighestTitle = getHighestTitle(computedLevel)?.title || null;
 
-await sql`
+    await sql`
   UPDATE users
   SET level = ${computedLevel},
       total_wagered = ${totalWagered},
@@ -247,28 +266,33 @@ await sql`
   WHERE clerk_id = ${userId}
 `;
 
-    return new Response(JSON.stringify({
-      success: true,
-      stats: {
-        totalBets,
-        totalWins: wins,
-        totalLosses: losses,
-        winRate,
-        biggestWin,
-        favoriteGame,
-        referrals: Number(row?.referral_count || 0),
-        referralEarnings: Number(row?.referral_earnings || 0),
-        referralCode: row?.referral_code || "",
-        totalWagered,
-        currentLevel: computedLevel,
-        levelProgress: progress,
-      },
-    }), { status: 200 });
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        stats: {
+          totalBets,
+          totalWins: wins,
+          totalLosses: losses,
+          winRate,
+          biggestWin,
+          favoriteGame,
+          referrals: Number(row?.referral_count || 0),
+          referralEarnings: Number(row?.referral_earnings || 0),
+          referralCode: row?.referral_code || "",
+          totalWagered,
+          currentLevel: computedLevel,
+          levelProgress: progress,
+        },
+      }),
+      { status: 200 },
+    );
   } catch (error) {
     console.error("[USER_STATS_ERROR]", error);
-    return new Response(JSON.stringify({ success: false, error: "Failed to load stats" }), {
-      status: 500,
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Failed to load stats" }),
+      {
+        status: 500,
+      },
+    );
   }
 }

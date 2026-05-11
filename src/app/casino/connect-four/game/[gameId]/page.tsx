@@ -4,7 +4,7 @@ import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { getDropRow } from "../../../../../lib/connectFour";
-import useGamePresence from '../../../../../hooks/useGamePresence';
+import useGamePresence from "../../../../../hooks/useGamePresence";
 
 const DEFAULT_MOVE_LIMIT_SECONDS = 60;
 const REPLAY_WINDOW_SECONDS = 20;
@@ -18,18 +18,42 @@ function playUiTone(type: "drop" | "win" = "drop") {
   const gain = ctx.createGain();
   osc.connect(gain);
   gain.connect(ctx.destination);
-  const settings = type === "win" ? { freq: 640, duration: 0.18 } : { freq: 360, duration: 0.09 };
+  const settings =
+    type === "win"
+      ? { freq: 640, duration: 0.18 }
+      : { freq: 360, duration: 0.09 };
   osc.frequency.value = settings.freq;
   gain.gain.setValueAtTime(0.001, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + settings.duration);
+  gain.gain.exponentialRampToValueAtTime(
+    0.001,
+    ctx.currentTime + settings.duration,
+  );
   osc.start();
   osc.stop(ctx.currentTime + settings.duration);
 }
 
-function Disc({ value, className = "", style }: { value: number; className?: string; style?: CSSProperties }) {
-  const color = value === 1 ? "bg-green-500" : value === 2 ? "bg-red-500" : "bg-slate-900/60";
-  return <div className={`w-11 h-11 md:w-14 md:h-14 rounded-full border border-black/50 shadow-inner ${color} ${className}`} style={style} />;
+function Disc({
+  value,
+  className = "",
+  style,
+}: {
+  value: number;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const color =
+    value === 1
+      ? "bg-green-500"
+      : value === 2
+        ? "bg-red-500"
+        : "bg-slate-900/60";
+  return (
+    <div
+      className={`w-11 h-11 md:w-14 md:h-14 rounded-full border border-black/50 shadow-inner ${color} ${className}`}
+      style={style}
+    />
+  );
 }
 
 export default function ConnectFourGamePage() {
@@ -38,21 +62,34 @@ export default function ConnectFourGamePage() {
   const searchParams = useSearchParams();
   const isSpectator = searchParams.get("spectator") === "1";
   const focusTarget = searchParams.get("focusTarget") || "";
-  const [spectatorFocus, setSpectatorFocus] = useState<"host" | "guest">((searchParams.get("focus") as any) === "guest" ? "guest" : "host");
+  const [spectatorFocus, setSpectatorFocus] = useState<"host" | "guest">(
+    (searchParams.get("focus") as any) === "guest" ? "guest" : "host",
+  );
   const { socket } = useSocket();
 
   const [game, setGame] = useState<any>(null);
   const [loadingMove, setLoadingMove] = useState(false);
   const [statusText, setStatusText] = useState("Loading game...");
-  const [fallingDisc, setFallingDisc] = useState<{ row: number; col: number; value: number } | null>(null);
+  const [fallingDisc, setFallingDisc] = useState<{
+    row: number;
+    col: number;
+    value: number;
+  } | null>(null);
   const [sendingReplayDecision, setSendingReplayDecision] = useState(false);
   const [replayMessage, setReplayMessage] = useState("");
   const [spectatorCount, setSpectatorCount] = useState(0);
 
-  useGamePresence({ gameKey: "connect-four", gameId: Number(gameId), enabled: !isSpectator && Boolean(gameId) });
+  useGamePresence({
+    gameKey: "connect-four",
+    gameId: Number(gameId),
+    enabled: !isSpectator && Boolean(gameId),
+  });
   const previousBoardRef = useRef<number[][] | null>(null);
 
-  const detectLatestDrop = (previousBoard: number[][] | null, nextBoard: number[][]) => {
+  const detectLatestDrop = (
+    previousBoard: number[][] | null,
+    nextBoard: number[][],
+  ) => {
     if (!previousBoard || previousBoard.length === 0) return null;
 
     for (let row = nextBoard.length - 1; row >= 0; row -= 1) {
@@ -67,7 +104,9 @@ export default function ConnectFourGamePage() {
   };
 
   const fetchState = async () => {
-    const res = await fetch(`/api/connect-four/game-state?gameId=${gameId}`, { cache: "no-store" });
+    const res = await fetch(`/api/connect-four/game-state?gameId=${gameId}`, {
+      cache: "no-store",
+    });
     const data = await res.json();
     if (!res.ok) {
       setStatusText(data.error || "Unable to load game");
@@ -76,8 +115,10 @@ export default function ConnectFourGamePage() {
 
     const gameData = data.data;
     if (isSpectator && focusTarget) {
-      if (String(focusTarget) === String(gameData.hostClerkId)) setSpectatorFocus("host");
-      else if (String(focusTarget) === String(gameData.guestClerkId)) setSpectatorFocus("guest");
+      if (String(focusTarget) === String(gameData.hostClerkId))
+        setSpectatorFocus("host");
+      else if (String(focusTarget) === String(gameData.guestClerkId))
+        setSpectatorFocus("guest");
     }
     const nextBoard = gameData?.board || [];
     const latestDrop = detectLatestDrop(previousBoardRef.current, nextBoard);
@@ -99,11 +140,19 @@ export default function ConnectFourGamePage() {
 
     if (gameData.status === "finished") {
       if (gameData.result === "draw") setStatusText("Draw game.");
-      else if (gameData.winnerClerkId && ((gameData.role === "host" && gameData.winnerClerkId === gameData.hostClerkId) || (gameData.role === "guest" && gameData.winnerClerkId === gameData.guestClerkId))) {
+      else if (
+        gameData.winnerClerkId &&
+        ((gameData.role === "host" &&
+          gameData.winnerClerkId === gameData.hostClerkId) ||
+          (gameData.role === "guest" &&
+            gameData.winnerClerkId === gameData.guestClerkId))
+      ) {
         setStatusText("You won!");
         playUiTone("win");
       } else {
-        setStatusText(gameData.result === "timeout" ? "You lost on time." : "You lost.");
+        setStatusText(
+          gameData.result === "timeout" ? "You lost on time." : "You lost.",
+        );
       }
       return;
     }
@@ -134,15 +183,18 @@ export default function ConnectFourGamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, gameId]);
 
-
   useEffect(() => {
     if (!game) return;
-    const focusId = spectatorFocus === "host" ? game.hostClerkId : game.guestClerkId;
+    const focusId =
+      spectatorFocus === "host" ? game.hostClerkId : game.guestClerkId;
     if (!focusId) return;
 
     const pollSpectators = async () => {
       try {
-        const res = await fetch(`/api/spectators/count?gameKey=connect-four&gameId=${gameId}`, { credentials: "include" });
+        const res = await fetch(
+          `/api/spectators/count?gameKey=connect-four&gameId=${gameId}`,
+          { credentials: "include" },
+        );
         const data = await res.json();
         if (res.ok && data.success) setSpectatorCount(Number(data.count || 0));
       } catch {}
@@ -158,7 +210,11 @@ export default function ConnectFourGamePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ gameKey: "connect-four", gameId: Number(gameId), targetClerkId: focusId }),
+          body: JSON.stringify({
+            gameKey: "connect-four",
+            gameId: Number(gameId),
+            targetClerkId: focusId,
+          }),
         });
       };
       beat();
@@ -171,7 +227,6 @@ export default function ConnectFourGamePage() {
     };
   }, [game, spectatorFocus, isSpectator, gameId]);
 
-
   const canPlay = useMemo(() => {
     if (!game) return false;
     if (isSpectator) return false;
@@ -181,15 +236,36 @@ export default function ConnectFourGamePage() {
   const playerWon = useMemo(() => {
     if (!game || game.status !== "finished") return false;
     if (!game.winnerClerkId) return false;
-    return (game.role === "host" && game.winnerClerkId === game.hostClerkId) || (game.role === "guest" && game.winnerClerkId === game.guestClerkId);
+    return (
+      (game.role === "host" && game.winnerClerkId === game.hostClerkId) ||
+      (game.role === "guest" && game.winnerClerkId === game.guestClerkId)
+    );
   }, [game, isSpectator]);
 
-  const moveLimit = Number(game?.moveTimeLimit || game?.timerSeconds || DEFAULT_MOVE_LIMIT_SECONDS);
-  const activeTimer = game?.status === "in_progress" ? Math.min(moveLimit, Math.max(0, Number(game?.moveTimeRemaining || 0))) : 0;
-  const hostTimer = game?.status === "in_progress" ? (game.currentTurn === "host" ? activeTimer : moveLimit) : 0;
-  const guestTimer = game?.status === "in_progress" ? (game.currentTurn === "guest" ? activeTimer : moveLimit) : 0;
+  const moveLimit = Number(
+    game?.moveTimeLimit || game?.timerSeconds || DEFAULT_MOVE_LIMIT_SECONDS,
+  );
+  const activeTimer =
+    game?.status === "in_progress"
+      ? Math.min(moveLimit, Math.max(0, Number(game?.moveTimeRemaining || 0)))
+      : 0;
+  const hostTimer =
+    game?.status === "in_progress"
+      ? game.currentTurn === "host"
+        ? activeTimer
+        : moveLimit
+      : 0;
+  const guestTimer =
+    game?.status === "in_progress"
+      ? game.currentTurn === "guest"
+        ? activeTimer
+        : moveLimit
+      : 0;
 
-  const replayCountdown = Math.max(0, Math.min(REPLAY_WINDOW_SECONDS, Number(game?.replayTimeRemaining || 0)));
+  const replayCountdown = Math.max(
+    0,
+    Math.min(REPLAY_WINDOW_SECONDS, Number(game?.replayTimeRemaining || 0)),
+  );
   const showResultPopup = game?.status === "finished" && !game?.nextGameId;
 
   const playColumn = async (column: number) => {
@@ -210,7 +286,10 @@ export default function ConnectFourGamePage() {
         return;
       }
 
-      socket?.emit("room_event", { roomId: `connect-four:${gameId}`, event: "match:updated" });
+      socket?.emit("room_event", {
+        roomId: `connect-four:${gameId}`,
+        event: "match:updated",
+      });
       fetchState();
     } finally {
       setLoadingMove(false);
@@ -230,7 +309,10 @@ export default function ConnectFourGamePage() {
       return;
     }
 
-    socket?.emit("room_event", { roomId: `connect-four:${gameId}`, event: "match:updated" });
+    socket?.emit("room_event", {
+      roomId: `connect-four:${gameId}`,
+      event: "match:updated",
+    });
     fetchState();
   };
 
@@ -252,7 +334,10 @@ export default function ConnectFourGamePage() {
       }
 
       if (data.resolved === "replay" && data.gameId) {
-        socket?.emit("room_event", { roomId: `connect-four:${gameId}`, event: "match:updated" });
+        socket?.emit("room_event", {
+          roomId: `connect-four:${gameId}`,
+          event: "match:updated",
+        });
         router.push(`/casino/connect-four/game/${data.gameId}`);
         return;
       }
@@ -263,8 +348,15 @@ export default function ConnectFourGamePage() {
         return;
       }
 
-      setReplayMessage(action === "replay" ? "Replay requested. Waiting for opponent..." : "Quitting match...");
-      socket?.emit("room_event", { roomId: `connect-four:${gameId}`, event: "match:updated" });
+      setReplayMessage(
+        action === "replay"
+          ? "Replay requested. Waiting for opponent..."
+          : "Quitting match...",
+      );
+      socket?.emit("room_event", {
+        roomId: `connect-four:${gameId}`,
+        event: "match:updated",
+      });
       fetchState();
     } finally {
       setSendingReplayDecision(false);
@@ -280,10 +372,18 @@ export default function ConnectFourGamePage() {
     }
 
     if (replayCountdown <= 0) {
-      if (game.hostReplayDecision === "replay" || game.guestReplayDecision === "replay") {
-        setReplayMessage("Replay was refused or expired. Returning to lobby...");
+      if (
+        game.hostReplayDecision === "replay" ||
+        game.guestReplayDecision === "replay"
+      ) {
+        setReplayMessage(
+          "Replay was refused or expired. Returning to lobby...",
+        );
       }
-      const timeoutId = setTimeout(() => router.push("/casino/connect-four"), 900);
+      const timeoutId = setTimeout(
+        () => router.push("/casino/connect-four"),
+        900,
+      );
       return () => clearTimeout(timeoutId);
     }
 
@@ -295,16 +395,33 @@ export default function ConnectFourGamePage() {
       <div className="max-w-5xl mx-auto relative overflow-hidden rounded-2xl">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-3xl font-extrabold text-yellow-300">Connect Four — Match #{gameId}</h1>
+            <h1 className="text-3xl font-extrabold text-yellow-300">
+              Connect Four — Match #{gameId}
+            </h1>
             {isSpectator && (
               <div className="mt-2 flex items-center gap-2">
-                <span className="text-xs rounded bg-cyan-500/20 px-2 py-1">Spectator mode</span>
-                <button onClick={() => setSpectatorFocus("host")} className="px-2 py-1 text-xs rounded bg-white/10">View Host</button>
-                <button onClick={() => setSpectatorFocus("guest")} className="px-2 py-1 text-xs rounded bg-white/10">View Guest</button>
+                <span className="text-xs rounded bg-cyan-500/20 px-2 py-1">
+                  Spectator mode
+                </span>
+                <button
+                  onClick={() => setSpectatorFocus("host")}
+                  className="px-2 py-1 text-xs rounded bg-white/10"
+                >
+                  View Host
+                </button>
+                <button
+                  onClick={() => setSpectatorFocus("guest")}
+                  className="px-2 py-1 text-xs rounded bg-white/10"
+                >
+                  View Guest
+                </button>
               </div>
             )}
           </div>
-          <button onClick={() => router.push("/casino/connect-four")} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 hover-lift">
+          <button
+            onClick={() => router.push("/casino/connect-four")}
+            className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 hover-lift"
+          >
             Back to Lobby
           </button>
         </div>
@@ -317,7 +434,8 @@ export default function ConnectFourGamePage() {
                 className="confetti-piece"
                 style={{
                   left: `${(index * 19) % 100}%`,
-                  backgroundColor: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
+                  backgroundColor:
+                    CONFETTI_COLORS[index % CONFETTI_COLORS.length],
                   animationDelay: `${(index % 6) * 0.06}s`,
                 }}
               />
@@ -329,23 +447,42 @@ export default function ConnectFourGamePage() {
           <div className="casino-surface p-4 rounded-2xl">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <p className="text-white/70 text-sm">{game?.hostName || "Host"} (Green) vs {game?.guestName || "Guest"} (Red)</p>
-                <p className="font-bold text-lg">Bet: {Number(game?.betAmount || 0).toFixed(2)} tokens each</p>
-                <p className="text-white/70 text-sm">Turn timer: {moveLimit}s</p>
+                <p className="text-white/70 text-sm">
+                  {game?.hostName || "Host"} (Green) vs{" "}
+                  {game?.guestName || "Guest"} (Red)
+                </p>
+                <p className="font-bold text-lg">
+                  Bet: {Number(game?.betAmount || 0).toFixed(2)} tokens each
+                </p>
+                <p className="text-white/70 text-sm">
+                  Turn timer: {moveLimit}s
+                </p>
               </div>
               <div className="text-right">
                 <p className="text-sm text-white/70">Move timer</p>
-                <p className={`text-3xl font-mono font-bold ${activeTimer <= 10 ? "text-red-400 low-time-pulse" : "text-green-300"}`}>{activeTimer}s</p>
+                <p
+                  className={`text-3xl font-mono font-bold ${activeTimer <= 10 ? "text-red-400 low-time-pulse" : "text-green-300"}`}
+                >
+                  {activeTimer}s
+                </p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className={`rounded-lg p-2 border ${game?.currentTurn === "host" ? "border-green-400 bg-green-500/10" : "border-white/15 bg-white/5"}`}>
-                <p className="text-sm text-white/70">{game?.hostName || "Host"}</p>
+              <div
+                className={`rounded-lg p-2 border ${game?.currentTurn === "host" ? "border-green-400 bg-green-500/10" : "border-white/15 bg-white/5"}`}
+              >
+                <p className="text-sm text-white/70">
+                  {game?.hostName || "Host"}
+                </p>
                 <p className="text-2xl font-mono font-bold">{hostTimer}s</p>
               </div>
-              <div className={`rounded-lg p-2 border ${game?.currentTurn === "guest" ? "border-red-400 bg-red-500/10" : "border-white/15 bg-white/5"}`}>
-                <p className="text-sm text-white/70">{game?.guestName || "Guest"}</p>
+              <div
+                className={`rounded-lg p-2 border ${game?.currentTurn === "guest" ? "border-red-400 bg-red-500/10" : "border-white/15 bg-white/5"}`}
+              >
+                <p className="text-sm text-white/70">
+                  {game?.guestName || "Guest"}
+                </p>
                 <p className="text-2xl font-mono font-bold">{guestTimer}s</p>
               </div>
             </div>
@@ -367,7 +504,9 @@ export default function ConnectFourGamePage() {
             <div className="grid grid-cols-7 gap-2 bg-[#11457e] p-3 rounded-xl border border-[#1e5b9a]">
               {(game?.board || []).map((row: number[], rowIndex: number) =>
                 row.map((value, colIndex) => {
-                  const isAnimatedCell = fallingDisc?.row === rowIndex && fallingDisc?.col === colIndex;
+                  const isAnimatedCell =
+                    fallingDisc?.row === rowIndex &&
+                    fallingDisc?.col === colIndex;
                   const discValue = isAnimatedCell ? fallingDisc.value : value;
                   return (
                     <Disc
@@ -383,27 +522,64 @@ export default function ConnectFourGamePage() {
                       }
                     />
                   );
-                })
+                }),
               )}
             </div>
           </div>
 
-          <div className={`casino-surface p-4 rounded-2xl ${canPlay ? "turn-active-glow" : ""}`}>
-            <h2 className="text-xl font-bold text-yellow-300 mb-3">Match Details</h2>
-            <p className="mb-2">Status: <span className="font-semibold">{statusText}</span></p>
-            {!isSpectator && spectatorCount > 0 && (<p className="text-xs text-cyan-300 mb-2">👀 {spectatorCount} spectator{spectatorCount > 1 ? "s" : ""}</p>)}
-            <p className="mb-2">Your color: <span className="font-semibold">{game?.role === "host" ? "Green" : game?.role === "guest" ? "Red" : "-"}</span></p>
-            <p className="mb-2">Discs used: {game?.role === "host" ? game?.hostDiscsUsed : game?.guestDiscsUsed} / 21</p>
-            <p className="mb-4">Opponent discs: {game?.role === "host" ? game?.guestDiscsUsed : game?.hostDiscsUsed} / 21</p>
+          <div
+            className={`casino-surface p-4 rounded-2xl ${canPlay ? "turn-active-glow" : ""}`}
+          >
+            <h2 className="text-xl font-bold text-yellow-300 mb-3">
+              Match Details
+            </h2>
+            <p className="mb-2">
+              Status: <span className="font-semibold">{statusText}</span>
+            </p>
+            {!isSpectator && spectatorCount > 0 && (
+              <p className="text-xs text-cyan-300 mb-2">
+                👀 {spectatorCount} spectator{spectatorCount > 1 ? "s" : ""}
+              </p>
+            )}
+            <p className="mb-2">
+              Your color:{" "}
+              <span className="font-semibold">
+                {game?.role === "host"
+                  ? "Green"
+                  : game?.role === "guest"
+                    ? "Red"
+                    : "-"}
+              </span>
+            </p>
+            <p className="mb-2">
+              Discs used:{" "}
+              {game?.role === "host"
+                ? game?.hostDiscsUsed
+                : game?.guestDiscsUsed}{" "}
+              / 21
+            </p>
+            <p className="mb-4">
+              Opponent discs:{" "}
+              {game?.role === "host"
+                ? game?.guestDiscsUsed
+                : game?.hostDiscsUsed}{" "}
+              / 21
+            </p>
 
             {game?.status === "in_progress" && (
-              <button onClick={resignGame} className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-500 font-bold hover-lift">
+              <button
+                onClick={resignGame}
+                className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-500 font-bold hover-lift"
+              >
                 Resign Match
               </button>
             )}
 
             {(game?.status === "finished" || game?.status === "cancelled") && (
-              <button onClick={() => router.push("/casino/connect-four")} className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-bold hover-lift">
+              <button
+                onClick={() => router.push("/casino/connect-four")}
+                className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-bold hover-lift"
+              >
                 Return to Lobby
               </button>
             )}
@@ -413,9 +589,21 @@ export default function ConnectFourGamePage() {
         {showResultPopup && (
           <div className="fixed inset-0 z-50 bg-black/65 flex items-center justify-center p-4">
             <div className="w-full max-w-md rounded-2xl border border-white/20 bg-[#031a37] p-6 shadow-2xl">
-              <h3 className={`text-2xl font-extrabold mb-2 ${playerWon ? "text-green-300" : "text-red-300"}`}>{playerWon ? "🏆 You Won!" : "💥 You Lost"}</h3>
-              <p className="text-white/80 mb-3">Choose replay or quit. Auto-quit in <span className="font-mono font-bold text-yellow-300">{replayCountdown}s</span>.</p>
-              {replayMessage && <p className="text-sm text-cyan-300 mb-4">{replayMessage}</p>}
+              <h3
+                className={`text-2xl font-extrabold mb-2 ${playerWon ? "text-green-300" : "text-red-300"}`}
+              >
+                {playerWon ? "🏆 You Won!" : "💥 You Lost"}
+              </h3>
+              <p className="text-white/80 mb-3">
+                Choose replay or quit. Auto-quit in{" "}
+                <span className="font-mono font-bold text-yellow-300">
+                  {replayCountdown}s
+                </span>
+                .
+              </p>
+              {replayMessage && (
+                <p className="text-sm text-cyan-300 mb-4">{replayMessage}</p>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <button

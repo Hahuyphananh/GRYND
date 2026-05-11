@@ -1,6 +1,6 @@
-'use client';
-import { useEffect, useState } from 'react';
-import './GameBoard.css';
+"use client";
+import { useEffect, useState } from "react";
+import "./GameBoard.css";
 
 export default function GameBoard({ gameId, movesLeft, setMovesLeft }) {
   const [board, setBoard] = useState(() => generateInitialBoard());
@@ -20,26 +20,31 @@ export default function GameBoard({ gameId, movesLeft, setMovesLeft }) {
             newRow[i + 1] = 0;
           }
         }
-        return newRow.filter((n) => n).concat(Array(4).fill(0)).slice(0, 4);
+        return newRow
+          .filter((n) => n)
+          .concat(Array(4).fill(0))
+          .slice(0, 4);
       };
 
-      const transpose = (matrix) => matrix[0].map((_, i) => matrix.map((row) => row[i]));
-      const reverseRows = (matrix) => matrix.map((row) => row.slice().reverse());
+      const transpose = (matrix) =>
+        matrix[0].map((_, i) => matrix.map((row) => row[i]));
+      const reverseRows = (matrix) =>
+        matrix.map((row) => row.slice().reverse());
 
-      if (e.key === 'ArrowLeft') {
+      if (e.key === "ArrowLeft") {
         newBoard = newBoard.map((row) => {
           const newRow = merge(row);
           if (row.toString() !== newRow.toString()) moved = true;
           return newRow;
         });
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === "ArrowRight") {
         newBoard = newBoard.map((row) => {
           const reversed = row.slice().reverse();
           const merged = merge(reversed).reverse();
           if (row.toString() !== merged.toString()) moved = true;
           return merged;
         });
-      } else if (e.key === 'ArrowUp') {
+      } else if (e.key === "ArrowUp") {
         let transposed = transpose(newBoard);
         transposed = transposed.map((row) => {
           const newRow = merge(row);
@@ -47,7 +52,7 @@ export default function GameBoard({ gameId, movesLeft, setMovesLeft }) {
           return newRow;
         });
         newBoard = transpose(transposed);
-      } else if (e.key === 'ArrowDown') {
+      } else if (e.key === "ArrowDown") {
         let transposed = transpose(newBoard);
         transposed = transposed.map((row) => {
           const reversed = row.slice().reverse();
@@ -65,8 +70,8 @@ export default function GameBoard({ gameId, movesLeft, setMovesLeft }) {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [board, movesLeft, setMovesLeft]);
 
   function generateInitialBoard() {
@@ -92,20 +97,20 @@ export default function GameBoard({ gameId, movesLeft, setMovesLeft }) {
 
   function getTileColor(value) {
     const colors = {
-      0: 'bg-gray-200 text-transparent',
-      2: 'bg-yellow-100 text-yellow-800',
-      4: 'bg-yellow-200 text-yellow-900',
-      8: 'bg-orange-300 text-white',
-      16: 'bg-orange-400 text-white',
-      32: 'bg-orange-500 text-white',
-      64: 'bg-orange-600 text-white',
-      128: 'bg-green-400 text-white',
-      256: 'bg-green-500 text-white',
-      512: 'bg-[#edf734] text-white',
-      1024: 'bg-purple-500 text-white',
-      2048: 'bg-pink-600 text-white',
+      0: "bg-gray-200 text-transparent",
+      2: "bg-yellow-100 text-yellow-800",
+      4: "bg-yellow-200 text-yellow-900",
+      8: "bg-orange-300 text-white",
+      16: "bg-orange-400 text-white",
+      32: "bg-orange-500 text-white",
+      64: "bg-orange-600 text-white",
+      128: "bg-green-400 text-white",
+      256: "bg-green-500 text-white",
+      512: "bg-[#edf734] text-white",
+      1024: "bg-purple-500 text-white",
+      2048: "bg-pink-600 text-white",
     };
-    return colors[value] || 'bg-black text-white';
+    return colors[value] || "bg-black text-white";
   }
 
   return (
@@ -116,7 +121,7 @@ export default function GameBoard({ gameId, movesLeft, setMovesLeft }) {
             key={idx}
             className={`tile w-20 h-20 flex items-center justify-center font-bold text-xl rounded ${getTileColor(cell)}`}
           >
-            {cell !== 0 ? cell : ''}
+            {cell !== 0 ? cell : ""}
           </div>
         ))}
       </div>

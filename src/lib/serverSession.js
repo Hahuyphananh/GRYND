@@ -11,7 +11,7 @@ function getEffectiveSecret() {
   if (!configured) {
     if (!hasWarnedMissingSecret) {
       console.warn(
-        "[serverSession] No session secret configured. Using development fallback secret."
+        "[serverSession] No session secret configured. Using development fallback secret.",
       );
       hasWarnedMissingSecret = true;
     }
@@ -27,7 +27,10 @@ function b64url(input) {
 
 function signValue(payload) {
   const secret = getEffectiveSecret();
-  return crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+  return crypto
+    .createHmac("sha256", secret)
+    .update(payload)
+    .digest("base64url");
 }
 
 export function createSignedSession(data) {

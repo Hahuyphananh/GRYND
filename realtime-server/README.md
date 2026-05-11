@@ -23,6 +23,7 @@ This folder is an independent Node.js realtime backend service.
 ## Required events
 
 This server relays realtime events only (no game logic):
+
 - `join_game`
 - `move`
 - `leave_game`
@@ -40,6 +41,7 @@ This server relays realtime events only (no game logic):
 ### Render quick setup (monorepo)
 
 If you connected the whole repo to Render, set:
+
 - **Root Directory**: `realtime-server`
 - **Build Command**: `npm install`
 - **Start Command**: `npm start`

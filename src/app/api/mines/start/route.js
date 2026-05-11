@@ -1,9 +1,9 @@
-import { auth } from '@clerk/nextjs/server';
-import { db } from '../../../../db/client';
-import { users } from '../../../../db/schema';
-import { sql } from 'drizzle-orm';
-import { NextResponse } from 'next/server';
-import { createSignedSession } from '../../../../lib/serverSession';
+import { auth } from "@clerk/nextjs/server";
+import { db } from "../../../../db/client";
+import { users } from "../../../../db/schema";
+import { sql } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import { createSignedSession } from "../../../../lib/serverSession";
 
 function generateBoard(totalMines) {
   const all = Array.from({ length: 25 }, (_, i) => i);
@@ -19,21 +19,37 @@ function generateBoard(totalMines) {
 export async function POST(req) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    if (!userId)
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
 
     let payload = {};
     try {
       payload = await req.json();
     } catch {
-      return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "Invalid request body" },
+        { status: 400 },
+      );
     }
 
     const { betAmount, mines } = payload;
     const bet = Number(betAmount);
     const minesCount = Number(mines);
 
-    if (!Number.isFinite(bet) || bet <= 0 || !Number.isInteger(minesCount) || minesCount < 1 || minesCount > 24) {
-      return NextResponse.json({ success: false, error: 'Invalid params' }, { status: 400 });
+    if (
+      !Number.isFinite(bet) ||
+      bet <= 0 ||
+      !Number.isInteger(minesCount) ||
+      minesCount < 1 ||
+      minesCount > 24
+    ) {
+      return NextResponse.json(
+        { success: false, error: "Invalid params" },
+        { status: 400 },
+      );
     }
 
     const [updated] = await db
@@ -43,7 +59,10 @@ export async function POST(req) {
       .returning({ balance: users.balance });
 
     if (!updated) {
-      return NextResponse.json({ success: false, error: 'Insufficient balance' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "Insufficient balance" },
+        { status: 400 },
+      );
     }
 
     const session = {
@@ -56,21 +75,27 @@ export async function POST(req) {
     };
 
     const token = createSignedSession(session);
-    const response = NextResponse.json({ success: true, data: { newBalance: Number(updated.balance) } });
-    response.cookies.set('mines_session', token, {
+    const response = NextResponse.json({
+      success: true,
+      data: { newBalance: Number(updated.balance) },
+    });
+    response.cookies.set("mines_session", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
       maxAge: 60 * 30,
     });
 
     return response;
   } catch (error) {
-    console.error('Error starting mines game:', error);
+    console.error("Error starting mines game:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Server error' },
-      { status: 500 }
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Server error",
+      },
+      { status: 500 },
     );
   }
 }

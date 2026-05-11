@@ -11,25 +11,42 @@ export async function POST(request) {
   const { userId } = await auth();
 
   if (!userId) {
-    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   try {
     const idem = await claimIdempotency(request, "bets:place", 180);
     if (idem.enforced && !idem.allowed) {
-      return new Response(JSON.stringify({ success: false, error: "Duplicate request" }), {
-        status: 409,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Duplicate request" }),
+        {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const parsed = await parseAndValidateJson(request, {
       amount: { type: "number", required: true, min: 0.01, max: 1000000 },
-      selectionId: { type: "number", required: false, integer: true, min: 1, default: null },
-      source: { type: "string", required: false, pattern: /^(real|demo)$/i, default: "real" },
+      selectionId: {
+        type: "number",
+        required: false,
+        integer: true,
+        min: 1,
+        default: null,
+      },
+      source: {
+        type: "string",
+        required: false,
+        pattern: /^(real|demo)$/i,
+        default: "real",
+      },
     });
 
     if (!parsed.ok) return parsed.response;
@@ -38,10 +55,13 @@ export async function POST(request) {
 
     const betAmount = Number(amount);
     if (!betAmount || betAmount <= 0) {
-      return new Response(JSON.stringify({ success: false, error: "Invalid amount" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid amount" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const userResult = await sql`
@@ -54,17 +74,23 @@ export async function POST(request) {
     const dbUser = userResult.rows[0];
     const startingBalance = Number(userResult.rows[0]?.balance || 0);
     if (!dbUser) {
-      return new Response(JSON.stringify({ success: false, error: "User not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "User not found" }),
+        {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     if (Number(dbUser.balance) < betAmount) {
-      return new Response(JSON.stringify({ success: false, error: "Insufficient balance" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Insufficient balance" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     let event = null;
@@ -78,12 +104,15 @@ export async function POST(request) {
 
       if (source === "real") {
         const updatedWagered = Number(dbUser.total_wagered || 0) + betAmount;
-        const previousLevel = Number(dbUser.level || getUserLevel(Number(dbUser.total_wagered || 0)));
+        const previousLevel = Number(
+          dbUser.level || getUserLevel(Number(dbUser.total_wagered || 0)),
+        );
         const nextLevel = getUserLevel(updatedWagered);
 
         let bonus = 0;
         const newHighestTitle = getHighestTitle(nextLevel)?.title || null;
-        const previousHighestTitle = getHighestTitle(previousLevel)?.title || null;
+        const previousHighestTitle =
+          getHighestTitle(previousLevel)?.title || null;
 
         if (nextLevel > previousLevel) {
           bonus = nextLevel * 100;
@@ -124,7 +153,12 @@ export async function POST(request) {
       `;
     });
 
-    await applyLeaderboardCounters({ clerkId: userId, game: "sports", betAmount, payout: 0 });
+    await applyLeaderboardCounters({
+      clerkId: userId,
+      game: "sports",
+      betAmount,
+      payout: 0,
+    });
 
     const unlockedSpecialTitles = await checkUnlocks(userId, "bet_placed", {
       isAllIn: startingBalance > 0 && betAmount >= startingBalance,
@@ -133,13 +167,16 @@ export async function POST(request) {
 
     return new Response(
       JSON.stringify({ success: true, event, unlockedSpecialTitles }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (error) {
     console.error("[PLACE_BET_ERROR]", error);
-    return new Response(JSON.stringify({ success: false, error: "Failed to place bet" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Failed to place bet" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

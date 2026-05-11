@@ -9,14 +9,17 @@ export async function POST(request) {
     const { userId } = await auth();
 
     if (!userId) {
-      return Response.json({
-        success: false,
-        users: [],
-        debug: {
-          step: "auth",
-          error: "Unauthorized",
+      return Response.json(
+        {
+          success: false,
+          users: [],
+          debug: {
+            step: "auth",
+            error: "Unauthorized",
+          },
         },
-      }, { status: 401 });
+        { status: 401 },
+      );
     }
 
     const parsed = await parseAndValidateJson(request, {
@@ -30,27 +33,27 @@ export async function POST(request) {
     // 🧠 DEBUG 1
     const rawInput = parsed.data.name;
 
-const normalized = removeAccents(
-  String(rawInput)
-    .toLowerCase()
-    .replace(/\s+/g, '') // 🔥 important
-    .trim()
-);
+    const normalized = removeAccents(
+      String(rawInput)
+        .toLowerCase()
+        .replace(/\s+/g, "") // 🔥 important
+        .trim(),
+    );
 
     let currentUserId = null;
 
-   const current = await sql`
+    const current = await sql`
   SELECT id FROM users WHERE clerk_id = ${userId} LIMIT 1
 `;
 
-if (current.length > 0) {
-  currentUserId = current[0].id;
-}
+    if (current.length > 0) {
+      currentUserId = current[0].id;
+    }
 
     // 🧠 DEBUG 3
     const queryString = normalized;
 
-const found = await sql`
+    const found = await sql`
   SELECT id, name, profile_picture
   FROM users
   WHERE REPLACE(LOWER(search_name), ' ', '') LIKE '%' || ${queryString} || '%'
@@ -59,7 +62,7 @@ const found = await sql`
   LIMIT 10
 `;
 
-const users = found ?? [];
+    const users = found ?? [];
 
     // 🚀 EVERYTHING DEBUGGED HERE
     return Response.json({
@@ -74,14 +77,16 @@ const users = found ?? [];
         results: users, // optional (VERY useful for debugging)
       },
     });
-
   } catch (error) {
-    return Response.json({
-      success: false,
-      users: [],
-      debug: {
-        error: error?.message || "Unknown error",
+    return Response.json(
+      {
+        success: false,
+        users: [],
+        debug: {
+          error: error?.message || "Unknown error",
+        },
       },
-    }, { status: 500 });
+      { status: 500 },
+    );
   }
 }

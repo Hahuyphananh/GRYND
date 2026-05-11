@@ -16,13 +16,21 @@ export async function GET() {
       })
       .from(connectFourGames)
       .leftJoin(users, eq(users.clerkId, connectFourGames.hostClerkId))
-      .where(and(eq(connectFourGames.status, "waiting"), isNull(connectFourGames.guestClerkId)))
+      .where(
+        and(
+          eq(connectFourGames.status, "waiting"),
+          isNull(connectFourGames.guestClerkId),
+        ),
+      )
       .orderBy(desc(connectFourGames.createdAt))
       .limit(40);
 
     return NextResponse.json({ success: true, games });
   } catch (error) {
     console.error("connect-four available-games error", error);
-    return NextResponse.json({ success: false, error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Internal Server Error" },
+      { status: 500 },
+    );
   }
 }

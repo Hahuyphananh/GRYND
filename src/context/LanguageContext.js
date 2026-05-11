@@ -1,6 +1,12 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 const LanguageContext = createContext({
   language: "en",
@@ -25,7 +31,11 @@ export function LanguageProvider({ children }) {
 
   const value = useMemo(() => ({ language, setLanguage }), [language]);
 
-  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
+  return (
+    <LanguageContext.Provider value={value}>
+      {children}
+    </LanguageContext.Provider>
+  );
 }
 
 export function useLanguage() {

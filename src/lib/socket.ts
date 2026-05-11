@@ -1,4 +1,4 @@
-import { io, type Socket } from 'socket.io-client';
+import { io, type Socket } from "socket.io-client";
 
 export type RealtimeSocket = Socket;
 
@@ -8,16 +8,20 @@ function getSocketUrl(): string | null {
   const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
 
   if (!socketUrl) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn('NEXT_PUBLIC_SOCKET_URL is missing. Realtime features are disabled.');
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        "NEXT_PUBLIC_SOCKET_URL is missing. Realtime features are disabled.",
+      );
     }
     return null;
   }
 
-  return socketUrl.trim().replace(/\/$/, '');
+  return socketUrl.trim().replace(/\/$/, "");
 }
 
-export async function createSocketConnection(token: string): Promise<RealtimeSocket | null> {
+export async function createSocketConnection(
+  token: string,
+): Promise<RealtimeSocket | null> {
   const socketUrl = getSocketUrl();
 
   if (!socketUrl) {
@@ -36,7 +40,7 @@ export async function createSocketConnection(token: string): Promise<RealtimeSoc
 
   socketInstance = io(socketUrl, {
     autoConnect: true,
-    transports: ['websocket', 'polling'],
+    transports: ["websocket", "polling"],
     timeout: 15000,
     reconnection: true,
     reconnectionAttempts: 10,
@@ -46,15 +50,15 @@ export async function createSocketConnection(token: string): Promise<RealtimeSoc
     },
   });
 
-  socketInstance.on('connect_error', (error) => {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('[socket] connect_error:', error.message);
+  socketInstance.on("connect_error", (error) => {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[socket] connect_error:", error.message);
     }
   });
 
-  socketInstance.on('disconnect', (reason) => {
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn('[socket] disconnected:', reason);
+  socketInstance.on("disconnect", (reason) => {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[socket] disconnected:", reason);
     }
   });
 

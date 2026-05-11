@@ -6,7 +6,10 @@ import { and, eq } from "drizzle-orm";
 export async function GET() {
   const { userId } = await auth();
   if (!userId) {
-    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      { status: 401 },
+    );
   }
 
   const appUser = await db.query.users.findFirst({
@@ -15,16 +18,24 @@ export async function GET() {
   });
 
   if (!appUser) {
-    return new Response(JSON.stringify({ success: false, error: "User not found" }), { status: 404 });
+    return new Response(
+      JSON.stringify({ success: false, error: "User not found" }),
+      { status: 404 },
+    );
   }
 
   const allTitles = await db.select().from(specialTitles);
   const unlockedRows = await db
-    .select({ titleKey: userSpecialTitles.titleKey, unlockedAt: userSpecialTitles.unlockedAt })
+    .select({
+      titleKey: userSpecialTitles.titleKey,
+      unlockedAt: userSpecialTitles.unlockedAt,
+    })
     .from(userSpecialTitles)
     .where(eq(userSpecialTitles.userId, appUser.id));
 
-  const unlockedMap = new Map(unlockedRows.map((row) => [row.titleKey, row.unlockedAt]));
+  const unlockedMap = new Map(
+    unlockedRows.map((row) => [row.titleKey, row.unlockedAt]),
+  );
 
   const titles = allTitles.map((title) => ({
     ...title,
@@ -32,7 +43,9 @@ export async function GET() {
     unlockedAt: unlockedMap.get(title.key) || null,
   }));
 
-  const selectedSpecialTitleName = titles.find((title) => title.key === appUser.selectedSpecialTitle)?.name || null;
+  const selectedSpecialTitleName =
+    titles.find((title) => title.key === appUser.selectedSpecialTitle)?.name ||
+    null;
 
   return new Response(
     JSON.stringify({
@@ -43,6 +56,6 @@ export async function GET() {
       totalCount: allTitles.length,
       titles,
     }),
-    { status: 200, headers: { "Content-Type": "application/json" } }
+    { status: 200, headers: { "Content-Type": "application/json" } },
   );
 }

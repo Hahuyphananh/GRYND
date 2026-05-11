@@ -10,20 +10,15 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const matchId = searchParams.get("matchId");
 
-  if (!matchId)
-    return NextResponse.json({ ok: false }, { status: 400 });
+  if (!matchId) return NextResponse.json({ ok: false }, { status: 400 });
 
   const [match] = await db
     .select()
     .from(diceMatches)
-    .where(or(
-      eq(diceMatches.id, matchId),
-      eq(diceMatches.lobbyId, matchId)
-    ))
+    .where(or(eq(diceMatches.id, matchId), eq(diceMatches.lobbyId, matchId)))
     .limit(1);
 
-  if (!match)
-    return NextResponse.json({ ok: false }, { status: 404 });
+  if (!match) return NextResponse.json({ ok: false }, { status: 404 });
 
   // 👇 FETCH USERS
   const [player1] = await db

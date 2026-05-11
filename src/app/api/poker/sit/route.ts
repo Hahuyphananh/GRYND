@@ -4,7 +4,13 @@ import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 
-type Seat = { seat: number; clerkId: string | null; name?: string; isAI?: boolean; stack?: number };
+type Seat = {
+  seat: number;
+  clerkId: string | null;
+  name?: string;
+  isAI?: boolean;
+  stack?: number;
+};
 
 function normalizePlayersFromSeats(seats: Seat[]) {
   return seats
@@ -25,31 +31,51 @@ function normalizePlayersFromSeats(seats: Seat[]) {
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { gameCode, seatIndex, playerName, isAI, aiStack } = await req.json();
     if (!gameCode || seatIndex === undefined) {
-      return NextResponse.json({ error: "gameCode and seatIndex are required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "gameCode and seatIndex are required" },
+        { status: 400 },
+      );
     }
 
-    const [game] = await db.select().from(pokerGames).where(eq(pokerGames.gameCode, gameCode));
-    if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    const [game] = await db
+      .select()
+      .from(pokerGames)
+      .where(eq(pokerGames.gameCode, gameCode));
+    if (!game)
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
     const players = (game.players as Seat[]) || [];
-    const meta = (game.playerPositions as { hostClerkId?: string } | null) || {};
+    const meta =
+      (game.playerPositions as { hostClerkId?: string } | null) || {};
     const isHost = meta.hostClerkId === userId;
 
     if (isAI && !isHost) {
-      return NextResponse.json({ error: "Only host can add AI" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Only host can add AI" },
+        { status: 403 },
+      );
     }
 
     if (!isAI && players.some((p) => p.clerkId === userId)) {
-      return NextResponse.json({ error: "User already seated" }, { status: 400 });
+      return NextResponse.json(
+        { error: "User already seated" },
+        { status: 400 },
+      );
     }
 
     const seatObj = players.find((p) => p.seat === seatIndex);
-    if (!seatObj) return NextResponse.json({ error: "Invalid seat" }, { status: 400 });
-    if (seatObj.clerkId !== null) return NextResponse.json({ error: "Seat already taken" }, { status: 400 });
+    if (!seatObj)
+      return NextResponse.json({ error: "Invalid seat" }, { status: 400 });
+    if (seatObj.clerkId !== null)
+      return NextResponse.json(
+        { error: "Seat already taken" },
+        { status: 400 },
+      );
 
     const updatedPlayers = players.map((p) => {
       if (p.seat !== seatIndex) return p;
@@ -62,7 +88,13 @@ export async function POST(req: Request) {
           stack: Number(aiStack) || 1000,
         };
       }
-      return { ...p, clerkId: userId, name: playerName || "Player", isAI: false, stack: p.stack ?? 1000 };
+      return {
+        ...p,
+        clerkId: userId,
+        name: playerName || "Player",
+        isAI: false,
+        stack: p.stack ?? 1000,
+      };
     });
 
     const currentState = (meta as { state?: any } | null)?.state;

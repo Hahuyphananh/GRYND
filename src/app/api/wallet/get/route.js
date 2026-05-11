@@ -27,9 +27,14 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("❌ Failed to fetch wallet:", error);
-    return new Response(JSON.stringify({ error: "Erreur serveur lors de la récupération du portefeuille" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        error: "Erreur serveur lors de la récupération du portefeuille",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

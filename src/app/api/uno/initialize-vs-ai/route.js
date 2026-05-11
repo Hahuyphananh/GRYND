@@ -5,7 +5,21 @@ import { eq } from "drizzle-orm";
 
 function generateDeck() {
   const colors = ["red", "yellow", "green", "blue"];
-  const values = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Skip", "Reverse", "Draw Two"];
+  const values = [
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "Skip",
+    "Reverse",
+    "Draw Two",
+  ];
   const wilds = ["Wild", "Wild Draw Four"];
   const deck = [];
 
@@ -66,19 +80,36 @@ function slightlyBoostAiOpeningHand(deck, playerHand, aiHand) {
 
 export async function POST(request) {
   const { userId } = await auth();
-  if (!userId) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+  if (!userId)
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      { status: 401 },
+    );
 
   const { betAmount } = await request.json();
   if (!betAmount || isNaN(betAmount) || betAmount <= 0 || betAmount > 1000) {
-    return new Response(JSON.stringify({ success: false, error: "Invalid bet amount" }), { status: 400 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Invalid bet amount" }),
+      { status: 400 },
+    );
   }
 
   try {
-    const user = await db.query.users.findFirst({ where: eq(users.clerkId, userId) });
-    if (!user) return new Response(JSON.stringify({ success: false, error: "User not found" }), { status: 404 });
+    const user = await db.query.users.findFirst({
+      where: eq(users.clerkId, userId),
+    });
+    if (!user)
+      return new Response(
+        JSON.stringify({ success: false, error: "User not found" }),
+        { status: 404 },
+      );
 
     const balance = parseFloat(user.balance);
-    if (balance < betAmount) return new Response(JSON.stringify({ success: false, error: "Insufficient balance" }), { status: 400 });
+    if (balance < betAmount)
+      return new Response(
+        JSON.stringify({ success: false, error: "Insufficient balance" }),
+        { status: 400 },
+      );
 
     let deck = generateDeck();
     const playerHand = deck.splice(0, 7);
@@ -96,7 +127,10 @@ export async function POST(request) {
     const pot = (betAmount * 2).toFixed(2);
 
     const result = await db.transaction(async (tx) => {
-      await tx.update(users).set({ balance: (balance - betAmount).toFixed(2) }).where(eq(users.clerkId, userId));
+      await tx
+        .update(users)
+        .set({ balance: (balance - betAmount).toFixed(2) })
+        .where(eq(users.clerkId, userId));
 
       const inserted = await tx
         .insert(unoGames)
@@ -136,10 +170,13 @@ export async function POST(request) {
           pot,
         },
       }),
-      { status: 200 }
+      { status: 200 },
     );
   } catch (err) {
     console.error("UNO AI init error:", err);
-    return new Response(JSON.stringify({ success: false, error: "Server error" }), { status: 500 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Server error" }),
+      { status: 500 },
+    );
   }
 }

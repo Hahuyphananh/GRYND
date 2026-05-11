@@ -10,20 +10,26 @@ export async function POST(request) {
   const { userId } = await auth();
 
   if (!userId) {
-    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   try {
-  const idem = await claimIdempotency(request, "referral:redeem", 180);
-  if (idem.enforced && !idem.allowed) {
-    return new Response(JSON.stringify({ success: false, error: "Duplicate request" }), {
-      status: 409,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+    const idem = await claimIdempotency(request, "referral:redeem", 180);
+    if (idem.enforced && !idem.allowed) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Duplicate request" }),
+        {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
 
     const parsed = await parseAndValidateJson(request, {
       code: {
@@ -39,21 +45,28 @@ export async function POST(request) {
 
     const normalizedCode = parsed.data.code.toUpperCase();
 
-    const currentUserResult = await sql`SELECT id, referred_by_id FROM users WHERE clerk_id = ${userId} LIMIT 1`;
+    const currentUserResult =
+      await sql`SELECT id, referred_by_id FROM users WHERE clerk_id = ${userId} LIMIT 1`;
     const currentUser = currentUserResult.rows[0];
 
     if (!currentUser) {
-      return new Response(JSON.stringify({ success: false, error: "User not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "User not found" }),
+        {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     if (currentUser.referred_by_id) {
-      return new Response(JSON.stringify({ success: false, error: "Referral already redeemed" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Referral already redeemed" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const referrerResult = await sql`
@@ -63,17 +76,23 @@ export async function POST(request) {
     const referrer = referrerResult.rows[0];
 
     if (!referrer) {
-      return new Response(JSON.stringify({ success: false, error: "Invalid referral code" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid referral code" }),
+        {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     if (Number(referrer.id) === Number(currentUser.id)) {
-      return new Response(JSON.stringify({ success: false, error: "You cannot refer yourself" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "You cannot refer yourself" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     await sql.begin(async (tx) => {
@@ -97,7 +116,11 @@ export async function POST(request) {
       `;
     });
 
-    const unlockedSpecialTitles = await checkUnlocks(referrer.clerk_id, "referral_invite", {});
+    const unlockedSpecialTitles = await checkUnlocks(
+      referrer.clerk_id,
+      "referral_invite",
+      {},
+    );
 
     return new Response(
       JSON.stringify({
@@ -106,13 +129,16 @@ export async function POST(request) {
         reward: REFERRAL_BONUS,
         unlockedSpecialTitles,
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (error) {
     console.error("[REFERRAL_REDEEM_ERROR]", error);
-    return new Response(JSON.stringify({ success: false, error: "Failed to redeem code" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Failed to redeem code" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

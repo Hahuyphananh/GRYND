@@ -108,23 +108,22 @@ export async function POST(req) {
         .where(eq(users.id, user.id));
     }
 
-    await applyLeaderboardCounters({ clerkId: userId, game: "keno", betAmount, payout });
+    await applyLeaderboardCounters({
+      clerkId: userId,
+      game: "keno",
+      betAmount,
+      payout,
+    });
 
-    return new Response(
-      JSON.stringify({ winningNumbers, matches, payout }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify({ winningNumbers, matches, payout }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error("Error in Keno POST:", error);
-    return new Response(
-      JSON.stringify({ error: "Internal Server Error" }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }

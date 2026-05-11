@@ -11,10 +11,13 @@ export async function performAiAction(gameId) {
   const { rows: positions } = await sql`
     SELECT * FROM poker_player_positions WHERE game_id = ${gameId} ORDER BY position
   `;
-  const aiPosition = positions.find(p => p.player_id === null);
-  const currentPosition = positions.find(p => p.position === game.current_player_position);
+  const aiPosition = positions.find((p) => p.player_id === null);
+  const currentPosition = positions.find(
+    (p) => p.position === game.current_player_position,
+  );
 
-  if (!aiPosition || aiPosition.position !== game.current_player_position) return;
+  if (!aiPosition || aiPosition.position !== game.current_player_position)
+    return;
 
   const callAmount = game.min_bet - aiPosition.current_bet;
 
@@ -46,32 +49,51 @@ export async function performAiAction(gameId) {
 }
 
 // Deal community cards
-export function dealCommunityCards(currentCards = [], playerHand = [], aiHand = [], deck = []) {
+export function dealCommunityCards(
+  currentCards = [],
+  playerHand = [],
+  aiHand = [],
+  deck = [],
+) {
   const needed = 5 - currentCards.length;
   const newCards = deck.slice(0, needed);
   const remainingDeck = deck.slice(needed);
-  return { newCommunity: [...currentCards, ...newCards], updatedDeck: remainingDeck };
+  return {
+    newCommunity: [...currentCards, ...newCards],
+    updatedDeck: remainingDeck,
+  };
 }
 
 /// app/lib/aiLogic.js
 
 export function compareHands(playerHand, dealerHand) {
-  const valueRank = { 
-    "2": 2, "3": 3, "4": 4, "5": 5, "6": 6,
-    "7": 7, "8": 8, "9": 9, "10": 10,
-    "J": 11, "Q": 12, "K": 13, "A": 14
+  const valueRank = {
+    2: 2,
+    3: 3,
+    4: 4,
+    5: 5,
+    6: 6,
+    7: 7,
+    8: 8,
+    9: 9,
+    10: 10,
+    J: 11,
+    Q: 12,
+    K: 13,
+    A: 14,
   };
 
   function getHandRank(hand) {
-    const values = hand.map(c => valueRank[c.value]).sort((a,b) => a - b);
-    const suits = hand.map(c => c.suit);
+    const values = hand.map((c) => valueRank[c.value]).sort((a, b) => a - b);
+    const suits = hand.map((c) => c.suit);
 
-    const isFlush = suits.every(s => s === suits[0]);
-    const isStraight = values.every((v, i) => i === 0 || v === values[i - 1] + 1) ||
-                       JSON.stringify(values) === JSON.stringify([2,3,4,5,14]); // A-2-3-4-5
+    const isFlush = suits.every((s) => s === suits[0]);
+    const isStraight =
+      values.every((v, i) => i === 0 || v === values[i - 1] + 1) ||
+      JSON.stringify(values) === JSON.stringify([2, 3, 4, 5, 14]); // A-2-3-4-5
 
     const counts = {};
-    values.forEach(v => counts[v] = (counts[v] || 0) + 1);
+    values.forEach((v) => (counts[v] = (counts[v] || 0) + 1));
 
     // Sort values by frequency first (e.g. pair/trips first), then by value descending
     const sortedValues = Object.keys(counts)
@@ -81,26 +103,20 @@ export function compareHands(playerHand, dealerHand) {
         return counts[b] - counts[a]; // higher count first
       });
 
-    const countValues = Object.values(counts).sort((a,b) => b - a);
+    const countValues = Object.values(counts).sort((a, b) => b - a);
 
     if (isFlush && isStraight && Math.max(...values) === 14)
       return { rank: 10, tiebreaker: sortedValues }; // Royal Flush
-    if (isFlush && isStraight)
-      return { rank: 9, tiebreaker: sortedValues }; // Straight Flush
-    if (countValues[0] === 4)
-      return { rank: 8, tiebreaker: sortedValues }; // Four of a Kind
+    if (isFlush && isStraight) return { rank: 9, tiebreaker: sortedValues }; // Straight Flush
+    if (countValues[0] === 4) return { rank: 8, tiebreaker: sortedValues }; // Four of a Kind
     if (countValues[0] === 3 && countValues[1] === 2)
       return { rank: 7, tiebreaker: sortedValues }; // Full House
-    if (isFlush)
-      return { rank: 6, tiebreaker: values.slice().reverse() }; // Flush
-    if (isStraight)
-      return { rank: 5, tiebreaker: values.slice().reverse() }; // Straight
-    if (countValues[0] === 3)
-      return { rank: 4, tiebreaker: sortedValues }; // Three of a Kind
+    if (isFlush) return { rank: 6, tiebreaker: values.slice().reverse() }; // Flush
+    if (isStraight) return { rank: 5, tiebreaker: values.slice().reverse() }; // Straight
+    if (countValues[0] === 3) return { rank: 4, tiebreaker: sortedValues }; // Three of a Kind
     if (countValues[0] === 2 && countValues[1] === 2)
       return { rank: 3, tiebreaker: sortedValues }; // Two Pair
-    if (countValues[0] === 2)
-      return { rank: 2, tiebreaker: sortedValues }; // One Pair
+    if (countValues[0] === 2) return { rank: 2, tiebreaker: sortedValues }; // One Pair
     return { rank: 1, tiebreaker: values.slice().reverse() }; // High Card
   }
 
@@ -111,7 +127,11 @@ export function compareHands(playerHand, dealerHand) {
   if (dealer.rank > player.rank) return "dealer";
 
   // Same rank → compare tiebreakers properly
-  for (let i = 0; i < Math.max(player.tiebreaker.length, dealer.tiebreaker.length); i++) {
+  for (
+    let i = 0;
+    i < Math.max(player.tiebreaker.length, dealer.tiebreaker.length);
+    i++
+  ) {
     const pv = player.tiebreaker[i] || 0;
     const dv = dealer.tiebreaker[i] || 0;
     if (pv > dv) return "player";
@@ -120,6 +140,3 @@ export function compareHands(playerHand, dealerHand) {
 
   return "tie";
 }
-
-
-

@@ -11,7 +11,9 @@ export function multiplierFromClicks(clicks: number): number {
 
 export function bustChanceAtClick(clickNumber: number): number {
   const safeClick = Math.max(1, Math.floor(clickNumber));
-  const chance = CLICKER_BASE_BUST_CHANCE * Math.exp(CLICKER_BUST_EXP_GROWTH * (safeClick - 1));
+  const chance =
+    CLICKER_BASE_BUST_CHANCE *
+    Math.exp(CLICKER_BUST_EXP_GROWTH * (safeClick - 1));
   return Math.min(chance, 0.95);
 }
 

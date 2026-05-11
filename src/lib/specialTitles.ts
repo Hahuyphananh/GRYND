@@ -1,8 +1,18 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { specialTitles, userSecretStats, userSpecialTitles, users } from "../db/schema";
+import {
+  specialTitles,
+  userSecretStats,
+  userSpecialTitles,
+  users,
+} from "../db/schema";
 
-type ActionType = "chat_message" | "bet_placed" | "game_result" | "login_claim" | "referral_invite";
+type ActionType =
+  | "chat_message"
+  | "bet_placed"
+  | "game_result"
+  | "login_claim"
+  | "referral_invite";
 
 type UnlockMetadata = {
   message?: string;
@@ -20,7 +30,12 @@ export async function unlockTitle(userId: number, titleKey: string) {
   const existing = await db
     .select({ id: userSpecialTitles.id })
     .from(userSpecialTitles)
-    .where(and(eq(userSpecialTitles.userId, userId), eq(userSpecialTitles.titleKey, titleKey)))
+    .where(
+      and(
+        eq(userSpecialTitles.userId, userId),
+        eq(userSpecialTitles.titleKey, titleKey),
+      ),
+    )
     .limit(1);
 
   if (existing.length) return false;
@@ -44,10 +59,16 @@ async function ensureSecretStatsRow(userId: number, balance: number) {
     lastKnownBalance: String(balance || 0),
   });
 
-  return db.query.userSecretStats.findFirst({ where: eq(userSecretStats.userId, userId) });
+  return db.query.userSecretStats.findFirst({
+    where: eq(userSecretStats.userId, userId),
+  });
 }
 
-export async function checkUnlocks(clerkId: string, actionType: ActionType, metadata: UnlockMetadata = {}) {
+export async function checkUnlocks(
+  clerkId: string,
+  actionType: ActionType,
+  metadata: UnlockMetadata = {},
+) {
   const appUser = await db.query.users.findFirst({
     where: eq(users.clerkId, clerkId),
     columns: { id: true, balance: true },
@@ -56,24 +77,32 @@ export async function checkUnlocks(clerkId: string, actionType: ActionType, meta
   if (!appUser) return [];
 
   const unlockedNow: string[] = [];
-  let stats = await ensureSecretStatsRow(appUser.id, Number(appUser.balance || 0));
+  let stats = await ensureSecretStatsRow(
+    appUser.id,
+    Number(appUser.balance || 0),
+  );
   if (!stats) return [];
 
   const dayKey = utcDayKey();
   let statsPatch: Record<string, number | string | Date> = {
-  updatedAt: new Date()
-};
+    updatedAt: new Date(),
+  };
 
   if (stats.dayKey !== dayKey) {
     statsPatch.dayKey = dayKey;
-    statsPatch.dayStartBalance = String(Number(stats.lastKnownBalance || appUser.balance || 0));
+    statsPatch.dayStartBalance = String(
+      Number(stats.lastKnownBalance || appUser.balance || 0),
+    );
   }
 
   if (actionType === "chat_message") {
     const message = String(metadata.message || "").toLowerCase();
     statsPatch.chatMessagesCount = Number(stats.chatMessagesCount || 0) + 1;
-    if (message.includes("goonbet")) statsPatch.goonbetMentions = Number(stats.goonbetMentions || 0) + 1;
-    if (message.includes("all in")) statsPatch.allInPhraseMentions = Number(stats.allInPhraseMentions || 0) + 1;
+    if (message.includes("goonbet"))
+      statsPatch.goonbetMentions = Number(stats.goonbetMentions || 0) + 1;
+    if (message.includes("all in"))
+      statsPatch.allInPhraseMentions =
+        Number(stats.allInPhraseMentions || 0) + 1;
   }
 
   if (actionType === "bet_placed" && metadata.isAllIn) {
@@ -110,8 +139,14 @@ export async function checkUnlocks(clerkId: string, actionType: ActionType, meta
     statsPatch.lastKnownBalance = String(Math.max(0, metadata.balanceAfter));
   }
 
-  await db.update(userSecretStats).set(statsPatch).where(eq(userSecretStats.userId, appUser.id));
-  stats = (await db.query.userSecretStats.findFirst({ where: eq(userSecretStats.userId, appUser.id) })) || stats;
+  await db
+    .update(userSecretStats)
+    .set(statsPatch)
+    .where(eq(userSecretStats.userId, appUser.id));
+  stats =
+    (await db.query.userSecretStats.findFirst({
+      where: eq(userSecretStats.userId, appUser.id),
+    })) || stats;
 
   const maybeUnlock = async (condition: boolean, key: string) => {
     if (!condition) return;
@@ -119,12 +154,24 @@ export async function checkUnlocks(clerkId: string, actionType: ActionType, meta
   };
 
   const message = String(metadata.message || "").toLowerCase();
-  await maybeUnlock(actionType === "chat_message" && message.includes("huy"), "huy");
-  await maybeUnlock(Number(stats.chatMessagesCount || 0) >= 1, "talkative_goon");
+  await maybeUnlock(
+    actionType === "chat_message" && message.includes("huy"),
+    "huy",
+  );
+  await maybeUnlock(
+    Number(stats.chatMessagesCount || 0) >= 1,
+    "talkative_goon",
+  );
   await maybeUnlock(Number(stats.chatMessagesCount || 0) >= 100, "chat_addict");
-  await maybeUnlock(Number(stats.chatMessagesCount || 0) >= 500, "keyboard_warrior");
+  await maybeUnlock(
+    Number(stats.chatMessagesCount || 0) >= 500,
+    "keyboard_warrior",
+  );
   await maybeUnlock(Number(stats.goonbetMentions || 0) >= 10, "loyal_goon");
-  await maybeUnlock(Number(stats.allInPhraseMentions || 0) >= 25, "all_in_prophet");
+  await maybeUnlock(
+    Number(stats.allInPhraseMentions || 0) >= 25,
+    "all_in_prophet",
+  );
 
   await maybeUnlock(Number(stats.winStreak || 0) >= 3, "hot_streak");
   await maybeUnlock(Number(stats.winStreak || 0) >= 5, "untouchable");
@@ -133,17 +180,28 @@ export async function checkUnlocks(clerkId: string, actionType: ActionType, meta
 
   const currentBalance = Number(metadata.balanceAfter ?? appUser.balance ?? 0);
   const dayStartBalance = Number(stats.dayStartBalance || 0);
-  await maybeUnlock(dayStartBalance > 0 && currentBalance >= dayStartBalance * 2, "money_printer");
+  await maybeUnlock(
+    dayStartBalance > 0 && currentBalance >= dayStartBalance * 2,
+    "money_printer",
+  );
 
   await maybeUnlock(Number(stats.allInCount || 0) >= 10, "risk_taker");
   await maybeUnlock(currentBalance <= 0, "broke_again");
-  await maybeUnlock(Number(stats.allInLossStreak || 0) >= 5, "certified_degenerate");
+  await maybeUnlock(
+    Number(stats.allInLossStreak || 0) >= 5,
+    "certified_degenerate",
+  );
 
   await maybeUnlock(Number(stats.loginDays || 0) >= 30, "regular");
   await maybeUnlock(Number(stats.loginDays || 0) >= 100, "resident_goon");
   await maybeUnlock(actionType === "referral_invite", "recruiter");
 
-  await maybeUnlock(actionType === "chat_message" && message.includes("rigged") && Number(stats.lossStreak || 0) > 0, "salt_lord");
+  await maybeUnlock(
+    actionType === "chat_message" &&
+      message.includes("rigged") &&
+      Number(stats.lossStreak || 0) > 0,
+    "salt_lord",
+  );
   await maybeUnlock(Number(stats.gamesPlayed || 0) >= 1000, "no_life");
 
   const unlockedCountRow = await db
@@ -153,14 +211,19 @@ export async function checkUnlocks(clerkId: string, actionType: ActionType, meta
   const unlockedCount = Number(unlockedCountRow[0]?.count || 0);
   await maybeUnlock(unlockedCount >= 10, "collector");
 
-  const totalTitlesRow = await db.select({ count: sql<number>`count(*)::int` }).from(specialTitles);
+  const totalTitlesRow = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(specialTitles);
   const totalTitles = Number(totalTitlesRow[0]?.count || 0);
   if (totalTitles > 0) {
     const finalCountRow = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(userSpecialTitles)
       .where(eq(userSpecialTitles.userId, appUser.id));
-    await maybeUnlock(Number(finalCountRow[0]?.count || 0) >= totalTitles, "goon_ascended");
+    await maybeUnlock(
+      Number(finalCountRow[0]?.count || 0) >= totalTitles,
+      "goon_ascended",
+    );
   }
 
   return unlockedNow;

@@ -9,14 +9,20 @@ const HOUSE_EDGE_PERCENT = 10;
 export async function GET(req) {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const { searchParams } = new URL(req.url);
   const gameId = Number(searchParams.get("gameId"));
 
   if (!Number.isFinite(gameId)) {
-    return NextResponse.json({ success: false, error: "Invalid gameId" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Invalid gameId" },
+      { status: 400 },
+    );
   }
 
   const game = await db.query.rpsPvpGames.findFirst({
@@ -24,15 +30,23 @@ export async function GET(req) {
   });
 
   if (!game) {
-    return NextResponse.json({ success: false, error: "Game not found" }, { status: 404 });
+    return NextResponse.json(
+      { success: false, error: "Game not found" },
+      { status: 404 },
+    );
   }
 
   if (game.player1Id !== userId && game.player2Id !== userId) {
-    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    return NextResponse.json(
+      { success: false, error: "Forbidden" },
+      { status: 403 },
+    );
   }
 
-  const myChoice = game.player1Id === userId ? game.player1Choice : game.player2Choice;
-  const opponentChoice = game.player1Id === userId ? game.player2Choice : game.player1Choice;
+  const myChoice =
+    game.player1Id === userId ? game.player1Choice : game.player2Choice;
+  const opponentChoice =
+    game.player1Id === userId ? game.player2Choice : game.player1Choice;
   const [player1, player2] = await Promise.all([
     db.query.users.findFirst({
       where: eq(users.clerkId, game.player1Id),
@@ -48,7 +62,9 @@ export async function GET(req) {
 
   let newBalance;
   if (game.status === "finished" || game.status === "cancelled") {
-    const user = await db.query.users.findFirst({ where: eq(users.clerkId, userId) });
+    const user = await db.query.users.findFirst({
+      where: eq(users.clerkId, userId),
+    });
     newBalance = user ? Number(user.balance) : undefined;
   }
 
@@ -58,7 +74,8 @@ export async function GET(req) {
   const winnerPayout = Number((pot - houseFee).toFixed(2));
   const winnerProfit = Number((winnerPayout - betAmount).toFixed(2));
   const myName = game.player1Id === userId ? player1?.name : player2?.name;
-  const opponentName = game.player1Id === userId ? player2?.name : player1?.name;
+  const opponentName =
+    game.player1Id === userId ? player2?.name : player1?.name;
 
   return NextResponse.json({
     success: true,
@@ -80,7 +97,14 @@ export async function GET(req) {
       myChoice,
       opponentChoice,
       outcome: game.outcome,
-      winner: game.status === "finished" ? (game.winnerId === userId ? "you" : game.winnerId ? "opponent" : "tie") : null,
+      winner:
+        game.status === "finished"
+          ? game.winnerId === userId
+            ? "you"
+            : game.winnerId
+              ? "opponent"
+              : "tie"
+          : null,
       result: game.result,
       newBalance,
     },

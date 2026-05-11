@@ -22,21 +22,23 @@ export async function POST(req) {
     return NextResponse.json({ error: "Not your game" }, { status: 403 });
 
   if (game.player2Id)
-    return NextResponse.json({ error: "Game already started" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Game already started" },
+      { status: 400 },
+    );
 
-await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
+    // refund safely
+    await tx
+      .update(users)
+      .set({
+        balance: sql`${users.balance} + ${Number(game.betAmount)}`,
+      })
+      .where(eq(users.clerkId, userId));
 
-  // refund safely
-  await tx.update(users)
-    .set({
-      balance: sql`${users.balance} + ${Number(game.betAmount)}`
-    })
-    .where(eq(users.clerkId, userId));
+    // delete game
+    await tx.delete(coinFlipGames).where(eq(coinFlipGames.id, gameId));
+  });
 
-  // delete game
-  await tx.delete(coinFlipGames)
-    .where(eq(coinFlipGames.id, gameId));
-});
-
-  return NextResponse.json({ success:true });
+  return NextResponse.json({ success: true });
 }

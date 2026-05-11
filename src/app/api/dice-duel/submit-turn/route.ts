@@ -52,62 +52,47 @@ export async function POST(req: Request) {
   const [m] = await db
     .select()
     .from(diceMatches)
-    .where(
-      and(
-        eq(diceMatches.id, matchId),
-        eq(diceMatches.status, "active")
-      )
-    )
+    .where(and(eq(diceMatches.id, matchId), eq(diceMatches.status, "active")))
     .limit(1);
 
   if (!m) {
     return NextResponse.json(
       { ok: false, message: "Match unavailable" },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
   if (m.turnUserId !== userId) {
     return NextResponse.json(
       { ok: false, message: "Not your turn" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   const turn = calc(actionType);
 
-const isPlayer1 = m.player1Id === userId;
+  const isPlayer1 = m.player1Id === userId;
 
+  // normalize perspective
+  let playerHP = isPlayer1 ? m.hp1 : m.hp2;
+  let enemyHP = isPlayer1 ? m.hp2 : m.hp1;
 
-// normalize perspective
-let playerHP = isPlayer1 ? m.hp1 : m.hp2;
-let enemyHP = isPlayer1 ? m.hp2 : m.hp1;
+  // APPLY DAMAGE (same logic for both players + AI)
+  enemyHP = Math.max(0, enemyHP - turn.damage);
+  playerHP = Math.max(0, playerHP - turn.selfDamage);
+  playerHP += turn.heal;
 
-// APPLY DAMAGE (same logic for both players + AI)
-enemyHP = Math.max(0, enemyHP - turn.damage);
-playerHP = Math.max(0, playerHP - turn.selfDamage);
-playerHP += turn.heal;
+  // write back to correct DB fields
+  let hp1 = isPlayer1 ? playerHP : enemyHP;
+  let hp2 = isPlayer1 ? enemyHP : playerHP;
 
-// write back to correct DB fields
-let hp1 = isPlayer1 ? playerHP : enemyHP;
-let hp2 = isPlayer1 ? enemyHP : playerHP;
-
-  let nextTurn =
-    m.player1Id === userId ? m.player2Id : m.player1Id;
+  let nextTurn = m.player1Id === userId ? m.player2Id : m.player1Id;
 
   let round = m.round;
 
-  let status =
-    hp1 <= 0 || hp2 <= 0 || round > 20
-      ? "finished"
-      : "active";
+  let status = hp1 <= 0 || hp2 <= 0 || round > 20 ? "finished" : "active";
 
-  let winnerId =
-    hp1 === hp2
-      ? null
-      : hp1 > hp2
-      ? m.player1Id
-      : m.player2Id;
+  let winnerId = hp1 === hp2 ? null : hp1 > hp2 ? m.player1Id : m.player2Id;
 
   await db.insert(diceTurns).values({
     matchId,
@@ -129,24 +114,23 @@ let hp2 = isPlayer1 ? enemyHP : playerHP;
       turnUserId: nextTurn,
       status,
       winnerId,
-      endedAt:
-        status === "finished" ? new Date() : null,
+      endedAt: status === "finished" ? new Date() : null,
     })
     .where(eq(diceMatches.id, matchId));
 
-    const isAI = m.player2Id === "AI_BOT";
+  const isAI = m.player2Id === "AI_BOT";
 
-return NextResponse.json({
-  ok: true,
-  actionType,
-  aiTurn: isAI && status === "active" && nextTurn === "AI_BOT",
-  turnResult: {
-    roll1: turn.r1,
-    roll2: turn.r2,
-    damage: turn.damage,
-    selfDamage: turn.selfDamage,
-    heal: turn.heal,
-    actor: userId
-  }
-});
+  return NextResponse.json({
+    ok: true,
+    actionType,
+    aiTurn: isAI && status === "active" && nextTurn === "AI_BOT",
+    turnResult: {
+      roll1: turn.r1,
+      roll2: turn.r2,
+      damage: turn.damage,
+      selfDamage: turn.selfDamage,
+      heal: turn.heal,
+      actor: userId,
+    },
+  });
 }

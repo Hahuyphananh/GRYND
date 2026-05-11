@@ -4,21 +4,29 @@ import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 
-type Seat = { seat: number; clerkId: string | null; name?: string; isAI?: boolean; stack?: number };
+type Seat = {
+  seat: number;
+  clerkId: string | null;
+  name?: string;
+  isAI?: boolean;
+  stack?: number;
+};
 type StoredMeta = { hostClerkId?: string; state?: any };
 
 function normalizePlayersFromSeats(seats: Seat[]) {
-  return seats.filter((s) => s.clerkId).map((s) => ({
-    id: s.clerkId,
-    name: s.name || (s.isAI ? "AI" : "Player"),
-    stack: s.stack ?? 1000,
-    hand: [],
-    isAI: !!s.isAI,
-    hasFolded: false,
-    lastAction: "",
-    currentBet: 0,
-    seatIndex: s.seat,
-  }));
+  return seats
+    .filter((s) => s.clerkId)
+    .map((s) => ({
+      id: s.clerkId,
+      name: s.name || (s.isAI ? "AI" : "Player"),
+      stack: s.stack ?? 1000,
+      hand: [],
+      isAI: !!s.isAI,
+      hasFolded: false,
+      lastAction: "",
+      currentBet: 0,
+      seatIndex: s.seat,
+    }));
 }
 
 export async function GET(req: Request) {
@@ -28,14 +36,18 @@ export async function GET(req: Request) {
   const gameId = Number(gameIdParam);
 
   if (!code && !Number.isFinite(gameId)) {
-    return NextResponse.json({ error: "Missing code or gameId" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing code or gameId" },
+      { status: 400 },
+    );
   }
 
   const gameRows = code
     ? await db.select().from(pokerGames).where(eq(pokerGames.gameCode, code))
     : await db.select().from(pokerGames).where(eq(pokerGames.id, gameId));
   const [game] = gameRows;
-  if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
+  if (!game)
+    return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
   const meta = (game.playerPositions ?? {}) as StoredMeta;
   const seats = (game.players ?? []) as Seat[];
@@ -48,7 +60,7 @@ export async function GET(req: Request) {
     deck: game.deck ?? [],
     pot: Number(game.pot ?? 0),
     currentTurn: game.currentTurn ?? 0,
-    stage: game.round === "preflop" ? "pre-flop" : game.round ?? "pre-flop",
+    stage: game.round === "preflop" ? "pre-flop" : (game.round ?? "pre-flop"),
     smallBlind: Number(game.smallBlind ?? 10),
     bigBlind: Number(game.bigBlind ?? 20),
     replayVisible: false,
@@ -56,24 +68,39 @@ export async function GET(req: Request) {
     waiting: game.status !== "active",
   };
 
-  return NextResponse.json({ success: true, game: { ...state, hostClerkId: meta.hostClerkId } });
+  return NextResponse.json({
+    success: true,
+    game: { ...state, hostClerkId: meta.hostClerkId },
+  });
 }
 
 export async function POST(req: Request) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { gameCode, state } = await req.json();
-  if (!gameCode || !state) return NextResponse.json({ error: "Missing data" }, { status: 400 });
+  if (!gameCode || !state)
+    return NextResponse.json({ error: "Missing data" }, { status: 400 });
 
-  const [game] = await db.select().from(pokerGames).where(eq(pokerGames.gameCode, gameCode));
-  if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
+  const [game] = await db
+    .select()
+    .from(pokerGames)
+    .where(eq(pokerGames.gameCode, gameCode));
+  if (!game)
+    return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
   const seats = (game.players ?? []) as Seat[];
-  const seatedIds = seats.filter((s) => s.clerkId).map((s) => s.clerkId as string);
+  const seatedIds = seats
+    .filter((s) => s.clerkId)
+    .map((s) => s.clerkId as string);
   const meta = (game.playerPositions ?? {}) as StoredMeta;
 
-  if (meta.hostClerkId && userId !== meta.hostClerkId && !seatedIds.includes(userId)) {
+  if (
+    meta.hostClerkId &&
+    userId !== meta.hostClerkId &&
+    !seatedIds.includes(userId)
+  ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -97,18 +124,25 @@ export async function POST(req: Request) {
       : seat;
   });
 
-  await db.update(pokerGames).set({
-    players: mergedSeats,
-    playerPositions: { ...(meta || {}), hostClerkId: meta.hostClerkId || userId, state },
-    communityCards: state.community ?? [],
-    deck: state.deck ?? [],
-    pot: String(state.pot ?? 0),
-    currentTurn: state.currentTurn ?? 0,
-    round: state.stage ?? "pre-flop",
-    dealerPosition: state.dealerIndex ?? 0,
-    status: state.waiting ? "waiting" : "active",
-    winner: state.winnerId ?? null,
-  }).where(eq(pokerGames.gameCode, gameCode));
+  await db
+    .update(pokerGames)
+    .set({
+      players: mergedSeats,
+      playerPositions: {
+        ...(meta || {}),
+        hostClerkId: meta.hostClerkId || userId,
+        state,
+      },
+      communityCards: state.community ?? [],
+      deck: state.deck ?? [],
+      pot: String(state.pot ?? 0),
+      currentTurn: state.currentTurn ?? 0,
+      round: state.stage ?? "pre-flop",
+      dealerPosition: state.dealerIndex ?? 0,
+      status: state.waiting ? "waiting" : "active",
+      winner: state.winnerId ?? null,
+    })
+    .where(eq(pokerGames.gameCode, gameCode));
 
   return NextResponse.json({ success: true });
 }

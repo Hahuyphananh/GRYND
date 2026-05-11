@@ -17,64 +17,39 @@ const PIECE_VALUES: Record<string, number> = {
 
 const PST = {
   p: [
-    0, 0, 0, 0, 0, 0, 0, 0,
-    50, 50, 50, 50, 50, 50, 50, 50,
-    10, 10, 20, 30, 30, 20, 10, 10,
-    5, 5, 10, 25, 25, 10, 5, 5,
-    0, 0, 0, 20, 20, 0, 0, 0,
-    5, -5, -10, 0, 0, -10, -5, 5,
-    5, 10, 10, -20, -20, 10, 10, 5,
-    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50, 50, 50, 10, 10, 20, 30, 30,
+    20, 10, 10, 5, 5, 10, 25, 25, 10, 5, 5, 0, 0, 0, 20, 20, 0, 0, 0, 5, -5,
+    -10, 0, 0, -10, -5, 5, 5, 10, 10, -20, -20, 10, 10, 5, 0, 0, 0, 0, 0, 0, 0,
+    0,
   ],
   n: [
-    -50, -40, -30, -30, -30, -30, -40, -50,
-    -40, -20, 0, 5, 5, 0, -20, -40,
-    -30, 5, 10, 15, 15, 10, 5, -30,
-    -30, 0, 15, 20, 20, 15, 0, -30,
-    -30, 5, 15, 20, 20, 15, 5, -30,
-    -30, 0, 10, 15, 15, 10, 0, -30,
-    -40, -20, 0, 0, 0, 0, -20, -40,
-    -50, -40, -30, -30, -30, -30, -40, -50,
+    -50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0, 5, 5, 0, -20, -40, -30,
+    5, 10, 15, 15, 10, 5, -30, -30, 0, 15, 20, 20, 15, 0, -30, -30, 5, 15, 20,
+    20, 15, 5, -30, -30, 0, 10, 15, 15, 10, 0, -30, -40, -20, 0, 0, 0, 0, -20,
+    -40, -50, -40, -30, -30, -30, -30, -40, -50,
   ],
   b: [
-    -20, -10, -10, -10, -10, -10, -10, -20,
-    -10, 5, 0, 0, 0, 0, 5, -10,
-    -10, 10, 10, 10, 10, 10, 10, -10,
-    -10, 0, 10, 10, 10, 10, 0, -10,
-    -10, 5, 5, 10, 10, 5, 5, -10,
-    -10, 0, 5, 10, 10, 5, 0, -10,
-    -10, 0, 0, 0, 0, 0, 0, -10,
-    -20, -10, -10, -10, -10, -10, -10, -20,
+    -20, -10, -10, -10, -10, -10, -10, -20, -10, 5, 0, 0, 0, 0, 5, -10, -10, 10,
+    10, 10, 10, 10, 10, -10, -10, 0, 10, 10, 10, 10, 0, -10, -10, 5, 5, 10, 10,
+    5, 5, -10, -10, 0, 5, 10, 10, 5, 0, -10, -10, 0, 0, 0, 0, 0, 0, -10, -20,
+    -10, -10, -10, -10, -10, -10, -20,
   ],
   r: [
-    0, 0, 0, 0, 0, 0, 0, 0,
-    5, 10, 10, 10, 10, 10, 10, 5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    0, 0, 0, 5, 5, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, 10, 10, 10, 10, 5, -5, 0, 0, 0, 0, 0, 0,
+    -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0,
+    0, -5, -5, 0, 0, 0, 0, 0, 0, -5, 0, 0, 0, 5, 5, 0, 0, 0,
   ],
   q: [
-    -20, -10, -10, -5, -5, -10, -10, -20,
-    -10, 0, 5, 0, 0, 0, 0, -10,
-    -10, 5, 5, 5, 5, 5, 0, -10,
-    0, 0, 5, 5, 5, 5, 0, -5,
-    -5, 0, 5, 5, 5, 5, 0, -5,
-    -10, 0, 5, 5, 5, 5, 0, -10,
-    -10, 0, 0, 0, 0, 0, 0, -10,
-    -20, -10, -10, -5, -5, -10, -10, -20,
+    -20, -10, -10, -5, -5, -10, -10, -20, -10, 0, 5, 0, 0, 0, 0, -10, -10, 5, 5,
+    5, 5, 5, 0, -10, 0, 0, 5, 5, 5, 5, 0, -5, -5, 0, 5, 5, 5, 5, 0, -5, -10, 0,
+    5, 5, 5, 5, 0, -10, -10, 0, 0, 0, 0, 0, 0, -10, -20, -10, -10, -5, -5, -10,
+    -10, -20,
   ],
   k: [
-    -30, -40, -40, -50, -50, -40, -40, -30,
-    -30, -40, -40, -50, -50, -40, -40, -30,
-    -30, -40, -40, -50, -50, -40, -40, -30,
-    -30, -40, -40, -50, -50, -40, -40, -30,
-    -20, -30, -30, -40, -40, -30, -30, -20,
-    -10, -20, -20, -20, -20, -20, -20, -10,
-    20, 20, 0, 0, 0, 0, 20, 20,
-    20, 30, 10, 0, 0, 10, 30, 20,
+    -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40,
+    -30, -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40,
+    -40, -30, -20, -30, -30, -40, -40, -30, -30, -20, -10, -20, -20, -20, -20,
+    -20, -20, -10, 20, 20, 0, 0, 0, 0, 20, 20, 20, 30, 10, 0, 0, 10, 30, 20,
   ],
 };
 
@@ -95,7 +70,8 @@ function evaluatePosition(game: Chess, aiColor: "w" | "b") {
   if (game.isCheckmate()) {
     return game.turn() === aiColor ? -999999 : 999999;
   }
-  if (game.isDraw() || game.isStalemate() || game.isThreefoldRepetition()) return 0;
+  if (game.isDraw() || game.isStalemate() || game.isThreefoldRepetition())
+    return 0;
 
   let score = 0;
   const board = game.board();
@@ -104,7 +80,9 @@ function evaluatePosition(game: Chess, aiColor: "w" | "b") {
       const piece = board[r][f];
       if (!piece) continue;
       const square = String.fromCharCode(97 + f) + (8 - r);
-      const val = PIECE_VALUES[piece.type] + pieceSquareValue(piece.type, piece.color as "w" | "b", square);
+      const val =
+        PIECE_VALUES[piece.type] +
+        pieceSquareValue(piece.type, piece.color as "w" | "b", square);
       score += piece.color === aiColor ? val : -val;
     }
   }
@@ -117,13 +95,26 @@ function evaluatePosition(game: Chess, aiColor: "w" | "b") {
 
 function orderedMoves(game: Chess) {
   return game.moves({ verbose: true }).sort((a, b) => {
-    const aScore = (a.captured ? 10 : 0) + (a.promotion ? 8 : 0) + (a.san.includes("+") ? 4 : 0);
-    const bScore = (b.captured ? 10 : 0) + (b.promotion ? 8 : 0) + (b.san.includes("+") ? 4 : 0);
+    const aScore =
+      (a.captured ? 10 : 0) +
+      (a.promotion ? 8 : 0) +
+      (a.san.includes("+") ? 4 : 0);
+    const bScore =
+      (b.captured ? 10 : 0) +
+      (b.promotion ? 8 : 0) +
+      (b.san.includes("+") ? 4 : 0);
     return bScore - aScore;
   });
 }
 
-function minimax(game: Chess, depth: number, alpha: number, beta: number, maximizing: boolean, aiColor: "w" | "b") {
+function minimax(
+  game: Chess,
+  depth: number,
+  alpha: number,
+  beta: number,
+  maximizing: boolean,
+  aiColor: "w" | "b",
+) {
   if (depth === 0 || game.isGameOver()) {
     return evaluatePosition(game, aiColor);
   }
@@ -164,10 +155,20 @@ function pickBestMove(game: Chess, aiColor: "w" | "b", aiLevel: number) {
 
   for (const move of moves) {
     game.move(move);
-    const score = minimax(game, depth - 1, -Infinity, Infinity, !maximizing, aiColor);
+    const score = minimax(
+      game,
+      depth - 1,
+      -Infinity,
+      Infinity,
+      !maximizing,
+      aiColor,
+    );
     game.undo();
 
-    if ((maximizing && score > bestScore) || (!maximizing && score < bestScore)) {
+    if (
+      (maximizing && score > bestScore) ||
+      (!maximizing && score < bestScore)
+    ) {
       bestScore = score;
       bestMove = move;
     }
@@ -181,7 +182,9 @@ export default function ChessAIPageInner() {
   const [aiLevel, setAiLevel] = useState(5);
   const [gameOver, setGameOver] = useState(false);
   const [playerColor, setPlayerColor] = useState<"white" | "black">("white");
-  const [gameResult, setGameResult] = useState<"win" | "lose" | "draw" | "pending">("pending");
+  const [gameResult, setGameResult] = useState<
+    "win" | "lose" | "draw" | "pending"
+  >("pending");
   const [winnerText, setWinnerText] = useState("");
 
   const router = useRouter();
@@ -193,7 +196,7 @@ export default function ChessAIPageInner() {
 
   const aiColor = useMemo<"w" | "b">(
     () => (playerColor === "white" ? "b" : "w"),
-    [playerColor]
+    [playerColor],
   );
 
   async function endGame(result?: "win" | "loss" | "draw") {
@@ -223,7 +226,7 @@ export default function ChessAIPageInner() {
       });
       navigator.sendBeacon(
         "/api/chess/end-game",
-        new Blob([payload], { type: "application/json" })
+        new Blob([payload], { type: "application/json" }),
       );
       endGameCalled.current = true;
     };
@@ -362,9 +365,15 @@ export default function ChessAIPageInner() {
     <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center p-6">
       <NavigationBar currentPath="/casino" />
 
-      <h1 className="text-4xl font-bold text-[#FFD700] mb-2 mt-12">♟️ AI Chess Arena</h1>
+      <h1 className="text-4xl font-bold text-[#FFD700] mb-2 mt-12">
+        ♟️ AI Chess Arena
+      </h1>
 
-      {bet && <p className="text-2xl font-semibold text-green-400 mb-6">Bet: ${bet}</p>}
+      {bet && (
+        <p className="text-2xl font-semibold text-green-400 mb-6">
+          Bet: ${bet}
+        </p>
+      )}
 
       <div className="flex gap-4 mb-4 items-center">
         <button
@@ -424,7 +433,9 @@ export default function ChessAIPageInner() {
             {bet && (
               <p className="text-xl mb-4 font-semibold">
                 {gameResult === "win" ? (
-                  <span className="text-green-600">You won ${Number(bet) * 1.98}!</span>
+                  <span className="text-green-600">
+                    You won ${Number(bet) * 1.98}!
+                  </span>
                 ) : gameResult === "draw" ? (
                   <span className="text-yellow-600">Bet returned.</span>
                 ) : (
