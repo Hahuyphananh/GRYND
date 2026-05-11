@@ -22,7 +22,13 @@ export async function POST(request) {
       result: { type: "string", required: true },
       amount: { type: "number", required: true, min: 0, max: 1000000 },
       payout: { type: "number", required: true, min: 0, max: 1000000 },
-      blackjack: { type: "number", required: false, min: 0, max: 1, default: 0 },
+      blackjack: {
+        type: "number",
+        required: false,
+        min: 0,
+        max: 1,
+        default: 0,
+      },
     });
 
     if (!parsed.ok) return parsed.response;
@@ -58,27 +64,38 @@ export async function POST(request) {
     await db.insert(blackjackGames).values({
       userId: user.id,
       betAmount: amount.toFixed(2),
-      result: result === "push" ? "draw" : (result === "win" ? "win" : "lose"),
+      result: result === "push" ? "draw" : result === "win" ? "win" : "lose",
       payout: payout.toFixed(2),
     });
 
-    await applyLeaderboardCounters({ clerkId: userId, game: "blackjack", betAmount: amount, payout });
+    await applyLeaderboardCounters({
+      clerkId: userId,
+      game: "blackjack",
+      betAmount: amount,
+      payout,
+    });
 
     return new Response(
       JSON.stringify({
         success: true,
-        data: { newBalance: Number(updatedUser?.balance ?? user.balance), payout },
+        data: {
+          newBalance: Number(updatedUser?.balance ?? user.balance),
+          payout,
+        },
       }),
       {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
   } catch (error) {
     console.error("Error updating blackjack game:", error);
-    return new Response(JSON.stringify({ error: "Failed to settle blackjack game" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: "Failed to settle blackjack game" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

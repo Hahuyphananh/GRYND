@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   if (!userId) {
     return new Response(
       JSON.stringify({ success: false, error: "Unauthorized" }),
-      { status: 401, headers: { "Content-Type": "application/json" } }
+      { status: 401, headers: { "Content-Type": "application/json" } },
     );
   }
 
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   if (!amount || amount <= 0) {
     return new Response(
       JSON.stringify({ success: false, error: "Invalid amount" }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
+      { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
 
@@ -27,13 +27,15 @@ export async function POST(request: Request) {
     const [updated] = await db
       .update(users)
       .set({ balance: sql`${users.balance} - ${amount}` })
-      .where(sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${amount}`)
+      .where(
+        sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${amount}`,
+      )
       .returning({ balance: users.balance });
 
     if (!updated) {
       return new Response(
         JSON.stringify({ success: false, error: "Insufficient balance" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -45,13 +47,13 @@ export async function POST(request: Request) {
           newBalance: Number(updated.balance),
         },
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (err) {
     console.error("❌ Blackjack game error:", err);
     return new Response(
       JSON.stringify({ success: false, error: "Server error" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }

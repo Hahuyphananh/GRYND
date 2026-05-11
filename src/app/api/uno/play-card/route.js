@@ -29,40 +29,68 @@ function getTopCard(game) {
 }
 
 function isAllowedChosenColor(color) {
-  return ["red", "yellow", "green", "blue"].includes(String(color || "").toLowerCase());
+  return ["red", "yellow", "green", "blue"].includes(
+    String(color || "").toLowerCase(),
+  );
 }
 
 export async function POST(req) {
   try {
     const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
     }
 
     const { gameId, card, chosenColor } = await req.json();
 
     const game = await getUnoGameById(gameId);
-    if (!game) return NextResponse.json({ success: false, error: "Game not found" }, { status: 404 });
+    if (!game)
+      return NextResponse.json(
+        { success: false, error: "Game not found" },
+        { status: 404 },
+      );
 
-    const user = await db.query.users.findFirst({ where: eq(users.clerkId, userId) });
+    const user = await db.query.users.findFirst({
+      where: eq(users.clerkId, userId),
+    });
     if (!user) {
-      return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: "User not found" },
+        { status: 404 },
+      );
     }
 
     const isMultiplayer = Boolean(game.player2Id);
 
     if (isMultiplayer) {
       if (game.status !== "active") {
-        return NextResponse.json({ success: false, error: "Game is not active" }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "Game is not active" },
+          { status: 400 },
+        );
       }
 
-      const role = game.userId === user.id ? "player1" : game.player2Id === user.id ? "player2" : null;
+      const role =
+        game.userId === user.id
+          ? "player1"
+          : game.player2Id === user.id
+            ? "player2"
+            : null;
       if (!role) {
-        return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+        return NextResponse.json(
+          { success: false, error: "Forbidden" },
+          { status: 403 },
+        );
       }
 
       if (game.turn !== role) {
-        return NextResponse.json({ success: false, error: "Not your turn" }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "Not your turn" },
+          { status: 400 },
+        );
       }
 
       const deck = safeParse(game.deck, []);
@@ -74,24 +102,48 @@ export async function POST(req) {
       const myHand = role === "player1" ? player1Hand : player2Hand;
       const opponentHand = role === "player1" ? player2Hand : player1Hand;
 
-      const cardIndex = myHand.findIndex((c) => c.color === card.color && c.value === card.value);
+      const cardIndex = myHand.findIndex(
+        (c) => c.color === card.color && c.value === card.value,
+      );
       if (cardIndex === -1) {
-        return NextResponse.json({ success: false, error: "Invalid card" }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "Invalid card" },
+          { status: 400 },
+        );
       }
 
       if (!topCard) {
-        return NextResponse.json({ success: false, error: "Invalid game state" }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "Invalid game state" },
+          { status: 400 },
+        );
       }
 
       if (!isValidPlay(card, topCard, currentColor, myHand)) {
-        return NextResponse.json({ success: false, error: "Card not playable" }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "Card not playable" },
+          { status: 400 },
+        );
       }
 
-      if ((card.value === "Wild" || card.value === "Wild Draw Four") && !chosenColor) {
-        return NextResponse.json({ success: true, needsColorChoice: true, card });
+      if (
+        (card.value === "Wild" || card.value === "Wild Draw Four") &&
+        !chosenColor
+      ) {
+        return NextResponse.json({
+          success: true,
+          needsColorChoice: true,
+          card,
+        });
       }
-      if ((card.value === "Wild" || card.value === "Wild Draw Four") && !isAllowedChosenColor(chosenColor)) {
-        return NextResponse.json({ success: false, error: "Invalid color choice" }, { status: 400 });
+      if (
+        (card.value === "Wild" || card.value === "Wild Draw Four") &&
+        !isAllowedChosenColor(chosenColor)
+      ) {
+        return NextResponse.json(
+          { success: false, error: "Invalid color choice" },
+          { status: 400 },
+        );
       }
 
       const workingMyHand = [...myHand];
@@ -106,11 +158,24 @@ export async function POST(req) {
         turn: "player",
       };
 
-      const updatedVirtual = applyUnoCard(virtualState, { ...card }, "player", chosenColor);
-      const updatedPlayer1Hand = role === "player1" ? updatedVirtual.playerHand : updatedVirtual.aiHand;
-      const updatedPlayer2Hand = role === "player1" ? updatedVirtual.aiHand : updatedVirtual.playerHand;
-      const updatedTurn = updatedVirtual.turn === "player" ? role : role === "player1" ? "player2" : "player1";
-      const top = updatedVirtual.discardPile[updatedVirtual.discardPile.length - 1];
+      const updatedVirtual = applyUnoCard(
+        virtualState,
+        { ...card },
+        "player",
+        chosenColor,
+      );
+      const updatedPlayer1Hand =
+        role === "player1" ? updatedVirtual.playerHand : updatedVirtual.aiHand;
+      const updatedPlayer2Hand =
+        role === "player1" ? updatedVirtual.aiHand : updatedVirtual.playerHand;
+      const updatedTurn =
+        updatedVirtual.turn === "player"
+          ? role
+          : role === "player1"
+            ? "player2"
+            : "player1";
+      const top =
+        updatedVirtual.discardPile[updatedVirtual.discardPile.length - 1];
 
       await db
         .update(unoGames)
@@ -131,12 +196,19 @@ export async function POST(req) {
           mode: "online",
           role,
           turn: updatedTurn,
-          playerHand: role === "player1" ? updatedPlayer1Hand : updatedPlayer2Hand,
-          opponentHandCount: role === "player1" ? updatedPlayer2Hand.length : updatedPlayer1Hand.length,
+          playerHand:
+            role === "player1" ? updatedPlayer1Hand : updatedPlayer2Hand,
+          opponentHandCount:
+            role === "player1"
+              ? updatedPlayer2Hand.length
+              : updatedPlayer1Hand.length,
           topCard: top,
           currentColor: updatedVirtual.currentColor,
           isPlayerTurn: updatedTurn === role,
-          message: updatedTurn === role ? "Carte jouée, tu rejoues" : "Carte jouée, tour adverse",
+          message:
+            updatedTurn === role
+              ? "Carte jouée, tu rejoues"
+              : "Carte jouée, tour adverse",
         },
       });
     }
@@ -147,17 +219,39 @@ export async function POST(req) {
     const { discardPile, topCard } = getTopCard(game);
     const currentColor = game.currentColor || topCard?.color;
 
-    const cardIndex = playerHand.findIndex((c) => c.color === card.color && c.value === card.value);
-    if (cardIndex === -1) return NextResponse.json({ success: false, error: "Invalid card" }, { status: 400 });
+    const cardIndex = playerHand.findIndex(
+      (c) => c.color === card.color && c.value === card.value,
+    );
+    if (cardIndex === -1)
+      return NextResponse.json(
+        { success: false, error: "Invalid card" },
+        { status: 400 },
+      );
 
-    const isPlayable = card.color === currentColor || card.value === topCard.value || card.color === "black";
-    if (!isPlayable) return NextResponse.json({ success: false, error: "Card not playable" }, { status: 400 });
+    const isPlayable =
+      card.color === currentColor ||
+      card.value === topCard.value ||
+      card.color === "black";
+    if (!isPlayable)
+      return NextResponse.json(
+        { success: false, error: "Card not playable" },
+        { status: 400 },
+      );
 
-    if ((card.value === "Wild" || card.value === "Wild Draw Four") && !chosenColor) {
+    if (
+      (card.value === "Wild" || card.value === "Wild Draw Four") &&
+      !chosenColor
+    ) {
       return NextResponse.json({ success: true, needsColorChoice: true, card });
     }
-    if ((card.value === "Wild" || card.value === "Wild Draw Four") && !isAllowedChosenColor(chosenColor)) {
-      return NextResponse.json({ success: false, error: "Invalid color choice" }, { status: 400 });
+    if (
+      (card.value === "Wild" || card.value === "Wild Draw Four") &&
+      !isAllowedChosenColor(chosenColor)
+    ) {
+      return NextResponse.json(
+        { success: false, error: "Invalid color choice" },
+        { status: 400 },
+      );
     }
 
     const playedCard = { ...card, color: chosenColor || card.color };
@@ -167,7 +261,7 @@ export async function POST(req) {
       { ...game, playerHand, aiHand, deck, discardPile, currentColor },
       playedCard,
       "player",
-      chosenColor
+      chosenColor,
     );
 
     await updateUnoGameState(gameId, updatedGame);
@@ -181,11 +275,17 @@ export async function POST(req) {
         topCard: updatedGame.discardPile[updatedGame.discardPile.length - 1],
         currentColor: updatedGame.currentColor,
         isPlayerTurn: updatedGame.turn === "player",
-        message: updatedGame.turn === "player" ? "Carte jouée, ton tour" : "Carte jouée, tour IA",
+        message:
+          updatedGame.turn === "player"
+            ? "Carte jouée, ton tour"
+            : "Carte jouée, tour IA",
       },
     });
   } catch (err) {
     console.error("Error in play-card:", err);
-    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Server error" },
+      { status: 500 },
+    );
   }
 }

@@ -7,9 +7,7 @@ const GROWTH_FACTOR = 1.35; // tweak this (1.25–1.5 is good)
 export function getRequiredForLevel(level) {
   if (level <= 1) return 0;
 
-  return Math.floor(
-    BASE_REQUIREMENT * Math.pow(GROWTH_FACTOR, level - 2)
-  );
+  return Math.floor(BASE_REQUIREMENT * Math.pow(GROWTH_FACTOR, level - 2));
 }
 
 // get level from total wagered (infinite)
@@ -40,9 +38,8 @@ export function getLevelProgress(totalWagered = 0) {
   const range = nextRequired - prevRequired;
   const progress = wagered - prevRequired;
 
-  const progressPercent = range > 0
-    ? Math.min(100, (progress / range) * 100)
-    : 100;
+  const progressPercent =
+    range > 0 ? Math.min(100, (progress / range) * 100) : 100;
 
   return {
     currentLevel,

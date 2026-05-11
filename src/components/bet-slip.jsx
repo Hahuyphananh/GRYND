@@ -58,27 +58,48 @@ export default function BetSlip({ selectedBet, marketType, onSubmit }) {
 
   return (
     <div className="rounded-lg border border-[#00e5ff]/45 bg-[#09204b]/95 p-4 shadow-[0_0_16px_rgba(0,229,255,0.2)]">
-      <h2 className="mb-4 text-xl font-bold text-[#ecf8ff]">{t("sports.bet_slip")}</h2>
+      <h2 className="mb-4 text-xl font-bold text-[#ecf8ff]">
+        {t("sports.bet_slip")}
+      </h2>
 
-      {!selectedBet && <p className="text-sm text-[#95e4ff]">{t("sports.choose_outcome")}</p>}
+      {!selectedBet && (
+        <p className="text-sm text-[#95e4ff]">{t("sports.choose_outcome")}</p>
+      )}
 
       {selectedBet && (
         <>
           <div className="mb-4 rounded-lg bg-[#061633] p-3 text-[#ecf8ff]">
-            <p className="text-xs uppercase tracking-wide text-[#f5ff3b]">{t("sports.event")}</p>
+            <p className="text-xs uppercase tracking-wide text-[#f5ff3b]">
+              {t("sports.event")}
+            </p>
             <p className="font-semibold">{selectedBet.eventLabel}</p>
-            <p className="mt-2 text-xs uppercase tracking-wide text-[#00e5ff]">{t("sports.market")}</p>
-            <p>{t(marketTitleKeys[selectedBet.marketType || marketType] || "sports.moneyline")}</p>
-            <p className="mt-2 text-xs uppercase tracking-wide text-[#00e5ff]">{t("sports.selection")}</p>
+            <p className="mt-2 text-xs uppercase tracking-wide text-[#00e5ff]">
+              {t("sports.market")}
+            </p>
+            <p>
+              {t(
+                marketTitleKeys[selectedBet.marketType || marketType] ||
+                  "sports.moneyline",
+              )}
+            </p>
+            <p className="mt-2 text-xs uppercase tracking-wide text-[#00e5ff]">
+              {t("sports.selection")}
+            </p>
             <p>{selectedBet.label}</p>
             {selectedBet.line !== null && selectedBet.line !== undefined && (
-              <p className="text-sm text-[#95e4ff]">{t("sports.line")}: {selectedBet.line}</p>
+              <p className="text-sm text-[#95e4ff]">
+                {t("sports.line")}: {selectedBet.line}
+              </p>
             )}
-            <p className="mt-2 text-lg font-bold text-[#f5ff3b]">{t("sports.odds")}: {odds}</p>
+            <p className="mt-2 text-lg font-bold text-[#f5ff3b]">
+              {t("sports.odds")}: {odds}
+            </p>
           </div>
 
           <form onSubmit={handleSubmit}>
-            <label className="mb-1 block text-sm text-[#ecf8ff]">{t("sports.stake")}</label>
+            <label className="mb-1 block text-sm text-[#ecf8ff]">
+              {t("sports.stake")}
+            </label>
             <input
               type="number"
               value={amount}
@@ -90,12 +111,18 @@ export default function BetSlip({ selectedBet, marketType, onSubmit }) {
             />
 
             <div className="mb-4 rounded-lg bg-[#061633] p-3">
-              <p className="text-sm text-[#95e4ff]">{t("sports.potential_payout")}</p>
-              <p className="text-2xl font-bold text-[#f5ff3b]">{potentialWinnings}</p>
+              <p className="text-sm text-[#95e4ff]">
+                {t("sports.potential_payout")}
+              </p>
+              <p className="text-2xl font-bold text-[#f5ff3b]">
+                {potentialWinnings}
+              </p>
             </div>
 
             {error && <p className="mb-3 text-sm text-red-300">{error}</p>}
-            {success && <p className="mb-3 text-sm text-green-300">{success}</p>}
+            {success && (
+              <p className="mb-3 text-sm text-green-300">{success}</p>
+            )}
 
             <button
               type="submit"

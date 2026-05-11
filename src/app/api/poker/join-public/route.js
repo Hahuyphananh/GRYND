@@ -7,31 +7,55 @@ import { auth } from "@clerk/nextjs/server";
 export async function POST(req) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
     const playerName = body.playerName ?? "Player";
     const preferredGameCode = body.gameCode ?? null;
 
-    const games = await db.select().from(pokerGames).where(eq(pokerGames.isPrivate, false));
+    const games = await db
+      .select()
+      .from(pokerGames)
+      .where(eq(pokerGames.isPrivate, false));
     const availableGames = games.filter((g) => {
       const seats = Array.isArray(g.players) ? g.players : [];
       const occupied = seats.filter((s) => s?.clerkId).length;
-      return occupied < (g.maxPlayers ?? 6) && !seats.some((s) => s?.clerkId === userId);
+      return (
+        occupied < (g.maxPlayers ?? 6) &&
+        !seats.some((s) => s?.clerkId === userId)
+      );
     });
 
     const randomGame = preferredGameCode
       ? availableGames.find((g) => g.gameCode === preferredGameCode)
       : availableGames[0];
 
-    if (!randomGame) return NextResponse.json({ error: preferredGameCode ? "Selected game is no longer available" : "No available public games" }, { status: 404 });
+    if (!randomGame)
+      return NextResponse.json(
+        {
+          error: preferredGameCode
+            ? "Selected game is no longer available"
+            : "No available public games",
+        },
+        { status: 404 },
+      );
 
     const seats = Array.isArray(randomGame.players) ? randomGame.players : [];
     const emptySeat = seats.find((s) => s?.clerkId === null);
-    if (!emptySeat) return NextResponse.json({ error: "No open seat" }, { status: 400 });
+    if (!emptySeat)
+      return NextResponse.json({ error: "No open seat" }, { status: 400 });
 
     const updatedPlayers = seats.map((s) =>
-      s.seat === emptySeat.seat ? { ...s, clerkId: userId, name: playerName, isAI: false, stack: s.stack ?? 1000 } : s
+      s.seat === emptySeat.seat
+        ? {
+            ...s,
+            clerkId: userId,
+            name: playerName,
+            isAI: false,
+            stack: s.stack ?? 1000,
+          }
+        : s,
     );
 
     const [updatedGame] = await db
@@ -40,7 +64,11 @@ export async function POST(req) {
       .where(eq(pokerGames.gameCode, randomGame.gameCode))
       .returning();
 
-    return NextResponse.json({ success: true, game: updatedGame, gameCode: updatedGame.gameCode });
+    return NextResponse.json({
+      success: true,
+      game: updatedGame,
+      gameCode: updatedGame.gameCode,
+    });
   } catch (err) {
     console.error("JOIN PUBLIC GAME ERROR:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

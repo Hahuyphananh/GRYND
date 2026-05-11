@@ -36,7 +36,9 @@ export async function POST(req) {
       return NextResponse.json({ error: "Game not found" }, { status: 404 });
     }
 
-    const requester = await db.query.users.findFirst({ where: eq(users.clerkId, userId) });
+    const requester = await db.query.users.findFirst({
+      where: eq(users.clerkId, userId),
+    });
     if (!requester) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
@@ -54,7 +56,12 @@ export async function POST(req) {
     }
 
     if (isMultiplayer) {
-      const role = game.userId === requester.id ? "player1" : game.player2Id === requester.id ? "player2" : null;
+      const role =
+        game.userId === requester.id
+          ? "player1"
+          : game.player2Id === requester.id
+            ? "player2"
+            : null;
       if (!role) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
@@ -76,10 +83,15 @@ export async function POST(req) {
       }
 
       const winnerUserId = winner === "player1" ? game.userId : game.player2Id;
-      const winnerUser = await db.query.users.findFirst({ where: eq(users.id, winnerUserId) });
+      const winnerUser = await db.query.users.findFirst({
+        where: eq(users.id, winnerUserId),
+      });
 
       if (!winnerUser) {
-        return NextResponse.json({ error: "Winner not found" }, { status: 404 });
+        return NextResponse.json(
+          { error: "Winner not found" },
+          { status: 404 },
+        );
       }
 
       const payout = (parseFloat(game.pot || "0") * 0.95).toFixed(2);
@@ -93,7 +105,13 @@ export async function POST(req) {
             status: "finished",
             payout,
           })
-          .where(and(eq(unoGames.id, gameId), eq(unoGames.result, "pending"), eq(unoGames.winner, "pending")))
+          .where(
+            and(
+              eq(unoGames.id, gameId),
+              eq(unoGames.result, "pending"),
+              eq(unoGames.winner, "pending"),
+            ),
+          )
           .returning({ id: unoGames.id });
 
         if (finalized.length === 0) {
@@ -102,14 +120,20 @@ export async function POST(req) {
 
         await tx
           .update(users)
-          .set({ balance: (parseFloat(winnerUser.balance) + parseFloat(payout)).toFixed(2) })
+          .set({
+            balance: (
+              parseFloat(winnerUser.balance) + parseFloat(payout)
+            ).toFixed(2),
+          })
           .where(eq(users.id, winnerUserId));
 
         return true;
       });
 
       if (!didFinalize) {
-        const refreshedGame = await db.query.unoGames.findFirst({ where: eq(unoGames.id, gameId) });
+        const refreshedGame = await db.query.unoGames.findFirst({
+          where: eq(unoGames.id, gameId),
+        });
         const requesterRole = role;
         const alreadyWinner = refreshedGame?.winner || winner;
         const didRequesterWin = alreadyWinner === requesterRole;
@@ -123,7 +147,13 @@ export async function POST(req) {
         });
       }
 
-      await applyLeaderboardCounters({ clerkId: winnerUser.clerkId, game: "uno", betAmount: Number(game.betAmount || 0), payout: Number(payout), isPvpWin: true });
+      await applyLeaderboardCounters({
+        clerkId: winnerUser.clerkId,
+        game: "uno",
+        betAmount: Number(game.betAmount || 0),
+        payout: Number(payout),
+        isPvpWin: true,
+      });
 
       const didRequesterWin = winner === role;
       const updatedRequester = didRequesterWin
@@ -171,9 +201,18 @@ export async function POST(req) {
         winner,
         result,
         status: "finished",
-        payout: result === "win" ? (parseFloat(game.pot || "0") * 0.95).toFixed(2) : "0.00",
+        payout:
+          result === "win"
+            ? (parseFloat(game.pot || "0") * 0.95).toFixed(2)
+            : "0.00",
       })
-      .where(and(eq(unoGames.id, gameId), eq(unoGames.result, "pending"), eq(unoGames.winner, "pending")))
+      .where(
+        and(
+          eq(unoGames.id, gameId),
+          eq(unoGames.result, "pending"),
+          eq(unoGames.winner, "pending"),
+        ),
+      )
       .returning({ id: unoGames.id });
 
     if (finalizedAiGame.length === 0) {
@@ -187,7 +226,12 @@ export async function POST(req) {
     }
 
     if (result === "win") {
-      await applyLeaderboardCounters({ clerkId: userId, game: "uno-ai", betAmount: Number(game.betAmount || 0), payout: Number((parseFloat(game.pot || "0") * 0.95).toFixed(2)) });
+      await applyLeaderboardCounters({
+        clerkId: userId,
+        game: "uno-ai",
+        betAmount: Number(game.betAmount || 0),
+        payout: Number((parseFloat(game.pot || "0") * 0.95).toFixed(2)),
+      });
       await db
         .update(users)
         .set({ balance: newBalance.toFixed(2) })
@@ -206,6 +250,9 @@ export async function POST(req) {
     });
   } catch (error) {
     console.error("Error determining UNO winner:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 },
+    );
   }
 }

@@ -1,8 +1,12 @@
-'use client';
+"use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { useAuth } from '@clerk/nextjs';
-import { createSocketConnection, disconnectSocket, type RealtimeSocket } from '../lib/socket';
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import {
+  createSocketConnection,
+  disconnectSocket,
+  type RealtimeSocket,
+} from "../lib/socket";
 
 type SocketContextValue = {
   socket: RealtimeSocket | null;
@@ -44,7 +48,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(() => ({ socket }), [socket]);
 
-  return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
+  return (
+    <SocketContext.Provider value={value}>{children}</SocketContext.Provider>
+  );
 }
 
 export function useSocket() {

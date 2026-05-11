@@ -32,7 +32,6 @@ export default function SlotsLobby() {
         {slotGames.map((slot) => (
           <Link key={slot.id} href={slot.path}>
             <div className="group cursor-pointer bg-[#0b224f]/85 border-2 border-[#00e5ff]/40 rounded-2xl p-8 shadow-[0_0_25px_rgba(0,229,255,0.2)] hover:scale-105 transition-transform">
-
               {/* Preview */}
               <div className="flex justify-center gap-3 mb-5">
                 {slot.preview.map((icon, i) => (
@@ -58,7 +57,6 @@ export default function SlotsLobby() {
                   PLAY
                 </button>
               </div>
-
             </div>
           </Link>
         ))}

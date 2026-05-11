@@ -1,10 +1,10 @@
-require('dotenv').config();
+require("dotenv").config();
 
-const http = require('http');
-const express = require('express');
-const cors = require('cors');
-const { Server } = require('socket.io');
-const { verifyToken } = require('@clerk/backend');
+const http = require("http");
+const express = require("express");
+const cors = require("cors");
+const { Server } = require("socket.io");
+const { verifyToken } = require("@clerk/backend");
 
 const app = express();
 
@@ -12,12 +12,14 @@ const PORT = Number(process.env.PORT || 3001);
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY;
 
 function normalizeOrigin(origin) {
-  return String(origin || '').trim().replace(/\/$/, '');
+  return String(origin || "")
+    .trim()
+    .replace(/\/$/, "");
 }
 
 function getAllowedOrigins() {
-  return String(process.env.CLIENT_URL || '')
-    .split(',')
+  return String(process.env.CLIENT_URL || "")
+    .split(",")
     .map((origin) => normalizeOrigin(origin))
     .filter(Boolean);
 }
@@ -25,7 +27,7 @@ function getAllowedOrigins() {
 const allowedOrigins = getAllowedOrigins();
 
 if (allowedOrigins.length === 0) {
-  throw new Error('Missing CLIENT_URL in realtime-server/.env');
+  throw new Error("Missing CLIENT_URL in realtime-server/.env");
 }
 
 function isOriginAllowed(origin) {
@@ -37,7 +39,7 @@ function isOriginAllowed(origin) {
 const corsOptions = {
   origin(origin, callback) {
     if (isOriginAllowed(origin)) return callback(null, true);
-    return callback(new Error('CORS origin not allowed'));
+    return callback(new Error("CORS origin not allowed"));
   },
   credentials: true,
 };
@@ -45,13 +47,13 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-app.get('/health', (_req, res) => {
+app.get("/health", (_req, res) => {
   res.json({
     ok: true,
-    service: 'realtime-server',
+    service: "realtime-server",
     allowedOrigins,
     clerkConfigured: Boolean(CLERK_SECRET_KEY),
-    wsPath: '/socket.io',
+    wsPath: "/socket.io",
   });
 });
 
@@ -61,9 +63,9 @@ const io = new Server(httpServer, {
   cors: {
     origin(origin, callback) {
       if (isOriginAllowed(origin)) return callback(null, true);
-      return callback(new Error('Socket origin not allowed'));
+      return callback(new Error("Socket origin not allowed"));
     },
-    methods: ['GET', 'POST'],
+    methods: ["GET", "POST"],
     credentials: true,
   },
 });
@@ -112,13 +114,18 @@ function randomSpawnPosition(mapWidth, mapHeight) {
 
 function getSpawnPosition(room) {
   const occupied = Array.from(room.players.values()).filter(
-    (state) => Number.isFinite(Number(state?.x)) && Number.isFinite(Number(state?.y))
+    (state) =>
+      Number.isFinite(Number(state?.x)) && Number.isFinite(Number(state?.y)),
   );
 
   for (let i = 0; i < 30; i += 1) {
     const candidate = randomSpawnPosition(room.mapWidth, room.mapHeight);
     const tooClose = occupied.some(
-      (state) => Math.hypot(Number(state.x) - candidate.x, Number(state.y) - candidate.y) < MIN_SPAWN_DISTANCE
+      (state) =>
+        Math.hypot(
+          Number(state.x) - candidate.x,
+          Number(state.y) - candidate.y,
+        ) < MIN_SPAWN_DISTANCE,
     );
     if (!tooClose && !isSpawnBlockedByRock(candidate, room.rocks)) {
       return candidate;
@@ -150,7 +157,7 @@ function lineIntersectsCircle(x1, y1, x2, y2, cx, cy, r) {
   return dx * dx + dy * dy <= r * r;
 }
 
-const TANK_ROOM_PREFIX = 'match:tanks:';
+const TANK_ROOM_PREFIX = "match:tanks:";
 const TANK_TICK_MS = 33;
 const tanksRooms = new Map();
 
@@ -180,7 +187,7 @@ function createTanksRoom(gameId, settings = {}) {
     nextBulletId: 1,
     lastTickAt: Date.now(),
     interval: null,
-    mode: settings.mode === 'battle_royale' ? 'battle_royale' : 'duel',
+    mode: settings.mode === "battle_royale" ? "battle_royale" : "duel",
   };
 }
 
@@ -237,14 +244,32 @@ function ensureRoomLoop(room) {
       const ny = bullet.y + Math.sin(rad) * bulletSpeed;
 
       const hitRock = room.rocks.some((r) =>
-        lineIntersectsCircle(bullet.x, bullet.y, nx, ny, r.x + r.size / 2, r.y + r.size / 2, r.size / 2)
+        lineIntersectsCircle(
+          bullet.x,
+          bullet.y,
+          nx,
+          ny,
+          r.x + r.size / 2,
+          r.y + r.size / 2,
+          r.size / 2,
+        ),
       );
       if (hitRock) continue;
 
       let hitPlayer = null;
       for (const [playerId, player] of room.players.entries()) {
         if (playerId === bullet.ownerId || player.health <= 0) continue;
-        if (lineIntersectsCircle(bullet.x, bullet.y, nx, ny, player.x, player.y, tankRadius)) {
+        if (
+          lineIntersectsCircle(
+            bullet.x,
+            bullet.y,
+            nx,
+            ny,
+            player.x,
+            player.y,
+            tankRadius,
+          )
+        ) {
           hitPlayer = playerId;
           break;
         }
@@ -255,7 +280,7 @@ function ensureRoomLoop(room) {
         if (target) {
           target.health = Math.max(0, target.health - 1);
         }
-        io.to(`${TANK_ROOM_PREFIX}${room.gameId}`).emit('tanks:hit', {
+        io.to(`${TANK_ROOM_PREFIX}${room.gameId}`).emit("tanks:hit", {
           attackerId: bullet.ownerId,
           targetId: hitPlayer,
           createdAt: now,
@@ -280,7 +305,7 @@ function ensureRoomLoop(room) {
       };
     }
 
-    io.to(`${TANK_ROOM_PREFIX}${room.gameId}`).emit('tanks:game_state', {
+    io.to(`${TANK_ROOM_PREFIX}${room.gameId}`).emit("tanks:game_state", {
       gameId: room.gameId,
       serverTime: now,
       map: {
@@ -306,11 +331,11 @@ io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token;
 
     if (!token) {
-      return next(new Error('Authentication token missing'));
+      return next(new Error("Authentication token missing"));
     }
 
     if (!CLERK_SECRET_KEY) {
-      return next(new Error('Server authentication is not configured'));
+      return next(new Error("Server authentication is not configured"));
     }
 
     const verified = await verifyToken(token, {
@@ -320,46 +345,48 @@ io.use(async (socket, next) => {
     socket.data.userId = verified.sub;
     return next();
   } catch (error) {
-    return next(new Error('Invalid authentication token'));
+    return next(new Error("Invalid authentication token"));
   }
 });
 
-io.on('connection', (socket) => {
-  socket.emit('server:hello', {
+io.on("connection", (socket) => {
+  socket.emit("server:hello", {
     userId: socket.data.userId,
     at: new Date().toISOString(),
   });
 
-  socket.on('join_room', ({ roomId }) => {
+  socket.on("join_room", ({ roomId }) => {
     if (!roomId) return;
     socket.join(String(roomId));
   });
 
-  socket.on('leave_room', ({ roomId }) => {
+  socket.on("leave_room", ({ roomId }) => {
     if (!roomId) return;
     socket.leave(String(roomId));
   });
 
-  socket.on('room_event', ({ roomId, event, payload }) => {
+  socket.on("room_event", ({ roomId, event, payload }) => {
     if (!roomId || !event) return;
     io.to(String(roomId)).emit(String(event), {
-      ...(payload && typeof payload === 'object' ? payload : {}),
+      ...(payload && typeof payload === "object" ? payload : {}),
       userId: socket.data.userId,
       sentAt: new Date().toISOString(),
     });
   });
 
-  socket.on('join_game', ({ gameId }) => {
+  socket.on("join_game", ({ gameId }) => {
     if (!gameId) return;
     const roomId = String(gameId);
     socket.join(roomId);
-    socket.to(roomId).emit('player_joined', { gameId: roomId, userId: socket.data.userId });
+    socket
+      .to(roomId)
+      .emit("player_joined", { gameId: roomId, userId: socket.data.userId });
   });
 
-  socket.on('move', ({ gameId, move }) => {
+  socket.on("move", ({ gameId, move }) => {
     if (!gameId || !move) return;
     const roomId = String(gameId);
-    socket.to(roomId).emit('move', {
+    socket.to(roomId).emit("move", {
       gameId: roomId,
       move,
       userId: socket.data.userId,
@@ -367,21 +394,26 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('leave_game', ({ gameId }) => {
+  socket.on("leave_game", ({ gameId }) => {
     if (!gameId) return;
     const roomId = String(gameId);
     socket.leave(roomId);
-    socket.to(roomId).emit('player_left', { gameId: roomId, userId: socket.data.userId });
+    socket
+      .to(roomId)
+      .emit("player_left", { gameId: roomId, userId: socket.data.userId });
   });
 
-  socket.on('tanks:join_game', ({ gameId, settings }) => {
+  socket.on("tanks:join_game", ({ gameId, settings }) => {
     if (!gameId) return;
     const normalizedGameId = String(gameId);
     const roomId = `${TANK_ROOM_PREFIX}${normalizedGameId}`;
     socket.join(roomId);
 
     if (!tanksRooms.has(normalizedGameId)) {
-      tanksRooms.set(normalizedGameId, createTanksRoom(normalizedGameId, settings));
+      tanksRooms.set(
+        normalizedGameId,
+        createTanksRoom(normalizedGameId, settings),
+      );
     }
 
     const room = tanksRooms.get(normalizedGameId);
@@ -399,7 +431,7 @@ io.on('connection', (socket) => {
     ensureRoomLoop(room);
   });
 
-  socket.on('tanks:input', ({ gameId, input, rotation }) => {
+  socket.on("tanks:input", ({ gameId, input, rotation }) => {
     if (!gameId) return;
     const room = tanksRooms.get(String(gameId));
     const player = room?.players.get(socket.data.userId);
@@ -417,7 +449,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('tanks:shoot', ({ gameId }) => {
+  socket.on("tanks:shoot", ({ gameId }) => {
     if (!gameId) return;
     const room = tanksRooms.get(String(gameId));
     const player = room?.players.get(socket.data.userId);
@@ -435,7 +467,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('tanks:leave_game', ({ gameId }) => {
+  socket.on("tanks:leave_game", ({ gameId }) => {
     if (!gameId) return;
     const normalizedGameId = String(gameId);
     const roomId = `${TANK_ROOM_PREFIX}${normalizedGameId}`;
@@ -447,10 +479,12 @@ io.on('connection', (socket) => {
 
   registerPoolSocketHandlers(socket);
 
-  socket.on('disconnect', () => {
+  socket.on("disconnect", () => {
     for (const roomId of socket.rooms) {
       if (roomId === socket.id) continue;
-      socket.to(roomId).emit('player_disconnected', { roomId, userId: socket.data.userId });
+      socket
+        .to(roomId)
+        .emit("player_disconnected", { roomId, userId: socket.data.userId });
       if (roomId.startsWith(TANK_ROOM_PREFIX)) {
         const gameId = roomId.slice(TANK_ROOM_PREFIX.length);
         const room = tanksRooms.get(gameId);
@@ -466,19 +500,45 @@ httpServer.listen(PORT, () => {
 });
 const diceLobbies = new Map();
 const diceMatches = new Map();
-const roll = () => Math.floor(Math.random()*6)+1;
-function resolveTurn(match, action){
+const roll = () => Math.floor(Math.random() * 6) + 1;
+function resolveTurn(match, action) {
   const me = match.turnUserId;
-  const enemy = match.player1Id===me?match.player2Id:match.player1Id;
-  let dmg=0,self=0,r1=null,r2=null;
-  if(action==='SAFE_ROLL'){r1=roll();dmg=r1<=2?0:r1<=4?2:4;}
-  if(action==='POWER_ROLL'){r1=roll();r2=roll();const t=r1+r2; if(t<=4) self=3; else if(t<=7) dmg=3; else if(t<=10) dmg=6; else dmg=8;}
-  if(action==='SHIELD'){match.shields[me]=(match.shields[me]||0)+1;}
-  if(dmg>0 && (match.shields[enemy]||0)>0){dmg=Math.floor(dmg/2); match.shields[enemy]=0;}
-  if(match.player1Id===me){match.hp2=Math.max(0,match.hp2-dmg); match.hp1=Math.max(0,match.hp1-self);} else {match.hp1=Math.max(0,match.hp1-dmg); match.hp2=Math.max(0,match.hp2-self);} 
-  match.round += 1; match.turnUserId = enemy; return {dmg,self,r1,r2};
+  const enemy = match.player1Id === me ? match.player2Id : match.player1Id;
+  let dmg = 0,
+    self = 0,
+    r1 = null,
+    r2 = null;
+  if (action === "SAFE_ROLL") {
+    r1 = roll();
+    dmg = r1 <= 2 ? 0 : r1 <= 4 ? 2 : 4;
+  }
+  if (action === "POWER_ROLL") {
+    r1 = roll();
+    r2 = roll();
+    const t = r1 + r2;
+    if (t <= 4) self = 3;
+    else if (t <= 7) dmg = 3;
+    else if (t <= 10) dmg = 6;
+    else dmg = 8;
+  }
+  if (action === "SHIELD") {
+    match.shields[me] = (match.shields[me] || 0) + 1;
+  }
+  if (dmg > 0 && (match.shields[enemy] || 0) > 0) {
+    dmg = Math.floor(dmg / 2);
+    match.shields[enemy] = 0;
+  }
+  if (match.player1Id === me) {
+    match.hp2 = Math.max(0, match.hp2 - dmg);
+    match.hp1 = Math.max(0, match.hp1 - self);
+  } else {
+    match.hp1 = Math.max(0, match.hp1 - dmg);
+    match.hp2 = Math.max(0, match.hp2 - self);
+  }
+  match.round += 1;
+  match.turnUserId = enemy;
+  return { dmg, self, r1, r2 };
 }
-
 
 // ---- Pool Masters (input-sync, low-bandwidth) ----
 const poolLobbies = new Map();
@@ -488,80 +548,163 @@ const MATCH_TTL_MS = 10 * 60 * 1000;
 setInterval(() => {
   const now = Date.now();
   for (const [id, m] of poolMatches) {
-    if (m.status !== 'active' || (m.lastActivityAt && now - m.lastActivityAt > MATCH_TTL_MS)) poolMatches.delete(id);
+    if (
+      m.status !== "active" ||
+      (m.lastActivityAt && now - m.lastActivityAt > MATCH_TTL_MS)
+    )
+      poolMatches.delete(id);
   }
   for (const [id, l] of poolLobbies) {
     if (now - l.createdAt > 5 * 60 * 1000) poolLobbies.delete(id);
   }
 }, 30000);
 
-function clamp(v, min, max) { return Math.max(min, Math.min(max, Number(v))); }
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, Number(v)));
+}
 
 function registerPoolSocketHandlers(socket) {
-  socket.on('pool:lobbies:list', () => {
-    socket.emit('pool:lobbies:list', Array.from(poolLobbies.values()).filter((l) => l.status === 'waiting'));
+  socket.on("pool:lobbies:list", () => {
+    socket.emit(
+      "pool:lobbies:list",
+      Array.from(poolLobbies.values()).filter((l) => l.status === "waiting"),
+    );
   });
 
-  socket.on('pool:lobby:create', (payload = {}) => {
-    const lobbyId = String(payload.lobbyId || `lobby-${Date.now()}-${Math.random().toString(36).slice(2,7)}`);
+  socket.on("pool:lobby:create", (payload = {}) => {
+    const lobbyId = String(
+      payload.lobbyId ||
+        `lobby-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    );
     if (poolLobbies.has(lobbyId)) return;
     const lobby = {
-      id: lobbyId, hostUserId: String(payload.hostUserId), opponentUserId: null,
-      wager: clamp(payload.wager, 1, 1000000), gameMode: payload.gameMode || 'pvp', status: 'waiting', createdAt: Date.now(),
+      id: lobbyId,
+      hostUserId: String(payload.hostUserId),
+      opponentUserId: null,
+      wager: clamp(payload.wager, 1, 1000000),
+      gameMode: payload.gameMode || "pvp",
+      status: "waiting",
+      createdAt: Date.now(),
     };
     poolLobbies.set(lobby.id, lobby);
-    console.log('[pool] lobby created', lobby.id, lobby.hostUserId, lobby.gameMode);
-    io.emit('pool:lobbies:list', Array.from(poolLobbies.values()).filter((l) => l.status === 'waiting'));
+    console.log(
+      "[pool] lobby created",
+      lobby.id,
+      lobby.hostUserId,
+      lobby.gameMode,
+    );
+    io.emit(
+      "pool:lobbies:list",
+      Array.from(poolLobbies.values()).filter((l) => l.status === "waiting"),
+    );
   });
 
-  socket.on('pool:lobby:join', ({ lobbyId, userId }) => {
+  socket.on("pool:lobby:join", ({ lobbyId, userId }) => {
     const lobby = poolLobbies.get(String(lobbyId));
-    if (!lobby || lobby.status !== 'waiting' || String(userId) === lobby.hostUserId || lobby.opponentUserId) return;
-    lobby.opponentUserId = String(userId); lobby.status = 'active';
+    if (
+      !lobby ||
+      lobby.status !== "waiting" ||
+      String(userId) === lobby.hostUserId ||
+      lobby.opponentUserId
+    )
+      return;
+    lobby.opponentUserId = String(userId);
+    lobby.status = "active";
     const matchId = `pool-${lobby.id}`;
     const roomId = `pool:${matchId}`;
     const turn = Math.random() < 0.5 ? lobby.hostUserId : lobby.opponentUserId;
-    const match = { id: matchId, lobbyId: lobby.id, players: [lobby.hostUserId, lobby.opponentUserId], turnUserId: turn, gameStarted: true, shotLock: false, status: 'active', lastActivityAt: Date.now(), shotSeq: 0 };
+    const match = {
+      id: matchId,
+      lobbyId: lobby.id,
+      players: [lobby.hostUserId, lobby.opponentUserId],
+      turnUserId: turn,
+      gameStarted: true,
+      shotLock: false,
+      status: "active",
+      lastActivityAt: Date.now(),
+      shotSeq: 0,
+    };
     poolMatches.set(matchId, match);
     io.in(roomId).socketsJoin(roomId);
-    io.to(roomId).emit('pool:match:start', { ...match, activePlayer: turn });
-    io.to(roomId).emit('pool:turn:start', { matchId, turnUserId: turn, turnSeconds: 45 });
-    console.log('[pool] match started', matchId, 'turn', turn);
+    io.to(roomId).emit("pool:match:start", { ...match, activePlayer: turn });
+    io.to(roomId).emit("pool:turn:start", {
+      matchId,
+      turnUserId: turn,
+      turnSeconds: 45,
+    });
+    console.log("[pool] match started", matchId, "turn", turn);
   });
 
-  socket.on('pool:room:join', ({ matchId, userId }) => {
+  socket.on("pool:room:join", ({ matchId, userId }) => {
     const roomId = `pool:${String(matchId)}`;
     socket.join(roomId);
     const m = poolMatches.get(String(matchId));
     if (m) {
-      socket.emit('pool:match:start', { ...m, activePlayer: m.turnUserId });
-      socket.emit('pool:turn:start', { matchId: m.id, turnUserId: m.turnUserId, turnSeconds: 45 });
+      socket.emit("pool:match:start", { ...m, activePlayer: m.turnUserId });
+      socket.emit("pool:turn:start", {
+        matchId: m.id,
+        turnUserId: m.turnUserId,
+        turnSeconds: 45,
+      });
     }
-    console.log('[pool] room join', matchId, userId);
+    console.log("[pool] room join", matchId, userId);
   });
 
-  socket.on('pool:shoot', ({ matchId, userId, shotId, angle, power, cueBallPosition }) => {
-    const m = poolMatches.get(String(matchId));
-    if (!m || m.status !== 'active' || m.shotLock) return;
-    if (m.turnUserId !== String(userId) || processedShotIds.has(String(shotId))) return;
-    m.shotSeq += 1;
-    const effectiveShotId = String(shotId || `${m.id}:${m.shotSeq}`);
-    if (processedShotIds.has(effectiveShotId)) return;
-    const sanitized = { angle: clamp(angle, 0, 360), power: clamp(power, 0.05, 1), cueBallPosition };
-    processedShotIds.add(effectiveShotId); m.shotLock = true; m.lastActivityAt = Date.now();
-    io.to(`pool:${matchId}`).emit('pool:shoot', { matchId, userId: String(userId), shot: sanitized, shotId: effectiveShotId });
-    console.log('[pool] shot', matchId, userId, effectiveShotId);
-  });
+  socket.on(
+    "pool:shoot",
+    ({ matchId, userId, shotId, angle, power, cueBallPosition }) => {
+      const m = poolMatches.get(String(matchId));
+      if (!m || m.status !== "active" || m.shotLock) return;
+      if (
+        m.turnUserId !== String(userId) ||
+        processedShotIds.has(String(shotId))
+      )
+        return;
+      m.shotSeq += 1;
+      const effectiveShotId = String(shotId || `${m.id}:${m.shotSeq}`);
+      if (processedShotIds.has(effectiveShotId)) return;
+      const sanitized = {
+        angle: clamp(angle, 0, 360),
+        power: clamp(power, 0.05, 1),
+        cueBallPosition,
+      };
+      processedShotIds.add(effectiveShotId);
+      m.shotLock = true;
+      m.lastActivityAt = Date.now();
+      io.to(`pool:${matchId}`).emit("pool:shoot", {
+        matchId,
+        userId: String(userId),
+        shot: sanitized,
+        shotId: effectiveShotId,
+      });
+      console.log("[pool] shot", matchId, userId, effectiveShotId);
+    },
+  );
 
-  socket.on('pool:physics:end', ({ matchId, shotId, nextTurnUserId, snapshot, eventSummary }) => {
-    const m = poolMatches.get(String(matchId));
-    if (!m || !m.shotLock || !processedShotIds.has(String(shotId))) return;
-    if (nextTurnUserId && m.players.includes(String(nextTurnUserId))) m.turnUserId = String(nextTurnUserId);
-    m.shotLock = false;
-    m.lastSnapshot = snapshot;
-    m.lastActivityAt = Date.now();
-    io.to(`pool:${matchId}`).emit('pool:state:update', { matchId, shotId, snapshot, eventSummary, turnUserId: m.turnUserId, activePlayer: m.turnUserId });
-    io.to(`pool:${matchId}`).emit('pool:turn:start', { matchId, turnUserId: m.turnUserId, turnSeconds: 45 });
-    console.log('[pool] turn switched', matchId, m.turnUserId);
-  });
+  socket.on(
+    "pool:physics:end",
+    ({ matchId, shotId, nextTurnUserId, snapshot, eventSummary }) => {
+      const m = poolMatches.get(String(matchId));
+      if (!m || !m.shotLock || !processedShotIds.has(String(shotId))) return;
+      if (nextTurnUserId && m.players.includes(String(nextTurnUserId)))
+        m.turnUserId = String(nextTurnUserId);
+      m.shotLock = false;
+      m.lastSnapshot = snapshot;
+      m.lastActivityAt = Date.now();
+      io.to(`pool:${matchId}`).emit("pool:state:update", {
+        matchId,
+        shotId,
+        snapshot,
+        eventSummary,
+        turnUserId: m.turnUserId,
+        activePlayer: m.turnUserId,
+      });
+      io.to(`pool:${matchId}`).emit("pool:turn:start", {
+        matchId,
+        turnUserId: m.turnUserId,
+        turnSeconds: 45,
+      });
+      console.log("[pool] turn switched", matchId, m.turnUserId);
+    },
+  );
 }

@@ -10,7 +10,7 @@ export async function POST(request) {
     if (!userId) {
       return new Response(
         JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
+        { status: 401, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -33,7 +33,7 @@ export async function POST(request) {
     if (!meRes.length) {
       return new Response(
         JSON.stringify({ success: false, error: "User not found" }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
+        { status: 404, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -42,7 +42,7 @@ export async function POST(request) {
     if (meId === friendId) {
       return new Response(
         JSON.stringify({ success: false, error: "Invalid operation" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -58,9 +58,8 @@ export async function POST(request) {
         success: true,
         message: "Friend removed successfully.",
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
-
   } catch (error) {
     console.error("[FRIENDS_REMOVE_ERROR]", error);
 
@@ -69,7 +68,7 @@ export async function POST(request) {
         success: false,
         error: "Could not remove friend right now.",
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }

@@ -3,30 +3,58 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { connectFourGames } from "../../../../db/schema";
-import { checkWinner, getDropRow, isBoardFull } from "../../../../lib/connectFour";
-import { ensureBoard, getGameMoveSeconds, getPlayerRole, getUserAliases, nextMoveDeadline, settleConnectFourGame } from "../../../../lib/connectFourServer";
+import {
+  checkWinner,
+  getDropRow,
+  isBoardFull,
+} from "../../../../lib/connectFour";
+import {
+  ensureBoard,
+  getGameMoveSeconds,
+  getPlayerRole,
+  getUserAliases,
+  nextMoveDeadline,
+  settleConnectFourGame,
+} from "../../../../lib/connectFourServer";
 
 export async function POST(req) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
     const gameId = Number(body?.gameId);
     const column = Number(body?.column);
 
-    if (!Number.isFinite(gameId) || gameId <= 0 || !Number.isInteger(column) || column < 0 || column > 6) {
-      return NextResponse.json({ error: "Invalid move payload" }, { status: 400 });
+    if (
+      !Number.isFinite(gameId) ||
+      gameId <= 0 ||
+      !Number.isInteger(column) ||
+      column < 0 ||
+      column > 6
+    ) {
+      return NextResponse.json(
+        { error: "Invalid move payload" },
+        { status: 400 },
+      );
     }
 
     const userAliases = await getUserAliases(userId);
 
     const result = await db.transaction(async (tx) => {
-      const [game] = await tx.select().from(connectFourGames).where(eq(connectFourGames.id, gameId)).for("update");
+      const [game] = await tx
+        .select()
+        .from(connectFourGames)
+        .where(eq(connectFourGames.id, gameId))
+        .for("update");
       if (!game) throw new Error("Game not found");
       if (game.status !== "in_progress") throw new Error("Game is not active");
 
-      if (game.moveDeadlineAt && Date.now() > new Date(game.moveDeadlineAt).getTime()) {
+      if (
+        game.moveDeadlineAt &&
+        Date.now() > new Date(game.moveDeadlineAt).getTime()
+      ) {
         return {
           timeout: true,
           role: null,
@@ -48,8 +76,10 @@ export async function POST(req) {
       const disc = role === "host" ? 1 : 2;
       board[row][column] = disc;
 
-      const hostDiscsUsed = Number(game.hostDiscsUsed || 0) + (role === "host" ? 1 : 0);
-      const guestDiscsUsed = Number(game.guestDiscsUsed || 0) + (role === "guest" ? 1 : 0);
+      const hostDiscsUsed =
+        Number(game.hostDiscsUsed || 0) + (role === "host" ? 1 : 0);
+      const guestDiscsUsed =
+        Number(game.guestDiscsUsed || 0) + (role === "guest" ? 1 : 0);
       const connected = checkWinner(board, row, column, disc);
       const fullBoard = isBoardFull(board);
       const nextTurn = role === "host" ? "guest" : "host";
@@ -65,25 +95,42 @@ export async function POST(req) {
         })
         .where(eq(connectFourGames.id, game.id));
 
-      return { connected, fullBoard, role, hostClerkId: game.hostClerkId, guestClerkId: game.guestClerkId };
+      return {
+        connected,
+        fullBoard,
+        role,
+        hostClerkId: game.hostClerkId,
+        guestClerkId: game.guestClerkId,
+      };
     });
 
     if (result?.timeout) {
-      const winnerClerkId = result.hostClerkId && result.guestClerkId
-        ? result.hostClerkId === userId
-          ? result.guestClerkId
-          : result.hostClerkId
-        : null;
-      if (winnerClerkId) await settleConnectFourGame(gameId, winnerClerkId, "timeout");
-      return NextResponse.json({ success: true, ignored: true, reason: "timeout_resolved" });
+      const winnerClerkId =
+        result.hostClerkId && result.guestClerkId
+          ? result.hostClerkId === userId
+            ? result.guestClerkId
+            : result.hostClerkId
+          : null;
+      if (winnerClerkId)
+        await settleConnectFourGame(gameId, winnerClerkId, "timeout");
+      return NextResponse.json({
+        success: true,
+        ignored: true,
+        reason: "timeout_resolved",
+      });
     }
 
     if (result?.ignored) {
-      return NextResponse.json({ success: true, ignored: true, reason: "stale_turn" });
+      return NextResponse.json({
+        success: true,
+        ignored: true,
+        reason: "stale_turn",
+      });
     }
 
     if (result.connected) {
-      const winnerClerkId = result.role === "host" ? result.hostClerkId : result.guestClerkId;
+      const winnerClerkId =
+        result.role === "host" ? result.hostClerkId : result.guestClerkId;
       await settleConnectFourGame(gameId, winnerClerkId, "win");
     } else if (result.fullBoard) {
       await settleConnectFourGame(gameId, null, "draw");
@@ -91,6 +138,9 @@ export async function POST(req) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error?.message || "Failed to play move" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: error?.message || "Failed to play move" },
+      { status: 400 },
+    );
   }
 }

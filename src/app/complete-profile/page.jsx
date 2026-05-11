@@ -23,8 +23,11 @@ export default function CompleteProfilePage() {
     }
 
     // Calculate age
-    const age = Math.floor((Date.now() - new Date(birthDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-    
+    const age = Math.floor(
+      (Date.now() - new Date(birthDate).getTime()) /
+        (365.25 * 24 * 60 * 60 * 1000),
+    );
+
     if (age < 18) {
       setError("You must be at least 18 years old to use this platform");
       setIsSubmitting(false);
@@ -32,23 +35,22 @@ export default function CompleteProfilePage() {
     }
 
     try {
-
       console.log("Before update:", user.publicMetadata);
-     const response = await fetch("/api/update-birthdate", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({ birthDate }),
-});
+      const response = await fetch("/api/update-birthdate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ birthDate }),
+      });
 
-const result = await response.json();
+      const result = await response.json();
 
-if (!result.success) {
-  throw new Error(result.error || "Unknown error");
-}
+      if (!result.success) {
+        throw new Error(result.error || "Unknown error");
+      }
 
-console.log("Updated successfully.");
+      console.log("Updated successfully.");
 
       router.push("/sync");
     } catch (err) {
@@ -71,7 +73,10 @@ console.log("Updated successfully.");
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="birthDate" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="birthDate"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               Date of Birth
             </label>
             <input
@@ -85,9 +90,7 @@ console.log("Updated successfully.");
           </div>
 
           {error && (
-            <div className="text-red-600 text-sm text-center">
-              {error}
-            </div>
+            <div className="text-red-600 text-sm text-center">{error}</div>
           )}
 
           <button
@@ -100,7 +103,8 @@ console.log("Updated successfully.");
         </form>
 
         <p className="text-xs text-gray-500 text-center mt-4">
-          Your information is secure and will only be used for age verification purposes.
+          Your information is secure and will only be used for age verification
+          purposes.
         </p>
       </div>
     </div>

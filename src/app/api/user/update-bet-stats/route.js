@@ -7,21 +7,36 @@ export async function POST(request) {
   const { userId } = await auth();
 
   if (!userId) {
-    return new Response(JSON.stringify({ error: "Utilisateur non authentifié" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: "Utilisateur non authentifié" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   try {
     const parsed = await parseAndValidateJson(request, {
       game: { type: "string", required: false, default: "casino" },
       betAmount: { type: "number", required: true, min: 0, max: 1000000 },
-      payout: { type: "number", required: false, min: 0, max: 1000000000, default: 0 },
+      payout: {
+        type: "number",
+        required: false,
+        min: 0,
+        max: 1000000000,
+        default: 0,
+      },
       isAllIn: { type: "boolean", required: false, default: false },
       isJackpot: { type: "boolean", required: false, default: false },
       isPvpWin: { type: "boolean", required: false, default: false },
-      balanceAfter: { type: "number", required: false, min: 0, max: 1000000000, default: 0 },
+      balanceAfter: {
+        type: "number",
+        required: false,
+        min: 0,
+        max: 1000000000,
+        default: 0,
+      },
     });
 
     if (!parsed.ok) return parsed.response;
@@ -134,12 +149,22 @@ export async function POST(request) {
       balanceAfter: Number(parsed.data.balanceAfter || 0),
     });
 
-    return Response.json({ success: true, stats: updated, unlockedSpecialTitles });
+    return Response.json({
+      success: true,
+      stats: updated,
+      unlockedSpecialTitles,
+    });
   } catch (error) {
     console.error("❌ Failed to update user stats:", error);
-    return new Response(JSON.stringify({ success: false, error: "Erreur lors de la mise à jour des statistiques" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Erreur lors de la mise à jour des statistiques",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

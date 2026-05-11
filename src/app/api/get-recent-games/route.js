@@ -46,15 +46,15 @@ export async function POST(req) {
       LIMIT ${limit} OFFSET ${offset};
     `;
 
-    return new Response(
-      JSON.stringify({ games: rows }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ games: rows }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error(error);
     return new Response(
       JSON.stringify({ error: "Failed to fetch recent games" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }

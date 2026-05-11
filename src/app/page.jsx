@@ -11,8 +11,21 @@ import Img3 from "../images/poker.jpg";
 import Img4 from "../images/plinko.jpg";
 import HeroBg from "../images/casino-bg.png";
 import SportCard from "../components/sport-card";
-import { fadeIn, fadeUp, hoverScale, modalMotion, stagger, withReducedMotion } from "../lib/animations";
-import { UIPro06PrimaryButton, UIPro07SecondaryButton, UIPro16ToastShell, UIPro17ModalBackdrop, UIPro18ModalPanel } from "../components/uipro";
+import {
+  fadeIn,
+  fadeUp,
+  hoverScale,
+  modalMotion,
+  stagger,
+  withReducedMotion,
+} from "../lib/animations";
+import {
+  UIPro06PrimaryButton,
+  UIPro07SecondaryButton,
+  UIPro16ToastShell,
+  UIPro17ModalBackdrop,
+  UIPro18ModalPanel,
+} from "../components/uipro";
 import { useTranslation } from "../hooks/useTranslation";
 
 const MAIN_SPORT_GROUPS = [
@@ -23,10 +36,10 @@ const MAIN_SPORT_GROUPS = [
 ];
 
 function MainComponent() {
-    const router = useRouter();
+  const router = useRouter();
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user } = useUser();
-const [openGroup, setOpenGroup] = useState(null);
+  const [openGroup, setOpenGroup] = useState(null);
   const [selectedBet, setSelectedBet] = useState(null);
   const [selectedOdds, setSelectedOdds] = useState(null);
   const [sports, setSports] = useState({});
@@ -41,261 +54,266 @@ const [openGroup, setOpenGroup] = useState(null);
   const [betInProgress, setBetInProgress] = useState(false);
   const [notification, setNotification] = useState(null);
   const [jwt, setJwt] = useState(null);
-const [dailyRewardCooldown, setDailyRewardCooldown] = useState(false);
-const [nextRewardTime, setNextRewardTime] = useState(null); // timestamp for cooldown
-const [cooldownTimeLeft, setCooldownTimeLeft] = useState("");
-const [rewardPopupVisible, setRewardPopupVisible] = useState(false);
-const [streakData, setStreakData] = useState({
-  claimedDays: [], // array of ISO dates strings
-  currentStreak: 0,
-  lastClaimDate: null
-});
+  const [dailyRewardCooldown, setDailyRewardCooldown] = useState(false);
+  const [nextRewardTime, setNextRewardTime] = useState(null); // timestamp for cooldown
+  const [cooldownTimeLeft, setCooldownTimeLeft] = useState("");
+  const [rewardPopupVisible, setRewardPopupVisible] = useState(false);
+  const [streakData, setStreakData] = useState({
+    claimedDays: [], // array of ISO dates strings
+    currentStreak: 0,
+    lastClaimDate: null,
+  });
 
-const [claimedDay, setClaimedDay] = useState(null);
-const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
-const { t } = useTranslation();
-const shouldReduceMotion = useReducedMotion();
-const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
-const fadeInVariant = withReducedMotion(shouldReduceMotion, fadeIn);
-const modalBackdropVariant = withReducedMotion(shouldReduceMotion, modalMotion.backdrop);
-const modalPanelVariant = withReducedMotion(shouldReduceMotion, modalMotion.panel);
-
-const fetchFriendPresence = async () => {
-  try {
-    const response = await fetch("/api/friends/game-presence", { credentials: "include" });
-    const data = await response.json();
-    if (response.ok && data.success) setFriendPresenceByGame(data.byGame || {});
-  } catch (err) {
-    console.error("[FRIEND_PRESENCE_ERROR]", err);
-  }
-};
-
-
-const renderFriendWidget = (gameKey) => {
-  const friends = Array.isArray(friendPresenceByGame[gameKey]) ? friendPresenceByGame[gameKey] : [];
-  if (!friends.length) return null;
-
-  return (
-    <div
-      className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1"
-      title={friends.map((f) => f.name).join(", ")}
-    >
-      {friends.slice(0, 4).map((friend) =>
-        friend.profilePicture ? (
-          <img
-            key={`${friend.id}-${friend.name}`}
-            src={friend.profilePicture}
-            alt={friend.name}
-            className="h-6 w-6 rounded-full border border-white/30 object-cover"
-            title={friend.name}
-          />
-        ) : (
-          <div
-            key={`${friend.id}-${friend.name}`}
-            className="h-6 w-6 rounded-full bg-[#FFD700] text-[#003366] text-xs font-bold flex items-center justify-center"
-            title={friend.name}
-          >
-            {friend.name?.charAt(0)?.toUpperCase() || "U"}
-          </div>
-        )
-      )}
-    </div>
+  const [claimedDay, setClaimedDay] = useState(null);
+  const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
+  const { t } = useTranslation();
+  const shouldReduceMotion = useReducedMotion();
+  const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
+  const fadeInVariant = withReducedMotion(shouldReduceMotion, fadeIn);
+  const modalBackdropVariant = withReducedMotion(
+    shouldReduceMotion,
+    modalMotion.backdrop,
   );
-};
+  const modalPanelVariant = withReducedMotion(
+    shouldReduceMotion,
+    modalMotion.panel,
+  );
 
-const handleLoadSports = async () => {
-  try {
-    setLoadingSports(true);
-
-    const res = await fetch("/api/sports/list");
-    const data = await res.json();
-
-const sportsArray = Array.isArray(data?.sports) ? data.sports : [];
-
-const grouped = {};
-
-sportsArray.forEach((sport) => {
-      console.log("SPORT FROM API:", {
-  key: sport.key,
-  group: sport.group,
-  title: sport.title,
-  active: sport.active,
-  has_outrights: sport.has_outrights,
-});
-
-      // Only main sports
-      if (!MAIN_SPORT_GROUPS.includes(sport.group)) return;
-
-      // Only active leagues
-      if (!sport.active) return;
-
-      // Hide championship / winner markets
-      if (sport.has_outrights) return;
-
-      if (!grouped[sport.group]) {
-        grouped[sport.group] = [];
-      }
-
-      grouped[sport.group].push(sport);
-    });
-
-    setSports(grouped);
-  } catch (err) {
-    console.error(err);
-    setErrorSports(t("home.errors.load_sports"));
-  } finally {
-    setLoadingSports(false);
-  }
-};
-
-const fetchRewardStatus = async () => {
-  if (!user || !isSignedIn) return;
-
-  try {
-    const res = await fetch("/api/get-login-reward-status");
-    const data = await res.json();
-    if (!data.success) return;
-
-    setStreakData({
-      currentDay: data.currentDay,
-      claimedDays: data.claimedDays || [],
-      lastClaimDate: data.lastClaimedDate,
-      maxDay: data.maxDay || 14
-    });
-
-    if (data.lastClaimedDate) {
-      const lastClaimed = new Date(data.lastClaimedDate);
-      const now = new Date();
-
-      const toUtcDayKey = (d) =>
-  Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-
-if (toUtcDayKey(lastClaimed) === toUtcDayKey(now)) {
-        setDailyRewardCooldown(true);
-
-        const nextTime = new Date(lastClaimed);
-        nextTime.setHours(nextTime.getHours() + 24);
-        setNextRewardTime(nextTime);
-      }
+  const fetchFriendPresence = async () => {
+    try {
+      const response = await fetch("/api/friends/game-presence", {
+        credentials: "include",
+      });
+      const data = await response.json();
+      if (response.ok && data.success)
+        setFriendPresenceByGame(data.byGame || {});
+    } catch (err) {
+      console.error("[FRIEND_PRESENCE_ERROR]", err);
     }
+  };
 
-  } catch (err) {
-    console.error("Failed to fetch reward status:", err);
-  }
-};
+  const renderFriendWidget = (gameKey) => {
+    const friends = Array.isArray(friendPresenceByGame[gameKey])
+      ? friendPresenceByGame[gameKey]
+      : [];
+    if (!friends.length) return null;
 
-useEffect(() => {
-  fetchRewardStatus();
-}, [user, isSignedIn]);
-
-
-const claimDailyReward = async () => {
-  if (!user || !isSignedIn) {
-    showNotification(t("home.rewards.must_sign_in"), "error");
-    return;
-  }
-
-  try {
-   const res = await fetch("/api/claim-login-reward", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({}), // 👈 REQUIRED
-  credentials: "include",
-});
-    const data = await res.json();
-
-    if (!res.ok || !data.success) {
-      showNotification(data.error || t("home.rewards.claim_error"), "error");
-      return;
-    }
-
-   setUserTokens(prev => prev + data.reward);
-
-setClaimedDay(data.claimedDay);
-
-setRewardPopupVisible(true);
-
-
-    // 4) Set 24h cooldown
-    const nextTime = new Date();
-    nextTime.setHours(nextTime.getHours() + 24);
-    setNextRewardTime(nextTime);
-    setDailyRewardCooldown(true);
-
-  } catch (err) {
-    console.error(err);
-    showNotification(err.message || t("home.rewards.claim_error"), "error");
-  }
-};
-
-useEffect(() => {
-  if (!nextRewardTime) return;
-
-  const interval = setInterval(() => {
-    const now = new Date();
-    const diff = nextRewardTime - now;
-
-    if (diff <= 0) {
-      setDailyRewardCooldown(false);
-      setNextRewardTime(null);
-      setCooldownTimeLeft("");  
-      clearInterval(interval);
-      return;
-    }
-
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-    setCooldownTimeLeft(
-      `${hours.toString().padStart(2, "0")}:${minutes
-        .toString()
-        .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
+    return (
+      <div
+        className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1"
+        title={friends.map((f) => f.name).join(", ")}
+      >
+        {friends.slice(0, 4).map((friend) =>
+          friend.profilePicture ? (
+            <img
+              key={`${friend.id}-${friend.name}`}
+              src={friend.profilePicture}
+              alt={friend.name}
+              className="h-6 w-6 rounded-full border border-white/30 object-cover"
+              title={friend.name}
+            />
+          ) : (
+            <div
+              key={`${friend.id}-${friend.name}`}
+              className="h-6 w-6 rounded-full bg-[#FFD700] text-[#003366] text-xs font-bold flex items-center justify-center"
+              title={friend.name}
+            >
+              {friend.name?.charAt(0)?.toUpperCase() || "U"}
+            </div>
+          ),
+        )}
+      </div>
     );
-  }, 1000);
+  };
 
-  return () => clearInterval(interval);
-}, [nextRewardTime]);
+  const handleLoadSports = async () => {
+    try {
+      setLoadingSports(true);
 
-const fetchEventsByLeague = async (leagueKey) => {
-  console.log("FETCHING EVENTS FOR LEAGUE:", leagueKey);
+      const res = await fetch("/api/sports/list");
+      const data = await res.json();
 
-  if (!leagueKey) return;
+      const sportsArray = Array.isArray(data?.sports) ? data.sports : [];
 
-  try {
-    setLoadingEvents(true);
+      const grouped = {};
 
-    const res = await fetch(`/api/sports/${leagueKey}`);
-    const data = await res.json();
+      sportsArray.forEach((sport) => {
+        console.log("SPORT FROM API:", {
+          key: sport.key,
+          group: sport.group,
+          title: sport.title,
+          active: sport.active,
+          has_outrights: sport.has_outrights,
+        });
 
-    console.log("API RESPONSE:", data);
+        // Only main sports
+        if (!MAIN_SPORT_GROUPS.includes(sport.group)) return;
 
-    if (data.success && Array.isArray(data.events)) {
-      setEvents(data.events);
-    } else {
-      setEvents([]);
+        // Only active leagues
+        if (!sport.active) return;
+
+        // Hide championship / winner markets
+        if (sport.has_outrights) return;
+
+        if (!grouped[sport.group]) {
+          grouped[sport.group] = [];
+        }
+
+        grouped[sport.group].push(sport);
+      });
+
+      setSports(grouped);
+    } catch (err) {
+      console.error(err);
+      setErrorSports(t("home.errors.load_sports"));
+    } finally {
+      setLoadingSports(false);
     }
-  } catch (err) {
-    setErrorEvents(t("home.errors.load_events"));
-    console.error(err);
-  } finally {
-    setLoadingEvents(false);
-  }
-};
+  };
 
-useEffect(() => {
-  handleLoadSports();
-}, []);
+  const fetchRewardStatus = async () => {
+    if (!user || !isSignedIn) return;
 
-useEffect(() => {
-  if (!user) return;
-  fetchFriendPresence();
-  const id = setInterval(fetchFriendPresence, 30000);
-  return () => clearInterval(id);
-}, [user]);
+    try {
+      const res = await fetch("/api/get-login-reward-status");
+      const data = await res.json();
+      if (!data.success) return;
 
+      setStreakData({
+        currentDay: data.currentDay,
+        claimedDays: data.claimedDays || [],
+        lastClaimDate: data.lastClaimedDate,
+        maxDay: data.maxDay || 14,
+      });
+
+      if (data.lastClaimedDate) {
+        const lastClaimed = new Date(data.lastClaimedDate);
+        const now = new Date();
+
+        const toUtcDayKey = (d) =>
+          Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+
+        if (toUtcDayKey(lastClaimed) === toUtcDayKey(now)) {
+          setDailyRewardCooldown(true);
+
+          const nextTime = new Date(lastClaimed);
+          nextTime.setHours(nextTime.getHours() + 24);
+          setNextRewardTime(nextTime);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch reward status:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchRewardStatus();
+  }, [user, isSignedIn]);
+
+  const claimDailyReward = async () => {
+    if (!user || !isSignedIn) {
+      showNotification(t("home.rewards.must_sign_in"), "error");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/claim-login-reward", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}), // 👈 REQUIRED
+        credentials: "include",
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        showNotification(data.error || t("home.rewards.claim_error"), "error");
+        return;
+      }
+
+      setUserTokens((prev) => prev + data.reward);
+
+      setClaimedDay(data.claimedDay);
+
+      setRewardPopupVisible(true);
+
+      // 4) Set 24h cooldown
+      const nextTime = new Date();
+      nextTime.setHours(nextTime.getHours() + 24);
+      setNextRewardTime(nextTime);
+      setDailyRewardCooldown(true);
+    } catch (err) {
+      console.error(err);
+      showNotification(err.message || t("home.rewards.claim_error"), "error");
+    }
+  };
+
+  useEffect(() => {
+    if (!nextRewardTime) return;
+
+    const interval = setInterval(() => {
+      const now = new Date();
+      const diff = nextRewardTime - now;
+
+      if (diff <= 0) {
+        setDailyRewardCooldown(false);
+        setNextRewardTime(null);
+        setCooldownTimeLeft("");
+        clearInterval(interval);
+        return;
+      }
+
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setCooldownTimeLeft(
+        `${hours.toString().padStart(2, "0")}:${minutes
+          .toString()
+          .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`,
+      );
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [nextRewardTime]);
+
+  const fetchEventsByLeague = async (leagueKey) => {
+    console.log("FETCHING EVENTS FOR LEAGUE:", leagueKey);
+
+    if (!leagueKey) return;
+
+    try {
+      setLoadingEvents(true);
+
+      const res = await fetch(`/api/sports/${leagueKey}`);
+      const data = await res.json();
+
+      console.log("API RESPONSE:", data);
+
+      if (data.success && Array.isArray(data.events)) {
+        setEvents(data.events);
+      } else {
+        setEvents([]);
+      }
+    } catch (err) {
+      setErrorEvents(t("home.errors.load_events"));
+      console.error(err);
+    } finally {
+      setLoadingEvents(false);
+    }
+  };
+
+  useEffect(() => {
+    handleLoadSports();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchFriendPresence();
+    const id = setInterval(fetchFriendPresence, 30000);
+    return () => clearInterval(id);
+  }, [user]);
 
   const handleLoadEvents = async () => {
     try {
@@ -375,29 +393,29 @@ useEffect(() => {
     if (user && jwt) fetchUserTokens();
   }, [user, jwt]);
 
-const useRevealOnScroll = (deps = []) => {
-  useEffect(() => {
-    const elements = document.querySelectorAll(".reveal, .reveal-stagger");
+  const useRevealOnScroll = (deps = []) => {
+    useEffect(() => {
+      const elements = document.querySelectorAll(".reveal, .reveal-stagger");
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("visible");
-          }
-        });
-      },
-      {
-        threshold: 0.1,
-        rootMargin: "0px 0px -50px 0px", // 👈 triggers earlier
-      }
-    );
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("visible");
+            }
+          });
+        },
+        {
+          threshold: 0.1,
+          rootMargin: "0px 0px -50px 0px", // 👈 triggers earlier
+        },
+      );
 
-    elements.forEach((el) => observer.observe(el));
+      elements.forEach((el) => observer.observe(el));
 
-    return () => observer.disconnect();
-  }, deps);
-};
+      return () => observer.disconnect();
+    }, deps);
+  };
 
   useRevealOnScroll([sports]);
 
@@ -406,68 +424,109 @@ const useRevealOnScroll = (deps = []) => {
   };
 
   return (
-   <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] cyberpunk-grid">
+    <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] cyberpunk-grid">
       <NavigationBar currentPath="/" />
 
-     <motion.section initial={fadeInVariant.initial} animate={fadeInVariant.animate} transition={fadeInVariant.transition} className="relative mt-8 px-4 min-h-[70vh] flex items-center overflow-hidden">
-  
-  {/* Background Video */}
-<video
-  autoPlay
-  muted
-  loop
-  playsInline
-  className="absolute inset-0 h-full w-full object-cover z-0"
->
-  <source src="/videos/casino-bg-video.mp4" type="video/mp4" />
-</video>
+      <motion.section
+        initial={fadeInVariant.initial}
+        animate={fadeInVariant.animate}
+        transition={fadeInVariant.transition}
+        className="relative mt-8 px-4 min-h-[70vh] flex items-center overflow-hidden"
+      >
+        {/* Background Video */}
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="absolute inset-0 h-full w-full object-cover z-0"
+        >
+          <source src="/videos/casino-bg-video.mp4" type="video/mp4" />
+        </video>
 
-  {/* Dark overlay for readability */}
-  <div className="absolute inset-0 bg-black/80 z-10" />
-  <div className="absolute inset-0 z-10 pointer-events-none bg-[radial-gradient(circle_at_30%_20%,rgba(0,229,255,0.15),transparent_60%)] mix-blend-screen" />
+        {/* Dark overlay for readability */}
+        <div className="absolute inset-0 bg-black/80 z-10" />
+        <div className="absolute inset-0 z-10 pointer-events-none bg-[radial-gradient(circle_at_30%_20%,rgba(0,229,255,0.15),transparent_60%)] mix-blend-screen" />
 
         <div className="relative z-20 mx-auto max-w-7xl text-center reveal">
-      <motion.h1 initial={fadeUpVariant.initial} animate={fadeUpVariant.animate} transition={fadeUpVariant.transition}
-  className="mb-4 text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text 
+          <motion.h1
+            initial={fadeUpVariant.initial}
+            animate={fadeUpVariant.animate}
+            transition={fadeUpVariant.transition}
+            className="mb-4 text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text 
 bg-gradient-to-r from-[#ff4fd8] via-[#00e5ff] to-[#ff4fd8]
 drop-shadow-[0_0_50px_rgba(255,79,216,0.5)] tracking-widest uppercase 
 animate-[shimmerGradient_8s_ease-in-out_infinite]"
-  style={{ backgroundSize: "200% auto" }}
->
-  {t("home.landing.title")}
-</motion.h1>
+            style={{ backgroundSize: "200% auto" }}
+          >
+            {t("home.landing.title")}
+          </motion.h1>
 
-          <motion.p initial={fadeUpVariant.initial} animate={fadeUpVariant.animate} transition={{...fadeUpVariant.transition, delay: shouldReduceMotion ? 0 : 0.05}} className="mb-8 text-xl text-[#d8fbff]">
+          <motion.p
+            initial={fadeUpVariant.initial}
+            animate={fadeUpVariant.animate}
+            transition={{
+              ...fadeUpVariant.transition,
+              delay: shouldReduceMotion ? 0 : 0.05,
+            }}
+            className="mb-8 text-xl text-[#d8fbff]"
+          >
             {t("home.landing.subtitle")}
           </motion.p>
-   <motion.div variants={stagger} initial="initial" animate="animate" className="flex flex-col space-y-4 sm:flex-row sm:justify-center sm:space-x-4 sm:space-y-0">
-  <motion.div whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover} whileTap={shouldReduceMotion ? undefined : hoverScale.whileTap} transition={hoverScale.transition}><UIPro06PrimaryButton
-    href="/sign-up"
-    className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] px-8 py-4 text-lg font-medium text-[#041125] transition-all shadow-[0_0_16px_#00ffa6] hover:shadow-[0_0_25px_rgba(0, 255, 166,0.65)] hover:scale-105"
-  >
-    {t("home.landing.start_betting")}
-  </UIPro06PrimaryButton></motion.div>
-  <motion.div whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover} whileTap={shouldReduceMotion ? undefined : hoverScale.whileTap} transition={hoverScale.transition}><UIPro07SecondaryButton
-    href="/casino"
-    className="inline-block rounded-lg border border-[#ff4fd8]/40 bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] px-8 py-4 text-lg font-medium text-[#041125] transition-all shadow-[0_0_16px_rgba(168,85,247,0.5)] hover:shadow-[0_0_25px_rgba(255,79,216,0.65)] hover:scale-105"
-  >
-    {t("home.landing.discover_casino")}
-  </UIPro07SecondaryButton></motion.div>
-
-        </motion.div>
+          <motion.div
+            variants={stagger}
+            initial="initial"
+            animate="animate"
+            className="flex flex-col space-y-4 sm:flex-row sm:justify-center sm:space-x-4 sm:space-y-0"
+          >
+            <motion.div
+              whileHover={
+                shouldReduceMotion ? undefined : hoverScale.whileHover
+              }
+              whileTap={shouldReduceMotion ? undefined : hoverScale.whileTap}
+              transition={hoverScale.transition}
+            >
+              <UIPro06PrimaryButton
+                href="/sign-up"
+                className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] px-8 py-4 text-lg font-medium text-[#041125] transition-all shadow-[0_0_16px_#00ffa6] hover:shadow-[0_0_25px_rgba(0, 255, 166,0.65)] hover:scale-105"
+              >
+                {t("home.landing.start_betting")}
+              </UIPro06PrimaryButton>
+            </motion.div>
+            <motion.div
+              whileHover={
+                shouldReduceMotion ? undefined : hoverScale.whileHover
+              }
+              whileTap={shouldReduceMotion ? undefined : hoverScale.whileTap}
+              transition={hoverScale.transition}
+            >
+              <UIPro07SecondaryButton
+                href="/casino"
+                className="inline-block rounded-lg border border-[#ff4fd8]/40 bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] px-8 py-4 text-lg font-medium text-[#041125] transition-all shadow-[0_0_16px_rgba(168,85,247,0.5)] hover:shadow-[0_0_25px_rgba(255,79,216,0.65)] hover:scale-105"
+              >
+                {t("home.landing.discover_casino")}
+              </UIPro07SecondaryButton>
+            </motion.div>
+          </motion.div>
         </div>
       </motion.section>
 
       <div className="mx-auto max-w-7xl px-4 py-8">
         <section className="mb-16 reveal">
           <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-bold text-[#f5ff3b]">{t("home.title")}</h2>
+            <h2 className="text-2xl font-bold text-[#f5ff3b]">
+              {t("home.title")}
+            </h2>
           </div>
 
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 reveal-stagger">
-            <motion.a initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.25 }} whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }} transition={{ duration: 0.25 }}
+            <motion.a
+              initial={{ opacity: 0, y: 8 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.25 }}
+              whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }}
+              transition={{ duration: 0.25 }}
               href="/casino/roulette"
-              
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
@@ -477,16 +536,20 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
               </div>
-              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Roulette</h3>
-              <p className="text-[#9dd8ff]">
-                {t("games.roulette_desc")}
-              </p>
+              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">
+                Roulette
+              </h3>
+              <p className="text-[#9dd8ff]">{t("games.roulette_desc")}</p>
               {renderFriendWidget("roulette")}
             </motion.a>
 
-            <motion.a initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.25 }} whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }} transition={{ duration: 0.25 }}
+            <motion.a
+              initial={{ opacity: 0, y: 8 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.25 }}
+              whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }}
+              transition={{ duration: 0.25 }}
               href="/casino/blackjack"
-              
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
@@ -496,16 +559,22 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
               </div>
-              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Blackjack</h3>
+              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">
+                Blackjack
+              </h3>
               <p className="text-[#9dd8ff]">
                 {t("home.game_cards.blackjack_desc")}
               </p>
               {renderFriendWidget("blackjack")}
             </motion.a>
 
-            <motion.a initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.25 }} whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }} transition={{ duration: 0.25 }}
+            <motion.a
+              initial={{ opacity: 0, y: 8 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.25 }}
+              whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }}
+              transition={{ duration: 0.25 }}
               href="/casino/poker"
-              
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
@@ -522,9 +591,13 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               {renderFriendWidget("poker")}
             </motion.a>
 
-            <motion.a initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.25 }} whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }} transition={{ duration: 0.25 }}
+            <motion.a
+              initial={{ opacity: 0, y: 8 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.25 }}
+              whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }}
+              transition={{ duration: 0.25 }}
               href="/casino/plinko"
-              
               className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
@@ -543,208 +616,226 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           </div>
 
           {/* Bouton More centré sous la grille */}
-          <div className="flex justify-center mt-8 reveal" style={{ animationDelay: "0.2s" }}>
-  <a
-    href="/casino"
-    className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-6 py-3 text-lg font-semibold text-[#031026] transition-all glow-pulse more-hover cyber-glow-button"
-  >
-    {t("home.more_games")}
-  </a>
-</div>
-
+          <div
+            className="flex justify-center mt-8 reveal"
+            style={{ animationDelay: "0.2s" }}
+          >
+            <a
+              href="/casino"
+              className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-6 py-3 text-lg font-semibold text-[#031026] transition-all glow-pulse more-hover cyber-glow-button"
+            >
+              {t("home.more_games")}
+            </a>
+          </div>
         </section>
 
         <section className="mb-16 reveal">
-  <div className="mb-8 flex justify-between items-center">
-    <h2 className="text-2xl font-bold text-[#00e5ff]">
-      {t("home.popular_sports")}
-    </h2>
-  </div>
+          <div className="mb-8 flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-[#00e5ff]">
+              {t("home.popular_sports")}
+            </h2>
+          </div>
 
-  {loadingSports ? (
-    <div className="text-center text-[#00e5ff]">{t("ui.loading")}</div>
-  ) : (
-    <div className="space-y-4">
-     {Object.keys(sports).map((groupKey) => (
-    <div
-      key={groupKey}
-      className="rounded-lg overflow-hidden border border-[#00e5ff]/30 reveal"
-    >
-      <motion.button whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover} transition={hoverScale.transition}
-        onClick={() =>
-          setOpenGroup(openGroup === groupKey ? null : groupKey)
-        }
-        className="w-full flex justify-between items-center px-4 py-3
+          {loadingSports ? (
+            <div className="text-center text-[#00e5ff]">{t("ui.loading")}</div>
+          ) : (
+            <div className="space-y-4">
+              {Object.keys(sports).map((groupKey) => (
+                <div
+                  key={groupKey}
+                  className="rounded-lg overflow-hidden border border-[#00e5ff]/30 reveal"
+                >
+                  <motion.button
+                    whileHover={
+                      shouldReduceMotion ? undefined : hoverScale.whileHover
+                    }
+                    transition={hoverScale.transition}
+                    onClick={() =>
+                      setOpenGroup(openGroup === groupKey ? null : groupKey)
+                    }
+                    className="w-full flex justify-between items-center px-4 py-3
                    bg-[#06142f] text-[#00e5ff] font-bold hover:bg-[#0b224f]"
-      >
-        <span>{groupKey}</span>
-        <span>{openGroup === groupKey ? "▲" : "▼"}</span>
-      </motion.button>
+                  >
+                    <span>{groupKey}</span>
+                    <span>{openGroup === groupKey ? "▲" : "▼"}</span>
+                  </motion.button>
 
-      {openGroup === groupKey && (
-        <div className="grid grid-cols-2 gap-4 bg-[#050f24] p-4 md:grid-cols-3 lg:grid-cols-5 reveal-stagger">
-          {Array.isArray(sports[groupKey]) &&
-  sports[groupKey].map((league) => (
-            <SportCard
-              key={league.key}
-              icon="fa-trophy"
-              name={league.title}
-              onClick={() => {
-                // Navigate to /sport and pass league key
-                router.push(`/sport?league=${league.key}`);
-              }}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  ))}
-    </div>
-  )}
-  {/* Bouton {t("home.more_sports")} centré sous la grille */}
-<div className="flex justify-center mt-8">
-  <a
-    href="/sport"
-    className="inline-block rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff] px-6 py-3 text-lg font-semibold text-[#041125] transition-all glow-pulse more-hover cyber-glow-button"
-  >
-    {t("home.more_sports")}
-  </a>
-</div>
-
-</section>
+                  {openGroup === groupKey && (
+                    <div className="grid grid-cols-2 gap-4 bg-[#050f24] p-4 md:grid-cols-3 lg:grid-cols-5 reveal-stagger">
+                      {Array.isArray(sports[groupKey]) &&
+                        sports[groupKey].map((league) => (
+                          <SportCard
+                            key={league.key}
+                            icon="fa-trophy"
+                            name={league.title}
+                            onClick={() => {
+                              // Navigate to /sport and pass league key
+                              router.push(`/sport?league=${league.key}`);
+                            }}
+                          />
+                        ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Bouton {t("home.more_sports")} centré sous la grille */}
+          <div className="flex justify-center mt-8">
+            <a
+              href="/sport"
+              className="inline-block rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff] px-6 py-3 text-lg font-semibold text-[#041125] transition-all glow-pulse more-hover cyber-glow-button"
+            >
+              {t("home.more_sports")}
+            </a>
+          </div>
+        </section>
       </div>
 
       <AnimatePresence>
-      {notification && (
-        <motion.div initial={fadeUpVariant.initial} animate={fadeUpVariant.animate} exit={fadeUpVariant.exit} transition={fadeUpVariant.transition}>
-          <UIPro16ToastShell className={`fixed bottom-4 right-4 p-4 rounded-lg text-white ${
-            notification.type === "success" ? "bg-green-600" : "bg-red-600"
-          }`}>
-            {notification.message}
-          </UIPro16ToastShell>
-        </motion.div>
-      )}
+        {notification && (
+          <motion.div
+            initial={fadeUpVariant.initial}
+            animate={fadeUpVariant.animate}
+            exit={fadeUpVariant.exit}
+            transition={fadeUpVariant.transition}
+          >
+            <UIPro16ToastShell
+              className={`fixed bottom-4 right-4 p-4 rounded-lg text-white ${
+                notification.type === "success" ? "bg-green-600" : "bg-red-600"
+              }`}
+            >
+              {notification.message}
+            </UIPro16ToastShell>
+          </motion.div>
+        )}
       </AnimatePresence>
-{isSignedIn && !dailyRewardCooldown && (
-  <button
-    onClick={claimDailyReward}
-    className="fixed right-4 bottom-16 z-50 rounded-lg px-4 py-3 text-lg font-semibold text-white transition-all shadow-lg bg-[#FFD700] hover:scale-110 animate-pulse"
-    title={t("home.rewards.claim_daily_title")}
-  >
-    {t("home.rewards.claim_button")}
-  </button>
-)}
+      {isSignedIn && !dailyRewardCooldown && (
+        <button
+          onClick={claimDailyReward}
+          className="fixed right-4 bottom-16 z-50 rounded-lg px-4 py-3 text-lg font-semibold text-white transition-all shadow-lg bg-[#FFD700] hover:scale-110 animate-pulse"
+          title={t("home.rewards.claim_daily_title")}
+        >
+          {t("home.rewards.claim_button")}
+        </button>
+      )}
 
-{isSignedIn && dailyRewardCooldown && (
-  <div className="fixed right-4 bottom-16 z-50 text-sm text-[#FFD700] bg-black/60 px-3 py-2 rounded-lg">
-    ⏳ {t("home.rewards.next_reward_in")} {cooldownTimeLeft}
-  </div>
-)}
-{/* reward modal */}
-<AnimatePresence>
-{rewardPopupVisible && (
-  <UIPro17ModalBackdrop className="fixed inset-0 flex items-center justify-center bg-black/80 z-50">
-    <motion.div initial={modalBackdropVariant.initial} animate={modalBackdropVariant.animate} exit={modalBackdropVariant.exit} transition={modalBackdropVariant.transition} className="absolute inset-0" />
-    <motion.div initial={modalPanelVariant.initial} animate={modalPanelVariant.animate} exit={modalPanelVariant.exit} transition={modalPanelVariant.transition} className="relative z-10">
-    <UIPro18ModalPanel className="bg-gradient-to-b from-[#003366] to-[#001a33] 
+      {isSignedIn && dailyRewardCooldown && (
+        <div className="fixed right-4 bottom-16 z-50 text-sm text-[#FFD700] bg-black/60 px-3 py-2 rounded-lg">
+          ⏳ {t("home.rewards.next_reward_in")} {cooldownTimeLeft}
+        </div>
+      )}
+      {/* reward modal */}
+      <AnimatePresence>
+        {rewardPopupVisible && (
+          <UIPro17ModalBackdrop className="fixed inset-0 flex items-center justify-center bg-black/80 z-50">
+            <motion.div
+              initial={modalBackdropVariant.initial}
+              animate={modalBackdropVariant.animate}
+              exit={modalBackdropVariant.exit}
+              transition={modalBackdropVariant.transition}
+              className="absolute inset-0"
+            />
+            <motion.div
+              initial={modalPanelVariant.initial}
+              animate={modalPanelVariant.animate}
+              exit={modalPanelVariant.exit}
+              transition={modalPanelVariant.transition}
+              className="relative z-10"
+            >
+              <UIPro18ModalPanel
+                className="bg-gradient-to-b from-[#003366] to-[#001a33] 
                 border-2 border-[#FFD700]
                 p-6 rounded-2xl text-white 
                 max-w-4xl w-[95%] text-center shadow-2xl
-                max-h-[90vh] overflow-y-auto">
+                max-h-[90vh] overflow-y-auto"
+              >
+                <h2 className="text-3xl font-extrabold text-[#FFD700] mb-2">
+                  🎉 {t("home.rewards.modal_title")}
+                </h2>
 
-      <h2 className="text-3xl font-extrabold text-[#FFD700] mb-2">
-        🎉 {t("home.rewards.modal_title")}
-      </h2>
+                <p className="mb-6 text-lg">
+                  {t("home.rewards.day")}{" "}
+                  <span className="text-[#FFD700] font-bold">{claimedDay}</span>{" "}
+                  {t("home.rewards.claimed")}!
+                </p>
 
-      <p className="mb-6 text-lg">
-  {t("home.rewards.day")} <span className="text-[#FFD700] font-bold">
-    {claimedDay}
-  </span> {t("home.rewards.claimed")}!
-</p>
+                {/* 14 DAY GRID */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 mb-6">
+                  {Array.from({ length: streakData.maxDay || 14 }).map(
+                    (_, i) => {
+                      const day = i + 1;
+                      const reward = 100 * 2 ** (day - 1);
 
+                      const claimed = day < claimedDay;
+                      const isToday = day === claimedDay;
 
-      {/* 14 DAY GRID */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 mb-6">
-
-        {Array.from({ length: streakData.maxDay || 14 }).map((_, i) => {
-
-          const day = i + 1;
-          const reward = 100 * 2 ** (day - 1);
-
-const claimed = day < claimedDay;
-const isToday = day === claimedDay;
-
-          return (
-            <div
-  key={day}
-  className={`relative flex flex-col items-center justify-center
+                      return (
+                        <div
+                          key={day}
+                          className={`relative flex flex-col items-center justify-center
   rounded-xl p-3 border font-bold transition-all overflow-hidden
 
   ${
     claimed
       ? "bg-green-500/20 border-green-400"
       : isToday
-      ? "bg-[#FFD700]/20 border-[#FFD700] scale-105"
-      : "bg-white/5 border-white/10"
+        ? "bg-[#FFD700]/20 border-[#FFD700] scale-105"
+        : "bg-white/5 border-white/10"
   }
   `}
->
+                        >
+                          {/* DARK OVERLAY */}
+                          {claimed && (
+                            <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-10">
+                              <span className="text-3xl">✅</span>
+                            </div>
+                          )}
 
-  {/* DARK OVERLAY */}
-  {claimed && (
-    <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-10">
-      <span className="text-3xl">✅</span>
-    </div>
-  )}
+                          <div className="text-sm">
+                            {t("home.rewards.day")} {day}
+                          </div>
 
-  <div className="text-sm">{t("home.rewards.day")} {day}</div>
+                          <div className="text-2xl">
+                            {"💰".repeat(Math.min(day, 5))}
+                          </div>
 
-  <div className="text-2xl">
-    {"💰".repeat(Math.min(day, 5))}
-  </div>
+                          <div className="text-xs text-[#FFD700]">
+                            {reward.toLocaleString()}
+                          </div>
+                        </div>
+                      );
+                    },
+                  )}
+                </div>
 
-  <div className="text-xs text-[#FFD700]">
-    {reward.toLocaleString()}
-  </div>
+                {/* Streak message */}
+                <div className="mb-4 text-lg">
+                  🔥 {t("home.rewards.current_streak")}:
+                  <span className="text-[#FFD700] font-bold">
+                    {" "}
+                    {streakData.currentDay} {t("home.rewards.days")}
+                  </span>
+                </div>
 
-</div>
-          );
-        })}
-      </div>
-
-
-      {/* Streak message */}
-      <div className="mb-4 text-lg">
-        🔥 {t("home.rewards.current_streak")}: 
-        <span className="text-[#FFD700] font-bold">
-          {" "}
-          {streakData.currentDay} {t("home.rewards.days")}
-        </span>
-      </div>
-
-
-      <button
-  onClick={async () => {
-    setRewardPopupVisible(false);
-    await fetchRewardStatus(); // refresh AFTER closing
-  }}
-        className="mt-2 px-6 py-3 
+                <button
+                  onClick={async () => {
+                    setRewardPopupVisible(false);
+                    await fetchRewardStatus(); // refresh AFTER closing
+                  }}
+                  className="mt-2 px-6 py-3 
                    bg-[#FFD700] text-[#003366] 
                    font-bold rounded-lg
                    hover:scale-105 transition-all"
-      >
-        {t("ui.confirm")}
-      </button>
-
-    </UIPro18ModalPanel>
-    </motion.div>
-  </UIPro17ModalBackdrop>
-)}
-</AnimatePresence>
-
-
+                >
+                  {t("ui.confirm")}
+                </button>
+              </UIPro18ModalPanel>
+            </motion.div>
+          </UIPro17ModalBackdrop>
+        )}
+      </AnimatePresence>
     </div>
-    
   );
 }
 

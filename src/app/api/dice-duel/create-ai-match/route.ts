@@ -39,19 +39,22 @@ export async function POST(req: Request) {
     })
     .where(eq(users.clerkId, userId));
 
-  const [row] = await db.insert(diceMatches).values({
-    lobbyId: null,
-    player1Id: userId,
-    player2Id: "AI_BOT",
-    wager: amount,
-    prizePaid: 0,
-    houseFee: Math.floor(amount * 2 * 0.02),
-    hp1: 20,
-    hp2: 22,
-    turnUserId: userId,
-    round: 1,
-    status: "active",
-  }).returning({ id: diceMatches.id });
+  const [row] = await db
+    .insert(diceMatches)
+    .values({
+      lobbyId: null,
+      player1Id: userId,
+      player2Id: "AI_BOT",
+      wager: amount,
+      prizePaid: 0,
+      houseFee: Math.floor(amount * 2 * 0.02),
+      hp1: 20,
+      hp2: 22,
+      turnUserId: userId,
+      round: 1,
+      status: "active",
+    })
+    .returning({ id: diceMatches.id });
 
   return NextResponse.json({
     ok: true,

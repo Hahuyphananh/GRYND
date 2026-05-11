@@ -8,23 +8,34 @@ export async function POST() {
   const { userId } = await auth();
 
   if (!userId) {
-    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   try {
     const dbUser = await db.query.users.findFirst({
       where: eq(users.clerkId, userId),
-      columns: { id: true, level: true, highestTitle: true, selectedTitle: true },
+      columns: {
+        id: true,
+        level: true,
+        highestTitle: true,
+        selectedTitle: true,
+      },
     });
 
     if (!dbUser) {
-      return new Response(JSON.stringify({ success: false, error: "User not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "User not found" }),
+        {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const level = Number(dbUser.level || 1);
@@ -49,15 +60,19 @@ export async function POST() {
         level,
         highestTitle,
         newUnlockedTitle: unlockedNow ? highestTitle : null,
-        selectedTitle: updates.selectedTitle === null ? null : dbUser.selectedTitle,
+        selectedTitle:
+          updates.selectedTitle === null ? null : dbUser.selectedTitle,
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (error) {
     console.error("[SYNC_TITLE_ERROR]", error);
-    return new Response(JSON.stringify({ success: false, error: "Failed to sync titles" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Failed to sync titles" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

@@ -25,7 +25,12 @@ export async function POST(req) {
       const [game] = await tx
         .select()
         .from(coinFlipGames)
-        .where(and(eq(coinFlipGames.id, Number(gameId)), eq(coinFlipGames.status, "matched")))
+        .where(
+          and(
+            eq(coinFlipGames.id, Number(gameId)),
+            eq(coinFlipGames.status, "matched"),
+          ),
+        )
         .for("update");
 
       if (!game) throw new Error("Game is not waiting for choices");
@@ -33,37 +38,40 @@ export async function POST(req) {
         throw new Error("Forbidden");
       }
 
-     const deadlinePassed =
-  game.choiceDeadline && new Date(game.choiceDeadline).getTime() < Date.now();
+      const deadlinePassed =
+        game.choiceDeadline &&
+        new Date(game.choiceDeadline).getTime() < Date.now();
 
-if (deadlinePassed) {
-  // If one player already chose, force the other side
-  if (game.player1Choice && !game.player2Choice) {
-    const forcedChoice = game.player1Choice === "heads" ? "tails" : "heads";
+      if (deadlinePassed) {
+        // If one player already chose, force the other side
+        if (game.player1Choice && !game.player2Choice) {
+          const forcedChoice =
+            game.player1Choice === "heads" ? "tails" : "heads";
 
-    const [saved] = await tx
-      .update(coinFlipGames)
-      .set({ player2Choice: forcedChoice })
-      .where(eq(coinFlipGames.id, Number(gameId)))
-      .returning();
+          const [saved] = await tx
+            .update(coinFlipGames)
+            .set({ player2Choice: forcedChoice })
+            .where(eq(coinFlipGames.id, Number(gameId)))
+            .returning();
 
-    return [saved];
-  }
+          return [saved];
+        }
 
-  if (game.player2Choice && !game.player1Choice) {
-    const forcedChoice = game.player2Choice === "heads" ? "tails" : "heads";
+        if (game.player2Choice && !game.player1Choice) {
+          const forcedChoice =
+            game.player2Choice === "heads" ? "tails" : "heads";
 
-    const [saved] = await tx
-      .update(coinFlipGames)
-      .set({ player1Choice: forcedChoice })
-      .where(eq(coinFlipGames.id, Number(gameId)))
-      .returning();
+          const [saved] = await tx
+            .update(coinFlipGames)
+            .set({ player1Choice: forcedChoice })
+            .where(eq(coinFlipGames.id, Number(gameId)))
+            .returning();
 
-    return [saved];
-  }
+          return [saved];
+        }
 
-  throw new Error("Choice timer expired");
-}
+        throw new Error("Choice timer expired");
+      }
 
       const isPlayer1 = game.player1Id === userId;
       const ownChoice = isPlayer1 ? game.player1Choice : game.player2Choice;

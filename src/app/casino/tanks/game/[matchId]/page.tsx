@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import WaitingRoom from "./components/WaitingRoom";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { useUser } from "@clerk/nextjs";
-import useGamePresence from '../../../../../hooks/useGamePresence';
+import useGamePresence from "../../../../../hooks/useGamePresence";
 
 function showGameAlert(message: string) {
   const overlay = document.createElement("div");
@@ -53,7 +53,12 @@ function showGameAlert(message: string) {
   document.body.appendChild(overlay);
 }
 
-function CashOutButton({ bountyRef, setBounty, setCashOutCountdown, routeMatchId }) {
+function CashOutButton({
+  bountyRef,
+  setBounty,
+  setCashOutCountdown,
+  routeMatchId,
+}) {
   const [countdown, setCountdown] = useState(0);
   const countdownRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -94,7 +99,9 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown, routeMatchId
             const data = await res.json();
 
             if (res.ok) {
-             showGameAlert(`💰 Cashout successful!\nYou received ${bountyRef.current * 0.9} tokens`);
+              showGameAlert(
+                `💰 Cashout successful!\nYou received ${bountyRef.current * 0.9} tokens`,
+              );
               setBounty(0);
               bountyRef.current = 0;
               router.push("/casino/tanks");
@@ -118,7 +125,9 @@ function CashOutButton({ bountyRef, setBounty, setCashOutCountdown, routeMatchId
       onClick={handleCashOut}
       disabled={countdown > 0}
       className={`mt-2 w-full p-2 rounded-xl font-bold text-white ${
-        countdown > 0 ? "bg-gray-600 cursor-not-allowed" : "bg-yellow-600 hover:bg-yellow-700"
+        countdown > 0
+          ? "bg-gray-600 cursor-not-allowed"
+          : "bg-yellow-600 hover:bg-yellow-700"
       }`}
     >
       {countdown > 0 ? `Cashing out in ${Math.ceil(countdown)}s` : "Cash Out"}
@@ -183,13 +192,18 @@ export default function TanksGamePage() {
   const { socket } = useSocket();
   const { user } = useUser();
 
-  const [mapProfile, setMapProfile] = useState<keyof typeof MAP_PROFILES>("classic");
+  const [mapProfile, setMapProfile] =
+    useState<keyof typeof MAP_PROFILES>("classic");
   const [minPlayersToStart, setMinPlayersToStart] = useState(2);
   const [maxPlayers, setMaxPlayers] = useState(2);
   const [gameMode, setGameMode] = useState<"duel" | "battle_royale">("duel");
   const MAP_WIDTH = MAP_PROFILES[mapProfile].width;
   const MAP_HEIGHT = MAP_PROFILES[mapProfile].height;
-  const [serverMap, setServerMap] = useState<{ width: number; height: number; rocks: RockState[] } | null>(null);
+  const [serverMap, setServerMap] = useState<{
+    width: number;
+    height: number;
+    rocks: RockState[];
+  } | null>(null);
   const worldWidth = serverMap?.width ?? MAP_WIDTH;
   const worldHeight = serverMap?.height ?? MAP_HEIGHT;
   const rocks = serverMap?.rocks ?? [];
@@ -221,11 +235,15 @@ export default function TanksGamePage() {
   const [selfId, setSelfId] = useState<string | null>(null);
   const selfIdRef = useRef<string | null>(null);
   selfIdRef.current = selfId;
-  const [remotePlayers, setRemotePlayers] = useState<Record<string, PlayerState>>({});
+  const [remotePlayers, setRemotePlayers] = useState<
+    Record<string, PlayerState>
+  >({});
   const remotePlayersRef = useRef(remotePlayers);
   remotePlayersRef.current = remotePlayers;
 
-  const [renderRemotePlayers, setRenderRemotePlayers] = useState<Record<string, PlayerState>>({});
+  const [renderRemotePlayers, setRenderRemotePlayers] = useState<
+    Record<string, PlayerState>
+  >({});
   const renderRemotePlayersRef = useRef(renderRemotePlayers);
   renderRemotePlayersRef.current = renderRemotePlayers;
 
@@ -243,9 +261,16 @@ export default function TanksGamePage() {
 
   const [serverBullets, setServerBullets] = useState<BulletState[]>([]);
   const targetBulletsRef = useRef<BulletState[]>([]);
-  const [duelResult, setDuelResult] = useState<{ didWin: boolean; amount: number } | null>(null);
+  const [duelResult, setDuelResult] = useState<{
+    didWin: boolean;
+    amount: number;
+  } | null>(null);
 
-  useGamePresence({ gameKey: "tanks", gameId: Number(routeMatchId), enabled: Boolean(routeMatchId) });
+  useGamePresence({
+    gameKey: "tanks",
+    gameId: Number(routeMatchId),
+    enabled: Boolean(routeMatchId),
+  });
 
   const keys = useRef<{ [key: string]: boolean }>({});
   const INPUT_TICK_MS = 33;
@@ -256,12 +281,13 @@ export default function TanksGamePage() {
   const selfHitUntilRef = useRef(0);
   const [selfHitIntensity, setSelfHitIntensity] = useState(0);
   const remoteHitUntilRef = useRef<Record<string, number>>({});
-  const [remoteHitIntensity, setRemoteHitIntensity] = useState<Record<string, number>>({});
+  const [remoteHitIntensity, setRemoteHitIntensity] = useState<
+    Record<string, number>
+  >({});
   const rafLoopRef = useRef<number | null>(null);
   const lastFrameRef = useRef<number>(0);
 
   const isWaterTile = (y: number) => y >= WATER_Y;
-
 
   const playHitSound = () => {
     if (typeof window === "undefined") return;
@@ -327,24 +353,38 @@ export default function TanksGamePage() {
 
     const checkMatch = async () => {
       try {
-        const res = await fetch(`/api/tanks/get-match?matchId=${routeMatchId}`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/tanks/get-match?matchId=${routeMatchId}`,
+          {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            cache: "no-store",
+          },
+        );
         const data = await res.json();
 
-        const modeFromServer = data?.settings?.mode === "battle_royale" ? "battle_royale" : "duel";
-        const profileFromServer = data?.settings?.mapProfile === "duel_small" ? "duel_small" : "classic";
-        const maxPlayersFromServer = Number(data?.maxPlayers ?? (modeFromServer === "battle_royale" ? 10 : 2));
+        const modeFromServer =
+          data?.settings?.mode === "battle_royale" ? "battle_royale" : "duel";
+        const profileFromServer =
+          data?.settings?.mapProfile === "duel_small"
+            ? "duel_small"
+            : "classic";
+        const maxPlayersFromServer = Number(
+          data?.maxPlayers ?? (modeFromServer === "battle_royale" ? 10 : 2),
+        );
         const minRequired = 2;
         setGameMode(modeFromServer);
         setMapProfile(profileFromServer);
         setMaxPlayers(maxPlayersFromServer);
         setMinPlayersToStart(minRequired);
 
-        if (modeFromServer === "battle_royale" || data?.gameStarted || (modeFromServer === "duel" && Number(data.currentPlayers ?? 0) >= minRequired)) {
+        if (
+          modeFromServer === "battle_royale" ||
+          data?.gameStarted ||
+          (modeFromServer === "duel" &&
+            Number(data.currentPlayers ?? 0) >= minRequired)
+        ) {
           setIsMatchReady(true);
         }
 
@@ -358,13 +398,21 @@ export default function TanksGamePage() {
         }
 
         if (Array.isArray(data?.players)) {
-          setPlayerJoinOrder(data.players.filter((playerId: unknown): playerId is string => typeof playerId === "string"));
+          setPlayerJoinOrder(
+            data.players.filter(
+              (playerId: unknown): playerId is string =>
+                typeof playerId === "string",
+            ),
+          );
         }
 
         if (Array.isArray(data?.playersStats)) {
           const namesById: Record<string, string> = {};
           for (const stat of data.playersStats) {
-            if (typeof stat?.clerkId === "string" && typeof stat?.username === "string") {
+            if (
+              typeof stat?.clerkId === "string" &&
+              typeof stat?.username === "string"
+            ) {
               namesById[stat.clerkId] = stat.username;
             }
           }
@@ -392,18 +440,25 @@ export default function TanksGamePage() {
 
     const hydrateNames = async () => {
       try {
-        const res = await fetch(`/api/tanks/get-match?matchId=${routeMatchId}`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/tanks/get-match?matchId=${routeMatchId}`,
+          {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            cache: "no-store",
+          },
+        );
         const data = await res.json();
         if (!res.ok || !Array.isArray(data?.playersStats)) return;
 
         const namesById: Record<string, string> = {};
         for (const stat of data.playersStats) {
-          if (typeof stat?.clerkId === "string" && typeof stat?.username === "string" && stat.username.trim()) {
+          if (
+            typeof stat?.clerkId === "string" &&
+            typeof stat?.username === "string" &&
+            stat.username.trim()
+          ) {
             namesById[stat.clerkId] = stat.username;
           }
         }
@@ -460,7 +515,10 @@ export default function TanksGamePage() {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               credentials: "include",
-              body: JSON.stringify({ gameId: routeMatchId, reason: "eliminated" }),
+              body: JSON.stringify({
+                gameId: routeMatchId,
+                reason: "eliminated",
+              }),
             }).finally(() => router.push("/casino/tanks"));
           }
           return;
@@ -481,12 +539,16 @@ export default function TanksGamePage() {
       }
 
       const others = Object.fromEntries(
-        Object.entries(players).filter(([id]) => id !== currentSelfId)
+        Object.entries(players).filter(([id]) => id !== currentSelfId),
       ) as Record<string, PlayerState>;
 
       for (const [id, nextState] of Object.entries(others)) {
         const previous = remotePlayersRef.current[id];
-        if (previous && typeof nextState.health === "number" && nextState.health < previous.health) {
+        if (
+          previous &&
+          typeof nextState.health === "number" &&
+          nextState.health < previous.health
+        ) {
           remoteHitUntilRef.current[id] = performance.now() + 220;
           playHitSound();
         }
@@ -511,7 +573,16 @@ export default function TanksGamePage() {
       socket.off("tanks:game_state", handleGameState);
       socket.off("tanks:hit", handleHit);
     };
-  }, [socket, routeMatchId, MAP_WIDTH, MAP_HEIGHT, mapSeed, mapProfile, gameMode, router]);
+  }, [
+    socket,
+    routeMatchId,
+    MAP_WIDTH,
+    MAP_HEIGHT,
+    mapSeed,
+    mapProfile,
+    gameMode,
+    router,
+  ]);
 
   useEffect(() => {
     if (!routeMatchId) return;
@@ -533,7 +604,10 @@ export default function TanksGamePage() {
         });
 
         if (!res.ok) {
-          if ((res.status === 403 || res.status === 404) && !gameFinishedRef.current) {
+          if (
+            (res.status === 403 || res.status === 404) &&
+            !gameFinishedRef.current
+          ) {
             gameFinishedRef.current = true;
             showGameAlert("Match ended. Returning to lobby.");
             router.push("/casino/tanks");
@@ -544,9 +618,17 @@ export default function TanksGamePage() {
         const data = await res.json();
         setSelfId(data.selfId);
 
-        if (!positionInitializedRef.current && data?.playerStates && data?.selfId && data.playerStates[data.selfId]) {
+        if (
+          !positionInitializedRef.current &&
+          data?.playerStates &&
+          data?.selfId &&
+          data.playerStates[data.selfId]
+        ) {
           const own = data.playerStates[data.selfId];
-          if (Number.isFinite(Number(own?.x)) && Number.isFinite(Number(own?.y))) {
+          if (
+            Number.isFinite(Number(own?.x)) &&
+            Number.isFinite(Number(own?.y))
+          ) {
             posRef.current = { x: Number(own.x), y: Number(own.y) };
             setPos({ x: Number(own.x), y: Number(own.y) });
             positionInitializedRef.current = true;
@@ -561,10 +643,15 @@ export default function TanksGamePage() {
           gameFinishedRef.current = true;
           if (gameMode === "duel") {
             const didWin = data.gameOver.winnerId === data.selfId;
-            setDuelResult({ didWin, amount: didWin ? Number(data.gameOver.winnerPayout ?? 0) : 0 });
+            setDuelResult({
+              didWin,
+              amount: didWin ? Number(data.gameOver.winnerPayout ?? 0) : 0,
+            });
           } else {
             if (data.gameOver.winnerId === data.selfId) {
-              showGameAlert(`🏆 Victory!\n+${Number(data.gameOver.winnerPayout).toFixed(2)} tokens`);
+              showGameAlert(
+                `🏆 Victory!\n+${Number(data.gameOver.winnerPayout).toFixed(2)} tokens`,
+              );
             } else {
               showGameAlert("💀 You were destroyed");
             }
@@ -589,19 +676,23 @@ export default function TanksGamePage() {
   useEffect(() => {
     if (!routeMatchId) return;
     const handleBeforeUnload = () => {
-      const payload = new Blob([JSON.stringify({ gameId: routeMatchId, reason: "disconnect" })], {
-        type: "application/json",
-      });
+      const payload = new Blob(
+        [JSON.stringify({ gameId: routeMatchId, reason: "disconnect" })],
+        {
+          type: "application/json",
+        },
+      );
       navigator.sendBeacon("/api/tanks/leave-match", payload);
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [routeMatchId]);
 
-
   useEffect(() => {
-    const down = (e: KeyboardEvent) => (keys.current[e.key.toLowerCase()] = true);
-    const up = (e: KeyboardEvent) => (keys.current[e.key.toLowerCase()] = false);
+    const down = (e: KeyboardEvent) =>
+      (keys.current[e.key.toLowerCase()] = true);
+    const up = (e: KeyboardEvent) =>
+      (keys.current[e.key.toLowerCase()] = false);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     return () => {
@@ -612,7 +703,14 @@ export default function TanksGamePage() {
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      const angle = (Math.atan2(e.clientY - window.innerHeight / 2, e.clientX - window.innerWidth / 2) * 180) / Math.PI + 90;
+      const angle =
+        (Math.atan2(
+          e.clientY - window.innerHeight / 2,
+          e.clientX - window.innerWidth / 2,
+        ) *
+          180) /
+          Math.PI +
+        90;
       rotationRef.current = angle;
       setRotation(angle);
     };
@@ -651,7 +749,9 @@ export default function TanksGamePage() {
 
   useEffect(() => {
     function gameLoop(frameTime: number) {
-      const dt = lastFrameRef.current ? Math.min(2.2, (frameTime - lastFrameRef.current) / 16.6667) : 1;
+      const dt = lastFrameRef.current
+        ? Math.min(2.2, (frameTime - lastFrameRef.current) / 16.6667)
+        : 1;
       lastFrameRef.current = frameTime;
       const targetRemotes = remotePlayersRef.current;
       const currentRemotes = renderRemotePlayersRef.current;
@@ -664,7 +764,8 @@ export default function TanksGamePage() {
           ...target,
           x: current.x + (target.x - current.x) * smoothing,
           y: current.y + (target.y - current.y) * smoothing,
-          rotation: current.rotation + (target.rotation - current.rotation) * smoothing,
+          rotation:
+            current.rotation + (target.rotation - current.rotation) * smoothing,
         };
       }
 
@@ -702,8 +803,10 @@ export default function TanksGamePage() {
     };
   }, []);
 
-  const cameraX = typeof window !== "undefined" ? window.innerWidth / 2 - pos.x : 0;
-  const cameraY = typeof window !== "undefined" ? window.innerHeight / 2 - pos.y : 0;
+  const cameraX =
+    typeof window !== "undefined" ? window.innerWidth / 2 - pos.x : 0;
+  const cameraY =
+    typeof window !== "undefined" ? window.innerHeight / 2 - pos.y : 0;
   const getTankColor = (playerId: string, isEnemy: boolean) => {
     if (gameMode !== "battle_royale") {
       return isEnemy ? "#dc2626" : "#16a34a";
@@ -711,7 +814,9 @@ export default function TanksGamePage() {
 
     const joinIndex = playerJoinOrder.indexOf(playerId);
     if (joinIndex >= 0) {
-      return BATTLE_ROYALE_TANK_COLORS[joinIndex % BATTLE_ROYALE_TANK_COLORS.length];
+      return BATTLE_ROYALE_TANK_COLORS[
+        joinIndex % BATTLE_ROYALE_TANK_COLORS.length
+      ];
     }
 
     return isEnemy ? "#dc2626" : "#16a34a";
@@ -740,7 +845,10 @@ export default function TanksGamePage() {
           zIndex: 1,
         }}
       >
-        <div className="relative w-full h-full bg-[#f4e7b4]" style={{ pointerEvents: "none" }}>
+        <div
+          className="relative w-full h-full bg-[#f4e7b4]"
+          style={{ pointerEvents: "none" }}
+        >
           <div
             className="absolute inset-0"
             style={{
@@ -768,7 +876,8 @@ export default function TanksGamePage() {
               bottom: "31%",
               height: 160,
               pointerEvents: "none",
-              background: "radial-gradient(ellipse at 50% 45%, rgba(228,204,150,0.96) 30%, rgba(204,166,110,0.65) 44%, rgba(83,148,182,0.12) 58%, transparent 70%)",
+              background:
+                "radial-gradient(ellipse at 50% 45%, rgba(228,204,150,0.96) 30%, rgba(204,166,110,0.65) 44%, rgba(83,148,182,0.12) 58%, transparent 70%)",
               filter: "blur(3px)",
             }}
           />
@@ -778,7 +887,8 @@ export default function TanksGamePage() {
               bottom: "31%",
               height: 100,
               pointerEvents: "none",
-              backgroundImage: "repeating-linear-gradient(120deg, rgba(255,255,255,0.18) 0 2px, transparent 2px 12px)",
+              backgroundImage:
+                "repeating-linear-gradient(120deg, rgba(255,255,255,0.18) 0 2px, transparent 2px 12px)",
               opacity: 0.2,
             }}
           />
@@ -870,31 +980,52 @@ export default function TanksGamePage() {
         </div>
 
         {serverBullets.map((b, i) => (
-          <div key={i} className="absolute w-3 h-3 bg-black rounded-full" style={{ left: b.x - 2, top: b.y - 2 }} />
+          <div
+            key={i}
+            className="absolute w-3 h-3 bg-black rounded-full"
+            style={{ left: b.x - 2, top: b.y - 2 }}
+          />
         ))}
       </div>
 
       <div className="absolute top-4 left-4 p-4 bg-black/40 rounded-xl text-white flex flex-col gap-2 z-[9999]">
         <p className="text-lg font-bold">Bounty: ${bounty}</p>
-        <p className="text-xs text-green-300">Balance: {tokenBalance ?? "..."} tokens</p>
-        <p className="font-bold">Ammo: {ammo}/{MAX_AMMO}</p>
+        <p className="text-xs text-green-300">
+          Balance: {tokenBalance ?? "..."} tokens
+        </p>
+        <p className="font-bold">
+          Ammo: {ammo}/{MAX_AMMO}
+        </p>
         <p className="text-xs text-yellow-200">
           Mode: {gameMode === "battle_royale" ? "Battle Royale" : "1v1"}
         </p>
-        <p className="text-xs text-cyan-200">Terrain: {isWaterTile(pos.y) ? "Water (slowed)" : "Sand"}</p>
-        <p className="text-xs text-gray-300">Player: {(selfId && playerNames[selfId]) || "..."}</p>
+        <p className="text-xs text-cyan-200">
+          Terrain: {isWaterTile(pos.y) ? "Water (slowed)" : "Sand"}
+        </p>
+        <p className="text-xs text-gray-300">
+          Player: {(selfId && playerNames[selfId]) || "..."}
+        </p>
 
         {gameMode === "battle_royale" && (
-          <CashOutButton bountyRef={bountyRef} setBounty={setBounty} setCashOutCountdown={setCashOutCountdown} routeMatchId={routeMatchId} />
+          <CashOutButton
+            bountyRef={bountyRef}
+            setBounty={setBounty}
+            setCashOutCountdown={setCashOutCountdown}
+            routeMatchId={routeMatchId}
+          />
         )}
       </div>
 
       {duelResult && (
         <div className="absolute inset-0 z-[10000] bg-black/75 flex items-center justify-center">
           <div className="bg-[#101010] border-2 border-yellow-500 rounded-2xl p-8 text-white text-center max-w-md w-full">
-            <h2 className="text-3xl font-bold mb-3">{duelResult.didWin ? "🏆 You won!" : "💀 You lost"}</h2>
+            <h2 className="text-3xl font-bold mb-3">
+              {duelResult.didWin ? "🏆 You won!" : "💀 You lost"}
+            </h2>
             <p className="text-lg mb-6">
-              {duelResult.didWin ? `+${duelResult.amount.toFixed(2)} tokens` : "Better luck next round."}
+              {duelResult.didWin
+                ? `+${duelResult.amount.toFixed(2)} tokens`
+                : "Better luck next round."}
             </p>
             <button
               onClick={() => router.push("/casino/tanks")}

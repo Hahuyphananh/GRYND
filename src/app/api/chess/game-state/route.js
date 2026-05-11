@@ -8,7 +8,11 @@ const HOUSE_EDGE_PERCENT = 10;
 
 async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
-  const [userRow] = await db.select({ id: users.id }).from(users).where(eq(users.clerkId, clerkId)).limit(1);
+  const [userRow] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkId))
+    .limit(1);
   if (userRow?.id) aliases.add(String(userRow.id));
   return aliases;
 }
@@ -45,7 +49,9 @@ function computeClocks(game, moves) {
   let black = initial;
 
   let activeColor = "white";
-  let turnStart = game.startedAt ? new Date(game.startedAt).getTime() : Date.now();
+  let turnStart = game.startedAt
+    ? new Date(game.startedAt).getTime()
+    : Date.now();
 
   for (const move of moves) {
     const moveAt = new Date(move.createdAt).getTime();
@@ -65,18 +71,28 @@ function computeClocks(game, moves) {
     else black = Math.max(0, black - elapsed);
   }
 
-  return { whiteTimeRemaining: white, blackTimeRemaining: black, activeTurn: activeColor };
+  return {
+    whiteTimeRemaining: white,
+    blackTimeRemaining: black,
+    activeTurn: activeColor,
+  };
 }
 
 async function settleTimeoutIfNeeded(game, clocks) {
   if (game.status !== "in_progress") return game;
-  if (clocks.whiteTimeRemaining > 0 && clocks.blackTimeRemaining > 0) return game;
+  if (clocks.whiteTimeRemaining > 0 && clocks.blackTimeRemaining > 0)
+    return game;
 
-  const winnerId = clocks.whiteTimeRemaining <= 0 ? game.playerBlackId : game.playerWhiteId;
+  const winnerId =
+    clocks.whiteTimeRemaining <= 0 ? game.playerBlackId : game.playerWhiteId;
   if (!winnerId) return game;
 
   await db.transaction(async (tx) => {
-    const [lockedGame] = await tx.select().from(chessGames).where(eq(chessGames.id, game.id)).for("update");
+    const [lockedGame] = await tx
+      .select()
+      .from(chessGames)
+      .where(eq(chessGames.id, game.id))
+      .for("update");
     if (!lockedGame || lockedGame.status !== "in_progress") return;
 
     const pot = Number(lockedGame.betAmount) * 2;
@@ -96,17 +112,24 @@ async function settleTimeoutIfNeeded(game, clocks) {
         result: "timeout",
         payout: winnerPayout.toString(),
       })
-      .where(and(eq(chessGames.id, game.id), eq(chessGames.status, "in_progress")));
+      .where(
+        and(eq(chessGames.id, game.id), eq(chessGames.status, "in_progress")),
+      );
   });
 
-  const [updated] = await db.select().from(chessGames).where(eq(chessGames.id, game.id)).limit(1);
+  const [updated] = await db
+    .select()
+    .from(chessGames)
+    .where(eq(chessGames.id, game.id))
+    .limit(1);
   return updated || game;
 }
 
 export async function GET(req) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
     const gameId = Number(searchParams.get("gameId"));
@@ -123,11 +146,16 @@ export async function GET(req) {
       .where(eq(chessGames.id, gameId))
       .limit(1);
 
-    if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    if (!game)
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
-    const canAccess = userAliases.has(String(game.playerWhiteId)) || userAliases.has(String(game.playerBlackId));
+    const canAccess =
+      userAliases.has(String(game.playerWhiteId)) ||
+      userAliases.has(String(game.playerBlackId));
     const viewerRole = canAccess
-      ? (userAliases.has(String(game.playerWhiteId)) ? "white" : "black")
+      ? userAliases.has(String(game.playerWhiteId))
+        ? "white"
+        : "black"
       : "spectator";
 
     const moves = await db
@@ -160,7 +188,8 @@ export async function GET(req) {
         whitePlayerId: game.playerWhiteId,
         blackPlayerId: game.playerBlackId,
         whitePlayerName: whiteName || "White",
-        blackPlayerName: blackName || (game.isAiGame ? "Chess AI" : "Waiting..."),
+        blackPlayerName:
+          blackName || (game.isAiGame ? "Chess AI" : "Waiting..."),
         viewerRole,
         winnerId: game.winnerId,
         result: game.result,
@@ -181,6 +210,9 @@ export async function GET(req) {
       stack: error?.stack,
       cause: error?.cause,
     });
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 },
+    );
   }
 }

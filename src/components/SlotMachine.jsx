@@ -65,7 +65,7 @@ const playSound = (freq = 880) => {
 
 export default function SlotMachine() {
   const [reels, setReels] = useState(
-    Array.from({ length: 5 }, () => Array(3).fill("💰"))
+    Array.from({ length: 5 }, () => Array(3).fill("💰")),
   );
   const [balance, setBalance] = useState(0);
   const [bet, setBet] = useState(100);
@@ -130,12 +130,7 @@ export default function SlotMachine() {
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
 
-      const {
-        reels: newReels,
-        winAmount,
-        newBalance,
-        winningLine,
-      } = json.data;
+      const { reels: newReels, winAmount, newBalance, winningLine } = json.data;
 
       await fetch("/api/slots/save-game", {
         method: "POST",
@@ -152,7 +147,7 @@ export default function SlotMachine() {
         setReels(newReels);
 
         playSound(
-          winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700
+          winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700,
         );
 
         setSpinning(false);
@@ -167,8 +162,8 @@ export default function SlotMachine() {
           winAmount >= bet * 5
             ? "🎉 JACKPOT!"
             : winAmount >= bet * 2
-            ? "✅ Match!"
-            : "❌ No match."
+              ? "✅ Match!"
+              : "❌ No match.",
         );
 
         if (winningLine?.positions) {
@@ -201,227 +196,224 @@ export default function SlotMachine() {
     setBet(Math.min(1000, balance));
   };
 
-/* REPLACE ONLY YOUR CURRENT RETURN JSX WITH THIS */
+  /* REPLACE ONLY YOUR CURRENT RETURN JSX WITH THIS */
 
-return (
-<div className="min-h-screen bg-[#060612] text-white relative overflow-hidden">
-  <NavigationBar currentPath="/casino" />
+  return (
+    <div className="min-h-screen bg-[#060612] text-white relative overflow-hidden">
+      <NavigationBar currentPath="/casino" />
 
-  {/* BACKGROUND */}
-  <div className="absolute inset-0 pointer-events-none z-0 bg-[radial-gradient(circle_at_50%_10%,rgba(0,255,255,0.15),transparent_35%),radial-gradient(circle_at_80%_70%,rgba(255,0,255,0.12),transparent_30%),radial-gradient(circle_at_20%_90%,rgba(0,140,255,0.10),transparent_30%)]" />
+      {/* BACKGROUND */}
+      <div className="absolute inset-0 pointer-events-none z-0 bg-[radial-gradient(circle_at_50%_10%,rgba(0,255,255,0.15),transparent_35%),radial-gradient(circle_at_80%_70%,rgba(255,0,255,0.12),transparent_30%),radial-gradient(circle_at_20%_90%,rgba(0,140,255,0.10),transparent_30%)]" />
 
-  <div className="relative z-10 pt-24 px-6">
+      <div className="relative z-10 pt-24 px-6">
+        {/* TITLE */}
+        <h1 className="text-center text-5xl font-black tracking-widest mb-8 text-cyan-300 drop-shadow-[0_0_18px_cyan]">
+          FRUIT FORTUNE
+        </h1>
 
-    {/* TITLE */}
-    <h1 className="text-center text-5xl font-black tracking-widest mb-8 text-cyan-300 drop-shadow-[0_0_18px_cyan]">
-      FRUIT FORTUNE
-    </h1>
+        {/* TOP BUTTON */}
+        <div className="flex justify-center mb-6">
+          <Link href="/casino/slots">
+            <button className="px-6 py-2 rounded-full border border-cyan-400 bg-black hover:bg-cyan-500/10 transition shadow-[0_0_12px_cyan]">
+              ⬅ Return to Lobby
+            </button>
+          </Link>
+        </div>
 
-    {/* TOP BUTTON */}
-    <div className="flex justify-center mb-6">
-      <Link href="/casino/slots">
-        <button className="px-6 py-2 rounded-full border border-cyan-400 bg-black hover:bg-cyan-500/10 transition shadow-[0_0_12px_cyan]">
-          ⬅ Return to Lobby
-        </button>
-      </Link>
-    </div>
+        {/* MAIN LAYOUT */}
+        <div className="flex flex-col xl:flex-row items-start justify-center gap-8">
+          {/* LEFT SIDE SLOT */}
+          <div className="flex flex-col items-center">
+            {/* SLOT MACHINE BIGGER */}
+            <div className="relative p-6 rounded-[30px] border-2 border-cyan-400 bg-[#0d1020] shadow-[0_0_45px_rgba(0,255,255,0.45)]">
+              <div className="absolute inset-0 rounded-[30px] border border-pink-500 pointer-events-none animate-pulse opacity-40" />
 
-    {/* MAIN LAYOUT */}
-    <div className="flex flex-col xl:flex-row items-start justify-center gap-8">
+              {flashWin && (
+                <div className="absolute inset-0 bg-cyan-400/20 rounded-[30px] animate-flash pointer-events-none" />
+              )}
 
-      {/* LEFT SIDE SLOT */}
-      <div className="flex flex-col items-center">
+              {/* REELS BIGGER */}
+              <div className="flex gap-3 bg-[#05070d] p-5 rounded-2xl border border-cyan-500 shadow-inner">
+                {reels.map((column, colIdx) => {
+                  const symbols = animatingReels[colIdx]
+                    ? [...column, ...column, ...column]
+                    : column;
 
-        {/* SLOT MACHINE BIGGER */}
-        <div className="relative p-6 rounded-[30px] border-2 border-cyan-400 bg-[#0d1020] shadow-[0_0_45px_rgba(0,255,255,0.45)]">
+                  return (
+                    <div
+                      key={colIdx}
+                      className="w-[118px] h-[330px] rounded-xl overflow-hidden border border-cyan-400 bg-gradient-to-b from-[#161a2f] to-[#090b15]"
+                    >
+                      <div
+                        className={`flex flex-col ${
+                          animatingReels[colIdx]
+                            ? "animate-[scrollReel_0.18s_linear_infinite]"
+                            : ""
+                        }`}
+                      >
+                        {symbols.map((fruit, rowIdx) => {
+                          const isWinning = winningPositions.some(
+                            (p) => p.col === colIdx && p.row === rowIdx,
+                          );
 
-          <div className="absolute inset-0 rounded-[30px] border border-pink-500 pointer-events-none animate-pulse opacity-40" />
-
-          {flashWin && (
-            <div className="absolute inset-0 bg-cyan-400/20 rounded-[30px] animate-flash pointer-events-none" />
-          )}
-
-          {/* REELS BIGGER */}
-          <div className="flex gap-3 bg-[#05070d] p-5 rounded-2xl border border-cyan-500 shadow-inner">
-
-            {reels.map((column, colIdx) => {
-              const symbols = animatingReels[colIdx]
-                ? [...column, ...column, ...column]
-                : column;
-
-              return (
-                <div
-                  key={colIdx}
-                  className="w-[118px] h-[330px] rounded-xl overflow-hidden border border-cyan-400 bg-gradient-to-b from-[#161a2f] to-[#090b15]"
-                >
-                  <div
-                    className={`flex flex-col ${
-                      animatingReels[colIdx]
-                        ? "animate-[scrollReel_0.18s_linear_infinite]"
-                        : ""
-                    }`}
-                  >
-                    {symbols.map((fruit, rowIdx) => {
-                      const isWinning = winningPositions.some(
-                        (p) => p.col === colIdx && p.row === rowIdx
-                      );
-
-                      return (
-                       <div
-  key={`${fruit}-${colIdx}-${rowIdx}`}
-  className={`relative w-full h-[110px] flex items-center justify-center border-b border-cyan-900 transition-all duration-300
+                          return (
+                            <div
+                              key={`${fruit}-${colIdx}-${rowIdx}`}
+                              className={`relative w-full h-[110px] flex items-center justify-center border-b border-cyan-900 transition-all duration-300
   ${
     isWinning
       ? "bg-gradient-to-br from-yellow-300 via-pink-400 to-cyan-300 scale-110 z-10 shadow-[0_0_30px_#fff,0_0_50px_#ff00ff] animate-matchPulse"
       : "bg-[#11162a]"
   }`}
->
+                            >
+                              {/* WIN SPARKLES */}
+                              {isWinning && (
+                                <div className="absolute inset-0 rounded-md border-2 border-white animate-pulse opacity-80" />
+                              )}
 
-  {/* WIN SPARKLES */}
-  {isWinning && (
-    <div className="absolute inset-0 rounded-md border-2 border-white animate-pulse opacity-80" />
-  )}
-
-  <img
-    src={symbolImages[fruit]?.src || img1.src}
-    alt="symbol"
-    draggable="false"
-    className={`w-full h-full object-contain p-2 transition-all duration-300
+                              <img
+                                src={symbolImages[fruit]?.src || img1.src}
+                                alt="symbol"
+                                draggable="false"
+                                className={`w-full h-full object-contain p-2 transition-all duration-300
     ${isWinning ? "drop-shadow-[0_0_25px_white]" : ""}`}
-  />
-</div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
 
+              {/* LEVER */}
+              <div className="absolute -right-8 top-20 flex flex-col items-center">
+                <div className="w-3 h-32 bg-gray-300 rounded-full" />
+                <div className="w-12 h-12 rounded-full bg-pink-500 shadow-[0_0_22px_#ff00ff]" />
+              </div>
+            </div>
+
+            {/* BUTTONS */}
+            <div className="flex flex-wrap justify-center gap-4 mt-8 mb-10">
+              <button
+                onClick={handleSpin}
+                disabled={spinning}
+                className="px-10 py-4 rounded-full bg-cyan-400 text-black font-black text-xl hover:scale-105 transition shadow-[0_0_20px_cyan] disabled:opacity-50"
+              >
+                SPIN
+              </button>
+
+              {!autoSpinning ? (
+                <button
+                  onClick={startAutoSpin}
+                  className="px-6 py-3 rounded-full bg-pink-500 font-bold shadow-[0_0_15px_#ff00ff]"
+                >
+                  AUTO SPIN
+                </button>
+              ) : (
+                <button
+                  onClick={stopAutoSpin}
+                  className="px-6 py-3 rounded-full bg-red-600 font-bold"
+                >
+                  STOP AUTO
+                </button>
+              )}
+
+              <button
+                onClick={setMaxBet}
+                className="px-6 py-3 rounded-full bg-green-400 text-black font-bold shadow-[0_0_15px_lime]"
+              >
+                MAX BET
+              </button>
+            </div>
           </div>
 
-          {/* LEVER */}
-          <div className="absolute -right-8 top-20 flex flex-col items-center">
-            <div className="w-3 h-32 bg-gray-300 rounded-full" />
-            <div className="w-12 h-12 rounded-full bg-pink-500 shadow-[0_0_22px_#ff00ff]" />
+          {/* RIGHT SIDE PANEL */}
+          <div className="w-[340px] rounded-2xl p-6 border border-cyan-500 bg-[#0c1020]/95 space-y-4 shadow-[0_0_25px_rgba(0,255,255,0.18)]">
+            <div className="text-2xl font-black text-cyan-300 mb-2">
+              PLAYER PANEL
+            </div>
+
+            <div className="flex justify-between items-center">
+              <span>Bet Amount</span>
+              <input
+                type="number"
+                min="1"
+                max={balance}
+                value={bet}
+                onChange={handleBetChange}
+                className="w-28 px-3 py-1 rounded bg-black text-cyan-300 border border-cyan-400 outline-none"
+              />
+            </div>
+
+            <div className="flex justify-between">
+              <span>Balance</span>
+              <span className="text-green-400 font-bold">
+                ${balance.toFixed(2)}
+              </span>
+            </div>
+
+            <div className="flex justify-between">
+              <span>Total Won</span>
+              <span className="text-cyan-300 font-bold">
+                ${totalWin.toFixed(2)}
+              </span>
+            </div>
+
+            <div className="flex justify-between">
+              <span>Total Lost</span>
+              <span className="text-pink-400 font-bold">
+                ${totalLoss.toFixed(2)}
+              </span>
+            </div>
+
+            <div className="pt-4 text-center text-xl font-bold text-yellow-300 min-h-[40px]">
+              {lastResult}
+            </div>
           </div>
-        </div>
-
-        {/* BUTTONS */}
-        <div className="flex flex-wrap justify-center gap-4 mt-8 mb-10">
-
-          <button
-            onClick={handleSpin}
-            disabled={spinning}
-            className="px-10 py-4 rounded-full bg-cyan-400 text-black font-black text-xl hover:scale-105 transition shadow-[0_0_20px_cyan] disabled:opacity-50"
-          >
-            SPIN
-          </button>
-
-          {!autoSpinning ? (
-            <button
-              onClick={startAutoSpin}
-              className="px-6 py-3 rounded-full bg-pink-500 font-bold shadow-[0_0_15px_#ff00ff]"
-            >
-              AUTO SPIN
-            </button>
-          ) : (
-            <button
-              onClick={stopAutoSpin}
-              className="px-6 py-3 rounded-full bg-red-600 font-bold"
-            >
-              STOP AUTO
-            </button>
-          )}
-
-          <button
-            onClick={setMaxBet}
-            className="px-6 py-3 rounded-full bg-green-400 text-black font-bold shadow-[0_0_15px_lime]"
-          >
-            MAX BET
-          </button>
-
         </div>
       </div>
 
-      {/* RIGHT SIDE PANEL */}
-      <div className="w-[340px] rounded-2xl p-6 border border-cyan-500 bg-[#0c1020]/95 space-y-4 shadow-[0_0_25px_rgba(0,255,255,0.18)]">
+      <style jsx>{`
+        @keyframes scrollReel {
+          0% {
+            transform: translateY(0);
+          }
+          100% {
+            transform: translateY(-33.33%);
+          }
+        }
 
-        <div className="text-2xl font-black text-cyan-300 mb-2">
-          PLAYER PANEL
-        </div>
+        @keyframes flash {
+          0%,
+          100% {
+            opacity: 0;
+          }
+          50% {
+            opacity: 1;
+          }
+        }
 
-        <div className="flex justify-between items-center">
-          <span>Bet Amount</span>
-          <input
-            type="number"
-            min="1"
-            max={balance}
-            value={bet}
-            onChange={handleBetChange}
-            className="w-28 px-3 py-1 rounded bg-black text-cyan-300 border border-cyan-400 outline-none"
-          />
-        </div>
+        .animate-flash {
+          animation: flash 0.25s linear 5;
+        }
+        @keyframes matchPulse {
+          0%,
+          100% {
+            transform: scale(1.05);
+            filter: brightness(1);
+          }
+          50% {
+            transform: scale(1.12);
+            filter: brightness(1.35);
+          }
+        }
 
-        <div className="flex justify-between">
-          <span>Balance</span>
-          <span className="text-green-400 font-bold">
-            ${balance.toFixed(2)}
-          </span>
-        </div>
-
-        <div className="flex justify-between">
-          <span>Total Won</span>
-          <span className="text-cyan-300 font-bold">
-            ${totalWin.toFixed(2)}
-          </span>
-        </div>
-
-        <div className="flex justify-between">
-          <span>Total Lost</span>
-          <span className="text-pink-400 font-bold">
-            ${totalLoss.toFixed(2)}
-          </span>
-        </div>
-
-        <div className="pt-4 text-center text-xl font-bold text-yellow-300 min-h-[40px]">
-          {lastResult}
-        </div>
-
-      </div>
-
+        .animate-matchPulse {
+          animation: matchPulse 0.6s ease-in-out infinite;
+        }
+      `}</style>
     </div>
-
-  </div>
-
-  <style jsx>{`
-    @keyframes scrollReel {
-      0% { transform: translateY(0); }
-      100% { transform: translateY(-33.33%); }
-    }
-
-    @keyframes flash {
-      0%,100% { opacity:0; }
-      50% { opacity:1; }
-    }
-
-    .animate-flash {
-      animation: flash 0.25s linear 5;
-    }
-      @keyframes matchPulse {
-  0%,100% {
-    transform: scale(1.05);
-    filter: brightness(1);
-  }
-  50% {
-    transform: scale(1.12);
-    filter: brightness(1.35);
-  }
-}
-
-.animate-matchPulse {
-  animation: matchPulse 0.6s ease-in-out infinite;
-}
-  `}</style>
-</div>
-);
+  );
 }

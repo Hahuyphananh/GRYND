@@ -21,7 +21,7 @@ export async function POST(request) {
     if (!apiKey) {
       return NextResponse.json(
         { success: false, error: "ODDS_API_KEY is not configured" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -31,7 +31,7 @@ export async function POST(request) {
     if (!res.ok) {
       return NextResponse.json(
         { success: false, error: "Failed to fetch events data" },
-        { status: res.status }
+        { status: res.status },
       );
     }
 
@@ -39,11 +39,15 @@ export async function POST(request) {
     const events = Array.isArray(data)
       ? data.map((event) => ({
           id: event.id,
-          team1: event.bookmakers?.[0]?.markets?.[0]?.outcomes?.[0]?.name ?? null,
-          team2: event.bookmakers?.[0]?.markets?.[0]?.outcomes?.[1]?.name ?? null,
+          team1:
+            event.bookmakers?.[0]?.markets?.[0]?.outcomes?.[0]?.name ?? null,
+          team2:
+            event.bookmakers?.[0]?.markets?.[0]?.outcomes?.[1]?.name ?? null,
           date: event.commence_time,
-          odds1: event.bookmakers?.[0]?.markets?.[0]?.outcomes?.[0]?.price ?? null,
-          odds2: event.bookmakers?.[0]?.markets?.[0]?.outcomes?.[1]?.price ?? null,
+          odds1:
+            event.bookmakers?.[0]?.markets?.[0]?.outcomes?.[0]?.price ?? null,
+          odds2:
+            event.bookmakers?.[0]?.markets?.[0]?.outcomes?.[1]?.price ?? null,
           oddsDraw: null,
         }))
       : [];
@@ -54,7 +58,7 @@ export async function POST(request) {
     console.log("force redeploy");
     return NextResponse.json(
       { success: false, error: "Erreur serveur" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

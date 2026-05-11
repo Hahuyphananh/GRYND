@@ -141,7 +141,8 @@ export async function POST(req) {
     }
 
     if (!placeResult.rows?.length) {
-      const exists = await sql`SELECT 1 FROM users WHERE clerk_id = ${userId} LIMIT 1`;
+      const exists =
+        await sql`SELECT 1 FROM users WHERE clerk_id = ${userId} LIMIT 1`;
       if (!exists.rows?.length) {
         return Response.json({ error: "User not found" }, { status: 404 });
       }
@@ -149,7 +150,12 @@ export async function POST(req) {
     }
 
     const newBalance = Number(placeResult.rows[0].new_balance);
-    await applyLeaderboardCounters({ clerkId: userId, game: "sports", betAmount, payout: 0 });
+    await applyLeaderboardCounters({
+      clerkId: userId,
+      game: "sports",
+      betAmount,
+      payout: 0,
+    });
 
     return Response.json({
       success: true,
@@ -158,9 +164,6 @@ export async function POST(req) {
   } catch (error) {
     console.error("PLACE BET ERROR:", error);
 
-    return Response.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return Response.json({ error: "Internal server error" }, { status: 500 });
   }
 }

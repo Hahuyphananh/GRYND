@@ -8,11 +8,19 @@ import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 export async function POST(req) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { bet, choice } = await req.json();
-    if (!Number.isFinite(bet) || bet <= 0 || !["heads", "tails"].includes(choice)) {
-      return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
+    if (
+      !Number.isFinite(bet) ||
+      bet <= 0 ||
+      !["heads", "tails"].includes(choice)
+    ) {
+      return NextResponse.json(
+        { error: "Invalid parameters" },
+        { status: 400 },
+      );
     }
 
     // ✅ Deduct bet from user's balance only if sufficient
@@ -23,7 +31,10 @@ export async function POST(req) {
       .returning({ balance: users.balance });
 
     if (!user) {
-      return NextResponse.json({ error: "Insufficient balance" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Insufficient balance" },
+        { status: 400 },
+      );
     }
 
     // 🎲 Simulate coin flip
@@ -53,7 +64,12 @@ export async function POST(req) {
       status: "completed",
     });
 
-    await applyLeaderboardCounters({ clerkId: userId, game: "coin-flip", betAmount: bet, payout });
+    await applyLeaderboardCounters({
+      clerkId: userId,
+      game: "coin-flip",
+      betAmount: bet,
+      payout,
+    });
 
     // ✅ Respond with game result
     return NextResponse.json({
@@ -62,6 +78,9 @@ export async function POST(req) {
     });
   } catch (err) {
     console.error("Coin flip error:", err);
-    return NextResponse.json({ error: err.message || "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: err.message || "Server error" },
+      { status: 500 },
+    );
   }
 }

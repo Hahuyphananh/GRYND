@@ -2,7 +2,13 @@ import { neon } from "@neondatabase/serverless";
 
 const sql = neon(process.env.DATABASE_URL);
 
-export const LEADERBOARD_CATEGORIES = ["level", "total_wagered", "biggest_win", "best_streak", "win_rate"];
+export const LEADERBOARD_CATEGORIES = [
+  "level",
+  "total_wagered",
+  "biggest_win",
+  "best_streak",
+  "win_rate",
+];
 
 let leaderboardColumnCache = null;
 
@@ -35,9 +41,15 @@ function hasColumn(columns, tableName, columnName) {
   return columns[tableName]?.has(columnName) ?? false;
 }
 
-function userStatsMetric(columns, columnName, { userFallback = null, defaultValue = "0", cast = "numeric" } = {}) {
-  if (hasColumn(columns, "user_stats", columnName)) return `COALESCE(s.${columnName}, ${defaultValue})::${cast}`;
-  if (userFallback && hasColumn(columns, "users", userFallback)) return `COALESCE(u.${userFallback}, ${defaultValue})::${cast}`;
+function userStatsMetric(
+  columns,
+  columnName,
+  { userFallback = null, defaultValue = "0", cast = "numeric" } = {},
+) {
+  if (hasColumn(columns, "user_stats", columnName))
+    return `COALESCE(s.${columnName}, ${defaultValue})::${cast}`;
+  if (userFallback && hasColumn(columns, "users", userFallback))
+    return `COALESCE(u.${userFallback}, ${defaultValue})::${cast}`;
   return `${defaultValue}::${cast}`;
 }
 
@@ -57,13 +69,34 @@ function winRateExpression({ wins, losses }) {
 }
 
 function buildAllTimeConfig(category, columns) {
-  const level = userStatsMetric(columns, "level", { userFallback: "level", defaultValue: "1", cast: "int" });
-  const xp = userStatsMetric(columns, "xp", { userFallback: "xp", defaultValue: "0", cast: "int" });
-  const totalWagered = userStatsMetric(columns, "total_wagered", { userFallback: "total_wagered" });
-  const biggestWin = userStatsMetric(columns, "biggest_win", { userFallback: "biggest_win" });
-  const bestStreak = userStatsMetric(columns, "best_streak", { userFallback: "best_streak", cast: "int" });
-  const wins = userStatsMetric(columns, "wins", { defaultValue: "0", cast: "numeric" });
-  const losses = userStatsMetric(columns, "losses", { defaultValue: "0", cast: "numeric" });
+  const level = userStatsMetric(columns, "level", {
+    userFallback: "level",
+    defaultValue: "1",
+    cast: "int",
+  });
+  const xp = userStatsMetric(columns, "xp", {
+    userFallback: "xp",
+    defaultValue: "0",
+    cast: "int",
+  });
+  const totalWagered = userStatsMetric(columns, "total_wagered", {
+    userFallback: "total_wagered",
+  });
+  const biggestWin = userStatsMetric(columns, "biggest_win", {
+    userFallback: "biggest_win",
+  });
+  const bestStreak = userStatsMetric(columns, "best_streak", {
+    userFallback: "best_streak",
+    cast: "int",
+  });
+  const wins = userStatsMetric(columns, "wins", {
+    defaultValue: "0",
+    cast: "numeric",
+  });
+  const losses = userStatsMetric(columns, "losses", {
+    defaultValue: "0",
+    cast: "numeric",
+  });
   const winRate = winRateExpression({ wins, losses });
 
   const configs = {
@@ -93,13 +126,32 @@ function buildAllTimeConfig(category, columns) {
 }
 
 function buildWeeklyConfig(category, columns) {
-  const weeklyLevelGain = userStatsMetric(columns, "weekly_level_gain", { defaultValue: "0", cast: "int" });
-  const weeklyWagered = userStatsMetric(columns, "weekly_wagered", { userFallback: "weekly_wagered" });
-  const weeklyBiggestWin = userStatsMetric(columns, "weekly_biggest_win", { userFallback: "weekly_won" });
-  const weeklyBestStreak = userStatsMetric(columns, "weekly_best_streak", { defaultValue: "0", cast: "int" });
-  const weeklyWins = userStatsMetric(columns, "weekly_wins", { userFallback: "weekly_wins", cast: "numeric" });
-  const weeklyLosses = userStatsMetric(columns, "weekly_losses", { defaultValue: "0", cast: "numeric" });
-  const weeklyWinRate = winRateExpression({ wins: weeklyWins, losses: weeklyLosses });
+  const weeklyLevelGain = userStatsMetric(columns, "weekly_level_gain", {
+    defaultValue: "0",
+    cast: "int",
+  });
+  const weeklyWagered = userStatsMetric(columns, "weekly_wagered", {
+    userFallback: "weekly_wagered",
+  });
+  const weeklyBiggestWin = userStatsMetric(columns, "weekly_biggest_win", {
+    userFallback: "weekly_won",
+  });
+  const weeklyBestStreak = userStatsMetric(columns, "weekly_best_streak", {
+    defaultValue: "0",
+    cast: "int",
+  });
+  const weeklyWins = userStatsMetric(columns, "weekly_wins", {
+    userFallback: "weekly_wins",
+    cast: "numeric",
+  });
+  const weeklyLosses = userStatsMetric(columns, "weekly_losses", {
+    defaultValue: "0",
+    cast: "numeric",
+  });
+  const weeklyWinRate = winRateExpression({
+    wins: weeklyWins,
+    losses: weeklyLosses,
+  });
 
   const configs = {
     level: {
@@ -139,15 +191,26 @@ export function normalizeLeaderboardCategory(value) {
   return LEADERBOARD_CATEGORIES.includes(value) ? value : "level";
 }
 
-async function fetchRankedRows({ fields, orderBy, limit, offset, clerkId = null }) {
+async function fetchRankedRows({
+  fields,
+  orderBy,
+  limit,
+  offset,
+  clerkId = null,
+}) {
   const columns = await getLeaderboardColumns();
   const clerkIdField = userIdentityField(columns, "clerk_id", "NULL");
   const nameField = userIdentityField(columns, "name", "'Unknown'");
-  const profilePictureField = userIdentityField(columns, "profile_picture", "NULL");
+  const profilePictureField = userIdentityField(
+    columns,
+    "profile_picture",
+    "NULL",
+  );
   const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
-  const meClause = clerkId && hasColumn(columns, "users", "clerk_id")
-    ? "(SELECT row_to_json(ranked) FROM ranked WHERE clerk_id = $3 LIMIT 1) AS me"
-    : "NULL AS me";
+  const meClause =
+    clerkId && hasColumn(columns, "users", "clerk_id")
+      ? "(SELECT row_to_json(ranked) FROM ranked WHERE clerk_id = $3 LIMIT 1) AS me"
+      : "NULL AS me";
 
   const result = await sql.query(
     `
@@ -180,30 +243,51 @@ async function fetchRankedRows({ fields, orderBy, limit, offset, clerkId = null 
     params,
   );
 
- const row = result?.[0];
+  const row = result?.[0];
 
-return {
-  items: row?.items ?? [],
-  me: row?.me ?? null,
-};
+  return {
+    items: row?.items ?? [],
+    me: row?.me ?? null,
+  };
 }
 
-export async function fetchAllTimeLeaderboard({ category, limit, offset, clerkId }) {
+export async function fetchAllTimeLeaderboard({
+  category,
+  limit,
+  offset,
+  clerkId,
+}) {
   const columns = await getLeaderboardColumns();
-  const config = buildAllTimeConfig(normalizeLeaderboardCategory(category), columns);
+  const config = buildAllTimeConfig(
+    normalizeLeaderboardCategory(category),
+    columns,
+  );
   return fetchRankedRows({ ...config, limit, offset, clerkId });
 }
 
-export async function fetchWeeklyLeaderboard({ category, limit, offset, clerkId }) {
+export async function fetchWeeklyLeaderboard({
+  category,
+  limit,
+  offset,
+  clerkId,
+}) {
   const columns = await getLeaderboardColumns();
-  const config = buildWeeklyConfig(normalizeLeaderboardCategory(category), columns);
+  const config = buildWeeklyConfig(
+    normalizeLeaderboardCategory(category),
+    columns,
+  );
   return fetchRankedRows({ ...config, limit, offset, clerkId });
 }
 
 export async function fetchWinsLeaderboard({ limit, offset, clerkId }) {
   const columns = await getLeaderboardColumns();
-  const totalWon = userStatsMetric(columns, "total_won", { userFallback: "total_won" });
-  const wins = userStatsMetric(columns, "wins", { defaultValue: "0", cast: "numeric" });
+  const totalWon = userStatsMetric(columns, "total_won", {
+    userFallback: "total_won",
+  });
+  const wins = userStatsMetric(columns, "wins", {
+    defaultValue: "0",
+    cast: "numeric",
+  });
 
   return fetchRankedRows({
     fields: `${totalWon} AS total_won, ${wins}::int AS wins`,

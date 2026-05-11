@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 type CacheEntry = {
   expiresAt: number;
-  payload: { success: boolean; events?: any[]; error?: string; source?: string };
+  payload: {
+    success: boolean;
+    events?: any[];
+    error?: string;
+    source?: string;
+  };
 };
 
 const CACHE_TTL_MS = 60 * 1000;
@@ -25,11 +30,20 @@ const setCached = (key: string, payload: CacheEntry["payload"]) => {
 const buildOddsUrl = (sport: string, markets: string) =>
   `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=us&markets=${markets}&oddsFormat=decimal`;
 
-export async function GET(req: NextRequest, context: { params: Promise<{ sport: string }> }) {
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ sport: string }> },
+) {
   const { sport } = await context.params;
   const refresh = req.nextUrl.searchParams.get("refresh") === "1";
-  const requestedMarkets = req.nextUrl.searchParams.get("markets") || "h2h,spreads,totals";
-  const marketSet = new Set(requestedMarkets.split(",").map((m) => m.trim()).filter(Boolean));
+  const requestedMarkets =
+    req.nextUrl.searchParams.get("markets") || "h2h,spreads,totals";
+  const marketSet = new Set(
+    requestedMarkets
+      .split(",")
+      .map((m) => m.trim())
+      .filter(Boolean),
+  );
   marketSet.add("h2h");
   const markets = Array.from(marketSet).join(",");
   const cacheKey = `${sport}:${markets}`;
@@ -45,7 +59,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ sport: 
     if (!process.env.ODDS_API_KEY) {
       return NextResponse.json(
         { success: false, error: "Missing ODDS_API_KEY" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -59,7 +73,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ sport: 
     if (!res.ok) {
       return NextResponse.json(
         { success: false, error: `Failed to fetch odds (${res.status})` },
-        { status: res.status === 422 ? 422 : 500 }
+        { status: res.status === 422 ? 422 : 500 },
       );
     }
 
@@ -71,7 +85,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ sport: 
   } catch (err: any) {
     return NextResponse.json(
       { success: false, error: err.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

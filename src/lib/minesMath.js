@@ -17,7 +17,12 @@ export function getMinesMultiplier(mines, revealed) {
   const revealCount = Number(revealed);
   if (!Number.isInteger(mineCount) || mineCount < 1 || mineCount > 24) return 1;
   const safeCells = GRID_CELLS - mineCount;
-  if (!Number.isInteger(revealCount) || revealCount < 0 || revealCount > safeCells) return 1;
+  if (
+    !Number.isInteger(revealCount) ||
+    revealCount < 0 ||
+    revealCount > safeCells
+  )
+    return 1;
   if (revealCount === 0) return 1;
 
   const fair = nCr(GRID_CELLS, revealCount) / nCr(safeCells, revealCount);

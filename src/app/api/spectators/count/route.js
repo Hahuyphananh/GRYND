@@ -3,7 +3,11 @@ import { sql } from "@vercel/postgres";
 
 export async function GET(request) {
   const { userId } = await auth();
-  if (!userId) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+  if (!userId)
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      { status: 401 },
+    );
 
   const { searchParams } = new URL(request.url);
   const gameKey = String(searchParams.get("gameKey") || "").toLowerCase();
@@ -11,10 +15,16 @@ export async function GET(request) {
   const targetClerkId = String(searchParams.get("targetClerkId") || "");
   const allowedGameKeys = new Set(["chess", "connect-four", "poker"]);
   if (!gameKey || !Number.isFinite(gameId)) {
-    return new Response(JSON.stringify({ success: false, error: "Missing params" }), { status: 400 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Missing params" }),
+      { status: 400 },
+    );
   }
   if (!allowedGameKeys.has(gameKey)) {
-    return new Response(JSON.stringify({ success: false, error: "Unsupported gameKey" }), { status: 400 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Unsupported gameKey" }),
+      { status: 400 },
+    );
   }
 
   const result = targetClerkId
@@ -34,8 +44,14 @@ export async function GET(request) {
           AND last_seen_at >= NOW() - INTERVAL '20 seconds'
       `;
 
-  return new Response(JSON.stringify({ success: true, count: Number(result.rows[0]?.count || 0) }), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({
+      success: true,
+      count: Number(result.rows[0]?.count || 0),
+    }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
 }

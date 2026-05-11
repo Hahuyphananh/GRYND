@@ -7,47 +7,47 @@ export default function SyncPage() {
   const router = useRouter();
   const [status, setStatus] = useState("Syncing your account...");
 
-const { isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn } = useUser();
 
-useEffect(() => {
-  if (!isLoaded || !isSignedIn) return;
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
 
-  let cancelled = false;
+    let cancelled = false;
 
-  const syncUser = async () => {
-    try {
-      const res = await fetch("/api/sync-user", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+    const syncUser = async () => {
+      try {
+        const res = await fetch("/api/sync-user", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
 
-      const data = await res.json();
+        const data = await res.json();
 
-      if (!res.ok) {
-        console.error("🔴 Sync failed:", res.status, data);
-        throw new Error("Sync failed");
+        if (!res.ok) {
+          console.error("🔴 Sync failed:", res.status, data);
+          throw new Error("Sync failed");
+        }
+
+        console.log("✅ Sync success:", data);
+
+        if (!cancelled) {
+          setStatus("Redirecting...");
+          router.replace("/"); // IMPORTANT: replace, not push
+        }
+      } catch (err) {
+        console.error("❌ Sync error:", err);
+        if (!cancelled) setStatus("Something went wrong.");
       }
+    };
 
-      console.log("✅ Sync success:", data);
+    syncUser();
 
-      if (!cancelled) {
-        setStatus("Redirecting...");
-        router.replace("/"); // IMPORTANT: replace, not push
-      }
-    } catch (err) {
-      console.error("❌ Sync error:", err);
-      if (!cancelled) setStatus("Something went wrong.");
-    }
-  };
-
-  syncUser();
-
-  return () => {
-    cancelled = true;
-  };
-}, [isLoaded, isSignedIn, router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn, router]);
 
   return (
     <div
@@ -57,7 +57,6 @@ useEffect(() => {
       }}
     >
       <div className="flex flex-col items-center gap-6">
-        
         {/* 🔵 Neon Spinner */}
         <div className="relative">
           <div className="h-16 w-16 rounded-full border-4 border-[#00e5ff]/20"></div>

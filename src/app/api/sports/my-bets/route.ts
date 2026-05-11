@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     if (!userId) {
       return Response.json(
         { success: false, error: "Unauthorized" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -35,7 +35,7 @@ export async function GET(req: Request) {
     if (userRows.length === 0) {
       return Response.json(
         { success: false, error: "User not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -128,13 +128,9 @@ export async function GET(req: Request) {
       };
     });
 
-    const currentBets = normalized.filter(
-      (bet) => bet.result === "pending"
-    );
+    const currentBets = normalized.filter((bet) => bet.result === "pending");
 
-    const betHistory = normalized.filter(
-      (bet) => bet.result !== "pending"
-    );
+    const betHistory = normalized.filter((bet) => bet.result !== "pending");
 
     return Response.json({
       success: true,
@@ -149,7 +145,7 @@ export async function GET(req: Request) {
         success: false,
         error: "Internal server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

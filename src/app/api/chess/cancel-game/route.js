@@ -7,14 +7,20 @@ import { and, eq, sql } from "drizzle-orm";
 export async function POST(req) {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const { gameId } = await req.json();
   const parsedGameId = Number(gameId);
 
   if (!Number.isFinite(parsedGameId) || parsedGameId <= 0) {
-    return NextResponse.json({ success: false, error: "Invalid gameId" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Invalid gameId" },
+      { status: 400 },
+    );
   }
 
   try {
@@ -27,8 +33,8 @@ export async function POST(req) {
             eq(chessGames.id, parsedGameId),
             eq(chessGames.playerWhiteId, userId),
             eq(chessGames.status, "waiting"),
-            eq(chessGames.isAiGame, false)
-          )
+            eq(chessGames.isAiGame, false),
+          ),
         )
         .for("update");
 
@@ -51,6 +57,9 @@ export async function POST(req) {
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error.message || "Failed to cancel game" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to cancel game" },
+      { status: 400 },
+    );
   }
 }

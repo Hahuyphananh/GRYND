@@ -9,7 +9,11 @@ const HOUSE_EDGE_PERCENT = 10;
 
 async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
-  const [userRow] = await db.select({ id: users.id }).from(users).where(eq(users.clerkId, clerkId)).limit(1);
+  const [userRow] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkId))
+    .limit(1);
   if (userRow?.id) aliases.add(String(userRow.id));
   return aliases;
 }
@@ -17,13 +21,17 @@ async function getUserAliases(clerkId) {
 export async function POST(req) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { gameId, from, to, promotion = "q" } = await req.json();
     const normalizedGameId = Number(gameId);
 
     if (!Number.isFinite(normalizedGameId) || !from || !to) {
-      return NextResponse.json({ error: "Invalid move payload" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid move payload" },
+        { status: 400 },
+      );
     }
 
     const userAliases = await getUserAliases(userId);
@@ -34,7 +42,8 @@ export async function POST(req) {
       .where(eq(chessGames.id, normalizedGameId))
       .limit(1);
 
-    if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    if (!game)
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
     const isWhitePlayer = userAliases.has(String(game.playerWhiteId));
     const isBlackPlayer = userAliases.has(String(game.playerBlackId));
@@ -43,7 +52,10 @@ export async function POST(req) {
     }
 
     if (game.status !== "in_progress") {
-      return NextResponse.json({ error: "Game is not active" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Game is not active" },
+        { status: 400 },
+      );
     }
 
     const moves = await db
@@ -52,7 +64,8 @@ export async function POST(req) {
       .where(eq(chessMoves.gameId, normalizedGameId))
       .orderBy(asc(chessMoves.id));
 
-    const lastFen = moves.length > 0 ? moves[moves.length - 1].fenAfter : undefined;
+    const lastFen =
+      moves.length > 0 ? moves[moves.length - 1].fenAfter : undefined;
     const chess = new Chess(lastFen);
 
     const isWhite = isWhitePlayer;
@@ -76,11 +89,18 @@ export async function POST(req) {
 
     if (chess.isGameOver()) {
       const isDraw =
-        chess.isDraw() || chess.isStalemate() || chess.isInsufficientMaterial() || chess.isThreefoldRepetition();
+        chess.isDraw() ||
+        chess.isStalemate() ||
+        chess.isInsufficientMaterial() ||
+        chess.isThreefoldRepetition();
       const winnerId = isDraw ? null : userId;
 
       await db.transaction(async (tx) => {
-        const [lockedGame] = await tx.select().from(chessGames).where(eq(chessGames.id, normalizedGameId)).for("update");
+        const [lockedGame] = await tx
+          .select()
+          .from(chessGames)
+          .where(eq(chessGames.id, normalizedGameId))
+          .for("update");
         if (!lockedGame || lockedGame.status === "finished") return;
 
         if (isDraw) {
@@ -97,7 +117,9 @@ export async function POST(req) {
           }
         } else {
           const pot = Number(lockedGame.betAmount) * 2;
-          const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
+          const houseFee = Number(
+            ((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2),
+          );
           const winnerPayout = Number((pot - houseFee).toFixed(2));
 
           await tx
@@ -131,6 +153,9 @@ export async function POST(req) {
       stack: error?.stack,
       cause: error?.cause,
     });
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 },
+    );
   }
 }

@@ -33,4 +33,3 @@ This file groups all high-priority production tasks into a single deployable pla
 - In browser console:
   - `localStorage.debug = 'socket.io-client:*,engine.io-client:*'`
   - `location.reload()`
-

@@ -6,18 +6,29 @@ import { unoGames, users } from "../../../../db/schema";
 export async function POST(request) {
   const { userId } = await auth();
   if (!userId) {
-    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      { status: 401 },
+    );
   }
 
   const { gameId } = await request.json();
   if (!gameId) {
-    return new Response(JSON.stringify({ success: false, error: "Missing gameId" }), { status: 400 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Missing gameId" }),
+      { status: 400 },
+    );
   }
 
   try {
-    const user = await db.query.users.findFirst({ where: eq(users.clerkId, userId) });
+    const user = await db.query.users.findFirst({
+      where: eq(users.clerkId, userId),
+    });
     if (!user) {
-      return new Response(JSON.stringify({ success: false, error: "User not found" }), { status: 404 });
+      return new Response(
+        JSON.stringify({ success: false, error: "User not found" }),
+        { status: 404 },
+      );
     }
 
     const waitingGame = await db.query.unoGames.findFirst({
@@ -25,12 +36,15 @@ export async function POST(request) {
         eq(unoGames.id, Number(gameId)),
         eq(unoGames.userId, user.id),
         eq(unoGames.status, "waiting"),
-        isNull(unoGames.player2Id)
+        isNull(unoGames.player2Id),
       ),
     });
 
     if (!waitingGame) {
-      return new Response(JSON.stringify({ success: false, error: "Waiting game not found" }), { status: 404 });
+      return new Response(
+        JSON.stringify({ success: false, error: "Waiting game not found" }),
+        { status: 404 },
+      );
     }
 
     const refund = parseFloat(waitingGame.betAmount || "0");
@@ -55,11 +69,18 @@ export async function POST(request) {
     });
 
     return new Response(
-      JSON.stringify({ success: true, message: "Game cancelled", newBalance: updatedBalance }),
-      { status: 200 }
+      JSON.stringify({
+        success: true,
+        message: "Game cancelled",
+        newBalance: updatedBalance,
+      }),
+      { status: 200 },
     );
   } catch (error) {
     console.error("UNO cancel waiting error:", error);
-    return new Response(JSON.stringify({ success: false, error: "Server error" }), { status: 500 });
+    return new Response(
+      JSON.stringify({ success: false, error: "Server error" }),
+      { status: 500 },
+    );
   }
 }

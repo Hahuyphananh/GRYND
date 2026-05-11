@@ -7,14 +7,20 @@ import { and, eq, sql } from "drizzle-orm";
 export async function POST(req) {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const { betAmount } = await req.json();
   const parsedBet = Number(betAmount);
 
   if (!Number.isFinite(parsedBet) || parsedBet <= 0) {
-    return NextResponse.json({ success: false, error: "Invalid bet amount" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Invalid bet amount" },
+      { status: 400 },
+    );
   }
 
   try {
@@ -24,7 +30,9 @@ export async function POST(req) {
         .set({
           balance: sql`${users.balance} - ${parsedBet}`,
         })
-        .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${parsedBet}`))
+        .where(
+          and(eq(users.clerkId, userId), sql`${users.balance} >= ${parsedBet}`),
+        )
         .returning({ balance: users.balance });
 
       if (!updatedUser) {
@@ -53,6 +61,9 @@ export async function POST(req) {
       },
     });
   } catch (err) {
-    return NextResponse.json({ success: false, error: err.message || "Failed to create game" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: err.message || "Failed to create game" },
+      { status: 400 },
+    );
   }
 }

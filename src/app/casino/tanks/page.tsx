@@ -46,10 +46,11 @@ export default function TanksLobby() {
     }
   };
 
-
   const fetchAvailableGames = async () => {
     try {
-      const res = await fetch("/api/tanks/available-games", { cache: "no-store" });
+      const res = await fetch("/api/tanks/available-games", {
+        cache: "no-store",
+      });
       const data = await res.json();
       if (data.success) {
         setAvailableGames(data.games || []);
@@ -76,36 +77,39 @@ export default function TanksLobby() {
     };
   }, [socket]);
 
-async function joinGame(matchId?: string) {
-  try {
-    setLoading(true);
-    if (matchId) setJoiningMatchId(matchId);
+  async function joinGame(matchId?: string) {
+    try {
+      setLoading(true);
+      if (matchId) setJoiningMatchId(matchId);
 
-    const res = await fetch("/api/tanks/join-game", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(matchId ? { matchId } : {}),
-    });
+      const res = await fetch("/api/tanks/join-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(matchId ? { matchId } : {}),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!res.ok) {
-      alert(data.error || "Failed to join game");
-      return;
+      if (!res.ok) {
+        alert(data.error || "Failed to join game");
+        return;
+      }
+
+      // Redirect to game with the returned matchId
+      socket?.emit("room_event", {
+        roomId: "lobby:tanks",
+        event: "lobby:updated",
+      });
+      router.push(`/casino/tanks/game/${data.matchId}`);
+    } catch (err) {
+      console.error("Join match error:", err);
+      alert("Server error while joining match");
+    } finally {
+      setLoading(false);
+      setJoiningMatchId(null);
     }
-
-    // Redirect to game with the returned matchId
-    socket?.emit("room_event", { roomId: "lobby:tanks", event: "lobby:updated" });
-    router.push(`/casino/tanks/game/${data.matchId}`);
-  } catch (err) {
-    console.error("Join match error:", err);
-    alert("Server error while joining match");
-  } finally {
-    setLoading(false);
-    setJoiningMatchId(null);
   }
-}
 
   async function startMatch(gameMode: "duel" | "battle_royale") {
     if (wager > balance) {
@@ -116,12 +120,17 @@ async function joinGame(matchId?: string) {
     try {
       setLoading(true);
 
-      const res = await fetch(gameMode === "battle_royale" ? "/api/tanks/start-battle-royale" : "/api/tanks/start-match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ betAmount: wager, gameMode }),
-      });
+      const res = await fetch(
+        gameMode === "battle_royale"
+          ? "/api/tanks/start-battle-royale"
+          : "/api/tanks/start-match",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ betAmount: wager, gameMode }),
+        },
+      );
 
       const data = await res.json();
 
@@ -131,10 +140,13 @@ async function joinGame(matchId?: string) {
       }
 
       // Deduct wager from local balance
-      setBalance(prev => prev - wager);
+      setBalance((prev) => prev - wager);
 
       // Redirect to game with matchId
-      socket?.emit("room_event", { roomId: "lobby:tanks", event: "lobby:updated" });
+      socket?.emit("room_event", {
+        roomId: "lobby:tanks",
+        event: "lobby:updated",
+      });
       router.push(`/casino/tanks/game/${data.matchId}`);
     } catch (err) {
       console.error("Start match error:", err);
@@ -159,7 +171,9 @@ async function joinGame(matchId?: string) {
         </h1>
 
         <div className="mb-2 text-center text-[#a8f4ff] font-medium">
-          {loading ? "Loading..." : `Your Balance: ${balance.toFixed(2)} tokens`}
+          {loading
+            ? "Loading..."
+            : `Your Balance: ${balance.toFixed(2)} tokens`}
         </div>
 
         {error && <div className="text-red-500 text-sm mb-2">{error}</div>}
@@ -185,13 +199,13 @@ async function joinGame(matchId?: string) {
           {loading ? "Starting..." : "Start Game"}
         </motion.button>
         <motion.button
-  whileTap={{ scale: 0.96 }}
-  onClick={() => joinGame()}
-  disabled={loading}
-  className="block text-center w-full p-3 mt-3 bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933] rounded-xl font-bold cursor-pointer shadow-[0_0_16px_rgba(0,229,255,0.45)] disabled:bg-[#246874] disabled:text-[#c6c6c6]"
->
-  {loading ? "Joining..." : "Quick Join"}
-</motion.button>
+          whileTap={{ scale: 0.96 }}
+          onClick={() => joinGame()}
+          disabled={loading}
+          className="block text-center w-full p-3 mt-3 bg-[#00e5ff] hover:bg-[#49eeff] text-[#001933] rounded-xl font-bold cursor-pointer shadow-[0_0_16px_rgba(0,229,255,0.45)] disabled:bg-[#246874] disabled:text-[#c6c6c6]"
+        >
+          {loading ? "Joining..." : "Quick Join"}
+        </motion.button>
 
         <div className="mt-4 bg-[#08142f]/90 border border-[#00e5ff]/30 rounded-xl p-3 shadow-[0_0_16px_rgba(0,229,255,0.12)]">
           <div className="flex items-center justify-between mb-2">
@@ -205,15 +219,26 @@ async function joinGame(matchId?: string) {
           </div>
 
           {availableGames.length === 0 ? (
-            <p className="text-sm text-[#9ac1d3]">No public match is open right now.</p>
+            <p className="text-sm text-[#9ac1d3]">
+              No public match is open right now.
+            </p>
           ) : (
             <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
               {availableGames.map((game) => (
-                <div key={game.matchId} className="flex items-center justify-between bg-[#0a1c40]/80 border border-[#00e5ff]/20 rounded-lg px-2 py-2">
+                <div
+                  key={game.matchId}
+                  className="flex items-center justify-between bg-[#0a1c40]/80 border border-[#00e5ff]/20 rounded-lg px-2 py-2"
+                >
                   <div className="text-xs">
-                    <p className="font-semibold">{game.hostName || "Host"} · {game.matchId}</p>
+                    <p className="font-semibold">
+                      {game.hostName || "Host"} · {game.matchId}
+                    </p>
                     <p className="text-[#9ac1d3]">
-                      {game?.settings?.mode === "battle_royale" ? "Battle Royale" : "1v1"} · Bet: {Number(game.bounty || 0).toFixed(2)} · {game.currentPlayers}/{game.maxPlayers}
+                      {game?.settings?.mode === "battle_royale"
+                        ? "Battle Royale"
+                        : "1v1"}{" "}
+                      · Bet: {Number(game.bounty || 0).toFixed(2)} ·{" "}
+                      {game.currentPlayers}/{game.maxPlayers}
                     </p>
                   </div>
                   <button
@@ -229,71 +254,65 @@ async function joinGame(matchId?: string) {
           )}
         </div>
 
-{/* Game Rules (Collapsible) */}
-<div className="mt-4 bg-[#08142f]/90 border border-[#00e5ff]/30 rounded-xl p-3 shadow-[0_0_16px_rgba(0,229,255,0.12)]">
-  <button
-    onClick={() => setShowTanksRules(!showTanksRules)}
-    className="w-full flex justify-between items-center font-semibold text-[#FFD700]"
-  >
-    📜 Game Rules
-    <span>{showTanksRules ? "▲" : "▼"}</span>
-  </button>
+        {/* Game Rules (Collapsible) */}
+        <div className="mt-4 bg-[#08142f]/90 border border-[#00e5ff]/30 rounded-xl p-3 shadow-[0_0_16px_rgba(0,229,255,0.12)]">
+          <button
+            onClick={() => setShowTanksRules(!showTanksRules)}
+            className="w-full flex justify-between items-center font-semibold text-[#FFD700]"
+          >
+            📜 Game Rules
+            <span>{showTanksRules ? "▲" : "▼"}</span>
+          </button>
 
-  {showTanksRules && (
-    <div className="mt-3 text-sm text-[#c4e8ff] space-y-3 leading-relaxed">
-      <p>
-        🚗 <strong>Objective:</strong> Destroy other players and survive the arena to win tokens.
-      </p>
+          {showTanksRules && (
+            <div className="mt-3 text-sm text-[#c4e8ff] space-y-3 leading-relaxed">
+              <p>
+                🚗 <strong>Objective:</strong> Destroy other players and survive
+                the arena to win tokens.
+              </p>
 
-      <p>
-        🎯 <strong>How to Play:</strong>
-        <br />
-        • Enter a wager (your entry stake)  
-        • Start or join a match  
-        • Control your tank and fight other players  
-        • Last player standing wins
-      </p>
+              <p>
+                🎯 <strong>How to Play:</strong>
+                <br />• Enter a wager (your entry stake) • Start or join a match
+                • Control your tank and fight other players • Last player
+                standing wins
+              </p>
 
-      <p>
-        💥 <strong>Combat:</strong>
-        <br />
-        • Shooting or hitting enemies eliminates them  
-        • Eliminated players drop their bounty  
-        • You gain tokens from players you eliminate
-      </p>
+              <p>
+                💥 <strong>Combat:</strong>
+                <br />• Shooting or hitting enemies eliminates them • Eliminated
+                players drop their bounty • You gain tokens from players you
+                eliminate
+              </p>
 
-      <p>
-        💰 <strong>Bounties:</strong>
-        <br />
-        • Each player contributes a wager to the pool  
-        • Winning players earn from the total pool  
-        • The longer you survive, the more you can earn
-      </p>
+              <p>
+                💰 <strong>Bounties:</strong>
+                <br />• Each player contributes a wager to the pool • Winning
+                players earn from the total pool • The longer you survive, the
+                more you can earn
+              </p>
 
-      <p>
-        🏆 <strong>Win Conditions:</strong>
-        <br />
-        • Be the last player alive  
-        • Or survive long enough (5s+ depending on mode) to cash out
-      </p>
+              <p>
+                🏆 <strong>Win Conditions:</strong>
+                <br />• Be the last player alive • Or survive long enough (5s+
+                depending on mode) to cash out
+              </p>
 
-      <p>
-        ⚔️ <strong>Game Modes:</strong>
-        <br />
-        • 1v1 Duel → Fast-paced small map  
-        • Battle Royale → Up to 10 players, last one standing wins
-      </p>
+              <p>
+                ⚔️ <strong>Game Modes:</strong>
+                <br />• 1v1 Duel → Fast-paced small map • Battle Royale → Up to
+                10 players, last one standing wins
+              </p>
 
-      <p>
-        ⚠️ <strong>Important:</strong>
-        <br />
-        • You must have enough tokens to start a match  
-        • Leaving a match may forfeit your wager  
-        • Skill + strategy + survival determine winnings
-      </p>
-    </div>
-  )}
-</div>
+              <p>
+                ⚠️ <strong>Important:</strong>
+                <br />• You must have enough tokens to start a match • Leaving a
+                match may forfeit your wager • Skill + strategy + survival
+                determine winnings
+              </p>
+            </div>
+          )}
+        </div>
       </motion.div>
 
       {showModePopup && (

@@ -15,25 +15,28 @@ const verifyPassword = async (password, hashedPassword) => {
 // === Stream Handler ===
 
 function useHandleStreamResponse({ onChunk, onFinish }) {
-  const handleStreamResponse = useCallback(async (response) => {
-    if (response.body) {
-      const reader = response.body.getReader();
-      if (reader) {
-        const decoder = new TextDecoder();
-        let content = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            onFinish(content);
-            break;
+  const handleStreamResponse = useCallback(
+    async (response) => {
+      if (response.body) {
+        const reader = response.body.getReader();
+        if (reader) {
+          const decoder = new TextDecoder();
+          let content = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              onFinish(content);
+              break;
+            }
+            const chunk = decoder.decode(value, { stream: true });
+            content += chunk;
+            onChunk(content);
           }
-          const chunk = decoder.decode(value, { stream: true });
-          content += chunk;
-          onChunk(content);
         }
       }
-    }
-  }, [onChunk, onFinish]);
+    },
+    [onChunk, onFinish],
+  );
 
   const handleStreamResponseRef = useRef(handleStreamResponse);
 
@@ -41,7 +44,10 @@ function useHandleStreamResponse({ onChunk, onFinish }) {
     handleStreamResponseRef.current = handleStreamResponse;
   }, [handleStreamResponse]);
 
-  return useCallback((response) => handleStreamResponseRef.current(response), []);
+  return useCallback(
+    (response) => handleStreamResponseRef.current(response),
+    [],
+  );
 }
 
 // === Upload Hook ===
@@ -54,28 +60,30 @@ function useUpload() {
       setLoading(true);
       let response;
 
-      if ('reactNativeAsset' in input && input.reactNativeAsset) {
+      if ("reactNativeAsset" in input && input.reactNativeAsset) {
         if (input.reactNativeAsset.file) {
           const formData = new FormData();
           formData.append("file", input.reactNativeAsset.file);
           response = await fetch("/api/upload", {
             method: "POST",
-            body: formData
+            body: formData,
           });
         } else {
           const presignRes = await fetch("/api/upload/presign", {
-            method: 'POST',
+            method: "POST",
           });
           const { secureSignature, secureExpire } = await presignRes.json();
           const result = await client.uploadFile(input.reactNativeAsset, {
-            fileName: input.reactNativeAsset.name ?? input.reactNativeAsset.uri.split("/").pop(),
+            fileName:
+              input.reactNativeAsset.name ??
+              input.reactNativeAsset.uri.split("/").pop(),
             contentType: input.reactNativeAsset.mimeType,
             secureSignature,
-            secureExpire
+            secureExpire,
           });
           return {
             url: `${process.env.EXPO_PUBLIC_BASE_CREATE_USER_CONTENT_URL}/${result.uuid}/`,
-            mimeType: result.mimeType || null
+            mimeType: result.mimeType || null,
           };
         }
       } else if ("file" in input && input.file) {
@@ -83,25 +91,25 @@ function useUpload() {
         formData.append("file", input.file);
         response = await fetch("/api/upload", {
           method: "POST",
-          body: formData
+          body: formData,
         });
       } else if ("url" in input) {
         response = await fetch("/api/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: input.url })
+          body: JSON.stringify({ url: input.url }),
         });
       } else if ("base64" in input) {
         response = await fetch("/api/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ base64: input.base64 })
+          body: JSON.stringify({ base64: input.base64 }),
         });
       } else {
         response = await fetch("/api/upload", {
           method: "POST",
           headers: { "Content-Type": "application/octet-stream" },
-          body: input.buffer
+          body: input.buffer,
         });
       }
 
@@ -114,7 +122,6 @@ function useUpload() {
 
       const data = await response.json();
       return { url: data.url, mimeType: data.mimeType || null };
-
     } catch (uploadError) {
       if (uploadError instanceof Error) {
         return { error: uploadError.message };
@@ -133,9 +140,4 @@ function useUpload() {
 
 // === Export Everything ===
 
-export {
-  useHandleStreamResponse,
-  useUpload,
-  hashPassword,
-  verifyPassword
-};
+export { useHandleStreamResponse, useUpload, hashPassword, verifyPassword };

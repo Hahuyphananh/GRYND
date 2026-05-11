@@ -44,27 +44,16 @@ export async function POST(req: Request) {
   const [m] = await db
     .select()
     .from(diceMatches)
-    .where(
-      and(
-        eq(diceMatches.id, matchId),
-        eq(diceMatches.status, "active")
-      )
-    )
+    .where(and(eq(diceMatches.id, matchId), eq(diceMatches.status, "active")))
     .limit(1);
 
   if (!m || m.turnUserId !== "AI_BOT") {
     return NextResponse.json({ ok: false });
   }
 
-  const aiMoves = [
-    "SAFE_ROLL",
-    "POWER_ROLL",
-    "SHIELD",
-    "DOUBLE_DOWN",
-  ];
+  const aiMoves = ["SAFE_ROLL", "POWER_ROLL", "SHIELD", "DOUBLE_DOWN"];
 
-  const aiAction =
-    aiMoves[Math.floor(Math.random() * aiMoves.length)];
+  const aiAction = aiMoves[Math.floor(Math.random() * aiMoves.length)];
 
   const ai = calc(aiAction);
 
@@ -72,17 +61,9 @@ export async function POST(req: Request) {
   let hp2 = Math.max(0, m.hp2 - ai.selfDamage + ai.heal);
 
   let round = m.round + 1;
-  let status =
-    hp1 <= 0 || hp2 <= 0 || round > 20
-      ? "finished"
-      : "active";
+  let status = hp1 <= 0 || hp2 <= 0 || round > 20 ? "finished" : "active";
 
-  let winnerId =
-    hp1 === hp2
-      ? null
-      : hp1 > hp2
-      ? m.player1Id
-      : m.player2Id;
+  let winnerId = hp1 === hp2 ? null : hp1 > hp2 ? m.player1Id : m.player2Id;
 
   await db.insert(diceTurns).values({
     matchId,
@@ -95,7 +76,8 @@ export async function POST(req: Request) {
     selfDamage: ai.selfDamage,
   });
 
-  await db.update(diceMatches)
+  await db
+    .update(diceMatches)
     .set({
       hp1,
       hp2,

@@ -6,7 +6,8 @@ import { eq, sql, and } from "drizzle-orm";
 
 export async function POST(req) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
   const betAmount = Number(body.betAmount);
@@ -16,7 +17,10 @@ export async function POST(req) {
   }
 
   if (betAmount > 10000) {
-    return NextResponse.json({ error: "Bet exceeds maximum limit" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Bet exceeds maximum limit" },
+      { status: 400 },
+    );
   }
 
   const newGame = await db.transaction(async (tx) => {
@@ -26,10 +30,7 @@ export async function POST(req) {
         balance: sql`${users.balance} - ${betAmount}`,
       })
       .where(
-        and(
-          eq(users.clerkId, userId),
-          sql`${users.balance} >= ${betAmount}`
-        )
+        and(eq(users.clerkId, userId), sql`${users.balance} >= ${betAmount}`),
       )
       .returning();
 

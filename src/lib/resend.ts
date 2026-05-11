@@ -17,7 +17,10 @@ export const resend = {
       if (!client) {
         return {
           data: null,
-          error: { name: "MissingApiKey", message: "RESEND_API_KEY is not configured" },
+          error: {
+            name: "MissingApiKey",
+            message: "RESEND_API_KEY is not configured",
+          },
         } as any;
       }
       return client.emails.send(...args);

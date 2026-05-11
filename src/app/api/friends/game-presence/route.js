@@ -17,7 +17,10 @@ export async function GET() {
     const { userId } = await auth();
 
     if (!userId) {
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401 },
+      );
     }
 
     const meRes = await sql`
@@ -25,7 +28,10 @@ export async function GET() {
     `;
 
     if (!meRes.length) {
-      return new Response(JSON.stringify({ success: false, error: "User not found" }), { status: 404 });
+      return new Response(
+        JSON.stringify({ success: false, error: "User not found" }),
+        { status: 404 },
+      );
     }
 
     const meId = Number(meRes[0].id);
@@ -91,7 +97,7 @@ export async function GET() {
         byGame,
         byFriend,
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (error) {
     console.error("[FRIENDS_GAME_PRESENCE_ERROR]", error);
@@ -104,7 +110,7 @@ export async function GET() {
         byGame: {},
         byFriend: {},
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }

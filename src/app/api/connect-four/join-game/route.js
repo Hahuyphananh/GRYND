@@ -3,12 +3,19 @@ import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { connectFourGames, users } from "../../../../db/schema";
-import { getGameMoveSeconds, nextMoveDeadline } from "../../../../lib/connectFourServer";
+import {
+  getGameMoveSeconds,
+  nextMoveDeadline,
+} from "../../../../lib/connectFourServer";
 
 export async function POST(req) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
 
     const body = await req.json();
     const requestedGameId = Number(body?.gameId);
@@ -26,8 +33,8 @@ export async function POST(req) {
               eq(connectFourGames.id, requestedGameId),
               eq(connectFourGames.status, "waiting"),
               isNull(connectFourGames.guestClerkId),
-              ne(connectFourGames.hostClerkId, userId)
-            )
+              ne(connectFourGames.hostClerkId, userId),
+            ),
           )
           .for("update");
       } else if (quickJoin) {
@@ -38,8 +45,8 @@ export async function POST(req) {
             and(
               eq(connectFourGames.status, "waiting"),
               isNull(connectFourGames.guestClerkId),
-              ne(connectFourGames.hostClerkId, userId)
-            )
+              ne(connectFourGames.hostClerkId, userId),
+            ),
           )
           .orderBy(asc(connectFourGames.createdAt))
           .for("update")
@@ -51,7 +58,12 @@ export async function POST(req) {
       const [updatedUser] = await tx
         .update(users)
         .set({ balance: sql`${users.balance} - ${game.betAmount}` })
-        .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${game.betAmount}`))
+        .where(
+          and(
+            eq(users.clerkId, userId),
+            sql`${users.balance} >= ${game.betAmount}`,
+          ),
+        )
         .returning({ balance: users.balance });
 
       if (!updatedUser) throw new Error("Insufficient balance");
@@ -65,16 +77,32 @@ export async function POST(req) {
           currentTurn: "host",
           moveDeadlineAt: nextMoveDeadline(getGameMoveSeconds(game)),
         })
-        .where(and(eq(connectFourGames.id, game.id), isNull(connectFourGames.guestClerkId), eq(connectFourGames.status, "waiting")))
-        .returning({ id: connectFourGames.id, betAmount: connectFourGames.betAmount });
+        .where(
+          and(
+            eq(connectFourGames.id, game.id),
+            isNull(connectFourGames.guestClerkId),
+            eq(connectFourGames.status, "waiting"),
+          ),
+        )
+        .returning({
+          id: connectFourGames.id,
+          betAmount: connectFourGames.betAmount,
+        });
 
       if (!updatedGame) throw new Error("Game is no longer available");
 
-      return { gameId: updatedGame.id, betAmount: Number(updatedGame.betAmount), newBalance: Number(updatedUser.balance) };
+      return {
+        gameId: updatedGame.id,
+        betAmount: Number(updatedGame.betAmount),
+        newBalance: Number(updatedUser.balance),
+      };
     });
 
     return NextResponse.json({ success: true, ...joined });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error?.message || "Unable to join game" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: error?.message || "Unable to join game" },
+      { status: 400 },
+    );
   }
 }

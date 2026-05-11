@@ -8,10 +8,13 @@ export async function POST(request) {
     const { userId } = await auth();
 
     if (!userId) {
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const parsed = await parseAndValidateJson(request, {
@@ -30,19 +33,25 @@ export async function POST(request) {
     `;
 
     if (!meRes.length) {
-      return new Response(JSON.stringify({ success: false, error: "User not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "User not found" }),
+        {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const meId = Number(meRes[0].id);
 
     if (meId === friendId) {
-      return new Response(JSON.stringify({ success: false, error: "You cannot add yourself" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "You cannot add yourself" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const friendRes = await sql`
@@ -53,10 +62,13 @@ export async function POST(request) {
     `;
 
     if (!friendRes.length) {
-      return new Response(JSON.stringify({ success: false, error: "Target user not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Target user not found" }),
+        {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const existingFriendship = await sql`
@@ -68,10 +80,13 @@ export async function POST(request) {
     `;
 
     if (existingFriendship.length) {
-      return new Response(JSON.stringify({ success: false, error: "You are already friends" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "You are already friends" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const reverseInvite = await sql`
@@ -87,12 +102,13 @@ export async function POST(request) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "This user already invited you. Accept it from your invites tab.",
+          error:
+            "This user already invited you. Accept it from your invites tab.",
         }),
         {
           status: 409,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -120,7 +136,7 @@ export async function POST(request) {
       {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
   } catch (error) {
     console.error("[FRIENDS_INVITE_ERROR]", error);
@@ -133,7 +149,7 @@ export async function POST(request) {
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
   }
 }

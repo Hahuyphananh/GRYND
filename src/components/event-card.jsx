@@ -53,17 +53,19 @@ export default function EventCard({
   }, [event, team1, team2, date, time, odds1, odds2, oddsDraw]);
 
   const bookmaker = fallbackEvent.bookmakers?.[0];
-  const market = bookmaker?.markets?.find((m) => m.key === selectedMarket) || bookmaker?.markets?.[0];
+  const market =
+    bookmaker?.markets?.find((m) => m.key === selectedMarket) ||
+    bookmaker?.markets?.[0];
   const outcomes = market?.outcomes || [];
 
   const label =
     selectedMarket === "spreads"
       ? t("sports.point_spread")
       : selectedMarket === "totals"
-      ? t("sports.over_under")
-      : selectedMarket === "props"
-      ? t("sports.prop_bets")
-      : t("sports.moneyline");
+        ? t("sports.over_under")
+        : selectedMarket === "props"
+          ? t("sports.prop_bets")
+          : t("sports.moneyline");
 
   return (
     <div className="rounded-xl border border-[#00e5ff]/45 bg-[#081734]/90 p-4 shadow-[0_0_18px_rgba(0,229,255,0.2)]">
@@ -73,10 +75,16 @@ export default function EventCard({
             {fallbackEvent.home_team} vs {fallbackEvent.away_team}
           </h3>
           <p className="text-xs text-[#95e4ff]">
-            {new Date(fallbackEvent.commence_time).toLocaleDateString()} · {new Date(fallbackEvent.commence_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {new Date(fallbackEvent.commence_time).toLocaleDateString()} ·{" "}
+            {new Date(fallbackEvent.commence_time).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </p>
         </div>
-        <span className="rounded-md border border-[#00e5ff]/50 px-2 py-1 text-xs text-[#00e5ff]">{label}</span>
+        <span className="rounded-md border border-[#00e5ff]/50 px-2 py-1 text-xs text-[#00e5ff]">
+          {label}
+        </span>
       </div>
 
       <div className="flex flex-wrap gap-2">

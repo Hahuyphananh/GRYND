@@ -1,5 +1,5 @@
-import { auth } from '@clerk/nextjs/server';
-import { NextResponse } from 'next/server';
+import { auth } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
 export async function POST() {
   try {
@@ -7,17 +7,18 @@ export async function POST() {
 
     if (!userId) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
       );
     }
 
     return NextResponse.json(
       {
         success: false,
-        error: "Direct token updates are disabled. Use game-specific endpoints."
+        error:
+          "Direct token updates are disabled. Use game-specific endpoints.",
       },
-      { status: 403 }
+      { status: 403 },
     );
   } catch (err) {
     console.error("Erreur dans /api/tokens/update:", err);

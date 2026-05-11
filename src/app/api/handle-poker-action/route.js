@@ -7,24 +7,35 @@ import { compareHands, dealCommunityCards } from "../../lib/ailogic";
 export async function POST(request) {
   const { userId } = await auth();
   if (!userId)
-    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
 
   const { gameId, action } = await request.json();
   if (!gameId || !action)
-    return new Response(JSON.stringify({ success: false, error: "Missing parameters" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Missing parameters" }),
+      {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
 
   try {
-    const user = await db.query.users.findFirst({ where: eq(users.clerkId, userId) });
+    const user = await db.query.users.findFirst({
+      where: eq(users.clerkId, userId),
+    });
     if (!user) throw new Error("User not found");
 
-    const game = await db.query.pokerGames.findFirst({ where: eq(pokerGames.id, gameId) });
-    if (!game || game.status !== "active") throw new Error("Game not found or inactive");
+    const game = await db.query.pokerGames.findFirst({
+      where: eq(pokerGames.id, gameId),
+    });
+    if (!game || game.status !== "active")
+      throw new Error("Game not found or inactive");
 
     let userBalance = parseFloat(user.balance);
     let pot = parseFloat(game.pot || 0);
@@ -39,7 +50,8 @@ export async function POST(request) {
       const resultMessage = `You folded and lost half your bet (-${loss} tokens).`;
 
       await db.transaction(async (tx) => {
-        await tx.update(pokerGames)
+        await tx
+          .update(pokerGames)
           .set({
             result: "lose",
             status: "finished",
@@ -47,7 +59,8 @@ export async function POST(request) {
           })
           .where(eq(pokerGames.id, gameId));
 
-        await tx.update(users)
+        await tx
+          .update(users)
           .set({ balance: userBalance })
           .where(eq(users.clerkId, userId));
       });
@@ -71,7 +84,7 @@ export async function POST(request) {
           },
           newBalance: userBalance,
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -89,14 +102,15 @@ export async function POST(request) {
       const communityCards = dealCommunityCards(
         game.communityCards || [],
         playerHand,
-        aiHand
+        aiHand,
       );
 
       const fullPlayerHand = [...playerHand, ...communityCards.newCommunity];
       const fullAiHand = [...aiHand, ...communityCards.newCommunity];
 
       const winner = compareHands(fullPlayerHand, fullAiHand);
-      const result = winner === "player" ? "win" : winner === "dealer" ? "lose" : "tie";
+      const result =
+        winner === "player" ? "win" : winner === "dealer" ? "lose" : "tie";
 
       let winAmount = 0;
       if (result === "win") {
@@ -105,7 +119,8 @@ export async function POST(request) {
       }
 
       await db.transaction(async (tx) => {
-        await tx.update(pokerGames)
+        await tx
+          .update(pokerGames)
           .set({
             pot,
             result,
@@ -114,7 +129,8 @@ export async function POST(request) {
           })
           .where(eq(pokerGames.id, gameId));
 
-        await tx.update(users)
+        await tx
+          .update(users)
           .set({ balance: userBalance })
           .where(eq(users.clerkId, userId));
       });
@@ -122,7 +138,13 @@ export async function POST(request) {
       return new Response(
         JSON.stringify({
           success: true,
-          game: { ...game, pot, result, communityCards: communityCards.newCommunity, aiHand },
+          game: {
+            ...game,
+            pot,
+            result,
+            communityCards: communityCards.newCommunity,
+            aiHand,
+          },
           positions: [
             { player_id: user.id, hand: playerHand },
             { player_id: null, hand: aiHand },
@@ -132,8 +154,8 @@ export async function POST(request) {
               result === "win"
                 ? "You won!"
                 : result === "lose"
-                ? "Dealer wins!"
-                : "It's a tie."
+                  ? "Dealer wins!"
+                  : "It's a tie."
             }`,
             won: result === "win",
             winAmount,
@@ -141,16 +163,19 @@ export async function POST(request) {
           },
           newBalance: userBalance,
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
 
     throw new Error("Invalid action");
   } catch (err) {
     console.error("❌ Poker action error:", err);
-    return new Response(JSON.stringify({ success: false, error: err.message || "Server error" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: err.message || "Server error" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

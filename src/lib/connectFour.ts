@@ -2,7 +2,9 @@ export type ConnectFourCell = 0 | 1 | 2;
 export type ConnectFourBoard = ConnectFourCell[][];
 
 export function createEmptyBoard(): ConnectFourBoard {
-  return Array.from({ length: 6 }, () => Array.from({ length: 7 }, () => 0 as ConnectFourCell));
+  return Array.from({ length: 6 }, () =>
+    Array.from({ length: 7 }, () => 0 as ConnectFourCell),
+  );
 }
 
 export function cloneBoard(board: ConnectFourBoard): ConnectFourBoard {
@@ -21,7 +23,14 @@ export function isBoardFull(board: ConnectFourBoard): boolean {
   return board[0].every((cell) => cell !== 0);
 }
 
-function countDirection(board: ConnectFourBoard, row: number, col: number, dr: number, dc: number, player: 1 | 2): number {
+function countDirection(
+  board: ConnectFourBoard,
+  row: number,
+  col: number,
+  dr: number,
+  dc: number,
+  player: 1 | 2,
+): number {
   let r = row + dr;
   let c = col + dc;
   let count = 0;
@@ -35,7 +44,12 @@ function countDirection(board: ConnectFourBoard, row: number, col: number, dr: n
   return count;
 }
 
-export function checkWinner(board: ConnectFourBoard, row: number, col: number, player: 1 | 2): boolean {
+export function checkWinner(
+  board: ConnectFourBoard,
+  row: number,
+  col: number,
+  player: 1 | 2,
+): boolean {
   const directions = [
     [0, 1],
     [1, 0],

@@ -8,7 +8,7 @@ function getConnectionString(): string {
 
   if (!connectionString) {
     throw new Error(
-      "Database connection string is missing. Set DATABASE_URL (preferred) or POSTGRES_URL in the runtime environment."
+      "Database connection string is missing. Set DATABASE_URL (preferred) or POSTGRES_URL in the runtime environment.",
     );
   }
 
@@ -20,4 +20,3 @@ export function getNeonSql() {
   neonSql = neon(getConnectionString());
   return neonSql;
 }
-

@@ -1,16 +1,19 @@
-import bcrypt from 'bcrypt';
-import crypto from 'crypto';
-import { auth, clerkClient } from '@clerk/nextjs/server';
-import { db } from '../../../db/client';
-import { users } from '../../../db/schema';
-import { eq, sql } from 'drizzle-orm';
-import { NextResponse } from 'next/server';
+import bcrypt from "bcrypt";
+import crypto from "crypto";
+import { auth, clerkClient } from "@clerk/nextjs/server";
+import { db } from "../../../db/client";
+import { users } from "../../../db/schema";
+import { eq, sql } from "drizzle-orm";
+import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
     const { userId: clerkId } = await auth();
     if (!clerkId) {
-      return NextResponse.json({ error: 'Unauthorized - No session' }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized - No session" },
+        { status: 401 },
+      );
     }
 
     const client = await clerkClient();
@@ -21,32 +24,35 @@ export async function POST(req: Request) {
         clerkUser = await client.users.getUser(clerkId);
         if (clerkUser) break;
       } catch {
-        console.warn('Retrying Clerk user fetch...', i + 1);
+        console.warn("Retrying Clerk user fetch...", i + 1);
         await new Promise((r) => setTimeout(r, 300));
       }
     }
 
     if (!clerkUser) {
-      return NextResponse.json({ error: 'Clerk user not ready yet' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Clerk user not ready yet" },
+        { status: 400 },
+      );
     }
 
     const primaryEmail = clerkUser.emailAddresses?.find(
-      (email) => email.id === clerkUser.primaryEmailAddressId
+      (email) => email.id === clerkUser.primaryEmailAddressId,
     )?.emailAddress;
     const email = primaryEmail || clerkUser.emailAddresses?.[0]?.emailAddress;
 
     if (!email) {
       return NextResponse.json(
-        { error: 'Clerk account has no verified/usable email address yet' },
-        { status: 400 }
+        { error: "Clerk account has no verified/usable email address yet" },
+        { status: 400 },
       );
     }
 
     const preferredName =
-      `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() ||
+      `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim() ||
       clerkUser.username ||
-      email.split('@')[0] ||
-      'Player';
+      email.split("@")[0] ||
+      "Player";
 
     const profilePicture = clerkUser.imageUrl || null;
 
@@ -57,7 +63,10 @@ export async function POST(req: Request) {
       .limit(1);
 
     if (existingByClerk.length > 0) {
-      return NextResponse.json({ message: 'User already exists' }, { status: 200 });
+      return NextResponse.json(
+        { message: "User already exists" },
+        { status: 200 },
+      );
     }
 
     const existingByEmail = await db
@@ -68,12 +77,12 @@ export async function POST(req: Request) {
 
     if (existingByEmail.length > 0) {
       return NextResponse.json(
-        { error: 'An account with this email already exists in local DB' },
-        { status: 409 }
+        { error: "An account with this email already exists in local DB" },
+        { status: 409 },
       );
     }
 
-    let rawPassword = crypto.randomBytes(32).toString('hex');
+    let rawPassword = crypto.randomBytes(32).toString("hex");
 
     try {
       const body = await req.json();
@@ -82,8 +91,8 @@ export async function POST(req: Request) {
         try {
           await client.users.updateUser(clerkId, { password: rawPassword });
         } catch (err) {
-          console.warn('⚠️ Clerk password update failed:', err);
-          rawPassword = crypto.randomBytes(32).toString('hex');
+          console.warn("⚠️ Clerk password update failed:", err);
+          rawPassword = crypto.randomBytes(32).toString("hex");
         }
       }
     } catch {
@@ -107,7 +116,7 @@ export async function POST(req: Request) {
 
     await db.execute(sql`
       INSERT INTO user_secret_stats (user_id, day_key, day_start_balance, last_known_balance)
-      VALUES (${newUser.id}, ${new Date().toISOString().slice(0, 10)}, ${newUser.balance ?? '1000.00'}, ${newUser.balance ?? '1000.00'})
+      VALUES (${newUser.id}, ${new Date().toISOString().slice(0, 10)}, ${newUser.balance ?? "1000.00"}, ${newUser.balance ?? "1000.00"})
       ON CONFLICT (user_id) DO NOTHING
     `);
 
@@ -117,9 +126,15 @@ export async function POST(req: Request) {
       ON CONFLICT (user_id) DO NOTHING
     `);
 
-    return NextResponse.json({ message: 'User synced successfully', user: newUser }, { status: 201 });
+    return NextResponse.json(
+      { message: "User synced successfully", user: newUser },
+      { status: 201 },
+    );
   } catch (error) {
-    console.error('❌ Error in /api/sync-user:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error("❌ Error in /api/sync-user:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

@@ -1,19 +1,29 @@
 "use client";
 
-import React from 'react';
+import React from "react";
 
 const VISUAL_SEWERS = 8;
 
-export default function LaneStrip({ laneIndex, multiplier, isCurrent, isPassed, isCrash, running, onAttempt }) {
+export default function LaneStrip({
+  laneIndex,
+  multiplier,
+  isCurrent,
+  isPassed,
+  isCrash,
+  running,
+  onAttempt,
+}) {
   return (
     <button
       type="button"
       onClick={onAttempt}
       disabled={!isCurrent || !running}
       className={`group relative h-full w-[84px] shrink-0 overflow-hidden border-y border-r border-white/20 transition-all duration-300 first:rounded-l-xl first:border-l first:border-l-white/20 last:rounded-r-xl ${
-        isCrash ? 'bg-zinc-700' : isPassed ? 'bg-zinc-800/95' : 'bg-zinc-700/95'
-      } ${isCurrent ? 'shadow-[inset_0_0_0_1px_rgba(34,211,238,0.75)]' : ''} ${
-        isCurrent && running ? 'cursor-pointer hover:brightness-110' : 'cursor-default'
+        isCrash ? "bg-zinc-700" : isPassed ? "bg-zinc-800/95" : "bg-zinc-700/95"
+      } ${isCurrent ? "shadow-[inset_0_0_0_1px_rgba(34,211,238,0.75)]" : ""} ${
+        isCurrent && running
+          ? "cursor-pointer hover:brightness-110"
+          : "cursor-default"
       }`}
       aria-label={`Lane ${laneIndex + 1}, multiplier ${multiplier.toFixed(2)}x`}
     >

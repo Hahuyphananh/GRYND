@@ -35,14 +35,21 @@ export default function UnoGamePage() {
 
   const waitingPollRef = useRef(null);
 
-  useGamePresence({ gameKey: "uno", gameId: Number(game?.id), enabled: Boolean(game?.id) });
+  useGamePresence({
+    gameKey: "uno",
+    gameId: Number(game?.id),
+    enabled: Boolean(game?.id),
+  });
 
   const fetchAvailableGames = async () => {
     if (typeof document !== "undefined" && document.hidden) return;
     if (game || waitingGameId) return;
     setIsLoadingAvailableGames(true);
     try {
-      const res = await fetch("/api/uno/available-games", { method: "GET", credentials: "include" });
+      const res = await fetch("/api/uno/available-games", {
+        method: "GET",
+        credentials: "include",
+      });
       const data = await res.json();
       if (data.success) setAvailableGames(data.data || []);
     } catch (err) {
@@ -95,7 +102,11 @@ export default function UnoGamePage() {
       if (data.winner) {
         if (gameMode === "online") {
           const youWon = data.result === "win";
-          setMessage(youWon ? "Tu as gagné la partie !" : "Ton adversaire a gagné la partie !");
+          setMessage(
+            youWon
+              ? "Tu as gagné la partie !"
+              : "Ton adversaire a gagné la partie !",
+          );
         } else {
           setMessage(`${data.winner} a gagné la partie !`);
         }
@@ -221,7 +232,11 @@ export default function UnoGamePage() {
           setTurnHistory([d2.data.topCard]);
           const isMyTurn = d2.data.turn === d2.data.role;
           setIsPlayerTurn(isMyTurn);
-          setMessage(isMyTurn ? "✅ Partie trouvée ! Tu commences." : "✅ Partie trouvée ! L'adversaire commence.");
+          setMessage(
+            isMyTurn
+              ? "✅ Partie trouvée ! Tu commences."
+              : "✅ Partie trouvée ! L'adversaire commence.",
+          );
         }
       } catch (err) {
         console.error("Erreur check-game:", err);
@@ -248,7 +263,10 @@ export default function UnoGamePage() {
         setMessage("✅ Partie annulée.");
         if (data.newBalance) setTokens({ balance: data.newBalance });
         fetchAvailableGames();
-        socket?.emit("room_event", { roomId: "lobby:uno", event: "lobby:updated" });
+        socket?.emit("room_event", {
+          roomId: "lobby:uno",
+          event: "lobby:updated",
+        });
       } else {
         setMessage(data.error || "Impossible d'annuler la partie.");
       }
@@ -281,10 +299,17 @@ export default function UnoGamePage() {
         setTurnHistory([data.data.topCard]);
         const isMyTurn = data.data.turn === (data.data.role || "player2");
         setIsPlayerTurn(isMyTurn);
-        setMessage(isMyTurn ? "✅ Partie en ligne trouvée ! Tu commences." : "✅ Partie en ligne trouvée ! L'adversaire commence.");
+        setMessage(
+          isMyTurn
+            ? "✅ Partie en ligne trouvée ! Tu commences."
+            : "✅ Partie en ligne trouvée ! L'adversaire commence.",
+        );
         setTokens({ balance: data.data.newBalance });
         fetchAvailableGames();
-        socket?.emit("room_event", { roomId: "lobby:uno", event: "lobby:updated" });
+        socket?.emit("room_event", {
+          roomId: "lobby:uno",
+          event: "lobby:updated",
+        });
       } else {
         setMessage(data.error || "Impossible de rejoindre cette partie");
       }
@@ -318,10 +343,17 @@ export default function UnoGamePage() {
         setTurnHistory([data.data.topCard]);
         const isMyTurn = data.data.turn === (data.data.role || "player2");
         setIsPlayerTurn(isMyTurn);
-        setMessage(isMyTurn ? "✅ Partie en ligne trouvée ! Tu commences." : "✅ Partie en ligne trouvée ! L'adversaire commence.");
+        setMessage(
+          isMyTurn
+            ? "✅ Partie en ligne trouvée ! Tu commences."
+            : "✅ Partie en ligne trouvée ! L'adversaire commence.",
+        );
         setTokens({ balance: data.data.newBalance });
         fetchAvailableGames();
-        socket?.emit("room_event", { roomId: "lobby:uno", event: "lobby:updated" });
+        socket?.emit("room_event", {
+          roomId: "lobby:uno",
+          event: "lobby:updated",
+        });
       } else {
         setMessage(data.error || "Erreur lors de la recherche de partie");
       }
@@ -379,13 +411,19 @@ export default function UnoGamePage() {
 
         if (data.status === "finished") {
           const youWon = data.data.winner === data.data.role;
-          setMessage(youWon ? "Tu as gagné la partie !" : "Ton adversaire a gagné la partie !");
+          setMessage(
+            youWon
+              ? "Tu as gagné la partie !"
+              : "Ton adversaire a gagné la partie !",
+          );
           setIsPlayerTurn(false);
         }
 
         setTurnHistory((prev) => {
           const last = prev[prev.length - 1];
-          const sameCard = last?.color === data.data.topCard?.color && last?.value === data.data.topCard?.value;
+          const sameCard =
+            last?.color === data.data.topCard?.color &&
+            last?.value === data.data.topCard?.value;
           return sameCard ? prev : [...prev, data.data.topCard];
         });
       } catch (err) {
@@ -410,7 +448,11 @@ export default function UnoGamePage() {
         alert(data.error || "Impossible d'abandonner");
         return;
       }
-      setMessage(gameMode === "online" ? "😢 Tu as abandonné la partie." : "😢 Tu as abandonné contre l'IA.");
+      setMessage(
+        gameMode === "online"
+          ? "😢 Tu as abandonné la partie."
+          : "😢 Tu as abandonné contre l'IA.",
+      );
       setIsPlayerTurn(false);
       if (data.newBalance) setTokens({ balance: data.newBalance });
     } catch (err) {
@@ -435,7 +477,9 @@ export default function UnoGamePage() {
       setTopCard(data.data.topCard);
       setTurnHistory((prev) => [...prev, data.data.topCard]);
       setHistoryIndex(null);
-      setAiHandCount(data.data.aiHandCount ?? data.data.opponentHandCount ?? aiHandCount);
+      setAiHandCount(
+        data.data.aiHandCount ?? data.data.opponentHandCount ?? aiHandCount,
+      );
       setIsPlayerTurn(data.data.isPlayerTurn);
       setMessage(gameMode === "ai" ? "L'IA joue..." : "Tour suivant...");
       await checkForWinner(game.id);
@@ -465,59 +509,107 @@ export default function UnoGamePage() {
     fetchAvailableGames();
   };
 
-  const displayedCard = historyIndex === null ? topCard : turnHistory[historyIndex];
+  const displayedCard =
+    historyIndex === null ? topCard : turnHistory[historyIndex];
 
   return (
     <div className="bg-gradient-to-br from-[#001933] mt-12 to-[#000d1a] min-h-screen flex flex-col items-center justify-center text-white px-4 py-8 page-enter">
       <NavigationBar currentPath="/casino" />
-      <h1 className="text-3xl mb-2 font-bold">{gameMode === "online" ? "UNO 1v1 en ligne" : "UNO vs IA"}</h1>
+      <h1 className="text-3xl mb-2 font-bold">
+        {gameMode === "online" ? "UNO 1v1 en ligne" : "UNO vs IA"}
+      </h1>
 
-      {tokens && <p className="text-yellow-300 mb-4 text-lg">Tokens : {tokens.balance}</p>}
+      {tokens && (
+        <p className="text-yellow-300 mb-4 text-lg">
+          Tokens : {tokens.balance}
+        </p>
+      )}
 
       {!game ? (
         <div className="w-full max-w-4xl aspect-[2/1] bg-[#0b224f]/85 rounded-[2rem] flex flex-col items-center justify-center shadow-[0_0_28px_rgba(0,229,255,0.2)] border-2 border-[#00e5ff]/35 p-8 text-center casino-surface">
-          <h2 className="text-2xl font-bold mb-6 text-white">Prépare ta partie</h2>
+          <h2 className="text-2xl font-bold mb-6 text-white">
+            Prépare ta partie
+          </h2>
 
           <label className="mb-6 text-lg font-semibold flex flex-col items-center">
             <span className="mb-2">Mise :</span>
-            <input type="number" value={betAmount} onChange={(e) => setBetAmount(Number(e.target.value))} className="bg-[#08142f] border border-[#00e5ff]/40 text-white px-3 py-1 rounded text-center w-32" min={1} max={1000} />
+            <input
+              type="number"
+              value={betAmount}
+              onChange={(e) => setBetAmount(Number(e.target.value))}
+              className="bg-[#08142f] border border-[#00e5ff]/40 text-white px-3 py-1 rounded text-center w-32"
+              min={1}
+              max={1000}
+            />
           </label>
 
-          <button onClick={() => setShowGameModeModal(true)} disabled={loading || !!waitingGameId} className="px-8 py-3 rounded-full font-bold text-[#031026] bg-[#f5ff3b] hover:bg-[#edf734]">
+          <button
+            onClick={() => setShowGameModeModal(true)}
+            disabled={loading || !!waitingGameId}
+            className="px-8 py-3 rounded-full font-bold text-[#031026] bg-[#f5ff3b] hover:bg-[#edf734]"
+          >
             {loading ? "Chargement..." : "Commencer une partie"}
           </button>
-          <button onClick={joinOnlineGame} disabled={loading || !!waitingGameId} className="mt-4 px-8 py-3 rounded-full font-bold text-[#001933] bg-[#00e5ff] hover:bg-[#49eeff]">
+          <button
+            onClick={joinOnlineGame}
+            disabled={loading || !!waitingGameId}
+            className="mt-4 px-8 py-3 rounded-full font-bold text-[#001933] bg-[#00e5ff] hover:bg-[#49eeff]"
+          >
             {loading ? "Recherche..." : "Rejoindre une partie"}
           </button>
-          <button onClick={() => router.push("/uno/multiplayer")} className="mt-4 px-8 py-3 rounded-full font-bold text-[#001933] bg-green-300 hover:bg-green-200">
+          <button
+            onClick={() => router.push("/uno/multiplayer")}
+            className="mt-4 px-8 py-3 rounded-full font-bold text-[#001933] bg-green-300 hover:bg-green-200"
+          >
             Multiplayer Table Mode
           </button>
 
           {waitingGameId && (
-            <button onClick={cancelWaitingOnlineGame} disabled={isCancellingWaitingGame} className="mt-3 bg-red-600 hover:bg-red-500 text-white px-8 py-2 rounded-full font-bold">
-              {isCancellingWaitingGame ? "Annulation..." : "Annuler la partie en attente"}
+            <button
+              onClick={cancelWaitingOnlineGame}
+              disabled={isCancellingWaitingGame}
+              className="mt-3 bg-red-600 hover:bg-red-500 text-white px-8 py-2 rounded-full font-bold"
+            >
+              {isCancellingWaitingGame
+                ? "Annulation..."
+                : "Annuler la partie en attente"}
             </button>
           )}
 
           <div className="mt-6 w-full max-w-md bg-[#08142f] rounded-2xl p-4 border border-[#00e5ff]/30">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-bold">Parties en ligne disponibles</h3>
-              <button onClick={fetchAvailableGames} disabled={isLoadingAvailableGames} className="bg-[#00e5ff] text-[#001933] px-3 py-1 rounded-md text-sm font-semibold">
+              <h3 className="text-lg font-bold">
+                Parties en ligne disponibles
+              </h3>
+              <button
+                onClick={fetchAvailableGames}
+                disabled={isLoadingAvailableGames}
+                className="bg-[#00e5ff] text-[#001933] px-3 py-1 rounded-md text-sm font-semibold"
+              >
                 {isLoadingAvailableGames ? "..." : "🔄 Refresh"}
               </button>
             </div>
             {isLoadingAvailableGames ? (
               <p className="text-sm text-gray-200">Chargement des parties...</p>
             ) : availableGames.length === 0 ? (
-              <p className="text-sm text-gray-200">Aucune partie en attente pour le moment.</p>
+              <p className="text-sm text-gray-200">
+                Aucune partie en attente pour le moment.
+              </p>
             ) : (
               <ul className="space-y-2 text-sm">
                 {availableGames.slice(0, 6).map((onlineGame) => (
-                  <li key={onlineGame.id} className="flex justify-between items-center bg-[#0d335f]/80 border border-[#00e5ff]/20 rounded-lg px-3 py-2">
-                    <span>{onlineGame.hostName} • Mise: {onlineGame.betAmount}</span>
+                  <li
+                    key={onlineGame.id}
+                    className="flex justify-between items-center bg-[#0d335f]/80 border border-[#00e5ff]/20 rounded-lg px-3 py-2"
+                  >
+                    <span>
+                      {onlineGame.hostName} • Mise: {onlineGame.betAmount}
+                    </span>
                     <button
                       onClick={() => joinSpecificOnlineGame(onlineGame.id)}
-                      disabled={!onlineGame.canAfford || loading || !!waitingGameId}
+                      disabled={
+                        !onlineGame.canAfford || loading || !!waitingGameId
+                      }
                       className={`px-3 py-1 rounded-md font-semibold ${onlineGame.canAfford && !waitingGameId ? "bg-[#00e5ff] text-[#001933]" : "bg-gray-600 text-gray-200 cursor-not-allowed"}`}
                     >
                       {onlineGame.canAfford ? "Rejoindre" : "Solde insuffisant"}
@@ -531,30 +623,82 @@ export default function UnoGamePage() {
           {showGameModeModal && (
             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
               <div className="bg-[#08142f] text-white border border-[#00e5ff]/40 rounded-2xl p-6 w-full max-w-sm">
-                <h3 className="text-xl font-bold mb-4 text-center text-[#FFD700]">Choisir un mode</h3>
+                <h3 className="text-xl font-bold mb-4 text-center text-[#FFD700]">
+                  Choisir un mode
+                </h3>
                 <div className="flex flex-col gap-3">
-                  <button onClick={() => { setShowGameModeModal(false); initializeGame(); }} className="px-4 py-2 rounded-lg font-bold bg-[#00e5ff] text-[#001933]">Jouer contre l'IA</button>
-                  <button onClick={createOnlineGame} disabled={!!waitingGameId} className="px-4 py-2 rounded-lg font-bold bg-[#00e5ff] text-[#001933]">Créer une partie 1v1</button>
-                  <button onClick={() => setShowGameModeModal(false)} className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold">Annuler</button>
+                  <button
+                    onClick={() => {
+                      setShowGameModeModal(false);
+                      initializeGame();
+                    }}
+                    className="px-4 py-2 rounded-lg font-bold bg-[#00e5ff] text-[#001933]"
+                  >
+                    Jouer contre l'IA
+                  </button>
+                  <button
+                    onClick={createOnlineGame}
+                    disabled={!!waitingGameId}
+                    className="px-4 py-2 rounded-lg font-bold bg-[#00e5ff] text-[#001933]"
+                  >
+                    Créer une partie 1v1
+                  </button>
+                  <button
+                    onClick={() => setShowGameModeModal(false)}
+                    className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold"
+                  >
+                    Annuler
+                  </button>
                 </div>
               </div>
             </div>
           )}
 
-          {message && <p className="mt-6 text-yellow-300 text-lg font-medium">{message}</p>}
+          {message && (
+            <p className="mt-6 text-yellow-300 text-lg font-medium">
+              {message}
+            </p>
+          )}
         </div>
       ) : (
         <div className="w-full max-w-5xl min-h-[640px] bg-green-700/90 rounded-[2.5rem] flex flex-col justify-between items-center shadow-2xl border-8 border-green-950 p-6 pb-36 relative casino-surface overflow-hidden">
-          <div className={`px-4 py-1 rounded-full ${!isPlayerTurn ? "turn-active-glow" : ""}`}>{gameMode === "online" ? "Main adverse:" : "Main de l'IA:"}</div>
-          <div className="flex justify-center gap-2 flex-wrap max-w-4xl">{Array(aiHandCount).fill(0).map((_, i) => <UnoBack key={i} />)}</div>
+          <div
+            className={`px-4 py-1 rounded-full ${!isPlayerTurn ? "turn-active-glow" : ""}`}
+          >
+            {gameMode === "online" ? "Main adverse:" : "Main de l'IA:"}
+          </div>
+          <div className="flex justify-center gap-2 flex-wrap max-w-4xl">
+            {Array(aiHandCount)
+              .fill(0)
+              .map((_, i) => (
+                <UnoBack key={i} />
+              ))}
+          </div>
 
           {showColorPicker && (
             <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
               <div className="bg-white p-8 rounded-2xl shadow-xl text-black flex flex-col items-center gap-6">
-                <h2 className="text-xl font-bold mb-2">Choisis une couleur 🎨</h2>
+                <h2 className="text-xl font-bold mb-2">
+                  Choisis une couleur 🎨
+                </h2>
                 <div className="grid grid-cols-2 gap-4">
-                  {[{ color: "red", label: "Rouge" }, { color: "blue", label: "Bleu" }, { color: "green", label: "Vert" }, { color: "yellow", label: "Jaune" }].map(({ color, label }) => (
-                    <button key={color} onClick={() => { setShowColorPicker(false); sendPlayCard(pendingCard, color); }} className="w-24 h-24 rounded-xl font-bold text-white" style={{ backgroundColor: color }}>{label}</button>
+                  {[
+                    { color: "red", label: "Rouge" },
+                    { color: "blue", label: "Bleu" },
+                    { color: "green", label: "Vert" },
+                    { color: "yellow", label: "Jaune" },
+                  ].map(({ color, label }) => (
+                    <button
+                      key={color}
+                      onClick={() => {
+                        setShowColorPicker(false);
+                        sendPlayCard(pendingCard, color);
+                      }}
+                      className="w-24 h-24 rounded-xl font-bold text-white"
+                      style={{ backgroundColor: color }}
+                    >
+                      {label}
+                    </button>
                   ))}
                 </div>
               </div>
@@ -562,29 +706,92 @@ export default function UnoGamePage() {
           )}
 
           <div className="flex items-center justify-center gap-6 mb-4">
-            <button onClick={() => setHistoryIndex((prev) => (turnHistory.length <= 1 ? null : prev === null ? turnHistory.length - 2 : Math.max(prev - 1, 0)))} disabled={turnHistory.length <= 1 || historyIndex === 0} className="text-3xl font-bold text-yellow-300 disabled:opacity-30">⬅️</button>
+            <button
+              onClick={() =>
+                setHistoryIndex((prev) =>
+                  turnHistory.length <= 1
+                    ? null
+                    : prev === null
+                      ? turnHistory.length - 2
+                      : Math.max(prev - 1, 0),
+                )
+              }
+              disabled={turnHistory.length <= 1 || historyIndex === 0}
+              className="text-3xl font-bold text-yellow-300 disabled:opacity-30"
+            >
+              ⬅️
+            </button>
             <div className="flex flex-col items-center">
               Carte actuelle :
-              {displayedCard ? <UnoCard color={displayedCard.color} value={displayedCard.value} onClick={() => {}} /> : <span className="font-bold ml-2">?</span>}
+              {displayedCard ? (
+                <UnoCard
+                  color={displayedCard.color}
+                  value={displayedCard.value}
+                  onClick={() => {}}
+                />
+              ) : (
+                <span className="font-bold ml-2">?</span>
+              )}
             </div>
-            <button onClick={() => setHistoryIndex((prev) => (prev === null ? null : prev >= turnHistory.length - 2 ? null : prev + 1))} disabled={historyIndex === null} className="text-3xl font-bold text-yellow-300 disabled:opacity-30">➡️</button>
+            <button
+              onClick={() =>
+                setHistoryIndex((prev) =>
+                  prev === null
+                    ? null
+                    : prev >= turnHistory.length - 2
+                      ? null
+                      : prev + 1,
+                )
+              }
+              disabled={historyIndex === null}
+              className="text-3xl font-bold text-yellow-300 disabled:opacity-30"
+            >
+              ➡️
+            </button>
           </div>
 
-          <div className={`flex flex-wrap gap-2 justify-center px-3 py-2 rounded-2xl ${isPlayerTurn ? "turn-active-glow" : ""}`}>
-            {playerHand.map((card, i) => <UnoCard key={i} color={card.color} value={card.value} onClick={() => playCard(card)} />)}
+          <div
+            className={`flex flex-wrap gap-2 justify-center px-3 py-2 rounded-2xl ${isPlayerTurn ? "turn-active-glow" : ""}`}
+          >
+            {playerHand.map((card, i) => (
+              <UnoCard
+                key={i}
+                color={card.color}
+                value={card.value}
+                onClick={() => playCard(card)}
+              />
+            ))}
           </div>
 
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center relative z-50">
-            <button onClick={drawCard} className="mb-2 px-5 py-2 rounded-full font-bold bg-[#f5ff3b] text-[#031026]">Piocher une carte</button>
+            <button
+              onClick={drawCard}
+              className="mb-2 px-5 py-2 rounded-full font-bold bg-[#f5ff3b] text-[#031026]"
+            >
+              Piocher une carte
+            </button>
             {game && !message.includes("gagné") && (
-              <button onClick={resignGame} disabled={isResigning} className="mt-3 px-6 py-2 rounded-full font-bold text-white bg-red-600 hover:bg-red-500">
+              <button
+                onClick={resignGame}
+                disabled={isResigning}
+                className="mt-3 px-6 py-2 rounded-full font-bold text-white bg-red-600 hover:bg-red-500"
+              >
                 {isResigning ? "Abandon..." : "❌ Abandonner"}
               </button>
             )}
-            <button onClick={returnToLobby} className="mt-2 bg-[#f5ff3b] text-black px-6 py-2 rounded">Lobby</button>
+            <button
+              onClick={returnToLobby}
+              className="mt-2 bg-[#f5ff3b] text-black px-6 py-2 rounded"
+            >
+              Lobby
+            </button>
           </div>
 
-          {message && <p className="mt-6 text-yellow-300 text-lg font-medium">{message}</p>}
+          {message && (
+            <p className="mt-6 text-yellow-300 text-lg font-medium">
+              {message}
+            </p>
+          )}
         </div>
       )}
     </div>

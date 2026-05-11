@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
+import { useEffect } from "react";
 
 export default function useGamePresence({ gameKey, gameId, enabled = true }) {
   useEffect(() => {
@@ -12,14 +12,14 @@ export default function useGamePresence({ gameKey, gameId, enabled = true }) {
     };
 
     const setInGame = () => {
-      fetch('/api/presence/game', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+      fetch("/api/presence/game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         keepalive: true,
         body: JSON.stringify(inGamePayload),
       }).catch((error) => {
-        console.error('[GAME_PRESENCE_ERROR]', error);
+        console.error("[GAME_PRESENCE_ERROR]", error);
       });
     };
 
@@ -28,14 +28,14 @@ export default function useGamePresence({ gameKey, gameId, enabled = true }) {
 
     return () => {
       clearInterval(id);
-      fetch('/api/presence/leave-game', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+      fetch("/api/presence/leave-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         keepalive: true,
         body: JSON.stringify({}),
       }).catch((error) => {
-        console.error('[LEAVE_GAME_PRESENCE_ERROR]', error);
+        console.error("[LEAVE_GAME_PRESENCE_ERROR]", error);
       });
     };
   }, [enabled, gameId, gameKey]);

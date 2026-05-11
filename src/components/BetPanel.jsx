@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import React, { useState, useEffect } from "react";
 
 export default function BetPanel({
@@ -19,8 +19,8 @@ export default function BetPanel({
     async function fetchTokens() {
       setLoading(true);
       try {
-        const response = await fetch("/api/get-user-tokens", { 
-          method: "POST" ,
+        const response = await fetch("/api/get-user-tokens", {
+          method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
         });
@@ -46,88 +46,98 @@ export default function BetPanel({
     placeBet(parseFloat(amount), parseFloat(autoCashout));
   };
 
- return (
-  <div className="relative w-full">
+  return (
+    <div className="relative w-full">
+      {/* Top neon line */}
+      <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent opacity-80"></div>
 
-    {/* Top neon line */}
-    <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent opacity-80"></div>
-
-    <div className="bg-[#050d1f]/80 backdrop-blur-xl border border-[#00e5ff]/40 
+      <div
+        className="bg-[#050d1f]/80 backdrop-blur-xl border border-[#00e5ff]/40 
                     shadow-[0_0_25px_rgba(0,229,255,0.25),inset_0_0_25px_rgba(0,229,255,0.08)]
-                    p-6 rounded-2xl flex flex-col gap-5 w-full">
+                    p-6 rounded-2xl flex flex-col gap-5 w-full"
+      >
+        {/* Title */}
+        <h2
+          className="text-2xl font-extrabold tracking-wider text-transparent bg-clip-text 
+                     bg-gradient-to-r from-[#00e5ff] to-[#00ffa6]"
+        >
+          ⚡ PLACE BET
+        </h2>
 
-      {/* Title */}
-      <h2 className="text-2xl font-extrabold tracking-wider text-transparent bg-clip-text 
-                     bg-gradient-to-r from-[#00e5ff] to-[#00ffa6]">
-        ⚡ PLACE BET
-      </h2>
-
-      {/* Balance */}
-      <div className="text-lg font-semibold text-[#00e5ff] 
-                      drop-shadow-[0_0_10px_rgba(0,229,255,0.8)]">
-        Balance: {loading ? "..." : !isNaN(userTokens) ? userTokens.toFixed(2) : "0.00"} Tokens
-      </div>
-
-      {error && (
-        <div className="text-red-400 text-sm border border-red-500/40 bg-red-900/20 p-2 rounded">
-          {error}
+        {/* Balance */}
+        <div
+          className="text-lg font-semibold text-[#00e5ff] 
+                      drop-shadow-[0_0_10px_rgba(0,229,255,0.8)]"
+        >
+          Balance:{" "}
+          {loading
+            ? "..."
+            : !isNaN(userTokens)
+              ? userTokens.toFixed(2)
+              : "0.00"}{" "}
+          Tokens
         </div>
-      )}
 
-      {/* Bet Amount */}
-      <div className="flex flex-col gap-1">
-        <label className="text-sm text-gray-300">Bet Amount ($)</label>
-        <input
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="Enter bet..."
-          disabled={gameRunning || hasBet}
-          className="bg-[#020617] border border-[#00e5ff]/30 
+        {error && (
+          <div className="text-red-400 text-sm border border-red-500/40 bg-red-900/20 p-2 rounded">
+            {error}
+          </div>
+        )}
+
+        {/* Bet Amount */}
+        <div className="flex flex-col gap-1">
+          <label className="text-sm text-gray-300">Bet Amount ($)</label>
+          <input
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="Enter bet..."
+            disabled={gameRunning || hasBet}
+            className="bg-[#020617] border border-[#00e5ff]/30 
                      focus:border-[#00e5ff] focus:shadow-[0_0_15px_rgba(0,229,255,0.6)]
                      rounded-xl px-3 py-3 text-white outline-none
                      transition-all duration-300"
-        />
-      </div>
+          />
+        </div>
 
-      {/* Auto Cashout */}
-      <div className="flex flex-col gap-1">
-        <label className="text-sm text-gray-300">Auto Cashout (x)</label>
-        <input
-          type="number"
-          value={autoCashout}
-          step="0.1"
-          onChange={(e) => setAutoCashout(e.target.value)}
-          placeholder="2.0x"
-          disabled={gameRunning || hasBet}
-          className="bg-[#020617] border border-[#00ffa6]/30 
+        {/* Auto Cashout */}
+        <div className="flex flex-col gap-1">
+          <label className="text-sm text-gray-300">Auto Cashout (x)</label>
+          <input
+            type="number"
+            value={autoCashout}
+            step="0.1"
+            onChange={(e) => setAutoCashout(e.target.value)}
+            placeholder="2.0x"
+            disabled={gameRunning || hasBet}
+            className="bg-[#020617] border border-[#00ffa6]/30 
                      focus:border-[#00ffa6] focus:shadow-[0_0_15px_rgba(0,255,166,0.6)]
                      rounded-xl px-3 py-3 text-white outline-none
                      transition-all duration-300"
-        />
-      </div>
+          />
+        </div>
 
-      {/* Button */}
-      <button
-        onClick={handlePlaceBet}
-        disabled={gameRunning || hasBet || Number(amount) > userTokens}
-        className={`py-3 rounded-xl font-bold text-lg transition-all duration-300
+        {/* Button */}
+        <button
+          onClick={handlePlaceBet}
+          disabled={gameRunning || hasBet || Number(amount) > userTokens}
+          className={`py-3 rounded-xl font-bold text-lg transition-all duration-300
           ${
             hasBet
               ? "bg-[#1a2333] text-gray-400 border border-gray-600"
               : Number(amount) > userTokens
-              ? "bg-[#2a0a0a] text-red-400 border border-red-500"
-              : "bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933] border border-[#00e5ff] shadow-[0_0_20px_rgba(0,229,255,0.6)] hover:shadow-[0_0_35px_rgba(0,255,166,1)] hover:scale-105"
+                ? "bg-[#2a0a0a] text-red-400 border border-red-500"
+                : "bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933] border border-[#00e5ff] shadow-[0_0_20px_rgba(0,229,255,0.6)] hover:shadow-[0_0_35px_rgba(0,255,166,1)] hover:scale-105"
           }
         `}
-      >
-        {hasBet
-          ? "BET PLACED"
-          : Number(amount) > userTokens
-          ? "INSUFFICIENT BALANCE"
-          : "PLACE BET"}
-      </button>
+        >
+          {hasBet
+            ? "BET PLACED"
+            : Number(amount) > userTokens
+              ? "INSUFFICIENT BALANCE"
+              : "PLACE BET"}
+        </button>
+      </div>
     </div>
-  </div>
-);
+  );
 }

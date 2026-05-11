@@ -4,7 +4,21 @@ import { sql } from "@vercel/postgres";
 
 function generateShuffledDeck() {
   const suits = ["hearts", "diamonds", "clubs", "spades"];
-  const values = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
+  const values = [
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "J",
+    "Q",
+    "K",
+    "A",
+  ];
   const deck = [];
 
   for (const suit of suits) {
@@ -36,7 +50,10 @@ export async function POST(request) {
 
     // 👇 NEW: read buyIn (default 100) and clamp
     const buyInRaw = Number(body.buyIn ?? 100);
-    const buyIn = Math.max(20, Math.min(Number.isFinite(buyInRaw) ? buyInRaw : 100, 2000));
+    const buyIn = Math.max(
+      20,
+      Math.min(Number.isFinite(buyInRaw) ? buyInRaw : 100, 2000),
+    );
 
     // ✅ Check user balance
     const { rows: userRows } = await sql`
@@ -45,10 +62,10 @@ export async function POST(request) {
     const balance = parseFloat(userRows[0]?.balance ?? 0);
 
     if (balance < buyIn) {
-      return new Response(
-        JSON.stringify({ error: "Insufficient balance" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Insufficient balance" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     // ✅ Deduct buy-in immediately
@@ -62,10 +79,10 @@ export async function POST(request) {
       const isUser = i === 0;
       const hand = [deck.pop(), deck.pop()];
       players.push({
-        id: isUser ? userId : null,     // AI = null
+        id: isUser ? userId : null, // AI = null
         seat: i,
         hand,
-        stack: isUser ? buyIn : 500,    // 👈 user uses chosen buy-in, AI has 500
+        stack: isUser ? buyIn : 500, // 👈 user uses chosen buy-in, AI has 500
         currentBet: 0,
         isAI: !isUser,
         lastAction: null,
@@ -114,7 +131,7 @@ export async function POST(request) {
         ${pot},
         ${bigBlind},
         ${JSON.stringify(players[0].hand)},
-        ${JSON.stringify(players.slice(1).map(p => p.hand))},
+        ${JSON.stringify(players.slice(1).map((p) => p.hand))},
         ${JSON.stringify(deck)},
         ${nextPos},
         ${dealerPos}
@@ -123,9 +140,9 @@ export async function POST(request) {
     `;
     const gameId = gameRows[0].id;
 
-// ✅ Insert all players into poker_player_positions
-for (const p of players) {
-  await sql`
+    // ✅ Insert all players into poker_player_positions
+    for (const p of players) {
+      await sql`
     INSERT INTO poker_player_positions (
       game_id,
       player_id,
@@ -142,30 +159,30 @@ for (const p of players) {
       ${JSON.stringify(p.hand)}  -- use actual hand
     )
   `;
-}
-const { rows: updatedUser } = await sql`
+    }
+    const { rows: updatedUser } = await sql`
   SELECT balance FROM users WHERE clerk_id = ${userId}
 `;
 
     // ✅ Response (include names + stack to match your UI)
     return new Response(
-  JSON.stringify({
-    gameId,
-    nPlayers,
-    players,
-    pot,
-    minBet: bigBlind,
-    currentPosition: nextPos,
-    dealerPos,
-    balance: parseFloat(updatedUser[0].balance), // 👈 send updated bankroll
-  }),
-  { status: 200, headers: { "Content-Type": "application/json" } }
-);
+      JSON.stringify({
+        gameId,
+        nPlayers,
+        players,
+        pot,
+        minBet: bigBlind,
+        currentPosition: nextPos,
+        dealerPos,
+        balance: parseFloat(updatedUser[0].balance), // 👈 send updated bankroll
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
   } catch (err) {
     console.error("❌ Error starting poker game:", err);
-    return new Response(
-      JSON.stringify({ error: "Server error" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: "Server error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }

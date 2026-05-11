@@ -12,7 +12,11 @@ export default function MatchmakingPage() {
   const timerMode = searchParams.get("timer") || "blitz";
 
   const [statusText, setStatusText] = useState("Creating game...");
-  const [gameId, setGameId] = useState(Number.isFinite(precreatedGameId) && precreatedGameId > 0 ? precreatedGameId : null);
+  const [gameId, setGameId] = useState(
+    Number.isFinite(precreatedGameId) && precreatedGameId > 0
+      ? precreatedGameId
+      : null,
+  );
   const [color, setColor] = useState(presetColor);
   const [isCanceling, setIsCanceling] = useState(false);
   const pollFailuresRef = useRef(0);
@@ -24,14 +28,20 @@ export default function MatchmakingPage() {
       setStatusText("Waiting for opponent...");
       pollId = setInterval(async () => {
         try {
-          const pollRes = await fetch(`/api/chess/game-state?gameId=${activeGameId}`, { cache: "no-store" });
+          const pollRes = await fetch(
+            `/api/chess/game-state?gameId=${activeGameId}`,
+            { cache: "no-store" },
+          );
           const pollData = await pollRes.json();
           if (!pollRes.ok) {
             const nextFailures = pollFailuresRef.current + 1;
             pollFailuresRef.current = nextFailures;
 
             if (nextFailures >= 3) {
-              setStatusText(pollData?.error || "Unable to refresh waiting room. Please retry.");
+              setStatusText(
+                pollData?.error ||
+                  "Unable to refresh waiting room. Please retry.",
+              );
               clearInterval(pollId);
             }
             return;
@@ -39,9 +49,14 @@ export default function MatchmakingPage() {
 
           pollFailuresRef.current = 0;
 
-          if (pollData.data.status === "in_progress" && pollData.data.blackPlayerId) {
+          if (
+            pollData.data.status === "in_progress" &&
+            pollData.data.blackPlayerId
+          ) {
             clearInterval(pollId);
-            router.push(`/casino/chess-game/${activeGameId}?color=${activeColor}&timer=${pollData.data.timerMode || timerMode}`);
+            router.push(
+              `/casino/chess-game/${activeGameId}?color=${activeColor}&timer=${pollData.data.timerMode || timerMode}`,
+            );
           }
         } catch {
           const nextFailures = pollFailuresRef.current + 1;
@@ -78,7 +93,9 @@ export default function MatchmakingPage() {
         setColor(data.color || "white");
 
         if (data.ready || data.status === "in_progress") {
-          router.push(`/casino/chess-game/${data.gameId}?color=${data.color}&timer=${data.timerMode || timerMode}`);
+          router.push(
+            `/casino/chess-game/${data.gameId}?color=${data.color}&timer=${data.timerMode || timerMode}`,
+          );
           return;
         }
 
@@ -122,7 +139,8 @@ export default function MatchmakingPage() {
     }
   }
 
-  const showCancel = statusText === "Waiting for opponent..." && gameId && color === "white";
+  const showCancel =
+    statusText === "Waiting for opponent..." && gameId && color === "white";
 
   return (
     <div className="min-h-screen bg-[#030817] text-white flex items-center justify-center">
@@ -130,7 +148,11 @@ export default function MatchmakingPage() {
         <h2 className="text-3xl font-bold text-[#FFD700] mb-4">{statusText}</h2>
         <p className="mb-2">Stake: ${tableAmount}</p>
         <p className="mb-2">Timer: {timerMode}</p>
-        {gameId && <p className="text-sm opacity-80 mb-5">Game #{gameId} · You are {color}</p>}
+        {gameId && (
+          <p className="text-sm opacity-80 mb-5">
+            Game #{gameId} · You are {color}
+          </p>
+        )}
 
         {showCancel && (
           <button

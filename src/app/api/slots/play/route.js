@@ -1,17 +1,21 @@
-import { auth } from '@clerk/nextjs/server';
-import { db } from '../../../../db/client';
-import { users } from '../../../../db/schema';
-import { eq, sql } from 'drizzle-orm';
-import { NextResponse } from 'next/server';
+import { auth } from "@clerk/nextjs/server";
+import { db } from "../../../../db/client";
+import { users } from "../../../../db/schema";
+import { eq, sql } from "drizzle-orm";
+import { NextResponse } from "next/server";
 
 export async function POST(req) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { bet } = await req.json();
-    if (typeof bet !== 'number' || bet <= 0) {
-      return NextResponse.json({ error: 'Invalid bet amount' }, { status: 400 });
+    if (typeof bet !== "number" || bet <= 0) {
+      return NextResponse.json(
+        { error: "Invalid bet amount" },
+        { status: 400 },
+      );
     }
 
     // Deduct bet
@@ -21,11 +25,33 @@ export async function POST(req) {
       .where(sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${bet}`)
       .returning({ balance: users.balance });
 
-    if (!user) return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 });
+    if (!user)
+      return NextResponse.json(
+        { error: "Insufficient balance" },
+        { status: 400 },
+      );
 
     const fruitIcons = [
-      "🍉", "🍌", "🍍", "🍏", "🍓", "🥭", "🍈", "🍇", "🍒", "🍎",
-      "🍊", "🍋", "🥝", "🍐", "🍑", "🥥", "🍅", "🍆", "🌽", "🍠"
+      "🍉",
+      "🍌",
+      "🍍",
+      "🍏",
+      "🍓",
+      "🥭",
+      "🍈",
+      "🍇",
+      "🍒",
+      "🍎",
+      "🍊",
+      "🍋",
+      "🥝",
+      "🍐",
+      "🍑",
+      "🥥",
+      "🍅",
+      "🍆",
+      "🌽",
+      "🍠",
     ];
 
     // ---------------------------
@@ -34,57 +60,61 @@ export async function POST(req) {
     const roll = Math.random() * 100;
 
     let matchCount = 0;
-    if (roll < 3) matchCount = 5;          // 3%
-    else if (roll < 10) matchCount = 4;    // 7%
-    else if (roll < 25) matchCount = 3;    // 15%
-    else matchCount = 0;                   // 75%
+    if (roll < 3)
+      matchCount = 5; // 3%
+    else if (roll < 10)
+      matchCount = 4; // 7%
+    else if (roll < 25)
+      matchCount = 3; // 15%
+    else matchCount = 0; // 75%
 
     const matchSymbol =
       fruitIcons[Math.floor(Math.random() * fruitIcons.length)];
 
-      const paylines = [
-  { name: "top", rows: [0, 0, 0, 0, 0] },
-  { name: "middle", rows: [1, 1, 1, 1, 1] },
-  { name: "bottom", rows: [2, 2, 2, 2, 2] },
-  { name: "v-shape", rows: [0, 1, 2, 1, 0] },
-  { name: "inverted-v", rows: [2, 1, 0, 1, 2] },
-];
+    const paylines = [
+      { name: "top", rows: [0, 0, 0, 0, 0] },
+      { name: "middle", rows: [1, 1, 1, 1, 1] },
+      { name: "bottom", rows: [2, 2, 2, 2, 2] },
+      { name: "v-shape", rows: [0, 1, 2, 1, 0] },
+      { name: "inverted-v", rows: [2, 1, 0, 1, 2] },
+    ];
 
     // ---------------------------
     // 🎰 BUILD REELS
     // ---------------------------
     const reels = Array.from({ length: 5 }, () =>
-      Array.from({ length: 3 }, () =>
-        fruitIcons[Math.floor(Math.random() * fruitIcons.length)]
-      )
+      Array.from(
+        { length: 3 },
+        () => fruitIcons[Math.floor(Math.random() * fruitIcons.length)],
+      ),
     );
 
-  let chosenPayline = null;
+    let chosenPayline = null;
 
-if (matchCount >= 3) {
-  chosenPayline =
-    paylines[Math.floor(Math.random() * paylines.length)];
+    if (matchCount >= 3) {
+      chosenPayline = paylines[Math.floor(Math.random() * paylines.length)];
 
-  for (let col = 0; col < matchCount; col++) {
-    const row = chosenPayline.rows[col];
-    reels[col][row] = matchSymbol;
-  }
-}
+      for (let col = 0; col < matchCount; col++) {
+        const row = chosenPayline.rows[col];
+        reels[col][row] = matchSymbol;
+      }
+    }
 
     // ---------------------------
     // 💰 PAYOUT
     // ---------------------------
-   let winAmount = 0;
+    let winAmount = 0;
 
-if (matchCount === 5) winAmount = bet * 6; // bet + 5x
-else if (matchCount === 4) winAmount = bet * 4; // bet + 3x
-else if (matchCount === 3) winAmount = bet * 3; // bet + 2x
+    if (matchCount === 5)
+      winAmount = bet * 6; // bet + 5x
+    else if (matchCount === 4)
+      winAmount = bet * 4; // bet + 3x
+    else if (matchCount === 3) winAmount = bet * 3; // bet + 2x
 
-
-  await db
-  .update(users)
-  .set({ balance: sql`balance + ${winAmount}` })
-  .where(eq(users.clerkId, userId));
+    await db
+      .update(users)
+      .set({ balance: sql`balance + ${winAmount}` })
+      .where(eq(users.clerkId, userId));
 
     const newBalance = Number(user.balance) + winAmount;
 
@@ -95,23 +125,22 @@ else if (matchCount === 3) winAmount = bet * 3; // bet + 2x
         winAmount,
         profit: winAmount - bet,
         newBalance,
-      winningLine:
-  matchCount >= 3
-    ? {
-        line: chosenPayline.name,
-        symbol: matchSymbol,
-        count: matchCount,
-        positions: Array.from({ length: matchCount }, (_, i) => ({
-          col: i,
-          row: chosenPayline.rows[i],
-        })),
-      }
-    : null,
-
+        winningLine:
+          matchCount >= 3
+            ? {
+                line: chosenPayline.name,
+                symbol: matchSymbol,
+                count: matchCount,
+                positions: Array.from({ length: matchCount }, (_, i) => ({
+                  col: i,
+                  row: chosenPayline.rows[i],
+                })),
+              }
+            : null,
       },
     });
   } catch (err) {
-    console.error('Slots play error:', err);
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    console.error("Slots play error:", err);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

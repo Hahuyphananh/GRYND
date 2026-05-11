@@ -5,7 +5,10 @@ import { eq } from "drizzle-orm";
 
 export async function GET() {
   try {
-    const games = await db.select().from(pokerGames).where(eq(pokerGames.isPrivate, false));
+    const games = await db
+      .select()
+      .from(pokerGames)
+      .where(eq(pokerGames.isPrivate, false));
     const openGames = games
       .map((g) => {
         const seats = Array.isArray(g.players) ? g.players : [];

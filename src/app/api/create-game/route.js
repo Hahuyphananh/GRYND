@@ -13,7 +13,13 @@ export async function POST(request) {
   }
 
   const parsed = await parseAndValidateJson(request, {
-    tableAmount: { type: "number", required: true, integer: true, min: 1, max: 100000 },
+    tableAmount: {
+      type: "number",
+      required: true,
+      integer: true,
+      min: 1,
+      max: 100000,
+    },
   });
   if (!parsed.ok) return parsed.response;
   const { tableAmount } = parsed.data;
@@ -55,7 +61,7 @@ export async function POST(request) {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 

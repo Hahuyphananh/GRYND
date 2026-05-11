@@ -12,7 +12,10 @@ export async function POST(request) {
   try {
     const { userId } = await auth();
     if (!userId) {
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401 },
+      );
     }
 
     const parsed = await parseAndValidateJson(request, {
@@ -23,7 +26,9 @@ export async function POST(request) {
     if (!parsed.ok) return parsed.response;
 
     const gameKey = parsed.data.gameKey.trim().toLowerCase();
-    const gameId = Number.isFinite(parsed.data.gameId) ? Number(parsed.data.gameId) : null;
+    const gameId = Number.isFinite(parsed.data.gameId)
+      ? Number(parsed.data.gameId)
+      : null;
     const currentGameId = buildCurrentGameId(gameKey, gameId);
 
     const rows = await sql`
@@ -38,15 +43,24 @@ export async function POST(request) {
       RETURNING clerk_id, status, current_game_id, last_seen, updated_at
     `;
 
-    return new Response(JSON.stringify({ success: true, data: rows[0] || null }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: true, data: rows[0] || null }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   } catch (error) {
     console.error("[PRESENCE_GAME_ERROR]", error);
-    return new Response(JSON.stringify({ success: false, error: "Failed to update game presence" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Failed to update game presence",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

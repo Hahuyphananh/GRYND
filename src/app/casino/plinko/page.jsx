@@ -17,47 +17,48 @@ function MainComponent() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [riskLevel, setRiskLevel] = useState("medium");
   const saveTimeoutRef = useRef(null);
-const pendingBallsRef = useRef([]);
-const [autoEnabled, setAutoEnabled] = useState(false);
-const [autoBetCount, setAutoBetCount] = useState(10);
-const [autoDelay, setAutoDelay] = useState(400); // ms between drops
-const [autoStopLoss, setAutoStopLoss] = useState(0);
-const [autoTakeProfit, setAutoTakeProfit] = useState(0);
-const autoIntervalRef = useRef(null);
-const [autoRunning, setAutoRunning] = useState(false);
-const [autoInfinite, setAutoInfinite] = useState(false);
-const [showRules, setShowRules] = useState(false);
+  const pendingBallsRef = useRef([]);
+  const [autoEnabled, setAutoEnabled] = useState(false);
+  const [autoBetCount, setAutoBetCount] = useState(10);
+  const [autoDelay, setAutoDelay] = useState(400); // ms between drops
+  const [autoStopLoss, setAutoStopLoss] = useState(0);
+  const [autoTakeProfit, setAutoTakeProfit] = useState(0);
+  const autoIntervalRef = useRef(null);
+  const [autoRunning, setAutoRunning] = useState(false);
+  const [autoInfinite, setAutoInfinite] = useState(false);
+  const [showRules, setShowRules] = useState(false);
 
-const lowRiskMultipliers = [
-  20, 10, 6, 4, 2.5, 1.6, 1.2, 1, 0.7, 0.4,
-  0.7, 1, 1.2, 1.6, 2.5, 4, 6, 10, 20
-];
+  const lowRiskMultipliers = [
+    20, 10, 6, 4, 2.5, 1.6, 1.2, 1, 0.7, 0.4, 0.7, 1, 1.2, 1.6, 2.5, 4, 6, 10,
+    20,
+  ];
 
-const mediumRiskMultipliers = [
-  120, 40, 15, 6, 3, 1.8, 1.1, 0.6, 0.3, 0.1,
-  0.3, 0.6, 1.1, 1.8, 3, 6, 15, 40, 120
-];
+  const mediumRiskMultipliers = [
+    120, 40, 15, 6, 3, 1.8, 1.1, 0.6, 0.3, 0.1, 0.3, 0.6, 1.1, 1.8, 3, 6, 15,
+    40, 120,
+  ];
 
+  const highRiskMultipliers = [
+    1000, 250, 80, 25, 8, 2.5, 1, 0.3, 0, 0, 0, 0.3, 1, 2.5, 8, 25, 80, 250,
+    1000,
+  ];
 
-const highRiskMultipliers = [
-  1000, 250, 80, 25, 8, 2.5, 1, 0.3, 0, 0,
-  0, 0.3, 1, 2.5, 8, 25, 80, 250, 1000
-];
-
-
-const multipliersByRisk = {
-  low: lowRiskMultipliers,
-  medium: mediumRiskMultipliers,
-  high: highRiskMultipliers,
-};
-const multipliers = multipliersByRisk[riskLevel];
-
+  const multipliersByRisk = {
+    low: lowRiskMultipliers,
+    medium: mediumRiskMultipliers,
+    high: highRiskMultipliers,
+  };
+  const multipliers = multipliersByRisk[riskLevel];
 
   const svgRef = useRef(null);
   const boardAreaRef = useRef(null);
   const sidebarRef = useRef(null);
   const mainRef = useRef(null);
-  const [boardSize, setBoardSize] = useState({ width: 500, height: 500, scale: 1 });
+  const [boardSize, setBoardSize] = useState({
+    width: 500,
+    height: 500,
+    scale: 1,
+  });
 
   // Keep board sized to available area so nothing overflows the page
   useEffect(() => {
@@ -67,7 +68,10 @@ const multipliers = multipliersByRisk[riskLevel];
       const rect = boardAreaRef.current.getBoundingClientRect();
       const availableW = rect.width;
       const availableH = rect.height;
-      const scale = Math.max(0.2, Math.min(availableW / 500, availableH / 500, 1));
+      const scale = Math.max(
+        0.2,
+        Math.min(availableW / 500, availableH / 500, 1),
+      );
       setBoardSize({ width: 500 * scale, height: 500 * scale, scale });
     };
 
@@ -99,11 +103,17 @@ const multipliers = multipliersByRisk[riskLevel];
         setActiveBalls((prev) =>
           prev.map((b) =>
             b.id === ball.id
-              ? { ...b, position: { x: ball.position.x, y: ball.position.y + floatY } }
-              : b
-          )
+              ? {
+                  ...b,
+                  position: { x: ball.position.x, y: ball.position.y + floatY },
+                }
+              : b,
+          ),
         );
-        animationFrameIds.set(ball.id, requestAnimationFrame(() => animateBall(ball)));
+        animationFrameIds.set(
+          ball.id,
+          requestAnimationFrame(() => animateBall(ball)),
+        );
         return;
       }
 
@@ -111,9 +121,10 @@ const multipliers = multipliersByRisk[riskLevel];
       if (!path || ball.currentPathIndex >= path.length - 1) {
         if (!ball.hasShownResult && ball.winAmount !== undefined) {
           const lastPos =
-  ball.finalPosition ??
-  (path && path.length ? path[path.length - 1] : { x: ball.position.x, y: ball.position.y });
-
+            ball.finalPosition ??
+            (path && path.length
+              ? path[path.length - 1]
+              : { x: ball.position.x, y: ball.position.y });
 
           const resultDiv = document.createElement("div");
           resultDiv.className =
@@ -139,13 +150,19 @@ const multipliers = multipliersByRisk[riskLevel];
             setTimeout(() => resultDiv.remove(), 2000);
           }
 
-          setActiveBalls((prev) => prev.map((b) => (b.id === ball.id ? { ...b, hasShownResult: true } : b)));
+          setActiveBalls((prev) =>
+            prev.map((b) =>
+              b.id === ball.id ? { ...b, hasShownResult: true } : b,
+            ),
+          );
         }
 
         if (!ball.finalBounce) {
           const lastPos =
-  ball.finalPosition ??
-  (path && path.length ? path[path.length - 1] : { x: ball.position.x, y: ball.position.y });
+            ball.finalPosition ??
+            (path && path.length
+              ? path[path.length - 1]
+              : { x: ball.position.x, y: ball.position.y });
 
           setActiveBalls((prev) =>
             prev.map((b) =>
@@ -156,10 +173,15 @@ const multipliers = multipliersByRisk[riskLevel];
                     position: { x: lastPos.x, y: lastPos.y - 15 },
                     bounceStartTime: performance.now(),
                   }
-                : b
-            )
+                : b,
+            ),
           );
-          animationFrameIds.set(ball.id, requestAnimationFrame(() => animateBall({ ...ball, finalBounce: true })));
+          animationFrameIds.set(
+            ball.id,
+            requestAnimationFrame(() =>
+              animateBall({ ...ball, finalBounce: true }),
+            ),
+          );
           return;
         }
 
@@ -170,14 +192,26 @@ const multipliers = multipliersByRisk[riskLevel];
 
           if (progress < 1) {
             const lastPos =
-  ball.finalPosition ??
-  (path && path.length ? path[path.length - 1] : { x: ball.position.x, y: ball.position.y });
+              ball.finalPosition ??
+              (path && path.length
+                ? path[path.length - 1]
+                : { x: ball.position.x, y: ball.position.y });
 
             const bounceHeight = Math.sin(progress * Math.PI) * 15;
             setActiveBalls((prev) =>
-              prev.map((b) => (b.id === ball.id ? { ...b, position: { x: lastPos.x, y: lastPos.y - bounceHeight } } : b))
+              prev.map((b) =>
+                b.id === ball.id
+                  ? {
+                      ...b,
+                      position: { x: lastPos.x, y: lastPos.y - bounceHeight },
+                    }
+                  : b,
+              ),
             );
-            animationFrameIds.set(ball.id, requestAnimationFrame(() => animateBall(ball)));
+            animationFrameIds.set(
+              ball.id,
+              requestAnimationFrame(() => animateBall(ball)),
+            );
           } else {
             animationFrameIds.delete(ball.id);
             setTimeout(() => {
@@ -201,7 +235,8 @@ const multipliers = multipliersByRisk[riskLevel];
       const easeProgress = easeOutQuad(progress);
       const bounceHeight = Math.sin(progress * Math.PI) * 5;
       const x = currentPos.x + (nextPos.x - currentPos.x) * easeProgress;
-      const y = currentPos.y + (nextPos.y - currentPos.y) * easeProgress - bounceHeight;
+      const y =
+        currentPos.y + (nextPos.y - currentPos.y) * easeProgress - bounceHeight;
 
       setActiveBalls((prev) =>
         prev.map((b) =>
@@ -209,22 +244,29 @@ const multipliers = multipliersByRisk[riskLevel];
             ? {
                 ...b,
                 position: { x, y },
-                currentPathIndex: progress >= 1 ? b.currentPathIndex + 1 : b.currentPathIndex,
+                currentPathIndex:
+                  progress >= 1 ? b.currentPathIndex + 1 : b.currentPathIndex,
                 startTime: progress >= 1 ? performance.now() : b.startTime,
                 path: ball.fullPath || ball.path,
               }
-            : b
-        )
+            : b,
+        ),
       );
 
       if (progress < 1 || ball.currentPathIndex < path.length - 1) {
-        animationFrameIds.set(ball.id, requestAnimationFrame(() => animateBall(ball)));
+        animationFrameIds.set(
+          ball.id,
+          requestAnimationFrame(() => animateBall(ball)),
+        );
       }
     };
 
     activeBalls.forEach((ball) => {
       if (!animationFrameIds.has(ball.id)) {
-        animationFrameIds.set(ball.id, requestAnimationFrame(() => animateBall(ball)));
+        animationFrameIds.set(
+          ball.id,
+          requestAnimationFrame(() => animateBall(ball)),
+        );
       }
     });
 
@@ -252,585 +294,606 @@ const multipliers = multipliersByRisk[riskLevel];
     }
   };
 
- const getMultiplierColorByIndex = (index, total) => {
-  const center = (total - 1) / 2;
-  const distance = Math.abs(index - center) / center;
+  const getMultiplierColorByIndex = (index, total) => {
+    const center = (total - 1) / 2;
+    const distance = Math.abs(index - center) / center;
 
-  const start = { r: 0, g: 229, b: 255 };   // cyan (center)
-  const end   = { r: 255, g: 0, b: 128 };   // pink/red (edges)
+    const start = { r: 0, g: 229, b: 255 }; // cyan (center)
+    const end = { r: 255, g: 0, b: 128 }; // pink/red (edges)
 
-  const r = Math.round(start.r + (end.r - start.r) * distance);
-  const g = Math.round(start.g + (end.g - start.g) * distance);
-  const b = Math.round(start.b + (end.b - start.b) * distance);
+    const r = Math.round(start.r + (end.r - start.r) * distance);
+    const g = Math.round(start.g + (end.g - start.g) * distance);
+    const b = Math.round(start.b + (end.b - start.b) * distance);
 
-  return `rgb(${r}, ${g}, ${b})`;
-};
-
-const handleDrop = async () => {
-
-    if (isProcessing) return;   // ✅ ADD THIS LINE
-  setIsProcessing(true);
-  if (!isSignedIn) {
-    setError("Vous devez être connecté pour jouer.");
-    return;
-  }
-
- if (userTokens < betAmount) {
-  setError("Solde insuffisant");
-  setIsProcessing(false);
-  return;
-}
-
-  setError(null);
-  setShowResult(false);
-
-  // Generate a unique temp ball
-  const tempBallId = Date.now() + Math.random();
-  const tempBall = {
-    id: tempBallId,
-    position: { x: 250, y: 30 },
-    path: [
-      { x: 250, y: 30 },
-      { x: 250, y: 50 }
-    ],
-    currentPathIndex: 0,
-    startTime: performance.now(),
-    isTemp: true,
-    opacity: 1,
+    return `rgb(${r}, ${g}, ${b})`;
   };
 
-  setActiveBalls((prev) => [...prev, tempBall]);
-
-  // Immediately deduct the bet locally
-  setUserTokens((prev) => (prev !== null ? prev - betAmount : prev));
-
-  try {
-    const response = await fetch("/api/play-plinko", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ betAmount, riskLevel }),
-    });
-
-    if (!response.ok) throw new Error("Erreur réseau");
-
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || "Erreur du jeu");
-
-    const { path, winAmount, multiplier, newBalance, finalPosition } = data.data;
-
-    // Update game data
-    setGameResults((prev) => [...prev, winAmount]);
-    setGameMultipliers((prev) => [...prev, multiplier]);
-    // 🧠 Queue the ball result for batch saving
-pendingBallsRef.current.push({
-  betAmount,
-  multiplier,
-  winAmount,
-});
-
-// Reset timer if it exists
-if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-
-// Schedule save in 5 seconds
-saveTimeoutRef.current = setTimeout(async () => {
-  const pending = [...pendingBallsRef.current];
-  if (pending.length === 0) return;
-
-  const totalBet = pending.reduce((sum, b) => sum + b.betAmount, 0);
-  const totalPayout = pending.reduce((sum, b) => sum + b.winAmount, 0);
-  const multipliers = pending.map((b) => b.multiplier);
-
-  try {
-    await fetch("/api/plinko/save-games", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ totalBet, totalPayout, multipliers }),
-    });
-    console.log("✅ Saved Plinko batch:", pending);
-  } catch (err) {
-    console.error("Failed to save Plinko games:", err);
-  } finally {
-    pendingBallsRef.current = [];
-    saveTimeoutRef.current = null;
-  }
-}, 5000);
-
-    setUserTokens(newBalance);
-    setLastMultiplier(multiplier);
-
-  // Extend path to include finalPosition so ball lands exactly on the multiplier
-const adjustedPath = Array.isArray(path) ? [...path] : [];
-const lastPoint = adjustedPath[adjustedPath.length - 1];
-if (
-  !lastPoint ||
-  lastPoint.x !== finalPosition.x ||
-  lastPoint.y !== finalPosition.y
-) {
-  adjustedPath.push({ x: finalPosition.x, y: finalPosition.y });
-}
-
-setActiveBalls((prev) =>
-  prev.map((ball) =>
-    ball.id === tempBallId
-      ? {
-          ...ball,
-          isTemp: false,
-          fullPath: adjustedPath,
-          path: adjustedPath,
-          finalPosition,
-          currentPathIndex: 0,
-          startTime: performance.now(),
-          winAmount,
-          multiplier,
-          hasShownResult: false,
-        }
-      : ball
-  )
-);
-
-    // Show result per-ball
-    setTimeout(() => setShowResult(true), 1500);
-} catch (error) {
-  console.error("Plinko error:", error);
-  setError(error.message || "Erreur lors du lancement du jeu");
-  setActiveBalls((prev) => prev.filter((b) => b.id !== tempBallId));
-} finally {
-  setIsProcessing(false);   // ✅ THIS IS VERY IMPORTANT
-}
-};
-
-const startAutoBet = () => {
-  if (autoRunning) return;
-
-  let betsPlaced = 0;
-  let sessionProfit = 0;
-
-  setAutoRunning(true);
-
-  autoIntervalRef.current = setInterval(async () => {
-    if (isProcessing) return;
-
-    // Stop if not infinite AND reached bet count
-    if (!autoInfinite && betsPlaced >= autoBetCount) {
-      stopAutoBet();
+  const handleDrop = async () => {
+    if (isProcessing) return; // ✅ ADD THIS LINE
+    setIsProcessing(true);
+    if (!isSignedIn) {
+      setError("Vous devez être connecté pour jouer.");
       return;
     }
 
-    // Stop if no balance
     if (userTokens < betAmount) {
-      stopAutoBet();
+      setError("Solde insuffisant");
+      setIsProcessing(false);
       return;
     }
 
-    const beforeBalance = userTokens;
+    setError(null);
+    setShowResult(false);
 
-    await handleDrop();
+    // Generate a unique temp ball
+    const tempBallId = Date.now() + Math.random();
+    const tempBall = {
+      id: tempBallId,
+      position: { x: 250, y: 30 },
+      path: [
+        { x: 250, y: 30 },
+        { x: 250, y: 50 },
+      ],
+      currentPathIndex: 0,
+      startTime: performance.now(),
+      isTemp: true,
+      opacity: 1,
+    };
 
-    betsPlaced++;
+    setActiveBalls((prev) => [...prev, tempBall]);
 
-    const afterBalance = userTokens;
-    const profitChange = afterBalance - beforeBalance;
-    sessionProfit += profitChange;
+    // Immediately deduct the bet locally
+    setUserTokens((prev) => (prev !== null ? prev - betAmount : prev));
 
-    // Stop Loss
-    if (autoStopLoss && sessionProfit <= -autoStopLoss) {
-      stopAutoBet();
+    try {
+      const response = await fetch("/api/play-plinko", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ betAmount, riskLevel }),
+      });
+
+      if (!response.ok) throw new Error("Erreur réseau");
+
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || "Erreur du jeu");
+
+      const { path, winAmount, multiplier, newBalance, finalPosition } =
+        data.data;
+
+      // Update game data
+      setGameResults((prev) => [...prev, winAmount]);
+      setGameMultipliers((prev) => [...prev, multiplier]);
+      // 🧠 Queue the ball result for batch saving
+      pendingBallsRef.current.push({
+        betAmount,
+        multiplier,
+        winAmount,
+      });
+
+      // Reset timer if it exists
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+
+      // Schedule save in 5 seconds
+      saveTimeoutRef.current = setTimeout(async () => {
+        const pending = [...pendingBallsRef.current];
+        if (pending.length === 0) return;
+
+        const totalBet = pending.reduce((sum, b) => sum + b.betAmount, 0);
+        const totalPayout = pending.reduce((sum, b) => sum + b.winAmount, 0);
+        const multipliers = pending.map((b) => b.multiplier);
+
+        try {
+          await fetch("/api/plinko/save-games", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ totalBet, totalPayout, multipliers }),
+          });
+          console.log("✅ Saved Plinko batch:", pending);
+        } catch (err) {
+          console.error("Failed to save Plinko games:", err);
+        } finally {
+          pendingBallsRef.current = [];
+          saveTimeoutRef.current = null;
+        }
+      }, 5000);
+
+      setUserTokens(newBalance);
+      setLastMultiplier(multiplier);
+
+      // Extend path to include finalPosition so ball lands exactly on the multiplier
+      const adjustedPath = Array.isArray(path) ? [...path] : [];
+      const lastPoint = adjustedPath[adjustedPath.length - 1];
+      if (
+        !lastPoint ||
+        lastPoint.x !== finalPosition.x ||
+        lastPoint.y !== finalPosition.y
+      ) {
+        adjustedPath.push({ x: finalPosition.x, y: finalPosition.y });
+      }
+
+      setActiveBalls((prev) =>
+        prev.map((ball) =>
+          ball.id === tempBallId
+            ? {
+                ...ball,
+                isTemp: false,
+                fullPath: adjustedPath,
+                path: adjustedPath,
+                finalPosition,
+                currentPathIndex: 0,
+                startTime: performance.now(),
+                winAmount,
+                multiplier,
+                hasShownResult: false,
+              }
+            : ball,
+        ),
+      );
+
+      // Show result per-ball
+      setTimeout(() => setShowResult(true), 1500);
+    } catch (error) {
+      console.error("Plinko error:", error);
+      setError(error.message || "Erreur lors du lancement du jeu");
+      setActiveBalls((prev) => prev.filter((b) => b.id !== tempBallId));
+    } finally {
+      setIsProcessing(false); // ✅ THIS IS VERY IMPORTANT
     }
+  };
 
-    // Take Profit
-    if (autoTakeProfit && sessionProfit >= autoTakeProfit) {
-      stopAutoBet();
-    }
+  const startAutoBet = () => {
+    if (autoRunning) return;
 
-  }, autoDelay);
-};
+    let betsPlaced = 0;
+    let sessionProfit = 0;
 
-const stopAutoBet = () => {
-  if (autoIntervalRef.current) {
-    clearInterval(autoIntervalRef.current);
-    autoIntervalRef.current = null;
-  }
-  setAutoRunning(false);
-};
-useEffect(() => {
-  return () => {
+    setAutoRunning(true);
+
+    autoIntervalRef.current = setInterval(async () => {
+      if (isProcessing) return;
+
+      // Stop if not infinite AND reached bet count
+      if (!autoInfinite && betsPlaced >= autoBetCount) {
+        stopAutoBet();
+        return;
+      }
+
+      // Stop if no balance
+      if (userTokens < betAmount) {
+        stopAutoBet();
+        return;
+      }
+
+      const beforeBalance = userTokens;
+
+      await handleDrop();
+
+      betsPlaced++;
+
+      const afterBalance = userTokens;
+      const profitChange = afterBalance - beforeBalance;
+      sessionProfit += profitChange;
+
+      // Stop Loss
+      if (autoStopLoss && sessionProfit <= -autoStopLoss) {
+        stopAutoBet();
+      }
+
+      // Take Profit
+      if (autoTakeProfit && sessionProfit >= autoTakeProfit) {
+        stopAutoBet();
+      }
+    }, autoDelay);
+  };
+
+  const stopAutoBet = () => {
     if (autoIntervalRef.current) {
       clearInterval(autoIntervalRef.current);
+      autoIntervalRef.current = null;
     }
+    setAutoRunning(false);
   };
-}, []);
+  useEffect(() => {
+    return () => {
+      if (autoIntervalRef.current) {
+        clearInterval(autoIntervalRef.current);
+      }
+    };
+  }, []);
 
   const totalWinAmount = gameResults.reduce((sum, amount) => sum + amount, 0);
 
   // In your useEffect where you set boardSize (adjust base from 500 to 800):
-const baseSize = 800;  // <-- bigger base size for scaling
+  const baseSize = 800; // <-- bigger base size for scaling
 
-useEffect(() => {
-  if (!boardAreaRef.current) return;
+  useEffect(() => {
+    if (!boardAreaRef.current) return;
 
-  const updateSize = () => {
-    const rect = boardAreaRef.current.getBoundingClientRect();
-    const availableW = rect.width;
-    const availableH = rect.height;
-    const scale = Math.max(0.2, Math.min(availableW / baseSize, availableH / baseSize, 1));
-    setBoardSize({ width: baseSize * scale, height: baseSize * scale, scale });
+    const updateSize = () => {
+      const rect = boardAreaRef.current.getBoundingClientRect();
+      const availableW = rect.width;
+      const availableH = rect.height;
+      const scale = Math.max(
+        0.2,
+        Math.min(availableW / baseSize, availableH / baseSize, 1),
+      );
+      setBoardSize({
+        width: baseSize * scale,
+        height: baseSize * scale,
+        scale,
+      });
+    };
+
+    updateSize();
+    const ro = new ResizeObserver(updateSize);
+    ro.observe(boardAreaRef.current);
+    window.addEventListener("resize", updateSize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", updateSize);
+    };
+  }, []);
+
+  const scaledBoardSize = {
+    width: boardSize.width * 0.95, // 90% of original width
+    height: boardSize.height * 0.95, // 90% of original height
   };
 
-  updateSize();
-  const ro = new ResizeObserver(updateSize);
-  ro.observe(boardAreaRef.current);
-  window.addEventListener("resize", updateSize);
-  return () => {
-    ro.disconnect();
-    window.removeEventListener("resize", updateSize);
-  };
-}, []);
+  return (
+    <div className="h-screen flex bg-gradient-to-br from-[#020617] via-[#071A3A] to-[#0A2A5C] overflow-hidden">
+      <NavigationBar currentPath="/casino" />
+      {/* Sidebar */}
+      <aside
+        ref={sidebarRef}
+        className="flex flex-col w-64 p-6 bg-gradient-to-b from-[#020617] via-[#071A3A] to-[#0A2A5C] text-white border-r border-[#00E5FF]/20 backdrop-blur-md overflow-y-auto"
+      >
+        <h1 className="mb-8 text-3xl font-bold mt-12 text-[#00E5FF] drop-shadow-[0_0_10px_#00E5FF]">
+          Plinko
+        </h1>
 
-const scaledBoardSize = {
-  width: boardSize.width * 0.95,   // 90% of original width
-  height: boardSize.height * 0.95  // 90% of original height
-};
-
-return (
-  <div className="h-screen flex bg-gradient-to-br from-[#020617] via-[#071A3A] to-[#0A2A5C] overflow-hidden">
-    <NavigationBar currentPath="/casino" />
-    {/* Sidebar */}
-    <aside
-      ref={sidebarRef}
-      className="flex flex-col w-64 p-6 bg-gradient-to-b from-[#020617] via-[#071A3A] to-[#0A2A5C] text-white border-r border-[#00E5FF]/20 backdrop-blur-md overflow-y-auto"
-    >
-
-      <h1 className="mb-8 text-3xl font-bold mt-12 text-[#00E5FF] drop-shadow-[0_0_10px_#00E5FF]">
-  Plinko
-</h1>
-
-      {/* Risk Level Selector */}
-      <div className="mb-4">
-  <label className="block mb-2 text-sm text-gray-300">Niveau de Risque</label>
-  <select
-    value={riskLevel}
-    onChange={(e) => setRiskLevel(e.target.value)}
-    className="w-full rounded bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF] px-2 py-1 text-white"
-  >
-    <option value="low">Risque Faible</option>
-    <option value="medium">Risque Moyen</option>
-    <option value="high">Risque Élevé</option>
-  </select>
-</div>
-
-      {user && (
-        <div className="mb-6">
-          <span className="text-[#FFD700]">
-            <i className="fas fa-coins mr-2"></i>
-            {userTokens !== null ? userTokens : "..."}
-          </span>
+        {/* Risk Level Selector */}
+        <div className="mb-4">
+          <label className="block mb-2 text-sm text-gray-300">
+            Niveau de Risque
+          </label>
+          <select
+            value={riskLevel}
+            onChange={(e) => setRiskLevel(e.target.value)}
+            className="w-full rounded bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF] px-2 py-1 text-white"
+          >
+            <option value="low">Risque Faible</option>
+            <option value="medium">Risque Moyen</option>
+            <option value="high">Risque Élevé</option>
+          </select>
         </div>
-      )}
 
-      <label className="mb-2 block text-sm text-gray-300">Montant du pari</label>
+        {user && (
+          <div className="mb-6">
+            <span className="text-[#FFD700]">
+              <i className="fas fa-coins mr-2"></i>
+              {userTokens !== null ? userTokens : "..."}
+            </span>
+          </div>
+        )}
 
-      <div className="mb-4 flex items-center gap-2">
+        <label className="mb-2 block text-sm text-gray-300">
+          Montant du pari
+        </label>
+
+        <div className="mb-4 flex items-center gap-2">
+          <button
+            onClick={() => setBetAmount((prev) => Math.max(1, prev - 1))}
+            className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-1 text-sm font-medium text-[#fffec7] hover:bg-[#FFFF33]/35"
+          >
+            -
+          </button>
+          <input
+            type="number"
+            value={betAmount}
+            onChange={(e) => setBetAmount(Math.max(1, Number(e.target.value)))}
+            className="w-20 rounded bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF]px-2 py-1 text-center text-white"
+          />
+          <button
+            onClick={() => setBetAmount((prev) => prev + 1)}
+            className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-1 text-sm font-medium text-[#fffec7] hover:bg-[#FFFF33]/35"
+          >
+            +
+          </button>
+        </div>
+
         <button
-          onClick={() => setBetAmount((prev) => Math.max(1, prev - 1))}
-          className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-1 text-sm font-medium text-[#fffec7] hover:bg-[#FFFF33]/35"
+          className="w-full rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/35"
+          onClick={handleDrop}
+          disabled={autoRunning}
         >
-          -
+          Lancer
         </button>
-        <input
-          type="number"
-          value={betAmount}
-          onChange={(e) => setBetAmount(Math.max(1, Number(e.target.value)))}
-          className="w-20 rounded bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF]px-2 py-1 text-center text-white"
-        />
-        <button
-          onClick={() => setBetAmount((prev) => prev + 1)}
-          className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-1 text-sm font-medium text-[#fffec7] hover:bg-[#FFFF33]/35"
+        <div className="mt-6 rounded-lg bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF] p-4">
+          <h3 className="text-[#FFD700] font-bold mb-3">Auto Bet</h3>
+
+          <label className="text-sm text-gray-300">Nombre de paris</label>
+
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="number"
+              value={autoBetCount}
+              disabled={autoInfinite}
+              onChange={(e) => setAutoBetCount(Number(e.target.value))}
+              className="w-full rounded bg-black px-2 py-1 text-white disabled:opacity-40"
+            />
+
+            <label className="flex items-center gap-2 cursor-pointer text-xs">
+              <span>Infini</span>
+              <div
+                onClick={() => setAutoInfinite(!autoInfinite)}
+                className={`w-10 h-5 flex items-center rounded-full p-1 transition ${
+                  autoInfinite
+                    ? "bg-[#f5ff3b]/30 border border-[#f5ff3b]/50 shadow-[0_0_10px_rgba(245,255,59,0.5)]"
+                    : "bg-[#091737] border border-[#00e5ff]/30"
+                }`}
+              >
+                <div
+                  className={`bg-white w-4 h-4 rounded-full shadow-md transform transition ${
+                    autoInfinite ? "translate-x-5" : ""
+                  }`}
+                />
+              </div>
+            </label>
+          </div>
+
+          <label className="text-sm text-gray-300">Délai (ms)</label>
+          <input
+            type="number"
+            value={autoDelay}
+            onChange={(e) => setAutoDelay(Number(e.target.value))}
+            className="w-full mb-2 rounded bg-black px-2 py-1 text-white"
+          />
+
+          <label className="text-sm text-gray-300">Stop Loss (optionnel)</label>
+          <input
+            type="number"
+            value={autoStopLoss}
+            onChange={(e) => setAutoStopLoss(Number(e.target.value))}
+            className="w-full mb-2 rounded bg-black px-2 py-1 text-white"
+          />
+
+          <label className="text-sm text-gray-300">
+            Take Profit (optionnel)
+          </label>
+          <input
+            type="number"
+            value={autoTakeProfit}
+            onChange={(e) => setAutoTakeProfit(Number(e.target.value))}
+            className="w-full mb-4 rounded bg-black px-2 py-1 text-white"
+          />
+
+          {!autoRunning ? (
+            <button
+              onClick={startAutoBet}
+              className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35 active:scale-95 transition"
+            >
+              Démarrer Auto
+            </button>
+          ) : (
+            <button
+              onClick={stopAutoBet}
+              className="w-full rounded-lg border border-red-500/40 bg-red-500/20 px-4 py-2 text-sm font-medium text-red-200 hover:bg-red-500/35"
+            >
+              Stop
+            </button>
+          )}
+        </div>
+
+        {/* Rules Section */}
+        <div className="mb-4 mt-4 bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF] rounded-lg border border-yellow-400">
+          <button
+            onClick={() => setShowRules((prev) => !prev)}
+            className="w-full flex justify-between items-center px-4 py-2 rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/10 text-[#fffec7] font-medium hover:bg-[#FFFF33]/20"
+          >
+            📜 Plinko Rules
+            <span>{showRules ? "▲" : "▼"}</span>
+          </button>
+
+          {showRules && (
+            <div className="px-4 pb-4 text-sm text-gray-300 space-y-2">
+              <p>
+                🎯 Drop a ball from the top and watch it bounce through the
+                pins.
+              </p>
+              <p>
+                💰 The slot where the ball lands determines your{" "}
+                <strong>multiplier</strong>.
+              </p>
+              <p>
+                ⚠️ Higher multipliers are on the edges, but are{" "}
+                <strong>harder to hit</strong>.
+              </p>
+              <p>
+                🎚️ Choose a <strong>risk level</strong> to change the multiplier
+                distribution.
+              </p>
+              <p>
+                🤖 Use <strong>Auto Bet</strong> to automatically drop multiple
+                balls.
+              </p>
+              <p>
+                📉 You can configure <strong>stop loss</strong> and{" "}
+                <strong>take profit</strong> for safer autoplay.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {showResult && lastMultiplier && gameResults.length > 0 && (
+          <div className="mt-6 rounded-lg bg-[#2A2B30] p-4 text-center shadow-lg">
+            <div className="mb-2 text-2xl font-bold text-[#FFD700]">
+              x{lastMultiplier}
+            </div>
+            <div className="text-2xl font-bold text-green-500">
+              +{gameResults[gameResults.length - 1].toFixed(2)} tokens
+            </div>
+          </div>
+        )}
+
+        {error && <div className="mt-4 text-red-500">{error}</div>}
+
+        {showHistory && gameResults.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xl font-bold text-[#FFD700]">
+              Dernier gain : {gameResults[gameResults.length - 1].toFixed(2)}{" "}
+              tokens
+              <span className="ml-2 text-white">
+                (x{gameMultipliers[gameMultipliers.length - 1]})
+              </span>
+            </p>
+            <p className="text-white">
+              Total gagné : {totalWinAmount.toFixed(2)} tokens
+            </p>
+          </div>
+        )}
+      </aside>
+
+      {/* Main Plinko game container */}
+      <main
+        ref={mainRef}
+        className="flex-1 flex flex-col items-center justify-center min-h-0 overflow-hidden p-4"
+      >
+        <div
+          ref={boardAreaRef}
+          className="flex-1 flex items-center justify-center w-full min-h-0 overflow-hidden"
         >
-          +
-        </button>
-      </div>
+          <div
+            style={{
+              width: `${scaledBoardSize.width}px`,
+              height: `${scaledBoardSize.height}px`,
+            }}
+            className="relative flex-grow"
+          >
+            <svg
+              ref={svgRef}
+              viewBox="0 0 500 500"
+              width="100%"
+              height="100%"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              {/* Pins */}
+              {Array.from({ length: 19 }).map((_, row) =>
+                Array.from({ length: row + 2 }).map((_, col) => (
+                  <g key={`pin-${row}-${col}`}>
+                    {/* Glow */}
+                    <circle
+                      cx={250 - (row + 1) * 12 + col * 24}
+                      cy={50 + row * 22}
+                      r={1}
+                      fill="#00E5FF"
+                      opacity="0.15"
+                    />
 
-   <button
-  className="w-full rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/35"
-  onClick={handleDrop}
-  disabled={autoRunning}
->
-  Lancer
-</button>
-<div className="mt-6 rounded-lg bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF] p-4">
-  <h3 className="text-[#FFD700] font-bold mb-3">Auto Bet</h3>
+                    {/* Core */}
+                    <circle
+                      cx={250 - (row + 1) * 12 + col * 24}
+                      cy={50 + row * 22}
+                      r={3}
+                      fill="#00E5FF"
+                      style={{
+                        filter:
+                          "drop-shadow(0 0 6px #00E5FF) drop-shadow(0 0 12px #00E5FF)",
+                      }}
+                    />
+                  </g>
+                )),
+              )}
 
- <label className="text-sm text-gray-300">Nombre de paris</label>
+              {/* Multipliers */}
+              {multipliers.map((multiplier, i) => {
+                const slotWidth = 500 / multipliers.length;
+                const x = i * slotWidth + slotWidth / 2;
+                return (
+                  <g key={`mult-${i}`}>
+                    <rect
+                      x={i * slotWidth}
+                      y={460}
+                      width={slotWidth}
+                      height={30}
+                      rx={4}
+                      fill={getMultiplierColorByIndex(i, multipliers.length)}
+                      style={{
+                        filter: "drop-shadow(0 0 10px rgba(255,255,255,0.15))",
+                        opacity: 0.9,
+                      }}
+                    />
+                    <text
+                      x={x}
+                      y={480}
+                      textAnchor="middle"
+                      fontSize="9"
+                      fontWeight="bold"
+                      fill="#ffffff"
+                      style={{
+                        paintOrder: "stroke",
+                        stroke: "#000",
+                        strokeWidth: "2px",
+                        filter: "drop-shadow(0 0 2px rgba(0,0,0,0.8))",
+                      }}
+                    >
+                      {multiplier}x
+                    </text>
+                  </g>
+                );
+              })}
 
-<div className="flex items-center gap-2 mb-2">
-  <input
-    type="number"
-    value={autoBetCount}
-    disabled={autoInfinite}
-    onChange={(e) => setAutoBetCount(Number(e.target.value))}
-    className="w-full rounded bg-black px-2 py-1 text-white disabled:opacity-40"
-  />
+              {/* Balls */}
+              {activeBalls.map((ball) => (
+                <g key={ball.id} className="ball-container">
+                  <circle
+                    cx={ball.position.x}
+                    cy={ball.position.y + 3}
+                    r={8}
+                    fill="rgba(0,0,0,0.3)"
+                  />
+                  <circle
+                    cx={ball.position.x}
+                    cy={ball.position.y}
+                    r={8}
+                    fill="url(#ballGlow)"
+                    style={{ opacity: ball.opacity || 1 }}
+                  />
+                  <circle
+                    cx={ball.position.x}
+                    cy={ball.position.y}
+                    r={6}
+                    fill="url(#ballGradient)"
+                    style={{ opacity: ball.opacity || 1 }}
+                  />
+                  <circle
+                    cx={ball.position.x - 2}
+                    cy={ball.position.y - 2}
+                    r={2}
+                    fill="rgba(255,255,255,0.8)"
+                  />
+                </g>
+              ))}
 
- <label className="flex items-center gap-2 cursor-pointer text-xs">
-  <span>Infini</span>
-  <div
-    onClick={() => setAutoInfinite(!autoInfinite)}
-    className={`w-10 h-5 flex items-center rounded-full p-1 transition ${
-      autoInfinite
-  ? "bg-[#f5ff3b]/30 border border-[#f5ff3b]/50 shadow-[0_0_10px_rgba(245,255,59,0.5)]"
-  : "bg-[#091737] border border-[#00e5ff]/30"
-    }`}
-  >
-    <div
-      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition ${
-        autoInfinite ? "translate-x-5" : ""
-      }`}
-    />
-  </div>
-</label>
-
-</div>
-
-  <label className="text-sm text-gray-300">Délai (ms)</label>
-  <input
-    type="number"
-    value={autoDelay}
-    onChange={(e) => setAutoDelay(Number(e.target.value))}
-    className="w-full mb-2 rounded bg-black px-2 py-1 text-white"
-  />
-
-  <label className="text-sm text-gray-300">Stop Loss (optionnel)</label>
-  <input
-    type="number"
-    value={autoStopLoss}
-    onChange={(e) => setAutoStopLoss(Number(e.target.value))}
-    className="w-full mb-2 rounded bg-black px-2 py-1 text-white"
-  />
-
-  <label className="text-sm text-gray-300">Take Profit (optionnel)</label>
-  <input
-    type="number"
-    value={autoTakeProfit}
-    onChange={(e) => setAutoTakeProfit(Number(e.target.value))}
-    className="w-full mb-4 rounded bg-black px-2 py-1 text-white"
-  />
-
-  {!autoRunning ? (
-    <button
-      onClick={startAutoBet}
-     className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35 active:scale-95 transition"
-    >
-      Démarrer Auto
-    </button>
-  ) : (
-    <button
-      onClick={stopAutoBet}
-      className="w-full rounded-lg border border-red-500/40 bg-red-500/20 px-4 py-2 text-sm font-medium text-red-200 hover:bg-red-500/35"
-    >
-      Stop
-    </button>
-  )}
-</div>
-
-{/* Rules Section */}
-<div className="mb-4 mt-4 bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF] rounded-lg border border-yellow-400">
-  <button
-    onClick={() => setShowRules((prev) => !prev)}
-    className="w-full flex justify-between items-center px-4 py-2 rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/10 text-[#fffec7] font-medium hover:bg-[#FFFF33]/20"
-  >
-    📜 Plinko Rules
-    <span>{showRules ? "▲" : "▼"}</span>
-  </button>
-
-  {showRules && (
-    <div className="px-4 pb-4 text-sm text-gray-300 space-y-2">
-      <p>
-        🎯 Drop a ball from the top and watch it bounce through the pins.
-      </p>
-      <p>
-        💰 The slot where the ball lands determines your <strong>multiplier</strong>.
-      </p>
-      <p>
-        ⚠️ Higher multipliers are on the edges, but are <strong>harder to hit</strong>.
-      </p>
-      <p>
-        🎚️ Choose a <strong>risk level</strong> to change the multiplier distribution.
-      </p>
-      <p>
-        🤖 Use <strong>Auto Bet</strong> to automatically drop multiple balls.
-      </p>
-      <p>
-        📉 You can configure <strong>stop loss</strong> and <strong>take profit</strong> for safer autoplay.
-      </p>
-    </div>
-  )}
-</div>
-
-      {showResult && lastMultiplier && gameResults.length > 0 && (
-        <div className="mt-6 rounded-lg bg-[#2A2B30] p-4 text-center shadow-lg">
-          <div className="mb-2 text-2xl font-bold text-[#FFD700]">x{lastMultiplier}</div>
-          <div className="text-2xl font-bold text-green-500">
-            +{gameResults[gameResults.length - 1].toFixed(2)} tokens
+              <defs>
+                <radialGradient id="ballGradient" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#FFD700" stopOpacity="1" />
+                  <stop offset="100%" stopColor="#FFA500" stopOpacity="0.6" />
+                </radialGradient>
+                <radialGradient id="ballGlow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#FFD700" stopOpacity="1" />
+                  <stop offset="100%" stopColor="#FFA500" stopOpacity="0" />
+                </radialGradient>
+                <radialGradient id="pinGlow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#FFD700" stopOpacity="0.8" />
+                  <stop offset="100%" stopColor="#FFA500" stopOpacity="0" />
+                </radialGradient>
+              </defs>
+            </svg>
           </div>
         </div>
-      )}
-
-      {error && <div className="mt-4 text-red-500">{error}</div>}
-
-      {showHistory && gameResults.length > 0 && (
-        <div className="mt-4">
-          <p className="text-xl font-bold text-[#FFD700]">
-            Dernier gain : {gameResults[gameResults.length - 1].toFixed(2)} tokens
-            <span className="ml-2 text-white">(x{gameMultipliers[gameMultipliers.length - 1]})</span>
-          </p>
-          <p className="text-white">Total gagné : {totalWinAmount.toFixed(2)} tokens</p>
-        </div>
-      )}
-    </aside>
-
-    {/* Main Plinko game container */}
-    <main
-      ref={mainRef}
-      className="flex-1 flex flex-col items-center justify-center min-h-0 overflow-hidden p-4"
-    >
-      <div
-  ref={boardAreaRef}
-  className="flex-1 flex items-center justify-center w-full min-h-0 overflow-hidden"
->
-
-        <div
-  style={{
-    width: `${scaledBoardSize.width}px`,
-    height: `${scaledBoardSize.height}px`
-  }}
-  className="relative flex-grow"
->
-
-          <svg
-            ref={svgRef}
-            viewBox="0 0 500 500"
-            width="100%"
-            height="100%"
-            preserveAspectRatio="xMidYMid meet"
-          >
-            {/* Pins */}
-            {Array.from({ length: 19 }).map((_, row) =>
-              Array.from({ length: row + 2 }).map((_, col) => (
-               <g key={`pin-${row}-${col}`}>
-  {/* Glow */}
-  <circle
-    cx={250 - (row + 1) * 12 + col * 24}
-    cy={50 + row * 22}
-    r={1}
-    fill="#00E5FF"
-    opacity="0.15"
-  />
-  
-  {/* Core */}
-  <circle
-    cx={250 - (row + 1) * 12 + col * 24}
-    cy={50 + row * 22}
-    r={3}
-    fill="#00E5FF"
-    style={{
-      filter: "drop-shadow(0 0 6px #00E5FF) drop-shadow(0 0 12px #00E5FF)"
-    }}
-  />
-</g>
-              ))
-            )}
-
-            {/* Multipliers */}
-            {multipliers.map((multiplier, i) => {
-              const slotWidth = 500 / multipliers.length;
-              const x = i * slotWidth + slotWidth / 2;
-              return (
-                <g key={`mult-${i}`}>
-              <rect
-  x={i * slotWidth}
-  y={460}
-  width={slotWidth}
-  height={30}
-  rx={4}
-  fill={getMultiplierColorByIndex(i, multipliers.length)}
-  style={{
-    filter: "drop-shadow(0 0 10px rgba(255,255,255,0.15))",
-    opacity: 0.9
-  }}
-/>
-                <text
-  x={x}
-  y={480}
-  textAnchor="middle"
-  fontSize="9"
-  fontWeight="bold"
-  fill="#ffffff"
-  style={{
-    paintOrder: "stroke",
-    stroke: "#000",
-    strokeWidth: "2px",
-    filter: "drop-shadow(0 0 2px rgba(0,0,0,0.8))"
-  }}
->
-  {multiplier}x
-</text>
-                </g>
-              );
-            })}
-
-            {/* Balls */}
-            {activeBalls.map((ball) => (
-              <g key={ball.id} className="ball-container">
-                <circle
-                  cx={ball.position.x}
-                  cy={ball.position.y + 3}
-                  r={8}
-                  fill="rgba(0,0,0,0.3)"
-                />
-                <circle
-                  cx={ball.position.x}
-                  cy={ball.position.y}
-                  r={8}
-                  fill="url(#ballGlow)"
-                  style={{ opacity: ball.opacity || 1 }}
-                />
-                <circle
-                  cx={ball.position.x}
-                  cy={ball.position.y}
-                  r={6}
-                  fill="url(#ballGradient)"
-                  style={{ opacity: ball.opacity || 1 }}
-                />
-                <circle
-                  cx={ball.position.x - 2}
-                  cy={ball.position.y - 2}
-                  r={2}
-                  fill="rgba(255,255,255,0.8)"
-                />
-              </g>
-            ))}
-
-            <defs>
-              <radialGradient id="ballGradient" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#FFD700" stopOpacity="1" />
-                <stop offset="100%" stopColor="#FFA500" stopOpacity="0.6" />
-              </radialGradient>
-              <radialGradient id="ballGlow" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#FFD700" stopOpacity="1" />
-                <stop offset="100%" stopColor="#FFA500" stopOpacity="0" />
-              </radialGradient>
-              <radialGradient id="pinGlow" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#FFD700" stopOpacity="0.8" />
-                <stop offset="100%" stopColor="#FFA500" stopOpacity="0" />
-              </radialGradient>
-            </defs>
-          </svg>
-        </div>
-      </div>
-    </main>
-  </div>
-);
-
+      </main>
+    </div>
+  );
 }
 
 export default MainComponent;

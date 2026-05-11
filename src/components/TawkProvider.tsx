@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
+import { useEffect } from "react";
 
 declare global {
   interface Window {
@@ -18,7 +18,7 @@ declare global {
 
 export default function TawkProvider() {
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     if (window.__tawkLoaded) return;
 
     window.__tawkLoaded = true;
@@ -27,13 +27,13 @@ export default function TawkProvider() {
     window.Tawk_LoadStart = new Date();
 
     (function () {
-      const s1 = document.createElement('script');
-      const s0 = document.getElementsByTagName('script')[0];
+      const s1 = document.createElement("script");
+      const s0 = document.getElementsByTagName("script")[0];
 
       s1.async = true;
-      s1.src = 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq';
-      s1.charset = 'UTF-8';
-      s1.setAttribute('crossorigin', '*');
+      s1.src = "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq";
+      s1.charset = "UTF-8";
+      s1.setAttribute("crossorigin", "*");
 
       s0.parentNode?.insertBefore(s1, s0);
     })();

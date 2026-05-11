@@ -1,4 +1,4 @@
-"use client"; 
+"use client";
 import NavigationBar from "../components/navigation-bar";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; // ✅ For navigation
@@ -12,28 +12,37 @@ export default function CoinFlipPage() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-start p-6 text-white relative"
-         style={{ backgroundImage: "linear-gradient(135deg, #020617 0%, #020617 40%, #0f172a 100%)" }}> 
-         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(168,85,247,0.15),transparent_70%)] pointer-events-none" />
-<NavigationBar currentPath="/casino" />
+    <div
+      className="min-h-screen flex flex-col items-center justify-start p-6 text-white relative"
+      style={{
+        backgroundImage:
+          "linear-gradient(135deg, #020617 0%, #020617 40%, #0f172a 100%)",
+      }}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(168,85,247,0.15),transparent_70%)] pointer-events-none" />
+      <NavigationBar currentPath="/casino" />
       <div className="max-w-2xl w-full mt-16 p-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 text-white rounded shadow-[0_0_24px_rgba(0,229,255,0.2)]">
-      <h1 className="text-3xl font-extrabold text-center mb-6 text-[#00e5ff] tracking-wide">
-  Coin Flip
-</h1>
+        <h1 className="text-3xl font-extrabold text-center mb-6 text-[#00e5ff] tracking-wide">
+          Coin Flip
+        </h1>
 
         <div className="flex justify-center space-x-4 mb-6">
           <button
-            className={`px-4 py-2 rounded ${mode === "solo"
-  ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-[0_0_14px_rgba(236,72,153,0.5)]"
-  : "bg-[#0d335f] hover:bg-[#144a85]"}`}
+            className={`px-4 py-2 rounded ${
+              mode === "solo"
+                ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-[0_0_14px_rgba(236,72,153,0.5)]"
+                : "bg-[#0d335f] hover:bg-[#144a85]"
+            }`}
             onClick={() => setMode("solo")}
           >
             Solo vs House
           </button>
           <button
-            className={`px-4 py-2 rounded ${mode === "pvp"
-  ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-[0_0_14px_rgba(236,72,153,0.5)]"
-  : "bg-[#0d335f] hover:bg-[#144a85]"}`}
+            className={`px-4 py-2 rounded ${
+              mode === "pvp"
+                ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-[0_0_14px_rgba(236,72,153,0.5)]"
+                : "bg-[#0d335f] hover:bg-[#144a85]"
+            }`}
             onClick={() => setMode("pvp")}
           >
             PvP
@@ -96,10 +105,10 @@ function SoloCoinFlip() {
 
   const fetchTokens = async () => {
     try {
-      const res = await fetch("/api/get-user-tokens", { 
+      const res = await fetch("/api/get-user-tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include"
+        credentials: "include",
       });
       const json = await res.json();
       if (json.success) setUserTokens(parseFloat(json.data.balance));
@@ -178,8 +187,8 @@ function SoloCoinFlip() {
           onClick={() => setChoice("heads")}
           className={`w-full mr-2 p-2 rounded ${
             choice === "heads"
-  ? "bg-gradient-to-r from-cyan-400 to-emerald-400 text-black shadow-[0_0_12px_rgba(16,185,129,0.6)]"
-  : "bg-[#0d335f] hover:bg-[#144a85]"
+              ? "bg-gradient-to-r from-cyan-400 to-emerald-400 text-black shadow-[0_0_12px_rgba(16,185,129,0.6)]"
+              : "bg-[#0d335f] hover:bg-[#144a85]"
           }`}
         >
           Heads ⚡
@@ -188,8 +197,8 @@ function SoloCoinFlip() {
           onClick={() => setChoice("tails")}
           className={`w-full ml-2 p-2 rounded ${
             choice === "tails"
-  ? "bg-gradient-to-r from-cyan-400 to-emerald-400 text-black shadow-[0_0_12px_rgba(16,185,129,0.6)]"
-  : "bg-[#0d335f] hover:bg-[#144a85]"
+              ? "bg-gradient-to-r from-cyan-400 to-emerald-400 text-black shadow-[0_0_12px_rgba(16,185,129,0.6)]"
+              : "bg-[#0d335f] hover:bg-[#144a85]"
           }`}
         >
           Tails 💠
@@ -210,8 +219,8 @@ shadow-[0_0_18px_rgba(236,72,153,0.6)] text-[#030817] rounded font-bold shadow-[
           onClick={() => setAutoBet((prev) => !prev)}
           className={`w-full p-3 rounded font-bold ${
             autoBet
-  ? "bg-gradient-to-r from-red-500 to-orange-500 shadow-[0_0_12px_rgba(239,68,68,0.6)]"
-  : "bg-gradient-to-r from-cyan-400 to-emerald-400 text-black shadow-[0_0_12px_rgba(16,185,129,0.6)]"
+              ? "bg-gradient-to-r from-red-500 to-orange-500 shadow-[0_0_12px_rgba(239,68,68,0.6)]"
+              : "bg-gradient-to-r from-cyan-400 to-emerald-400 text-black shadow-[0_0_12px_rgba(16,185,129,0.6)]"
           }`}
         >
           {autoBet ? "Stop Auto" : "Start Auto"}
@@ -222,7 +231,7 @@ shadow-[0_0_18px_rgba(236,72,153,0.6)] text-[#030817] rounded font-bold shadow-[
         <div className="relative w-24 h-24 perspective">
           <div
             key={flipKey}
-           className={`w-full h-full rounded-full text-4xl flex items-center justify-center 
+            className={`w-full h-full rounded-full text-4xl flex items-center justify-center 
 bg-gradient-to-br from-purple-500 via-pink-500 to-indigo-500
 text-white font-bold
 shadow-[0_0_25px_rgba(168,85,247,0.8),inset_0_0_20px_rgba(255,255,255,0.2)]
@@ -271,32 +280,32 @@ function PvPCoinFlip() {
   }, []);
 
   const fetchGames = async () => {
-  try {
-    const res = await fetch("/api/coin-flip/pvp/available");
-    const json = await res.json();
-    if (json.success) {
-      setGames(json.data.games);
+    try {
+      const res = await fetch("/api/coin-flip/pvp/available");
+      const json = await res.json();
+      if (json.success) {
+        setGames(json.data.games);
+      }
+    } catch (err) {
+      console.error("Error fetching games:", err);
     }
-  } catch (err) {
-    console.error("Error fetching games:", err);
-  }
-};
-
-useEffect(() => {
-  fetchGames(); // load once
-}, []);
-
-useEffect(() => {
-  if (!socket) return;
-  const roomId = "lobby:coin-flip";
-  const handleLobbyUpdate = () => fetchGames();
-  socket.emit("join_room", { roomId });
-  socket.on("lobby:updated", handleLobbyUpdate);
-  return () => {
-    socket.emit("leave_room", { roomId });
-    socket.off("lobby:updated", handleLobbyUpdate);
   };
-}, [socket]);
+
+  useEffect(() => {
+    fetchGames(); // load once
+  }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+    const roomId = "lobby:coin-flip";
+    const handleLobbyUpdate = () => fetchGames();
+    socket.emit("join_room", { roomId });
+    socket.on("lobby:updated", handleLobbyUpdate);
+    return () => {
+      socket.emit("leave_room", { roomId });
+      socket.off("lobby:updated", handleLobbyUpdate);
+    };
+  }, [socket]);
 
   useEffect(() => {
     if (!myGameId) return;
@@ -310,7 +319,8 @@ useEffect(() => {
       setGameStatus(game.status);
       setChoiceDeadline(game.choiceDeadline || null);
 
-      const opponent = game.player1Id === userId ? game.player2Id : game.player1Id;
+      const opponent =
+        game.player1Id === userId ? game.player2Id : game.player1Id;
       setOpponentId(opponent || null);
 
       if (game.player1Id === userId) {
@@ -356,7 +366,10 @@ useEffect(() => {
     }
 
     const update = () => {
-      const seconds = Math.max(0, Math.ceil((new Date(choiceDeadline).getTime() - Date.now()) / 1000));
+      const seconds = Math.max(
+        0,
+        Math.ceil((new Date(choiceDeadline).getTime() - Date.now()) / 1000),
+      );
       setTimeLeft(seconds);
     };
 
@@ -386,7 +399,10 @@ useEffect(() => {
       setMyGameId(json.data.gameId);
       setMyBet(json.data.betAmount);
       setMessage("Waiting for opponent...");
-      socket?.emit("room_event", { roomId: "lobby:coin-flip", event: "lobby:updated" });
+      socket?.emit("room_event", {
+        roomId: "lobby:coin-flip",
+        event: "lobby:updated",
+      });
     } else {
       setMessage(json.error);
     }
@@ -430,7 +446,10 @@ useEffect(() => {
       setGameStatus(null);
       setGames((prev) => prev.filter((g) => g.id !== myGameId));
       setMessage("Game cancelled.");
-      socket?.emit("room_event", { roomId: "lobby:coin-flip", event: "lobby:updated" });
+      socket?.emit("room_event", {
+        roomId: "lobby:coin-flip",
+        event: "lobby:updated",
+      });
     } else {
       setMessage(json.error);
     }
@@ -457,13 +476,18 @@ useEffect(() => {
       setChoiceDeadline(json.data.choiceDeadline || null);
       setGameStatus("matched");
       setMessage("Choose heads or tails in 10 seconds.");
-      socket?.emit("room_event", { roomId: "lobby:coin-flip", event: "lobby:updated" });
+      socket?.emit("room_event", {
+        roomId: "lobby:coin-flip",
+        event: "lobby:updated",
+      });
     } else {
       setMessage(json.error);
     }
   };
 
-  const availableGames = games.filter((g) => g.player1Id !== userId && g.id !== myGameId);
+  const availableGames = games.filter(
+    (g) => g.player1Id !== userId && g.id !== myGameId,
+  );
 
   return (
     <>
@@ -490,22 +514,24 @@ text-white"
 
           <div className="mt-8">
             <div className="flex justify-between items-center mb-3">
-  <h2 className="text-xl font-bold">Available Games</h2>
-  <button
-  onClick={fetchGames}
-  disabled={!!myGameId}
-  className={`px-3 py-1 rounded text-sm font-semibold ${
-    myGameId
-      ? "bg-gray-500 cursor-not-allowed"
-      : "bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)] hover:bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)]"
-  }`}
->
-  🔄 Refresh
-</button>
-</div>
+              <h2 className="text-xl font-bold">Available Games</h2>
+              <button
+                onClick={fetchGames}
+                disabled={!!myGameId}
+                className={`px-3 py-1 rounded text-sm font-semibold ${
+                  myGameId
+                    ? "bg-gray-500 cursor-not-allowed"
+                    : "bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)] hover:bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)]"
+                }`}
+              >
+                🔄 Refresh
+              </button>
+            </div>
 
             {availableGames.length === 0 && (
-              <p className="text-center text-gray-400">No games available. Be the first to create one!</p>
+              <p className="text-center text-gray-400">
+                No games available. Be the first to create one!
+              </p>
             )}
 
             <div className="space-y-3">
@@ -516,8 +542,12 @@ text-white"
                              rounded-lg p-4 flex justify-between items-center"
                 >
                   <div>
-                    <p className="font-bold">{game.player1Name || "Unknown Player"}</p>
-                    <p className="text-gray-400 mt-1">Bet: {game.betAmount} 🪙</p>
+                    <p className="font-bold">
+                      {game.player1Name || "Unknown Player"}
+                    </p>
+                    <p className="text-gray-400 mt-1">
+                      Bet: {game.betAmount} 🪙
+                    </p>
                   </div>
 
                   <button
@@ -544,18 +574,26 @@ shadow-[0_0_12px_rgba(16,185,129,0.6)]"
             <div className="bg-gray-800 p-4 rounded-lg">
               <p className="font-bold text-green-400">You</p>
               <p className="text-sm break-all">{userId}</p>
-              <p className="mt-2 text-yellow-400">Choice: {myChoice || "Not chosen"}</p>
+              <p className="mt-2 text-yellow-400">
+                Choice: {myChoice || "Not chosen"}
+              </p>
             </div>
 
             <div className="bg-gray-800 p-4 rounded-lg">
-              <p className="font-bold text-yellow-400">{opponentId ? "Opponent" : "Searching..."}</p>
+              <p className="font-bold text-yellow-400">
+                {opponentId ? "Opponent" : "Searching..."}
+              </p>
               <p className="text-sm break-all">{opponentId || "..."}</p>
-              <p className="mt-2 text-yellow-400">Choice: {opponentChoice || "Not chosen"}</p>
+              <p className="mt-2 text-yellow-400">
+                Choice: {opponentChoice || "Not chosen"}
+              </p>
             </div>
           </div>
 
           {gameStatus === "matched" && (
-            <div className="mb-4 text-center text-orange-300 font-semibold">Choice timer: {timeLeft}s</div>
+            <div className="mb-4 text-center text-orange-300 font-semibold">
+              Choice timer: {timeLeft}s
+            </div>
           )}
 
           {!myChoice && gameStatus === "matched" && !flipping && (
@@ -564,7 +602,9 @@ shadow-[0_0_12px_rgba(16,185,129,0.6)]"
                 onClick={() => submitChoice("heads")}
                 disabled={opponentChoice === "heads"}
                 className={`w-full mr-2 p-2 rounded ${
-                  opponentChoice === "heads" ? "bg-gray-500 cursor-not-allowed" : "bg-[#0d335f] hover:bg-green-700"
+                  opponentChoice === "heads"
+                    ? "bg-gray-500 cursor-not-allowed"
+                    : "bg-[#0d335f] hover:bg-green-700"
                 }`}
               >
                 Heads ⚡
@@ -574,7 +614,9 @@ shadow-[0_0_12px_rgba(16,185,129,0.6)]"
                 onClick={() => submitChoice("tails")}
                 disabled={opponentChoice === "tails"}
                 className={`w-full ml-2 p-2 rounded ${
-                  opponentChoice === "tails" ? "bg-gray-500 cursor-not-allowed" : "bg-[#0d335f] hover:bg-green-700"
+                  opponentChoice === "tails"
+                    ? "bg-gray-500 cursor-not-allowed"
+                    : "bg-[#0d335f] hover:bg-green-700"
                 }`}
               >
                 Tails 💠
@@ -600,9 +642,13 @@ ${flipping ? "animate-coin-flip" : ""}`}
             </div>
           </div>
 
-          <p className="text-center text-gray-400 mb-4">Bet Locked: {myBet} 🪙</p>
+          <p className="text-center text-gray-400 mb-4">
+            Bet Locked: {myBet} 🪙
+          </p>
 
-          {message && <p className="text-center text-[#7cefff] mb-4">{message}</p>}
+          {message && (
+            <p className="text-center text-[#7cefff] mb-4">{message}</p>
+          )}
 
           {!flipping && !gameFinished && gameStatus !== "cancelled" && (
             <button

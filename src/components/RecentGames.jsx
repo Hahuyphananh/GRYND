@@ -22,7 +22,7 @@ export default function RecentGames() {
       if (pageNumber === 1) {
         setGames(data.games);
       } else {
-        setGames(prev => [...prev, ...data.games]);
+        setGames((prev) => [...prev, ...data.games]);
       }
     } catch (err) {
       console.error(err);
@@ -67,7 +67,9 @@ export default function RecentGames() {
                 <td className="px-4 py-4">{game.gameType}</td>
                 <td className="px-4 py-4">{game.betAmount}€</td>
                 <td className="px-4 py-4">{game.payout}€</td>
-                <td className="px-4 py-4">{new Date(game.createdAt).toLocaleDateString()}</td>
+                <td className="px-4 py-4">
+                  {new Date(game.createdAt).toLocaleDateString()}
+                </td>
               </tr>
             ))}
           </tbody>

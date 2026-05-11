@@ -1,10 +1,13 @@
-import { auth } from '@clerk/nextjs/server';
-import { db } from '../../../../db/client';
-import { users, crashGames } from '../../../../db/schema';
-import { eq, sql } from 'drizzle-orm';
-import { NextResponse } from 'next/server';
-import { createSignedSession, verifySignedSession } from '../../../../lib/serverSession';
-import { applyLeaderboardCounters } from '../../../../lib/leaderboardCounters';
+import { auth } from "@clerk/nextjs/server";
+import { db } from "../../../../db/client";
+import { users, crashGames } from "../../../../db/schema";
+import { eq, sql } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import {
+  createSignedSession,
+  verifySignedSession,
+} from "../../../../lib/serverSession";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 export async function POST(req) {
   try {
@@ -12,8 +15,8 @@ export async function POST(req) {
 
     if (!userId) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
       );
     }
 
@@ -25,8 +28,8 @@ export async function POST(req) {
       (multiplier !== undefined && !Number.isFinite(multiplier))
     ) {
       return NextResponse.json(
-        { success: false, error: 'Invalid request body' },
-        { status: 400 }
+        { success: false, error: "Invalid request body" },
+        { status: 400 },
       );
     }
 
@@ -38,8 +41,8 @@ export async function POST(req) {
 
     if (!userData.length) {
       return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
+        { success: false, error: "User not found" },
+        { status: 404 },
       );
     }
 
@@ -55,15 +58,15 @@ export async function POST(req) {
           balance: sql`${users.balance} - ${betAmount}`,
         })
         .where(
-          sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${betAmount}`
+          sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${betAmount}`,
         )
         .returning({ balance: users.balance });
 
       // ❌ BLOCK IF DEDUCTION FAILED
       if (result.length === 0) {
         return NextResponse.json(
-          { success: false, error: 'Insufficient balance' },
-          { status: 400 }
+          { success: false, error: "Insufficient balance" },
+          { status: 400 },
         );
       }
 
@@ -84,11 +87,11 @@ export async function POST(req) {
         },
       });
 
-      response.cookies.set('crash_session', token, {
+      response.cookies.set("crash_session", token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
         maxAge: 60 * 10,
       });
 
@@ -98,20 +101,20 @@ export async function POST(req) {
     // ======================================================
     // 2) SETTLE GAME (CASHOUT ONLY)
     // ======================================================
-    const token = req.cookies.get('crash_session')?.value;
+    const token = req.cookies.get("crash_session")?.value;
     const session = verifySignedSession(token);
 
     if (!session || session.userId !== userId) {
       return NextResponse.json(
-        { success: false, error: 'No active crash session' },
-        { status: 400 }
+        { success: false, error: "No active crash session" },
+        { status: 400 },
       );
     }
 
     if (session.claimed) {
       return NextResponse.json(
-        { success: false, error: 'Session already settled' },
-        { status: 400 }
+        { success: false, error: "Session already settled" },
+        { status: 400 },
       );
     }
 
@@ -122,8 +125,8 @@ export async function POST(req) {
     // ❌ INVALID CASHOUT GUARD
     if (!Number.isFinite(cashoutMultiplier) || cashoutMultiplier < 1) {
       return NextResponse.json(
-        { success: false, error: 'Invalid cashout attempt' },
-        { status: 400 }
+        { success: false, error: "Invalid cashout attempt" },
+        { status: 400 },
       );
     }
 
@@ -136,7 +139,7 @@ export async function POST(req) {
       ? Number((bet * cashoutMultiplier).toFixed(2))
       : 0;
 
-    const result = isValidCashout ? 'won' : 'lost';
+    const result = isValidCashout ? "won" : "lost";
 
     // ======================================================
     // 4) UPDATE BALANCE (ONLY WINNINGS ADDED)
@@ -158,10 +161,15 @@ export async function POST(req) {
       cashedOutAt: isValidCashout ? cashoutMultiplier.toFixed(2) : null,
       payout: payout.toFixed(2),
       result,
-      status: 'completed',
+      status: "completed",
     });
 
-    await applyLeaderboardCounters({ clerkId: userId, game: 'crash', betAmount: bet, payout });
+    await applyLeaderboardCounters({
+      clerkId: userId,
+      game: "crash",
+      betAmount: bet,
+      payout,
+    });
 
     // ======================================================
     // 6) CLEAR SESSION
@@ -176,18 +184,18 @@ export async function POST(req) {
       },
     });
 
-    response.cookies.set('crash_session', '', {
+    response.cookies.set("crash_session", "", {
       httpOnly: true,
-      path: '/',
+      path: "/",
       maxAge: 0,
     });
 
     return response;
   } catch (err) {
-    console.error('Crash API error:', err);
+    console.error("Crash API error:", err);
     return NextResponse.json(
-      { success: false, error: 'Server error' },
-      { status: 500 }
+      { success: false, error: "Server error" },
+      { status: 500 },
     );
   }
 }

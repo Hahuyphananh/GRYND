@@ -14,11 +14,26 @@ export async function GET(request) {
 
   try {
     const { userId } = await auth();
-    const { items, me } = await fetchWeeklyLeaderboard({ category, limit, offset, clerkId: userId });
+    const { items, me } = await fetchWeeklyLeaderboard({
+      category,
+      limit,
+      offset,
+      clerkId: userId,
+    });
 
     return Response.json({ items, me, category, limit, offset });
   } catch (error) {
     console.error("❌ Failed to load weekly leaderboard:", error);
-    return Response.json({ items: [], me: null, category, limit, offset, error: "Unable to load leaderboard" }, { status: 500 });
+    return Response.json(
+      {
+        items: [],
+        me: null,
+        category,
+        limit,
+        offset,
+        error: "Unable to load leaderboard",
+      },
+      { status: 500 },
+    );
   }
 }

@@ -18,7 +18,7 @@ export function getDb(): DbInstance {
 
   if (!connectionString) {
     throw new Error(
-      "DATABASE_URL is not set. Set it in your runtime environment (for example, Vercel Project Settings > Environment Variables)."
+      "DATABASE_URL is not set. Set it in your runtime environment (for example, Vercel Project Settings > Environment Variables).",
     );
   }
 

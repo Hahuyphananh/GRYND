@@ -55,17 +55,17 @@ export async function POST(req) {
     const aiChoice = getAIChoice();
     const result = getResult(choice, aiChoice);
 
-let payout = 0;
-let newStreak = result === "win" ? winStreak + 1 : 0;
-let balanceDelta = 0;
+    let payout = 0;
+    let newStreak = result === "win" ? winStreak + 1 : 0;
+    let balanceDelta = 0;
 
-if (result === "win") {
-  // 💰 ONLY 90% PROFIT (NOT INCLUDING BET)
-  payout = betAmount * 0.9;
-  balanceDelta = payout;
-} else if (result === "lose") {
-  balanceDelta = -betAmount;
-}
+    if (result === "win") {
+      // 💰 ONLY 90% PROFIT (NOT INCLUDING BET)
+      payout = betAmount * 0.9;
+      balanceDelta = payout;
+    } else if (result === "lose") {
+      balanceDelta = -betAmount;
+    }
     // ✅ Update balance atomically
     const [updated] = await db
       .update(users)
@@ -83,7 +83,12 @@ if (result === "win") {
       payout,
     });
 
-    await applyLeaderboardCounters({ clerkId: userId, game: "rps", betAmount, payout });
+    await applyLeaderboardCounters({
+      clerkId: userId,
+      game: "rps",
+      betAmount,
+      payout,
+    });
 
     return NextResponse.json({
       aiChoice,
@@ -96,8 +101,8 @@ if (result === "win") {
         result === "win"
           ? "🎉 You won!"
           : result === "lose"
-          ? "😢 You lost."
-          : "🤝 It's a tie.",
+            ? "😢 You lost."
+            : "🤝 It's a tie.",
     });
   } catch (err) {
     console.error("RPS API Error:", err);

@@ -7,14 +7,20 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 export async function POST(req) {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const { gameId } = await req.json();
   const parsedGameId = Number(gameId);
 
   if (!Number.isFinite(parsedGameId)) {
-    return NextResponse.json({ success: false, error: "Invalid gameId" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Invalid gameId" },
+      { status: 400 },
+    );
   }
 
   try {
@@ -26,8 +32,8 @@ export async function POST(req) {
           and(
             eq(rpsPvpGames.id, parsedGameId),
             isNull(rpsPvpGames.player2Id),
-            eq(rpsPvpGames.status, "active")
-          )
+            eq(rpsPvpGames.status, "active"),
+          ),
         )
         .for("update");
 
@@ -43,7 +49,12 @@ export async function POST(req) {
         .set({
           balance: sql`${users.balance} - ${game.betAmount}`,
         })
-        .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${game.betAmount}`))
+        .where(
+          and(
+            eq(users.clerkId, userId),
+            sql`${users.balance} >= ${game.betAmount}`,
+          ),
+        )
         .returning({ balance: users.balance });
 
       if (!updatedUser) {
@@ -72,6 +83,9 @@ export async function POST(req) {
       },
     });
   } catch (err) {
-    return NextResponse.json({ success: false, error: err.message || "Failed to join game" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: err.message || "Failed to join game" },
+      { status: 400 },
+    );
   }
 }

@@ -18,7 +18,7 @@ export async function parseAndValidateJson(request, schema) {
       ok: false,
       response: NextResponse.json(
         { success: false, error: "Invalid JSON payload" },
-        { status: 400 }
+        { status: 400 },
       ),
     };
   }
@@ -28,14 +28,16 @@ export async function parseAndValidateJson(request, schema) {
       ok: false,
       response: NextResponse.json(
         { success: false, error: "Payload must be a JSON object" },
-        { status: 400 }
+        { status: 400 },
       ),
     };
   }
 
   const allowedFields = Object.keys(schema);
   const incomingFields = Object.keys(payload);
-  const unexpected = incomingFields.filter((field) => !allowedFields.includes(field));
+  const unexpected = incomingFields.filter(
+    (field) => !allowedFields.includes(field),
+  );
 
   if (unexpected.length > 0) {
     return {
@@ -45,7 +47,7 @@ export async function parseAndValidateJson(request, schema) {
           success: false,
           error: `Unexpected field(s): ${unexpected.join(", ")}`,
         },
-        { status: 400 }
+        { status: 400 },
       ),
     };
   }
@@ -62,7 +64,7 @@ export async function parseAndValidateJson(request, schema) {
           ok: false,
           response: NextResponse.json(
             { success: false, error: `${field} is required` },
-            { status: 400 }
+            { status: 400 },
           ),
         };
       }
@@ -80,7 +82,7 @@ export async function parseAndValidateJson(request, schema) {
               success: false,
               error: `${field} must be at least ${rules.minLength} characters`,
             },
-            { status: 400 }
+            { status: 400 },
           ),
         };
       }
@@ -92,7 +94,7 @@ export async function parseAndValidateJson(request, schema) {
               success: false,
               error: `${field} must be at most ${rules.maxLength} characters`,
             },
-            { status: 400 }
+            { status: 400 },
           ),
         };
       }
@@ -101,7 +103,7 @@ export async function parseAndValidateJson(request, schema) {
           ok: false,
           response: NextResponse.json(
             { success: false, error: `${field} has invalid format` },
-            { status: 400 }
+            { status: 400 },
           ),
         };
       }
@@ -116,7 +118,7 @@ export async function parseAndValidateJson(request, schema) {
           ok: false,
           response: NextResponse.json(
             { success: false, error: `${field} must be a valid number` },
-            { status: 400 }
+            { status: 400 },
           ),
         };
       }
@@ -125,7 +127,7 @@ export async function parseAndValidateJson(request, schema) {
           ok: false,
           response: NextResponse.json(
             { success: false, error: `${field} must be an integer` },
-            { status: 400 }
+            { status: 400 },
           ),
         };
       }
@@ -134,7 +136,7 @@ export async function parseAndValidateJson(request, schema) {
           ok: false,
           response: NextResponse.json(
             { success: false, error: `${field} must be >= ${rules.min}` },
-            { status: 400 }
+            { status: 400 },
           ),
         };
       }
@@ -143,7 +145,7 @@ export async function parseAndValidateJson(request, schema) {
           ok: false,
           response: NextResponse.json(
             { success: false, error: `${field} must be <= ${rules.max}` },
-            { status: 400 }
+            { status: 400 },
           ),
         };
       }
@@ -155,7 +157,7 @@ export async function parseAndValidateJson(request, schema) {
       ok: false,
       response: NextResponse.json(
         { success: false, error: `Unsupported schema type for ${field}` },
-        { status: 500 }
+        { status: 500 },
       ),
     };
   }
