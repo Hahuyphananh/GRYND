@@ -13,6 +13,9 @@
     "test:runtime": "node --test tests/runtime-security-http.test.mjs"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.3",
+    "@capacitor/core": "^8.3.3",
+    "@capacitor/ios": "^8.3.3",
     "@clerk/backend": "^3.4.1",
     "@clerk/clerk-react": "^5.61.6",
     "@clerk/clerk-sdk-node": "^5.1.6",
@@ -43,6 +46,7 @@
     "swr": "^2.3.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.3.3",
     "@types/node": "22.14.1",
     "@types/pg": "^8.11.14",
     "@types/react": "19.1.2",
