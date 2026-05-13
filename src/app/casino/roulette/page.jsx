@@ -213,35 +213,47 @@ export default function RoulettePage() {
     setError(null); // optionally clear errors on reset
   };
 
-  const renderNumberGrid = () => {
-    const rows = [[], [], []];
-    for (let i = 1; i <= 36; i++) {
-      rows[(i - 1) % 3].push(i);
-    }
-    return (
-      <div className="space-y-2">
+const renderNumberGrid = () => {
+  const rows = [[], [], []];
+
+  for (let i = 1; i <= 36; i++) {
+    rows[(i - 1) % 3].push(i);
+  }
+
+  return (
+    <div className="w-full overflow-x-auto pb-2">
+      <div className="min-w-[320px] space-y-1">
         {rows.map((row, idx) => (
-          <div key={idx} className="flex gap-1 justify-center">
+          <div
+            key={idx}
+            className="grid grid-cols-12 gap-1 justify-center"
+          >
             {row.map((num) => {
               const isRed = redNumbers.includes(num);
-              const isBlack = !isRed; // for roulette numbers 1-36, black if not red
+
               return (
                 <div key={num} className="relative">
                   <button
                     onClick={() => placeBet(num)}
-                    className={`w-10 h-10 flex items-center justify-center rounded-lg border border-[#FFFF33]/40 text-sm font-medium
-transition-all duration-150
-${
-  isRed
-    ? "bg-red-600/80 text-white shadow-[0_0_10px_rgba(255,0,0,0.4)]"
-    : "bg-black text-[#FFFF33] shadow-[0_0_10px_rgba(255,255,51,0.3)]"
-}
-hover:scale-105 hover:brightness-110 active:scale-95`}
+                    className={`
+                      w-full aspect-square
+                      flex items-center justify-center
+                      rounded-md border border-[#FFFF33]/40
+                      text-[11px] sm:text-sm font-medium
+                      transition-all duration-150
+                      ${
+                        isRed
+                          ? "bg-red-600/80 text-white shadow-[0_0_10px_rgba(255,0,0,0.4)]"
+                          : "bg-black text-[#FFFF33] shadow-[0_0_10px_rgba(255,255,51,0.3)]"
+                      }
+                      hover:scale-105 hover:brightness-110 active:scale-95
+                    `}
                   >
                     {num}
                   </button>
+
                   {bets[num] && (
-                    <span className="absolute -top-2 -right-2 bg-[#FFFF33]/80 text-[#000] border border-[#FFFF33]/40 shadow-[0_0_10px_rgba(255,255,51,0.4)] text-xs font-bold px-1.5 py-0.5 rounded-full border shadow-lg">
+                    <span className="absolute -top-2 -right-2 bg-[#FFFF33]/80 text-black border border-[#FFFF33]/40 shadow-[0_0_10px_rgba(255,255,51,0.4)] text-[10px] sm:text-xs font-bold px-1 py-0.5 rounded-full">
                       {bets[num]}
                     </span>
                   )}
@@ -251,8 +263,9 @@ hover:scale-105 hover:brightness-110 active:scale-95`}
           </div>
         ))}
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] pb-24 pt-20 text-white md:pb-8">
@@ -433,7 +446,7 @@ shadow-[0_0_12px_rgba(255,255,51,0.5)] py-2 rounded-full font-extrabold shadow-l
         </div>
 
         {/* Right side (roulette + numbers + betting zones) */}
-        <div className="flex w-full flex-shrink-0 flex-col items-center sm:w-[680px]">
+        <div className="flex w-full min-w-0 flex-col items-center sm:w-[680px]">
           <div className="relative mx-auto mt-3 h-[340px] w-full max-w-[340px] sm:mt-5 sm:h-[400px] sm:max-w-[360px]">
             <canvas
               ref={canvasRef}
@@ -471,7 +484,9 @@ shadow-[0_0_12px_rgba(255,255,51,0.5)] py-2 rounded-full font-extrabold shadow-l
             </svg>
           </div>
 
-          <div className="w-full px-2">{renderNumberGrid()}</div>
+         <div className="w-full max-w-full px-1 sm:px-2">
+  {renderNumberGrid()}
+</div>
 
           <div className=" mt-3 flex flex-wrap gap-2 justify-center w-full px-2">
             {[
