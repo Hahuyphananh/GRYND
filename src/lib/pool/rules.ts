@@ -3,6 +3,8 @@ import { Ball, PlayerTurn, RulesResult, Team } from "./types";
 const isOwn = (n: number, team: Team) =>
   team === "solids" ? n >= 1 && n <= 7 : n >= 9 && n <= 15;
 
+const isObjectBall = (n: number | null) => !!n && n > 0;
+
 const remaining = (balls: Ball[], team: Team) =>
   balls.some(
     (b) =>
@@ -43,30 +45,42 @@ export function evaluateRules(params: {
   let winner: PlayerTurn | null = null;
 
   const shooterTeam = turn === myTurn ? myTeam : oppTeam;
-  const shooterCleared = shooterTeam ? !remaining(balls, shooterTeam) : false;
+  const opponentTurn: PlayerTurn = turn === 1 ? 2 : 1;
+  const setFoul = (message: string) => {
+    if (!foul) foulMessage = message;
+    foul = true;
+  };
 
-  if (openTable) {
+  if (scratch) setFoul("Foul: cue ball scratch. Ball in hand.");
+
+  if (!isObjectBall(firstContact)) {
+    setFoul("Foul: cue ball did not contact an object ball.");
+  } else if (openTable) {
     if (firstContact === 8) {
-      foul = true;
-      foulMessage = "Illegal 8-ball";
+      setFoul("Foul: the 8-ball cannot be struck first on an open table.");
     }
   } else if (shooterTeam) {
+    const shooterCleared = !remaining(balls, shooterTeam);
     const legalFirst = shooterCleared
       ? firstContact === 8
-      : !!firstContact && isOwn(firstContact, shooterTeam);
+      : isOwn(firstContact, shooterTeam);
     if (!legalFirst) {
-      foul = true;
-      foulMessage = "Wrong ball hit first";
+      setFoul(
+        shooterCleared
+          ? "Foul: hit your group before shooting the 8-ball."
+          : "Foul: wrong ball hit first.",
+      );
     }
   }
 
-  if (!railAfterContact && pocketed.length === 0 && !foul) {
-    foul = true;
-    foulMessage = "No rail after contact";
-  }
-  if (scratch) {
-    foul = true;
-    foulMessage = "Scratch!";
+  if (
+    isObjectBall(firstContact) &&
+    !railAfterContact &&
+    pocketed.length === 0
+  ) {
+    setFoul(
+      "Foul: no ball was pocketed and no ball reached a rail after contact.",
+    );
   }
 
   const firstColored = pocketed.find((n) => n !== 0 && n !== 8);
@@ -89,15 +103,15 @@ export function evaluateRules(params: {
 
   if (sunkEight) {
     if (!shooterAssigned || !shooterDone || scratch || foul)
-      winner = turn === 1 ? 2 : 1;
+      winner = opponentTurn;
     else winner = turn;
   }
 
   const ownPocket = pocketed.some(
     (n) => shooterAssigned && isOwn(n, shooterAssigned),
   );
-  const keepTurn = ownPocket && !foul;
-  const nextTurn: PlayerTurn = keepTurn ? turn : turn === 1 ? 2 : 1;
+  const keepTurn = ownPocket && !foul && !winner;
+  const nextTurn: PlayerTurn = keepTurn ? turn : opponentTurn;
 
   return {
     foul,

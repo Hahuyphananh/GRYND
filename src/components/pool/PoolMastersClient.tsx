@@ -19,7 +19,7 @@ export default function PoolMastersClient() {
           Create or join a game before jumping into the table.
         </p>
         <button
-          onClick={() => router.push("/casino/pool-masters/lobby")}
+          onClick={() => router.push("/casino/pool-masters")}
           className="mt-4 rounded bg-fuchsia-500 px-4 py-2 font-bold text-black"
         >
           Open Pool Lobby
