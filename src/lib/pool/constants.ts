@@ -3,10 +3,10 @@ export const TABLE_H = 500;
 export const BALL_R = 11;
 export const RAIL = 42;
 export const POCKET_R = 30;
-export const FRICTION = 0.994;
-export const RAIL_DAMPING = 0.92;
-export const STOP_EPSILON = 0.03;
-export const MAX_PULL = 110;
+export const FRICTION = 0.9975;
+export const RAIL_DAMPING = 0.96;
+export const STOP_EPSILON = 0.015;
+export const MAX_PULL = 130;
 
 export const POCKETS: [number, number][] = [
   [34, 34],
