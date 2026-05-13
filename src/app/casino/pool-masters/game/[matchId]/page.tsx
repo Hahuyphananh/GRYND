@@ -72,13 +72,57 @@ const touchPoint = (e: any, rect: DOMRect) =>
       }
     : { x: e.clientX - rect.left, y: e.clientY - rect.top };
 
+const isTeamBall = (n: number, team: Team) =>
+  team === "solids" ? n >= 1 && n <= 7 : n >= 9 && n <= 15;
+
+const teamHasBalls = (balls: Ball[], team: Team) =>
+  !!team &&
+  balls.some(
+    (b) => !b.pocketed && !b.animatingPocket && isTeamBall(b.number, team),
+  );
+
+function planAiShot(balls: Ball[], aiTeam: Team, openTable: boolean) {
+  const cue = balls.find((b) => b.number === 0 && !b.pocketed);
+  if (!cue) return null;
+
+  const objectBalls = balls.filter(
+    (b) => !b.pocketed && !b.animatingPocket && b.number > 0,
+  );
+  const legalTargets = objectBalls.filter((b) => {
+    if (openTable || !aiTeam) return b.number !== 8;
+    if (teamHasBalls(balls, aiTeam)) return isTeamBall(b.number, aiTeam);
+    return b.number === 8;
+  });
+  const targets = legalTargets.length
+    ? legalTargets
+    : objectBalls.filter((b) => b.number !== 8);
+  if (!targets.length) return null;
+
+  const target = [...targets].sort(
+    (a, b) =>
+      Math.hypot(a.x - cue.x, a.y - cue.y) -
+      Math.hypot(b.x - cue.x, b.y - cue.y),
+  )[0];
+  const distance = Math.hypot(target.x - cue.x, target.y - cue.y);
+  const angle = Math.atan2(target.y - cue.y, target.x - cue.x);
+
+  return {
+    angle: angle + (Math.random() - 0.5) * 0.035,
+    power: Math.min(MAX_PULL, Math.max(72, distance / 5.4)),
+  };
+}
+
 export default function Page() {
   const { matchId } = useParams<{ matchId: string }>();
   const router = useRouter();
-  const aiMode = useSearchParams().get("ai") === "1";
+  const searchParams = useSearchParams();
+  const aiMode = searchParams.get("ai") === "1";
+  const initialTurn: PlayerTurn = searchParams.get("turn") === "2" ? 2 : 1;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const ballsRef = useRef<Ball[]>([]);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const shotLock = useRef(false);
+  const aiShotLock = useRef(false);
   const shotMeta = useRef<ShotMeta>({
     firstContactNumber: null,
     railAfterContact: false,
@@ -87,7 +131,8 @@ export default function Page() {
   });
 
   const [balls, setBalls] = useState(setupBalls());
-  const [turn, setTurn] = useState<PlayerTurn>(1);
+  const [activeMatchId, setActiveMatchId] = useState(matchId);
+  const [turn, setTurn] = useState<PlayerTurn>(initialTurn);
   const [owner, setOwner] = useState<PlayerTurn>(1);
   const [status, setStatus] = useState("Waiting...");
   const [lastFoul, setLastFoul] = useState<string | null>(null);
@@ -102,6 +147,14 @@ export default function Page() {
   const [myName, setMyName] = useState("Player 1");
   const [oppName, setOppName] = useState(aiMode ? "AI" : "Player 2");
   const [syncVersion, setSyncVersion] = useState(0);
+
+  useEffect(() => {
+    ballsRef.current = balls;
+  }, [balls]);
+
+  useEffect(() => {
+    setActiveMatchId(matchId);
+  }, [matchId]);
   useEffect(() => {
     const id = setInterval(
       () =>
@@ -127,7 +180,7 @@ export default function Page() {
     if (!x) return;
     drawTable(x);
     const cue = balls.find((b) => b.number === 0);
-    if (cue && !cue.pocketed && canShoot && turn === owner) {
+    if (cue && !cue.pocketed && canShoot) {
       drawAimGuide(x, cue, aim, pull);
     }
     drawBalls(x, balls);
@@ -182,7 +235,7 @@ export default function Page() {
     const version = Date.now();
     setSyncVersion(version);
     void pushPoolState(
-      matchId,
+      activeMatchId,
       {
         balls: syncedBalls,
         turn: res.nextTurn,
@@ -198,7 +251,7 @@ export default function Page() {
       },
       aiMode,
     );
-  }, [balls, turn, owner, myTeam, oppTeam, openTable, aiMode, matchId]);
+  }, [balls, turn, owner, myTeam, oppTeam, openTable, aiMode, activeMatchId]);
 
   const fireShot = (a: number, p: number) => {
     if (!canShoot || isMoving(balls) || shotLock.current) return;
@@ -220,14 +273,14 @@ export default function Page() {
   };
 
   const onDown = (e: any) => {
-    if (winner) return;
+    if (winner || !canShoot || turn !== owner) return;
     const r = e.currentTarget.getBoundingClientRect();
     const p = touchPoint(e, r);
     dragRef.current = p;
   };
   const onMove = (e: any) => {
     const cue = balls.find((b) => b.number === 0);
-    if (!cue) return;
+    if (!cue || !canShoot || turn !== owner) return;
     const r = e.currentTarget.getBoundingClientRect();
     const p = touchPoint(e, r);
     setAim(Math.atan2(p.y - cue.y, p.x - cue.x));
@@ -240,34 +293,48 @@ export default function Page() {
       );
   };
   const onUp = () => {
-    if (dragRef.current) fireShot(aim, pull);
+    if (dragRef.current && canShoot && turn === owner) fireShot(aim, pull);
     dragRef.current = null;
     setPull(0);
   };
 
   useEffect(() => {
-    if (aiMode && turn === 2 && canShoot) {
-      const cue = balls[0],
-        t = balls.find((b) => !b.pocketed && b.number > 0 && b.number !== 8);
-      if (!cue || !t) return;
-      const a =
-        Math.atan2(t.y - cue.y, t.x - cue.x) + (Math.random() - 0.5) * 0.1;
-      const timer = setTimeout(() => fireShot(a, 82), 700);
-      return () => clearTimeout(timer);
+    if (!(aiMode && turn === 2 && canShoot) || winner) {
+      aiShotLock.current = false;
+      return;
     }
-  }, [aiMode, turn, balls, winner, canShoot]);
+    if (aiShotLock.current) return;
+
+    const shot = planAiShot(ballsRef.current, oppTeam, openTable);
+    if (!shot) return;
+
+    aiShotLock.current = true;
+    setAim(shot.angle);
+    setPull(shot.power);
+    setStatus("AI is lining up a shot...");
+
+    const timer = setTimeout(() => {
+      fireShot(shot.angle, shot.power);
+      setPull(0);
+      aiShotLock.current = false;
+    }, 260);
+
+    return () => clearTimeout(timer);
+  }, [aiMode, turn, canShoot, winner, oppTeam, openTable]);
 
   useEffect(() => {
-    if (aiMode) return;
-    const id = setInterval(async () => {
-      const res = await fetch(`/api/pool/get-match?matchId=${matchId}`, {
+    const syncMatch = async () => {
+      const res = await fetch(`/api/pool/get-match?matchId=${activeMatchId}`, {
         cache: "no-store",
       });
       const data = await res.json();
       const gs = data.match?.gameState;
+
       if (data.match?.status === "active") {
         setStarted(true);
-        if (data.match.id && data.match.id !== matchId) {
+        setStatus((prev) => (prev === "Waiting..." ? "Match started." : prev));
+        if (!aiMode && data.match.id && data.match.id !== activeMatchId) {
+          setActiveMatchId(data.match.id);
           router.replace(`/casino/pool-masters/game/${data.match.id}`);
         }
       }
@@ -276,8 +343,8 @@ export default function Page() {
       if (data.opponentName) setOppName(data.opponentName);
       if (gs?.version && isNewerVersion(gs.version, syncVersion)) {
         setSyncVersion(gs.version);
-        setBalls(gs.balls ?? balls);
-        setTurn(gs.turn ?? turn);
+        if (gs.balls) setBalls(gs.balls);
+        if (gs.turn) setTurn(gs.turn);
         const remoteSeat = gs.perspectiveSeat;
         const shouldSwapTeams =
           remoteSeat && data.viewerSeat && remoteSeat !== data.viewerSeat;
@@ -291,9 +358,17 @@ export default function Page() {
         setLastFoul(gs.foul ? (gs.foulMessage ?? "Foul. Ball in hand.") : null);
         if (gs.foulMessage) setStatus(gs.foulMessage);
       }
-    }, 1000);
+    };
+
+    if (aiMode) {
+      if (syncVersion === 0) void syncMatch();
+      return;
+    }
+
+    void syncMatch();
+    const id = setInterval(syncMatch, 650);
     return () => clearInterval(id);
-  }, [matchId, aiMode, syncVersion, balls, turn, router]);
+  }, [activeMatchId, aiMode, syncVersion, router]);
   const myRemaining = BALL_LAYOUT.filter((b) =>
     myTeam ? (myTeam === "solids" ? !b.s && b.n !== 8 : b.s) : b.n !== 8,
   )
