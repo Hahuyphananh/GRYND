@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import NavigationBar from "../../../../../components/navigation-bar";
 import {
   BALL_LAYOUT,
@@ -15,7 +15,11 @@ import {
   tickPhysics,
 } from "../../../../../lib/pool/physics";
 import { evaluateRules } from "../../../../../lib/pool/rules";
-import { drawBalls, drawTable } from "../../../../../lib/pool/render";
+import {
+  drawAimGuide,
+  drawBalls,
+  drawTable,
+} from "../../../../../lib/pool/render";
 import {
   isNewerVersion,
   pushPoolState,
@@ -70,6 +74,7 @@ const touchPoint = (e: any, rect: DOMRect) =>
 
 export default function Page() {
   const { matchId } = useParams<{ matchId: string }>();
+  const router = useRouter();
   const aiMode = useSearchParams().get("ai") === "1";
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
@@ -85,6 +90,7 @@ export default function Page() {
   const [turn, setTurn] = useState<PlayerTurn>(1);
   const [owner, setOwner] = useState<PlayerTurn>(1);
   const [status, setStatus] = useState("Waiting...");
+  const [lastFoul, setLastFoul] = useState<string | null>(null);
   const [myTeam, setMyTeam] = useState<Team>(null);
   const [oppTeam, setOppTeam] = useState<Team>(null);
   const [openTable, setOpenTable] = useState(true);
@@ -96,8 +102,6 @@ export default function Page() {
   const [myName, setMyName] = useState("Player 1");
   const [oppName, setOppName] = useState(aiMode ? "AI" : "Player 2");
   const [syncVersion, setSyncVersion] = useState(0);
-  const me = useMemo(() => turn === owner, [turn, owner]);
-
   useEffect(() => {
     const id = setInterval(
       () =>
@@ -124,21 +128,7 @@ export default function Page() {
     drawTable(x);
     const cue = balls.find((b) => b.number === 0);
     if (cue && !cue.pocketed && canShoot && turn === owner) {
-      x.strokeStyle = "rgba(255,255,255,.35)";
-      x.lineWidth = 2;
-      x.beginPath();
-      x.moveTo(cue.x, cue.y);
-      x.lineTo(cue.x + Math.cos(aim) * 260, cue.y + Math.sin(aim) * 260);
-      x.stroke();
-      x.strokeStyle = "#c3a16a";
-      x.lineWidth = 8;
-      x.beginPath();
-      x.moveTo(
-        cue.x - Math.cos(aim) * (64 + pull),
-        cue.y - Math.sin(aim) * (64 + pull),
-      );
-      x.lineTo(cue.x - Math.cos(aim) * 14, cue.y - Math.sin(aim) * 14);
-      x.stroke();
+      drawAimGuide(x, cue, aim, pull);
     }
     drawBalls(x, balls);
   }, [balls, canShoot, aim, pull, owner, turn]);
@@ -158,28 +148,43 @@ export default function Page() {
       pocketed: [...new Set(shotMeta.current.pocketedNumbers)],
       scratch: shotMeta.current.cueScratch,
     });
-    if (res.foul && res.foulMessage) setStatus(res.foulMessage);
-    else setStatus("Shot complete");
+    if (res.foul && res.foulMessage) {
+      setStatus(res.foulMessage);
+      setLastFoul(res.foulMessage);
+    } else {
+      setStatus(res.keepTurn ? "Nice shot — shoot again." : "Shot complete.");
+      setLastFoul(null);
+    }
     setTurn(res.nextTurn);
     setBallInHand(res.ballInHand);
     setWinner(res.winner);
     setMyTeam(res.assignedMyTeam);
     setOppTeam(res.assignedOppTeam);
     setOpenTable(!(res.assignedMyTeam && res.assignedOppTeam));
-    if (res.ballInHand)
-      setBalls((prev) =>
-        prev.map((b) =>
+    const syncedBalls = res.ballInHand
+      ? balls.map((b) =>
           b.number === 0
-            ? { ...b, pocketed: false, x: 180, y: 250, vx: 0, vy: 0 }
+            ? {
+                ...b,
+                pocketed: false,
+                animatingPocket: false,
+                opacity: 1,
+                scale: 1,
+                x: 180,
+                y: 250,
+                vx: 0,
+                vy: 0,
+              }
             : b,
-        ),
-      );
+        )
+      : balls;
+    if (res.ballInHand) setBalls(syncedBalls);
     const version = Date.now();
     setSyncVersion(version);
     void pushPoolState(
       matchId,
       {
-        balls,
+        balls: syncedBalls,
         turn: res.nextTurn,
         myTeam: res.assignedMyTeam,
         oppTeam: res.assignedOppTeam,
@@ -187,6 +192,9 @@ export default function Page() {
         ballInHand: res.ballInHand,
         winner: res.winner,
         version,
+        perspectiveSeat: owner,
+        foul: res.foul,
+        foulMessage: res.foulMessage,
       },
       aiMode,
     );
@@ -257,7 +265,12 @@ export default function Page() {
       });
       const data = await res.json();
       const gs = data.match?.gameState;
-      if (data.match?.status === "active") setStarted(true);
+      if (data.match?.status === "active") {
+        setStarted(true);
+        if (data.match.id && data.match.id !== matchId) {
+          router.replace(`/casino/pool-masters/game/${data.match.id}`);
+        }
+      }
       if (data.viewerSeat) setOwner(data.viewerSeat);
       if (data.viewerName) setMyName(data.viewerName);
       if (data.opponentName) setOppName(data.opponentName);
@@ -265,15 +278,22 @@ export default function Page() {
         setSyncVersion(gs.version);
         setBalls(gs.balls ?? balls);
         setTurn(gs.turn ?? turn);
-        setMyTeam(gs.myTeam ?? null);
-        setOppTeam(gs.oppTeam ?? null);
+        const remoteSeat = gs.perspectiveSeat;
+        const shouldSwapTeams =
+          remoteSeat && data.viewerSeat && remoteSeat !== data.viewerSeat;
+        setMyTeam(shouldSwapTeams ? (gs.oppTeam ?? null) : (gs.myTeam ?? null));
+        setOppTeam(
+          shouldSwapTeams ? (gs.myTeam ?? null) : (gs.oppTeam ?? null),
+        );
         setOpenTable(gs.openTable ?? true);
         setBallInHand(gs.ballInHand ?? false);
         setWinner(gs.winner ?? null);
+        setLastFoul(gs.foul ? (gs.foulMessage ?? "Foul. Ball in hand.") : null);
+        if (gs.foulMessage) setStatus(gs.foulMessage);
       }
     }, 1000);
     return () => clearInterval(id);
-  }, [matchId, aiMode, syncVersion, balls, turn]);
+  }, [matchId, aiMode, syncVersion, balls, turn, router]);
   const myRemaining = BALL_LAYOUT.filter((b) =>
     myTeam ? (myTeam === "solids" ? !b.s && b.n !== 8 : b.s) : b.n !== 8,
   )
@@ -286,24 +306,31 @@ export default function Page() {
     .map((b) => b.n);
 
   return (
-    <div className="min-h-screen bg-[#0b8f7f] p-4 text-white">
+    <div className="min-h-screen overflow-x-clip bg-[#202124] bg-[radial-gradient(circle_at_center,#353535_0,#1f1f1f_55%,#101010_100%)] p-2 text-white sm:p-4">
       <NavigationBar currentPath="/casino" />
-      <div className="mx-auto mt-6 max-w-6xl rounded-xl border border-cyan-500/40 bg-black/35 p-4">
-        <h1 className="text-3xl font-black text-fuchsia-300">Pool Match</h1>
-        <p>
-          {started ? status : "Waiting for match start..."} • Turn:{" "}
-          {turn === owner ? myName : oppName}
+      <div className="mx-auto mt-3 max-w-7xl rounded-2xl border border-black/70 bg-black/45 p-3 shadow-[0_20px_70px_rgba(0,0,0,.65)] sm:mt-6 sm:p-4">
+        <div className="mb-2 text-center text-lg font-black text-yellow-300 drop-shadow sm:text-2xl">
+          {started
+            ? turn === owner
+              ? "You will shoot."
+              : `${oppName} will shoot.`
+            : "Waiting for match start..."}
+        </div>
+        <div
+          className={`mb-3 rounded-xl border px-4 py-3 text-center font-extrabold ${lastFoul ? "border-red-300 bg-red-700/85 text-white" : "border-white/10 bg-black/30 text-slate-100"}`}
+        >
+          {lastFoul ? `FOUL — ${lastFoul.replace(/^Foul: /, "")}` : status}
           {ballInHand ? " • Ball in hand" : ""}
-        </p>
-        <div className="mt-3 grid grid-cols-2 gap-4">
-          <div className="rounded bg-slate-800/80 p-3">
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:gap-4">
+          <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-3 shadow-inner">
             <p className="font-bold">{myName}</p>
             <p className="text-xs text-cyan-100">{myTeam ?? "unassigned"}</p>
             <p className="mt-1 text-sm">
               Balls: {myRemaining.join(", ") || "none"}
             </p>
           </div>
-          <div className="rounded bg-slate-800/80 p-3 text-right">
+          <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-3 text-right shadow-inner">
             <p className="font-bold">{oppName}</p>
             <p className="text-xs text-cyan-100">{oppTeam ?? "unassigned"}</p>
             <p className="mt-1 text-sm">
@@ -327,7 +354,7 @@ export default function Page() {
           onTouchStart={onDown}
           onTouchMove={onMove}
           onTouchEnd={onUp}
-          className="mt-4 w-full touch-none rounded-xl border border-amber-700/70 bg-[#0f3f2a]"
+          className="mt-4 w-full touch-none rounded-2xl border border-black bg-[#111] shadow-[0_12px_40px_rgba(0,0,0,.75)]"
         />
       </div>
     </div>
