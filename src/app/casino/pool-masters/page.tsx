@@ -70,7 +70,9 @@ export default function PoolLobbyPage() {
     });
     const data = await res.json();
     if (data.matchId)
-      router.push(`/casino/pool-masters/game/${data.matchId}?ai=1`);
+      router.push(
+        `/casino/pool-masters/game/${data.matchId}?ai=1&turn=${data.firstTurnSeat ?? 1}`,
+      );
   };
 
   return (
