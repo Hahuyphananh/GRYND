@@ -30,7 +30,7 @@ export async function POST(req: Request) {
         currentTurnUserId: firstTurnSeat === 1 ? userId : "AI",
       })
       .returning({ id: poolMatches.id });
-    return NextResponse.json({ ok: true, matchId: m.id });
+    return NextResponse.json({ ok: true, matchId: m.id, firstTurnSeat });
   } catch (error: any) {
     return NextResponse.json(
       { ok: false, message: error?.message || "Unable to create AI match" },

@@ -17,8 +17,8 @@ export const isMoving = (balls: Ball[]) =>
   );
 
 export function applyShotPower(pull: number) {
-  const t = Math.min(1, Math.max(0.08, pull / 110));
-  return 2 + Math.pow(t, 1.45) * 12;
+  const t = Math.min(1, Math.max(0.08, pull / 120));
+  return 2.5 + Math.pow(t, 1.34) * 15.5;
 }
 
 export function tickPhysics(balls: Ball[], shotMeta: ShotMeta) {
@@ -96,7 +96,8 @@ export function tickPhysics(balls: Ball[], shotMeta: ShotMeta) {
           rvy = b.vy - a.vy;
         const rel = rvx * nx + rvy * ny;
         if (rel < 0) {
-          const impulse = (-1 * rel) / 2;
+          const restitution = 0.96;
+          const impulse = (-(1 + restitution) * rel) / 2;
           a.vx -= impulse * nx;
           a.vy -= impulse * ny;
           b.vx += impulse * nx;
