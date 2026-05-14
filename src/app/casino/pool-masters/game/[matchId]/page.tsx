@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import NavigationBar from "../../../../../components/navigation-bar";
+import { useSocket } from "../../../../../context/SocketProvider";
 import {
   BALL_LAYOUT,
   MAX_PULL,
@@ -30,6 +31,24 @@ import {
   ShotMeta,
   Team,
 } from "../../../../../lib/pool/types";
+
+type PoolLivePayload = {
+  matchId: string;
+  sourceSeat: PlayerTurn;
+  balls?: Ball[];
+  turn?: PlayerTurn;
+  myTeam?: Team;
+  oppTeam?: Team;
+  openTable?: boolean;
+  ballInHand?: boolean;
+  winner?: PlayerTurn | null;
+  aim?: number;
+  pull?: number;
+  version: number;
+  settled?: boolean;
+  foul?: boolean;
+  foulMessage?: string | null;
+};
 
 function setupBalls(): Ball[] {
   const balls: Ball[] = [
@@ -115,11 +134,14 @@ function planAiShot(balls: Ball[], aiTeam: Team, openTable: boolean) {
 export default function Page() {
   const { matchId } = useParams<{ matchId: string }>();
   const router = useRouter();
+  const { socket } = useSocket();
   const searchParams = useSearchParams();
   const aiMode = searchParams.get("ai") === "1";
   const initialTurn: PlayerTurn = searchParams.get("turn") === "2" ? 2 : 1;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ballsRef = useRef<Ball[]>([]);
+  const ownerRef = useRef<PlayerTurn>(1);
+  const liveEmitAtRef = useRef(0);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const shotLock = useRef(false);
   const aiShotLock = useRef(false);
@@ -147,10 +169,20 @@ export default function Page() {
   const [myName, setMyName] = useState("Player 1");
   const [oppName, setOppName] = useState(aiMode ? "AI" : "Player 2");
   const [syncVersion, setSyncVersion] = useState(0);
+  const [remoteAim, setRemoteAim] = useState<{
+    angle: number;
+    pull: number;
+    seat: PlayerTurn;
+    at: number;
+  } | null>(null);
 
   useEffect(() => {
     ballsRef.current = balls;
   }, [balls]);
+
+  useEffect(() => {
+    ownerRef.current = owner;
+  }, [owner]);
 
   useEffect(() => {
     setActiveMatchId(matchId);
@@ -173,6 +205,21 @@ export default function Page() {
     !isMoving(balls) &&
     (turn === owner || (aiMode && turn === 2));
 
+  const emitLiveState = (
+    payload: Omit<PoolLivePayload, "matchId" | "version">,
+  ) => {
+    if (!socket || aiMode) return;
+    socket.emit("room_event", {
+      roomId: `pool:${activeMatchId}`,
+      event: "pool:live-state",
+      payload: {
+        ...payload,
+        matchId: activeMatchId,
+        version: Date.now(),
+      },
+    });
+  };
+
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
@@ -182,9 +229,17 @@ export default function Page() {
     const cue = balls.find((b) => b.number === 0);
     if (cue && !cue.pocketed && canShoot) {
       drawAimGuide(x, cue, aim, pull);
+    } else if (
+      cue &&
+      !cue.pocketed &&
+      remoteAim &&
+      remoteAim.seat !== owner &&
+      Date.now() - remoteAim.at < 2500
+    ) {
+      drawAimGuide(x, cue, remoteAim.angle, remoteAim.pull);
     }
     drawBalls(x, balls);
-  }, [balls, canShoot, aim, pull, owner, turn]);
+  }, [balls, canShoot, aim, pull, owner, turn, remoteAim]);
 
   useEffect(() => {
     if (!shotLock.current || isMoving(balls)) return;
@@ -234,6 +289,19 @@ export default function Page() {
     if (res.ballInHand) setBalls(syncedBalls);
     const version = Date.now();
     setSyncVersion(version);
+    emitLiveState({
+      sourceSeat: owner,
+      balls: syncedBalls,
+      turn: res.nextTurn,
+      myTeam: res.assignedMyTeam,
+      oppTeam: res.assignedOppTeam,
+      openTable: !(res.assignedMyTeam && res.assignedOppTeam),
+      ballInHand: res.ballInHand,
+      winner: res.winner,
+      settled: true,
+      foul: res.foul,
+      foulMessage: res.foulMessage,
+    });
     void pushPoolState(
       activeMatchId,
       {
@@ -251,7 +319,17 @@ export default function Page() {
       },
       aiMode,
     );
-  }, [balls, turn, owner, myTeam, oppTeam, openTable, aiMode, activeMatchId]);
+  }, [
+    balls,
+    turn,
+    owner,
+    myTeam,
+    oppTeam,
+    openTable,
+    aiMode,
+    activeMatchId,
+    socket,
+  ]);
 
   const fireShot = (a: number, p: number) => {
     if (!canShoot || isMoving(balls) || shotLock.current) return;
@@ -263,14 +341,39 @@ export default function Page() {
       cueScratch: false,
     };
     const speed = applyShotPower(p);
-    setBalls((prev) =>
-      prev.map((b) =>
+    setBalls((prev) => {
+      const next = prev.map((b) =>
         b.number === 0
           ? { ...b, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed }
           : b,
-      ),
-    );
+      );
+      emitLiveState({
+        sourceSeat: owner,
+        balls: next,
+        turn,
+        aim: a,
+        pull: p,
+        settled: false,
+      });
+      return next;
+    });
   };
+
+  useEffect(() => {
+    if (aiMode || !socket || !shotLock.current || turn !== owner) return;
+    if (!isMoving(balls)) return;
+    const now = Date.now();
+    if (now - liveEmitAtRef.current < 48) return;
+    liveEmitAtRef.current = now;
+    emitLiveState({
+      sourceSeat: owner,
+      balls,
+      turn,
+      aim,
+      pull,
+      settled: false,
+    });
+  }, [aiMode, socket, balls, turn, owner, aim, pull]);
 
   const onDown = (e: any) => {
     if (winner || !canShoot || turn !== owner) return;
@@ -284,19 +387,83 @@ export default function Page() {
     const r = e.currentTarget.getBoundingClientRect();
     const p = touchPoint(e, r);
     setAim(Math.atan2(p.y - cue.y, p.x - cue.x));
-    if (dragRef.current)
-      setPull(
-        Math.min(
-          MAX_PULL,
-          Math.hypot(p.x - dragRef.current.x, p.y - dragRef.current.y),
-        ),
+    if (dragRef.current) {
+      const nextPull = Math.min(
+        MAX_PULL,
+        Math.hypot(p.x - dragRef.current.x, p.y - dragRef.current.y),
       );
+      setPull(nextPull);
+      emitLiveState({
+        sourceSeat: owner,
+        balls,
+        turn,
+        aim: Math.atan2(p.y - cue.y, p.x - cue.x),
+        pull: nextPull,
+        settled: false,
+      });
+    }
   };
   const onUp = () => {
     if (dragRef.current && canShoot && turn === owner) fireShot(aim, pull);
     dragRef.current = null;
     setPull(0);
   };
+
+  useEffect(() => {
+    if (!socket || aiMode) return;
+    const roomId = `pool:${activeMatchId}`;
+
+    const handleLiveState = (message: { payload?: PoolLivePayload }) => {
+      const payload = message?.payload;
+      if (!payload || payload.matchId !== activeMatchId) return;
+      if (payload.sourceSeat === ownerRef.current) return;
+
+      if (payload.balls) setBalls(payload.balls);
+      if (payload.turn) setTurn(payload.turn);
+      const shouldSwapTeams = payload.sourceSeat !== ownerRef.current;
+      if ("myTeam" in payload || "oppTeam" in payload) {
+        setMyTeam(
+          shouldSwapTeams
+            ? (payload.oppTeam ?? null)
+            : (payload.myTeam ?? null),
+        );
+        setOppTeam(
+          shouldSwapTeams
+            ? (payload.myTeam ?? null)
+            : (payload.oppTeam ?? null),
+        );
+      }
+      if (typeof payload.openTable === "boolean")
+        setOpenTable(payload.openTable);
+      if (typeof payload.ballInHand === "boolean")
+        setBallInHand(payload.ballInHand);
+      if ("winner" in payload) setWinner(payload.winner ?? null);
+      if (typeof payload.aim === "number") {
+        setRemoteAim({
+          angle: payload.aim,
+          pull: payload.pull ?? 0,
+          seat: payload.sourceSeat,
+          at: Date.now(),
+        });
+      }
+      if (payload.settled) {
+        setSyncVersion((current) => Math.max(current, payload.version));
+        setLastFoul(
+          payload.foul ? (payload.foulMessage ?? "Foul. Ball in hand.") : null,
+        );
+        if (payload.foulMessage) setStatus(payload.foulMessage);
+        else setStatus("Shot complete.");
+      }
+    };
+
+    socket.emit("join_room", { roomId });
+    socket.on("pool:live-state", handleLiveState);
+
+    return () => {
+      socket.emit("leave_room", { roomId });
+      socket.off("pool:live-state", handleLiveState);
+    };
+  }, [socket, aiMode, activeMatchId]);
 
   useEffect(() => {
     if (!(aiMode && turn === 2 && canShoot) || winner) {
