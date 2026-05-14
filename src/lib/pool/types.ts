@@ -44,4 +44,7 @@ export type SyncedState = {
   ballInHand: boolean;
   winner: PlayerTurn | null;
   version: number;
+  perspectiveSeat?: PlayerTurn;
+  foul?: boolean;
+  foulMessage?: string | null;
 };
