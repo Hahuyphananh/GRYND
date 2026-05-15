@@ -9,7 +9,7 @@ import { applyShotPower, isMoving, tickPhysics } from "../../../../../lib/pool/p
 import { evaluateRules } from "../../../../../lib/pool/rules";
 import { drawAimGuide, drawBalls, drawTable } from "../../../../../lib/pool/render";
 import { isNewerVersion, pushPoolState } from "../../../../../lib/pool/multiplayer";
-import { Ball, PlayerTurn, ShotMeta, Team } from "../../../../../lib/pool/types";
+import { Ball, PlayerTurn, ShotLifecycle, ShotMeta, Team } from "../../../../../lib/pool/types";
 import { useUser } from "@clerk/nextjs";
 
 type PoolLivePayload = {
@@ -29,6 +29,8 @@ type PoolLivePayload = {
   settled?: boolean;
   foul?: boolean;
   foulMessage?: string | null;
+  lifecycle?: ShotLifecycle;
+  shotId?: string | null;
 };
 
 function setupBalls(): Ball[] {
@@ -124,6 +126,8 @@ export default function Page() {
     pocketedNumbers: [],
     cueScratch: false,
   });
+  const lifecycleRef = useRef<ShotLifecycle>("IDLE");
+  const activeShotIdRef = useRef<string | null>(null);
 
   const [balls, setBalls] = useState(setupBalls());
   const [activeMatchId, setActiveMatchId] = useState(matchId);
@@ -170,6 +174,7 @@ useEffect(() => {
 
       const next = prev.map((b) => ({ ...b }));
       tickPhysics(next, shotMeta.current);
+      lifecycleRef.current = "ROLLING";
 
       return next;
     });
@@ -219,6 +224,7 @@ useEffect(() => {
   useEffect(() => {
     if (!shotLock.current || isMoving(balls)) return;
     shotLock.current = false;
+    lifecycleRef.current = "SETTLED";
     const res = evaluateRules({
       balls,
       turn,
@@ -263,6 +269,7 @@ useEffect(() => {
       : balls;
     if (res.ballInHand) setBalls(syncedBalls);
     const version = Date.now();
+    const shotId = activeShotIdRef.current ?? `shot-${version}`;
     setSyncVersion(version);
     emitLiveState({
       sourceSeat: owner,
@@ -276,6 +283,8 @@ useEffect(() => {
       settled: true,
       foul: res.foul,
       foulMessage: res.foulMessage,
+      lifecycle: "SETTLED",
+      shotId,
     });
     void pushPoolState(
       activeMatchId,
@@ -291,14 +300,22 @@ useEffect(() => {
         perspectiveSeat: owner,
         foul: res.foul,
         foulMessage: res.foulMessage,
+        lifecycle: "SETTLED",
+        shotId,
+        settled: true,
       },
       aiMode
     );
+    lifecycleRef.current = "IDLE";
+    activeShotIdRef.current = null;
   }, [balls, turn, owner, myTeam, oppTeam, openTable, aiMode, activeMatchId, socket]);
 
   const fireShot = (a: number, p: number) => {
     if (!canShoot || isMoving(balls) || shotLock.current) return;
     shotLock.current = true;
+    lifecycleRef.current = "SHOOTING";
+    const shotId = `shot-${Date.now()}-${owner}`;
+    activeShotIdRef.current = shotId;
     shotMeta.current = {
       firstContactNumber: null,
       railAfterContact: false,
@@ -317,6 +334,8 @@ useEffect(() => {
         aim: a,
         pull: p,
         settled: false,
+        lifecycle: "SHOOTING",
+        shotId,
       });
       return next;
     });
@@ -335,6 +354,8 @@ useEffect(() => {
       aim,
       pull,
       settled: false,
+      lifecycle: "ROLLING",
+      shotId: activeShotIdRef.current ?? undefined,
     });
   }, [aiMode, socket, balls, turn, owner, aim, pull]);
 
@@ -358,11 +379,12 @@ useEffect(() => {
       setPull(nextPull);
       emitLiveState({
         sourceSeat: owner,
-        balls,
         turn,
         aim: Math.atan2(p.y - cue.y, p.x - cue.x),
         pull: nextPull,
         settled: false,
+        lifecycle: "SHOOTING",
+        shotId: activeShotIdRef.current ?? undefined,
       });
     }
   };
@@ -386,13 +408,12 @@ useEffect(() => {
       if (!payload || payload.matchId !== activeMatchId) return;
       if (payload.userId && payload.userId === user?.id) return;
 
-      if (payload.balls) {
-  ballsRef.current = payload.balls;
-  if (payload.balls) {
-  shotLock.current = false; // important
-  setBalls(payload.balls);
-}
-}
+      const localShotInProgress = shotLock.current || isMoving(ballsRef.current);
+      const remoteSettled = payload.settled || payload.lifecycle === "SETTLED";
+      if (payload.balls && (!localShotInProgress || remoteSettled)) {
+        ballsRef.current = payload.balls;
+        setBalls(payload.balls);
+      }
       if (typeof payload.turn === "number") {
   setTurn(payload.turn);
 }
@@ -412,7 +433,10 @@ useEffect(() => {
           at: Date.now(),
         });
       }
-      if (payload.settled) {
+      if (payload.settled || payload.lifecycle === "SETTLED") {
+        shotLock.current = false;
+        lifecycleRef.current = "IDLE";
+        activeShotIdRef.current = null;
         setSyncVersion((current) => Math.max(current, payload.version));
         setLastFoul(payload.foul ? (payload.foulMessage ?? "Foul. Ball in hand.") : null);
         if (payload.foulMessage) setStatus(payload.foulMessage);
@@ -474,11 +498,10 @@ useEffect(() => {
       if (data.opponentName) setOppName(data.opponentName);
       const localShotInProgress = shotLock.current || isMoving(ballsRef.current);
       if (
-  !localShotInProgress &&
-  !isMoving(balls) &&
-  gs?.version &&
-  isNewerVersion(gs.version, syncVersion)
-) {
+        !localShotInProgress &&
+        gs?.version &&
+        isNewerVersion(gs.version, syncVersion)
+      ) {
         setSyncVersion(gs.version);
         if (gs.balls) setBalls(gs.balls);
         if (gs.turn) setTurn(gs.turn);
