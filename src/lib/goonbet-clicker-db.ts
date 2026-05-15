@@ -30,15 +30,19 @@ function asRows<T = Record<string, any>>(result: any): T[] {
 
 export async function ensureClickerUser(userId: string, email: string | null) {
   const sql = getNeonSql();
+  const casinoUsers = await sql`SELECT balance FROM users WHERE clerk_id = ${userId} LIMIT 1`;
+  const casinoBalance = BigInt(Math.floor(Number(casinoUsers[0]?.balance ?? 1000)));
+
   await sql`INSERT INTO clicker_users (id, email, tokens)
-            VALUES (${userId}, ${email}, 1000)
-            ON CONFLICT (id) DO NOTHING`;
+            VALUES (${userId}, ${email}, ${casinoBalance})
+            ON CONFLICT (id) DO UPDATE
+            SET email = COALESCE(EXCLUDED.email, clicker_users.email),
+                tokens = ${casinoBalance}`;
 }
 
 export async function getTokens(userId: string): Promise<bigint> {
   const sql = getNeonSql();
-  const rows =
-    await sql`SELECT tokens FROM clicker_users WHERE id = ${userId} LIMIT 1`;
+  const rows = await sql`SELECT tokens FROM clicker_users WHERE id = ${userId} LIMIT 1`;
   return BigInt(rows[0]?.tokens ?? 0);
 }
 
@@ -47,16 +51,15 @@ export async function startRound(userId: string, betAmount: bigint) {
 
   await sql`BEGIN`;
   try {
-    const usersResult =
-      await sql`SELECT tokens FROM clicker_users WHERE id = ${userId} FOR UPDATE`;
+    const usersResult = await sql`SELECT tokens FROM clicker_users WHERE id = ${userId} FOR UPDATE`;
     const users = asRows<{ tokens: string | number }>(usersResult);
     if (users.length === 0) throw new Error("USER_NOT_FOUND");
 
     const tokens = BigInt(users[0].tokens);
-    if (tokens <= BigInt(0) || tokens < betAmount)
-      throw new Error("INSUFFICIENT_TOKENS");
+    if (tokens <= BigInt(0) || tokens < betAmount) throw new Error("INSUFFICIENT_TOKENS");
 
     await sql`UPDATE clicker_users SET tokens = tokens - ${betAmount} WHERE id = ${userId}`;
+    await sql`UPDATE users SET balance = balance - ${betAmount} WHERE clerk_id = ${userId}`;
     const createdResult =
       await sql`INSERT INTO clicker_rounds (user_id, bet_amount, multiplier, clicks, status, payout)
                                     VALUES (${userId}, ${betAmount}, 1.0, 0, 'active', 0)
@@ -76,7 +79,7 @@ export async function cashoutRound(
   roundId: number,
   clientClicks: number,
   clientMultiplier: number,
-  durationMs: number,
+  durationMs: number
 ) {
   const sql = getNeonSql();
 
@@ -91,10 +94,7 @@ export async function cashoutRound(
     if (round.status !== "active") throw new Error("ROUND_NOT_ACTIVE");
 
     const elapsedMs = Date.now() - new Date(round.created_at).getTime();
-    const effectiveDurationMs = Math.min(
-      Math.max(durationMs, 0),
-      Math.max(elapsedMs + 500, 0),
-    );
+    const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
     const boundedClicks = Math.max(0, Math.floor(clientClicks));
     const maxClicks = maxAllowedClicks(effectiveDurationMs);
     const verifiedClicks = Math.min(boundedClicks, maxClicks);
@@ -116,6 +116,7 @@ export async function cashoutRound(
 
     await sql`UPDATE clicker_rounds SET status = 'cashed_out', payout = ${payout}, clicks = ${verifiedClicks}, multiplier = ${expectedMultiplier} WHERE id = ${roundId}`;
     await sql`UPDATE clicker_users SET tokens = tokens + ${payout} WHERE id = ${userId}`;
+    await sql`UPDATE users SET balance = balance + ${payout} WHERE clerk_id = ${userId}`;
 
     await sql`COMMIT`;
     return {
@@ -135,7 +136,7 @@ export async function syncRound(
   roundId: number,
   clientClicks: number,
   clientMultiplier: number,
-  durationMs: number,
+  durationMs: number
 ) {
   const sql = getNeonSql();
   const rounds =
@@ -144,10 +145,7 @@ export async function syncRound(
   if (rounds[0].status !== "active") throw new Error("ROUND_NOT_ACTIVE");
 
   const elapsedMs = Date.now() - new Date(rounds[0].created_at).getTime();
-  const effectiveDurationMs = Math.min(
-    Math.max(durationMs, 0),
-    Math.max(elapsedMs + 500, 0),
-  );
+  const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
   const expectedMultiplier = multiplierFromClicks(clientClicks);
   const maxClicks = maxAllowedClicks(effectiveDurationMs);
   const bustSeed = `${roundId}:${userId}:${new Date(rounds[0].created_at).toISOString()}`;

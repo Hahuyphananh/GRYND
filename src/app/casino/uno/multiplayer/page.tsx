@@ -21,6 +21,7 @@ export default function UnoMultiplayerPage() {
   const router = useRouter();
   const { socket } = useSocket();
   const roomSyncRef = useRef<NodeJS.Timeout | null>(null);
+  const replayClientIdRef = useRef(Math.random().toString(36).slice(2));
 
   const [game, setGame] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -42,9 +43,7 @@ export default function UnoMultiplayerPage() {
   const [unoMultiMessage, setUnoMultiMessage] = useState("");
   const [unoMultiJoinCode, setUnoMultiJoinCode] = useState("");
   const [unoMultiSkipRound, setUnoMultiSkipRound] = useState(false);
-  const [unoMultiBackendMode, setUnoMultiBackendMode] = useState<string | null>(
-    null,
-  );
+  const [unoMultiBackendMode, setUnoMultiBackendMode] = useState<string | null>(null);
   const [unoMultiHandCounts, setUnoMultiHandCounts] = useState<any[]>([]);
   const [unoMultiTurnPlayerId, setUnoMultiTurnPlayerId] = useState<any>(null);
   const [showSeatPopup, setShowSeatPopup] = useState(false);
@@ -59,12 +58,95 @@ export default function UnoMultiplayerPage() {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [pendingCard, setPendingCard] = useState<any>(null);
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
+  const [endPopup, setEndPopup] = useState<{
+    result: "win" | "loss";
+    reason: string;
+    openedAt: number;
+  } | null>(null);
+  const [replayRequested, setReplayRequested] = useState(false);
+  const [opponentReplayRequested, setOpponentReplayRequested] = useState(false);
+  const [returnChosen, setReturnChosen] = useState(false);
+  const [replaySecondsLeft, setReplaySecondsLeft] = useState(15);
+
+  const openEndPopup = (result: "win" | "loss", reason = "finished") => {
+    setEndPopup({ result, reason, openedAt: Date.now() });
+    setReplayRequested(false);
+    setOpponentReplayRequested(false);
+    setReturnChosen(false);
+    setReplaySecondsLeft(15);
+  };
+
+  const closeToUnoLobby = () => {
+    setReturnChosen(true);
+    if (socket && game?.id) {
+      socket.emit("room_event", {
+        roomId: `uno:multi:end:${game.id}`,
+        event: "uno:multi:end:return",
+        payload: { gameId: game.id, clientId: replayClientIdRef.current },
+      });
+    }
+    void resetUnoMultiplayerLobby();
+  };
+
+  const requestReplay = () => {
+    if (!endPopup || returnChosen) return;
+    setReplayRequested(true);
+    if (socket && game?.id) {
+      socket.emit("room_event", {
+        roomId: `uno:multi:end:${game.id}`,
+        event: "uno:multi:end:replay",
+        payload: { gameId: game.id, clientId: replayClientIdRef.current },
+      });
+    }
+  };
 
   useGamePresence({
     gameKey: "uno",
     gameId: Number(game?.id),
     enabled: Boolean(game?.id),
   });
+
+  useEffect(() => {
+    if (!socket || !game?.id || !endPopup) return;
+    const roomId = `uno:multi:end:${game.id}`;
+    const handleReplay = (payload: any) => {
+      if (payload?.gameId !== game.id || payload?.clientId === replayClientIdRef.current) return;
+      setOpponentReplayRequested(true);
+    };
+    const handleReturn = (payload: any) => {
+      if (payload?.gameId !== game.id || payload?.clientId === replayClientIdRef.current) return;
+      setReturnChosen(true);
+    };
+    socket.emit("join_room", { roomId });
+    socket.on("uno:multi:end:replay", handleReplay);
+    socket.on("uno:multi:end:return", handleReturn);
+    return () => {
+      socket.emit("leave_room", { roomId });
+      socket.off("uno:multi:end:replay", handleReplay);
+      socket.off("uno:multi:end:return", handleReturn);
+    };
+  }, [socket, game?.id, endPopup]);
+
+  useEffect(() => {
+    if (!endPopup) return;
+    const deadline = endPopup.openedAt + 15000;
+    const id = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setReplaySecondsLeft(remaining);
+      if (remaining <= 0) {
+        clearInterval(id);
+        void resetUnoMultiplayerLobby();
+      }
+    }, 250);
+    return () => clearInterval(id);
+  }, [endPopup]);
+
+  useEffect(() => {
+    if (replayRequested && opponentReplayRequested) {
+      void resetUnoMultiplayerLobby();
+      setUnoMultiMessage("Replay accepted. Start another UNO table from the lobby.");
+    }
+  }, [replayRequested, opponentReplayRequested]);
 
   useEffect(() => {
     const fetchTokens = async () => {
@@ -124,15 +206,11 @@ export default function UnoMultiplayerPage() {
       ...prev,
       currentColor: tableGame.currentColor,
     }));
-    setUnoMultiHandCounts(
-      Array.isArray(tableGame.handCounts) ? tableGame.handCounts : [],
-    );
+    setUnoMultiHandCounts(Array.isArray(tableGame.handCounts) ? tableGame.handCounts : []);
     setUnoMultiTurnPlayerId(tableGame.turnPlayerId || null);
     setTurnHistory(tableGame.topCard ? [tableGame.topCard] : []);
     setHistoryIndex(null);
-    setPlayerHand(
-      Array.isArray(tableGame.playerHand) ? tableGame.playerHand : [],
-    );
+    setPlayerHand(Array.isArray(tableGame.playerHand) ? tableGame.playerHand : []);
     const myTurn = tableGame.turnPlayerId === tableGame.role;
     setIsPlayerTurn(Boolean(myTurn));
     setMessage(myTurn ? "Your turn" : "Opponent turn...");
@@ -142,13 +220,10 @@ export default function UnoMultiplayerPage() {
     if (!unoMultiTableCode) return;
     roomSyncRef.current = setInterval(async () => {
       try {
-        const res = await fetch(
-          `/api/uno/multiplayer?code=${unoMultiTableCode}`,
-          {
-            method: "GET",
-            credentials: "include",
-          },
-        );
+        const res = await fetch(`/api/uno/multiplayer?code=${unoMultiTableCode}`, {
+          method: "GET",
+          credentials: "include",
+        });
         const data = await res.json();
         if (!data.success) {
           setUnoMultiMessage(data.error || "Unable to sync room");
@@ -160,9 +235,7 @@ export default function UnoMultiplayerPage() {
           ...prev,
           ...(data.room.settings || {}),
         }));
-        setUnoMultiHostId(
-          data.room.players.find((p: any) => p.isHost)?.id ?? null,
-        );
+        setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
         const me =
           data.room.players.find((p: any) => p.userId === data.currentUserId) ||
           data.room.players.find((p: any) => p.id === unoMultiMyId);
@@ -180,8 +253,7 @@ export default function UnoMultiplayerPage() {
             }),
           });
           const syncData = await syncRes.json();
-          if (syncData.success && syncData.game)
-            hydrateUnoTableGame(syncData.game);
+          if (syncData.success && syncData.game) hydrateUnoTableGame(syncData.game);
         }
       } catch (error) {
         console.error("Unable to sync UNO multiplayer room", error);
@@ -227,9 +299,15 @@ export default function UnoMultiplayerPage() {
 
         const data = await res.json();
         if (!data.success) return;
+        if (data.status === "finished" && !endPopup) {
+          const youWon = data.data?.winner === data.data?.role;
+          setMessage(youWon ? "You won the match!" : "You lost the match.");
+          openEndPopup(youWon ? "win" : "loss");
+          return;
+        }
         if (data.shouldReturnToLobby || !data.data?.role) {
-          setMessage("Game over. Returning to lobby...");
-          setTimeout(() => resetUnoMultiplayerLobby(), 1200);
+          setMessage("Game over.");
+          openEndPopup("loss");
           return;
         }
 
@@ -239,16 +317,13 @@ export default function UnoMultiplayerPage() {
           ...prev,
           currentColor: data.data.currentColor,
         }));
-        setUnoMultiHandCounts(
-          Array.isArray(data.data.handCounts) ? data.data.handCounts : [],
-        );
+        setUnoMultiHandCounts(Array.isArray(data.data.handCounts) ? data.data.handCounts : []);
         setUnoMultiTurnPlayerId(data.data.turnPlayerId || null);
         setIsPlayerTurn(data.data.turnPlayerId === data.data.role);
         setTurnHistory((prev) => {
           const last = prev[prev.length - 1];
           const sameCard =
-            last?.color === data.data.topCard?.color &&
-            last?.value === data.data.topCard?.value;
+            last?.color === data.data.topCard?.color && last?.value === data.data.topCard?.value;
           return sameCard ? prev : [...prev, data.data.topCard];
         });
       } catch (error) {
@@ -275,12 +350,8 @@ export default function UnoMultiplayerPage() {
 
       setUnoMultiTableCode(data.room.code);
       setUnoMultiPlayers(data.room.players || []);
-      setUnoMultiHostId(
-        data.room.players.find((p: any) => p.isHost)?.id ?? null,
-      );
-      const myPlayer = data.room.players.find(
-        (p: any) => p.userId === data.currentUserId,
-      );
+      setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
+      const myPlayer = data.room.players.find((p: any) => p.userId === data.currentUserId);
 
       setUnoMultiMyId(myPlayer?.id ?? null);
       setShowSeatPopup(false);
@@ -312,18 +383,14 @@ export default function UnoMultiplayerPage() {
         data.room.players[data.room.players.length - 1];
       setUnoMultiTableCode(data.room.code);
       setUnoMultiPlayers(data.room.players || []);
-      setUnoMultiHostId(
-        data.room.players.find((p: any) => p.isHost)?.id ?? null,
-      );
+      setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
       setUnoMultiMyId(myPlayer?.id ?? null);
       setUnoMultiStarted(Boolean(data.room.started));
       setUnoMultiSettings((prev) => ({
         ...prev,
         ...(data.room.settings || {}),
       }));
-      setUnoMultiMessage(
-        `Joined table ${data.room.code}. Choose a seat to play.`,
-      );
+      setUnoMultiMessage(`Joined table ${data.room.code}. Choose a seat to play.`);
       setShowSeatPopup(true);
       fetchUnoMultiplayerPublicGames();
     } catch (error) {
@@ -342,18 +409,15 @@ export default function UnoMultiplayerPage() {
   const isHost = useMemo(() => {
     const me = unoMultiPlayers.find((p) => p.id === unoMultiMyId);
     if (me?.isHost) return true;
-    return Boolean(
-      unoMultiMyId && unoMultiHostId && unoMultiMyId === unoMultiHostId,
-    );
+    return Boolean(unoMultiMyId && unoMultiHostId && unoMultiMyId === unoMultiHostId);
   }, [unoMultiPlayers, unoMultiMyId, unoMultiHostId]);
 
   const mePlayer = useMemo(
     () => unoMultiPlayers.find((p) => p.id === unoMultiMyId),
-    [unoMultiPlayers, unoMultiMyId],
+    [unoMultiPlayers, unoMultiMyId]
   );
 
-  const meSeated =
-    mePlayer?.seatIndex !== null && mePlayer?.seatIndex !== undefined;
+  const meSeated = mePlayer?.seatIndex !== null && mePlayer?.seatIndex !== undefined;
 
   const sitAsHuman = async (seatIndex: number) => {
     try {
@@ -368,12 +432,9 @@ export default function UnoMultiplayerPage() {
         }),
       });
       const data = await res.json();
-      if (!data.success)
-        return setUnoMultiMessage(data.error || "Unable to sit.");
+      if (!data.success) return setUnoMultiMessage(data.error || "Unable to sit.");
       setUnoMultiPlayers(data.room.players || []);
-      const me = data.room.players.find(
-        (p: any) => p.userId === data.currentUserId,
-      );
+      const me = data.room.players.find((p: any) => p.userId === data.currentUserId);
       if (me) setUnoMultiMyId(me.id);
       setShowSeatPopup(false);
     } catch (error) {
@@ -400,9 +461,7 @@ export default function UnoMultiplayerPage() {
         return;
       }
       setUnoMultiPlayers(data.room.players || []);
-      setUnoMultiHostId(
-        data.room.players.find((p: any) => p.isHost)?.id ?? null,
-      );
+      setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
       setShowSeatPopup(false);
       setSelectedSeat(null);
     } catch (error) {
@@ -430,9 +489,7 @@ export default function UnoMultiplayerPage() {
       }
       setUnoMultiStarted(true);
       setUnoMultiPlayers(data.room.players || []);
-      setUnoMultiHostId(
-        data.room.players.find((p: any) => p.isHost)?.id ?? null,
-      );
+      setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
       if (data.game) hydrateUnoTableGame(data.game);
       if (typeof data.game?.newBalance !== "undefined") {
         setTokens({ balance: Number(data.game.newBalance) });
@@ -475,6 +532,10 @@ export default function UnoMultiplayerPage() {
     setHistoryIndex(null);
     setIsPlayerTurn(false);
     setMessage("");
+    setEndPopup(null);
+    setReplayRequested(false);
+    setOpponentReplayRequested(false);
+    setReturnChosen(false);
     fetchUnoMultiplayerPublicGames();
   };
 
@@ -482,8 +543,7 @@ export default function UnoMultiplayerPage() {
     if (!isPlayerTurn || loading || historyIndex !== null) return;
 
     const isWild =
-      card.value.toLowerCase() === "wild" ||
-      card.value.toLowerCase() === "wild draw four";
+      card.value.toLowerCase() === "wild" || card.value.toLowerCase() === "wild draw four";
 
     if (isWild && !chosenColor) {
       setPendingCard(card);
@@ -504,9 +564,10 @@ export default function UnoMultiplayerPage() {
         setMessage(data.error || "Move rejected.");
         return;
       }
-      if (data.shouldReturnToLobby || !data.data?.role) {
-        setMessage("Game over. Returning to lobby...");
-        setTimeout(() => resetUnoMultiplayerLobby(), 1000);
+      if (data.status === "finished" || data.shouldReturnToLobby || !data.data?.role) {
+        const youWon = data.data?.winner === data.data?.role;
+        setMessage(youWon ? "You won the match!" : "You lost the match.");
+        openEndPopup(youWon ? "win" : "loss");
         return;
       }
 
@@ -514,9 +575,7 @@ export default function UnoMultiplayerPage() {
       setTopCard(data.data.topCard || null);
       setTurnHistory((prev) => [...prev, data.data.topCard]);
       setHistoryIndex(null);
-      setUnoMultiHandCounts(
-        Array.isArray(data.data.handCounts) ? data.data.handCounts : [],
-      );
+      setUnoMultiHandCounts(Array.isArray(data.data.handCounts) ? data.data.handCounts : []);
       setUnoMultiTurnPlayerId(data.data.turnPlayerId || null);
       setIsPlayerTurn(data.data.turnPlayerId === data.data.role);
       setMessage(data.data.message || "Move played.");
@@ -542,9 +601,10 @@ export default function UnoMultiplayerPage() {
         setMessage(data.error || "Unable to draw.");
         return;
       }
-      if (data.shouldReturnToLobby || !data.data?.role) {
-        setMessage("Game over. Returning to lobby...");
-        setTimeout(() => resetUnoMultiplayerLobby(), 1000);
+      if (data.status === "finished" || data.shouldReturnToLobby || !data.data?.role) {
+        const youWon = data.data?.winner === data.data?.role;
+        setMessage(youWon ? "You won the match!" : "You lost the match.");
+        openEndPopup(youWon ? "win" : "loss");
         return;
       }
 
@@ -552,9 +612,7 @@ export default function UnoMultiplayerPage() {
       setTopCard(data.data.topCard || null);
       setTurnHistory((prev) => [...prev, data.data.topCard]);
       setHistoryIndex(null);
-      setUnoMultiHandCounts(
-        Array.isArray(data.data.handCounts) ? data.data.handCounts : [],
-      );
+      setUnoMultiHandCounts(Array.isArray(data.data.handCounts) ? data.data.handCounts : []);
       setUnoMultiTurnPlayerId(data.data.turnPlayerId || null);
       setIsPlayerTurn(data.data.turnPlayerId === data.data.role);
       setMessage(data.data.message || "Card drawn.");
@@ -580,38 +638,82 @@ export default function UnoMultiplayerPage() {
       if (typeof data.newBalance !== "undefined") {
         setTokens({ balance: Number(data.newBalance) });
       }
-      setMessage("You resigned. Returning to lobby...");
-      setTimeout(() => resetUnoMultiplayerLobby(), 800);
+      setMessage("You resigned.");
+      openEndPopup("loss", "resigned");
     } finally {
       setLoading(false);
     }
   };
 
-  const displayedCard =
-    historyIndex === null ? topCard : turnHistory[historyIndex];
+  const displayedCard = historyIndex === null ? topCard : turnHistory[historyIndex];
   const orderedOpponents = useMemo(
     () =>
       unoMultiHandCounts
         .filter((entry) => entry.playerId !== game?.role)
         .sort((a, b) => a.seatIndex - b.seatIndex),
-    [unoMultiHandCounts, game?.role],
+    [unoMultiHandCounts, game?.role]
   );
 
-  const currentPlayer = unoMultiPlayers.find(
-    (p) => p.id === unoMultiTurnPlayerId,
-  );
+  const currentPlayer = unoMultiPlayers.find((p) => p.id === unoMultiTurnPlayerId);
 
   const isAiThinking = currentPlayer?.type === "ai" && !loading;
 
   return (
     <div className="bg-gradient-to-br from-[#001933] mt-12 to-[#000d1a] min-h-screen flex flex-col items-center text-white px-4 py-8">
       <NavigationBar currentPath="/casino" />
-      <h1 className="text-3xl mb-6 font-bold">UNO Multiplayer Table</h1>
-      {tokens && (
-        <p className="text-yellow-300 mb-4 text-lg">
-          Tokens : {tokens.balance}
-        </p>
+      {endPopup && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-cyan-300/60 bg-[#071124] p-6 text-center shadow-[0_0_45px_rgba(0,229,255,0.35),inset_0_0_30px_rgba(217,70,239,0.12)]">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-300 via-fuchsia-500 to-yellow-300" />
+            <p className="text-xs font-black uppercase tracking-[0.45em] text-cyan-200">
+              UNO Table Result
+            </p>
+            <h2
+              className={`mt-3 text-4xl font-black uppercase ${endPopup.result === "win" ? "text-emerald-300" : "text-fuchsia-300"}`}
+            >
+              {endPopup.result === "win"
+                ? "Victory"
+                : endPopup.reason === "resigned"
+                  ? "Resigned"
+                  : "Defeat"}
+            </h2>
+            <p className="mt-3 text-sm text-slate-200">
+              {endPopup.result === "win"
+                ? "You won the table."
+                : endPopup.reason === "resigned"
+                  ? "You resigned from the table."
+                  : "You lost the table."}
+            </p>
+            <p className="mt-4 text-xs font-bold uppercase tracking-widest text-yellow-200">
+              Replay window: {replaySecondsLeft}s
+            </p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <button
+                onClick={requestReplay}
+                disabled={returnChosen || replayRequested}
+                className="rounded-xl border border-fuchsia-300/70 bg-fuchsia-500/20 px-4 py-3 font-black text-fuchsia-100 shadow-[0_0_18px_rgba(217,70,239,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {replayRequested ? "Replay requested" : "Replay"}
+              </button>
+              <button
+                onClick={closeToUnoLobby}
+                className="rounded-xl border border-cyan-300/70 bg-cyan-400 px-4 py-3 font-black text-[#031026] shadow-[0_0_18px_rgba(34,211,238,0.35)]"
+              >
+                Return to Lobby
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-slate-300">
+              {returnChosen
+                ? "A player chose the lobby. Replay is disabled."
+                : opponentReplayRequested
+                  ? "Another player is ready for replay."
+                  : "Players must click replay before the timer ends."}
+            </p>
+          </div>
+        </div>
       )}
+      <h1 className="text-3xl mb-6 font-bold">UNO Multiplayer Table</h1>
+      {tokens && <p className="text-yellow-300 mb-4 text-lg">Tokens : {tokens.balance}</p>}
 
       {!game ? (
         <div className="w-full max-w-4xl rounded-[2rem] bg-[#0b224f]/85 border-2 border-[#00e5ff]/35 shadow-[0_0_28px_rgba(0,229,255,0.2)] p-6">
@@ -692,9 +794,7 @@ export default function UnoMultiplayerPage() {
               <div className="mt-3 flex gap-2">
                 <input
                   value={unoMultiJoinCode}
-                  onChange={(e) =>
-                    setUnoMultiJoinCode(e.target.value.toUpperCase())
-                  }
+                  onChange={(e) => setUnoMultiJoinCode(e.target.value.toUpperCase())}
                   className="flex-1 bg-[#001933] border border-[#00e5ff]/35 rounded px-3 py-2"
                   placeholder="Invite code"
                 />
@@ -709,10 +809,7 @@ export default function UnoMultiplayerPage() {
           ) : (
             <>
               <p className="text-sm text-[#a5f3fc] mb-2">
-                Table code:{" "}
-                <span className="font-bold text-yellow-300">
-                  {unoMultiTableCode}
-                </span>
+                Table code: <span className="font-bold text-yellow-300">{unoMultiTableCode}</span>
               </p>
               <label className="inline-flex items-center gap-2 mb-3 text-sm text-yellow-100">
                 <input
@@ -725,9 +822,7 @@ export default function UnoMultiplayerPage() {
               <div className="relative w-full h-[320px] rounded-3xl bg-green-800/70 border-4 border-green-950">
                 {UNO_MULTI_SEAT_POSITIONS.map((pos, seatIndex) => {
                   const isEnabledSeat = seatIndex < unoMultiSettings.maxPlayers;
-                  const occupant = unoMultiPlayers.find(
-                    (p) => p.seatIndex === seatIndex,
-                  );
+                  const occupant = unoMultiPlayers.find((p) => p.seatIndex === seatIndex);
                   return (
                     <div
                       key={seatIndex}
@@ -743,8 +838,7 @@ export default function UnoMultiplayerPage() {
                           <div
                             className={`w-28 h-12 rounded-xl border flex items-center justify-center text-xs font-semibold ${occupant.id === unoMultiMyId ? "bg-yellow-300 text-black border-yellow-100" : "bg-[#08142f] border-[#00e5ff]/35"}`}
                           >
-                            {occupant.type === "ai" ? "🤖" : "👤"}{" "}
-                            {occupant.name}
+                            {occupant.type === "ai" ? "🤖" : "👤"} {occupant.name}
                           </div>
                         ) : (
                           <button
@@ -755,11 +849,7 @@ export default function UnoMultiplayerPage() {
                             disabled={Boolean(occupant)}
                             className="w-28 h-12 rounded-xl border border-dashed text-xs border-[#00e5ff]/45 hover:bg-[#00e5ff]/20"
                           >
-                            {!meSeated
-                              ? "Sit as Human"
-                              : isHost
-                                ? "+ Add AI"
-                                : "Open seat"}
+                            {!meSeated ? "Sit as Human" : isHost ? "+ Add AI" : "Open seat"}
                           </button>
                         )
                       ) : (
@@ -802,9 +892,7 @@ export default function UnoMultiplayerPage() {
             </div>
             <div className="space-y-2">
               {unoMultiPublicGames.length === 0 && (
-                <p className="text-sm text-gray-300">
-                  No public games right now.
-                </p>
+                <p className="text-sm text-gray-300">No public games right now.</p>
               )}
               {unoMultiPublicGames.slice(0, 8).map((entry) => (
                 <div
@@ -812,8 +900,7 @@ export default function UnoMultiplayerPage() {
                   className="flex items-center justify-between bg-[#0d335f]/80 rounded px-3 py-2"
                 >
                   <span className="text-sm">
-                    {entry.name} ({entry.occupiedSeats}/{entry.maxPlayers}) •
-                    Bet {entry.betAmount}
+                    {entry.name} ({entry.occupiedSeats}/{entry.maxPlayers}) • Bet {entry.betAmount}
                   </span>
                   <button
                     onClick={() => joinUnoPublicTable(entry.code)}
@@ -829,9 +916,7 @@ export default function UnoMultiplayerPage() {
           {showSeatPopup && selectedSeat !== null && (
             <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
               <div className="bg-[#08142f] border border-[#00e5ff]/40 rounded-2xl p-6 w-[320px] text-center">
-                <h2 className="text-xl font-bold mb-4">
-                  Seat {selectedSeat + 1}
-                </h2>
+                <h2 className="text-xl font-bold mb-4">Seat {selectedSeat + 1}</h2>
 
                 {!meSeated && (
                   <button
@@ -863,9 +948,7 @@ export default function UnoMultiplayerPage() {
               </div>
             </div>
           )}
-          {unoMultiMessage && (
-            <p className="mt-4 text-yellow-200 text-sm">{unoMultiMessage}</p>
-          )}
+          {unoMultiMessage && <p className="mt-4 text-yellow-200 text-sm">{unoMultiMessage}</p>}
         </div>
       ) : (
         <div className="w-full max-w-5xl min-h-[650px] bg-green-700/90 rounded-[2.5rem] flex flex-col justify-between items-center shadow-2xl border-8 border-green-950 p-6 pb-40 relative overflow-hidden">
@@ -886,9 +969,7 @@ export default function UnoMultiplayerPage() {
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
               <p className="text-xs text-white/70">
                 Current color:{" "}
-                <span className="font-bold uppercase">
-                  {game?.currentColor || topCard?.color}
-                </span>
+                <span className="font-bold uppercase">{game?.currentColor || topCard?.color}</span>
               </p>
               <div className="flex gap-3 justify-center">
                 <button onClick={drawCard}>
@@ -908,14 +989,9 @@ export default function UnoMultiplayerPage() {
             </div>
 
             {UNO_MULTI_SEAT_POSITIONS.map((pos, seatIndex) => {
-              const player = unoMultiPlayers.find(
-                (p) => p.seatIndex === seatIndex,
-              );
-              if (!player || seatIndex >= unoMultiSettings.maxPlayers)
-                return null;
-              const hand = unoMultiHandCounts.find(
-                (h) => h.playerId === player.id,
-              );
+              const player = unoMultiPlayers.find((p) => p.seatIndex === seatIndex);
+              if (!player || seatIndex >= unoMultiSettings.maxPlayers) return null;
+              const hand = unoMultiHandCounts.find((h) => h.playerId === player.id);
               return (
                 <div
                   key={`${player.id}-${seatIndex}`}
@@ -932,9 +1008,7 @@ export default function UnoMultiplayerPage() {
                     <p className="text-xs font-bold truncate">
                       {player.type === "ai" ? "🤖" : "👤"} {player.name}
                     </p>
-                    <p className="text-[11px] opacity-80">
-                      {hand?.count ?? 0} cards
-                    </p>
+                    <p className="text-[11px] opacity-80">{hand?.count ?? 0} cards</p>
                   </div>
                 </div>
               );
@@ -984,9 +1058,7 @@ export default function UnoMultiplayerPage() {
               <button
                 onClick={() =>
                   setHistoryIndex((prev) =>
-                    prev === null
-                      ? Math.max(turnHistory.length - 2, 0)
-                      : Math.max(prev - 1, 0),
+                    prev === null ? Math.max(turnHistory.length - 2, 0) : Math.max(prev - 1, 0)
                   )
                 }
                 className="px-3 py-1 bg-black/40 rounded"
@@ -996,9 +1068,7 @@ export default function UnoMultiplayerPage() {
               <button
                 onClick={() =>
                   setHistoryIndex((prev) =>
-                    prev === null || prev >= turnHistory.length - 2
-                      ? null
-                      : prev + 1,
+                    prev === null || prev >= turnHistory.length - 2 ? null : prev + 1
                   )
                 }
                 className="px-3 py-1 bg-black/40 rounded"
@@ -1032,9 +1102,7 @@ export default function UnoMultiplayerPage() {
                   key={entry.playerId}
                   className={`rounded-xl px-2 py-1 border ${unoMultiTurnPlayerId === entry.playerId ? "border-yellow-300 bg-yellow-300/20" : "border-white/25 bg-black/20"}`}
                 >
-                  <p className="text-[10px] font-semibold truncate">
-                    {entry.name}
-                  </p>
+                  <p className="text-[10px] font-semibold truncate">{entry.name}</p>
                   <p className="text-[10px] text-center">{entry.count} cards</p>
                 </div>
               ))}
