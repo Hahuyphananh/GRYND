@@ -120,6 +120,8 @@ export default function Page() {
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const shotLock = useRef(false);
   const aiShotLock = useRef(false);
+  const localShotInProgressRef = useRef(false);
+  const remoteShotInProgressRef = useRef(false);
   const shotMeta = useRef<ShotMeta>({
     firstContactNumber: null,
     railAfterContact: false,
@@ -168,7 +170,7 @@ export default function Page() {
 useEffect(() => {
   const id = setInterval(() => {
     setBalls((prev) => {
-      if (!shotLock.current) return prev; // ONLY simulate shooter
+      if (!shotLock.current || !localShotInProgressRef.current) return prev; // ONLY simulate local shooter
 
       if (!isMoving(prev)) return prev;
 
@@ -307,12 +309,16 @@ useEffect(() => {
       aiMode
     );
     lifecycleRef.current = "IDLE";
+    localShotInProgressRef.current = false;
+    remoteShotInProgressRef.current = false;
     activeShotIdRef.current = null;
   }, [balls, turn, owner, myTeam, oppTeam, openTable, aiMode, activeMatchId, socket]);
 
   const fireShot = (a: number, p: number) => {
     if (!canShoot || isMoving(balls) || shotLock.current) return;
     shotLock.current = true;
+    localShotInProgressRef.current = true;
+    remoteShotInProgressRef.current = false;
     lifecycleRef.current = "SHOOTING";
     const shotId = `shot-${Date.now()}-${owner}`;
     activeShotIdRef.current = shotId;
@@ -342,7 +348,7 @@ useEffect(() => {
   };
 
   useEffect(() => {
-    if (aiMode || !socket || !shotLock.current || turn !== owner) return;
+    if (aiMode || !socket || !shotLock.current || !localShotInProgressRef.current || turn !== owner) return;
     if (!isMoving(balls)) return;
     const now = Date.now();
     if (now - liveEmitAtRef.current < 16) return;
@@ -408,9 +414,15 @@ useEffect(() => {
       if (!payload || payload.matchId !== activeMatchId) return;
       if (payload.userId && payload.userId === user?.id) return;
 
-      const localShotInProgress = shotLock.current || isMoving(ballsRef.current);
+      const localShotInProgress = localShotInProgressRef.current;
       const remoteSettled = payload.settled || payload.lifecycle === "SETTLED";
-      if (payload.balls && (!localShotInProgress || remoteSettled)) {
+      const remoteRolling = payload.lifecycle === "SHOOTING" || payload.lifecycle === "ROLLING";
+
+      if (remoteRolling && !localShotInProgress) {
+        remoteShotInProgressRef.current = true;
+      }
+
+      if (payload.balls && (remoteShotInProgressRef.current || !localShotInProgress || remoteSettled)) {
         ballsRef.current = payload.balls;
         setBalls(payload.balls);
       }
@@ -435,6 +447,8 @@ useEffect(() => {
       }
       if (payload.settled || payload.lifecycle === "SETTLED") {
         shotLock.current = false;
+        localShotInProgressRef.current = false;
+        remoteShotInProgressRef.current = false;
         lifecycleRef.current = "IDLE";
         activeShotIdRef.current = null;
         setSyncVersion((current) => Math.max(current, payload.version));
@@ -496,7 +510,7 @@ useEffect(() => {
       if (data.viewerSeat) setOwner(data.viewerSeat);
       if (data.viewerName) setMyName(data.viewerName);
       if (data.opponentName) setOppName(data.opponentName);
-      const localShotInProgress = shotLock.current || isMoving(ballsRef.current);
+      const localShotInProgress = localShotInProgressRef.current || remoteShotInProgressRef.current;
       if (
         !localShotInProgress &&
         gs?.version &&
