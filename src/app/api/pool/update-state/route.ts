@@ -25,20 +25,24 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!state.settled) {
-  return NextResponse.json({ ok: true, skipped: true });
-}
+    if (!state?.settled || state?.lifecycle !== "SETTLED") {
+      return NextResponse.json({ ok: true, skipped: true, reason: "not_settled" });
+    }
+
+    const currentVersion = Number(match.gameState?.version ?? 0);
+    const incomingVersion = Number(state.version ?? 0);
+    if (!Number.isFinite(incomingVersion) || incomingVersion <= currentVersion) {
+      return NextResponse.json({ ok: true, skipped: true, reason: "stale_version" });
+    }
 
     const nextTurnUserId = state.turn === 2 ? match.player2Id : match.player1Id;
-    const isSettled = state.settled === true;
-
- await db
-  .update(poolMatches)
-  .set({
-    gameState: isSettled ? state : match.gameState,
-    currentTurnUserId: isSettled ? nextTurnUserId ?? null : match.currentTurnUserId,
-  })
-  .where(eq(poolMatches.id, String(matchId)));
+    await db
+      .update(poolMatches)
+      .set({
+        gameState: state,
+        currentTurnUserId: nextTurnUserId ?? null,
+      })
+      .where(eq(poolMatches.id, String(matchId)));
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json(
