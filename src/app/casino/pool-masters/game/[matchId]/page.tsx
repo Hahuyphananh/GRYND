@@ -385,30 +385,33 @@ useEffect(() => {
       if (!payload || payload.matchId !== activeMatchId) return;
       if (payload.userId && payload.userId === user?.id) return;
 
-      if (payload.balls) setBalls(payload.balls);
-      if (payload.turn) setTurn(payload.turn);
-      const shouldSwapTeams = payload.sourceSeat !== ownerRef.current;
-      if ("myTeam" in payload || "oppTeam" in payload) {
-        setMyTeam(shouldSwapTeams ? (payload.oppTeam ?? null) : (payload.myTeam ?? null));
-        setOppTeam(shouldSwapTeams ? (payload.myTeam ?? null) : (payload.oppTeam ?? null));
-      }
-      if (typeof payload.openTable === "boolean") setOpenTable(payload.openTable);
-      if (typeof payload.ballInHand === "boolean") setBallInHand(payload.ballInHand);
-      if ("winner" in payload) setWinner(payload.winner ?? null);
-      if (typeof payload.aim === "number") {
-        setRemoteAim({
-          angle: payload.aim,
-          pull: payload.pull ?? 0,
-          seat: payload.sourceSeat,
-          at: Date.now(),
-        });
-      }
-      if (payload.settled) {
-        setSyncVersion((current) => Math.max(current, payload.version));
-        setLastFoul(payload.foul ? (payload.foulMessage ?? "Foul. Ball in hand.") : null);
-        if (payload.foulMessage) setStatus(payload.foulMessage);
-        else setStatus("Shot complete.");
-      }
+      setSyncVersion((current) => {
+        if (!isNewerVersion(payload.version, current)) return current;
+        if (payload.balls) setBalls(payload.balls);
+        if (payload.turn) setTurn(payload.turn);
+        const shouldSwapTeams = payload.sourceSeat !== ownerRef.current;
+        if ("myTeam" in payload || "oppTeam" in payload) {
+          setMyTeam(shouldSwapTeams ? (payload.oppTeam ?? null) : (payload.myTeam ?? null));
+          setOppTeam(shouldSwapTeams ? (payload.myTeam ?? null) : (payload.oppTeam ?? null));
+        }
+        if (typeof payload.openTable === "boolean") setOpenTable(payload.openTable);
+        if (typeof payload.ballInHand === "boolean") setBallInHand(payload.ballInHand);
+        if ("winner" in payload) setWinner(payload.winner ?? null);
+        if (typeof payload.aim === "number") {
+          setRemoteAim({
+            angle: payload.aim,
+            pull: payload.pull ?? 0,
+            seat: payload.sourceSeat,
+            at: Date.now(),
+          });
+        }
+        if (payload.settled) {
+          setLastFoul(payload.foul ? (payload.foulMessage ?? "Foul. Ball in hand.") : null);
+          if (payload.foulMessage) setStatus(payload.foulMessage);
+          else setStatus("Shot complete.");
+        }
+        return payload.version;
+      });
     };
 
     socket.emit("join_room", { roomId });
@@ -463,7 +466,8 @@ useEffect(() => {
       if (data.viewerSeat) setOwner(data.viewerSeat);
       if (data.viewerName) setMyName(data.viewerName);
       if (data.opponentName) setOppName(data.opponentName);
-      if (gs?.version && isNewerVersion(gs.version, syncVersion)) {
+      const localShotInProgress = shotLock.current || isMoving(ballsRef.current);
+      if (!localShotInProgress && gs?.version && isNewerVersion(gs.version, syncVersion)) {
         setSyncVersion(gs.version);
         if (gs.balls) setBalls(gs.balls);
         if (gs.turn) setTurn(gs.turn);
