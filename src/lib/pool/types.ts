@@ -35,6 +35,8 @@ export type RulesResult = {
   keepTurn: boolean;
 };
 
+export type ShotLifecycle = "IDLE" | "SHOOTING" | "ROLLING" | "SETTLED";
+
 export type SyncedState = {
   balls: Ball[];
   turn: PlayerTurn;
@@ -47,4 +49,7 @@ export type SyncedState = {
   perspectiveSeat?: PlayerTurn;
   foul?: boolean;
   foulMessage?: string | null;
+  lifecycle?: ShotLifecycle;
+  shotId?: string | null;
+  settled?: boolean;
 };
