@@ -164,10 +164,11 @@ export default function Page() {
 useEffect(() => {
   const id = setInterval(() => {
     setBalls((prev) => {
+      if (!shotLock.current) return prev; // ONLY simulate shooter
+
       if (!isMoving(prev)) return prev;
 
       const next = prev.map((b) => ({ ...b }));
-
       tickPhysics(next, shotMeta.current);
 
       return next;
@@ -387,7 +388,10 @@ useEffect(() => {
 
       if (payload.balls) {
   ballsRef.current = payload.balls;
+  if (payload.balls) {
+  shotLock.current = false; // important
   setBalls(payload.balls);
+}
 }
       if (typeof payload.turn === "number") {
   setTurn(payload.turn);
