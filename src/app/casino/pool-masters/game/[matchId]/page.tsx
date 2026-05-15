@@ -466,7 +466,8 @@ useEffect(() => {
       if (data.viewerSeat) setOwner(data.viewerSeat);
       if (data.viewerName) setMyName(data.viewerName);
       if (data.opponentName) setOppName(data.opponentName);
-      if (gs?.version && isNewerVersion(gs.version, syncVersion)) {
+      const localShotInProgress = shotLock.current || isMoving(ballsRef.current);
+      if (!localShotInProgress && gs?.version && isNewerVersion(gs.version, syncVersion)) {
         setSyncVersion(gs.version);
         if (gs.balls) setBalls(gs.balls);
         if (gs.turn) setTurn(gs.turn);
