@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import NavigationBar from "../navigation-bar";
 import {
   bustChanceAtClick,
   CLICKER_GROWTH_RATE,
@@ -19,6 +21,7 @@ type RoundHistory = {
 };
 
 export default function GoonBetClickerClient() {
+  const router = useRouter();
   const [tokens, setTokens] = useState<bigint>(BigInt(0));
   const [bet, setBet] = useState("10");
   const [roundId, setRoundId] = useState<number | null>(null);
@@ -35,11 +38,26 @@ export default function GoonBetClickerClient() {
   }, [bet, multiplier]);
 
   async function refresh() {
-    const res = await fetch("/api/user/tokens");
-    if (!res.ok) return;
-    const data = await res.json();
-    setTokens(BigInt(data.tokens));
-    setHistory(data.rounds ?? []);
+    const [tokenRes, historyRes] = await Promise.all([
+      fetch("/api/get-user-tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      }),
+      fetch("/api/user/tokens", { credentials: "include" }),
+    ]);
+
+    if (tokenRes.ok) {
+      const tokenData = await tokenRes.json();
+      if (tokenData.success) {
+        setTokens(BigInt(Math.floor(Number(tokenData.data.balance ?? 0))));
+      }
+    }
+
+    if (historyRes.ok) {
+      const historyData = await historyRes.json();
+      setHistory(historyData.rounds ?? []);
+    }
   }
   useEffect(() => {
     refresh();
@@ -126,8 +144,17 @@ export default function GoonBetClickerClient() {
 
   return (
     <main className="min-h-screen overflow-x-clip bg-black px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8 md:pt-24 md:px-8">
+      <NavigationBar currentPath="/casino" />
       <div className="mx-auto max-w-3xl rounded-2xl border border-fuchsia-500/40 bg-zinc-950 p-4 shadow-[0_0_40px_rgba(217,70,239,0.25)] sm:p-6">
-        <h1 className="text-3xl font-bold text-fuchsia-400 sm:text-4xl">GoonBet Clicker</h1>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-3xl font-bold text-fuchsia-400 sm:text-4xl">GoonBet Clicker</h1>
+          <button
+            onClick={() => router.push("/casino")}
+            className="rounded-full border border-cyan-400/60 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.25)] transition hover:bg-cyan-400 hover:text-black"
+          >
+            Return to Casino
+          </button>
+        </div>
         <p className="mt-2 text-zinc-300">
           Tokens: <span className="text-emerald-400">{tokens.toString()}</span>
         </p>
@@ -164,8 +191,7 @@ export default function GoonBetClickerClient() {
           <p>Clicks: {clicks}</p>
           <p>Potential payout: {potentialPayout.toString()}</p>
           <p className="text-amber-300">
-            Next click bust chance:{" "}
-            {(bustChanceAtClick(clicks + 1) * 100).toFixed(2)}%
+            Next click bust chance: {(bustChanceAtClick(clicks + 1) * 100).toFixed(2)}%
           </p>
           {busted && <p className="text-red-400 text-2xl font-black">BUST</p>}
         </div>
@@ -191,12 +217,9 @@ export default function GoonBetClickerClient() {
         <h2 className="mt-10 text-xl font-semibold">Last Rounds</h2>
         <div className="mt-3 space-y-2">
           {history.map((r) => (
-            <div
-              key={r.id}
-              className="text-sm bg-zinc-900 p-2 rounded border border-zinc-800"
-            >
-              #{r.id} • bet {r.bet_amount} • {r.clicks} clicks •{" "}
-              {r.multiplier.toFixed(4)}x • {r.status} • payout {r.payout}
+            <div key={r.id} className="text-sm bg-zinc-900 p-2 rounded border border-zinc-800">
+              #{r.id} • bet {r.bet_amount} • {r.clicks} clicks • {r.multiplier.toFixed(4)}x •{" "}
+              {r.status} • payout {r.payout}
             </div>
           ))}
         </div>

@@ -32,8 +32,50 @@ export default function UnoGamePage() {
   const [waitingGameId, setWaitingGameId] = useState(null);
   const [isCancellingWaitingGame, setIsCancellingWaitingGame] = useState(false);
   const [isResigning, setIsResigning] = useState(false);
+  const [endPopup, setEndPopup] = useState(null);
+  const [replayRequested, setReplayRequested] = useState(false);
+  const [opponentReplayRequested, setOpponentReplayRequested] = useState(false);
+  const [returnChosen, setReturnChosen] = useState(false);
+  const [replaySecondsLeft, setReplaySecondsLeft] = useState(15);
 
   const waitingPollRef = useRef(null);
+  const replayClientIdRef = useRef(Math.random().toString(36).slice(2));
+
+  const openEndPopup = (result, reason = "finished") => {
+    setEndPopup({ result, reason, openedAt: Date.now() });
+    setReplayRequested(false);
+    setOpponentReplayRequested(false);
+    setReturnChosen(false);
+    setReplaySecondsLeft(15);
+  };
+
+  const closeToUnoLobby = () => {
+    setReturnChosen(true);
+    if (socket && game?.id && gameMode === "online") {
+      socket.emit("room_event", {
+        roomId: `uno:end:${game.id}`,
+        event: "uno:end:return",
+        payload: { gameId: game.id, clientId: replayClientIdRef.current },
+      });
+    }
+    returnToLobby();
+  };
+
+  const requestReplay = () => {
+    if (!endPopup || returnChosen) return;
+    setReplayRequested(true);
+    if (gameMode !== "online") {
+      initializeGame();
+      return;
+    }
+    if (socket && game?.id) {
+      socket.emit("room_event", {
+        roomId: `uno:end:${game.id}`,
+        event: "uno:end:replay",
+        payload: { gameId: game.id, clientId: replayClientIdRef.current },
+      });
+    }
+  };
 
   useGamePresence({
     gameKey: "uno",
@@ -75,6 +117,48 @@ export default function UnoGamePage() {
   }, [socket, game, waitingGameId]);
 
   useEffect(() => {
+    if (!socket || !game?.id || gameMode !== "online" || !endPopup) return;
+    const roomId = `uno:end:${game.id}`;
+    const handleReplay = (payload) => {
+      if (payload?.gameId !== game.id || payload?.clientId === replayClientIdRef.current) return;
+      setOpponentReplayRequested(true);
+    };
+    const handleReturn = (payload) => {
+      if (payload?.gameId !== game.id || payload?.clientId === replayClientIdRef.current) return;
+      setReturnChosen(true);
+    };
+    socket.emit("join_room", { roomId });
+    socket.on("uno:end:replay", handleReplay);
+    socket.on("uno:end:return", handleReturn);
+    return () => {
+      socket.emit("leave_room", { roomId });
+      socket.off("uno:end:replay", handleReplay);
+      socket.off("uno:end:return", handleReturn);
+    };
+  }, [socket, game?.id, gameMode, endPopup]);
+
+  useEffect(() => {
+    if (!endPopup) return;
+    const deadline = endPopup.openedAt + 15000;
+    const id = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setReplaySecondsLeft(remaining);
+      if (remaining <= 0) {
+        clearInterval(id);
+        returnToLobby();
+      }
+    }, 250);
+    return () => clearInterval(id);
+  }, [endPopup]);
+
+  useEffect(() => {
+    if (gameMode === "online" && replayRequested && opponentReplayRequested) {
+      returnToLobby();
+      setMessage("Replay accepted by both players. Create or join a new table.");
+    }
+  }, [gameMode, replayRequested, opponentReplayRequested]);
+
+  useEffect(() => {
     const fetchTokens = async () => {
       try {
         const res = await fetch("/api/get-user-tokens", {
@@ -102,15 +186,12 @@ export default function UnoGamePage() {
       if (data.winner) {
         if (gameMode === "online") {
           const youWon = data.result === "win";
-          setMessage(
-            youWon
-              ? "Tu as gagné la partie !"
-              : "Ton adversaire a gagné la partie !",
-          );
+          setMessage(youWon ? "Tu as gagné la partie !" : "Ton adversaire a gagné la partie !");
         } else {
           setMessage(`${data.winner} a gagné la partie !`);
         }
         setIsPlayerTurn(false);
+        openEndPopup(data.result === "win" || data.winner === "player" ? "win" : "loss");
       }
     } catch (err) {
       console.error("Erreur lors de la vérification du gagnant:", err);
@@ -136,6 +217,7 @@ export default function UnoGamePage() {
       setHistoryIndex(null);
       setIsPlayerTurn(true);
       setMessage("À ton tour !");
+      setEndPopup(null);
       setTokens({ balance: data.data.newBalance });
     } else {
       setMessage("Erreur d'initialisation");
@@ -235,7 +317,7 @@ export default function UnoGamePage() {
           setMessage(
             isMyTurn
               ? "✅ Partie trouvée ! Tu commences."
-              : "✅ Partie trouvée ! L'adversaire commence.",
+              : "✅ Partie trouvée ! L'adversaire commence."
           );
         }
       } catch (err) {
@@ -302,7 +384,7 @@ export default function UnoGamePage() {
         setMessage(
           isMyTurn
             ? "✅ Partie en ligne trouvée ! Tu commences."
-            : "✅ Partie en ligne trouvée ! L'adversaire commence.",
+            : "✅ Partie en ligne trouvée ! L'adversaire commence."
         );
         setTokens({ balance: data.data.newBalance });
         fetchAvailableGames();
@@ -346,7 +428,7 @@ export default function UnoGamePage() {
         setMessage(
           isMyTurn
             ? "✅ Partie en ligne trouvée ! Tu commences."
-            : "✅ Partie en ligne trouvée ! L'adversaire commence.",
+            : "✅ Partie en ligne trouvée ! L'adversaire commence."
         );
         setTokens({ balance: data.data.newBalance });
         fetchAvailableGames();
@@ -409,21 +491,17 @@ export default function UnoGamePage() {
         setTopCard(data.data.topCard);
         setIsPlayerTurn(data.data.turn === data.data.role);
 
-        if (data.status === "finished") {
+        if (data.status === "finished" && !endPopup) {
           const youWon = data.data.winner === data.data.role;
-          setMessage(
-            youWon
-              ? "Tu as gagné la partie !"
-              : "Ton adversaire a gagné la partie !",
-          );
+          setMessage(youWon ? "Tu as gagné la partie !" : "Ton adversaire a gagné la partie !");
           setIsPlayerTurn(false);
+          openEndPopup(youWon ? "win" : "loss");
         }
 
         setTurnHistory((prev) => {
           const last = prev[prev.length - 1];
           const sameCard =
-            last?.color === data.data.topCard?.color &&
-            last?.value === data.data.topCard?.value;
+            last?.color === data.data.topCard?.color && last?.value === data.data.topCard?.value;
           return sameCard ? prev : [...prev, data.data.topCard];
         });
       } catch (err) {
@@ -432,7 +510,7 @@ export default function UnoGamePage() {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [game?.id, gameMode, aiHandCount]);
+  }, [game?.id, gameMode, aiHandCount, endPopup]);
 
   const resignGame = async () => {
     if (!game?.id || isResigning) return;
@@ -449,12 +527,11 @@ export default function UnoGamePage() {
         return;
       }
       setMessage(
-        gameMode === "online"
-          ? "😢 Tu as abandonné la partie."
-          : "😢 Tu as abandonné contre l'IA.",
+        gameMode === "online" ? "😢 Tu as abandonné la partie." : "😢 Tu as abandonné contre l'IA."
       );
       setIsPlayerTurn(false);
       if (data.newBalance) setTokens({ balance: data.newBalance });
+      openEndPopup("loss", "resigned");
     } catch (err) {
       console.error("Erreur resign:", err);
       alert("Erreur lors de l'abandon");
@@ -477,9 +554,7 @@ export default function UnoGamePage() {
       setTopCard(data.data.topCard);
       setTurnHistory((prev) => [...prev, data.data.topCard]);
       setHistoryIndex(null);
-      setAiHandCount(
-        data.data.aiHandCount ?? data.data.opponentHandCount ?? aiHandCount,
-      );
+      setAiHandCount(data.data.aiHandCount ?? data.data.opponentHandCount ?? aiHandCount);
       setIsPlayerTurn(data.data.isPlayerTurn);
       setMessage(gameMode === "ai" ? "L'IA joue..." : "Tour suivant...");
       await checkForWinner(game.id);
@@ -506,30 +581,84 @@ export default function UnoGamePage() {
     setTurnHistory([]);
     setHistoryIndex(null);
     setWaitingGameId(null);
+    setEndPopup(null);
+    setReplayRequested(false);
+    setOpponentReplayRequested(false);
+    setReturnChosen(false);
     fetchAvailableGames();
   };
 
-  const displayedCard =
-    historyIndex === null ? topCard : turnHistory[historyIndex];
+  const displayedCard = historyIndex === null ? topCard : turnHistory[historyIndex];
 
   return (
     <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
+      {endPopup && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-cyan-300/60 bg-[#071124] p-6 text-center shadow-[0_0_45px_rgba(0,229,255,0.35),inset_0_0_30px_rgba(217,70,239,0.12)]">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-300 via-fuchsia-500 to-yellow-300" />
+            <p className="text-xs font-black uppercase tracking-[0.45em] text-cyan-200">
+              UNO Result
+            </p>
+            <h2
+              className={`mt-3 text-4xl font-black uppercase ${endPopup.result === "win" ? "text-emerald-300" : "text-fuchsia-300"}`}
+            >
+              {endPopup.result === "win"
+                ? "Victory"
+                : endPopup.reason === "resigned"
+                  ? "Resigned"
+                  : "Defeat"}
+            </h2>
+            <p className="mt-3 text-sm text-slate-200">
+              {endPopup.result === "win"
+                ? "You won the match."
+                : endPopup.reason === "resigned"
+                  ? "You resigned the match."
+                  : "Your opponent won the match."}
+            </p>
+            <p className="mt-4 text-xs font-bold uppercase tracking-widest text-yellow-200">
+              Replay window: {replaySecondsLeft}s
+            </p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <button
+                onClick={requestReplay}
+                disabled={returnChosen || replayRequested}
+                className="rounded-xl border border-fuchsia-300/70 bg-fuchsia-500/20 px-4 py-3 font-black text-fuchsia-100 shadow-[0_0_18px_rgba(217,70,239,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {replayRequested
+                  ? "Replay requested"
+                  : gameMode === "online"
+                    ? "Replay"
+                    : "Play again"}
+              </button>
+              <button
+                onClick={closeToUnoLobby}
+                className="rounded-xl border border-cyan-300/70 bg-cyan-400 px-4 py-3 font-black text-[#031026] shadow-[0_0_18px_rgba(34,211,238,0.35)]"
+              >
+                Return to Lobby
+              </button>
+            </div>
+            {gameMode === "online" && (
+              <p className="mt-3 text-xs text-slate-300">
+                {returnChosen
+                  ? "A player chose the lobby. Replay is disabled."
+                  : opponentReplayRequested
+                    ? "Opponent is ready for replay."
+                    : "Both players must click replay before the timer ends."}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
       <h1 className="text-3xl mb-2 font-bold">
         {gameMode === "online" ? "UNO 1v1 en ligne" : "UNO vs IA"}
       </h1>
 
-      {tokens && (
-        <p className="text-yellow-300 mb-4 text-lg">
-          Tokens : {tokens.balance}
-        </p>
-      )}
+      {tokens && <p className="text-yellow-300 mb-4 text-lg">Tokens : {tokens.balance}</p>}
 
       {!game ? (
         <div className="casino-surface flex w-full max-w-4xl flex-col items-center justify-center rounded-[1.5rem] border-2 border-[#00e5ff]/35 bg-[#0b224f]/85 p-4 text-center shadow-[0_0_28px_rgba(0,229,255,0.2)] sm:aspect-[2/1] sm:rounded-[2rem] sm:p-8">
-          <h2 className="text-2xl font-bold mb-6 text-white">
-            Prépare ta partie
-          </h2>
+          <h2 className="text-2xl font-bold mb-6 text-white">Prépare ta partie</h2>
 
           <label className="mb-6 text-lg font-semibold flex flex-col items-center">
             <span className="mb-2">Mise :</span>
@@ -570,17 +699,13 @@ export default function UnoGamePage() {
               disabled={isCancellingWaitingGame}
               className="mt-3 bg-red-600 hover:bg-red-500 text-white px-8 py-2 rounded-full font-bold"
             >
-              {isCancellingWaitingGame
-                ? "Annulation..."
-                : "Annuler la partie en attente"}
+              {isCancellingWaitingGame ? "Annulation..." : "Annuler la partie en attente"}
             </button>
           )}
 
           <div className="mt-6 w-full max-w-md bg-[#08142f] rounded-2xl p-4 border border-[#00e5ff]/30">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-bold">
-                Parties en ligne disponibles
-              </h3>
+              <h3 className="text-lg font-bold">Parties en ligne disponibles</h3>
               <button
                 onClick={fetchAvailableGames}
                 disabled={isLoadingAvailableGames}
@@ -592,9 +717,7 @@ export default function UnoGamePage() {
             {isLoadingAvailableGames ? (
               <p className="text-sm text-gray-200">Chargement des parties...</p>
             ) : availableGames.length === 0 ? (
-              <p className="text-sm text-gray-200">
-                Aucune partie en attente pour le moment.
-              </p>
+              <p className="text-sm text-gray-200">Aucune partie en attente pour le moment.</p>
             ) : (
               <ul className="space-y-2 text-sm">
                 {availableGames.slice(0, 6).map((onlineGame) => (
@@ -607,9 +730,7 @@ export default function UnoGamePage() {
                     </span>
                     <button
                       onClick={() => joinSpecificOnlineGame(onlineGame.id)}
-                      disabled={
-                        !onlineGame.canAfford || loading || !!waitingGameId
-                      }
+                      disabled={!onlineGame.canAfford || loading || !!waitingGameId}
                       className={`px-3 py-1 rounded-md font-semibold ${onlineGame.canAfford && !waitingGameId ? "bg-[#00e5ff] text-[#001933]" : "bg-gray-600 text-gray-200 cursor-not-allowed"}`}
                     >
                       {onlineGame.canAfford ? "Rejoindre" : "Solde insuffisant"}
@@ -654,17 +775,11 @@ export default function UnoGamePage() {
             </div>
           )}
 
-          {message && (
-            <p className="mt-6 text-yellow-300 text-lg font-medium">
-              {message}
-            </p>
-          )}
+          {message && <p className="mt-6 text-yellow-300 text-lg font-medium">{message}</p>}
         </div>
       ) : (
         <div className="casino-surface relative flex min-h-[560px] w-full max-w-5xl flex-col items-center justify-between overflow-hidden rounded-[1.5rem] border-4 border-green-950 bg-green-700/90 p-3 pb-32 shadow-2xl sm:min-h-[640px] sm:rounded-[2.5rem] sm:border-8 sm:p-6 sm:pb-36">
-          <div
-            className={`px-4 py-1 rounded-full ${!isPlayerTurn ? "turn-active-glow" : ""}`}
-          >
+          <div className={`px-4 py-1 rounded-full ${!isPlayerTurn ? "turn-active-glow" : ""}`}>
             {gameMode === "online" ? "Main adverse:" : "Main de l'IA:"}
           </div>
           <div className="flex justify-center gap-2 flex-wrap max-w-4xl">
@@ -678,9 +793,7 @@ export default function UnoGamePage() {
           {showColorPicker && (
             <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
               <div className="bg-white p-8 rounded-2xl shadow-xl text-black flex flex-col items-center gap-6">
-                <h2 className="text-xl font-bold mb-2">
-                  Choisis une couleur 🎨
-                </h2>
+                <h2 className="text-xl font-bold mb-2">Choisis une couleur 🎨</h2>
                 <div className="grid grid-cols-2 gap-4">
                   {[
                     { color: "red", label: "Rouge" },
@@ -713,7 +826,7 @@ export default function UnoGamePage() {
                     ? null
                     : prev === null
                       ? turnHistory.length - 2
-                      : Math.max(prev - 1, 0),
+                      : Math.max(prev - 1, 0)
                 )
               }
               disabled={turnHistory.length <= 1 || historyIndex === 0}
@@ -736,11 +849,7 @@ export default function UnoGamePage() {
             <button
               onClick={() =>
                 setHistoryIndex((prev) =>
-                  prev === null
-                    ? null
-                    : prev >= turnHistory.length - 2
-                      ? null
-                      : prev + 1,
+                  prev === null ? null : prev >= turnHistory.length - 2 ? null : prev + 1
                 )
               }
               disabled={historyIndex === null}
@@ -787,11 +896,7 @@ export default function UnoGamePage() {
             </button>
           </div>
 
-          {message && (
-            <p className="mt-6 text-yellow-300 text-lg font-medium">
-              {message}
-            </p>
-          )}
+          {message && <p className="mt-6 text-yellow-300 text-lg font-medium">{message}</p>}
         </div>
       )}
     </div>

@@ -17,12 +17,18 @@ export async function POST(req) {
       return new Response("Invalid gameId", { status: 400 });
     }
 
-    // 🔍 Find the game
-    const [game] = await db
-      .select()
-      .from(unoGames)
-      .where(eq(unoGames.id, gameId))
+    const [requestingUser] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.clerkId, userId))
       .limit(1);
+
+    if (!requestingUser) {
+      return new Response("User not found", { status: 404 });
+    }
+
+    // 🔍 Find the game
+    const [game] = await db.select().from(unoGames).where(eq(unoGames.id, gameId)).limit(1);
 
     if (!game) {
       return new Response("Game not found", { status: 404 });
@@ -89,9 +95,7 @@ export async function POST(req) {
       // =========================
       if (!isAiGame && isActive) {
         const opponentId =
-          lockedGame.userId === userId
-            ? lockedGame.player2Id
-            : lockedGame.userId;
+          lockedGame.userId === requestingUser.id ? lockedGame.player2Id : lockedGame.userId;
 
         if (!opponentId) return;
 
@@ -111,7 +115,7 @@ export async function POST(req) {
           .update(unoGames)
           .set({
             status: "finished",
-            winner: lockedGame.userId === userId ? "player2" : "player1",
+            winner: lockedGame.userId === requestingUser.id ? "player2" : "player1",
             result: "loss",
             payout: payout.toString(),
           })
