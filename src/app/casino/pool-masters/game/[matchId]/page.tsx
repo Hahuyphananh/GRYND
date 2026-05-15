@@ -162,21 +162,20 @@ export default function Page() {
   }, [matchId]);
 
 useEffect(() => {
-  const shouldRunPhysics =
-    aiMode || isMoving(ballsRef.current);
-
-  if (!shouldRunPhysics) return;
-
   const id = setInterval(() => {
     setBalls((prev) => {
+      if (!isMoving(prev)) return prev;
+
       const next = prev.map((b) => ({ ...b }));
+
       tickPhysics(next, shotMeta.current);
+
       return next;
     });
   }, 16);
 
   return () => clearInterval(id);
-}, [aiMode, balls]);
+}, []);
 
   const canShoot =
     started && !winner && !isMoving(balls) && (turn === owner || (aiMode && turn === 2));
@@ -326,7 +325,7 @@ useEffect(() => {
     if (aiMode || !socket || !shotLock.current || turn !== owner) return;
     if (!isMoving(balls)) return;
     const now = Date.now();
-    if (now - liveEmitAtRef.current < 48) return;
+    if (now - liveEmitAtRef.current < 16) return;
     liveEmitAtRef.current = now;
     emitLiveState({
       sourceSeat: owner,
@@ -386,7 +385,10 @@ useEffect(() => {
       if (!payload || payload.matchId !== activeMatchId) return;
       if (payload.userId && payload.userId === user?.id) return;
 
-      if (payload.balls) setBalls(payload.balls);
+      if (payload.balls) {
+  ballsRef.current = payload.balls;
+  setBalls(payload.balls);
+}
       if (typeof payload.turn === "number") {
   setTurn(payload.turn);
 }
@@ -467,7 +469,12 @@ useEffect(() => {
       if (data.viewerName) setMyName(data.viewerName);
       if (data.opponentName) setOppName(data.opponentName);
       const localShotInProgress = shotLock.current || isMoving(ballsRef.current);
-      if (!localShotInProgress && gs?.version && isNewerVersion(gs.version, syncVersion)) {
+      if (
+  !localShotInProgress &&
+  !isMoving(balls) &&
+  gs?.version &&
+  isNewerVersion(gs.version, syncVersion)
+) {
         setSyncVersion(gs.version);
         if (gs.balls) setBalls(gs.balls);
         if (gs.turn) setTurn(gs.turn);
@@ -489,6 +496,11 @@ useEffect(() => {
     }
 
     void syncMatch();
+
+const id = setInterval(syncMatch, 1000);
+
+return () => clearInterval(id);
+
   }, [activeMatchId, aiMode, syncVersion, router]);
   const myRemaining = BALL_LAYOUT.filter((b) =>
     myTeam ? (myTeam === "solids" ? !b.s && b.n !== 8 : b.s) : b.n !== 8
