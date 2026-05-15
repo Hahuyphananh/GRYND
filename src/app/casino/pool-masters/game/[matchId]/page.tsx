@@ -4,33 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import NavigationBar from "../../../../../components/navigation-bar";
 import { useSocket } from "../../../../../context/SocketProvider";
-import {
-  BALL_LAYOUT,
-  MAX_PULL,
-  TABLE_H,
-  TABLE_W,
-} from "../../../../../lib/pool/constants";
-import {
-  applyShotPower,
-  isMoving,
-  tickPhysics,
-} from "../../../../../lib/pool/physics";
+import { BALL_LAYOUT, MAX_PULL, TABLE_H, TABLE_W } from "../../../../../lib/pool/constants";
+import { applyShotPower, isMoving, tickPhysics } from "../../../../../lib/pool/physics";
 import { evaluateRules } from "../../../../../lib/pool/rules";
-import {
-  drawAimGuide,
-  drawBalls,
-  drawTable,
-} from "../../../../../lib/pool/render";
-import {
-  isNewerVersion,
-  pushPoolState,
-} from "../../../../../lib/pool/multiplayer";
-import {
-  Ball,
-  PlayerTurn,
-  ShotMeta,
-  Team,
-} from "../../../../../lib/pool/types";
+import { drawAimGuide, drawBalls, drawTable } from "../../../../../lib/pool/render";
+import { isNewerVersion, pushPoolState } from "../../../../../lib/pool/multiplayer";
+import { Ball, PlayerTurn, ShotMeta, Team } from "../../../../../lib/pool/types";
 
 type PoolLivePayload = {
   matchId: string;
@@ -95,32 +74,23 @@ const isTeamBall = (n: number, team: Team) =>
   team === "solids" ? n >= 1 && n <= 7 : n >= 9 && n <= 15;
 
 const teamHasBalls = (balls: Ball[], team: Team) =>
-  !!team &&
-  balls.some(
-    (b) => !b.pocketed && !b.animatingPocket && isTeamBall(b.number, team),
-  );
+  !!team && balls.some((b) => !b.pocketed && !b.animatingPocket && isTeamBall(b.number, team));
 
 function planAiShot(balls: Ball[], aiTeam: Team, openTable: boolean) {
   const cue = balls.find((b) => b.number === 0 && !b.pocketed);
   if (!cue) return null;
 
-  const objectBalls = balls.filter(
-    (b) => !b.pocketed && !b.animatingPocket && b.number > 0,
-  );
+  const objectBalls = balls.filter((b) => !b.pocketed && !b.animatingPocket && b.number > 0);
   const legalTargets = objectBalls.filter((b) => {
     if (openTable || !aiTeam) return b.number !== 8;
     if (teamHasBalls(balls, aiTeam)) return isTeamBall(b.number, aiTeam);
     return b.number === 8;
   });
-  const targets = legalTargets.length
-    ? legalTargets
-    : objectBalls.filter((b) => b.number !== 8);
+  const targets = legalTargets.length ? legalTargets : objectBalls.filter((b) => b.number !== 8);
   if (!targets.length) return null;
 
   const target = [...targets].sort(
-    (a, b) =>
-      Math.hypot(a.x - cue.x, a.y - cue.y) -
-      Math.hypot(b.x - cue.x, b.y - cue.y),
+    (a, b) => Math.hypot(a.x - cue.x, a.y - cue.y) - Math.hypot(b.x - cue.x, b.y - cue.y)
   )[0];
   const distance = Math.hypot(target.x - cue.x, target.y - cue.y);
   const angle = Math.atan2(target.y - cue.y, target.x - cue.x);
@@ -195,19 +165,14 @@ export default function Page() {
           tickPhysics(n, shotMeta.current);
           return n;
         }),
-      16,
+      16
     );
     return () => clearInterval(id);
   }, []);
   const canShoot =
-    started &&
-    !winner &&
-    !isMoving(balls) &&
-    (turn === owner || (aiMode && turn === 2));
+    started && !winner && !isMoving(balls) && (turn === owner || (aiMode && turn === 2));
 
-  const emitLiveState = (
-    payload: Omit<PoolLivePayload, "matchId" | "version">,
-  ) => {
+  const emitLiveState = (payload: Omit<PoolLivePayload, "matchId" | "version">) => {
     if (!socket || aiMode) return;
     socket.emit("room_event", {
       roomId: `pool:${activeMatchId}`,
@@ -283,7 +248,7 @@ export default function Page() {
                 vx: 0,
                 vy: 0,
               }
-            : b,
+            : b
         )
       : balls;
     if (res.ballInHand) setBalls(syncedBalls);
@@ -317,19 +282,9 @@ export default function Page() {
         foul: res.foul,
         foulMessage: res.foulMessage,
       },
-      aiMode,
+      aiMode
     );
-  }, [
-    balls,
-    turn,
-    owner,
-    myTeam,
-    oppTeam,
-    openTable,
-    aiMode,
-    activeMatchId,
-    socket,
-  ]);
+  }, [balls, turn, owner, myTeam, oppTeam, openTable, aiMode, activeMatchId, socket]);
 
   const fireShot = (a: number, p: number) => {
     if (!canShoot || isMoving(balls) || shotLock.current) return;
@@ -343,9 +298,7 @@ export default function Page() {
     const speed = applyShotPower(p);
     setBalls((prev) => {
       const next = prev.map((b) =>
-        b.number === 0
-          ? { ...b, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed }
-          : b,
+        b.number === 0 ? { ...b, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed } : b
       );
       emitLiveState({
         sourceSeat: owner,
@@ -390,7 +343,7 @@ export default function Page() {
     if (dragRef.current) {
       const nextPull = Math.min(
         MAX_PULL,
-        Math.hypot(p.x - dragRef.current.x, p.y - dragRef.current.y),
+        Math.hypot(p.x - dragRef.current.x, p.y - dragRef.current.y)
       );
       setPull(nextPull);
       emitLiveState({
@@ -413,8 +366,13 @@ export default function Page() {
     if (!socket || aiMode) return;
     const roomId = `pool:${activeMatchId}`;
 
-    const handleLiveState = (message: { payload?: PoolLivePayload }) => {
-      const payload = message?.payload;
+    const handleLiveState = (message: PoolLivePayload | { payload?: PoolLivePayload }) => {
+      // The realtime server forwards room_event payload fields directly on the
+      // emitted event. Older callers may still wrap the payload, so accept both
+      // shapes to keep both players' canvases live-synchronised.
+      const payload = (
+        "payload" in message && message.payload ? message.payload : message
+      ) as PoolLivePayload;
       if (!payload || payload.matchId !== activeMatchId) return;
       if (payload.sourceSeat === ownerRef.current) return;
 
@@ -422,21 +380,11 @@ export default function Page() {
       if (payload.turn) setTurn(payload.turn);
       const shouldSwapTeams = payload.sourceSeat !== ownerRef.current;
       if ("myTeam" in payload || "oppTeam" in payload) {
-        setMyTeam(
-          shouldSwapTeams
-            ? (payload.oppTeam ?? null)
-            : (payload.myTeam ?? null),
-        );
-        setOppTeam(
-          shouldSwapTeams
-            ? (payload.myTeam ?? null)
-            : (payload.oppTeam ?? null),
-        );
+        setMyTeam(shouldSwapTeams ? (payload.oppTeam ?? null) : (payload.myTeam ?? null));
+        setOppTeam(shouldSwapTeams ? (payload.myTeam ?? null) : (payload.oppTeam ?? null));
       }
-      if (typeof payload.openTable === "boolean")
-        setOpenTable(payload.openTable);
-      if (typeof payload.ballInHand === "boolean")
-        setBallInHand(payload.ballInHand);
+      if (typeof payload.openTable === "boolean") setOpenTable(payload.openTable);
+      if (typeof payload.ballInHand === "boolean") setBallInHand(payload.ballInHand);
       if ("winner" in payload) setWinner(payload.winner ?? null);
       if (typeof payload.aim === "number") {
         setRemoteAim({
@@ -448,9 +396,7 @@ export default function Page() {
       }
       if (payload.settled) {
         setSyncVersion((current) => Math.max(current, payload.version));
-        setLastFoul(
-          payload.foul ? (payload.foulMessage ?? "Foul. Ball in hand.") : null,
-        );
+        setLastFoul(payload.foul ? (payload.foulMessage ?? "Foul. Ball in hand.") : null);
         if (payload.foulMessage) setStatus(payload.foulMessage);
         else setStatus("Shot complete.");
       }
@@ -513,12 +459,9 @@ export default function Page() {
         if (gs.balls) setBalls(gs.balls);
         if (gs.turn) setTurn(gs.turn);
         const remoteSeat = gs.perspectiveSeat;
-        const shouldSwapTeams =
-          remoteSeat && data.viewerSeat && remoteSeat !== data.viewerSeat;
+        const shouldSwapTeams = remoteSeat && data.viewerSeat && remoteSeat !== data.viewerSeat;
         setMyTeam(shouldSwapTeams ? (gs.oppTeam ?? null) : (gs.myTeam ?? null));
-        setOppTeam(
-          shouldSwapTeams ? (gs.myTeam ?? null) : (gs.oppTeam ?? null),
-        );
+        setOppTeam(shouldSwapTeams ? (gs.myTeam ?? null) : (gs.oppTeam ?? null));
         setOpenTable(gs.openTable ?? true);
         setBallInHand(gs.ballInHand ?? false);
         setWinner(gs.winner ?? null);
@@ -537,12 +480,12 @@ export default function Page() {
     return () => clearInterval(id);
   }, [activeMatchId, aiMode, syncVersion, router]);
   const myRemaining = BALL_LAYOUT.filter((b) =>
-    myTeam ? (myTeam === "solids" ? !b.s && b.n !== 8 : b.s) : b.n !== 8,
+    myTeam ? (myTeam === "solids" ? !b.s && b.n !== 8 : b.s) : b.n !== 8
   )
     .filter((b) => !balls.find((bb) => bb.number === b.n)?.pocketed)
     .map((b) => b.n);
   const oppRemaining = BALL_LAYOUT.filter((b) =>
-    oppTeam ? (oppTeam === "solids" ? !b.s && b.n !== 8 : b.s) : b.n !== 8,
+    oppTeam ? (oppTeam === "solids" ? !b.s && b.n !== 8 : b.s) : b.n !== 8
   )
     .filter((b) => !balls.find((bb) => bb.number === b.n)?.pocketed)
     .map((b) => b.n);
@@ -568,16 +511,12 @@ export default function Page() {
           <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-3 shadow-inner">
             <p className="font-bold">{myName}</p>
             <p className="text-xs text-cyan-100">{myTeam ?? "unassigned"}</p>
-            <p className="mt-1 text-sm">
-              Balls: {myRemaining.join(", ") || "none"}
-            </p>
+            <p className="mt-1 text-sm">Balls: {myRemaining.join(", ") || "none"}</p>
           </div>
           <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-3 text-right shadow-inner">
             <p className="font-bold">{oppName}</p>
             <p className="text-xs text-cyan-100">{oppTeam ?? "unassigned"}</p>
-            <p className="mt-1 text-sm">
-              Balls: {oppRemaining.join(", ") || "none"}
-            </p>
+            <p className="mt-1 text-sm">Balls: {oppRemaining.join(", ") || "none"}</p>
           </div>
         </div>
         {winner && (
