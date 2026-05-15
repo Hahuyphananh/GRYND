@@ -10,8 +10,10 @@ import { evaluateRules } from "../../../../../lib/pool/rules";
 import { drawAimGuide, drawBalls, drawTable } from "../../../../../lib/pool/render";
 import { isNewerVersion, pushPoolState } from "../../../../../lib/pool/multiplayer";
 import { Ball, PlayerTurn, ShotMeta, Team } from "../../../../../lib/pool/types";
+import { useUser } from "@clerk/nextjs";
 
 type PoolLivePayload = {
+  userId?: string;
   matchId: string;
   sourceSeat: PlayerTurn;
   balls?: Ball[];
@@ -105,6 +107,7 @@ export default function Page() {
   const { matchId } = useParams<{ matchId: string }>();
   const router = useRouter();
   const { socket } = useSocket();
+  const { user } = useUser();
   const searchParams = useSearchParams();
   const aiMode = searchParams.get("ai") === "1";
   const initialTurn: PlayerTurn = searchParams.get("turn") === "2" ? 2 : 1;
@@ -157,18 +160,24 @@ export default function Page() {
   useEffect(() => {
     setActiveMatchId(matchId);
   }, [matchId]);
-  useEffect(() => {
-    const id = setInterval(
-      () =>
-        setBalls((prev) => {
-          const n = prev.map((b) => ({ ...b }));
-          tickPhysics(n, shotMeta.current);
-          return n;
-        }),
-      16
-    );
-    return () => clearInterval(id);
-  }, []);
+
+useEffect(() => {
+  const isPhysicsAuthority =
+    aiMode || (shotLock.current && turn === owner);
+
+  if (!isPhysicsAuthority) return;
+
+  const id = setInterval(() => {
+    setBalls((prev) => {
+      const n = prev.map((b) => ({ ...b }));
+      tickPhysics(n, shotMeta.current);
+      return n;
+    });
+  }, 16);
+
+  return () => clearInterval(id);
+}, [aiMode, turn, owner]);
+
   const canShoot =
     started && !winner && !isMoving(balls) && (turn === owner || (aiMode && turn === 2));
 
@@ -374,7 +383,7 @@ export default function Page() {
         "payload" in message && message.payload ? message.payload : message
       ) as PoolLivePayload;
       if (!payload || payload.matchId !== activeMatchId) return;
-      if (payload.sourceSeat === ownerRef.current) return;
+      if (payload.userId && payload.userId === user?.id) return;
 
       if (payload.balls) setBalls(payload.balls);
       if (payload.turn) setTurn(payload.turn);

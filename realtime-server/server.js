@@ -367,7 +367,7 @@ io.on("connection", (socket) => {
 
   socket.on("room_event", ({ roomId, event, payload }) => {
     if (!roomId || !event) return;
-    io.to(String(roomId)).emit(String(event), {
+    socket.to(String(roomId)).emit(String(event), {
       ...(payload && typeof payload === "object" ? payload : {}),
       userId: socket.data.userId,
       sentAt: new Date().toISOString(),
