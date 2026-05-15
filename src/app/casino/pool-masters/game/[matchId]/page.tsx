@@ -117,6 +117,7 @@ export default function Page() {
   const ballsRef = useRef<Ball[]>([]);
   const ownerRef = useRef<PlayerTurn>(1);
   const liveEmitAtRef = useRef(0);
+  const livePersistAtRef = useRef(0);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const shotLock = useRef(false);
   const aiShotLock = useRef(false);
@@ -185,8 +186,9 @@ useEffect(() => {
   return () => clearInterval(id);
 }, []);
 
-  const canShoot =
-    started && !winner && !isMoving(balls) && (turn === owner || (aiMode && turn === 2));
+  const isMyTurn = turn === owner || (aiMode && turn === 2);
+  const isSpectatingOpponent = started && !aiMode && !winner && turn !== owner;
+  const canShoot = started && !winner && !isMoving(balls) && isMyTurn;
 
   const emitLiveState = (payload: Omit<PoolLivePayload, "matchId" | "version">) => {
     if (!socket || aiMode) return;
@@ -333,6 +335,7 @@ useEffect(() => {
       const next = prev.map((b) =>
         b.number === 0 ? { ...b, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed } : b
       );
+      const version = Date.now();
       emitLiveState({
         sourceSeat: owner,
         balls: next,
@@ -343,27 +346,68 @@ useEffect(() => {
         lifecycle: "SHOOTING",
         shotId,
       });
+      void pushPoolState(
+        activeMatchId,
+        {
+          balls: next,
+          turn,
+          myTeam,
+          oppTeam,
+          openTable,
+          ballInHand,
+          winner,
+          version,
+          perspectiveSeat: owner,
+          lifecycle: "SHOOTING",
+          shotId,
+          settled: false,
+        },
+        aiMode
+      );
       return next;
     });
   };
 
   useEffect(() => {
-    if (aiMode || !socket || !shotLock.current || !localShotInProgressRef.current || turn !== owner) return;
+    if (!shotLock.current || !localShotInProgressRef.current || turn !== owner) return;
     if (!isMoving(balls)) return;
     const now = Date.now();
-    if (now - liveEmitAtRef.current < 16) return;
-    liveEmitAtRef.current = now;
-    emitLiveState({
-      sourceSeat: owner,
-      balls,
-      turn,
-      aim,
-      pull,
-      settled: false,
-      lifecycle: "ROLLING",
-      shotId: activeShotIdRef.current ?? undefined,
-    });
-  }, [aiMode, socket, balls, turn, owner, aim, pull]);
+    const shotId = activeShotIdRef.current ?? undefined;
+    if (!aiMode && socket && now - liveEmitAtRef.current >= 16) {
+      liveEmitAtRef.current = now;
+      emitLiveState({
+        sourceSeat: owner,
+        balls,
+        turn,
+        aim,
+        pull,
+        settled: false,
+        lifecycle: "ROLLING",
+        shotId,
+      });
+    }
+    if (now - livePersistAtRef.current >= 80) {
+      livePersistAtRef.current = now;
+      void pushPoolState(
+        activeMatchId,
+        {
+          balls,
+          turn,
+          myTeam,
+          oppTeam,
+          openTable,
+          ballInHand,
+          winner,
+          version: now,
+          perspectiveSeat: owner,
+          lifecycle: "ROLLING",
+          shotId,
+          settled: false,
+        },
+        aiMode
+      );
+    }
+  }, [aiMode, socket, balls, turn, owner, aim, pull, activeMatchId, myTeam, oppTeam, openTable, ballInHand, winner]);
 
   const onDown = (e: any) => {
     if (winner || !canShoot || turn !== owner) return;
@@ -560,9 +604,9 @@ return () => clearInterval(id);
       <div className="mx-auto mt-3 max-w-7xl rounded-2xl border border-black/70 bg-black/45 p-3 shadow-[0_20px_70px_rgba(0,0,0,.65)] sm:mt-6 sm:p-4">
         <div className="mb-2 text-center text-lg font-black text-yellow-300 drop-shadow sm:text-2xl">
           {started
-            ? turn === owner
+            ? isMyTurn
               ? "You will shoot."
-              : `${oppName} will shoot.`
+              : `${oppName} is shooting — spectating live.`
             : "Waiting for match start..."}
         </div>
         <div
@@ -588,19 +632,28 @@ return () => clearInterval(id);
             Winner: {winner === owner ? myName : oppName}
           </div>
         )}
-        <canvas
-          ref={canvasRef}
-          width={TABLE_W}
-          height={TABLE_H}
-          onMouseDown={onDown}
-          onMouseMove={onMove}
-          onMouseUp={onUp}
-          onMouseLeave={onUp}
-          onTouchStart={onDown}
-          onTouchMove={onMove}
-          onTouchEnd={onUp}
-          className="mt-4 w-full touch-none rounded-2xl border border-black bg-[#111] shadow-[0_12px_40px_rgba(0,0,0,.75)]"
-        />
+        <div className="relative mt-4">
+          <canvas
+            ref={canvasRef}
+            width={TABLE_W}
+            height={TABLE_H}
+            onMouseDown={onDown}
+            onMouseMove={onMove}
+            onMouseUp={onUp}
+            onMouseLeave={onUp}
+            onTouchStart={onDown}
+            onTouchMove={onMove}
+            onTouchEnd={onUp}
+            className={`w-full touch-none rounded-2xl border border-black bg-[#111] shadow-[0_12px_40px_rgba(0,0,0,.75)] ${isSpectatingOpponent ? "pointer-events-none" : ""}`}
+          />
+          {isSpectatingOpponent && (
+            <div className="pointer-events-none absolute inset-0 flex items-start justify-center">
+              <div className="mt-3 rounded-full border border-white/25 bg-black/55 px-3 py-1 text-xs font-bold tracking-wide text-white">
+                Spectating {oppName}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
