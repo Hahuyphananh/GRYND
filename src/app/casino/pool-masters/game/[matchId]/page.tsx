@@ -185,8 +185,9 @@ useEffect(() => {
   return () => clearInterval(id);
 }, []);
 
-  const canShoot =
-    started && !winner && !isMoving(balls) && (turn === owner || (aiMode && turn === 2));
+  const isMyTurn = turn === owner || (aiMode && turn === 2);
+  const isSpectatingOpponent = started && !aiMode && !winner && turn !== owner;
+  const canShoot = started && !winner && !isMoving(balls) && isMyTurn;
 
   const emitLiveState = (payload: Omit<PoolLivePayload, "matchId" | "version">) => {
     if (!socket || aiMode) return;
@@ -560,9 +561,9 @@ return () => clearInterval(id);
       <div className="mx-auto mt-3 max-w-7xl rounded-2xl border border-black/70 bg-black/45 p-3 shadow-[0_20px_70px_rgba(0,0,0,.65)] sm:mt-6 sm:p-4">
         <div className="mb-2 text-center text-lg font-black text-yellow-300 drop-shadow sm:text-2xl">
           {started
-            ? turn === owner
+            ? isMyTurn
               ? "You will shoot."
-              : `${oppName} will shoot.`
+              : `${oppName} is shooting — spectating live.`
             : "Waiting for match start..."}
         </div>
         <div
@@ -588,19 +589,28 @@ return () => clearInterval(id);
             Winner: {winner === owner ? myName : oppName}
           </div>
         )}
-        <canvas
-          ref={canvasRef}
-          width={TABLE_W}
-          height={TABLE_H}
-          onMouseDown={onDown}
-          onMouseMove={onMove}
-          onMouseUp={onUp}
-          onMouseLeave={onUp}
-          onTouchStart={onDown}
-          onTouchMove={onMove}
-          onTouchEnd={onUp}
-          className="mt-4 w-full touch-none rounded-2xl border border-black bg-[#111] shadow-[0_12px_40px_rgba(0,0,0,.75)]"
-        />
+        <div className="relative mt-4">
+          <canvas
+            ref={canvasRef}
+            width={TABLE_W}
+            height={TABLE_H}
+            onMouseDown={onDown}
+            onMouseMove={onMove}
+            onMouseUp={onUp}
+            onMouseLeave={onUp}
+            onTouchStart={onDown}
+            onTouchMove={onMove}
+            onTouchEnd={onUp}
+            className={`w-full touch-none rounded-2xl border border-black bg-[#111] shadow-[0_12px_40px_rgba(0,0,0,.75)] ${isSpectatingOpponent ? "pointer-events-none" : ""}`}
+          />
+          {isSpectatingOpponent && (
+            <div className="pointer-events-none absolute inset-0 flex items-start justify-center">
+              <div className="mt-3 rounded-full border border-white/25 bg-black/55 px-3 py-1 text-xs font-bold tracking-wide text-white">
+                Spectating {oppName}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
