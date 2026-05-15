@@ -3,6 +3,14 @@ import { db } from "../../../../db";
 import { eq } from "drizzle-orm";
 import { poolMatches } from "../../../../db/schema";
 
+function getVersionFromGameState(gameState: unknown): number {
+  if (!gameState || typeof gameState !== "object") return 0;
+  const maybeVersion = (gameState as { version?: unknown }).version;
+  return typeof maybeVersion === "number" && Number.isFinite(maybeVersion)
+    ? maybeVersion
+    : 0;
+}
+
 export async function POST(req: Request) {
   try {
     const { matchId, state } = await req.json();
@@ -29,7 +37,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, skipped: true, reason: "not_settled" });
     }
 
-    const currentVersion = Number(match.gameState?.version ?? 0);
+    const currentVersion = getVersionFromGameState(match.gameState);
     const incomingVersion = Number(state.version ?? 0);
     if (!Number.isFinite(incomingVersion) || incomingVersion <= currentVersion) {
       return NextResponse.json({ ok: true, skipped: true, reason: "stale_version" });
