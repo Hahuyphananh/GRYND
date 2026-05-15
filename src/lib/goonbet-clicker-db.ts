@@ -112,11 +112,13 @@ export async function cashoutRound(
       };
     }
 
-    const payout = payoutFrom(BigInt(round.bet_amount), expectedMultiplier);
+    const betAmount = BigInt(round.bet_amount);
+    const payout = payoutFrom(betAmount, expectedMultiplier);
+    const payoutDbValue = payout.toString();
 
-    await sql`UPDATE clicker_rounds SET status = 'cashed_out', payout = ${payout}, clicks = ${verifiedClicks}, multiplier = ${expectedMultiplier} WHERE id = ${roundId}`;
-    await sql`UPDATE clicker_users SET tokens = tokens + ${payout} WHERE id = ${userId}`;
-    await sql`UPDATE users SET balance = balance + ${payout} WHERE clerk_id = ${userId}`;
+    await sql`UPDATE clicker_rounds SET status = 'cashed_out', payout = ${payoutDbValue}, clicks = ${verifiedClicks}, multiplier = ${expectedMultiplier} WHERE id = ${roundId}`;
+    await sql`UPDATE clicker_users SET tokens = tokens + ${payoutDbValue} WHERE id = ${userId}`;
+    await sql`UPDATE users SET balance = balance + ${payoutDbValue} WHERE clerk_id = ${userId}`;
 
     await sql`COMMIT`;
     return {
