@@ -162,21 +162,21 @@ export default function Page() {
   }, [matchId]);
 
 useEffect(() => {
-  const isPhysicsAuthority =
-    aiMode || (shotLock.current && turn === owner);
+  const shouldRunPhysics =
+    aiMode || isMoving(ballsRef.current);
 
-  if (!isPhysicsAuthority) return;
+  if (!shouldRunPhysics) return;
 
   const id = setInterval(() => {
     setBalls((prev) => {
-      const n = prev.map((b) => ({ ...b }));
-      tickPhysics(n, shotMeta.current);
-      return n;
+      const next = prev.map((b) => ({ ...b }));
+      tickPhysics(next, shotMeta.current);
+      return next;
     });
   }, 16);
 
   return () => clearInterval(id);
-}, [aiMode, turn, owner]);
+}, [aiMode, balls]);
 
   const canShoot =
     started && !winner && !isMoving(balls) && (turn === owner || (aiMode && turn === 2));
@@ -187,10 +187,11 @@ useEffect(() => {
       roomId: `pool:${activeMatchId}`,
       event: "pool:live-state",
       payload: {
-        ...payload,
-        matchId: activeMatchId,
-        version: Date.now(),
-      },
+  ...payload,
+  userId: user?.id,
+  matchId: activeMatchId,
+  version: Date.now(),
+},
     });
   };
 
@@ -386,7 +387,9 @@ useEffect(() => {
       if (payload.userId && payload.userId === user?.id) return;
 
       if (payload.balls) setBalls(payload.balls);
-      if (payload.turn) setTurn(payload.turn);
+      if (typeof payload.turn === "number") {
+  setTurn(payload.turn);
+}
       const shouldSwapTeams = payload.sourceSeat !== ownerRef.current;
       if ("myTeam" in payload || "oppTeam" in payload) {
         setMyTeam(shouldSwapTeams ? (payload.oppTeam ?? null) : (payload.myTeam ?? null));
@@ -485,8 +488,6 @@ useEffect(() => {
     }
 
     void syncMatch();
-    const id = setInterval(syncMatch, 650);
-    return () => clearInterval(id);
   }, [activeMatchId, aiMode, syncVersion, router]);
   const myRemaining = BALL_LAYOUT.filter((b) =>
     myTeam ? (myTeam === "solids" ? !b.s && b.n !== 8 : b.s) : b.n !== 8
