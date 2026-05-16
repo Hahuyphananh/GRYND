@@ -31,6 +31,8 @@ export default function GoonBetClickerClient() {
   const [history, setHistory] = useState<RoundHistory[]>([]);
   const [roundStartTime, setRoundStartTime] = useState<number | null>(null);
   const roundIdRef = useRef<number | null>(null);
+  const clicksRef = useRef(0);
+  const multiplierRef = useRef(1);
 
   const potentialPayout = useMemo(() => {
     const b = BigInt(bet || "0");
@@ -68,6 +70,14 @@ export default function GoonBetClickerClient() {
   }, [roundId]);
 
   useEffect(() => {
+    clicksRef.current = clicks;
+  }, [clicks]);
+
+  useEffect(() => {
+    multiplierRef.current = multiplier;
+  }, [multiplier]);
+
+  useEffect(() => {
     if (!roundId || !roundStartTime) return;
     const interval = setInterval(async () => {
       if (!roundIdRef.current) return;
@@ -76,8 +86,8 @@ export default function GoonBetClickerClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roundId: roundIdRef.current,
-          clientClicks: clicks,
-          clientMultiplier: multiplier,
+          clientClicks: clicksRef.current,
+          clientMultiplier: multiplierRef.current,
           durationMs: Date.now() - roundStartTime,
         }),
       });
@@ -96,18 +106,23 @@ export default function GoonBetClickerClient() {
     setRoundId(data.roundId);
     setRoundStartTime(new Date(data.startTime).getTime());
     setMultiplier(1);
+    multiplierRef.current = 1;
     setClicks(0);
+    clicksRef.current = 0;
     setBusted(false);
     await refresh();
   }
 
   function clickRound() {
     if (!roundId) return;
-    const nextClicks = clicks + 1;
+    const nextClicks = clicksRef.current + 1;
     const failChance = bustChanceAtClick(nextClicks);
     if (Math.random() < failChance) {
       setClicks(nextClicks);
-      setMultiplier(multiplierFromClicks(nextClicks));
+      clicksRef.current = nextClicks;
+      const nextMultiplier = multiplierFromClicks(nextClicks);
+      setMultiplier(nextMultiplier);
+      multiplierRef.current = nextMultiplier;
       setBusted(true);
       setRoundId(null);
       setRoundStartTime(null);
@@ -116,7 +131,10 @@ export default function GoonBetClickerClient() {
     }
 
     setClicks(nextClicks);
-    setMultiplier(multiplierFromClicks(nextClicks));
+    clicksRef.current = nextClicks;
+    const nextMultiplier = multiplierFromClicks(nextClicks);
+    setMultiplier(nextMultiplier);
+    multiplierRef.current = nextMultiplier;
   }
 
   async function cashout() {
@@ -126,8 +144,8 @@ export default function GoonBetClickerClient() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         roundId,
-        clientClicks: clicks,
-        clientMultiplier: multiplier,
+        clientClicks: clicksRef.current,
+        clientMultiplier: multiplierRef.current,
         durationMs: Date.now() - roundStartTime,
       }),
     });
