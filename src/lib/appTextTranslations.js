@@ -26,15 +26,13 @@ export const APP_TEXT_TRANSLATIONS = {
       all_games: "🎮 All games",
       play_now: "Play now",
       view_leaderboard: "See leaderboard for",
-      description:
-        "Discover our casino games and test your luck or your skills!",
+      description: "Discover our casino games and test your luck or your skills!",
       more_games: "More games",
       popular_sports: "Popular Sports",
       more_sports: "More Sports",
       landing: {
         title: "Bet on your favorite sports and test your casino skills",
-        subtitle:
-          "Competitive odds, live bets, skill games, and exclusive rewards",
+        subtitle: "Competitive odds, live bets, skill games, and exclusive rewards",
         start_betting: "Start Betting",
         discover_casino: "Discover the Casino",
       },
@@ -78,16 +76,16 @@ export const APP_TEXT_TRANSLATIONS = {
       keno_desc: "Pick your lucky numbers and win big!",
       uno_desc: "Challenge AI in this fast strategic game.",
       rps_desc: "Bet your tokens in this fast strategic game.",
-      dice_duel_desc:
-        "Turn-based 1v1 dice combat. Outroll your rival and claim the pot!",
+      dice_duel_desc: "Turn-based 1v1 dice combat. Outroll your rival and claim the pot!",
       connect_four_desc: "Challenge another player 1v1 and align 4 discs.",
       goonbet_clicker_desc: "Click to earn tokens and climb the leaderboard!",
-      lane_runner_desc:
-        "Find a safe path to the top. One mistake ends the run.",
-      pool_masters_desc:
-        "Compete in a strategic game of pool. Sink the 8-ball to win!",
+      lane_runner_desc: "Find a safe path to the top. One mistake ends the run.",
+      pool_masters_desc: "Compete in a strategic game of pool. Sink the 8-ball to win!",
       chess_name: "Chess",
       rps_name: "Rock-Paper-Scissors",
+      territory_name: "Territory",
+      territory_desc:
+        "Conquer territories on the map in this strategic game. The player with the most land wins!",
     },
     sports: {
       title: "Sports Betting",
@@ -200,14 +198,12 @@ export const APP_TEXT_TRANSLATIONS = {
       all_games: "🎮 Tous les jeux",
       play_now: "Jouer maintenant",
       view_leaderboard: "Voir le leaderboard de",
-      description:
-        "Découvrez nos jeux de casino et tentez votre chance ou vos habilités!",
+      description: "Découvrez nos jeux de casino et tentez votre chance ou vos habilités!",
       more_games: "Plus de jeux",
       popular_sports: "Sports Populaires",
       more_sports: "Plus de Sports",
       landing: {
-        title:
-          "Pariez sur vos Sports Préférés et Testez vos habilités au Casino",
+        title: "Pariez sur vos Sports Préférés et Testez vos habilités au Casino",
         subtitle:
           "Des cotes compétitives, des paris en direct, des jeux d'habilités et des récompenses exclusives",
         start_betting: "Commencer à Parier",
@@ -218,8 +214,7 @@ export const APP_TEXT_TRANSLATIONS = {
         blackjack_alt: "Table de blackjack avec cartes",
         blackjack_desc: "Affrontez le croupier dans ce jeu de cartes classique",
         poker_alt: "Table de poker avec cartes et jetons",
-        poker_desc:
-          "Affrontez l'IA ou d'autres joueurs dans des parties intenses de poker",
+        poker_desc: "Affrontez l'IA ou d'autres joueurs dans des parties intenses de poker",
         plinko_alt: "Jeu Plinko avec des jetons qui tombent",
         plinko_desc: "Regardez tomber les balles et multipliez vos gains!",
       },
@@ -264,8 +259,7 @@ export const APP_TEXT_TRANSLATIONS = {
     },
     sports: {
       title: "Paris Sportifs",
-      manual_loading:
-        "Chargement manuel activé afin de réduire l'utilisation de l'API.",
+      manual_loading: "Chargement manuel activé afin de réduire l'utilisation de l'API.",
       select_league: "Sélectionnez une ligue",
       selected_league: "Ligue Sélectionnée:",
       events_loaded: "Événements chargés:",
@@ -296,8 +290,7 @@ export const APP_TEXT_TRANSLATIONS = {
       fetch_bets_failed: "Échec du chargement des paris",
       load_sports_failed: "Impossible de charger les ligues.",
       select_league_first: "Sélectionnez d'abord une ligue.",
-      load_events_failed:
-        "Impossible de charger les événements. Essayez de rafraîchir.",
+      load_events_failed: "Impossible de charger les événements. Essayez de rafraîchir.",
       current_bets: "Paris en cours",
       no_active_bets: "Aucun pari actif",
       bet_history: "Historique des paris",
@@ -376,14 +369,12 @@ export const APP_TEXT_TRANSLATIONS = {
       all_games: "🎮 Todos los juegos",
       play_now: "Jugar ahora",
       view_leaderboard: "Ver clasificación de",
-      description:
-        "Descubre nuestros juegos de casino y pon a prueba tu suerte o habilidad.",
+      description: "Descubre nuestros juegos de casino y pon a prueba tu suerte o habilidad.",
       more_games: "Más juegos",
       popular_sports: "Deportes populares",
       more_sports: "Más deportes",
       landing: {
-        title:
-          "Apuesta en tus deportes favoritos y prueba tus habilidades en el casino",
+        title: "Apuesta en tus deportes favoritos y prueba tus habilidades en el casino",
         subtitle:
           "Cuotas competitivas, apuestas en vivo, juegos de habilidad y recompensas exclusivas",
         start_betting: "Comenzar a apostar",
@@ -394,8 +385,7 @@ export const APP_TEXT_TRANSLATIONS = {
         blackjack_alt: "Mesa de blackjack con cartas",
         blackjack_desc: "Enfréntate al crupier en este clásico juego de cartas",
         poker_alt: "Mesa de póker con cartas y fichas",
-        poker_desc:
-          "Juega contra IA u otros jugadores en partidas intensas de póker",
+        poker_desc: "Juega contra IA u otros jugadores en partidas intensas de póker",
         plinko_alt: "Juego Plinko con fichas cayendo",
         plinko_desc: "¡Mira caer las fichas y multiplica tus ganancias!",
       },
@@ -430,11 +420,9 @@ export const APP_TEXT_TRANSLATIONS = {
       keno_desc: "¡Elige tus números y gana en grande!",
       uno_desc: "Desafía a la IA en este juego rápido y estratégico.",
       rps_desc: "Apuesta tus fichas en este juego rápido y estratégico.",
-      dice_duel_desc:
-        "Duelo 1v1 por turnos con dados. Supera a tu rival y gana el bote.",
+      dice_duel_desc: "Duelo 1v1 por turnos con dados. Supera a tu rival y gana el bote.",
       connect_four_desc: "Enfréntate 1v1 y alinea 4 fichas.",
-      lane_runner_desc:
-        "Encuentra un camino seguro hasta la cima. Un error termina la partida.",
+      lane_runner_desc: "Encuentra un camino seguro hasta la cima. Un error termina la partida.",
       chess_name: "Ajedrez",
       rps_name: "Piedra-Papel-Tijeras",
     },
@@ -460,8 +448,7 @@ export const APP_TEXT_TRANSLATIONS = {
       stake: "Apuesta",
       potential_payout: "Ganancia potencial",
       bet_slip: "Boleto de apuesta",
-      choose_outcome:
-        "Elige un resultado de las tarjetas de eventos para construir tu boleto.",
+      choose_outcome: "Elige un resultado de las tarjetas de eventos para construir tu boleto.",
       place_bet: "Realizar apuesta",
       submitting: "Enviando...",
       bet_success: "Apuesta enviada correctamente.",
@@ -471,8 +458,7 @@ export const APP_TEXT_TRANSLATIONS = {
       fetch_bets_failed: "No se pudieron cargar las apuestas",
       load_sports_failed: "No se pudieron cargar las ligas.",
       select_league_first: "Selecciona una liga primero.",
-      load_events_failed:
-        "No se pudieron cargar los eventos. Intenta actualizar.",
+      load_events_failed: "No se pudieron cargar los eventos. Intenta actualizar.",
       current_bets: "Apuestas actuales",
       no_active_bets: "Sin apuestas activas",
       bet_history: "Historial de apuestas",
@@ -529,9 +515,5 @@ export const APP_TEXT_TRANSLATIONS = {
 export const t = (lang, key) => {
   const keys = key.split(".");
   const resolve = (obj) => keys.reduce((acc, k) => acc?.[k], obj);
-  return (
-    resolve(APP_TEXT_TRANSLATIONS?.[lang]) ||
-    resolve(APP_TEXT_TRANSLATIONS?.en) ||
-    key
-  );
+  return resolve(APP_TEXT_TRANSLATIONS?.[lang]) || resolve(APP_TEXT_TRANSLATIONS?.en) || key;
 };
