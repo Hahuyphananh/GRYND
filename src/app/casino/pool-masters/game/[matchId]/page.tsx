@@ -112,6 +112,14 @@ export default function Page() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const aiMode = searchParams.get("ai") === "1";
+  const spectatorMode = searchParams.get("spectator") === "1";
+  const spectateSeatParam = searchParams.get("spectateSeat");
+  const forcedSpectatorSeat: PlayerTurn | null =
+    spectatorMode && spectateSeatParam === "2"
+      ? 2
+      : spectatorMode && spectateSeatParam === "1"
+        ? 1
+        : null;
   const initialTurn: PlayerTurn = searchParams.get("turn") === "2" ? 2 : 1;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ballsRef = useRef<Ball[]>([]);
@@ -186,9 +194,14 @@ useEffect(() => {
   return () => clearInterval(id);
 }, []);
 
-  const isMyTurn = turn === owner || (aiMode && turn === 2);
-  const isSpectatingOpponent = started && !aiMode && !winner && turn !== owner;
+  const viewerSeat = forcedSpectatorSeat ?? owner;
+  const isMyTurn = turn === viewerSeat || (aiMode && turn === 2);
+  const isSpectatingOpponent =
+    started && !aiMode && !spectatorMode && !winner && turn !== owner;
   const canShoot = started && !winner && !isMoving(balls) && isMyTurn;
+  const showSpectateScreen = isSpectatingOpponent;
+  const opponentSeat: PlayerTurn = owner === 1 ? 2 : 1;
+  const opponentPovUrl = `/casino/pool-masters/game/${activeMatchId}?spectator=1&spectateSeat=${opponentSeat}`;
 
   const emitLiveState = (payload: Omit<PoolLivePayload, "matchId" | "version">) => {
     if (!socket || aiMode) return;
@@ -410,14 +423,14 @@ useEffect(() => {
   }, [aiMode, socket, balls, turn, owner, aim, pull, activeMatchId, myTeam, oppTeam, openTable, ballInHand, winner]);
 
   const onDown = (e: any) => {
-    if (winner || !canShoot || turn !== owner) return;
+    if (spectatorMode || winner || !canShoot || turn !== viewerSeat) return;
     const r = e.currentTarget.getBoundingClientRect();
     const p = touchPoint(e, r);
     dragRef.current = p;
   };
   const onMove = (e: any) => {
     const cue = balls.find((b) => b.number === 0);
-    if (!cue || !canShoot || turn !== owner) return;
+    if (!cue || spectatorMode || !canShoot || turn !== viewerSeat) return;
     const r = e.currentTarget.getBoundingClientRect();
     const p = touchPoint(e, r);
     setAim(Math.atan2(p.y - cue.y, p.x - cue.x));
@@ -439,7 +452,7 @@ useEffect(() => {
     }
   };
   const onUp = () => {
-    if (dragRef.current && canShoot && turn === owner) fireShot(aim, pull);
+    if (dragRef.current && !spectatorMode && canShoot && turn === viewerSeat) fireShot(aim, pull);
     dragRef.current = null;
     setPull(0);
   };
@@ -551,7 +564,7 @@ useEffect(() => {
           router.replace(`/casino/pool-masters/game/${data.match.id}`);
         }
       }
-      if (data.viewerSeat) setOwner(data.viewerSeat);
+      if (!forcedSpectatorSeat && data.viewerSeat) setOwner(data.viewerSeat);
       if (data.viewerName) setMyName(data.viewerName);
       if (data.opponentName) setOppName(data.opponentName);
       const localShotInProgress = localShotInProgressRef.current || remoteShotInProgressRef.current;
@@ -605,7 +618,9 @@ return () => clearInterval(id);
         <div className="mb-2 text-center text-lg font-black text-yellow-300 drop-shadow sm:text-2xl">
           {started
             ? isMyTurn
-              ? "You will shoot."
+              ? spectatorMode
+                ? `${oppName} POV`
+                : "You will shoot."
               : `${oppName} is shooting — spectating live.`
             : "Waiting for match start..."}
         </div>
@@ -644,15 +659,17 @@ return () => clearInterval(id);
             onTouchStart={onDown}
             onTouchMove={onMove}
             onTouchEnd={onUp}
-            className={`w-full touch-none rounded-2xl border border-black bg-[#111] shadow-[0_12px_40px_rgba(0,0,0,.75)] ${isSpectatingOpponent ? "pointer-events-none" : ""}`}
-          />
-          {isSpectatingOpponent && (
-            <div className="pointer-events-none absolute inset-0 flex items-start justify-center">
-              <div className="mt-3 rounded-full border border-white/25 bg-black/55 px-3 py-1 text-xs font-bold tracking-wide text-white">
-                Spectating {oppName}
+              className={`w-full touch-none rounded-2xl border border-black bg-[#111] shadow-[0_12px_40px_rgba(0,0,0,.75)] ${showSpectateScreen || spectatorMode ? "pointer-events-none" : ""}`}
+            />
+            {showSpectateScreen && (
+              <div className="absolute inset-0 z-10 rounded-2xl bg-black/35 p-2 sm:p-3">
+                <iframe
+                  src={opponentPovUrl}
+                  title={`Spectate ${oppName} POV`}
+                  className="h-full w-full rounded-xl border border-cyan-200/35 bg-black"
+                />
               </div>
-            </div>
-          )}
+            )}
         </div>
       </div>
     </div>
