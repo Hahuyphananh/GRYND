@@ -200,8 +200,6 @@ useEffect(() => {
     started && !aiMode && !spectatorMode && !winner && turn !== owner;
   const canShoot = started && !winner && !isMoving(balls) && isMyTurn;
   const showSpectateScreen = isSpectatingOpponent;
-  const opponentSeat: PlayerTurn = owner === 1 ? 2 : 1;
-  const opponentPovUrl = `/casino/pool-masters/game/${activeMatchId}?spectator=1&spectateSeat=${opponentSeat}`;
 
   const emitLiveState = (payload: Omit<PoolLivePayload, "matchId" | "version">) => {
     if (!socket || aiMode) return;
@@ -661,15 +659,31 @@ return () => clearInterval(id);
             onTouchEnd={onUp}
               className={`w-full touch-none rounded-2xl border border-black bg-[#111] shadow-[0_12px_40px_rgba(0,0,0,.75)] ${showSpectateScreen || spectatorMode ? "pointer-events-none" : ""}`}
             />
-            {showSpectateScreen && (
-              <div className="absolute inset-0 z-10 rounded-2xl bg-black/35 p-2 sm:p-3">
-                <iframe
-                  src={opponentPovUrl}
-                  title={`Spectate ${oppName} POV`}
-                  className="h-full w-full rounded-xl border border-cyan-200/35 bg-black"
-                />
-              </div>
-            )}
+          {showSpectateScreen && (
+  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/75 backdrop-blur-sm">
+    <div className="rounded-2xl border border-cyan-400/30 bg-[#111]/95 px-8 py-6 text-center shadow-2xl">
+      <p className="text-2xl font-black text-cyan-300 animate-pulse">
+        🎱 Spectating {oppName}
+      </p>
+
+      <p className="mt-2 text-sm text-slate-300">
+        Waiting for opponent's shot...
+      </p>
+
+      <div className="mt-5 flex items-center justify-center gap-2">
+        <div className="h-3 w-3 animate-bounce rounded-full bg-cyan-400" />
+        <div
+          className="h-3 w-3 animate-bounce rounded-full bg-cyan-400"
+          style={{ animationDelay: "0.15s" }}
+        />
+        <div
+          className="h-3 w-3 animate-bounce rounded-full bg-cyan-400"
+          style={{ animationDelay: "0.3s" }}
+        />
+      </div>
+    </div>
+  </div>
+)}
         </div>
       </div>
     </div>
