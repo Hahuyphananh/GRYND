@@ -189,6 +189,7 @@ useEffect(() => {
   const isMyTurn = turn === owner || (aiMode && turn === 2);
   const isSpectatingOpponent = started && !aiMode && !winner && turn !== owner;
   const canShoot = started && !winner && !isMoving(balls) && isMyTurn;
+  const showSpectateScreen = isSpectatingOpponent;
 
   const emitLiveState = (payload: Omit<PoolLivePayload, "matchId" | "version">) => {
     if (!socket || aiMode) return;
@@ -644,12 +645,15 @@ return () => clearInterval(id);
             onTouchStart={onDown}
             onTouchMove={onMove}
             onTouchEnd={onUp}
-            className={`w-full touch-none rounded-2xl border border-black bg-[#111] shadow-[0_12px_40px_rgba(0,0,0,.75)] ${isSpectatingOpponent ? "pointer-events-none" : ""}`}
+            className={`w-full touch-none rounded-2xl border border-black bg-[#111] shadow-[0_12px_40px_rgba(0,0,0,.75)] ${showSpectateScreen ? "pointer-events-none" : ""}`}
           />
-          {isSpectatingOpponent && (
-            <div className="pointer-events-none absolute inset-0 flex items-start justify-center">
-              <div className="mt-3 rounded-full border border-white/25 bg-black/55 px-3 py-1 text-xs font-bold tracking-wide text-white">
-                Spectating {oppName}
+          {showSpectateScreen && (
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-between rounded-2xl bg-black/25 p-3 sm:p-4">
+              <div className="mt-0 rounded-full border border-cyan-200/40 bg-black/65 px-3 py-1 text-xs font-black tracking-[0.16em] text-cyan-100">
+                LIVE SPECTATE • {oppName}
+              </div>
+              <div className="mb-1 rounded-xl border border-white/20 bg-black/60 px-3 py-2 text-center text-xs font-semibold text-white sm:text-sm">
+                Opponent turn in progress — watching their POV in real time.
               </div>
             </div>
           )}
