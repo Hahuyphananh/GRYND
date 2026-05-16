@@ -23,6 +23,7 @@ export function maxAllowedClicks(durationMs: number): number {
 }
 
 export function payoutFrom(betAmount: bigint, multiplier: number): bigint {
-  const scaled = Math.floor(multiplier * 1_000_000);
-  return (betAmount * BigInt(scaled)) / BigInt(1000000);
+  const scaled = Math.round(multiplier * 1_000_000);
+  const numerator = betAmount * BigInt(scaled) + BigInt(500_000);
+  return numerator / BigInt(1_000_000);
 }
