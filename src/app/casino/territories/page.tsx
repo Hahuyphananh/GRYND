@@ -1,89 +1,106 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
+import { useTranslation } from "../../../hooks/useTranslation";
 
-type Tile = { x: number; y: number; owner: "neutral" | "player1" | "player2"; hp: number };
+export default function TerritoriesLobbyPage() {
+  const { t } = useTranslation();
 
-type State = {
-  id?: string;
-  turnNumber: number;
-  grid: Tile[][];
-  playerStates: { player1: { tilesOwned: number }; player2: { tilesOwned: number } };
-};
+  const tx = {
+    balance: t("games.balance"),
+    betAmount: t("games.bet_amount"),
+    createGame: t("games.create_game"),
+    playVsAi: t("games.play_vs_ai"),
+    availableGames: t("games.available_games"),
+    refresh: t("sports.refresh"),
+    noOpenGames: t("games.no_open_games"),
+    game: t("games.game_label"),
+    bet: t("sports.stake"),
+    join: t("games.join"),
+  };
+  const router = useRouter();
+  const [wagerAmount, setWagerAmount] = useState(10);
+  const [balance, setBalance] = useState(0);
+  const [availableGames, setAvailableGames] = useState<any[]>([]);
 
-export default function NeonTerritoryPage() {
-  const [matchId, setMatchId] = useState<string | null>(null);
-  const [state, setState] = useState<State | null>(null);
-  const [selected, setSelected] = useState<{ x: number; y: number } | null>(null);
+  const fetchBalance = async () => {
+    const res = await fetch("/api/get-user-tokens", { method: "POST", credentials: "include" });
+    const data = await res.json();
+    if (data?.success) setBalance(Number(data.data.balance || 0));
+  };
+
+  const fetchGames = async () => {
+    const res = await fetch("/api/neon-territory/available-games", { cache: "no-store" });
+    const data = await res.json();
+    setAvailableGames(data.games || []);
+  };
 
   useEffect(() => {
-    (async () => {
-      const res = await fetch("/api/neon-territory/match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ opponentId: "ai-bot", wagerAmount: 10, tokenType: "SC" }),
-      });
-      const data = await res.json();
-      setMatchId(data.id);
-      setState({ ...data.gameState, id: data.id });
-    })();
+    fetchBalance();
+    fetchGames();
+    const id = setInterval(fetchGames, 3000);
+    return () => clearInterval(id);
   }, []);
 
-  const tiles = useMemo(() => state?.grid.flat() ?? [], [state]);
-
-  const submitMove = async () => {
-    if (!matchId || !selected) return;
-    const res = await fetch("/api/neon-territory/action", {
+  const createGame = async () => {
+    const res = await fetch("/api/neon-territory/create-game", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ matchId, targetX: selected.x, targetY: selected.y }),
+      body: JSON.stringify({ wagerAmount }),
     });
     const data = await res.json();
-    if (data?.state) setState(data.state);
+    if (data?.gameId) router.push(`/casino/territories/game/${data.gameId}`);
+    else alert(data?.error || "Could not create game");
+  };
+
+  const playVsAI = async () => {
+    router.push(`/casino/territories/game/ai?bet=${wagerAmount}`);
+  };
+
+  const joinGame = async (gameId: string) => {
+    const res = await fetch("/api/neon-territory/join-game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gameId }),
+    });
+    const data = await res.json();
+    if (data?.gameId) router.push(`/casino/territories/game/${data.gameId}`);
+    else alert(data?.error || "Could not join game");
   };
 
   return (
-    <main className="min-h-screen bg-[#0a0a0f] text-white p-4">
+    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#020817] via-[#041430] to-[#02050f] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
-      <section className="mx-auto grid max-w-5xl gap-4 lg:grid-cols-[220px_minmax(0,1fr)_220px]">
-        <aside className="rounded-lg border border-cyan-400/30 p-4">
-          Turn: {state?.turnNumber ?? 0}
-        </aside>
-        <div className="rounded-xl border border-fuchsia-400/40 bg-gradient-to-b from-[#13131f] to-[#09090d] p-4">
-          <div className="mx-auto grid w-full max-w-[520px] grid-cols-5 gap-2">
-            {tiles.map((tile) => {
-              const ownerClass =
-                tile.owner === "player1"
-                  ? "border-cyan-300 bg-cyan-500/20"
-                  : tile.owner === "player2"
-                    ? "border-pink-300 bg-pink-500/20"
-                    : "border-slate-500 bg-slate-700/30";
-              const isSelected = selected?.x === tile.x && selected?.y === tile.y;
-              return (
-                <button
-                  key={`${tile.x}-${tile.y}`}
-                  onClick={() => setSelected({ x: tile.x, y: tile.y })}
-                  className={`aspect-square rounded-md border ${ownerClass} ${isSelected ? "animate-pulse ring-2 ring-yellow-300" : ""}`}
-                >
-                  <span className="text-xs">{tile.hp}/2</span>
-                </button>
-              );
-            })}
+      <div className="mx-auto max-w-5xl rounded-2xl border border-cyan-400/30 bg-[#07112c]/70 p-5 shadow-[0_0_30px_rgba(0,229,255,0.18)]">
+        <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-500">{t("games.territories_name")}</h1>
+        <p className="mt-1 text-cyan-100/90">{t("games.territories_desc")}</p>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
+          <div className="rounded-xl border border-cyan-400/30 bg-black/25 p-4 md:col-span-1">
+            <p>{tx.balance}: <span className="font-bold text-yellow-300">{balance.toFixed(2)}</span></p>
+            <label className="mt-3 block text-sm">{tx.betAmount}</label>
+            <input type="number" min={1} value={wagerAmount} onChange={(e) => setWagerAmount(Number(e.target.value))} className="mt-1 w-full rounded bg-slate-900 p-2" />
+            <button onClick={createGame} className="mt-3 w-full rounded bg-gradient-to-r from-cyan-400 to-blue-500 p-2 font-bold text-black">{tx.createGame}</button>
+            <button onClick={playVsAI} className="mt-2 w-full rounded bg-gradient-to-r from-fuchsia-400 to-blue-500 p-2 font-bold text-black">{tx.playVsAi}</button>
           </div>
-          <button
-            onClick={submitMove}
-            className="mt-4 rounded bg-fuchsia-500 px-4 py-2 font-semibold"
-          >
-            Lock Attack
-          </button>
+
+          <div className="rounded-xl border border-cyan-400/30 bg-black/25 p-4 md:col-span-2">
+            <div className="mb-2 flex items-center justify-between"><h2 className="text-xl font-bold">{tx.availableGames}</h2><button className="rounded bg-cyan-500 px-2 py-1 text-black" onClick={fetchGames}>{tx.refresh}</button></div>
+            {availableGames.length === 0 ? <p className="text-slate-300">{tx.noOpenGames}</p> : (
+              <div className="space-y-2">
+                {availableGames.map((g) => (
+                  <div key={g.id} className="flex items-center justify-between rounded border border-cyan-700/40 p-3">
+                    <div><p>{tx.game} #{g.id.slice(0, 8)}</p><p className="text-xs text-slate-300">{tx.bet}: {g.wagerAmount}</p></div>
+                    <button onClick={() => joinGame(g.id)} className="rounded bg-cyan-400 px-3 py-1 font-bold text-black">{tx.join}</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        <aside className="rounded-lg border border-pink-400/30 p-4">
-          P1 Tiles: {state?.playerStates.player1.tilesOwned ?? 0}
-          <br />
-          P2 Tiles: {state?.playerStates.player2.tilesOwned ?? 0}
-        </aside>
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }
