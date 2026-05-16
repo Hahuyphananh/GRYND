@@ -186,7 +186,7 @@ useEffect(() => {
   return () => clearInterval(id);
 }, []);
 
-  const isMyTurn = turn === owner || (aiMode && turn === 2);
+  const isMyTurn = turn === owner;
   const canShoot = started && !winner && !isMoving(balls) && isMyTurn;
   const opponentSeat: PlayerTurn = owner === 1 ? 2 : 1;;
 
@@ -554,7 +554,9 @@ if (payload.balls && !isSelf) {
           router.replace(`/casino/pool-masters/game/${data.match.id}`);
         }
       }
-      if (data.viewerSeat) setOwner(data.viewerSeat);
+      if (data.viewerSeat && owner === 1) {
+  setOwner(data.viewerSeat);
+}
       if (data.viewerName) setMyName(data.viewerName);
       if (data.opponentName) setOppName(data.opponentName);
       const localShotInProgress = localShotInProgressRef.current || remoteShotInProgressRef.current;
@@ -607,8 +609,8 @@ return () => clearInterval(id);
       <div className="mx-auto mt-3 max-w-7xl rounded-2xl border border-black/70 bg-black/45 p-3 shadow-[0_20px_70px_rgba(0,0,0,.65)] sm:mt-6 sm:p-4">
         <div className="mb-2 text-center text-lg font-black text-yellow-300 drop-shadow sm:text-2xl">
           {started
-  ? isMyTurn
-    ? "You will shoot."
+  ? turn === owner
+    ? "Your turn."
     : `${oppName} is shooting...`
   : "Waiting for match start..."}
         </div>
