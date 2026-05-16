@@ -41,6 +41,7 @@ const isPublicRoute = createRouteMatcher([
   "/profile(.*)",
   "/casino/goonbet-clicker(.*)",
   "/casino/pool-masters(.*)",
+  "/casino/territory(.*)",
 ]);
 
 const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
@@ -74,10 +75,7 @@ function applySecurityHeaders(response: NextResponse) {
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Frame-Options", "SAMEORIGIN");
-  response.headers.set(
-    "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=()",
-  );
+  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 
   // Keep CSP strict enough for safety but compatible with current UI.
   response.headers.set(
@@ -92,13 +90,13 @@ function applySecurityHeaders(response: NextResponse) {
       "worker-src 'self' blob:; " +
       "frame-ancestors 'self'; " +
       "base-uri 'self'; " +
-      "form-action 'self'",
+      "form-action 'self'"
   );
 
   if (process.env.NODE_ENV === "production") {
     response.headers.set(
       "Strict-Transport-Security",
-      "max-age=31536000; includeSubDomains; preload",
+      "max-age=31536000; includeSubDomains; preload"
     );
   }
 
@@ -127,10 +125,7 @@ function isSameOriginMutation(req: Request) {
   );
 }
 
-const middlewareHandler = async (
-  auth: () => Promise<any>,
-  req: NextRequest,
-) => {
+const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => {
   cleanupRateLimitStore();
   const pathname = req.nextUrl.pathname;
   const ip = getClientIp(req);
@@ -149,15 +144,11 @@ const middlewareHandler = async (
           })
         : null;
 
-      const violated =
-        !ipResult.allowed || (userResult ? !userResult.allowed : false);
-      const activeResult =
-        userResult && !userResult.allowed ? userResult : ipResult;
+      const violated = !ipResult.allowed || (userResult ? !userResult.allowed : false);
+      const activeResult = userResult && !userResult.allowed ? userResult : ipResult;
 
       if (violated) {
-        const retryAfterSeconds = Math.ceil(
-          (activeResult.resetAt - Date.now()) / 1000,
-        );
+        const retryAfterSeconds = Math.ceil((activeResult.resetAt - Date.now()) / 1000);
         auditLog("rate_limit_exceeded", {
           ip,
           userId: userId ?? null,
@@ -180,51 +171,39 @@ const middlewareHandler = async (
                 "X-RateLimit-Remaining": String(activeResult.remaining),
                 "X-RateLimit-Reset": String(activeResult.resetAt),
               },
-            },
-          ),
+            }
+          )
         );
       }
     }
 
-    if (
-      MUTATION_METHODS.has(req.method) &&
-      !pathname.startsWith("/api/webhooks/")
-    ) {
+    if (MUTATION_METHODS.has(req.method) && !pathname.startsWith("/api/webhooks/")) {
       if (!isSameOriginMutation(req)) {
         auditLog("csrf_blocked", { ip, path: pathname, method: req.method });
         return applySecurityHeaders(
-          NextResponse.json(
-            { success: false, error: "CSRF validation failed." },
-            { status: 403 },
-          ),
+          NextResponse.json({ success: false, error: "CSRF validation failed." }, { status: 403 })
         );
       }
     }
 
     if (["POST", "PUT", "PATCH"].includes(req.method)) {
       const contentType = req.headers.get("content-type") || "";
-      if (
-        !contentType.includes("application/json") &&
-        !pathname.startsWith("/api/webhooks/")
-      ) {
+      if (!contentType.includes("application/json") && !pathname.startsWith("/api/webhooks/")) {
         return applySecurityHeaders(
           NextResponse.json(
             {
               success: false,
               error: "Invalid content type. Expected application/json.",
             },
-            { status: 415 },
-          ),
+            { status: 415 }
+          )
         );
       }
 
       const contentLength = Number(req.headers.get("content-length") || "0");
       if (Number.isFinite(contentLength) && contentLength > 64 * 1024) {
         return applySecurityHeaders(
-          NextResponse.json(
-            { success: false, error: "Payload too large." },
-            { status: 413 },
-          ),
+          NextResponse.json({ success: false, error: "Payload too large." }, { status: 413 })
         );
       }
     }
@@ -238,9 +217,7 @@ const middlewareHandler = async (
 
   if (!userId) {
     auditLog("auth_required_redirect", { ip, path: pathname });
-    return applySecurityHeaders(
-      NextResponse.redirect(new URL("/sign-in", req.url)),
-    );
+    return applySecurityHeaders(NextResponse.redirect(new URL("/sign-in", req.url)));
   }
 
   // ONLY enforce age on protected app routes, NOT on /sync or onboarding
@@ -253,9 +230,7 @@ const middlewareHandler = async (
     if (!age) {
       auditLog("missing_age_claim", { userId, ip, path: pathname });
 
-      return applySecurityHeaders(
-        NextResponse.redirect(new URL("/complete-profile", req.url)),
-      );
+      return applySecurityHeaders(NextResponse.redirect(new URL("/complete-profile", req.url)));
     }
 
     if (Number(age) < 18) {
@@ -266,9 +241,7 @@ const middlewareHandler = async (
         age: Number(age),
       });
 
-      return applySecurityHeaders(
-        NextResponse.redirect(new URL("/access-denied", req.url)),
-      );
+      return applySecurityHeaders(NextResponse.redirect(new URL("/access-denied", req.url)));
     }
   }
 
@@ -278,10 +251,7 @@ const middlewareHandler = async (
 const clerkProtectedMiddleware = clerkMiddleware(middlewareHandler);
 const hasClerkSecretKey = Boolean(process.env.CLERK_SECRET_KEY);
 
-export default async function middleware(
-  req: NextRequest,
-  event: NextFetchEvent,
-) {
+export default async function middleware(req: NextRequest, event: NextFetchEvent) {
   if (!hasClerkSecretKey) {
     return applySecurityHeaders(NextResponse.next());
   }
@@ -291,7 +261,7 @@ export default async function middleware(
   } catch (error) {
     console.error(
       "[middleware] Clerk middleware invocation failed; returning safe response.",
-      error,
+      error
     );
     return applySecurityHeaders(NextResponse.next());
   }

@@ -19,6 +19,7 @@ import Img14 from "../../images/connect-4.png";
 import Img15 from "../../images/towers.png";
 import Img16 from "../../images/clicker.png";
 import Img17 from "../../images/pool.png";
+import Img18 from "../../images/territories.png";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -38,8 +39,7 @@ function MainComponent() {
         credentials: "include",
       });
       const data = await response.json();
-      if (response.ok && data.success)
-        setFriendPresenceByGame(data.byGame || {});
+      if (response.ok && data.success) setFriendPresenceByGame(data.byGame || {});
     } catch (err) {
       console.error("[FRIEND_PRESENCE_ERROR]", err);
     }
@@ -174,12 +174,19 @@ function MainComponent() {
       image: Img17,
       descriptionKey: "games.pool_masters_desc",
     },
+
+    {
+      name: "Territories",
+      href: "/casino/territory",
+      leaderboardKey: "territory",
+      image: Img18,
+      descriptionKey: "games.territory_desc",
+      nameKey: "games.territory_name",
+    },
   ];
 
   const filteredGames = games.filter((game) =>
-    (game.nameKey ? t(game.nameKey) : game.name)
-      .toLowerCase()
-      .includes(search.toLowerCase()),
+    (game.nameKey ? t(game.nameKey) : game.name).toLowerCase().includes(search.toLowerCase())
   );
 
   const skillGameKeys = new Set([
@@ -190,9 +197,11 @@ function MainComponent() {
     "chess",
     "rps",
     "pool-masters",
+    "territory",
   ]);
 
   const newestOrder = [
+    "territory",
     "pool-masters",
     "goonbet-clicker",
     "lane-runner",
@@ -219,16 +228,12 @@ function MainComponent() {
   }
 
   if (activeFilter === "skill") {
-    displayedGames = displayedGames.filter((g) =>
-      skillGameKeys.has(g.leaderboardKey),
-    );
+    displayedGames = displayedGames.filter((g) => skillGameKeys.has(g.leaderboardKey));
   }
 
   if (activeFilter === "newest") {
     displayedGames.sort(
-      (a, b) =>
-        newestOrder.indexOf(a.leaderboardKey) -
-        newestOrder.indexOf(b.leaderboardKey),
+      (a, b) => newestOrder.indexOf(a.leaderboardKey) - newestOrder.indexOf(b.leaderboardKey)
     );
   }
 
@@ -266,8 +271,7 @@ function MainComponent() {
           href={`/classement?game=${game.leaderboardKey}`}
           className="text-xs text-[#00e5ff] underline underline-offset-2 hover:text-[#d8fbff]"
         >
-          {t("home.view_leaderboard")}{" "}
-          {game.nameKey ? t(game.nameKey) : game.name}
+          {t("home.view_leaderboard")} {game.nameKey ? t(game.nameKey) : game.name}
         </Link>
       </div>
 
@@ -275,31 +279,27 @@ function MainComponent() {
         friendPresenceByGame[game.leaderboardKey].length > 0 && (
           <div
             className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1"
-            title={friendPresenceByGame[game.leaderboardKey]
-              .map((f) => f.name)
-              .join(", ")}
+            title={friendPresenceByGame[game.leaderboardKey].map((f) => f.name).join(", ")}
           >
-            {friendPresenceByGame[game.leaderboardKey]
-              .slice(0, 4)
-              .map((friend) =>
-                friend.profilePicture ? (
-                  <img
-                    key={`${friend.id}-${friend.name}`}
-                    src={friend.profilePicture}
-                    alt={friend.name}
-                    className="h-6 w-6 rounded-full border border-white/30 object-cover"
-                    title={friend.name}
-                  />
-                ) : (
-                  <div
-                    key={`${friend.id}-${friend.name}`}
-                    className="h-6 w-6 rounded-full bg-[#FFD700] text-[#003366] text-xs font-bold flex items-center justify-center"
-                    title={friend.name}
-                  >
-                    {friend.name?.charAt(0)?.toUpperCase() || "U"}
-                  </div>
-                ),
-              )}
+            {friendPresenceByGame[game.leaderboardKey].slice(0, 4).map((friend) =>
+              friend.profilePicture ? (
+                <img
+                  key={`${friend.id}-${friend.name}`}
+                  src={friend.profilePicture}
+                  alt={friend.name}
+                  className="h-6 w-6 rounded-full border border-white/30 object-cover"
+                  title={friend.name}
+                />
+              ) : (
+                <div
+                  key={`${friend.id}-${friend.name}`}
+                  className="h-6 w-6 rounded-full bg-[#FFD700] text-[#003366] text-xs font-bold flex items-center justify-center"
+                  title={friend.name}
+                >
+                  {friend.name?.charAt(0)?.toUpperCase() || "U"}
+                </div>
+              )
+            )}
           </div>
         )}
     </div>
@@ -400,10 +400,7 @@ function MainComponent() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4 stagger-container">
               {displayedGames.map((game, index) => (
-                <div
-                  key={game.nameKey ? t(game.nameKey) : game.name}
-                  style={{ "--i": index }}
-                >
+                <div key={game.nameKey ? t(game.nameKey) : game.name} style={{ "--i": index }}>
                   <GameCard game={game} />
                 </div>
               ))}
