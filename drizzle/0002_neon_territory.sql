@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS neon_territory_actions (
   match_id UUID NOT NULL REFERENCES neon_territory_matches(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL,
   turn_number INT NOT NULL,
+  action_type TEXT NOT NULL DEFAULT 'attack' CHECK (action_type IN ('attack', 'reinforce', 'fortify')),
   target_x INT NOT NULL,
   target_y INT NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()

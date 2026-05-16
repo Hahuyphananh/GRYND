@@ -2,7 +2,15 @@ import { and, eq } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { neonTerritoryActions, neonTerritoryMatches } from "../../../../db/schema";
-import { pickAiAction, resolveTurn, validateAction, type MatchAction, type NeonGameState } from "../../../../lib/neonTerritoryEngine";
+import {
+  normalizeGameState,
+  pickAiAction,
+  resolveTurn,
+  validateAction,
+  type MatchAction,
+  type MatchActionType,
+  type NeonGameState,
+} from "../../../../lib/neonTerritoryEngine";
 
 export async function POST(req: Request) {
   const { userId } = await auth();
@@ -12,18 +20,49 @@ export async function POST(req: Request) {
   const [match] = await db.select().from(neonTerritoryMatches).where(eq(neonTerritoryMatches.id, body.matchId));
   if (!match) return Response.json({ error: "Match not found" }, { status: 404 });
 
-  const state = match.gameState as NeonGameState;
+  const state = normalizeGameState(match.gameState as NeonGameState);
   const player = match.player1Id === userId ? "player1" : match.player2Id === userId ? "player2" : null;
   if (!player) return Response.json({ error: "Not in match" }, { status: 403 });
 
-  const action: MatchAction = { userId, player, turnNumber: state.turnNumber, targetX: body.targetX, targetY: body.targetY };
+  const actionType = (body.actionType ?? "attack") as MatchActionType;
+  const action: MatchAction = {
+    userId,
+    player,
+    turnNumber: state.turnNumber,
+    actionType,
+    targetX: Number(body.targetX),
+    targetY: Number(body.targetY),
+  };
   const valid = validateAction(state, action);
   if (!valid.valid) return Response.json({ error: valid.error }, { status: 400 });
 
-  await db.insert(neonTerritoryActions).values({ matchId: match.id, userId, turnNumber: state.turnNumber, targetX: body.targetX, targetY: body.targetY });
+  const existingActions = await db
+    .select()
+    .from(neonTerritoryActions)
+    .where(and(eq(neonTerritoryActions.matchId, match.id), eq(neonTerritoryActions.turnNumber, state.turnNumber)));
+
+  if (existingActions.some((saved) => saved.userId === userId)) {
+    return Response.json({ error: "Move already locked for this turn" }, { status: 409 });
+  }
+
+  await db.insert(neonTerritoryActions).values({
+    matchId: match.id,
+    userId,
+    turnNumber: state.turnNumber,
+    actionType,
+    targetX: action.targetX,
+    targetY: action.targetY,
+  });
 
   const actions = await db.select().from(neonTerritoryActions).where(and(eq(neonTerritoryActions.matchId, match.id), eq(neonTerritoryActions.turnNumber, state.turnNumber)));
-  const mapped: MatchAction[] = actions.map((a) => ({ userId: a.userId, player: a.userId === match.player1Id ? "player1" : "player2", turnNumber: a.turnNumber, targetX: a.targetX, targetY: a.targetY }));
+  const mapped: MatchAction[] = actions.map((a) => ({
+    userId: a.userId,
+    player: a.userId === match.player1Id ? "player1" : "player2",
+    turnNumber: a.turnNumber,
+    actionType: (a.actionType ?? "attack") as MatchActionType,
+    targetX: a.targetX,
+    targetY: a.targetY,
+  }));
 
   if (match.player2Id === "ai-bot" && mapped.length === 1) {
     const aiAction = pickAiAction(state, "player2", "ai-bot");
@@ -35,9 +74,17 @@ export async function POST(req: Request) {
   }
 
   const nextState = resolveTurn(state, mapped);
+  const winnerId =
+    nextState.winner === "player1" ? match.player1Id : nextState.winner === "player2" ? match.player2Id : null;
   await db
     .update(neonTerritoryMatches)
-    .set({ gameState: nextState, turnNumber: nextState.turnNumber, status: nextState.status })
+    .set({
+      gameState: nextState,
+      turnNumber: nextState.turnNumber,
+      status: nextState.status,
+      winnerId,
+      endedAt: nextState.status === "finished" ? new Date() : null,
+    })
     .where(eq(neonTerritoryMatches.id, match.id));
 
   await db.delete(neonTerritoryActions).where(and(eq(neonTerritoryActions.matchId, match.id), eq(neonTerritoryActions.turnNumber, state.turnNumber)));

@@ -927,6 +927,7 @@ export const neonTerritoryActions = pgTable("neon_territory_actions", {
     .references(() => neonTerritoryMatches.id, { onDelete: "cascade" }),
   userId: text("user_id").notNull(),
   turnNumber: integer("turn_number").notNull(),
+  actionType: text("action_type").notNull().default("attack"),
   targetX: integer("target_x").notNull(),
   targetY: integer("target_y").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
