@@ -177,11 +177,11 @@ function MainComponent() {
 
     {
       name: "Territories",
-      href: "/casino/territory",
-      leaderboardKey: "territory",
+      href: "/casino/territories",
+      leaderboardKey: "territories",
       image: Img18,
-      descriptionKey: "games.territory_desc",
-      nameKey: "games.territory_name",
+      descriptionKey: "games.territories_desc",
+      nameKey: "games.territories_name",
     },
   ];
 

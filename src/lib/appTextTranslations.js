@@ -83,8 +83,8 @@ export const APP_TEXT_TRANSLATIONS = {
       pool_masters_desc: "Compete in a strategic game of pool. Sink the 8-ball to win!",
       chess_name: "Chess",
       rps_name: "Rock-Paper-Scissors",
-      territory_name: "Territory",
-      territory_desc:
+      territories_name: "Territories",
+      territories_desc:
         "Conquer territories on the map in this strategic game. The player with the most land wins!",
     },
     sports: {
