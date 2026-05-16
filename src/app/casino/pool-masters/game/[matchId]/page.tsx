@@ -199,7 +199,13 @@ useEffect(() => {
   const isSpectatingOpponent =
     started && !aiMode && !spectatorMode && !winner && turn !== owner;
   const canShoot = started && !winner && !isMoving(balls) && isMyTurn;
-  const showSpectateScreen = isSpectatingOpponent;
+  const opponentSeat: PlayerTurn = owner === 1 ? 2 : 1;
+const showSpectateScreen =
+  started &&
+  !aiMode &&
+  !winner &&
+  !spectatorMode &&
+  turn !== owner;
 
   const emitLiveState = (payload: Omit<PoolLivePayload, "matchId" | "version">) => {
     if (!socket || aiMode) return;
@@ -657,30 +663,26 @@ return () => clearInterval(id);
             onTouchStart={onDown}
             onTouchMove={onMove}
             onTouchEnd={onUp}
-              className={`w-full touch-none rounded-2xl border border-black bg-[#111] shadow-[0_12px_40px_rgba(0,0,0,.75)] ${showSpectateScreen || spectatorMode ? "pointer-events-none" : ""}`}
+              className={`w-full touch-none rounded-2xl border border-black bg-[#111] shadow-[0_12px_40px_rgba(0,0,0,.75)] ${spectatorMode ? "pointer-events-none" : ""}`}
             />
-          {showSpectateScreen && (
-  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/75 backdrop-blur-sm">
-    <div className="rounded-2xl border border-cyan-400/30 bg-[#111]/95 px-8 py-6 text-center shadow-2xl">
-      <p className="text-2xl font-black text-cyan-300 animate-pulse">
+ {showSpectateScreen && (
+  <div className="absolute inset-0 z-10 overflow-hidden rounded-2xl border border-cyan-400/30 bg-black">
+    <iframe
+      key={`${activeMatchId}-${opponentSeat}`}
+      src={`/casino/pool-masters/game/${activeMatchId}?spectator=1&spectateSeat=${opponentSeat}`}
+      title="Opponent POV"
+      className="h-full w-full scale-[1.01] border-0 bg-black"
+      allow="autoplay"
+    />
+
+    <div className="pointer-events-none absolute left-3 top-3 rounded-xl bg-black/70 px-4 py-2 backdrop-blur-sm">
+      <p className="text-lg font-black text-cyan-300">
         🎱 Spectating {oppName}
       </p>
 
-      <p className="mt-2 text-sm text-slate-300">
-        Waiting for opponent's shot...
+      <p className="text-xs text-slate-300">
+        Live opponent view
       </p>
-
-      <div className="mt-5 flex items-center justify-center gap-2">
-        <div className="h-3 w-3 animate-bounce rounded-full bg-cyan-400" />
-        <div
-          className="h-3 w-3 animate-bounce rounded-full bg-cyan-400"
-          style={{ animationDelay: "0.15s" }}
-        />
-        <div
-          className="h-3 w-3 animate-bounce rounded-full bg-cyan-400"
-          style={{ animationDelay: "0.3s" }}
-        />
-      </div>
     </div>
   </div>
 )}
