@@ -11,7 +11,7 @@ export type NeonTile = {
   capital?: boolean;
 };
 
-export type MatchActionType = "attack" | "reinforce" | "fortify";
+export type MatchActionType = "attack" | "reinforce" | "fortify" | "skip";
 
 export type MatchAction = {
   userId: string;
@@ -38,21 +38,22 @@ export type NeonGameState = {
 };
 
 const SIZE = 5;
-const STARTING_ENERGY = 3;
-const ENERGY_GAIN = 3;
+const STARTING_ENERGY = 5;
+const ENERGY_GAIN = 2;
 const MAX_ENERGY = 10;
 const ACTION_COSTS: Record<MatchActionType, number> = {
   attack: 2,
   reinforce: 1,
   fortify: 1,
+  skip: 0,
 };
 
 export function createInitialState(player1Id: string, player2Id: string): NeonGameState {
   const grid: NeonTile[][] = Array.from({ length: SIZE }, (_, y) =>
     Array.from(
       { length: SIZE },
-      (_, x) => ({ x, y, owner: "neutral", troops: 0, shield: 0 }) as NeonTile,
-    ),
+      (_, x) => ({ x, y, owner: "neutral", troops: 0, shield: 0 }) as NeonTile
+    )
   );
 
   grid[0][0] = { x: 0, y: 0, owner: "player1", troops: 5, shield: 1, capital: true };
@@ -108,7 +109,7 @@ export function normalizeGameState(state: NeonGameState): NeonGameState {
         shield: 0,
         capital: isLegacyCapital || undefined,
       };
-    }),
+    })
   );
 
   const player1Tiles = countTiles(grid, "player1");
@@ -160,26 +161,38 @@ function getActionCost(actionType: MatchActionType): number {
   return ACTION_COSTS[actionType];
 }
 
+function isBorderTile(state: NeonGameState, x: number, y: number, player: PlayerSlot): boolean {
+  const neighbors = getNeighbors(x, y);
+
+  return neighbors.some(([nx, ny]) => {
+    const tile = state.grid[ny][nx];
+    return tile.owner !== player; // enemy OR neutral = border
+  });
+}
+
 export function isAdjacentToPlayer(
   state: NeonGameState,
   targetX: number,
   targetY: number,
-  player: PlayerSlot,
+  player: PlayerSlot
 ): boolean {
   return getNeighbors(targetX, targetY).some(([nx, ny]) => state.grid[ny][nx].owner === player);
 }
 
 export function validateAction(
   rawState: NeonGameState,
-  action: MatchAction,
+  action: MatchAction
 ): { valid: boolean; error?: string } {
   const state = normalizeGameState(rawState);
   const { targetX, targetY, player, turnNumber, actionType } = action;
 
   if (state.status !== "active") return { valid: false, error: "Match is finished" };
   if (turnNumber !== state.turnNumber) return { valid: false, error: "Turn mismatch" };
-  if (!["attack", "reinforce", "fortify"].includes(actionType)) {
+  if (!["attack", "reinforce", "fortify", "skip"].includes(actionType)) {
     return { valid: false, error: "Invalid action type" };
+  }
+  if (actionType === "skip") {
+    return { valid: true };
   }
   if (targetX < 0 || targetX >= SIZE || targetY < 0 || targetY >= SIZE) {
     return { valid: false, error: "Invalid coordinates" };
@@ -198,8 +211,18 @@ export function validateAction(
     return { valid: true };
   }
 
-  if (tile.owner !== player) return { valid: false, error: "Target must be your territory" };
-  if (!adjacent) return { valid: false, error: "Target must border another owned territory" };
+  if (tile.owner !== player) {
+    return { valid: false, error: "Target must be your territory" };
+  }
+
+  if (actionType === "reinforce" || actionType === "fortify") {
+    if (!isBorderTile(state, targetX, targetY, player)) {
+      return {
+        valid: false,
+        error: "Can only reinforce border territories",
+      };
+    }
+  }
 
   return { valid: true };
 }
@@ -213,13 +236,20 @@ export function resolveTurn(rawState: NeonGameState, actions: MatchAction[]): Ne
   };
 
   for (const action of actions) {
+    if (action.actionType === "skip") {
+      const p = action.player;
+
+      nextPlayerStates[p].energy = clampEnergy(nextPlayerStates[p].energy - getActionCost("skip"));
+
+      continue;
+    }
     const workingState = { ...state, grid: nextGrid, playerStates: nextPlayerStates };
     const validation = validateAction(workingState, action);
     if (!validation.valid) continue;
 
     const tile = nextGrid[action.targetY][action.targetX];
     nextPlayerStates[action.player].energy = clampEnergy(
-      nextPlayerStates[action.player].energy - getActionCost(action.actionType),
+      nextPlayerStates[action.player].energy - getActionCost(action.actionType)
     );
 
     if (action.actionType === "reinforce") {
@@ -275,7 +305,7 @@ export function resolveTurn(rawState: NeonGameState, actions: MatchAction[]): Ne
 export function pickAiAction(
   rawState: NeonGameState,
   aiPlayer: PlayerSlot,
-  aiUserId: string,
+  aiUserId: string
 ): MatchAction | null {
   const state = normalizeGameState(rawState);
   const enemy = aiPlayer === "player1" ? "player2" : "player1";
@@ -289,13 +319,22 @@ export function pickAiAction(
   if (energy >= ACTION_COSTS.attack) {
     const attackTargets = state.grid
       .flat()
-      .filter((tile) => tile.owner !== aiPlayer && isAdjacentToPlayer(state, tile.x, tile.y, aiPlayer))
+      .filter(
+        (tile) => tile.owner !== aiPlayer && isAdjacentToPlayer(state, tile.x, tile.y, aiPlayer)
+      )
       .sort((a, b) => {
-        const ownerPriorityA = a.owner === enemy ? 2 : 1;
-        const ownerPriorityB = b.owner === enemy ? 2 : 1;
-        const weaknessA = 10 - a.troops * 2 - a.shield + (a.capital ? -3 : 0);
-        const weaknessB = 10 - b.troops * 2 - b.shield + (b.capital ? -3 : 0);
-        return ownerPriorityB - ownerPriorityA || weaknessB - weaknessA;
+        const score = (t: NeonTile) => {
+          const isEnemy = t.owner === enemy ? 10 : 0;
+          const weak = 10 - t.troops * 2 - t.shield + (t.capital ? 5 : 0);
+          const borderPressure = getNeighbors(t.x, t.y).some(
+            ([nx, ny]) => state.grid[ny][nx].owner !== aiPlayer
+          )
+            ? 5
+            : 0;
+          return isEnemy + weak + borderPressure;
+        };
+
+        return score(b) - score(a);
       });
 
     if (attackTargets.length) {
@@ -306,11 +345,19 @@ export function pickAiAction(
 
   const ownedTargets = state.grid
     .flat()
-    .filter((tile) => tile.owner === aiPlayer && isAdjacentToPlayer(state, tile.x, tile.y, aiPlayer));
+    .filter(
+      (tile) => tile.owner === aiPlayer && isAdjacentToPlayer(state, tile.x, tile.y, aiPlayer)
+    );
 
-  const weakOwned = ownedTargets
-    .filter((tile) => tile.troops <= 2)
-    .sort((a, b) => a.troops - b.troops || a.shield - b.shield);
+  const weakOwned = state.grid
+    .flat()
+    .filter(
+      (tile) =>
+        tile.owner === aiPlayer &&
+        getNeighbors(tile.x, tile.y).some(([nx, ny]) => state.grid[ny][nx].owner !== aiPlayer)
+    )
+    .filter((tile) => tile.troops <= 3)
+    .sort((a, b) => a.troops - b.troops);
 
   if (energy >= ACTION_COSTS.reinforce && weakOwned.length) {
     const target = weakOwned[0];
@@ -322,7 +369,17 @@ export function pickAiAction(
     return { ...baseAction, actionType: "fortify", targetX: capital.x, targetY: capital.y };
   }
 
-  const fortifyTarget = ownedTargets.sort((a, b) => a.shield - b.shield || a.troops - b.troops)[0];
+  const fortifyTarget = state.grid
+    .flat()
+    .filter(
+      (tile) =>
+        tile.owner === aiPlayer &&
+        getNeighbors(tile.x, tile.y).some(([nx, ny]) => state.grid[ny][nx].owner !== aiPlayer)
+    )
+    .sort((a, b) => {
+      const score = (t: NeonTile) => (t.capital ? 10 : 0) - t.shield * 2 - t.troops;
+      return score(a) - score(b);
+    })[0];
   if (energy >= ACTION_COSTS.fortify && fortifyTarget) {
     return {
       ...baseAction,

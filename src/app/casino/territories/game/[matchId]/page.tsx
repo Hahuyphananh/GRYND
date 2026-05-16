@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import NavigationBar from "../../../../../components/navigation-bar";
 
 type Owner = "neutral" | "player1" | "player2";
-type ActionType = "attack" | "reinforce" | "fortify";
+type ActionType = "attack" | "reinforce" | "fortify" | "skip";
 type Tile = {
   x: number;
   y: number;
@@ -24,9 +24,31 @@ type State = {
 };
 
 const ACTIONS: Array<{ id: ActionType; label: string; cost: number; description: string }> = [
-  { id: "attack", label: "Attack", cost: 2, description: "Damage shields, then troops. Conquer at zero." },
-  { id: "reinforce", label: "Reinforce", cost: 1, description: "Add one troop to an adjacent owned territory." },
-  { id: "fortify", label: "Fortify", cost: 1, description: "Add one shield to an adjacent owned territory." },
+  {
+    id: "attack",
+    label: "Attack",
+    cost: 2,
+    description: "Damage shields, then troops. Conquer at zero.",
+  },
+  {
+    id: "reinforce",
+    label: "Reinforce",
+    cost: 1,
+    description: "Add one troop to an adjacent owned territory.",
+  },
+  {
+    id: "fortify",
+    label: "Fortify",
+    cost: 1,
+    description: "Add one shield to an adjacent owned territory.",
+  },
+
+  {
+    id: "skip",
+    label: "Skip Turn",
+    cost: 0,
+    description: "End your turn without taking an action.",
+  },
 ];
 
 function normalizeState(raw: State | null): State | null {
@@ -46,7 +68,7 @@ function normalizeState(raw: State | null): State | null {
         shield: typeof tile.shield === "number" ? tile.shield : 0,
         capital: capital || undefined,
       };
-    }),
+    })
   );
 
   const player1Tiles = grid.flat().filter((tile) => tile.owner === "player1").length;
@@ -59,12 +81,12 @@ function normalizeState(raw: State | null): State | null {
       player1: {
         ...raw.playerStates.player1,
         tilesOwned: player1Tiles,
-        energy: raw.playerStates.player1.energy ?? 3,
+        energy: raw.playerStates.player1.energy ?? 0,
       },
       player2: {
         ...raw.playerStates.player2,
         tilesOwned: player2Tiles,
-        energy: raw.playerStates.player2.energy ?? 3,
+        energy: raw.playerStates.player2.energy ?? 0,
       },
     },
   };
@@ -84,7 +106,9 @@ function neighbors(grid: Tile[][], tile: Tile): Tile[] {
 }
 
 function hasOwnedNeighbor(grid: Tile[][], tile: Tile, owner: Owner) {
-  return owner !== "neutral" && neighbors(grid, tile).some((candidate) => candidate.owner === owner);
+  return (
+    owner !== "neutral" && neighbors(grid, tile).some((candidate) => candidate.owner === owner)
+  );
 }
 
 export default function TerritoriesGamePage() {
@@ -96,17 +120,15 @@ export default function TerritoriesGamePage() {
   const [resolvedMatchId, setResolvedMatchId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("Choose a tactical order.");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [energyPreview, setEnergyPreview] = useState<Record<string, number> | null>(null);
 
-  const loadMatch = useCallback(
-    async (matchId: string) => {
-      const res = await fetch(`/api/neon-territory/get-match?matchId=${matchId}`, {
-        cache: "no-store",
-      });
-      const data = await res.json();
-      setState(normalizeState(data?.match?.gameState || null));
-    },
-    [],
-  );
+  const loadMatch = useCallback(async (matchId: string) => {
+    const res = await fetch(`/api/neon-territory/get-match?matchId=${matchId}`, {
+      cache: "no-store",
+    });
+    const data = await res.json();
+    setState(normalizeState(data?.match?.gameState || null));
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -138,15 +160,23 @@ export default function TerritoriesGamePage() {
 
   const tiles = useMemo(() => state?.grid.flat() ?? [], [state]);
   const selectedTile = useMemo(
-    () => (selected && state ? state.grid[selected.y]?.[selected.x] ?? null : null),
-    [selected, state],
+    () => (selected && state ? (state.grid[selected.y]?.[selected.x] ?? null) : null),
+    [selected, state]
   );
   const actionMeta = ACTIONS.find((action) => action.id === actionType) ?? ACTIONS[0];
 
   const submitMove = async () => {
-    if (!resolvedMatchId || !selected || !state) return;
+    if (!resolvedMatchId || !state) return;
+    if (actionType !== "skip" && !selected) return;
     setIsSubmitting(true);
     setNotice("Locking order...");
+
+    const cost = ACTIONS.find((a) => a.id === actionType)?.cost ?? 1;
+
+    setEnergyPreview((prev) => ({
+      player1: (state?.playerStates.player1.energy ?? 0) - cost,
+      player2: state?.playerStates.player2.energy ?? 0,
+    }));
 
     const res = await fetch("/api/neon-territory/action", {
       method: "POST",
@@ -154,8 +184,8 @@ export default function TerritoriesGamePage() {
       body: JSON.stringify({
         matchId: resolvedMatchId,
         actionType,
-        targetX: selected.x,
-        targetY: selected.y,
+        targetX: actionType === "skip" ? -1 : selected.x,
+        targetY: actionType === "skip" ? -1 : selected.y,
       }),
     });
     const data = await res.json();
@@ -172,7 +202,12 @@ export default function TerritoriesGamePage() {
     }
 
     if (data?.state) {
+      const newState = normalizeState(data.state);
+      setEnergyPreview(null);
+
+      // immediate UI feedback correction
       setState(normalizeState(data.state));
+
       setSelected(null);
       setNotice("Turn resolved.");
     }
@@ -186,7 +221,9 @@ export default function TerritoriesGamePage() {
           <p className="text-xs uppercase tracking-[0.24em] text-cyan-200/80">Command Link</p>
           <p className="mt-3 text-3xl font-black text-cyan-100">Turn {state?.turnNumber ?? 0}</p>
           <p className="mt-1 text-sm text-cyan-100/75">
-            {state?.status === "finished" ? `Winner: ${state.winner?.toUpperCase()}` : "Active tactical phase"}
+            {state?.status === "finished"
+              ? `Winner: ${state.winner?.toUpperCase()}`
+              : "Active tactical phase"}
           </p>
           <div className="mt-5 grid gap-3">
             {ACTIONS.map((action) => (
@@ -214,7 +251,9 @@ export default function TerritoriesGamePage() {
         <div className="rounded-xl border border-cyan-300/50 bg-gradient-to-b from-[#09254f] to-[#081327] p-3 shadow-[0_0_34px_rgba(0,229,255,0.28)] sm:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-fuchsia-200/75">Selected Order</p>
+              <p className="text-xs uppercase tracking-[0.22em] text-fuchsia-200/75">
+                Selected Order
+              </p>
               <h1 className="text-2xl font-black text-white sm:text-3xl">{actionMeta.label}</h1>
             </div>
             <div className="rounded-md border border-fuchsia-300/40 bg-fuchsia-500/10 px-3 py-2 text-sm text-fuchsia-50">
@@ -233,7 +272,14 @@ export default function TerritoriesGamePage() {
               const isSelected = selected?.x === tile.x && selected?.y === tile.y;
               const adjacentP1 = state ? hasOwnedNeighbor(state.grid, tile, "player1") : false;
               const adjacentP2 = state ? hasOwnedNeighbor(state.grid, tile, "player2") : false;
-              const canBeAttacked = actionType === "attack" && tile.owner !== "neutral" ? true : actionType === "attack";
+              const isBorder =
+                state &&
+                tile.owner === "player1" &&
+                neighbors(state.grid, tile).some((t) => t.owner !== "player1");
+              const canBeAttacked =
+                actionType === "attack" && tile.owner !== "neutral"
+                  ? true
+                  : actionType === "attack";
               const tacticalHint =
                 canBeAttacked || (actionType !== "attack" && (adjacentP1 || adjacentP2))
                   ? "hover:scale-[1.03] hover:border-yellow-200"
@@ -244,8 +290,10 @@ export default function TerritoriesGamePage() {
                   key={`${tile.x}-${tile.y}`}
                   onClick={() => setSelected({ x: tile.x, y: tile.y })}
                   className={`relative aspect-square overflow-hidden rounded-md border ${ownerClass} ${tacticalHint} ${
-                    isSelected ? "ring-2 ring-yellow-300 shadow-[0_0_24px_rgba(253,224,71,0.42)]" : ""
-                  } transition duration-200`}
+                    isSelected
+                      ? "ring-2 ring-yellow-300 shadow-[0_0_24px_rgba(253,224,71,0.42)]"
+                      : ""
+                  } transition duration-200 ${isBorder ? "ring-1 ring-yellow-300/40" : ""}`}
                 >
                   {tile.capital ? (
                     <span className="absolute left-1 top-1 rounded-sm border border-yellow-200/70 bg-yellow-300/20 px-1 text-[9px] font-black text-yellow-100">
@@ -254,12 +302,16 @@ export default function TerritoriesGamePage() {
                   ) : null}
                   <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-current opacity-70" />
                   <span className="flex h-full flex-col items-center justify-center gap-1">
-                    <span className="text-lg font-black leading-none sm:text-2xl">{tile.troops}</span>
+                    <span className="text-lg font-black leading-none sm:text-2xl">
+                      {tile.troops}
+                    </span>
                     <span className="rounded border border-white/15 bg-black/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">
                       SH {tile.shield}
                     </span>
                   </span>
-                  {isSelected ? <span className="absolute inset-0 animate-pulse bg-yellow-300/10" /> : null}
+                  {isSelected ? (
+                    <span className="absolute inset-0 animate-pulse bg-yellow-300/10" />
+                  ) : null}
                 </button>
               );
             })}
@@ -289,17 +341,34 @@ export default function TerritoriesGamePage() {
           <div className="mt-4 grid gap-3">
             <div className="rounded-md border border-cyan-300/30 bg-cyan-400/10 p-3">
               <p className="text-sm font-bold text-cyan-100">Player 1</p>
-              <p className="mt-2 text-2xl font-black">{state?.playerStates.player1.tilesOwned ?? 0} tiles</p>
-              <p className="text-sm text-cyan-50/75">{state?.playerStates.player1.energy ?? 0}/10 energy</p>
+              <p className="mt-2 text-2xl font-black">
+                {state?.playerStates.player1.tilesOwned ?? 0} tiles
+              </p>
+              <p className="text-sm text-cyan-50/75">
+                {energyPreview?.player1 ?? state?.playerStates.player1.energy ?? 0}/10 energy
+              </p>
             </div>
             <div className="rounded-md border border-fuchsia-300/30 bg-fuchsia-400/10 p-3">
               <p className="text-sm font-bold text-fuchsia-100">Player 2</p>
-              <p className="mt-2 text-2xl font-black">{state?.playerStates.player2.tilesOwned ?? 0} tiles</p>
-              <p className="text-sm text-fuchsia-50/75">{state?.playerStates.player2.energy ?? 0}/10 energy</p>
+              <p className="mt-2 text-2xl font-black">
+                {state?.playerStates.player2.tilesOwned ?? 0} tiles
+              </p>
+              <p className="text-sm text-fuchsia-50/75">
+                {state?.playerStates.player2.energy ?? 0}/10 energy
+              </p>
             </div>
           </div>
-          <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3 text-xs leading-5 text-white/65">
-            Attacks burn shield before troops. Reinforce and fortify require an owned target connected to your front.
+          <div className="mt-4 rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-white/70">
+            <p className="mb-2 text-sm font-bold text-white">Game Rules</p>
+
+            <ul className="space-y-1 leading-5">
+              <li>⚔️ Attack adjacent enemy or neutral tiles</li>
+              <li>🧱 Reinforce ONLY border tiles (touching enemy/neutral)</li>
+              <li>🛡️ Fortify ONLY border tiles</li>
+              <li>⚡ Actions cost energy</li>
+              <li>🏴 Capitals are strategic anchors</li>
+              <li>🎯 Shield absorbs damage first</li>
+            </ul>
           </div>
         </aside>
       </section>

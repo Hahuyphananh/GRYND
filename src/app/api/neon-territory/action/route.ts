@@ -17,11 +17,16 @@ export async function POST(req: Request) {
   if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
 
-  const [match] = await db.select().from(neonTerritoryMatches).where(eq(neonTerritoryMatches.id, body.matchId));
+  const [match] = await db
+    .select()
+    .from(neonTerritoryMatches)
+    .where(eq(neonTerritoryMatches.id, body.matchId));
   if (!match) return Response.json({ error: "Match not found" }, { status: 404 });
 
-  const state = normalizeGameState(match.gameState as NeonGameState);
-  const player = match.player1Id === userId ? "player1" : match.player2Id === userId ? "player2" : null;
+  const rawState = match.gameState as NeonGameState;
+  const state = normalizeGameState(rawState);
+  const player =
+    match.player1Id === userId ? "player1" : match.player2Id === userId ? "player2" : null;
   if (!player) return Response.json({ error: "Not in match" }, { status: 403 });
 
   const actionType = (body.actionType ?? "attack") as MatchActionType;
@@ -39,7 +44,12 @@ export async function POST(req: Request) {
   const existingActions = await db
     .select()
     .from(neonTerritoryActions)
-    .where(and(eq(neonTerritoryActions.matchId, match.id), eq(neonTerritoryActions.turnNumber, state.turnNumber)));
+    .where(
+      and(
+        eq(neonTerritoryActions.matchId, match.id),
+        eq(neonTerritoryActions.turnNumber, state.turnNumber)
+      )
+    );
 
   if (existingActions.some((saved) => saved.userId === userId)) {
     return Response.json({ error: "Move already locked for this turn" }, { status: 409 });
@@ -54,7 +64,15 @@ export async function POST(req: Request) {
     targetY: action.targetY,
   });
 
-  const actions = await db.select().from(neonTerritoryActions).where(and(eq(neonTerritoryActions.matchId, match.id), eq(neonTerritoryActions.turnNumber, state.turnNumber)));
+  const actions = await db
+    .select()
+    .from(neonTerritoryActions)
+    .where(
+      and(
+        eq(neonTerritoryActions.matchId, match.id),
+        eq(neonTerritoryActions.turnNumber, state.turnNumber)
+      )
+    );
   const mapped: MatchAction[] = actions.map((a) => ({
     userId: a.userId,
     player: a.userId === match.player1Id ? "player1" : "player2",
@@ -65,8 +83,11 @@ export async function POST(req: Request) {
   }));
 
   if (match.player2Id === "ai-bot" && mapped.length === 1) {
-    const aiAction = pickAiAction(state, "player2", "ai-bot");
-    if (aiAction) mapped.push(aiAction);
+    // IMPORTANT: use RAW state for AI, NOT normalized/UI state
+    const aiAction = pickAiAction(rawState, "player2", "ai-bot");
+    if (aiAction) {
+      mapped.push(aiAction);
+    }
   }
 
   if (mapped.length < 2 && match.player2Id !== "ai-bot") {
@@ -75,7 +96,11 @@ export async function POST(req: Request) {
 
   const nextState = resolveTurn(state, mapped);
   const winnerId =
-    nextState.winner === "player1" ? match.player1Id : nextState.winner === "player2" ? match.player2Id : null;
+    nextState.winner === "player1"
+      ? match.player1Id
+      : nextState.winner === "player2"
+        ? match.player2Id
+        : null;
   await db
     .update(neonTerritoryMatches)
     .set({
@@ -87,7 +112,14 @@ export async function POST(req: Request) {
     })
     .where(eq(neonTerritoryMatches.id, match.id));
 
-  await db.delete(neonTerritoryActions).where(and(eq(neonTerritoryActions.matchId, match.id), eq(neonTerritoryActions.turnNumber, state.turnNumber)));
+  await db
+    .delete(neonTerritoryActions)
+    .where(
+      and(
+        eq(neonTerritoryActions.matchId, match.id),
+        eq(neonTerritoryActions.turnNumber, state.turnNumber)
+      )
+    );
 
   return Response.json({ ok: true, state: nextState });
 }
