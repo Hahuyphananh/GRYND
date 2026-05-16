@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "@/db";
-import { neonTerritoryActions, neonTerritoryMatches } from "@/db/schema";
-import { pickAiAction, resolveTurn, validateAction, type MatchAction, type NeonGameState } from "@/lib/neonTerritoryEngine";
+import { db } from "../../../../db";
+import { neonTerritoryActions, neonTerritoryMatches } from "../../../../db/schema";
+import { pickAiAction, resolveTurn, validateAction, type MatchAction, type NeonGameState } from "../../../../lib/neonTerritoryEngine";
 
 export async function POST(req: Request) {
   const { userId } = await auth();

@@ -1,11 +1,12 @@
 import { createServer } from "http";
-import { Server } from "socket.io";
 
 export function startNeonTerritorySocketServer(port = 8080) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Server } = require("socket.io");
   const httpServer = createServer();
   const io = new Server(httpServer, { cors: { origin: "*" } });
 
-  io.on("connection", (socket) => {
+  io.on("connection", (socket: { on: (event: string, cb: (payload: any) => void) => void; join: (room: string) => void; leave: (room: string) => void }) => {
     socket.on("match:join", ({ matchId }) => socket.join(`match:${matchId}`));
     socket.on("match:leave", ({ matchId }) => socket.leave(`match:${matchId}`));
     socket.on("action:submit", (payload) => io.to(`match:${payload.matchId}`).emit("turn:end", payload));

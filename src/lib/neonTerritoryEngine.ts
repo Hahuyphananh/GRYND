@@ -48,12 +48,16 @@ export function createInitialState(player1Id: string, player2Id: string): NeonGa
 }
 
 function getNeighbors(x: number, y: number): [number, number][] {
-  return [
+  const neighbors: [number, number][] = [
     [x - 1, y],
     [x + 1, y],
     [x, y - 1],
     [x, y + 1],
-  ].filter(([nx, ny]) => nx >= 0 && nx < SIZE && ny >= 0 && ny < SIZE);
+  ];
+
+  return neighbors.filter(
+    ([nx, ny]) => nx >= 0 && nx < SIZE && ny >= 0 && ny < SIZE,
+  );
 }
 
 export function isAdjacentToPlayer(state: NeonGameState, targetX: number, targetY: number, player: PlayerSlot): boolean {
@@ -75,7 +79,7 @@ export function resolveTurn(state: NeonGameState, actions: MatchAction[]): NeonG
 
   for (const action of actions) {
     const tile = nextGrid[action.targetY][action.targetX];
-    tile.hp = Math.min(2, (tile.hp + 1) as 0 | 1 | 2);
+    tile.hp = Math.min(2, tile.hp + 1) as 0 | 1 | 2;
     if (tile.hp >= 2) {
       tile.owner = action.player;
       tile.hp = 2;
