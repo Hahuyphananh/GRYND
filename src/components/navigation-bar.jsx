@@ -207,7 +207,7 @@ function NavigationBar({ currentPath }) {
         data-no-translate="true"
         className="
 fixed top-0 left-0 right-0
-z-[50]
+z-[2147483647]
 border-b border-[#00e5ff]/40
 bg-[#050b1e]/95
 backdrop-blur-md
@@ -382,7 +382,7 @@ supports-[padding:max(0px)]:pt-[env(safe-area-inset-top)]
           </div>
         </UIPro01NavShell>
         {mobileMenuOpen && (
-          <div className="fixed top-0 left-0 z-[50] h-full w-full pointer-events-none">
+          <div className="fixed top-0 left-0 z-[2147483647] h-full w-full pointer-events-none">
             {/* SIDEBAR */}
             <div
               className="
