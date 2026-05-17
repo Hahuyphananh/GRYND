@@ -59,6 +59,10 @@ function NavigationBar({ currentPath }) {
     return typeof url === "string" && url.startsWith("data:image/");
   };
 
+  const isIOS =
+  typeof window !== "undefined" &&
+  /iPad|iPhone|iPod/.test(navigator.userAgent);
+
   useEffect(() => {
     const handler = () => fetchBalance({ includeMeta: false });
     const balanceHandler = (event) => {
@@ -346,36 +350,84 @@ function NavigationBar({ currentPath }) {
             </div>
           </div>
         </UIPro01NavShell>
-        <div className="md:hidden">
-          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#00e5ff]/40 bg-[#050b1e]/95 px-2 py-2 backdrop-blur-md">
-            <div className="grid grid-cols-4 gap-2">
-              {["/", "/sport", "/casino", "/classement"].map((path) => (
-                <Link key={path} href={path} className={`rounded-lg px-2 py-3 text-center text-xs ${currentPath === path || (path === "/casino" && isCasinoPath) ? "bg-[#00e5ff]/25 text-[#f5ff3b]" : "bg-[#091737] text-[#9dd8ff]"}`}>
-                  {t(NAV_TRANSLATION_KEYS[path])}
-                </Link>
-              ))}
+        {mobileMenuOpen && (
+  <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
+
+    {/* SIDEBAR */}
+    <div className="absolute left-0 top-0 h-full w-72 bg-[#08142f] border-r border-[#00e5ff]/30 p-4 space-y-4">
+
+      {/* CLOSE */}
+      <button
+        onClick={() => setMobileMenuOpen(false)}
+        className="text-[#f5ff3b] text-sm"
+      >
+        ✕ Close
+      </button>
+
+      {/* PROFILE */}
+      {isSignedIn && (
+        <Link
+          href="/profil"
+          onClick={() => setMobileMenuOpen(false)}
+          className="flex items-center gap-3"
+        >
+          <img
+            src={avatarSrc}
+            className="h-10 w-10 rounded-full"
+          />
+          <div>
+            <div className="text-[#c9f7ff] text-sm">
+              {profile?.name || "User"}
+            </div>
+            <div className="text-xs text-[#f5ff3b]">
+              {profile?.selectedTitle}
             </div>
           </div>
-          {mobileMenuOpen && (
-            
-            <div className="border-t border-[#00e5ff]/30 bg-[#08142f] p-3">
-              {canInstall && mobileMenuOpen &&(
-  <button
-    onClick={install}
-    className="w-full rounded-lg bg-[#f5ff3b]/10 px-3 py-2 text-sm text-[#f5ff3b]"
-  >
-    📲 Install App
-  </button>
-)}
-              {!isSignedIn ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <Link href="/sign-up" className="rounded-lg bg-[#FFFF33]/20 px-3 py-2 text-center text-sm text-[#d8fbff]">Sign up</Link>
-                  <Link href="/sign-in" className="rounded-lg bg-[#00e5ff]/20 px-3 py-2 text-center text-sm text-[#d8fbff]">Sign in</Link>
-                </div>
-              ) : null}
-            </div>
-          )}
+        </Link>
+      )}
+
+      {/* TOKENS */}
+      {isSignedIn && (
+        <div className="rounded-lg border border-[#00e5ff]/30 bg-[#091737] p-3 text-sm text-[#67f9ff]">
+          💰 Tokens:{" "}
+          {balance !== null
+            ? Number(balance).toFixed(2)
+            : "Loading..."}
         </div>
+      )}
+
+      {/* NAV LINKS */}
+      <div className="space-y-2">
+        {["/", "/sport", "/casino", "/classement"].map((path) => (
+          <Link
+            key={path}
+            href={path}
+            onClick={() => setMobileMenuOpen(false)}
+            className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
+          >
+            {t(NAV_TRANSLATION_KEYS[path])}
+          </Link>
+        ))}
+      </div>
+
+      {/* INSTALL BUTTON */}
+      {(canInstall || isIOS) && (
+        <button
+          onClick={install}
+          className="w-full rounded-lg bg-[#f5ff3b]/10 px-3 py-2 text-[#f5ff3b]"
+        >
+          📲 Install App
+        </button>
+      )}
+    </div>
+
+    {/* CLICK OUTSIDE TO CLOSE */}
+    <div
+      className="w-full h-full"
+      onClick={() => setMobileMenuOpen(false)}
+    />
+  </div>
+)}
       </motion.nav>
 
       <AddFundsModal
