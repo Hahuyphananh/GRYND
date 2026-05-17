@@ -27,7 +27,7 @@ export default function SplashScreen() {
             className="text-center"
           >
             <h1 className="text-4xl font-bold text-yellow-400">
-              ENTERING GOONBET
+              GoonBet, Skill based Gambling
             </h1>
 
             <motion.p
