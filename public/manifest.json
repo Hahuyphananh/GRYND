@@ -1,6 +1,6 @@
 {
-  "name": "Your Casino App",
-  "short_name": "Casino",
+  "name": "Goonbet, skill based betting platform",
+  "short_name": "Goonbet",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",
