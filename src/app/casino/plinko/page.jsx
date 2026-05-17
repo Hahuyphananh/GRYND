@@ -29,18 +29,15 @@ function MainComponent() {
   const [showRules, setShowRules] = useState(false);
 
   const lowRiskMultipliers = [
-    20, 10, 6, 4, 2.5, 1.6, 1.2, 1, 0.7, 0.4, 0.7, 1, 1.2, 1.6, 2.5, 4, 6, 10,
-    20,
+    20, 10, 6, 4, 2.5, 1.6, 1.2, 1, 0.7, 0.4, 0.7, 1, 1.2, 1.6, 2.5, 4, 6, 10, 20,
   ];
 
   const mediumRiskMultipliers = [
-    120, 40, 15, 6, 3, 1.8, 1.1, 0.6, 0.3, 0.1, 0.3, 0.6, 1.1, 1.8, 3, 6, 15,
-    40, 120,
+    120, 40, 15, 6, 3, 1.8, 1.1, 0.6, 0.3, 0.1, 0.3, 0.6, 1.1, 1.8, 3, 6, 15, 40, 120,
   ];
 
   const highRiskMultipliers = [
-    1000, 250, 80, 25, 8, 2.5, 1, 0.3, 0, 0, 0, 0.3, 1, 2.5, 8, 25, 80, 250,
-    1000,
+    1000, 250, 80, 25, 8, 2.5, 1, 0.3, 0, 0, 0, 0.3, 1, 2.5, 8, 25, 80, 250, 1000,
   ];
 
   const multipliersByRisk = {
@@ -68,10 +65,7 @@ function MainComponent() {
       const rect = boardAreaRef.current.getBoundingClientRect();
       const availableW = rect.width;
       const availableH = rect.height;
-      const scale = Math.max(
-        0.2,
-        Math.min(availableW / 500, availableH / 500, 1),
-      );
+      const scale = Math.max(0.2, Math.min(availableW / 500, availableH / 500, 1));
       setBoardSize({ width: 500 * scale, height: 500 * scale, scale });
     };
 
@@ -107,12 +101,12 @@ function MainComponent() {
                   ...b,
                   position: { x: ball.position.x, y: ball.position.y + floatY },
                 }
-              : b,
-          ),
+              : b
+          )
         );
         animationFrameIds.set(
           ball.id,
-          requestAnimationFrame(() => animateBall(ball)),
+          requestAnimationFrame(() => animateBall(ball))
         );
         return;
       }
@@ -151,9 +145,7 @@ function MainComponent() {
           }
 
           setActiveBalls((prev) =>
-            prev.map((b) =>
-              b.id === ball.id ? { ...b, hasShownResult: true } : b,
-            ),
+            prev.map((b) => (b.id === ball.id ? { ...b, hasShownResult: true } : b))
           );
         }
 
@@ -173,14 +165,12 @@ function MainComponent() {
                     position: { x: lastPos.x, y: lastPos.y - 15 },
                     bounceStartTime: performance.now(),
                   }
-                : b,
-            ),
+                : b
+            )
           );
           animationFrameIds.set(
             ball.id,
-            requestAnimationFrame(() =>
-              animateBall({ ...ball, finalBounce: true }),
-            ),
+            requestAnimationFrame(() => animateBall({ ...ball, finalBounce: true }))
           );
           return;
         }
@@ -205,12 +195,12 @@ function MainComponent() {
                       ...b,
                       position: { x: lastPos.x, y: lastPos.y - bounceHeight },
                     }
-                  : b,
-              ),
+                  : b
+              )
             );
             animationFrameIds.set(
               ball.id,
-              requestAnimationFrame(() => animateBall(ball)),
+              requestAnimationFrame(() => animateBall(ball))
             );
           } else {
             animationFrameIds.delete(ball.id);
@@ -235,8 +225,7 @@ function MainComponent() {
       const easeProgress = easeOutQuad(progress);
       const bounceHeight = Math.sin(progress * Math.PI) * 5;
       const x = currentPos.x + (nextPos.x - currentPos.x) * easeProgress;
-      const y =
-        currentPos.y + (nextPos.y - currentPos.y) * easeProgress - bounceHeight;
+      const y = currentPos.y + (nextPos.y - currentPos.y) * easeProgress - bounceHeight;
 
       setActiveBalls((prev) =>
         prev.map((b) =>
@@ -244,19 +233,18 @@ function MainComponent() {
             ? {
                 ...b,
                 position: { x, y },
-                currentPathIndex:
-                  progress >= 1 ? b.currentPathIndex + 1 : b.currentPathIndex,
+                currentPathIndex: progress >= 1 ? b.currentPathIndex + 1 : b.currentPathIndex,
                 startTime: progress >= 1 ? performance.now() : b.startTime,
                 path: ball.fullPath || ball.path,
               }
-            : b,
-        ),
+            : b
+        )
       );
 
       if (progress < 1 || ball.currentPathIndex < path.length - 1) {
         animationFrameIds.set(
           ball.id,
-          requestAnimationFrame(() => animateBall(ball)),
+          requestAnimationFrame(() => animateBall(ball))
         );
       }
     };
@@ -265,7 +253,7 @@ function MainComponent() {
       if (!animationFrameIds.has(ball.id)) {
         animationFrameIds.set(
           ball.id,
-          requestAnimationFrame(() => animateBall(ball)),
+          requestAnimationFrame(() => animateBall(ball))
         );
       }
     });
@@ -357,8 +345,7 @@ function MainComponent() {
       const data = await response.json();
       if (!data.success) throw new Error(data.error || "Erreur du jeu");
 
-      const { path, winAmount, multiplier, newBalance, finalPosition } =
-        data.data;
+      const { path, winAmount, multiplier, newBalance, finalPosition } = data.data;
 
       // Update game data
       setGameResults((prev) => [...prev, winAmount]);
@@ -403,11 +390,7 @@ function MainComponent() {
       // Extend path to include finalPosition so ball lands exactly on the multiplier
       const adjustedPath = Array.isArray(path) ? [...path] : [];
       const lastPoint = adjustedPath[adjustedPath.length - 1];
-      if (
-        !lastPoint ||
-        lastPoint.x !== finalPosition.x ||
-        lastPoint.y !== finalPosition.y
-      ) {
+      if (!lastPoint || lastPoint.x !== finalPosition.x || lastPoint.y !== finalPosition.y) {
         adjustedPath.push({ x: finalPosition.x, y: finalPosition.y });
       }
 
@@ -426,8 +409,8 @@ function MainComponent() {
                 multiplier,
                 hasShownResult: false,
               }
-            : ball,
-        ),
+            : ball
+        )
       );
 
       // Show result per-ball
@@ -513,10 +496,7 @@ function MainComponent() {
       const rect = boardAreaRef.current.getBoundingClientRect();
       const availableW = rect.width;
       const availableH = rect.height;
-      const scale = Math.max(
-        0.2,
-        Math.min(availableW / baseSize, availableH / baseSize, 1),
-      );
+      const scale = Math.max(0.2, Math.min(availableW / baseSize, availableH / baseSize, 1));
       setBoardSize({
         width: baseSize * scale,
         height: baseSize * scale,
@@ -535,27 +515,54 @@ function MainComponent() {
   }, []);
 
   const scaledBoardSize = {
-    width: boardSize.width * 0.95, // 90% of original width
-    height: boardSize.height * 0.95, // 90% of original height
+    width:
+      typeof window !== "undefined" && window.innerWidth < 768
+        ? boardSize.width * 1.12
+        : boardSize.width * 0.95,
+
+    height:
+      typeof window !== "undefined" && window.innerWidth < 768
+        ? boardSize.height * 1.12
+        : boardSize.height * 0.95,
   };
 
   return (
-    <div className="flex min-h-screen flex-col overflow-x-clip bg-gradient-to-br from-[#020617] via-[#071A3A] to-[#0A2A5C] pb-24 pt-20 lg:h-screen lg:flex-row lg:pb-0">
+    <div
+      className="
+flex min-h-screen flex-col
+overflow-x-hidden
+bg-gradient-to-br from-[#020617] via-[#071A3A] to-[#0A2A5C]
+
+pt-[72px]
+sm:pt-[76px]
+lg:h-screen lg:flex-row
+"
+    >
       <NavigationBar currentPath="/casino" />
       {/* Sidebar */}
       <aside
         ref={sidebarRef}
-        className="flex w-full flex-col overflow-y-auto border-b border-[#00E5FF]/20 bg-gradient-to-b from-[#020617] via-[#071A3A] to-[#0A2A5C] p-4 text-white backdrop-blur-md lg:w-64 lg:border-b-0 lg:border-r lg:p-6"
+        className="
+flex w-full flex-col
+border-b border-[#00E5FF]/20
+bg-gradient-to-b from-[#020617] via-[#071A3A] to-[#0A2A5C]
+text-white backdrop-blur-md
+
+px-3 py-3
+gap-3
+
+lg:w-64 lg:overflow-y-auto
+lg:border-b-0 lg:border-r
+lg:p-6
+"
       >
-        <h1 className="mb-8 text-3xl font-bold mt-12 text-[#00E5FF] drop-shadow-[0_0_10px_#00E5FF]">
+        <h1 className="text-2xl lg:text-3xl font-bold mt-4 lg:mt-12 text-[#00E5FF] drop-shadow-[0_0_10px_#00E5FF] text-center">
           Plinko
         </h1>
 
         {/* Risk Level Selector */}
         <div className="mb-4">
-          <label className="block mb-2 text-sm text-gray-300">
-            Niveau de Risque
-          </label>
+          <label className="block mb-2 text-sm text-gray-300">Niveau de Risque</label>
           <select
             value={riskLevel}
             onChange={(e) => setRiskLevel(e.target.value)}
@@ -576,14 +583,22 @@ function MainComponent() {
           </div>
         )}
 
-        <label className="mb-2 block text-sm text-gray-300">
-          Montant du pari
-        </label>
+        <label className="mb-2 block text-sm text-gray-300">Montant du pari</label>
 
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-2 flex items-center gap-2">
           <button
             onClick={() => setBetAmount((prev) => Math.max(1, prev - 1))}
-            className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-1 text-sm font-medium text-[#fffec7] hover:bg-[#FFFF33]/35"
+            className="
+h-10 min-w-[42px]
+rounded-xl
+border border-[#FFFF33]/40
+bg-[#FFFF33]/20
+text-base font-bold
+text-[#fffec7]
+hover:bg-[#FFFF33]/35
+active:scale-95
+transition
+"
           >
             -
           </button>
@@ -591,18 +606,49 @@ function MainComponent() {
             type="number"
             value={betAmount}
             onChange={(e) => setBetAmount(Math.max(1, Number(e.target.value)))}
-            className="w-20 rounded bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF]px-2 py-1 text-center text-white"
+            className="
+flex-1 h-10
+rounded-xl
+bg-[#020617]
+border border-[#00E5FF]/20
+focus:border-[#00E5FF]
+focus:ring-1 focus:ring-[#00E5FF]
+px-2
+text-center text-white
+"
           />
           <button
             onClick={() => setBetAmount((prev) => prev + 1)}
-            className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-1 text-sm font-medium text-[#fffec7] hover:bg-[#FFFF33]/35"
+            className="
+h-10 min-w-[42px]
+rounded-xl
+border border-[#FFFF33]/40
+bg-[#FFFF33]/20
+text-base font-bold
+text-[#fffec7]
+hover:bg-[#FFFF33]/35
+active:scale-95
+transition
+"
           >
             +
           </button>
         </div>
 
         <button
-          className="w-full rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/35"
+          className="
+w-full h-12
+rounded-2xl
+border border-[#FFFF33]/40
+bg-[#FFFF33]/20
+px-4
+text-base font-bold
+text-[#d8fbff]
+hover:bg-[#FFFF33]/35
+active:scale-[0.98]
+transition
+shadow-[0_0_15px_rgba(255,255,51,0.15)]
+"
           onClick={handleDrop}
           disabled={autoRunning}
         >
@@ -657,9 +703,7 @@ function MainComponent() {
             className="w-full mb-2 rounded bg-black px-2 py-1 text-white"
           />
 
-          <label className="text-sm text-gray-300">
-            Take Profit (optionnel)
-          </label>
+          <label className="text-sm text-gray-300">Take Profit (optionnel)</label>
           <input
             type="number"
             value={autoTakeProfit}
@@ -696,29 +740,22 @@ function MainComponent() {
 
           {showRules && (
             <div className="px-4 pb-4 text-sm text-gray-300 space-y-2">
+              <p>🎯 Drop a ball from the top and watch it bounce through the pins.</p>
               <p>
-                🎯 Drop a ball from the top and watch it bounce through the
-                pins.
+                💰 The slot where the ball lands determines your <strong>multiplier</strong>.
               </p>
               <p>
-                💰 The slot where the ball lands determines your{" "}
-                <strong>multiplier</strong>.
+                ⚠️ Higher multipliers are on the edges, but are <strong>harder to hit</strong>.
               </p>
               <p>
-                ⚠️ Higher multipliers are on the edges, but are{" "}
-                <strong>harder to hit</strong>.
+                🎚️ Choose a <strong>risk level</strong> to change the multiplier distribution.
               </p>
               <p>
-                🎚️ Choose a <strong>risk level</strong> to change the multiplier
-                distribution.
+                🤖 Use <strong>Auto Bet</strong> to automatically drop multiple balls.
               </p>
               <p>
-                🤖 Use <strong>Auto Bet</strong> to automatically drop multiple
-                balls.
-              </p>
-              <p>
-                📉 You can configure <strong>stop loss</strong> and{" "}
-                <strong>take profit</strong> for safer autoplay.
+                📉 You can configure <strong>stop loss</strong> and <strong>take profit</strong> for
+                safer autoplay.
               </p>
             </div>
           )}
@@ -726,9 +763,7 @@ function MainComponent() {
 
         {showResult && lastMultiplier && gameResults.length > 0 && (
           <div className="mt-6 rounded-lg bg-[#2A2B30] p-4 text-center shadow-lg">
-            <div className="mb-2 text-2xl font-bold text-[#FFD700]">
-              x{lastMultiplier}
-            </div>
+            <div className="mb-2 text-2xl font-bold text-[#FFD700]">x{lastMultiplier}</div>
             <div className="text-2xl font-bold text-green-500">
               +{gameResults[gameResults.length - 1].toFixed(2)} tokens
             </div>
@@ -740,15 +775,12 @@ function MainComponent() {
         {showHistory && gameResults.length > 0 && (
           <div className="mt-4">
             <p className="text-xl font-bold text-[#FFD700]">
-              Dernier gain : {gameResults[gameResults.length - 1].toFixed(2)}{" "}
-              tokens
+              Dernier gain : {gameResults[gameResults.length - 1].toFixed(2)} tokens
               <span className="ml-2 text-white">
                 (x{gameMultipliers[gameMultipliers.length - 1]})
               </span>
             </p>
-            <p className="text-white">
-              Total gagné : {totalWinAmount.toFixed(2)} tokens
-            </p>
+            <p className="text-white">Total gagné : {totalWinAmount.toFixed(2)} tokens</p>
           </div>
         )}
       </aside>
@@ -756,22 +788,40 @@ function MainComponent() {
       {/* Main Plinko game container */}
       <main
         ref={mainRef}
-        className="flex-1 flex flex-col items-center justify-center min-h-0 overflow-hidden p-4"
+        className="
+flex-1 flex flex-col
+items-center justify-start lg:justify-center
+min-h-0 overflow-hidden
+px-2 pb-6 pt-2
+lg:p-4
+"
       >
         <div
           ref={boardAreaRef}
-          className="flex-1 flex items-center justify-center w-full min-h-0 overflow-hidden"
+          className="
+flex flex-1
+items-start lg:items-center
+justify-center
+w-full
+overflow-hidden
+"
         >
           <div
             style={{
               width: `${scaledBoardSize.width}px`,
               height: `${scaledBoardSize.height}px`,
             }}
-            className="relative flex-grow"
+            className="
+relative
+w-full
+max-w-[430px]
+sm:max-w-[500px]
+mx-auto
+"
           >
             <svg
               ref={svgRef}
-              viewBox="0 0 500 500"
+              viewBox="0 0 500 540"
               width="100%"
               height="100%"
               preserveAspectRatio="xMidYMid meet"
@@ -793,15 +843,14 @@ function MainComponent() {
                     <circle
                       cx={250 - (row + 1) * 12 + col * 24}
                       cy={50 + row * 22}
-                      r={3}
+                      r={window.innerWidth < 768 ? 3.8 : 3}
                       fill="#00E5FF"
                       style={{
-                        filter:
-                          "drop-shadow(0 0 6px #00E5FF) drop-shadow(0 0 12px #00E5FF)",
+                        filter: "drop-shadow(0 0 6px #00E5FF) drop-shadow(0 0 12px #00E5FF)",
                       }}
                     />
                   </g>
-                )),
+                ))
               )}
 
               {/* Multipliers */}
@@ -811,11 +860,11 @@ function MainComponent() {
                 return (
                   <g key={`mult-${i}`}>
                     <rect
-                      x={i * slotWidth}
-                      y={460}
-                      width={slotWidth}
-                      height={30}
-                      rx={4}
+                      x={i * slotWidth + 1}
+                      y={475}
+                      width={slotWidth - 2}
+                      height={36}
+                      rx={10}
                       fill={getMultiplierColorByIndex(i, multipliers.length)}
                       style={{
                         filter: "drop-shadow(0 0 10px rgba(255,255,255,0.15))",
@@ -824,9 +873,9 @@ function MainComponent() {
                     />
                     <text
                       x={x}
-                      y={480}
+                      y={495}
                       textAnchor="middle"
-                      fontSize="9"
+                      fontSize="11"
                       fontWeight="bold"
                       fill="#ffffff"
                       style={{
