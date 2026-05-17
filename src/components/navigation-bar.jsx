@@ -207,7 +207,7 @@ function NavigationBar({ currentPath }) {
         data-no-translate="true"
         className="
 fixed top-0 left-0 right-0
-z-[9999]
+z-[50]
 border-b border-[#00e5ff]/40
 bg-[#050b1e]/95
 backdrop-blur-md
@@ -382,7 +382,7 @@ supports-[padding:max(0px)]:pt-[env(safe-area-inset-top)]
           </div>
         </UIPro01NavShell>
         {mobileMenuOpen && (
-          <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm">
+          <div className="fixed top-0 left-0 z-[50] h-full w-full pointer-events-none">
             {/* SIDEBAR */}
             <div
               className="
@@ -393,6 +393,7 @@ bg-[#08142f]
 border-r border-[#00e5ff]/30
 p-4 space-y-4
 shadow-[0_0_30px_rgba(0,229,255,0.15)]
+pointer-events-auto
 "
             >
               {/* CLOSE */}
@@ -468,7 +469,7 @@ shadow-[0_0_30px_rgba(0,229,255,0.15)]
             </div>
 
             {/* CLICK OUTSIDE TO CLOSE */}
-            <div className="w-full h-full" onClick={() => setMobileMenuOpen(false)} />
+            <div className="absolute inset-0" onClick={() => setMobileMenuOpen(false)} />
           </div>
         )}
       </motion.nav>
