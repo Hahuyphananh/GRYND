@@ -16,6 +16,7 @@ import {
   stagger,
 } from "../lib/animations";
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
+import useInstallPWA from "../hooks/useInstallPWA";
 
 const NAV_TRANSLATION_KEYS = {
   "/": "nav.home",
@@ -46,6 +47,7 @@ function NavigationBar({ currentPath }) {
 
   const navVariant = withReducedMotion(shouldReduceMotion, fadeUp);
   const itemVariant = withReducedMotion(shouldReduceMotion, fadeUp);
+  const { canInstall, install } = useInstallPWA();
 
   const closeLang = () => {
     setLangClosing(true);
@@ -212,6 +214,14 @@ function NavigationBar({ currentPath }) {
             </motion.div>
 
             <div className="flex items-center gap-2 sm:gap-4">
+              {canInstall && (
+  <button
+    onClick={install}
+    className="hidden sm:inline-flex items-center rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-xs font-medium text-[#f5ff3b] hover:bg-[#f5ff3b]/20"
+  >
+    📲 Install App
+  </button>
+)}
               <div className="relative">
                 <div
                   onClick={() => (langOpen ? closeLang() : setLangOpen(true))}
@@ -347,7 +357,16 @@ function NavigationBar({ currentPath }) {
             </div>
           </div>
           {mobileMenuOpen && (
+            
             <div className="border-t border-[#00e5ff]/30 bg-[#08142f] p-3">
+              {canInstall && mobileMenuOpen &&(
+  <button
+    onClick={install}
+    className="w-full rounded-lg bg-[#f5ff3b]/10 px-3 py-2 text-sm text-[#f5ff3b]"
+  >
+    📲 Install App
+  </button>
+)}
               {!isSignedIn ? (
                 <div className="grid grid-cols-2 gap-2">
                   <Link href="/sign-up" className="rounded-lg bg-[#FFFF33]/20 px-3 py-2 text-center text-sm text-[#d8fbff]">Sign up</Link>
