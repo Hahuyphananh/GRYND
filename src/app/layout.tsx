@@ -19,6 +19,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#000000" />
       <body className="antialiased transition-colors duration-300 bg-[#030817] text-[#d8fbff]">
         <Providers>
           <CsrfFetchGuard />

@@ -48,6 +48,6 @@
     "src/app/api/claim-login-reward/route.js",
     "src/app/api/get-user/route.js",
     "src/app/api/tanks/leave-match/route.js"
-  ],
+, "public/manifest.son"  ],
   "exclude": ["node_modules"]
 }
