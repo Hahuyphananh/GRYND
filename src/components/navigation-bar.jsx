@@ -194,7 +194,7 @@ function NavigationBar({ currentPath }) {
         animate={navVariant.animate}
         transition={navVariant.transition}
         data-no-translate="true"
-        className="fixed top-0 left-0 right-0 z-40 border-b border-[#00e5ff]/40 bg-[#050b1e]/95 backdrop-blur-md shadow-[0_0_22px_rgba(0,229,255,0.25)]"
+        className="fixed top-0 left-0 right-0 z-40 border-b border-[#00e5ff]/40 bg-[#050b1e]/75 shadow-[0_0_22px_rgba(0,229,255,0.25)]"
       >
         <UIPro01NavShell className="mx-auto max-w-7xl px-3 sm:px-4">
           <div className="flex h-16 items-center justify-between gap-2">
