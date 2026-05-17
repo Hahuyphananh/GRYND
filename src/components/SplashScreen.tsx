@@ -27,7 +27,7 @@ export default function SplashScreen() {
             className="text-center"
           >
             <h1 className="text-4xl font-bold text-yellow-400">
-              CASINO VAULT
+              ENTERING GOONBET
             </h1>
 
             <motion.p
@@ -35,7 +35,7 @@ export default function SplashScreen() {
               animate={{ opacity: [0, 1, 0.6, 1] }}
               transition={{ duration: 2 }}
             >
-              Loading your vault...
+              Loading your app...
             </motion.p>
           </motion.div>
         </motion.div>
