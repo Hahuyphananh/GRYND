@@ -168,6 +168,37 @@ function NavigationBar({ currentPath }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+useEffect(() => {
+  const interval = setInterval(async () => {
+    try {
+      const response = await fetch(window.location.href, {
+        method: "HEAD",
+        cache: "no-store",
+      });
+
+      const newVersion = response.headers.get("etag");
+
+      if (
+        window.__APP_ETAG &&
+        newVersion &&
+        window.__APP_ETAG !== newVersion
+      ) {
+        const shouldRefresh = confirm(
+          "A new version of GoonBet is available. Refresh now?"
+        );
+
+        if (shouldRefresh) {
+          window.location.reload();
+        }
+      }
+
+      window.__APP_ETAG = newVersion;
+    } catch {}
+  }, 1000 * 60 * 5);
+
+  return () => clearInterval(interval);
+}, []);
+
   const isCasinoPath = currentPath.startsWith("/casino");
 
   return (
@@ -409,6 +440,26 @@ function NavigationBar({ currentPath }) {
           </Link>
         ))}
       </div>
+      {/* MOBILE AUTH BUTTONS */}
+{!isSignedIn && (
+  <div className="grid grid-cols-2 gap-2">
+    <Link
+      href="/sign-up"
+      onClick={() => setMobileMenuOpen(false)}
+      className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-2 text-center text-sm font-medium text-[#d8fbff]"
+    >
+      {t("nav.create_account")}
+    </Link>
+
+    <Link
+      href="/sign-in"
+      onClick={() => setMobileMenuOpen(false)}
+      className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-3 py-2 text-center text-sm font-medium text-[#d8fbff]"
+    >
+      {t("nav.sign_in")}
+    </Link>
+  </div>
+)}
 
       {/* INSTALL BUTTON */}
       {(canInstall || isIOS) && (
