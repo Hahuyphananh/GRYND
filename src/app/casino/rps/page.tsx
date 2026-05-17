@@ -35,9 +35,7 @@ export default function RPSGame() {
   const [pvpMyName, setPvpMyName] = useState<string>("You");
   const [pvpOpponentName, setPvpOpponentName] = useState<string>("Opponent");
   const [pvpMyChoice, setPvpMyChoice] = useState<string | null>(null);
-  const [pvpOpponentChoice, setPvpOpponentChoice] = useState<string | null>(
-    null,
-  );
+  const [pvpOpponentChoice, setPvpOpponentChoice] = useState<string | null>(null);
   const [pvpOutcome, setPvpOutcome] = useState<string | null>(null);
   const [pvpWinner, setPvpWinner] = useState<string | null>(null);
   const [pvpWinnerPayout, setPvpWinnerPayout] = useState<number | null>(null);
@@ -102,25 +100,15 @@ export default function RPSGame() {
         setPvpOpponentChoice(game.opponentChoice || null);
         setPvpOutcome(game.outcome || null);
         setPvpWinner(game.winner || null);
-        setPvpWinnerPayout(
-          typeof game.winnerPayout === "number" ? game.winnerPayout : null,
-        );
-        setPvpWinnerProfit(
-          typeof game.winnerProfit === "number" ? game.winnerProfit : null,
-        );
-        setPvpHouseFee(
-          typeof game.houseFee === "number" ? game.houseFee : null,
-        );
+        setPvpWinnerPayout(typeof game.winnerPayout === "number" ? game.winnerPayout : null);
+        setPvpWinnerProfit(typeof game.winnerProfit === "number" ? game.winnerProfit : null);
+        setPvpHouseFee(typeof game.houseFee === "number" ? game.houseFee : null);
 
         if (game.status === "active") {
           setPvpMessage("Waiting for opponent...");
         } else if (game.status === "matched" && !game.myChoice) {
           setPvpMessage("Opponent joined. Pick rock, paper, or scissors.");
-        } else if (
-          game.status === "matched" &&
-          game.myChoice &&
-          !game.opponentChoice
-        ) {
+        } else if (game.status === "matched" && game.myChoice && !game.opponentChoice) {
           setPvpMessage("Choice locked. Waiting for opponent choice...");
         } else if (game.status === "finished") {
           if (game.winner === "you") {
@@ -183,23 +171,14 @@ export default function RPSGame() {
   const formatOutcome = (outcome) => {
     if (!outcome) return "";
 
-    const player1Name =
-      pvpPlayer1Id && pvpPlayer1Id === pvpPlayer1Id
-        ? pvpMyName
-        : pvpOpponentName;
+    const player1Name = pvpPlayer1Id && pvpPlayer1Id === pvpPlayer1Id ? pvpMyName : pvpOpponentName;
 
-    const player2Name =
-      pvpPlayer2Id && pvpPlayer2Id === pvpPlayer2Id
-        ? pvpMyName
-        : pvpOpponentName;
+    const player2Name = pvpPlayer2Id && pvpPlayer2Id === pvpPlayer2Id ? pvpMyName : pvpOpponentName;
 
-    return outcome
-      .replace(/player1/g, player1Name)
-      .replace(/player2/g, player2Name);
+    return outcome.replace(/player1/g, player1Name).replace(/player2/g, player2Name);
   };
 
-  const delay = (ms: number) =>
-    new Promise((resolve) => setTimeout(resolve, ms));
+  const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const placeBet = async () => {
     if (!playerChoice) {
@@ -263,10 +242,7 @@ export default function RPSGame() {
     setLoading(false);
 
     if (autoBetRef.current.enabled) {
-      if (
-        autoBetRef.current.mode === "finite" &&
-        autoBetRef.current.spinsLeft <= 1
-      ) {
+      if (autoBetRef.current.mode === "finite" && autoBetRef.current.spinsLeft <= 1) {
         setAutoBet({ enabled: false, mode: "finite", spinsLeft: 0 });
       } else {
         if (autoBetRef.current.mode === "finite") {
@@ -451,17 +427,20 @@ export default function RPSGame() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] pb-24 pt-20 text-white md:flex-row md:pb-8">
+    <div className="flex min-h-screen flex-col overflow-x-hidden bg-gradient-to-br from-[#001933] to-[#000d1a] pb-28 pt-16 text-white md:flex-row md:pb-8">
       <NavigationBar currentPath="/casino" />
 
       <div
-        className="w-full max-w-[380px] md:max-w-[380px] bg-[#050d1f]/80 backdrop-blur-xl border border-[#a855f7]/40 
+        className="w-[95%] sm:w-full max-w-[420px] md:max-w-[380px] 
+bg-[#050d1f]/80 backdrop-blur-xl border border-[#a855f7]/40
 shadow-[0_0_25px_rgba(168,85,247,0.25),inset_0_0_25px_rgba(168,85,247,0.08)]
-rounded-2xl p-6 flex flex-col gap-6 shadow-[0_0_24px_rgba(0,229,255,0.18)] mx-auto md:mx-0 mb-6 md:mb-0"
+rounded-2xl p-4 sm:p-6 flex flex-col gap-5
+shadow-[0_0_24px_rgba(0,229,255,0.18)]
+mx-auto md:mx-0 mb-6 md:mb-0"
       >
         <h1
-          className="text-3xl font-extrabold tracking-wider text-transparent bg-clip-text 
-               bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-center whitespace-nowrap mt-20"
+          className="text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text 
+bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-center mt-16 sm:mt-20 leading-tight"
         >
           Rock Paper Scissors
         </h1>
@@ -473,7 +452,7 @@ rounded-2xl p-6 flex flex-col gap-6 shadow-[0_0_24px_rgba(0,229,255,0.18)] mx-au
           Your Tokens: {tokens}
         </p>
 
-        <div className="flex justify-center gap-4">
+        <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
           <button
             onClick={() => setMode("pve")}
             className={`px-5 py-2 rounded-xl font-bold transition-all duration-300
@@ -501,7 +480,7 @@ rounded-2xl p-6 flex flex-col gap-6 shadow-[0_0_24px_rgba(0,229,255,0.18)] mx-au
           </button>
         </div>
 
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <label
             className="text-lg text-[#00e5ff] font-semibold 
               drop-shadow-[0_0_10px_rgba(0,229,255,0.8)] text-center md:text-left"
@@ -549,9 +528,7 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
                       e.target.checked &&
                       (!playerChoice || betAmount <= 0 || betAmount > tokens)
                     ) {
-                      alert(
-                        "Select a valid choice and bet amount before enabling AutoBet.",
-                      );
+                      alert("Select a valid choice and bet amount before enabling AutoBet.");
                       return;
                     }
                     setAutoBet((prev) => ({
@@ -622,54 +599,48 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
               {showRpsRules && (
                 <div className="mt-3 text-sm text-gray-200 space-y-3 leading-relaxed">
                   <p>
-                    ✊ <strong>Objective:</strong> Beat the AI by choosing Rock,
-                    Paper, or Scissors.
+                    ✊ <strong>Objective:</strong> Beat the AI by choosing Rock, Paper, or Scissors.
                   </p>
 
                   <p>
                     🔢 <strong>How to Play:</strong>
-                    <br />• Select your move (✊ Rock, ✋ Paper, ✌️ Scissors) •
-                    Choose your bet amount • Click <strong>
-                      “Place Bet”
-                    </strong>{" "}
-                    to play
+                    <br />• Select your move (✊ Rock, ✋ Paper, ✌️ Scissors) • Choose your bet
+                    amount • Click <strong>“Place Bet”</strong> to play
                   </p>
 
                   <p>
                     ⚔️ <strong>Rules:</strong>
-                    <br />• Rock beats Scissors • Scissors beats Paper • Paper
-                    beats Rock
+                    <br />• Rock beats Scissors • Scissors beats Paper • Paper beats Rock
                   </p>
 
                   <p>
                     🏆 <strong>Results:</strong>
-                    <br />• Win → You earn a payout based on your bet and streak
-                    • Lose → You lose your bet • Tie → Your bet is returned
+                    <br />• Win → You earn a payout based on your bet and streak • Lose → You lose
+                    your bet • Tie → Your bet is returned
                   </p>
 
                   <p>
                     🔥 <strong>Win Streak:</strong>
-                    <br />• Winning multiple times in a row increases your
-                    multiplier • Higher streak = higher rewards
+                    <br />• Winning multiple times in a row increases your multiplier • Higher
+                    streak = higher rewards
                   </p>
 
                   <p>
                     💰 <strong>Multiplier(pve):</strong>
-                    <br />• Your winnings increase with your streak • Lose or
-                    tie → multiplier resets to 1.0
+                    <br />• Your winnings increase with your streak • Lose or tie → multiplier
+                    resets to 1.0
                   </p>
 
                   <p>
                     🤖 <strong>Auto Bet:</strong>
-                    <br />• Automatically plays for you • Can run for a set
-                    number of rounds or infinitely • Stops on invalid settings
-                    or when you disable it
+                    <br />• Automatically plays for you • Can run for a set number of rounds or
+                    infinitely • Stops on invalid settings or when you disable it
                   </p>
 
                   <p>
                     ⚠️ <strong>Important:</strong>
-                    <br />• You must have enough tokens to bet • You must select
-                    a move before betting • The game is based on chance
+                    <br />• You must have enough tokens to bet • You must select a move before
+                    betting • The game is based on chance
                   </p>
                 </div>
               )}
@@ -715,26 +686,22 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
                 </button>
               </div>
               {pvpGames.length === 0 ? (
-                <p className="text-sm text-gray-300">
-                  No available games right now.
-                </p>
+                <p className="text-sm text-gray-300">No available games right now.</p>
               ) : (
                 <ul className="space-y-2 max-h-48 overflow-auto pr-1">
                   {pvpGames.map((game) => (
                     <li
                       key={game.id}
-                      className="bg-[#0d335f] rounded p-2 flex items-center justify-between gap-2"
+                      className="bg-[#0d335f] rounded p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                     >
                       <div className="text-sm">
-                        <p className="font-semibold">
-                          Host: {game.player1Name || "Unknown"}
-                        </p>
+                        <p className="font-semibold">Host: {game.player1Name || "Unknown"}</p>
                         <p>Bet: {game.betAmount}</p>
                       </div>
                       <button
                         onClick={() => joinPvpGame(game.id)}
                         disabled={pvpActionLoading || Boolean(pvpGameId)}
-                        className="px-4 py-2 rounded-xl font-bold transition-all duration-300
+                        className="w-full sm:w-auto px-4 py-2 rounded-xl font-bold transition-all duration-300
            bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933]
            border border-[#00e5ff]
            shadow-[0_0_20px_rgba(0,229,255,0.6)]
@@ -748,31 +715,33 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
               )}
             </div>
 
-            {pvpMessage && (
-              <p className="text-sm text-yellow-200">{pvpMessage}</p>
-            )}
+            {pvpMessage && <p className="text-sm text-yellow-200">{pvpMessage}</p>}
           </>
         )}
       </div>
 
-      <main className="flex-1 flex flex-col items-center justify-center gap-8 ml-0 md:ml-6 w-full px-4 md:px-0">
+      <main className="flex-1 flex flex-col items-center justify-start md:justify-center gap-6 md:gap-8 ml-0 md:ml-6 w-full px-3 sm:px-4 pb-10">
         {mode === "pve" && (
           <>
-            <div className="flex flex-col md:flex-row items-center gap-12">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-5 sm:gap-10 w-full">
               <div
                 className="bg-[#020617]/80 backdrop-blur-xl border border-[#00e5ff]/40 
-shadow-[0_0_20px_rgba(0,229,255,0.2)] w-32 h-44 flex items-center justify-center rounded-xl text-6xl"
+shadow-[0_0_20px_rgba(0,229,255,0.2)] 
+w-24 h-32 sm:w-32 sm:h-44
+flex items-center justify-center rounded-xl text-5xl sm:text-6xl"
               >
                 {getEmoji(playerChoice)}
               </div>
 
-              <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8]">
+              <div className="text-2xl sm:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8]">
                 VS
               </div>
 
               <div
                 className="bg-[#020617]/80 backdrop-blur-xl border border-[#00e5ff]/40 
-shadow-[0_0_20px_rgba(0,229,255,0.2)] w-32 h-44 flex items-center justify-center rounded-xl text-6xl"
+shadow-[0_0_20px_rgba(0,229,255,0.2)] 
+w-24 h-32 sm:w-32 sm:h-44
+flex items-center justify-center rounded-xl text-5xl sm:text-6xl"
               >
                 {getEmoji(aiChoice)}
               </div>
@@ -794,12 +763,12 @@ shadow-[0_0_20px_rgba(0,229,255,0.2)] w-32 h-44 flex items-center justify-center
               </div>
             )}
 
-            <div className="flex gap-4 flex-wrap justify-center">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-[420px]">
               {choices.map((choice) => (
                 <button
                   key={choice}
                   onClick={() => setPlayerChoice(choice)}
-                  className={`px-6 py-3 rounded-xl font-bold transition-all duration-300
+                  className={`w-full px-4 py-3 rounded-xl font-bold text-sm sm:text-base transition-all duration-300
   ${
     playerChoice === choice
       ? "bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-white shadow-[0_0_25px_#ff4fd8] scale-105"
@@ -831,30 +800,32 @@ shadow-[0_0_20px_rgba(0,229,255,0.2)] w-32 h-44 flex items-center justify-center
 
         {mode === "pvp" && (
           <div className="w-full max-w-2xl flex flex-col items-center gap-4">
-            <div className="w-full flex justify-center gap-10 text-sm text-[#a8f4ff] font-semibold">
+            <div className="w-full flex items-center justify-between sm:justify-center gap-4 sm:gap-10 text-xs sm:text-sm text-[#a8f4ff] font-semibold px-2">
               <span>{pvpMyName}</span>
               <span>{pvpOpponentName}</span>
             </div>
-            <div className="flex items-center gap-8">
-              <div className="bg-[#0b224f] border border-[#00e5ff] w-28 h-36 flex items-center justify-center rounded-xl text-5xl">
+            <div className="flex items-center justify-center gap-4 sm:gap-8 flex-wrap">
+              <div
+                className="bg-[#0b224f] border border-[#00e5ff] 
+w-24 h-28 sm:w-28 sm:h-36
+flex items-center justify-center rounded-xl text-4xl sm:text-5xl"
+              >
                 {getEmoji(pvpMyChoice)}
               </div>
-              <div className="text-3xl font-bold text-[#7cefff]">VS</div>
-              <div className="bg-[#0b224f] border border-[#00e5ff] w-28 h-36 flex items-center justify-center rounded-xl text-5xl">
+              <div className="text-2xl sm:text-3xl font-bold text-[#7cefff]">VS</div>
+              <div className="bg-[#0b224f] border border-[#00e5ff] w-24 h-28 sm:w-28 sm:h-36 flex items-center justify-center rounded-xl text-4xl sm:text-5xl">
                 {pvpStatus === "finished" ? getEmoji(pvpOpponentChoice) : "❔"}
               </div>
             </div>
 
-            {pvpGameId && (
-              <p className="text-sm text-gray-300">Game ID: {pvpGameId}</p>
-            )}
+            {pvpGameId && <p className="text-sm text-gray-300">Game ID: {pvpGameId}</p>}
 
             {pvpStatus === "matched" && !pvpMyChoice && (
               <>
                 <p className="text-sm text-yellow-300 font-semibold">
                   Choose your move within: {pvpCountdown ?? 10}s
                 </p>
-                <div className="flex gap-3 flex-wrap justify-center">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-[420px]">
                   {PVP_CHOICES.map((choice) => (
                     <button
                       key={choice}
@@ -881,28 +852,19 @@ shadow-[0_0_20px_rgba(0,229,255,0.2)] w-32 h-44 flex items-center justify-center
                 </p>
                 <p className="text-lg">
                   Result:{" "}
-                  {pvpWinner === "you"
-                    ? "You win"
-                    : pvpWinner === "opponent"
-                      ? "You lose"
-                      : "Tie"}
+                  {pvpWinner === "you" ? "You win" : pvpWinner === "opponent" ? "You lose" : "Tie"}
                 </p>
                 {pvpWinner === "you" && (
                   <p className="text-green-300">
                     You won {pvpWinnerPayout ?? 0} tokens total
-                    {typeof pvpWinnerProfit === "number"
-                      ? ` (+${pvpWinnerProfit} profit)`
-                      : ""}
-                    .
+                    {typeof pvpWinnerProfit === "number" ? ` (+${pvpWinnerProfit} profit)` : ""}.
                   </p>
                 )}
                 {pvpWinner === "opponent" && (
                   <p className="text-red-300">You won 0 tokens this round.</p>
                 )}
                 {typeof pvpHouseFee === "number" && pvpWinner !== "tie" && (
-                  <p className="text-xs text-gray-300">
-                    House fee (10%): {pvpHouseFee} tokens.
-                  </p>
+                  <p className="text-xs text-gray-300">House fee (10%): {pvpHouseFee} tokens.</p>
                 )}
                 <button
                   onClick={() => window.location.reload()}
@@ -914,9 +876,7 @@ shadow-[0_0_20px_rgba(0,229,255,0.2)] w-32 h-44 flex items-center justify-center
             )}
 
             {!pvpGameId && (
-              <p className="text-yellow-300 font-semibold">
-                Create or join a game to start PvP.
-              </p>
+              <p className="text-yellow-300 font-semibold">Create or join a game to start PvP.</p>
             )}
           </div>
         )}

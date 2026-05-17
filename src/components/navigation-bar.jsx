@@ -9,12 +9,7 @@ import Link from "next/link";
 import { useLanguage } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
 import { useTranslation } from "../hooks/useTranslation";
-import {
-  fadeUp,
-  hoverScale,
-  withReducedMotion,
-  stagger,
-} from "../lib/animations";
+import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animations";
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 
@@ -41,6 +36,17 @@ function NavigationBar({ currentPath }) {
   const [error, setError] = useState(null);
   const [showAddFunds, setShowAddFunds] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileMenuOpen]);
   const [langOpen, setLangOpen] = useState(false);
   const [langClosing, setLangClosing] = useState(false);
   const [level, setLevel] = useState(null);
@@ -59,9 +65,7 @@ function NavigationBar({ currentPath }) {
     return typeof url === "string" && url.startsWith("data:image/");
   };
 
-  const isIOS =
-  typeof window !== "undefined" &&
-  /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isIOS = typeof window !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
 
   useEffect(() => {
     const handler = () => fetchBalance({ includeMeta: false });
@@ -84,8 +88,7 @@ function NavigationBar({ currentPath }) {
 
   const avatarSrc = isValidDataUrl(profile?.profilePicture)
     ? profile.profilePicture
-    : typeof profile?.profilePicture === "string" &&
-        profile.profilePicture.startsWith("http")
+    : typeof profile?.profilePicture === "string" && profile.profilePicture.startsWith("http")
       ? profile.profilePicture
       : typeof user?.imageUrl === "string" && user.imageUrl.startsWith("http")
         ? user.imageUrl
@@ -130,10 +133,7 @@ function NavigationBar({ currentPath }) {
             if (titlesData.success) {
               setProfile((prev) => ({
                 ...prev,
-                selectedTitle:
-                  titlesData.selectedSpecialTitle ||
-                  titlesData.selectedTitle ||
-                  "",
+                selectedTitle: titlesData.selectedSpecialTitle || titlesData.selectedTitle || "",
               }));
             }
           } catch {}
@@ -168,36 +168,33 @@ function NavigationBar({ currentPath }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-useEffect(() => {
-  const interval = setInterval(async () => {
-    try {
-      const response = await fetch(window.location.href, {
-        method: "HEAD",
-        cache: "no-store",
-      });
+  useEffect(() => {
+    const interval = setInterval(
+      async () => {
+        try {
+          const response = await fetch(window.location.href, {
+            method: "HEAD",
+            cache: "no-store",
+          });
 
-      const newVersion = response.headers.get("etag");
+          const newVersion = response.headers.get("etag");
 
-      if (
-        window.__APP_ETAG &&
-        newVersion &&
-        window.__APP_ETAG !== newVersion
-      ) {
-        const shouldRefresh = confirm(
-          "A new version of GoonBet is available. Refresh now?"
-        );
+          if (window.__APP_ETAG && newVersion && window.__APP_ETAG !== newVersion) {
+            const shouldRefresh = confirm("A new version of GoonBet is available. Refresh now?");
 
-        if (shouldRefresh) {
-          window.location.reload();
-        }
-      }
+            if (shouldRefresh) {
+              window.location.reload();
+            }
+          }
 
-      window.__APP_ETAG = newVersion;
-    } catch {}
-  }, 1000 * 60 * 5);
+          window.__APP_ETAG = newVersion;
+        } catch {}
+      },
+      1000 * 60 * 5
+    );
 
-  return () => clearInterval(interval);
-}, []);
+    return () => clearInterval(interval);
+  }, []);
 
   const isCasinoPath = currentPath.startsWith("/casino");
 
@@ -208,10 +205,18 @@ useEffect(() => {
         animate={navVariant.animate}
         transition={navVariant.transition}
         data-no-translate="true"
-        className="fixed top-0 left-0 right-0 z-40 border-b border-[#00e5ff]/40 bg-[#050b1e]/95 backdrop-blur-md shadow-[0_0_22px_rgba(0,229,255,0.25)]"
+        className="
+fixed top-0 left-0 right-0
+z-[9999]
+border-b border-[#00e5ff]/40
+bg-[#050b1e]/95
+backdrop-blur-md
+shadow-[0_0_22px_rgba(0,229,255,0.25)]
+supports-[padding:max(0px)]:pt-[env(safe-area-inset-top)]
+"
       >
-        <UIPro01NavShell className="mx-auto max-w-7xl px-3 sm:px-4">
-          <div className="flex h-16 items-center justify-between gap-2">
+        <UIPro01NavShell className="mx-auto max-w-7xl px-3 sm:px-4 pt-[env(safe-area-inset-top)]">
+          <div className="flex h-[68px] sm:h-16 items-center justify-between gap-2">
             <Link href="/" className="flex items-center space-x-2">
               <Image
                 src={LogoSmiley}
@@ -234,9 +239,7 @@ useEffect(() => {
                   initial={itemVariant.initial}
                   animate={itemVariant.animate}
                   transition={itemVariant.transition}
-                  whileHover={
-                    shouldReduceMotion ? undefined : hoverScale.whileHover
-                  }
+                  whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
                 >
                   <Link
                     href={path}
@@ -250,13 +253,13 @@ useEffect(() => {
 
             <div className="flex items-center gap-2 sm:gap-4">
               {canInstall && (
-  <button
-    onClick={install}
-    className="hidden sm:inline-flex items-center rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-xs font-medium text-[#f5ff3b] hover:bg-[#f5ff3b]/20"
-  >
-    📲 Install App
-  </button>
-)}
+                <button
+                  onClick={install}
+                  className="hidden sm:inline-flex items-center rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-xs font-medium text-[#f5ff3b] hover:bg-[#f5ff3b]/20"
+                >
+                  📲 Install App
+                </button>
+              )}
               <div className="relative">
                 <div
                   onClick={() => (langOpen ? closeLang() : setLangOpen(true))}
@@ -296,10 +299,7 @@ useEffect(() => {
               {isLoaded && isSignedIn ? (
                 <>
                   <div className="hidden items-center space-x-4 lg:flex">
-                    <Link
-                      href="/profil"
-                      className="group flex items-center space-x-2"
-                    >
+                    <Link href="/profil" className="group flex items-center space-x-2">
                       {avatarSrc ? (
                         <img
                           src={avatarSrc}
@@ -382,103 +382,95 @@ useEffect(() => {
           </div>
         </UIPro01NavShell>
         {mobileMenuOpen && (
-  <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm">
+            {/* SIDEBAR */}
+            <div
+              className="
+absolute left-0 top-0
+h-full w-[82vw] max-w-72
+overflow-y-auto
+bg-[#08142f]
+border-r border-[#00e5ff]/30
+p-4 space-y-4
+shadow-[0_0_30px_rgba(0,229,255,0.15)]
+"
+            >
+              {/* CLOSE */}
+              <button onClick={() => setMobileMenuOpen(false)} className="text-[#f5ff3b] text-sm">
+                ✕ Close
+              </button>
 
-    {/* SIDEBAR */}
-    <div className="absolute left-0 top-0 h-full w-72 bg-[#08142f] border-r border-[#00e5ff]/30 p-4 space-y-4">
+              {/* PROFILE */}
+              {isSignedIn && (
+                <Link
+                  href="/profil"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3"
+                >
+                  <img src={avatarSrc} className="h-10 w-10 rounded-full" />
+                  <div>
+                    <div className="text-[#c9f7ff] text-sm">{profile?.name || "User"}</div>
+                    <div className="text-xs text-[#f5ff3b]">{profile?.selectedTitle}</div>
+                  </div>
+                </Link>
+              )}
 
-      {/* CLOSE */}
-      <button
-        onClick={() => setMobileMenuOpen(false)}
-        className="text-[#f5ff3b] text-sm"
-      >
-        ✕ Close
-      </button>
+              {/* TOKENS */}
+              {isSignedIn && (
+                <div className="rounded-lg border border-[#00e5ff]/30 bg-[#091737] p-3 text-sm text-[#67f9ff]">
+                  💰 Tokens: {balance !== null ? Number(balance).toFixed(2) : "Loading..."}
+                </div>
+              )}
 
-      {/* PROFILE */}
-      {isSignedIn && (
-        <Link
-          href="/profil"
-          onClick={() => setMobileMenuOpen(false)}
-          className="flex items-center gap-3"
-        >
-          <img
-            src={avatarSrc}
-            className="h-10 w-10 rounded-full"
-          />
-          <div>
-            <div className="text-[#c9f7ff] text-sm">
-              {profile?.name || "User"}
+              {/* NAV LINKS */}
+              <div className="space-y-2">
+                {["/", "/sport", "/casino", "/classement"].map((path) => (
+                  <Link
+                    key={path}
+                    href={path}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
+                  >
+                    {t(NAV_TRANSLATION_KEYS[path])}
+                  </Link>
+                ))}
+              </div>
+              {/* MOBILE AUTH BUTTONS */}
+              {!isSignedIn && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    href="/sign-up"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-2 text-center text-sm font-medium text-[#d8fbff]"
+                  >
+                    {t("nav.create_account")}
+                  </Link>
+
+                  <Link
+                    href="/sign-in"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-3 py-2 text-center text-sm font-medium text-[#d8fbff]"
+                  >
+                    {t("nav.sign_in")}
+                  </Link>
+                </div>
+              )}
+
+              {/* INSTALL BUTTON */}
+              {(canInstall || isIOS) && (
+                <button
+                  onClick={install}
+                  className="w-full rounded-lg bg-[#f5ff3b]/10 px-3 py-2 text-[#f5ff3b]"
+                >
+                  📲 Install App
+                </button>
+              )}
             </div>
-            <div className="text-xs text-[#f5ff3b]">
-              {profile?.selectedTitle}
-            </div>
+
+            {/* CLICK OUTSIDE TO CLOSE */}
+            <div className="w-full h-full" onClick={() => setMobileMenuOpen(false)} />
           </div>
-        </Link>
-      )}
-
-      {/* TOKENS */}
-      {isSignedIn && (
-        <div className="rounded-lg border border-[#00e5ff]/30 bg-[#091737] p-3 text-sm text-[#67f9ff]">
-          💰 Tokens:{" "}
-          {balance !== null
-            ? Number(balance).toFixed(2)
-            : "Loading..."}
-        </div>
-      )}
-
-      {/* NAV LINKS */}
-      <div className="space-y-2">
-        {["/", "/sport", "/casino", "/classement"].map((path) => (
-          <Link
-            key={path}
-            href={path}
-            onClick={() => setMobileMenuOpen(false)}
-            className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
-          >
-            {t(NAV_TRANSLATION_KEYS[path])}
-          </Link>
-        ))}
-      </div>
-      {/* MOBILE AUTH BUTTONS */}
-{!isSignedIn && (
-  <div className="grid grid-cols-2 gap-2">
-    <Link
-      href="/sign-up"
-      onClick={() => setMobileMenuOpen(false)}
-      className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-2 text-center text-sm font-medium text-[#d8fbff]"
-    >
-      {t("nav.create_account")}
-    </Link>
-
-    <Link
-      href="/sign-in"
-      onClick={() => setMobileMenuOpen(false)}
-      className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-3 py-2 text-center text-sm font-medium text-[#d8fbff]"
-    >
-      {t("nav.sign_in")}
-    </Link>
-  </div>
-)}
-
-      {/* INSTALL BUTTON */}
-      {(canInstall || isIOS) && (
-        <button
-          onClick={install}
-          className="w-full rounded-lg bg-[#f5ff3b]/10 px-3 py-2 text-[#f5ff3b]"
-        >
-          📲 Install App
-        </button>
-      )}
-    </div>
-
-    {/* CLICK OUTSIDE TO CLOSE */}
-    <div
-      className="w-full h-full"
-      onClick={() => setMobileMenuOpen(false)}
-    />
-  </div>
-)}
+        )}
       </motion.nav>
 
       <AddFundsModal
