@@ -11,8 +11,6 @@
   "db:generate": "drizzle-kit generate",
   "db:migrate": "tsx ./src/db/migrate.ts",
 
-  "postbuild": "next-pwa generateSW",
-
   "test": "node --test tests/security-authz.test.mjs",
   "test:runtime": "node --test tests/runtime-security-http.test.mjs"
 },
