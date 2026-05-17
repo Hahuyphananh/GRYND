@@ -529,13 +529,13 @@ function MainComponent() {
   return (
     <div
       className="
-flex min-h-screen flex-col
+flex min-h-screen flex-col lg:flex-row
 overflow-x-hidden
 bg-gradient-to-br from-[#020617] via-[#071A3A] to-[#0A2A5C]
 
 pt-[72px]
 sm:pt-[76px]
-lg:h-screen lg:flex-row
+lg:h-screen
 "
     >
       <NavigationBar currentPath="/casino" />
@@ -553,7 +553,7 @@ gap-3
 
 lg:w-64 lg:overflow-y-auto
 lg:border-b-0 lg:border-r
-lg:p-6
+lg:p-6 order-2 lg:order-none
 "
       >
         <h1 className="text-2xl lg:text-3xl font-bold mt-4 lg:mt-12 text-[#00E5FF] drop-shadow-[0_0_10px_#00E5FF] text-center">
@@ -792,7 +792,9 @@ shadow-[0_0_15px_rgba(255,255,51,0.15)]
 flex-1 flex flex-col
 items-center justify-start lg:justify-center
 min-h-0 overflow-hidden
-px-2 pb-6 pt-2
+px-2 pb-6 pt-0
+
+order-1 lg:order-none
 lg:p-4
 "
       >

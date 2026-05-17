@@ -10,13 +10,10 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "GoonBet, skill-based betting platform",
-  description: "Skilled Based gambling platform for esports and sports betting. Bet on your skills and win big with GoonBet.",
+  description:
+    "Skilled Based gambling platform for esports and sports betting. Bet on your skills and win big with GoonBet.",
 };
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
@@ -25,7 +22,6 @@ export default function RootLayout({
       </head>
 
       <body className="antialiased transition-colors duration-300 bg-[#030817] text-[#d8fbff]">
-        
         {/* 👇 SPLASH SCREEN MUST GO HERE */}
         <SplashScreen />
 
@@ -33,7 +29,7 @@ export default function RootLayout({
           <CsrfFetchGuard />
           <DisableInspect />
           <TawkProvider />
-          {children}
+          <div className="pt-[68px] sm:pt-16">{children}</div>
           <ClerkSafeChatWidget />
         </Providers>
       </body>
