@@ -1,17 +1,21 @@
 {
-  "name": "create-project",
+  "name": "goonbet",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx ./src/db/migrate.ts",
-    "test": "node --test tests/security-authz.test.mjs",
-    "test:runtime": "node --test tests/runtime-security-http.test.mjs"
-  },
+  "dev": "next dev",
+  "build": "next build",
+  "start": "next start",
+  "lint": "next lint",
+
+  "db:generate": "drizzle-kit generate",
+  "db:migrate": "tsx ./src/db/migrate.ts",
+
+  "postbuild": "next-pwa generateSW",
+
+  "test": "node --test tests/security-authz.test.mjs",
+  "test:runtime": "node --test tests/runtime-security-http.test.mjs"
+},
   "dependencies": {
     "@capacitor/android": "^8.3.3",
     "@capacitor/core": "^8.3.3",
@@ -25,7 +29,7 @@
     "@supabase/supabase-js": "^2.101.1",
     "@typescript-eslint/eslint-plugin": "^8.59.3",
     "@typescript-eslint/parser": "^8.59.3",
-    "@vercel/postgres": "^0.10.0",
+    "@vercel/postgres": "0.10.0",
     "axios": "^1.15.2",
     "bcrypt": "^6.0.0",
     "cheerio": "^1.0.0",
@@ -35,6 +39,7 @@
     "drizzle-orm": "^0.45.2",
     "framer-motion": "^12.12.1",
     "next": "^16.2.6",
+    "next-pwa": "^5.6.0",
     "ngrok": "^5.0.0-beta.2",
     "pg": "^8.20.0",
     "react": "^19.2.5",
