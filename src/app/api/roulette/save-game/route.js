@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { rouletteGames, users } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
+import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
 
 const rouletteNumbers = [
   0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24,
@@ -118,6 +119,19 @@ export async function POST(req) {
       result,
       payout: payout.toFixed(2),
     });
+
+    // Record big win if payout >= 1 million tokens
+    if (payout >= 1000000) {
+      const clerkUser = await currentUser();
+      recordBigWinIfNeeded({
+        userId: userId,
+        username: clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim() : "Player",
+        game: "Roulette",
+        betAmount: totalBetAmount,
+        winAmount: payout,
+        multiplier: totalBetAmount > 0 ? payout / totalBetAmount : 0,
+      }).catch(() => {}); // Fire and forget
+    }
 
     return NextResponse.json({
       success: true,

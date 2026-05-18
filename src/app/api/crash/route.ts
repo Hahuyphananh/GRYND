@@ -7,6 +7,7 @@ import {
   createSignedSession,
   verifySignedSession,
 } from "../../../lib/serverSession";
+import { recordBigWinIfNeeded } from "../../../lib/bigWins";
 
 export async function POST(req) {
   try {
@@ -128,6 +129,18 @@ export async function POST(req) {
       result: won ? "won" : "lost",
       status: "completed",
     });
+
+    // Record big win if payout >= 1 million tokens
+    if (won && payout >= 1000000) {
+      recordBigWinIfNeeded({
+        userId: user.clerkId,
+        username: user.name,
+        game: "Crash",
+        betAmount: bet,
+        winAmount: payout,
+        multiplier: cashoutMultiplier,
+      }).catch(() => {}); // Fire and forget
+    }
 
     const res = NextResponse.json({
       success: true,
