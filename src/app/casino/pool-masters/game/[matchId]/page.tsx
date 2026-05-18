@@ -131,6 +131,7 @@ export default function Page() {
   });
   const lifecycleRef = useRef<ShotLifecycle>("IDLE");
   const activeShotIdRef = useRef<string | null>(null);
+  const remoteShotMetaInitializedRef = useRef(false);
 
   const [balls, setBalls] = useState(setupBalls());
   const [activeMatchId, setActiveMatchId] = useState(matchId);
@@ -168,23 +169,25 @@ export default function Page() {
     setActiveMatchId(matchId);
   }, [matchId]);
 
-useEffect(() => {
-  const id = setInterval(() => {
-    setBalls((prev) => {
-      if (!shotLock.current || !localShotInProgressRef.current) return prev; // ONLY simulate local shooter
+ useEffect(() => {
+   const id = setInterval(() => {
+     setBalls((prev) => {
+       // Run physics for BOTH local and remote shots
+       if (!shotLock.current) return prev;
+       if (!localShotInProgressRef.current && !remoteShotInProgressRef.current) return prev;
 
-      if (!isMoving(prev)) return prev;
+       if (!isMoving(prev)) return prev;
 
-      const next = prev.map((b) => ({ ...b }));
-      tickPhysics(next, shotMeta.current);
-      lifecycleRef.current = "ROLLING";
+       const next = prev.map((b) => ({ ...b }));
+       tickPhysics(next, shotMeta.current);
+       lifecycleRef.current = "ROLLING";
 
-      return next;
-    });
-  }, 16);
+       return next;
+     });
+   }, 16);
 
-  return () => clearInterval(id);
-}, []);
+   return () => clearInterval(id);
+ }, []);
 
   const isMyTurn = turn === owner;
 
@@ -477,6 +480,24 @@ if (!aiMode && turn !== owner) return;
 
       if (remoteRolling && !localShotInProgress) {
         remoteShotInProgressRef.current = true;
+        // Engage shotLock so physics simulation can run for remote shots
+        shotLock.current = true;
+        lifecycleRef.current = payload.lifecycle;
+        // Store the active shot ID for tracking
+        if (payload.shotId) {
+          activeShotIdRef.current = payload.shotId;
+        }
+        // Reset shotMeta for remote shot - we track ball movement but don't have
+        // first-contact/rail info from remote, so we let physics run naturally
+        if (payload.lifecycle === "SHOOTING" && !remoteShotMetaInitializedRef.current) {
+          shotMeta.current = {
+            firstContactNumber: null,
+            railAfterContact: false,
+            pocketedNumbers: [],
+            cueScratch: false,
+          };
+          remoteShotMetaInitializedRef.current = true;
+        }
       }
 
      const isSelf = payload.userId === user?.id;
@@ -511,6 +532,7 @@ if (payload.balls && !isSelf) {
         remoteShotInProgressRef.current = false;
         lifecycleRef.current = "IDLE";
         activeShotIdRef.current = null;
+        remoteShotMetaInitializedRef.current = false;
         setSyncVersion((current) => Math.max(current, payload.version));
         setLastFoul(payload.foul ? (payload.foulMessage ?? "Foul. Ball in hand.") : null);
         if (payload.foulMessage) setStatus(payload.foulMessage);

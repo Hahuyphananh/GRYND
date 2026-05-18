@@ -942,3 +942,22 @@ export const neonTerritoryStats = pgTable("neon_territory_stats", {
   totalWagered: bigint("total_wagered", { mode: "number" }).notNull().default(0),
   totalTokensWon: bigint("total_tokens_won", { mode: "number" }).notNull().default(0),
 });
+
+// BIG WINS FEED TABLE
+export const bigWins = pgTable(
+  "big_wins",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").notNull(),
+    username: text("username").notNull(),
+    game: text("game").notNull(),
+    betAmount: integer("bet_amount").notNull(),
+    winAmount: integer("win_amount").notNull(),
+    multiplier: numeric("multiplier", { precision: 10, scale: 4 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    createdAtIdx: index("idx_big_wins_created_at").on(table.createdAt),
+    multiplierIdx: index("idx_big_wins_multiplier").on(table.multiplier),
+  }),
+);

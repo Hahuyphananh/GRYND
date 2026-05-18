@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../context/SocketProvider";
 
+const MINIMUM_BIG_WIN = 1000000; // 1 million tokens
+
 const GLOBAL_ROUTES = new Set(["/", "/casino", "/classement", "/rankings"]);
 
 function formatParts(text) {
@@ -63,6 +65,19 @@ function MessageText({ content }) {
   );
 }
 
+function formatNumber(num) {
+  if (num >= 1000000000) {
+    return (num / 1000000000).toFixed(1) + "B";
+  }
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1) + "M";
+  }
+  if (num >= 1000) {
+    return (num / 1000).toFixed(1) + "K";
+  }
+  return num.toLocaleString();
+}
+
 export default function ChatWidget() {
   const pathname = usePathname();
   const { user, isSignedIn } = useUser();
@@ -72,6 +87,8 @@ export default function ChatWidget() {
   const [error, setError] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [activeTab, setActiveTab] = useState("chat");
+  const [bigWins, setBigWins] = useState([]);
+  const [isLoadingBigWins, setIsLoadingBigWins] = useState(false);
   const { socket } = useSocket();
   const messagesContainerRef = useRef(null);
 
@@ -157,6 +174,29 @@ export default function ChatWidget() {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages, isOpen]);
+
+  async function loadBigWins() {
+    if (!isOpen) return;
+    setIsLoadingBigWins(true);
+    try {
+      const res = await fetch("/api/chat/big-wins", {
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error("Unable to load big wins.");
+      const data = await res.json();
+      setBigWins(data.wins || []);
+    } catch (err) {
+      setError(err.message || "Failed to load big wins.");
+    } finally {
+      setIsLoadingBigWins(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === "bigwins" && isOpen) {
+      loadBigWins();
+    }
+  }, [activeTab, isOpen]);
 
   async function handleRefresh() {
     setError("");
@@ -280,6 +320,17 @@ export default function ChatWidget() {
                 }`}
               >
                 {room.title}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("bigwins")}
+                className={`rounded px-2 py-1 text-[12px] font-medium transition ${
+                  activeTab === "bigwins"
+                    ? "bg-yellow-400/20 text-yellow-100"
+                    : "text-yellow-300/70 hover:bg-yellow-500/10 hover:text-yellow-200"
+                }`}
+              >
+                🎉 Big Wins
               </button>
               <button
                 type="button"
@@ -409,6 +460,60 @@ export default function ChatWidget() {
                   </button>
                 </form>
               )}
+            </>
+          ) : activeTab === "bigwins" ? (
+            <>
+              <div
+                className="mb-2 h-[45vh] max-h-72 overflow-y-auto rounded border border-yellow-400/20 bg-black/60 p-2 shadow-inner shadow-yellow-500/10"
+              >
+                {isLoadingBigWins ? (
+                  <p className="text-yellow-400/40 text-center py-4">Loading big wins...</p>
+                ) : bigWins.length === 0 ? (
+                  <p className="text-yellow-400/40 text-center py-4">No big wins yet (≥{formatNumber(MINIMUM_BIG_WIN)} tokens).</p>
+                ) : (
+                  bigWins.map((win) => (
+                    <div
+                      key={win.id}
+                      className="mb-2 rounded border border-yellow-400/20 bg-gradient-to-r from-black/60 to-yellow-950/20 px-2 py-2 hover:border-yellow-400/40 transition"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🎉</span>
+                          <span className="font-bold text-yellow-300 text-sm">{win.username}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(win.createdAt).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-[11px]">
+                          <span className="text-slate-400">{win.game}</span>
+                          <span className="text-yellow-400/60">|</span>
+                          <span className="text-slate-400">Bet: {formatNumber(win.betAmount)}</span>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold text-yellow-400">
+                            +{formatNumber(win.winAmount)} 🪙
+                          </div>
+                          <div className="text-[10px] text-yellow-300/60">
+                            {parseFloat(win.multiplier).toFixed(2)}x multiplier
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <p className="mb-2 text-[11px] text-yellow-400/60">
+                🎉 Big Wins feed shows wins of {formatNumber(MINIMUM_BIG_WIN)}+ tokens.
+              </p>
+              <button
+                type="button"
+                onClick={loadBigWins}
+                className="w-full rounded border border-yellow-400/30 bg-yellow-500/10 py-1 text-sm text-yellow-200 hover:bg-yellow-400/20"
+              >
+                Refresh
+              </button>
             </>
           ) : (
             <div className="rounded border border-cyan-400/20 bg-black/60 p-3 text-xs text-cyan-200">

@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 import { NextResponse } from "next/server";
+import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
 
 const normalize = (value: string | null | undefined) =>
   (value || "").trim().toLowerCase();
@@ -80,7 +81,7 @@ export async function POST() {
     }
 
     const userResult =
-      await sql`SELECT id FROM users WHERE clerk_id = ${userId} LIMIT 1`;
+      await sql`SELECT id, name FROM users WHERE clerk_id = ${userId} LIMIT 1`;
     const dbUser = userResult.rows[0];
     if (!dbUser) {
       return NextResponse.json(
@@ -178,6 +179,18 @@ export async function POST() {
           SET balance = balance + ${payout}
           WHERE id = ${dbUser.id}
         `;
+
+        // Record big win if payout >= 1 million tokens
+        if (payout >= 1000000) {
+          recordBigWinIfNeeded({
+            userId: userId,
+            username: dbUser.name,
+            game: "Sports Bet",
+            betAmount: Number(bet.bet_amount),
+            winAmount: payout,
+            multiplier: Number(bet.odds),
+          }).catch(() => {}); // Fire and forget
+        }
       }
 
       settledCount += updateResult.rowCount > 0 ? 1 : 0;

@@ -28,9 +28,11 @@ export default function GoonBetClickerClient() {
   const [multiplier, setMultiplier] = useState(1);
   const [clicks, setClicks] = useState(0);
   const [busted, setBusted] = useState(false);
+  const [lastPayout, setLastPayout] = useState<string | null>(null);
   const [history, setHistory] = useState<RoundHistory[]>([]);
   const [roundStartTime, setRoundStartTime] = useState<number | null>(null);
   const roundIdRef = useRef<number | null>(null);
+  const roundStartTimeRef = useRef<number | null>(null);
   const clicksRef = useRef(0);
   const multiplierRef = useRef(1);
 
@@ -68,6 +70,10 @@ export default function GoonBetClickerClient() {
   useEffect(() => {
     roundIdRef.current = roundId;
   }, [roundId]);
+
+  useEffect(() => {
+    roundStartTimeRef.current = roundStartTime;
+  }, [roundStartTime]);
 
   useEffect(() => {
     clicksRef.current = clicks;
@@ -138,15 +144,17 @@ export default function GoonBetClickerClient() {
   }
 
   async function cashout() {
-    if (!roundId || !roundStartTime) return;
+    const currentRoundId = roundIdRef.current;
+    const currentRoundStartTime = roundStartTimeRef.current;
+    if (!currentRoundId || currentRoundStartTime === null) return;
     const res = await fetch("/api/clicker/cashout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        roundId,
+        roundId: currentRoundId,
         clientClicks: clicksRef.current,
         clientMultiplier: multiplierRef.current,
-        durationMs: Date.now() - roundStartTime,
+        durationMs: Date.now() - currentRoundStartTime,
       }),
     });
    const data = await res.json();
@@ -157,9 +165,10 @@ if (!res.ok) {
   return alert(data.error);
 }
 
-setClicks(data.clicks);
-setMultiplier(Number(data.multiplier));
-setBusted(data.busted);
+setClicks(data.clicks ?? 0);
+setMultiplier(Number(data.multiplier ?? 1));
+setBusted(data.busted ?? false);
+setLastPayout(data.payout ? data.payout.toString() : "0");
 
 setRoundId(null);
 setRoundStartTime(null);
@@ -214,6 +223,9 @@ await refresh();
             </span>
           </p>
           <p>Clicks: {clicks}</p>
+          {lastPayout !== null && !roundId && (
+            <p className="text-green-400 text-xl font-bold">Payout: {lastPayout} tokens</p>
+          )}
           <p>Potential payout: {potentialPayout.toString()}</p>
           <p className="text-amber-300">
             Next click bust chance: {(bustChanceAtClick(clicks + 1) * 100).toFixed(2)}%
