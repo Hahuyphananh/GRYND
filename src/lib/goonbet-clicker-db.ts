@@ -91,7 +91,14 @@ export async function cashoutRound(
     if (rounds.length === 0) throw new Error("ROUND_NOT_FOUND");
 
     const round = rounds[0] as any;
-    if (round.status !== "active") throw new Error("ROUND_NOT_ACTIVE");
+    if (round.status !== "active") {
+  return {
+    payout: BigInt(0),
+    multiplier: Number(round.multiplier),
+    clicks: Number(round.clicks),
+    busted: round.status === "bust",
+  };
+}
 
     const elapsedMs = Date.now() - new Date(round.created_at).getTime();
     const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
@@ -163,9 +170,20 @@ export async function syncRound(
 
 export async function getRecentRounds(userId: string) {
   const sql = getNeonSql();
-  return sql`SELECT id, bet_amount, multiplier, clicks, status, payout, created_at
-             FROM clicker_rounds
-             WHERE user_id = ${userId}
-             ORDER BY id DESC
-             LIMIT 10`;
+
+  return sql`
+    SELECT
+      id,
+      bet_amount,
+      multiplier,
+      clicks,
+      status,
+      payout,
+      created_at
+    FROM clicker_rounds
+    WHERE user_id = ${userId}
+      AND status != 'active'
+    ORDER BY id DESC
+    LIMIT 10
+  `;
 }
