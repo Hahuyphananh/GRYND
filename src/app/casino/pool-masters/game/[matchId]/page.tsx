@@ -187,7 +187,12 @@ useEffect(() => {
 }, []);
 
   const isMyTurn = turn === owner;
-  const canShoot = started && !winner && !isMoving(balls) && isMyTurn;
+
+const canShoot =
+  started &&
+  !winner &&
+  !isMoving(balls) &&
+  (aiMode ? true : isMyTurn);
   const opponentSeat: PlayerTurn = owner === 1 ? 2 : 1;;
 
   const emitLiveState = (payload: Omit<PoolLivePayload, "matchId" | "version">) => {
@@ -317,7 +322,15 @@ useEffect(() => {
   }, [balls, turn, owner, myTeam, oppTeam, openTable, aiMode, activeMatchId, socket]);
 
   const fireShot = (a: number, p: number) => {
-    if (!canShoot || isMoving(balls) || shotLock.current) return;
+    if (
+  isMoving(balls) ||
+  shotLock.current ||
+  !started ||
+  winner
+)
+  return;
+
+if (!aiMode && turn !== owner) return;
     shotLock.current = true;
     localShotInProgressRef.current = true;
     remoteShotInProgressRef.current = false;
@@ -373,7 +386,7 @@ useEffect(() => {
     if (!isMoving(balls)) return;
     const now = Date.now();
     const shotId = activeShotIdRef.current ?? undefined;
-    if (!aiMode && socket && now - liveEmitAtRef.current >= 16) {
+    if (!aiMode && socket && now - liveEmitAtRef.current >= 100) {
       liveEmitAtRef.current = now;
       emitLiveState({
         sourceSeat: owner,
@@ -386,7 +399,7 @@ useEffect(() => {
         shotId,
       });
     }
-    if (now - livePersistAtRef.current >= 80) {
+    if (now - livePersistAtRef.current >= 500) {
       livePersistAtRef.current = now;
       void pushPoolState(
         activeMatchId,

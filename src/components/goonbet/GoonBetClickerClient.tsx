@@ -149,15 +149,22 @@ export default function GoonBetClickerClient() {
         durationMs: Date.now() - roundStartTime,
       }),
     });
-    const data = await res.json();
-    if (!res.ok) {
-      setBusted(true);
-      setRoundId(null);
-      return alert(data.error);
-    }
-    setRoundId(null);
-    setRoundStartTime(null);
-    await refresh();
+   const data = await res.json();
+
+if (!res.ok) {
+  setBusted(true);
+  setRoundId(null);
+  return alert(data.error);
+}
+
+setClicks(data.clicks);
+setMultiplier(Number(data.multiplier));
+setBusted(data.busted);
+
+setRoundId(null);
+setRoundStartTime(null);
+
+await refresh();
   }
 
   return (
