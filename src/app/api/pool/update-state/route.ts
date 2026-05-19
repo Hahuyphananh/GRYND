@@ -5,7 +5,7 @@ import { poolMatches } from "../../../../db/schema";
 
 function getVersionFromGameState(gameState: unknown): number {
   if (!gameState || typeof gameState !== "object") return 0;
-  const maybeVersion = (gameState as { version?: unknown }).version;
+  const maybeVersion = (gameState as Record<string, unknown>).version;
   return typeof maybeVersion === "number" && Number.isFinite(maybeVersion)
     ? maybeVersion
     : 0;
@@ -33,10 +33,8 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!state?.settled || state?.lifecycle !== "SETTLED") {
-      return NextResponse.json({ ok: true, skipped: true, reason: "not_settled" });
-    }
-
+    // Accept all lifecycle states so the polling fallback always has the
+    // latest ball positions. Version-based dedup prevents stale overwrites.
     const currentVersion = getVersionFromGameState(match.gameState);
     const incomingVersion = Number(state.version ?? 0);
     if (!Number.isFinite(incomingVersion) || incomingVersion <= currentVersion) {

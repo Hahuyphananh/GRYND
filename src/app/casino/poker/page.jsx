@@ -4,7 +4,26 @@ import React, { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
-import BlackjackCardBack from "../../../components/BlackjackCardBack";
+
+function CyberCardBack() {
+  return (
+    <div
+      className="h-20 w-14 sm:h-24 sm:w-16 md:h-28 md:w-20 relative rounded-lg overflow-hidden
+      bg-gradient-to-br from-[#0a0015] via-[#0d0020] to-[#05000d]
+      shadow-[0_0_20px_rgba(255,0,204,0.5),0_0_40px_rgba(255,0,204,0.15)] border border-[#ff00cc]/40"
+    >
+      <div className="absolute inset-0 opacity-20"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='23' viewBox='0 0 40 46' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0l20 11.5v23L20 46 0 34.5v-23L20 0zm0 4L4 13.5v19L20 42l16-9.5v-19L20 4z' fill='none' stroke='%23ff00cc' stroke-width='0.8'/%3E%3C/svg%3E")`,
+          backgroundSize: "20px 23px",
+        }}
+      />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-3xl sm:text-4xl opacity-40 select-none">♠</span>
+      </div>
+    </div>
+  );
+}
 
 export default function PokerPage() {
   const { user } = useUser();
@@ -211,7 +230,7 @@ export default function PokerPage() {
     if (card.value === "?") {
       return (
         <div key={i}>
-          <BlackjackCardBack />
+          <CyberCardBack />
         </div>
       );
     }
@@ -223,11 +242,16 @@ export default function PokerPage() {
     return (
       <div
         key={i}
-        className={`h-20 w-14 sm:h-24 sm:w-16 md:h-28 md:w-20 bg-white text-lg flex items-center justify-center rounded shadow-[0_0_10px_rgba(255,255,255,0.2)] ${
-          isHighlighted ? "border-4 border-yellow-500" : ""
+        className={`h-20 w-14 sm:h-24 sm:w-16 md:h-28 md:w-20 bg-gradient-to-b from-[#0a0a1a] to-[#020108] text-lg flex items-center justify-center rounded-lg shadow-[0_0_15px_rgba(255,0,204,0.25)] border-2 ${
+          isHighlighted
+            ? "border-[#ff00cc] shadow-[0_0_20px_rgba(255,0,204,0.5)]"
+            : "border-[#ff00cc]/30"
         }`}
         style={{
-          color: ["♥", "♦"].includes(symbol) ? "red" : "black",
+          color: ["♥", "♦"].includes(symbol) ? "#ff00cc" : "#00e5ff",
+          textShadow: ["♥", "♦"].includes(symbol)
+            ? "0 0 8px rgba(255,0,204,0.6)"
+            : "0 0 8px rgba(0,229,255,0.6)",
         }}
       >
         {`${card.value}${symbol}`}
@@ -279,19 +303,25 @@ export default function PokerPage() {
   };
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#020617] via-[#071A3A] to-[#0A2A5C] pb-24 pt-20 md:pb-8">
+    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#020108] via-[#0a0a1a] to-[#050510] pb-24 pt-20 md:pb-8 relative">
+      {/* Scanlines overlay */}
+      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]"
+        style={{
+          backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,0,204,0.15) 2px, rgba(255,0,204,0.15) 4px)",
+        }}
+      />
       <NavigationBar currentPath="/casino" />
 
-      <div className="mx-auto max-w-4xl px-3 py-6 sm:px-4 sm:py-8">
-        <h1 className="text-4xl font-bold text-[#00E5FF] text-center mb-6 drop-shadow-[0_0_12px_#00E5FF]">
-          ♠️ Poker Royale
+      <div className="mx-auto max-w-4xl px-3 py-6 sm:px-4 sm:py-8 relative z-10">
+        <h1 className="text-4xl sm:text-5xl font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] via-[#00e5ff] to-[#ff00cc] text-center mb-6 drop-shadow-[0_0_12px_#ff00cc]">
+          ♠ Poker Royale ♠
         </h1>
-        <p className="text-lg font-semibold text-[#00E5FF] text-center drop-shadow-[0_0_8px_#00E5FF]">
+        <p className="text-lg font-semibold text-[#ff00cc] text-center drop-shadow-[0_0_8px_#ff00cc]">
           Tokens: {userTokens}
         </p>
 
         {error && (
-          <div className="mb-4 mt-4 rounded bg-red-500/10 p-3 text-red-400 border border-red-500/30 shadow-[0_0_15px_rgba(255,0,0,0.3)]">
+          <div className="mb-4 mt-4 rounded bg-red-950/30 backdrop-blur-sm p-3 text-red-300 border border-red-500/40 shadow-[0_0_20px_rgba(255,0,0,0.3)]">
             {error}
           </div>
         )}
@@ -300,7 +330,7 @@ export default function PokerPage() {
           <div className="text-center mt-8">
             {/* --- Bet Amount Input --- */}
             <div className="flex justify-center items-center gap-2">
-              <label className="text-[#00E5FF] font-semibold">
+              <label className="text-[#ff00cc] font-semibold">
                 Bet Amount:
               </label>
               <input
@@ -309,20 +339,20 @@ export default function PokerPage() {
                 min="1"
                 max={userTokens}
                 onChange={(e) => setBetAmount(parseInt(e.target.value))}
-                className="w-24 px-2 py-1 rounded bg-[#020617] border border-[#FFFF33]/30 text-white focus:border-[#FFFF33] focus:ring-1 focus:ring-[#FFFF33]"
+                className="w-24 px-2 py-1 rounded bg-[#0a0a1a] border border-[#ff00cc]/30 text-white focus:border-[#ff00cc] focus:ring-1 focus:ring-[#ff00cc]"
               />
             </div>
             <div className="flex justify-center gap-4 mt-4 px-4">
               <button
                 onClick={() => router.push("/casino/poker/multi")}
-                className="flex-1 rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#FFFF33] hover:bg-[#FFFF33]/35 transition"
+                className="flex-1 rounded-lg border border-[#ff00cc]/40 bg-[#ff00cc]/15 px-4 py-2 text-sm font-medium text-[#ffb0ff] hover:bg-[#ff00cc]/30 transition shadow-[0_0_12px_rgba(255,0,204,0.2)]"
               >
-                Jouer au Texas Holdem ♦️
+                Texas Hold'em ♦️
               </button>
 
               <button
                 onClick={() => initializeAiGame(betAmount)}
-                className="flex-1 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35 active:scale-95 transition"
+                className="flex-1 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/15 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/30 active:scale-95 transition shadow-[0_0_12px_rgba(0,229,255,0.2)]"
               >
                 Jouer aux mains ♠️
               </button>
@@ -331,19 +361,19 @@ export default function PokerPage() {
         )}
 
         {game && (
-          <div className="mx-auto mt-6 w-full max-w-6xl rounded-lg border border-[#FFFF33]/30 bg-[#020617] p-3 shadow-[0_0_30px_rgba(255,255,51,0.2)] backdrop-blur-md sm:mt-8 sm:p-6">
+          <div className="mx-auto mt-6 w-full max-w-6xl rounded-xl border border-[#ff00cc]/20 bg-[#0a0a1a]/90 p-3 shadow-[0_0_40px_rgba(255,0,204,0.15)] backdrop-blur-md sm:mt-8 sm:p-6">
             {/* --- Result & Replay (Top of Board) --- */}
             {result && (
               <div className="mb-6 text-center space-y-3">
-                <p className="text-xl font-bold text-[#FFFF33] drop-shadow-[0_0_10px_#FFFF33]">
+                <p className="text-xl font-bold text-[#ff00cc] drop-shadow-[0_0_10px_#ff00cc]">
                   {result.message}
                   {result.kicker && result.aiKicker && (
-                    <span className="text-[#FFFF33] ml-2 text-sm">
+                    <span className="text-[#ffb0ff] ml-2 text-sm">
                       (Kicker: {result.kicker} vs {result.aiKicker})
                     </span>
                   )}
                   {result.won && (
-                    <span className="text-green-400 font-extrabold ml-2">
+                    <span className="text-[#00e5ff] font-extrabold ml-2 drop-shadow-[0_0_6px_#00e5ff]">
                       +{result.winAmount} tokens 🎉
                     </span>
                   )}
@@ -355,7 +385,7 @@ export default function PokerPage() {
                     setGame(null);
                     initializeAiGame();
                   }}
-                  className="bg-[#FFFF33]/20 hover:bg-[#FFFF33]/35 text-[#FFFF33] font-bold px-6 py-3 rounded-full text-sm sm:text-base border border-[#FFFF33]/40 shadow-[0_0_15px_rgba(255,255,51,0.5)]"
+                  className="bg-gradient-to-r from-[#ff00cc]/60 to-[#00e5ff]/60 hover:from-[#ff00cc] hover:to-[#00e5ff] text-black font-bold px-6 py-3 rounded-full text-sm sm:text-base border border-[#ff00cc]/30 shadow-[0_0_20px_rgba(255,0,204,0.4)]"
                 >
                   🔄 Replay
                 </button>
@@ -366,7 +396,7 @@ export default function PokerPage() {
             <div className="flex flex-wrap justify-center items-center gap-4 mb-6">
               <button
                 onClick={() => handleAction("fold")}
-                className="bg-red-500/20 hover:bg-red-500/30 px-5 py-2 rounded-full font-bold text-red-300 border border-red-500/40 shadow-[0_0_10px_rgba(255,0,0,0.4)] text-sm sm:text-base"
+                className="bg-red-900/40 hover:bg-red-800/50 px-5 py-2 rounded-full font-bold text-red-300 border border-red-500/40 shadow-[0_0_12px_rgba(255,0,0,0.3)] text-sm sm:text-base transition"
               >
                 Fold
               </button>
@@ -375,7 +405,7 @@ export default function PokerPage() {
                   setRaiseAmount((pot / 10) * 2);
                   handleAction("play");
                 }}
-                className="bg-green-500/20 hover:bg-green-500/30 px-5 py-2 rounded-full font-bold text-green-300 border border-green-500/40 shadow-[0_0_10px_rgba(0,255,0,0.4)] text-sm sm:text-base"
+                className="bg-gradient-to-r from-[#ff00cc]/30 to-[#00e5ff]/30 hover:from-[#ff00cc]/50 hover:to-[#00e5ff]/50 px-5 py-2 rounded-full font-bold text-white border border-[#ff00cc]/40 shadow-[0_0_15px_rgba(255,0,204,0.3)] text-sm sm:text-base transition"
               >
                 Play
               </button>
@@ -385,14 +415,14 @@ export default function PokerPage() {
             <div className="flex justify-center flex-wrap gap-4 mb-4">
               {/* Player Hand */}
               <div>
-                <h3 className="text-[#FFFF33] text-center mb-2">Votre main</h3>
+                <h3 className="text-[#ff00cc] text-center mb-2 drop-shadow-[0_0_6px_#ff00cc]">Votre main</h3>
                 <div className="flex gap-2 justify-center">
                   {playerHand.map((c, i) =>
                     renderCard(c, i, getHighlightValues(playerHand)),
                   )}
                 </div>
                 {playerHand.length === 5 && (
-                  <div className="text-center mt-2 text-lg font-bold text-[#FFFF33]">
+                  <div className="text-center mt-2 text-lg font-bold text-[#ff00cc] drop-shadow-[0_0_6px_#ff00cc]">
                     Votre main: {evaluateHand(playerHand)}
                   </div>
                 )}
@@ -400,7 +430,7 @@ export default function PokerPage() {
 
               {/* AI Hand */}
               <div>
-                <h3 className="text-[#FFFF33] text-center mb-2">Main AI</h3>
+                <h3 className="text-[#00e5ff] text-center mb-2 drop-shadow-[0_0_6px_#00e5ff]">Main AI</h3>
                 <div className="flex gap-2 justify-center">
                   {opponentHand.map((c, i) =>
                     renderCard(c, i, getHighlightValues(opponentHand)),
@@ -408,7 +438,7 @@ export default function PokerPage() {
                 </div>
                 {opponentHand.length === 5 &&
                   !opponentHand.some((c) => c.value === "?") && (
-                    <div className="text-center mt-2 text-lg font-bold text-[#FFFF33]">
+                    <div className="text-center mt-2 text-lg font-bold text-[#00e5ff] drop-shadow-[0_0_6px_#00e5ff]">
                       Main AI: {evaluateHand(opponentHand)}
                     </div>
                   )}
@@ -416,18 +446,18 @@ export default function PokerPage() {
             </div>
 
             {/* --- Pot Info --- */}
-            <div className="text-center text-[#FFFF33] font-semibold text-lg drop-shadow-[0_0_8px_#FFFF33]">
+            <div className="text-center font-black text-lg text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] drop-shadow-[0_0_8px_#ff00cc]">
               Pot actuel: {pot} tokens
             </div>
           </div>
         )}
 
         {/* Poker Hand Rankings Legend */}
-        <div className="mt-6 w-full bg-[#020617] text-white p-4 rounded border border-[#FFFF33]/30 shadow-[0_0_20px_rgba(255,255,51,0.2)] backdrop-blur-md">
-          <h3 className="text-[#FFFF33] font-bold mb-2 text-center drop-shadow-[0_0_8px_#FFFF33]">
+        <div className="mt-6 w-full bg-[#0a0a1a]/90 text-white p-4 rounded-xl border border-[#ff00cc]/15 shadow-[0_0_20px_rgba(255,0,204,0.1)] backdrop-blur-md">
+          <h3 className="text-[#ff00cc] font-bold mb-2 text-center drop-shadow-[0_0_8px_#ff00cc]">
             Poker Hands (Probabilities)
           </h3>
-          <ul className="flex flex-wrap justify-center gap-6 text-sm">
+          <ul className="flex flex-wrap justify-center gap-6 text-sm text-[#b0b0ff]/70">
             <li>Royal Flush (0.0001%)</li>
             <li>Straight Flush (0.001%)</li>
             <li>Four of a Kind (0.02%)</li>

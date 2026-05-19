@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+realtime-server/node_modules
 /.pnp
 .pnp.js
 .yarn/install-state.gz

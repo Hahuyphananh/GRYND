@@ -130,6 +130,34 @@ export default function PokerPage() {
   const [aiInfoOpen, setAiInfoOpen] = useState(false);
   const [selectedAi, setSelectedAi] = useState<Player | null>(null);
   const [turnTimeLimit, setTurnTimeLimit] = useState(60);
+  const [windowSize, setWindowSize] = useState({ w: 1200, h: 800 });
+  const [isPortrait, setIsPortrait] = useState(false);
+
+  // Responsive scaling & landscape enforcement
+  useEffect(() => {
+    const update = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      setWindowSize({ w, h });
+      setIsPortrait(w < 768 && h > w);
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
+  }, []);
+
+  // Compute scale factor so the 900x600 table+seats area fits the viewport
+  const TABLE_W = 900;
+  const TABLE_H = 680;
+  const paddingX = 32;
+  const paddingY = 140;
+  const scaleX = (windowSize.w - paddingX) / TABLE_W;
+  const scaleY = (windowSize.h - paddingY) / TABLE_H;
+  const tableScale = Math.min(scaleX, scaleY, 1.0);
 
   // UI modal / seat state
   const [seatModalOpen, setSeatModalOpen] = useState(false);
@@ -450,12 +478,12 @@ export default function PokerPage() {
   // Player stays at bottom-center (same as before)
   // -----------------------------
   const seatPositions = [
-    { left: 450, top: 30 }, // 0: top-center
-    { left: 700, top: 80 }, // 1: top-right (lowered & slightly left)
-    { left: 700, top: 450 }, // 2: bottom-right
-    { left: 450, top: 480 }, // 3: bottom-center (YOU)
-    { left: 200, top: 450 }, // 4: bottom-left
-    { left: 200, top: 80 }, // 5: top-left (lowered & slightly right)
+    { left: 450, top: 15 },  // 0: top-center
+    { left: 835, top: 65 },  // 1: top-right
+    { left: 835, top: 445 }, // 2: bottom-right
+    { left: 450, top: 505 }, // 3: bottom-center (YOU)
+    { left: 65, top: 445 },  // 4: bottom-left
+    { left: 65, top: 65 },   // 5: top-left
   ];
 
   // ======== CREATE GAME =========
@@ -1370,36 +1398,54 @@ export default function PokerPage() {
 
   // main UI when game exists
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#05010f] via-[#0a1633] to-[#12001f] text-white p-6 overflow-hidden relative">
-      <div className="absolute top-4 left-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#020108] via-[#0a0a1a] to-[#050510] text-white overflow-hidden relative">
+      {/* ── Portrait-mode overlay (mobile only) ── */}
+      {isPortrait && (
+        <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md">
+          <div className="text-6xl mb-6 animate-spin" style={{ animationDuration: "4s" }}>📱</div>
+          <p className="text-2xl font-bold text-[#00e5ff] drop-shadow-[0_0_12px_#00e5ff] mb-2">
+            Rotate Your Phone
+          </p>
+          <p className="text-sm text-[#b0b0ff]/70">Landscape mode required for Texas Hold'em</p>
+        </div>
+      )}
+
+      {/* ── Ambient scanlines overlay ── */}
+      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]"
+        style={{
+          backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,229,255,0.15) 2px, rgba(0,229,255,0.15) 4px)",
+        }}
+      />
+
+      <div className="absolute top-4 left-4 z-20">
         <button
           onClick={async () => {
             if (game?.stage === "showdown" || game?.waiting) {
               await leaveCurrentGame();
-              setGame(null); // go back to form page
+              setGame(null);
             } else {
               alert("You can only return to the form after the hand ends!");
             }
           }}
-          className={`px-4 py-2 rounded font-bold transition ${
+          className={`px-4 py-2 rounded font-bold transition text-sm ${
             game?.stage === "showdown" || game?.waiting
-              ? "bg-yellow-500 text-black hover:bg-yellow-400"
-              : "bg-gray-500 text-gray-300 cursor-not-allowed"
+              ? "bg-gradient-to-r from-[#ff00cc]/70 to-[#00e5ff]/70 text-black hover:from-[#ff00cc] hover:to-[#00e5ff] shadow-[0_0_15px_rgba(255,0,204,0.4)]"
+              : "bg-[#0a0a1a]/80 text-[#b0b0ff]/40 border border-[#b0b0ff]/10 cursor-not-allowed"
           }`}
         >
           ← Return
         </button>
       </div>
 
-      <h1 className="text-5xl mb-6 font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-fuchsia-400 to-cyan-300 drop-shadow-[0_0_20px_rgba(0,255,255,0.7)] animate-pulse">
+      <h1 className="text-3xl sm:text-5xl mb-4 font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] via-[#00e5ff] to-[#ff00cc] drop-shadow-[0_0_20px_rgba(255,0,204,0.8)] animate-pulse">
         TEXAS HOLD'EM
       </h1>
-      <div className="mb-3 flex items-center gap-2 text-sm">
-        <span className="text-gray-300">Turn timer:</span>
+      <div className="mb-3 flex items-center gap-2 text-sm z-10">
+        <span className="text-[#b0b0ff]/70">Turn timer:</span>
         <select
           value={turnTimeLimit}
           onChange={(e) => setTurnTimeLimit(Number(e.target.value) || 60)}
-          className="bg-slate-700 border border-slate-500 rounded px-2 py-1"
+          className="bg-[#0a0a1a] border border-[#ff00cc]/30 rounded px-2 py-1 text-[#ff00cc] focus:outline-none focus:border-[#ff00cc]"
         >
           <option value={15}>15s</option>
           <option value={30}>30s</option>
@@ -1408,10 +1454,10 @@ export default function PokerPage() {
       </div>
 
       {game?.inviteCode && (
-        <div className="mb-4 text-center flex items-center justify-center gap-4">
-          <div>
-            <span className="font-bold">Invite Code:</span>{" "}
-            <span className="bg-yellow-300 text-black px-2 py-1 rounded">
+        <div className="mb-4 text-center flex flex-wrap items-center justify-center gap-3 z-10">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-[#b0b0ff]/70 text-sm">Invite Code:</span>{" "}
+            <span className="bg-gradient-to-r from-[#ff00cc]/30 to-[#00e5ff]/30 border border-[#ff00cc]/40 text-[#00e5ff] px-3 py-1 rounded font-mono tracking-wider shadow-[0_0_12px_rgba(0,229,255,0.25)]">
               {game.inviteCode}
             </span>
             <button
@@ -1419,7 +1465,7 @@ export default function PokerPage() {
                 navigator.clipboard.writeText(game.inviteCode || "");
                 alert("Invite code copied!");
               }}
-              className="ml-2 bg-[#f5ff3b] px-3 py-1 rounded text-sm"
+              className="ml-1 bg-[#ff00cc]/20 border border-[#ff00cc]/40 text-[#ff00cc] px-3 py-1 rounded text-sm hover:bg-[#ff00cc]/35 transition shadow-[0_0_10px_rgba(255,0,204,0.3)]"
             >
               Copy
             </button>
@@ -1438,63 +1484,121 @@ export default function PokerPage() {
                 }
                 startGame();
               }}
-              className={`bg-green-600 px-4 py-2 rounded font-bold ${
-                game.players.length < 2 ? "opacity-60 cursor-not-allowed" : ""
+              className={`bg-gradient-to-r from-[#ff00cc]/80 to-[#00e5ff]/80 px-5 py-2 rounded font-bold text-black hover:from-[#ff00cc] hover:to-[#00e5ff] transition shadow-[0_0_20px_rgba(255,0,204,0.5)] ${
+                game.players.length < 2 ? "opacity-40 cursor-not-allowed" : ""
               }`}
               disabled={game.players.length < 2}
             >
-              Start Game
+              ⚡ Start Game
             </button>
           )}
 
-          {/* REPLAY HAND button moved here */}
+          {/* REPLAY HAND button */}
           {game?.replayVisible && (
             <button
               onClick={replayHand}
-              className="bg-yellow-400 text-black px-4 py-2 rounded font-bold hover:bg-yellow-300 transition"
+              className="bg-gradient-to-r from-[#ff00cc]/60 to-[#ff00cc]/60 border border-[#ff00cc]/50 text-white px-5 py-2 rounded font-bold hover:from-[#ff00cc] hover:to-[#ff00cc] transition shadow-[0_0_15px_rgba(255,0,204,0.4)]"
             >
-              Replay Hand
+              🔄 Replay Hand
             </button>
           )}
         </div>
       )}
 
       {(game.actionLog?.length ?? 0) > 0 && (
-        <div className="mb-3 w-full max-w-xl bg-slate-800/70 border border-slate-700 rounded p-2 text-xs">
-          <div className="font-bold text-yellow-300 mb-1">Recent actions</div>
+        <div className="mb-3 w-full max-w-xl bg-[#0a0a1a]/90 border border-[#ff00cc]/20 rounded p-2 text-xs z-10 backdrop-blur-sm">
+          <div className="font-bold text-[#ff00cc] mb-1 drop-shadow-[0_0_6px_#ff00cc]">Recent actions</div>
           <div className="space-y-1">
             {game.actionLog!.map((entry, idx) => (
               <div
                 key={`${entry.at}-${idx}`}
-                className="text-slate-200 truncate"
+                className="text-[#b0b0ff]/80 truncate"
               >
-                • {entry.text}
+                ▸ {entry.text}
               </div>
             ))}
           </div>
         </div>
       )}
 
-      <div className="mb-4 flex flex-col items-center">
-        {/* Pot moved inside table for layout; but keep this here as well if you want */}
-      </div>
-
-      {/* The poker table itself */}
+      {/* ── Scalable table wrapper ── */}
       <div
-        className="relative w-[760px] h-[430px] rounded-full flex items-center justify-center mb-6 mt-12
-bg-gradient-to-br from-[#08111f] via-[#07192d] to-[#050816]
-border-[6px] border-cyan-400/70
-shadow-[0_0_60px_rgba(0,255,255,0.35),inset_0_0_40px_rgba(255,0,255,0.12)]"
+        className="relative flex items-center justify-center"
+        style={{
+          transform: `scale(${tableScale})`,
+          transformOrigin: "center center",
+          width: TABLE_W,
+          height: TABLE_H,
+        }}
       >
-        {/* neon ring */}
-        <div className="absolute inset-4 rounded-full border border-fuchsia-500/40 shadow-[0_0_30px_rgba(255,0,255,0.35)]"></div>
+        {/* The cyberpunk poker table */}
+        <div
+          className="absolute top-[40px] left-[70px] w-[760px] h-[430px] rounded-[50%] flex items-center justify-center
+bg-gradient-to-br from-[#0a0015] via-[#0d0020] to-[#05000d]
+border-[6px] border-[#ff00cc]/60
+shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60px_rgba(255,0,204,0.1)]"
+        >
+          {/* Hex grid pattern overlay */}
+          <div className="absolute inset-[6px] rounded-[50%] overflow-hidden opacity-20"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='46' viewBox='0 0 40 46' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0l20 11.5v23L20 46 0 34.5v-23L20 0zm0 4L4 13.5v19L20 42l16-9.5v-19L20 4z' fill='none' stroke='%2300e5ff' stroke-width='0.8'/%3E%3C/svg%3E")`,
+              backgroundSize: "40px 46px",
+            }}
+          />
 
-        {/* hologram center */}
-        <div className="absolute w-[320px] h-[140px] rounded-full bg-cyan-400/5 blur-2xl"></div>
-      </div>
+          {/* Scanlines on the table felt */}
+          <div className="absolute inset-[6px] rounded-[50%] overflow-hidden opacity-[0.06]"
+            style={{
+              backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,0,204,0.3) 2px, rgba(255,0,204,0.3) 4px)",
+            }}
+          />
 
-      {/* Seat positions absolutely positioned around the board */}
-      <div className="relative w-[900px] h-[600px] -mt-[480px] pointer-events-none">
+          {/* Outer neon ring */}
+          <div className="absolute inset-3 rounded-[50%] border-2 border-[#00e5ff]/30 shadow-[0_0_30px_rgba(0,229,255,0.25)]" />
+
+          {/* Inner neon ring */}
+          <div className="absolute inset-6 rounded-[50%] border border-[#ff00cc]/25 shadow-[0_0_20px_rgba(255,0,204,0.2)]" />
+
+          {/* Holographic center glow */}
+          <div className="absolute w-[300px] h-[120px] rounded-[50%] bg-gradient-to-r from-[#ff00cc]/10 via-[#00e5ff]/10 to-[#ff00cc]/10 blur-3xl" />
+
+          {/* Center data ring */}
+          <div className="absolute w-[180px] h-[60px] rounded-[50%] border border-[#00e5ff]/15 shadow-[0_0_40px_rgba(0,229,255,0.15)] animate-pulse" />
+
+          {/* ── Pot display in the center of the table ── */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center">
+            <div className="text-[10px] uppercase tracking-[0.3em] text-[#b0b0ff]/50 mb-1">Pot</div>
+            <div className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] drop-shadow-[0_0_12px_rgba(255,0,204,0.7)]">
+              ${game.pot}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Community cards on the table ── */}
+        {game?.community?.length > 0 && (
+          <div className="absolute top-[215px] left-1/2 -translate-x-1/2 flex gap-2 sm:gap-3 z-20">
+            {game.community.map((c: Card, i: number) => (
+              <motion.div
+                key={`${c?.suit}-${c?.value}-${i}`}
+                initial={{ rotateY: 90, opacity: 0, y: -30, scale: 0.5 }}
+                animate={{ rotateY: 0, opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.5, delay: i * 0.12, type: "spring", stiffness: 200 }}
+                className={`w-10 h-14 sm:w-14 sm:h-20 rounded-lg flex items-center justify-center font-bold text-sm sm:text-xl shadow-xl border-2
+      bg-gradient-to-b from-[#0a0a1a] to-[#020108]
+      ${c?.suit === "♥" || c?.suit === "♦"
+                    ? "border-[#ff00cc]/60 text-[#ff00cc] shadow-[0_0_15px_rgba(255,0,204,0.4)]"
+                    : "border-[#00e5ff]/60 text-[#00e5ff] shadow-[0_0_15px_rgba(0,229,255,0.4)]"
+                  }
+    `}
+              >
+                {c?.value}{c?.suit}
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Seat positions ── */}
+        <div className="absolute inset-0 pointer-events-none">
         {seatPositions.map((pos, seatIdx) => {
           const occupant = playerAtSeat(seatIdx);
           const isPlayer = occupant?.id === myId;
@@ -1518,19 +1622,22 @@ shadow-[0_0_60px_rgba(0,255,255,0.35),inset_0_0_40px_rgba(255,0,255,0.12)]"
                       setAiInfoOpen(true);
                     }
                   }}
-                  className={`flex flex-col items-center gap-1 w-[120px] p-1.5 rounded-xl text-[10px] font-semibold cursor-pointer
-      ${isPlayer ? "bg-yellow-400 text-black" : "bg-yellow-400 text-black shadow-[0_0_18px_rgba(255,255,0,0.5)]"}
-      ${occupant.hasFolded ? "opacity-50" : ""}
+                  className={`flex flex-col items-center gap-1 w-[120px] p-1.5 rounded-xl text-[10px] font-semibold cursor-pointer backdrop-blur-sm
+      ${isPlayer
+                      ? "bg-gradient-to-b from-[#00e5ff]/30 to-[#00e5ff]/10 border-2 border-[#00e5ff]/70 text-[#00e5ff] shadow-[0_0_20px_rgba(0,229,255,0.4)]"
+                      : "bg-gradient-to-b from-[#ff00cc]/25 to-[#ff00cc]/8 border-2 border-[#ff00cc]/50 text-[#ffb0ff] shadow-[0_0_18px_rgba(255,0,204,0.3)]"
+                    }
+      ${occupant.hasFolded ? "opacity-40 grayscale" : ""}
       ${
         game?.winnerId === occupant.id
-          ? "border border-yellow-400 shadow-[0_0_10px_rgba(255,215,0,0.8)]"
-          : "border border-slate-700"
+          ? "ring-2 ring-[#ff00cc] ring-offset-1 ring-offset-transparent shadow-[0_0_25px_rgba(255,0,204,0.7)]"
+          : ""
       }
     `}
                 >
-                  <div className="flex justify-between w-full px-1">
-                    <span className="truncate">{occupant.name}</span>
-                    <span className="text-xs">${occupant.stack}</span>
+                  <div className="flex justify-between w-full px-1 items-center gap-1">
+                    <span className="truncate text-[#ffffff]/90">{occupant.name}</span>
+                    <span className="text-xs text-[#00e5ff] drop-shadow-[0_0_4px_#00e5ff]">${occupant.stack}</span>
                   </div>
 
                   {/* Cards display logic */}
@@ -1586,20 +1693,20 @@ shadow-[0_0_60px_rgba(0,255,255,0.35),inset_0_0_40px_rgba(255,0,255,0.12)]"
 
                   <div className="text-[9px] mb-1">
                     {occupant.hasFolded ? (
-                      <span className="px-1 py-[1px] rounded bg-red-700 text-white">
+                      <span className="px-2 py-[2px] rounded bg-red-900/80 text-red-300 border border-red-500/30">
                         Folded
                       </span>
                     ) : occupant.stack <= 0 ? (
-                      <span className="px-1 py-[1px] rounded bg-purple-700 text-white">
+                      <span className="px-2 py-[2px] rounded bg-purple-900/80 text-purple-300 border border-purple-500/30 animate-pulse">
                         All-in
                       </span>
                     ) : game?.players?.[game.currentTurn]?.id ===
                       occupant.id ? (
-                      <span className="px-2 py-[2px] rounded bg-pink-500 text-white animate-pulse shadow-[0_0_12px_rgba(255,0,255,0.8)]">
+                      <span className="px-2 py-[2px] rounded bg-[#ff00cc]/80 text-black font-bold animate-pulse shadow-[0_0_15px_rgba(255,0,204,0.9)]">
                         ⚡ THINKING
                       </span>
                     ) : (
-                      <span className="px-1 py-[1px] rounded bg-slate-600 text-gray-100">
+                      <span className="px-2 py-[2px] rounded bg-[#0a0a1a]/80 text-[#b0b0ff]/70 border border-[#00e5ff]/20">
                         Active
                       </span>
                     )}
@@ -1607,20 +1714,20 @@ shadow-[0_0_60px_rgba(0,255,255,0.35),inset_0_0_40px_rgba(255,0,255,0.12)]"
 
                   {/* Last action line */}
                   {occupant.lastAction && (
-                    <div className="text-[9px] text-gray-300 italic truncate max-w-[100px]">
+                    <div className="text-[9px] text-[#b0b0ff]/70 italic truncate max-w-[100px]">
                       {occupant.lastAction}
                     </div>
                   )}
 
-                  {/* ✅ Progress bar under the player div */}
+                  {/* Progress bar under the player div */}
                   {isPlayer && isMyTurn && (
                     <div className="mt-2 w-full text-center">
-                      <div className="bg-yellow-400 text-black px-3 py-1 rounded-t-lg font-bold shadow-lg border-x-2 border-t-2 border-yellow-600 text-[11px]">
-                        Your Turn ({turnTimer}s)
+                      <div className="bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] text-black px-3 py-1 rounded-t-lg font-bold shadow-lg text-[11px]">
+                        ⚡ Your Turn ({turnTimer}s)
                       </div>
-                      <div className="h-2 bg-yellow-800 rounded-b-lg overflow-hidden">
+                      <div className="h-2 bg-[#0a0a1a] rounded-b-lg overflow-hidden border border-[#ff00cc]/20">
                         <div
-                          className="h-full bg-yellow-300 transition-all duration-1000"
+                          className="h-full bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] transition-all duration-1000 shadow-[0_0_8px_rgba(255,0,204,0.6)]"
                           style={{
                             width: `${(turnTimer / Math.max(turnTimeLimit, 1)) * 100}%`,
                           }}
@@ -1632,7 +1739,7 @@ shadow-[0_0_60px_rgba(0,255,255,0.35),inset_0_0_40px_rgba(255,0,255,0.12)]"
               ) : (
                 <button
                   onClick={() => handleSeatClick(seatIdx)}
-                  className="w-[100px] h-[40px] bg-slate-600/40 text-xs rounded-full border border-slate-400 hover:bg-slate-500/70 pointer-events-auto"
+                  className="w-[100px] h-[40px] bg-[#0a0a1a]/70 text-xs rounded-full border border-dashed border-[#ff00cc]/30 text-[#ff00cc]/60 hover:bg-[#ff00cc]/10 hover:border-[#ff00cc]/60 pointer-events-auto transition backdrop-blur-sm"
                 >
                   + Seat
                 </button>
@@ -1657,22 +1764,22 @@ shadow-[0_0_60px_rgba(0,255,255,0.35),inset_0_0_40px_rgba(255,0,255,0.12)]"
           let offset = { x: 0, y: 0 };
           switch (p.seatIndex) {
             case 0:
-              offset = { x: -17, y: 50 };
-              break; // top-center
+              offset = { x: 0, y: 55 };
+              break; // top-center → toward table center
             case 1:
-              offset = { x: -85, y: 40 };
+              offset = { x: -85, y: 35 };
               break; // top-right
             case 2:
-              offset = { x: -90, y: -70 };
+              offset = { x: -85, y: -65 };
               break; // bottom-right
             case 3:
-              offset = { x: -15, y: -75 };
+              offset = { x: 0, y: -80 };
               break; // bottom-center → PLAYER
             case 4:
-              offset = { x: 50, y: -70 };
+              offset = { x: 55, y: -65 };
               break; // bottom-left
             case 5:
-              offset = { x: 50, y: 40 };
+              offset = { x: 55, y: 35 };
               break; // top-left
             default:
               offset = { x: 0, y: 0 };
@@ -1681,14 +1788,19 @@ shadow-[0_0_60px_rgba(0,255,255,0.35),inset_0_0_40px_rgba(255,0,255,0.12)]"
           return (
             <motion.div
               key={`chip-${p.id}-${p.seatIndex}`}
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
+              initial={{ scale: 0, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0, opacity: 0 }}
-              className="absolute z-40 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center text-white font-bold border-2 border-yellow-400 shadow-lg"
+              className="absolute z-40 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-lg"
               style={{
                 left: pos.left + offset.x,
                 top: pos.top + offset.y,
                 transform: "translate(-50%, -50%)",
+                background: showChips
+                  ? "linear-gradient(135deg, #ff00cc, #00e5ff)"
+                  : "linear-gradient(135deg, #00e5ff, #00ff88)",
+                border: "2px solid rgba(255,255,255,0.3)",
+                color: showChips ? "#fff" : "#000",
               }}
             >
               {showChips ? p.currentBet : "✓"}
@@ -1817,13 +1929,76 @@ shadow-[0_0_60px_rgba(0,255,255,0.35),inset_0_0_40px_rgba(255,0,255,0.12)]"
         </div>
       )}
 
+      {/* ── End of scalable wrapper ── */}
+      </div>
+
+      {/* Action buttons (below the table) */}
+      {game && !game.waiting && game.stage !== "showdown" && (
+        <div className="mt-4 flex flex-wrap justify-center items-center gap-3 z-10">
+          {(() => {
+            const me = game.players.find((p) => p.id === myId);
+            const isMyTurnNow = game.players[game.currentTurn]?.id === myId;
+            const highestBetInRound = Math.max(...game.players.map((p) => p.currentBet || 0));
+            const myCurrentBet = me?.currentBet || 0;
+            const toCall = Math.max(0, highestBetInRound - myCurrentBet);
+            const canCheck = myCurrentBet >= highestBetInRound;
+
+            if (!isMyTurnNow || !me || me.hasFolded) return null;
+
+            return (
+              <>
+                <button
+                  onClick={() => performAction("fold")}
+                  className="px-5 py-2 rounded font-bold text-sm bg-red-900/60 border border-red-500/50 text-red-300 hover:bg-red-800/80 transition shadow-[0_0_15px_rgba(255,0,0,0.3)]"
+                >
+                  Fold
+                </button>
+                {canCheck ? (
+                  <button
+                    onClick={() => performAction("check")}
+                    className="px-5 py-2 rounded font-bold text-sm bg-[#00e5ff]/20 border border-[#00e5ff]/50 text-[#00e5ff] hover:bg-[#00e5ff]/40 transition shadow-[0_0_15px_rgba(0,229,255,0.4)]"
+                  >
+                    Check
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => performAction("call")}
+                    className="px-5 py-2 rounded font-bold text-sm bg-[#00e5ff]/20 border border-[#00e5ff]/50 text-[#00e5ff] hover:bg-[#00e5ff]/40 transition shadow-[0_0_15px_rgba(0,229,255,0.4)]"
+                  >
+                    Call {toCall > 0 ? `$${toCall}` : ""}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    const targetBet = Math.max(raiseAmount, highestBetInRound * 2);
+                    setRaiseAmount(targetBet);
+                    performAction("raise");
+                  }}
+                  className="px-5 py-2 rounded font-bold text-sm bg-[#ff00cc]/20 border border-[#ff00cc]/50 text-[#ff00cc] hover:bg-[#ff00cc]/40 transition shadow-[0_0_15px_rgba(255,0,204,0.4)]"
+                >
+                  Raise
+                </button>
+                {canUseBetShortcut && (
+                  <button
+                    onClick={() => performAction("bet20")}
+                    className="px-5 py-2 rounded font-bold text-sm bg-[#ff00cc]/10 border border-[#ff00cc]/30 text-[#ffb0ff]/70 hover:bg-[#ff00cc]/25 transition"
+                  >
+                    Bet $20
+                  </button>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Multiplayer Waiting Panel — bottom-left, public-only */}
       {!isPrivate && (
         <div className="fixed bottom-6 left-6 z-50 pointer-events-auto">
-          <div className="w-64 bg-slate-800/90 backdrop-blur-sm border border-slate-700 rounded-lg shadow-lg p-3">
+          <div className="w-64 bg-[#0a0a1a]/95 backdrop-blur-md border border-[#ff00cc]/20 rounded-lg shadow-[0_0_20px_rgba(255,0,204,0.15)] p-3">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-bold">Public Queue</div>
-              <div className="text-xs text-gray-300">
+              <div className="text-sm font-bold text-[#ff00cc]">Public Queue</div>
+              <div className="text-xs text-[#b0b0ff]/60">
                 {waitingPlayers.length} waiting
               </div>
             </div>
@@ -1836,7 +2011,7 @@ shadow-[0_0_60px_rgba(0,255,255,0.35),inset_0_0_40px_rgba(255,0,255,0.12)]"
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 6 }}
-                    className="flex items-center justify-between bg-slate-700/60 px-2 py-1 rounded"
+                    className="flex items-center justify-between bg-[#0d0020]/60 px-2 py-1 rounded border border-[#ff00cc]/10"
                   >
                     <div className="truncate text-sm">
                       {p.name || "Anonymous"}
@@ -1853,13 +2028,13 @@ shadow-[0_0_60px_rgba(0,255,255,0.35),inset_0_0_40px_rgba(255,0,255,0.12)]"
               <button
                 onClick={() => joinPublicGame()}
                 disabled={joiningGame}
-                className={`flex-1 text-sm px-3 py-2 rounded font-bold transition ${joiningGame ? "bg-gray-600 cursor-not-allowed" : "bg-[#f5ff3b] hover:bg-[#f5ff3b]"}`}
+                className={`flex-1 text-sm px-3 py-2 rounded font-bold transition ${joiningGame ? "bg-gray-600 cursor-not-allowed" : "bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] text-black hover:from-[#ff00cc]/80 hover:to-[#00e5ff]/80 shadow-[0_0_15px_rgba(255,0,204,0.4)]"}`}
               >
                 Join Public
               </button>
               <button
                 onClick={() => fetchWaitingPlayers()}
-                className="px-3 py-2 rounded text-sm bg-slate-600 hover:bg-slate-500"
+                className="px-3 py-2 rounded text-sm bg-[#0a0a1a] border border-[#00e5ff]/20 text-[#00e5ff]/70 hover:bg-[#00e5ff]/10"
               >
                 Refresh
               </button>

@@ -9,11 +9,13 @@ export async function pushPoolState(
   aiMode: boolean,
 ) {
   if (aiMode) return;
-  if (!state.settled || state.lifecycle !== "SETTLED") return;
+  // Accept all lifecycle states — the API handles version-based dedup.
+  // This ensures ROLLING states are persisted so the polling fallback
+  // can show ball movement to the opponent in real time.
 
-  await fetch("/api/pool/update-state", {
+  fetch("/api/pool/update-state", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ matchId, state }),
-  });
+  }).catch(() => {});
 }

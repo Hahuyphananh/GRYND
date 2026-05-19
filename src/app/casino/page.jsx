@@ -19,7 +19,7 @@ import Img14 from "../../images/connect-4.png";
 import Img15 from "../../images/towers.png";
 import Img16 from "../../images/clicker.png";
 import Img17 from "../../images/pool.png";
-import Img18 from "../../images/territories.png";
+import Img18 from "../../images/hex-duel.svg";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -176,12 +176,12 @@ function MainComponent() {
     },
 
     {
-      name: "Territories",
-      href: "/casino/territories",
-      leaderboardKey: "territories",
+      name: "HEX DUEL",
+      href: "/casino/hex-duel",
+      leaderboardKey: "hex-duel",
       image: Img18,
-      descriptionKey: "games.territories_desc",
-      nameKey: "games.territories_name",
+      descriptionKey: "games.hex_duel_desc",
+      nameKey: "games.hex_duel_name",
     },
   ];
 
@@ -197,11 +197,11 @@ function MainComponent() {
     "chess",
     "rps",
     "pool-masters",
-    "territory",
+    "hex-duel",
   ]);
 
   const newestOrder = [
-    "territory",
+    "hex-duel",
     "pool-masters",
     "goonbet-clicker",
     "lane-runner",

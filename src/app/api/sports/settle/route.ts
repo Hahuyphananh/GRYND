@@ -1,7 +1,13 @@
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
+import { getNeonSql } from "../../../../db/neon";
 import { NextResponse } from "next/server";
 import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
+
+function extractRows<T = Record<string, any>>(result: any): T[] {
+  if (Array.isArray(result)) return result as T[];
+  if (result && Array.isArray(result.rows)) return result.rows as T[];
+  return [];
+}
 
 const normalize = (value: string | null | undefined) =>
   (value || "").trim().toLowerCase();
@@ -72,6 +78,8 @@ export async function POST() {
     );
   }
 
+  const sql = getNeonSql();
+
   try {
     if (!process.env.ODDS_API_KEY) {
       return NextResponse.json(
@@ -82,7 +90,8 @@ export async function POST() {
 
     const userResult =
       await sql`SELECT id, name FROM users WHERE clerk_id = ${userId} LIMIT 1`;
-    const dbUser = userResult.rows[0];
+    const userRows = extractRows<{ id: number; name: string }>(userResult);
+    const dbUser = userRows[0];
     if (!dbUser) {
       return NextResponse.json(
         { success: false, error: "User not found" },
@@ -90,7 +99,10 @@ export async function POST() {
       );
     }
 
-    const pendingResult = await sql`
+    // Try full query with market_type/line_value first; fall back if columns missing
+    let pendingResult;
+    try {
+      pendingResult = await sql`
       SELECT id, event_external_id, choice, odds, bet_amount, market_type, line_value
       FROM sports_bets
       WHERE user_id = ${dbUser.id}
@@ -99,8 +111,25 @@ export async function POST() {
       ORDER BY placed_at ASC
       LIMIT 100
     `;
+    } catch (e: any) {
+      if (e?.code === "42703") {
+        // market_type / line_value columns don't exist in this DB yet
+        console.warn("[SPORTS_SETTLE_FALLBACK] market_type/line_value columns missing — spreads/totals will be evaluated as h2h until migration 0025 runs");
+        pendingResult = await sql`
+      SELECT id, event_external_id, choice, odds, bet_amount
+      FROM sports_bets
+      WHERE user_id = ${dbUser.id}
+        AND (result IS NULL OR LOWER(result) = 'pending')
+        AND event_external_id IS NOT NULL
+      ORDER BY placed_at ASC
+      LIMIT 100
+    `;
+      } else {
+        throw e;
+      }
+    }
 
-    const pendingBets = pendingResult.rows;
+    const pendingBets = extractRows(pendingResult);
     if (pendingBets.length === 0) {
       return NextResponse.json({ success: true, settled: 0, checked: 0 });
     }
@@ -173,7 +202,8 @@ export async function POST() {
           AND (result IS NULL OR LOWER(result) = 'pending')
       `;
 
-      if (updateResult.rowCount > 0 && result === "won") {
+      const updateRows = extractRows(updateResult);
+      if (updateRows.length > 0 && result === "won") {
         await sql`
           UPDATE users
           SET balance = balance + ${payout}
@@ -193,7 +223,7 @@ export async function POST() {
         }
       }
 
-      settledCount += updateResult.rowCount > 0 ? 1 : 0;
+      settledCount += updateRows.length > 0 ? 1 : 0;
     }
 
     return NextResponse.json({
