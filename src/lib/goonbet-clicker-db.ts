@@ -7,6 +7,30 @@ import {
   payoutFrom,
 } from "./goonbet-clicker";
 
+/**
+ * Parse a database timestamp value into UTC milliseconds.
+ * Handles Date objects, ISO strings, and SQL TIMESTAMP WITHOUT TIME ZONE
+ * strings that lack a timezone indicator (forces UTC).
+ */
+function parseUtcTimestamp(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+  const str = String(value ?? "").trim();
+  if (!str) {
+    console.warn("[clicker] parseUtcTimestamp received empty value, falling back to now");
+    return Date.now();
+  }
+  const iso = str.includes("T") ? str : str.replace(" ", "T");
+  const utc =
+    iso.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(iso) ? iso : iso + "Z";
+  return new Date(utc).getTime();
+}
+
+/** Convert a timestamp value to an ISO 8601 string (UTC). */
+function toUtcIso(value: unknown): string {
+  return new Date(parseUtcTimestamp(value)).toISOString();
+}
+
 function deterministicRoll(seed: string): number {
   const hash = crypto.createHash("sha256").update(seed).digest("hex");
   const bucket = Number.parseInt(hash.slice(0, 13), 16);
@@ -100,14 +124,14 @@ export async function cashoutRound(
   };
 }
 
-    const elapsedMs = Date.now() - new Date(round.created_at).getTime();
+    const elapsedMs = Math.max(0, Date.now() - parseUtcTimestamp(round.created_at));
     const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
     const boundedClicks = Math.max(0, Math.floor(clientClicks));
     const maxClicks = maxAllowedClicks(effectiveDurationMs);
     const verifiedClicks = Math.min(boundedClicks, maxClicks);
     const expectedMultiplier = multiplierFromClicks(verifiedClicks);
 
-    const bustSeed = `${round.id}:${userId}:${new Date(round.created_at).toISOString()}`;
+    const bustSeed = `${round.id}:${userId}:${toUtcIso(round.created_at)}`;
     if (didBustByClick(bustSeed, verifiedClicks)) {
       await sql`UPDATE clicker_rounds SET status = 'bust', clicks = ${verifiedClicks}, multiplier = ${expectedMultiplier}, payout = 0 WHERE id = ${roundId}`;
       await sql`COMMIT`;
@@ -152,11 +176,11 @@ export async function syncRound(
   if (!rounds[0]) throw new Error("ROUND_NOT_FOUND");
   if (rounds[0].status !== "active") throw new Error("ROUND_NOT_ACTIVE");
 
-  const elapsedMs = Date.now() - new Date(rounds[0].created_at).getTime();
+  const elapsedMs = Math.max(0, Date.now() - parseUtcTimestamp(rounds[0].created_at));
   const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
   const expectedMultiplier = multiplierFromClicks(clientClicks);
   const maxClicks = maxAllowedClicks(effectiveDurationMs);
-  const bustSeed = `${roundId}:${userId}:${new Date(rounds[0].created_at).toISOString()}`;
+  const bustSeed = `${roundId}:${userId}:${toUtcIso(rounds[0].created_at)}`;
 
   return {
     ok:

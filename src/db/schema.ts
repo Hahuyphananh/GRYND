@@ -906,44 +906,36 @@ export const userAutomationState = pgTable("user_automation_state", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const neonTerritoryMatches = pgTable("neon_territory_matches", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  player1Id: text("player1_id").notNull(),
-  player2Id: text("player2_id").notNull(),
-  wagerAmount: integer("wager_amount").notNull(),
-  tokenType: text("token_type").notNull(),
-  status: text("status").notNull().default("active"),
-  winnerId: text("winner_id"),
-  gameState: jsonb("game_state").notNull(),
-  turnNumber: integer("turn_number").notNull().default(0),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  endedAt: timestamp("ended_at"),
-});
-
-export const neonTerritoryActions = pgTable("neon_territory_actions", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  matchId: uuid("match_id")
-    .notNull()
-    .references(() => neonTerritoryMatches.id, { onDelete: "cascade" }),
-  userId: text("user_id").notNull(),
-  turnNumber: integer("turn_number").notNull(),
-  actionType: text("action_type").notNull().default("attack"),
-  targetX: integer("target_x").notNull(),
-  targetY: integer("target_y").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const neonTerritoryStats = pgTable("neon_territory_stats", {
-  userId: text("user_id").primaryKey(),
-  wins: integer("wins").notNull().default(0),
-  losses: integer("losses").notNull().default(0),
-  gamesPlayed: integer("games_played").notNull().default(0),
-  biggestStreak: integer("biggest_streak").notNull().default(0),
-  totalWagered: bigint("total_wagered", { mode: "number" }).notNull().default(0),
-  totalTokensWon: bigint("total_tokens_won", { mode: "number" }).notNull().default(0),
-});
-
 // BIG WINS FEED TABLE
+export const hexDuelGames = pgTable(
+  "hex_duel_games",
+  {
+    id: serial("id").primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    wagerAmount: numeric("wager_amount", { precision: 10, scale: 2 }).notNull(),
+    winner: varchar("winner", { length: 10 }).notNull(),
+    result: varchar("result", { length: 10 }).notNull(),
+    payout: numeric("payout", { precision: 10, scale: 2 }),
+    isAiGame: boolean("is_ai_game").notNull().default(false),
+    aiDifficulty: varchar("ai_difficulty", { length: 10 }),
+    player1Moves: integer("player1_moves").notNull().default(0),
+    player2Moves: integer("player2_moves").notNull().default(0),
+    player1Territory: integer("player1_territory").notNull().default(1),
+    player2Territory: integer("player2_territory").notNull().default(1),
+    durationSeconds: integer("duration_seconds").notNull().default(0),
+    status: varchar("status", { length: 20 }).notNull().default("completed"),
+    isFunMode: boolean("is_fun_mode").notNull().default(false),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    player1Idx: index("hex_duel_player1_idx").on(table.player1Id, table.createdAt),
+    createdIdx: index("hex_duel_created_idx").on(table.createdAt),
+  }),
+);
+
 export const bigWins = pgTable(
   "big_wins",
   {

@@ -46,64 +46,82 @@ export async function GET(req: Request) {
     const rawLimit = Number(searchParams.get("limit") || 100);
     const limit = Math.max(1, Math.min(rawLimit, 100));
 
+    // Each query tries the full column set first; falls back to base columns
+    // if market_type / line_value don't exist in this DB yet (error code 42703)
     let betsResult;
+
     if (status === "pending") {
-      betsResult = await sql`
-      SELECT
-        id,
-        event_external_id,
-        event_id,
-        bet_amount,
-        choice,
-        odds,
-        market_type,
-        line_value,
-        payout,
-        result,
-        placed_at
+      try {
+        betsResult = await sql`
+      SELECT id, event_external_id, event_id, bet_amount, choice, odds,
+             market_type, line_value, payout, result, placed_at
       FROM sports_bets
       WHERE user_id = ${dbUser.id} AND result = 'pending'
       ORDER BY placed_at DESC, id DESC
       LIMIT ${limit}
     `;
+      } catch (e: any) {
+        if (e?.code === "42703") {
+          betsResult = await sql`
+      SELECT id, event_external_id, event_id, bet_amount, choice, odds,
+             payout, result, placed_at
+      FROM sports_bets
+      WHERE user_id = ${dbUser.id} AND result = 'pending'
+      ORDER BY placed_at DESC, id DESC
+      LIMIT ${limit}
+    `;
+        } else {
+          throw e;
+        }
+      }
     } else if (status === "history") {
-      betsResult = await sql`
-      SELECT
-        id,
-        event_external_id,
-        event_id,
-        bet_amount,
-        choice,
-        odds,
-        market_type,
-        line_value,
-        payout,
-        result,
-        placed_at
+      try {
+        betsResult = await sql`
+      SELECT id, event_external_id, event_id, bet_amount, choice, odds,
+             market_type, line_value, payout, result, placed_at
       FROM sports_bets
       WHERE user_id = ${dbUser.id} AND result <> 'pending'
       ORDER BY placed_at DESC, id DESC
       LIMIT ${limit}
     `;
+      } catch (e: any) {
+        if (e?.code === "42703") {
+          betsResult = await sql`
+      SELECT id, event_external_id, event_id, bet_amount, choice, odds,
+             payout, result, placed_at
+      FROM sports_bets
+      WHERE user_id = ${dbUser.id} AND result <> 'pending'
+      ORDER BY placed_at DESC, id DESC
+      LIMIT ${limit}
+    `;
+        } else {
+          throw e;
+        }
+      }
     } else {
-      betsResult = await sql`
-      SELECT
-        id,
-        event_external_id,
-        event_id,
-        bet_amount,
-        choice,
-        odds,
-        market_type,
-        line_value,
-        payout,
-        result,
-        placed_at
+      try {
+        betsResult = await sql`
+      SELECT id, event_external_id, event_id, bet_amount, choice, odds,
+             market_type, line_value, payout, result, placed_at
       FROM sports_bets
       WHERE user_id = ${dbUser.id}
       ORDER BY placed_at DESC, id DESC
       LIMIT ${limit}
     `;
+      } catch (e: any) {
+        if (e?.code === "42703") {
+          betsResult = await sql`
+      SELECT id, event_external_id, event_id, bet_amount, choice, odds,
+             payout, result, placed_at
+      FROM sports_bets
+      WHERE user_id = ${dbUser.id}
+      ORDER BY placed_at DESC, id DESC
+      LIMIT ${limit}
+    `;
+        } else {
+          throw e;
+        }
+      }
     }
 
     const betRows = extractRows<Record<string, any>>(betsResult);

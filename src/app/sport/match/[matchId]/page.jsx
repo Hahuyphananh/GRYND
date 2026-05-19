@@ -84,8 +84,10 @@ export default function MatchPage() {
         body: JSON.stringify({
           eventId: event.id,
           betAmount: Number(betAmount),
-          choice: selected,
+          choice: `h2h:${selected}`,
           odds: parseFloat(event.odds_map[selected]),
+          marketType: "h2h",
+          lineValue: null,
         }),
       });
       const data = await res.json();

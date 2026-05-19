@@ -132,6 +132,20 @@ export default function Page() {
   const lifecycleRef = useRef<ShotLifecycle>("IDLE");
   const activeShotIdRef = useRef<string | null>(null);
   const remoteShotMetaInitializedRef = useRef(false);
+  const userIdRef = useRef<string | undefined>(undefined);
+  const syncVersionRef = useRef(0);
+  const [syncVersion, setSyncVersion] = useState(0);
+
+  // Keep userIdRef in sync so the socket handler never captures a stale user
+  useEffect(() => {
+    userIdRef.current = user?.id;
+  }, [user?.id]);
+
+  // Keep syncVersionRef in sync so the socket handler can version-check
+  // without re-registering the listener on every settled shot
+  useEffect(() => {
+    syncVersionRef.current = syncVersion;
+  }, [syncVersion]);
 
   const [balls, setBalls] = useState(setupBalls());
   const [activeMatchId, setActiveMatchId] = useState(matchId);
@@ -149,7 +163,6 @@ export default function Page() {
   const [started, setStarted] = useState(aiMode);
   const [myName, setMyName] = useState("Player 1");
   const [oppName, setOppName] = useState(aiMode ? "AI" : "Player 2");
-  const [syncVersion, setSyncVersion] = useState(0);
   const [remoteAim, setRemoteAim] = useState<{
     angle: number;
     pull: number;
@@ -472,7 +485,7 @@ if (!aiMode && turn !== owner) return;
         "payload" in message && message.payload ? message.payload : message
       ) as PoolLivePayload;
       if (!payload || payload.matchId !== activeMatchId) return;
-      if (payload.userId && payload.userId === user?.id) return;
+      if (payload.userId && payload.userId === userIdRef.current) return;
 
       const localShotInProgress = localShotInProgressRef.current;
       const remoteSettled = payload.settled || payload.lifecycle === "SETTLED";
@@ -500,11 +513,14 @@ if (!aiMode && turn !== owner) return;
         }
       }
 
-     const isSelf = payload.userId === user?.id;
+     const isSelf = payload.userId === userIdRef.current;
 
-// Always accept updates from opponent or spectator
-if (payload.balls && !isSelf) {
+// Accept opponent/spectator ball updates only if the version is newer.
+// Prevents a delayed ROLLING packet from overwriting a SETTLED position.
+// Uses syncVersionRef (not state) to avoid re-registering the socket listener.
+if (payload.balls && !isSelf && (!payload.version || payload.version > syncVersionRef.current)) {
   ballsRef.current = payload.balls;
+  if (payload.version) setSyncVersion(payload.version);
   setBalls(payload.balls);
 }
       if (typeof payload.turn === "number") {

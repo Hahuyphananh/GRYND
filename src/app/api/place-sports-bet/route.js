@@ -127,14 +127,60 @@ export async function POST(req) {
       `;
     };
 
+    const placeBetMinimal = async () => {
+      return sql`
+        WITH debited AS (
+          UPDATE users
+          SET balance = balance - ${betAmount}
+          WHERE clerk_id = ${userId}
+            AND balance >= ${betAmount}
+          RETURNING id, balance
+        ),
+        placed AS (
+          INSERT INTO sports_bets (
+            user_id,
+            event_id,
+            bet_amount,
+            choice,
+            odds,
+            payout,
+            result
+          )
+          SELECT
+            debited.id,
+            ${eventId},
+            ${betAmount},
+            ${choice},
+            ${odds},
+            0,
+            'pending'
+          FROM debited
+          RETURNING id
+        )
+        SELECT debited.balance AS new_balance, placed.id AS bet_id
+        FROM debited
+        LEFT JOIN placed ON true
+      `;
+    };
+
     let placeResult;
     try {
       placeResult = await placeBetWithMarketCols();
     } catch (dbErr) {
       if (dbErr?.code === "42703") {
-        // Production schema may not have latest optional columns yet.
+        // Production schema may not have market_type / line_value columns yet.
         console.warn("[PLACE_BET_SCHEMA_FALLBACK]", dbErr?.message || dbErr);
-        placeResult = await placeBetLegacy();
+        try {
+          placeResult = await placeBetLegacy();
+        } catch (dbErr2) {
+          if (dbErr2?.code === "42703") {
+            // event_external_id column also missing — use original event_id
+            console.warn("[PLACE_BET_SCHEMA_FALLBACK2]", dbErr2?.message || dbErr2);
+            placeResult = await placeBetMinimal();
+          } else {
+            throw dbErr2;
+          }
+        }
       } else {
         throw dbErr;
       }
