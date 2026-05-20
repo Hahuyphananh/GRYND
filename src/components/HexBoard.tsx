@@ -60,8 +60,8 @@ export default function HexBoard({
 
   const { width, height } = dims;
   // Proper hex geometry
-const horizontalOffset = width * 0.5;
-const verticalSpacing = height * 0.72;
+const horizontalOffset = width * 0.51;
+const verticalSpacing = height * 0.745;
 
   // Build a lookup set for valid moves
   const validMoveSet = React.useMemo(
@@ -129,7 +129,7 @@ const verticalSpacing = height * 0.72;
         />
 
         {/* Grid container */}
-        <div className="relative flex flex-col items-center">
+        <div className="relative flex flex-col items-center" style={{ paddingLeft: `${horizontalOffset / 2}px` }}>
           {grid.map((row, rowIndex) => (
            <div
   key={rowIndex}
