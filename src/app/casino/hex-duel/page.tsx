@@ -112,10 +112,11 @@ function APPips({ current, max, color, bonusCount }: { current: number; max: num
 const QUICK_WAGERS = [10, 50, 100, 500];
 
 function WagerModal({
-  balance, onStartFun, onStartReal, loading, error, isSignedIn,
+  balance, onStartFun, onStartReal, loading, error, isSignedIn, onCreateMultiplayer, onViewMultiplayer,
 }: {
   balance: number; onStartFun: () => void; onStartReal: (w: number) => void;
   loading: boolean; error: string | null; isSignedIn: boolean;
+  onCreateMultiplayer: () => void; onViewMultiplayer: () => void;
 }) {
   const [wager, setWager] = useState(50);
   const [playForFun, setPlayForFun] = useState(false);
@@ -133,7 +134,13 @@ function WagerModal({
         <h2 className="text-center text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-fuchsia-400 mb-1">
           HEX DUEL
         </h2>
-        <p className="text-center text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-6">Place Your Wager</p>
+        <p className="text-center text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-4">Place Your Wager</p>
+
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <button onClick={onStartFun} className="rounded-lg border border-white/15 bg-white/[0.02] py-2 text-[11px] font-semibold text-slate-200 hover:bg-white/[0.06]">Play vs AI</button>
+          <button onClick={onCreateMultiplayer} className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 py-2 text-[11px] font-semibold text-cyan-200 hover:bg-cyan-500/20">Create Multiplayer</button>
+        </div>
+        <button onClick={onViewMultiplayer} className="mb-4 w-full rounded-lg border border-white/10 bg-white/[0.02] py-2 text-[10px] uppercase tracking-wider text-slate-400 hover:text-white">Available Games</button>
 
         {isSignedIn ? (
           <div className="mb-5 text-center">
@@ -680,7 +687,7 @@ export default function HexDuelPage() {
   useEffect(() => { fetchBalance(); }, [fetchBalance]);
 
   // ── Wager handlers ─────────────────────────────────────────────────
-  const handleStartFun = useCallback(() => { setGameMode("for-fun"); setWager(0); setWagerError(null); startedAtRef.current = new Date().toISOString(); }, []);
+  const handleStartFun = useCallback(() => { setAIEnabled(true); setGameMode("for-fun"); setWager(0); setWagerError(null); startedAtRef.current = new Date().toISOString(); }, []);
   const handleStartReal = useCallback(async (amount: number) => {
     setWagerLoading(true); setWagerError(null);
     try {
@@ -768,8 +775,14 @@ export default function HexDuelPage() {
 
   useEffect(() => {
     if (!aiEnabled || currentTurn !== "player2" || winner || selectedUnit !== "player2" || gameMode === "idle") return;
-    const t = setTimeout(() => {
-      const action = decideAIAction({
+    const t = setTimeout(() => { (async () => {
+      const res = await fetch("/api/hex-duel/ai-action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ difficulty: aiDifficulty, snapshot: {
+        myPos: player2Pos, enemyPos: player1Pos,
+        myPlayer: "player2", enemyPlayer: "player1",
+        capturedTiles: { ...capturedTiles }, powerNodes: Array.from(powerNodes), currentAP,
+      } }) });
+      const data = await res.json();
+      const action = data?.success ? data.action as AIAction : decideAIAction({
         myPos: player2Pos, enemyPos: player1Pos,
         myPlayer: "player2", enemyPlayer: "player1",
         capturedTiles: { ...capturedTiles }, powerNodes, currentAP,
@@ -777,7 +790,7 @@ export default function HexDuelPage() {
       setAIAction(action);
       if (action.type === "endTurn") { endTurnRef.current(); setAIThinking(false); }
       else if (action.type === "move" || action.type === "push") { handleTileClickRef.current(action.x, action.y); }
-    }, 400);
+    })().catch(() => setAIThinking(false)); }, 400);
     return () => clearTimeout(t);
   }, [aiEnabled, currentTurn, winner, selectedUnit, player2Pos, player1Pos, capturedTiles, currentAP, powerNodes, aiDifficulty, gameMode]);
 
@@ -978,6 +991,8 @@ export default function HexDuelPage() {
           <WagerModal
             balance={balance} onStartFun={handleStartFun} onStartReal={handleStartReal}
             loading={wagerLoading} error={wagerError} isSignedIn={!!isSignedIn}
+            onCreateMultiplayer={() => router.push("/casino/hex-duel/multiplayer")}
+            onViewMultiplayer={() => router.push("/casino/hex-duel/multiplayer")}
           />
         )}
 
