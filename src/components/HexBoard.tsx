@@ -29,10 +29,6 @@ interface HexBoardProps {
   powerNodeKeys?: string[];
 }
 
-function getVerticalOverlapPx(hexHeight: number): number {
-  return hexHeight * 0.25;
-}
-
 export default function HexBoard({
   grid,
   selectedTile,
@@ -50,8 +46,8 @@ export default function HexBoard({
   React.useEffect(() => {
     function computeDims() {
       const w = window.innerWidth;
-      if (w >= 1024) return { width: 90, height: 104 };
-      if (w >= 768) return { width: 84, height: 97 };
+      if (w >= 1024) return { width: 82, height: 94 };
+      if (w >= 768) return { width: 76, height: 88 };
       if (w >= 640) return { width: 78, height: 90 };
       if (w >= 400) return { width: 70, height: 81 };
       return { width: 60, height: 70 };
@@ -63,8 +59,9 @@ export default function HexBoard({
   }, []);
 
   const { width, height } = dims;
-  const hexOffset = width / 2;
-  const overlap = getVerticalOverlapPx(height);
+  // Proper hex geometry
+const horizontalOffset = width * 0.5;
+const verticalSpacing = height * 0.72;
 
   // Build a lookup set for valid moves
   const validMoveSet = React.useMemo(
@@ -97,7 +94,18 @@ export default function HexBoard({
   return (
     <div
       className={`flex flex-col items-center justify-center select-none transition-all duration-500 ${disabled ? "opacity-50 pointer-events-none" : ""}`}
-      style={{ transform: "scale(var(--hex-board-scale, 1))", transition: "transform 0.4s ease" }}
+      style={{
+  transform: `
+    scale(
+      clamp(
+        0.72,
+        ${grid.length > 7 ? "0.82" : "1"},
+        1
+      )
+    )
+  `,
+  transition: "transform 0.4s ease",
+}}
     >
       {/* Board background glow */}
       <div
@@ -123,14 +131,21 @@ export default function HexBoard({
         {/* Grid container */}
         <div className="relative flex flex-col items-center">
           {grid.map((row, rowIndex) => (
-            <div
-              key={rowIndex}
-              className="flex"
-              style={{
-                marginLeft: rowIndex % 2 === 1 ? `${hexOffset}px` : "0px",
-                marginTop: rowIndex === 0 ? "0px" : `-${overlap}px`,
-              }}
-            >
+           <div
+  key={rowIndex}
+  className="flex justify-center"
+  style={{
+    marginLeft:
+      rowIndex % 2 === 1
+        ? `${horizontalOffset}px`
+        : "0px",
+
+    marginTop:
+      rowIndex === 0
+        ? "0px"
+        : `-${height - verticalSpacing}px`,
+  }}
+>
               {row.map((tile) => {
                 const unitOnTile = unitPositions?.find(
                   (u) => u.x === tile.x && u.y === tile.y

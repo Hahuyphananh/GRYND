@@ -804,7 +804,7 @@ export default function HexDuelPage() {
       <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
         <NavigationBar currentPath="/casino" />
 
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto w-full max-w-7xl px-2 sm:px-4 lg:px-6">
           {/* ── Premium Header ──────────────────────────────────────── */}
           <div className="mb-4 text-center">
             <h1
@@ -901,7 +901,16 @@ export default function HexDuelPage() {
 
           {/* ── Main layout ─────────────────────────────────────────── */}
           {showGame && (
-            <div className="grid gap-6 lg:grid-cols-[220px_1fr_220px] items-start">
+            <div
+  className="
+    grid
+    gap-4 sm:gap-5 lg:gap-6
+    items-start
+
+    grid-cols-1
+    lg:grid-cols-[220px_minmax(0,1fr)_220px]
+  "
+>   <div className="order-2 lg:order-1">
               <PlayerCard
                 player="player1" label="Player 1" pos={player1Pos}
                 isActive={currentTurn === "player1"} isSelected={selectedUnit === "player1"}
@@ -909,8 +918,8 @@ export default function HexDuelPage() {
                 currentAP={currentAP} maxAP={maxAP} powerNodes={p1PowerNodes}
                 isWinner={winner === "player1"} turnJustChanged={turnJustChanged}
               />
-
-              <div className="flex justify-center">
+</div>
+              <div className="order-1 lg:order-2 flex justify-center overflow-x-auto px-2 sm:px-4">
                 <HexBoard
                   grid={grid}
                   selectedTile={isGameOver || aiThinking ? null : selectedTile}
@@ -924,7 +933,7 @@ export default function HexDuelPage() {
                   disabled={isGameOver || aiThinking}
                 />
               </div>
-
+<div className="order-3">
               <PlayerCard
                 player="player2" label={aiEnabled ? "AI" : "Player 2"} pos={player2Pos}
                 isActive={currentTurn === "player2"} isSelected={selectedUnit === "player2"}
@@ -932,6 +941,7 @@ export default function HexDuelPage() {
                 currentAP={currentAP} maxAP={maxAP} powerNodes={p2PowerNodes}
                 isWinner={winner === "player2"} isAI={aiEnabled} turnJustChanged={turnJustChanged}
               />
+              </div>
             </div>
           )}
 
