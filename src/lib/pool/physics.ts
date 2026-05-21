@@ -35,11 +35,15 @@ export function tickPhysics(balls: Ball[], shotMeta: ShotMeta) {
     b.x += b.vx;
     b.y += b.vy;
     b.vx *= FRICTION;
-    b.vy *= FRICTION;
-    if (Math.hypot(b.vx, b.vy) < STOP_EPSILON) {
-      b.vx = 0;
-      b.vy = 0;
-    }
+b.vy *= FRICTION;
+
+// Stop tiny sliding velocities
+const speed = Math.hypot(b.vx, b.vy);
+
+if (speed < 0.05) {
+  b.vx = 0;
+  b.vy = 0;
+}
 
     for (const [px, py] of POCKETS) {
       const dist = Math.hypot(b.x - px, b.y - py);
