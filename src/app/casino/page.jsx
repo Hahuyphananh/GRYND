@@ -139,6 +139,14 @@ function MainComponent() {
       nameKey: "games.rps_name",
     },
     {
+      name: "Yahtzee",
+      href: "/casino/yahtzee",
+      leaderboardKey: "yahtzee",
+      image: Img13,
+      descriptionKey: "games.yahtzee_desc",
+      popular: true,
+    },
+    {
       name: "Dice Duel Arena",
       href: "/casino/dice-duel",
       leaderboardKey: "dice-duel",
@@ -198,9 +206,11 @@ function MainComponent() {
     "rps",
     "pool-masters",
     "hex-duel",
+    "yahtzee",
   ]);
 
   const newestOrder = [
+    "yahtzee",
     "hex-duel",
     "pool-masters",
     "goonbet-clicker",
