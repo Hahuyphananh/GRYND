@@ -772,6 +772,54 @@ export const connectFourGames = pgTable(
   }),
 );
 
+export const yahtzeeRooms = pgTable(
+  "yahtzee_rooms",
+  {
+    id: varchar("id", { length: 120 }).primaryKey(),
+    status: varchar("status", { length: 20 }).notNull(),
+    wager: integer("wager").notNull(),
+    pot: integer("pot").notNull(),
+    gameState: jsonb("game_state").notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    yahtzeeRoomsStatusIdx: index("idx_yahtzee_rooms_status").on(table.status),
+  }),
+);
+
+export const yahtzeePlayers = pgTable(
+  "yahtzee_players",
+  {
+    id: serial("id").primaryKey(),
+    roomId: varchar("room_id", { length: 120 }).references(() => yahtzeeRooms.id),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    isAi: boolean("is_ai").default(false),
+    score: integer("score").default(0),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    yahtzeePlayersRoomIdx: index("idx_yahtzee_players_room_id").on(table.roomId),
+  }),
+);
+
+export const yahtzeeActions = pgTable(
+  "yahtzee_actions",
+  {
+    id: serial("id").primaryKey(),
+    roomId: varchar("room_id", { length: 120 }),
+    userId: varchar("user_id", { length: 255 }),
+    actionType: varchar("action_type", { length: 40 }),
+    payload: jsonb("payload"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    yahtzeeActionsRoomIdx: index("idx_yahtzee_actions_room_id").on(
+      table.roomId,
+      table.createdAt,
+    ),
+  }),
+);
+
 //
 // RELATIONS
 //
