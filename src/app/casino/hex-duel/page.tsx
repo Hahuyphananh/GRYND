@@ -112,11 +112,15 @@ function APPips({ current, max, color, bonusCount }: { current: number; max: num
 const QUICK_WAGERS = [10, 50, 100, 500];
 
 function WagerModal({
-  balance, onStartFun, onStartReal, loading, error, isSignedIn, onCreateMultiplayer, onViewMultiplayer,
+  balance, onStartFun, onStartReal, loading, error, isSignedIn, onCreateMultiplayer, onJoinMultiplayer,
+  onQuickJoinMultiplayer, onRefreshGames, multiplayerGames, multiplayerLoading,
 }: {
   balance: number; onStartFun: () => void; onStartReal: (w: number) => void;
   loading: boolean; error: string | null; isSignedIn: boolean;
-  onCreateMultiplayer: () => void; onViewMultiplayer: () => void;
+  onCreateMultiplayer: (w: number) => void; onJoinMultiplayer: (gameId: number) => void;
+  onQuickJoinMultiplayer: () => void; onRefreshGames: () => void;
+  multiplayerGames: Array<{ id: number; wagerAmount: string | number; hostName?: string | null }>;
+  multiplayerLoading: boolean;
 }) {
   const [wager, setWager] = useState(50);
   const [playForFun, setPlayForFun] = useState(false);
@@ -138,9 +142,32 @@ function WagerModal({
 
         <div className="mb-4 grid grid-cols-2 gap-2">
           <button onClick={onStartFun} className="rounded-lg border border-white/15 bg-white/[0.02] py-2 text-[11px] font-semibold text-slate-200 hover:bg-white/[0.06]">Play vs AI</button>
-          <button onClick={onCreateMultiplayer} className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 py-2 text-[11px] font-semibold text-cyan-200 hover:bg-cyan-500/20">Create Multiplayer</button>
+          <button onClick={() => onCreateMultiplayer(wager)} className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 py-2 text-[11px] font-semibold text-cyan-200 hover:bg-cyan-500/20">Create Game</button>
         </div>
-        <button onClick={onViewMultiplayer} className="mb-4 w-full rounded-lg border border-white/10 bg-white/[0.02] py-2 text-[10px] uppercase tracking-wider text-slate-400 hover:text-white">Available Games</button>
+
+        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest">Available Games</p>
+            <div className="flex items-center gap-1.5">
+              <button onClick={onRefreshGames} className="rounded border border-white/15 px-2 py-0.5 text-[10px] text-slate-300 hover:text-white">Refresh</button>
+              <button onClick={onQuickJoinMultiplayer} className="rounded border border-cyan-400/30 px-2 py-0.5 text-[10px] text-cyan-300 hover:bg-cyan-500/20">Quick Join</button>
+            </div>
+          </div>
+          <div className="max-h-36 space-y-2 overflow-y-auto pr-1">
+            {multiplayerLoading ? (
+              <p className="text-[11px] text-slate-400">Loading games…</p>
+            ) : multiplayerGames.length === 0 ? (
+              <p className="text-[11px] text-slate-500">No open games yet.</p>
+            ) : multiplayerGames.map((game) => (
+              <div key={game.id} className="flex items-center justify-between rounded-md border border-white/10 px-2 py-1.5">
+                <span className="text-[11px] text-slate-300">#{game.id} · {game.hostName || "Player"} · {Number(game.wagerAmount).toFixed(2)} tokens</span>
+                <button onClick={() => onJoinMultiplayer(game.id)} className="rounded border border-cyan-400/40 px-2 py-0.5 text-[10px] text-cyan-300 hover:bg-cyan-500/20">
+                  Join
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
 
         {isSignedIn ? (
           <div className="mb-5 text-center">
@@ -585,6 +612,8 @@ export default function HexDuelPage() {
   const [wager, setWager] = useState(0);
   const [wagerLoading, setWagerLoading] = useState(false);
   const [wagerError, setWagerError] = useState<string | null>(null);
+  const [multiplayerLoading, setMultiplayerLoading] = useState(false);
+  const [multiplayerGames, setMultiplayerGames] = useState<Array<{ id: number; wagerAmount: string | number; hostName?: string | null }>>([]);
   const [payoutResult, setPayoutResult] = useState<{ wager: number; payout: number; multiplier: number } | null>(null);
   const [payoutLoading, setPayoutLoading] = useState(false);
   const payoutProcessedRef = useRef(false);
@@ -686,6 +715,24 @@ export default function HexDuelPage() {
 
   useEffect(() => { fetchBalance(); }, [fetchBalance]);
 
+  const fetchMultiplayerGames = useCallback(async () => {
+    setMultiplayerLoading(true);
+    try {
+      const res = await fetch("/api/hex-duel/multiplayer/available", { credentials: "include" });
+      const data = await res.json();
+      if (data?.success) setMultiplayerGames(data.games ?? []);
+    } catch {
+      setMultiplayerGames([]);
+    } finally {
+      setMultiplayerLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (gameMode !== "idle") return;
+    fetchMultiplayerGames();
+  }, [gameMode, fetchMultiplayerGames]);
+
   // ── Wager handlers ─────────────────────────────────────────────────
   const handleStartFun = useCallback(() => { setAIEnabled(true); setGameMode("for-fun"); setWager(0); setWagerError(null); startedAtRef.current = new Date().toISOString(); }, []);
   const handleStartReal = useCallback(async (amount: number) => {
@@ -701,6 +748,49 @@ export default function HexDuelPage() {
     } catch { setWagerError("Network error — please try again"); }
     finally { setWagerLoading(false); }
   }, []);
+
+  const handleCreateMultiplayer = useCallback(async (amount: number) => {
+    setWagerError(null);
+    try {
+      const res = await fetch("/api/hex-duel/multiplayer/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ wager: amount }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setWagerError(data.error || "Failed to create game");
+        return;
+      }
+      if (data?.newBalance !== undefined) setBalance(Number(data.newBalance));
+      fetchMultiplayerGames();
+    } catch {
+      setWagerError("Network error — please try again");
+    }
+  }, [fetchMultiplayerGames]);
+
+  const handleJoinMultiplayer = useCallback(async (gameId: number, quickJoin = false) => {
+    setWagerError(null);
+    try {
+      const res = await fetch("/api/hex-duel/multiplayer/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(quickJoin ? { quickJoin: true } : { gameId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setWagerError(data.error || "Unable to join game");
+        await fetchMultiplayerGames();
+        return;
+      }
+      if (data?.newBalance !== undefined) setBalance(Number(data.newBalance));
+      setWagerError("Joined game successfully. Multiplayer match sync will begin shortly.");
+    } catch {
+      setWagerError("Network error — please try again");
+    }
+  }, [fetchMultiplayerGames]);
 
   // ── End-game payout ────────────────────────────────────────────────
   useEffect(() => {
@@ -991,8 +1081,12 @@ export default function HexDuelPage() {
           <WagerModal
             balance={balance} onStartFun={handleStartFun} onStartReal={handleStartReal}
             loading={wagerLoading} error={wagerError} isSignedIn={!!isSignedIn}
-            onCreateMultiplayer={() => router.push("/casino/hex-duel/multiplayer")}
-            onViewMultiplayer={() => router.push("/casino/hex-duel/multiplayer")}
+            onCreateMultiplayer={handleCreateMultiplayer}
+            onJoinMultiplayer={(gameId) => handleJoinMultiplayer(gameId, false)}
+            onQuickJoinMultiplayer={() => handleJoinMultiplayer(0, true)}
+            onRefreshGames={fetchMultiplayerGames}
+            multiplayerGames={multiplayerGames}
+            multiplayerLoading={multiplayerLoading}
           />
         )}
 
