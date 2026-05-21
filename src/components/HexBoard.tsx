@@ -61,7 +61,7 @@ export default function HexBoard({
   const { width, height } = dims;
   // Proper hex geometry
 const horizontalOffset = width * 0.5;
-const verticalSpacing = height * 0.72;
+const verticalSpacing = height * 0.75;
 
   // Build a lookup set for valid moves
   const validMoveSet = React.useMemo(
@@ -109,7 +109,7 @@ const verticalSpacing = height * 0.72;
     >
       {/* Board background glow */}
       <div
-        className="relative rounded-2xl p-2 sm:p-4 md:p-6
+        className="relative inline-block rounded-2xl p-1 sm:p-1.5 md:p-2
         border border-cyan-400/20
         bg-gradient-to-b from-[#05102a]/80 via-[#061538]/80 to-[#030b1f]/80
         shadow-[0_0_60px_rgba(34,211,238,0.08),inset_0_0_30px_rgba(34,211,238,0.04)]
@@ -129,11 +129,11 @@ const verticalSpacing = height * 0.72;
         />
 
         {/* Grid container */}
-        <div className="relative flex flex-col items-center">
+        <div className="relative inline-flex flex-col items-start w-fit">
           {grid.map((row, rowIndex) => (
            <div
   key={rowIndex}
-  className="flex justify-center"
+  className="flex"
   style={{
     marginLeft:
       rowIndex % 2 === 1
