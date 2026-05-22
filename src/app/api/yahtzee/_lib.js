@@ -59,4 +59,4 @@ export async function settleIfEnded(tx, roomRow, state) {
   return { state, ended: true, winnerId: ended.winnerId, payout, totals: ended.totals };
 }
 
-export { db, eq, and, asc, isNull, ne, yahtzeeRooms, yahtzeePlayers, rollDice, holdDice, validateMove, nextTurn };
+export { db, eq, and, asc, isNull, ne, sql, users, yahtzeeRooms, yahtzeePlayers, rollDice, holdDice, validateMove, nextTurn };
