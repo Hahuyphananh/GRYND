@@ -76,10 +76,21 @@ export function nextTurn(state: YahtzeeGameState, scoringUserId: string, categor
   return { ...state, scorecards, currentTurn: next.userId, turnNumber: state.turnNumber + 1, rollsThisTurn: 0, heldDice: [false,false,false,false,false], dice:[1,1,1,1,1] };
 }
 
+const UPPER_CATS: YahtzeeCategory[] = ["ones","twos","threes","fours","fives","sixes"];
+
+function upperBonus(card: Scorecard) {
+  const sum = UPPER_CATS.reduce((t, k) => t + ((card as any)[k] ?? 0), 0);
+  return sum >= 63 ? 35 : 0;
+}
+
 export function checkGameEnd(state: YahtzeeGameState) {
   const done = state.players.every(p => Object.keys(state.scorecards[p.userId] ?? {}).length >= 13);
   if (!done) return { ended: false as const };
-  const totals = Object.fromEntries(state.players.map(p => [p.userId, Object.values(state.scorecards[p.userId] ?? {}).reduce((a,b)=>a+(b ?? 0),0)]));
+  const totals = Object.fromEntries(state.players.map(p => {
+    const card = state.scorecards[p.userId] ?? {};
+    const raw = Object.values(card).reduce((a,b)=>a+(b ?? 0), 0);
+    return [p.userId, raw + upperBonus(card)];
+  }));
   const winner = [...state.players].sort((a,b)=>totals[b.userId]-totals[a.userId])[0];
   return { ended: true as const, winnerId: winner.userId, totals };
 }

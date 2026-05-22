@@ -3,17 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-  "dev": "next dev",
-  "build": "next build",
-  "start": "next start",
-  "lint": "next lint",
-
-  "db:generate": "drizzle-kit generate",
-  "db:migrate": "tsx ./src/db/migrate.ts",
-
-  "test": "node --test tests/security-authz.test.mjs",
-  "test:runtime": "node --test tests/runtime-security-http.test.mjs"
-},
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx ./src/db/migrate.ts",
+    "test": "node --test tests/security-authz.test.mjs",
+    "test:runtime": "node --test tests/runtime-security-http.test.mjs"
+  },
   "dependencies": {
     "@capacitor/android": "^8.3.3",
     "@capacitor/core": "^8.3.3",
@@ -30,6 +28,7 @@
     "@vercel/postgres": "0.10.0",
     "axios": "^1.15.2",
     "bcrypt": "^6.0.0",
+    "canvas-confetti": "^1.9.4",
     "cheerio": "^1.0.0",
     "chess.js": "^1.2.0",
     "cookie": "^1.1.1",
@@ -53,6 +52,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.3.3",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "22.14.1",
     "@types/pg": "^8.11.14",
     "@types/react": "19.1.2",
