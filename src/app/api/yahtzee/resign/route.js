@@ -1,0 +1,25 @@
+import { NextResponse } from "next/server";
+import { and, db, eq, loadRoom, requireUser, sql, users, yahtzeeRooms } from "../_lib";
+
+export async function POST(req) {
+  try {
+    const userId = await requireUser();
+    const { roomId } = await req.json();
+    const result = await db.transaction(async (tx) => {
+      const room = await loadRoom(roomId, tx);
+      const state = room.gameState;
+      if (state.state === "finished") return { state };
+      const winner = state.players.find((p) => p.userId !== userId);
+      if (!winner) throw new Error("Cannot resign before opponent joins");
+      const payout = Math.floor(Number(room.pot || state.pot || 0) * 0.95);
+      await tx.update(users).set({ balance: sql`${users.balance} + ${payout}` }).where(eq(users.clerkId, winner.userId));
+      state.state = "finished";
+      state.currentTurn = winner.userId;
+      await tx.update(yahtzeeRooms).set({ status: "finished", pot: 0, gameState: state }).where(and(eq(yahtzeeRooms.id, roomId), eq(yahtzeeRooms.status, room.status)));
+      return { state, winnerId: winner.userId, payout };
+    });
+    return NextResponse.json({ success: true, ...result });
+  } catch (e) {
+    return NextResponse.json({ success: false, error: e.message || "Failed to resign" }, { status: 400 });
+  }
+}
