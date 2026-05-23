@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
+import { usePokerAudio } from "../../../lib/pokerAudio";
 
 type Player = {
   id: string;
@@ -130,6 +131,18 @@ export default function PokerPage() {
   const [aiInfoOpen, setAiInfoOpen] = useState(false);
   const [selectedAi, setSelectedAi] = useState<Player | null>(null);
   const [turnTimeLimit, setTurnTimeLimit] = useState(60);
+  const [allInFlash, setAllInFlash] = useState(false);
+  const [allInParticles, setAllInParticles] = useState<{ id: string; seatIdx: number; delay: number }[]>([]);
+  const audio = usePokerAudio();
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
+  const performActionRef = useRef(performAction);
+  performActionRef.current = performAction;
+  const gameRef = useRef(game);
+  gameRef.current = game;
+  const myIdRef = useRef(myId);
+  myIdRef.current = myId;
+
   const [windowSize, setWindowSize] = useState({ w: 1200, h: 800 });
   const [isPortrait, setIsPortrait] = useState(false);
 
@@ -438,39 +451,54 @@ export default function PokerPage() {
     return () => clearInterval(interval);
   }, [game?.inviteCode, isSpectator]);
 
-  // Turn timer effect — runs whenever the current turn changes
+  // ── Ref-based turn timer — auto-fold on expiry with audio ──
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (!game) return;
 
     const currentPlayer = game.players[game.currentTurn];
     const isPlayerTurn = currentPlayer && currentPlayer.id === myId;
     setIsMyTurn(isPlayerTurn);
-    setTurnTimer(turnTimeLimit); // reset every time the turn changes
+    setTurnTimer(turnTimeLimit);
+
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
 
     if (!isPlayerTurn || game.stage === "showdown" || game.waiting) return;
 
-    // Start countdown only if it's your turn
-    const interval = setInterval(() => {
+    timerIntervalRef.current = setInterval(() => {
       setTurnTimer((t) => {
+        // Urgent beep at ≤5s
+        if (t <= 5 && t > 1) {
+          audioRef.current.playTimerUrgent();
+        }
         if (t <= 1) {
-          clearInterval(interval);
-          const freshGame = game;
+          if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+          }
+          const freshGame = gameRef.current;
+          const freshMyId = myIdRef.current;
+          if (!freshGame) return 0;
           const timeoutPlayer = freshGame.players[freshGame.currentTurn];
-          if (!timeoutPlayer || timeoutPlayer.id !== myId) return 0;
-          const highestBet = Math.max(
-            ...freshGame.players.map((p) => p.currentBet || 0),
-          );
-          const myCurrentBet = timeoutPlayer.currentBet || 0;
-          performAction(myCurrentBet >= highestBet ? "check" : "call");
+          if (!timeoutPlayer || timeoutPlayer.id !== freshMyId) return 0;
+          audioRef.current.playFold();
+          performActionRef.current("fold");
           return 0;
         }
         return t - 1;
       });
     }, 1000);
 
-    // cleanup
-    return () => clearInterval(interval);
-  }, [game?.currentTurn, game, myId, turnTimeLimit]);
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    };
+  }, [game?.currentTurn, game?.stage, myId, turnTimeLimit]);
 
   // -----------------------------
   // Seat positions (aligned around the table)
@@ -579,6 +607,14 @@ export default function PokerPage() {
         folded: p.hasFolded,
       })),
     });
+
+    // Play sounds for new hand
+    audioRef.current.playNewHand();
+    audioRef.current.playShuffle();
+    setTimeout(() => {
+      audioRef.current.playCardDeal();
+      setTimeout(() => audioRef.current.playCardDeal(), 200);
+    }, 600);
 
     const nextGame = {
       ...game,
@@ -752,6 +788,22 @@ export default function PokerPage() {
     return () => clearTimeout(timer);
   }, [game?.currentTurn, game?.stage]);
 
+  function triggerAllInAnimation(seatIdx: number) {
+    audioRef.current.playAllIn();
+    setAllInFlash(true);
+    // Create 8 chip particles flying from the seat to the pot
+    const chips = Array.from({ length: 8 }, (_, i) => ({
+      id: `allin-${seatIdx}-${Date.now()}-${i}`,
+      seatIdx,
+      delay: i * 40,
+    }));
+    setAllInParticles(chips);
+    setTimeout(() => {
+      setAllInFlash(false);
+      setAllInParticles([]);
+    }, 1200);
+  }
+
   function checkForWinner(players: Player[], pot: number) {
     const activePlayers = players.filter((p) => !p.hasFolded);
     if (activePlayers.length === 1) {
@@ -761,8 +813,11 @@ export default function PokerPage() {
       );
 
       if (winner.id === myId) {
+        audioRef.current.playWin();
         setBalance((prev) => prev + pot);
         fetchUserTokens();
+      } else {
+        audioRef.current.playLose();
       }
 
       setGame((g) => {
@@ -802,10 +857,12 @@ export default function PokerPage() {
     let potNew = game.pot;
 
     if (action === "fold") {
+      audioRef.current.playFold();
       current.hasFolded = true;
       current.lastAction = "Folded";
       if (checkForWinner(players, potNew)) return;
     } else if (action === "call") {
+      audioRef.current.playCall();
       const toCall = Math.max(0, highest - (current.currentBet || 0));
       if (toCall > 0) {
         const actual = Math.min(toCall, current.stack);
@@ -813,6 +870,9 @@ export default function PokerPage() {
         current.currentBet += actual;
         potNew += actual;
         current.lastAction = `Called ${actual}`;
+        if (current.stack <= 0 && current.seatIndex != null) {
+          triggerAllInAnimation(current.seatIndex);
+        }
         if (checkForWinner(players, potNew)) return;
 
         if (current.id === myId) {
@@ -820,9 +880,12 @@ export default function PokerPage() {
           fetchUserTokens();
         }
       } else {
+        audioRef.current.playCheck();
         current.lastAction = "Check";
       }
     } else if (action === "bet20") {
+      audioRef.current.playChipStack();
+      audioRef.current.playChipPot();
       const betSize = 20;
       const actual = Math.min(betSize, current.stack);
       current.stack -= actual;
@@ -830,6 +893,9 @@ export default function PokerPage() {
       potNew += actual;
       current.lastAction = `Bet ${betSize}`;
       game.lastAggressorIndex = currentIndex;
+      if (current.stack <= 0 && current.seatIndex != null) {
+        triggerAllInAnimation(current.seatIndex);
+      }
 
       players.forEach((p, i) => {
         if (i !== currentIndex && !p.hasFolded) {
@@ -841,6 +907,8 @@ export default function PokerPage() {
         fetchUserTokens();
       }
     } else if (action === "raise") {
+      audioRef.current.playRaise();
+      audioRef.current.playChipPot();
       const targetBet = Math.max(raiseAmount, highest);
       const chipsNeeded = Math.max(0, targetBet - (current.currentBet || 0));
       const actual = Math.min(chipsNeeded, current.stack);
@@ -850,6 +918,9 @@ export default function PokerPage() {
       current.lastAction =
         chipsNeeded > 0 ? `Raised to ${current.currentBet}` : "Call";
       game.lastAggressorIndex = currentIndex;
+      if (current.stack <= 0 && current.seatIndex != null) {
+        triggerAllInAnimation(current.seatIndex);
+      }
 
       players.forEach((p, i) => {
         if (i !== currentIndex && !p.hasFolded) {
@@ -860,6 +931,7 @@ export default function PokerPage() {
         setBalance((prev) => Math.max(prev - actual, 0));
       }
     } else if (action === "check") {
+      audioRef.current.playCheck();
       // You can only check if no bet to call
       if (current.currentBet === highest) {
         current.lastAction = "Check";
@@ -871,18 +943,15 @@ export default function PokerPage() {
         current.currentBet += actual;
         potNew += actual;
         current.lastAction = `Called ${actual}`;
+        if (current.stack <= 0 && current.seatIndex != null) {
+          triggerAllInAnimation(current.seatIndex);
+        }
 
         if (current.id === myId) {
           setBalance((prev) => Math.max(prev - actual, 0));
           fetchUserTokens();
         }
       }
-    }
-
-    function getActiveIndices(players: Player[]): number[] {
-      return players
-        .map((p, i) => (!p.hasFolded ? i : -1))
-        .filter((i) => i !== -1);
     }
 
     const activePlayers = players.filter((p) => !p.hasFolded);
@@ -944,14 +1013,19 @@ export default function PokerPage() {
     if (game.stage === "pre-flop") {
       // Deal all 3 flop cards at once, small visual delay
       await new Promise((res) => setTimeout(res, 400));
+      audioRef.current.playCardDeal();
+      setTimeout(() => audioRef.current.playCardDeal(), 150);
+      setTimeout(() => audioRef.current.playCardDeal(), 300);
       comm.push(deck.pop()!, deck.pop()!, deck.pop()!);
       nextStage = "flop";
     } else if (game.stage === "flop") {
       await new Promise((res) => setTimeout(res, 400));
+      audioRef.current.playCardDeal();
       comm.push(deck.pop()!);
       nextStage = "turn";
     } else if (game.stage === "turn") {
       await new Promise((res) => setTimeout(res, 400));
+      audioRef.current.playCardDeal();
       comm.push(deck.pop()!);
       nextStage = "river";
     } else if (game.stage === "river") {
@@ -1016,8 +1090,11 @@ export default function PokerPage() {
     );
 
     if (winner.id === myId) {
+      audioRef.current.playWin();
       setBalance((prev) => prev + game.pot);
       fetchUserTokens();
+    } else {
+      audioRef.current.playLose();
     }
 
     const nextGame: Game = appendActionLog(
@@ -1440,6 +1517,15 @@ export default function PokerPage() {
       <h1 className="text-3xl sm:text-5xl mb-4 font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] via-[#00e5ff] to-[#ff00cc] drop-shadow-[0_0_20px_rgba(255,0,204,0.8)] animate-pulse">
         TEXAS HOLD'EM
       </h1>
+      
+      {/* ── Sound toggle ── */}
+      <button
+        onClick={() => audio.setEnabled(!audio.enabled)}
+        className="absolute top-4 right-4 z-20 w-10 h-10 rounded-full flex items-center justify-center bg-[#0a0a1a]/80 border border-[#00e5ff]/30 text-lg hover:bg-[#00e5ff]/20 transition shadow-[0_0_10px_rgba(0,229,255,0.2)]"
+        title={audio.enabled ? "Mute sounds" : "Enable sounds"}
+      >
+        {audio.enabled ? "🔊" : "🔇"}
+      </button>
       <div className="mb-3 flex items-center gap-2 text-sm z-10">
         <span className="text-[#b0b0ff]/70">Turn timer:</span>
         <select
@@ -1573,6 +1659,85 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             </div>
           </div>
         </div>
+
+        {/* ── All-in flash overlay ── */}
+        <AnimatePresence>
+          {allInFlash && (
+            <motion.div
+              key="allin-flash"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 0.6, 0.3, 0] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.8, times: [0, 0.15, 0.4, 0.8] }}
+              className="absolute inset-0 z-[60] pointer-events-none"
+              style={{
+                background: "radial-gradient(circle at 50% 50%, rgba(255,215,0,0.5), rgba(255,100,0,0.3) 40%, transparent 70%)",
+              }}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* ── Flying all-in chip particles ── */}
+        <AnimatePresence>
+          {allInParticles.map((particle) => {
+            const seatPos = seatPositions[particle.seatIdx];
+            if (!seatPos) return null;
+            return (
+              <motion.div
+                key={particle.id}
+                initial={{
+                  left: seatPos.left,
+                  top: seatPos.top,
+                  scale: 0.5,
+                  opacity: 1,
+                }}
+                animate={{
+                  left: 450,
+                  top: 255,
+                  scale: [0.5, 1.2, 0.3],
+                  opacity: [1, 1, 0],
+                  rotate: [0, 720],
+                }}
+                exit={{ opacity: 0, scale: 0 }}
+                transition={{
+                  duration: 0.7,
+                  delay: particle.delay / 1000,
+                  ease: "easeIn",
+                }}
+                className="absolute z-[65] w-4 h-4 rounded-full pointer-events-none"
+                style={{
+                  transform: "translate(-50%, -50%)",
+                  background: `linear-gradient(135deg, hsl(${Math.random() * 360}, 100%, 50%), #ffd700)`,
+                  boxShadow: "0 0 8px rgba(255,215,0,0.6)",
+                }}
+              />
+            );
+          })}
+        </AnimatePresence>
+
+        {/* ── Winner celebration overlay ── */}
+        <AnimatePresence>
+          {game?.winnerId && game?.stage === "showdown" && (
+            <motion.div
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 200, damping: 15 }}
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none"
+            >
+              <motion.div
+                animate={{
+                  scale: [1, 1.05, 1],
+                  rotate: [0, 2, -2, 0],
+                }}
+                transition={{ duration: 1.5, repeat: Infinity, repeatType: "reverse" }}
+                className="text-4xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-400 to-yellow-300 drop-shadow-[0_0_30px_rgba(255,215,0,0.8)]"
+              >
+                👑 WINNER!
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ── Community cards on the table ── */}
         {game?.community?.length > 0 && (
@@ -1872,7 +2037,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
       )}
       {aiInfoOpen && selectedAi && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="bg-black/70 backdrop-blur-md border border-cyan-400/40 shadow-[0_0_15px_rgba(0,255,255,0.25)] p-6 rounded-xl w-80 shadow-xl border border-yellow-500">
+          <div className="bg-black/70 backdrop-blur-md border border-yellow-500/60 shadow-[0_0_15px_rgba(255,215,0,0.3)] p-6 rounded-xl w-80 shadow-xl">
             <h2 className="text-xl font-bold mb-4 text-center text-yellow-400">
               🤖 AI Player Info
             </h2>

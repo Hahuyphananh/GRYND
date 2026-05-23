@@ -7,6 +7,7 @@ import confetti from "canvas-confetti";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
+import { useTurnTimer } from "../../../lib/useTurnTimer";
 
 type LobbyRoom = { id: string; wager: number; status: string };
 type Player = { userId: string; name: string; isAI?: boolean };
@@ -286,10 +287,77 @@ export default function YahtzeePage() {
   const [moveHistory, setMoveHistory] = useState<any[]>([]);
   const [turnBanner, setTurnBanner] = useState<string | null>(null);
   const [exploding, setExploding] = useState(false);
-  const [aiRollAnimating, setAiRollAnimating] = useState(false);
+
   const [gameOverType, setGameOverType] = useState<"win" | "lose" | null>(null);
   const [gameOverScores, setGameOverScores] = useState<{ mine: number; theirs: number } | null>(null);
   const { socket } = useSocket();
+
+  // ── Auto-play ref for turn timer expiry ──────────────────────────
+  // Kept as a ref so the timer's onExpire callback always calls the latest version
+  const autoPlayFnRef = useRef<() => void>(() => {});
+  // Update the ref on every render so it always has fresh game state
+  autoPlayFnRef.current = () => {
+    if (!roomId || !game || !you) return;
+    const currentGame = game;
+    const myId = you.userId;
+
+    if (currentGame.rollsThisTurn === 0) {
+      // No dice rolled — roll once
+      fetch("/api/yahtzee/roll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId }),
+      })
+        .then((r) => r.json())
+        .then(() => fetch(`/api/yahtzee/state?roomId=${encodeURIComponent(roomId)}`, { cache: "no-store" }))
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && data.room?.gameState) {
+            setGame(data.room.gameState as GameState);
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+
+    // Dice are rolled — find the best unfilled category
+    const myScorecard = currentGame.scorecards?.[myId] || {};
+    const dice = currentGame.dice;
+
+    let bestCategory: string | null = null;
+    let bestScore = -1;
+
+    for (const [key] of categories) {
+      if (myScorecard[key] === undefined) {
+        const s = scoreFor(dice, key);
+        if (s > bestScore) {
+          bestScore = s;
+          bestCategory = key;
+        }
+      }
+    }
+
+    if (!bestCategory) return;
+
+    fetch("/api/yahtzee/choose-category", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roomId, category: bestCategory }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) {
+          if (d.aiCategory) {
+            setAiCategoryHighlight(d.aiCategory);
+            setTimeout(() => setAiCategoryHighlight(null), 900);
+          }
+          setGame(d.state);
+          emitRoomEvent();
+          if (roomId) fetchHistory(roomId);
+        }
+      })
+      .catch(() => {});
+  };
   const prevTurnRef = useRef<string | null>(null);
   const prevGameStateRef = useRef<string | null>(null);
   const endedRef = useRef(false);
@@ -388,7 +456,37 @@ export default function YahtzeePage() {
   const waitingForOpponent = Boolean(game && game.players.length < 2 && game.state === "waiting");
 
   const sectionTotals = (pid?: string) => { const c = game?.scorecards?.[pid || ""] || {}; const upper = ["ones","twos","threes","fours","fives","sixes"].reduce((t, k) => t + (c[k] ?? 0), 0); const bonus = upper >= 63 ? 35 : 0; const total = Object.values(c).reduce((a, b) => a + (b || 0), 0) + bonus; return { upper, bonus, total }; };
+
+  // Category progress (out of 13)
+  const progress = (pid?: string) => {
+    const c = game?.scorecards?.[pid || ""] || {};
+    return Object.keys(c).filter(k => c[k] !== undefined).length;
+  };
+
+  // Extract last player and AI moves from history
+  const lastMoves = useMemo(() => {
+    const playerMoves = moveHistory.filter((a: any) => a.action === "choose_category" && a.userId === user?.id);
+    const aiMoves = moveHistory.filter((a: any) => a.action === "choose_category" && a.userId !== user?.id);
+    return {
+      player: playerMoves.length > 0 ? playerMoves[playerMoves.length - 1] : null,
+      ai: aiMoves.length > 0 ? aiMoves[aiMoves.length - 1] : null,
+    };
+  }, [moveHistory, user?.id]);
   const preview = (key: string) => (!game || !isYourTurn || game.rollsThisTurn < 1 || !you || game.scorecards?.[you.userId]?.[key] !== undefined ? null : scoreFor(game.dice, key));
+
+  // ── Turn Timer (2 min per turn) ─────────────────────────────────
+  const timer = useTurnTimer({
+    isActive: !!game && !endedRef.current && isYourTurn,
+    duration: 120,
+    onExpire: () => autoPlayFnRef.current(),
+    resetKey: game?.currentTurn ?? "",
+  });
+
+  const timerBarColor = timer.isCritical
+    ? "#ef4444"
+    : timer.isUrgent
+    ? "#facc15"
+    : "#22d3ee";
 
   const createGame = async () => { if (wager <= 0 || wager > balance) return alert("Invalid wager amount"); setLoading(true); try { const res = await fetch("/api/yahtzee/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to create room"); setRoomId(d.roomId); setGame(d.state);} finally { setLoading(false); } };
   const playAI = async () => { setLoading(true); try { const res = await fetch("/api/yahtzee/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager, difficulty: "medium" }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); setRoomId(d.roomId); setGame(d.state);} finally { setLoading(false); } };
@@ -402,16 +500,6 @@ export default function YahtzeePage() {
     emitRoomEvent();
     fetchHistory(roomId);
   };
-  const animateAiRolls = async (rolls: {dice: number[]; rollsThisTurn: number}[]) => {
-    if (!rolls || rolls.length === 0) return;
-    setAiRollAnimating(true);
-    for (const roll of rolls) {
-      setGame(prev => prev ? { ...prev, dice: roll.dice, rollsThisTurn: roll.rollsThisTurn } : prev);
-      await new Promise(r => setTimeout(r, 450));
-    }
-    setAiRollAnimating(false);
-  };
-
   const confirmPlay = async () => {
     if (!selectedCategory || !isYourTurn || !roomId) return;
     const cat = selectedCategory;
@@ -427,15 +515,10 @@ export default function YahtzeePage() {
         alert(d.error || "Failed");
         return;
       }
-      // Animate AI dice rolls if present
-      if (d.aiRolls && d.aiRolls.length > 0) {
-        await animateAiRolls(d.aiRolls);
-        // After rolling, highlight the AI's chosen category on the scorecard
-        if (d.aiCategory) {
-          setAiCategoryHighlight(d.aiCategory);
-          await new Promise(r => setTimeout(r, 900));
-          setAiCategoryHighlight(null);
-        }
+      // Highlight AI's chosen category on the scorecard
+      if (d.aiCategory) {
+        setAiCategoryHighlight(d.aiCategory);
+        setTimeout(() => setAiCategoryHighlight(null), 900);
       }
       setGame(d.state);
       emitRoomEvent();
@@ -446,7 +529,7 @@ export default function YahtzeePage() {
       alert("Something went wrong");
     }
   };
-  const resign = async () => { if (!roomId) return; const res = await fetch("/api/yahtzee/resign", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Failed"); setGame(d.state); emitRoomEvent(); };
+  const resign = async () => { if (!roomId) return; const res = await fetch("/api/yahtzee/resign", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Failed"); resetToLobby(); };
   const resetToLobby = () => {
     setRoomId(null);
     setGame(null);
@@ -488,6 +571,18 @@ export default function YahtzeePage() {
         >
           Total: {sectionTotals(opponent?.userId).total}
         </motion.div>
+        {/* Opponent progress bar */}
+        <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1">
+          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/20">
+            <motion.div
+              layout
+              animate={{ width: `${(progress(opponent?.userId) / 13) * 100}%` }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+              className="h-full rounded-full bg-red-400"
+            />
+          </div>
+          <span className="text-[10px] font-bold text-white/80">{progress(opponent?.userId)}/13</span>
+        </div>
       </div>
       <div className="rounded-xl bg-white/20 px-3 py-1 text-xs font-bold text-white">
         Rolls: {game.rollsThisTurn}/3
@@ -502,21 +597,51 @@ export default function YahtzeePage() {
           animate={{ opacity: 0.8, y: 0 }}
           transition={{ delay: i * 0.05, duration: 0.3 }}
         >
-          <DiceFace value={d} rolling={aiRollAnimating} />
+          <DiceFace value={d} />
         </motion.div>
       ))}
     </div>
   </div>
 
+  {/* ─── LAST MOVE SUMMARY ─── */}
+  {(lastMoves.player || lastMoves.ai) && (
+    <div className="border-b-4 border-yellow-300 bg-[#1580e0] px-4 py-2">
+      <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white/70">
+        <span>⚡</span> Last Move
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        {lastMoves.player && (
+          <div className="flex items-center gap-2 rounded-lg bg-green-500/30 px-2.5 py-1">
+            <span className="font-bold text-green-200">You</span>
+            <span className="text-white/90">→ {lastMoves.player.payload?.category}</span>
+            <span className="font-bold text-green-200">+{lastMoves.player.payload?.score ?? "?"} pts</span>
+          </div>
+        )}
+        {lastMoves.ai && (
+          <div className="flex items-center gap-2 rounded-lg bg-red-500/30 px-2.5 py-1">
+            <span className="font-bold text-red-200">{opponent?.name || "AI"}</span>
+            <span className="text-white/90">→ {lastMoves.ai.payload?.category}</span>
+            <span className="font-bold text-red-200">+{lastMoves.ai.payload?.score ?? "?"} pts</span>
+          </div>
+        )}
+        {!lastMoves.player && lastMoves.ai && (
+          <div className="text-white/50">You haven't scored yet</div>
+        )}
+        {lastMoves.player && !lastMoves.ai && (
+          <div className="text-white/50">AI hasn't scored yet</div>
+        )}
+      </div>
+    </div>
+  )}
+
   {/* ─── CENTER — SCORECARD ─── */}
   <div className="bg-[#2ab4ff] px-3 py-4">
     <div className="overflow-hidden rounded-xl border border-cyan-500/50 bg-[#1a8add]/60">
       {/* Header */}
-      <div className="grid grid-cols-4 bg-cyan-900/80 p-2 text-xs font-bold">
+      <div className="grid grid-cols-3 bg-cyan-900/80 p-2 text-xs font-bold">
         <div>Case</div>
         <div>{you?.name || "You"}</div>
         <div>{opponent?.name || "Opponent"}</div>
-        <div>Prev</div>
       </div>
 
       {/* Upper section — 1–6 */}
@@ -532,26 +657,27 @@ export default function YahtzeePage() {
             onClick={() => canPick && setSelectedCategory(k)}
             animate={isAiPick ? { backgroundColor: ["rgba(250,204,21,0)", "rgba(250,204,21,0.4)", "rgba(250,204,21,0)"], scale: [1, 1.06, 1] } : {}}
             transition={isAiPick ? { duration: 0.8, ease: "easeInOut" } : {}}
-            className={`grid w-full grid-cols-4 border-t border-cyan-900/60 p-2 text-left text-xs transition-colors ${
+            className={`grid w-full grid-cols-3 border-t border-cyan-900/60 p-2 text-left text-xs transition-colors ${
               selectedCategory === k
-                ? "bg-fuchsia-900/40 shadow-[inset_0_0_15px_rgba(168,85,247,0.3)]"
+                ? "bg-fuchsia-600/50 ring-2 ring-fuchsia-400 ring-inset shadow-[inset_0_0_20px_rgba(217,70,239,0.5)]"
                 : "hover:bg-cyan-900/30"
             } ${isAiPick ? "z-10 ring-2 ring-yellow-400" : ""}`}
           >
             <motion.div animate={myVal !== undefined ? { scale: [1, 1.15, 1] } : {}} transition={{ duration: 0.4 }}>
               {label}
             </motion.div>
-            <div>{myVal ?? "—"}</div>
+            <div className={myVal === undefined && preview(k) !== null ? "text-white/60 italic" : ""}>
+              {myVal !== undefined ? myVal : (preview(k) ?? "—")}
+            </div>
             <motion.div animate={opVal !== undefined ? { scale: [1, 1.15, 1] } : {}} transition={{ duration: 0.4 }}>
               {opVal ?? "—"}
             </motion.div>
-            <div>{myVal === undefined ? (preview(k) ?? "—") : "Locked"}</div>
           </motion.button>
         );
       })}
 
       {/* Bonus row — 63-pt threshold */}
-      <div className="grid grid-cols-4 border-t-2 border-yellow-400 bg-yellow-900/50 p-2 text-xs font-bold">
+      <div className="grid grid-cols-3 border-t-2 border-yellow-400 bg-yellow-900/50 p-2 text-xs font-bold">
         <div className="text-yellow-300">Bonus (63+)</div>
         <motion.div
           key={`you-bonus-${sectionTotals(you?.userId).upper}`}
@@ -573,7 +699,6 @@ export default function YahtzeePage() {
             ? `+${sectionTotals(opponent?.userId).bonus} ✓`
             : `${sectionTotals(opponent?.userId).upper} / 63`}
         </motion.div>
-        <div className="text-yellow-300">+35 pts</div>
       </div>
 
       {/* Lower section — 3x, 4x, Full, Sm, Lg, Yahtzee, Chance */}
@@ -589,26 +714,27 @@ export default function YahtzeePage() {
             onClick={() => canPick && setSelectedCategory(k)}
             animate={isAiPick ? { backgroundColor: ["rgba(250,204,21,0)", "rgba(250,204,21,0.4)", "rgba(250,204,21,0)"], scale: [1, 1.06, 1] } : {}}
             transition={isAiPick ? { duration: 0.8, ease: "easeInOut" } : {}}
-            className={`grid w-full grid-cols-4 border-t border-cyan-900/60 p-2 text-left text-xs transition-colors ${
+            className={`grid w-full grid-cols-3 border-t border-cyan-900/60 p-2 text-left text-xs transition-colors ${
               selectedCategory === k
-                ? "bg-fuchsia-900/40 shadow-[inset_0_0_15px_rgba(168,85,247,0.3)]"
+                ? "bg-fuchsia-600/50 ring-2 ring-fuchsia-400 ring-inset shadow-[inset_0_0_20px_rgba(217,70,239,0.5)]"
                 : "hover:bg-cyan-900/30"
             } ${isAiPick ? "z-10 ring-2 ring-yellow-400" : ""}`}
           >
             <motion.div animate={myVal !== undefined ? { scale: [1, 1.15, 1] } : {}} transition={{ duration: 0.4 }}>
               {label}
             </motion.div>
-            <div>{myVal ?? "—"}</div>
+            <div className={myVal === undefined && preview(k) !== null ? "text-white/60 italic" : ""}>
+              {myVal !== undefined ? myVal : (preview(k) ?? "—")}
+            </div>
             <motion.div animate={opVal !== undefined ? { scale: [1, 1.15, 1] } : {}} transition={{ duration: 0.4 }}>
               {opVal ?? "—"}
             </motion.div>
-            <div>{myVal === undefined ? (preview(k) ?? "—") : "Locked"}</div>
           </motion.button>
         );
       })}
 
       {/* Grand total row */}
-      <div className="grid grid-cols-4 border-t-2 border-cyan-400 bg-cyan-950/90 p-2 text-sm font-black">
+      <div className="grid grid-cols-3 border-t-2 border-cyan-400 bg-cyan-950/90 p-2 text-sm font-black">
         <div>Grand Total</div>
         <motion.div
           key={`you-total-${sectionTotals(you?.userId).total}`}
@@ -624,14 +750,13 @@ export default function YahtzeePage() {
         >
           {sectionTotals(opponent?.userId).total}
         </motion.div>
-        <div></div>
       </div>
     </div>
 
     {/* ─── BUTTONS at bottom of scorecard ─── */}
     <div className="mt-3 flex items-center justify-center gap-3">
       <button
-        disabled={!isYourTurn || waitingForOpponent || aiRollAnimating}
+        disabled={!isYourTurn || waitingForOpponent}
         onClick={async () => {
           setRolling(true);
           await playAction("/api/yahtzee/roll", {});
@@ -642,18 +767,13 @@ export default function YahtzeePage() {
         ROLL
       </button>
       <motion.button
-        disabled={!selectedCategory || !isYourTurn || aiRollAnimating}
-        whileHover={selectedCategory && isYourTurn && !aiRollAnimating ? { scale: 1.05 } : {}}
+        disabled={!selectedCategory || !isYourTurn}
+        whileHover={selectedCategory && isYourTurn ? { scale: 1.05 } : {}}
         whileTap={{ scale: 0.95 }}
         onClick={confirmPlay}
         className="rounded-xl bg-gradient-to-r from-fuchsia-600 to-pink-500 px-6 py-3 font-black text-white shadow-[0_0_20px_rgba(217,70,239,0.4)] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
       >
-        {aiRollAnimating ? (
-          <span className="flex items-center gap-2">
-            <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>🎲</motion.span>
-            Rolling...
-          </span>
-        ) : aiCategoryHighlight ? (
+        {aiCategoryHighlight ? (
           <span className="flex items-center gap-2">
             <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>📋</motion.span>
             Scoring...
@@ -664,7 +784,29 @@ export default function YahtzeePage() {
       </motion.button>
     </div>
 
-    <div className="mt-2 text-center text-xs font-bold text-white">
+    {/* ─── Turn Timer ─── */}
+    <div className="mt-2 flex items-center justify-center gap-2">
+      <div className="relative h-1.5 w-40 overflow-hidden rounded-full bg-black/30">
+        <div
+          className={`h-full rounded-full transition-all duration-200 ${timer.isCritical ? "animate-pulse" : ""}`}
+          style={{
+            width: `${Math.max(0, timer.fraction * 100)}%`,
+            backgroundColor: timerBarColor,
+            boxShadow: `0 0 8px ${timerBarColor}66`,
+          }}
+        />
+      </div>
+      <span
+        className={`text-xs font-bold tabular-nums ${
+          timer.isCritical ? "text-red-400" : timer.isUrgent ? "text-yellow-300" : "text-white/70"
+        }`}
+      >
+        0:{Math.ceil(timer.timeLeft).toString().padStart(2, "0")}
+      </span>
+      <span className="text-[9px] text-white/40 uppercase tracking-wider">⏱</span>
+    </div>
+
+    <div className="mt-1 text-center text-xs font-bold text-white">
       {isYourTurn ? "YOUR TURN" : `${opponent?.name || "Opponent"} TURN`}
     </div>
   </div>
@@ -684,6 +826,18 @@ export default function YahtzeePage() {
         >
           Total: {sectionTotals(you?.userId).total}
         </motion.div>
+        {/* Player progress bar */}
+        <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1">
+          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/20">
+            <motion.div
+              layout
+              animate={{ width: `${(progress(you?.userId) / 13) * 100}%` }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+              className="h-full rounded-full bg-green-400"
+            />
+          </div>
+          <span className="text-[10px] font-bold text-white/80">{progress(you?.userId)}/13</span>
+        </div>
       </div>
       <div className="rounded-xl bg-white/20 px-3 py-1 text-xs font-bold text-white">
         Tap dice to hold
@@ -901,7 +1055,7 @@ export default function YahtzeePage() {
                       : "border-red-700 bg-red-500 text-white shadow-[0_0_25px_rgba(239,68,68,0.4)]"
                   }`}
                 >
-                  Play Again
+                  Return to lobby
                 </motion.button>
               </motion.div>
             </motion.div>

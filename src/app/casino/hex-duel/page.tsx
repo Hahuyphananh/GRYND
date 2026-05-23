@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useHexDuel, type DuelPlayer, type PushTarget } from "../../../lib/hexDuelEngine";
-import { decideAIAction, type AIDifficulty, type AIAction } from "../../../lib/hexDuelAI";
+import { decideAIAction, type AIDifficulty, type AIAction, type AIStateSnapshot } from "../../../lib/hexDuelAI";
 import { useHexAudio } from "../../../lib/hexAudio";
+import { useTurnTimer } from "../../../lib/useTurnTimer";
 import HexBoard from "../../../components/HexBoard";
 import HexParticles from "../../../components/HexParticles";
 import NavigationBar from "../../../components/navigation-bar";
@@ -74,6 +75,15 @@ const GLOBAL_KEYFRAMES = `
 @keyframes cornerPulse {
   0%, 100% { border-color: rgba(34,211,238,0.4); }
   50%      { border-color: rgba(34,211,238,0.8); }
+}
+@keyframes honeycombGlow {
+  0%, 100% { opacity: 0.04; }
+  50%      { opacity: 0.08; }
+}
+@keyframes territoryFill {
+  0%   { opacity: 0; transform: scale(0.85); }
+  50%  { opacity: 0.3; transform: scale(1.05); }
+  100% { opacity: 0; transform: scale(1); }
 }
 `;
 
@@ -483,13 +493,62 @@ function PlayerCard({
 //  Status Bar (Enhanced with turn transition animations)
 // ══════════════════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════════════════
+//  Turn Timer Bar
+// ══════════════════════════════════════════════════════════════════════════
+
+function TimerBar({ fraction, isUrgent, isCritical, isActive }: {
+  fraction: number;
+  isUrgent: boolean;
+  isCritical: boolean;
+  isActive: boolean;
+}) {
+  if (!isActive) return null;
+
+  const barColor = isCritical
+    ? "#ef4444"
+    : isUrgent
+    ? "#facc15"
+    : "#22d3ee";
+
+  const glowColor = isCritical
+    ? "rgba(239,68,68,0.5)"
+    : isUrgent
+    ? "rgba(250,204,21,0.4)"
+    : "rgba(34,211,238,0.3)";
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative h-2 w-32 overflow-hidden rounded-full bg-slate-800/60">
+        <div
+          className={`h-full rounded-full transition-all duration-200 ${isCritical ? "animate-pulse" : ""}`}
+          style={{
+            width: `${Math.max(0, fraction * 100)}%`,
+            backgroundColor: barColor,
+            boxShadow: `0 0 8px ${glowColor}`,
+          }}
+        />
+      </div>
+      <span
+        className={`text-xs font-bold tabular-nums ${
+          isCritical ? "text-red-400" : isUrgent ? "text-yellow-300" : "text-slate-300"
+        }`}
+      >
+        0:{Math.ceil(fraction * 120).toString().padStart(2, "0")}
+      </span>
+    </div>
+  );
+}
+
 function StatusBar({
   currentTurn, currentAP, maxAP, selectedUnit, validMoves, pushTargets, onEndTurn, isGameOver, aiThinking, aiEnabled,
+  timerFraction, timerUrgent, timerCritical, timerActive,
 }: {
   currentTurn: DuelPlayer; currentAP: number; maxAP: number;
   selectedUnit: DuelPlayer | null; validMoves: { x: number; y: number }[];
   pushTargets: PushTarget[]; onEndTurn: () => void;
   isGameOver: boolean; aiThinking: boolean; aiEnabled: boolean;
+  timerFraction: number; timerUrgent: boolean; timerCritical: boolean; timerActive: boolean;
 }) {
   const turnColor = currentTurn === "player1" ? "#22d3ee" : "#ef4444";
   const turnLabel = currentTurn === "player1" ? "BLUE" : "RED";
@@ -524,6 +583,16 @@ function StatusBar({
 
   return (
     <div className="text-center space-y-2">
+      {/* Turn Timer bar */}
+      <div className="flex items-center justify-center">
+        <TimerBar
+          fraction={timerFraction}
+          isUrgent={timerUrgent}
+          isCritical={timerCritical}
+          isActive={timerActive}
+        />
+      </div>
+
       {!isGameOver && (
         <div className="flex items-center justify-center gap-2" style={{ animation: "turnSlideIn 0.35s ease-out" }}>
           <span
@@ -592,7 +661,7 @@ export default function HexDuelPage() {
   const {
     grid, player1Pos, player2Pos, currentTurn, selectedUnit, validMoves, pushTargets,
     p1MoveCount, p2MoveCount, p1Territory, p2Territory, currentAP, maxAP,
-    capturedTiles, selectedTile, recentlyCaptured, pushedHere,
+    capturedTiles, selectedTile,    recentlyCaptured, territorySpread, pushedHere,
     powerNodes, p1PowerNodes, p2PowerNodes, winner,
     handleTileClick, endTurn, resetGame,
   } = useHexDuel();
@@ -633,6 +702,7 @@ export default function HexDuelPage() {
   }, [currentTurn]);
 
   const isGameOver = winner !== null;
+  const showGame = gameMode !== "idle";
 
   // ── Sound effects ──────────────────────────────────────────────────
 
@@ -850,43 +920,107 @@ export default function HexDuelPage() {
   const pushTargetKeys = useMemo(() => pushTargets.map((p) => `${p.x},${p.y}`), [pushTargets]);
   const powerNodeKeys = useMemo(() => Array.from(powerNodes), [powerNodes]);
 
-  // ── AI Turn Execution ──────────────────────────────────────────────
-  useEffect(() => {
-    if (!aiEnabled || currentTurn !== "player2" || winner || selectedUnit || gameMode === "idle") return;
-    if (currentAP < MOVE_COST) {
-      setAIThinking(true);
-      const t = setTimeout(() => { endTurnRef.current(); setAIThinking(false); setAIAction({ type: "endTurn" }); }, 300);
-      return () => clearTimeout(t);
+  // ── AI Turn Execution (event-driven: ONE move per invocation) ──
+  // Uses refs to avoid stale closure issues. The aiMoveTick counter
+  // triggers the useEffect after each move to cascade subsequent moves.
+  const [aiMoveTick, setAiMoveTick] = useState(0);
+  const aiCancelledRef = useRef(false);
+  const aiEnabledRef = useRef(aiEnabled);
+  aiEnabledRef.current = aiEnabled;
+  const aiDifficultyRef = useRef(aiDifficulty);
+  aiDifficultyRef.current = aiDifficulty;
+
+  // Ref-based snapshot builder — always returns latest values
+  const aiSnapshotRef = useRef<AIStateSnapshot>({ myPos: player2Pos, enemyPos: player1Pos, myPlayer: "player2", enemyPlayer: "player1", capturedTiles, powerNodes, currentAP });
+  aiSnapshotRef.current = { myPos: player2Pos, enemyPos: player1Pos, myPlayer: "player2", enemyPlayer: "player1", capturedTiles, powerNodes, currentAP };
+
+  // Make ONE AI decision and execute it. Returns when the move is queued.
+  // setAiMoveTick triggers a cascade via the useEffect dep.
+  const makeAIMove = useCallback(async () => {
+    if (!aiEnabledRef.current || winner || gameMode === "idle") return;
+
+    const snap = aiSnapshotRef.current;
+
+    // No AP → end turn
+    if (snap.currentAP < MOVE_COST) {
+      endTurnRef.current();
+      setAIAction({ type: "endTurn" });
+      setAIThinking(false);
+      return;
     }
-    setAIThinking(true); setAIAction(null);
-    const t = setTimeout(() => { handleTileClickRef.current(player2Pos.x, player2Pos.y); }, 500);
-    return () => clearTimeout(t);
-  }, [aiEnabled, currentTurn, winner, selectedUnit, player2Pos, currentAP, gameMode]);
 
-  useEffect(() => {
-    if (!aiEnabled || currentTurn !== "player2" || winner || selectedUnit !== "player2" || gameMode === "idle") return;
-    const t = setTimeout(() => { (async () => {
-      const res = await fetch("/api/hex-duel/ai-action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ difficulty: aiDifficulty, snapshot: {
-        myPos: player2Pos, enemyPos: player1Pos,
-        myPlayer: "player2", enemyPlayer: "player1",
-        capturedTiles: { ...capturedTiles }, powerNodes: Array.from(powerNodes), currentAP,
-      } }) });
+    // Select AI unit first
+    handleTileClickRef.current(snap.myPos.x, snap.myPos.y);
+    await new Promise((r) => setTimeout(r, 120));
+    if (aiCancelledRef.current) return;
+
+    // Get AI decision
+    let action: AIAction;
+    try {
+      const res = await fetch("/api/hex-duel/ai-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ difficulty: aiDifficultyRef.current, snapshot: snap }),
+      });
       const data = await res.json();
-      const action = data?.success ? data.action as AIAction : decideAIAction({
-        myPos: player2Pos, enemyPos: player1Pos,
-        myPlayer: "player2", enemyPlayer: "player1",
-        capturedTiles: { ...capturedTiles }, powerNodes, currentAP,
-      }, aiDifficulty);
-      setAIAction(action);
-      if (action.type === "endTurn") { endTurnRef.current(); setAIThinking(false); }
-      else if (action.type === "move" || action.type === "push") { handleTileClickRef.current(action.x, action.y); }
-    })().catch(() => setAIThinking(false)); }, 400);
-    return () => clearTimeout(t);
-  }, [aiEnabled, currentTurn, winner, selectedUnit, player2Pos, player1Pos, capturedTiles, currentAP, powerNodes, aiDifficulty, gameMode]);
+      action = data?.success ? (data.action as AIAction) : decideAIAction(snap, aiDifficultyRef.current);
+    } catch {
+      action = decideAIAction(snap, aiDifficultyRef.current);
+    }
 
+    setAIAction(action);
+
+    if (action.type === "endTurn") {
+      endTurnRef.current();
+      setAIThinking(false);
+      return;
+    }
+
+    if (action.type === "move" || action.type === "push") {
+      handleTileClickRef.current(action.x, action.y);
+      await new Promise((r) => setTimeout(r, 150));
+      if (aiCancelledRef.current) return;
+      // Cascade: increment tick so the useEffect fires again
+      setAiMoveTick((t) => t + 1);
+    }
+  }, [winner, gameMode]);  // stable deps — everything else via refs
+
+  // ── AI Turn Orchestrator ─────────────────────────────────────
+  // Fires when currentTurn or aiMoveTick changes. Each tick triggers
+  // one AI move. The loop continues until AP depletes or game ends.
   useEffect(() => {
-    if (currentTurn === "player1" && aiThinking) { setAIThinking(false); setAIAction(null); }
-  }, [currentTurn, aiThinking]);
+    if (!aiEnabled || currentTurn !== "player2" || winner || gameMode === "idle") {
+      setAIThinking(false);
+      aiCancelledRef.current = true;
+      return;
+    }
+
+    aiCancelledRef.current = false;
+
+    const run = async () => {
+      setAIThinking(true);
+      await new Promise((r) => setTimeout(r, 200));
+      if (aiCancelledRef.current) return;
+      await makeAIMove();
+    };
+
+    run();
+
+    return () => { aiCancelledRef.current = true; };
+  }, [currentTurn, aiMoveTick, aiEnabled, winner, gameMode, makeAIMove]);
+
+  // ── Turn Timer (2 min per turn) ─────────────────────────────────
+  // Only active during player1's turn; endTurn on expiry
+  const timerEndTurn = useCallback(() => {
+    if (!winner && currentTurn === "player1") endTurn();
+  }, [winner, currentTurn, endTurn]);
+
+  const timer = useTurnTimer({
+    isActive: showGame && !isGameOver && currentTurn === "player1" && !aiThinking,
+    duration: 120,
+    onExpire: timerEndTurn,
+    resetKey: currentTurn + (isGameOver ? "-over" : ""),
+  });
 
   // ── Handlers ───────────────────────────────────────────────────────
   const handleToggleAI = useCallback(() => setAIEnabled((p) => { const n = !p; if (!n) { setAIThinking(false); setAIAction(null); } return n; }), []);
@@ -897,7 +1031,6 @@ export default function HexDuelPage() {
   }, [resetGame, fetchBalance]);
 
   // ── Render ─────────────────────────────────────────────────────────
-  const showGame = gameMode !== "idle";
 
   return (
     <>
@@ -998,6 +1131,10 @@ export default function HexDuelPage() {
                 selectedUnit={selectedUnit} validMoves={validMoves} pushTargets={pushTargets}
                 onEndTurn={endTurn} isGameOver={isGameOver}
                 aiThinking={aiThinking} aiEnabled={aiEnabled}
+                timerFraction={timer.fraction}
+                timerUrgent={timer.isUrgent}
+                timerCritical={timer.isCritical}
+                timerActive={timer.timeLeft < 120 && currentTurn === "player1" && !aiThinking}
               />
             </div>
           )}
@@ -1005,24 +1142,27 @@ export default function HexDuelPage() {
           {/* ── Main layout ─────────────────────────────────────────── */}
           {showGame && (
             <div
-  className="
-    grid
-    gap-4 sm:gap-5 lg:gap-6
-    items-start
+              className="
+                grid
+                gap-3 sm:gap-4 lg:gap-5
+                items-start
 
-    grid-cols-1
-    lg:grid-cols-[220px_minmax(0,1fr)_220px]
-  "
->   <div className="order-2 lg:order-1">
-              <PlayerCard
-                player="player1" label="Player 1" pos={player1Pos}
-                isActive={currentTurn === "player1"} isSelected={selectedUnit === "player1"}
-                color="#22d3ee" moves={p1MoveCount} territory={p1Territory}
-                currentAP={currentAP} maxAP={maxAP} powerNodes={p1PowerNodes}
-                isWinner={winner === "player1"} turnJustChanged={turnJustChanged}
-              />
-</div>
-              <div className="order-1 lg:order-2 flex justify-center overflow-x-auto px-2 sm:px-4">
+                grid-cols-1
+                lg:grid-cols-[220px_minmax(0,1fr)_220px]
+                xl:grid-cols-[260px_minmax(0,1fr)_260px]
+                2xl:grid-cols-[280px_minmax(0,1fr)_280px]
+              "
+            >
+              <div className="order-2 lg:order-1 w-full max-w-xs mx-auto lg:mx-0">
+                <PlayerCard
+                  player="player1" label="Player 1" pos={player1Pos}
+                  isActive={currentTurn === "player1"} isSelected={selectedUnit === "player1"}
+                  color="#22d3ee" moves={p1MoveCount} territory={p1Territory}
+                  currentAP={currentAP} maxAP={maxAP} powerNodes={p1PowerNodes}
+                  isWinner={winner === "player1"} turnJustChanged={turnJustChanged}
+                />
+              </div>
+              <div className="order-1 lg:order-2 flex justify-center overflow-x-auto overflow-y-hidden px-1 sm:px-2 -mx-1 sm:-mx-2" style={{ scrollbarWidth: "none" }}>
                 <HexBoard
                   grid={grid}
                   selectedTile={isGameOver || aiThinking ? null : selectedTile}
@@ -1030,20 +1170,21 @@ export default function HexDuelPage() {
                   unitPositions={unitPositions}
                   validMoves={isGameOver ? [] : validMoves}
                   recentlyCaptured={recentlyCaptured}
+                  territorySpread={territorySpread}
                   pushTargetKeys={isGameOver || aiThinking ? [] : pushTargetKeys}
                   pushedHere={pushedHere}
                   powerNodeKeys={powerNodeKeys}
                   disabled={isGameOver || aiThinking}
                 />
               </div>
-<div className="order-3">
-              <PlayerCard
-                player="player2" label={aiEnabled ? "AI" : "Player 2"} pos={player2Pos}
-                isActive={currentTurn === "player2"} isSelected={selectedUnit === "player2"}
-                color="#ef4444" moves={p2MoveCount} territory={p2Territory}
-                currentAP={currentAP} maxAP={maxAP} powerNodes={p2PowerNodes}
-                isWinner={winner === "player2"} isAI={aiEnabled} turnJustChanged={turnJustChanged}
-              />
+              <div className="order-3 w-full max-w-xs mx-auto lg:mx-0">
+                <PlayerCard
+                  player="player2" label={aiEnabled ? "AI" : "Player 2"} pos={player2Pos}
+                  isActive={currentTurn === "player2"} isSelected={selectedUnit === "player2"}
+                  color="#ef4444" moves={p2MoveCount} territory={p2Territory}
+                  currentAP={currentAP} maxAP={maxAP} powerNodes={p2PowerNodes}
+                  isWinner={winner === "player2"} isAI={aiEnabled} turnJustChanged={turnJustChanged}
+                />
               </div>
             </div>
           )}
@@ -1057,21 +1198,21 @@ export default function HexDuelPage() {
             </div>
           )}
 
-          {/* ── How to play ─────────────────────────────────────────── */}
-          <div className="mt-8 rounded-xl border border-white/5 bg-white/[0.02] p-4 text-center backdrop-blur-sm">
-            <p className="text-[11px] text-slate-500 uppercase tracking-widest mb-2">How to Play</p>
-            <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-400">
-              <span>1. Click your unit to select it</span>
-              <span className="text-slate-600">→</span>
-              <span>2. Valid hexes glow yellow</span>
-              <span className="text-slate-600">→</span>
-              <span>3. Click a hex to move (1 AP)</span>
-              <span className="text-slate-600">→</span>
-              <span>4. Click adjacent enemy to push (2 AP)</span>
-              <span className="text-slate-600">→</span>
-              <span>5. Control ⚡ nodes for +1 AP each turn</span>
-              <span className="text-slate-600">→</span>
-              <span>6. Connect opposite sides to win!</span>
+          {/* ── How to play (hex.io beehive edition) ────────────────── */}
+          <div className="mt-8 rounded-xl border border-white/[0.04] bg-[#050a18] p-4 text-center">
+            <p className="text-[10px] text-slate-600 uppercase tracking-[0.25em] mb-2">🐝 How to Play — Hex.io Style</p>
+            <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-500">
+              <span className="flex items-center gap-1"><span className="text-cyan-400">1.</span> Click your orb to select</span>
+              <span className="text-slate-700">→</span>
+              <span className="flex items-center gap-1"><span className="text-yellow-400">2.</span> Yellow hexes are valid moves</span>
+              <span className="text-slate-700">→</span>
+              <span className="flex items-center gap-1"><span className="text-cyan-400">3.</span> Click to expand territory (1 AP)</span>
+              <span className="text-slate-700">→</span>
+              <span className="flex items-center gap-1"><span className="text-red-400">4.</span> Push enemy back (2 AP)</span>
+              <span className="text-slate-700">→</span>
+              <span className="flex items-center gap-1"><span className="text-purple-400">5.</span> ⚡ nodes give bonus AP</span>
+              <span className="text-slate-700">→</span>
+              <span className="flex items-center gap-1"><span className="text-yellow-400">6.</span> Connect sides &amp; claim the hive!</span>
             </div>
           </div>
         </div>

@@ -49,6 +49,8 @@ export interface HexDuelState {
   p2Territory: number;
   /** The winner of the match, or null if still ongoing */
   winner: DuelPlayer | null;
+  /** Territory expansion history for the beehive fill animation */
+  territorySpread: string[];
 }
 
 const MAX_AP = 3;
@@ -119,6 +121,7 @@ export function useHexDuel() {
   const [p2Territory, setP2Territory] = useState(1);
   const [winner, setWinner] = useState<DuelPlayer | null>(null);
   const [pushedHere, setPushedHere] = useState<string[]>([]);
+  const [territorySpread, setTerritorySpread] = useState<string[]>([]);
   const [powerNodes] = useState<Set<string>>(() => generatePowerNodes());
 
   // ── Derived state ──────────────────────────────────────────────────────
@@ -211,6 +214,8 @@ export function useHexDuel() {
       setCurrentTurn((t) => (t === "player1" ? "player2" : "player1"));
       setCurrentAP(Math.min(MAX_AP + bonusAP, HARD_AP_CAP));
       setSelectedUnit(null);
+      setRecentlyCaptured([]);
+      setTerritorySpread([]);
     },
     []
   );
@@ -229,13 +234,47 @@ export function useHexDuel() {
     return count;
   }, [currentTurn, player1Pos, player2Pos, capturedTiles, powerNodes]);
 
+  /**
+   * Hex.io territory spread: when you capture a tile, also capture all ADJACENT
+   * neutral tiles that are next to your existing territory. This simulates the
+   * flood-fill effect of hex.io when you close a loop.
+   */
+  function spreadTerritory(
+    capturer: DuelPlayer,
+    capturedKey: string,
+    currentCaptures: Record<string, DuelPlayer>
+  ): Record<string, DuelPlayer> {
+    const result = { ...currentCaptures };
+    const [cx, cy] = capturedKey.split(",").map(Number);
+    const neighbors = getHexNeighbors(cx, cy);
+    const spreadKeys: string[] = [];
+
+    for (const n of neighbors) {
+      const nKey = `${n.x},${n.y}`;
+      // If neighbor is neutral and not a player position
+      if (!result[nKey] &&
+          !(n.x === player1Pos.x && n.y === player1Pos.y) &&
+          !(n.x === player2Pos.x && n.y === player2Pos.y)) {
+        result[nKey] = capturer;
+        spreadKeys.push(nKey);
+      }
+    }
+
+    if (spreadKeys.length > 0) {
+      setTerritorySpread(spreadKeys);
+    }
+
+    return result;
+  }
+
   const handleTileClick = useCallback(
     (x: number, y: number) => {
       // Guard: no actions after game over
       if (winner) return;
 
-      // Clear stale push arrival animations from previous actions
+      // Clear stale push/territory animations from previous actions
       setPushedHere([]);
+      setTerritorySpread([]);
 
       const clicked = { x, y };
 
@@ -253,7 +292,6 @@ export function useHexDuel() {
       const pushTarget = pushTargets.find((p) => p.x === x && p.y === y);
       if (selectedUnit && pushTarget) {
         // Push the enemy unit to the destination
-        // The PUSHER gets the move credit (they spent the AP)
         if (selectedUnit === "player1") {
           setPlayer2Pos({ x: pushTarget.destX, y: pushTarget.destY });
           setP1MoveCount((c) => c + 1);
@@ -272,7 +310,6 @@ export function useHexDuel() {
 
         const newAP = currentAP - PUSH_COST;
         if (newAP <= 0) {
-          // Compute bonus inline using the NEW enemy position (not stale closure)
           const nextPlayer = currentTurn === "player1" ? "player2" : "player1";
           const nextPos = { x: pushTarget.destX, y: pushTarget.destY };
           let bonus = 0;
@@ -305,7 +342,7 @@ export function useHexDuel() {
         setMoveCount((c) => c + 1);
         setSelectedUnit(null);
 
-        // ── Territory capture: claim neutral hexes ──────────────────
+        // ── Territory capture: claim neutral hexes + hex.io spread ──
         const tileKey = `${x},${y}`;
         const isNeutral =
           !(player1Pos.x === x && player1Pos.y === y) &&
@@ -315,17 +352,11 @@ export function useHexDuel() {
         if (isNeutral) {
           const capturer = selectedUnit;
           setCapturedTiles((prev) => {
+            // First capture the tile we moved to
             const next = { ...prev, [tileKey]: capturer };
-            // Check win after territory change
-            const pos1 = capturer === "player1" ? clicked : player1Pos;
-            const pos2 = capturer === "player2" ? clicked : player2Pos;
-            const w = checkWinCondition({
-              capturedTiles: next,
-              player1Pos: pos1,
-              player2Pos: pos2,
-            });
-            if (w) setWinner(w);
-            return next;
+            // Then spread to adjacent neutral tiles (hex.io territory fill)
+            const withSpread = spreadTerritory(capturer, tileKey, next);
+            return withSpread;
           });
           setRecentlyCaptured([tileKey]);
           if (capturer === "player1") {
@@ -334,13 +365,11 @@ export function useHexDuel() {
             setP2Territory((c) => c + 1);
           }
         } else {
-          // Clear stale capture animations on non-capture moves
           setRecentlyCaptured([]);
         }
 
         const newAP = currentAP - MOVE_COST;
         if (newAP <= 0) {
-          // Auto-switch turn when AP runs out
           const bonus = getNextTurnBonus();
           switchTurn(bonus);
         } else {
@@ -389,6 +418,7 @@ export function useHexDuel() {
     setP2Territory(1);
     setWinner(null);
     setPushedHere([]);
+    setTerritorySpread([]);
   }, []);
 
   // ── Selected tile coordinates (for HexBoard) ──────────────────────────
@@ -414,6 +444,7 @@ export function useHexDuel() {
     p1Territory,
     p2Territory,
     winner,
+    territorySpread,
   };
 
   return {
@@ -422,6 +453,7 @@ export function useHexDuel() {
     canMove,
     canPush,
     recentlyCaptured,
+    territorySpread,
     pushedHere,
     powerNodes,
     p1PowerNodes,
