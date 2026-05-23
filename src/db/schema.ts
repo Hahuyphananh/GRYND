@@ -50,6 +50,12 @@ export const users = pgTable("users", {
     .notNull(),
   currentStreak: integer("current_streak").default(0).notNull(),
   bestStreak: integer("best_streak").default(0).notNull(),
+  dailyStreakCurrent: integer("daily_streak_current").default(0).notNull(),
+  dailyStreakBest: integer("daily_streak_best").default(0).notNull(),
+  weeklyStreakCurrent: integer("weekly_streak_current").default(0).notNull(),
+  weeklyStreakBest: integer("weekly_streak_best").default(0).notNull(),
+  weekKey: varchar("week_key", { length: 8 }),
+  lastLoginDate: date("last_login_date"),
   pvpWins: integer("pvp_wins").default(0).notNull(),
   weeklyWagered: bigint("weekly_wagered", { mode: "number" })
     .default(0)
@@ -62,6 +68,7 @@ export const users = pgTable("users", {
   selectedTitle: text("selected_title").default(null),
   highestTitle: text("highest_title").default(null),
   selectedSpecialTitle: text("selected_special_title").default(null),
+  selectedStreakType: varchar("selected_streak_type", { length: 10 }).default(null),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   searchName: varchar("search_name", { length: 255 }),
 });
@@ -160,6 +167,10 @@ export const userStats = pgTable("user_stats", {
     .default("N/A"),
   currentStreak: integer("current_streak").notNull().default(0),
   bestStreak: integer("best_streak").notNull().default(0),
+  dailyStreakCurrent: integer("daily_streak_current").notNull().default(0),
+  dailyStreakBest: integer("daily_streak_best").notNull().default(0),
+  weeklyStreakCurrent: integer("weekly_streak_current").notNull().default(0),
+  weeklyStreakBest: integer("weekly_streak_best").notNull().default(0),
   level: integer("level").notNull().default(1),
   xp: integer("xp").notNull().default(0),
   weeklyWagered: bigint("weekly_wagered", { mode: "number" })
@@ -205,6 +216,13 @@ export const userSpecialTitles = pgTable(
     ),
   }),
 );
+
+export const streakTitles = pgTable("streak_titles", {
+  id: serial("id").primaryKey(),
+  days: integer("days").notNull().unique(),
+  title: varchar("title", { length: 100 }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
 
 export const userSecretStats = pgTable("user_secret_stats", {
   userId: integer("user_id")

@@ -8,6 +8,11 @@ import {
   getHighestTitle,
   getNextTitle,
 } from "../../../lib/titles";
+import {
+  computeEquippedStreakTitle,
+  getStreakTitle,
+  getAllStreakTitles,
+} from "../../../lib/streakTitles";
 
 export async function GET() {
   const { userId } = await auth();
@@ -30,6 +35,9 @@ export async function GET() {
         selectedTitle: true,
         highestTitle: true,
         selectedSpecialTitle: true,
+        selectedStreakType: true,
+        dailyStreakCurrent: true,
+        dailyStreakBest: true,
       },
     });
 
@@ -57,6 +65,10 @@ export async function GET() {
       selectedSpecialTitle = specialTitleRow?.name || null;
     }
 
+    // Compute equipped streak title
+    const equippedStreak = computeEquippedStreakTitle(dbUser);
+    const streakTitle = equippedStreak.title;
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -67,6 +79,14 @@ export async function GET() {
         nextTitle,
         selectedSpecialTitle: selectedSpecialTitle || null,
         allTitles: TITLE_MILESTONES,
+        // Streak title info
+        selectedStreakType: dbUser.selectedStreakType || null,
+        streakTitle,
+        streakTitleCurrent: getStreakTitle(Number(dbUser.dailyStreakCurrent || 0)),
+        streakTitleBest: getStreakTitle(Number(dbUser.dailyStreakBest || 0)),
+        dailyStreakCurrent: Number(dbUser.dailyStreakCurrent || 0),
+        dailyStreakBest: Number(dbUser.dailyStreakBest || 0),
+        allStreakTitles: getAllStreakTitles(),
       }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );

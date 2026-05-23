@@ -32,6 +32,7 @@ function NavigationBar({ currentPath }) {
     name: "",
     profilePicture: "",
     selectedTitle: "",
+    streakTitle: null,
   });
   const [error, setError] = useState(null);
   const [showAddFunds, setShowAddFunds] = useState(false);
@@ -101,12 +102,12 @@ function NavigationBar({ currentPath }) {
       if (response.status === 403) return setError(t("nav.invalid_token"));
 
       if (data.success) {
-        setBalance(data.data.balance);
-        setProfile((prev) => ({
-          ...prev,
-          name: data.data.name || "", // ✅ ADD THIS LINE
-          profilePicture: data.data.profilePicture || "",
-        }));
+        setBalance(data.data.balance);          setProfile((prev) => ({
+            ...prev,
+            name: data.data.name || "",
+            profilePicture: data.data.profilePicture || "",
+            streakTitle: data.data.streakTitle || null,
+          }));
         if (includeMeta) {
           try {
             const statsRes = await fetch("/api/user-stats");
@@ -123,6 +124,7 @@ function NavigationBar({ currentPath }) {
               setProfile((prev) => ({
                 ...prev,
                 selectedTitle: titlesData.selectedSpecialTitle || titlesData.selectedTitle || "",
+                streakTitle: titlesData.streakTitle || prev.streakTitle || null,
               }));
             }
           } catch {}
@@ -302,6 +304,11 @@ function NavigationBar({ currentPath }) {
                         <span className="text-[10px] text-[#f5ff3b]">
                           {profile?.selectedTitle || "No title equipped"}
                         </span>
+                        {profile?.streakTitle && (
+                          <span className="text-[10px] text-amber-400">
+                            🔥 {profile.streakTitle}
+                          </span>
+                        )}
                         <span className="text-[10px] text-[#7dd3fc]">
                           {t("nav.level_short")} {level ?? "..."}
                         </span>
@@ -382,6 +389,9 @@ function NavigationBar({ currentPath }) {
                   <div>
                     <div className="text-[#c9f7ff] text-sm">{profile?.name || "User"}</div>
                     <div className="text-xs text-[#f5ff3b]">{profile?.selectedTitle}</div>
+                    {profile?.streakTitle && (
+                      <div className="text-xs text-amber-400">🔥 {profile.streakTitle}</div>
+                    )}
                   </div>
                 </Link>
               )}

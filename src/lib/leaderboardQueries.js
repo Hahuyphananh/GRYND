@@ -297,3 +297,67 @@ export async function fetchWinsLeaderboard({ limit, offset, clerkId }) {
     clerkId,
   });
 }
+
+/**
+ * Fetch daily streak leaderboard.
+ *
+ * @param {'current'|'best'} type
+ *   - 'current': ranks by active daily streak (daily_streak_current); resets on miss
+ *   - 'best': ranks by all-time best daily streak (daily_streak_best); never decreases
+ */
+export async function fetchDailyStreakLeaderboard({ type, limit, offset, clerkId }) {
+  const columns = await getLeaderboardColumns();
+
+  const dailyStreakCurrent = userStatsMetric(columns, "daily_streak_current", {
+    defaultValue: "0",
+    cast: "int",
+  });
+  const dailyStreakBest = userStatsMetric(columns, "daily_streak_best", {
+    defaultValue: "0",
+    cast: "int",
+  });
+
+  const isCurrent = type === "current";
+  const valueField = isCurrent ? dailyStreakCurrent : dailyStreakBest;
+  const alias = isCurrent ? "daily_streak_current" : "daily_streak_best";
+
+  return fetchRankedRows({
+    fields: `${valueField} AS ${alias}`,
+    orderBy: `${valueField} DESC, s.user_id ASC`,
+    limit,
+    offset,
+    clerkId,
+  });
+}
+
+/**
+ * Fetch weekly streak leaderboard.
+ *
+ * @param {'weekly-current'|'weekly-best'} type
+ *   - 'weekly-current': ranks by current week's daily streak (weekly_streak_current); resets every Monday
+ *   - 'weekly-best': ranks by all-time best weekly streak (weekly_streak_best); never decreases
+ */
+export async function fetchWeeklyStreakLeaderboard({ type, limit, offset, clerkId }) {
+  const columns = await getLeaderboardColumns();
+
+  const weeklyStreakCurrent = userStatsMetric(columns, "weekly_streak_current", {
+    defaultValue: "0",
+    cast: "int",
+  });
+  const weeklyStreakBest = userStatsMetric(columns, "weekly_streak_best", {
+    defaultValue: "0",
+    cast: "int",
+  });
+
+  const isCurrent = type === "weekly-current";
+  const valueField = isCurrent ? weeklyStreakCurrent : weeklyStreakBest;
+  const alias = isCurrent ? "weekly_streak_current" : "weekly_streak_best";
+
+  return fetchRankedRows({
+    fields: `${valueField} AS ${alias}`,
+    orderBy: `${valueField} DESC, s.user_id ASC`,
+    limit,
+    offset,
+    clerkId,
+  });
+}

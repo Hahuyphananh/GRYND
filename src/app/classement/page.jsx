@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../components/navigation-bar";
 import { useTranslation } from "../../hooks/useTranslation";
 
-const TABS = ["weekly", "all-time", "wins"];
+const TABS = ["weekly", "all-time", "daily-current", "daily-best", "weekly-streak", "weekly-best", "wins"];
 const LEADERBOARD_CATEGORIES = [
   "level",
   "total_wagered",
@@ -22,6 +22,19 @@ function getMetricValue(item, tab, category) {
       return `${Number(item.weekly_win_rate || 0).toFixed(2)}%`;
     const weeklyMetric = `weekly_${category}`;
     return Number(item[weeklyMetric] || 0).toLocaleString();
+  }
+
+  if (tab === "daily-current") {
+    return `${Number(item.daily_streak_current || 0).toLocaleString()} days 🔥`;
+  }
+  if (tab === "daily-best") {
+    return `${Number(item.daily_streak_best || 0).toLocaleString()} days 🏆`;
+  }
+  if (tab === "weekly-streak") {
+    return `${Number(item.weekly_streak_current || 0).toLocaleString()} days 📅`;
+  }
+  if (tab === "weekly-best") {
+    return `${Number(item.weekly_streak_best || 0).toLocaleString()} days 🏆`;
   }
 
   if (category === "level")
@@ -44,6 +57,14 @@ export default function LeaderboardPage() {
   const endpoint = useMemo(() => {
     if (tab === "weekly")
       return `/api/leaderboard/weekly?limit=50&category=${category}`;
+    if (tab === "daily-current")
+      return `/api/leaderboard/daily-streak?type=current&limit=50`;
+    if (tab === "daily-best")
+      return `/api/leaderboard/daily-streak?type=best&limit=50`;
+    if (tab === "weekly-streak")
+      return `/api/leaderboard/daily-streak?type=weekly-current&limit=50`;
+    if (tab === "weekly-best")
+      return `/api/leaderboard/daily-streak?type=weekly-best&limit=50`;
     if (tab === "wins") return "/api/leaderboard/wins?limit=50";
     return `/api/leaderboard/all-time?limit=50&category=${category}`;
   }, [tab, category]);
@@ -106,17 +127,24 @@ export default function LeaderboardPage() {
               key={x}
               onClick={() => setTab(x)}
               className={`rounded-lg border px-5 py-2 text-sm font-semibold transition-all ${tab === x ? "border-[#f5ff3b]/60 bg-[#f5ff3b] text-[#041125]" : "border-[#00e5ff]/50 bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"}`}
-            >
-              {x === "wins"
+            >                {x === "wins"
                 ? "Wins 💥"
                 : x === "all-time"
                   ? "All-Time"
-                  : "Weekly"}
+                  : x === "daily-current"
+                    ? "Daily Streak 🔥"
+                    : x === "daily-best"
+                      ? "Best Streak 🏆"
+                      : x === "weekly-streak"
+                        ? "Weekly Streak 📅"
+                        : x === "weekly-best"
+                          ? "Weekly Best 🏆"
+                          : "Weekly"}
             </button>
           ))}
         </div>
 
-        {tab !== "wins" && (
+        {tab !== "wins" && tab !== "daily-current" && tab !== "daily-best" && tab !== "weekly-streak" && tab !== "weekly-best" && (
           <div className="mb-4 flex flex-wrap justify-center gap-2">
             {LEADERBOARD_CATEGORIES.map((x) => (
               <button
@@ -216,7 +244,7 @@ export default function LeaderboardPage() {
         )}
         {myStats && (
           <p className="mt-2 text-center text-cyan-200 text-sm">
-            Streak: {myStats.currentStreak} (best {myStats.bestStreak}) •
+            Wagering Streak: {myStats.currentStreak} (best {myStats.bestStreak}) •
             Winrate: {Number(myStats.winRate || 0).toFixed(2)}%
           </p>
         )}

@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
+import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
 import removeAccents from "remove-accents";
 
 export async function POST(request) {
@@ -54,7 +55,7 @@ export async function POST(request) {
     const queryString = normalized;
 
     const found = await sql`
-  SELECT id, name, profile_picture
+  SELECT id, name, profile_picture, selected_streak_type, daily_streak_current, daily_streak_best
   FROM users
   WHERE REPLACE(LOWER(search_name), ' ', '') LIKE '%' || ${queryString} || '%'
   ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
@@ -64,17 +65,30 @@ export async function POST(request) {
 
     const users = found ?? [];
 
+    // Compute streak titles for each user
+    const usersWithStreak = users.map((u) => {
+      const streakInfo = computeEquippedStreakTitle({
+        selectedStreakType: u.selected_streak_type,
+        dailyStreakCurrent: u.daily_streak_current,
+        dailyStreakBest: u.daily_streak_best,
+      });
+      return {
+        ...u,
+        streakTitle: streakInfo.title,
+      };
+    });
+
     // 🚀 EVERYTHING DEBUGGED HERE
     return Response.json({
       success: true,
-      users,
+      users: usersWithStreak,
       debug: {
         rawInput,
         normalized,
         queryString,
         currentUserId,
-        resultCount: users.length,
-        results: users, // optional (VERY useful for debugging)
+        resultCount: usersWithStreak.length,
+        results: usersWithStreak,
       },
     });
   } catch (error) {
