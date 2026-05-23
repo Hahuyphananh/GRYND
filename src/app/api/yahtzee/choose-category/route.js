@@ -15,22 +15,27 @@ function pickAiCategory(state) {
   return options[Math.min(options.length - 1, Math.floor(Math.random() < 0.15 ? Math.random() * Math.min(options.length, 3) : 0))].category;
 }
 
-function processAiTurn(state) {
+function processAiTurn(state, tx, roomId) {
   let s = { ...state };
   const aiPlayer = s.players.find(p => p.isAI);
   if (!aiPlayer || s.currentTurn !== aiPlayer.userId) return { state: s, aiRolls: [] };
 
-  // Capture intermediate dice states so the frontend can animate them
+  // Roll dice and log each roll
   const aiRolls = [];
   for (let i = 0; i < 3; i++) {
     s = rollDice(s);
     aiRolls.push({ dice: [...s.dice], rollsThisTurn: s.rollsThisTurn });
+    if (tx) appendAction(tx, roomId, aiPlayer.userId, "roll", {});
   }
 
   const category = pickAiCategory(s);
+  const score = calculateScore(s.dice, category);
   s = nextTurn(s, aiPlayer.userId, category);
 
-  return { state: s, aiRolls, aiCategory: category };
+  // Log AI's category choice with score
+  if (tx) appendAction(tx, roomId, aiPlayer.userId, "choose_category", { category, score });
+
+  return { state: s, aiRolls, aiCategory: category, aiScore: score };
 }
 
 export async function POST(req) {
@@ -41,19 +46,23 @@ export async function POST(req) {
       const room = await loadRoom(roomId, tx);
       let state = room.gameState;
       validateMove(state, userId, "choose_category", { category });
+      // Include the score in the player's action payload
+      const playerScore = calculateScore(state.dice, category);
       state = nextTurn(state, userId, category);
-      await appendAction(tx, roomId, userId, "choose_category", { category });
+      await appendAction(tx, roomId, userId, "choose_category", { category, score: playerScore });
 
       // Process AI turns with visual step data (dice rolls + category highlight)
       let aiProcessed = false;
       const allAiRolls = [];
       let aiCategory = null;
+      let aiScore = null;
       while (state.players.some(p => p.isAI && p.userId === state.currentTurn) && state.state === "playing") {
-        const result = processAiTurn(state);
+        const result = processAiTurn(state, tx, roomId);
         state = result.state;
         if (result.aiRolls.length > 0) {
           allAiRolls.push(...result.aiRolls);
           aiCategory = result.aiCategory;
+          aiScore = result.aiScore;
         }
         aiProcessed = true;
       }
@@ -62,7 +71,7 @@ export async function POST(req) {
       if (!endedResult.ended) {
         await tx.update(yahtzeeRooms).set({ gameState: state }).where(eq(yahtzeeRooms.id, roomId));
       }
-      return { ...endedResult, aiProcessed, aiRolls: allAiRolls.length > 0 ? allAiRolls : undefined, aiCategory };
+      return { ...endedResult, aiProcessed, aiRolls: allAiRolls.length > 0 ? allAiRolls : undefined, aiCategory, aiScore };
     });
     return NextResponse.json({ success: true, ...result });
   } catch (e) {
