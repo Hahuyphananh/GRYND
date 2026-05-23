@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+// @ts-ignore: no types for canvas-confetti in this project
 import confetti from "canvas-confetti";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../context/SocketProvider";
