@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
+import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
 
 export async function GET() {
   const sql = getNeonSql();
@@ -30,19 +31,40 @@ export async function GET() {
 
     const meId = Number(current[0].id);
 
-    // 👥 Get friends
+    // 👥 Get friends — include streak info and title info
     const friends = await sql`
-      SELECT u.id, u.name, u.profile_picture
+      SELECT 
+        u.id, 
+        u.name, 
+        u.profile_picture,
+        u.daily_streak_current,
+        u.daily_streak_best,
+        u.selected_streak_type,
+        u.selected_title,
+        u.selected_special_title
       FROM friend_relations fr
       JOIN users u ON u.id = fr.friend_id
       WHERE fr.user_id = ${meId}
       ORDER BY u.name ASC, u.id ASC
     `;
 
+    // Compute streak titles for each friend
+    const friendsWithStreak = friends.map((f) => {
+      const streakInfo = computeEquippedStreakTitle({
+        selectedStreakType: f.selected_streak_type,
+        dailyStreakCurrent: f.daily_streak_current,
+        dailyStreakBest: f.daily_streak_best,
+      });
+      return {
+        ...f,
+        streakTitle: streakInfo.title,
+      };
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
-        friends, // keep consistent
+        friends: friendsWithStreak,
       }),
       {
         status: 200,

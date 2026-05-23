@@ -407,6 +407,11 @@ export default function ChatWidget() {
                               {msg.equippedTitle}
                             </span>
                           ) : null}
+                          {msg.streakTitle ? (
+                            <span className="rounded-full border border-amber-400/60 bg-amber-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-200 shadow-[0_0_10px_rgba(251,191,36,0.35)]">
+                              🔥 {msg.streakTitle}
+                            </span>
+                          ) : null}
                         </span>
                         <span>
                           {new Date(msg.createdAt).toLocaleTimeString()}

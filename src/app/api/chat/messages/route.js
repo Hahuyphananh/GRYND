@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { chatMessages, specialTitles, users } from "../../../../db/schema";
 import { checkUnlocks } from "../../../../lib/specialTitles";
+import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
 
 const ALLOWED_ROOM_TYPES = new Set(["global", "game"]);
 const MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -66,6 +67,9 @@ export async function GET(req) {
         createdAt: chatMessages.createdAt,
         selectedTitle: users.selectedTitle,
         selectedSpecialTitle: users.selectedSpecialTitle,
+        selectedStreakType: users.selectedStreakType,
+        dailyStreakCurrent: users.dailyStreakCurrent,
+        dailyStreakBest: users.dailyStreakBest,
       })
       .from(chatMessages)
       .leftJoin(users, eq(chatMessages.clerkId, users.clerkId))
@@ -79,15 +83,32 @@ export async function GET(req) {
       .orderBy(desc(chatMessages.createdAt))
       .limit(limit);
 
-    const messages = rows.reverse().map((msg) => ({
-      ...msg,
-      equippedTitle:
-        (msg.selectedSpecialTitle
-          ? specialTitleNameByKey.get(msg.selectedSpecialTitle)
-          : null) ||
-        msg.selectedTitle ||
-        null,
-    }));
+    const messages = rows.reverse().map((msg) => {
+      // Compute streak title for this message's user
+      const streakTitle = computeEquippedStreakTitle({
+        selectedStreakType: msg.selectedStreakType,
+        dailyStreakCurrent: msg.dailyStreakCurrent,
+        dailyStreakBest: msg.dailyStreakBest,
+      }).title;
+
+      const specialTitle = msg.selectedSpecialTitle
+        ? specialTitleNameByKey.get(msg.selectedSpecialTitle)
+        : null;
+
+      const regularTitle = msg.selectedTitle;
+
+      // Build equippedTitle: primary title only (special or regular title)
+      // Streak title is returned as a separate field for its own badge
+      const primaryTitle = specialTitle || regularTitle || null;
+
+      // Remove extra fields we added for computation
+      const { selectedStreakType, dailyStreakCurrent, dailyStreakBest, ...cleanMsg } = msg;
+      return {
+        ...cleanMsg,
+        equippedTitle: primaryTitle,
+        streakTitle: streakTitle || null,
+      };
+    });
 
     return NextResponse.json({ messages });
   } catch (error) {
@@ -128,6 +149,9 @@ export async function POST(req) {
         profilePicture: users.profilePicture,
         selectedTitle: users.selectedTitle,
         selectedSpecialTitle: users.selectedSpecialTitle,
+        selectedStreakType: users.selectedStreakType,
+        dailyStreakCurrent: users.dailyStreakCurrent,
+        dailyStreakBest: users.dailyStreakBest,
         balance: users.balance,
       })
       .from(users)
@@ -145,7 +169,17 @@ export async function POST(req) {
           .where(eq(specialTitles.key, selectedSpecialTitle))
           .limit(1)
       : [];
-    const equippedTitle = specialTitleRow?.name || selectedTitle;
+
+    // Compute streak title
+    const streakTitle = computeEquippedStreakTitle({
+      selectedStreakType: appUser?.selectedStreakType,
+      dailyStreakCurrent: appUser?.dailyStreakCurrent,
+      dailyStreakBest: appUser?.dailyStreakBest,
+    }).title;
+
+    const primaryTitle = specialTitleRow?.name || selectedTitle;
+    // Streak title is separate — primary title goes into equippedTitle
+    const equippedTitle = primaryTitle;
 
     const inserted = await db
       .insert(chatMessages)
@@ -171,6 +205,7 @@ export async function POST(req) {
           selectedTitle,
           selectedSpecialTitle,
           equippedTitle,
+          streakTitle,
         },
         unlockedSpecialTitles,
       },

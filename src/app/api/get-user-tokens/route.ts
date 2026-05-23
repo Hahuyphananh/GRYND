@@ -3,6 +3,7 @@ import { db } from "../../../db/client";
 import { users } from "../../../db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { computeEquippedStreakTitle } from "../../../lib/streakTitles";
 
 export async function POST(req: Request) {
   try {
@@ -21,6 +22,9 @@ export async function POST(req: Request) {
         name: users.name,
         email: users.email,
         profilePicture: users.profilePicture,
+        selectedStreakType: users.selectedStreakType,
+        dailyStreakCurrent: users.dailyStreakCurrent,
+        dailyStreakBest: users.dailyStreakBest,
       })
       .from(users)
       .where(eq(users.clerkId, clerkId))
@@ -39,6 +43,13 @@ export async function POST(req: Request) {
 
     const user = userData[0];
 
+    // Compute streak title
+    const streakInfo = computeEquippedStreakTitle({
+      selectedStreakType: user.selectedStreakType,
+      dailyStreakCurrent: user.dailyStreakCurrent,
+      dailyStreakBest: user.dailyStreakBest,
+    });
+
     return NextResponse.json(
       {
         success: true,
@@ -47,6 +58,10 @@ export async function POST(req: Request) {
           name: user.name,
           email: user.email,
           profilePicture: user.profilePicture,
+          streakTitle: streakInfo.title,
+          selectedStreakType: user.selectedStreakType,
+          dailyStreakCurrent: user.dailyStreakCurrent,
+          dailyStreakBest: user.dailyStreakBest,
         },
       },
       { status: 200 },

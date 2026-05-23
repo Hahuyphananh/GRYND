@@ -38,6 +38,15 @@ export default function ProfilePage() {
     selectedSpecialTitleName: "",
     titles: [],
   });
+  const [streakState, setStreakState] = useState({
+    selectedStreakType: null, // null | "current" | "best"
+    streakTitle: null,
+    streakTitleCurrent: null,
+    streakTitleBest: null,
+    dailyStreakCurrent: 0,
+    dailyStreakBest: 0,
+    allStreakTitles: [],
+  });
 
   const [titlesView, setTitlesView] = useState("special");
   const [vipTitles, setVipTitles] = useState(null);
@@ -140,6 +149,21 @@ export default function ProfilePage() {
     const data = await response.json();
     if (response.ok && data.success) {
       await Promise.all([loadSpecialTitles(), loadTitles(), loadProfileData()]);
+      window.dispatchEvent(new Event("titleUpdated"));
+      window.dispatchEvent(new Event("profileUpdated"));
+    }
+  };
+
+  const handleEquipStreakTitle = async (streakType) => {
+    const response = await fetch("/api/titles/equip-streak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ streakType }),
+    });
+    const data = await response.json();
+    if (response.ok && data.success) {
+      await loadTitles();
       window.dispatchEvent(new Event("titleUpdated"));
       window.dispatchEvent(new Event("profileUpdated"));
     }
@@ -485,6 +509,7 @@ export default function ProfilePage() {
           loadTitles(),
           loadSpecialTitles(),
           loadVipTitles(),
+          loadStreakTitles(),
           loadFriends(),
           loadFriendPresence(),
           loadFriendInvites(),
@@ -503,11 +528,32 @@ export default function ProfilePage() {
     bootstrap();
   }, [isSignedIn, user]);
 
+  const loadStreakTitles = async () => {
+    try {
+      const response = await fetch("/api/titles", { credentials: "include" });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setStreakState({
+          selectedStreakType: data.selectedStreakType || null,
+          streakTitle: data.streakTitle || null,
+          streakTitleCurrent: data.streakTitleCurrent || null,
+          streakTitleBest: data.streakTitleBest || null,
+          dailyStreakCurrent: data.dailyStreakCurrent || 0,
+          dailyStreakBest: data.dailyStreakBest || 0,
+          allStreakTitles: Array.isArray(data.allStreakTitles) ? data.allStreakTitles : [],
+        });
+      }
+    } catch (err) {
+      console.error("[LOAD_STREAK_TITLES_ERROR]", err);
+    }
+  };
+
   useEffect(() => {
     const refreshTitles = () => {
       loadTitles();
       loadSpecialTitles();
       loadVipTitles();
+      loadStreakTitles();
     };
 
     window.addEventListener("titleUpdated", refreshTitles);
@@ -941,6 +987,11 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-lg f
                   Email :{" "}
                   {profileInfo.email || user.emailAddresses?.[0]?.emailAddress}
                 </p>
+                {/* Streak info line */}
+                <p className="text-xs text-amber-300 mt-1">
+                  🔥 Daily Streak: {streakState.dailyStreakCurrent} day{(streakState.dailyStreakCurrent || 0) !== 1 ? "s" : ""}{" "}
+                  (Best: {streakState.dailyStreakBest})
+                </p>
               </div>
             </div>
             <p>
@@ -1034,6 +1085,16 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
               >
                 VIP Titles
               </button>
+              <button
+                onClick={() => setTitlesView("streak")}
+                className={`rounded px-3 py-1 text-sm ${
+                  titlesView === "streak"
+                    ? "bg-amber-500 text-black"
+                    : "bg-white/10 text-gray-300"
+                }`}
+              >
+                Streak Titles 🔥
+              </button>
             </div>
           </div>
 
@@ -1079,6 +1140,81 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {titlesView === "streak" && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-amber-300/40 bg-amber-500/10 p-4">
+                <p className="text-xs uppercase tracking-wider text-amber-300 mb-2">Current Streak</p>
+                <p className="text-2xl font-bold text-white">
+                  🔥 {streakState.dailyStreakCurrent} day{(streakState.dailyStreakCurrent || 0) !== 1 ? "s" : ""}
+                </p>
+                <p className="text-sm text-amber-200 mt-1">
+                  Best: {streakState.dailyStreakBest} day{(streakState.dailyStreakBest || 0) !== 1 ? "s" : ""}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-amber-300/30 bg-amber-500/5 p-4">
+                <p className="text-xs uppercase tracking-wider text-amber-300 mb-3">Equip Streak Title</p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <button
+                    onClick={() => handleEquipStreakTitle(streakState.selectedStreakType === "current" ? "" : "current")}
+                    className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                      streakState.selectedStreakType === "current"
+                        ? "bg-amber-500 text-black ring-2 ring-yellow-300"
+                        : "border border-amber-400/40 text-amber-200 hover:bg-amber-500/20"
+                    }`}
+                  >
+                    {streakState.streakTitleCurrent || "No title"}
+                    {streakState.selectedStreakType === "current" ? " (equipped)" : ""}
+                  </button>
+                  <button
+                    onClick={() => handleEquipStreakTitle(streakState.selectedStreakType === "best" ? "" : "best")}
+                    className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                      streakState.selectedStreakType === "best"
+                        ? "bg-amber-500 text-black ring-2 ring-yellow-300"
+                        : "border border-amber-400/40 text-amber-200 hover:bg-amber-500/20"
+                    }`}
+                  >
+                    {streakState.streakTitleBest || "No title"}
+                    {streakState.selectedStreakType === "best" ? " (equipped)" : ""}
+                  </button>
+                </div>
+                {streakState.selectedStreakType && (
+                  <button
+                    onClick={() => handleEquipStreakTitle("")}
+                    className="text-xs text-amber-400 hover:text-amber-300 underline"
+                  >
+                    Unequip streak title
+                  </button>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs uppercase tracking-wider text-amber-300 mb-2">All Streak Milestones</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {streakState.allStreakTitles.map((milestone) => {
+                    const isCurrentReached = (streakState.dailyStreakCurrent || 0) >= milestone.days;
+                    const isBestReached = (streakState.dailyStreakBest || 0) >= milestone.days;
+                    const reached = isCurrentReached || isBestReached;
+                    return (
+                      <div
+                        key={milestone.days}
+                        className={`rounded-lg border p-2 text-sm ${
+                          reached
+                            ? "border-amber-400/40 bg-amber-500/10"
+                            : "border-slate-700 bg-slate-900/60 opacity-50"
+                        }`}
+                      >
+                        <span className="text-slate-400">{milestone.days} days</span>
+                        <span className="ml-2 font-semibold text-white">{milestone.title}</span>
+                        {reached && <span className="ml-1 text-green-400">✓</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
@@ -1346,6 +1482,11 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
                     )}
                     <div className="flex-1">
                       <span>{friend.name}</span>
+                      {friend.streakTitle && (
+                        <span className="ml-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
+                          🔥 {friend.streakTitle}
+                        </span>
+                      )}
                       {(() => {
                         const status = getFriendStatus(friend.id);
                         return (
