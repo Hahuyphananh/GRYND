@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { HexTileData } from "../components/HexTile";
 import { GRID_SIZE, getHexNeighbors } from "./hexGridUtils";
 import { checkWinCondition } from "./hexWinDetection";
@@ -9,79 +9,76 @@ import { checkWinCondition } from "./hexWinDetection";
 
 export type DuelPlayer = "player1" | "player2";
 
-export interface PushTarget {
-  x: number;
-  y: number;
-  destX: number;
-  destY: number;
+export interface ActionLogEntry {
+  /** Sequential action index */
+  id: number;
+  /** Which player acted */
+  player: DuelPlayer;
+  /** Type of action */
+  type: "move" | "push" | "reinforce" | "endTurn" | "attack" | "displace" | "troopGrowth";
+  /** Coordinates involved */
+  target?: { x: number; y: number };
+  /** Source coordinates (for attack/displace) */
+  source?: { x: number; y: number };
+  /** How many AP this action cost */
+  apCost: number;
+  /** Human-readable description */
+  label: string;
 }
 
 export interface HexDuelState {
-  /** The visual grid (all neutral with unit overlays) */
+  /** The visual grid */
   grid: HexTileData[][];
-  /** Current position of player 1's unit */
-  player1Pos: { x: number; y: number };
-  /** Current position of player 2's unit */
-  player2Pos: { x: number; y: number };
+  /** Which player owns each captured tile: "x,y" → player */
+  capturedTiles: Record<string, DuelPlayer>;
+  /** The capital tile of each player: "x,y" → player */
+  capitals: Record<string, DuelPlayer>;
+  /** Troop counts per tile: "x,y" → number */
+  tileTroops: Record<string, number>;
   /** Whose turn it is */
   currentTurn: DuelPlayer;
-  /** Which player's unit is currently selected (null if none) */
-  selectedUnit: DuelPlayer | null;
-  /** Set of coordinates the selected unit can move to */
-  validMoves: { x: number; y: number }[];
-  /** Push target info (enemy hex + push destination), empty if no valid push */
-  pushTargets: PushTarget[];
+  /** Remaining AP for the current turn */
+  currentAP: number;
+  /** Maximum AP per turn */
+  maxAP: number;
+  /** How many tiles player 1 has captured */
+  p1Territory: number;
+  /** How many tiles player 2 has captured */
+  p2Territory: number;
   /** How many moves player 1 has made */
   p1MoveCount: number;
   /** How many moves player 2 has made */
   p2MoveCount: number;
   /** Total number of moves made */
   moveCount: number;
-  /** Remaining AP for the current turn */
-  currentAP: number;
-  /** Maximum AP per turn */
-  maxAP: number;
-  /** Map of "x,y" → owner for captured neutral tiles */
-  capturedTiles: Record<string, DuelPlayer>;
-  /** How many tiles player 1 has captured */
-  p1Territory: number;
-  /** How many tiles player 2 has captured */
-  p2Territory: number;
-  /** The winner of the match, or null if still ongoing */
+  /** The winner, or null if ongoing */
   winner: DuelPlayer | null;
-  /** Territory expansion history for the beehive fill animation */
-  territorySpread: string[];
+  /** Tiles that were just captured (for animation) */
+  recentlyCaptured: string[];
+  /** Combat animation keys */
+  combatFlash: string[];
 }
+
+// ── Constants ───────────────────────────────────────────────────────────────
 
 const MAX_AP = 3;
 const MOVE_COST = 1;
-const PUSH_COST = 2;
-const HARD_AP_CAP = 5;
-const POWER_NODE_COUNT = 3;
+export const REINFORCE_COST = 1; // reused for displace
+const ATTACK_COST = 1;
+const DISPLACE_COST = 1;
 
-/** Choose N random tiles for power nodes, excluding spawn positions */
-function generatePowerNodes(): Set<string> {
-  const candidates: string[] = [];
-  for (let y = 0; y < GRID_SIZE; y++) {
-    for (let x = 0; x < GRID_SIZE; x++) {
-      if (
-        (x === INITIAL_P1.x && y === INITIAL_P1.y) ||
-        (x === INITIAL_P2.x && y === INITIAL_P2.y)
-      ) continue;
-      candidates.push(`${x},${y}`);
-    }
-  }
-  // Fisher-Yates shuffle and pick first N
-  for (let i = candidates.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-  }
-  return new Set(candidates.slice(0, POWER_NODE_COUNT));
-}
+// ── Initial positions ─────────────────────────────────────────────────────
+
+const INITIAL_P1 = { x: 0, y: 0 };
+const INITIAL_P2 = { x: GRID_SIZE - 1, y: GRID_SIZE - 1 };
+
+const P1_CAP_KEY = `${INITIAL_P1.x},${INITIAL_P1.y}`;
+const P2_CAP_KEY = `${INITIAL_P2.x},${INITIAL_P2.y}`;
+
+const INITIAL_TROOPS = 5;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Creates a blank 5×5 grid with all neutral tiles */
 function createBlankGrid(): HexTileData[][] {
   return Array.from({ length: GRID_SIZE }, (_, y) =>
     Array.from({ length: GRID_SIZE }, (_, x) => ({
@@ -90,376 +87,497 @@ function createBlankGrid(): HexTileData[][] {
       owner: "neutral" as const,
       troops: 0,
       shield: 0,
+      capital: false,
     }))
   );
 }
 
-/** Initial positions: P1 top-left, P2 bottom-right */
-const INITIAL_P1 = { x: 0, y: 0 };
-const INITIAL_P2 = { x: GRID_SIZE - 1, y: GRID_SIZE - 1 };
+/** Check if two tiles are adjacent (including diagonals) */
+function areAdjacent(keyA: string, keyB: string): boolean {
+  const [ax, ay] = keyA.split(",").map(Number);
+  const [bx, by] = keyB.split(",").map(Number);
+  return getHexNeighbors(ax, ay).some((n) => n.x === bx && n.y === by);
+}
 
-/** Starting territory: each player owns their spawn hex */
-const INITIAL_CAPTURES: Record<string, DuelPlayer> = {
-  [`${INITIAL_P1.x},${INITIAL_P1.y}`]: "player1",
-  [`${INITIAL_P2.x},${INITIAL_P2.y}`]: "player2",
-};
+/** Get the other player */
+function otherPlayer(p: DuelPlayer): DuelPlayer {
+  return p === "player1" ? "player2" : "player1";
+}
 
 // ── Hook ────────────────────────────────────────────────────────────────────
 
 export function useHexDuel() {
-  const [player1Pos, setPlayer1Pos] = useState(INITIAL_P1);
-  const [player2Pos, setPlayer2Pos] = useState(INITIAL_P2);
   const [currentTurn, setCurrentTurn] = useState<DuelPlayer>("player1");
-  const [selectedUnit, setSelectedUnit] = useState<DuelPlayer | null>(null);
+  const [currentAP, setCurrentAP] = useState(MAX_AP);
   const [moveCount, setMoveCount] = useState(0);
   const [p1MoveCount, setP1MoveCount] = useState(0);
   const [p2MoveCount, setP2MoveCount] = useState(0);
-  const [currentAP, setCurrentAP] = useState(MAX_AP);
-  const [capturedTiles, setCapturedTiles] = useState<Record<string, DuelPlayer>>(INITIAL_CAPTURES);
-  const [recentlyCaptured, setRecentlyCaptured] = useState<string[]>([]);
-  const [p1Territory, setP1Territory] = useState(1);
-  const [p2Territory, setP2Territory] = useState(1);
   const [winner, setWinner] = useState<DuelPlayer | null>(null);
-  const [pushedHere, setPushedHere] = useState<string[]>([]);
-  const [territorySpread, setTerritorySpread] = useState<string[]>([]);
-  const [powerNodes] = useState<Set<string>>(() => generatePowerNodes());
+  const [recentlyCaptured, setRecentlyCaptured] = useState<string[]>([]);
+  const [combatFlash, setCombatFlash] = useState<string[]>([]);
 
-  // ── Derived state ──────────────────────────────────────────────────────
+  // Capitals: fixed for the whole game
+  const capitals = useRef<Record<string, DuelPlayer>>({
+    [P1_CAP_KEY]: "player1",
+    [P2_CAP_KEY]: "player2",
+  }).current;
 
-  /** Whether the current player has enough AP to move */
-  const canMove = currentAP >= MOVE_COST;
+  // Initial ownership: each player owns their capital
+  const [capturedTiles, setCapturedTiles] = useState<Record<string, DuelPlayer>>({
+    [P1_CAP_KEY]: "player1",
+    [P2_CAP_KEY]: "player2",
+  });
 
-  /** Whether the current player has enough AP to push */
-  const canPush = currentAP >= PUSH_COST;
+  // Initial troops: 5 on each capital
+  const [tileTroops, setTileTroops] = useState<Record<string, number>>({
+    [P1_CAP_KEY]: INITIAL_TROOPS,
+    [P2_CAP_KEY]: INITIAL_TROOPS,
+  });
 
-  const validMoves = useMemo(() => {
-    if (!selectedUnit || !canMove) return [];
+  // Derived territory counts
+  const p1Territory = useMemo(
+    () => Object.values(capturedTiles).filter((o) => o === "player1").length,
+    [capturedTiles]
+  );
+  const p2Territory = useMemo(
+    () => Object.values(capturedTiles).filter((o) => o === "player2").length,
+    [capturedTiles]
+  );
 
-    const pos = selectedUnit === "player1" ? player1Pos : player2Pos;
-    const enemyPos = selectedUnit === "player1" ? player2Pos : player1Pos;
+  // ── Action log ───────────────────────────────────────────────────
+  const actionLogRef = useRef<ActionLogEntry[]>([]);
+  const [actionLog, setActionLog] = useState<ActionLogEntry[]>([]);
+  const actionIdRef = useRef(0);
 
-    return getHexNeighbors(pos.x, pos.y).filter(
-      (n) => !(n.x === enemyPos.x && n.y === enemyPos.y)
-    );
-  }, [selectedUnit, player1Pos, player2Pos, canMove]);
+  const addActionLog = useCallback((entry: Omit<ActionLogEntry, 'id'>) => {
+    actionIdRef.current += 1;
+    const full: ActionLogEntry = { id: actionIdRef.current, ...entry };
+    actionLogRef.current = [...actionLogRef.current, full];
+    setActionLog(actionLogRef.current);
+  }, []);
 
-  /** When a unit is selected and the enemy is adjacent, compute the push target */
-  const pushTargets = useMemo(() => {
-    if (!selectedUnit || !canPush) return [];
-
-    const myPos = selectedUnit === "player1" ? player1Pos : player2Pos;
-    const enemyPos = selectedUnit === "player1" ? player2Pos : player1Pos;
-
-    // Check if enemy is adjacent
-    const isAdjacent = getHexNeighbors(myPos.x, myPos.y).some(
-      (n) => n.x === enemyPos.x && n.y === enemyPos.y
-    );
-    if (!isAdjacent) return [];
-
-    // Compute push destination: enemy + (enemy - player)
-    const dx = enemyPos.x - myPos.x;
-    const dy = enemyPos.y - myPos.y;
-    const destX = enemyPos.x + dx;
-    const destY = enemyPos.y + dy;
-
-    // Validate destination: on board and not occupied by the pushing player
-    if (destX < 0 || destX >= GRID_SIZE || destY < 0 || destY >= GRID_SIZE) return [];
-    if (destX === myPos.x && destY === myPos.y) return [];
-
-    return [{ x: enemyPos.x, y: enemyPos.y, destX, destY }];
-  }, [selectedUnit, player1Pos, player2Pos, canPush]);
+  // ── Derived: grid ──────────────────────────────────────────────────
 
   const grid = useMemo(() => {
     const g = createBlankGrid();
-    // Stamp captured territories first
+    // Stamp owned tiles
     for (const [key, owner] of Object.entries(capturedTiles)) {
       const [cx, cy] = key.split(",").map(Number);
       if (g[cy]?.[cx]) {
         g[cy][cx].owner = owner;
+        g[cy][cx].troops = tileTroops[key] ?? 1;
+        // Mark if this is a capital
+        if (capitals[key]) {
+          g[cy][cx].capital = true;
+        }
       }
     }
-    // Stamp unit positions on top (overrides captured tile colors at unit location)
-    g[player1Pos.y][player1Pos.x].owner = "player1";
-    g[player2Pos.y][player2Pos.x].owner = "player2";
+    // Also ensure capital tiles show up even if somehow not in capturedTiles
+    for (const [key] of Object.entries(capitals)) {
+      const [cx, cy] = key.split(",").map(Number);
+      if (g[cy]?.[cx] && !capturedTiles[key]) {
+        g[cy][cx].owner = capitals[key] as "player1" | "player2";
+        g[cy][cx].troops = tileTroops[key] ?? INITIAL_TROOPS;
+        g[cy][cx].capital = true;
+      }
+    }
     return g;
-  }, [player1Pos, player2Pos, capturedTiles]);
+  }, [capturedTiles, tileTroops, capitals]);
 
-  // ── Actions ────────────────────────────────────────────────────────────
+  // ── Helpers: adjacent enemy tiles & adjacent friendly tiles ────────
 
-  /** Derived: how many power nodes each player controls */
-  const p1PowerNodes = useMemo(() => {
-    let count = 0;
-    for (const key of powerNodes) {
-      const [px, py] = key.split(",").map(Number);
-      if ((player1Pos.x === px && player1Pos.y === py) || capturedTiles[key] === "player1") {
-        count++;
+  /** Tiles owned by the enemy that are adjacent to any of the current player's tiles */
+  const attackableTargets = useMemo(() => {
+    if (winner) return [];
+    const targets: { x: number; y: number }[] = [];
+    const enemy = otherPlayer(currentTurn);
+    const visited = new Set<string>();
+
+    for (const [key, owner] of Object.entries(capturedTiles)) {
+      if (owner !== currentTurn) continue;
+      const [cx, cy] = key.split(",").map(Number);
+      const neighbors = getHexNeighbors(cx, cy);
+      for (const n of neighbors) {
+        const nKey = `${n.x},${n.y}`;
+        if (visited.has(nKey)) continue;
+        if (capturedTiles[nKey] === enemy) {
+          visited.add(nKey);
+          targets.push({ x: n.x, y: n.y });
+        }
       }
     }
-    return count;
-  }, [player1Pos, capturedTiles, powerNodes]);
+    return targets;
+  }, [capturedTiles, currentTurn, winner]);
 
-  const p2PowerNodes = useMemo(() => {
-    let count = 0;
-    for (const key of powerNodes) {
-      const [px, py] = key.split(",").map(Number);
-      if ((player2Pos.x === px && player2Pos.y === py) || capturedTiles[key] === "player2") {
-        count++;
-      }
-    }
-    return count;
-  }, [player2Pos, capturedTiles, powerNodes]);
-
-  const switchTurn = useCallback(
-    (bonusAP = 0) => {
-      setCurrentTurn((t) => (t === "player1" ? "player2" : "player1"));
-      setCurrentAP(Math.min(MAX_AP + bonusAP, HARD_AP_CAP));
-      setSelectedUnit(null);
-      setRecentlyCaptured([]);
-      setTerritorySpread([]);
+  /** For a given target tile, list friendly adjacent tiles that can attack it */
+  const getAttackSources = useCallback(
+    (targetKey: string): { x: number; y: number }[] => {
+      const [tx, ty] = targetKey.split(",").map(Number);
+      return getHexNeighbors(tx, ty)
+        .filter((n) => {
+          const nKey = `${n.x},${n.y}`;
+          return capturedTiles[nKey] === currentTurn;
+        })
+        .map((n) => ({ x: n.x, y: n.y }));
     },
-    []
+    [capturedTiles, currentTurn]
   );
 
-  /** Compute AP bonus for the next player (called before turn switch) */
-  const getNextTurnBonus = useCallback(() => {
-    const nextPlayer = currentTurn === "player1" ? "player2" : "player1";
-    const nextPos = nextPlayer === "player1" ? player1Pos : player2Pos;
-    let count = 0;
-    for (const key of powerNodes) {
-      const [px, py] = key.split(",").map(Number);
-      if ((nextPos.x === px && nextPos.y === py) || capturedTiles[key] === nextPlayer) {
-        count++;
+  /** Tiles that can receive displaced troops (friendly tiles adjacent to other friendly tiles) */
+  const displaceCandidates = useMemo(() => {
+    const candidates: { x: number; y: number }[] = [];
+    const myTiles = Object.entries(capturedTiles)
+      .filter(([, o]) => o === currentTurn)
+      .map(([k]) => k);
+
+    for (const key of myTiles) {
+      const [cx, cy] = key.split(",").map(Number);
+      const neighbors = getHexNeighbors(cx, cy);
+      for (const n of neighbors) {
+        const nKey = `${n.x},${n.y}`;
+        if (capturedTiles[nKey] === currentTurn && nKey !== key) {
+          candidates.push({ x: n.x, y: n.y });
+        }
       }
     }
-    return count;
-  }, [currentTurn, player1Pos, player2Pos, capturedTiles, powerNodes]);
+    // Deduplicate
+    const seen = new Set<string>();
+    return candidates.filter((c) => {
+      const k = `${c.x},${c.y}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }, [capturedTiles, currentTurn]);
 
-  /**
-   * Hex.io territory spread: when you capture a tile, also capture all ADJACENT
-   * neutral tiles that are next to your existing territory. This simulates the
-   * flood-fill effect of hex.io when you close a loop.
-   */
-  function spreadTerritory(
-    capturer: DuelPlayer,
-    capturedKey: string,
-    currentCaptures: Record<string, DuelPlayer>
-  ): Record<string, DuelPlayer> {
-    const result = { ...currentCaptures };
-    const [cx, cy] = capturedKey.split(",").map(Number);
-    const neighbors = getHexNeighbors(cx, cy);
-    const spreadKeys: string[] = [];
-
-    for (const n of neighbors) {
-      const nKey = `${n.x},${n.y}`;
-      // If neighbor is neutral and not a player position
-      if (!result[nKey] &&
-          !(n.x === player1Pos.x && n.y === player1Pos.y) &&
-          !(n.x === player2Pos.x && n.y === player2Pos.y)) {
-        result[nKey] = capturer;
-        spreadKeys.push(nKey);
-      }
-    }
-
-    if (spreadKeys.length > 0) {
-      setTerritorySpread(spreadKeys);
-    }
-
-    return result;
-  }
-
-  const handleTileClick = useCallback(
-    (x: number, y: number) => {
-      // Guard: no actions after game over
-      if (winner) return;
-
-      // Clear stale push/territory animations from previous actions
-      setPushedHere([]);
-      setTerritorySpread([]);
-
-      const clicked = { x, y };
-
-      // ── Click on own unit → select it ─────────────────────────────────
-      if (x === player1Pos.x && y === player1Pos.y && currentTurn === "player1") {
-        if (canMove) setSelectedUnit("player1");
-        return;
-      }
-      if (x === player2Pos.x && y === player2Pos.y && currentTurn === "player2") {
-        if (canMove) setSelectedUnit("player2");
-        return;
-      }
-
-      // ── Click on push target (enemy hex) → push them ─────────────────
-      const pushTarget = pushTargets.find((p) => p.x === x && p.y === y);
-      if (selectedUnit && pushTarget) {
-        // Push the enemy unit to the destination
-        if (selectedUnit === "player1") {
-          setPlayer2Pos({ x: pushTarget.destX, y: pushTarget.destY });
-          setP1MoveCount((c) => c + 1);
-        } else {
-          setPlayer1Pos({ x: pushTarget.destX, y: pushTarget.destY });
-          setP2MoveCount((c) => c + 1);
-        }
-
-        setMoveCount((c) => c + 1);
-        setSelectedUnit(null);
-        setRecentlyCaptured([]);
-
-        // Mark the destination tile for push arrival animation
-        const destKey = `${pushTarget.destX},${pushTarget.destY}`;
-        setPushedHere((prev) => [...prev, destKey]);
-
-        const newAP = currentAP - PUSH_COST;
-        if (newAP <= 0) {
-          const nextPlayer = currentTurn === "player1" ? "player2" : "player1";
-          const nextPos = { x: pushTarget.destX, y: pushTarget.destY };
-          let bonus = 0;
-          for (const key of powerNodes) {
-            const [px, py] = key.split(",").map(Number);
-            if ((nextPos.x === px && nextPos.y === py) || capturedTiles[key] === nextPlayer) {
-              bonus++;
-            }
-          }
-          switchTurn(bonus);
-        } else {
-          setCurrentAP(newAP);
-        }
-        return;
-      }
-
-      // ── Click on valid move hex → move the selected unit ──────────────
-      if (
-        selectedUnit &&
-        validMoves.some((m) => m.x === x && m.y === y)
-      ) {
-        if (selectedUnit === "player1") {
-          setPlayer1Pos(clicked);
-          setP1MoveCount((c) => c + 1);
-        } else {
-          setPlayer2Pos(clicked);
-          setP2MoveCount((c) => c + 1);
-        }
-
-        setMoveCount((c) => c + 1);
-        setSelectedUnit(null);
-
-        // ── Territory capture: claim neutral hexes + hex.io spread ──
-        const tileKey = `${x},${y}`;
-        const isNeutral =
-          !(player1Pos.x === x && player1Pos.y === y) &&
-          !(player2Pos.x === x && player2Pos.y === y) &&
-          !capturedTiles[tileKey];
-
-        if (isNeutral) {
-          const capturer = selectedUnit;
-          setCapturedTiles((prev) => {
-            // First capture the tile we moved to
-            const next = { ...prev, [tileKey]: capturer };
-            // Then spread to adjacent neutral tiles (hex.io territory fill)
-            const withSpread = spreadTerritory(capturer, tileKey, next);
-            return withSpread;
-          });
-          setRecentlyCaptured([tileKey]);
-          if (capturer === "player1") {
-            setP1Territory((c) => c + 1);
-          } else {
-            setP2Territory((c) => c + 1);
-          }
-        } else {
-          setRecentlyCaptured([]);
-        }
-
-        const newAP = currentAP - MOVE_COST;
-        if (newAP <= 0) {
-          const bonus = getNextTurnBonus();
-          switchTurn(bonus);
-        } else {
-          setCurrentAP(newAP);
-        }
-        return;
-      }
-
-      // ── Clicking elsewhere deselects ──────────────────────────────────
-      setSelectedUnit(null);
+  /** For a given displace target, find friendly sources adjacent to it with extra troops */
+  const getDisplaceSources = useCallback(
+    (targetKey: string): { x: number; y: number; maxTroops: number }[] => {
+      const [tx, ty] = targetKey.split(",").map(Number);
+      return getHexNeighbors(tx, ty)
+        .filter((n) => {
+          const nKey = `${n.x},${n.y}`;
+          return capturedTiles[nKey] === currentTurn && nKey !== targetKey;
+        })
+        .map((n) => {
+          const nKey = `${n.x},${n.y}`;
+          const troops = tileTroops[nKey] ?? 1;
+          return {
+            x: n.x,
+            y: n.y,
+            maxTroops: troops - 1, // must leave at least 1
+          };
+        })
+        .filter((s) => s.maxTroops > 0);
     },
-    [
-      player1Pos,
-      player2Pos,
-      currentTurn,
-      selectedUnit,
-      validMoves,
-      pushTargets,
-      canMove,
-      currentAP,
-      capturedTiles,
-      switchTurn,
-      winner,
-      getNextTurnBonus,
-    ]
+    [capturedTiles, tileTroops, currentTurn]
+  );
+
+  // ── Turn management ────────────────────────────────────────────────
+
+  const switchTurn = useCallback(() => {
+    setCurrentTurn((t) => (t === "player1" ? "player2" : "player1"));
+    // Regenerate 1 AP per turn (capped at MAX_AP)
+    setCurrentAP((prev) => Math.min(prev + 1, MAX_AP));
+    setRecentlyCaptured([]);
+    setCombatFlash([]);
+  }, []);
+
+  /** Apply troop growth: +1 troop on all owned tiles for the next player */
+  const applyTroopGrowth = useCallback(
+    (player: DuelPlayer) => {
+      const growthTiles: string[] = [];
+      setTileTroops((prev) => {
+        const next = { ...prev };
+        for (const [key, owner] of Object.entries(capturedTiles)) {
+          if (owner === player) {
+            next[key] = (next[key] ?? 1) + 1;
+            growthTiles.push(key);
+          }
+        }
+        return next;
+      });
+      if (growthTiles.length > 0) {
+        addActionLog({
+          player,
+          type: "troopGrowth",
+          apCost: 0,
+          label: `Troop growth: +1 on ${growthTiles.length} tile${growthTiles.length !== 1 ? "s" : ""}`,
+        });
+      }
+    },
+    [capturedTiles, addActionLog]
   );
 
   const endTurn = useCallback(() => {
     if (winner) return;
-    const bonus = getNextTurnBonus();
-    switchTurn(bonus);
-  }, [switchTurn, winner, getNextTurnBonus]);
+    // Apply troop growth for the player ending their turn
+    applyTroopGrowth(currentTurn);
+    addActionLog({ player: currentTurn, type: "endTurn", apCost: 0, label: "Ended turn" });
+    switchTurn();
+  }, [winner, currentTurn, applyTroopGrowth, addActionLog, switchTurn]);
+
+  const skipRound = useCallback(() => {
+    if (winner) return;
+    applyTroopGrowth(currentTurn);
+    addActionLog({ player: currentTurn, type: "endTurn", apCost: 0, label: "Skipped round" });
+    switchTurn();
+  }, [winner, currentTurn, applyTroopGrowth, addActionLog, switchTurn]);
+
+  // ── Attack action ─────────────────────────────────────────────────
+
+  const handleAttack = useCallback(
+    (sourceKey: string, targetKey: string, troopCount: number) => {
+      if (winner) return;
+      if (currentAP < ATTACK_COST) return;
+
+      const sourceOwner = capturedTiles[sourceKey];
+      const targetOwner = capturedTiles[targetKey];
+      const enemy = otherPlayer(currentTurn);
+
+      // Validate
+      if (sourceOwner !== currentTurn) return;
+      if (targetOwner !== enemy) return;
+      if (!areAdjacent(sourceKey, targetKey)) return;
+
+      const sourceTroops = tileTroops[sourceKey] ?? 1;
+      if (sourceTroops < troopCount + 1) return; // leave at least 1
+      if (troopCount <= 0) return;
+
+      const targetTroops = tileTroops[targetKey] ?? 1;
+
+      const [sx, sy] = sourceKey.split(",").map(Number);
+      const [tx, ty] = targetKey.split(",").map(Number);
+
+      // Deduct AP
+      const newAP = currentAP - ATTACK_COST;
+
+      // Source loses troops
+      setTileTroops((prev) => ({
+        ...prev,
+        [sourceKey]: sourceTroops - troopCount,
+      }));
+
+      if (troopCount > targetTroops) {
+        // ── CONQUER! ─────────────────────────────────────────────
+        setCapturedTiles((prev) => ({
+          ...prev,
+          [targetKey]: currentTurn,
+        }));
+        setTileTroops((prev) => ({
+          ...prev,
+          [targetKey]: 1, // conquered tile has 1 troop
+        }));
+
+        setRecentlyCaptured([targetKey]);
+        setCombatFlash([sourceKey, targetKey]);
+
+        addActionLog({
+          player: currentTurn,
+          type: "attack",
+          source: { x: sx, y: sy },
+          target: { x: tx, y: ty },
+          apCost: ATTACK_COST,
+          label: `Attack: sent ${troopCount} from (${sx},${sy}) → conquered (${tx},${ty}) (was ${targetTroops})`,
+        });
+
+        // Check if conquered tile is the enemy's capital
+        if (capitals[targetKey] === enemy) {
+          setWinner(currentTurn);
+          // Don't do AP management — game is over
+          return;
+        }
+      } else {
+        // ── FAILED ATTACK ─────────────────────────────────────────
+        const defenderLoss = Math.min(targetTroops, troopCount);
+        setTileTroops((prev) => ({
+          ...prev,
+          [targetKey]: targetTroops - defenderLoss,
+        }));
+
+        setCombatFlash([sourceKey, targetKey]);
+
+        addActionLog({
+          player: currentTurn,
+          type: "attack",
+          source: { x: sx, y: sy },
+          target: { x: tx, y: ty },
+          apCost: ATTACK_COST,
+          label: `Attack: sent ${troopCount} from (${sx},${sy}) → failed (${tx},${ty}) had ${targetTroops}, defender lost ${defenderLoss}`,
+        });
+      }
+
+      // AP management
+      if (newAP <= 0) {
+        applyTroopGrowth(currentTurn);
+        addActionLog({ player: currentTurn, type: "endTurn", apCost: 0, label: "Ended turn (AP depleted)" });
+        switchTurn();
+      } else {
+        setCurrentAP(newAP);
+      }
+    },
+    [winner, currentAP, capturedTiles, tileTroops, capitals, addActionLog, applyTroopGrowth, switchTurn]
+  );
+
+  // ── Displace / Reinforce action ──────────────────────────────────
+
+  const handleDisplace = useCallback(
+    (sourceKey: string, targetKey: string, troopCount: number) => {
+      if (winner) return;
+      if (currentAP < DISPLACE_COST) return;
+
+      if (sourceKey === targetKey) return;
+      if (!areAdjacent(sourceKey, targetKey)) return;
+
+      const sourceOwner = capturedTiles[sourceKey];
+      const targetOwner = capturedTiles[targetKey];
+
+      if (sourceOwner !== currentTurn) return;
+      if (targetOwner !== currentTurn) return;
+
+      const sourceTroops = tileTroops[sourceKey] ?? 1;
+      if (sourceTroops < troopCount + 1) return; // leave at least 1
+      if (troopCount <= 0) return;
+
+      const [sx, sy] = sourceKey.split(",").map(Number);
+      const [tx, ty] = targetKey.split(",").map(Number);
+
+      // Move troops
+      setTileTroops((prev) => ({
+        ...prev,
+        [sourceKey]: sourceTroops - troopCount,
+        [targetKey]: (prev[targetKey] ?? 1) + troopCount,
+      }));
+
+      const newAP = currentAP - DISPLACE_COST;
+
+      addActionLog({
+        player: currentTurn,
+        type: "displace",
+        source: { x: sx, y: sy },
+        target: { x: tx, y: ty },
+        apCost: DISPLACE_COST,
+        label: `Displace: moved ${troopCount} from (${sx},${sy}) → (${tx},${ty})`,
+      });
+
+      // AP management
+      if (newAP <= 0) {
+        applyTroopGrowth(currentTurn);
+        addActionLog({ player: currentTurn, type: "endTurn", apCost: 0, label: "Ended turn (AP depleted)" });
+        switchTurn();
+      } else {
+        setCurrentAP(newAP);
+      }
+    },
+    [winner, currentAP, capturedTiles, tileTroops, addActionLog, applyTroopGrowth, switchTurn]
+  );
+
+  // ── Legacy: old grid actions (no-op stubs to prevent crashes) ─────
+
+  const handleTileClick = useCallback((_x: number, _y: number) => {
+    // Legacy no-op — new action system handles everything
+  }, []);
+
+  const handleReinforceTile = useCallback((_x: number, _y: number) => {
+    // Legacy no-op — replaced by displace
+  }, []);
+
+  // ── Apply remote action (for multiplayer sync) ──────────────────
+
+  const applyRemoteAction = useCallback((action: {
+    type: 'attack' | 'displace' | 'endTurn' | 'skipRound';
+    sourceKey?: string;
+    targetKey?: string;
+    troopCount?: number;
+  }) => {
+    if (winner) return;
+    if (action.type === 'attack' && action.sourceKey && action.targetKey && action.troopCount) {
+      handleAttack(action.sourceKey, action.targetKey, action.troopCount);
+    } else if (action.type === 'displace' && action.sourceKey && action.targetKey && action.troopCount) {
+      handleDisplace(action.sourceKey, action.targetKey, action.troopCount);
+    } else if (action.type === 'endTurn') {
+      endTurn();
+    } else if (action.type === 'skipRound') {
+      skipRound();
+    }
+  }, [winner, handleAttack, handleDisplace, endTurn, skipRound]);
+
+  // ── Reset ─────────────────────────────────────────────────────────
 
   const resetGame = useCallback(() => {
-    setPlayer1Pos(INITIAL_P1);
-    setPlayer2Pos(INITIAL_P2);
     setCurrentTurn("player1");
-    setSelectedUnit(null);
+    setCurrentAP(MAX_AP);
     setMoveCount(0);
     setP1MoveCount(0);
     setP2MoveCount(0);
-    setCurrentAP(MAX_AP);
-    setCapturedTiles(INITIAL_CAPTURES);
-    setRecentlyCaptured([]);
-    setP1Territory(1);
-    setP2Territory(1);
     setWinner(null);
-    setPushedHere([]);
-    setTerritorySpread([]);
+    setRecentlyCaptured([]);
+    setCombatFlash([]);
+    setCapturedTiles({
+      [P1_CAP_KEY]: "player1",
+      [P2_CAP_KEY]: "player2",
+    });
+    setTileTroops({
+      [P1_CAP_KEY]: INITIAL_TROOPS,
+      [P2_CAP_KEY]: INITIAL_TROOPS,
+    });
+    // Reset action log
+    actionLogRef.current = [];
+    actionIdRef.current = 0;
+    setActionLog([]);
   }, []);
 
-  // ── Selected tile coordinates (for HexBoard) ──────────────────────────
-  const selectedTile = useMemo(() => {
-    if (!selectedUnit) return null;
-    return selectedUnit === "player1" ? player1Pos : player2Pos;
-  }, [selectedUnit, player1Pos, player2Pos]);
+  // ── Derived: valid moves (empty stub for backward compat) ─────────
+
+  const validMoves: { x: number; y: number }[] = [];
+  const pushTargets: never[] = [];
+  const selectedUnit = null;
+  const selectedTile = null;
+  const canMove = false;
+  const canPush = false;
 
   const state: HexDuelState = {
     grid,
-    player1Pos,
-    player2Pos,
+    capturedTiles,
+    capitals,
+    tileTroops,
     currentTurn,
-    selectedUnit,
-    validMoves,
-    pushTargets,
+    currentAP,
+    maxAP: MAX_AP,
+    p1Territory,
+    p2Territory,
     p1MoveCount,
     p2MoveCount,
     moveCount,
-    currentAP,
-    maxAP: MAX_AP,
-    capturedTiles,
-    p1Territory,
-    p2Territory,
     winner,
-    territorySpread,
+    recentlyCaptured,
+    combatFlash,
   };
 
   return {
     ...state,
+    // Values needed by page.tsx
+    selectedUnit,
     selectedTile,
+    validMoves,
+    pushTargets,
     canMove,
     canPush,
-    recentlyCaptured,
-    territorySpread,
-    pushedHere,
-    powerNodes,
-    p1PowerNodes,
-    p2PowerNodes,
+    // Action log
+    actionLog,
+    // Existing exports (legacy stubs)
     handleTileClick,
+    handleReinforceTile,
     endTurn,
+    skipRound,
     resetGame,
+    // New exports
+    handleAttack,
+    handleDisplace,
+    applyRemoteAction,
+    attackableTargets,
+    getAttackSources,
+    displaceCandidates,
+    getDisplaceSources,
   };
 }

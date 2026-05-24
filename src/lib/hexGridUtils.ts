@@ -2,40 +2,23 @@
 export const GRID_SIZE = 5;
 
 /**
- * Hex adjacency offsets for a flat-top hex grid with offset rows.
+ * Square grid 8-directional adjacency offsets (including diagonals).
  *
- * In a flat-top layout, even rows and odd rows have different neighbor offsets:
- *
- *   Even row (y=0,2,4):
- *     (-1,-1)  (0,-1)
- *   (-1, 0)   (x,y)   (+1, 0)
- *     (-1,+1)  (0,+1)
- *
- *   Odd row (y=1,3):
- *     (0,-1)   (+1,-1)
- *   (-1, 0)   (x,y)   (+1, 0)
- *     (0,+1)   (+1,+1)
+ * (-1,-1) (0,-1) (+1,-1)
+ * (-1, 0) (x,y)  (+1, 0)
+ * (-1,+1) (0,+1) (+1,+1)
  */
 export function getHexNeighbors(x: number, y: number): { x: number; y: number }[] {
-  const isEvenRow = y % 2 === 0;
-
-  const offsets: [number, number][] = isEvenRow
-    ? [
-        [-1, -1],
-        [0, -1],
-        [-1, 0],
-        [1, 0],
-        [-1, 1],
-        [0, 1],
-      ]
-    : [
-        [0, -1],
-        [1, -1],
-        [-1, 0],
-        [1, 0],
-        [0, 1],
-        [1, 1],
-      ];
+  const offsets: [number, number][] = [
+    [-1, -1], // up-left
+    [0, -1],  // up
+    [1, -1],  // up-right
+    [-1, 0],  // left
+    [1, 0],   // right
+    [-1, 1],  // down-left
+    [0, 1],   // down
+    [1, 1],   // down-right
+  ];
 
   return offsets
     .map(([dx, dy]) => ({ x: x + dx, y: y + dy }))
