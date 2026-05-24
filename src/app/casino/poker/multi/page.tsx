@@ -506,14 +506,14 @@ export default function PokerPage() {
   // Table: 700x400 centered in 900x600 container
   // Player stays at bottom-center (same as before)
   // -----------------------------
-  const seatPositions = [
-    { left: 450, top: 15 },  // 0: top-center
-    { left: 835, top: 65 },  // 1: top-right
-    { left: 835, top: 445 }, // 2: bottom-right
-    { left: 450, top: 505 }, // 3: bottom-center (YOU)
-    { left: 65, top: 445 },  // 4: bottom-left
-    { left: 65, top: 65 },   // 5: top-left
-  ];
+ const seatPositions = [
+  { left: 50, top: 8 },   // top center
+  { left: 80, top: 20 },  // top right
+  { left: 80, top: 75 },  // bottom right
+  { left: 50, top: 92 },  // bottom center (player)
+  { left: 20, top: 75 },  // bottom left
+  { left: 20, top: 20 },  // top left
+];
 
   // ======== CREATE GAME =========
   // Now player creates the game alone (no dropdown). Player will be at seatIndex 3.
@@ -1360,12 +1360,10 @@ export default function PokerPage() {
   if (!game) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
-        <div className="absolute top-4 left-4">
           <NavigationBar currentPath="/casino" />
             <button className="w-full rounded-lg border border-[#FFFF33]/70 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/55 active:scale-95 transition mb-2">
               ← Return to Casino
             </button>
-        </div>
 
         <div className="p-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded shadow-[0_0_24px_rgba(0,229,255,0.2)] w-96 text-center mb-4">
           <h1
@@ -1608,22 +1606,17 @@ export default function PokerPage() {
       )}
 
    {/* ── Scalable table wrapper ── */}
-<div
-  className="relative flex items-center justify-center w-full overflow-visible"
-  style={{
-    width: "100%",
-    minHeight: "700px",
-  }}
->
+<div className="relative w-full h-[75vh] flex items-center justify-center overflow-visible">
         {/* The cyberpunk poker table */}
-        <div
-          className="absolute top-[40px] left-[70px] w-[92vw] max-w-[1100px] h-[52vw] max-h-[620px] rounded-[50%] flex items-center justify-center
+       <div
+  className="relative w-[85vmin] h-[55vmin] max-w-[1000px] max-h-[650px] rounded-full flex items-center justify-center
 bg-gradient-to-br from-[#0a0015] via-[#0d0020] to-[#05000d]
 border-[6px] border-[#ff00cc]/60
 shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60px_rgba(255,0,204,0.1)]"
+ style={{ transform: "translateZ(0)" }}
         >
           {/* Hex grid pattern overlay */}
-          <div className="absolute inset-[6px] rounded-[50%] overflow-hidden opacity-20"
+          <div className="absolute inset-0 rounded-full overflow-hidden opacity-20"
             style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='46' viewBox='0 0 40 46' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0l20 11.5v23L20 46 0 34.5v-23L20 0zm0 4L4 13.5v19L20 42l16-9.5v-19L20 4z' fill='none' stroke='%2300e5ff' stroke-width='0.8'/%3E%3C/svg%3E")`,
               backgroundSize: "40px 46px",
@@ -1690,12 +1683,12 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   opacity: 1,
                 }}
                 animate={{
-                  left: 450,
-                  top: 255,
-                  scale: [0.5, 1.2, 0.3],
-                  opacity: [1, 1, 0],
-                  rotate: [0, 720],
-                }}
+  left: "50%",
+  top: "50%",
+  scale: [0.5, 1.2, 0.3],
+  opacity: [1, 1, 0],
+  rotate: [0, 720],
+}}
                 exit={{ opacity: 0, scale: 0 }}
                 transition={{
                   duration: 0.7,
@@ -1739,7 +1732,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
 
         {/* ── Community cards on the table ── */}
         {game?.community?.length > 0 && (
-          <div className="absolute top-[215px] left-1/2 -translate-x-1/2 flex gap-2 sm:gap-3 z-20">
+          <div className="absolute left-1/2 top-[42%] -translate-x-1/2 flex gap-2 sm:gap-3 z-20">
             {game.community.map((c: Card, i: number) => (
               <motion.div
                 key={`${c?.suit}-${c?.value}-${i}`}
@@ -1771,11 +1764,11 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               key={seatIdx}
               className="absolute pointer-events-auto"
               style={{
-                left: pos.left,
-                top: pos.top,
-                transform: "translate(-50%, -50%)",
-                zIndex: 30,
-              }}
+  left: `${pos.left}%`,
+  top: `${pos.top}%`,
+  transform: "translate(-50%, -50%)",
+  zIndex: 30,
+}}
             >
               {occupant ? (
                 <div
@@ -1924,29 +1917,17 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           if (!pos) return null;
 
           // Adjust chip offset so they face toward the center
-          let offset = { x: 0, y: 0 };
-          switch (p.seatIndex) {
-            case 0:
-              offset = { x: 0, y: 55 };
-              break; // top-center → toward table center
-            case 1:
-              offset = { x: -85, y: 35 };
-              break; // top-right
-            case 2:
-              offset = { x: -85, y: -65 };
-              break; // bottom-right
-            case 3:
-              offset = { x: 0, y: -80 };
-              break; // bottom-center → PLAYER
-            case 4:
-              offset = { x: 55, y: -65 };
-              break; // bottom-left
-            case 5:
-              offset = { x: 55, y: 35 };
-              break; // top-left
-            default:
-              offset = { x: 0, y: 0 };
-          }
+          const angleStep = (2 * Math.PI) / seatPositions.length;
+          const angle = p.seatIndex * angleStep - Math.PI / 2;
+
+          // radius in % of table size
+          const radiusX = 18;
+          const radiusY = 14;
+
+          const offset = {
+            x: Math.cos(angle) * radiusX,
+            y: Math.sin(angle) * radiusY,
+          };
 
           return (
             <motion.div
@@ -1956,9 +1937,9 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               exit={{ scale: 0, opacity: 0 }}
               className="absolute z-40 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-lg"
               style={{
-                left: pos.left + offset.x,
-                top: pos.top + offset.y,
-                transform: "translate(-50%, -50%)",
+                left: `calc(${pos.left}% + ${offset.x}%)`,
+  top: `calc(${pos.top}% + ${offset.y}%)`,
+  transform: "translate(-50%, -50%)",
                 background: showChips
                   ? "linear-gradient(135deg, #ff00cc, #00e5ff)"
                   : "linear-gradient(135deg, #00e5ff, #00ff88)",

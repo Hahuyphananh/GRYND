@@ -20,6 +20,7 @@ import Img15 from "../../images/towers.png";
 import Img16 from "../../images/clicker.png";
 import Img17 from "../../images/pool.png";
 import Img18 from "../../images/hex-duel.svg";
+import Img19 from "../../images/yahtzee.png";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -139,14 +140,6 @@ function MainComponent() {
       nameKey: "games.rps_name",
     },
     {
-      name: "Yahtzee",
-      href: "/casino/yahtzee",
-      leaderboardKey: "yahtzee",
-      image: Img13,
-      descriptionKey: "games.yahtzee_desc",
-      popular: true,
-    },
-    {
       name: "Dice Duel Arena",
       href: "/casino/dice-duel",
       leaderboardKey: "dice-duel",
@@ -190,6 +183,14 @@ function MainComponent() {
       image: Img18,
       descriptionKey: "games.hex_duel_desc",
       nameKey: "games.hex_duel_name",
+    },
+     {
+      name: "Yahtzee",
+      href: "/casino/yahtzee",
+      leaderboardKey: "yahtzee",
+      image: Img19,
+      descriptionKey: "games.yahtzee_desc",
+      popular: true,
     },
   ];
 
