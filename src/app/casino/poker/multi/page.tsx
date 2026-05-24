@@ -1361,9 +1361,6 @@ export default function PokerPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
           <NavigationBar currentPath="/casino" />
-            <button className="w-full rounded-lg border border-[#FFFF33]/70 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/55 active:scale-95 transition mb-2">
-              ← Return to Casino
-            </button>
 
         <div className="p-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded shadow-[0_0_24px_rgba(0,229,255,0.2)] w-96 text-center mb-4">
           <h1
