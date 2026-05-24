@@ -183,12 +183,232 @@ export function drawAimGuide(
   ctx.restore();
 }
 
+// ── Bank shot preview: show aim line bouncing off rails ──
+interface BankSegment { fromX: number; fromY: number; toX: number; toY: number }
+
+function traceBanks(
+  startX: number,
+  startY: number,
+  dirX: number,
+  dirY: number,
+  maxBounces: number,
+): BankSegment[] {
+  const segments: BankSegment[] = [];
+  let sx = startX;
+  let sy = startY;
+  let dx = dirX;
+  let dy = dirY;
+  const maxDist = 600;
+
+  for (let bounce = 0; bounce <= maxBounces; bounce++) {
+    // Find nearest rail intersection
+    let t = maxDist;
+
+    if (dx > 0.0001) t = Math.min(t, (TABLE_W - RAIL - BALL_R - sx) / dx);
+    else if (dx < -0.0001) t = Math.min(t, (RAIL + BALL_R - sx) / dx);
+
+    if (dy > 0.0001) t = Math.min(t, (TABLE_H - RAIL - BALL_R - sy) / dy);
+    else if (dy < -0.0001) t = Math.min(t, (RAIL + BALL_R - sy) / dy);
+
+    if (t <= 0 || t > maxDist) break;
+
+    const ex = sx + dx * t;
+    const ey = sy + dy * t;
+    segments.push({ fromX: sx, fromY: sy, toX: ex, toY: ey });
+
+    // Reflect off the rail
+    const margin = 1;
+    if (Math.abs(ex - (RAIL + BALL_R)) < margin || Math.abs(ex - (TABLE_W - RAIL - BALL_R)) < margin) {
+      dx = -dx;
+    }
+    if (Math.abs(ey - (RAIL + BALL_R)) < margin || Math.abs(ey - (TABLE_H - RAIL - BALL_R)) < margin) {
+      dy = -dy;
+    }
+
+    sx = ex;
+    sy = ey;
+  }
+
+  return segments;
+}
+
+export function drawBankPreview(
+  ctx: CanvasRenderingContext2D,
+  cue: Ball,
+  aim: number,
+  balls: Ball[],
+  isMyAim: boolean,
+) {
+  // Skip bank preview if the aim line hits an object ball first
+  if (findGhostBall(cue, aim, balls)) return;
+
+  const dx = Math.cos(aim);
+  const dy = Math.sin(aim);
+  const segments = traceBanks(cue.x + dx * BALL_R, cue.y + dy * BALL_R, dx, dy, 2);
+  if (segments.length <= 1) return; // only show if there's at least one bounce
+
+  ctx.save();
+  ctx.globalAlpha = isMyAim ? 0.2 : 0.12;
+  ctx.strokeStyle = "#a78bfa";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([8, 6]);
+  ctx.lineCap = "round";
+
+  for (const seg of segments) {
+    ctx.beginPath();
+    ctx.moveTo(seg.fromX, seg.fromY);
+    ctx.lineTo(seg.toX, seg.toY);
+    ctx.stroke();
+  }
+
+  // Small bounce indicators at rail contact points
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(167,139,250,0.45)";
+  for (let i = 1; i < segments.length; i++) {
+    const seg = segments[i - 1];
+    ctx.beginPath();
+    ctx.arc(seg.toX, seg.toY, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/** Cast a ray from the cue ball in aim direction; find the first object ball hit.
+ *  Returns { ghostX, ghostY, objBall } or null if nothing is in the path. */
+export function findGhostBall(
+  cue: Ball,
+  aim: number,
+  balls: Ball[],
+): { ghostX: number; ghostY: number; objBall: Ball } | null {
+  const dx = Math.cos(aim);
+  const dy = Math.sin(aim);
+
+  let best: { ghostX: number; ghostY: number; objBall: Ball; dist: number } | null = null;
+
+  for (const b of balls) {
+    if (b.number === 0 || b.pocketed || b.animatingPocket) continue;
+    // Vector from cue to object ball
+    const ox = b.x - cue.x;
+    const oy = b.y - cue.y;
+    // Project onto aim direction
+    const t = ox * dx + oy * dy;
+    if (t <= 0) continue; // behind the cue ball
+    // Closest point on the ray to the object ball center
+    const cx = cue.x + dx * t;
+    const cy = cue.y + dy * t;
+    const d = Math.hypot(b.x - cx, b.y - cy);
+    if (d > BALL_R * 2) continue; // aim line misses the ball
+    // Ghost ball centre = contact point backed up by 2*BALL_R along aim
+    const offset = Math.sqrt((BALL_R * 2) ** 2 - d * d);
+    const ghostX = cx - dx * offset;
+    const ghostY = cy - dy * offset;
+    const dist = t - offset;
+    if (dist <= 0) continue;
+    if (!best || dist < best.dist) {
+      best = { ghostX, ghostY, objBall: b, dist };
+    }
+  }
+
+  return best ? { ghostX: best.ghostX, ghostY: best.ghostY, objBall: best.objBall } : null;
+}
+
+/** Draw ghost ball + predicted object-ball and cue-ball trajectories. */
+export function drawShotPreview(
+  ctx: CanvasRenderingContext2D,
+  cue: Ball,
+  aim: number,
+  balls: Ball[],
+) {
+  const hit = findGhostBall(cue, aim, balls);
+  if (!hit) return;
+
+  const { ghostX, ghostY, objBall } = hit;
+  const dx = Math.cos(aim);
+  const dy = Math.sin(aim);
+
+  ctx.save();
+
+  // ── Ghost cue ball ──
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = "#f5f5f5";
+  ctx.beginPath();
+  ctx.arc(ghostX, ghostY, BALL_R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // ── Object ball trajectory ──
+  const objAngle = Math.atan2(objBall.y - ghostY, objBall.x - ghostX);
+  const objDx = Math.cos(objAngle);
+  const objDy = Math.sin(objAngle);
+
+  // Clamp trajectory length so it stays within the table
+  const maxDist = Math.min(
+    300,
+    objDx > 0 ? (TABLE_W - RAIL - objBall.x) / objDx : (objBall.x - RAIL) / -objDx,
+    objDy > 0 ? (TABLE_H - RAIL - objBall.y) / objDy : (objBall.y - RAIL) / -objDy,
+  );
+  const trajLen = Math.max(20, maxDist);
+
+  ctx.globalAlpha = 0.4;
+  ctx.strokeStyle = objBall.color;
+  ctx.lineWidth = 5;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(objBall.x, objBall.y);
+  ctx.lineTo(objBall.x + objDx * trajLen, objBall.y + objDy * trajLen);
+  ctx.stroke();
+
+  // small arrowhead
+  const tipX = objBall.x + objDx * Math.max(10, trajLen - 10);
+  const tipY = objBall.y + objDy * Math.max(10, trajLen - 10);
+  ctx.fillStyle = objBall.color;
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(tipX - objDx * 10 + objDy * 6, tipY - objDy * 10 - objDx * 6);
+  ctx.lineTo(tipX - objDx * 10 - objDy * 6, tipY - objDy * 10 + objDx * 6);
+  ctx.closePath();
+  ctx.fill();
+
+  // ── Cue ball post-contact trajectory (tangent / 90° from object path) ──
+  const cueDx = -objDy;
+  const cueDy = objDx;
+  ctx.strokeStyle = "#f5f5f5";
+  ctx.lineWidth = 3;
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(ghostX, ghostY);
+  ctx.lineTo(ghostX + cueDx * 160, ghostY + cueDy * 160);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(ghostX, ghostY);
+  ctx.lineTo(ghostX - cueDx * 160, ghostY - cueDy * 160);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 export function drawBalls(ctx: CanvasRenderingContext2D, balls: Ball[]) {
   for (const b of balls) {
     if (b.pocketed) continue;
     ctx.save();
     ctx.globalAlpha = b.opacity ?? 1;
     const s = b.scale ?? 1;
+
+    // ── Drop shadow on the felt ──
+    if (!b.animatingPocket) {
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.28)";
+      ctx.beginPath();
+      ctx.ellipse(b.x + 3, b.y + 4, BALL_R * 0.85, BALL_R * 0.45, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     ctx.translate(b.x, b.y);
     ctx.scale(s, s);
     ctx.shadowColor = "rgba(0,0,0,.55)";
@@ -233,6 +453,21 @@ export function drawBalls(ctx: CanvasRenderingContext2D, balls: Ball[]) {
       ctx.textBaseline = "middle";
       ctx.fillText(String(b.number), 0, 0.5);
     }
+
+    // ── Spin indicator on cue ball ──
+    if (b.number === 0 && (b.spinX || b.spinY)) {
+      const sx = (b.spinX ?? 0) * BALL_R * 0.55;
+      const sy = (b.spinY ?? 0) * BALL_R * 0.55;
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.5)";
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+
     ctx.restore();
   }
 }

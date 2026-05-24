@@ -7,11 +7,31 @@ import { userLoginRewards, users } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 import { claimIdempotency } from "../../../lib/security/idempotency";
 import { checkUnlocks } from "../../../lib/specialTitles";
+import { updateDailyStreak } from "../../../lib/dailyStreak";
+import { getAllStreakTitles, getStreakTitle, getNextStreakMilestone } from "../../../lib/streakTitles";
 
 const LOGIN_REWARD_BASE = 100;
 const MAX_DAY = 14;
 const COOLDOWN_DAYS = 1;
 const STREAK_RESET_DAYS = 2;
+
+// Streak milestone bonus rewards (awarded when daily streak hits these thresholds)
+const STREAK_MILESTONE_BONUSES = {
+  3: 200,
+  5: 400,
+  7: 700,
+  10: 1200,
+  14: 2000,
+  21: 3500,
+  30: 5000,
+  45: 8000,
+  60: 12000,
+  75: 16000,
+  100: 25000,
+  150: 40000,
+  200: 60000,
+  365: 150000,
+};
 
 function toUtcDayKey(value) {
   const d = value instanceof Date ? value : new Date(value);
@@ -128,12 +148,63 @@ export async function POST(req) {
       balanceAfter: updatedBalance,
     });
 
+    // Update daily & weekly streaks on the users + userStats tables
+    // so the leaderboard and profile page show up-to-date values
+    let streakResult = null;
+    try {
+      streakResult = await updateDailyStreak(userId);
+    } catch (streakErr) {
+      console.error("[CLAIM_LOGIN_REWARD] streak update failed (non-fatal):", streakErr);
+    }
+
+    // ── Streak milestone bonus ──
+    // Check if the user just crossed a milestone threshold
+    const newStreak = streakResult?.dailyStreakCurrent ?? 0;
+    const oldStreak = dbUser.dailyStreakCurrent ?? 0;
+    let milestoneBonus = 0;
+    let milestoneTitle = null;
+
+    const allStreakTitles = getAllStreakTitles();
+    for (const entry of allStreakTitles) {
+      if (newStreak === entry.days && oldStreak < entry.days) {
+        milestoneBonus = STREAK_MILESTONE_BONUSES[entry.days] || 0;
+        milestoneTitle = entry.title;
+        break;
+      }
+    }
+
+    // Find next milestone for progress display
+    const nextMilestone = getNextStreakMilestone(newStreak);
+
+    // Award milestone bonus if any
+    if (milestoneBonus > 0) {
+      try {
+        await db
+          .update(users)
+          .set({
+            balance: sql`${users.balance} + ${milestoneBonus}`,
+          })
+          .where(eq(users.id, uid));
+      } catch (bonusErr) {
+        console.error("[CLAIM_LOGIN_REWARD] milestone bonus award failed:", bonusErr);
+        milestoneBonus = 0;
+      }
+    }
+
     return NextResponse.json({
       success: true,
       reward,
       claimedDay: rewardData.currentDay,
       nextDay,
       unlockedSpecialTitles,
+      dailyStreakCurrent: streakResult?.dailyStreakCurrent ?? 0,
+      dailyStreakBest: streakResult?.dailyStreakBest ?? 0,
+      weeklyStreakCurrent: streakResult?.weeklyStreakCurrent ?? 0,
+      weeklyStreakBest: streakResult?.weeklyStreakBest ?? 0,
+      milestoneBonus,
+      milestoneTitle,
+      nextMilestone,
+      streakTitle: getStreakTitle(newStreak),
     });
   } catch (err) {
     console.error("[CLAIM_LOGIN_REWARD_ERROR]", err);

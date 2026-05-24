@@ -15,6 +15,9 @@ export type Ball = {
   opacity?: number;
   scale?: number;
   pocketTarget?: { x: number; y: number };
+  /** Cue ball spin: spinX = sidespin (-1 left to 1 right), spinY = topspin/backspin (-1 draw to 1 follow) */
+  spinX?: number;
+  spinY?: number;
 };
 
 export type ShotMeta = {
@@ -52,4 +55,5 @@ export type SyncedState = {
   lifecycle?: ShotLifecycle;
   shotId?: string | null;
   settled?: boolean;
+  pocketedNumbers?: number[];
 };

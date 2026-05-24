@@ -21,6 +21,11 @@ export function applyShotPower(pull: number) {
   return 2.5 + Math.pow(t, 1.34) * 15.5;
 }
 
+const SPIN_SWERVE = 0.018;
+const SPIN_FOLLOW = 0.65;
+const SPIN_DRAW = 0.55;
+const SPIN_RAIL = 0.28;
+
 export function tickPhysics(balls: Ball[], shotMeta: ShotMeta) {
   for (const b of balls) {
     if (b.pocketed) continue;
@@ -34,6 +39,19 @@ export function tickPhysics(balls: Ball[], shotMeta: ShotMeta) {
 
     b.x += b.vx;
     b.y += b.vy;
+
+    // Swerve from sidespin (cue ball only)
+    if (b.number === 0 && b.spinX && Math.abs(b.spinX) > 0.01) {
+      const speed = Math.hypot(b.vx, b.vy);
+      if (speed > 0.1) {
+        const nx = b.vx / speed;
+        const ny = b.vy / speed;
+        const swerveForce = (b.spinX ?? 0) * speed * SPIN_SWERVE;
+        b.vx += -ny * swerveForce;
+        b.vy += nx * swerveForce;
+      }
+    }
+
     b.vx *= FRICTION;
 b.vy *= FRICTION;
 
@@ -69,11 +87,20 @@ if (speed < 0.05) {
     if (b.x < RAIL + BALL_R || b.x > TABLE_W - RAIL - BALL_R) {
       b.x = Math.max(RAIL + BALL_R, Math.min(TABLE_W - RAIL - BALL_R, b.x));
       b.vx *= -RAIL_DAMPING;
+      // Sidespin (spinX) modifies the rail bounce angle
+      if (b.number === 0 && Math.abs(b.spinX ?? 0) > 0.01) {
+        const spinEffect = (b.spinX ?? 0) * SPIN_RAIL;
+        b.vy += b.vx * spinEffect;
+      }
       shotMeta.railAfterContact = true;
     }
     if (b.y < RAIL + BALL_R || b.y > TABLE_H - RAIL - BALL_R) {
       b.y = Math.max(RAIL + BALL_R, Math.min(TABLE_H - RAIL - BALL_R, b.y));
       b.vy *= -RAIL_DAMPING;
+      if (b.number === 0 && Math.abs(b.spinX ?? 0) > 0.01) {
+        const spinEffect = (b.spinX ?? 0) * SPIN_RAIL;
+        b.vx += b.vy * spinEffect;
+      }
       shotMeta.railAfterContact = true;
     }
   }
@@ -106,6 +133,33 @@ if (speed < 0.05) {
           a.vy -= impulse * ny;
           b.vx += impulse * nx;
           b.vy += impulse * ny;
+
+          // Spin follow/draw on cue ball contact
+          if (a.number === 0 && a.spinX !== undefined && a.spinY !== undefined) {
+            const spinY = a.spinY ?? 0;
+            if (spinY > 0.01) {
+              // Follow: cue ball continues forward along contact normal
+              const followImpulse = impulse * SPIN_FOLLOW * spinY;
+              a.vx += nx * followImpulse;
+              a.vy += ny * followImpulse;
+            } else if (spinY < -0.01) {
+              // Draw: cue ball pulls back opposite to contact normal
+              const drawImpulse = impulse * SPIN_DRAW * Math.abs(spinY);
+              a.vx -= nx * drawImpulse;
+              a.vy -= ny * drawImpulse;
+            }
+          } else if (b.number === 0 && b.spinX !== undefined && b.spinY !== undefined) {
+            const spinY = b.spinY ?? 0;
+            if (spinY > 0.01) {
+              const followImpulse = impulse * SPIN_FOLLOW * spinY;
+              b.vx -= nx * followImpulse;
+              b.vy -= ny * followImpulse;
+            } else if (spinY < -0.01) {
+              const drawImpulse = impulse * SPIN_DRAW * Math.abs(spinY);
+              b.vx += nx * drawImpulse;
+              b.vy += ny * drawImpulse;
+            }
+          }
         }
         if (
           shotMeta.firstContactNumber === null &&

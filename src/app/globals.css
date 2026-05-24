@@ -44,6 +44,20 @@ body {
   animation: glow 1s ease-in-out infinite;
 }
 
+@keyframes slideDown {
+  0% {
+    opacity: 0;
+    transform: translateY(-24px) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-slide-down {
+  animation: slideDown 0.35s ease-out;
+}
+
 @keyframes shimmerElegant {
   0% {
     background-position: -100% center;

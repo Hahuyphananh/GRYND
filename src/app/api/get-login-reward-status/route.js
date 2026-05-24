@@ -5,6 +5,7 @@ import { db } from "../../../db";
 import { eq } from "drizzle-orm";
 import { userLoginRewards, users } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
+import { getStreakTitle, getNextStreakMilestone } from "../../../lib/streakTitles";
 
 const STREAK_RESET_DAYS = 2;
 const MAX_DAY = 14;
@@ -71,11 +72,21 @@ export async function GET() {
       }
     }
 
+    // Find next milestone for the badge progress bar
+    const currentStreak = Number(dbUser.dailyStreakCurrent ?? 0);
+    const nextMilestone = getNextStreakMilestone(currentStreak);
+
     return NextResponse.json({
       success: true,
       currentDay: rewardData.currentDay,
       lastClaimedDate: rewardData.lastClaimedDate,
       maxDay: MAX_DAY,
+      dailyStreakCurrent: currentStreak,
+      dailyStreakBest: Number(dbUser.dailyStreakBest ?? 0),
+      weeklyStreakCurrent: Number(dbUser.weeklyStreakCurrent ?? 0),
+      weeklyStreakBest: Number(dbUser.weeklyStreakBest ?? 0),
+      streakTitle: getStreakTitle(currentStreak),
+      nextMilestone,
     });
   } catch (err) {
     console.error(err);
