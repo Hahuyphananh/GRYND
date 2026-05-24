@@ -17,23 +17,21 @@ interface HexTileProps {
   tile: HexTileData;
   isSelected: boolean;
   onClick: () => void;
-  /** Which player's unit occupies this tile (for HEX DUEL mode) */
-  unitOwner?: "player1" | "player2";
   /** Whether this tile is a valid move target */
   isValidMove?: boolean;
   /** Whether this tile is a push target (enemy hex that can be pushed) */
   isPushTarget?: boolean;
   /** Whether this tile was just captured (triggers glow pulse animation) */
   recentlyCaptured?: boolean;
-  /** Whether a unit just arrived here via push (triggers bounce animation) */
-  pushedHere?: boolean;
-  /** Whether this tile is a power node (purple glow + ⚡ icon) */
-  isPowerNode?: boolean;
-  /** Whether this tile was captured via territory spread (hex.io fill) */
+  /** Whether this tile was captured via territory spread */
   isTerritorySpread?: boolean;
+  /** Whether this tile is a valid reinforce target (friendly tile) */
+  isReinforceTarget?: boolean;
+  /** Whether this tile is an enemy tile that can be attacked (attackable target highlight) */
+  isAttackTarget?: boolean;
+  /** Whether this tile is a friendly source tile for attack/displace */
+  isSourceTile?: boolean;
 }
-
-const HEX_CLIP = "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)";
 
 const cellBorders: Record<TileOwner, { inner: string; outer: string; glow: string; bg: string }> = {
   player1: {
@@ -56,16 +54,12 @@ const cellBorders: Record<TileOwner, { inner: string; outer: string; glow: strin
   },
 };
 
-const unitColors: Record<"player1" | "player2", { ring: string; fill: string; glow: string }> = {
-  player1: { ring: "#22d3ee", fill: "#06b6d4", glow: "rgba(34,211,238,0.8)" },
-  player2: { ring: "#ef4444", fill: "#dc2626", glow: "rgba(239,68,68,0.8)" },
-};
-
 export default function HexTile({
-  tile, isSelected, onClick, unitOwner, isValidMove, isPushTarget,
-  recentlyCaptured, pushedHere, isPowerNode, isTerritorySpread
+  tile, isSelected, onClick, isValidMove, isPushTarget,
+  recentlyCaptured, isTerritorySpread, isReinforceTarget,
+  isAttackTarget, isSourceTile
 }: HexTileProps) {
-  const { owner, troops, shield, capital } = tile;
+  const { owner, troops, capital } = tile;
   const border = cellBorders[owner];
   const [ripple, setRipple] = useState<{ x: number; y: number; id: number } | null>(null);
   const rippleId = useRef(0);
@@ -80,7 +74,9 @@ export default function HexTile({
     onClick();
   }, [onClick]);
 
-  const unitTheme = unitOwner ? unitColors[unitOwner] : null;
+  const isOwned = owner === "player1" || owner === "player2";
+  const troopColor = owner === "player1" ? "#22d3ee" : owner === "player2" ? "#ef4444" : "rgba(148,163,184,0.5)";
+  const troopShadow = isOwned ? `0 0 8px ${owner === "player1" ? "rgba(34,211,238,0.5)" : "rgba(239,68,68,0.5)"}` : "none";
 
   return (
     <button
@@ -88,98 +84,100 @@ export default function HexTile({
       className={`
         group relative
         flex items-center justify-center
-        transition-all duration-200 ease-out
         hover:z-20
-        active:scale-95
-        ${isSelected ? "scale-105 z-10" : "hover:scale-105"}
+        active:scale-[0.93]
+        ${isSelected ? "scale-105 z-10" : ""}
         cursor-pointer outline-none
+        rounded-lg
+        select-none
       `}
       style={{
-        clipPath: HEX_CLIP,
         width: "var(--tile-w, 65px)",
         height: "var(--tile-h, 75px)",
-        transition: "transform 0.2s ease, filter 0.3s ease",
+        transition: "transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.35s ease",
       }}
     >
-      {/* ── HONEYCOMB CELL WALLS (Hex.io beehive aesthetic) ────────── */}
+      {/* ── CELL BACKGROUND ───────────────────────────────────────── */}
 
       {/* Dark cell background */}
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 rounded-lg transition-all duration-500 ease-out group-hover:brightness-125 group-hover:scale-[1.04]"
         style={{
-          clipPath: HEX_CLIP,
           background: border.bg,
-          transition: "background 0.4s ease",
         }}
       />
 
-      {/* Outer hexagon border (cell wall) */}
+      {/* Outer border */}
       <div
-        className="absolute inset-[2px]"
+        className="absolute inset-[2px] rounded-lg transition-all duration-500 ease-out group-hover:border-[2.5px]"
         style={{
-          clipPath: HEX_CLIP,
           border: `1.5px solid ${border.inner}`,
           boxShadow: `inset 0 0 8px ${border.inner}22, ${border.glow}`,
-          transition: "border-color 0.4s ease, box-shadow 0.4s ease",
+          transition: "border-color 0.4s ease, box-shadow 0.4s ease, border-width 0.3s ease",
         }}
       />
 
-      {/* Secondary inner border for honeycomb depth */}
+      {/* Hover glow overlay */}
       <div
-        className="absolute inset-[6px]"
+        className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-500 ease-out pointer-events-none"
         style={{
-          clipPath: HEX_CLIP,
-          border: `0.5px solid ${border.outer}`,
-          transition: "border-color 0.4s ease",
+          background: `radial-gradient(circle at 50% 50%, ${owner === "neutral" ? "rgba(148,163,184,0.06)" : border.inner}22 0%, transparent 70%)`,
         }}
       />
 
-      {/* Valid move glow (yellow hex.io hover effect) */}
+      {/* Secondary inner border for depth */}
+      <div
+        className="absolute inset-[6px] rounded-md"
+        style={{
+          border: `0.5px solid ${border.outer}`,
+          transition: "border-color 0.4s ease, opacity 0.4s ease",
+        }}
+      />
+
+      {/* Valid move glow (yellow) */}
       {isValidMove && (
         <div
-          className="absolute inset-[2px] animate-pulse"
+          className="absolute inset-[2px] rounded-lg group-hover:animate-[validPulse_1.2s_ease-in-out_infinite]"
           style={{
-            clipPath: HEX_CLIP,
             border: "2px solid rgba(250,204,21,0.6)",
             boxShadow: "inset 0 0 20px rgba(250,204,21,0.15), 0 0 15px rgba(250,204,21,0.2)",
             background: "rgba(250,204,21,0.06)",
+            animation: "validPulse 1.8s ease-in-out infinite",
           }}
         />
       )}
 
-      {/* Push target (orange) */}
-      {isPushTarget && (
+      {/* Push target (orange) — also used for attack targets */}
+      {(isPushTarget || isAttackTarget) && (
         <div
-          className="absolute inset-[2px] animate-pulse"
+          className="absolute inset-[2px] rounded-lg"
           style={{
-            clipPath: HEX_CLIP,
             border: "2px solid rgba(249,115,22,0.5)",
-            boxShadow: "inset 0 0 20px rgba(249,115,22,0.15)",
+            boxShadow: "inset 0 0 20px rgba(249,115,22,0.15), 0 0 12px rgba(249,115,22,0.15)",
             background: "rgba(249,115,22,0.08)",
+            animation: "pushPulse 1.2s ease-in-out infinite",
           }}
         />
       )}
 
-      {/* Power node pulsing aura (purple) */}
-      {isPowerNode && !unitOwner && (
+      {/* Reinforce target highlight (green) — also used for source tiles */}
+      {(isReinforceTarget || isSourceTile) && (
         <div
-          className="absolute inset-[2px]"
+          className="absolute inset-[2px] rounded-lg"
           style={{
-            clipPath: HEX_CLIP,
-            border: "1.5px solid rgba(168,85,247,0.6)",
-            boxShadow: "inset 0 0 25px rgba(168,85,247,0.2), 0 0 20px rgba(168,85,247,0.15)",
-            background: "rgba(168,85,247,0.06)",
-            animation: "hexAuraPulse 2.5s ease-in-out infinite",
+            border: "2px solid rgba(74,222,128,0.5)",
+            boxShadow: "inset 0 0 20px rgba(74,222,128,0.15), 0 0 12px rgba(74,222,128,0.15)",
+            background: "rgba(74,222,128,0.08)",
+            animation: "validPulse 1.8s ease-in-out infinite",
           }}
         />
       )}
 
-      {/* Selected unit highlight ring */}
+      {/* Selected tile highlight ring */}
       {isSelected && (
         <div
-          className="absolute inset-[2px]"
+          className="absolute inset-[2px] rounded-lg"
           style={{
-            clipPath: HEX_CLIP,
             border: `2px solid ${owner === "player1" ? "rgba(34,211,238,0.9)" : "rgba(239,68,68,0.9)"}`,
             boxShadow: `inset 0 0 25px ${owner === "player1" ? "rgba(34,211,238,0.2)" : "rgba(239,68,68,0.2)"}`,
           }}
@@ -189,9 +187,8 @@ export default function HexTile({
       {/* Territory capture spark animation */}
       {recentlyCaptured && owner !== "neutral" && (
         <div
-          className="absolute inset-0 z-20 pointer-events-none"
+          className="absolute inset-0 z-20 pointer-events-none rounded-lg"
           style={{
-            clipPath: HEX_CLIP,
             animation: "hexCapture 0.7s ease-out forwards",
             background: `radial-gradient(circle at center, ${cellBorders[owner].inner}55 0%, transparent 70%)`,
           }}
@@ -201,23 +198,10 @@ export default function HexTile({
       {/* Territory spread fill animation */}
       {isTerritorySpread && (
         <div
-          className="absolute inset-0 z-20 pointer-events-none"
+          className="absolute inset-0 z-20 pointer-events-none rounded-lg"
           style={{
-            clipPath: HEX_CLIP,
             animation: "hexCapture 0.5s ease-out forwards",
             background: `radial-gradient(circle at center, rgba(250,204,21,0.15) 0%, transparent 60%)`,
-          }}
-        />
-      )}
-
-      {/* Push arrival bounce */}
-      {pushedHere && unitTheme && (
-        <div
-          className="absolute inset-0 z-20 pointer-events-none"
-          style={{
-            clipPath: HEX_CLIP,
-            animation: "hexPushArrive 0.4s ease-out",
-            background: `radial-gradient(circle at center, ${unitTheme.glow}33 0%, transparent 60%)`,
           }}
         />
       )}
@@ -238,83 +222,38 @@ export default function HexTile({
         />
       )}
 
-      {/* ── Unit icon (orb with glow, hex.io style) ──────────────────── */}
-      {unitTheme && (
-        <div
-          className="absolute z-20 transition-all duration-300 ease-out"
+      {/* ── Tile content: troop count + capital indicator ────────── */}
+      <span className="relative z-10 flex flex-col items-center justify-center gap-0">
+        {capital && (
+          <span
+            className="font-black tracking-[0.12em] text-yellow-400 leading-none mb-0.5"
+            style={{ fontSize: "clamp(5px, 1vw, 9px)" }}
+          >
+            ★ CAP
+          </span>
+        )}
+        <span
+          className="font-black leading-none"
           style={{
-            width: "48%",
-            height: "48%",
-            filter: `drop-shadow(0 0 10px ${unitTheme.glow}) drop-shadow(0 0 4px ${unitTheme.glow})`,
-            animation: isSelected ? "hexAuraPulse 1.5s ease-in-out infinite" : "none",
+            fontSize: "clamp(16px, 3vw, 32px)",
+            color: troopColor,
+            textShadow: troopShadow,
           }}
         >
-          {/* Outer ring */}
-          <div
-            className="absolute inset-0 rounded-full"
-            style={{
-              border: `2.5px solid ${unitTheme.ring}`,
-              boxShadow: `0 0 16px ${unitTheme.glow}, inset 0 0 10px ${unitTheme.glow}`,
-            }}
-          />
-          {/* Inner fill */}
-          <div
-            className="absolute inset-[22%] rounded-full"
-            style={{
-              background: `radial-gradient(circle at 40% 35%, ${unitTheme.ring}aa, ${unitTheme.fill})`,
-              boxShadow: `0 0 12px ${unitTheme.glow}`,
-            }}
-          />
-          {/* Center dot */}
-          <div
-            className="absolute inset-[38%] rounded-full bg-white/80"
-            style={{ boxShadow: "0 0 4px white" }}
-          />
-        </div>
-      )}
-
-      {/* ── Power Node icon ──────────────────────────────────────────── */}
-      {isPowerNode && !unitOwner && (
-        <div
-          className="absolute z-20 pointer-events-none flex items-center justify-center"
-          style={{
-            width: "100%",
-            height: "100%",
-            filter: "drop-shadow(0 0 8px rgba(168,85,247,0.8)) drop-shadow(0 0 3px rgba(168,85,247,0.5))",
-          }}
-        >
-          <span className="animate-pulse" style={{ fontSize: "clamp(12px, 2.2vw, 24px)" }}>⚡</span>
-        </div>
-      )}
-
-      {/* ── Stat content (hidden when a unit is present) ──────────────── */}
-      {!unitOwner && (
-        <span className="relative z-10 flex flex-col items-center justify-center gap-0">
-          {capital && (
-            <span className="font-black tracking-[0.12em] text-yellow-400 leading-none mb-0.5"
-              style={{ fontSize: "clamp(5px, 1vw, 9px)" }}>
-              ★ CAP
-            </span>
-          )}
-          <span
-            className="font-black leading-none"
-            style={{
-              fontSize: "clamp(12px, 2.2vw, 24px)",
-              color: owner !== "neutral" ? (owner === "player1" ? "#22d3ee" : "#ef4444") : "rgba(148,163,184,0.5)",
-              textShadow: owner !== "neutral" ? `0 0 8px ${owner === "player1" ? "rgba(34,211,238,0.5)" : "rgba(239,68,68,0.5)"}` : "none",
-            }}
-          >
-            {troops}
-          </span>
-          <span
-            className={`font-bold leading-none mt-0.5 rounded-sm px-1 py-0.5
-              ${shield > 0 ? "bg-black/30 text-white/80" : "text-white/15"}`}
-            style={{ fontSize: "clamp(5px, 0.9vw, 9px)" }}
-          >
-            {shield > 0 ? `🛡${shield}` : "—"}
-          </span>
+          {troops}
         </span>
-      )}
+        {isOwned && !capital && (
+          <span
+            className="font-bold leading-none mt-0.5 rounded-sm px-0.5"
+            style={{
+              fontSize: "clamp(5px, 0.9vw, 9px)",
+              color: owner === "player1" ? "rgba(34,211,238,0.5)" : "rgba(239,68,68,0.5)",
+            }}
+          >
+            ●
+          </span>
+        )}
+      </span>
     </button>
   );
 }

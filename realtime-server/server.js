@@ -479,7 +479,99 @@ io.on("connection", (socket) => {
 
   registerPoolSocketHandlers(socket);
 
+  // ── Hex Duel ────────────────────────────────────────────────────
+  // Lightweight in-memory turn tracking for Hex Duel multiplayer games
+  const hexDuelTurnStates = new Map();
+  // Track which gameIds each socket has joined (so we can emit disconnect events)
+  const hexDuelGameIds = new Set();
+
+  socket.on("hexDuel:action", ({ gameId, action }) => {
+    if (!gameId || !action) return;
+    const roomId = String(gameId);
+    const userId = socket.data.userId;
+
+    // Validate this is a known room
+    const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+    if (!socketsInRoom || socketsInRoom.size < 2) {
+      socket.emit("hexDuel:error", { message: "Waiting for opponent to connect" });
+      return;
+    }
+
+    // Track the action to prevent double-processing
+    const actStr = JSON.stringify(action);
+    const actKey = `${gameId}:${actStr}`;
+    if (hexDuelTurnStates.has(actKey)) return;
+    hexDuelTurnStates.set(actKey, Date.now());
+
+    // Clean old entries after 5 minutes
+    const now = Date.now();
+    for (const [k, t] of hexDuelTurnStates) {
+      if (now - t > 300000) hexDuelTurnStates.delete(k);
+    }
+
+    // Relay action to the other player
+    socket.to(roomId).emit("hexDuel:action", {
+      gameId: roomId,
+      action,
+      userId,
+      createdAt: new Date().toISOString(),
+    });
+  });
+
+  // When a player joins a hex duel game room, notify the other player
+  socket.on("hexDuel:join", ({ gameId }) => {
+    if (!gameId) return;
+    const roomId = String(gameId);
+    socket.join(roomId);
+    hexDuelGameIds.add(gameId);
+
+    // Check if both players are now in the room
+    const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+    if (socketsInRoom && socketsInRoom.size >= 2) {
+      // Both players connected — notify everyone that the game can start
+      io.to(roomId).emit("hexDuel:opponent:ready", {
+        gameId: roomId,
+        userId: socket.data.userId,
+        joinedAt: new Date().toISOString(),
+      });
+    }
+  });
+
+  socket.on("hexDuel:resign", ({ gameId }) => {
+    if (!gameId) return;
+    const roomId = String(gameId);
+    socket.to(roomId).emit("hexDuel:opponent:resigned", {
+      gameId: roomId,
+      userId: socket.data.userId,
+      resignedAt: new Date().toISOString(),
+    });
+  });
+
+  // Relay clock expiry to the opponent
+  socket.on("hexDuel:clockExpired", ({ gameId }) => {
+    if (!gameId) return;
+    const roomId = String(gameId);
+    socket.to(roomId).emit("hexDuel:opponent:timeout", {
+      gameId: roomId,
+      userId: socket.data.userId,
+      expiredAt: new Date().toISOString(),
+    });
+  });
+
+  // ── Keep existing disconnect handler ──
   socket.on("disconnect", () => {
+    // For hex duel: emit a dedictaed disconnect event so the opponent gets a win
+    if (hexDuelGameIds.size > 0) {
+      for (const gid of hexDuelGameIds) {
+        const roomId = String(gid);
+        // Check the room still has players
+        io.to(roomId).emit("hexDuel:opponent:disconnected", {
+          gameId: roomId,
+          userId: socket.data.userId,
+        });
+      }
+    }
+
     for (const roomId of socket.rooms) {
       if (roomId === socket.id) continue;
       socket

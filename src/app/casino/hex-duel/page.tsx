@@ -3,15 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { useHexDuel, type DuelPlayer, type PushTarget } from "../../../lib/hexDuelEngine";
+import { useHexDuel, type DuelPlayer } from "../../../lib/hexDuelEngine";
+import { useSocket } from "../../../context/SocketProvider";
 import { decideAIAction, type AIDifficulty, type AIAction, type AIStateSnapshot } from "../../../lib/hexDuelAI";
 import { useHexAudio } from "../../../lib/hexAudio";
-import { useTurnTimer } from "../../../lib/useTurnTimer";
+import { useChessClock } from "../../../lib/useChessClock";
 import HexBoard from "../../../components/HexBoard";
 import HexParticles from "../../../components/HexParticles";
+import HexActionPanel, { type ActionType } from "../../../components/HexActionPanel";
+import HexActionLog from "../../../components/HexActionLog";
 import NavigationBar from "../../../components/navigation-bar";
 
-const MOVE_COST = 1;
+const ATTACK_COST = 1;
+const DISPLACE_COST = 1;
+const MOVE_COST = 1; // backward compat
 
 // ══════════════════════════════════════════════════════════════════════════
 //  CSS Keyframes (injected once)
@@ -55,35 +60,54 @@ const GLOBAL_KEYFRAMES = `
   100% { opacity: 1; transform: translateY(0); }
 }
 @keyframes hexCapture {
-  0%   { opacity: 1; transform: scale(0.92); }
-  30%  { opacity: 1; transform: scale(1.08); }
-  100% { opacity: 0; transform: scale(1); }
+  0%   { opacity: 1; transform: scale(0.92); filter: brightness(1.4); }
+  30%  { opacity: 1; transform: scale(1.08); filter: brightness(1.6); }
+  100% { opacity: 0; transform: scale(1); filter: brightness(1); }
 }
 @keyframes hexPushArrive {
-  0%   { transform: scale(0.6); opacity: 0.3; }
-  50%  { transform: scale(1.15); }
-  100% { transform: scale(1); opacity: 1; }
+  0%   { transform: scale(0.5); opacity: 0.2; filter: brightness(2); }
+  40%  { transform: scale(1.18); opacity: 1; filter: brightness(1.3); }
+  70%  { transform: scale(0.95); }
+  100% { transform: scale(1); opacity: 1; filter: brightness(1); }
 }
 @keyframes hexRipple {
-  0%   { width: 4px; height: 4px; opacity: 0.8; }
-  100% { width: 120px; height: 120px; opacity: 0; }
+  0%   { width: 4px; height: 4px; opacity: 0.9; }
+  100% { width: 100px; height: 100px; opacity: 0; }
 }
 @keyframes hexAuraPulse {
+  0%, 100% { opacity: 0.25; transform: scale(1); filter: brightness(1); }
+  50%      { opacity: 0.55; transform: scale(1.12); filter: brightness(1.15); }
+}
+@keyframes powerNodePulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); filter: brightness(1); }
+  33%      { opacity: 0.6; transform: scale(1.08); filter: brightness(1.2); }
+  66%      { opacity: 0.4; transform: scale(0.96); filter: brightness(0.9); }
+}
+@keyframes validPulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50%      { opacity: 0.8; transform: scale(1.03); }
+}
+@keyframes pushPulse {
   0%, 100% { opacity: 0.3; transform: scale(1); }
-  50%      { opacity: 0.6; transform: scale(1.15); }
+  50%      { opacity: 0.7; transform: scale(1.04); }
 }
 @keyframes cornerPulse {
   0%, 100% { border-color: rgba(34,211,238,0.4); }
   50%      { border-color: rgba(34,211,238,0.8); }
-}
-@keyframes honeycombGlow {
-  0%, 100% { opacity: 0.04; }
-  50%      { opacity: 0.08; }
-}
-@keyframes territoryFill {
+}    @keyframes territoryFill {
   0%   { opacity: 0; transform: scale(0.85); }
   50%  { opacity: 0.3; transform: scale(1.05); }
   100% { opacity: 0; transform: scale(1); }
+}
+
+@keyframes troopBarGlow {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+@keyframes connectionPulse {
+  0%, 100% { opacity: 0.95; }
+  50%      { opacity: 0.7; }
 }
 `;
 
@@ -342,7 +366,7 @@ function VictoryModal({
         <h2 className="mb-1 text-2xl font-black tracking-wider uppercase" style={{ color: winnerColor }}>
           {winnerLabel} Wins!
         </h2>
-        <p className="mb-4 text-sm text-slate-400">Connected opposite sides of the arena</p>
+        <p className="mb-4 text-sm text-slate-400">Enemy capital conquered! 🎯</p>
 
         {/* Stats grid */}
         <div className="mb-4 grid grid-cols-2 gap-3 rounded-lg bg-white/[0.04] p-4">
@@ -384,18 +408,58 @@ function VictoryModal({
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+//  Troop Bar — visual indicator showing total troops with a filled bar
+// ══════════════════════════════════════════════════════════════════════════
+
+function TroopBar({ troops, maxTroops, color }: { troops: number; maxTroops: number; color: string }) {
+  const fillFraction = maxTroops > 0 ? Math.min(troops / maxTroops, 1) : 0;
+  // Cap display at a reasonable max for visual purposes
+  const displayMax = Math.max(maxTroops, 1);
+  const displayFill = Math.min(troops / displayMax, 1);
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] text-slate-400 uppercase tracking-widest shrink-0">Troops</span>
+      <div className="relative flex-1 h-2.5 overflow-hidden rounded-full bg-slate-800/60">
+        <div
+          className="h-full rounded-full transition-all duration-500 ease-out"
+          style={{
+            width: `${Math.max(2, displayFill * 100)}%`,
+            background: `linear-gradient(90deg, ${color}88, ${color})`,
+            boxShadow: `0 0 8px ${color}44`,
+          }}
+        />
+        {/* Animated shimmer overlay */}
+        <div
+          className="absolute inset-0 rounded-full opacity-30"
+          style={{
+            background: `linear-gradient(90deg, transparent 0%, ${color}22 50%, transparent 100%)`,
+            backgroundSize: "200% 100%",
+            animation: "troopBarGlow 2.5s ease-in-out infinite",
+          }}
+        />
+      </div>
+      <span className="text-xs font-bold tabular-nums text-white/80 min-w-[2ch] text-right">{troops}</span>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 //  Player Card (Enhanced with glass morphism + turn slide animation)
 // ══════════════════════════════════════════════════════════════════════════
 
 function PlayerCard({
-  player, label, pos, isActive, isSelected, color, moves, territory, currentAP, maxAP, powerNodes, isWinner, isAI,
-  turnJustChanged,
+  player, label, isActive, isSelected, color, moves, territory, currentAP, maxAP, isWinner, isAI,
+  turnJustChanged, totalTroops, maxTroops, clockTime,
 }: {
-  player: DuelPlayer; label: string; pos: { x: number; y: number };
+  player: DuelPlayer; label: string;
   isActive: boolean; isSelected: boolean; color: string;
   moves: number; territory: number; currentAP: number; maxAP: number;
-  powerNodes: number; isWinner: boolean; isAI?: boolean;
+  isWinner: boolean; isAI?: boolean;
   turnJustChanged: boolean;
+  totalTroops: number;
+  maxTroops: number;
+  clockTime: number;
 }) {
   const borderColor = player === "player1" ? "border-cyan-400" : "border-red-500";
   const glowColor = player === "player1"
@@ -404,7 +468,14 @@ function PlayerCard({
   const bgColor = player === "player1"
     ? "from-cyan-500/20 to-blue-600/10"
     : "from-red-500/20 to-rose-600/10";
-  const bonusCount = maxAP - 3;
+  const isClockUrgent = clockTime < 60000;
+  const isClockCritical = clockTime < 10000;
+
+  // Format mm:ss
+  const totalSec = Math.ceil(clockTime / 1000);
+  const clockMin = Math.floor(totalSec / 60);
+  const clockSec = totalSec % 60;
+  const clockDisplay = `${clockMin}:${clockSec.toString().padStart(2, "0")}`;
 
   return (
     <div
@@ -412,24 +483,33 @@ function PlayerCard({
         rounded-xl border-2 p-4 transition-all duration-500
         bg-gradient-to-b ${bgColor} backdrop-blur-sm
         ${isActive ? `${borderColor} ${glowColor}` : "border-white/10 opacity-60"}
-        ${isSelected ? "ring-2 ring-yellow-400 scale-[1.02]" : ""}
         ${isWinner ? "ring-2 ring-yellow-400 scale-[1.02]" : ""}
         ${turnJustChanged ? "animate-[turnSlideIn_0.4s_ease-out]" : ""}
       `}
     >
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-bold uppercase tracking-[0.2em]" style={{ color }}>{label}</span>
-        {isWinner && (
-          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-yellow-400/30 text-yellow-200 border border-yellow-400/60 animate-pulse">
-            🏆 WINNER
+        <div className="flex items-center gap-2">
+          {/* Chess clock display */}
+          <span
+            className={`text-[11px] font-bold tabular-nums ${
+              isClockCritical ? "text-red-400 animate-pulse" : isClockUrgent ? "text-yellow-300" : "text-slate-400"
+            }`}
+          >
+            ⏱ {clockDisplay}
           </span>
-        )}
-        {!isWinner && isActive && (
-          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-yellow-400/20 text-yellow-300 border border-yellow-400/40 animate-pulse"
-            style={{ animation: "turnSlideIn 0.3s ease-out" }}>
-            {isAI ? "AI THINKING" : "YOUR TURN"}
-          </span>
-        )}
+          {isWinner && (
+            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-yellow-400/30 text-yellow-200 border border-yellow-400/60 animate-pulse">
+              🏆 WINNER
+            </span>
+          )}
+          {!isWinner && isActive && (
+            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-yellow-400/20 text-yellow-300 border border-yellow-400/40 animate-pulse"
+              style={{ animation: "turnSlideIn 0.3s ease-out" }}>
+              {isAI ? "AI THINKING" : "YOUR TURN"}
+            </span>
+          )}
+        </div>
       </div>
 
       {isAI && (
@@ -440,36 +520,21 @@ function PlayerCard({
         </div>
       )}
 
-      <div className="flex items-center gap-3">
-        <div className="relative w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shrink-0"
-          style={{
-            background: `radial-gradient(circle at 40% 35%, ${color}88, ${color})`,
-            boxShadow: `0 0 16px ${color}66`,
-          }}>
-          <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-white/80 shadow-[0_0_6px_white]" />
-        </div>
-        <div>
-          <p className="text-lg sm:text-xl font-black text-white leading-none">({pos.x}, {pos.y})</p>
-          <p className="text-[10px] text-slate-400 uppercase tracking-wider">hex position</p>
-        </div>
-      </div>
-
       {isActive && (
         <div className="mt-3 pt-3 border-t border-white/10">
           <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">Action Points</p>
           <div className="flex items-center gap-2">
-            <APPips current={currentAP} max={maxAP} color={color} bonusCount={bonusCount} />
+            <APPips current={currentAP} max={maxAP} color={color} />
             <span className="text-xs font-bold text-white/80">{currentAP}/{maxAP}</span>
           </div>
-          {bonusCount > 0 && (
-            <p className="text-[10px] text-purple-400 mt-1 font-medium animate-pulse">
-              ⚡ +{bonusCount} from power nodes
-            </p>
-          )}
         </div>
       )}
 
       <div className={`${isActive ? "pt-2" : "pt-3"} mt-3 pt-3 border-t border-white/10`}>
+        {/* Troop bar — always visible */}
+        <div className="mb-3">
+          <TroopBar troops={totalTroops} maxTroops={maxTroops} color={color} />
+        </div>
         <div className="flex gap-4">
           <div>
             <p className="text-[10px] text-slate-400 uppercase tracking-widest">Moves</p>
@@ -479,12 +544,51 @@ function PlayerCard({
             <p className="text-[10px] text-slate-400 uppercase tracking-widest">Territory</p>
             <p className="text-lg font-black text-white">{territory}</p>
           </div>
-          <div>
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest">Nodes</p>
-            <p className="text-lg font-black text-purple-400">{powerNodes}</p>
-          </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Connection Banner — pulsing red indicator for disconnect/connection loss
+// ══════════════════════════════════════════════════════════════════════════
+
+type ConnectionStatus = "connected" | "opponent_disconnected" | "connection_lost";
+
+function ConnectionBanner({ status, onReconnect }: { status: ConnectionStatus; onReconnect?: () => void }) {
+  if (status === "connected") return null;
+
+  const isOpponent = status === "opponent_disconnected";
+  const isConnectionLost = status === "connection_lost";
+
+  return (
+    <div
+      className={`
+        fixed top-0 left-0 right-0 z-50 flex items-center justify-center gap-3 px-4 py-3
+        text-sm font-bold uppercase tracking-[0.12em] shadow-[0_4px_30px_rgba(239,68,68,0.5)]
+        ${isOpponent ? "bg-red-600/90 text-white" : "bg-orange-600/90 text-white"}
+      `}
+      style={{
+        animation: "connectionPulse 1.5s ease-in-out infinite",
+      }}
+    >
+      <span className="inline-block w-2.5 h-2.5 rounded-full bg-white animate-ping" />
+      {isOpponent ? (
+        <>⚠️ Opponent disconnected — you win!</>
+      ) : (
+        <>
+          ⚠️ Connection lost
+          {onReconnect && (
+            <button
+              onClick={onReconnect}
+              className="ml-3 px-4 py-1.5 rounded-lg bg-white/20 text-[11px] font-bold hover:bg-white/30 transition"
+            >
+              Reconnect
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -541,18 +645,16 @@ function TimerBar({ fraction, isUrgent, isCritical, isActive }: {
 }
 
 function StatusBar({
-  currentTurn, currentAP, maxAP, selectedUnit, validMoves, pushTargets, onEndTurn, isGameOver, aiThinking, aiEnabled,
-  timerFraction, timerUrgent, timerCritical, timerActive,
+  currentTurn, currentAP, maxAP, onEndTurn, isGameOver, aiThinking, aiEnabled,
+  showEndTurn = true,
 }: {
   currentTurn: DuelPlayer; currentAP: number; maxAP: number;
-  selectedUnit: DuelPlayer | null; validMoves: { x: number; y: number }[];
-  pushTargets: PushTarget[]; onEndTurn: () => void;
+  onEndTurn: () => void;
   isGameOver: boolean; aiThinking: boolean; aiEnabled: boolean;
-  timerFraction: number; timerUrgent: boolean; timerCritical: boolean; timerActive: boolean;
+  showEndTurn?: boolean;
 }) {
   const turnColor = currentTurn === "player1" ? "#22d3ee" : "#ef4444";
   const turnLabel = currentTurn === "player1" ? "BLUE" : "RED";
-  const bonusCount = maxAP - 3;
   const isAITurn = aiEnabled && currentTurn === "player2";
 
   let message: string;
@@ -560,39 +662,23 @@ function StatusBar({
 
   if (isGameOver) {
     message = "Game Over";
-    subMessage = "A player has connected their sides!";
+    subMessage = "Enemy capital conquered!";
   } else if (aiThinking) {
     message = "AI is thinking...";
-    subMessage = "Choosing the best move";
+    subMessage = "Choosing the best strategy";
   } else if (isAITurn) {
     message = "AI's turn — auto-playing";
-    subMessage = "Move (1 AP) or push adjacent enemy (2 AP)";
-  } else if (selectedUnit && pushTargets.length > 0) {
-    message = "Unit selected — move or push!";
-    subMessage = `${validMoves.length} moves (1 AP) + 1 push (2 AP) available`;
-  } else if (selectedUnit) {
-    message = "Unit selected — choose an adjacent hex";
-    subMessage = `${validMoves.length} valid move${validMoves.length !== 1 ? "s" : ""} highlighted (1 AP each)`;
-  } else if (currentAP < MOVE_COST) {
+    subMessage = "Attack (1 AP) or displace troops (1 AP)";
+  } else if (currentAP < ATTACK_COST) {
     message = "No AP remaining";
-    subMessage = "End your turn";
+    subMessage = "End your turn to gain +1 AP";
   } else {
-    message = "Click your unit to select it";
-    subMessage = "Move (1 AP) or push adjacent enemy (2 AP)";
+    message = "Choose an action";
+    subMessage = "Attack enemy tiles (1 AP) or Displace troops (1 AP)";
   }
 
   return (
     <div className="text-center space-y-2">
-      {/* Turn Timer bar */}
-      <div className="flex items-center justify-center">
-        <TimerBar
-          fraction={timerFraction}
-          isUrgent={timerUrgent}
-          isCritical={timerCritical}
-          isActive={timerActive}
-        />
-      </div>
-
       {!isGameOver && (
         <div className="flex items-center justify-center gap-2" style={{ animation: "turnSlideIn 0.35s ease-out" }}>
           <span
@@ -615,33 +701,27 @@ function StatusBar({
 
       <div className="flex items-center justify-center gap-2">
         <span className="text-[10px] text-slate-500 uppercase tracking-widest">AP</span>
-        <APPips current={currentAP} max={maxAP} color={isGameOver ? "#facc15" : turnColor} bonusCount={bonusCount} />
+        <APPips current={currentAP} max={maxAP} color={isGameOver ? "#facc15" : turnColor} />
         <span className="text-[10px] text-slate-500 uppercase tracking-widest ml-1">{currentAP}/{maxAP}</span>
       </div>
 
-      {!isGameOver && bonusCount > 0 && (
-        <p className="text-[10px] text-purple-400 font-medium animate-pulse">
-          ⚡ +{bonusCount} bonus AP from power nodes
-        </p>
-      )}
-
       <p className="text-xs text-slate-400" style={{ animation: "floatUp 0.3s ease-out" }}>{message}</p>
       {subMessage && (
-        <p className={`text-[10px] ${isGameOver ? "text-yellow-400/90 font-bold" : currentAP < MOVE_COST ? "text-yellow-400/90 font-bold" : "text-yellow-400/70"}`}>
+        <p className={`text-[10px] ${isGameOver ? "text-yellow-400/90 font-bold" : currentAP < ATTACK_COST ? "text-yellow-400/90 font-bold" : "text-yellow-400/70"}`}>
           {subMessage}
         </p>
       )}
 
-      {!isGameOver && !isAITurn && (
+      {!isGameOver && !isAITurn && showEndTurn && (
         <button
           onClick={onEndTurn}
           className={`mt-2 px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-[0.15em] transition-all duration-200 ${
-            currentAP < MOVE_COST
+            currentAP < ATTACK_COST
               ? "bg-yellow-400 text-black shadow-[0_0_14px_rgba(250,204,21,0.5)] hover:bg-yellow-300 hover:scale-105 hover:shadow-[0_0_20px_rgba(250,204,21,0.7)] animate-pulse"
               : "border border-white/15 text-slate-400 hover:text-white hover:border-white/30 hover:bg-white/5"
           }`}
         >
-          {currentAP < MOVE_COST ? "⚡ End Turn" : "End Turn"}
+          {currentAP < ATTACK_COST ? "⚡ End Turn" : "End Turn"}
         </button>
       )}
     </div>
@@ -652,19 +732,45 @@ function StatusBar({
 //  Page
 // ══════════════════════════════════════════════════════════════════════════
 
-type GameMode = "idle" | "for-fun" | "real";
+type GameMode = "idle" | "for-fun" | "real" | "multiplayer";
+
+/** Multiplayer action sent/received via socket */
+interface MultiplayerAction {
+  type: 'attack' | 'displace' | 'endTurn' | 'skipRound';
+  sourceKey?: string;
+  targetKey?: string;
+  troopCount?: number;
+}
 
 export default function HexDuelPage() {
   const { isSignedIn, user } = useUser();
   const router = useRouter();
+  const { socket } = useSocket();
 
   const {
-    grid, player1Pos, player2Pos, currentTurn, selectedUnit, validMoves, pushTargets,
-    p1MoveCount, p2MoveCount, p1Territory, p2Territory, currentAP, maxAP,
-    capturedTiles, selectedTile,    recentlyCaptured, territorySpread, pushedHere,
-    powerNodes, p1PowerNodes, p2PowerNodes, winner,
-    handleTileClick, endTurn, resetGame,
+    grid, currentTurn, currentAP, maxAP,
+    capturedTiles, capitals, tileTroops,
+    p1MoveCount, p2MoveCount, p1Territory, p2Territory,
+    recentlyCaptured, selectedTile, winner,
+    actionLog,
+    attackableTargets, getAttackSources,
+    displaceCandidates, getDisplaceSources,
+    handleAttack, handleDisplace, applyRemoteAction,
+    endTurn, skipRound, resetGame,
   } = useHexDuel();
+
+  // ── Remaining from old type (stubs kept as empty) ──
+  const selectedUnit = null as DuelPlayer | null;
+  const validMoves: { x: number; y: number }[] = [];
+  const pushTargets: never[] = [];
+  const territorySpread: string[] = [];
+  const pushedHere: string[] = [];
+  const powerNodes: Set<string> = new Set();
+  const p1PowerNodes = 0;
+  const p2PowerNodes = 0;
+  const reinforceTargets: never[] = [];
+  const player1Pos = { x: 0, y: 0 };
+  const player2Pos = { x: 0, y: 0 };
 
   // ── Audio ──────────────────────────────────────────────────────────
   const audio = useHexAudio();
@@ -688,6 +794,38 @@ export default function HexDuelPage() {
   const payoutProcessedRef = useRef(false);
   const startedAtRef = useRef<string | null>(null);
 
+  // ── Attack / Displace flow state ────────────────────────────────
+  const [selectedAction, setSelectedAction] = useState<ActionType>(null);
+  const [pendingActionPhase, setPendingActionPhase] = useState<
+    "selectTarget" | "selectSource" | "inputTroops" | null
+  >(null);
+  const [pendingTarget, setPendingTarget] = useState<{ x: number; y: number } | null>(null);
+  const [pendingSource, setPendingSource] = useState<{ x: number; y: number } | null>(null);
+  const [pendingTroopCount, setPendingTroopCount] = useState(1);
+
+  // ── Multiplayer state ────────────────────────────────────────────
+  const [multiplayerGameId, setMultiplayerGameId] = useState<number | null>(null);
+  const [isPlayer1, setIsPlayer1] = useState<boolean>(true);
+  const [opponentReady, setOpponentReady] = useState(false);
+  const opponentReadyRef = useRef(false);
+  const multiplayerJoinedRef = useRef(false);
+
+  // ── Connection status ───────────────────────────────────────────
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connected");
+  const connectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Winner override (for chess clock expiry) ──────────────────────
+  const [winnerOverride, setWinnerOverride] = useState<DuelPlayer | null>(null);
+  const effectiveWinner = winnerOverride ?? winner;
+  const isGameOverEffective = effectiveWinner !== null;
+  const isGameOver = isGameOverEffective;
+  const showGame = gameMode !== "idle";
+
+  // Whether the local player is allowed to act (their turn + not waiting for opponent)
+  const isLocalTurn = gameMode === "multiplayer"
+    ? (isPlayer1 && currentTurn === "player1") || (!isPlayer1 && currentTurn === "player2")
+    : true;
+
   // ── Turn transition tracking ───────────────────────────────────────
   const prevTurnRef = useRef(currentTurn);
   const [turnJustChanged, setTurnJustChanged] = useState(false);
@@ -700,9 +838,6 @@ export default function HexDuelPage() {
       return () => clearTimeout(t);
     }
   }, [currentTurn]);
-
-  const isGameOver = winner !== null;
-  const showGame = gameMode !== "idle";
 
   // ── Sound effects ──────────────────────────────────────────────────
 
@@ -724,54 +859,28 @@ export default function HexDuelPage() {
     prevCaptureLen.current = recentlyCaptured.length;
   }, [recentlyCaptured, audio]);
 
-  // Push sound
-  const prevPushedLen = useRef(pushedHere.length);
+  // Push sound (replaced by attack sound via capture detection)
+  const prevCombatFlashLen = useRef(0);
   useEffect(() => {
-    if (pushedHere.length > prevPushedLen.current && pushedHere.length > 0) {
-      audio.playPush();
+    if (recentlyCaptured.length > prevCombatFlashLen.current && recentlyCaptured.length > 0) {
+      audio.playCapture();
     }
-    prevPushedLen.current = pushedHere.length;
-  }, [pushedHere, audio]);
-
-  // Move sound (when moveCount changes and it's not a capture/push)
-  const prevMoveCount = useRef(0);
-  useEffect(() => {
-    const totalMoves = p1MoveCount + p2MoveCount;
-    if (totalMoves > prevMoveCount.current && recentlyCaptured.length === 0 && pushedHere.length === 0) {
-      audio.playMove();
-    }
-    prevMoveCount.current = totalMoves;
-  }, [p1MoveCount, p2MoveCount, recentlyCaptured, pushedHere, audio]);
-
-  // Select sound
-  useEffect(() => {
-    if (selectedUnit) audio.playSelect();
-  }, [selectedUnit, audio]);
-
-  // Power node capture sound
-  const prevP1Nodes = useRef(p1PowerNodes);
-  const prevP2Nodes = useRef(p2PowerNodes);
-  useEffect(() => {
-    if (p1PowerNodes > prevP1Nodes.current || p2PowerNodes > prevP2Nodes.current) {
-      audio.playPowerNode();
-    }
-    prevP1Nodes.current = p1PowerNodes;
-    prevP2Nodes.current = p2PowerNodes;
-  }, [p1PowerNodes, p2PowerNodes, audio]);
+    prevCombatFlashLen.current = recentlyCaptured.length;
+  }, [recentlyCaptured, audio]);
 
   // Victory / defeat sounds
   const victoryPlayed = useRef(false);
   useEffect(() => {
-    if (winner && !victoryPlayed.current) {
+    if (effectiveWinner && !victoryPlayed.current) {
       victoryPlayed.current = true;
-      if (winner === "player1") {
+      if (effectiveWinner === "player1") {
         setTimeout(() => audio.playVictory(), 300);
       } else {
         setTimeout(() => audio.playDefeat(), 300);
       }
     }
-    if (!winner) victoryPlayed.current = false;
-  }, [winner, audio]);
+    if (!effectiveWinner) victoryPlayed.current = false;
+  }, [effectiveWinner, audio]);
 
   // ── Balance ────────────────────────────────────────────────────────
   const fetchBalance = useCallback(async () => {
@@ -834,6 +943,13 @@ export default function HexDuelPage() {
         return;
       }
       if (data?.newBalance !== undefined) setBalance(Number(data.newBalance));
+      if (data?.gameId) {
+        setMultiplayerGameId(Number(data.gameId));
+        setIsPlayer1(true);
+        setGameMode("multiplayer");
+        setOpponentReady(false);
+        multiplayerJoinedRef.current = false;
+      }
       fetchMultiplayerGames();
     } catch {
       setWagerError("Network error — please try again");
@@ -856,15 +972,159 @@ export default function HexDuelPage() {
         return;
       }
       if (data?.newBalance !== undefined) setBalance(Number(data.newBalance));
-      setWagerError("Joined game successfully. Multiplayer match sync will begin shortly.");
+      if (data?.gameId) {
+        setMultiplayerGameId(Number(data.gameId));
+        setIsPlayer1(false);
+        setGameMode("multiplayer");
+        setOpponentReady(false);
+        multiplayerJoinedRef.current = false;
+      }
     } catch {
       setWagerError("Network error — please try again");
     }
   }, [fetchMultiplayerGames]);
 
+  // ── Socket connection for multiplayer ──────────────────────────
+
+  // Join and listen to the multiplayer game room
+  useEffect(() => {
+    if (!socket || !multiplayerGameId) return;
+
+    const roomId = String(multiplayerGameId);
+
+    // Join room
+    socket.emit("hexDuel:join", { gameId: multiplayerGameId });
+    socket.emit("join_game", { gameId: multiplayerGameId });
+
+    // Listen for opponent actions
+    const handleOpponentAction = (data: { action: MultiplayerAction }) => {
+      if (data.action) {
+        applyRemoteActionRef.current(data.action);
+      }
+    };
+
+    // Listen for opponent ready
+    const handleOpponentReady = () => {
+      setOpponentReady(true);
+      opponentReadyRef.current = true;
+    };
+
+    // Listen for opponent resignation
+    const handleOpponentResigned = () => {
+      // Opponent resigned → local player wins
+      if (!isGameOverRef.current) {
+        const winnerP = isPlayer1 ? "player2" : "player1";
+        setWinnerOverride(winnerP);
+      }
+    };
+
+    // Listen for opponent disconnect → show red banner + auto-win
+    const handleOpponentDisconnected = () => {
+      if (!isGameOverRef.current) {
+        setConnectionStatus("opponent_disconnected");
+        // Auto-dismiss banner after 5 seconds
+        if (connectionTimerRef.current) clearTimeout(connectionTimerRef.current);
+        connectionTimerRef.current = setTimeout(() => {
+          setConnectionStatus("connected");
+        }, 5000);
+
+        if (!opponentReadyRef.current) {
+          // Game hasn't started yet — bail to lobby after brief delay so player sees the message
+          setTimeout(() => {
+            if (!isGameOverRef.current) handleRestart();
+          }, 2000);
+        } else {
+          const winnerP = isPlayer1 ? "player2" : "player1";
+          setWinnerOverride(winnerP);
+        }
+      }
+    };
+
+    // Listen for opponent clock expiry → auto-win for local player
+    const handleOpponentTimeout = () => {
+      if (!isGameOverRef.current) {
+        const winnerP = isPlayer1 ? "player2" : "player1";
+        setWinnerOverride(winnerP);
+      }
+    };
+
+    // Listen for own socket disconnect (connection lost)
+    const handleSocketDisconnect = () => {
+      setConnectionStatus("connection_lost");
+    };
+
+    // Listen for socket reconnect
+    const handleSocketConnect = () => {
+      setConnectionStatus("connected");
+      // Re-emit join to re-establish room presence
+      socket.emit("hexDuel:join", { gameId: multiplayerGameId });
+      socket.emit("join_game", { gameId: multiplayerGameId });
+    };
+
+    socket.on("hexDuel:action", handleOpponentAction);
+    socket.on("hexDuel:opponent:ready", handleOpponentReady);
+    socket.on("hexDuel:opponent:resigned", handleOpponentResigned);
+    socket.on("hexDuel:opponent:disconnected", handleOpponentDisconnected);
+    socket.on("hexDuel:opponent:timeout", handleOpponentTimeout);
+    socket.on("disconnect", handleSocketDisconnect);
+    socket.on("connect", handleSocketConnect);
+
+    return () => {
+      socket.off("hexDuel:action", handleOpponentAction);
+      socket.off("hexDuel:opponent:ready", handleOpponentReady);
+      socket.off("hexDuel:opponent:resigned", handleOpponentResigned);
+      socket.off("hexDuel:opponent:disconnected", handleOpponentDisconnected);
+      socket.off("hexDuel:opponent:timeout", handleOpponentTimeout);
+      socket.off("disconnect", handleSocketDisconnect);
+      socket.off("connect", handleSocketConnect);
+      socket.emit("leave_game", { gameId: multiplayerGameId });
+      if (connectionTimerRef.current) clearTimeout(connectionTimerRef.current);
+    };
+  }, [socket, multiplayerGameId, isPlayer1, effectiveWinner]);
+
+  // Send clock expiry to opponent in multiplayer mode
+  const sendClockExpiryRef = useRef<() => void>(() => {});
+  sendClockExpiryRef.current = () => {
+    if (gameMode === "multiplayer" && socket && multiplayerGameId) {
+      socket.emit("hexDuel:clockExpired", { gameId: multiplayerGameId });
+    }
+  };
+
+  // Auto-start game once both players are ready
+  useEffect(() => {
+    if (gameMode === "multiplayer" && multiplayerGameId && opponentReady && multiplayerJoinedRef.current) {
+      // Both players connected — start the game
+      // The engine starts with currentTurn="player1" and player1 goes first
+    }
+  }, [gameMode, multiplayerGameId, opponentReady]);
+
+  // Mark local player as ready after joining room (allows time for socket to connect)
+  useEffect(() => {
+    if (gameMode === "multiplayer" && multiplayerGameId && !multiplayerJoinedRef.current) {
+      const timer = setTimeout(() => {
+        multiplayerJoinedRef.current = true;
+        // Notify the other player we're ready
+        if (socket) {
+          socket.emit("hexDuel:join", { gameId: multiplayerGameId });
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [gameMode, multiplayerGameId, socket]);
+
+  // ── Send action via socket in multiplayer mode ──────────────────
+  const sendMultiplayerAction = useCallback((action: MultiplayerAction) => {
+    if (socket && multiplayerGameId) {
+      socket.emit("hexDuel:action", { gameId: multiplayerGameId, action });
+    }
+  }, [socket, multiplayerGameId]);
+
+  // Ref for applyRemoteAction to avoid stale closure issues
+  const applyRemoteActionRef = useRef<(a: MultiplayerAction) => void>(() => {});
+
   // ── End-game payout ────────────────────────────────────────────────
   useEffect(() => {
-    if (!winner || gameMode === "idle" || payoutProcessedRef.current) return;
+    if (!effectiveWinner || gameMode === "idle" || payoutProcessedRef.current) return;
     payoutProcessedRef.current = true;
     setPayoutLoading(true);
 
@@ -872,13 +1132,17 @@ export default function HexDuelPage() {
       ? Math.round((Date.now() - new Date(startedAtRef.current).getTime()) / 1000)
       : 0;
 
-    fetch("/api/hex-duel/end-game", {
+    const endPoint = gameMode === "multiplayer"
+      ? "/api/hex-duel/multiplayer/end"
+      : "/api/hex-duel/end-game";
+
+    fetch(endPoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
         wager: gameMode === "for-fun" ? 0 : wager,
-        winner,
+        winner: effectiveWinner,
         isFunMode: gameMode === "for-fun",
         isAiGame: aiEnabled,
         aiDifficulty: aiEnabled ? aiDifficulty : null,
@@ -904,21 +1168,139 @@ export default function HexDuelPage() {
       })
       .catch(() => {})
       .finally(() => setPayoutLoading(false));
-  }, [winner, gameMode, wager, aiEnabled, aiDifficulty, p1MoveCount, p2MoveCount, p1Territory, p2Territory]);
+  }, [effectiveWinner, winnerOverride, gameMode, wager, aiEnabled, aiDifficulty, p1MoveCount, p2MoveCount, p1Territory, p2Territory, multiplayerGameId]);
 
-  // ── AI helpers ─────────────────────────────────────────────────────
-  const handleTileClickRef = useRef(handleTileClick);
-  handleTileClickRef.current = handleTileClick;
+  // ── Chess clock ──────────────────────────────────────────────────
+  const chessExpireRef = useRef({ currentTurn: currentTurn as DuelPlayer | null, gameOver: false });
+  chessExpireRef.current = { currentTurn, gameOver: isGameOverEffective };
+
+  const onClockExpire = useCallback((expiredPlayer: DuelPlayer) => {
+    if (chessExpireRef.current.gameOver) return;
+    setClockLoser(expiredPlayer);
+    // Notify opponent in multiplayer mode
+    if (gameMode === "multiplayer") {
+      sendClockExpiryRef.current();
+    }
+  }, [gameMode]);
+
+  const [clockLoser, setClockLoser] = useState<DuelPlayer | null>(null);
+
+  // When clock expires for a player, the other player wins
+  useEffect(() => {
+    if (clockLoser && !winner && !winnerOverride) {
+      const winnerPlayer = clockLoser === "player1" ? "player2" : "player1";
+      setWinnerOverride(winnerPlayer);
+      setClockLoser(null);
+    }
+  }, [clockLoser, winner, winnerOverride]);
+
+  // Chess clock hook — isActive pauses during AI thinking and after game over
+  const clock = useChessClock({
+    isActive: showGame && !isGameOverEffective && !aiThinking,
+    onPlayer1Expire: () => onClockExpire("player1"),
+    onPlayer2Expire: () => onClockExpire("player2"),
+    resetKey: gameMode + (effectiveWinner ? "-over" : ""),
+  });
+
+  // Toggle active clock when currentTurn changes
+  const prevTurnForClock = useRef(currentTurn);
+  useEffect(() => {
+    if (prevTurnForClock.current !== currentTurn && !isGameOverEffective && !aiThinking) {
+      clock.setActivePlayer(currentTurn);
+      prevTurnForClock.current = currentTurn;
+    }
+  }, [currentTurn, isGameOverEffective, aiThinking, clock]);
+
+  // Start clock on first turn & resume after AI finishes thinking
+  useEffect(() => {
+    if (showGame && !isGameOverEffective && !aiThinking) {
+      clock.setActivePlayer(currentTurn);
+    }
+  }, [aiThinking, showGame, isGameOverEffective, clock, currentTurn]);
+
+  // Format milliseconds to mm:ss
+  const formatClock = (ms: number) => {
+    const totalSec = Math.ceil(ms / 1000);
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `${min}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  // ── Refs for values used by AI (avoids stale closures) ────────────
+  const handleAttackRef = useRef(handleAttack);
+  handleAttackRef.current = handleAttack;
+  const handleDisplaceRef = useRef(handleDisplace);
+  handleDisplaceRef.current = handleDisplace;
   const endTurnRef = useRef(endTurn);
   endTurnRef.current = endTurn;
+  const skipRoundRef = useRef(skipRound);
+  skipRoundRef.current = skipRound;
+  const isGameOverRef = useRef(false);
+  isGameOverRef.current = isGameOverEffective;
+  const currentTurnRef = useRef(currentTurn);
+  currentTurnRef.current = currentTurn;
 
-  const unitPositions = useMemo(() => [
-    { x: player1Pos.x, y: player1Pos.y, owner: "player1" as const },
-    { x: player2Pos.x, y: player2Pos.y, owner: "player2" as const },
-  ], [player1Pos, player2Pos]);
+  // Set up applyRemoteActionRef
+  const localApplyRemote = useCallback((action: MultiplayerAction) => {
+    if (isGameOverRef.current) return;
+    applyRemoteAction(action);
+  }, [applyRemoteAction]);
 
-  const pushTargetKeys = useMemo(() => pushTargets.map((p) => `${p.x},${p.y}`), [pushTargets]);
-  const powerNodeKeys = useMemo(() => Array.from(powerNodes), [powerNodes]);
+  applyRemoteActionRef.current = localApplyRemote;
+
+  // ── Computed highlight keys for HexBoard ───────────────────────────
+  const attackHighlightKeys = useMemo(
+    () => (selectedAction === "attack" ? attackableTargets.map((t) => `${t.x},${t.y}`) : []),
+    [selectedAction, attackableTargets]
+  );
+
+  // Compute source highlight keys based on the current phase
+  const sourceHighlightKeys = useMemo(() => {
+    if (selectedAction === "attack" && pendingTarget && pendingActionPhase === "selectSource") {
+      const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
+      return getAttackSources(targetKey).map((s) => `${s.x},${s.y}`);
+    }
+    if (selectedAction === "displace" && pendingTarget && pendingActionPhase === "selectSource") {
+      const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
+      return getDisplaceSources(targetKey).map((s) => `${s.x},${s.y}`);
+    }
+    return [];
+  }, [selectedAction, pendingTarget, pendingActionPhase, getAttackSources, getDisplaceSources]);
+
+  // Displace candidate highlights (shown at start of displace action)
+  const displaceHighlightKeys = useMemo(
+    () => (selectedAction === "displace" ? displaceCandidates.map((t) => `${t.x},${t.y}`) : []),
+    [selectedAction, displaceCandidates]
+  );
+
+  // (pushTargetKeys, powerNodeKeys, reinforceTargetKeys removed — replaced by attack/displace system)
+
+  // ── Troop totals ───────────────────────────────────────────────────
+  const p1TotalTroops = useMemo(() => {
+    let total = 0;
+    for (const [key, owner] of Object.entries(capturedTiles)) {
+      if (owner === "player1") {
+        total += tileTroops[key] ?? 1;
+      }
+    }
+    return total;
+  }, [capturedTiles, tileTroops]);
+
+  const p2TotalTroops = useMemo(() => {
+    let total = 0;
+    for (const [key, owner] of Object.entries(capturedTiles)) {
+      if (owner === "player2") {
+        total += tileTroops[key] ?? 1;
+      }
+    }
+    return total;
+  }, [capturedTiles, tileTroops]);
+
+  // Maximum troops across both players (for the bar scale)
+  const maxTroops = useMemo(
+    () => Math.max(p1TotalTroops, p2TotalTroops, 5),
+    [p1TotalTroops, p2TotalTroops]
+  );
 
   // ── AI Turn Execution (event-driven: ONE move per invocation) ──
   // Uses refs to avoid stale closure issues. The aiMoveTick counter
@@ -931,28 +1313,23 @@ export default function HexDuelPage() {
   aiDifficultyRef.current = aiDifficulty;
 
   // Ref-based snapshot builder — always returns latest values
-  const aiSnapshotRef = useRef<AIStateSnapshot>({ myPos: player2Pos, enemyPos: player1Pos, myPlayer: "player2", enemyPlayer: "player1", capturedTiles, powerNodes, currentAP });
-  aiSnapshotRef.current = { myPos: player2Pos, enemyPos: player1Pos, myPlayer: "player2", enemyPlayer: "player1", capturedTiles, powerNodes, currentAP };
+  const aiSnapshotRef = useRef<AIStateSnapshot>({ myPlayer: "player2", enemyPlayer: "player1", capturedTiles, capitals, tileTroops, currentAP });
+  aiSnapshotRef.current = { myPlayer: "player2", enemyPlayer: "player1", capturedTiles, capitals, tileTroops, currentAP };
 
   // Make ONE AI decision and execute it. Returns when the move is queued.
   // setAiMoveTick triggers a cascade via the useEffect dep.
   const makeAIMove = useCallback(async () => {
-    if (!aiEnabledRef.current || winner || gameMode === "idle") return;
+    if (!aiEnabledRef.current || isGameOverRef.current || gameMode === "idle") return;
 
     const snap = aiSnapshotRef.current;
 
     // No AP → end turn
-    if (snap.currentAP < MOVE_COST) {
+    if (snap.currentAP < ATTACK_COST) {
       endTurnRef.current();
       setAIAction({ type: "endTurn" });
       setAIThinking(false);
       return;
     }
-
-    // Select AI unit first
-    handleTileClickRef.current(snap.myPos.x, snap.myPos.y);
-    await new Promise((r) => setTimeout(r, 120));
-    if (aiCancelledRef.current) return;
 
     // Get AI decision
     let action: AIAction;
@@ -976,59 +1353,315 @@ export default function HexDuelPage() {
       return;
     }
 
-    if (action.type === "move" || action.type === "push") {
-      handleTileClickRef.current(action.x, action.y);
+    if (action.type === "attack") {
+      // Execute AI attack
+      handleAttackRef.current(action.sourceKey, action.targetKey, action.troopCount);
       await new Promise((r) => setTimeout(r, 150));
       if (aiCancelledRef.current) return;
-      // Cascade: increment tick so the useEffect fires again
+      // Cascade: may have remaining AP for further actions
+      setAiMoveTick((t) => t + 1);
+    } else if (action.type === "displace") {
+      // Execute AI displace
+      handleDisplaceRef.current(action.sourceKey, action.targetKey, action.troopCount);
+      await new Promise((r) => setTimeout(r, 150));
+      if (aiCancelledRef.current) return;
+      // Cascade: may have remaining AP for further actions
       setAiMoveTick((t) => t + 1);
     }
-  }, [winner, gameMode]);  // stable deps — everything else via refs
+  }, [gameMode]);  // stable deps — everything else via refs
 
   // ── AI Turn Orchestrator ─────────────────────────────────────
   // Fires when currentTurn or aiMoveTick changes. Each tick triggers
   // one AI move. The loop continues until AP depletes or game ends.
   useEffect(() => {
-    if (!aiEnabled || currentTurn !== "player2" || winner || gameMode === "idle") {
+    if (!aiEnabled || currentTurn !== "player2" || isGameOverRef.current || gameMode === "idle") {
       setAIThinking(false);
       aiCancelledRef.current = true;
       return;
     }
 
-    aiCancelledRef.current = false;
+    aiCancelledRef.current = false;    const run = async () => {
+  try {
+    setAIThinking(true);
 
-    const run = async () => {
-      setAIThinking(true);
-      await new Promise((r) => setTimeout(r, 200));
-      if (aiCancelledRef.current) return;
-      await makeAIMove();
-    };
+    // Check game-over at start — prevents AI from running after clock expiry
+    if (isGameOverRef.current) {
+      aiCancelledRef.current = true;
+      setAIThinking(false);
+      return;
+    }
+
+    await new Promise((r) => setTimeout(r, 200));
+
+    if (aiCancelledRef.current) {
+      setAIThinking(false);
+      return;
+    }
+
+    await makeAIMove();
+  } finally {
+    setAIThinking(false);
+  }
+};
 
     run();
 
     return () => { aiCancelledRef.current = true; };
-  }, [currentTurn, aiMoveTick, aiEnabled, winner, gameMode, makeAIMove]);
+  }, [currentTurn, aiMoveTick, aiEnabled, gameMode, makeAIMove]);
 
-  // ── Turn Timer (2 min per turn) ─────────────────────────────────
-  // Only active during player1's turn; endTurn on expiry
-  const timerEndTurn = useCallback(() => {
-    if (!winner && currentTurn === "player1") endTurn();
-  }, [winner, currentTurn, endTurn]);
-
-  const timer = useTurnTimer({
-    isActive: showGame && !isGameOver && currentTurn === "player1" && !aiThinking,
-    duration: 120,
-    onExpire: timerEndTurn,
-    resetKey: currentTurn + (isGameOver ? "-over" : ""),
-  });
+  // ── Chess clock derived values for StatusBar ──────────────────────
+  const activeClockPlayer = !aiThinking ? currentTurn : null;
+  const activeClockTime = activeClockPlayer === "player1" ? clock.p1TimeLeft : activeClockPlayer === "player2" ? clock.p2TimeLeft : 600000;
+  const timerFraction = activeClockPlayer ? Math.max(0, activeClockTime / 600000) : 1;
+  const timerUrgent = activeClockPlayer !== null && activeClockTime < 60000;
+  const timerCritical = activeClockPlayer !== null && activeClockTime < 10000;
+  const timerActive = activeClockPlayer !== null;
 
   // ── Handlers ───────────────────────────────────────────────────────
   const handleToggleAI = useCallback(() => setAIEnabled((p) => { const n = !p; if (!n) { setAIThinking(false); setAIAction(null); } return n; }), []);
   const handleDifficultyChange = useCallback((diff: AIDifficulty) => setAIDifficulty(diff), []);
+
+  // Wrap endTurn to also send via socket in multiplayer
+  const handleEndTurn = useCallback(() => {
+    endTurn();
+    if (gameMode === "multiplayer") {
+      sendMultiplayerAction({ type: "endTurn" });
+    }
+  }, [endTurn, gameMode, sendMultiplayerAction]);
+
+  const handleSkipRound = useCallback(() => {
+    skipRound();
+    if (gameMode === "multiplayer") {
+      sendMultiplayerAction({ type: "skipRound" });
+    }
+  }, [skipRound, gameMode, sendMultiplayerAction]);
+
   const handleRestart = useCallback(() => {
     resetGame(); setGameMode("idle"); setWager(0); setWagerError(null);
     setPayoutResult(null); payoutProcessedRef.current = false; startedAtRef.current = null; fetchBalance();
+    setMultiplayerGameId(null); setOpponentReady(false); opponentReadyRef.current = false; multiplayerJoinedRef.current = false;
   }, [resetGame, fetchBalance]);
+
+  // ── Action system: wrapped click, confirm, clear ──────────────────
+
+  const handleTileClickWithActions = useCallback((x: number, y: number) => {
+    const key = `${x},${y}`;
+
+    // No action selected → nothing to do (engine has no old immediate actions)
+    if (!selectedAction) return;
+
+    // ── Attack action mode ────────────────────────────────────────────
+    if (selectedAction === "attack") {
+      if (pendingActionPhase === null || pendingActionPhase === "selectTarget") {
+        // Click on an enemy tile (must be attackable)
+        if (attackableTargets.some((t) => t.x === x && t.y === y)) {
+          setPendingTarget({ x, y });
+          setPendingActionPhase("selectSource");
+          setPendingTroopCount(1);
+        }
+      } else if (pendingActionPhase === "selectSource") {
+        // Click on a friendly source adjacent to the target
+        const sources = getAttackSources(`${pendingTarget!.x},${pendingTarget!.y}`);
+        if (sources.some((s) => s.x === x && s.y === y)) {
+          setPendingSource({ x, y });
+          setPendingActionPhase("inputTroops");
+          // Calculate max troops
+          const sourceTroops = tileTroops[key] ?? 1;
+          setPendingTroopCount(Math.min(sourceTroops - 1, 1));
+        }
+      }
+      return;
+    }
+
+    // ── Displace action mode ───────────────────────────────────────────
+    if (selectedAction === "displace") {
+      if (pendingActionPhase === null || pendingActionPhase === "selectTarget") {
+        // Click on a friendly tile (displace candidate)
+        if (capturedTiles[key] === currentTurn) {
+          setPendingTarget({ x, y });
+          setPendingActionPhase("selectSource");
+          setPendingTroopCount(1);
+        }
+      } else if (pendingActionPhase === "selectSource") {
+        // Click on a source friendly tile adjacent to the target with extra troops
+        const sources = getDisplaceSources(`${pendingTarget!.x},${pendingTarget!.y}`);
+        if (sources.some((s) => s.x === x && s.y === y)) {
+          setPendingSource({ x, y });
+          setPendingActionPhase("inputTroops");
+          // Pre-fill with max available
+          const sourceTroops = tileTroops[key] ?? 1;
+          setPendingTroopCount(Math.min(sourceTroops - 1, 1));
+        }
+      }
+      return;
+    }
+  }, [selectedAction, pendingActionPhase, pendingTarget, attackableTargets, getAttackSources, getDisplaceSources, capturedTiles, currentTurn, tileTroops]);
+
+  const handleConfirmAction = useCallback(() => {
+    if (selectedAction === "attack" && pendingSource && pendingTarget && pendingActionPhase === "inputTroops") {
+      const sourceKey = `${pendingSource.x},${pendingSource.y}`;
+      const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
+      handleAttack(sourceKey, targetKey, pendingTroopCount);
+      // Send action to opponent in multiplayer
+      if (gameMode === "multiplayer") {
+        sendMultiplayerAction({ type: "attack", sourceKey, targetKey, troopCount: pendingTroopCount });
+      }
+      // Reset flow
+      setPendingActionPhase(null);
+      setPendingTarget(null);
+      setPendingSource(null);
+      setSelectedAction(null);
+      setPendingTroopCount(1);
+    } else if (selectedAction === "displace" && pendingSource && pendingTarget && pendingActionPhase === "inputTroops") {
+      const sourceKey = `${pendingSource.x},${pendingSource.y}`;
+      const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
+      handleDisplace(sourceKey, targetKey, pendingTroopCount);
+      // Send action to opponent in multiplayer
+      if (gameMode === "multiplayer") {
+        sendMultiplayerAction({ type: "displace", sourceKey, targetKey, troopCount: pendingTroopCount });
+      }
+      // Reset flow
+      setPendingActionPhase(null);
+      setPendingTarget(null);
+      setPendingSource(null);
+      setSelectedAction(null);
+      setPendingTroopCount(1);
+    }
+  }, [selectedAction, pendingSource, pendingTarget, pendingActionPhase, pendingTroopCount, handleAttack, handleDisplace, gameMode, sendMultiplayerAction]);
+
+  const handleSelectUnit = useCallback(() => {
+    // No-op in new system
+  }, []);
+
+  const handleClearAction = useCallback(() => {
+    setPendingActionPhase(null);
+    setPendingTarget(null);
+    setPendingSource(null);
+    setSelectedAction(null);
+    setPendingTroopCount(1);
+  }, []);
+
+  // Clear action state on turn change
+  useEffect(() => {
+    setSelectedAction(null);
+    setPendingActionPhase(null);
+    setPendingTarget(null);
+    setPendingSource(null);
+    setPendingTroopCount(1);
+  }, [currentTurn]);
+
+  // ── Derived pending state ──────────────────────────────────────────
+  const pendingDescription = useMemo<string | null>(() => {
+    if (selectedAction === "attack") {
+      if (pendingActionPhase === "selectTarget") {
+        return "Click an enemy tile to attack";
+      }
+      if (pendingActionPhase === "selectSource") {
+        return `Attack (${pendingTarget!.x},${pendingTarget!.y}) — click source tile`;
+      }
+      if (pendingActionPhase === "inputTroops" && pendingSource && pendingTarget) {
+        const sourceKey = `${pendingSource.x},${pendingSource.y}`;
+        const maxSend = (tileTroops[sourceKey] ?? 1) - 1;
+        return `Attack from (${pendingSource.x},${pendingSource.y}) → (${pendingTarget.x},${pendingTarget.y}) — send ${pendingTroopCount} of ${maxSend} troops`;
+      }
+    }
+    if (selectedAction === "displace") {
+      if (pendingActionPhase === "selectTarget") {
+        return "Click a friendly tile to reinforce";
+      }
+      if (pendingActionPhase === "selectSource") {
+        return `Reinforce (${pendingTarget!.x},${pendingTarget!.y}) — click source with spare troops`;
+      }
+      if (pendingActionPhase === "inputTroops" && pendingSource && pendingTarget) {
+        const sourceKey = `${pendingSource.x},${pendingSource.y}`;
+        const maxSend = (tileTroops[sourceKey] ?? 1) - 1;
+        return `Move ${pendingTroopCount} troops from (${pendingSource.x},${pendingSource.y}) → (${pendingTarget.x},${pendingTarget.y})`;
+      }
+    }
+    return null;
+  }, [selectedAction, pendingActionPhase, pendingTarget, pendingSource, pendingTroopCount, tileTroops]);
+
+  const hasPending = useMemo(
+    () => pendingActionPhase === "inputTroops",
+    [pendingActionPhase]
+  );
+
+  // Max troops available to send from the selected source
+  const maxSendTroops = useMemo(() => {
+    if (!pendingSource) return 0;
+    const key = `${pendingSource.x},${pendingSource.y}`;
+    return (tileTroops[key] ?? 1) - 1; // must leave at least 1
+  }, [pendingSource, tileTroops]);
+
+  // ── Waiting for opponent UI ───────────────────────────────────────
+  if (gameMode === "multiplayer" && multiplayerGameId && !opponentReady) {
+    return (
+      <>
+        <style>{GLOBAL_KEYFRAMES}</style>
+        <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
+          <NavigationBar currentPath="/casino" />
+
+          {/* Connection banner on waiting screen too */}
+          <ConnectionBanner
+            status={connectionStatus}
+            onReconnect={() => {
+              if (socket && connectionStatus === "connection_lost") {
+                socket.connect();
+                if (multiplayerGameId) {
+                  socket.emit("hexDuel:join", { gameId: multiplayerGameId });
+                  socket.emit("join_game", { gameId: multiplayerGameId });
+                }
+              }
+            }}
+          />
+
+          <div className="mx-auto w-full max-w-7xl px-2 sm:px-4 lg:px-6">
+            <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
+              {connectionStatus === "opponent_disconnected" ? (
+                <>
+                  <div className="mb-6">
+                    <span className="inline-block w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center">
+                      <span className="text-3xl">😞</span>
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-black text-red-400 mb-2">
+                    Opponent Disconnected
+                  </h2>
+                  <p className="text-sm text-slate-300 mb-4">
+                    The other player left before the game started.
+                  </p>
+                  <p className="text-xs text-slate-500 animate-pulse">
+                    Returning to lobby...
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="mb-6">
+                    <span className="inline-block w-16 h-16 rounded-full border-4 border-cyan-400/30 border-t-cyan-400 animate-spin" />
+                  </div>
+                  <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-400 mb-2">
+                    Waiting for Opponent
+                  </h2>
+                  <p className="text-sm text-slate-400 mb-4">
+                    Game #{multiplayerGameId} — {isPlayer1 ? "Player 1 (Host)" : "Player 2"}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Another player needs to join before the match starts...
+                  </p>
+                  <button
+                    onClick={handleRestart}
+                    className="mt-8 text-xs text-slate-500 hover:text-slate-300 transition underline underline-offset-4"
+                  >
+                    Cancel &amp; Return to Lobby
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </main>
+      </>
+    );
+  }
 
   // ── Render ─────────────────────────────────────────────────────────
 
@@ -1039,6 +1672,22 @@ export default function HexDuelPage() {
 
       <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
         <NavigationBar currentPath="/casino" />
+
+        {/* Connection banner — pulsing red indicator for disconnects */}
+        {gameMode === "multiplayer" && (
+          <ConnectionBanner
+            status={connectionStatus}
+            onReconnect={() => {
+              if (socket) {
+                socket.connect();
+                if (multiplayerGameId) {
+                  socket.emit("hexDuel:join", { gameId: multiplayerGameId });
+                  socket.emit("join_game", { gameId: multiplayerGameId });
+                }
+              }
+            }}
+          />
+        )}
 
         <div className="mx-auto w-full max-w-7xl px-2 sm:px-4 lg:px-6">
           {/* ── Premium Header ──────────────────────────────────────── */}
@@ -1076,10 +1725,14 @@ export default function HexDuelPage() {
           </div>
 
           {/* ── AI Control Panel ────────────────────────────────────── */}
-          {showGame && (
+          {showGame && p1MoveCount === 0 && p2MoveCount === 0 && (
             <div className="mb-4 flex items-center justify-center gap-4 flex-wrap">
               <button
-                onClick={handleToggleAI}
+                onClick={() => {
+  if (p1MoveCount === 0 && p2MoveCount === 0) {
+    handleToggleAI();
+  }
+}}
                 className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-[0.12em] transition-all duration-200 border ${
                   aiEnabled
                     ? "bg-purple-500/30 text-purple-200 border-purple-400/60 shadow-[0_0_12px_rgba(168,85,247,0.3)]"
@@ -1110,7 +1763,7 @@ export default function HexDuelPage() {
                 <span className="text-[10px] text-purple-400/70 animate-pulse">🤖 AI analyzing...</span>
               )}
 
-              {/* Sound toggle */}
+                      {/* Sound toggle */}
               <button
                 onClick={() => audio.setEnabled(!audio.enabled)}
                 className={`px-3 py-1.5 rounded-lg text-[10px] transition-all duration-200 border ${
@@ -1120,6 +1773,8 @@ export default function HexDuelPage() {
               >
                 {audio.enabled ? "🔊" : "🔇"}
               </button>
+
+
             </div>
           )}
 
@@ -1128,13 +1783,9 @@ export default function HexDuelPage() {
             <div className="mb-6">
               <StatusBar
                 currentTurn={currentTurn} currentAP={currentAP} maxAP={maxAP}
-                selectedUnit={selectedUnit} validMoves={validMoves} pushTargets={pushTargets}
-                onEndTurn={endTurn} isGameOver={isGameOver}
+                onEndTurn={handleEndTurn}                isGameOver={isGameOver}
                 aiThinking={aiThinking} aiEnabled={aiEnabled}
-                timerFraction={timer.fraction}
-                timerUrgent={timer.isUrgent}
-                timerCritical={timer.isCritical}
-                timerActive={timer.timeLeft < 120 && currentTurn === "player1" && !aiThinking}
+                showEndTurn={gameMode !== "multiplayer" || isLocalTurn}
               />
             </div>
           )}
@@ -1153,66 +1804,177 @@ export default function HexDuelPage() {
                 2xl:grid-cols-[280px_minmax(0,1fr)_280px]
               "
             >
-              <div className="order-2 lg:order-1 w-full max-w-xs mx-auto lg:mx-0">
+              <div className="order-2 lg:order-1 w-full max-w-xs mx-auto lg:mx-0 space-y-3">
                 <PlayerCard
-                  player="player1" label="Player 1" pos={player1Pos}
-                  isActive={currentTurn === "player1"} isSelected={selectedUnit === "player1"}
+                  player="player1" label="Player 1"
+                  isActive={currentTurn === "player1"} isSelected={false}
                   color="#22d3ee" moves={p1MoveCount} territory={p1Territory}
-                  currentAP={currentAP} maxAP={maxAP} powerNodes={p1PowerNodes}
-                  isWinner={winner === "player1"} turnJustChanged={turnJustChanged}
+                  currentAP={currentAP} maxAP={maxAP}
+                  isWinner={effectiveWinner === "player1"} turnJustChanged={turnJustChanged}
+                  totalTroops={p1TotalTroops} maxTroops={maxTroops}
+                  clockTime={clock.p1TimeLeft}
                 />
+                {showGame && (
+                  <HexActionPanel
+                    currentTurn={currentTurn}
+                    currentAP={currentAP}
+                    maxAP={maxAP}
+                    selectedUnit={selectedUnit}
+                    validMoves={validMoves}
+                    selectedAction={selectedAction}
+                    onSelectAction={setSelectedAction}
+                    onSelectUnit={handleSelectUnit}
+                    pendingDescription={pendingDescription}
+                    hasPending={hasPending}
+                    onConfirm={handleConfirmAction}
+                    onClearAction={handleClearAction}
+                    isGameOver={isGameOver}
+                    playerLabel="Player 1"
+                    playerColor="#22d3ee"
+                    isActive={isLocalTurn && currentTurn === "player1" && !aiThinking}
+                    isAITurn={false}
+                    onEndTurn={handleEndTurn}
+                    onSkipRound={handleSkipRound}
+                  />
+                )}
+                {/* Troop count input when in inputTroops phase */}
+                {pendingActionPhase === "inputTroops" && (
+                  <div className="rounded-xl border border-white/10 bg-gradient-to-b from-[#071230]/80 to-[#0a1a3f]/60 p-3 backdrop-blur-sm">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Troops to send</p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={maxSendTroops}
+                        value={pendingTroopCount}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setPendingTroopCount(Math.max(1, Math.min(val, maxSendTroops)));
+                        }}
+                        className="w-20 rounded-lg bg-[#020617] border border-white/15 px-3 py-2 text-white text-sm text-center
+                          focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none transition"
+                      />
+                      <span className="text-[10px] text-slate-400">/ {maxSendTroops}</span>
+                    </div>
+                    <div className="flex gap-1.5 mt-2">
+                      {[1, 3, 5, 10].filter((n) => n <= maxSendTroops).map((n) => (
+                        <button
+                          key={n}
+                          onClick={() => setPendingTroopCount(n)}
+                          className={`px-2 py-1 rounded text-[10px] font-bold transition-all border ${
+                            pendingTroopCount === n
+                              ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/50"
+                              : "bg-white/[0.03] text-slate-400 border-white/10 hover:border-white/20"
+                          }`}
+                        >{n}</button>
+                      ))}
+                      <button
+                        onClick={() => setPendingTroopCount(maxSendTroops)}
+                        className={`px-2 py-1 rounded text-[10px] font-bold transition-all border ${
+                          pendingTroopCount === maxSendTroops
+                            ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/50"
+                            : "bg-white/[0.03] text-slate-400 border-white/10 hover:border-white/20"
+                        }`}
+                      >MAX</button>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="order-1 lg:order-2 flex justify-center overflow-x-auto overflow-y-hidden px-1 sm:px-2 -mx-1 sm:-mx-2" style={{ scrollbarWidth: "none" }}>
                 <HexBoard
                   grid={grid}
-                  selectedTile={isGameOver || aiThinking ? null : selectedTile}
-                  onTileClick={handleTileClick}
-                  unitPositions={unitPositions}
-                  validMoves={isGameOver ? [] : validMoves}
+                  selectedTile={selectedTile}
+                  onTileClick={handleTileClickWithActions}
                   recentlyCaptured={recentlyCaptured}
-                  territorySpread={territorySpread}
-                  pushTargetKeys={isGameOver || aiThinking ? [] : pushTargetKeys}
-                  pushedHere={pushedHere}
-                  powerNodeKeys={powerNodeKeys}
-                  disabled={isGameOver || aiThinking}
+                  disabled={
+  isGameOver ||
+  (aiThinking && currentTurn === "player2")
+}
+                  attackHighlightKeys={
+  isGameOver || (aiThinking && currentTurn === "player2")
+    ? []
+    : selectedAction === "attack"
+    ? attackHighlightKeys
+    : selectedAction === "displace"
+    ? displaceHighlightKeys
+    : []
+}
+                  sourceHighlightKeys={
+  isGameOver || (aiThinking && currentTurn === "player2")
+    ? []
+    : sourceHighlightKeys
+}
                 />
               </div>
-              <div className="order-3 w-full max-w-xs mx-auto lg:mx-0">
+              <div className="order-3 w-full max-w-xs mx-auto lg:mx-0 space-y-3">
                 <PlayerCard
-                  player="player2" label={aiEnabled ? "AI" : "Player 2"} pos={player2Pos}
-                  isActive={currentTurn === "player2"} isSelected={selectedUnit === "player2"}
+                  player="player2" label={aiEnabled ? "AI" : gameMode === "multiplayer" ? "Opponent" : "Player 2"}
+                  isActive={currentTurn === "player2"} isSelected={false}
                   color="#ef4444" moves={p2MoveCount} territory={p2Territory}
-                  currentAP={currentAP} maxAP={maxAP} powerNodes={p2PowerNodes}
-                  isWinner={winner === "player2"} isAI={aiEnabled} turnJustChanged={turnJustChanged}
+                  currentAP={currentAP} maxAP={maxAP}
+                  isWinner={effectiveWinner === "player2"} isAI={aiEnabled} turnJustChanged={turnJustChanged}
+                  totalTroops={p2TotalTroops} maxTroops={maxTroops}
+                  clockTime={clock.p2TimeLeft}
                 />
+                {showGame && !aiEnabled && (
+                  <HexActionPanel
+                    currentTurn={currentTurn}
+                    currentAP={currentAP}
+                    maxAP={maxAP}
+                    selectedUnit={selectedUnit}
+                    validMoves={validMoves}
+                    selectedAction={selectedAction}
+                    onSelectAction={setSelectedAction}
+                    onSelectUnit={handleSelectUnit}
+                    pendingDescription={pendingDescription}
+                    hasPending={hasPending}
+                    onConfirm={handleConfirmAction}
+                    onClearAction={handleClearAction}
+                    isGameOver={isGameOver}
+                    playerLabel="Player 2"
+                    playerColor="#ef4444"
+                    isActive={isLocalTurn && currentTurn === "player2" && !aiThinking}
+                    isAITurn={!!aiEnabled}
+                    onEndTurn={handleEndTurn}
+                    onSkipRound={handleSkipRound}
+                  />
+                )}
+                {/* Action history log — visible for all game modes */}
+                {showGame && actionLog.length > 0 && (
+                  <HexActionLog log={actionLog} compact={true} />
+                )}
               </div>
             </div>
           )}
 
           {/* ── Forfeit button ──────────────────────────────────────── */}
           {showGame && !isGameOver && (
-            <div className="mt-6 text-center">
-              <button onClick={handleRestart} className="text-xs text-slate-500 hover:text-slate-300 transition underline underline-offset-4">
-                Forfeit &amp; Return to Lobby
+            <div className="mt-6 text-center">                <button onClick={() => {
+                  if (gameMode === "multiplayer" && socket && multiplayerGameId) {
+                    socket.emit("hexDuel:resign", { gameId: multiplayerGameId });
+                  }
+                  handleRestart();
+                }} className="text-xs text-slate-500 hover:text-slate-300 transition underline underline-offset-4">
+                {gameMode === "multiplayer" ? "Resign &amp; Return to Lobby" : "Forfeit &amp; Return to Lobby"}
               </button>
             </div>
           )}
 
-          {/* ── How to play (hex.io beehive edition) ────────────────── */}
+          {/* ── How to play ───────────────────────────────────────── */}
           <div className="mt-8 rounded-xl border border-white/[0.04] bg-[#050a18] p-4 text-center">
-            <p className="text-[10px] text-slate-600 uppercase tracking-[0.25em] mb-2">🐝 How to Play — Hex.io Style</p>
+            <p className="text-[10px] text-slate-600 uppercase tracking-[0.25em] mb-2">▦ How to Play — Territory Conquest</p>
             <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-500">
-              <span className="flex items-center gap-1"><span className="text-cyan-400">1.</span> Click your orb to select</span>
+              <span className="flex items-center gap-1"><span className="text-cyan-400">1.</span> Start with 5 troops on your ★ capital</span>
               <span className="text-slate-700">→</span>
-              <span className="flex items-center gap-1"><span className="text-yellow-400">2.</span> Yellow hexes are valid moves</span>
+              <span className="flex items-center gap-1"><span className="text-yellow-400">2.</span> Select Attack (1 AP) to conquer adjacent enemy tiles</span>
               <span className="text-slate-700">→</span>
-              <span className="flex items-center gap-1"><span className="text-cyan-400">3.</span> Click to expand territory (1 AP)</span>
+              <span className="flex items-center gap-1"><span className="text-cyan-400">3.</span> Need 1 more troop than defender to conquer</span>
               <span className="text-slate-700">→</span>
-              <span className="flex items-center gap-1"><span className="text-red-400">4.</span> Push enemy back (2 AP)</span>
+              <span className="flex items-center gap-1"><span className="text-green-400">4.</span> Use Displace (1 AP) to move troops between tiles</span>
               <span className="text-slate-700">→</span>
-              <span className="flex items-center gap-1"><span className="text-purple-400">5.</span> ⚡ nodes give bonus AP</span>
+              <span className="flex items-center gap-1"><span className="text-purple-400">5.</span> Each end-turn: +1 troop on all tiles, +1 AP (max 3)</span>
               <span className="text-slate-700">→</span>
-              <span className="flex items-center gap-1"><span className="text-yellow-400">6.</span> Connect sides &amp; claim the hive!</span>
+              <span className="flex items-center gap-1"><span className="text-red-400">6.</span> Conquer the enemy&apos;s ★ capital to win!</span>
             </div>
           </div>
         </div>
@@ -1232,14 +1994,14 @@ export default function HexDuelPage() {
         )}
 
         {/* Victory modal */}
-        {winner && (
+        {effectiveWinner && (
           <VictoryModal
-            winner={winner}
-            winnerLabel={winner === "player1" ? "Player 1" : aiEnabled ? "AI" : "Player 2"}
-            winnerColor={winner === "player1" ? "#22d3ee" : "#ef4444"}
-            winnerMoves={winner === "player1" ? p1MoveCount : p2MoveCount}
-            winnerTerritory={winner === "player1" ? p1Territory : p2Territory}
-            payoutInfo={payoutLoading ? null : winner === "player1" && gameMode === "real" ? payoutResult : null}
+            winner={effectiveWinner}
+            winnerLabel={effectiveWinner === "player1" ? "Player 1" : aiEnabled ? "AI" : gameMode === "multiplayer" ? "Player 2" : "Player 2"}
+            winnerColor={effectiveWinner === "player1" ? "#22d3ee" : "#ef4444"}
+            winnerMoves={effectiveWinner === "player1" ? p1MoveCount : p2MoveCount}
+            winnerTerritory={effectiveWinner === "player1" ? p1Territory : p2Territory}
+            payoutInfo={payoutLoading ? null : effectiveWinner === "player1" && gameMode === "real" ? payoutResult : null}
             onRestart={handleRestart}
           />
         )}
