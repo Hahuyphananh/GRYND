@@ -25,11 +25,22 @@ function isEnemyTile(key: string, snap: AIStateSnapshot): boolean {
   return snap.capturedTiles[key] === snap.enemyPlayer;
 }
 
+/** Check if a tile is neutral/unowned (not owned by anyone) */
+function isNeutralTile(key: string, snap: AIStateSnapshot): boolean {
+  return snap.capturedTiles[key] === undefined;
+}
+
+function isAttackableTile(key: string, snap: AIStateSnapshot): boolean {
+  return isEnemyTile(key, snap) || isNeutralTile(key, snap);
+}
+
 function isMyTile(key: string, snap: AIStateSnapshot): boolean {
   return snap.capturedTiles[key] === snap.myPlayer;
 }
 
 function getTroops(key: string, snap: AIStateSnapshot): number {
+  // Neutral/unowned tiles have 0 troops
+  if (!snap.capturedTiles[key]) return 0;
   return snap.tileTroops[key] ?? 1;
 }
 
@@ -57,11 +68,14 @@ function scoreAttack(sourceKey: string, targetKey: string, snap: AIStateSnapshot
 
   if (maxSend <= 0) return null;
 
+  // Neutral tiles have 0 troops, so any attack with ≥1 troop conquers them
+  const isNeutral = isNeutralTile(targetKey, snap);
+
   // Determine optimal troop count to send
   // We want to send just enough to conquer + a bit extra
   const optimalCount = targetTroops + 1; // need 1 more to conquer
 
-  if (maxSend < optimalCount) {
+  if (maxSend < optimalCount && !isNeutral) {
     // Can't conquer — send all troops for damage
     // Score: damaging the enemy is valuable, especially on capitals
     let score = maxSend * 2; // damage dealt to enemy
@@ -165,7 +179,7 @@ export function decideAIAction(
 
     for (const n of neighbors) {
       const nKey = `${n.x},${n.y}`;
-      if (!isEnemyTile(nKey, snap)) continue;
+      if (!isAttackableTile(nKey, snap)) continue;
 
       const attack = scoreAttack(sourceKey, nKey, snap);
       if (attack) scoredAttacks.push(attack);

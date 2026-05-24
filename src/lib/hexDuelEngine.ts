@@ -186,7 +186,7 @@ export function useHexDuel() {
 
   // ── Helpers: adjacent enemy tiles & adjacent friendly tiles ────────
 
-  /** Tiles owned by the enemy that are adjacent to any of the current player's tiles */
+  /** Tiles that can be attacked: enemy-owned or neutral tiles adjacent to the current player's territory */
   const attackableTargets = useMemo(() => {
     if (winner) return [];
     const targets: { x: number; y: number }[] = [];
@@ -200,7 +200,8 @@ export function useHexDuel() {
       for (const n of neighbors) {
         const nKey = `${n.x},${n.y}`;
         if (visited.has(nKey)) continue;
-        if (capturedTiles[nKey] === enemy) {
+        // Allow attacking enemy tiles OR neutral (unowned) tiles
+        if (capturedTiles[nKey] === enemy || capturedTiles[nKey] === undefined) {
           visited.add(nKey);
           targets.push({ x: n.x, y: n.y });
         }
@@ -335,16 +336,18 @@ export function useHexDuel() {
       const targetOwner = capturedTiles[targetKey];
       const enemy = otherPlayer(currentTurn);
 
-      // Validate
+      // Validate: target must be enemy-owned or neutral (unowned)
       if (sourceOwner !== currentTurn) return;
-      if (targetOwner !== enemy) return;
+      if (targetOwner === currentTurn) return; // can't attack own tiles
+      if (targetOwner !== undefined && targetOwner !== enemy) return;
       if (!areAdjacent(sourceKey, targetKey)) return;
 
       const sourceTroops = tileTroops[sourceKey] ?? 1;
       if (sourceTroops < troopCount + 1) return; // leave at least 1
       if (troopCount <= 0) return;
 
-      const targetTroops = tileTroops[targetKey] ?? 1;
+      // Neutral/unowned tiles have 0 troops; enemy tiles use their actual troop count
+      const targetTroops = capturedTiles[targetKey] === undefined ? 0 : (tileTroops[targetKey] ?? 1);
 
       const [sx, sy] = sourceKey.split(",").map(Number);
       const [tx, ty] = targetKey.split(",").map(Number);
