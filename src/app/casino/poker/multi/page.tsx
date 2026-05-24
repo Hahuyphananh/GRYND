@@ -8,6 +8,7 @@ import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import { usePokerAudio } from "../../../lib/pokerAudio";
+import NavigationBar from "../../../../components/navigation-bar";
 
 type Player = {
   id: string;
@@ -1261,7 +1262,7 @@ export default function PokerPage() {
 
   if (showJoinForm) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
+      <div className="min-h-screen flex flex-col items-center justify-start bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
         <div className="absolute top-4 left-4">
           <button
             onClick={() => setShowJoinForm(false)}
@@ -1360,11 +1361,10 @@ export default function PokerPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
         <div className="absolute top-4 left-4">
-          <a href="/casino">
+          <NavigationBar currentPath="/casino" />
             <button className="w-full rounded-lg border border-[#FFFF33]/70 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/55 active:scale-95 transition mb-2">
               ← Return to Casino
             </button>
-          </a>
         </div>
 
         <div className="p-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded shadow-[0_0_24px_rgba(0,229,255,0.2)] w-96 text-center mb-4">
@@ -1475,7 +1475,7 @@ export default function PokerPage() {
 
   // main UI when game exists
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#020108] via-[#0a0a1a] to-[#050510] text-white overflow-hidden relative">
+    <div className="min-h-screen pb-36 lg:pb-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#020108] via-[#0a0a1a] to-[#050510] text-white overflow-hidden relative">
       {/* ── Portrait-mode overlay (mobile only) ── */}
       {isPortrait && (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md">
@@ -1607,19 +1607,17 @@ export default function PokerPage() {
         </div>
       )}
 
-      {/* ── Scalable table wrapper ── */}
-      <div
-        className="relative flex items-center justify-center"
-        style={{
-          transform: `scale(${tableScale})`,
-          transformOrigin: "center center",
-          width: TABLE_W,
-          height: TABLE_H,
-        }}
-      >
+   {/* ── Scalable table wrapper ── */}
+<div
+  className="relative flex items-center justify-center w-full overflow-visible"
+  style={{
+    width: "100%",
+    minHeight: "700px",
+  }}
+>
         {/* The cyberpunk poker table */}
         <div
-          className="absolute top-[40px] left-[70px] w-[760px] h-[430px] rounded-[50%] flex items-center justify-center
+          className="absolute top-[40px] left-[70px] w-[92vw] max-w-[1100px] h-[52vw] max-h-[620px] rounded-[50%] flex items-center justify-center
 bg-gradient-to-br from-[#0a0015] via-[#0d0020] to-[#05000d]
 border-[6px] border-[#ff00cc]/60
 shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60px_rgba(255,0,204,0.1)]"
@@ -2097,65 +2095,223 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
       {/* ── End of scalable wrapper ── */}
       </div>
 
-      {/* Action buttons (below the table) */}
-      {game && !game.waiting && game.stage !== "showdown" && (
-        <div className="mt-4 flex flex-wrap justify-center items-center gap-3 z-10">
-          {(() => {
-            const me = game.players.find((p) => p.id === myId);
-            const isMyTurnNow = game.players[game.currentTurn]?.id === myId;
-            const highestBetInRound = Math.max(...game.players.map((p) => p.currentBet || 0));
-            const myCurrentBet = me?.currentBet || 0;
-            const toCall = Math.max(0, highestBetInRound - myCurrentBet);
-            const canCheck = myCurrentBet >= highestBetInRound;
+     {/* ── ACTION CONTROLS ── */}
+{game && !game.waiting && game.stage !== "showdown" && (() => {
+  const me = game.players.find((p) => p.id === myId);
+  const isMyTurnNow = game.players[game.currentTurn]?.id === myId;
 
-            if (!isMyTurnNow || !me || me.hasFolded) return null;
+  const highestBetInRound = Math.max(
+    ...game.players.map((p) => p.currentBet || 0),
+  );
 
-            return (
-              <>
-                <button
-                  onClick={() => performAction("fold")}
-                  className="px-5 py-2 rounded font-bold text-sm bg-red-900/60 border border-red-500/50 text-red-300 hover:bg-red-800/80 transition shadow-[0_0_15px_rgba(255,0,0,0.3)]"
-                >
-                  Fold
-                </button>
-                {canCheck ? (
-                  <button
-                    onClick={() => performAction("check")}
-                    className="px-5 py-2 rounded font-bold text-sm bg-[#00e5ff]/20 border border-[#00e5ff]/50 text-[#00e5ff] hover:bg-[#00e5ff]/40 transition shadow-[0_0_15px_rgba(0,229,255,0.4)]"
-                  >
-                    Check
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => performAction("call")}
-                    className="px-5 py-2 rounded font-bold text-sm bg-[#00e5ff]/20 border border-[#00e5ff]/50 text-[#00e5ff] hover:bg-[#00e5ff]/40 transition shadow-[0_0_15px_rgba(0,229,255,0.4)]"
-                  >
-                    Call {toCall > 0 ? `$${toCall}` : ""}
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    const targetBet = Math.max(raiseAmount, highestBetInRound * 2);
-                    setRaiseAmount(targetBet);
-                    performAction("raise");
-                  }}
-                  className="px-5 py-2 rounded font-bold text-sm bg-[#ff00cc]/20 border border-[#ff00cc]/50 text-[#ff00cc] hover:bg-[#ff00cc]/40 transition shadow-[0_0_15px_rgba(255,0,204,0.4)]"
-                >
-                  Raise
-                </button>
-                {canUseBetShortcut && (
-                  <button
-                    onClick={() => performAction("bet20")}
-                    className="px-5 py-2 rounded font-bold text-sm bg-[#ff00cc]/10 border border-[#ff00cc]/30 text-[#ffb0ff]/70 hover:bg-[#ff00cc]/25 transition"
-                  >
-                    Bet $20
-                  </button>
-                )}
-              </>
+  const myCurrentBet = me?.currentBet || 0;
+  const toCall = Math.max(0, highestBetInRound - myCurrentBet);
+  const canCheck = myCurrentBet >= highestBetInRound;
+
+  if (!isMyTurnNow || !me || me.hasFolded) return null;
+
+  return (
+    <>
+      {/* ───────────────────────────── */}
+      {/* DESKTOP SIDE CONTROLS */}
+      {/* ───────────────────────────── */}
+      <div className="hidden lg:flex fixed right-6 top-1/2 -translate-y-1/2 z-50 flex-col gap-3">
+        
+        {/* Fold */}
+        <button
+          onClick={() => performAction("fold")}
+          className="w-40 px-5 py-3 rounded-2xl font-bold text-sm
+          bg-gradient-to-r from-red-900/80 to-red-700/70
+          border border-red-500/50
+          text-red-200
+          hover:scale-105 hover:shadow-[0_0_25px_rgba(255,0,0,0.45)]
+          transition-all duration-200"
+        >
+          ❌ Fold
+        </button>
+
+        {/* Check / Call */}
+        {canCheck ? (
+          <button
+            onClick={() => performAction("check")}
+            className="w-40 px-5 py-3 rounded-2xl font-bold text-sm
+            bg-gradient-to-r from-[#00e5ff]/30 to-cyan-400/20
+            border border-[#00e5ff]/50
+            text-[#00e5ff]
+            hover:scale-105 hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
+            transition-all duration-200"
+          >
+            ✓ Check
+          </button>
+        ) : (
+          <button
+            onClick={() => performAction("call")}
+            className="w-40 px-5 py-3 rounded-2xl font-bold text-sm
+            bg-gradient-to-r from-[#00e5ff]/30 to-cyan-400/20
+            border border-[#00e5ff]/50
+            text-[#00e5ff]
+            hover:scale-105 hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
+            transition-all duration-200"
+          >
+            📞 Call ${toCall}
+          </button>
+        )}
+
+        {/* Raise */}
+        <button
+          onClick={() => {
+            const targetBet = Math.max(
+              raiseAmount,
+              highestBetInRound * 2,
             );
-          })()}
+
+            setRaiseAmount(targetBet);
+            performAction("raise");
+          }}
+          className="w-40 px-5 py-3 rounded-2xl font-bold text-sm
+          bg-gradient-to-r from-[#ff00cc]/30 to-fuchsia-500/20
+          border border-[#ff00cc]/50
+          text-[#ff00cc]
+          hover:scale-105 hover:shadow-[0_0_25px_rgba(255,0,204,0.45)]
+          transition-all duration-200"
+        >
+          ⬆ Raise
+        </button>
+
+        {/* Quick Bet */}
+        {canUseBetShortcut && (
+          <button
+            onClick={() => performAction("bet20")}
+            className="w-40 px-5 py-3 rounded-2xl font-bold text-sm
+            bg-gradient-to-r from-yellow-500/20 to-amber-400/10
+            border border-yellow-400/40
+            text-yellow-200
+            hover:scale-105 hover:shadow-[0_0_25px_rgba(255,215,0,0.35)]
+            transition-all duration-200"
+          >
+            💰 Bet $20
+          </button>
+        )}
+      </div>
+
+      {/* ───────────────────────────── */}
+      {/* MOBILE ACTION DOCK */}
+      {/* ───────────────────────────── */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-[80] px-2 pb-[max(env(safe-area-inset-bottom),8px)]">
+        
+        <div
+          className="
+            rounded-t-3xl
+            border border-[#ff00cc]/20
+            bg-[#050510]/95
+            backdrop-blur-xl
+            shadow-[0_-10px_40px_rgba(0,0,0,0.65)]
+            p-3
+          "
+        >
+          {/* Turn Header */}
+          <div className="flex items-center justify-between mb-3 px-1">
+            <div className="text-xs uppercase tracking-widest text-[#b0b0ff]/60">
+              Your Turn
+            </div>
+
+            <div className="text-sm font-bold text-[#00e5ff]">
+              {canCheck ? "Check Available" : `Call $${toCall}`}
+            </div>
+          </div>
+
+          {/* Main Actions */}
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={() => performAction("fold")}
+              className="
+                h-14 rounded-2xl
+                bg-red-900/60
+                border border-red-500/40
+                text-red-200
+                font-bold text-sm
+                active:scale-95 transition
+              "
+            >
+              Fold
+            </button>
+
+            {canCheck ? (
+              <button
+                onClick={() => performAction("check")}
+                className="
+                  h-14 rounded-2xl
+                  bg-[#00e5ff]/20
+                  border border-[#00e5ff]/40
+                  text-[#00e5ff]
+                  font-bold text-sm
+                  active:scale-95 transition
+                "
+              >
+                Check
+              </button>
+            ) : (
+              <button
+                onClick={() => performAction("call")}
+                className="
+                  h-14 rounded-2xl
+                  bg-[#00e5ff]/20
+                  border border-[#00e5ff]/40
+                  text-[#00e5ff]
+                  font-bold text-sm
+                  active:scale-95 transition
+                "
+              >
+                Call
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                const targetBet = Math.max(
+                  raiseAmount,
+                  highestBetInRound * 2,
+                );
+
+                setRaiseAmount(targetBet);
+                performAction("raise");
+              }}
+              className="
+                h-14 rounded-2xl
+                bg-[#ff00cc]/20
+                border border-[#ff00cc]/40
+                text-[#ff00cc]
+                font-bold text-sm
+                active:scale-95 transition
+              "
+            >
+              Raise
+            </button>
+          </div>
+
+          {/* Quick Action Row */}
+          {canUseBetShortcut && (
+            <div className="mt-2">
+              <button
+                onClick={() => performAction("bet20")}
+                className="
+                  w-full h-11 rounded-xl
+                  bg-yellow-500/15
+                  border border-yellow-400/30
+                  text-yellow-200
+                  font-semibold text-sm
+                  active:scale-95 transition
+                "
+              >
+                💰 Quick Bet $20
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
+    </>
+  );
+})()}
 
       {/* Multiplayer Waiting Panel — bottom-left, public-only */}
       {!isPrivate && (
