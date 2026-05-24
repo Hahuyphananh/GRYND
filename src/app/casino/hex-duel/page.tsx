@@ -1453,21 +1453,36 @@ export default function HexDuelPage() {
     // ── Attack action mode ────────────────────────────────────────────
     if (selectedAction === "attack") {
       if (pendingActionPhase === null || pendingActionPhase === "selectTarget") {
-        // Click on an enemy tile (must be attackable)
+        // Click on an attackable tile (enemy or neutral)
         if (attackableTargets.some((t) => t.x === x && t.y === y)) {
           setPendingTarget({ x, y });
           setPendingActionPhase("selectSource");
           setPendingTroopCount(1);
         }
       } else if (pendingActionPhase === "selectSource") {
-        // Click on a friendly source adjacent to the target
-        const sources = getAttackSources(`${pendingTarget!.x},${pendingTarget!.y}`);
-        if (sources.some((s) => s.x === x && s.y === y)) {
-          setPendingSource({ x, y });
-          setPendingActionPhase("inputTroops");
-          // Calculate max troops
-          const sourceTroops = tileTroops[key] ?? 1;
-          setPendingTroopCount(Math.min(sourceTroops - 1, 1));
+        // Check if clicking a different attackable target -> switch target
+        if (attackableTargets.some((t) => t.x === x && t.y === y)) {
+          const isNewTarget = !pendingTarget || pendingTarget.x !== x || pendingTarget.y !== y;
+          if (isNewTarget) {
+            // Switch to attacking this new target instead
+            setPendingTarget({ x, y });
+            setPendingTroopCount(1);
+          } else {
+            // Clicking the same target again -> deselect, go back to selectTarget
+            setPendingTarget(null);
+            setPendingActionPhase("selectTarget");
+            setPendingTroopCount(1);
+          }
+        } else {
+          // Click on a friendly source adjacent to the target
+          const sources = getAttackSources(`${pendingTarget!.x},${pendingTarget!.y}`);
+          if (sources.some((s) => s.x === x && s.y === y)) {
+            setPendingSource({ x, y });
+            setPendingActionPhase("inputTroops");
+            // Calculate max troops
+            const sourceTroops = tileTroops[key] ?? 1;
+            setPendingTroopCount(Math.min(sourceTroops - 1, 1));
+          }
         }
       }
       return;
