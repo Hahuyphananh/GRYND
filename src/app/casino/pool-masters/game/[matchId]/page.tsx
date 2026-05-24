@@ -7,7 +7,7 @@ import { useSocket } from "../../../../../context/SocketProvider";
 import { BALL_LAYOUT, MAX_PULL, TABLE_H, TABLE_W } from "../../../../../lib/pool/constants";
 import { applyShotPower, isMoving, tickPhysics } from "../../../../../lib/pool/physics";
 import { evaluateRules } from "../../../../../lib/pool/rules";
-import { drawAimGuide, drawBalls, drawTable } from "../../../../../lib/pool/render";
+import { drawAimGuide, drawBalls, drawBankPreview, drawShotPreview, drawTable } from "../../../../../lib/pool/render";
 import { isNewerVersion, pushPoolState } from "../../../../../lib/pool/multiplayer";
 import { Ball, PlayerTurn, ShotLifecycle, ShotMeta, Team } from "../../../../../lib/pool/types";
 import { useUser } from "@clerk/nextjs";
@@ -25,12 +25,27 @@ type PoolLivePayload = {
   winner?: PlayerTurn | null;
   aim?: number;
   pull?: number;
+  spinX?: number;
+  spinY?: number;
   version: number;
   settled?: boolean;
   foul?: boolean;
   foulMessage?: string | null;
   lifecycle?: ShotLifecycle;
   shotId?: string | null;
+  pocketedNumbers?: number[];
+};
+
+type ShotEntry = {
+  turnNumber: number;
+  playerName: string;
+  seat: PlayerTurn;
+  pocketedNumbers: number[];
+  foul: boolean;
+  foulMessage: string | null;
+  ballInHand: boolean;
+  winner: boolean;
+  timestamp: number;
 };
 
 function setupBalls(): Ball[] {
@@ -133,8 +148,23 @@ export default function Page() {
   const activeShotIdRef = useRef<string | null>(null);
   const remoteShotMetaInitializedRef = useRef(false);
   const userIdRef = useRef<string | undefined>(undefined);
+  const myNameRef = useRef("Player 1");
+  const oppNameRef = useRef("Player 2");
   const syncVersionRef = useRef(0);
+  const settleInterpRef = useRef<{ to: Ball[]; startTime: number } | null>(null);
+  const spinRef = useRef({ x: 0, y: 0 });
+  const notificationIdRef = useRef(0);
+  const mountedRef = useRef(true);
+  const notificationTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const turnNumberRef = useRef(0);
   const [syncVersion, setSyncVersion] = useState(0);
+  const [spin, setSpin] = useState({ x: 0, y: 0 });
+  const [notifications, setNotifications] = useState<
+    { id: number; message: string; type: "pocket" | "foul" | "win" }[]
+  >([]);
+  const [shotHistory, setShotHistory] = useState<ShotEntry[]>([]);
+  const [rematching, setRematching] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Keep userIdRef in sync so the socket handler never captures a stale user
   useEffect(() => {
@@ -146,6 +176,45 @@ export default function Page() {
   useEffect(() => {
     syncVersionRef.current = syncVersion;
   }, [syncVersion]);
+
+  useEffect(() => {
+    spinRef.current = spin;
+  }, [spin]);
+
+  // ── Auto-dismiss notifications individually after 3s ──
+  useEffect(() => {
+    const timers = notificationTimersRef.current;
+    notifications.forEach((n) => {
+      if (!timers.has(n.id)) {
+        timers.set(
+          n.id,
+          setTimeout(() => {
+            if (!mountedRef.current) return;
+            setNotifications((prev) => prev.filter((p) => p.id !== n.id));
+            timers.delete(n.id);
+          }, 3000),
+        );
+      }
+    });
+    // Clean up timers for notifications that no longer exist
+    const activeIds = new Set(notifications.map((n) => n.id));
+    timers.forEach((timer, id) => {
+      if (!activeIds.has(id)) {
+        clearTimeout(timer);
+        timers.delete(id);
+      }
+    });
+  }, [notifications]);
+
+  // ── Cleanup on unmount ──
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      notificationTimersRef.current.forEach((t) => clearTimeout(t));
+      notificationTimersRef.current.clear();
+    };
+  }, []);
 
   const [balls, setBalls] = useState(setupBalls());
   const [activeMatchId, setActiveMatchId] = useState(matchId);
@@ -168,7 +237,18 @@ export default function Page() {
     pull: number;
     seat: PlayerTurn;
     at: number;
+    spinX?: number;
+    spinY?: number;
   } | null>(null);
+
+  // Keep name refs in sync so websocket/event handlers never capture stale names
+  // Must be after myName/oppName state declarations
+  useEffect(() => {
+    myNameRef.current = myName;
+  }, [myName]);
+  useEffect(() => {
+    oppNameRef.current = oppName;
+  }, [oppName]);
 
   useEffect(() => {
     ballsRef.current = balls;
@@ -183,23 +263,73 @@ export default function Page() {
   }, [matchId]);
 
  useEffect(() => {
-   const id = setInterval(() => {
-     setBalls((prev) => {
-       // Run physics for BOTH local and remote shots
-       if (!shotLock.current) return prev;
-       if (!localShotInProgressRef.current && !remoteShotInProgressRef.current) return prev;
+   let rafId: number;
+   let lastTime = performance.now();
+   let accumulator = 0;
+   const FIXED_DT = 16.667; // ms  → ~60 Hz physics, consistent across all displays
+   const MAX_TICKS = 5;      // prevent spiral-of-death on long background pauses
 
-       if (!isMoving(prev)) return prev;
+   const loop = () => {
+     const now = performance.now();
+     const frameDt = Math.min(100, now - lastTime);
+     lastTime = now;
 
-       const next = prev.map((b) => ({ ...b }));
-       tickPhysics(next, shotMeta.current);
-       lifecycleRef.current = "ROLLING";
+     const interp = settleInterpRef.current;
 
-       return next;
-     });
-   }, 16);
+     if (interp) {
+       // ── SETTLED interpolation: smoothly lerp toward authoritative positions ──
+       setBalls((prev) => {
+         const elapsed = performance.now() - interp.startTime;
+         const duration = 120; // ms
+         const t = Math.min(1, elapsed / duration);
+         // ease-out cubic so the drift-in feels natural
+         const eased = 1 - Math.pow(1 - t, 3);
 
-   return () => clearInterval(id);
+         if (t >= 1) {
+           settleInterpRef.current = null;
+           return interp.to;
+         }
+
+         const next = prev.map((b, i) => {
+           const target = interp.to[i];
+           if (!target) return b;
+           // pocketed / animating balls just adopt the target state
+           if (target.pocketed || target.animatingPocket) return { ...target };
+           return {
+             ...b,
+             x: b.x + (target.x - b.x) * eased,
+             y: b.y + (target.y - b.y) * eased,
+             vx: 0,
+             vy: 0,
+           };
+         });
+         return next;
+       });
+     } else {
+       // ── Fixed-timestep physics ──
+       accumulator += frameDt;
+       let ticks = 0;
+       while (accumulator >= FIXED_DT && ticks < MAX_TICKS) {
+         setBalls((prev) => {
+           if (!shotLock.current) return prev;
+           if (!localShotInProgressRef.current && !remoteShotInProgressRef.current) return prev;
+           if (!isMoving(prev)) return prev;
+           const next = prev.map((b) => ({ ...b }));
+           tickPhysics(next, shotMeta.current);
+           return next;
+         });
+         accumulator -= FIXED_DT;
+         ticks++;
+       }
+       if (ticks > 0) {
+         lifecycleRef.current = "ROLLING";
+       }
+     }
+
+     rafId = requestAnimationFrame(loop);
+   };
+   rafId = requestAnimationFrame(loop);
+   return () => cancelAnimationFrame(rafId);
  }, []);
 
   const isMyTurn = turn === owner;
@@ -208,8 +338,32 @@ const canShoot =
   started &&
   !winner &&
   !isMoving(balls) &&
+  settleInterpRef.current === null &&
   (aiMode ? true : isMyTurn);
   const opponentSeat: PlayerTurn = owner === 1 ? 2 : 1;;
+
+  const handleRematch = async () => {
+    setRematching(true);
+    try {
+      if (aiMode) {
+        const res = await fetch("/api/pool/create-ai-match", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wager: 10 }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          router.replace(
+            `/casino/pool-masters/game/${data.matchId}?ai=1&turn=${data.firstTurnSeat}`,
+          );
+        }
+      } else {
+        router.push("/casino/pool-masters");
+      }
+    } catch {
+      if (mountedRef.current) setRematching(false);
+    }
+  };
 
   const emitLiveState = (payload: Omit<PoolLivePayload, "matchId" | "version">) => {
     if (!socket || aiMode) return;
@@ -234,6 +388,8 @@ const canShoot =
     const cue = balls.find((b) => b.number === 0);
     if (cue && !cue.pocketed && canShoot) {
       drawAimGuide(x, cue, aim, pull);
+      drawShotPreview(x, cue, aim, balls);
+      drawBankPreview(x, cue, aim, balls, true);
     } else if (
       cue &&
       !cue.pocketed &&
@@ -242,6 +398,7 @@ const canShoot =
       Date.now() - remoteAim.at < 2500
     ) {
       drawAimGuide(x, cue, remoteAim.angle, remoteAim.pull);
+      drawBankPreview(x, cue, remoteAim.angle, balls, false);
     }
     drawBalls(x, balls);
   }, [balls, canShoot, aim, pull, owner, turn, remoteAim]);
@@ -262,6 +419,30 @@ const canShoot =
       pocketed: [...new Set(shotMeta.current.pocketedNumbers)],
       scratch: shotMeta.current.cueScratch,
     });
+    // ── Generate shot notifications ──
+    const pocketedSet = [...new Set(shotMeta.current.pocketedNumbers)];
+    if (pocketedSet.length > 0) {
+      const idBase = notificationIdRef.current++;
+      setNotifications((prev) => [
+        ...prev,
+        ...pocketedSet.map((n, i) => ({
+          id: idBase + i,
+          message: n === 8 ? "8-ball pocketed!" : `Pocketed the ${n} ball!`,
+          type: "pocket" as const,
+        })),
+      ]);
+    }
+    if (shotMeta.current.cueScratch) {
+      setNotifications((prev) => [
+        ...prev,
+        {
+          id: notificationIdRef.current++,
+          message: "Cue ball scratched!",
+          type: "foul" as const,
+        },
+      ]);
+    }
+
     if (res.foul && res.foulMessage) {
       setStatus(res.foulMessage);
       setLastFoul(res.foulMessage);
@@ -271,10 +452,38 @@ const canShoot =
     }
     setTurn(res.nextTurn);
     setBallInHand(res.ballInHand);
+    if (res.winner && !winner) {
+      setNotifications((prev) => [
+        ...prev,
+        {
+          id: notificationIdRef.current++,
+          message: res.winner === owner ? "You win! 🏆" : `${oppName} wins!`,
+          type: "win" as const,
+        },
+      ]);
+    }
     setWinner(res.winner);
     setMyTeam(res.assignedMyTeam);
     setOppTeam(res.assignedOppTeam);
     setOpenTable(!(res.assignedMyTeam && res.assignedOppTeam));
+
+    // ── Push shot history entry ──
+    turnNumberRef.current += 1;
+    const shotPlayerName = owner === 1 ? myName : oppName;
+    setShotHistory((prev) => [
+      {
+        turnNumber: turnNumberRef.current,
+        playerName: shotPlayerName,
+        seat: owner,
+        pocketedNumbers: pocketedSet,
+        foul: res.foul,
+        foulMessage: res.foulMessage,
+        ballInHand: res.ballInHand,
+        winner: !!res.winner,
+        timestamp: Date.now(),
+      },
+      ...prev,
+    ]);
     const syncedBalls = res.ballInHand
       ? balls.map((b) =>
           b.number === 0
@@ -310,6 +519,7 @@ const canShoot =
       foulMessage: res.foulMessage,
       lifecycle: "SETTLED",
       shotId,
+      pocketedNumbers: pocketedSet,
     });
     void pushPoolState(
       activeMatchId,
@@ -328,6 +538,7 @@ const canShoot =
         lifecycle: "SETTLED",
         shotId,
         settled: true,
+        pocketedNumbers: pocketedSet,
       },
       aiMode
     );
@@ -347,6 +558,7 @@ const canShoot =
   return;
 
 if (!aiMode && turn !== owner) return;
+    settleInterpRef.current = null; // cancel any in-flight SETTLED interpolation
     shotLock.current = true;
     localShotInProgressRef.current = true;
     remoteShotInProgressRef.current = false;
@@ -360,9 +572,18 @@ if (!aiMode && turn !== owner) return;
       cueScratch: false,
     };
     const speed = applyShotPower(p);
+    const currentSpin = spinRef.current;
     setBalls((prev) => {
       const next = prev.map((b) =>
-        b.number === 0 ? { ...b, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed } : b
+        b.number === 0
+          ? {
+              ...b,
+              vx: Math.cos(a) * speed,
+              vy: Math.sin(a) * speed,
+              spinX: currentSpin.x,
+              spinY: currentSpin.y,
+            }
+          : b
       );
       const version = Date.now();
       emitLiveState({
@@ -371,6 +592,8 @@ if (!aiMode && turn !== owner) return;
         turn,
         aim: a,
         pull: p,
+        spinX: currentSpin.x,
+        spinY: currentSpin.y,
         settled: false,
         lifecycle: "SHOOTING",
         shotId,
@@ -402,7 +625,7 @@ if (!aiMode && turn !== owner) return;
     if (!isMoving(balls)) return;
     const now = Date.now();
     const shotId = activeShotIdRef.current ?? undefined;
-    if (!aiMode && socket && now - liveEmitAtRef.current >= 100) {
+    if (!aiMode && socket && now - liveEmitAtRef.current >= 50) {
       liveEmitAtRef.current = now;
       emitLiveState({
         sourceSeat: owner,
@@ -461,6 +684,8 @@ if (!aiMode && turn !== owner) return;
         turn,
         aim: Math.atan2(p.y - cue.y, p.x - cue.x),
         pull: nextPull,
+        spinX: spin.x,
+        spinY: spin.y,
         settled: false,
         lifecycle: "SHOOTING",
         shotId: activeShotIdRef.current ?? undefined,
@@ -500,6 +725,8 @@ if (!aiMode && turn !== owner) return;
         if (payload.shotId) {
           activeShotIdRef.current = payload.shotId;
         }
+        // A new remote shot cancels any in-flight SETTLED interpolation
+        settleInterpRef.current = null;
         // Reset shotMeta for remote shot - we track ball movement but don't have
         // first-contact/rail info from remote, so we let physics run naturally
         if (payload.lifecycle === "SHOOTING" && !remoteShotMetaInitializedRef.current) {
@@ -515,13 +742,32 @@ if (!aiMode && turn !== owner) return;
 
      const isSelf = payload.userId === userIdRef.current;
 
-// Accept opponent/spectator ball updates only if the version is newer.
-// Prevents a delayed ROLLING packet from overwriting a SETTLED position.
-// Uses syncVersionRef (not state) to avoid re-registering the socket listener.
-if (payload.balls && !isSelf && (!payload.version || payload.version > syncVersionRef.current)) {
-  ballsRef.current = payload.balls;
+// Only accept ball updates on SHOOTING (seed physics with velocities) or SETTLED
+// (authoritative final).  During ROLLING we let the local physics simulation run
+// freely so the opponent sees perfectly smooth motion instead of 100 ms snap-jumps.
+// On SETTLED we interpolate from current positions to the authoritative final state
+// over ~120 ms instead of snapping — this eliminates the end-of-shot visual pop.
+const shouldAcceptBalls = remoteSettled || payload.lifecycle === "SHOOTING";
+if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payload.version > syncVersionRef.current)) {
   if (payload.version) setSyncVersion(payload.version);
-  setBalls(payload.balls);
+
+  if (remoteSettled) {
+    // Smooth interpolation toward the authoritative settled positions
+    settleInterpRef.current = {
+      to: payload.balls.map((b) => ({ ...b })),
+      startTime: performance.now(),
+    };
+  } else {
+    // SHOOTING — seed local physics with remote velocities & spin for s-w-e-r-v-e
+    const remoteBalls = payload.balls.map((b) => {
+      if (b.number === 0 && (payload.spinX !== undefined || payload.spinY !== undefined)) {
+        return { ...b, spinX: payload.spinX ?? 0, spinY: payload.spinY ?? 0 };
+      }
+      return b;
+    });
+    ballsRef.current = remoteBalls;
+    setBalls(remoteBalls);
+  }
 }
       if (typeof payload.turn === "number") {
   setTurn(payload.turn);
@@ -540,6 +786,8 @@ if (payload.balls && !isSelf && (!payload.version || payload.version > syncVersi
           pull: payload.pull ?? 0,
           seat: payload.sourceSeat,
           at: Date.now(),
+          spinX: payload.spinX,
+          spinY: payload.spinY,
         });
       }
       if (payload.settled || payload.lifecycle === "SETTLED") {
@@ -553,6 +801,41 @@ if (payload.balls && !isSelf && (!payload.version || payload.version > syncVersi
         setLastFoul(payload.foul ? (payload.foulMessage ?? "Foul. Ball in hand.") : null);
         if (payload.foulMessage) setStatus(payload.foulMessage);
         else setStatus("Shot complete.");
+        // Opponent win notification
+        if (payload.winner && payload.winner !== ownerRef.current) {
+          setNotifications((prev) => {
+            const alreadyExists = prev.some(
+              (n) => n.type === "win" && n.message.includes("wins"),
+            );
+            if (alreadyExists) return prev;
+            return [
+              ...prev,
+              {
+                id: notificationIdRef.current++,
+                message: `${oppNameRef.current} wins!`,
+                type: "win" as const,
+              },
+            ];
+          });
+        }
+
+        // ── Push remote shot history entry ──
+        turnNumberRef.current += 1;
+        const remotePlayerName = payload.sourceSeat === ownerRef.current ? myNameRef.current : oppNameRef.current;
+        setShotHistory((prev) => [
+          {
+            turnNumber: turnNumberRef.current,
+            playerName: remotePlayerName,
+            seat: payload.sourceSeat,
+            pocketedNumbers: payload.pocketedNumbers ?? [],
+            foul: payload.foul ?? false,
+            foulMessage: payload.foulMessage ?? null,
+            ballInHand: payload.ballInHand ?? false,
+            winner: !!payload.winner,
+            timestamp: Date.now(),
+          },
+          ...prev,
+        ]);
       }
     };
 
@@ -617,7 +900,12 @@ if (payload.balls && !isSelf && (!payload.version || payload.version > syncVersi
         isNewerVersion(gs.version, syncVersion)
       ) {
         setSyncVersion(gs.version);
-        if (gs.balls) setBalls(gs.balls);
+        if (gs.balls) {
+          settleInterpRef.current = {
+            to: gs.balls.map((b: Ball) => ({ ...b })),
+            startTime: performance.now(),
+          };
+        }
         if (gs.turn) setTurn(gs.turn);
         const remoteSeat = gs.perspectiveSeat;
         const shouldSwapTeams = remoteSeat && data.viewerSeat && remoteSeat !== data.viewerSeat;
@@ -628,6 +916,38 @@ if (payload.balls && !isSelf && (!payload.version || payload.version > syncVersi
         setWinner(gs.winner ?? null);
         setLastFoul(gs.foul ? (gs.foulMessage ?? "Foul. Ball in hand.") : null);
         if (gs.foulMessage) setStatus(gs.foulMessage);
+
+        // ── Push polling shot history entry for remote settled shots ──
+        const pollingSourceSeat = gs.perspectiveSeat;
+        if (pollingSourceSeat && pollingSourceSeat !== owner) {
+          turnNumberRef.current += 1;
+          const pollTurn = turnNumberRef.current;
+          const pollingPlayerName = pollingSourceSeat === owner ? myNameRef.current : oppNameRef.current;
+          // Check for duplicates before pushing (websocket may have already logged this shot)
+          const alreadyLogged = shotHistory.some(
+            (e) =>
+              e.turnNumber === pollTurn ||
+              (e.playerName === pollingPlayerName && Math.abs(e.timestamp - Date.now()) < 5000),
+          );
+          if (alreadyLogged) {
+            turnNumberRef.current -= 1; // revert increment — already logged
+          } else {
+            setShotHistory((prev) => [
+              {
+                turnNumber: pollTurn,
+                playerName: pollingPlayerName,
+                seat: pollingSourceSeat,
+                pocketedNumbers: gs.pocketedNumbers ?? [],
+                foul: gs.foul ?? false,
+                foulMessage: gs.foulMessage ?? null,
+                ballInHand: gs.ballInHand ?? false,
+                winner: !!gs.winner,
+                timestamp: Date.now(),
+              },
+              ...prev,
+            ]);
+          }
+        }
       }
     };
 
@@ -657,6 +977,25 @@ return () => clearInterval(id);
   return (
     <div className="min-h-screen overflow-x-clip bg-[#202124] bg-[radial-gradient(circle_at_center,#353535_0,#1f1f1f_55%,#101010_100%)] p-2 text-white sm:p-4">
       <NavigationBar currentPath="/casino" />
+
+      {/* ── Shot notification toasts ── */}
+      <div className="pointer-events-none fixed left-1/2 top-20 z-50 flex -translate-x-1/2 flex-col items-center gap-2">
+        {notifications.map((n) => (
+          <div
+            key={n.id}
+            className={`animate-slide-down rounded-full px-5 py-2 text-sm font-bold shadow-2xl backdrop-blur-md ${
+              n.type === "pocket"
+                ? "bg-emerald-600/90 text-white"
+                : n.type === "foul"
+                  ? "bg-red-600/90 text-white"
+                  : "bg-yellow-500/90 text-black"
+            }`}
+          >
+            {n.message}
+          </div>
+        ))}
+      </div>
+
       <div className="mx-auto mt-3 max-w-7xl rounded-2xl border border-black/70 bg-black/45 p-3 shadow-[0_20px_70px_rgba(0,0,0,.65)] sm:mt-6 sm:p-4">
         <div className="mb-2 text-center text-lg font-black text-yellow-300 drop-shadow sm:text-2xl">
           {started
@@ -684,11 +1023,190 @@ return () => clearInterval(id);
           </div>
         </div>
         {winner && (
-          <div className="my-2 rounded bg-fuchsia-900/70 p-2 font-bold">
-            Winner: {winner === owner ? myName : oppName}
+          <div className="my-2 flex flex-col items-center gap-3">
+            <div className="w-full rounded bg-fuchsia-900/70 p-2 text-center font-bold">
+              Winner: {winner === owner ? myName : oppName}
+            </div>
+            <button
+              onClick={handleRematch}
+              disabled={rematching}
+              className="rounded-xl bg-gradient-to-r from-fuchsia-600 to-purple-600 px-8 py-3 font-extrabold text-white shadow-lg transition-all hover:scale-105 hover:from-fuchsia-500 hover:to-purple-500 disabled:opacity-60"
+            >
+              {rematching ? "Creating..." : aiMode ? "Play Again" : "Find New Match"}
+            </button>
           </div>
         )}
+
+        {/* ── Shot history toggle & panel ── */}
+        <div className="mt-3">
+          <button
+            onClick={() => setShowHistory((p) => !p)}
+            className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/70 transition-colors hover:bg-white/10"
+          >
+            <span>📋 Shot History ({shotHistory.length})</span>
+            <span className="text-xs">{showHistory ? "▲ Hide" : "▼ Show"}</span>
+          </button>
+          {showHistory && (
+            <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs backdrop-blur-sm">
+              {shotHistory.length === 0 ? (
+                <p className="text-center text-white/30 italic">No shots yet.</p>
+              ) : (
+                <div className="flex flex-col-reverse gap-2">
+                  {shotHistory.map((entry, i) => {
+                    const pocketedStr =
+                      entry.pocketedNumbers.length > 0
+                        ? ` pocketed [${entry.pocketedNumbers.join(", ")}]`
+                        : "";
+                    const foulStr = entry.foul
+                      ? ` — FOUL${entry.foulMessage ? `: ${entry.foulMessage.replace(/^Foul: /, "")}` : ""}` + (entry.ballInHand ? ", ball in hand" : "")
+                      : "";
+                    const winStr = entry.winner ? " 🏆" : "";
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-md px-3 py-2 leading-relaxed ${
+                          entry.foul
+                            ? "border border-red-500/20 bg-red-900/25"
+                            : "border border-white/5 bg-white/5"
+                        }`}
+                      >
+                        <span className="font-bold text-white/80">
+                          #{entry.turnNumber}{" "}
+                        </span>
+                        <span
+                          className={`font-semibold ${entry.seat === owner ? "text-cyan-300" : "text-orange-300"}`}
+                        >
+                          {entry.playerName}
+                        </span>
+                        {pocketedStr && (
+                          <span className="text-emerald-300">{pocketedStr}</span>
+                        )}
+                        {foulStr && (
+                          <span className="text-red-300">{foulStr}</span>
+                        )}
+                        {winStr && (
+                          <span className="text-yellow-300">{winStr}</span>
+                        )}
+                        {!pocketedStr && !foulStr && !winStr && (
+                          <span className="text-white/40"> missed</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="relative mt-4">
+          {/* ── Shot power meter ── */}
+          {canShoot && pull > 0 && (
+            <div className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 flex-col items-center gap-1">
+              <div className="h-40 w-4 overflow-hidden rounded-full border border-white/20 bg-black/50">
+                <div
+                  className="w-full transition-all duration-75"
+                  style={{
+                    height: `${Math.min(100, (pull / MAX_PULL) * 100)}%`,
+                    marginTop: `${100 - Math.min(100, (pull / MAX_PULL) * 100)}%`,
+                    background:
+                      pull / MAX_PULL < 0.33
+                        ? "linear-gradient(to top, #22c55e, #4ade80)"
+                        : pull / MAX_PULL < 0.66
+                          ? "linear-gradient(to top, #eab308, #facc15)"
+                          : "linear-gradient(to top, #ef4444, #f87171)",
+                    borderRadius: "9999px",
+                  }}
+                />
+              </div>
+              <span className="text-xs font-bold text-white/80">
+                {Math.round((pull / MAX_PULL) * 100)}%
+              </span>
+            </div>
+          )}
+
+          {/* ── Spin control ── */}
+          {canShoot && turn === owner && (
+            <div
+              className="absolute bottom-3 left-3 z-10 select-none rounded-full border-2 border-white/30 bg-black/55 p-1 shadow-lg backdrop-blur-sm"
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const r = rect.width / 2 - 4;
+                const sx = Math.max(-1, Math.min(1, (e.clientX - cx) / r));
+                const sy = Math.max(-1, Math.min(1, (e.clientY - cy) / r));
+                setSpin({ x: sx, y: -sy }); // negate y: down = draw = negative
+              }}
+              onMouseMove={(e) => {
+                if (e.buttons !== 1) return;
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const r = rect.width / 2 - 4;
+                const sx = Math.max(-1, Math.min(1, (e.clientX - cx) / r));
+                const sy = Math.max(-1, Math.min(1, (e.clientY - cy) / r));
+                setSpin({ x: sx, y: -sy });
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                const t = e.touches[0];
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const r = rect.width / 2 - 4;
+                const sx = Math.max(-1, Math.min(1, (t.clientX - cx) / r));
+                const sy = Math.max(-1, Math.min(1, (t.clientY - cy) / r));
+                setSpin({ x: sx, y: -sy });
+              }}
+              onTouchMove={(e) => {
+                e.stopPropagation();
+                const t = e.touches[0];
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const r = rect.width / 2 - 4;
+                const sx = Math.max(-1, Math.min(1, (t.clientX - cx) / r));
+                const sy = Math.max(-1, Math.min(1, (t.clientY - cy) / r));
+                setSpin({ x: sx, y: -sy });
+              }}
+            >
+              {/* Outer circle with tick marks */}
+              <svg width={52} height={52} viewBox="0 0 52 52">
+                <circle cx={26} cy={26} r={24} fill="#1a472a" stroke="rgba(255,255,255,0.2)" strokeWidth={1} />
+                {/* Crosshair lines */}
+                <line x1={26} y1={4} x2={26} y2={48} stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} />
+                <line x1={4} y1={26} x2={48} y2={26} stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} />
+                {/* Labels */}
+                <text x={26} y={10} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={5} fontFamily="Arial">
+                  FOLLOW
+                </text>
+                <text x={26} y={49} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={5} fontFamily="Arial">
+                  DRAW
+                </text>
+                <text x={7} y={27.5} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={5} fontFamily="Arial">
+                  L
+                </text>
+                <text x={44} y={27.5} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={5} fontFamily="Arial">
+                  R
+                </text>
+                {/* Spin dot */}
+                <circle
+                  cx={26 + spin.x * 20}
+                  cy={26 - spin.y * 20}
+                  r={5}
+                  fill="#f5f5f5"
+                  stroke="rgba(0,0,0,0.6)"
+                  strokeWidth={1}
+                />
+                {/* Center dot */}
+                <circle cx={26} cy={26} r={1.5} fill="rgba(255,255,255,0.2)" />
+              </svg>
+            </div>
+          )}
+
           <canvas
             ref={canvasRef}
             width={TABLE_W}

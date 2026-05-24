@@ -59,11 +59,22 @@ function MainComponent() {
   const [cooldownTimeLeft, setCooldownTimeLeft] = useState("");
   const [rewardPopupVisible, setRewardPopupVisible] = useState(false);
   const [streakData, setStreakData] = useState({
+    currentDay: 0,
     claimedDays: [], // array of ISO dates strings
     currentStreak: 0,
     lastClaimDate: null,
+    maxDay: 14,
+    dailyStreakCurrent: 0,
+    dailyStreakBest: 0,
+    weeklyStreakCurrent: 0,
+    weeklyStreakBest: 0,
+    streakTitle: null,
+    nextMilestone: null, // { days: number, title: string }
   });
 
+  const [milestoneBonus, setMilestoneBonus] = useState(0);
+  const [milestoneTitle, setMilestoneTitle] = useState(null);
+  const [showExpandedBadge, setShowExpandedBadge] = useState(false);
   const [claimedDay, setClaimedDay] = useState(null);
   const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
   const { t } = useTranslation();
@@ -184,7 +195,17 @@ function MainComponent() {
         claimedDays: data.claimedDays || [],
         lastClaimDate: data.lastClaimedDate,
         maxDay: data.maxDay || 14,
+        dailyStreakCurrent: data.dailyStreakCurrent ?? 0,
+        dailyStreakBest: data.dailyStreakBest ?? 0,
+        weeklyStreakCurrent: data.weeklyStreakCurrent ?? 0,
+        weeklyStreakBest: data.weeklyStreakBest ?? 0,
+        streakTitle: data.streakTitle || null,
+        nextMilestone: data.nextMilestone || null,
       });
+
+      // Reset one-shot milestone bonus/title (these only come from claim response)
+      setMilestoneBonus(0);
+      setMilestoneTitle(null);
 
       if (data.lastClaimedDate) {
         const lastClaimed = new Date(data.lastClaimedDate);
@@ -232,9 +253,25 @@ function MainComponent() {
         return;
       }
 
-      setUserTokens((prev) => prev + data.reward);
+      setUserTokens((prev) => prev + data.reward + (data.milestoneBonus || 0));
 
       setClaimedDay(data.claimedDay);
+
+      // Update streak display with real leaderboard values & next reward day
+      setStreakData((prev) => ({
+        ...prev,
+        currentDay: data.nextDay ?? prev.currentDay,
+        dailyStreakCurrent: data.dailyStreakCurrent ?? 0,
+        dailyStreakBest: data.dailyStreakBest ?? 0,
+        weeklyStreakCurrent: data.weeklyStreakCurrent ?? 0,
+        weeklyStreakBest: data.weeklyStreakBest ?? 0,
+        streakTitle: data.streakTitle || null,
+        nextMilestone: data.nextMilestone || null,
+      }));
+
+      // Capture milestone bonus info for popup display
+      setMilestoneBonus(data.milestoneBonus || 0);
+      setMilestoneTitle(data.milestoneTitle || null);
 
       setRewardPopupVisible(true);
 
@@ -710,6 +747,61 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           </motion.div>
         )}
       </AnimatePresence>
+      {isSignedIn && (
+        <div className="fixed left-4 top-20 z-50">
+          <button
+            onClick={() => setShowExpandedBadge(!showExpandedBadge)}
+            className="group relative flex items-center gap-2 rounded-full bg-black/70 border border-amber-400/40 px-3 py-2 text-sm text-amber-300 backdrop-blur-sm hover:border-amber-400 hover:bg-black/85 transition-all shadow-[0_0_12px_rgba(251,191,36,0.15)]"
+          >
+            <span className="text-lg">🔥</span>
+            <span className="font-bold">{streakData.dailyStreakCurrent || 0}</span>
+            <span className="hidden sm:inline text-xs text-amber-200/70">
+              {streakData.streakTitle || "days"}
+            </span>
+            <span className="text-[10px] text-amber-400/50">
+              {showExpandedBadge ? "▲" : "▼"}
+            </span>
+          </button>
+          {showExpandedBadge && (
+            <div className="mt-1 rounded-xl border border-amber-400/30 bg-black/85 backdrop-blur-md p-3 text-xs text-amber-200 shadow-[0_0_20px_rgba(251,191,36,0.2)] w-52">
+              <div className="flex justify-between mb-1">
+                <span>Daily Streak</span>
+                <span className="font-bold text-amber-400">{streakData.dailyStreakCurrent || 0} day{(streakData.dailyStreakCurrent || 0) !== 1 ? "s" : ""}</span>
+              </div>
+              <div className="flex justify-between mb-1">
+                <span>Best</span>
+                <span className="text-amber-300">{streakData.dailyStreakBest || 0} day{(streakData.dailyStreakBest || 0) !== 1 ? "s" : ""}</span>
+              </div>
+              {streakData.streakTitle && (
+                <div className="flex justify-between mb-1">
+                  <span>Title</span>
+                  <span className="text-amber-400 font-semibold">{streakData.streakTitle}</span>
+                </div>
+              )}
+              {streakData.nextMilestone && (
+                <div className="mt-2 pt-2 border-t border-amber-400/20">
+                  <p className="text-[10px] text-amber-300/60 uppercase tracking-wider">Next Milestone</p>
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-amber-400">{streakData.nextMilestone.title}</span>
+                    <span className="text-amber-300">{streakData.nextMilestone.days} days</span>
+                  </div>
+                  <div className="mt-1 h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-500"
+                      style={{
+                        width: `${Math.min(100, ((streakData.dailyStreakCurrent || 0) / streakData.nextMilestone.days) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              {!streakData.nextMilestone && (streakData.dailyStreakCurrent || 0) >= 365 && (
+                <p className="mt-2 text-center text-amber-400 font-bold">👑 All milestones reached!</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {isSignedIn && !dailyRewardCooldown && (
         <button
           onClick={claimDailyReward}
@@ -814,9 +906,29 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                   🔥 {t("home.rewards.current_streak")}:
                   <span className="text-[#FFD700] font-bold">
                     {" "}
-                    {streakData.currentDay} {t("home.rewards.days")}
+                    {streakData.dailyStreakCurrent || streakData.currentDay} {t("home.rewards.days")}
                   </span>
+                  {streakData.dailyStreakBest > 0 && (
+                    <span className="text-sm text-white/50">
+                      {" "}(Best: {streakData.dailyStreakBest})
+                    </span>
+                  )}
                 </div>
+
+                {/* Milestone bonus celebration */}
+                {milestoneBonus > 0 && (
+                  <div className="mb-4 rounded-xl border-2 border-amber-400 bg-gradient-to-r from-amber-500/20 to-amber-600/20 p-4 animate-pulse">
+                    <p className="text-lg font-bold text-amber-300">
+                      🏆 Streak Milestone Reached!
+                    </p>
+                    <p className="text-2xl font-extrabold text-amber-400 mt-1">
+                      {milestoneTitle}
+                    </p>
+                    <p className="text-lg mt-1">
+                      <span className="text-amber-300 font-bold">+{milestoneBonus.toLocaleString()} bonus tokens!</span>
+                    </p>
+                  </div>
+                )}
 
                 <button
                   onClick={async () => {
