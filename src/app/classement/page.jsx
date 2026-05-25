@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../components/navigation-bar";
+import Footer from "../../components/Footer";
 import { useTranslation } from "../../hooks/useTranslation";
 
 const TABS = ["weekly", "all-time", "daily-current", "daily-best", "weekly-streak", "weekly-best", "wins"];
@@ -249,6 +250,7 @@ export default function LeaderboardPage() {
           </p>
         )}
       </div>
+      <Footer />
     </div>
   );
 }

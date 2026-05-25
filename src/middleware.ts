@@ -43,6 +43,12 @@ const isPublicRoute = createRouteMatcher([
   "/casino/pool-masters(.*)",
   "/casino/hex-duel(.*)",
   "/casino/yahtzee(.*)",
+
+  // Legal / policy pages
+  "/security-policy",
+  "/privacy-policy",
+  "/terms",
+  "/fair-play",
 ]);
 
 const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [

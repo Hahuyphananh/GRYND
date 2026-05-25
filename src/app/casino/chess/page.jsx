@@ -1,6 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
+import Footer from "../../../components/Footer";
 import { useEffect, useState } from "react";
 import { useSocket } from "../../../context/SocketProvider";
 
@@ -313,6 +314,7 @@ export default function ChessLobby() {
           </div>
         </div>
       )}
+      <Footer />
     </div>
   );
 }

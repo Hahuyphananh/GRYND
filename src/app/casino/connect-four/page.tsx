@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
+import Footer from "../../../components/Footer";
 
 export default function ConnectFourLobbyPage() {
   const { isSignedIn, user } = useUser();
@@ -251,6 +252,7 @@ shadow-[0_0_18px_rgba(0,229,255,0.6)]"
           )}
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

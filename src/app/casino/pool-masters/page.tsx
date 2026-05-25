@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
+import Footer from "../../../components/Footer";
 
 export default function PoolLobbyPage() {
   const router = useRouter();
@@ -138,6 +139,7 @@ export default function PoolLobbyPage() {
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

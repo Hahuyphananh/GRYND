@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useUser, useClerk } from "@clerk/nextjs";
 import NavigationBar from "../../components/navigation-bar";
+import Footer from "../../components/Footer";
 
 const statsCards = [
   { key: "totalBets", label: "Total Bets" },
@@ -1938,6 +1939,7 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
           </div>
         </div>
       )}
+      <Footer />
     </div>
   );
 }

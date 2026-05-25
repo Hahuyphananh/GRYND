@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import UnoCard from "../../../components/UnoCard";
 import UnoBack from "../../../components/UnoBack";
 import NavigationBar from "../../../components/navigation-bar";
+import Footer from "../../../components/Footer";
 import { useSocket } from "../../../context/SocketProvider";
 import useGamePresence from "../../../hooks/useGamePresence";
 
@@ -899,6 +900,7 @@ export default function UnoGamePage() {
           {message && <p className="mt-6 text-yellow-300 text-lg font-medium">{message}</p>}
         </div>
       )}
+      <Footer />
     </div>
   );
 }
