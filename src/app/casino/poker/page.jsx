@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
+import Footer from "../../../components/Footer";
 
 function CyberCardBack() {
   return (
@@ -471,6 +472,7 @@ export default function PokerPage() {
           </ul>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

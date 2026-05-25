@@ -71,6 +71,7 @@ export const users = pgTable("users", {
   selectedStreakType: varchar("selected_streak_type", { length: 10 }).default(null),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   searchName: varchar("search_name", { length: 255 }),
+  termsAccepted: boolean("terms_accepted").notNull().default(false),
 });
 
 export const friendRelations = pgTable(

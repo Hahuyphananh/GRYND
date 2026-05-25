@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useRouter } from "next/navigation"; // add this at the top
+import Link from "next/link";
 import NavigationBar from "../components/navigation-bar";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
@@ -37,7 +38,7 @@ const MAIN_SPORT_GROUPS = [
 
 function MainComponent() {
   const router = useRouter();
-  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken, signOut } = useAuth();
   const { user } = useUser();
   const [openGroup, setOpenGroup] = useState(null);
   const [selectedBet, setSelectedBet] = useState(null);
@@ -77,6 +78,8 @@ function MainComponent() {
   const [showExpandedBadge, setShowExpandedBadge] = useState(false);
   const [claimedDay, setClaimedDay] = useState(null);
   const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [termsLoading, setTermsLoading] = useState(true);
   const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
   const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
@@ -225,6 +228,51 @@ function MainComponent() {
     } catch (err) {
       console.error("Failed to fetch reward status:", err);
     }
+  };
+
+  // ── Check Terms & Conditions acceptance ──
+  useEffect(() => {
+    if (!isSignedIn || !isLoaded) return;
+
+    const checkTerms = async () => {
+      try {
+        setTermsLoading(true);
+        const res = await fetch("/api/user/terms-status");
+        const data = await res.json();
+        if (data.success && !data.termsAccepted) {
+          setShowTermsModal(true);
+        }
+      } catch (err) {
+        console.error("Failed to check terms status:", err);
+      } finally {
+        setTermsLoading(false);
+      }
+    };
+
+    checkTerms();
+  }, [isSignedIn, isLoaded]);
+
+  const handleAcceptTerms = async () => {
+    try {
+      const res = await fetch("/api/user/accept-terms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowTermsModal(false);
+      }
+    } catch (err) {
+      console.error("Failed to accept terms:", err);
+    }
+  };
+
+  const handleRejectTerms = async () => {
+    // Sign the user out if they reject the terms
+    if (signOut) {
+      await signOut();
+    }
+    router.push("/");
   };
 
   useEffect(() => {
@@ -943,6 +991,119 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                   {t("ui.confirm")}
                 </button>
               </UIPro18ModalPanel>
+            </motion.div>
+          </UIPro17ModalBackdrop>
+        )}
+      </AnimatePresence>
+
+      {/* ── Terms & Conditions Modal ── */}
+      <AnimatePresence>
+        {showTermsModal && (
+          <UIPro17ModalBackdrop className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="relative mx-4 max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#00e5ff]/30 bg-gradient-to-b from-[#030817] to-[#0a1a3d] p-6 shadow-[0_0_40px_rgba(0,229,255,0.15)] md:p-8">
+                {/* Header */}
+                <div className="mb-6 text-center">
+                  <h2 className="mb-2 text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b]">
+                    Terms & Conditions
+                  </h2>
+                  <p className="text-sm text-[#9dd8ff]">
+                    Please read and accept our terms to start playing
+                  </p>
+                </div>
+
+                {/* Terms Content */}
+                <div className="mb-6 space-y-4 rounded-lg border border-[#00e5ff]/10 bg-[#040d24]/60 p-4 text-sm leading-relaxed text-[#c9f7ff]/90 md:p-6">
+                  <p>
+                    <strong className="text-[#00e5ff]">Welcome to GoonBet.</strong> By
+                    accepting these terms, you agree to the following:
+                  </p>
+
+                  <div className="space-y-3">
+                    <div>
+                      <strong className="text-[#f5ff3b]">1. Eligibility:</strong> You confirm
+                      that you are at least 18 years old and that your use of this platform
+                      complies with all applicable laws in your jurisdiction.
+                    </div>
+                    <div>
+                      <strong className="text-[#f5ff3b]">2. Account Responsibility:</strong> You
+                      are solely responsible for maintaining the confidentiality of your
+                      account and for all activities under your account.
+                    </div>
+                    <div>
+                      <strong className="text-[#f5ff3b]">3. Virtual Tokens:</strong> Tokens have
+                      no real-world monetary value and are not redeemable for cash. We may
+                      modify or suspend the token system at any time.
+                    </div>
+                    <div>
+                      <strong className="text-[#f5ff3b]">4. Fair Play:</strong> You agree not to
+                      use bots, exploits, or engage in any form of cheating. Violations may
+                      result in account suspension or permanent ban.
+                    </div>
+                    <div>
+                      <strong className="text-[#f5ff3b]">5. Prohibited Conduct:</strong> You may
+                      not create multiple accounts, harass other users, or attempt to
+                      manipulate game outcomes.
+                    </div>
+                    <div>
+                      <strong className="text-[#f5ff3b]">6. Privacy:</strong> Your data is
+                      handled in accordance with our Privacy Policy. We do not sell your
+                      personal information to third parties.
+                    </div>
+                    <div>
+                      <strong className="text-[#f5ff3b]">7. Termination:</strong> We reserve the
+                      right to suspend or terminate accounts that violate these terms.
+                    </div>
+                  </div>
+
+                  <p className="pt-2 text-xs text-[#6b91b3]">
+                    By clicking "I Agree", you accept our{" "}
+                    <Link href="/terms" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
+                      full Terms & Conditions
+                    </Link>
+                    ,{" "}
+                    <Link href="/privacy-policy" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
+                      Privacy Policy
+                    </Link>
+                    , and{" "}
+                    <Link href="/fair-play" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
+                      Fair Play Policy
+                    </Link>
+                    .
+                  </p>
+                </div>
+
+                {/* Buttons */}
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+                  <button
+                    onClick={handleAcceptTerms}
+                    className="rounded-lg border border-[#00e5ff]/40 bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] px-8 py-3 font-bold text-[#041125] transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.5)] hover:scale-105"
+                  >
+                    I Agree
+                  </button>
+                  <button
+                    onClick={handleRejectTerms}
+                    className="rounded-lg border border-red-500/40 bg-red-500/10 px-8 py-3 font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_20px_rgba(239,68,68,0.3)] hover:scale-105"
+                  >
+                    I Disagree
+                  </button>
+                </div>
+
+                <p className="mt-4 text-center text-xs text-[#6b91b3]">
+                  You must accept the Terms & Conditions to use GoonBet.
+                </p>
+              </div>
             </motion.div>
           </UIPro17ModalBackdrop>
         )}

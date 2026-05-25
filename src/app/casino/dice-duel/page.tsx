@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
+import Footer from "../../../components/Footer";
 
 export default function DiceDuelLobbyPage() {
   const [lobbies, setLobbies] = useState<any[]>([]);
@@ -145,6 +146,7 @@ export default function DiceDuelLobbyPage() {
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

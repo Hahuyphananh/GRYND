@@ -7,6 +7,7 @@ import confetti from "canvas-confetti";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
+import Footer from "../../../components/Footer";
 import { useTurnTimer } from "../../../lib/useTurnTimer";
 
 type LobbyRoom = { id: string; wager: number; status: string };
@@ -1063,5 +1064,7 @@ export default function YahtzeePage() {
         </AnimatePresence>
       </div>}
     </div>
-  </div>;
+      <Footer />
+    </div>
+  );
 }

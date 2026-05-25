@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from "react";
 import NavigationBar from "../../components/navigation-bar";
+import Footer from "../../components/Footer";
 import { useUser } from "@clerk/nextjs";
 import EventCard from "../../components/event-card";
 import BetSlip from "../../components/bet-slip";
@@ -333,6 +334,7 @@ const MainComponent = () => {
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 };

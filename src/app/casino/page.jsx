@@ -1,5 +1,6 @@
 "use client";
 import NavigationBar from "../../components/navigation-bar";
+import Footer from "../../components/Footer";
 import { useUser } from "@clerk/nextjs";
 import React, { useEffect, useState } from "react";
 import Img1 from "../../images/roulette.jpg";
@@ -450,6 +451,7 @@ function MainComponent() {
           animation-delay: calc(0.08s * var(--i));
         }
       `}</style>
+      <Footer />
     </div>
   );
 }
