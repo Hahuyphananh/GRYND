@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useRouter } from "next/navigation"; // add this at the top
 import Link from "next/link";
 import NavigationBar from "../components/navigation-bar";
+import Footer from "../components/Footer";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
 import Img1 from "../images/roulette.jpg";
@@ -1108,6 +1109,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           </UIPro17ModalBackdrop>
         )}
       </AnimatePresence>
+      <Footer />
     </div>
   );
 }
