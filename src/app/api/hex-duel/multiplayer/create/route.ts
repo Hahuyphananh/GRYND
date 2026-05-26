@@ -9,17 +9,21 @@ export async function POST(req: Request) {
     if (!userId) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     const { wager } = await req.json();
     const wagerAmount = Number(wager);
-    if (!Number.isFinite(wagerAmount) || wagerAmount <= 0) {
+    if (!Number.isFinite(wagerAmount) || wagerAmount < 0) {
       return NextResponse.json({ success: false, error: "Invalid wager amount" }, { status: 400 });
     }
 
     const result = await db.transaction(async (tx) => {
-      const [updatedUser] = await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${wagerAmount}` })
-        .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${wagerAmount}`))
-        .returning({ balance: users.balance });
-      if (!updatedUser) throw new Error("Insufficient balance");
+      let updatedBalance: number | null = null;
+      if (wagerAmount > 0) {
+        const [updatedUser] = await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} - ${wagerAmount}` })
+          .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${wagerAmount}`))
+          .returning({ balance: users.balance });
+        if (!updatedUser) throw new Error("Insufficient balance");
+        updatedBalance = Number(updatedUser.balance);
+      }
 
       const [game] = await tx.insert(hexDuelGames).values({
         player1Id: userId,
@@ -30,7 +34,7 @@ export async function POST(req: Request) {
         isAiGame: false,
       } as any).returning({ id: hexDuelGames.id });
 
-      return { gameId: game.id, newBalance: Number(updatedUser.balance) };
+      return { gameId: game.id, newBalance: updatedBalance };
     });
 
     return NextResponse.json({ success: true, ...result });
