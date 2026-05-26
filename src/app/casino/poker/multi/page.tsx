@@ -9,6 +9,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import { usePokerAudio } from "../../../lib/pokerAudio";
 import NavigationBar from "../../../../components/navigation-bar";
+import Footer from "../../../../components/Footer";
 
 type Player = {
   id: string;
@@ -2341,6 +2342,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           </div>
         </div>
       )}
+      <Footer />
     </div>
   );
 }

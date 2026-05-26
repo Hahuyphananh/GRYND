@@ -27,18 +27,22 @@ export async function POST(req: Request) {
       }
       if (!game) throw new Error("No compatible game available");
 
-      const [updatedUser] = await tx.update(users)
-        .set({ balance: sql`${users.balance} - ${game.wagerAmount}` })
-        .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${game.wagerAmount}`))
-        .returning({ balance: users.balance });
-      if (!updatedUser) throw new Error("Insufficient balance");
+      let updatedBalance: number | null = null;
+      if (Number(game.wagerAmount) > 0) {
+        const [updatedUser] = await tx.update(users)
+          .set({ balance: sql`${users.balance} - ${game.wagerAmount}` })
+          .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${game.wagerAmount}`))
+          .returning({ balance: users.balance });
+        if (!updatedUser) throw new Error("Insufficient balance");
+        updatedBalance = Number(updatedUser.balance);
+      }
 
       const [row] = await tx.update(hexDuelGames)
         .set({ player2Id: userId, status: "in_progress", startedAt: new Date() })
         .where(and(eq(hexDuelGames.id, game.id), eq(hexDuelGames.status, "waiting"), isNull(hexDuelGames.player2Id)))
         .returning({ id: hexDuelGames.id });
       if (!row) throw new Error("Game unavailable");
-      return { gameId: row.id, newBalance: Number(updatedUser.balance) };
+      return { gameId: row.id, newBalance: updatedBalance };
     });
 
     return NextResponse.json({ success: true, ...joined });

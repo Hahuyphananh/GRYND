@@ -158,6 +158,7 @@ function WagerModal({
 }) {
   const [wager, setWager] = useState(50);
   const [playForFun, setPlayForFun] = useState(false);
+  const [queueMode, setQueueMode] = useState<"ai" | "multiplayer">("ai");
   const canAfford = wager > 0 && wager <= balance;
 
   return (
@@ -175,8 +176,8 @@ function WagerModal({
         <p className="text-center text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-4">Place Your Wager</p>
 
         <div className="mb-4 grid grid-cols-2 gap-2">
-          <button onClick={onStartFun} className="rounded-lg border border-white/15 bg-white/[0.02] py-2 text-[11px] font-semibold text-slate-200 hover:bg-white/[0.06]">Play vs AI</button>
-          <button onClick={() => onCreateMultiplayer(wager)} className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 py-2 text-[11px] font-semibold text-cyan-200 hover:bg-cyan-500/20">Create Game</button>
+          <button onClick={() => setQueueMode("ai")} className={`rounded-lg py-2 text-[11px] font-semibold transition ${queueMode === "ai" ? "border border-white/20 bg-white/[0.1] text-white" : "border border-white/15 bg-white/[0.02] text-slate-200 hover:bg-white/[0.06]"}`}>Play vs AI</button>
+          <button onClick={() => setQueueMode("multiplayer")} className={`rounded-lg py-2 text-[11px] font-semibold transition ${queueMode === "multiplayer" ? "border border-cyan-400/50 bg-cyan-500/20 text-cyan-100" : "border border-cyan-400/30 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20"}`}>Create Game</button>
         </div>
 
         <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
@@ -266,7 +267,10 @@ function WagerModal({
         )}
 
         <button
-          onClick={() => playForFun ? onStartFun() : onStartReal(wager)}
+          onClick={() => {
+            if (queueMode === "multiplayer") return onCreateMultiplayer(playForFun ? 0 : wager);
+            return playForFun ? onStartFun() : onStartReal(wager);
+          }}
           disabled={loading || (!playForFun && !canAfford)}
           className="w-full rounded-xl py-3 text-sm font-bold uppercase tracking-[0.15em] transition-all duration-200
             bg-gradient-to-r from-cyan-500 to-blue-600 text-white
@@ -279,7 +283,9 @@ function WagerModal({
               <span className="inline-block w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
               Processing...
             </span>
-          ) : playForFun ? "🎮 Play for Fun" : `💰 Wager ${wager} Tokens`}
+          ) : queueMode === "multiplayer"
+            ? (playForFun ? "🌐 Create Multiplayer (Fun)" : `🌐 Wager ${wager} Tokens (Multiplayer)`)
+            : (playForFun ? "🎮 Play for Fun" : `💰 Wager ${wager} Tokens vs AI`)}
         </button>
 
         <p className="mt-3 text-center text-[9px] text-slate-600">
@@ -992,10 +998,6 @@ export default function HexDuelPage() {
 
     const roomId = String(multiplayerGameId);
 
-    // Join room
-    socket.emit("hexDuel:join", { gameId: multiplayerGameId });
-    socket.emit("join_game", { gameId: multiplayerGameId });
-
     // Listen for opponent actions
     const handleOpponentAction = (data: { action: MultiplayerAction }) => {
       if (data.action) {
@@ -1068,6 +1070,8 @@ export default function HexDuelPage() {
     socket.on("hexDuel:opponent:timeout", handleOpponentTimeout);
     socket.on("disconnect", handleSocketDisconnect);
     socket.on("connect", handleSocketConnect);
+    socket.emit("hexDuel:join", { gameId: multiplayerGameId });
+    socket.emit("join_game", { gameId: multiplayerGameId });
 
     return () => {
       socket.off("hexDuel:action", handleOpponentAction);

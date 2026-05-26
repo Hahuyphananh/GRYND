@@ -544,13 +544,14 @@ export default function YahtzeePage() {
     fetchGames();
   };
 
-  return <div className="min-h-screen bg-gradient-to-b from-[#090217] to-[#041433] px-3 pb-24 pt-20 text-white"><NavigationBar currentPath="/casino" />
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-[#090217] to-[#041433] px-3 pb-24 pt-20 text-white"><NavigationBar currentPath="/casino" />
     <div className="mx-auto mt-4 max-w-5xl">
       <motion.h1 initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-2 text-center text-4xl font-black text-fuchsia-400">YAHTZEE ARENA</motion.h1>
       {!roomId && <div className="rounded-2xl border border-cyan-700 bg-black/40 p-4"><div className="mb-3 font-bold text-yellow-300">Balance: {balance.toFixed(2)} tokens</div><div className="flex flex-wrap gap-2"><input type="number" value={wager} onChange={(e) => setWager(Number(e.target.value || 0))} className="rounded bg-slate-900 px-3 py-2" /><button onClick={createGame} className="rounded bg-cyan-500 px-4 py-2 font-bold text-black">Create PvP</button><button onClick={playAI} className="rounded bg-fuchsia-500 px-4 py-2 font-bold">Play vs AI</button><button onClick={fetchGames} className="rounded bg-amber-500 px-4 py-2 font-bold">Refresh</button></div>
       <div className="mt-4 space-y-2">{availableGames.length === 0 ? <p>No open games.</p> : availableGames.map((l) => <div key={l.id} className="flex items-center justify-between rounded bg-slate-900/80 p-2"><span>{l.id} · {l.wager}</span><button onClick={() => joinGame(l.id)} className="rounded bg-cyan-500 px-3 py-1 text-black">{joiningId === l.id ? "Joining" : "Join"}</button></div>)}</div></div>}
 
-      {game && <div className="mt-6 rounded-2xl border border-cyan-700 bg-black/45 p-4">
+      {game && (<div className="mt-6 rounded-2xl border border-cyan-700 bg-black/45 p-4">
         <div className="mb-3 flex items-center justify-between"><div>{isYourTurn ? "Your turn" : `${opponent?.name || "Opponent"}'s turn`} · Rolls {game.rollsThisTurn}/3</div><button onClick={resign} className="rounded bg-red-600 px-3 py-1 font-bold">Resign</button></div>
         {waitingForOpponent && <div className="mb-4 rounded border border-fuchsia-500 bg-fuchsia-950/40 p-2 text-sm">Waiting for opponent to join. You cannot roll yet.</div>}
 
@@ -1062,7 +1063,7 @@ export default function YahtzeePage() {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>}
+      </div>)}
     </div>
       <Footer />
     </div>
