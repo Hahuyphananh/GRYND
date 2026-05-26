@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import UnoCard from "../../../../components/UnoCard";
 import UnoBack from "../../../../components/UnoBack";
 import NavigationBar from "../../../../components/navigation-bar";
+import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 
@@ -1110,6 +1111,7 @@ export default function UnoMultiplayerPage() {
           )}
         </div>
       )}
+      <Footer />
     </div>
   );
 }
