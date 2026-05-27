@@ -788,7 +788,7 @@ export default function YahtzeePage() {
 
     {/* ─── BUTTONS at bottom of scorecard ─── */}
     <div className="mt-3 flex items-center justify-center gap-3">        <button
-        disabled={!isYourTurn || waitingForOpponent || aiAnimating || (isYourTurn && game.rollsThisTurn === 0)}
+        disabled={!isYourTurn || waitingForOpponent || aiAnimating}
         onClick={async () => {
           setRolling(true);
           await playAction("/api/yahtzee/roll", {});
