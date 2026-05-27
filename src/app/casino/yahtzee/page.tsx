@@ -8,7 +8,7 @@ import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
-import { useTurnTimer } from "../../../lib/useTurnTimer";
+
 
 type LobbyRoom = { id: string; wager: number; status: string };
 type Player = { userId: string; name: string; isAI?: boolean };
@@ -21,6 +21,7 @@ type GameState = {
   heldDice: boolean[];
   scorecards: Record<string, Record<string, number>>;
   state: string;
+  turnNumber?: number;
 };
 
 const categories = [
@@ -48,11 +49,13 @@ const DiceFace = ({
   held,
   rolling,
   index = 0,
+  unknown = false,
 }: {
   value: number;
   held?: boolean;
   rolling?: boolean;
   index?: number;
+  unknown?: boolean;
 }) => {
   const dots: Record<number, string[]> = {
     1: ["50% 50%"],
@@ -77,6 +80,27 @@ const DiceFace = ({
       scale: 1,
     },
   };
+
+  if (unknown) {
+    return (
+      <motion.div
+        animate={{ opacity: [0.4, 0.7, 0.4] }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+        className="relative h-16 w-16 rounded-2xl border-[3px] cursor-not-allowed
+          bg-gradient-to-br from-gray-700 to-gray-800
+          border-gray-500 shadow-[0_6px_0_rgba(0,0,0,0.25)]
+          select-none flex items-center justify-center"
+      >
+        <motion.span
+          animate={{ scale: [1, 1.15, 1] }}
+          transition={{ duration: 1, repeat: Infinity }}
+          className="text-3xl font-black text-gray-400"
+        >
+          ?
+        </motion.span>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -292,73 +316,17 @@ export default function YahtzeePage() {
   const [gameOverType, setGameOverType] = useState<"win" | "lose" | null>(null);
   const [gameOverScores, setGameOverScores] = useState<{ mine: number; theirs: number } | null>(null);
   const { socket } = useSocket();
+  const [aiAnimating, setAiAnimating] = useState(false);
+  const [aiRollSteps, setAiRollSteps] = useState<{ dice: number[]; heldDice: boolean[]; rollNum: number }[]>([]);
+  const aiTurnScheduledRef = useRef(false);
+  const aiUnmountedRef = useRef(false);
 
-  // ── Auto-play ref for turn timer expiry ──────────────────────────
-  // Kept as a ref so the timer's onExpire callback always calls the latest version
-  const autoPlayFnRef = useRef<() => void>(() => {});
-  // Update the ref on every render so it always has fresh game state
-  autoPlayFnRef.current = () => {
-    if (!roomId || !game || !you) return;
-    const currentGame = game;
-    const myId = you.userId;
+  // Cleanup on unmount
+  useEffect(() => {
+    aiUnmountedRef.current = false;
+    return () => { aiUnmountedRef.current = true; };
+  }, []);
 
-    if (currentGame.rollsThisTurn === 0) {
-      // No dice rolled — roll once
-      fetch("/api/yahtzee/roll", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomId }),
-      })
-        .then((r) => r.json())
-        .then(() => fetch(`/api/yahtzee/state?roomId=${encodeURIComponent(roomId)}`, { cache: "no-store" }))
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.success && data.room?.gameState) {
-            setGame(data.room.gameState as GameState);
-          }
-        })
-        .catch(() => {});
-      return;
-    }
-
-    // Dice are rolled — find the best unfilled category
-    const myScorecard = currentGame.scorecards?.[myId] || {};
-    const dice = currentGame.dice;
-
-    let bestCategory: string | null = null;
-    let bestScore = -1;
-
-    for (const [key] of categories) {
-      if (myScorecard[key] === undefined) {
-        const s = scoreFor(dice, key);
-        if (s > bestScore) {
-          bestScore = s;
-          bestCategory = key;
-        }
-      }
-    }
-
-    if (!bestCategory) return;
-
-    fetch("/api/yahtzee/choose-category", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roomId, category: bestCategory }),
-    })
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success) {
-          if (d.aiCategory) {
-            setAiCategoryHighlight(d.aiCategory);
-            setTimeout(() => setAiCategoryHighlight(null), 900);
-          }
-          setGame(d.state);
-          emitRoomEvent();
-          if (roomId) fetchHistory(roomId);
-        }
-      })
-      .catch(() => {});
-  };
   const prevTurnRef = useRef<string | null>(null);
   const prevGameStateRef = useRef<string | null>(null);
   const endedRef = useRef(false);
@@ -475,23 +443,75 @@ export default function YahtzeePage() {
   }, [moveHistory, user?.id]);
   const preview = (key: string) => (!game || !isYourTurn || game.rollsThisTurn < 1 || !you || game.scorecards?.[you.userId]?.[key] !== undefined ? null : scoreFor(game.dice, key));
 
-  // ── Turn Timer (2 min per turn) ─────────────────────────────────
-  const timer = useTurnTimer({
-    isActive: !!game && !endedRef.current && isYourTurn,
-    duration: 120,
-    onExpire: () => autoPlayFnRef.current(),
-    resetKey: game?.currentTurn ?? "",
-  });
+  // ── AI turn animation ───────────────────────────────────────────
+  const runAiTurnAnimation = async (rId: string) => {
+    if (aiUnmountedRef.current) return;
+    setAiAnimating(true);
+    setAiRollSteps([]);
+    
+    // Wait a moment before AI starts
+    await new Promise(r => setTimeout(r, 800));
+    if (aiUnmountedRef.current) return;
+    
+    try {
+      const res = await fetch("/api/yahtzee/ai-turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId: rId }),
+      });
+      const d = await res.json();
+      if (!d.success || aiUnmountedRef.current) {
+        setAiAnimating(false);
+        return;
+      }
+      
+      // Animate through each AI roll
+      if (d.rollSteps) {
+        for (let i = 0; i < d.rollSteps.length; i++) {
+          if (aiUnmountedRef.current) return;
+          setAiRollSteps(prev => [...prev, d.rollSteps[i]]);
+          await new Promise(r => setTimeout(r, 700));
+        }
+      }
+      
+      if (aiUnmountedRef.current) return;
+      
+      // Highlight AI's category choice
+      if (d.aiCategory) {
+        setAiCategoryHighlight(d.aiCategory);
+        await new Promise(r => setTimeout(r, 900));
+        if (aiUnmountedRef.current) return;
+        setAiCategoryHighlight(null);
+      }
+      
+      // Update game state and clear animation
+      setGame(d.state);
+      setAiRollSteps([]);
+      setAiAnimating(false);
+      aiTurnScheduledRef.current = false;
+      emitRoomEvent();
+      if (rId) fetchHistory(rId);
+    } catch {
+      setAiAnimating(false);
+      setAiRollSteps([]);
+      aiTurnScheduledRef.current = false;
+    }
+  };
 
-  const timerBarColor = timer.isCritical
-    ? "#ef4444"
-    : timer.isUrgent
-    ? "#facc15"
-    : "#22d3ee";
+  // Detect AI turn on game load (for polling/socket catch-up)
+  useEffect(() => {
+    if (!game || !roomId || aiAnimating || aiTurnScheduledRef.current) return;
+    if (game.state !== "playing") return;
+    const aiPlayer = game.players.find(p => p.isAI && p.userId === game.currentTurn);
+    if (aiPlayer && !you?.isAI) {
+      aiTurnScheduledRef.current = true;
+      runAiTurnAnimation(roomId);
+    }
+  }, [game?.currentTurn, game?.turnNumber]);
 
-  const createGame = async () => { if (wager <= 0 || wager > balance) return alert("Invalid wager amount"); setLoading(true); try { const res = await fetch("/api/yahtzee/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to create room"); setRoomId(d.roomId); setGame(d.state);} finally { setLoading(false); } };
-  const playAI = async () => { setLoading(true); try { const res = await fetch("/api/yahtzee/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager, difficulty: "medium" }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); setRoomId(d.roomId); setGame(d.state);} finally { setLoading(false); } };
-  const joinGame = async (id: string) => { setLoading(true); setJoiningId(id); try { const res = await fetch("/api/yahtzee/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId: id }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to join"); setRoomId(id); setGame(d.state); emitRoomEvent();} finally { setLoading(false); setJoiningId(null);} };
+  const createGame = async () => { if (wager <= 0 || wager > balance) return alert("Invalid wager amount"); setLoading(true); try { const res = await fetch("/api/yahtzee/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to create room"); setRoomId(d.roomId); setGame(d.state); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
+  const playAI = async () => { setLoading(true); try { const res = await fetch("/api/yahtzee/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager, difficulty: "medium" }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); setRoomId(d.roomId); setGame(d.state); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
+  const joinGame = async (id: string) => { setLoading(true); setJoiningId(id); try { const res = await fetch("/api/yahtzee/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId: id }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to join"); setRoomId(id); setGame(d.state); if (socket) { socket.emit("join_room", { roomId: id }); socket.emit("room_event", { roomId: id, event: "game_state_update" }); }} finally { setLoading(false); setJoiningId(null);} };
   const emitRoomEvent = () => {
     if (!socket || !roomId) return;
     socket.emit("room_event", { roomId, event: "game_state_update" });
@@ -516,16 +536,16 @@ export default function YahtzeePage() {
         alert(d.error || "Failed");
         return;
       }
-      // Highlight AI's chosen category on the scorecard
-      if (d.aiCategory) {
-        setAiCategoryHighlight(d.aiCategory);
-        setTimeout(() => setAiCategoryHighlight(null), 900);
-      }
       setGame(d.state);
       emitRoomEvent();
       fetchHistory(roomId);
       setTimeout(() => setExploding(true), 300);
       setTimeout(() => setExploding(false), 1100);
+      // If AI is next, trigger AI animation sequence
+      if (d.aiNext) {
+        aiTurnScheduledRef.current = true;
+        runAiTurnAnimation(roomId);
+      }
     } catch (e) {
       alert("Something went wrong");
     }
@@ -587,19 +607,30 @@ export default function YahtzeePage() {
         </div>
       </div>
       <div className="rounded-xl bg-white/20 px-3 py-1 text-xs font-bold text-white">
-        Rolls: {game.rollsThisTurn}/3
+        Rolls: {aiAnimating && aiRollSteps.length > 0 ? aiRollSteps[aiRollSteps.length - 1].rollNum : game.rollsThisTurn}/3
       </div>
     </div>
     <div className="flex justify-center gap-3">
-      {game.dice.map((d, i) => (
+      {(aiAnimating && aiRollSteps.length > 0
+        ? aiRollSteps[aiRollSteps.length - 1].dice
+        : game.dice
+      ).map((d, i) => (
         <motion.div
-          key={`op-${i}`}
+          key={`op-${i}-${d}-${aiRollSteps.length}`}
           className="scale-90 opacity-80"
           initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 0.8, y: 0 }}
-          transition={{ delay: i * 0.05, duration: 0.3 }}
+          animate={{
+            opacity: 0.8,
+            y: 0,
+            rotate: aiAnimating ? [0, 15 * ((i % 2 === 0) ? 1 : -1), -10, 5, 0] : 0,
+          }}
+          transition={{
+            delay: i * 0.05,
+            duration: aiAnimating ? 0.3 : 0.3,
+            rotate: aiAnimating ? { duration: 0.25, repeat: Infinity } : {},
+          }}
         >
-          <DiceFace value={d} />
+          <DiceFace value={d} rolling={aiAnimating} index={i} />
         </motion.div>
       ))}
     </div>
@@ -756,9 +787,8 @@ export default function YahtzeePage() {
     </div>
 
     {/* ─── BUTTONS at bottom of scorecard ─── */}
-    <div className="mt-3 flex items-center justify-center gap-3">
-      <button
-        disabled={!isYourTurn || waitingForOpponent}
+    <div className="mt-3 flex items-center justify-center gap-3">        <button
+        disabled={!isYourTurn || waitingForOpponent || aiAnimating || (isYourTurn && game.rollsThisTurn === 0)}
         onClick={async () => {
           setRolling(true);
           await playAction("/api/yahtzee/roll", {});
@@ -769,7 +799,7 @@ export default function YahtzeePage() {
         ROLL
       </button>
       <motion.button
-        disabled={!selectedCategory || !isYourTurn}
+        disabled={!selectedCategory || !isYourTurn || aiAnimating}
         whileHover={selectedCategory && isYourTurn ? { scale: 1.05 } : {}}
         whileTap={{ scale: 0.95 }}
         onClick={confirmPlay}
@@ -786,30 +816,18 @@ export default function YahtzeePage() {
       </motion.button>
     </div>
 
-    {/* ─── Turn Timer ─── */}
-    <div className="mt-2 flex items-center justify-center gap-2">
-      <div className="relative h-1.5 w-40 overflow-hidden rounded-full bg-black/30">
-        <div
-          className={`h-full rounded-full transition-all duration-200 ${timer.isCritical ? "animate-pulse" : ""}`}
-          style={{
-            width: `${Math.max(0, timer.fraction * 100)}%`,
-            backgroundColor: timerBarColor,
-            boxShadow: `0 0 8px ${timerBarColor}66`,
-          }}
-        />
-      </div>
-      <span
-        className={`text-xs font-bold tabular-nums ${
-          timer.isCritical ? "text-red-400" : timer.isUrgent ? "text-yellow-300" : "text-white/70"
-        }`}
-      >
-        0:{Math.ceil(timer.timeLeft).toString().padStart(2, "0")}
-      </span>
-      <span className="text-[9px] text-white/40 uppercase tracking-wider">⏱</span>
-    </div>
-
-    <div className="mt-1 text-center text-xs font-bold text-white">
-      {isYourTurn ? "YOUR TURN" : `${opponent?.name || "Opponent"} TURN`}
+    {/* ─── Turn indicator ─── */}
+    <div className="mt-3 text-center text-xs font-bold text-white">
+      {aiAnimating ? (
+        <span className="flex items-center justify-center gap-2 text-yellow-300">
+          <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>🤖</motion.span>
+          AI thinking...
+        </span>
+      ) : isYourTurn ? (
+        "YOUR TURN"
+      ) : (
+        `${opponent?.name || "Opponent"} TURN`
+      )}
     </div>
   </div>
 
@@ -848,10 +866,12 @@ export default function YahtzeePage() {
 
     {/* Player Dice */}
     <div className="flex flex-wrap justify-center gap-3">
-      {game.dice.map((d, i) => (
-        <motion.button
+      {game.dice.map((d, i) => {
+          const diceUnknown = isYourTurn && game.rollsThisTurn === 0;
+          return (
+          <motion.button
           key={i}
-          disabled={!isYourTurn || waitingForOpponent}
+          disabled={!isYourTurn || waitingForOpponent || aiAnimating || diceUnknown}
           whileHover={{ scale: 1.08 }}
           whileTap={{ scale: 0.95 }}
           onClick={() =>
@@ -867,9 +887,10 @@ export default function YahtzeePage() {
             held={game.heldDice[i]}
             rolling={rolling}
             index={i}
+            unknown={diceUnknown}
           />
         </motion.button>
-      ))}
+      )})}
     </div>
   </div>
 </div>

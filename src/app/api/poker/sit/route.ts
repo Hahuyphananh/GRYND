@@ -10,6 +10,7 @@ type Seat = {
   name?: string;
   isAI?: boolean;
   stack?: number;
+  difficulty?: "easy" | "medium" | "hard";
 };
 
 function normalizePlayersFromSeats(seats: Seat[]) {
@@ -21,6 +22,7 @@ function normalizePlayersFromSeats(seats: Seat[]) {
       stack: s.stack ?? 1000,
       hand: [],
       isAI: !!s.isAI,
+      difficulty: s.difficulty,
       hasFolded: false,
       lastAction: "",
       currentBet: 0,
@@ -34,7 +36,7 @@ export async function POST(req: Request) {
     if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { gameCode, seatIndex, playerName, isAI, aiStack } = await req.json();
+    const { gameCode, seatIndex, playerName, isAI, aiStack, difficulty } = await req.json();
     if (!gameCode || seatIndex === undefined) {
       return NextResponse.json(
         { error: "gameCode and seatIndex are required" },
@@ -86,6 +88,7 @@ export async function POST(req: Request) {
           name: playerName || "AI",
           isAI: true,
           stack: Number(aiStack) || 1000,
+          difficulty: difficulty || "medium",
         };
       }
       return {

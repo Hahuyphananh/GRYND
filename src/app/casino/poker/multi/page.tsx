@@ -17,6 +17,7 @@ type Player = {
   stack: number;
   hand: Card[];
   isAI?: boolean;
+  difficulty?: "easy" | "medium" | "hard";
   hasFolded?: boolean;
   lastAction?: string;
   currentBet: number;
@@ -119,6 +120,9 @@ export default function PokerPage() {
     enabled: !isSpectator && Boolean(game?.id),
   });
   const [raiseAmount, setRaiseAmount] = useState(50);
+  const raiseAmountRef = useRef(50);
+  const [showRaiseInput, setShowRaiseInput] = useState(false);
+  const [raiseInputValue, setRaiseInputValue] = useState(50);
   const [balance, setBalance] = useState<number>(0);
   const [inviteCode, setInviteCode] = useState("");
   const [joiningGame, setJoiningGame] = useState(false);
@@ -130,6 +134,8 @@ export default function PokerPage() {
   const [publicGameCode, setPublicGameCode] = useState<string | null>(null);
   const [showJoinForm, setShowJoinForm] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
+  const [aiDifficulty, setAiDifficulty] = useState<"easy" | "medium" | "hard">("medium");
+  const [aiDifficultyInput, setAiDifficultyInput] = useState<"easy" | "medium" | "hard">("medium");
   const [aiInfoOpen, setAiInfoOpen] = useState(false);
   const [selectedAi, setSelectedAi] = useState<Player | null>(null);
   const [turnTimeLimit, setTurnTimeLimit] = useState(60);
@@ -678,6 +684,7 @@ export default function PokerPage() {
           stack: Number(p.stack ?? 1000),
           hand: [],
           isAI: !!p.isAI,
+          difficulty: p.difficulty,
           hasFolded: false,
           lastAction: "",
           currentBet: 0,
@@ -739,47 +746,159 @@ export default function PokerPage() {
     }
   }
 
-  // ======== AI Turn Logic, performAction, advanceStage, showdown, etc. (kept intact) ========
+  // ======== AI Helpers: Win Probability & Pot Odds ========
+  function computeWinProbability(handStrength: string): number {
+    if (!handStrength) return 0.12;
+    if (handStrength.includes("Royal Flush")) return 0.99;
+    if (handStrength.includes("Straight Flush")) return 0.97;
+    if (handStrength.includes("Four of a Kind")) return 0.93;
+    if (handStrength.includes("Full House")) return 0.88;
+    if (handStrength.includes("Flush")) return 0.78;
+    if (handStrength.includes("Straight")) return 0.68;
+    if (handStrength.includes("Three of a Kind")) return 0.55;
+    if (handStrength.includes("Two Pair")) return 0.45;
+    if (handStrength.includes("Pair")) return 0.28;
+    return 0.12; // High Card
+  }
+
+  function shouldAICall(
+    handStrength: string,
+    toCall: number,
+    pot: number,
+    difficulty: "easy" | "medium" | "hard",
+  ): boolean {
+    const winProb = computeWinProbability(handStrength);
+    // Pot odds: amount to call / (pot after call)
+    const potAfterCall = pot + toCall;
+    const potOdds = potAfterCall > 0 ? toCall / potAfterCall : 0;
+
+    // Difficulty modifiers for calling threshold
+    const loosener: Record<string, number> = { easy: 0.15, medium: 0.05, hard: 0 };
+    const adjustedOdds = potOdds - loosener[difficulty];
+
+    return winProb >= adjustedOdds;
+  }
+
+  function computeAiRaiseAmount(
+    handStrength: string,
+    pot: number,
+    highestBet: number,
+    stack: number,
+    currentBet: number,
+    difficulty: "easy" | "medium" | "hard" = "medium",
+  ): number {
+    // Hand strength tiers → pot multiplier range
+    let minMult: number, maxMult: number, bluffChance: number;
+
+    if (handStrength.includes("Royal Flush") || handStrength.includes("Straight Flush")) {
+      return stack + currentBet;
+    } else if (handStrength.includes("Four of a Kind") || handStrength.includes("Full House")) {
+      minMult = 2.0; maxMult = 3.0; bluffChance = 0;
+    } else if (handStrength.includes("Flush") || handStrength.includes("Straight")) {
+      minMult = 1.5; maxMult = 2.5; bluffChance = 0.05;
+    } else if (handStrength.includes("Three of a Kind") || handStrength.includes("Two Pair")) {
+      minMult = 1.0; maxMult = 1.5; bluffChance = 0.15;
+    } else if (handStrength.includes("Pair")) {
+      minMult = 0.5; maxMult = 1.0; bluffChance = 0.35;
+    } else {
+      minMult = 0.25; maxMult = 0.5; bluffChance = 0.5;
+    }
+
+    // Difficulty adjustments
+    if (difficulty === "easy") {
+      minMult *= 0.7;
+      maxMult *= 0.7;
+      bluffChance *= 0.5;
+    } else if (difficulty === "hard") {
+      minMult *= 1.3;
+      maxMult *= 1.3;
+      bluffChance = Math.min(bluffChance * 1.5, 0.6);
+    }
+
+    if (Math.random() < bluffChance) {
+      minMult = Math.max(minMult, 1.0);
+      maxMult = Math.max(maxMult, 2.0);
+    }
+
+    const multiplier = minMult + Math.random() * (maxMult - minMult);
+    const potBased = Math.floor(pot * multiplier);
+    const minRaise = Math.max(20, highestBet * 2);
+    const maxRaise = stack + currentBet;
+    const amount = Math.max(minRaise, Math.min(potBased, maxRaise));
+
+    return amount;
+  }
+
+  // ======== AI Turn Logic ========
   useEffect(() => {
     if (!game) return;
     if (game.stage === "showdown" || game.waiting) return;
 
     const current = game.players[game.currentTurn];
-    if (!current || current.hasFolded || !current.isAI) return;
-
-    const timer = setTimeout(
+    if (!current || current.hasFolded || !current.isAI) return;          const diff = current.difficulty || aiDifficulty;
+          const timer = setTimeout(
       () => {
         try {
           const hs = evaluateHand(current.hand, game.community);
           const highest = Math.max(...game.players.map((p) => p.currentBet));
+          const pot = game.pot;
+          const toCall = Math.max(0, highest - (current.currentBet || 0));
 
           let action: "check" | "call" | "raise" | "fold" | "bet20";
 
-          if (current.currentBet < highest) {
-            action = "call";
-          } else if (Math.random() < 0.35) {
-            action = "bet20"; // force visible chips
-          } else {
-            action = "check";
-          }
+          // ── Strong hands always raise ──
+          const strongHands = ["Flush", "Straight", "Three", "Full", "Four"];
+          const isStrong = strongHands.some((s) => hs.includes(s));
 
-          if (
-            hs.includes("Three") ||
-            hs.includes("Straight") ||
-            hs.includes("Flush")
-          ) {
+          if (isStrong) {
             action = "raise";
-          } else if (hs.includes("Pair") || hs.includes("Two Pair")) {
-            action = "call";
-          } else if (Math.random() < 0.2) {
-            action = "fold";
+          } else if (toCall > 0) {
+            // ── Facing a bet: use pot odds to decide ──
+            const shouldCall = shouldAICall(hs, toCall, pot, diff);
+
+            if (shouldCall) {
+              // Occasionally raise instead of call (semi-bluff)
+              const semiBluffChance = diff === "easy" ? 0.05 : diff === "hard" ? 0.25 : 0.12;
+              if (hs.includes("Pair") && Math.random() < semiBluffChance) {
+                action = "raise";
+              } else {
+                action = "call";
+              }
+            } else {
+              action = "fold";
+            }
           } else {
-            action = "call";
+            // ── No bet to call: check or bet ──
+            const betFreq = diff === "easy" ? 0.15 : diff === "hard" ? 0.55 : 0.35;
+            if (Math.random() < betFreq) {
+              action = "bet20";
+            } else {
+              action = "check";
+            }
+
+            // Medium+ hands can raise (value bet) instead of bet20
+            if ((hs.includes("Pair") || hs.includes("Two Pair")) && Math.random() < 0.3) {
+              action = "raise";
+            }
           }
 
-          performAction(action as any, true);
+          // Compute smart raise amount before performing action
+          if (action === "raise") {
+            const smartRaise = computeAiRaiseAmount(
+              hs,
+              pot,
+              highest,
+              current.stack,
+              current.currentBet || 0,
+              diff,
+            );
+            raiseAmountRef.current = smartRaise;
+            setRaiseAmount(smartRaise);
+          }
+
+          performAction(action as any);
         } finally {
-          setAiThinking(false); // 🔒 ALWAYS unlock
+          setAiThinking(false);
         }
       },
       800 + Math.random() * 600,
@@ -788,7 +907,7 @@ export default function PokerPage() {
     setAiThinking(true);
 
     return () => clearTimeout(timer);
-  }, [game?.currentTurn, game?.stage]);
+  }, [game?.currentTurn, game?.stage, aiDifficulty]);
 
   function triggerAllInAnimation(seatIdx: number) {
     audioRef.current.playAllIn();
@@ -846,7 +965,6 @@ export default function PokerPage() {
 
   function performAction(
     action: "check" | "call" | "raise" | "fold" | "bet20",
-    isAI = false,
   ) {
     if (!game) return;
 
@@ -911,7 +1029,8 @@ export default function PokerPage() {
     } else if (action === "raise") {
       audioRef.current.playRaise();
       audioRef.current.playChipPot();
-      const targetBet = Math.max(raiseAmount, highest);
+      const effectiveRaise = raiseAmountRef.current;
+      const targetBet = Math.max(effectiveRaise, highest);
       const chipsNeeded = Math.max(0, targetBet - (current.currentBet || 0));
       const actual = Math.min(chipsNeeded, current.stack);
       current.stack -= actual;
@@ -998,6 +1117,37 @@ export default function PokerPage() {
       saveGameState(nextState);
       return nextState;
     });
+  }
+
+  function confirmRaise() {
+    if (!game || !me) return;
+    const amount = Math.min(raiseInputValue, me.stack + (me.currentBet || 0));
+    const finalAmount = Math.max(amount, 20);
+    raiseAmountRef.current = finalAmount;
+    setRaiseAmount(finalAmount);
+    setShowRaiseInput(false);
+    performAction("raise");
+  }
+
+  function cancelRaise() {
+    setShowRaiseInput(false);
+  }
+
+  function setRaiseFraction(fraction: "half" | "threeQuarter" | "allIn") {
+    if (!game || !me) return;
+    const highestBetInRound = Math.max(
+      ...game.players.map((p) => p.currentBet || 0),
+    );
+    let amount = 0;
+    if (fraction === "half") {
+      amount = Math.floor(game.pot / 2);
+    } else if (fraction === "threeQuarter") {
+      amount = Math.floor((game.pot * 3) / 4);
+    } else if (fraction === "allIn") {
+      amount = me.stack + (me.currentBet || 0);
+    }
+    const minRaise = Math.max(20, highestBetInRound * 2);
+    setRaiseInputValue(Math.max(amount, minRaise));
   }
 
   async function advanceStage() {
@@ -1237,6 +1387,7 @@ export default function PokerPage() {
         isAI: true,
         playerName: nameToUse,
         aiStack: Number(aiStackInput) || 1000,
+        difficulty: aiDifficultyInput,
       }),
     });
     const data = await res.json();
@@ -1427,6 +1578,16 @@ export default function PokerPage() {
           >
             <option value="true">Private</option>
             <option value="false">Public</option>
+          </select>
+
+          <select
+            value={aiDifficulty}
+            onChange={(e) => setAiDifficulty(e.target.value as "easy" | "medium" | "hard")}
+            className="w-full mb-2 rounded-lg border border-[#00e5ff]/30 bg-[#001933]/60 px-3 py-2 text-[#d8fbff] focus:outline-none focus:border-[#00e5ff] focus:shadow-[0_0_10px_rgba(0,229,255,0.4)] transition"
+          >
+            <option value="easy">🐣 AI Difficulty: Easy</option>
+            <option value="medium">⚖️ AI Difficulty: Medium</option>
+            <option value="hard">🔥 AI Difficulty: Hard</option>
           </select>
 
           <button
@@ -1790,7 +1951,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
     `}
                 >
                   <div className="flex justify-between w-full px-1 items-center gap-1">
-                    <span className="truncate text-[#ffffff]/90">{occupant.name}</span>
+                    <span className="truncate text-[#ffffff]/90">{occupant.name}{occupant.isAI && <> <span title={`AI Difficulty: ${(occupant.difficulty || aiDifficulty).charAt(0).toUpperCase() + (occupant.difficulty || aiDifficulty).slice(1)}`}>{(occupant.difficulty || aiDifficulty) === "easy" ? "🟢" : (occupant.difficulty || aiDifficulty) === "medium" ? "🟡" : "🔴"}</span></>}</span>
                     <span className="text-xs text-[#00e5ff] drop-shadow-[0_0_4px_#00e5ff]">${occupant.stack}</span>
                   </div>
 
@@ -1986,6 +2147,17 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   className="w-full p-2 rounded text-black mb-2"
                 />
 
+                <label className="block text-sm mb-1">AI Difficulty</label>
+                <select
+                  value={aiDifficultyInput}
+                  onChange={(e) => setAiDifficultyInput(e.target.value as "easy" | "medium" | "hard")}
+                  className="w-full p-2 rounded text-black mb-2"
+                >
+                  <option value="easy">🟢 Easy</option>
+                  <option value="medium">🟡 Medium</option>
+                  <option value="hard">🔴 Hard</option>
+                </select>
+
                 <label className="block text-sm mb-1">AI Stack</label>
                 <input
                   type="number"
@@ -2071,6 +2243,95 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
         </div>
       )}
 
+      {/* ── Raise Input Modal ── */}
+      {showRaiseInput && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center pointer-events-auto">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/70 z-[140]"
+            onClick={cancelRaise}
+          />
+
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="relative z-[150] pointer-events-auto w-[340px] bg-[#0a0a1a]/95 backdrop-blur-xl border-2 border-[#ff00cc]/40 rounded-2xl p-5 shadow-[0_0_40px_rgba(255,0,204,0.3)]"
+          >
+            <h2 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] mb-1 text-center">
+              ⬆ Raise Amount
+            </h2>
+            <p className="text-[10px] text-[#b0b0ff]/50 text-center mb-4 uppercase tracking-widest">
+              Set your raise — min {(() => { const h = Math.max(...(game?.players ?? []).map(p => p.currentBet || 0)); return Math.max(20, h * 2); })()}
+            </p>
+
+            {/* Number input */}
+            <div className="mb-4">
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#ff00cc] font-bold text-lg">$</span>
+                <input
+                  type="number"
+                  value={raiseInputValue}
+                  onChange={(e) => setRaiseInputValue(Math.max(0, Number(e.target.value) || 0))}
+                  onKeyDown={(e) => { if (e.key === "Enter") confirmRaise(); if (e.key === "Escape") cancelRaise(); }}
+                  min={0}
+                  autoFocus
+                  className="w-full pl-8 pr-4 py-3 rounded-xl bg-[#0d0020]/80 border-2 border-[#ff00cc]/50 text-[#00e5ff] text-2xl font-black text-center placeholder:text-[#ff00cc]/30 focus:outline-none focus:border-[#ff00cc] focus:shadow-[0_0_20px_rgba(255,0,204,0.4)] transition-all"
+                  placeholder="Enter amount"
+                />
+              </div>
+              <div className="text-[10px] text-[#b0b0ff]/40 text-center mt-1">
+                Stack: ${me?.stack ?? 0} &nbsp;|&nbsp; Current bet: ${me?.currentBet ?? 0}
+              </div>
+            </div>
+
+            {/* Pot-fraction quick options */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <button
+                onClick={() => setRaiseFraction("half")}
+                className="px-3 py-2 rounded-xl text-xs font-bold border border-[#00e5ff]/30 bg-[#00e5ff]/10 text-[#00e5ff] hover:bg-[#00e5ff]/25 hover:border-[#00e5ff]/60 active:scale-95 transition-all"
+              >
+                ½ Pot
+              </button>
+              <button
+                onClick={() => setRaiseFraction("threeQuarter")}
+                className="px-3 py-2 rounded-xl text-xs font-bold border border-[#ff00cc]/30 bg-[#ff00cc]/10 text-[#ff00cc] hover:bg-[#ff00cc]/25 hover:border-[#ff00cc]/60 active:scale-95 transition-all"
+              >
+                ¾ Pot
+              </button>
+              <button
+                onClick={() => setRaiseFraction("allIn")}
+                className="px-3 py-2 rounded-xl text-xs font-bold border border-yellow-400/40 bg-yellow-400/10 text-yellow-300 hover:bg-yellow-400/25 hover:border-yellow-400/60 active:scale-95 transition-all shadow-[0_0_10px_rgba(255,215,0,0.15)]"
+              >
+                🔥 All-in
+              </button>
+            </div>
+
+            {/* Confirm / Cancel */}
+            <div className="flex gap-3">
+              <button
+                onClick={cancelRaise}
+                className="flex-1 px-4 py-3 rounded-xl font-bold text-sm border border-red-500/40 bg-red-900/20 text-red-300 hover:bg-red-900/40 hover:border-red-500/60 active:scale-95 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRaise}
+                disabled={raiseInputValue <= 0}
+                className={`flex-1 px-4 py-3 rounded-xl font-bold text-sm transition-all active:scale-95 ${
+                  raiseInputValue > 0
+                    ? "bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] text-black hover:from-[#ff00cc]/90 hover:to-[#00e5ff]/90 shadow-[0_0_20px_rgba(255,0,204,0.5)]"
+                    : "bg-gray-700 text-gray-400 cursor-not-allowed"
+                }`}
+              >
+                Raise ${raiseInputValue > 0 ? raiseInputValue : ""}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* ── End of scalable wrapper ── */}
       </div>
 
@@ -2139,13 +2400,9 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
         {/* Raise */}
         <button
           onClick={() => {
-            const targetBet = Math.max(
-              raiseAmount,
-              highestBetInRound * 2,
-            );
-
-            setRaiseAmount(targetBet);
-            performAction("raise");
+            const minRaise = Math.max(20, highestBetInRound * 2);
+            setRaiseInputValue(Math.max(raiseAmount, minRaise));
+            setShowRaiseInput(true);
           }}
           className="w-40 px-5 py-3 rounded-2xl font-bold text-sm
           bg-gradient-to-r from-[#ff00cc]/30 to-fuchsia-500/20
@@ -2247,13 +2504,9 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
 
             <button
               onClick={() => {
-                const targetBet = Math.max(
-                  raiseAmount,
-                  highestBetInRound * 2,
-                );
-
-                setRaiseAmount(targetBet);
-                performAction("raise");
+                const minRaise = Math.max(20, highestBetInRound * 2);
+                setRaiseInputValue(Math.max(raiseAmount, minRaise));
+                setShowRaiseInput(true);
               }}
               className="
                 h-14 rounded-2xl
