@@ -22,6 +22,7 @@ import Img16 from "../../images/clicker.png";
 import Img17 from "../../images/pool.png";
 import Img18 from "../../images/hex-duel.svg";
 import Img19 from "../../images/yahtzee.png";
+import Img20 from "../../images/farkle.svg";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -193,6 +194,14 @@ function MainComponent() {
       descriptionKey: "games.yahtzee_desc",
       popular: true,
     },
+    {
+      name: "Farkle",
+      href: "/casino/farkle",
+      leaderboardKey: "farkle",
+      image: Img20,
+      descriptionKey: "games.farkle_desc",
+      popular: true,
+    },
   ];
 
   const filteredGames = games.filter((game) =>
@@ -209,9 +218,11 @@ function MainComponent() {
     "pool-masters",
     "hex-duel",
     "yahtzee",
+    "farkle",
   ]);
 
   const newestOrder = [
+    "farkle",
     "yahtzee",
     "hex-duel",
     "pool-masters",

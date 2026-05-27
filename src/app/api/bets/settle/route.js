@@ -59,7 +59,17 @@ async function handler({ betId, result }) {
           win_rate = CASE 
             WHEN (wins + ${result === "won" ? 1 : 0}) = 0 THEN 0
             ELSE ROUND(((wins + ${result === "won" ? 1 : 0})::numeric / (total_bets + 1) * 100), 2)
-          END
+          END,
+          weekly_wagered = weekly_wagered + ${bet.amount},
+          weekly_won = weekly_won + ${winAmount},
+          weekly_wins = weekly_wins + ${result === "won" ? 1 : 0},
+          weekly_losses = weekly_losses + ${result === "lost" ? 1 : 0},
+          weekly_biggest_win = GREATEST(weekly_biggest_win, ${winAmount}),
+          weekly_win_rate = CASE
+            WHEN (weekly_wins + ${result === "won" ? 1 : 0}) = 0 THEN 0
+            ELSE ROUND(((weekly_wins + ${result === "won" ? 1 : 0})::numeric / (weekly_wins + weekly_losses + 1) * 100), 2)
+          END,
+          updated_at = NOW()
         WHERE user_id = ${userId}
       `,
     ]);
