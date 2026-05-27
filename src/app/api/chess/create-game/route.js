@@ -6,6 +6,13 @@ import { eq, and, lt, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 const TIMER_CONFIG = {
+  "1min": 60,
+  "2min": 120,
+  "3min": 180,
+  "5min": 300,
+  "10min": 600,
+  "30min": 1800,
+  // Keep legacy names for URL-based direct navigation
   bullet: 120,
   blitz: 300,
   normal: 1800,
@@ -32,13 +39,21 @@ export async function POST(req) {
     const body = await req.json();
     const tableAmount = Number(body.tableAmount);
     const timerMode = String(body.timerMode || "").toLowerCase();
+    const timeLimit = Number(body.timeLimit);
+    
     if (!tableAmount || tableAmount <= 0) {
       return NextResponse.json(
         { error: "Invalid stake amount" },
         { status: 400 },
       );
     }
-    if (!Object.hasOwn(TIMER_CONFIG, timerMode)) {
+    
+    // Accept explicit timeLimit from client, or look up from TIMER_CONFIG
+    const initialTimeSeconds = Number.isFinite(timeLimit) && timeLimit > 0
+      ? timeLimit
+      : TIMER_CONFIG[timerMode];
+    
+    if (!initialTimeSeconds || initialTimeSeconds <= 0) {
       return NextResponse.json(
         { error: "Invalid timer option" },
         { status: 400 },
@@ -134,7 +149,7 @@ export async function POST(req) {
           playerWhiteId: clerkId,
           betAmount: tableAmount,
           timerMode,
-          initialTimeSeconds: TIMER_CONFIG[timerMode],
+          initialTimeSeconds,
           status: "waiting",
           isAiGame: false,
         })
@@ -149,7 +164,7 @@ export async function POST(req) {
       ready: false,
       status: "waiting",
       timerMode,
-      initialTimeSeconds: TIMER_CONFIG[timerMode],
+      initialTimeSeconds,
       newBalance: createdGame.newBalance,
     });
   } catch (err) {

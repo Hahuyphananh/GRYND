@@ -378,9 +378,16 @@ io.on("connection", (socket) => {
     if (!gameId) return;
     const roomId = String(gameId);
     socket.join(roomId);
-    socket
-      .to(roomId)
-      .emit("player_joined", { gameId: roomId, userId: socket.data.userId });
+
+    // Track player in module-level map
+    if (!hexDuelRoomPlayers.has(String(gameId))) {
+      hexDuelRoomPlayers.set(String(gameId), new Set());
+    }
+    hexDuelRoomPlayers.get(String(gameId)).add(socket.data.userId);
+
+    checkAndEmitHexDuelReady(gameId, roomId);
+
+    socket.to(roomId).emit("player_joined", { gameId: roomId, userId: socket.data.userId });
   });
 
   socket.on("move", ({ gameId, move }) => {
@@ -398,6 +405,14 @@ io.on("connection", (socket) => {
     if (!gameId) return;
     const roomId = String(gameId);
     socket.leave(roomId);
+
+    // Clean up module-level tracking
+    const players = hexDuelRoomPlayers.get(String(gameId));
+    if (players) {
+      players.delete(socket.data.userId);
+      if (players.size === 0) hexDuelRoomPlayers.delete(String(gameId));
+    }
+
     socket
       .to(roomId)
       .emit("player_left", { gameId: roomId, userId: socket.data.userId });
@@ -485,6 +500,23 @@ io.on("connection", (socket) => {
   // Track which gameIds each socket has joined (so we can emit disconnect events)
   const hexDuelGameIds = new Set();
 
+  // Module-level tracking: which userIds are present in each game room
+  if (!global.__hexDuelRoomPlayers) global.__hexDuelRoomPlayers = new Map();
+  const hexDuelRoomPlayers = global.__hexDuelRoomPlayers;
+
+  function checkAndEmitHexDuelReady(gameId, roomId) {
+    const players = hexDuelRoomPlayers.get(String(gameId));
+    if (!players || players.size < 2) {
+      // Also verify via socket.io rooms as fallback
+      const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+      if (!socketsInRoom || socketsInRoom.size < 2) return;
+    }
+    io.to(roomId).emit("hexDuel:opponent:ready", {
+      gameId: roomId,
+      joinedAt: new Date().toISOString(),
+    });
+  }
+
   socket.on("hexDuel:action", ({ gameId, action }) => {
     if (!gameId || !action) return;
     const roomId = String(gameId);
@@ -525,16 +557,13 @@ io.on("connection", (socket) => {
     socket.join(roomId);
     hexDuelGameIds.add(gameId);
 
-    // Check if both players are now in the room
-    const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
-    if (socketsInRoom && socketsInRoom.size >= 2) {
-      // Both players connected — notify everyone that the game can start
-      io.to(roomId).emit("hexDuel:opponent:ready", {
-        gameId: roomId,
-        userId: socket.data.userId,
-        joinedAt: new Date().toISOString(),
-      });
+    // Track player in module-level map
+    if (!hexDuelRoomPlayers.has(String(gameId))) {
+      hexDuelRoomPlayers.set(String(gameId), new Set());
     }
+    hexDuelRoomPlayers.get(String(gameId)).add(socket.data.userId);
+
+    checkAndEmitHexDuelReady(gameId, roomId);
   });
 
   socket.on("hexDuel:resign", ({ gameId }) => {
@@ -560,10 +589,16 @@ io.on("connection", (socket) => {
 
   // ── Keep existing disconnect handler ──
   socket.on("disconnect", () => {
-    // For hex duel: emit a dedictaed disconnect event so the opponent gets a win
+    // For hex duel: emit a dedicated disconnect event so the opponent gets a win
     if (hexDuelGameIds.size > 0) {
       for (const gid of hexDuelGameIds) {
         const roomId = String(gid);
+        // Clean up module-level tracking
+        const players = hexDuelRoomPlayers.get(String(gid));
+        if (players) {
+          players.delete(socket.data.userId);
+          if (players.size === 0) hexDuelRoomPlayers.delete(String(gid));
+        }
         // Check the room still has players
         io.to(roomId).emit("hexDuel:opponent:disconnected", {
           gameId: roomId,

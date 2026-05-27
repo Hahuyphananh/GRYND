@@ -1073,7 +1073,17 @@ export default function HexDuelPage() {
     socket.emit("hexDuel:join", { gameId: multiplayerGameId });
     socket.emit("join_game", { gameId: multiplayerGameId });
 
+    // ── Self-healing polling: re-emit join until opponent is detected ──
+    // Handles missed ready events, reconnections, and Strict Mode races
+    const readyPoll = setInterval(() => {
+      if (!opponentReadyRef.current && socket.connected) {
+        socket.emit("hexDuel:join", { gameId: multiplayerGameId });
+        socket.emit("join_game", { gameId: multiplayerGameId });
+      }
+    }, 2000);
+
     return () => {
+      clearInterval(readyPoll);
       socket.off("hexDuel:action", handleOpponentAction);
       socket.off("hexDuel:opponent:ready", handleOpponentReady);
       socket.off("hexDuel:opponent:resigned", handleOpponentResigned);

@@ -125,6 +125,11 @@ export default function DiceDuelMatchPage() {
     );
   }, [match, viewerId]);
 
+  // 🧠 Map hp1/hp2 to viewer vs enemy based on who the viewer is
+  const viewerIsPlayer1 = match?.player1Id === viewerId;
+  const viewerHP = viewerIsPlayer1 ? match?.hp1 : match?.hp2;
+  const enemyHP = viewerIsPlayer1 ? match?.hp2 : match?.hp1;
+
   const triggerEffect = (type: string) => {
     if (type === "SAFE_ROLL") setEffect("blue");
     if (type === "POWER_ROLL") setEffect("red");
@@ -179,10 +184,18 @@ export default function DiceDuelMatchPage() {
     const data = await res.json();
 
     // 🎯 PLAYER FLOATING FEEDBACK
-    const damage = data?.damageDealt ?? data?.damage ?? 0;
+    const damage = data?.turnResult?.damage ?? data?.damageDealt ?? 0;
+    const selfDamage = data?.turnResult?.selfDamage ?? 0;
+    const heal = data?.turnResult?.heal ?? 0;
 
     if (damage > 0) {
-      spawnFloat(`-${damage}`, "text-fuchsia-400", "right");
+      spawnFloat(`-${damage}`, "text-red-400", "right");
+    }
+    if (selfDamage > 0) {
+      spawnFloat(`-${selfDamage}`, "text-red-400", "left");
+    }
+    if (heal > 0) {
+      spawnFloat(`+${heal}`, "text-green-400", "left");
     }
     load();
 
@@ -327,12 +340,12 @@ export default function DiceDuelMatchPage() {
               ))}
 
             <p className="text-sm text-fuchsia-300 font-bold">
-              {match?.player1Id === viewerId
+              {viewerIsPlayer1
                 ? match?.player1Name
                 : match?.player2Name}
             </p>
 
-            <p className="text-3xl font-bold">HP: {match?.hp1 ?? "--"}</p>
+            <p className="text-3xl font-bold">HP: {viewerHP ?? "--"}</p>
           </div>
 
           {/* ENEMY */}
@@ -349,12 +362,12 @@ export default function DiceDuelMatchPage() {
               ))}
 
             <p className="text-sm text-cyan-300 font-bold">
-              {match?.player1Id === viewerId
+              {viewerIsPlayer1
                 ? match?.player2Name
                 : match?.player1Name}
             </p>
 
-            <p className="text-3xl font-bold">HP: {match?.hp2 ?? "--"}</p>
+            <p className="text-3xl font-bold">HP: {enemyHP ?? "--"}</p>
           </div>
         </div>
 

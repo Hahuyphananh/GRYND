@@ -138,6 +138,9 @@ export default function Page() {
   const aiShotLock = useRef(false);
   const localShotInProgressRef = useRef(false);
   const remoteShotInProgressRef = useRef(false);
+  const shotHistoryRef = useRef<ShotEntry[]>([]);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastPolledVersionRef = useRef(0);
   const shotMeta = useRef<ShotMeta>({
     firstContactNumber: null,
     railAfterContact: false,
@@ -240,6 +243,9 @@ export default function Page() {
     spinX?: number;
     spinY?: number;
   } | null>(null);
+  const [showRemoteAim, setShowRemoteAim] = useState(false);
+  const remoteAimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const processedShotIdsRef = useRef<Set<string>>(new Set());
 
   // Keep name refs in sync so websocket/event handlers never capture stale names
   // Must be after myName/oppName state declarations
@@ -249,6 +255,11 @@ export default function Page() {
   useEffect(() => {
     oppNameRef.current = oppName;
   }, [oppName]);
+
+  // Keep shotHistoryRef in sync for duplicate detection in polling
+  useEffect(() => {
+    shotHistoryRef.current = shotHistory;
+  }, [shotHistory]);
 
   useEffect(() => {
     ballsRef.current = balls;
@@ -340,7 +351,7 @@ const canShoot =
   !isMoving(balls) &&
   settleInterpRef.current === null &&
   (aiMode ? true : isMyTurn);
-  const opponentSeat: PlayerTurn = owner === 1 ? 2 : 1;;
+
 
   const handleRematch = async () => {
     setRematching(true);
@@ -386,22 +397,18 @@ const canShoot =
     if (!x) return;
     drawTable(x);
     const cue = balls.find((b) => b.number === 0);
+    
     if (cue && !cue.pocketed && canShoot) {
       drawAimGuide(x, cue, aim, pull);
       drawShotPreview(x, cue, aim, balls);
       drawBankPreview(x, cue, aim, balls, true);
-    } else if (
-      cue &&
-      !cue.pocketed &&
-      remoteAim &&
-      remoteAim.seat !== owner &&
-      Date.now() - remoteAim.at < 2500
-    ) {
-      drawAimGuide(x, cue, remoteAim.angle, remoteAim.pull);
-      drawBankPreview(x, cue, remoteAim.angle, balls, false);
+    } else if (cue && !cue.pocketed && showRemoteAim) {
+      // Show opponent's full aim guide including cue stick
+      drawAimGuide(x, cue, remoteAim!.angle, remoteAim!.pull);
+      drawBankPreview(x, cue, remoteAim!.angle, balls, false);
     }
     drawBalls(x, balls);
-  }, [balls, canShoot, aim, pull, owner, turn, remoteAim]);
+  }, [balls, canShoot, aim, pull, owner, turn, remoteAim, showRemoteAim]);
 
   useEffect(() => {
     if (!shotLock.current || isMoving(balls)) return;
@@ -714,8 +721,11 @@ if (!aiMode && turn !== owner) return;
 
       const localShotInProgress = localShotInProgressRef.current;
       const remoteSettled = payload.settled || payload.lifecycle === "SETTLED";
-      const remoteRolling = payload.lifecycle === "SHOOTING" || payload.lifecycle === "ROLLING";
+      const isAimingEvent = payload.lifecycle === "SHOOTING" && !payload.balls;
+      const isActualShot = payload.lifecycle === "SHOOTING" && payload.balls;
+      const remoteRolling = isActualShot || payload.lifecycle === "ROLLING";
 
+      // Only start remote shot tracking when we receive actual ball data (not just aim events)
       if (remoteRolling && !localShotInProgress) {
         remoteShotInProgressRef.current = true;
         // Engage shotLock so physics simulation can run for remote shots
@@ -727,9 +737,15 @@ if (!aiMode && turn !== owner) return;
         }
         // A new remote shot cancels any in-flight SETTLED interpolation
         settleInterpRef.current = null;
+        // Hide the remote aim guide now that the shot has been taken
+        setShowRemoteAim(false);
+        if (remoteAimTimerRef.current) {
+          clearTimeout(remoteAimTimerRef.current);
+          remoteAimTimerRef.current = null;
+        }
         // Reset shotMeta for remote shot - we track ball movement but don't have
         // first-contact/rail info from remote, so we let physics run naturally
-        if (payload.lifecycle === "SHOOTING" && !remoteShotMetaInitializedRef.current) {
+        if (isActualShot && !remoteShotMetaInitializedRef.current) {
           shotMeta.current = {
             firstContactNumber: null,
             railAfterContact: false,
@@ -742,12 +758,12 @@ if (!aiMode && turn !== owner) return;
 
      const isSelf = payload.userId === userIdRef.current;
 
-// Only accept ball updates on SHOOTING (seed physics with velocities) or SETTLED
+// Only accept ball updates on actual shot SHOOTING (seed physics with velocities) or SETTLED
 // (authoritative final).  During ROLLING we let the local physics simulation run
 // freely so the opponent sees perfectly smooth motion instead of 100 ms snap-jumps.
 // On SETTLED we interpolate from current positions to the authoritative final state
 // over ~120 ms instead of snapping — this eliminates the end-of-shot visual pop.
-const shouldAcceptBalls = remoteSettled || payload.lifecycle === "SHOOTING";
+const shouldAcceptBalls = remoteSettled || isActualShot;
 if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payload.version > syncVersionRef.current)) {
   if (payload.version) setSyncVersion(payload.version);
 
@@ -780,6 +796,8 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       if (typeof payload.openTable === "boolean") setOpenTable(payload.openTable);
       if (typeof payload.ballInHand === "boolean") setBallInHand(payload.ballInHand);
       if ("winner" in payload) setWinner(payload.winner ?? null);
+      // Show opponent's aim visor — keep showing for 8 seconds so it's visible
+      // during the entire aiming+shooting sequence, not just brief mouse movements
       if (typeof payload.aim === "number") {
         setRemoteAim({
           angle: payload.aim,
@@ -789,6 +807,17 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           spinX: payload.spinX,
           spinY: payload.spinY,
         });
+        // Start/refresh the 8-second timer for showing remote aim
+        setShowRemoteAim(true);
+        if (remoteAimTimerRef.current) clearTimeout(remoteAimTimerRef.current);
+        remoteAimTimerRef.current = setTimeout(() => {
+          if (mountedRef.current) setShowRemoteAim(false);
+        }, 8000);
+        // When opponent is aiming, also clear any stale SETTLED interpolation
+        // so balls stay in place while they line up their shot
+        if (isAimingEvent && settleInterpRef.current) {
+          settleInterpRef.current = null;
+        }
       }
       if (payload.settled || payload.lifecycle === "SETTLED") {
         shotLock.current = false;
@@ -820,22 +849,25 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         }
 
         // ── Push remote shot history entry ──
-        turnNumberRef.current += 1;
-        const remotePlayerName = payload.sourceSeat === ownerRef.current ? myNameRef.current : oppNameRef.current;
-        setShotHistory((prev) => [
-          {
-            turnNumber: turnNumberRef.current,
-            playerName: remotePlayerName,
-            seat: payload.sourceSeat,
-            pocketedNumbers: payload.pocketedNumbers ?? [],
-            foul: payload.foul ?? false,
-            foulMessage: payload.foulMessage ?? null,
-            ballInHand: payload.ballInHand ?? false,
-            winner: !!payload.winner,
-            timestamp: Date.now(),
-          },
-          ...prev,
-        ]);
+        if (payload.shotId && !processedShotIdsRef.current.has(payload.shotId)) {
+          processedShotIdsRef.current.add(payload.shotId);
+          turnNumberRef.current += 1;
+          const remotePlayerName = payload.sourceSeat === ownerRef.current ? myNameRef.current : oppNameRef.current;
+          setShotHistory((prev) => [
+            {
+              turnNumber: turnNumberRef.current,
+              playerName: remotePlayerName,
+              seat: payload.sourceSeat,
+              pocketedNumbers: payload.pocketedNumbers ?? [],
+              foul: payload.foul ?? false,
+              foulMessage: payload.foulMessage ?? null,
+              ballInHand: payload.ballInHand ?? false,
+              winner: !!payload.winner,
+              timestamp: Date.now(),
+            },
+            ...prev,
+          ]);
+        }
       }
     };
 
@@ -872,8 +904,8 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
     return () => clearTimeout(timer);
   }, [aiMode, turn, canShoot, winner, oppTeam, openTable]);
 
-  useEffect(() => {
-    const syncMatch = async () => {
+  const syncMatch = async () => {
+    try {
       const res = await fetch(`/api/pool/get-match?matchId=${activeMatchId}`, {
         cache: "no-store",
       });
@@ -886,25 +918,57 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         if (!aiMode && data.match.id && data.match.id !== activeMatchId) {
           setActiveMatchId(data.match.id);
           router.replace(`/casino/pool-masters/game/${data.match.id}`);
+          return;
         }
       }
-      if (data.viewerSeat && owner === 1) {
-  setOwner(data.viewerSeat);
-}
+      if (data.viewerSeat && ownerRef.current === 1) {
+        setOwner(data.viewerSeat);
+      }
       if (data.viewerName) setMyName(data.viewerName);
       if (data.opponentName) setOppName(data.opponentName);
+
+      // Use refs for the most current values — avoids stale closure issues
       const localShotInProgress = localShotInProgressRef.current || remoteShotInProgressRef.current;
+      const currentVersion = syncVersionRef.current;
+
       if (
         !localShotInProgress &&
         gs?.version &&
-        isNewerVersion(gs.version, syncVersion)
+        isNewerVersion(gs.version, currentVersion)
       ) {
+        // Update both state and ref atomically
+        syncVersionRef.current = Math.max(currentVersion, gs.version);
         setSyncVersion(gs.version);
+        lastPolledVersionRef.current = gs.version;
+
         if (gs.balls) {
-          settleInterpRef.current = {
-            to: gs.balls.map((b: Ball) => ({ ...b })),
-            startTime: performance.now(),
-          };
+          // If the remote player is rolling (gs.lifecycle === "ROLLING" or "SHOOTING"),
+          // seed local physics so balls move smoothly on the opponent's screen
+          const isRemoteRolling = gs.lifecycle === "ROLLING" || gs.lifecycle === "SHOOTING";
+          if (isRemoteRolling && !gs.settled && !remoteShotInProgressRef.current && !localShotInProgressRef.current) {
+            // We missed the SHOOTING socket event — seed physics from polling data
+            remoteShotInProgressRef.current = true;
+            shotLock.current = true;
+            lifecycleRef.current = gs.lifecycle ?? "ROLLING";
+            settleInterpRef.current = null;
+            if (!remoteShotMetaInitializedRef.current) {
+              shotMeta.current = {
+                firstContactNumber: null,
+                railAfterContact: false,
+                pocketedNumbers: [],
+                cueScratch: false,
+              };
+              remoteShotMetaInitializedRef.current = true;
+            }
+            ballsRef.current = gs.balls.map((b: Ball) => ({ ...b }));
+            setBalls(gs.balls.map((b: Ball) => ({ ...b })));
+          } else if (!isRemoteRolling || gs.settled) {
+            // Settled state — smooth interpolation
+            settleInterpRef.current = {
+              to: gs.balls.map((b: Ball) => ({ ...b })),
+              startTime: performance.now(),
+            };
+          }
         }
         if (gs.turn) setTurn(gs.turn);
         const remoteSeat = gs.perspectiveSeat;
@@ -917,21 +981,35 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         setLastFoul(gs.foul ? (gs.foulMessage ?? "Foul. Ball in hand.") : null);
         if (gs.foulMessage) setStatus(gs.foulMessage);
 
+        // If the remote settled, clean up remote shot flags
+        if (gs.settled || gs.lifecycle === "SETTLED") {
+          shotLock.current = false;
+          remoteShotInProgressRef.current = false;
+          localShotInProgressRef.current = false;
+          lifecycleRef.current = "IDLE";
+          activeShotIdRef.current = null;
+          remoteShotMetaInitializedRef.current = false;
+        }
+
         // ── Push polling shot history entry for remote settled shots ──
         const pollingSourceSeat = gs.perspectiveSeat;
-        if (pollingSourceSeat && pollingSourceSeat !== owner) {
-          turnNumberRef.current += 1;
-          const pollTurn = turnNumberRef.current;
-          const pollingPlayerName = pollingSourceSeat === owner ? myNameRef.current : oppNameRef.current;
-          // Check for duplicates before pushing (websocket may have already logged this shot)
-          const alreadyLogged = shotHistory.some(
-            (e) =>
-              e.turnNumber === pollTurn ||
-              (e.playerName === pollingPlayerName && Math.abs(e.timestamp - Date.now()) < 5000),
-          );
-          if (alreadyLogged) {
-            turnNumberRef.current -= 1; // revert increment — already logged
-          } else {
+        const shotIdKey = gs.shotId;
+        if (pollingSourceSeat && pollingSourceSeat !== ownerRef.current) {
+          // Use shotId for dedup when available, fall back to timestamp matching
+          const alreadyLogged = (shotIdKey && processedShotIdsRef.current.has(shotIdKey)) ||
+            (() => {
+              const history = shotHistoryRef.current;
+              return history.some(
+                (e) =>
+                  (e.playerName === (pollingSourceSeat === ownerRef.current ? myNameRef.current : oppNameRef.current) &&
+                   Math.abs(e.timestamp - Date.now()) < 5000),
+              );
+            })();
+          if (!alreadyLogged) {
+            if (shotIdKey) processedShotIdsRef.current.add(shotIdKey);
+            turnNumberRef.current += 1;
+            const pollTurn = turnNumberRef.current;
+            const pollingPlayerName = pollingSourceSeat === ownerRef.current ? myNameRef.current : oppNameRef.current;
             setShotHistory((prev) => [
               {
                 turnNumber: pollTurn,
@@ -949,20 +1027,32 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           }
         }
       }
-    };
+    } catch (err) {
+      // Network errors are transient — next interval will retry
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[pool] polling error:", err);
+      }
+    }
+  };
 
+  useEffect(() => {
     if (aiMode) {
-      if (syncVersion === 0) void syncMatch();
+      if (syncVersionRef.current === 0) void syncMatch();
       return;
     }
 
     void syncMatch();
+    pollIntervalRef.current = setInterval(syncMatch, 1000);
 
-const id = setInterval(syncMatch, 1000);
-
-return () => clearInterval(id);
-
-  }, [activeMatchId, aiMode, syncVersion, router]);
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+    // router is intentionally omitted — useRouter() returns a stable reference in Next.js
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMatchId, aiMode]);
   const myRemaining = BALL_LAYOUT.filter((b) =>
     myTeam ? (myTeam === "solids" ? !b.s && b.n !== 8 : b.s) : b.n !== 8
   )
