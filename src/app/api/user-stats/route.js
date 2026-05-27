@@ -209,34 +209,15 @@ export async function GET() {
     const favoriteGame =
       Object.entries(gameCount).sort((a, b) => b[1] - a[1])[0]?.[0] || "N/A";
 
-    // ✅ UPSERT INTO user_stats
+    // Only update favorite_game (the one stat that applyLeaderboardCounters doesn't track).
+    // All other stats (total_bets, wins, losses, win_rate, biggest_win, etc.) are maintained
+    // incrementally by applyLeaderboardCounters and must NOT be overwritten here — doing so
+    // would corrupt all-time values relative to weekly counters and cause weekly > all-time.
     await sql`
-      INSERT INTO user_stats (
-        user_id,
-        total_bets,
-        wins,
-        losses,
-        win_rate,
-        biggest_win,
-        favorite_game
-      )
-      VALUES (
-        ${uid},
-        ${totalBets},
-        ${wins},
-        ${losses},
-        ${winRate},
-        ${biggestWin},
-        ${favoriteGame}
-      )
+      INSERT INTO user_stats (user_id, favorite_game)
+      VALUES (${uid}, ${favoriteGame})
       ON CONFLICT (user_id)
-      DO UPDATE SET
-        total_bets = EXCLUDED.total_bets,
-        wins = EXCLUDED.wins,
-        losses = EXCLUDED.losses,
-        win_rate = EXCLUDED.win_rate,
-        biggest_win = EXCLUDED.biggest_win,
-        favorite_game = EXCLUDED.favorite_game;
+      DO UPDATE SET favorite_game = EXCLUDED.favorite_game;
     `;
 
     // ✅ Get user meta (level, referrals)
@@ -258,13 +239,14 @@ export async function GET() {
     const progress = getLevelProgress(totalWagered);
     const computedHighestTitle = getHighestTitle(computedLevel)?.title || null;
 
+    // Only update level / highest_title here. total_wagered is maintained
+    // incrementally by applyLeaderboardCounters and must NOT be overwritten.
     await sql`
-  UPDATE users
-  SET level = ${computedLevel},
-      total_wagered = ${totalWagered},
-      highest_title = COALESCE(${computedHighestTitle}, highest_title)
-  WHERE clerk_id = ${userId}
-`;
+      UPDATE users
+      SET level = ${computedLevel},
+          highest_title = COALESCE(${computedHighestTitle}, highest_title)
+      WHERE clerk_id = ${userId}
+    `;
 
     return new Response(
       JSON.stringify({

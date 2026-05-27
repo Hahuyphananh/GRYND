@@ -78,6 +78,7 @@ export const APP_TEXT_TRANSLATIONS = {
       rps_desc: "Bet your tokens in this fast strategic game.",
       dice_duel_desc: "Turn-based 1v1 dice combat. Outroll your rival and claim the pot!",
       yahtzee_desc: "Server-authoritative Yahtzee with PvP wagering or instant AI battles.",
+      farkle_desc: "Roll dice, bank points, and race to 10,000 against the AI in this classic risk-reward game.",
       connect_four_desc: "Challenge another player 1v1 and align 4 discs.",
       goonbet_clicker_desc: "Click to earn tokens and climb the leaderboard!",
       lane_runner_desc: "Find a safe path to the top. One mistake ends the run.",
@@ -264,6 +265,7 @@ export const APP_TEXT_TRANSLATIONS = {
         "Combat 1v1 au dé en tour par tour. Surpasse ton rival et empoche la cagnotte !",
       yahtzee_desc:
         "Yahtzee autoritaire côté serveur avec mises JcJ ou affrontements IA instantanés.",
+      farkle_desc: "Lancez les dés, sécurisez vos points et foncez vers 10 000 contre l'IA dans ce jeu classique à risque.",
       connect_four_desc: "Affrontez un joueur en 1v1 et alignez 4 disques.",
       lane_runner_desc:
         "Trace un chemin sûr jusqu'au sommet. Une seule erreur et c'est la fin de la partie.",
@@ -449,6 +451,7 @@ export const APP_TEXT_TRANSLATIONS = {
       dice_duel_desc: "Duelo 1v1 por turnos con dados. Supera a tu rival y gana el bote.",
       yahtzee_desc:
         "Yahtzee autoritativo del servidor con apuestas JcJ o partidas instantáneas contra IA.",
+      farkle_desc: "Tira los dados, asegura tus puntos y corre hacia los 10,000 contra la IA en este clásico juego de riesgo.",
       connect_four_desc: "Enfréntate 1v1 y alinea 4 fichas.",
       lane_runner_desc: "Encuentra un camino seguro hasta la cima. Un error termina la partida.",
       chess_name: "Ajedrez",
