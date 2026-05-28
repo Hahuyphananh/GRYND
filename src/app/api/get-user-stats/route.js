@@ -79,22 +79,6 @@ const TRACKED_GAMES = [
     `,
   },
   {
-    key: "tanks",
-    label: "Tanks",
-    selectSql: `
-      SELECT
-        'tanks'::text AS game_key,
-        'Tanks'::text AS game_label,
-        u.id AS user_id,
-        COALESCE(ts.bounty::numeric, 0) AS amount_lost,
-        COALESCE(ts.amount_cashed_out::numeric, 0) AS amount_won,
-        CASE WHEN COALESCE(ts.result, '') = 'win' THEN 1 ELSE 0 END AS games_won,
-        CASE WHEN COALESCE(ts.result, '') = 'loss' THEN 1 ELSE 0 END AS games_lost
-      FROM tank_stats ts
-      JOIN users u ON u.clerk_id = ts.clerk_id
-    `,
-  },
-  {
     key: "coinFlip",
     label: "Coin Flip",
     selectSql: `

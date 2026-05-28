@@ -19,8 +19,9 @@ export async function GET() {
         weekly_best_streak = 0,
         weekly_biggest_win = 0,
         weekly_win_rate = 0,
+        weekly_game_streak = 0,
         updated_at = NOW()
   `;
 
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, resetAt: new Date().toISOString() });
 }

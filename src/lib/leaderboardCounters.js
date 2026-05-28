@@ -52,7 +52,9 @@ export async function applyLeaderboardCounters({
       weekly_losses,
       weekly_biggest_win,
       weekly_best_streak,
-      weekly_win_rate
+      weekly_win_rate,
+      weekly_level_gain,
+      weekly_game_streak
     )
     SELECT
       id,
@@ -73,7 +75,9 @@ export async function applyLeaderboardCounters({
       CASE WHEN ${isWin} THEN 0 ELSE 1 END,
       ${win},
       CASE WHEN ${isWin} THEN 1 ELSE 0 END,
-      CASE WHEN ${isWin} THEN 100 ELSE 0 END
+      CASE WHEN ${isWin} THEN 100 ELSE 0 END,
+      0,
+      CASE WHEN ${isWin} THEN 1 ELSE 0 END
     FROM updated_user
     ON CONFLICT (user_id) DO UPDATE SET
       total_bets = user_stats.total_bets + 1,
@@ -92,8 +96,10 @@ export async function applyLeaderboardCounters({
       weekly_wins = user_stats.weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END,
       weekly_losses = user_stats.weekly_losses + CASE WHEN ${isWin} THEN 0 ELSE 1 END,
       weekly_biggest_win = GREATEST(user_stats.weekly_biggest_win, ${win}),
-      weekly_best_streak = GREATEST(user_stats.weekly_best_streak, CASE WHEN ${isWin} THEN user_stats.current_streak + 1 ELSE user_stats.weekly_best_streak END),
+      weekly_game_streak = CASE WHEN ${isWin} THEN user_stats.weekly_game_streak + 1 ELSE 0 END,
+      weekly_best_streak = GREATEST(user_stats.weekly_best_streak, CASE WHEN ${isWin} THEN user_stats.weekly_game_streak + 1 ELSE 0 END),
       weekly_win_rate = ROUND(((user_stats.weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END)::numeric / NULLIF(user_stats.weekly_wins + user_stats.weekly_losses + 1, 0)) * 100, 2),
+      weekly_level_gain = GREATEST(0, EXCLUDED.level - user_stats.level + user_stats.weekly_level_gain),
       updated_at = NOW()
   `;
 

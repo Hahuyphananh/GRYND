@@ -2,6 +2,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { cashoutRound, ensureClickerUser } from "../../../../lib/goonbet-clicker-db";
 import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { sql } from "@vercel/postgres";
 
 export const runtime = "nodejs";
@@ -40,8 +41,17 @@ export async function POST(req: NextRequest) {
       Number(body.durationMs ?? 0)
     );
 
-    // Record big win if payout >= 1 million tokens
+    // Track leaderboard stats
+    const betAmount = Number(result.betAmount ?? 0);
     const payoutNumber = Number(result.payout);
+    applyLeaderboardCounters({
+      clerkId: userId,
+      game: "GoonBet Clicker",
+      betAmount: betAmount || 1,
+      payout: payoutNumber,
+    }).catch(() => {});
+
+    // Record big win if payout >= 1 million tokens
     if (payoutNumber >= 1000000 && !result.busted) {
       // Get username for the big wins record
       const userResult = await sql`SELECT name FROM users WHERE clerk_id = ${userId} LIMIT 1`;
