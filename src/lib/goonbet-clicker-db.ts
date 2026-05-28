@@ -121,6 +121,7 @@ export async function cashoutRound(
     multiplier: Number(round.multiplier),
     clicks: Number(round.clicks),
     busted: round.status === "bust",
+    betAmount: BigInt(round.bet_amount),
   };
 }
 
@@ -140,6 +141,7 @@ export async function cashoutRound(
         multiplier: expectedMultiplier,
         clicks: verifiedClicks,
         busted: true,
+        betAmount: BigInt(round.bet_amount),
       };
     }
 
@@ -156,6 +158,7 @@ export async function cashoutRound(
       multiplier: expectedMultiplier,
       clicks: verifiedClicks,
       busted: false,
+      betAmount: BigInt(round.bet_amount),
     };
   } catch (error) {
     await sql`ROLLBACK`;

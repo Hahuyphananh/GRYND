@@ -4,6 +4,7 @@ import { db } from "../../../../db";
 import { rouletteGames, users } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 const rouletteNumbers = [
   0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24,
@@ -119,6 +120,14 @@ export async function POST(req) {
       result,
       payout: payout.toFixed(2),
     });
+
+    // Track leaderboard stats
+    applyLeaderboardCounters({
+      clerkId: userId,
+      game: "Roulette",
+      betAmount: totalBetAmount,
+      payout,
+    }).catch(() => {});
 
     // Record big win if payout >= 1 million tokens
     if (payout >= 1000000) {

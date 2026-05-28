@@ -4,6 +4,7 @@ import { db } from "../../../../db/client";
 import { hexDuelGames, users } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 const PAYOUT_MULTIPLIER = 1.9; // 5% house edge
 
@@ -131,6 +132,14 @@ export async function POST(req: Request) {
         } as unknown as typeof hexDuelGames.$inferInsert)
         .catch((e) => console.error("Failed to insert hex duel history (loss):", e));
 
+      // Record leaderboard stats for the loss
+      applyLeaderboardCounters({
+        clerkId,
+        game: "Hex Duel",
+        betAmount: wagerAmount,
+        payout: 0,
+      }).catch(() => {});
+
       return NextResponse.json({
         success: true,
         data: {
@@ -196,7 +205,8 @@ export async function POST(req: Request) {
     db.insert(hexDuelGames)
       .values({
         player1Id: clerkId,
-        player2Id: null,          wagerAmount: wagerAmount.toFixed(2),
+        player2Id: null,
+        wagerAmount: wagerAmount.toFixed(2),
           winner,
           result,
           payout: payout.toFixed(2),
@@ -213,6 +223,14 @@ export async function POST(req: Request) {
           endedAt,
         } as unknown as typeof hexDuelGames.$inferInsert)
         .catch((e) => console.error("Failed to insert hex duel history (win):", e));
+
+    // Record leaderboard stats for the win
+    applyLeaderboardCounters({
+      clerkId,
+      game: "Hex Duel",
+      betAmount: wagerAmount,
+      payout,
+    }).catch(() => {});
 
     return NextResponse.json({
       success: true,

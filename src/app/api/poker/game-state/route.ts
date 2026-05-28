@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 type Seat = {
   seat: number;
@@ -90,6 +91,8 @@ export async function POST(req: Request) {
   if (!game)
     return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
+  const hadWinner = !!game.winner;
+
   const seats = (game.players ?? []) as Seat[];
   const seatedIds = seats
     .filter((s) => s.clerkId)
@@ -143,6 +146,40 @@ export async function POST(req: Request) {
       winner: state.winnerId ?? null,
     })
     .where(eq(pokerGames.gameCode, gameCode));
+
+  // Track leaderboard stats when a new winner is determined
+  const newWinnerId = (state as any)?.winnerId as string | undefined;
+  if (newWinnerId && !hadWinner) {
+    const players = (state as any)?.players as any[] | undefined;
+    if (players && Array.isArray(players)) {
+      const humanPlayers = players.filter(
+        (p: any) => !p.isAI && p.id,
+      );
+      const isPvp = humanPlayers.length > 1;
+      const pot = Math.max(0, Math.floor(Number((state as any)?.pot) || 0));
+
+      // Track winner
+      applyLeaderboardCounters({
+        clerkId: newWinnerId,
+        game: "Poker",
+        betAmount: pot || 1,
+        payout: pot,
+        isPvpWin: isPvp,
+      }).catch(() => {});
+
+      // Track losers (all human players who aren't the winner)
+      for (const p of humanPlayers) {
+        if (p.id !== newWinnerId) {
+          applyLeaderboardCounters({
+            clerkId: p.id,
+            game: "Poker",
+            betAmount: pot || 1,
+            payout: 0,
+          }).catch(() => {});
+        }
+      }
+    }
+  }
 
   return NextResponse.json({ success: true });
 }

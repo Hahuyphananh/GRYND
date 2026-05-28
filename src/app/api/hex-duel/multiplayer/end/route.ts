@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
 import { hexDuelGames, users } from "../../../../../db/schema";
 import { recordBigWinIfNeeded } from "../../../../../lib/bigWins";
+import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 
 const PAYOUT_MULTIPLIER = 1.9;
 
@@ -160,6 +161,17 @@ export async function POST(req: Request) {
         newBalance,
       };
     });
+
+    // Record leaderboard stats (fire-and-forget, outside transaction)
+    if (!result.alreadyProcessed) {
+      applyLeaderboardCounters({
+        clerkId,
+        game: "Hex Duel",
+        betAmount: result.wager,
+        payout: result.won ? result.payout : 0,
+        isPvpWin: result.won,
+      }).catch(() => {});
+    }
 
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {

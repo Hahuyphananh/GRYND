@@ -3,6 +3,7 @@ import { db } from "../../../../db/client";
 import { chessGames, users } from "../../../../db/schema";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 const HOUSE_EDGE_PERCENT = 10;
 
@@ -115,6 +116,21 @@ export async function POST(req) {
             payout: winnerPayout.toString(),
           })
           .where(eq(chessGames.id, gameId));
+
+        // Record leaderboard stats for both players (outside tx to avoid blocking)
+        applyLeaderboardCounters({
+          clerkId: opponentId,
+          game: "Chess",
+          betAmount: Number(lockedGame.betAmount),
+          payout: winnerPayout,
+          isPvpWin: true,
+        }).catch(() => {});
+        applyLeaderboardCounters({
+          clerkId: userId,
+          game: "Chess",
+          betAmount: Number(lockedGame.betAmount),
+          payout: 0,
+        }).catch(() => {});
 
         // Record big win if winnerPayout >= 1 million tokens
         if (winnerPayout >= 1000000) {

@@ -3,6 +3,7 @@ import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "../../../db/client";
 import { users, yahtzeeActions, yahtzeePlayers, yahtzeeRooms } from "../../../db/schema";
 import { checkGameEnd, holdDice, nextTurn, rollDice, validateMove } from "../../../../game-engine/yahtzeeEngine";
+import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
 
 export function initialState(roomId, creatorId, creatorName, wager) {
   return {
@@ -56,6 +57,31 @@ export async function settleIfEnded(tx, roomRow, state) {
   await tx.update(users).set({ balance: sql`${users.balance} + ${payout}` }).where(eq(users.clerkId, ended.winnerId));
   state.state = "finished";
   await tx.update(yahtzeeRooms).set({ status: "finished", gameState: state, pot: 0 }).where(eq(yahtzeeRooms.id, roomRow.id));
+
+  // Record leaderboard stats for winner and loser
+  const wagerPerPlayer = state.wager || Math.floor(state.pot / (state.players?.length || 2));
+  applyLeaderboardCounters({
+    clerkId: ended.winnerId,
+    game: "Yahtzee",
+    betAmount: wagerPerPlayer,
+    payout,
+    isPvpWin: state.players?.length > 1 && !state.players?.some(p => p.isAI),
+  }).catch(() => {});
+
+  // Record loss for other player(s)
+  if (state.players) {
+    for (const p of state.players) {
+      if (p.userId !== ended.winnerId && !p.isAI) {
+        applyLeaderboardCounters({
+          clerkId: p.userId,
+          game: "Yahtzee",
+          betAmount: wagerPerPlayer,
+          payout: 0,
+        }).catch(() => {});
+      }
+    }
+  }
+
   return { state, ended: true, winnerId: ended.winnerId, payout, totals: ended.totals };
 }
 

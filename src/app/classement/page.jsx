@@ -6,6 +6,55 @@ import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import { useTranslation } from "../../hooks/useTranslation";
 
+function getNextMondayReset() {
+  const now = new Date();
+  const day = now.getUTCDay();
+  // Days until next Monday (Monday = 1, so if today is Monday it's 7 days, otherwise days until Monday)
+  const daysUntilMonday = day === 1 ? 7 : (8 - day) % 7;
+  const nextMonday = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + daysUntilMonday,
+    0, 0, 0, 0
+  ));
+  return nextMonday;
+}
+
+function useWeeklyCountdown() {
+  const [timeLeft, setTimeLeft] = useState("");
+
+  useEffect(() => {
+    function update() {
+      const now = Date.now();
+      const reset = getNextMondayReset().getTime();
+      const diff = reset - now;
+
+      if (diff <= 0) {
+        setTimeLeft("Resetting...");
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      const parts = [];
+      if (days > 0) parts.push(`${days}d`);
+      parts.push(`${String(hours).padStart(2, "0")}h`);
+      parts.push(`${String(minutes).padStart(2, "0")}m`);
+      parts.push(`${String(seconds).padStart(2, "0")}s`);
+      setTimeLeft(parts.join(" "));
+    }
+
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return timeLeft;
+}
+
 const TABS = ["weekly", "all-time", "daily-current", "daily-best", "weekly-streak", "weekly-best", "wins"];
 const LEADERBOARD_CATEGORIES = [
   "level",
@@ -47,6 +96,7 @@ function getMetricValue(item, tab, category) {
 
 export default function LeaderboardPage() {
   const { t } = useTranslation();
+  const weeklyCountdown = useWeeklyCountdown();
   const [tab, setTab] = useState("weekly");
   const [category, setCategory] = useState("level");
   const [items, setItems] = useState([]);
@@ -121,6 +171,16 @@ export default function LeaderboardPage() {
         <h1 className="mb-6 text-center text-4xl font-bold text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)]">
           {t("leaderboard.title")}
         </h1>
+
+        {tab === "weekly" && weeklyCountdown && (
+          <div className="mb-4 flex justify-center">
+            <div className="inline-flex items-center gap-2 rounded-lg border border-[#f5ff3b]/40 bg-[#0a214d]/90 px-4 py-2 text-sm">
+              <span className="text-[#00e5ff]">⏳</span>
+              <span className="text-gray-300">Weekly reset in:</span>
+              <span className="font-mono font-bold text-[#f5ff3b]">{weeklyCountdown}</span>
+            </div>
+          </div>
+        )}
 
         <div className="mb-6 flex flex-wrap justify-center gap-3">
           {TABS.map((x) => (

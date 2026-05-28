@@ -5,6 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { verifySignedSession } from "../../../../lib/serverSession";
 import { getMinesMultiplier } from "../../../../lib/minesMath";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 function calculateMultiplier(mines, revealed) {
   return getMinesMultiplier(mines, revealed);
@@ -67,6 +68,14 @@ export async function POST(req) {
       status: "completed",
       createdAt: new Date(),
     });
+
+    // Record leaderboard stats
+    applyLeaderboardCounters({
+      clerkId: userId,
+      game: "Mines",
+      betAmount,
+      payout,
+    }).catch(() => {});
 
     const response = NextResponse.json({
       success: true,

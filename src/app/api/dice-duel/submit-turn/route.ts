@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { and, eq } from "drizzle-orm";
 import { diceMatches, diceTurns } from "../../../../db/schema";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 const d6 = () => Math.floor(Math.random() * 6) + 1;
 
@@ -119,6 +120,32 @@ export async function POST(req: Request) {
     .where(eq(diceMatches.id, matchId));
 
   const isAI = m.player2Id === "AI_BOT";
+
+  // Record leaderboard stats when the game finishes
+  if (status === "finished" && winnerId) {
+    const wager = m.wager || 0;
+    const isPvp = !isAI && m.player2Id !== null && m.player2Id !== "AI_BOT";
+    const payout = isPvp ? Math.floor(wager * 2 * 0.9) : 0;
+
+    applyLeaderboardCounters({
+      clerkId: winnerId,
+      game: "Dice Duel",
+      betAmount: wager,
+      payout,
+      isPvpWin: isPvp,
+    }).catch(() => {});
+
+    // Record loss for opponent (not AI)
+    const loserId = winnerId === m.player1Id ? m.player2Id : m.player1Id;
+    if (loserId && loserId !== "AI_BOT") {
+      applyLeaderboardCounters({
+        clerkId: loserId,
+        game: "Dice Duel",
+        betAmount: wager,
+        payout: 0,
+      }).catch(() => {});
+    }
+  }
 
   return NextResponse.json({
     ok: true,

@@ -4,6 +4,7 @@ import { users, pokerGames } from "../../../db/schema";
 import { eq } from "drizzle-orm";
 import { compareHands, dealCommunityCards } from "../../lib/ailogic";
 import { recordBigWinIfNeeded } from "../../../lib/bigWins";
+import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -49,6 +50,14 @@ export async function POST(request) {
       userBalance += refund; // return half of the player's bet
 
       const resultMessage = `You folded and lost half your bet (-${loss} tokens).`;
+
+      // Track leaderboard stats for fold (loss)
+      applyLeaderboardCounters({
+        clerkId: userId,
+        game: "Poker",
+        betAmount: loss,
+        payout: 0,
+      }).catch(() => {});
 
       await db.transaction(async (tx) => {
         await tx
@@ -118,6 +127,14 @@ export async function POST(request) {
         winAmount = pot;
         userBalance += winAmount;
       }
+
+      // Track leaderboard stats for play result
+      applyLeaderboardCounters({
+        clerkId: userId,
+        game: "Poker",
+        betAmount: playBet,
+        payout: winAmount,
+      }).catch(() => {});
 
       // Record big win if winAmount >= 1 million tokens
       if (winAmount >= 1000000) {

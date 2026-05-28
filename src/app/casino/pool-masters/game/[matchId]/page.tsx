@@ -170,6 +170,10 @@ export default function Page() {
   const [shotHistory, setShotHistory] = useState<ShotEntry[]>([]);
   const [rematching, setRematching] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showResignConfirm, setShowResignConfirm] = useState(false);
+  const [resigning, setResigning] = useState(false);
+  const [showWinLossPopup, setShowWinLossPopup] = useState(false);
+  const resigningRef = useRef(false);
 
   // Keep userIdRef in sync so the socket handler never captures a stale user
   useEffect(() => {
@@ -249,6 +253,23 @@ export default function Page() {
   const [showRemoteAim, setShowRemoteAim] = useState(false);
   const remoteAimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedShotIdsRef = useRef<Set<string>>(new Set());
+
+  // Derived: compute gameOverMessage from winner/owner/oppName
+  const gameOverMessage = winner
+    ? {
+        won: winner === owner,
+        message: winner === owner ? "You Win! 🏆" : `${oppName} Wins!`,
+      }
+    : null;
+
+  // Show win/loss popup when winner is determined
+  useEffect(() => {
+    if (winner && !showWinLossPopup) {
+      // Small delay so the final ball positions render before the popup
+      const timer = setTimeout(() => setShowWinLossPopup(true), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [winner, showWinLossPopup]);
 
   // Keep name refs in sync so websocket/event handlers never capture stale names
   // Must be after myName/oppName state declarations
@@ -356,6 +377,45 @@ const canShoot =
   (aiMode ? true : isMyTurn);
 
 
+  const handleResign = async () => {
+    if (resigningRef.current) return;
+    resigningRef.current = true;
+    setResigning(true);
+    setShowResignConfirm(false);
+    try {
+      const res = await fetch("/api/pool/resign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId: activeMatchId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setWinner(owner === 1 ? 2 : 1);
+        setStatus("You resigned.");
+        // Emit resign via socket for live opponent
+        if (!aiMode && socket) {
+          socket.emit("room_event", {
+            roomId: `pool:${activeMatchId}`,
+            event: "pool:resigned",
+            payload: {
+              matchId: activeMatchId,
+              resignedUserId: user?.id,
+            },
+          });
+        }
+      }
+    } catch {
+      // Resign request failed
+    } finally {
+      resigningRef.current = false;
+      if (mountedRef.current) setResigning(false);
+    }
+  };
+
+  const handleReturnToLobby = () => {
+    router.push("/casino/pool-masters");
+  };
+
   const handleRematch = async () => {
     setRematching(true);
     try {
@@ -406,8 +466,9 @@ const canShoot =
       drawShotPreview(x, cue, aim, balls);
       drawBankPreview(x, cue, aim, balls, true);
     } else if (cue && !cue.pocketed && showRemoteAim) {
-      // Show opponent's full aim guide including cue stick
+      // Show opponent's full aim guide including cue stick, ghost ball & trajectory
       drawAimGuide(x, cue, remoteAim!.angle, remoteAim!.pull);
+      drawShotPreview(x, cue, remoteAim!.angle, balls);
       drawBankPreview(x, cue, remoteAim!.angle, balls, false);
     }
     drawBalls(x, balls);
@@ -882,12 +943,23 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       }
     };
 
+    const handleResigned = (message: any) => {
+      const payload = "payload" in message && message.payload ? message.payload : message;
+      if (!payload || payload.matchId !== activeMatchId) return;
+      if (payload.resignedUserId === userIdRef.current) return;
+      // Opponent resigned — we win
+      setWinner(ownerRef.current);
+      setStatus("Opponent resigned. You win!");
+    };
+
     socket.emit("join_room", { roomId });
     socket.on("pool:live-state", handleLiveState);
+    socket.on("pool:resigned", handleResigned);
 
     return () => {
       socket.emit("leave_room", { roomId });
       socket.off("pool:live-state", handleLiveState);
+      socket.off("pool:resigned", handleResigned);
     };
   }, [socket, aiMode, activeMatchId]);
 
@@ -933,6 +1005,18 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           setActiveMatchId(data.match.id);
           router.replace(`/casino/pool-masters/game/${data.match.id}`);
           return;
+        }
+      }
+      // Handle match finished (e.g. opponent resigned)
+      if (data.match?.status === "finished" && !winner) {
+        const finishedWinner = gs?.winner;
+        if (finishedWinner) {
+          setWinner(finishedWinner);
+          setStatus(
+            finishedWinner === ownerRef.current
+              ? "Opponent resigned. You win!"
+              : "You resigned.",
+          );
         }
       }
       if (data.viewerSeat && ownerRef.current === 1) {
@@ -1126,18 +1210,91 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
             <p className="mt-1 text-sm">Balls: {oppRemaining.join(", ") || "none"}</p>
           </div>
         </div>
-        {winner && (
-          <div className="my-2 flex flex-col items-center gap-3">
-            <div className="w-full rounded bg-fuchsia-900/70 p-2 text-center font-bold">
-              Winner: {winner === owner ? myName : oppName}
+        {/* ── Resign button ── */}
+        {started && !winner && !aiMode && (
+          <div className="mt-3 flex justify-center">
+            {!showResignConfirm ? (
+              <button
+                onClick={() => setShowResignConfirm(true)}
+                disabled={resigning}
+                className="rounded-lg border border-red-500/40 bg-red-900/30 px-5 py-1.5 text-sm font-semibold text-red-300 transition-all hover:bg-red-900/50 hover:text-red-200"
+              >
+                {resigning ? "Resigning..." : "🏳️ Resign"}
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleResign}
+                  disabled={resigning}
+                  className="rounded-lg bg-red-700 px-5 py-1.5 text-sm font-bold text-white transition-all hover:bg-red-600 disabled:opacity-60"
+                >
+                  {resigning ? "Resigning..." : "Confirm Resign"}
+                </button>
+                <button
+                  onClick={() => setShowResignConfirm(false)}
+                  disabled={resigning}
+                  className="rounded-lg border border-white/20 bg-white/10 px-4 py-1.5 text-sm font-semibold text-white/70 transition-all hover:bg-white/20"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Win / Loss popup modal ── */}
+        {showWinLossPopup && gameOverMessage && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
+            <div className="relative mx-4 w-full max-w-sm animate-scale-in rounded-2xl border border-white/20 bg-[#1a1a2e] p-8 shadow-2xl">
+              {/* Confetti / decorative glow */}
+              <div
+                className={`absolute inset-0 rounded-2xl opacity-20 blur-xl ${
+                  gameOverMessage.won
+                    ? "bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-600"
+                    : "bg-gradient-to-br from-red-400 via-rose-500 to-pink-600"
+                }`}
+              />
+
+              <div className="relative flex flex-col items-center gap-4">
+                {/* Icon */}
+                <div className="text-6xl">{gameOverMessage.won ? "🏆" : "😞"}</div>
+
+                {/* Title */}
+                <h2
+                  className={`text-3xl font-black ${
+                    gameOverMessage.won
+                      ? "bg-gradient-to-r from-yellow-300 to-amber-400 bg-clip-text text-transparent"
+                      : "bg-gradient-to-r from-red-300 to-rose-400 bg-clip-text text-transparent"
+                  }`}
+                >
+                  {gameOverMessage.won ? "You Win!" : "You Lose"}
+                </h2>
+
+                {/* Subtitle */}
+                <p className="text-center text-sm text-white/60">
+                  {gameOverMessage.won
+                    ? "Congratulations! You won the match."
+                    : `${oppName} won the match. Better luck next time!`}
+                </p>
+
+                {/* Buttons */}
+                <div className="mt-2 flex w-full flex-col gap-2">
+                  <button
+                    onClick={handleReturnToLobby}
+                    className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-3 font-bold text-white shadow-lg transition-all hover:scale-105 hover:from-indigo-500 hover:to-purple-500"
+                  >
+                    Return to Lobby
+                  </button>
+                  <button
+                    onClick={handleRematch}
+                    disabled={rematching}
+                    className="w-full rounded-xl border border-white/20 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white/70 transition-all hover:bg-white/10 disabled:opacity-40"
+                  >
+                    {rematching ? "Creating..." : aiMode ? "Play Again" : "Find New Match"}
+                  </button>
+                </div>
+              </div>
             </div>
-            <button
-              onClick={handleRematch}
-              disabled={rematching}
-              className="rounded-xl bg-gradient-to-r from-fuchsia-600 to-purple-600 px-8 py-3 font-extrabold text-white shadow-lg transition-all hover:scale-105 hover:from-fuchsia-500 hover:to-purple-500 disabled:opacity-60"
-            >
-              {rematching ? "Creating..." : aiMode ? "Play Again" : "Find New Match"}
-            </button>
           </div>
         )}
 

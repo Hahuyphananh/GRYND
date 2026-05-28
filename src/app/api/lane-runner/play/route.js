@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { laneRunnerGames, users } from "../../../../db/schema";
+import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import {
   createSignedSession,
   verifySignedSession,
@@ -158,6 +159,14 @@ export async function POST(req) {
           },
         });
 
+        // Track leaderboard stats for loss
+        applyLeaderboardCounters({
+          clerkId: userId,
+          game: "Lane Runner",
+          betAmount: session.betAmount,
+          payout: 0,
+        }).catch(() => {});
+
         await db.insert(laneRunnerGames).values({
           userId: session.userDbId,
           betAmount: String(session.betAmount.toFixed(2)),
@@ -199,6 +208,14 @@ export async function POST(req) {
           .set({ balance: sql`${users.balance} + ${payout}` })
           .where(eq(users.clerkId, userId))
           .returning({ balance: users.balance });
+
+        // Track leaderboard stats for completing all lanes
+        applyLeaderboardCounters({
+          clerkId: userId,
+          game: "Lane Runner",
+          betAmount: session.betAmount,
+          payout,
+        }).catch(() => {});
 
         await db.insert(laneRunnerGames).values({
           userId: session.userDbId,
@@ -282,6 +299,14 @@ export async function POST(req) {
         .set({ balance: sql`${users.balance} + ${payout}` })
         .where(eq(users.clerkId, userId))
         .returning({ balance: users.balance });
+
+      // Track leaderboard stats for cashout
+      applyLeaderboardCounters({
+        clerkId: userId,
+        game: "Lane Runner",
+        betAmount: session.betAmount,
+        payout,
+      }).catch(() => {});
 
       await db.insert(laneRunnerGames).values({
         userId: session.userDbId,
