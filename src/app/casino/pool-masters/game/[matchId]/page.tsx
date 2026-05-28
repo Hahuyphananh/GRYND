@@ -141,6 +141,8 @@ export default function Page() {
   const shotHistoryRef = useRef<ShotEntry[]>([]);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPolledVersionRef = useRef(0);
+  const pendingActionRef = useRef(false);
+  const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shotMeta = useRef<ShotMeta>({
     firstContactNumber: null,
     railAfterContact: false,
@@ -216,6 +218,7 @@ export default function Page() {
       mountedRef.current = false;
       notificationTimersRef.current.forEach((t) => clearTimeout(t));
       notificationTimersRef.current.clear();
+      if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
     };
   }, []);
 
@@ -569,6 +572,10 @@ if (!aiMode && turn !== owner) return;
     shotLock.current = true;
     localShotInProgressRef.current = true;
     remoteShotInProgressRef.current = false;
+    // Block polling briefly so it doesn't fetch stale DB state while we push the new shot
+    if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
+    pendingActionRef.current = true;
+    pendingTimeoutRef.current = setTimeout(() => { pendingActionRef.current = false; }, 1500);
     lifecycleRef.current = "SHOOTING";
     const shotId = `shot-${Date.now()}-${owner}`;
     activeShotIdRef.current = shotId;
@@ -765,7 +772,10 @@ if (!aiMode && turn !== owner) return;
 // over ~120 ms instead of snapping — this eliminates the end-of-shot visual pop.
 const shouldAcceptBalls = remoteSettled || isActualShot;
 if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payload.version > syncVersionRef.current)) {
-  if (payload.version) setSyncVersion(payload.version);
+  if (payload.version) {
+    syncVersionRef.current = payload.version;
+    setSyncVersion(payload.version);
+  }
 
   if (remoteSettled) {
     // Smooth interpolation toward the authoritative settled positions
@@ -826,6 +836,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         lifecycleRef.current = "IDLE";
         activeShotIdRef.current = null;
         remoteShotMetaInitializedRef.current = false;
+        syncVersionRef.current = Math.max(syncVersionRef.current, payload.version);
         setSyncVersion((current) => Math.max(current, payload.version));
         setLastFoul(payload.foul ? (payload.foulMessage ?? "Foul. Ball in hand.") : null);
         if (payload.foulMessage) setStatus(payload.foulMessage);
@@ -905,6 +916,9 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
   }, [aiMode, turn, canShoot, winner, oppTeam, openTable]);
 
   const syncMatch = async () => {
+    // Skip polling when the local player just fired a shot — prevents stale DB
+    // state from reverting local changes before pushPoolState completes
+    if (pendingActionRef.current) return;
     try {
       const res = await fetch(`/api/pool/get-match?matchId=${activeMatchId}`, {
         cache: "no-store",

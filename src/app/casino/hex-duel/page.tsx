@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useHexDuel, type DuelPlayer } from "../../../lib/hexDuelEngine";
 import { useSocket } from "../../../context/SocketProvider";
 import { decideAIAction, type AIDifficulty, type AIAction, type AIStateSnapshot } from "../../../lib/hexDuelAI";
@@ -751,6 +751,7 @@ interface MultiplayerAction {
 export default function HexDuelPage() {
   const { isSignedIn, user } = useUser();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { socket } = useSocket();
 
   const {
@@ -917,6 +918,23 @@ export default function HexDuelPage() {
     if (gameMode !== "idle") return;
     fetchMultiplayerGames();
   }, [gameMode, fetchMultiplayerGames]);
+
+  // ── Auto-join multiplayer game from URL params (lobby redirect) ──
+  const multiplayerJoinedFromUrl = useRef(false);
+  useEffect(() => {
+    if (multiplayerJoinedFromUrl.current) return;
+    const gameIdParam = searchParams.get("gameId");
+    const hostParam = searchParams.get("host");
+    if (!gameIdParam) return;
+    const gameId = Number(gameIdParam);
+    if (!Number.isFinite(gameId) || gameId <= 0) return;
+    multiplayerJoinedFromUrl.current = true;
+    setMultiplayerGameId(gameId);
+    setIsPlayer1(hostParam === "1");
+    setGameMode("multiplayer");
+    setOpponentReady(false);
+    multiplayerJoinedRef.current = false;
+  }, [searchParams]);
 
   // ── Wager handlers ─────────────────────────────────────────────────
   const handleStartFun = useCallback(() => { setAIEnabled(true); setGameMode("for-fun"); setWager(0); setWagerError(null); startedAtRef.current = new Date().toISOString(); }, []);

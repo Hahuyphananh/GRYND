@@ -150,6 +150,8 @@ export default function PokerPage() {
   gameRef.current = game;
   const myIdRef = useRef(myId);
   myIdRef.current = myId;
+  const pendingActionRef = useRef(false);
+  const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [windowSize, setWindowSize] = useState({ w: 1200, h: 800 });
   const [isPortrait, setIsPortrait] = useState(false);
@@ -210,12 +212,14 @@ export default function PokerPage() {
   };
 
   const fetchGameState = async (code: string) => {
+    if (pendingActionRef.current) return;
     try {
       const res = await fetch(
         `/api/poker/game-state?code=${encodeURIComponent(code)}`,
       );
       if (!res.ok) return;
       const data = await res.json();
+      if (pendingActionRef.current) return;
       if (data?.game) {
         setGame((prev) => {
           if (!prev) return data.game;
@@ -967,6 +971,12 @@ export default function PokerPage() {
     action: "check" | "call" | "raise" | "fold" | "bet20",
   ) {
     if (!game) return;
+    if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
+    pendingActionRef.current = true;
+    pendingTimeoutRef.current = setTimeout(() => {
+      pendingActionRef.current = false;
+      pendingTimeoutRef.current = null;
+    }, 1500);
 
     const players = game.players.map((p) => ({ ...p }));
     const currentIndex = game.currentTurn;

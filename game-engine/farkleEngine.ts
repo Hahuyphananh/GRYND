@@ -216,6 +216,34 @@ export function isHotDice(dice: number[]): boolean {
   return totalScored === dice.length && dice.length === DICE_COUNT;
 }
 
+/**
+ * Get indices of all dice that are part of a valid scoring combination.
+ * Used for highlighting selectable dice in the UI.
+ */
+export function getScoringIndices(dice: number[]): number[] {
+  const combos = findScoringCombinations(dice);
+  if (combos.length === 0) return [];
+
+  const used = new Set<number>();
+  const indices: number[] = [];
+
+  // For each combo, find the matching dice in the original array
+  for (const combo of combos) {
+    const remaining = combo.dice.slice();
+    for (let i = 0; i < dice.length; i++) {
+      if (used.has(i)) continue;
+      const idxInRemaining = remaining.indexOf(dice[i]);
+      if (idxInRemaining !== -1) {
+        remaining.splice(idxInRemaining, 1);
+        used.add(i);
+        indices.push(i);
+      }
+    }
+  }
+
+  return indices.sort((a, b) => a - b);
+}
+
 // ─── Dice Rolling ───
 
 /** Roll all non-scored dice. Returns new dice values. */
