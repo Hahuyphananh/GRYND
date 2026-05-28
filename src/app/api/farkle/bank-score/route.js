@@ -9,11 +9,15 @@ import {
   settleIfEnded,
   validateMove,
 } from "../_lib";
+import {
+  calculateScore,
+  MIN_BANK_THRESHOLD,
+} from "../../../../../game-engine/farkleEngine";
 
 export async function POST(req) {
   try {
     const userId = await requireUser();
-    const { roomId } = await req.json();
+    const { roomId, indices } = await req.json();
     if (!roomId)
       return NextResponse.json({ success: false, error: "roomId required" }, { status: 400 });
 
@@ -22,6 +26,29 @@ export async function POST(req) {
       let state = room.gameState;
 
       validateMove(state, userId, "bank_score");
+
+      // If selected dice indices are provided, process scoring first
+      if (indices && Array.isArray(indices) && indices.length > 0) {
+        const selectedDice = indices.map((i) => state.dice[i]);
+        const comboScore = calculateScore(selectedDice);
+        if (comboScore <= 0)
+          throw new Error("Selected dice are not a valid scoring combination");
+
+        const newTurnScore = state.turnScore + comboScore;
+        const hasMetThreshold = state.hasMetThreshold || newTurnScore >= MIN_BANK_THRESHOLD;
+
+        state = {
+          ...state,
+          turnScore: newTurnScore,
+          hasMetThreshold,
+        };
+
+        await appendAction(tx, roomId, userId, "select_scoring_dice", {
+          indices,
+          comboScore,
+          selectedDice,
+        });
+      }
 
       // Add turn score to player's permanent score
       const currentScore = state.scores[userId] ?? 0;

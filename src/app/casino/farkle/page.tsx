@@ -8,6 +8,11 @@ import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import {
+  calculateScore,
+  isFarkle,
+  getScoringIndices,
+} from "../../../../game-engine/farkleEngine";
 
 /* ─── Types ─── */
 type LobbyRoom = { id: string; wager: number; pot: number; status: string; createdAt: string };
@@ -43,58 +48,6 @@ const DICE_DOTS: Record<number, string[]> = {
   6: ["30% 25%", "70% 25%", "30% 50%", "70% 50%", "30% 75%", "70% 75%"],
 };
 
-/* ─── Client-side Dice Scoring Helpers ─── */
-function countDice(dice: number[]): Map<number, number> {
-  const c = new Map<number, number>();
-  dice.forEach((d) => c.set(d, (c.get(d) ?? 0) + 1));
-  return c;
-}
-function threeOfAKindScore(v: number) {
-  return v === 1 ? 1000 : v * 100;
-}
-function calcScore(dice: number[]): number {
-  const n = dice.length;
-  if (n === 0) return 0;
-  const counts = countDice(dice);
-  const unique = [...counts.keys()].sort((a, b) => a - b);
-  const freq = [...counts.values()].sort((a, b) => b - a);
-
-  if (n === 6 && unique.length === 6 && unique[5] - unique[0] === 5) return 1500;
-  if (n === 6 && unique.length === 3 && freq[0] === 2 && freq[1] === 2 && freq[2] === 2) return 1500;
-  if (n === 6 && unique.length === 2 && freq[0] === 3 && freq[1] === 3) return 2500;
-  if (n === 6 && unique.length === 1) return threeOfAKindScore(unique[0]) * 8;
-  if (n >= 5 && freq[0] >= 5) {
-    const qv = [...counts.entries()].find(([, c]) => c >= 5)![0];
-    const keep = dice.filter((d) => d !== qv).slice(0, dice.length - 5);
-    return threeOfAKindScore(qv) * 4 + calcScore(keep);
-  }
-  if (n >= 4 && freq[0] >= 4) {
-    const qv = [...counts.entries()].find(([, c]) => c >= 4)![0];
-    let skip = 4;
-    const keep = dice.filter((d) => (d === qv && skip-- > 0 ? false : true));
-    return threeOfAKindScore(qv) * 2 + calcScore(keep);
-  }
-  if (n >= 3 && freq[0] >= 3) {
-    let bestV = 0,
-      bestS = -1;
-    counts.forEach((cnt, v) => {
-      if (cnt >= 3) {
-        const s = threeOfAKindScore(v);
-        if (s > bestS || (s === bestS && v > bestV)) {
-          bestS = s;
-          bestV = v;
-        }
-      }
-    });
-    let skip = 3;
-    const keep = dice.filter((d) => (d === bestV && skip-- > 0 ? false : true));
-    return bestS + calcScore(keep);
-  }
-  return dice.reduce((s, d) => (d === 1 ? s + 100 : d === 5 ? s + 50 : s), 0);
-}
-function isFarkle(dice: number[]): boolean {
-  return calcScore(dice) === 0;
-}
 
 /* ─── DiceFace Component ─── */
 const DiceFace = ({
@@ -102,13 +55,11 @@ const DiceFace = ({
   selected,
   rolling,
   index = 0,
-  disabled,
 }: {
   value: number;
   selected?: boolean;
   rolling?: boolean;
   index?: number;
-  disabled?: boolean;
 }) => {
   return (
     <motion.div
@@ -479,12 +430,13 @@ export default function FarklePage() {
   const rollDice = async () => {
     if (!roomId || !isYourTurn) return;
     setRolling(true);
+    const indices = [...selectedIndices];
     setSelectedIndices([]);
     try {
       const res = await fetch("/api/farkle/roll-dice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomId }),
+        body: JSON.stringify({ roomId, ...(indices.length > 0 ? { indices } : {}) }),
       });
       const d = await res.json();
       if (!res.ok || !d.success) {
@@ -497,43 +449,25 @@ export default function FarklePage() {
         setRolling(false);
         emitRoomEvent();
         fetchHistory(roomId);
+        if (indices.length > 0) {
+          setExploding(true);
+          setTimeout(() => setExploding(false), 800);
+        }
       }, 400);
     } catch {
       setRolling(false);
     }
   };
 
-  const selectDice = async () => {
-    if (!roomId || !isYourTurn || selectedIndices.length === 0) return;
-    try {
-      const res = await fetch("/api/farkle/select-dice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomId, indices: selectedIndices }),
-      });
-      const d = await res.json();
-      if (!res.ok || !d.success) {
-        alert(d.error || "Invalid scoring dice");
-        return;
-      }
-      setGame(d.state);
-      setSelectedIndices([]);
-      emitRoomEvent();
-      fetchHistory(roomId);
-      setExploding(true);
-      setTimeout(() => setExploding(false), 800);
-    } catch (e) {
-      alert("Failed to select dice");
-    }
-  };
-
   const bankScore = async () => {
     if (!roomId || !isYourTurn) return;
+    const indices = [...selectedIndices];
+    setSelectedIndices([]);
     try {
       const res = await fetch("/api/farkle/bank-score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomId }),
+        body: JSON.stringify({ roomId, ...(indices.length > 0 ? { indices } : {}) }),
       });
       const d = await res.json();
       if (!res.ok || !d.success) {
@@ -643,8 +577,15 @@ export default function FarklePage() {
   }, [game?.currentTurn, game?.turnNumber]);
 
   /* ─── Dice Selection ─── */
+  const scoringIndices = useMemo(() => {
+    if (!game || rolling) return [];
+    return getScoringIndices(game.dice);
+  }, [game?.dice, rolling]);
+
   const toggleDie = (index: number) => {
     if (!isYourTurn || rolling || aiAnimating) return;
+    // Only allow selecting scoring dice, but allow unselecting any selected die
+    if (!selectedIndices.includes(index) && !scoringIndices.includes(index)) return;
     setSelectedIndices((prev) =>
       prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index].sort((a, b) => a - b),
     );
@@ -653,17 +594,36 @@ export default function FarklePage() {
   const selectedScore = useMemo(() => {
     if (!game) return 0;
     const d = selectedIndices.map((i) => game.dice[i]);
-    return calcScore(d);
+    return calculateScore(d);
   }, [game?.dice, selectedIndices]);
 
-  const canRoll = isYourTurn && !rolling && !aiAnimating && game && game.dice.length > 0 && !waitingForOpponent;
+  const clearSelection = () => setSelectedIndices([]);
+
+  const isAllScoringSelected = useMemo(() => {
+    if (!game) return false;
+    return (
+      selectedIndices.length > 0 &&
+      selectedIndices.length === game.dice.length &&
+      scoringIndices.length === game.dice.length
+    );
+  }, [selectedIndices, game?.dice, scoringIndices]);
+
+  const canRoll =
+    isYourTurn &&
+    !rolling &&
+    !aiAnimating &&
+    game &&
+    game.dice.length > 0 &&
+    !waitingForOpponent &&
+    (selectedIndices.length > 0 || scoringIndices.length === 0);
   const canBank =
     isYourTurn &&
     !rolling &&
     !aiAnimating &&
     game &&
-    game.turnScore > 0 &&
-    game.hasMetThreshold &&
+    (game.turnScore > 0 || selectedScore > 0) &&
+    (game.hasMetThreshold ||
+      game.turnScore + selectedScore >= MIN_BANK_THRESHOLD) &&
     !waitingForOpponent;
 
   const diffColor = (d: string) =>
@@ -1001,71 +961,138 @@ export default function FarklePage() {
 
             {/* ═══ PLAYER DICE ═══ */}
             {isYourTurn && game.state === "playing" && !waitingForOpponent && (
-              <div className="mb-4">
-                <div className="mb-2 text-center text-xs font-bold text-gray-400 uppercase">
-                  Your Dice — Tap to Select/Unselect
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row">
+                {/* ─── Side Box: Selected Dice ─── */}
+                <div className="flex-shrink-0 lg:w-48">
+                  <div className="rounded-2xl border-2 border-green-500/60 bg-green-950/30 p-3 shadow-[0_0_15px_rgba(34,197,94,0.2)]">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase text-green-300">
+                        📌 Selected Dice
+                      </span>
+                      {selectedIndices.length > 0 && (
+                        <button
+                          onClick={clearSelection}
+                          className="rounded-md bg-red-500/20 px-2 py-0.5 text-[10px] font-bold text-red-300 hover:bg-red-500/40 transition-colors"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    {selectedIndices.length === 0 ? (
+                      <div className="flex min-h-[80px] items-center justify-center text-xs text-gray-500">
+                        Click scoring dice to add them here
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {selectedIndices.map((idx) => (
+                          <motion.button
+                            key={`side-${idx}`}
+                            initial={{ scale: 0, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0, opacity: 0 }}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={() => toggleDie(idx)}
+                            className="relative"
+                          >
+                            <DiceFace
+                              value={game.dice[idx]}
+                              selected={true}
+                              index={idx}
+                            />
+                            <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow">
+                              ✕
+                            </div>
+                          </motion.button>
+                        ))}
+                      </div>
+                    )}
+                    {/* Selected Score Preview */}
+                    <div className="mt-2 rounded-lg bg-black/30 px-2 py-1 text-center">
+                      <span className="text-xs text-green-400">
+                        +{selectedScore > 0 ? selectedScore : 0} pts
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex flex-wrap justify-center gap-2">
-                  {game.dice.map((d, i) => (
-                    <motion.button
-                      key={`player-${i}-${d}`}
-                      disabled={!isYourTurn || rolling || aiAnimating}
-                      whileHover={{ scale: 1.08 }}
-                      whileTap={{ scale: 0.92 }}
-                      onClick={() => toggleDie(i)}
+
+                {/* ─── Main Dice Area ─── */}
+                <div className="flex-1">
+                  <div className="mb-2 text-center text-xs font-bold text-gray-400 uppercase">
+                    Your Dice — Tap Scoring Dice to Select
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {game.dice.map((d, i) => {
+                      const isSelected = selectedIndices.includes(i);
+                      const isScoring = scoringIndices.includes(i);
+                      return (
+                        <motion.button
+                          key={`player-${i}-${d}`}
+                          disabled={!isYourTurn || rolling || aiAnimating || (!isSelected && !isScoring)}
+                          whileHover={isScoring || isSelected ? { scale: 1.08 } : {}}
+                          whileTap={isScoring || isSelected ? { scale: 0.92 } : {}}
+                          onClick={() => toggleDie(i)}
+                          className={`relative rounded-2xl transition-all duration-200 ${
+                            isSelected
+                              ? ""
+                              : isScoring
+                                ? "ring-2 ring-amber-400/80 shadow-[0_0_18px_rgba(251,191,36,0.5)]"
+                                : "opacity-40 cursor-not-allowed"
+                          }`}
+                        >
+                          <DiceFace
+                            value={d}
+                            selected={isSelected}
+                            rolling={rolling && !isSelected}
+                            index={i}
+  
+                          />
+                          {isScoring && !isSelected && (
+                            <motion.div
+                              className="absolute inset-0 rounded-2xl bg-amber-400/10"
+                              animate={{ opacity: [0.2, 0.5, 0.2] }}
+                              transition={{ duration: 1.5, repeat: Infinity }}
+                            />
+                          )}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+
+                  {/* No scoring dice left warning */}
+                  {game.dice.length > 0 && scoringIndices.length === 0 && !rolling && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-3 rounded-lg border border-red-600/50 bg-red-900/20 p-3 text-center"
                     >
-                      <DiceFace
-                        value={d}
-                        selected={selectedIndices.includes(i)}
-                        rolling={rolling}
-                        index={i}
-                      />
-                    </motion.button>
-                  ))}
+                      <p className="text-sm font-bold text-red-400">
+                        ⚠️ No scoring dice available — you must roll or bank!
+                      </p>
+                    </motion.div>
+                  )}
+
+                  {/* Initial Farkle Warning — only when no dice selected yet */}
+                  {game.dice.length > 0 &&
+                    isFarkle(game.dice) &&
+                    !rolling &&
+                    selectedIndices.length === 0 &&
+                    game.turnScore > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="mt-2 text-center font-bold text-red-400"
+                      >
+                        💥 FARKLE! No scoring dice — you lose your turn score!
+                      </motion.div>
+                    )}
                 </div>
-
-                {/* Selected Score Preview */}
-                {selectedIndices.length > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-2 text-center text-sm text-amber-300"
-                  >
-                    Selected: <span className="font-black">{selectedScore}</span> pts
-                  </motion.div>
-                )}
-
-                {/* Farkle Warning */}
-                {game.dice.length > 0 && isFarkle(game.dice) && !rolling && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="mt-2 text-center font-bold text-red-400"
-                  >
-                    💥 FARKLE! No scoring dice — you lose your turn score!
-                  </motion.div>
-                )}
               </div>
             )}
 
             {/* ═══ ACTION BUTTONS ═══ */}
             {isYourTurn && game.state === "playing" && !waitingForOpponent && (
               <div className="flex flex-wrap justify-center gap-3">
-                {/* Select Scoring Dice */}
-                <motion.button
-                  disabled={!canRoll || selectedIndices.length === 0 || selectedScore <= 0 || rolling}
-                  whileHover={
-                    canRoll && selectedIndices.length > 0 && selectedScore > 0
-                      ? { scale: 1.05 }
-                      : {}
-                  }
-                  whileTap={{ scale: 0.95 }}
-                  onClick={selectDice}
-                  className="rounded-xl border-b-4 border-amber-700 bg-amber-500 px-6 py-3 font-black text-black shadow-[0_0_15px_rgba(251,191,36,0.4)] transition disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  📌 Score Selected (+{selectedScore > 0 ? selectedScore : "?"})
-                </motion.button>
-
                 {/* Roll Dice */}
                 <motion.button
                   disabled={!canRoll || rolling}
@@ -1074,7 +1101,12 @@ export default function FarklePage() {
                   onClick={rollDice}
                   className="rounded-xl border-b-4 border-cyan-700 bg-cyan-500 px-6 py-3 font-black text-black shadow-[0_0_15px_rgba(34,211,238,0.4)] transition disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  🎲 Roll {game.hasHotDice ? "All 6" : `${game.dice.length} Dice`}
+                  🎲 {isAllScoringSelected ? "🔥 Hot Dice! Roll All 6" : game.hasHotDice ? "Roll All 6" : `Roll ${game.dice.length} Dice`}
+                  {selectedIndices.length > 0 && (
+                    <span className="ml-1 text-xs opacity-80">
+                      (score +{selectedScore})
+                    </span>
+                  )}
                 </motion.button>
 
                 {/* Bank Score */}
@@ -1085,22 +1117,9 @@ export default function FarklePage() {
                   onClick={bankScore}
                   className="rounded-xl border-b-4 border-green-700 bg-green-500 px-6 py-3 font-black text-white shadow-[0_0_15px_rgba(34,197,94,0.4)] transition disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  🏦 Bank +{game.turnScore}
+                  🏦 Bank +{game.turnScore + (selectedScore > 0 ? selectedScore : 0)}
                 </motion.button>
               </div>
-            )}
-
-            {/* Farkle auto-bank prompt */}
-            {isYourTurn && game.state === "playing" && game.dice.length > 0 && isFarkle(game.dice) && !rolling && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-4 rounded-lg border border-red-600/50 bg-red-900/20 p-3 text-center"
-              >
-                <p className="text-sm text-red-300">
-                  ⚠️ Remaining dice have no scoring value. Roll at your own risk — a Farkle loses all {game.turnScore} unbanked points!
-                </p>
-              </motion.div>
             )}
 
             {/* ═══ GAME LOG ═══ */}
