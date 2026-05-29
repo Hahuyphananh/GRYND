@@ -1,6 +1,11 @@
 // ─── Farkle Game Engine ───
-// Standard Farkle rules with full scoring validation.
-// First player to reach WINNING_SCORE points wins.
+// Rules matching cardgames.io/farkle:
+// - Three 1s = 1000, other three-of-a-kind = face × 100
+// - Four of a kind = 1000, Five of a kind = 2000, Six of a kind = 3000
+// - Three pairs = 1500, Straight (1-6) = 2500
+// - No minimum banking threshold
+// - First player to reach 10,000 wins immediately (no final round)
+// - Hot dice: when all 6 score, player MAY re-roll all 6
 
 /** Configurable winning score constant. */
 export const WINNING_SCORE = 10_000;
@@ -8,13 +13,12 @@ export const WINNING_SCORE = 10_000;
 /** Number of dice in play. */
 export const DICE_COUNT = 6;
 
-/** Minimum score required to bank on the first scoring roll of a turn. */
-export const MIN_BANK_THRESHOLD = 500;
-
 /** Rake rate applied to the pot before payout (5% house edge). */
 export const RAKE_RATE = 0.05;
 
 // ─── Types ───
+
+export type ScoringCombo = { dice: number[]; score: number; description: string };
 
 export type FarkleGameState = {
   id: string;
@@ -30,8 +34,6 @@ export type FarkleGameState = {
   dice: number[];
   /** Total score accumulated during the current turn (unbanked). */
   turnScore: number;
-  /** Whether the player has met the minimum banking threshold this turn. */
-  hasMetThreshold: boolean;
   /** How many rolls have been made this turn. */
   rollsThisTurn: number;
   /** Banked (permanent) scores for each player. */
@@ -40,10 +42,6 @@ export type FarkleGameState = {
   hasHotDice: boolean;
   /** AI difficulty for the AI player (if applicable). */
   difficulty?: "easy" | "medium" | "hard";
-  /** Whether the game is in the final round (someone reached 10k, others get one more turn). */
-  finalRound: boolean;
-  /** The userId of the player who triggered the final round by reaching 10k. */
-  finalRoundStartedBy: string | null;
 };
 
 type FarklePlayer = {
@@ -62,71 +60,199 @@ export function countDice(dice: number[]): Map<number, number> {
   return counts;
 }
 
+/** Base score for three of a kind: 1s = 1000, others = face × 100. */
+function threeOfAKindScore(val: number): number {
+  return val === 1 ? 1000 : val * 100;
+}
+
 /**
- * Find ALL valid scoring combinations in a set of dice.
- * Uses official Farkle rules:
- *   - Single 1s (100 each) and 5s (50 each)
- *   - Three-of-a-kind (1s = 300, others = face × 100)
- *   - No special combinations (straight, pairs, four/five/six of a kind
- *     are not separate melds — they fall back to three-of-a-kind + individual dice)
- *
- * Uses a greedy algorithm: finds the best combination first, then recurses.
+ * Check if dice form a straight (1-2-3-4-5-6).
  */
-export function findScoringCombinations(
-  dice: number[],
-): { dice: number[]; score: number; description: string }[] {
-  const n = dice.length;
-  if (n === 0) return [];
+function isStraight(dice: number[]): boolean {
+  if (dice.length !== 6) return false;
+  const sorted = [...dice].sort((a, b) => a - b);
+  return sorted[0] === 1 && sorted[1] === 2 && sorted[2] === 3 &&
+         sorted[3] === 4 && sorted[4] === 5 && sorted[5] === 6;
+}
 
+/**
+ * Check if dice form three pairs.
+ */
+function isThreePairs(dice: number[]): boolean {
+  if (dice.length !== 6) return false;
   const counts = countDice(dice);
-  const freq = [...counts.values()].sort((a, b) => b - a);
+  // Three distinct values, each appearing exactly twice
+  // Also handles four-of-a-kind + pair: counts.size === 2, one count=4 one count=2
+  // Cardgames.io says "Includes a four-of-a-kind and a pair"
+  if (counts.size === 3) {
+    return [...counts.values()].every(c => c === 2);
+  }
+  if (counts.size === 2) {
+    const vals = [...counts.values()];
+    return (vals[0] === 4 && vals[1] === 2) || (vals[0] === 2 && vals[1] === 4);
+  }
+  return false;
+}
 
-  // Three-of-a-kind (check largest value first for best combo)
-  if (n >= 3 && freq[0] >= 3) {
-    const result: { dice: number[]; score: number; description: string }[] = [];
-    // Find the highest-value triplet
-    let bestVal = 0;
-    let bestScore = -1;
-    for (const [val, cnt] of counts.entries()) {
-      if (cnt >= 3) {
-        const s = threeOfAKindScore(val);
-        if (s > bestScore || (s === bestScore && val > bestVal)) {
-          bestScore = s;
-          bestVal = val;
-        }
+/**
+ * Check if a set of dice forms a valid scoring combination.
+ * Valid combos: individual 1/5, three-of-a-kind, four-of-a-kind, five-of-a-kind,
+ * six-of-a-kind, three pairs, straight.
+ */
+function isScoringSubset(dice: number[]): boolean {
+  const n = dice.length;
+  if (n === 0) return false;
+  if (n === 1) return dice[0] === 1 || dice[0] === 5;
+  if (n === 2) return false; // no 2-dice combos besides individual 1s and 5s (handled separately)
+  if (n === 3) {
+    // Three of a kind
+    const counts = countDice(dice);
+    return counts.size === 1;
+  }
+  if (n === 4) {
+    // Four of a kind
+    const counts = countDice(dice);
+    return counts.size === 1;
+  }
+  if (n === 5) {
+    // Five of a kind
+    const counts = countDice(dice);
+    return counts.size === 1;
+  }
+  if (n === 6) {
+    // Six of a kind, three pairs, or straight
+    if (isStraight(dice)) return true;
+    if (isThreePairs(dice)) return true;
+    const counts = countDice(dice);
+    return counts.size === 1;
+  }
+  return false;
+}
+
+/**
+ * Score a valid scoring subset.
+ */
+function scoreSubset(dice: number[]): number {
+  const n = dice.length;
+  if (n === 1) {
+    if (dice[0] === 1) return 100;
+    if (dice[0] === 5) return 50;
+    return 0;
+  }
+  if (n === 3) return threeOfAKindScore(dice[0]);
+  if (n === 4) return 1000;
+  if (n === 5) return 2000;
+  if (n === 6) {
+    if (isStraight(dice)) return 2500;
+    if (isThreePairs(dice)) return 1500;
+    return 3000; // six of a kind
+  }
+  return 0;
+}
+
+// Memoization cache for findBestScoring
+const _bestScoreCache = new Map<string, { score: number; combos: ScoringCombo[] }>();
+
+/**
+ * Find the best scoring combination for a set of dice using exhaustive search.
+ * The "combinations from a single roll" rule means we look for valid subsets
+ * within this set of dice (all from the same roll), recursively finding the
+ * optimal partition into valid scoring combos.
+ *
+ * Returns all scoring combos that produce the maximum total score.
+ */
+function findBestScoring(dice: number[]): { score: number; combos: ScoringCombo[] } {
+  const key = [...dice].sort((a, b) => a - b).join(",");
+  const cached = _bestScoreCache.get(key);
+  if (cached) return cached;
+
+  if (dice.length === 0) {
+    return { score: 0, combos: [] };
+  }
+
+  let bestScore = 0;
+  let bestCombos: ScoringCombo[] = [];
+
+  // Generate all non-empty subsets of dice using bitmask
+  // For n dice, there are 2^n - 1 non-empty subsets
+  const n = dice.length;
+  const totalMasks = 1 << n;
+
+  for (let mask = 1; mask < totalMasks; mask++) {
+    const subset: number[] = [];
+    const remaining: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if (mask & (1 << i)) {
+        subset.push(dice[i]);
+      } else {
+        remaining.push(dice[i]);
       }
     }
-    result.push({ dice: Array(3).fill(bestVal), score: bestScore, description: `Three ${bestVal}'s` });
-    const remaining: number[] = [];
-    let skip = 3;
-    for (const d of dice) {
-      if (d === bestVal && skip > 0) { skip--; continue; }
-      remaining.push(d);
+
+    let subScore: number;
+    if (isScoringSubset(subset)) {
+      subScore = scoreSubset(subset);
+    } else {
+      // Subset is not a standard combo — check if all dice are individual scoring (1s & 5s)
+      const allOnesOrFives = subset.every(d => d === 1 || d === 5);
+      if (!allOnesOrFives) continue;
+      subScore = subset.filter(d => d === 1).length * 100 + subset.filter(d => d === 5).length * 50;
     }
-    const rest = findScoringCombinations(remaining);
-    result.push(...rest);
-    return result;
+    if (subScore <= 0) continue;
+
+    const { score: restScore, combos: restCombos } = findBestScoring(remaining);
+    const totalScore = subScore + restScore;
+
+    if (totalScore > bestScore) {
+      bestScore = totalScore;
+      const desc = describeCombo(subset);
+      bestCombos = [{ dice: [...subset], score: subScore, description: desc }, ...restCombos];
+    }
   }
 
-  // Individual 1s and 5s
-  const result: { dice: number[]; score: number; description: string }[] = [];
-  const remaining: number[] = [];
-  let ones = 0;
-  let fives = 0;
-  for (const d of dice) {
-    if (d === 1) ones++;
-    else if (d === 5) fives++;
-    else remaining.push(d);
-  }
-  if (ones > 0) result.push({ dice: Array(ones).fill(1), score: ones * 100, description: `${ones} x One${ones > 1 ? 's' : ''}` });
-  if (fives > 0) result.push({ dice: Array(fives).fill(5), score: fives * 50, description: `${fives} x Five${fives > 1 ? 's' : ''}` });
-
+  const result = { score: bestScore, combos: bestCombos };
+  _bestScoreCache.set(key, result);
   return result;
 }
 
-/** Base score for three of a kind: 1s = 300, others = face × 100. */
-function threeOfAKindScore(val: number): number {
-  return val === 1 ? 300 : val * 100;
+/**
+ * Generate a human-readable description of a scoring combo.
+ */
+function describeCombo(dice: number[]): string {
+  const n = dice.length;
+  if (n === 1) {
+    return dice[0] === 1 ? "One" : "Five";
+  }
+  if (n === 2 && dice[0] === 1 && dice[1] === 1) return "Two Ones";
+  if (n === 2 && dice[0] === 5 && dice[1] === 5) return "Two Fives";
+  if (n === 2) return "One + Five";
+  if (n === 3) return `Three ${dice[0]}'s`;
+  if (n === 4) return `Four ${dice[0]}'s`;
+  if (n === 5) return `Five ${dice[0]}'s`;
+  if (n === 6) {
+    if (isStraight(dice)) return "Straight (1-6)";
+    if (isThreePairs(dice)) return "Three Pairs";
+    return `Six ${dice[0]}'s`;
+  }
+  return "Combo";
+}
+
+/**
+ * Clear the scoring cache (call before each new scoring evaluation
+ * to avoid stale results across different calls).
+ */
+function clearScoringCache() {
+  _bestScoreCache.clear();
+}
+
+/**
+ * Find ALL valid scoring combinations in a set of dice.
+ * Uses exhaustive search to find the optimal partition.
+ */
+export function findScoringCombinations(dice: number[]): ScoringCombo[] {
+  clearScoringCache();
+  const { combos } = findBestScoring(dice);
+  return combos;
 }
 
 /**
@@ -134,8 +260,9 @@ function threeOfAKindScore(val: number): number {
  * Returns 0 if no scoring combination exists (Farkle).
  */
 export function calculateScore(dice: number[]): number {
-  const combos = findScoringCombinations(dice);
-  return combos.reduce((sum, c) => sum + c.score, 0);
+  clearScoringCache();
+  const { score } = findBestScoring(dice);
+  return score;
 }
 
 /**
@@ -157,6 +284,8 @@ export function isHotDice(dice: number[]): boolean {
 /**
  * Get indices of all dice that are part of a valid scoring combination.
  * Used for highlighting selectable dice in the UI.
+ * Returns ALL dice that could potentially be scored (1s, 5s, and
+ * dice that are part of multi-die combos like three-of-a-kind).
  */
 export function getScoringIndices(dice: number[]): number[] {
   const combos = findScoringCombinations(dice);
@@ -184,11 +313,8 @@ export function getScoringIndices(dice: number[]): number[] {
 
 // ─── Dice Rolling ───
 
-/** Roll all non-scored dice. Returns new dice values. */
+/** Roll the current set of dice (or all 6 for hot dice). */
 export function rollDice(state: FarkleGameState): FarkleGameState {
-  // Determine how many dice to roll.
-  // If hot dice, roll all 6. Otherwise, all current dice are re-rolled
-  // (because in Farkle, after selecting scoring dice, the remaining are re-rolled).
   const count = state.hasHotDice ? DICE_COUNT : state.dice.length;
   if (count <= 0) throw new Error("No dice to roll");
 
@@ -214,7 +340,6 @@ export function processRollResult(state: FarkleGameState): FarkleGameState {
     return {
       ...state,
       turnScore: 0,
-      hasMetThreshold: false,
       currentTurn: next.userId,
       turnNumber: state.turnNumber + 1,
       rollsThisTurn: 0,
@@ -239,15 +364,15 @@ export function processRollResult(state: FarkleGameState): FarkleGameState {
 /**
  * Bank the current turn score. Adds to the player's permanent score,
  * then passes turn to the next player.
+ * No minimum threshold — any positive score can be banked.
  */
 export function bankScore(state: FarkleGameState): FarkleGameState {
+  if (state.turnScore <= 0) {
+    throw new Error("No points to bank");
+  }
+
   const currentScore = state.scores[state.currentTurn] ?? 0;
   const newTotal = currentScore + state.turnScore;
-
-  // Validate minimum banking threshold on first roll
-  if (!state.hasMetThreshold && state.turnScore < MIN_BANK_THRESHOLD) {
-    throw new Error(`Must bank at least ${MIN_BANK_THRESHOLD} points`);
-  }
 
   const idx = state.players.findIndex(p => p.userId === state.currentTurn);
   const next = state.players[(idx + 1) % state.players.length];
@@ -256,7 +381,6 @@ export function bankScore(state: FarkleGameState): FarkleGameState {
     ...state,
     scores: { ...state.scores, [state.currentTurn]: newTotal },
     turnScore: 0,
-    hasMetThreshold: false,
     currentTurn: next.userId,
     turnNumber: state.turnNumber + 1,
     rollsThisTurn: 0,
@@ -284,24 +408,22 @@ export function selectScoringDice(
   const remaining = state.dice.filter((_, i) => !selectedIndices.includes(i));
 
   const newTurnScore = state.turnScore + comboScore;
-  const hasMetThreshold = state.hasMetThreshold || newTurnScore >= MIN_BANK_THRESHOLD;
 
-  // If all 6 dice were selected (hot dice scenario or all remaining scored)
+  // If all dice were selected (hot dice scenario)
   if (remaining.length === 0) {
+    // Auto-roll all 6 for hot dice (player can choose to bank instead in the API)
     return {
       ...state,
       turnScore: newTurnScore,
-      hasMetThreshold,
       dice: Array.from({ length: DICE_COUNT }, () => Math.floor(Math.random() * 6) + 1),
       hasHotDice: true,
-      rollsThisTurn: state.rollsThisTurn + 1, // auto-roll for hot dice
+      rollsThisTurn: state.rollsThisTurn + 1,
     };
   }
 
   return {
     ...state,
     turnScore: newTurnScore,
-    hasMetThreshold,
     dice: remaining,
     hasHotDice: false,
   };
@@ -311,59 +433,25 @@ export function selectScoringDice(
 
 /**
  * Check if any player has reached the winning score.
- * NOTE: Per official rules, when a player reaches 10,000, the other players
- * get one last turn. This function only checks if someone has crossed the threshold;
- * the API layer handles the final-round logic.
+ * Per cardgames.io rules: first player to finish their turn with
+ * more than 10,000 points banked wins immediately.
  */
 export function checkWinCondition(state: FarkleGameState): {
   ended: boolean;
   winnerId?: string;
   scores?: Record<string, number>;
 } {
-  // If we're in the final round and the current turn has wrapped back
-  // to the player who started the final round, the game ends.
-  if (state.finalRound) {
-    // After all players have had their final turn, the one with the highest score wins
-    // The final round ends when it's the triggering player's turn again
-    if (state.finalRoundStartedBy === state.currentTurn) {
-      // Find highest scorer
-      let bestId = "";
-      let bestScore = -1;
-      for (const [uid, score] of Object.entries(state.scores)) {
-        if (score > bestScore) {
-          bestScore = score;
-          bestId = uid;
-        }
-      }
-      return { ended: true, winnerId: bestId, scores: state.scores };
-    }
-    return { ended: false };
-  }
-
-  // Not in final round yet — check if someone reached the threshold
   for (const player of state.players) {
     const score = state.scores[player.userId] ?? 0;
     if (score >= WINNING_SCORE) {
-      // Don't end yet — enter final round instead (handled by the API layer)
-      return { ended: false };
+      return {
+        ended: true,
+        winnerId: player.userId,
+        scores: state.scores,
+      };
     }
   }
   return { ended: false };
-}
-
-/**
- * Check if banking a score should trigger the final round.
- * Returns the player who triggered it, or null.
- */
-export function checkFinalRoundTrigger(state: FarkleGameState): string | null {
-  if (state.finalRound) return null;
-  for (const player of state.players) {
-    const score = state.scores[player.userId] ?? 0;
-    if (score >= WINNING_SCORE) {
-      return player.userId;
-    }
-  }
-  return null;
 }
 
 // ─── Move Validation ───
@@ -383,9 +471,6 @@ export function validateMove(
 
   if (action === "bank_score") {
     if (state.turnScore <= 0) throw new Error("No points to bank");
-    if (!state.hasMetThreshold && state.turnScore < MIN_BANK_THRESHOLD) {
-      throw new Error(`Must bank at least ${MIN_BANK_THRESHOLD} points on first scoring roll`);
-    }
   }
 
   if (action === "select_scoring_dice") {
@@ -420,15 +505,7 @@ export function aiDecide(
 
   const difficulty = aiPlayer.difficulty ?? "medium";
 
-  // If it's the AI's first roll of this turn (dice was auto-rolled),
-  // we just need to decide which scoring dice to select.
-  // After selection, decide whether to bank or roll.
-
-  // For now, the AI strategy works on the current dice set:
-  // 1. Find all scoring combinations
-  // 2. Select the BEST combination (highest score per die kept)
-  // 3. Then decide whether to bank or roll again
-
+  // Find all scoring combinations
   const combos = findScoringCombinations(state.dice);
   if (combos.length === 0) {
     // This shouldn't happen since processRollResult handles Farkles
@@ -436,7 +513,6 @@ export function aiDecide(
   }
 
   // Select the best scoring dice
-  // Strategy: prefer keeping higher-value dice, but be strategic about it
   const indices = selectBestDice(state.dice, combos, difficulty);
 
   return { action: "select", indices };
@@ -444,19 +520,16 @@ export function aiDecide(
 
 /**
  * Choose which scoring dice to keep.
- * Based on difficulty, may keep fewer dice to maximize re-roll potential
- * or keep all scoring dice for safety.
  */
 function selectBestDice(
   allDice: number[],
-  combos: { dice: number[]; score: number; description: string }[],
+  combos: ScoringCombo[],
   difficulty: "easy" | "medium" | "hard",
 ): number[] {
-  // Map each combo's dice back to indices in the original array
   const used = new Set<number>();
   const indices: number[] = [];
 
-  // For each combo, find the matching dice in the original array
+  // Map each combo's dice back to indices in the original array
   for (const combo of combos) {
     const remaining = combo.dice.slice();
     for (let i = 0; i < allDice.length; i++) {
@@ -495,15 +568,13 @@ export function aiShouldBank(state: FarkleGameState): boolean {
   if (remainingDice <= 0) return true;
 
   // Calculate risk of Farkle with remaining dice
-  // Probability of Farkle ≈ (4/6)^n for each die being 2,3,4,6
-  // More precisely: only 1 and 5 score individually, so 4/6 chance per die
   const farkleRisk = Math.pow(4 / 6, remainingDice);
 
   // Thresholds by difficulty
   const riskThresholds = {
-    easy: 0.3,    // Bank if >30% chance of Farkle
-    medium: 0.5,  // Bank if >50% chance of Farkle
-    hard: 0.65,   // Bank if >65% chance of Farkle
+    easy: 0.3,
+    medium: 0.5,
+    hard: 0.65,
   };
 
   const threshold = riskThresholds[difficulty];
@@ -553,11 +624,8 @@ export function createInitialState(
     turnNumber: 1,
     dice: Array.from({ length: DICE_COUNT }, () => Math.floor(Math.random() * 6) + 1),
     turnScore: 0,
-    hasMetThreshold: false,
     rollsThisTurn: 0,
     scores: { [creatorId]: 0 },
     hasHotDice: false,
-    finalRound: false,
-    finalRoundStartedBy: null,
   };
 }
