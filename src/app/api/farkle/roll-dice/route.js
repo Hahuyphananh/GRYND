@@ -62,8 +62,9 @@ export async function POST(req) {
           return next;
         }
       } else {
-        // Player must select at least one scoring die if scoring dice are available
-        if (calculateScore(state.dice) > 0 && state.dice.length > 0) {
+        // Player must select at least one scoring die if scoring dice are available,
+        // unless this is the first roll of the turn (rollsThisTurn === 0)
+        if (state.rollsThisTurn > 0 && calculateScore(state.dice) > 0 && state.dice.length > 0) {
           throw new Error("You must select at least one scoring die before rolling");
         }
         // If no scoring dice available, it will be detected as a Farkle below
