@@ -13,12 +13,12 @@ import { Ball, ShotMeta } from "./types";
 
 export const isMoving = (balls: Ball[]) =>
   balls.some(
-    (b) => !b.pocketed && Math.abs(b.vx) + Math.abs(b.vy) > STOP_EPSILON,
+    (b) => (!b.pocketed && (b.vx !== 0 || b.vy !== 0)) || b.animatingPocket,
   );
 
 export function applyShotPower(pull: number) {
   const t = Math.min(1, Math.max(0.08, pull / 120));
-  return 2.5 + Math.pow(t, 1.34) * 15.5;
+  return 3.0 + Math.pow(t, 1.2) * 22.0;
 }
 
 const SPIN_SWERVE = 0.018;
@@ -58,7 +58,7 @@ b.vy *= FRICTION;
 // Stop tiny sliding velocities
 const speed = Math.hypot(b.vx, b.vy);
 
-if (speed < 0.05) {
+if (speed < STOP_EPSILON) {
   b.vx = 0;
   b.vy = 0;
 }

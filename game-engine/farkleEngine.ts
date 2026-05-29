@@ -40,6 +40,10 @@ export type FarkleGameState = {
   hasHotDice: boolean;
   /** AI difficulty for the AI player (if applicable). */
   difficulty?: "easy" | "medium" | "hard";
+  /** Whether the game is in the final round (someone reached 10k, others get one more turn). */
+  finalRound: boolean;
+  /** The userId of the player who triggered the final round by reaching 10k. */
+  finalRoundStartedBy: string | null;
 };
 
 type FarklePlayer = {
@@ -60,18 +64,11 @@ export function countDice(dice: number[]): Map<number, number> {
 
 /**
  * Find ALL valid scoring combinations in a set of dice.
- * Returns an array of scored groups, each with:
- *   - dice: the dice values in this group
- *   - score: the point value
- *   - description: human-readable label
- *
- * Edge cases handled:
- *   - Single 1s and 5s
- *   - Three-of-a-kind (including 1s = 1000)
- *   - Four/five/six-of-a-kind bonuses (doubles each extra die)
- *   - Straight (1-2-3-4-5-6) = 1500
- *   - Three pairs = 1500
- *   - Two triplets = 2500
+ * Uses official Farkle rules:
+ *   - Single 1s (100 each) and 5s (50 each)
+ *   - Three-of-a-kind (1s = 300, others = face × 100)
+ *   - No special combinations (straight, pairs, four/five/six of a kind
+ *     are not separate melds — they fall back to three-of-a-kind + individual dice)
  *
  * Uses a greedy algorithm: finds the best combination first, then recurses.
  */
@@ -82,66 +79,7 @@ export function findScoringCombinations(
   if (n === 0) return [];
 
   const counts = countDice(dice);
-  const uniqueVals = [...counts.keys()].sort((a, b) => a - b);
   const freq = [...counts.values()].sort((a, b) => b - a);
-
-  // Straight (1-6) — requires exactly 6 unique dice all in sequence
-  if (n === 6 && uniqueVals.length === 6 && uniqueVals[5] - uniqueVals[0] === 5) {
-    return [{ dice: [...dice], score: 1500, description: "Straight (1-6)" }];
-  }
-
-  // Three pairs — exactly 6 dice, 3 unique values with count 2 each
-  if (n === 6 && uniqueVals.length === 3 && freq[0] === 2 && freq[1] === 2 && freq[2] === 2) {
-    return [{ dice: [...dice], score: 1500, description: "Three Pairs" }];
-  }
-
-  // Two triplets — exactly 6 dice, 2 unique values with count 3 each
-  if (n === 6 && uniqueVals.length === 2 && freq[0] === 3 && freq[1] === 3) {
-    return [{ dice: [...dice], score: 2500, description: "Two Triplets" }];
-  }
-
-  // Six-of-a-kind — all 6 the same
-  if (n === 6 && uniqueVals.length === 1) {
-    const val = uniqueVals[0];
-    const base = threeOfAKindScore(val);
-    // Four = 2x, Five = 4x, Six = 8x
-    return [{ dice: [...dice], score: base * 8, description: `Six ${val}'s` }];
-  }
-
-  // Five-of-a-kind
-  if (n >= 5 && freq[0] >= 5) {
-    const result: { dice: number[]; score: number; description: string }[] = [];
-    const quintVal = [...counts.entries()].find(([, c]) => c >= 5)![0];
-    const base = threeOfAKindScore(quintVal);
-    result.push({ dice: Array(5).fill(quintVal), score: base * 4, description: `Five ${quintVal}'s` });
-    // Collect remaining dice using a counter (avoids mutation bug)
-    const remaining: number[] = [];
-    let skip = 5;
-    for (const d of dice) {
-      if (d === quintVal && skip > 0) { skip--; continue; }
-      remaining.push(d);
-    }
-    const rest = findScoringCombinations(remaining);
-    result.push(...rest);
-    return result;
-  }
-
-  // Four-of-a-kind
-  if (n >= 4 && freq[0] >= 4) {
-    const result: { dice: number[]; score: number; description: string }[] = [];
-    const quadVal = [...counts.entries()].find(([, c]) => c >= 4)![0];
-    const base = threeOfAKindScore(quadVal);
-    result.push({ dice: Array(4).fill(quadVal), score: base * 2, description: `Four ${quadVal}'s` });
-    const remaining: number[] = [];
-    let skip = 4;
-    for (const d of dice) {
-      if (d === quadVal && skip > 0) { skip--; continue; }
-      remaining.push(d);
-    }
-    const rest = findScoringCombinations(remaining);
-    result.push(...rest);
-    return result;
-  }
 
   // Three-of-a-kind (check largest value first for best combo)
   if (n >= 3 && freq[0] >= 3) {
@@ -186,9 +124,9 @@ export function findScoringCombinations(
   return result;
 }
 
-/** Base score for three of a kind: 1s = 1000, others = face * 100. */
+/** Base score for three of a kind: 1s = 300, others = face × 100. */
 function threeOfAKindScore(val: number): number {
-  return val === 1 ? 1000 : val * 100;
+  return val === 1 ? 300 : val * 100;
 }
 
 /**
@@ -371,18 +309,61 @@ export function selectScoringDice(
 
 // ─── Win Condition ───
 
+/**
+ * Check if any player has reached the winning score.
+ * NOTE: Per official rules, when a player reaches 10,000, the other players
+ * get one last turn. This function only checks if someone has crossed the threshold;
+ * the API layer handles the final-round logic.
+ */
 export function checkWinCondition(state: FarkleGameState): {
   ended: boolean;
   winnerId?: string;
   scores?: Record<string, number>;
 } {
+  // If we're in the final round and the current turn has wrapped back
+  // to the player who started the final round, the game ends.
+  if (state.finalRound) {
+    // After all players have had their final turn, the one with the highest score wins
+    // The final round ends when it's the triggering player's turn again
+    if (state.finalRoundStartedBy === state.currentTurn) {
+      // Find highest scorer
+      let bestId = "";
+      let bestScore = -1;
+      for (const [uid, score] of Object.entries(state.scores)) {
+        if (score > bestScore) {
+          bestScore = score;
+          bestId = uid;
+        }
+      }
+      return { ended: true, winnerId: bestId, scores: state.scores };
+    }
+    return { ended: false };
+  }
+
+  // Not in final round yet — check if someone reached the threshold
   for (const player of state.players) {
     const score = state.scores[player.userId] ?? 0;
     if (score >= WINNING_SCORE) {
-      return { ended: true, winnerId: player.userId, scores: state.scores };
+      // Don't end yet — enter final round instead (handled by the API layer)
+      return { ended: false };
     }
   }
   return { ended: false };
+}
+
+/**
+ * Check if banking a score should trigger the final round.
+ * Returns the player who triggered it, or null.
+ */
+export function checkFinalRoundTrigger(state: FarkleGameState): string | null {
+  if (state.finalRound) return null;
+  for (const player of state.players) {
+    const score = state.scores[player.userId] ?? 0;
+    if (score >= WINNING_SCORE) {
+      return player.userId;
+    }
+  }
+  return null;
 }
 
 // ─── Move Validation ───
@@ -576,5 +557,7 @@ export function createInitialState(
     rollsThisTurn: 0,
     scores: { [creatorId]: 0 },
     hasHotDice: false,
+    finalRound: false,
+    finalRoundStartedBy: null,
   };
 }

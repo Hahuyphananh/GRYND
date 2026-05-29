@@ -4,6 +4,7 @@ import { db as drizzleDb } from "../../../db/client";
 import { users, farkleActions, farklePlayers, farkleRooms } from "../../../db/schema";
 import {
   checkWinCondition,
+  checkFinalRoundTrigger,
   processRollResult,
   validateMove,
 } from "../../../../game-engine/farkleEngine";
@@ -27,6 +28,8 @@ export function initialState(roomId, creatorId, creatorName, wager) {
     rollsThisTurn: 0,
     scores: { [creatorId]: 0 },
     hasHotDice: false,
+    finalRound: false,
+    finalRoundStartedBy: null,
   };
 }
 
@@ -73,8 +76,27 @@ export async function getDisplayName(userId, tx = drizzleDb) {
 /**
  * Check if the game has ended and, if so, pay out the winner
  * and mark the room as finished.
+ * Handles the final-round rule: when a player reaches 10,000,
+ * other players get one last turn.
  */
 export async function settleIfEnded(tx, roomRow, state) {
+  // Check if we should enter the final round
+  if (!state.finalRound) {
+    const triggerId = checkFinalRoundTrigger(state);
+    if (triggerId) {
+      // Enter final round — don't end the game yet
+      state.finalRound = true;
+      state.finalRoundStartedBy = triggerId;
+      await tx
+        .update(farkleRooms)
+        .set({ gameState: state })
+        .where(eq(farkleRooms.id, roomRow.id));
+      return { state, ended: false, finalRoundEntered: true, triggeredBy: triggerId };
+    }
+    return { state, ended: false };
+  }
+
+  // Already in final round — check if it should end now
   const ended = checkWinCondition(state);
   if (!ended.ended) return { state, ended: false };
 
@@ -89,7 +111,6 @@ export async function settleIfEnded(tx, roomRow, state) {
   const loser = state.players.find((p) => !p.isAI && p.userId !== ended.winnerId);
   const isPvp = !state.ai && state.players.length >= 2;
 
-  // Only track human winners in leaderboard (skip AI)
   if (winnerPlayer && !winnerPlayer.isAI) {
     await applyLeaderboardCounters({
       clerkId: ended.winnerId,
@@ -99,7 +120,6 @@ export async function settleIfEnded(tx, roomRow, state) {
       isPvpWin: isPvp,
     });
   }
-  // Record loss for human opponent
   if (loser) {
     await applyLeaderboardCounters({
       clerkId: loser.userId,

@@ -23,5 +23,12 @@ export async function GET() {
         updated_at = NOW()
   `;
 
+  // Purge big-wins feed entries older than 7 days so the
+  // big-wins chat feed doesn't show stale wins after reset
+  await sql`
+    DELETE FROM big_wins
+    WHERE created_at < NOW() - INTERVAL '7 days'
+  `;
+
   return Response.json({ ok: true, resetAt: new Date().toISOString() });
 }

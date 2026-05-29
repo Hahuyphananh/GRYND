@@ -224,31 +224,15 @@ export function useHexDuel() {
     [capturedTiles, currentTurn]
   );
 
-  /** Tiles that can receive displaced troops (friendly tiles adjacent to other friendly tiles) */
+  /** Tiles that can receive displaced troops (all friendly tiles) */
   const displaceCandidates = useMemo(() => {
     const candidates: { x: number; y: number }[] = [];
-    const myTiles = Object.entries(capturedTiles)
-      .filter(([, o]) => o === currentTurn)
-      .map(([k]) => k);
-
-    for (const key of myTiles) {
+    for (const [key, owner] of Object.entries(capturedTiles)) {
+      if (owner !== currentTurn) continue;
       const [cx, cy] = key.split(",").map(Number);
-      const neighbors = getHexNeighbors(cx, cy);
-      for (const n of neighbors) {
-        const nKey = `${n.x},${n.y}`;
-        if (capturedTiles[nKey] === currentTurn && nKey !== key) {
-          candidates.push({ x: n.x, y: n.y });
-        }
-      }
+      candidates.push({ x: cx, y: cy });
     }
-    // Deduplicate
-    const seen = new Set<string>();
-    return candidates.filter((c) => {
-      const k = `${c.x},${c.y}`;
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
+    return candidates;
   }, [capturedTiles, currentTurn]);
 
   /** For a given displace target, find friendly sources adjacent to it with extra troops */
@@ -363,13 +347,15 @@ export function useHexDuel() {
 
       if (troopCount > targetTroops) {
         // ── CONQUER! ─────────────────────────────────────────────
+        // Surviving troops = attacking troops minus defender troops
+        const remainingTroops = troopCount - targetTroops;
         setCapturedTiles((prev) => ({
           ...prev,
           [targetKey]: currentTurn,
         }));
         setTileTroops((prev) => ({
           ...prev,
-          [targetKey]: 1, // conquered tile has 1 troop
+          [targetKey]: remainingTroops, // surviving troops after battle
         }));
 
         setRecentlyCaptured([targetKey]);
@@ -381,7 +367,7 @@ export function useHexDuel() {
           source: { x: sx, y: sy },
           target: { x: tx, y: ty },
           apCost: ATTACK_COST,
-          label: `Attack: sent ${troopCount} from (${sx},${sy}) → conquered (${tx},${ty}) (was ${targetTroops})`,
+          label: `Attack: sent ${troopCount} from (${sx},${sy}) → conquered (${tx},${ty}) (was ${targetTroops}, ${remainingTroops} remain)`,
         });
 
         // Check if conquered tile is the enemy's capital
@@ -390,12 +376,16 @@ export function useHexDuel() {
           // Don't do AP management — game is over
           return;
         }
-      } else {
-        // ── FAILED ATTACK ─────────────────────────────────────────
-        const defenderLoss = Math.min(targetTroops, troopCount);
+      } else if (troopCount === targetTroops && targetTroops > 0) {
+        // ── TIE: both sides wiped out, territory becomes neutral ──
+        setCapturedTiles((prev) => {
+          const next = { ...prev };
+          delete next[targetKey];
+          return next;
+        });
         setTileTroops((prev) => ({
           ...prev,
-          [targetKey]: targetTroops - defenderLoss,
+          [targetKey]: 0,
         }));
 
         setCombatFlash([sourceKey, targetKey]);
@@ -406,7 +396,37 @@ export function useHexDuel() {
           source: { x: sx, y: sy },
           target: { x: tx, y: ty },
           apCost: ATTACK_COST,
-          label: `Attack: sent ${troopCount} from (${sx},${sy}) → failed (${tx},${ty}) had ${targetTroops}, defender lost ${defenderLoss}`,
+          label: `Attack: sent ${troopCount} from (${sx},${sy}) → mutual destruction! (${tx},${ty}) becomes neutral`,
+        });
+      } else {
+        // ── FAILED ATTACK ─────────────────────────────────────────
+        const defenderLoss = Math.min(targetTroops, troopCount);
+        const newDefenderTroops = targetTroops - defenderLoss;
+        setTileTroops((prev) => ({
+          ...prev,
+          [targetKey]: newDefenderTroops,
+        }));
+
+        // If defender drops to 0, territory becomes neutral
+        if (newDefenderTroops === 0 && targetTroops > 0) {
+          setCapturedTiles((prev) => {
+            const next = { ...prev };
+            delete next[targetKey];
+            return next;
+          });
+        }
+
+        setCombatFlash([sourceKey, targetKey]);
+
+        addActionLog({
+          player: currentTurn,
+          type: "attack",
+          source: { x: sx, y: sy },
+          target: { x: tx, y: ty },
+          apCost: ATTACK_COST,
+          label: newDefenderTroops === 0
+            ? `Attack: sent ${troopCount} from (${sx},${sy}) → wiped out defender! (${tx},${ty}) becomes neutral`
+            : `Attack: sent ${troopCount} from (${sx},${sy}) → failed (${tx},${ty}) had ${targetTroops}, defender down to ${newDefenderTroops}`,
         });
       }
 

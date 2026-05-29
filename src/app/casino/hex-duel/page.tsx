@@ -297,6 +297,141 @@ function WagerModal({
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+//  Resign Confirmation Modal
+// ══════════════════════════════════════════════════════════════════════════
+
+function ResignConfirmation({
+  gameMode, onConfirm, onCancel,
+}: {
+  gameMode: GameMode;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Confirm Resign">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" style={{ animation: "victoryFadeIn 0.3s ease-out" }} />
+      <div
+        className="relative z-10 w-full max-w-sm rounded-2xl p-6 text-center
+          bg-gradient-to-b from-[#071230] via-[#0a1a3f] to-[#050d24]
+          border border-red-500/30 shadow-[0_0_40px_rgba(239,68,68,0.15)]"
+        style={{ animation: "victoryPopIn 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards" }}
+      >
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 border border-red-500/20">
+          <span className="text-3xl">⚠️</span>
+        </div>
+        <h2 className="mb-2 text-xl font-black text-red-400">Resign?</h2>
+        <p className="mb-1 text-sm text-slate-400">
+          {gameMode === "multiplayer"
+            ? "Your opponent will win the match."
+            : "You will forfeit this game."}
+        </p>
+        {gameMode === "real" && (
+          <p className="mb-4 text-[11px] text-yellow-400/80">You will lose your wagered tokens.</p>
+        )}
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 rounded-xl py-2.5 text-sm font-bold uppercase tracking-[0.12em] border border-white/15 text-slate-300 hover:bg-white/5 transition-all"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 rounded-xl py-2.5 text-sm font-bold uppercase tracking-[0.12em] bg-red-500/80 text-white hover:bg-red-500 transition-all shadow-[0_0_16px_rgba(239,68,68,0.4)]"
+          >
+            Resign
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Lose Modal
+// ══════════════════════════════════════════════════════════════════════════
+
+function LoseModal({
+  winnerLabel, winnerColor, winnerMoves, winnerTerritory, payoutInfo, onRestart,
+  isMultiplayer,
+}: {
+  winnerLabel: string; winnerColor: string;
+  winnerMoves: number; winnerTerritory: number;
+  payoutInfo: { wager: number; payout: number; multiplier: number } | null;
+  onRestart: () => void;
+  isMultiplayer?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Defeat">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" style={{ animation: "victoryFadeIn 0.4s ease-out" }} />
+
+      <div
+        className="relative z-10 w-full max-w-sm rounded-2xl p-8 text-center
+          bg-gradient-to-b from-[#071230] via-[#0a1a3f] to-[#050d24]
+          shadow-[0_0_80px_rgba(239,68,68,0.15),0_0_30px_rgba(239,68,68,0.08)]"
+        style={{
+          border: `2px solid ${winnerColor}`,
+          animation: "victoryPopIn 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards",
+        }}
+      >
+        {/* Defeat icon */}
+        <div
+          className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full"
+          style={{
+            background: `radial-gradient(circle at 40% 35%, ${winnerColor}44, ${winnerColor}11)`,
+            boxShadow: `0 0 30px ${winnerColor}44`,
+          }}
+        >
+          <span className="text-4xl" style={{ filter: `drop-shadow(0 0 8px ${winnerColor}66)` }}>💀</span>
+        </div>
+
+        <h2 className="mb-1 text-2xl font-black tracking-wider uppercase" style={{ color: winnerColor }}>
+          Defeat!
+        </h2>
+        <p className="mb-4 text-sm text-slate-400">
+          {isMultiplayer ? `${winnerLabel} conquered your capital!` : `${winnerLabel} conquered your capital!`}
+        </p>
+
+        {/* Stats grid */}
+        <div className="mb-4 grid grid-cols-2 gap-3 rounded-lg bg-white/[0.04] p-4">
+          <div>
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest">Their Moves</p>
+            <p className="text-xl font-black text-white">{winnerMoves}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest">Their Territory</p>
+            <p className="text-xl font-black text-white">{winnerTerritory}</p>
+          </div>
+        </div>
+
+        {/* Loss message */}
+        {payoutInfo && payoutInfo.wager > 0 && (
+          <div
+            className="mb-5 rounded-lg bg-red-500/10 border border-red-500/30 p-3"
+            style={{ animation: "payoutReveal 0.6s cubic-bezier(0.34,1.56,0.64,1) both" }}
+          >
+            <p className="text-[10px] text-red-400 uppercase tracking-widest mb-1">Lost</p>
+            <p className="text-2xl font-black text-red-400">
+              -{payoutInfo.wager.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Better luck next time!</p>
+          </div>
+        )}
+
+        <button
+          onClick={onRestart}
+          className="w-full rounded-xl px-6 py-3 text-sm font-bold uppercase tracking-[0.15em]
+            transition-all duration-200 hover:scale-105 active:scale-95 border border-white/20 text-slate-300
+            hover:bg-white/5"
+        >
+          Return to Lobby
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 //  Victory Modal (Enhanced with particles, confetti, animated crown)
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -821,6 +956,9 @@ export default function HexDuelPage() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connected");
   const connectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Resign confirmation popup ──────────────────────────────────
+  const [showResignConfirm, setShowResignConfirm] = useState(false);
+
   // ── Winner override (for chess clock expiry) ──────────────────────
   const [winnerOverride, setWinnerOverride] = useState<DuelPlayer | null>(null);
   const effectiveWinner = winnerOverride ?? winner;
@@ -1191,8 +1329,9 @@ export default function HexDuelPage() {
         if (d.success && d.data.won) {
           setPayoutResult({ wager: d.data.wager, payout: d.data.payout, multiplier: d.data.multiplier });
           if (d.data.newBalance !== undefined) setBalance(Number(d.data.newBalance));
-        } else if (d.success && gameMode === "real") {
-          setPayoutResult({ wager: wager, payout: 0, multiplier: 0 });
+        } else if (d.success && (gameMode === "real" || gameMode === "multiplayer")) {
+          const lostWager = d.data?.wager ?? wager;
+          setPayoutResult({ wager: lostWager, payout: 0, multiplier: 0 });
           if (d.data.newBalance !== undefined) setBalance(Number(d.data.newBalance));
         } else if (gameMode === "for-fun") {
           setPayoutResult(null);
@@ -1996,12 +2135,7 @@ export default function HexDuelPage() {
 
           {/* ── Forfeit button ──────────────────────────────────────── */}
           {showGame && !isGameOver && (
-            <div className="mt-6 text-center">                <button onClick={() => {
-                  if (gameMode === "multiplayer" && socket && multiplayerGameId) {
-                    socket.emit("hexDuel:resign", { gameId: multiplayerGameId });
-                  }
-                  handleRestart();
-                }} className="text-xs text-slate-500 hover:text-slate-300 transition underline underline-offset-4">
+            <div className="mt-6 text-center">                <button onClick={() => setShowResignConfirm(true)} className="text-xs text-slate-500 hover:text-slate-300 transition underline underline-offset-4">
                 {gameMode === "multiplayer" ? "Resign &amp; Return to Lobby" : "Forfeit &amp; Return to Lobby"}
               </button>
             </div>
@@ -2040,18 +2174,116 @@ export default function HexDuelPage() {
           />
         )}
 
-        {/* Victory modal */}
-        {effectiveWinner && (
-          <VictoryModal
-            winner={effectiveWinner}
-            winnerLabel={effectiveWinner === "player1" ? "Player 1" : aiEnabled ? "AI" : gameMode === "multiplayer" ? "Player 2" : "Player 2"}
-            winnerColor={effectiveWinner === "player1" ? "#22d3ee" : "#ef4444"}
-            winnerMoves={effectiveWinner === "player1" ? p1MoveCount : p2MoveCount}
-            winnerTerritory={effectiveWinner === "player1" ? p1Territory : p2Territory}
-            payoutInfo={payoutLoading ? null : effectiveWinner === "player1" && gameMode === "real" ? payoutResult : null}
-            onRestart={handleRestart}
+        {/* Resign confirmation modal */}
+        {showResignConfirm && (
+          <ResignConfirmation
+            gameMode={gameMode}
+            onConfirm={async () => {
+              setShowResignConfirm(false);
+
+              // Call end-game API to properly settle tokens and record history
+              if (gameMode === "multiplayer") {
+                if (socket && multiplayerGameId) {
+                  socket.emit("hexDuel:resign", { gameId: multiplayerGameId });
+                }
+                const loserSide = isPlayer1 ? "player1" : "player2";
+                const endPoint = "/api/hex-duel/multiplayer/end";
+                const durationSeconds = startedAtRef.current
+                  ? Math.round((Date.now() - new Date(startedAtRef.current).getTime()) / 1000)
+                  : 0;
+                try {
+                  const res = await fetch(endPoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({
+                      winner: loserSide === "player1" ? "player2" : "player1",
+                      player1Moves: p1MoveCount,
+                      player2Moves: p2MoveCount,
+                      player1Territory: p1Territory,
+                      player2Territory: p2Territory,
+                      durationSeconds,
+                      startedAt: startedAtRef.current,
+                    }),
+                  });
+                  const d = await res.json();
+                  if (d.success && d.data.newBalance !== undefined) {
+                    setBalance(Number(d.data.newBalance));
+                  }
+                } catch {}
+              } else if (gameMode === "real") {
+                const endPoint = "/api/hex-duel/end-game";
+                const durationSeconds = startedAtRef.current
+                  ? Math.round((Date.now() - new Date(startedAtRef.current).getTime()) / 1000)
+                  : 0;
+                try {
+                  const res = await fetch(endPoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({
+                      wager,
+                      winner: "player2",
+                      isFunMode: false,
+                      isAiGame: aiEnabled,
+                      aiDifficulty: aiEnabled ? aiDifficulty : null,
+                      player1Moves: p1MoveCount,
+                      player2Moves: p2MoveCount,
+                      player1Territory: p1Territory,
+                      player2Territory: p2Territory,
+                      durationSeconds,
+                      startedAt: startedAtRef.current,
+                    }),
+                  });
+                  const d = await res.json();
+                  if (d.success && d.data.newBalance !== undefined) {
+                    setBalance(Number(d.data.newBalance));
+                  }
+                } catch {}
+              }
+
+              handleRestart();
+            }}
+            onCancel={() => setShowResignConfirm(false)}
           />
         )}
+
+        {/* Victory / Lose modals */}
+        {effectiveWinner && (() => {
+          const localPlayerWon = gameMode === "multiplayer"
+            ? (isPlayer1 && effectiveWinner === "player1") || (!isPlayer1 && effectiveWinner === "player2")
+            : effectiveWinner === "player1";
+
+          if (localPlayerWon) {
+            const winnerLabel = effectiveWinner === "player1" ? "Player 1" : aiEnabled ? "AI" : gameMode === "multiplayer" ? "Player 2" : "Player 2";
+            const winnerColor = effectiveWinner === "player1" ? "#22d3ee" : "#ef4444";
+            return (
+              <VictoryModal
+                winner={effectiveWinner}
+                winnerLabel={winnerLabel}
+                winnerColor={winnerColor}
+                winnerMoves={effectiveWinner === "player1" ? p1MoveCount : p2MoveCount}
+                winnerTerritory={effectiveWinner === "player1" ? p1Territory : p2Territory}
+                payoutInfo={payoutLoading ? null : (gameMode === "real" || gameMode === "multiplayer") ? payoutResult : null}
+                onRestart={handleRestart}
+              />
+            );
+          } else {
+            const winnerLabel = effectiveWinner === "player1" ? "Player 1" : aiEnabled ? "AI" : gameMode === "multiplayer" ? "Opponent" : "Player 2";
+            const winnerColor = effectiveWinner === "player1" ? "#22d3ee" : "#ef4444";
+            return (
+              <LoseModal
+                winnerLabel={winnerLabel}
+                winnerColor={winnerColor}
+                winnerMoves={effectiveWinner === "player1" ? p1MoveCount : p2MoveCount}
+                winnerTerritory={effectiveWinner === "player1" ? p1Territory : p2Territory}
+                payoutInfo={payoutLoading ? null : (gameMode === "real" || gameMode === "multiplayer") ? payoutResult : null}
+                onRestart={handleRestart}
+                isMultiplayer={gameMode === "multiplayer"}
+              />
+            );
+          }
+        })()}
       </main>
     </>
   );

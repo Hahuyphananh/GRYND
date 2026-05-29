@@ -223,6 +223,8 @@ export default function Page() {
       notificationTimersRef.current.forEach((t) => clearTimeout(t));
       notificationTimersRef.current.clear();
       if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
+      if (opponentVisorTimerRef.current) clearTimeout(opponentVisorTimerRef.current);
+      if (remoteAimTimerRef.current) clearTimeout(remoteAimTimerRef.current);
     };
   }, []);
 
@@ -251,6 +253,8 @@ export default function Page() {
     spinY?: number;
   } | null>(null);
   const [showRemoteAim, setShowRemoteAim] = useState(false);
+  const [showOpponentVisor, setShowOpponentVisor] = useState(false);
+  const opponentVisorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteAimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedShotIdsRef = useRef<Set<string>>(new Set());
 
@@ -348,7 +352,11 @@ export default function Page() {
          setBalls((prev) => {
            if (!shotLock.current) return prev;
            if (!localShotInProgressRef.current && !remoteShotInProgressRef.current) return prev;
-           if (!isMoving(prev)) return prev;
+           if (!isMoving(prev)) {
+             // Return a fresh copy to force React to commit the stopped state
+             // (React 18 batching would otherwise bail out if prev is same ref)
+             return prev.map((b) => ({ ...b }));
+           }
            const next = prev.map((b) => ({ ...b }));
            tickPhysics(next, shotMeta.current);
            return next;
@@ -807,6 +815,7 @@ if (!aiMode && turn !== owner) return;
         settleInterpRef.current = null;
         // Hide the remote aim guide now that the shot has been taken
         setShowRemoteAim(false);
+        setShowOpponentVisor(false);
         if (remoteAimTimerRef.current) {
           clearTimeout(remoteAimTimerRef.current);
           remoteAimTimerRef.current = null;
@@ -880,6 +889,11 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         });
         // Start/refresh the 8-second timer for showing remote aim
         setShowRemoteAim(true);
+        setShowOpponentVisor(true);
+        if (opponentVisorTimerRef.current) clearTimeout(opponentVisorTimerRef.current);
+        opponentVisorTimerRef.current = setTimeout(() => {
+          if (mountedRef.current) setShowOpponentVisor(false);
+        }, 8000);
         if (remoteAimTimerRef.current) clearTimeout(remoteAimTimerRef.current);
         remoteAimTimerRef.current = setTimeout(() => {
           if (mountedRef.current) setShowRemoteAim(false);
@@ -977,12 +991,18 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
     setAim(shot.angle);
     setPull(shot.power);
     setStatus("AI is lining up a shot...");
+    setShowOpponentVisor(true);
+    if (opponentVisorTimerRef.current) clearTimeout(opponentVisorTimerRef.current);
+    opponentVisorTimerRef.current = setTimeout(() => {
+      if (mountedRef.current) setShowOpponentVisor(false);
+    }, 1200);
 
     const timer = setTimeout(() => {
       fireShot(shot.angle, shot.power);
       setPull(0);
       aiShotLock.current = false;
-    }, 260);
+      setShowOpponentVisor(false);
+    }, 1200);
 
     return () => clearTimeout(timer);
   }, [aiMode, turn, canShoot, winner, oppTeam, openTable]);
@@ -1211,7 +1231,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           </div>
         </div>
         {/* ── Resign button ── */}
-        {started && !winner && !aiMode && (
+        {started && !winner && (
           <div className="mt-3 flex justify-center">
             {!showResignConfirm ? (
               <button
@@ -1465,6 +1485,22 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
                 {/* Center dot */}
                 <circle cx={26} cy={26} r={1.5} fill="rgba(255,255,255,0.2)" />
               </svg>
+            </div>
+          )}
+
+          {/* ── Opponent aim visor ── */}
+          {showOpponentVisor && turn !== owner && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-gradient-to-b from-black/60 via-transparent to-black/60 pointer-events-none">
+              <div className="absolute top-6 left-1/2 -translate-x-1/2 animate-pulse rounded-full border border-yellow-400/40 bg-yellow-500/10 px-6 py-2 backdrop-blur-md">
+                <span className="text-sm font-bold text-yellow-300 drop-shadow-lg">
+                  🎯 {oppName} is aiming...
+                </span>
+              </div>
+              {/* Crosshair corners */}
+              <div className="absolute top-8 left-8 h-8 w-8 border-t-2 border-l-2 border-yellow-400/30 rounded-tl" />
+              <div className="absolute top-8 right-8 h-8 w-8 border-t-2 border-r-2 border-yellow-400/30 rounded-tr" />
+              <div className="absolute bottom-8 left-8 h-8 w-8 border-b-2 border-l-2 border-yellow-400/30 rounded-bl" />
+              <div className="absolute bottom-8 right-8 h-8 w-8 border-b-2 border-r-2 border-yellow-400/30 rounded-br" />
             </div>
           )}
 

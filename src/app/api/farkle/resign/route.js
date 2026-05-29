@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, db, eq, farkleRooms, loadRoom, requireUser, sql, users } from "../_lib";
+import { and, appendAction, db, eq, farkleRooms, loadRoom, requireUser, sql, users } from "../_lib";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 export async function POST(req) {
@@ -12,6 +12,18 @@ export async function POST(req) {
       if (state.state === "finished") return { state };
       const winner = state.players.find((p) => p.userId !== userId);
       if (!winner) throw new Error("Cannot resign before opponent joins");
+
+      const wasInFinalRound = state.finalRound;
+
+      // Log the resign action with final round context
+      await appendAction(tx, roomId, userId, "resign", {
+        duringFinalRound: wasInFinalRound,
+        finalRoundStartedBy: state.finalRoundStartedBy,
+        resignerScore: state.scores[userId] ?? 0,
+        winnerScore: state.scores[winner.userId] ?? 0,
+        scores: state.scores,
+      });
+
       const payout = Math.floor(Number(room.pot || state.pot || 0) * 0.95);
       await tx
         .update(users)
@@ -36,13 +48,19 @@ export async function POST(req) {
         payout: 0,
       });
 
+      // If the resigner triggered the final round, they forfeit their lead.
+      // If the opponent resigns during their final turn, the triggering player's win stands.
+      // In both cases: the non-resigning player wins.
       state.state = "finished";
       state.currentTurn = winner.userId;
+      // Clear final round flags since the game is now over
+      state.finalRound = false;
+      state.finalRoundStartedBy = null;
       await tx
         .update(farkleRooms)
         .set({ status: "finished", pot: 0, gameState: state })
         .where(and(eq(farkleRooms.id, roomId), eq(farkleRooms.status, room.status)));
-      return { state, winnerId: winner.userId, payout };
+      return { state, winnerId: winner.userId, payout, wasInFinalRound };
     });
     return NextResponse.json({ success: true, ...result });
   } catch (e) {
