@@ -4,7 +4,6 @@ import {
   aiShouldBank,
   calculateScore,
   isFarkle,
-  isHotDice,
   WINNING_SCORE,
 } from "../../../../../game-engine/farkleEngine";
 import {
@@ -25,7 +24,6 @@ async function executeAiTurn(tx, state, room, aiPlayer) {
   const steps = [];
   const difficulty = aiPlayer.difficulty ?? "medium";
 
-  // AI's turn loop
   let currentState = { ...state };
   let turnOver = false;
 
@@ -35,7 +33,6 @@ async function executeAiTurn(tx, state, room, aiPlayer) {
       currentState = {
         ...currentState,
         turnScore: 0,
-        hasMetThreshold: false,
       };
       steps.push({ type: "farkle", dice: [...currentState.dice] });
       turnOver = true;
@@ -50,8 +47,6 @@ async function executeAiTurn(tx, state, room, aiPlayer) {
       const remaining = currentState.dice.filter((_, i) => !decision.indices.includes(i));
 
       const newTurnScore = currentState.turnScore + comboScore;
-      const hasMetThreshold =
-        currentState.hasMetThreshold || newTurnScore >= 500;
 
       steps.push({
         type: "select",
@@ -66,10 +61,9 @@ async function executeAiTurn(tx, state, room, aiPlayer) {
         currentState = {
           ...currentState,
           turnScore: newTurnScore,
-          hasMetThreshold,
           dice: Array.from({ length: 6 }, () => Math.floor(Math.random() * 6) + 1),
           hasHotDice: true,
-          rollsThisTurn: currentState.rollsThisTurn,
+          rollsThisTurn: currentState.rollsThisTurn + 1,
         };
         steps.push({ type: "hot_dice", newDice: [...currentState.dice] });
         continue;
@@ -78,7 +72,6 @@ async function executeAiTurn(tx, state, room, aiPlayer) {
       currentState = {
         ...currentState,
         turnScore: newTurnScore,
-        hasMetThreshold,
         dice: remaining,
         hasHotDice: false,
       };
@@ -89,10 +82,14 @@ async function executeAiTurn(tx, state, room, aiPlayer) {
       // Check if we already won
       const currentScore = currentState.scores[aiPlayer.userId] ?? 0;
       if (currentScore + currentState.turnScore >= WINNING_SCORE) {
-        shouldBank === true;
-      }
-
-      if (shouldBank) {
+        // Force bank to win
+        steps.push({
+          type: "bank",
+          turnScore: currentState.turnScore,
+          totalScore: currentScore + currentState.turnScore,
+        });
+        turnOver = true;
+      } else if (shouldBank) {
         steps.push({
           type: "bank",
           turnScore: currentState.turnScore,
@@ -150,7 +147,7 @@ export async function POST(req) {
       // Execute the AI's full turn
       const { steps, finalState } = await executeAiTurn(tx, state, room, aiPlayer);
 
-      // If the AI banked (turn ended), pass the turn and check for game end
+      // If the AI banked (turn ended) or Farkled, pass the turn and check for game end
       let nextState = finalState;
       if (steps.some((s) => s.type === "bank") || steps.some((s) => s.type === "farkle")) {
         // Pass turn to next player
@@ -167,7 +164,6 @@ export async function POST(req) {
         nextState = {
           ...nextState,
           turnScore: 0,
-          hasMetThreshold: false,
           currentTurn: nextPlayer.userId,
           turnNumber: state.turnNumber + 1,
           rollsThisTurn: 0,
@@ -181,7 +177,7 @@ export async function POST(req) {
         await appendAction(tx, roomId, aiPlayer.userId, `ai_${step.type}`, step);
       }
 
-      // Check game end
+      // Check game end (immediate win at 10k+, no final round)
       const endedResult = await settleIfEnded(tx, room, nextState);
       if (!endedResult.ended) {
         await tx

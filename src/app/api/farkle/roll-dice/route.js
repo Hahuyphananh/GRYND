@@ -9,10 +9,7 @@ import {
   requireUser,
   validateMove,
 } from "../_lib";
-import {
-  calculateScore,
-  MIN_BANK_THRESHOLD,
-} from "../../../../../game-engine/farkleEngine";
+import { calculateScore } from "../../../../../game-engine/farkleEngine";
 
 export async function POST(req) {
   try {
@@ -36,12 +33,10 @@ export async function POST(req) {
 
         const remainingDice = state.dice.filter((_, i) => !indices.includes(i));
         const newTurnScore = state.turnScore + comboScore;
-        const hasMetThreshold = state.hasMetThreshold || newTurnScore >= MIN_BANK_THRESHOLD;
 
         state = {
           ...state,
           turnScore: newTurnScore,
-          hasMetThreshold,
           dice: remainingDice,
           hasHotDice: false,
         };
@@ -66,6 +61,12 @@ export async function POST(req) {
           await appendAction(tx, roomId, userId, "roll_dice", { dice: hotDice, hotDiceReroll: true });
           return next;
         }
+      } else {
+        // Player must select at least one scoring die if scoring dice are available
+        if (calculateScore(state.dice) > 0 && state.dice.length > 0) {
+          throw new Error("You must select at least one scoring die before rolling");
+        }
+        // If no scoring dice available, it will be detected as a Farkle below
       }
 
       // Re-roll the current dice

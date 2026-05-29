@@ -8,10 +8,7 @@ import {
   requireUser,
   validateMove,
 } from "../_lib";
-import {
-  calculateScore,
-  MIN_BANK_THRESHOLD,
-} from "../../../../../game-engine/farkleEngine";
+import { calculateScore } from "../../../../../game-engine/farkleEngine";
 
 export async function POST(req) {
   try {
@@ -36,7 +33,6 @@ export async function POST(req) {
       const remaining = state.dice.filter((_, i) => !indices.includes(i));
 
       const newTurnScore = state.turnScore + comboScore;
-      const hasMetThreshold = state.hasMetThreshold || newTurnScore >= MIN_BANK_THRESHOLD;
 
       let next;
       // If all dice were selected (hot dice scenario)
@@ -44,16 +40,14 @@ export async function POST(req) {
         next = {
           ...state,
           turnScore: newTurnScore,
-          hasMetThreshold,
           dice: Array.from({ length: 6 }, () => Math.floor(Math.random() * 6) + 1),
           hasHotDice: true,
-          rollsThisTurn: state.rollsThisTurn,
+          rollsThisTurn: state.rollsThisTurn + 1,
         };
       } else {
         next = {
           ...state,
           turnScore: newTurnScore,
-          hasMetThreshold,
           dice: remaining,
           hasHotDice: false,
         };

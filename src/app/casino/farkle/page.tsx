@@ -29,18 +29,14 @@ type FarkleGameState = {
   turnNumber: number;
   dice: number[];
   turnScore: number;
-  hasMetThreshold: boolean;
   rollsThisTurn: number;
   scores: Record<string, number>;
   hasHotDice: boolean;
   difficulty?: "easy" | "medium" | "hard";
-  finalRound: boolean;
-  finalRoundStartedBy: string | null;
 };
 
 /* ─── Constants ─── */
 const WINNING_SCORE = 10_000;
-const MIN_BANK_THRESHOLD = 500;
 const DICE_DOTS: Record<number, string[]> = {
   1: ["50% 50%"],
   2: ["30% 30%", "70% 70%"],
@@ -112,12 +108,17 @@ const DiceFace = ({
 const SCORE_SHEET = [
   { combo: "Each 1", points: 100, desc: "Per die showing 1" },
   { combo: "Each 5", points: 50, desc: "Per die showing 5" },
-  { combo: "Three 1's", points: 300, desc: "Three dice showing 1" },
+  { combo: "Three 1's", points: 1000, desc: "Three dice showing 1" },
   { combo: "Three 2's", points: 200, desc: "Three dice showing 2" },
   { combo: "Three 3's", points: 300, desc: "Three dice showing 3" },
   { combo: "Three 4's", points: 400, desc: "Three dice showing 4" },
   { combo: "Three 5's", points: 500, desc: "Three dice showing 5" },
   { combo: "Three 6's", points: 600, desc: "Three dice showing 6" },
+  { combo: "Four of a Kind", points: 1000, desc: "Four dice of the same value" },
+  { combo: "Five of a Kind", points: 2000, desc: "Five dice of the same value" },
+  { combo: "Six of a Kind", points: 3000, desc: "Six dice of the same value" },
+  { combo: "Three Pairs", points: 1500, desc: "Three pairs (incl. 4-of-a-kind + pair)" },
+  { combo: "Straight (1-6)", points: 2500, desc: "One of each die (1,2,3,4,5,6)" },
 ];
 
 function ScoreSheetPanel() {
@@ -701,6 +702,7 @@ export default function FarklePage() {
     );
   }, [selectedIndices, game?.dice, scoringIndices]);
 
+  // Must select at least one scoring die before rolling (unless hot dice)
   const canRoll =
     isYourTurn &&
     !rolling &&
@@ -708,19 +710,18 @@ export default function FarklePage() {
     game &&
     game.dice.length > 0 &&
     !waitingForOpponent &&
-    (selectedIndices.length > 0 || scoringIndices.length === 0);
+    (selectedIndices.length > 0 || game.hasHotDice);
 
   // Effective score that would be banked: manual selection or auto-select all scoring dice
   const effectiveScore = selectedIndices.length > 0 ? selectedScore : autoScore;
 
+  // Can bank anytime there are points to bank (no minimum threshold)
   const canBank =
     isYourTurn &&
     !rolling &&
     !aiAnimating &&
     game &&
     (game.turnScore > 0 || effectiveScore > 0) &&
-    (game.hasMetThreshold ||
-      game.turnScore + effectiveScore >= MIN_BANK_THRESHOLD) &&
     !waitingForOpponent;
 
   const diffColor = (d: string) =>
@@ -814,13 +815,13 @@ export default function FarklePage() {
 
             {/* Rules Summary */}
             <div className="mb-5 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs text-amber-200/80">
-              <p className="font-bold text-amber-300 mb-1">📋 Rules:</p>
+              <p className="font-bold text-amber-300 mb-1">📋 Rules (cardgames.io standard):</p>
               <ul className="list-inside list-disc space-y-0.5">
-                <li>Roll 6 dice, select scoring dice each roll</li>
-                <li>1s = 100 pts, 5s = 50 pts, Three 1s = 300, Three-of-a-kind = face × 100</li>
-                <li>Score 500+ to bank. Farkle (no score) = lose turn points</li>
-                <li>Hot dice (all 6 score) = re-roll all 6. First to {WINNING_SCORE.toLocaleString()} triggers final round!</li>
-                <li>When a player reaches {WINNING_SCORE.toLocaleString()}, opponents get one last turn to beat it</li>
+                <li>Roll 6 dice — must select at least 1 scoring die per roll</li>
+                <li>1s = 100 pts, 5s = 50 pts, Three 1s = 1000, Three-of-a-kind = face × 100</li>
+                <li>Four of a kind = 1000, Five = 2000, Six = 3000, Straight = 2500, Three Pairs = 1500</li>
+                <li>Bank anytime. Farkle (no score) = lose turn points. Hot dice (all 6 score) = re-roll all 6!</li>
+                <li>First to {WINNING_SCORE.toLocaleString()} pts wins!</li>
               </ul>
             </div>
 
@@ -902,22 +903,6 @@ export default function FarklePage() {
                 Resign
               </button>
             </div>
-
-            {/* Final Round Alert */}
-            {game.finalRound && game.state === "playing" && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mb-4 rounded-xl border border-purple-500/50 bg-purple-950/40 p-3 text-center"
-              >
-                <div className="text-sm font-bold text-purple-300">
-                  🏁 FINAL ROUND — {" "}
-                  {game.finalRoundStartedBy === you?.userId
-                    ? "You reached " + WINNING_SCORE.toLocaleString() + "! Opponent gets one last turn."
-                    : opponent?.name + " reached " + WINNING_SCORE.toLocaleString() + "! This is your last chance!"}
-                </div>
-              </motion.div>
-            )}
 
             {/* Waiting for opponent alert */}
             {waitingForOpponent && (
@@ -1016,16 +1001,6 @@ export default function FarklePage() {
                     {game.hasHotDice && (
                       <span className="ml-2 rounded-full bg-orange-600/60 px-2 py-0.5 text-xs font-bold text-orange-200">
                         🔥 HOT DICE
-                      </span>
-                    )}
-                    {game.finalRound && (
-                      <span className="ml-2 rounded-full bg-purple-700/60 px-2 py-0.5 text-xs font-bold text-purple-200">
-                        🏁 FINAL TURN
-                      </span>
-                    )}
-                    {!game.hasMetThreshold && game.turnScore > 0 && (
-                      <span className="ml-2 text-xs text-gray-400">
-                        (need {MIN_BANK_THRESHOLD}+ to bank)
                       </span>
                     )}
                   </span>

@@ -9,10 +9,7 @@ import {
   settleIfEnded,
   validateMove,
 } from "../_lib";
-import {
-  calculateScore,
-  MIN_BANK_THRESHOLD,
-} from "../../../../../game-engine/farkleEngine";
+import { calculateScore } from "../../../../../game-engine/farkleEngine";
 
 export async function POST(req) {
   try {
@@ -36,16 +33,14 @@ export async function POST(req) {
           throw new Error("Selected dice are not a valid scoring combination");
 
         const newTurnScore = state.turnScore + comboScore;
-        const hasMetThreshold = state.hasMetThreshold || newTurnScore >= MIN_BANK_THRESHOLD;
 
         state = {
           ...state,
           turnScore: newTurnScore,
-          hasMetThreshold,
         };
       }
 
-      // Now validate on the updated state (turnScore includes selected dice)
+      // Validate on the updated state (turnScore includes selected dice)
       validateMove(state, userId, "bank_score");
 
       // Log the selection action if dice were scored
@@ -59,7 +54,7 @@ export async function POST(req) {
 
       // Add turn score to player's permanent score
       const currentScore = state.scores[userId] ?? 0;
-      const bankedAmount = state.turnScore; // capture before reset
+      const bankedAmount = state.turnScore;
       const newTotal = currentScore + bankedAmount;
 
       // Pass turn to next player
@@ -70,7 +65,6 @@ export async function POST(req) {
         ...state,
         scores: { ...state.scores, [userId]: newTotal },
         turnScore: 0,
-        hasMetThreshold: false,
         currentTurn: nextPlayer.userId,
         turnNumber: state.turnNumber + 1,
         rollsThisTurn: 0,
@@ -88,7 +82,7 @@ export async function POST(req) {
         state.players.some((p) => p.isAI && p.userId === state.currentTurn) &&
         state.state === "playing";
 
-      // Check game end / final round
+      // Check game end (no final round — immediate win at 10k+)
       const endedResult = await settleIfEnded(tx, room, state);
       if (!endedResult.ended) {
         await tx
