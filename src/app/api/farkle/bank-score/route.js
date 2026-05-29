@@ -81,16 +81,16 @@ export async function POST(req) {
         state.players.some((p) => p.isAI && p.userId === state.currentTurn) &&
         state.state === "playing";
 
-      // Check game end
+      // Check game end / final round
       const endedResult = await settleIfEnded(tx, room, state);
       if (!endedResult.ended) {
         await tx
           .update(farkleRooms)
-          .set({ gameState: state })
+          .set({ gameState: endedResult.state })
           .where(eq(farkleRooms.id, roomId));
       }
 
-      return { ...endedResult, aiNext, state: endedResult.ended ? endedResult.state : state };
+      return { ...endedResult, aiNext, state: endedResult.state };
     });
 
     return NextResponse.json({ success: true, ...result });

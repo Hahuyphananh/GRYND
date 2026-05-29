@@ -3,9 +3,9 @@ export const TABLE_H = 500;
 export const BALL_R = 11;
 export const RAIL = 42;
 export const POCKET_R = 30;
-export const FRICTION = 0.991;
-export const RAIL_DAMPING = 0.91;
-export const STOP_EPSILON = 0.045;
+export const FRICTION = 0.982;
+export const RAIL_DAMPING = 0.82;
+export const STOP_EPSILON = 0.1;
 export const MAX_PULL = 120;
 
 export const POCKETS: [number, number][] = [

@@ -34,6 +34,8 @@ type FarkleGameState = {
   scores: Record<string, number>;
   hasHotDice: boolean;
   difficulty?: "easy" | "medium" | "hard";
+  finalRound: boolean;
+  finalRoundStartedBy: string | null;
 };
 
 /* ─── Constants ─── */
@@ -105,6 +107,85 @@ const DiceFace = ({
     </motion.div>
   );
 };
+
+/* ─── Score Sheet Panel ─── */
+const SCORE_SHEET = [
+  { combo: "Each 1", points: 100, desc: "Per die showing 1" },
+  { combo: "Each 5", points: 50, desc: "Per die showing 5" },
+  { combo: "Three 1's", points: 300, desc: "Three dice showing 1" },
+  { combo: "Three 2's", points: 200, desc: "Three dice showing 2" },
+  { combo: "Three 3's", points: 300, desc: "Three dice showing 3" },
+  { combo: "Three 4's", points: 400, desc: "Three dice showing 4" },
+  { combo: "Three 5's", points: 500, desc: "Three dice showing 5" },
+  { combo: "Three 6's", points: 600, desc: "Three dice showing 6" },
+];
+
+function ScoreSheetPanel() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mb-5 overflow-hidden rounded-xl border border-amber-700/60 bg-black/30">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between px-4 py-2.5 text-sm font-bold text-amber-300 transition-colors hover:bg-white/5"
+      >
+        <span className="flex items-center gap-2">
+          <span>📊</span>
+          <span>Farkle Score Sheet</span>
+        </span>
+        <motion.svg
+          animate={{ rotate: open ? 180 : 0 }}
+          transition={{ duration: 0.25 }}
+          className="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </motion.svg>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="scoresheet"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="overflow-hidden border-t border-amber-800/40"
+          >
+            <div className="max-h-72 overflow-y-auto p-3">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-amber-700/30 text-left text-amber-400">
+                    <th className="pb-1.5 pr-2 font-bold">Combination</th>
+                    <th className="pb-1.5 pr-2 text-right font-bold">Points</th>
+                    <th className="hidden pb-1.5 sm:table-cell">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {SCORE_SHEET.map((row, i) => (
+                    <motion.tr
+                      key={row.combo}
+                      initial={{ x: -10, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      transition={{ delay: i * 0.03, duration: 0.2 }}
+                      className="border-b border-amber-800/20 text-gray-300 hover:bg-amber-900/20"
+                    >
+                      <td className="py-1.5 pr-2 font-medium text-amber-200/80">{row.combo}</td>
+                      <td className="py-1.5 pr-2 text-right font-bold text-amber-400">{row.points.toLocaleString()}</td>
+                      <td className="hidden py-1.5 text-gray-500 sm:table-cell">{row.desc}</td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 /* ─── Game Log Panel ─── */
 function GameLogPanel({
@@ -720,10 +801,10 @@ export default function FarklePage() {
               <p className="font-bold text-amber-300 mb-1">📋 Rules:</p>
               <ul className="list-inside list-disc space-y-0.5">
                 <li>Roll 6 dice, select scoring dice each roll</li>
-                <li>1s = 100 pts, 5s = 50 pts, Three-of-a-kind = face × 100 (1s = 1000)</li>
-                <li>Straight (1-6) = 1500, Three Pairs = 1500, Two Triplets = 2500</li>
+                <li>1s = 100 pts, 5s = 50 pts, Three 1s = 300, Three-of-a-kind = face × 100</li>
                 <li>Score 500+ to bank. Farkle (no score) = lose turn points</li>
-                <li>Hot dice (all 6 score) = re-roll all 6. First to {WINNING_SCORE.toLocaleString()} wins!</li>
+                <li>Hot dice (all 6 score) = re-roll all 6. First to {WINNING_SCORE.toLocaleString()} triggers final round!</li>
+                <li>When a player reaches {WINNING_SCORE.toLocaleString()}, opponents get one last turn to beat it</li>
               </ul>
             </div>
 
@@ -805,6 +886,22 @@ export default function FarklePage() {
                 Resign
               </button>
             </div>
+
+            {/* Final Round Alert */}
+            {game.finalRound && game.state === "playing" && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-4 rounded-xl border border-purple-500/50 bg-purple-950/40 p-3 text-center"
+              >
+                <div className="text-sm font-bold text-purple-300">
+                  🏁 FINAL ROUND — {" "}
+                  {game.finalRoundStartedBy === you?.userId
+                    ? "You reached " + WINNING_SCORE.toLocaleString() + "! Opponent gets one last turn."
+                    : opponent?.name + " reached " + WINNING_SCORE.toLocaleString() + "! This is your last chance!"}
+                </div>
+              </motion.div>
+            )}
 
             {/* Waiting for opponent alert */}
             {waitingForOpponent && (
@@ -903,6 +1000,11 @@ export default function FarklePage() {
                     {game.hasHotDice && (
                       <span className="ml-2 rounded-full bg-orange-600/60 px-2 py-0.5 text-xs font-bold text-orange-200">
                         🔥 HOT DICE
+                      </span>
+                    )}
+                    {game.finalRound && (
+                      <span className="ml-2 rounded-full bg-purple-700/60 px-2 py-0.5 text-xs font-bold text-purple-200">
+                        🏁 FINAL TURN
                       </span>
                     )}
                     {!game.hasMetThreshold && game.turnScore > 0 && (
@@ -1014,9 +1116,7 @@ export default function FarklePage() {
                       </span>
                     </div>
                   </div>
-                </div>
-
-                {/* ─── Main Dice Area ─── */}
+                </div>                {/* ─── Main Dice Area ─── */}
                 <div className="flex-1">
                   <div className="mb-2 text-center text-xs font-bold text-gray-400 uppercase">
                     Your Dice — Tap Scoring Dice to Select
@@ -1025,29 +1125,28 @@ export default function FarklePage() {
                     {game.dice.map((d, i) => {
                       const isSelected = selectedIndices.includes(i);
                       const isScoring = scoringIndices.includes(i);
+                      // Don't render selected dice in the main row — they live in the side box
+                      if (isSelected) return null;
                       return (
                         <motion.button
                           key={`player-${i}-${d}`}
-                          disabled={!isYourTurn || rolling || aiAnimating || (!isSelected && !isScoring)}
-                          whileHover={isScoring || isSelected ? { scale: 1.08 } : {}}
-                          whileTap={isScoring || isSelected ? { scale: 0.92 } : {}}
+                          disabled={!isYourTurn || rolling || aiAnimating || !isScoring}
+                          whileHover={isScoring ? { scale: 1.08 } : {}}
+                          whileTap={isScoring ? { scale: 0.92 } : {}}
                           onClick={() => toggleDie(i)}
                           className={`relative rounded-2xl transition-all duration-200 ${
-                            isSelected
-                              ? ""
-                              : isScoring
-                                ? "ring-2 ring-amber-400/80 shadow-[0_0_18px_rgba(251,191,36,0.5)]"
-                                : "opacity-40 cursor-not-allowed"
+                            isScoring
+                              ? "ring-2 ring-amber-400/80 shadow-[0_0_18px_rgba(251,191,36,0.5)]"
+                              : "opacity-40 cursor-not-allowed"
                           }`}
                         >
                           <DiceFace
                             value={d}
-                            selected={isSelected}
-                            rolling={rolling && !isSelected}
+                            selected={false}
+                            rolling={rolling}
                             index={i}
-  
                           />
-                          {isScoring && !isSelected && (
+                          {isScoring && (
                             <motion.div
                               className="absolute inset-0 rounded-2xl bg-amber-400/10"
                               animate={{ opacity: [0.2, 0.5, 0.2] }}
@@ -1057,6 +1156,12 @@ export default function FarklePage() {
                         </motion.button>
                       );
                     })}
+                    {/* Show message when all dice have been selected */}
+                    {game.dice.length > 0 && game.dice.every((_, i) => selectedIndices.includes(i)) && (
+                      <p className="w-full text-center text-xs text-green-400 mt-2">
+                        ✅ All dice selected — roll or bank!
+                      </p>
+                    )}
                   </div>
 
                   {/* No scoring dice left warning */}
@@ -1121,6 +1226,11 @@ export default function FarklePage() {
                 </motion.button>
               </div>
             )}
+
+            {/* ═══ SCORE SHEET ═══ */}
+            <div className="mt-4">
+              <ScoreSheetPanel />
+            </div>
 
             {/* ═══ GAME LOG ═══ */}
             {moveHistory.length > 0 && (
