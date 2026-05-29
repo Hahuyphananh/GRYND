@@ -53,12 +53,35 @@ const DiceFace = ({
   selected,
   rolling,
   index = 0,
+  unknown = false,
 }: {
   value: number;
   selected?: boolean;
   rolling?: boolean;
   index?: number;
+  unknown?: boolean;
 }) => {
+  if (unknown) {
+    return (
+      <motion.div
+        animate={{ opacity: [0.4, 0.7, 0.4] }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+        className="relative h-16 w-16 rounded-2xl border-[3px] cursor-not-allowed
+          bg-gradient-to-br from-gray-700 to-gray-800
+          border-gray-500 shadow-[0_6px_0_rgba(0,0,0,0.25)]
+          select-none flex items-center justify-center"
+      >
+        <motion.span
+          animate={{ scale: [1, 1.15, 1] }}
+          transition={{ duration: 1, repeat: Infinity }}
+          className="text-3xl font-black text-gray-400"
+        >
+          ?
+        </motion.span>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       animate={
@@ -302,8 +325,20 @@ export default function FarklePage() {
   const [moveHistory, setMoveHistory] = useState<any[]>([]);
   const [exploding, setExploding] = useState(false);
   const [aiDifficultyLabel, setAiDifficultyLabel] = useState("medium");
+  // Track dice that were scored in each roll this turn (for visual display)
+  const [scoredDiceHistory, setScoredDiceHistory] = useState<number[][]>([]);
+  // Smooth counting animation for turnScore
+  const [displayedTurnScore, setDisplayedTurnScore] = useState(0);
+  // Flash/glow effects
+  const [bankFlash, setBankFlash] = useState(false);
+  const [rollFlash, setRollFlash] = useState(false);
+  const [bankCelebrating, setBankCelebrating] = useState(false);
+  const [hotDiceFlash, setHotDiceFlash] = useState(false);
 
   const prevTurnRef = useRef<string | null>(null);
+  const prevCanBankRef = useRef(false);
+  const prevCanRollRef = useRef(false);
+  const prevHasHotDiceRef = useRef(false);
   const endedRef = useRef(false);
   const aiTurnScheduledRef = useRef(false);
   const aiUnmountedRef = useRef(false);
@@ -314,6 +349,36 @@ export default function FarklePage() {
       aiUnmountedRef.current = true;
     };
   }, []);
+
+  // Smooth count-up/down animation for turnScore
+  useEffect(() => {
+    const target = game?.turnScore ?? 0;
+    const start = displayedTurnScore;
+    if (start === target) return;
+
+    const duration = 400; // ms
+    const startTime = performance.now();
+    let raf: number;
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.round(start + (target - start) * eased);
+      setDisplayedTurnScore(current);
+
+      if (progress < 1) {
+        raf = requestAnimationFrame(animate);
+      }
+    };
+
+    raf = requestAnimationFrame(animate);
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [game?.turnScore]);
 
   /* ─── API Helpers ─── */
   const fetchBalance = async () => {
@@ -441,11 +506,20 @@ export default function FarklePage() {
     const turn = game.currentTurn;
     if (prevTurnRef.current && prevTurnRef.current !== turn) {
       const isMe = turn === user?.id;
+      // Clear scored dice history when turn changes (new turn for whoever)
+      setScoredDiceHistory([]);
+      setSelectedIndices([]);
+      setBankFlash(false);
+      setRollFlash(false);
       setTurnBanner(isMe ? "YOUR TURN" : `${opponent?.name || "Opponent"}'s TURN`);
       setTimeout(() => setTurnBanner(null), 1800);
     }
     prevTurnRef.current = turn;
   }, [game?.currentTurn, game?.turnNumber]);
+
+  /* ─── Bank Flash Detection ─── */
+  // Note: this effect must be placed AFTER canBank and diceUnknown are declared (see below)
+  // It's moved down to avoid "used before declaration" errors.
 
   /* ─── Actions ─── */
   const createGame = async () => {
@@ -512,7 +586,11 @@ export default function FarklePage() {
   const rollDice = async () => {
     if (!roomId || !isYourTurn) return;
     setRolling(true);
+    setBankFlash(false); // Reset flash so re-roll triggers a fresh pulse
+    setRollFlash(false);
     const indices = [...selectedIndices];
+    // Capture scored dice values before state is updated
+    const scoredValues = indices.map((i) => game?.dice?.[i]).filter((v): v is number => v !== undefined);
     // Keep selectedIndices visible during the roll — don't clear them yet
     try {
       const res = await fetch("/api/farkle/roll-dice", {
@@ -527,6 +605,10 @@ export default function FarklePage() {
         return;
       }
       setTimeout(() => {
+        // Add scored dice to history so they stay visible in the side box
+        if (scoredValues.length > 0) {
+          setScoredDiceHistory((prev) => [...prev, [...scoredValues]]);
+        }
         setSelectedIndices([]);
         setGame(d.state);
         setRolling(false);
@@ -562,7 +644,26 @@ export default function FarklePage() {
         return;
       }
       setSelectedIndices([]);
+      setScoredDiceHistory([]);
       setGame(d.state);
+      // Bank celebration — confetti burst + coin shower
+      setBankCelebrating(true);
+      setHotDiceFlash(false); // Clear hot dice flash if still showing
+      confetti({
+        particleCount: 60,
+        spread: 70,
+        origin: { x: 0.5, y: 0.5 },
+        colors: ["#fbbf24", "#22c55e", "#facc15", "#34d399", "#eab308"],
+      });
+      setTimeout(() => {
+        confetti({
+          particleCount: 30,
+          spread: 50,
+          origin: { x: 0.4, y: 0.5 },
+          colors: ["#fbbf24", "#22c55e"],
+        });
+      }, 200);
+      setTimeout(() => setBankCelebrating(false), 2200);
       emitRoomEvent();
       fetchHistory(roomId);
       // If AI is next, schedule AI turn
@@ -595,6 +696,12 @@ export default function FarklePage() {
     setGameOverType(null);
     setGameOverScores(null);
     setSelectedIndices([]);
+    setScoredDiceHistory([]);
+    setBankFlash(false);
+    setRollFlash(false);
+    setBankCelebrating(false);
+    setHotDiceFlash(false);
+    setDisplayedTurnScore(0);
     setRolling(false);
     setAiSteps([]);
     setCurrentAiStep(0);
@@ -671,7 +778,7 @@ export default function FarklePage() {
   }, [game?.dice, rolling]);
 
   const toggleDie = (index: number) => {
-    if (!isYourTurn || rolling || aiAnimating) return;
+    if (!isYourTurn || rolling || aiAnimating || diceUnknown) return;
     // Only allow selecting scoring dice, but allow unselecting any selected die
     if (!selectedIndices.includes(index) && !scoringIndices.includes(index)) return;
     setSelectedIndices((prev) =>
@@ -693,6 +800,9 @@ export default function FarklePage() {
 
   const clearSelection = () => setSelectedIndices([]);
 
+  // Whether dice are unknown (not yet rolled this turn) — like Yahtzee's ? markers
+  const diceUnknown = isYourTurn && (game?.rollsThisTurn ?? 0) === 0;
+
   const isAllScoringSelected = useMemo(() => {
     if (!game) return false;
     return (
@@ -702,7 +812,7 @@ export default function FarklePage() {
     );
   }, [selectedIndices, game?.dice, scoringIndices]);
 
-  // Must select at least one scoring die before rolling (unless hot dice)
+  // Must select at least one scoring die before rolling (unless hot dice or first roll)
   const canRoll =
     isYourTurn &&
     !rolling &&
@@ -710,22 +820,72 @@ export default function FarklePage() {
     game &&
     game.dice.length > 0 &&
     !waitingForOpponent &&
-    (selectedIndices.length > 0 || game.hasHotDice);
+    (selectedIndices.length > 0 || game.hasHotDice || diceUnknown);
 
   // Effective score that would be banked: manual selection or auto-select all scoring dice
   const effectiveScore = selectedIndices.length > 0 ? selectedScore : autoScore;
 
-  // Can bank anytime there are points to bank (no minimum threshold)
+  // Can bank anytime there are points to bank (no minimum threshold), but not before first roll
   const canBank =
     isYourTurn &&
     !rolling &&
     !aiAnimating &&
     game &&
     (game.turnScore > 0 || effectiveScore > 0) &&
-    !waitingForOpponent;
+    !waitingForOpponent &&
+    !diceUnknown;
 
   const diffColor = (d: string) =>
     d === "easy" ? "text-green-400" : d === "medium" ? "text-yellow-400" : "text-red-400";
+
+  /* ─── Button Flash Detections ─── */
+  // Bank button glow
+  useEffect(() => {
+    if (canBank && !prevCanBankRef.current) {
+      setBankFlash(true);
+      const timer = setTimeout(() => setBankFlash(false), 1600);
+      prevCanBankRef.current = canBank;
+      return () => clearTimeout(timer);
+    }
+    prevCanBankRef.current = canBank;
+  }, [canBank]);
+
+  // Roll button glow — only when player has selected dice (not the initial roll)
+  // canRoll already incorporates diceUnknown, so no need to depend on it separately
+  useEffect(() => {
+    if (canRoll && !prevCanRollRef.current && !diceUnknown) {
+      setRollFlash(true);
+      const timer = setTimeout(() => setRollFlash(false), 1600);
+      prevCanRollRef.current = canRoll;
+      return () => clearTimeout(timer);
+    }
+    prevCanRollRef.current = canRoll;
+  }, [canRoll]);
+
+  // Hot dice celebration
+  useEffect(() => {
+    if (game?.hasHotDice && !prevHasHotDiceRef.current && isYourTurn) {
+      setHotDiceFlash(true);
+      confetti({
+        particleCount: 50,
+        spread: 120,
+        origin: { x: 0.5, y: 0.4 },
+        colors: ["#f97316", "#ef4444", "#fbbf24", "#facc15", "#ff4500"],
+      });
+      setTimeout(() => {
+        confetti({
+          particleCount: 30,
+          spread: 80,
+          origin: { x: 0.3, y: 0.4 },
+          colors: ["#f97316", "#fbbf24"],
+        });
+      }, 300);
+      const timer = setTimeout(() => setHotDiceFlash(false), 2000);
+      prevHasHotDiceRef.current = true;
+      return () => clearTimeout(timer);
+    }
+    prevHasHotDiceRef.current = game?.hasHotDice ?? false;
+  }, [game?.hasHotDice, isYourTurn]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white">
@@ -992,11 +1152,12 @@ export default function FarklePage() {
                   <span className="text-amber-200/80">
                     Turn Score:{" "}
                     <motion.span
-                      key={game.turnScore}
+                      key={displayedTurnScore}
                       animate={{ scale: [1, 1.3, 1] }}
+                      transition={{ duration: 0.35 }}
                       className="font-black text-amber-400"
                     >
-                      {game.turnScore}
+                      {displayedTurnScore}
                     </motion.span>
                     {game.hasHotDice && (
                       <span className="ml-2 rounded-full bg-orange-600/60 px-2 py-0.5 text-xs font-bold text-orange-200">
@@ -1005,7 +1166,7 @@ export default function FarklePage() {
                     )}
                   </span>
                   <span className="text-xs text-gray-400">
-                    Dice: {game.dice.length} | Turn #{game.turnNumber}
+                    Dice: {game.dice.length} | Rolls: {game.rollsThisTurn} | Turn #{game.turnNumber}
                   </span>
                 </div>
               </div>
@@ -1071,11 +1232,41 @@ export default function FarklePage() {
                         </button>
                       )}
                     </div>
-                    {selectedIndices.length === 0 ? (
-                      <div className="flex min-h-[80px] items-center justify-center text-xs text-gray-500">
+                    {/* Show previously scored dice (guarded) */}
+                    {scoredDiceHistory.length > 0 && (
+                      <div className="mb-3 border-b border-green-700/30 pb-2">
+                        <div className="mb-1.5 text-[10px] font-semibold uppercase text-amber-400/80">
+                          🔒 Scored
+                        </div>
+                        <div className="flex flex-wrap justify-center gap-1.5">
+                          {scoredDiceHistory.flat().map((val, i) => (
+                            <div
+                              key={`scored-${i}`}
+                              className="flex h-9 w-9 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-900/30 text-xs font-bold text-amber-300 opacity-80"
+                            >
+                              {val}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedIndices.length === 0 && scoredDiceHistory.length === 0 ? (
+                      <div className="flex min-h-[60px] items-center justify-center text-xs text-gray-500">
                         Click scoring dice to add them here
                       </div>
-                    ) : (
+                    ) : selectedIndices.length === 0 ? (
+                      <div className="flex min-h-[30px] items-center justify-center text-[10px] text-gray-500">
+                        Select more to re-roll or tap Bank
+                      </div>
+                    ) : null}
+                    {selectedIndices.length > 0 && scoredDiceHistory.length > 0 && (
+                      <div className="mb-2 border-t border-amber-700/30 pt-2">
+                        <div className="mb-1.5 text-[10px] font-semibold uppercase text-green-400/80">
+                          📋 Current
+                        </div>
+                      </div>
+                    )}
+                    {selectedIndices.length > 0 && (
                       <div className="flex flex-wrap justify-center gap-2">
                         {selectedIndices.map((idx) => (
                           <motion.button
@@ -1121,14 +1312,16 @@ export default function FarklePage() {
                       return (
                         <motion.button
                           key={`player-${i}-${d}`}
-                          disabled={!isYourTurn || rolling || aiAnimating || !isScoring}
-                          whileHover={isScoring ? { scale: 1.08 } : {}}
-                          whileTap={isScoring ? { scale: 0.92 } : {}}
+                          disabled={!isYourTurn || rolling || aiAnimating || diceUnknown || !isScoring}
+                          whileHover={isScoring && !diceUnknown ? { scale: 1.08 } : {}}
+                          whileTap={isScoring && !diceUnknown ? { scale: 0.92 } : {}}
                           onClick={() => toggleDie(i)}
                           className={`relative rounded-2xl transition-all duration-200 ${
-                            isScoring
-                              ? "ring-2 ring-amber-400/80 shadow-[0_0_18px_rgba(251,191,36,0.5)]"
-                              : "opacity-40 cursor-not-allowed"
+                            diceUnknown
+                              ? "opacity-60 cursor-not-allowed"
+                              : isScoring
+                                ? "ring-2 ring-amber-400/80 shadow-[0_0_18px_rgba(251,191,36,0.5)]"
+                                : "opacity-40 cursor-not-allowed"
                           }`}
                         >
                           <DiceFace
@@ -1136,6 +1329,7 @@ export default function FarklePage() {
                             selected={false}
                             rolling={rolling}
                             index={i}
+                            unknown={diceUnknown}
                           />
                           {isScoring && (
                             <motion.div
@@ -1155,8 +1349,21 @@ export default function FarklePage() {
                     )}
                   </div>
 
+                  {/* Prompt to roll first */}
+                  {diceUnknown && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-3 rounded-lg border border-cyan-600/50 bg-cyan-900/20 p-3 text-center"
+                    >
+                      <p className="text-sm font-bold text-cyan-400">
+                        🎲 Roll the dice to start your turn!
+                      </p>
+                    </motion.div>
+                  )}
+
                   {/* No scoring dice left warning */}
-                  {game.dice.length > 0 && scoringIndices.length === 0 && !rolling && (
+                  {game.dice.length > 0 && scoringIndices.length === 0 && !rolling && !diceUnknown && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -1190,31 +1397,89 @@ export default function FarklePage() {
             {isYourTurn && game.state === "playing" && !waitingForOpponent && (
               <div className="flex flex-wrap justify-center gap-3">
                 {/* Roll Dice */}
-                <motion.button
-                  disabled={!canRoll || rolling}
-                  whileHover={canRoll ? { scale: 1.05 } : {}}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={rollDice}
-                  className="rounded-xl border-b-4 border-cyan-700 bg-cyan-500 px-6 py-3 font-black text-black shadow-[0_0_15px_rgba(34,211,238,0.4)] transition disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  🎲 {isAllScoringSelected ? "🔥 Hot Dice! Roll All 6" : game.hasHotDice ? "Roll All 6" : `Roll ${game.dice.length} Dice`}
-                  {selectedIndices.length > 0 && (
-                    <span className="ml-1 text-xs opacity-80">
-                      (score +{selectedScore})
-                    </span>
-                  )}
-                </motion.button>
+                <div className="relative">
+                  {/* Glow ring behind the roll button */}
+                  <AnimatePresence>
+                    {rollFlash && canRoll && (
+                      <motion.div
+                        key="roll-glow"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: [0, 0.6, 0.3, 0.6, 0], scale: [0.9, 1.15, 1.08, 1.15, 0.95] }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        transition={{ duration: 1.5, ease: "easeOut" }}
+                        className="pointer-events-none absolute inset-0 -inset-x-3 -inset-y-3 rounded-2xl bg-gradient-to-r from-cyan-400 via-blue-300 to-cyan-400 blur-xl"
+                      />
+                    )}
+                  </AnimatePresence>
+                  <motion.button
+                    disabled={!canRoll || rolling}
+                    whileHover={canRoll ? { scale: 1.05 } : {}}
+                    whileTap={{ scale: 0.95 }}
+                    animate={
+                      rollFlash && canRoll
+                        ? {
+                            boxShadow: [
+                              "0 0 15px rgba(34,211,238,0.4)",
+                              "0 0 40px rgba(34,211,238,0.9), 0 0 80px rgba(6,182,212,0.5)",
+                              "0 0 25px rgba(34,211,238,0.6)",
+                              "0 0 50px rgba(34,211,238,0.8), 0 0 100px rgba(6,182,212,0.4)",
+                              "0 0 15px rgba(34,211,238,0.4)",
+                            ],
+                            scale: [1, 1.06, 0.98, 1.03, 1],
+                          }
+                        : {}
+                    }
+                    onClick={rollDice}
+                    className="relative z-10 rounded-xl border-b-4 border-cyan-700 bg-cyan-500 px-6 py-3 font-black text-black shadow-[0_0_15px_rgba(34,211,238,0.4)] transition disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    🎲 {diceUnknown ? "Roll Dice" : isAllScoringSelected ? "🔥 Hot Dice! Roll All 6" : game.hasHotDice ? "Roll All 6" : `Roll ${game.dice.length} Dice`}
+                    {selectedIndices.length > 0 && (
+                      <span className="ml-1 text-xs opacity-80">
+                        (score +{selectedScore})
+                      </span>
+                    )}
+                  </motion.button>
+                </div>
 
                 {/* Bank Score */}
-                <motion.button
-                  disabled={!canBank}
-                  whileHover={canBank ? { scale: 1.05 } : {}}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={bankScore}
-                  className="rounded-xl border-b-4 border-green-700 bg-green-500 px-6 py-3 font-black text-white shadow-[0_0_15px_rgba(34,197,94,0.4)] transition disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  🏦 Bank +{game.turnScore + effectiveScore}
-                </motion.button>
+                <div className="relative">
+                  {/* Glow ring behind the button */}
+                  <AnimatePresence>
+                    {bankFlash && canBank && (
+                      <motion.div
+                        key="bank-glow"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: [0, 0.7, 0.4, 0.7, 0], scale: [0.9, 1.15, 1.08, 1.15, 0.95] }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        transition={{ duration: 1.5, ease: "easeOut" }}
+                        className="pointer-events-none absolute inset-0 -inset-x-3 -inset-y-3 rounded-2xl bg-gradient-to-r from-green-400 via-emerald-300 to-green-400 blur-xl"
+                      />
+                    )}
+                  </AnimatePresence>
+                  <motion.button
+                    disabled={!canBank}
+                    whileHover={canBank ? { scale: 1.05 } : {}}
+                    whileTap={{ scale: 0.95 }}
+                    animate={
+                      bankFlash && canBank
+                        ? {
+                            boxShadow: [
+                              "0 0 15px rgba(34,197,94,0.4)",
+                              "0 0 40px rgba(34,197,94,0.9), 0 0 80px rgba(52,211,153,0.5)",
+                              "0 0 25px rgba(34,197,94,0.6)",
+                              "0 0 50px rgba(34,197,94,0.8), 0 0 100px rgba(52,211,153,0.4)",
+                              "0 0 15px rgba(34,197,94,0.4)",
+                            ],
+                            scale: [1, 1.06, 0.98, 1.03, 1],
+                          }
+                        : {}
+                    }
+                    onClick={bankScore}
+                    className="relative z-10 rounded-xl border-b-4 border-green-700 bg-green-500 px-6 py-3 font-black text-white shadow-[0_0_15px_rgba(34,197,94,0.4)] transition disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    🏦 Bank +{game.turnScore + effectiveScore}
+                  </motion.button>
+                </div>
               </div>
             )}
 
@@ -1275,6 +1540,102 @@ export default function FarklePage() {
                   className="pointer-events-none fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 text-6xl"
                 >
                   ✨🎲✨
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Bank Celebration — floating coins */}
+            <AnimatePresence>
+              {bankCelebrating && (
+                <motion.div
+                  key="bank-celebration"
+                  className="pointer-events-none fixed inset-0 z-50 overflow-hidden"
+                  initial={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.5 }}
+                >
+                  {/* Screen flash */}
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: [0, 0.3, 0] }}
+                    transition={{ duration: 0.6 }}
+                    className="absolute inset-0 bg-green-400"
+                  />
+                  {/* Floating coins */}
+                  {Array.from({ length: 20 }).map((_, i) => (
+                    <motion.div
+                      key={`coin-${i}`}
+                      className="absolute text-3xl"
+                      initial={{
+                        x: `${40 + (i % 5) * 5 + Math.random() * 10}%`,
+                        y: "60%",
+                        opacity: 0,
+                        scale: 0,
+                      }}
+                      animate={{
+                        y: `${-20 - Math.random() * 40}%`,
+                        x: `${35 + Math.random() * 30}%`,
+                        opacity: [0, 1, 1, 0],
+                        scale: [0, 1.3, 1, 0.8],
+                        rotate: [0, 180 + Math.random() * 180],
+                      }}
+                      exit={{ opacity: 0 }}
+                      transition={{
+                        duration: 1.5 + Math.random() * 1,
+                        delay: i * 0.04,
+                        ease: "easeOut",
+                      }}
+                    >
+                      {["🪙", "💰", "✨", "💎", "⭐", "🪙", "💰", "✨"][i % 8]}
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Hot Dice Screen Flash */}
+            <AnimatePresence>
+              {hotDiceFlash && (
+                <motion.div
+                  key="hot-dice-celebration"
+                  className="pointer-events-none fixed inset-0 z-50 overflow-hidden"
+                  initial={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.4 }}
+                >
+                  {/* Amber/orange screen flash */}
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: [0, 0.35, 0.15, 0.25, 0] }}
+                    transition={{ duration: 1.2 }}
+                    className="absolute inset-0 bg-gradient-to-b from-orange-500 via-amber-500 to-red-500"
+                  />
+                  {/* Fire emojis floating up */}
+                  {Array.from({ length: 16 }).map((_, i) => (
+                    <motion.div
+                      key={`fire-${i}`}
+                      className="absolute text-4xl"
+                      initial={{
+                        x: `${10 + (i % 8) * 10 + Math.random() * 5}%`,
+                        y: "80%",
+                        opacity: 0,
+                        scale: 0,
+                      }}
+                      animate={{
+                        y: `${-10 - Math.random() * 50}%`,
+                        x: `${5 + Math.random() * 90}%`,
+                        opacity: [0, 1, 1, 0.6, 0],
+                        scale: [0, 1.5, 1.2, 0.8, 0.3],
+                      }}
+                      transition={{
+                        duration: 1.6 + Math.random() * 1,
+                        delay: i * 0.05,
+                        ease: "easeOut",
+                      }}
+                    >
+                      {["🔥", "🎲", "🔥", "✨", "🔥", "💥", "🔥", "⚡"][i % 8]}
+                    </motion.div>
+                  ))}
                 </motion.div>
               )}
             </AnimatePresence>
