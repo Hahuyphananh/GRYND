@@ -25,12 +25,13 @@ export async function POST(req) {
       const room = await loadRoom(roomId, tx);
       let state = room.gameState;
 
-      validateMove(state, userId, "bank_score");
-
-      // If selected dice indices are provided, process scoring first
+      // Process scoring dice first — must happen BEFORE validateMove
+      // because the dice score adds to turnScore, which validateMove checks
+      let comboScore = 0;
+      let selectedDice = [];
       if (indices && Array.isArray(indices) && indices.length > 0) {
-        const selectedDice = indices.map((i) => state.dice[i]);
-        const comboScore = calculateScore(selectedDice);
+        selectedDice = indices.map((i) => state.dice[i]);
+        comboScore = calculateScore(selectedDice);
         if (comboScore <= 0)
           throw new Error("Selected dice are not a valid scoring combination");
 
@@ -42,7 +43,13 @@ export async function POST(req) {
           turnScore: newTurnScore,
           hasMetThreshold,
         };
+      }
 
+      // Now validate on the updated state (turnScore includes selected dice)
+      validateMove(state, userId, "bank_score");
+
+      // Log the selection action if dice were scored
+      if (indices && Array.isArray(indices) && indices.length > 0) {
         await appendAction(tx, roomId, userId, "select_scoring_dice", {
           indices,
           comboScore,

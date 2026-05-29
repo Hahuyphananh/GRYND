@@ -512,7 +512,7 @@ export default function FarklePage() {
     if (!roomId || !isYourTurn) return;
     setRolling(true);
     const indices = [...selectedIndices];
-    setSelectedIndices([]);
+    // Keep selectedIndices visible during the roll — don't clear them yet
     try {
       const res = await fetch("/api/farkle/roll-dice", {
         method: "POST",
@@ -526,6 +526,7 @@ export default function FarklePage() {
         return;
       }
       setTimeout(() => {
+        setSelectedIndices([]);
         setGame(d.state);
         setRolling(false);
         emitRoomEvent();
@@ -537,13 +538,17 @@ export default function FarklePage() {
       }, 400);
     } catch {
       setRolling(false);
+      setSelectedIndices([]);
     }
   };
 
   const bankScore = async () => {
     if (!roomId || !isYourTurn) return;
-    const indices = [...selectedIndices];
-    setSelectedIndices([]);
+    // Auto-select all scoring dice if the user hasn't manually selected any
+    let indices = [...selectedIndices];
+    if (indices.length === 0 && scoringIndices.length > 0) {
+      indices = [...scoringIndices];
+    }
     try {
       const res = await fetch("/api/farkle/bank-score", {
         method: "POST",
@@ -555,6 +560,7 @@ export default function FarklePage() {
         alert(d.error || "Bank failed");
         return;
       }
+      setSelectedIndices([]);
       setGame(d.state);
       emitRoomEvent();
       fetchHistory(roomId);
@@ -678,6 +684,12 @@ export default function FarklePage() {
     return calculateScore(d);
   }, [game?.dice, selectedIndices]);
 
+  // Score of ALL scoring dice (used for auto-bank when no dice manually selected)
+  const autoScore = useMemo(() => {
+    if (!game) return 0;
+    return calculateScore(game.dice);
+  }, [game?.dice]);
+
   const clearSelection = () => setSelectedIndices([]);
 
   const isAllScoringSelected = useMemo(() => {
@@ -697,14 +709,18 @@ export default function FarklePage() {
     game.dice.length > 0 &&
     !waitingForOpponent &&
     (selectedIndices.length > 0 || scoringIndices.length === 0);
+
+  // Effective score that would be banked: manual selection or auto-select all scoring dice
+  const effectiveScore = selectedIndices.length > 0 ? selectedScore : autoScore;
+
   const canBank =
     isYourTurn &&
     !rolling &&
     !aiAnimating &&
     game &&
-    (game.turnScore > 0 || selectedScore > 0) &&
+    (game.turnScore > 0 || effectiveScore > 0) &&
     (game.hasMetThreshold ||
-      game.turnScore + selectedScore >= MIN_BANK_THRESHOLD) &&
+      game.turnScore + effectiveScore >= MIN_BANK_THRESHOLD) &&
     !waitingForOpponent;
 
   const diffColor = (d: string) =>
@@ -1222,7 +1238,7 @@ export default function FarklePage() {
                   onClick={bankScore}
                   className="rounded-xl border-b-4 border-green-700 bg-green-500 px-6 py-3 font-black text-white shadow-[0_0_15px_rgba(34,197,94,0.4)] transition disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  🏦 Bank +{game.turnScore + (selectedScore > 0 ? selectedScore : 0)}
+                  🏦 Bank +{game.turnScore + effectiveScore}
                 </motion.button>
               </div>
             )}
