@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 // @ts-ignore: no types for canvas-confetti in this project
 import confetti from "canvas-confetti";
@@ -475,48 +475,59 @@ export default function FarklePage() {
   const opponentScore = game?.scores?.[opponent?.userId ?? ""] ?? 0;
   const scoreProgress = (score: number) => Math.min((score / WINNING_SCORE) * 100, 100);
 
+  const showGameOver = useCallback(
+    (finishedGame: FarkleGameState, forcedType?: "win" | "lose") => {
+      if (!you || !opponent) return;
+
+      const mine = finishedGame.scores[you.userId] ?? 0;
+      const theirs = finishedGame.scores[opponent.userId] ?? 0;
+      setGameOverScores({ mine, theirs });
+
+      // Use winnerId if present (set by resign and normal game end),
+      // otherwise fall back to score comparison.
+      const didWin = forcedType
+        ? forcedType === "win"
+        : finishedGame.winnerId
+          ? finishedGame.winnerId === you.userId
+          : mine >= theirs;
+
+      if (didWin) {
+        setGameOverType("win");
+        const fire = () => {
+          confetti({
+            particleCount: 80,
+            spread: 100,
+            origin: { x: Math.random(), y: 0.3 + Math.random() * 0.3 },
+            colors: ["#fbbf24", "#a855f7", "#22d3ee", "#f472b6", "#34d399"],
+          });
+        };
+        fire();
+        [200, 500, 900, 1400].forEach((d) => setTimeout(fire, d));
+        setTimeout(() => {
+          confetti({
+            particleCount: 150,
+            spread: 160,
+            origin: { x: 0.5, y: 0.3 },
+            colors: ["#fbbf24", "#a855f7", "#22d3ee", "#f472b6", "#34d399"],
+          });
+        }, 1800);
+      } else {
+        setGameOverType("lose");
+      }
+    },
+    [opponent, you],
+  );
+
   /* ─── Game Over Detection ─── */
   useEffect(() => {
     if (!game) return;
     if (endedRef.current) return;
     if (game.state !== "finished") return;
-    endedRef.current = true;
-
     if (!you || !opponent) return;
-    const mine = game.scores[you.userId] ?? 0;
-    const theirs = game.scores[opponent.userId] ?? 0;
-    setGameOverScores({ mine, theirs });
 
-    // Use winnerId if present (set by resign and normal game end),
-    // otherwise fall back to score comparison
-    const didWin = game.winnerId
-      ? game.winnerId === you.userId
-      : mine >= theirs;
-
-    if (didWin) {
-      setGameOverType("win");
-      const fire = () => {
-        confetti({
-          particleCount: 80,
-          spread: 100,
-          origin: { x: Math.random(), y: 0.3 + Math.random() * 0.3 },
-          colors: ["#fbbf24", "#a855f7", "#22d3ee", "#f472b6", "#34d399"],
-        });
-      };
-      fire();
-      [200, 500, 900, 1400].forEach((d) => setTimeout(fire, d));
-      setTimeout(() => {
-        confetti({
-          particleCount: 150,
-          spread: 160,
-          origin: { x: 0.5, y: 0.3 },
-          colors: ["#fbbf24", "#a855f7", "#22d3ee", "#f472b6", "#34d399"],
-        });
-      }, 1800);
-    } else {
-      setGameOverType("lose");
-    }
-  }, [game?.state]);
+    endedRef.current = true;
+    showGameOver(game);
+  }, [game, opponent, showGameOver, you]);
 
   /* ─── Turn Banner ─── */
   useEffect(() => {
@@ -695,15 +706,28 @@ export default function FarklePage() {
 
   const resign = async () => {
     if (!roomId) return;
-    const res = await fetch("/api/farkle/resign", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roomId }),
-    });
-    const d = await res.json();
-    if (!res.ok || !d.success) return alert(d.error || "Failed");
-    emitRoomEvent();
-    setGame(d.state);
+    try {
+      const res = await fetch("/api/farkle/resign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) return alert(d.error || "Failed to resign");
+
+      emitRoomEvent();
+      setGame(d.state);
+      setSelectedIndices([]);
+      setScoredDiceHistory([]);
+      setRolling(false);
+      setAiAnimating(false);
+
+      if (d.state?.state === "finished") {
+        showGameOver(d.state, d.winnerId === user?.id ? "win" : "lose");
+      }
+    } catch {
+      alert("Failed to resign");
+    }
   };
 
   const resetToLobby = () => {
