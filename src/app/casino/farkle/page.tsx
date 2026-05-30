@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import confetti from "canvas-confetti";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../context/SocketProvider";
+import { useTranslation } from "../../../hooks/useTranslation";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import {
@@ -33,6 +34,7 @@ type FarkleGameState = {
   scores: Record<string, number>;
   hasHotDice: boolean;
   difficulty?: "easy" | "medium" | "hard";
+  winnerId?: string;
 };
 
 /* ─── Constants ─── */
@@ -145,6 +147,7 @@ const SCORE_SHEET = [
 ];
 
 function ScoreSheetPanel() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   return (
@@ -155,7 +158,7 @@ function ScoreSheetPanel() {
       >
         <span className="flex items-center gap-2">
           <span>📊</span>
-          <span>Farkle Score Sheet</span>
+          <span>{t("games.farkle.score_sheet")}</span>
         </span>
         <motion.svg
           animate={{ rotate: open ? 180 : 0 }}
@@ -221,9 +224,10 @@ function GameLogPanel({
   you: any;
   opponent: any;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const label = (userId: string) =>
-    userId === you?.userId ? "You" : opponent?.name || "Opponent";
+    userId === you?.userId ? t("games.farkle.you_label") : opponent?.name || t("games.farkle.opponent_label");
 
   return (
     <div className="mb-5 overflow-hidden rounded-xl border border-amber-700/60 bg-black/30">
@@ -233,7 +237,7 @@ function GameLogPanel({
       >
         <span className="flex items-center gap-2">
           <span>📜</span>
-          <span>Game Log</span>
+          <span>{t("games.farkle.game_log")}</span>
           <span className="rounded-full bg-amber-900/60 px-2 py-0.5 text-xs text-amber-400">
             {history.length}
           </span>
@@ -261,7 +265,7 @@ function GameLogPanel({
           >
             <div className="max-h-64 space-y-1 overflow-y-auto p-2">
               {history.length === 0 && (
-                <p className="px-3 py-4 text-center text-xs text-gray-500">No actions yet</p>
+                <p className="px-3 py-4 text-center text-xs text-gray-500">{t("games.farkle.no_actions")}</p>
               )}
               {history.map((a, i) => (
                 <motion.div
@@ -277,19 +281,19 @@ function GameLogPanel({
                 >
                   <span className="font-bold">{label(a.userId)}</span>{" "}
                   <span className="text-gray-300">
-                    {a.actionType === "roll_dice" && "🎲 Rolled"}
-                    {a.actionType === "select_scoring_dice" && `📌 Scored +${a.payload?.comboScore ?? "?"}`}
-                    {a.actionType === "bank_score" && `🏦 Banked +${a.payload?.banked ?? "?"} → ${a.payload?.totalScore ?? "?"}`}
+                    {a.actionType === "roll_dice" && t("games.farkle.log_rolled")}
+                    {a.actionType === "select_scoring_dice" && `${t("games.farkle.log_scored")}${a.payload?.comboScore ?? "?"}`}
+                    {a.actionType === "bank_score" && `${t("games.farkle.log_banked")}${a.payload?.banked ?? "?"} → ${a.payload?.totalScore ?? "?"}`}
                     {a.actionType?.startsWith("ai_") && (
                       <>
-                        {a.actionType === "ai_select" && `📌 Scored +${a.payload?.comboScore ?? "?"}`}
-                        {a.actionType === "ai_roll" && "🎲 Rolled"}
-                        {a.actionType === "ai_bank" && `🏦 Banked +${a.payload?.turnScore ?? "?"}`}
-                        {a.actionType === "ai_farkle" && "💥 Farkle!"}
-                        {a.actionType === "ai_hot_dice" && "🔥 Hot Dice!"}
+                        {a.actionType === "ai_select" && `${t("games.farkle.log_scored")}${a.payload?.comboScore ?? "?"}`}
+                        {a.actionType === "ai_roll" && t("games.farkle.log_rolled")}
+                        {a.actionType === "ai_bank" && `${t("games.farkle.log_banked")}${a.payload?.turnScore ?? "?"}`}
+                        {a.actionType === "ai_farkle" && t("games.farkle.log_farkle")}
+                        {a.actionType === "ai_hot_dice" && t("games.farkle.log_hot_dice")}
                       </>
                     )}
-                    {a.actionType === "resign" && "🚩 Resigned"}
+                    {a.actionType === "resign" && t("games.farkle.log_resigned")}
                   </span>
                 </motion.div>
               ))}
@@ -305,6 +309,7 @@ function GameLogPanel({
 export default function FarklePage() {
   const { isSignedIn, user } = useUser();
   const { socket } = useSocket();
+  const { t } = useTranslation();
   const [wager, setWager] = useState(100);
   const [balance, setBalance] = useState(0);
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
@@ -342,6 +347,7 @@ export default function FarklePage() {
   const endedRef = useRef(false);
   const aiTurnScheduledRef = useRef(false);
   const aiUnmountedRef = useRef(false);
+  const gameStateRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     aiUnmountedRef.current = false;
@@ -436,10 +442,16 @@ export default function FarklePage() {
     };
   }, [socket, roomId]);
 
-  // Backup polling for state
+  // Sync gameStateRef for polling guard
+  useEffect(() => {
+    gameStateRef.current = game?.state;
+  }, [game?.state]);
+
   useEffect(() => {
     if (!roomId) return;
     const poll = async () => {
+      // Skip polling if game has ended
+      if (gameStateRef.current === "finished") return;
       await fetchRoom(roomId);
       await fetchHistory(roomId);
     };
@@ -475,7 +487,13 @@ export default function FarklePage() {
     const theirs = game.scores[opponent.userId] ?? 0;
     setGameOverScores({ mine, theirs });
 
-    if (mine >= theirs) {
+    // Use winnerId if present (set by resign and normal game end),
+    // otherwise fall back to score comparison
+    const didWin = game.winnerId
+      ? game.winnerId === you.userId
+      : mine >= theirs;
+
+    if (didWin) {
       setGameOverType("win");
       const fire = () => {
         confetti({
@@ -511,7 +529,7 @@ export default function FarklePage() {
       setSelectedIndices([]);
       setBankFlash(false);
       setRollFlash(false);
-      setTurnBanner(isMe ? "YOUR TURN" : `${opponent?.name || "Opponent"}'s TURN`);
+      setTurnBanner(isMe ? t("games.farkle.your_turn") : t("games.farkle.opponents_turn").replace("{name}", opponent?.name || "Opponent"));
       setTimeout(() => setTurnBanner(null), 1800);
     }
     prevTurnRef.current = turn;
@@ -602,23 +620,22 @@ export default function FarklePage() {
       if (!res.ok || !d.success) {
         alert(d.error || "Roll failed");
         setRolling(false);
+        setSelectedIndices([]);
         return;
       }
-      setTimeout(() => {
-        // Add scored dice to history so they stay visible in the side box
-        if (scoredValues.length > 0) {
-          setScoredDiceHistory((prev) => [...prev, [...scoredValues]]);
-        }
-        setSelectedIndices([]);
-        setGame(d.state);
-        setRolling(false);
-        emitRoomEvent();
-        fetchHistory(roomId);
-        if (indices.length > 0) {
-          setExploding(true);
-          setTimeout(() => setExploding(false), 800);
-        }
-      }, 400);
+      // Add scored dice to history so they stay visible in the side box
+      if (scoredValues.length > 0) {
+        setScoredDiceHistory((prev) => [...prev, [...scoredValues]]);
+      }
+      setSelectedIndices([]);
+      setGame(d.state);
+      setRolling(false);
+      emitRoomEvent();
+      fetchHistory(roomId);
+      if (indices.length > 0) {
+        setExploding(true);
+        setTimeout(() => setExploding(false), 800);
+      }
     } catch {
       setRolling(false);
       setSelectedIndices([]);
@@ -896,7 +913,7 @@ export default function FarklePage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-2 text-center text-4xl font-black text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]"
         >
-          🎲 FARKLE ARENA
+          🎲 {t("games.farkle.title")}
         </motion.h1>
 
         {/* ═══ LOBBY ═══ */}
@@ -907,12 +924,12 @@ export default function FarklePage() {
             className="rounded-2xl border border-amber-700/60 bg-black/40 p-6"
           >
             <div className="mb-4 text-center text-lg font-bold text-yellow-300">
-              💰 Balance: {balance.toFixed(2)} tokens
+              💰 {t("games.balance")}: {balance.toFixed(2)} tokens
             </div>
 
             {/* Wager Input */}
             <div className="mb-4">
-              <label className="mb-1 block text-sm font-semibold text-amber-200">Wager Amount</label>
+              <label className="mb-1 block text-sm font-semibold text-amber-200">{t("games.farkle.wager")}</label>
               <input
                 type="number"
                 value={wager}
@@ -925,7 +942,7 @@ export default function FarklePage() {
             {/* AI Difficulty Selector */}
             <div className="mb-4">
               <label className="mb-2 block text-sm font-semibold text-amber-200">
-                AI Difficulty
+                {t("games.farkle.ai_difficulty")}
               </label>
               <div className="flex gap-2">
                 {(["easy", "medium", "hard"] as const).map((d) => (
@@ -938,14 +955,14 @@ export default function FarklePage() {
                         : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50"
                     }`}
                   >
-                    {d === "easy" ? "🟢 Easy" : d === "medium" ? "🟡 Medium" : "🔴 Hard"}
+                    {d === "easy" ? `🟢 ${t("games.farkle.difficulty_easy")}` : d === "medium" ? `🟡 ${t("games.farkle.difficulty_medium")}` : `🔴 ${t("games.farkle.difficulty_hard")}`}
                   </button>
                 ))}
               </div>
               <p className="mt-1 text-xs text-gray-400">
-                {difficulty === "easy" && "Conservative — banks early, plays it safe"}
-                {difficulty === "medium" && "Balanced — pushes when ahead, banks when risky"}
-                {difficulty === "hard" && "Aggressive — pushes luck, only banks when close to winning"}
+                {difficulty === "easy" && t("games.farkle.ai_desc_easy")}
+                {difficulty === "medium" && t("games.farkle.ai_desc_medium")}
+                {difficulty === "hard" && t("games.farkle.ai_desc_hard")}
               </p>
             </div>
 
@@ -956,14 +973,14 @@ export default function FarklePage() {
                 disabled={loading}
                 className="flex-1 rounded-2xl border-b-4 border-cyan-700 bg-cyan-500 px-6 py-3.5 text-lg font-black text-black shadow-[0_0_25px_rgba(34,211,238,0.4)] transition active:translate-y-[2px] disabled:opacity-50"
               >
-                {loading ? "Starting..." : "Create PvP 🎲"}
+                {loading ? t("games.farkle.starting") : `${t("games.farkle.create_pvp")} 🎲`}
               </button>
               <button
                 onClick={playAI}
                 disabled={loading}
                 className="flex-1 rounded-2xl border-b-4 border-amber-700 bg-amber-500 px-6 py-3.5 text-lg font-black text-black shadow-[0_0_25px_rgba(251,191,36,0.4)] transition active:translate-y-[2px] disabled:opacity-50"
               >
-                {loading ? "Starting..." : "Play vs AI 🤖"}
+                {loading ? t("games.farkle.starting") : `${t("games.farkle.play_vs_ai")} 🤖`}
               </button>
               <button
                 onClick={fetchGames}
@@ -975,21 +992,21 @@ export default function FarklePage() {
 
             {/* Rules Summary */}
             <div className="mb-5 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs text-amber-200/80">
-              <p className="font-bold text-amber-300 mb-1">📋 Rules (cardgames.io standard):</p>
+              <p className="font-bold text-amber-300 mb-1">📋 {t("games.farkle.rules_title")}</p>
               <ul className="list-inside list-disc space-y-0.5">
-                <li>Roll 6 dice — must select at least 1 scoring die per roll</li>
-                <li>1s = 100 pts, 5s = 50 pts, Three 1s = 1000, Three-of-a-kind = face × 100</li>
-                <li>Four of a kind = 1000, Five = 2000, Six = 3000, Straight = 2500, Three Pairs = 1500</li>
-                <li>Bank anytime. Farkle (no score) = lose turn points. Hot dice (all 6 score) = re-roll all 6!</li>
-                <li>First to {WINNING_SCORE.toLocaleString()} pts wins!</li>
+                <li>{t("games.farkle.rules_line1")}</li>
+                <li>{t("games.farkle.rules_line2")}</li>
+                <li>{t("games.farkle.rules_line3")}</li>
+                <li>{t("games.farkle.rules_line4")}</li>
+                <li>{t("games.farkle.rules_line5").replace("{score}", WINNING_SCORE.toLocaleString())}</li>
               </ul>
             </div>
 
             {/* Available Games */}
             <div>
-              <h3 className="mb-3 text-lg font-bold text-cyan-300">🎮 Available Games</h3>
+              <h3 className="mb-3 text-lg font-bold text-cyan-300">🎮 {t("games.available_games")}</h3>
               {availableGames.length === 0 ? (
-                <p className="text-center text-sm text-gray-500 py-8">No open games right now. Create one!</p>
+                <p className="text-center text-sm text-gray-500 py-8">{t("games.no_open_games")} {t("games.farkle.create_one")}</p>
               ) : (
                 <div className="space-y-2">
                   {availableGames.map((l) => (
@@ -1010,7 +1027,7 @@ export default function FarklePage() {
                         disabled={loading}
                         className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-bold text-black hover:bg-cyan-400 disabled:opacity-50"
                       >
-                        {joiningId === l.id ? "Joining..." : "Join"}
+                        {joiningId === l.id ? t("games.farkle.joining") : t("games.join")}
                       </button>
                     </div>
                   ))}
@@ -1034,10 +1051,10 @@ export default function FarklePage() {
                   }`}
                 >
                   {waitingForOpponent
-                    ? "WAITING FOR OPPONENT..."
+                    ? t("games.farkle.waiting_opponent")
                     : isYourTurn
-                      ? "YOUR TURN"
-                      : `${opponent?.name || "AI"}'s TURN`}
+                      ? t("games.farkle.your_turn")
+                      : t("games.farkle.opponents_turn").replace("{name}", opponent?.name || "AI")}
                 </span>
                 {aiAnimating && (
                   <span className="flex items-center gap-1 rounded-full bg-yellow-800/50 px-2 py-1 text-xs text-yellow-300">
@@ -1047,12 +1064,12 @@ export default function FarklePage() {
                     >
                       🤖
                     </motion.span>
-                    AI thinking...
+                    {t("games.farkle.ai_thinking")}
                   </span>
                 )}
                 {isPvp && (
                   <span className="rounded-full bg-purple-800/50 px-2 py-1 text-xs text-purple-300">
-                    ⚔️ PvP
+                    ⚔️ {t("games.farkle.pvp_label")}
                   </span>
                 )}
               </div>
@@ -1060,7 +1077,7 @@ export default function FarklePage() {
                 onClick={resign}
                 className="rounded-lg bg-red-600/80 px-3 py-1 text-xs font-bold text-white hover:bg-red-600"
               >
-                Resign
+                {t("games.farkle.resign")}
               </button>
             </div>
 
@@ -1072,10 +1089,10 @@ export default function FarklePage() {
                   transition={{ duration: 1.5, repeat: Infinity }}
                   className="text-lg font-bold text-fuchsia-300"
                 >
-                  ⏳ Waiting for an opponent to join...
+                  ⏳ {t("games.farkle.waiting_opponent")}
                 </motion.div>
                 <p className="mt-1 text-xs text-fuchsia-400/70">
-                  Share this room or wait for another player to join from the lobby.
+                  {t("games.farkle.share_waiting")}
                 </p>
                 <p className="mt-2 text-xs font-mono text-gray-500">{game.id}</p>
               </div>
@@ -1085,7 +1102,7 @@ export default function FarklePage() {
             <div className="mb-4 overflow-hidden rounded-2xl border-4 border-amber-500 bg-gradient-to-b from-[#1a1a2e] to-[#16213e] shadow-[0_0_30px_rgba(251,191,36,0.3)]">
               {/* Title Bar */}
               <div className="bg-amber-900/60 px-4 py-2 text-center text-sm font-black text-amber-300">
-                🏆 Race to {WINNING_SCORE.toLocaleString()} Points
+                🏆 {t("games.farkle.race_to").replace("{score}", WINNING_SCORE.toLocaleString())}
               </div>
 
               {/* Player Scores */}
@@ -1093,7 +1110,7 @@ export default function FarklePage() {
                 {/* You */}
                 <div className="p-4 text-center">
                   <div className="mb-1 text-xs font-bold uppercase text-green-400">
-                    {you?.name || "You"}
+                    {you?.name || t("games.farkle.you_label")}
                   </div>
                   <motion.div
                     key={yourScore}
@@ -1111,14 +1128,14 @@ export default function FarklePage() {
                     />
                   </div>
                   <div className="mt-0.5 text-[10px] text-gray-400">
-                    {scoreProgress(yourScore).toFixed(0)}% to goal
+                    {scoreProgress(yourScore).toFixed(0)}{t("games.farkle.percent_goal")}
                   </div>
                 </div>
 
                 {/* Opponent */}
                 <div className="p-4 text-center">
                   <div className="mb-1 text-xs font-bold uppercase text-red-400">
-                    {opponent?.name || "Opponent"}
+                    {opponent?.name || t("games.farkle.opponent_label")}
                   </div>
                   {opponent?.isAI && (
                     <div className={`mb-1 text-[10px] font-semibold ${diffColor(aiDifficultyLabel)}`}>
@@ -1141,7 +1158,7 @@ export default function FarklePage() {
                     />
                   </div>
                   <div className="mt-0.5 text-[10px] text-gray-400">
-                    {scoreProgress(opponentScore).toFixed(0)}% to goal
+                    {scoreProgress(opponentScore).toFixed(0)}{t("games.farkle.percent_goal")}
                   </div>
                 </div>
               </div>
@@ -1150,7 +1167,7 @@ export default function FarklePage() {
               <div className="border-t border-amber-700/50 bg-black/20 px-4 py-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-amber-200/80">
-                    Turn Score:{" "}
+                    {t("games.farkle.turn_score")}:{" "}
                     <motion.span
                       key={displayedTurnScore}
                       animate={{ scale: [1, 1.3, 1] }}
@@ -1161,12 +1178,12 @@ export default function FarklePage() {
                     </motion.span>
                     {game.hasHotDice && (
                       <span className="ml-2 rounded-full bg-orange-600/60 px-2 py-0.5 text-xs font-bold text-orange-200">
-                        🔥 HOT DICE
+                        🔥 {t("games.farkle.hot_dice")}
                       </span>
                     )}
                   </span>
                   <span className="text-xs text-gray-400">
-                    Dice: {game.dice.length} | Rolls: {game.rollsThisTurn} | Turn #{game.turnNumber}
+                    Dice: {game.dice.length} | {t("games.farkle.rolls_status")}: {game.rollsThisTurn} | {t("games.farkle.turn_status")}{game.turnNumber}
                   </span>
                 </div>
               </div>
@@ -1175,8 +1192,7 @@ export default function FarklePage() {
             {/* ═══ AI/Opponent DISPLAY ═══ */}
             {!isYourTurn && game.state === "playing" && !waitingForOpponent && (
               <div className="mb-4 rounded-xl border border-gray-700/50 bg-black/20 p-3">
-                <div className="mb-2 text-center text-xs font-bold text-gray-400 uppercase">
-                  {opponent?.name || "AI"}'s Dice
+                <div className="mb-2 text-center text-xs font-bold text-gray-400 uppercase">                    {t("games.farkle.opponents_dice").replace("{name}", opponent?.name || t("games.farkle.ai_label"))}
                 </div>
                 <div className="flex flex-wrap justify-center gap-2">
                   {aiAnimating && aiSteps.length > 0 && currentAiStep < aiSteps.length
@@ -1203,11 +1219,11 @@ export default function FarklePage() {
                 </div>
                 {aiAnimating && aiSteps.length > 0 && currentAiStep < aiSteps.length && (
                   <div className="mt-2 text-center text-xs text-yellow-300">
-                    {aiSteps[currentAiStep]?.type === "select" && `Selected for +${aiSteps[currentAiStep].comboScore} pts`}
-                    {aiSteps[currentAiStep]?.type === "roll" && `Rolling ${aiSteps[currentAiStep].remainingDice} dice...`}
-                    {aiSteps[currentAiStep]?.type === "bank" && `Banking +${aiSteps[currentAiStep].turnScore} pts!`}
-                    {aiSteps[currentAiStep]?.type === "farkle" && "FARKLE! Lost turn score!"}
-                    {aiSteps[currentAiStep]?.type === "hot_dice" && "HOT DICE! All 6 score again!"}
+                    {aiSteps[currentAiStep]?.type === "select" && `${t("games.farkle.ai_selected_for")}${aiSteps[currentAiStep].comboScore} ${t("games.farkle.pts_label")}`}
+                    {aiSteps[currentAiStep]?.type === "roll" && `${t("games.farkle.ai_rolling_dice")} ${aiSteps[currentAiStep].remainingDice} ${t("games.farkle.ai_dice_suffix")}`}
+                    {aiSteps[currentAiStep]?.type === "bank" && `${t("games.farkle.ai_banking_pts")}${aiSteps[currentAiStep].turnScore} ${t("games.farkle.ai_pts_suffix")}`}
+                    {aiSteps[currentAiStep]?.type === "farkle" && t("games.farkle.ai_farkle_msg")}
+                    {aiSteps[currentAiStep]?.type === "hot_dice" && t("games.farkle.ai_hot_dice_msg")}
                   </div>
                 )}
               </div>
@@ -1221,14 +1237,14 @@ export default function FarklePage() {
                   <div className="rounded-2xl border-2 border-green-500/60 bg-green-950/30 p-3 shadow-[0_0_15px_rgba(34,197,94,0.2)]">
                     <div className="mb-2 flex items-center justify-between">
                       <span className="text-xs font-bold uppercase text-green-300">
-                        📌 Selected Dice
+                        📌 {t("games.farkle.selected_dice")}
                       </span>
                       {selectedIndices.length > 0 && (
                         <button
                           onClick={clearSelection}
                           className="rounded-md bg-red-500/20 px-2 py-0.5 text-[10px] font-bold text-red-300 hover:bg-red-500/40 transition-colors"
                         >
-                          Clear
+                          {t("games.farkle.clear")}
                         </button>
                       )}
                     </div>
@@ -1236,7 +1252,7 @@ export default function FarklePage() {
                     {scoredDiceHistory.length > 0 && (
                       <div className="mb-3 border-b border-green-700/30 pb-2">
                         <div className="mb-1.5 text-[10px] font-semibold uppercase text-amber-400/80">
-                          🔒 Scored
+                          🔒 {t("games.farkle.scored_label")}
                         </div>
                         <div className="flex flex-wrap justify-center gap-1.5">
                           {scoredDiceHistory.flat().map((val, i) => (
@@ -1252,17 +1268,17 @@ export default function FarklePage() {
                     )}
                     {selectedIndices.length === 0 && scoredDiceHistory.length === 0 ? (
                       <div className="flex min-h-[60px] items-center justify-center text-xs text-gray-500">
-                        Click scoring dice to add them here
+                        {t("games.farkle.click_scoring_hint")}
                       </div>
                     ) : selectedIndices.length === 0 ? (
                       <div className="flex min-h-[30px] items-center justify-center text-[10px] text-gray-500">
-                        Select more to re-roll or tap Bank
+                        {t("games.farkle.select_more_hint")}
                       </div>
                     ) : null}
                     {selectedIndices.length > 0 && scoredDiceHistory.length > 0 && (
                       <div className="mb-2 border-t border-amber-700/30 pt-2">
                         <div className="mb-1.5 text-[10px] font-semibold uppercase text-green-400/80">
-                          📋 Current
+                          📋 {t("games.farkle.current_label")}
                         </div>
                       </div>
                     )}
@@ -1294,14 +1310,14 @@ export default function FarklePage() {
                     {/* Selected Score Preview */}
                     <div className="mt-2 rounded-lg bg-black/30 px-2 py-1 text-center">
                       <span className="text-xs text-green-400">
-                        +{selectedScore > 0 ? selectedScore : 0} pts
+                        +{selectedScore > 0 ? selectedScore : 0} {t("games.farkle.pts_label")}
                       </span>
                     </div>
                   </div>
                 </div>                {/* ─── Main Dice Area ─── */}
                 <div className="flex-1">
                   <div className="mb-2 text-center text-xs font-bold text-gray-400 uppercase">
-                    Your Dice — Tap Scoring Dice to Select
+                    {t("games.farkle.your_dice_prompt")}
                   </div>
                   <div className="flex flex-wrap justify-center gap-2">
                     {game.dice.map((d, i) => {
@@ -1344,7 +1360,7 @@ export default function FarklePage() {
                     {/* Show message when all dice have been selected */}
                     {game.dice.length > 0 && game.dice.every((_, i) => selectedIndices.includes(i)) && (
                       <p className="w-full text-center text-xs text-green-400 mt-2">
-                        ✅ All dice selected — roll or bank!
+                        ✅ {t("games.farkle.all_selected")}
                       </p>
                     )}
                   </div>
@@ -1357,7 +1373,7 @@ export default function FarklePage() {
                       className="mt-3 rounded-lg border border-cyan-600/50 bg-cyan-900/20 p-3 text-center"
                     >
                       <p className="text-sm font-bold text-cyan-400">
-                        🎲 Roll the dice to start your turn!
+                        🎲 {t("games.farkle.roll_start")}
                       </p>
                     </motion.div>
                   )}
@@ -1370,7 +1386,7 @@ export default function FarklePage() {
                       className="mt-3 rounded-lg border border-red-600/50 bg-red-900/20 p-3 text-center"
                     >
                       <p className="text-sm font-bold text-red-400">
-                        ⚠️ No scoring dice available — you must roll or bank!
+                        ⚠️ {t("games.farkle.no_scoring")}
                       </p>
                     </motion.div>
                   )}
@@ -1386,7 +1402,7 @@ export default function FarklePage() {
                         animate={{ opacity: 1, scale: 1 }}
                         className="mt-2 text-center font-bold text-red-400"
                       >
-                        💥 FARKLE! No scoring dice — you lose your turn score!
+                        💥 {t("games.farkle.farkle_warning")}
                       </motion.div>
                     )}
                 </div>
@@ -1432,10 +1448,10 @@ export default function FarklePage() {
                     onClick={rollDice}
                     className="relative z-10 rounded-xl border-b-4 border-cyan-700 bg-cyan-500 px-6 py-3 font-black text-black shadow-[0_0_15px_rgba(34,211,238,0.4)] transition disabled:opacity-30 disabled:cursor-not-allowed"
                   >
-                    🎲 {diceUnknown ? "Roll Dice" : isAllScoringSelected ? "🔥 Hot Dice! Roll All 6" : game.hasHotDice ? "Roll All 6" : `Roll ${game.dice.length} Dice`}
+                    🎲 {diceUnknown ? t("games.farkle.roll_dice") : isAllScoringSelected ? t("games.farkle.hot_dice_roll_all") : game.hasHotDice ? t("games.farkle.roll_all_dice") : `${t("games.farkle.reroll_dice")} ${game.dice.length} Dice`}
                     {selectedIndices.length > 0 && (
                       <span className="ml-1 text-xs opacity-80">
-                        (score +{selectedScore})
+                        {t("games.farkle.score_preview").replace("{pts}", String(selectedScore))}
                       </span>
                     )}
                   </motion.button>
@@ -1477,7 +1493,7 @@ export default function FarklePage() {
                     onClick={bankScore}
                     className="relative z-10 rounded-xl border-b-4 border-green-700 bg-green-500 px-6 py-3 font-black text-white shadow-[0_0_15px_rgba(34,197,94,0.4)] transition disabled:opacity-30 disabled:cursor-not-allowed"
                   >
-                    🏦 Bank +{game.turnScore + effectiveScore}
+                    🏦 {t("games.farkle.bank_score")} +{game.turnScore + effectiveScore}
                   </motion.button>
                 </div>
               </div>
@@ -1680,7 +1696,7 @@ export default function FarklePage() {
                           gameOverType === "win" ? "text-amber-300" : "text-red-400"
                         }`}
                       >
-                        {gameOverType === "win" ? "YOU WIN!" : "YOU LOSE"}
+                        {gameOverType === "win" ? t("games.farkle.you_win") : t("games.farkle.you_lose")}
                       </h2>
                     </motion.div>
 
@@ -1693,7 +1709,7 @@ export default function FarklePage() {
                     >
                       <div className="text-center">
                         <div className="text-xs font-bold uppercase text-gray-400">
-                          {you?.name || "You"}
+                          {you?.name || t("games.farkle.you_label")}
                         </div>
                         <motion.div
                           initial={{ scale: 0 }}
@@ -1706,10 +1722,10 @@ export default function FarklePage() {
                           {gameOverScores.mine.toLocaleString()}
                         </motion.div>
                       </div>
-                      <div className="text-3xl font-black text-gray-500">VS</div>
+                      <div className="text-3xl font-black text-gray-500">{t("games.farkle.vs")}</div>
                       <div className="text-center">
                         <div className="text-xs font-bold uppercase text-gray-400">
-                          {opponent?.name || "AI"}
+                          {opponent?.name || t("games.farkle.ai_label")}
                         </div>
                         <motion.div
                           initial={{ scale: 0 }}
@@ -1749,7 +1765,7 @@ export default function FarklePage() {
                           animate={{ opacity: [0.5, 1, 0.5] }}
                           transition={{ duration: 2, repeat: Infinity }}
                         >
-                          Better luck next time!
+                          {t("games.farkle.better_luck")}
                         </motion.p>
                       )}
                     </motion.div>
@@ -1767,7 +1783,7 @@ export default function FarklePage() {
                           : "border-red-700 bg-red-500 text-white shadow-[0_0_25px_rgba(239,68,68,0.4)]"
                       }`}
                     >
-                      Return to lobby
+                      {t("games.farkle.return_lobby")}
                     </motion.button>
                   </motion.div>
                 </motion.div>

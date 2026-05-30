@@ -45,6 +45,7 @@ export async function POST(req) {
       });
 
       // The non-resigning player wins
+      state.winnerId = winner.userId;
       state.state = "finished";
       state.currentTurn = winner.userId;
       await tx
