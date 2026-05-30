@@ -26,28 +26,12 @@ export async function POST(req) {
       });
 
       const payout = Math.floor(Number(room.pot || state.pot || 0) * 0.95);
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${payout}` })
-        .where(eq(users.clerkId, winner.userId));
-
-      // Record the resigned game in leaderboard stats (only for human players)
-      const isPvp = !state.ai && state.players.length >= 2;
       if (!winner.isAI) {
-        await applyLeaderboardCounters({
-          clerkId: winner.userId,
-          game: "farkle",
-          betAmount: state.wager,
-          payout,
-          isPvpWin: isPvp,
-        });
+        await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} + ${payout}` })
+          .where(eq(users.clerkId, winner.userId));
       }
-      await applyLeaderboardCounters({
-        clerkId: userId,
-        game: "farkle",
-        betAmount: state.wager,
-        payout: 0,
-      });
 
       // The non-resigning player wins immediately.
       const finishedState = {
@@ -61,6 +45,30 @@ export async function POST(req) {
         .update(farkleRooms)
         .set({ status: "finished", pot: 0, gameState: finishedState })
         .where(and(eq(farkleRooms.id, roomId), eq(farkleRooms.status, room.status)));
+
+      // Record the resigned game in leaderboard stats (only for human players).
+      // Do not let a stats write failure keep the game from ending.
+      try {
+        const isPvp = !state.ai && state.players.length >= 2;
+        if (!winner.isAI) {
+          await applyLeaderboardCounters({
+            clerkId: winner.userId,
+            game: "farkle",
+            betAmount: state.wager,
+            payout,
+            isPvpWin: isPvp,
+          });
+        }
+        await applyLeaderboardCounters({
+          clerkId: userId,
+          game: "farkle",
+          betAmount: state.wager,
+          payout: 0,
+        });
+      } catch (err) {
+        console.error("Failed to update Farkle resign leaderboard counters", err);
+      }
+
       return { state: finishedState, winnerId: winner.userId, payout };
     });
     return NextResponse.json({ success: true, ...result });

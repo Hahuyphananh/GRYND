@@ -314,6 +314,8 @@ export default function FarklePage() {
   const [balance, setBalance] = useState(0);
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
   const [loading, setLoading] = useState(false);
+  const [banking, setBanking] = useState(false);
+  const [resigning, setResigning] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [availableGames, setAvailableGames] = useState<LobbyRoom[]>([]);
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -654,12 +656,14 @@ export default function FarklePage() {
   };
 
   const bankScore = async () => {
-    if (!roomId || !isYourTurn) return;
-    // Auto-select all scoring dice if the user hasn't manually selected any
-    let indices = [...selectedIndices];
-    if (indices.length === 0 && scoringIndices.length > 0) {
-      indices = [...scoringIndices];
-    }
+    if (!roomId || !isYourTurn || banking) return;
+
+    // Prefer a valid manual selection. If the selection is empty or invalid,
+    // let the route auto-bank every currently scoring die.
+    const manualSelectionScores = selectedIndices.length > 0 && selectedScore > 0;
+    const indices = manualSelectionScores ? [...selectedIndices] : [...scoringIndices];
+
+    setBanking(true);
     try {
       const res = await fetch("/api/farkle/bank-score", {
         method: "POST",
@@ -701,11 +705,14 @@ export default function FarklePage() {
       }
     } catch (e) {
       alert("Bank failed");
+    } finally {
+      setBanking(false);
     }
   };
 
   const resign = async () => {
-    if (!roomId) return;
+    if (!roomId || resigning) return;
+    setResigning(true);
     try {
       const res = await fetch("/api/farkle/resign", {
         method: "POST",
@@ -727,6 +734,8 @@ export default function FarklePage() {
       }
     } catch {
       alert("Failed to resign");
+    } finally {
+      setResigning(false);
     }
   };
 
@@ -866,15 +875,21 @@ export default function FarklePage() {
   // Effective score that would be banked: manual selection or auto-select all scoring dice
   const effectiveScore = selectedIndices.length > 0 ? selectedScore : autoScore;
 
-  // Can bank anytime there are points to bank (no minimum threshold), but not before first roll
-  const canBank =
+  const hasBankableTurnScore = (game?.turnScore ?? 0) > 0;
+  const canAttemptBank = Boolean(
     isYourTurn &&
-    !rolling &&
-    !aiAnimating &&
-    game &&
-    (game.turnScore > 0 || effectiveScore > 0) &&
-    !waitingForOpponent &&
-    !diceUnknown;
+      !rolling &&
+      !aiAnimating &&
+      !banking &&
+      game &&
+      !waitingForOpponent &&
+      (hasBankableTurnScore || !diceUnknown),
+  );
+
+  // Can bank anytime there are points to bank (no minimum threshold), but not before first roll.
+  // The click target stays enabled after the roll so the API can be reached even if
+  // client-side score detection misses an edge case; the server remains authoritative.
+  const canBank = Boolean(canAttemptBank && (hasBankableTurnScore || effectiveScore > 0));
 
   const diffColor = (d: string) =>
     d === "easy" ? "text-green-400" : d === "medium" ? "text-yellow-400" : "text-red-400";
@@ -1098,10 +1113,15 @@ export default function FarklePage() {
                 )}
               </div>
               <button
-                onClick={resign}
-                className="rounded-lg bg-red-600/80 px-3 py-1 text-xs font-bold text-white hover:bg-red-600"
+                type="button"
+                disabled={resigning || !roomId || game.state === "finished"}
+                onClick={(e) => {
+                  e.preventDefault();
+                  resign();
+                }}
+                className="relative z-20 rounded-lg bg-red-600/80 px-3 py-1 text-xs font-bold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {t("games.farkle.resign")}
+                {resigning ? "..." : t("games.farkle.resign")}
               </button>
             </div>
 
@@ -1497,8 +1517,8 @@ export default function FarklePage() {
                     )}
                   </AnimatePresence>
                   <motion.button
-                    disabled={!canBank}
-                    whileHover={canBank ? { scale: 1.05 } : {}}
+                    disabled={!canAttemptBank}
+                    whileHover={canAttemptBank ? { scale: 1.05 } : {}}
                     whileTap={{ scale: 0.95 }}
                     animate={
                       bankFlash && canBank
@@ -1514,10 +1534,18 @@ export default function FarklePage() {
                           }
                         : {}
                     }
-                    onClick={bankScore}
-                    className="relative z-10 rounded-xl border-b-4 border-green-700 bg-green-500 px-6 py-3 font-black text-white shadow-[0_0_15px_rgba(34,197,94,0.4)] transition disabled:opacity-30 disabled:cursor-not-allowed"
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      bankScore();
+                    }}
+                    className={`relative z-10 rounded-xl border-b-4 px-6 py-3 font-black text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${
+                      canBank
+                        ? "border-green-700 bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.4)]"
+                        : "border-gray-700 bg-gray-600 shadow-none"
+                    }`}
                   >
-                    🏦 {t("games.farkle.bank_score")} +{game.turnScore + effectiveScore}
+                    🏦 {banking ? "..." : `${t("games.farkle.bank_score")} +${game.turnScore + effectiveScore}`}
                   </motion.button>
                 </div>
               </div>
