@@ -12,6 +12,7 @@ import {
   eq,
   farkleRooms,
   loadRoom,
+  recordFarkleLeaderboardResults,
   requireUser,
   settleIfEnded,
 } from "../_lib";
@@ -192,6 +193,10 @@ export async function POST(req) {
         steps,
       };
     });
+
+    if (result.ended) {
+      await recordFarkleLeaderboardResults(result);
+    }
 
     return NextResponse.json({ success: true, ...result });
   } catch (e) {
