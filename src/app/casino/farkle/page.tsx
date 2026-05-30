@@ -707,6 +707,7 @@ export default function FarklePage() {
       alert("Bank failed");
     } finally {
       setBanking(false);
+      setRolling(false);
     }
   };
 

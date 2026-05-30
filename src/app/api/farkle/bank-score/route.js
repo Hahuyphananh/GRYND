@@ -6,6 +6,7 @@ import {
   farkleRooms,
   loadRoom,
   requireUser,
+  recordFarkleLeaderboardResults,
   settleIfEnded,
 } from "../_lib";
 import { calculateScore, getScoringIndices, WINNING_SCORE } from "../../../../../game-engine/farkleEngine";
@@ -116,6 +117,10 @@ export async function POST(req) {
 
       return { ...endedResult, aiNext, state: endedResult.state };
     });
+
+    if (result.ended) {
+      await recordFarkleLeaderboardResults(result);
+    }
 
     return NextResponse.json({ success: true, ...result });
   } catch (e) {

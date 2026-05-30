@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, appendAction, db, eq, farkleRooms, loadRoom, requireUser, sql, users } from "../_lib";
-import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { and, appendAction, db, eq, farkleRooms, loadRoom, recordFarkleLeaderboardResults, requireUser, sql, users } from "../_lib";
 
 export async function POST(req) {
   try {
@@ -46,31 +45,12 @@ export async function POST(req) {
         .set({ status: "finished", pot: 0, gameState: finishedState })
         .where(and(eq(farkleRooms.id, roomId), eq(farkleRooms.status, room.status)));
 
-      // Record the resigned game in leaderboard stats (only for human players).
-      // Do not let a stats write failure keep the game from ending.
-      try {
-        const isPvp = !state.ai && state.players.length >= 2;
-        if (!winner.isAI) {
-          await applyLeaderboardCounters({
-            clerkId: winner.userId,
-            game: "farkle",
-            betAmount: state.wager,
-            payout,
-            isPvpWin: isPvp,
-          });
-        }
-        await applyLeaderboardCounters({
-          clerkId: userId,
-          game: "farkle",
-          betAmount: state.wager,
-          payout: 0,
-        });
-      } catch (err) {
-        console.error("Failed to update Farkle resign leaderboard counters", err);
-      }
-
       return { state: finishedState, winnerId: winner.userId, payout };
     });
+    if (result.payout !== undefined) {
+      await recordFarkleLeaderboardResults(result);
+    }
+
     return NextResponse.json({ success: true, ...result });
   } catch (e) {
     return NextResponse.json(
