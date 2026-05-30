@@ -107,6 +107,7 @@ export async function settleIfEnded(tx, roomRow, state) {
     });
   }
 
+  state.winnerId = ended.winnerId;
   state.state = "finished";
   await tx
     .update(farkleRooms)
