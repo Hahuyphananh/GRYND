@@ -9,7 +9,7 @@ import {
   settleIfEnded,
   validateMove,
 } from "../_lib";
-import { calculateScore } from "../../../../../game-engine/farkleEngine";
+import { calculateScore, WINNING_SCORE } from "../../../../../game-engine/farkleEngine";
 
 export async function POST(req) {
   try {
@@ -57,33 +57,47 @@ export async function POST(req) {
       const bankedAmount = state.turnScore;
       const newTotal = currentScore + bankedAmount;
 
-      // Pass turn to next player
-      const idx = state.players.findIndex((p) => p.userId === userId);
-      const nextPlayer = state.players[(idx + 1) % state.players.length];
+      const winningBank = newTotal >= WINNING_SCORE;
 
-      state = {
-        ...state,
-        scores: { ...state.scores, [userId]: newTotal },
-        turnScore: 0,
-        currentTurn: nextPlayer.userId,
-        turnNumber: state.turnNumber + 1,
-        rollsThisTurn: 0,
-        dice: Array.from({ length: 6 }, () => Math.floor(Math.random() * 6) + 1),
-        hasHotDice: false,
-      };
+      if (winningBank) {
+        state = {
+          ...state,
+          scores: { ...state.scores, [userId]: newTotal },
+          turnScore: 0,
+          currentTurn: userId,
+          rollsThisTurn: 0,
+          hasHotDice: false,
+        };
+      } else {
+        // Pass turn to next player only when this bank does not immediately win.
+        const idx = state.players.findIndex((p) => p.userId === userId);
+        const nextPlayer = state.players[(idx + 1) % state.players.length];
+
+        state = {
+          ...state,
+          scores: { ...state.scores, [userId]: newTotal },
+          turnScore: 0,
+          currentTurn: nextPlayer.userId,
+          turnNumber: state.turnNumber + 1,
+          rollsThisTurn: 0,
+          dice: Array.from({ length: 6 }, () => Math.floor(Math.random() * 6) + 1),
+          hasHotDice: false,
+        };
+      }
 
       await appendAction(tx, roomId, userId, "bank_score", {
         banked: bankedAmount,
         totalScore: newTotal,
       });
 
-      // Check if AI is next
-      const aiNext =
-        state.players.some((p) => p.isAI && p.userId === state.currentTurn) &&
-        state.state === "playing";
-
       // Check game end (no final round — immediate win at 10k+)
       const endedResult = await settleIfEnded(tx, room, state);
+
+      // Check if AI is next after settlement. A winning bank must never schedule AI.
+      const aiNext =
+        !endedResult.ended &&
+        endedResult.state.players.some((p) => p.isAI && p.userId === endedResult.state.currentTurn) &&
+        endedResult.state.state === "playing";
       if (!endedResult.ended) {
         await tx
           .update(farkleRooms)
