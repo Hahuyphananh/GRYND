@@ -79,37 +79,12 @@ export async function settleIfEnded(tx, roomRow, state) {
   if (!ended.ended) return { state, ended: false };
 
   const payout = Math.floor(state.pot * 0.95);
-  await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} + ${payout}` })
-    .where(eq(users.clerkId, ended.winnerId));
-
-  // Update leaderboard counters for winner and loser. Stats failures should not
-  // prevent the authoritative game result from being saved.
   const winnerPlayer = state.players.find((p) => p.userId === ended.winnerId);
-  const loser = state.players.find((p) => !p.isAI && p.userId !== ended.winnerId);
-  const isPvp = !state.ai && state.players.length >= 2;
-
-  try {
-    if (winnerPlayer && !winnerPlayer.isAI) {
-      await applyLeaderboardCounters({
-        clerkId: ended.winnerId,
-        game: "farkle",
-        betAmount: state.wager,
-        payout,
-        isPvpWin: isPvp,
-      });
-    }
-    if (loser) {
-      await applyLeaderboardCounters({
-        clerkId: loser.userId,
-        game: "farkle",
-        betAmount: state.wager,
-        payout: 0,
-      });
-    }
-  } catch (err) {
-    console.error("Failed to update Farkle leaderboard counters", err);
+  if (winnerPlayer && !winnerPlayer.isAI) {
+    await tx
+      .update(users)
+      .set({ balance: sql`${users.balance} + ${payout}` })
+      .where(eq(users.clerkId, ended.winnerId));
   }
 
   state.winnerId = ended.winnerId;
@@ -126,6 +101,43 @@ export async function settleIfEnded(tx, roomRow, state) {
     payout,
     scores: ended.scores,
   };
+}
+
+
+/**
+ * Record leaderboard stats after the authoritative Farkle transaction commits.
+ * This intentionally runs outside the game-state transaction because the
+ * leaderboard helper uses its own DB connection and also updates users rows.
+ */
+export async function recordFarkleLeaderboardResults({ state, winnerId, payout = 0 }) {
+  if (!state || !winnerId) return;
+
+  try {
+    const winnerPlayer = state.players?.find((p) => p.userId === winnerId);
+    const loser = state.players?.find((p) => !p.isAI && p.userId !== winnerId);
+    const isPvp = !state.ai && (state.players?.length ?? 0) >= 2;
+
+    if (winnerPlayer && !winnerPlayer.isAI) {
+      await applyLeaderboardCounters({
+        clerkId: winnerId,
+        game: "farkle",
+        betAmount: state.wager,
+        payout,
+        isPvpWin: isPvp,
+      });
+    }
+
+    if (loser) {
+      await applyLeaderboardCounters({
+        clerkId: loser.userId,
+        game: "farkle",
+        betAmount: state.wager,
+        payout: 0,
+      });
+    }
+  } catch (err) {
+    console.error("Failed to update Farkle leaderboard counters", err);
+  }
 }
 
 export {
