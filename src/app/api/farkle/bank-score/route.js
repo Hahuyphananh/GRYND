@@ -6,10 +6,10 @@ import {
   farkleRooms,
   loadRoom,
   requireUser,
+  recordFarkleLeaderboardResults,
   settleIfEnded,
-  validateMove,
 } from "../_lib";
-import { calculateScore } from "../../../../../game-engine/farkleEngine";
+import { calculateScore, getScoringIndices, WINNING_SCORE } from "../../../../../game-engine/farkleEngine";
 
 export async function POST(req) {
   try {
@@ -22,68 +22,92 @@ export async function POST(req) {
       const room = await loadRoom(roomId, tx);
       let state = room.gameState;
 
-      // Process scoring dice first — must happen BEFORE validateMove
-      // because the dice score adds to turnScore, which validateMove checks
-      let comboScore = 0;
-      let selectedDice = [];
-      if (indices && Array.isArray(indices) && indices.length > 0) {
-        selectedDice = indices.map((i) => state.dice[i]);
-        comboScore = calculateScore(selectedDice);
-        if (comboScore <= 0)
-          throw new Error("Selected dice are not a valid scoring combination");
+      if (state.state !== "playing") throw new Error("Game is not active");
+      if (state.currentTurn !== userId) throw new Error("Not your turn");
+      if (state.rollsThisTurn === 0 && state.turnScore <= 0) {
+        throw new Error("Roll before banking");
+      }
 
-        const newTurnScore = state.turnScore + comboScore;
+      // Bank should be resilient even if the client did not submit dice indices.
+      // Prefer valid manual selections; otherwise auto-score all currently scoring dice.
+      const submittedIndices = Array.isArray(indices) ? indices : [];
+      const validSubmittedIndices = submittedIndices.filter(
+        (idx) => Number.isInteger(idx) && idx >= 0 && idx < state.dice.length,
+      );
+      let indicesToScore = validSubmittedIndices;
+      let selectedDice = indicesToScore.map((i) => state.dice[i]);
+      let comboScore = selectedDice.length > 0 ? calculateScore(selectedDice) : 0;
+      let autoSelected = validSubmittedIndices.length === 0;
 
+      if (comboScore <= 0 && state.dice.length > 0) {
+        autoSelected = true;
+        indicesToScore = getScoringIndices(state.dice);
+        selectedDice = indicesToScore.map((i) => state.dice[i]);
+        comboScore = selectedDice.length > 0 ? calculateScore(selectedDice) : 0;
+      }
+
+      if (comboScore > 0) {
         state = {
           ...state,
-          turnScore: newTurnScore,
+          turnScore: state.turnScore + comboScore,
         };
-      }
 
-      // Validate on the updated state (turnScore includes selected dice)
-      validateMove(state, userId, "bank_score");
-
-      // Log the selection action if dice were scored
-      if (indices && Array.isArray(indices) && indices.length > 0) {
         await appendAction(tx, roomId, userId, "select_scoring_dice", {
-          indices,
+          indices: indicesToScore,
           comboScore,
           selectedDice,
+          autoSelected,
         });
       }
+
+      if (state.turnScore <= 0) throw new Error("No points to bank");
 
       // Add turn score to player's permanent score
       const currentScore = state.scores[userId] ?? 0;
       const bankedAmount = state.turnScore;
       const newTotal = currentScore + bankedAmount;
 
-      // Pass turn to next player
-      const idx = state.players.findIndex((p) => p.userId === userId);
-      const nextPlayer = state.players[(idx + 1) % state.players.length];
+      const winningBank = newTotal >= WINNING_SCORE;
 
-      state = {
-        ...state,
-        scores: { ...state.scores, [userId]: newTotal },
-        turnScore: 0,
-        currentTurn: nextPlayer.userId,
-        turnNumber: state.turnNumber + 1,
-        rollsThisTurn: 0,
-        dice: Array.from({ length: 6 }, () => Math.floor(Math.random() * 6) + 1),
-        hasHotDice: false,
-      };
+      if (winningBank) {
+        state = {
+          ...state,
+          scores: { ...state.scores, [userId]: newTotal },
+          turnScore: 0,
+          currentTurn: userId,
+          rollsThisTurn: 0,
+          hasHotDice: false,
+        };
+      } else {
+        // Pass turn to next player only when this bank does not immediately win.
+        const idx = state.players.findIndex((p) => p.userId === userId);
+        const nextPlayer = state.players[(idx + 1) % state.players.length];
+
+        state = {
+          ...state,
+          scores: { ...state.scores, [userId]: newTotal },
+          turnScore: 0,
+          currentTurn: nextPlayer.userId,
+          turnNumber: state.turnNumber + 1,
+          rollsThisTurn: 0,
+          dice: Array.from({ length: 6 }, () => Math.floor(Math.random() * 6) + 1),
+          hasHotDice: false,
+        };
+      }
 
       await appendAction(tx, roomId, userId, "bank_score", {
         banked: bankedAmount,
         totalScore: newTotal,
       });
 
-      // Check if AI is next
-      const aiNext =
-        state.players.some((p) => p.isAI && p.userId === state.currentTurn) &&
-        state.state === "playing";
-
       // Check game end (no final round — immediate win at 10k+)
       const endedResult = await settleIfEnded(tx, room, state);
+
+      // Check if AI is next after settlement. A winning bank must never schedule AI.
+      const aiNext =
+        !endedResult.ended &&
+        endedResult.state.players.some((p) => p.isAI && p.userId === endedResult.state.currentTurn) &&
+        endedResult.state.state === "playing";
       if (!endedResult.ended) {
         await tx
           .update(farkleRooms)
@@ -93,6 +117,10 @@ export async function POST(req) {
 
       return { ...endedResult, aiNext, state: endedResult.state };
     });
+
+    if (result.ended) {
+      await recordFarkleLeaderboardResults(result);
+    }
 
     return NextResponse.json({ success: true, ...result });
   } catch (e) {
