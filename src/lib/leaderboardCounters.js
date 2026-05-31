@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless";
+import { invalidateOnGameSettlement, invalidateBigWins } from "./redis/invalidation";
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -110,5 +111,12 @@ export async function applyLeaderboardCounters({
       FROM users
       WHERE clerk_id = ${clerkId}
     `;
+
+    // Invalidate big-wins feed cache (new big win recorded)
+    invalidateBigWins().catch(() => {});
   }
+
+  // Invalidate caches affected by this game settlement.
+  // Fire-and-forget — don't block the settlement response on cache ops.
+  invalidateOnGameSettlement(clerkId).catch(() => {});
 }

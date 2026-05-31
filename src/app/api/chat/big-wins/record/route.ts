@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
+import { invalidateBigWins } from "../../../../../lib/redis/invalidation";
 
 const MINIMUM_BIG_WIN_AMOUNT = 1000000; // 1 million tokens
 
@@ -43,5 +44,9 @@ export async function POST(request: NextRequest) {
       { error: "Failed to record big win" },
       { status: 500 }
     );
+  } finally {
+    // Invalidate big-wins feed cache (new win recorded or error).
+    // Fire-and-forget — don't block the response.
+    invalidateBigWins().catch(() => {});
   }
 }

@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
+import { invalidateOnGameSettlement } from "../../../../lib/redis/invalidation";
 
 async function handler({ betId, result }) {
   const { userId } = await auth();
@@ -91,6 +92,10 @@ async function handler({ betId, result }) {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
+  } finally {
+    // Invalidate caches after bet settlement.
+    // Fire-and-forget — don't block the response.
+    invalidateOnGameSettlement().catch(() => {});
   }
 }
 

@@ -3,6 +3,10 @@
     {
       "path": "/api/jobs/weekly-reset",
       "schedule": "0 0 * * 1"
+    },
+    {
+      "path": "/api/jobs/cache-stats-log",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

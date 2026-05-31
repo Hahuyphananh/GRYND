@@ -4,22 +4,41 @@ import {
   fetchWinsLeaderboard,
   normalizeLeaderboardOffset,
 } from "../../../../lib/leaderboardQueries";
+import { cacheOrFetch } from "../../../../lib/redis/cache";
+import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
 
 export async function GET(request) {
-  const { userId } = await auth();
   const { searchParams } = new URL(request.url);
   const limit = clampLeaderboardLimit(searchParams.get("limit"));
   const offset = normalizeLeaderboardOffset(searchParams.get("offset"));
 
   try {
     const { userId } = await auth();
-    const { items, me } = await fetchWinsLeaderboard({
-      limit,
-      offset,
-      clerkId: userId,
-    });
+    const cacheKey = CacheKeys.leaderboard.wins(limit, offset);
 
-    return Response.json({ items, me, limit, offset });
+    const result = await cacheOrFetch(
+      cacheKey,
+      CacheTTL.leaderboard,
+      () =>
+        fetchWinsLeaderboard({
+          limit,
+          offset,
+          clerkId: null, // Don't cache user-specific "me" data
+        }),
+    );
+
+    // Compute "me" from cached items when user is in the results
+    const items = result.items;
+    let me = null;
+    if (userId && Array.isArray(items)) {
+      me = items.find((item) => item.clerk_id === userId) || null;
+    }
+
+    return Response.json({ items, me, limit, offset }, {
+      headers: {
+        "Cache-Control": "public, s-maxage=30, stale-while-revalidate=15",
+      },
+    });
   } catch (error) {
     console.error("❌ Failed to load wins leaderboard:", error);
     return Response.json(

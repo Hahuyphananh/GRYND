@@ -7,6 +7,8 @@ import {
   fetchDailyStreakLeaderboard,
   fetchWeeklyStreakLeaderboard,
 } from "../../../../lib/leaderboardQueries";
+import { cacheOrFetch } from "../../../../lib/redis/cache";
+import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
 
 /**
  * GET /api/leaderboard/daily-streak?type=current&limit=50
@@ -27,27 +29,42 @@ export async function GET(request) {
     const offset = normalizeLeaderboardOffset(searchParams.get("offset"));
 
     const { userId } = await auth();
+    const cacheKey = CacheKeys.leaderboard.dailyStreak(rawType, limit, offset);
 
-    let items, me;
+    const result = await cacheOrFetch(
+      cacheKey,
+      CacheTTL.leaderboard,
+      () => {
+        if (rawType === "weekly-current" || rawType === "weekly-best") {
+          return fetchWeeklyStreakLeaderboard({
+            type: rawType,
+            limit,
+            offset,
+            clerkId: null, // Don't cache user-specific "me" data
+          });
+        }
+        const type = rawType === "best" ? "best" : "current";
+        return fetchDailyStreakLeaderboard({
+          type,
+          limit,
+          offset,
+          clerkId: null, // Don't cache user-specific "me" data
+        });
+      },
+    );
 
-    if (rawType === "weekly-current" || rawType === "weekly-best") {
-      ({ items, me } = await fetchWeeklyStreakLeaderboard({
-        type: rawType,
-        limit,
-        offset,
-        clerkId: userId,
-      }));
-    } else {
-      const type = rawType === "best" ? "best" : "current";
-      ({ items, me } = await fetchDailyStreakLeaderboard({
-        type,
-        limit,
-        offset,
-        clerkId: userId,
-      }));
+    // Compute "me" from cached items when user is in the results
+    const items = result.items;
+    let me = null;
+    if (userId && Array.isArray(items)) {
+      me = items.find((item) => item.clerk_id === userId) || null;
     }
 
-    return NextResponse.json({ items, me, type: rawType, limit, offset });
+    return NextResponse.json({ items, me, type: rawType, limit, offset }, {
+      headers: {
+        "Cache-Control": "public, s-maxage=30, stale-while-revalidate=15",
+      },
+    });
   } catch (error) {
     console.error("❌ Failed to load daily streak leaderboard:", error);
     return NextResponse.json(

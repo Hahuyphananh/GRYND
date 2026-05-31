@@ -2,6 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../db/neon";
 import { getLevelProgress, getUserLevel } from "../../../lib/vipLevels";
 import { getHighestTitle } from "../../../lib/titles";
+import { cacheOrFetch } from "../../../lib/redis/cache";
+import { CacheKeys, CacheTTL } from "../../../lib/redis/keys";
 
 // 👇 ADD THESE (from your history route)
 import { db } from "../../../db";
@@ -55,6 +57,10 @@ export async function GET() {
 
     const uid = dbUser.id;
     const clerkId = userId;
+    const cacheKey = CacheKeys.userStats(clerkId);
+
+    // Cache the heavy stat computation. Side-effect writes happen only on miss.
+    const stats = await cacheOrFetch(cacheKey, CacheTTL.userStats, async () => {
 
     // ✅ Fetch all bets
     const [
@@ -218,55 +224,58 @@ export async function GET() {
       VALUES (${uid}, ${favoriteGame})
       ON CONFLICT (user_id)
       DO UPDATE SET favorite_game = EXCLUDED.favorite_game;
-    `;
+    `;      // ✅ Get user meta (level, referrals)
+      const rows = await sql`
+        SELECT
+          referral_code,
+          referral_count,
+          referral_earnings,
+          total_wagered,
+          level
+        FROM users
+        WHERE clerk_id = ${userId}
+        LIMIT 1
+      `;
 
-    // ✅ Get user meta (level, referrals)
-    const rows = await sql`
-      SELECT
-        referral_code,
-        referral_count,
-        referral_earnings,
-        total_wagered,
-        level
-      FROM users
-      WHERE clerk_id = ${userId}
-      LIMIT 1
-    `;
+      const row = rows[0];
 
-    const row = rows[0];
+      const computedLevel = getUserLevel(totalWagered);
+      const progress = getLevelProgress(totalWagered);
+      const computedHighestTitle = getHighestTitle(computedLevel)?.title || null;
 
-    const computedLevel = getUserLevel(totalWagered);
-    const progress = getLevelProgress(totalWagered);
-    const computedHighestTitle = getHighestTitle(computedLevel)?.title || null;
+      // Only update level / highest_title here. total_wagered is maintained
+      // incrementally by applyLeaderboardCounters and must NOT be overwritten.
+      await sql`
+        UPDATE users
+        SET level = ${computedLevel},
+            highest_title = COALESCE(${computedHighestTitle}, highest_title)
+        WHERE clerk_id = ${userId}
+      `;
 
-    // Only update level / highest_title here. total_wagered is maintained
-    // incrementally by applyLeaderboardCounters and must NOT be overwritten.
-    await sql`
-      UPDATE users
-      SET level = ${computedLevel},
-          highest_title = COALESCE(${computedHighestTitle}, highest_title)
-      WHERE clerk_id = ${userId}
-    `;
+      const statsResult = {
+        totalBets,
+        totalWins: wins,
+        totalLosses: losses,
+        winRate,
+        biggestWin,
+        favoriteGame,
+        referrals: Number(row?.referral_count || 0),
+        referralEarnings: Number(row?.referral_earnings || 0),
+        referralCode: row?.referral_code || "",
+        totalWagered,
+        currentLevel: computedLevel,
+        levelProgress: progress,
+      };
+
+      return statsResult;
+    });
 
     return new Response(
       JSON.stringify({
         success: true,
-        stats: {
-          totalBets,
-          totalWins: wins,
-          totalLosses: losses,
-          winRate,
-          biggestWin,
-          favoriteGame,
-          referrals: Number(row?.referral_count || 0),
-          referralEarnings: Number(row?.referral_earnings || 0),
-          referralCode: row?.referral_code || "",
-          totalWagered,
-          currentLevel: computedLevel,
-          levelProgress: progress,
-        },
+        stats,
       }),
-      { status: 200 },
+      { status: 200, headers: { "Cache-Control": "private, s-maxage=120, stale-while-revalidate=60" } },
     );
   } catch (error) {
     console.error("[USER_STATS_ERROR]", error);
