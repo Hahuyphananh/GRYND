@@ -80,7 +80,6 @@ function getLimitForPath(pathname: string): LimitConfig | null {
 }
 
 function applySecurityHeaders(response: NextResponse) {
-  response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Frame-Options", "SAMEORIGIN");
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
@@ -90,11 +89,11 @@ function applySecurityHeaders(response: NextResponse) {
     "Content-Security-Policy",
     "default-src 'self'; " +
       "script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https:; " +
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.tawk.to https://cdn.jsdelivr.net; " +
       "img-src 'self' data: blob: https:; " +
-      "font-src 'self' data: https://fonts.gstatic.com; " +
+      "font-src 'self' data: https://fonts.gstatic.com https://*.tawk.to; " +
       "connect-src 'self' https: wss:; " +
-      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev; " +
+      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://*.tawk.to https://embed.tawk.to; " +
       "worker-src 'self' blob:; " +
       "frame-ancestors 'self'; " +
       "base-uri 'self'; " +
