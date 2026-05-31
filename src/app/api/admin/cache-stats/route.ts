@@ -6,17 +6,8 @@ import {
   invalidateRecentGames,
   invalidateBigWins,
 } from "../../../../lib/redis/invalidation";
-import { auditLog } from "../../../../lib/security/auditLog";
-
-// ── Admin guard ──────────────────────────────────────────────────
-// Shared with /api/admin/flush-cache and other admin routes.
-function isAdmin(userId: string): boolean {
-  const admins = (process.env.CHAT_ADMIN_CLERK_IDS || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-  return admins.includes(userId);
-}
+import { adminAuditLog } from "../../../../lib/security/adminAuditLog";
+import { isAdmin } from "../../../../lib/auth/isAdmin";
 
 // ── Domain name map ──────────────────────────────────────────────
 
@@ -37,7 +28,7 @@ export async function GET() {
         { success: false, error: "Unauthorized" },
         { status: 401 },
       );
-    if (!isAdmin(userId))
+    if (!(await isAdmin(userId)))
       return NextResponse.json(
         { success: false, error: "Forbidden — admin access required" },
         { status: 403 },
@@ -105,7 +96,7 @@ export async function DELETE(req: NextRequest) {
         { success: false, error: "Unauthorized" },
         { status: 401 },
       );
-    if (!isAdmin(userId))
+    if (!(await isAdmin(userId)))
       return NextResponse.json(
         { success: false, error: "Forbidden — admin access required" },
         { status: 403 },
@@ -128,7 +119,11 @@ export async function DELETE(req: NextRequest) {
     }
 
     resetCacheStats();
-    auditLog("admin_cache_stats_reset", { userId, flushRequested: shouldFlush });
+    // Persist to admin_audit_logs table + console
+    adminAuditLog("admin_cache_stats_reset", {
+      clerkId: userId,
+      details: { flushRequested: shouldFlush },
+    }).catch(() => {});
 
     return NextResponse.json(
       {

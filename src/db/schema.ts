@@ -72,6 +72,7 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   searchName: varchar("search_name", { length: 255 }),
   termsAccepted: boolean("terms_accepted").notNull().default(false),
+  isAdmin: boolean("is_admin").notNull().default(false),
 });
 
 export const friendRelations = pgTable(
@@ -1019,6 +1020,23 @@ export const hexDuelGames = pgTable(
   (table) => ({
     player1Idx: index("hex_duel_player1_idx").on(table.player1Id, table.createdAt),
     createdIdx: index("hex_duel_created_idx").on(table.createdAt),
+  }),
+);
+
+// ADMIN AUDIT LOGS — persisted record of all admin actions
+export const adminAuditLogs = pgTable(
+  "admin_audit_logs",
+  {
+    id: serial("id").primaryKey(),
+    event: varchar("event", { length: 100 }).notNull(),
+    clerkId: varchar("clerk_id", { length: 255 }).notNull(),
+    targetClerkId: varchar("target_clerk_id", { length: 255 }),
+    details: jsonb("details").default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    adminAuditEventIdx: index("idx_admin_audit_event").on(table.event, table.createdAt),
+    adminAuditClerkIdx: index("idx_admin_audit_clerk").on(table.clerkId, table.createdAt),
   }),
 );
 

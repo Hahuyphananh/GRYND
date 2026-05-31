@@ -253,6 +253,21 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     }
   }
 
+  // Admin route gate: fast edge-compatible first line of defense.
+  // The page itself also checks DB-backed is_admin as the primary gate.
+  if (pathname.startsWith("/admin")) {
+    const adminIds = (process.env.CHAT_ADMIN_CLERK_IDS || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    // Only enforce when env var is configured; otherwise let the page-level
+    // DB check handle it (e.g. when using DB-only admin management).
+    if (adminIds.length > 0 && !adminIds.includes(userId)) {
+      auditLog("admin_access_denied", { userId, ip, path: pathname });
+      return applySecurityHeaders(NextResponse.redirect(new URL("/", req.url)));
+    }
+  }
+
   return applySecurityHeaders(NextResponse.next());
 };
 

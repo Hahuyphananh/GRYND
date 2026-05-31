@@ -6,21 +6,8 @@ import {
   invalidateBigWins,
 } from "../../../../lib/redis/invalidation";
 import { cacheDeletePattern, resetCacheStats } from "../../../../lib/redis/cache";
-import { auditLog } from "../../../../lib/security/auditLog";
-
-// ── Admin guard ──────────────────────────────────────────────────
-// Reads from CHAT_ADMIN_CLERK_IDS, a comma-separated list of Clerk
-// user IDs that are allowed to access admin endpoints.
-// This env var is reused across /api/chat/moderate, /api/security/metrics,
-// and now /api/admin/flush-cache.
-
-function isAdmin(userId: string): boolean {
-  const admins = (process.env.CHAT_ADMIN_CLERK_IDS || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-  return admins.includes(userId);
-}
+import { adminAuditLog } from "../../../../lib/security/adminAuditLog";
+import { isAdmin } from "../../../../lib/auth/isAdmin";
 
 // ── Supported flush scopes ───────────────────────────────────────
 
@@ -52,7 +39,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!isAdmin(userId)) {
+    if (!(await isAdmin(userId))) {
       return NextResponse.json(
         { success: false, error: "Forbidden — admin access required" },
         { status: 403 },
@@ -107,7 +94,11 @@ export async function POST(req: NextRequest) {
     // Reset in-memory stats so hit-rate numbers align post-flush
     resetCacheStats();
 
-    auditLog("admin_cache_flush", { userId, scope, flushed });
+    // Persist to admin_audit_logs table + console
+    adminAuditLog("admin_cache_flush", {
+      clerkId: userId,
+      details: { scope, flushed },
+    }).catch(() => {});
 
     return NextResponse.json(
       {

@@ -12,6 +12,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animations";
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
+import AdminBadge from "./AdminBadge";
 
 const NAV_TRANSLATION_KEYS = {
   "/": "nav.home",
@@ -40,6 +41,39 @@ function NavigationBar({ currentPath }) {
   const [langOpen, setLangOpen] = useState(false);
   const [langClosing, setLangClosing] = useState(false);
   const [level, setLevel] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Fetch admin status from DB-backed API on mount
+  // Uses sessionStorage to cache across page navigations within a session
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const cacheKey = `admin:${user.id}`;
+
+    // Check sessionStorage cache first
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached !== null) {
+        setIsAdmin(cached === "true");
+        return;
+      }
+    } catch {
+      // sessionStorage unavailable (e.g. SSR)
+    }
+
+    fetch("/api/user/is-admin")
+      .then((res) => res.json())
+      .then((data) => {
+        const isAdminVal = data.isAdmin === true;
+        setIsAdmin(isAdminVal);
+        try {
+          sessionStorage.setItem(cacheKey, String(isAdminVal));
+        } catch {
+          // ignore
+        }
+      })
+      .catch(() => setIsAdmin(false));
+  }, [user?.id]);
 
   const navVariant = withReducedMotion(shouldReduceMotion, fadeUp);
   const itemVariant = withReducedMotion(shouldReduceMotion, fadeUp);
@@ -232,6 +266,22 @@ function NavigationBar({ currentPath }) {
                   </Link>
                 </motion.div>
               ))}
+              {isAdmin && isSignedIn && (
+                <motion.div
+                  key="/admin"
+                  initial={itemVariant.initial}
+                  animate={itemVariant.animate}
+                  transition={itemVariant.transition}
+                  whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
+                >
+                  <Link
+                    href="/admin"
+                    className={`px-3 py-2 text-sm font-medium ${currentPath === "/admin" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#ff8c42] hover:text-[#ffb347]"}`}
+                  >
+                    ⚙️ Admin
+                  </Link>
+                </motion.div>
+              )}
             </motion.div>
 
             <div className="flex items-center gap-2 sm:gap-4">
@@ -295,11 +345,12 @@ function NavigationBar({ currentPath }) {
                         </div>
                       )}
                       <div className="flex flex-col leading-tight">
-                        <span className="text-xs text-[#c9f7ff]">
+                        <span className="text-xs text-[#c9f7ff] flex items-center gap-1.5">
                           {profile?.name ||
                             user?.username ||
                             user?.firstName ||
                             t("nav.user_fallback")}
+                          {isAdmin && <AdminBadge />}
                         </span>
                         <span className="text-[10px] text-[#f5ff3b]">
                           {profile?.selectedTitle || "No title equipped"}
@@ -387,7 +438,7 @@ function NavigationBar({ currentPath }) {
                 >
                   <img src={avatarSrc} className="h-10 w-10 rounded-full" />
                   <div>
-                    <div className="text-[#c9f7ff] text-sm">{profile?.name || "User"}</div>
+                    <div className="text-[#c9f7ff] text-sm flex items-center gap-1.5">{profile?.name || "User"}{isAdmin && <AdminBadge />}</div>
                     <div className="text-xs text-[#f5ff3b]">{profile?.selectedTitle}</div>
                     {profile?.streakTitle && (
                       <div className="text-xs text-amber-400">🔥 {profile.streakTitle}</div>
@@ -415,8 +466,16 @@ function NavigationBar({ currentPath }) {
                     {t(NAV_TRANSLATION_KEYS[path])}
                   </Link>
                 ))}
-              </div>
-              {/* MOBILE AUTH BUTTONS */}
+                {isAdmin && isSignedIn && (
+                <Link
+                  href="/admin"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block rounded-lg bg-[#091737] px-3 py-2 text-[#ff8c42]"
+                >
+                  ⚙️ Admin
+                </Link>
+              )}
+            </div>
               {!isSignedIn && (
                 <div className="grid grid-cols-2 gap-2">
                   <Link
