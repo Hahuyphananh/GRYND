@@ -1,6 +1,16 @@
 import { neon } from "@neondatabase/serverless";
 
-const sql = neon(process.env.DATABASE_URL);
+let _sql = null;
+function getSql() {
+  if (_sql) return _sql;
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not set. Set it in your runtime environment (for example, Vercel Project Settings > Environment Variables).",
+    );
+  }
+  _sql = neon(process.env.DATABASE_URL);
+  return _sql;
+}
 
 export const LEADERBOARD_CATEGORIES = [
   "level",
@@ -15,7 +25,7 @@ let leaderboardColumnCache = null;
 async function getLeaderboardColumns() {
   if (leaderboardColumnCache) return leaderboardColumnCache;
 
-  const result = await sql.query(
+  const result = await getSql().query(
     `
       SELECT table_name, column_name
       FROM information_schema.columns
@@ -212,7 +222,7 @@ async function fetchRankedRows({
       ? "(SELECT row_to_json(ranked) FROM ranked WHERE clerk_id = $3 LIMIT 1) AS me"
       : "NULL AS me";
 
-  const result = await sql.query(
+  const result = await getSql().query(
     `
       WITH ranked AS (
         SELECT

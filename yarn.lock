@@ -5429,6 +5429,13 @@ supports-preserve-symlinks-flag@^1.0.0:
   resolved "https://registry.npmjs.org/supports-preserve-symlinks-flag/-/supports-preserve-symlinks-flag-1.0.0.tgz"
   integrity sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==
 
+svix@^1.95.1:
+  version "1.95.1"
+  resolved "https://registry.npmjs.org/svix/-/svix-1.95.1.tgz"
+  integrity sha512-Vtsbzsvs4lzXJneruB5HiZmV7dlhAjbo6dGid2Qxi9bv+LutLz7Yt3NORI4SYqRTNWPhVoFAA8TG/WXB+mIzNQ==
+  dependencies:
+    standardwebhooks "1.0.0"
+
 svix@1.92.2:
   version "1.92.2"
   resolved "https://registry.npmjs.org/svix/-/svix-1.92.2.tgz"

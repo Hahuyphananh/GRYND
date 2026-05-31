@@ -1,7 +1,17 @@
 import { neon } from "@neondatabase/serverless";
 import { invalidateOnGameSettlement, invalidateBigWins } from "./redis/invalidation";
 
-const sql = neon(process.env.DATABASE_URL);
+let _sql = null;
+function getSql() {
+  if (_sql) return _sql;
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not set. Set it in your runtime environment (for example, Vercel Project Settings > Environment Variables).",
+    );
+  }
+  _sql = neon(process.env.DATABASE_URL);
+  return _sql;
+}
 
 export async function applyLeaderboardCounters({
   clerkId,
@@ -17,7 +27,7 @@ export async function applyLeaderboardCounters({
 
   if (!clerkId || bet <= 0) return;
 
-  await sql`
+  await getSql()`
     WITH updated_user AS (
       UPDATE users
       SET total_wagered = total_wagered + ${bet},
@@ -105,7 +115,7 @@ export async function applyLeaderboardCounters({
   `;
 
   if (multiplier >= 10) {
-    await sql`
+    await getSql()`
       INSERT INTO big_wins (id, user_id, username, game, bet_amount, win_amount, multiplier)
       SELECT gen_random_uuid(), clerk_id, name, ${game}, ${bet}, ${win}, ${multiplier}
       FROM users
