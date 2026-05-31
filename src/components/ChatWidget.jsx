@@ -89,6 +89,40 @@ export default function ChatWidget() {
   const [activeTab, setActiveTab] = useState("chat");
   const [bigWins, setBigWins] = useState([]);
   const [isLoadingBigWins, setIsLoadingBigWins] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Fetch admin status from DB-backed API on mount
+  // Uses sessionStorage to cache across page navigations within a session
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const cacheKey = `admin:${user.id}`;
+
+    // Check sessionStorage cache first
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached !== null) {
+        setIsAdmin(cached === "true");
+        return;
+      }
+    } catch {
+      // sessionStorage unavailable (e.g. SSR)
+    }
+
+    fetch("/api/user/is-admin")
+      .then((res) => res.json())
+      .then((data) => {
+        const isAdminVal = data.isAdmin === true;
+        setIsAdmin(isAdminVal);
+        try {
+          sessionStorage.setItem(cacheKey, String(isAdminVal));
+        } catch {
+          // ignore
+        }
+      })
+      .catch(() => setIsAdmin(false));
+  }, [user?.id]);
+
   const { socket } = useSocket();
   const messagesContainerRef = useRef(null);
 
@@ -109,15 +143,6 @@ export default function ChatWidget() {
 
     return null;
   }, [pathname]);
-
-  const isAdmin = useMemo(() => {
-    if (!user?.id) return false;
-    const admins = (process.env.NEXT_PUBLIC_CHAT_ADMIN_CLERK_IDS || "")
-      .split(",")
-      .map((id) => id.trim())
-      .filter(Boolean);
-    return admins.includes(user.id);
-  }, [user?.id]);
 
   async function loadMessages() {
     if (!room) return;

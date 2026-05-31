@@ -5,15 +5,7 @@ import { db } from "../../../../db/client";
 import { chatMessages } from "../../../../db/schema";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { auditLog } from "../../../../lib/security/auditLog";
-
-function isAdmin(userId) {
-  const list = (process.env.CHAT_ADMIN_CLERK_IDS || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-
-  return list.includes(userId);
-}
+import { isAdmin } from "../../../../lib/auth/isAdmin";
 
 export async function POST(req) {
   try {
@@ -23,7 +15,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!isAdmin(userId)) {
+    if (!(await isAdmin(userId))) {
       auditLog("chat_moderation_forbidden", {
         userId,
         path: "/api/chat/moderate",
