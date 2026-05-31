@@ -22,6 +22,7 @@
  */
 
 import { neon } from "@neondatabase/serverless";
+import { invalidateBigWins } from "./redis/invalidation";
 
 const MINIMUM_BIG_WIN_AMOUNT = 1000000; // 1 million tokens
 
@@ -61,6 +62,10 @@ export async function recordBigWinIfNeeded(record: BigWinRecord): Promise<boolea
     `;
 
     console.log(`🎉 Big Win recorded: ${record.username} won ${record.winAmount.toLocaleString()} tokens on ${record.game}`);
+
+    // Invalidate big-wins feed cache (event-driven invalidation)
+    invalidateBigWins().catch(() => {});
+
     return true;
   } catch (error) {
     // Log error but don't fail the game flow
