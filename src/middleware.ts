@@ -227,11 +227,15 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     return applySecurityHeaders(NextResponse.redirect(new URL("/sign-in", req.url)));
   }
 
-  // ONLY enforce age on protected app routes, NOT on /sync or onboarding
-  const isOnboardingOrSync =
-    pathname.startsWith("/sync") || pathname.startsWith("/complete-profile");
+  // ONLY enforce age on protected app routes, NOT on /sync, onboarding,
+  // or the admin dashboard. /admin stays authenticated here and is DB-admin
+  // gated by src/app/admin/page.tsx before the dashboard can render.
+  const skipsAgeGate =
+    pathname.startsWith("/sync") ||
+    pathname.startsWith("/complete-profile") ||
+    pathname.startsWith("/admin");
 
-  if (!isOnboardingOrSync) {
+  if (!skipsAgeGate) {
     const age = sessionClaims?.age;
 
     if (!age) {
