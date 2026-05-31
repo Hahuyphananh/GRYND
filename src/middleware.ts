@@ -254,17 +254,25 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
 
   // Admin route gate: fast edge-compatible first line of defense.
   // The page itself also checks DB-backed is_admin as the primary gate.
+  // The env var acts as a fast-allow list: if you're in it, you're definitely
+  // an admin. If you're NOT in it, we don't block — the page-level DB check
+  // (src/lib/auth/isAdmin.ts) will verify your is_admin column.
   if (pathname.startsWith("/admin")) {
     const adminIds = (process.env.CHAT_ADMIN_CLERK_IDS || "")
       .split(",")
       .map((id) => id.trim())
       .filter(Boolean);
-    // Only enforce when env var is configured; otherwise let the page-level
-    // DB check handle it (e.g. when using DB-only admin management).
     if (adminIds.length > 0 && !adminIds.includes(userId)) {
-      auditLog("admin_access_denied", { userId, ip, path: pathname });
-      return applySecurityHeaders(NextResponse.redirect(new URL("/", req.url)));
+      // User not in env var allowlist, but may still be admin via DB.
+      // Don't block — delegate to page-level DB-backed is_admin check.
+      auditLog("admin_middleware_delegated", {
+        userId,
+        ip,
+        path: pathname,
+        note: "not in env var allowlist, delegating to DB-backed page check",
+      });
     }
+    // If adminIds is empty or user IS in allowlist, let through to page.
   }
 
   return applySecurityHeaders(NextResponse.next());
