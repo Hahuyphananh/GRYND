@@ -7,6 +7,7 @@ import { ThemeProvider } from "../context/ThemeContext";
 import { SocketProvider } from "../context/SocketProvider";
 import PresenceHeartbeat from "../components/PresenceHeartbeat";
 import RouteTransition from "../components/RouteTransition";
+import { PostHogProvider } from "../components/PostHogProvider";
 
 function AppProviders({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
@@ -34,8 +35,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const clerkProps = publishableKey ? { publishableKey } : {};
 
   return (
-    <ClerkProvider {...clerkProps}>
-      <AppProviders>{children}</AppProviders>
-    </ClerkProvider>
+    <PostHogProvider>
+      <ClerkProvider {...clerkProps}>
+        <AppProviders>{children}</AppProviders>
+      </ClerkProvider>
+    </PostHogProvider>
   );
 }
