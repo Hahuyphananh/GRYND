@@ -55,6 +55,10 @@ const isPublicRoute = createRouteMatcher([
 
 const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
   {
+    pattern: /^\/api\/webhooks\/resend$/,
+    config: { windowMs: 60_000, max: 60 },
+  },
+  {
     pattern: /^\/api\/(webhooks\/clerk|debug-env)/,
     config: { windowMs: 60_000, max: 20 },
   },
