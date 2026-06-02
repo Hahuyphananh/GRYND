@@ -9,7 +9,7 @@
     "lint": "next lint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx ./src/db/migrate.ts",
-    "test": "node --test tests/security-authz.test.mjs",
+    "test": "node --test tests/security-authz.test.mjs tests/pvp-create-route-hardening.test.mjs",
     "test:runtime": "node --test tests/runtime-security-http.test.mjs"
   },
   "dependencies": {

@@ -110,6 +110,7 @@ function getLimitForPath(pathname: string): LimitConfig | null {
 }
 
 function applySecurityHeaders(response: NextResponse) {
+  response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Frame-Options", "SAMEORIGIN");
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
@@ -140,15 +141,50 @@ function applySecurityHeaders(response: NextResponse) {
   return response;
 }
 
-function isSameOriginMutation(req: Request) {
-  const origin = req.headers.get("origin");
-  const requestOrigin = req.headers.get("x-forwarded-proto")
-    ? `${req.headers.get("x-forwarded-proto")}://${req.headers.get("host")}`
-    : req.url
-      ? new URL(req.url).origin
-      : null;
+function getHeaderFirstValue(value: string | null) {
+  return value?.split(",")[0]?.trim() || null;
+}
 
-  if (origin && requestOrigin && origin === requestOrigin) {
+function normalizeOrigin(value: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.origin.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function getAllowedRequestOrigins(req: Request) {
+  const origins = new Set<string>();
+  const host =
+    getHeaderFirstValue(req.headers.get("x-forwarded-host")) ||
+    getHeaderFirstValue(req.headers.get("host"));
+  const proto =
+    getHeaderFirstValue(req.headers.get("x-forwarded-proto")) ||
+    (req.url ? new URL(req.url).protocol.replace(":", "") : "https");
+
+  if (host) origins.add(`${proto}://${host}`.toLowerCase());
+  if (req.url) origins.add(new URL(req.url).origin.toLowerCase());
+
+  for (const envOrigin of [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.APP_URL,
+    process.env.SITE_URL,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+  ]) {
+    const normalized = normalizeOrigin(envOrigin);
+    if (normalized) origins.add(normalized);
+  }
+
+  return origins;
+}
+
+function isSameOriginMutation(req: Request) {
+  const origin = normalizeOrigin(req.headers.get("origin"));
+
+  if (origin && getAllowedRequestOrigins(req).has(origin)) {
     return true;
   }
 
@@ -160,6 +196,12 @@ function isSameOriginMutation(req: Request) {
       fetchSite === "none" ||
       fetchSite === "")
   );
+}
+
+function hasRequestBody(req: Request) {
+  const contentLength = req.headers.get("content-length");
+  if (contentLength !== null) return Number(contentLength) > 0;
+  return Boolean(req.headers.get("transfer-encoding"));
 }
 
 const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => {
@@ -225,7 +267,11 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
 
     if (["POST", "PUT", "PATCH"].includes(req.method)) {
       const contentType = req.headers.get("content-type") || "";
-      if (!contentType.includes("application/json") && !pathname.startsWith("/api/webhooks/")) {
+      if (
+        hasRequestBody(req) &&
+        !contentType.includes("application/json") &&
+        !pathname.startsWith("/api/webhooks/")
+      ) {
         return applySecurityHeaders(
           NextResponse.json(
             {
@@ -308,9 +354,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
           ip,
           path: pathname,
         });
-        return applySecurityHeaders(
-          NextResponse.redirect(new URL("/", req.url))
-        );
+        return applySecurityHeaders(NextResponse.redirect(new URL("/", req.url)));
       }
     }
   }

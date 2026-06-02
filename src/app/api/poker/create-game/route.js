@@ -3,15 +3,36 @@ import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 
+function validateMaxPlayers(value) {
+  const maxPlayers = Number(value ?? 6);
+  if (!Number.isInteger(maxPlayers) || maxPlayers < 2 || maxPlayers > 9) {
+    return { error: "Invalid maxPlayers" };
+  }
+  return { maxPlayers };
+}
+
 export async function POST(req) {
   try {
-    const body = await req.json();
-    const maxPlayers = body.maxPlayers ?? 6;
-    const isPrivate = body.isPrivate ?? true;
-
     const { userId: clerkId } = await auth();
     if (!clerkId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
+    }
+
+    const parsed = validateMaxPlayers(body?.maxPlayers);
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+
+    const isPrivate = body?.isPrivate ?? true;
+    if (typeof isPrivate !== "boolean") {
+      return NextResponse.json({ error: "Invalid isPrivate" }, { status: 400 });
     }
 
     const gameCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -19,7 +40,7 @@ export async function POST(req) {
     const [newGame] = await db
       .insert(pokerGames)
       .values({
-        maxPlayers,
+        maxPlayers: parsed.maxPlayers,
         isPrivate,
         gameCode,
         status: "waiting",
@@ -40,6 +61,6 @@ export async function POST(req) {
     });
   } catch (err) {
     console.error("CREATE GAME ERROR", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: err?.message || "Server error" }, { status: 500 });
   }
 }
