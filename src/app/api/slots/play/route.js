@@ -4,6 +4,7 @@ import { users } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
+import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 
 export async function POST(req) {
   try {
@@ -132,6 +133,15 @@ export async function POST(req) {
       }).catch(() => {}); // Fire and forget
     }
 
+    // Fire system notification for large slots bets (≥ 1000 tokens)
+    if (bet >= 1000) {
+      sendSystemNotificationEmail({
+        eventType: "bet_placed",
+        description: `User ${userId} spun slots with ${bet} tokens (win: ${winAmount}, profit: ${winAmount - bet}).`,
+        metadata: { userId, bet, winAmount, matchCount },
+      }).catch((err) => console.warn("[system_notify] Failed to send slots:", err));
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -155,6 +165,13 @@ export async function POST(req) {
     });
   } catch (err) {
     console.error("Slots play error:", err);
+
+    sendSystemNotificationEmail({
+      eventType: "error_event",
+      description: `Slots error for user ${userId}: ${(err).message || "Unknown error"}`,
+      metadata: { userId, error: (err).stack?.slice(0, 500) || String(err) },
+    }).catch((ew) => console.warn("[system_notify] Failed to send slots error:", ew));
+
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

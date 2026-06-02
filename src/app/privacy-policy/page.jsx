@@ -102,7 +102,7 @@ export default function PrivacyPolicyPage() {
         >
           <p className="text-sm text-[#c9f7ff]/70">
             For privacy-related inquiries, contact us at{" "}
-            <span className="text-[#f5ff3b]">privacy@goonbet.com</span>
+            <span className="text-[#f5ff3b]">contact@goonbet.dedyn.io</span>
           </p>
         </motion.div>
       </div>

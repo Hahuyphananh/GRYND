@@ -1,14 +1,16 @@
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../db/neon";
 import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
+import { sendSystemNotificationEmail } from "../../../lib/emails/system";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req) {
+  const { userId } = await auth();
+
   try {
     const sql = getNeonSql();
-    const { userId } = await auth();
 
     if (!userId) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -203,12 +205,28 @@ export async function POST(req) {
       payout: 0,
     });
 
+    // Fire system notification for large sports bets (≥ 1000 tokens)
+    if (betAmount >= 1000) {
+      sendSystemNotificationEmail({
+        eventType: "bet_placed",
+        description: `User ${userId} placed a large sports bet of ${betAmount} tokens on event ${eventId} (choice: ${choice}).`,
+        metadata: { userId, betAmount, eventId, choice, odds },
+      }).catch((err) => console.warn("[system_notify] Failed to send:", err));
+    }
+
     return Response.json({
       success: true,
       newBalance,
     });
   } catch (error) {
     console.error("PLACE BET ERROR:", error);
+
+    // Send system notification on internal errors
+    sendSystemNotificationEmail({
+      eventType: "error_event",
+      description: `Sports-bet error for user ${userId}: ${(error).message || "Unknown error"}`,
+      metadata: { userId, error: (error).stack?.slice(0, 500) || String(error) },
+    }).catch((err) => console.warn("[system_notify] Failed to send error alert:", err));
 
     return Response.json({ error: "Internal server error" }, { status: 500 });
   }

@@ -74,6 +74,10 @@ export default function Footer() {
               <Link href="/profil" className={linkClass}>
                 Profile
               </Link>
+
+              <Link href="/contact" className={linkClass}>
+                Contact
+              </Link>
             </div>
           </div>
 

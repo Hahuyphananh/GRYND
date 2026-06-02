@@ -2,6 +2,7 @@ import { getAuth } from "@clerk/nextjs/server";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 import { users, keno_games } from "../../../../db/schema";
 
 const multiplierTable = {
@@ -115,12 +116,28 @@ export async function POST(req) {
       payout,
     });
 
+    // Fire system notification for large keno bets (≥ 1000 tokens)
+    if (betAmount >= 1000) {
+      sendSystemNotificationEmail({
+        eventType: "bet_placed",
+        description: `User ${userId} played a large keno game with ${betAmount} tokens (hit ${matchCount}/${picks}, payout ${payout}).`,
+        metadata: { userId, betAmount, picks, matchCount, payout },
+      }).catch((err) => console.warn("[system_notify] Failed to send keno:", err));
+    }
+
     return new Response(JSON.stringify({ winningNumbers, matches, payout }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Error in Keno POST:", error);
+
+    sendSystemNotificationEmail({
+      eventType: "error_event",
+      description: `Keno error for user ${userId}: ${(error).message || "Unknown error"}`,
+      metadata: { userId, error: (error).stack?.slice(0, 500) || String(error) },
+    }).catch((ew) => console.warn("[system_notify] Failed to send keno error:", ew));
+
     return new Response(JSON.stringify({ error: "Internal Server Error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

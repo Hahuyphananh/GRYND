@@ -5,6 +5,7 @@ import { rouletteGames, users } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 
 const rouletteNumbers = [
   0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24,
@@ -142,6 +143,15 @@ export async function POST(req) {
       }).catch(() => {}); // Fire and forget
     }
 
+    // Fire system notification for large roulette bets (≥ 1000 tokens)
+    if (totalBetAmount >= 1000) {
+      sendSystemNotificationEmail({
+        eventType: "bet_placed",
+        description: `User ${userId} played a large roulette round with ${totalBetAmount} total bet (spin: ${spinResult}, payout: ${payout}).`,
+        metadata: { userId, totalBetAmount, spinResult, payout, result },
+      }).catch((err) => console.warn("[system_notify] Failed to send roulette:", err));
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -154,6 +164,13 @@ export async function POST(req) {
     });
   } catch (error) {
     console.error("Roulette save-game error:", error);
+
+    sendSystemNotificationEmail({
+      eventType: "error_event",
+      description: `Roulette error for user ${userId}: ${(error).message || "Unknown error"}`,
+      metadata: { userId, error: (error).stack?.slice(0, 500) || String(error) },
+    }).catch((ew) => console.warn("[system_notify] Failed to send roulette error:", ew));
+
     return NextResponse.json(
       { success: false, error: "Server error" },
       { status: 500 },

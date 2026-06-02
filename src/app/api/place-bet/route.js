@@ -6,6 +6,7 @@ import { claimIdempotency } from "../../../lib/security/idempotency";
 import { getHighestTitle } from "../../../lib/titles";
 import { checkUnlocks } from "../../../lib/specialTitles";
 import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
+import { sendSystemNotificationEmail } from "../../../lib/emails/system";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -160,6 +161,15 @@ export async function POST(request) {
       payout: 0,
     });
 
+    // Fire system notification for large bets (≥ 1000 tokens)
+    if (betAmount >= 1000) {
+      sendSystemNotificationEmail({
+        eventType: "bet_placed",
+        description: `User ${userId} placed a large bet of ${betAmount} tokens (source: ${source}).`,
+        metadata: { userId, betAmount, source, selectionId },
+      }).catch((err) => console.warn("[system_notify] Failed to send:", err));
+    }
+
     const unlockedSpecialTitles = await checkUnlocks(userId, "bet_placed", {
       isAllIn: startingBalance > 0 && betAmount >= startingBalance,
       balanceAfter: Math.max(0, startingBalance - betAmount),
@@ -171,6 +181,14 @@ export async function POST(request) {
     );
   } catch (error) {
     console.error("[PLACE_BET_ERROR]", error);
+
+    // Send system notification on internal errors
+    sendSystemNotificationEmail({
+      eventType: "error_event",
+      description: `Place-bet error for user ${userId}: ${(error).message || "Unknown error"}`,
+      metadata: { userId, error: (error).stack?.slice(0, 500) || String(error) },
+    }).catch((err) => console.warn("[system_notify] Failed to send error alert:", err));
+
     return new Response(
       JSON.stringify({ success: false, error: "Failed to place bet" }),
       {

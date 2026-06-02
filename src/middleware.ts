@@ -6,6 +6,7 @@ import {
   type LimitConfig,
 } from "./lib/security/rateLimit";
 import { auditLog } from "./lib/security/auditLog";
+import { isAdmin } from "./lib/auth/isAdmin";
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
@@ -51,6 +52,9 @@ const isPublicRoute = createRouteMatcher([
   "/privacy-policy",
   "/terms",
   "/fair-play",
+
+  // Public contact page
+  "/contact",
 ]);
 
 const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
@@ -61,6 +65,21 @@ const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
   {
     pattern: /^\/api\/(webhooks\/clerk|debug-env)/,
     config: { windowMs: 60_000, max: 20 },
+  },
+  {
+    // Prevent abuse: only allow a handful of test emails per minute.
+    pattern: /^\/api\/email\/test$/,
+    config: { windowMs: 60_000, max: 5 },
+  },
+  {
+    // Public contact form — protect against spam.
+    pattern: /^\/api\/contact$/,
+    config: { windowMs: 60_000, max: 10 },
+  },
+  {
+    // Internal system notifications — restrict to sane limits.
+    pattern: /^\/api\/system\/notify$/,
+    config: { windowMs: 60_000, max: 30 },
   },
   { pattern: /^\/api\//, config: { windowMs: 60_000, max: 120 } },
 ];
@@ -261,27 +280,33 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     }
   }
 
-  // Admin route gate: fast edge-compatible first line of defense.
-  // The page itself also checks DB-backed is_admin as the primary gate.
-  // The env var acts as a fast-allow list: if you're in it, you're definitely
-  // an admin. If you're NOT in it, we don't block — the page-level DB check
-  // (src/lib/auth/isAdmin.ts) will verify your is_admin column.
+  // Admin route gate: only users with the admin badge (DB-backed is_admin) may access.
+  // 1. Fast path: env var allowlist (CHAT_ADMIN_CLERK_IDS) — instant allow.
+  // 2. DB-backed path: queries the `is_admin` column on the users table.
+  // Both the middleware AND the page component (src/app/admin/page.tsx) enforce
+  // this check so non-admin users can never reach the dashboard.
   if (pathname.startsWith("/admin")) {
     const adminIds = (process.env.CHAT_ADMIN_CLERK_IDS || "")
       .split(",")
       .map((id) => id.trim())
       .filter(Boolean);
-    if (adminIds.length > 0 && !adminIds.includes(userId)) {
-      // User not in env var allowlist, but may still be admin via DB.
-      // Don't block — delegate to page-level DB-backed is_admin check.
-      auditLog("admin_middleware_delegated", {
-        userId,
-        ip,
-        path: pathname,
-        note: "not in env var allowlist, delegating to DB-backed page check",
-      });
+
+    if (adminIds.length > 0 && adminIds.includes(userId)) {
+      // Fast path: user is in env var allowlist — let through immediately.
+    } else {
+      // DB-backed check — the source of truth for admin badges.
+      const admin = await isAdmin(userId);
+      if (!admin) {
+        auditLog("admin_access_blocked", {
+          userId,
+          ip,
+          path: pathname,
+        });
+        return applySecurityHeaders(
+          NextResponse.redirect(new URL("/", req.url))
+        );
+      }
     }
-    // If adminIds is empty or user IS in allowlist, let through to page.
   }
 
   return applySecurityHeaders(NextResponse.next());

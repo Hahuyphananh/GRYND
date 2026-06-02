@@ -4,6 +4,7 @@ import { users } from "../../../../db/schema";
 import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { createSignedSession } from "../../../../lib/serverSession";
+import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 
 function generateBoard(totalMines) {
   const all = Array.from({ length: 25 }, (_, i) => i);
@@ -74,6 +75,15 @@ export async function POST(req) {
       createdAt: Date.now(),
     };
 
+    // Fire system notification for large mines bets (≥ 1000 tokens)
+    if (bet >= 1000) {
+      sendSystemNotificationEmail({
+        eventType: "bet_placed",
+        description: `User ${userId} started a large mines game with ${bet} tokens (${minesCount} mines).`,
+        metadata: { userId, bet, minesCount },
+      }).catch((err) => console.warn("[system_notify] Failed to send mines:", err));
+    }
+
     const token = createSignedSession(session);
     const response = NextResponse.json({
       success: true,
@@ -90,6 +100,13 @@ export async function POST(req) {
     return response;
   } catch (error) {
     console.error("Error starting mines game:", error);
+
+    sendSystemNotificationEmail({
+      eventType: "error_event",
+      description: `Mines start error for user ${userId}: ${(error).message || "Unknown error"}`,
+      metadata: { userId, error: (error).stack?.slice(0, 500) || String(error) },
+    }).catch((ew) => console.warn("[system_notify] Failed to send mines error:", ew));
+
     return NextResponse.json(
       {
         success: false,

@@ -266,6 +266,20 @@ function NavigationBar({ currentPath }) {
                   </Link>
                 </motion.div>
               ))}
+              <motion.div
+                key="/contact"
+                initial={itemVariant.initial}
+                animate={itemVariant.animate}
+                transition={itemVariant.transition}
+                whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
+              >
+                <Link
+                  href="/contact"
+                  className={`px-3 py-2 text-sm font-medium ${currentPath === "/contact" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                >
+                  ✉️ Contact
+                </Link>
+              </motion.div>
               {isAdmin && isSignedIn && (
                 <motion.div
                   key="/admin"
@@ -466,6 +480,13 @@ function NavigationBar({ currentPath }) {
                     {t(NAV_TRANSLATION_KEYS[path])}
                   </Link>
                 ))}
+                  <Link
+                    href="/contact"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
+                  >
+                    ✉️ Contact
+                  </Link>
                 {isAdmin && isSignedIn && (
                 <Link
                   href="/admin"
