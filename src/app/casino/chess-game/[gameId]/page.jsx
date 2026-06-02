@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { Chess } from "chess.js";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
+import ReportPlayerButton from "../../../../components/ReportPlayerButton";
 
 const Chessboard = dynamic(
   async () => {
@@ -233,6 +234,11 @@ export default function ChessGamePage() {
       ? gameData?.blackPlayerName
       : gameData?.whitePlayerName;
 
+  const opponentClerkId =
+    activeColor === "white"
+      ? gameData?.blackPlayerId
+      : gameData?.whitePlayerId;
+
   const myClock =
     activeColor === "white"
       ? gameData?.whiteTimeRemaining
@@ -267,6 +273,11 @@ export default function ChessGamePage() {
               <div className="mb-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 flex justify-between backdrop-blur-md">
                 <span className="font-bold text-cyan-300">
                   {opponentName || "Opponent"}
+                  {!isSpectator && opponentClerkId && (
+                    <span className="ml-3">
+                      <ReportPlayerButton reportedClerkId={opponentClerkId} reportedName={opponentName} gameKey="chess" gameId={gameId} />
+                    </span>
+                  )}
                 </span>
                 <span className="font-mono text-xl text-cyan-100">
                   {formatClock(oppClock)}

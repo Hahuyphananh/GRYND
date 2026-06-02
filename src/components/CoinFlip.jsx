@@ -3,6 +3,7 @@ import NavigationBar from "../components/navigation-bar";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; // ✅ For navigation
 import { useSocket } from "../context/SocketProvider";
+import ReportPlayerButton from "./ReportPlayerButton";
 
 const HOUSE_EDGE = 0.98;
 const FEE = 0.02;
@@ -582,6 +583,9 @@ shadow-[0_0_12px_rgba(16,185,129,0.6)]"
             <div className="bg-gray-800 p-4 rounded-lg">
               <p className="font-bold text-yellow-400">
                 {opponentId ? "Opponent" : "Searching..."}
+                {opponentId && (
+                  <ReportPlayerButton reportedClerkId={opponentId} reportedName="Opponent" gameKey="coin-flip" gameId={myGameId} className="ml-2" />
+                )}
               </p>
               <p className="text-sm break-all">{opponentId || "..."}</p>
               <p className="mt-2 text-yellow-400">

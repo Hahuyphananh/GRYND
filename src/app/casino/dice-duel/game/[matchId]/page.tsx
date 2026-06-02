@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import NavigationBar from "../../../../../components/navigation-bar";
+import ReportPlayerButton from "../../../../../components/ReportPlayerButton";
 
 const ACTIONS = [
   {
@@ -129,6 +130,8 @@ export default function DiceDuelMatchPage() {
   const viewerIsPlayer1 = match?.player1Id === viewerId;
   const viewerHP = viewerIsPlayer1 ? match?.hp1 : match?.hp2;
   const enemyHP = viewerIsPlayer1 ? match?.hp2 : match?.hp1;
+  const opponentClerkId = viewerIsPlayer1 ? match?.player2Id : match?.player1Id;
+  const opponentName = viewerIsPlayer1 ? match?.player2Name : match?.player1Name;
 
   const triggerEffect = (type: string) => {
     if (type === "SAFE_ROLL") setEffect("blue");
@@ -361,11 +364,10 @@ export default function DiceDuelMatchPage() {
                 </div>
               ))}
 
-            <p className="text-sm text-cyan-300 font-bold">
-              {viewerIsPlayer1
-                ? match?.player2Name
-                : match?.player1Name}
-            </p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-cyan-300 font-bold">{opponentName}</p>
+              <ReportPlayerButton reportedClerkId={opponentClerkId} reportedName={opponentName} gameKey="dice-duel" gameId={activeMatchId} />
+            </div>
 
             <p className="text-3xl font-bold">HP: {enemyHP ?? "--"}</p>
           </div>

@@ -73,6 +73,9 @@ export const users = pgTable("users", {
   searchName: varchar("search_name", { length: 255 }),
   termsAccepted: boolean("terms_accepted").notNull().default(false),
   isAdmin: boolean("is_admin").notNull().default(false),
+  isBanned: boolean("is_banned").notNull().default(false),
+  banReason: text("ban_reason"),
+  bannedAt: timestamp("banned_at"),
 });
 
 export const friendRelations = pgTable(
@@ -1020,6 +1023,39 @@ export const hexDuelGames = pgTable(
   (table) => ({
     player1Idx: index("hex_duel_player1_idx").on(table.player1Id, table.createdAt),
     createdIdx: index("hex_duel_created_idx").on(table.createdAt),
+  }),
+);
+
+
+export const playerReportStatusEnum = pgEnum("player_report_status", ["open", "reviewed", "banned", "dismissed"]);
+export const playerReportReasonEnum = pgEnum("player_report_reason", [
+  "toxic_player",
+  "hacker",
+  "inappropriate_name",
+  "inappropriate_profile_picture",
+  "other",
+]);
+
+export const playerReports = pgTable(
+  "player_reports",
+  {
+    id: serial("id").primaryKey(),
+    reporterClerkId: varchar("reporter_clerk_id", { length: 255 }).notNull(),
+    reportedClerkId: varchar("reported_clerk_id", { length: 255 }).notNull(),
+    gameKey: varchar("game_key", { length: 80 }).notNull(),
+    gameId: varchar("game_id", { length: 120 }),
+    reason: playerReportReasonEnum("reason").notNull(),
+    details: text("details"),
+    status: playerReportStatusEnum("status").notNull().default("open"),
+    adminClerkId: varchar("admin_clerk_id", { length: 255 }),
+    adminNote: text("admin_note"),
+    resolvedAt: timestamp("resolved_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    playerReportsStatusIdx: index("idx_player_reports_status").on(table.status, table.createdAt),
+    playerReportsReportedIdx: index("idx_player_reports_reported").on(table.reportedClerkId, table.createdAt),
+    playerReportsReporterIdx: index("idx_player_reports_reporter").on(table.reporterClerkId, table.createdAt),
   }),
 );
 

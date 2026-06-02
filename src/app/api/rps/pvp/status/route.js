@@ -88,6 +88,7 @@ export async function GET(req) {
       player2Name: player2?.name ?? "Player 2",
       myName: myName ?? "You",
       opponentName: opponentName ?? "Opponent",
+      opponentId: game.player1Id === userId ? game.player2Id : game.player1Id,
       houseEdgePercent: HOUSE_EDGE_PERCENT,
       betAmount,
       pot,
