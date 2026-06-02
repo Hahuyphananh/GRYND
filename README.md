@@ -43,3 +43,7 @@ _A preview of the main lobby interface (Roulette + Blackjack shown)_
 2. Fill all values with your own secrets.
 3. Never commit `.env.local` or production keys.
 4. If secrets were previously exposed, rotate them immediately in the provider dashboards.
+
+### Resend email webhooks
+
+The Resend webhook endpoint is `/api/webhooks/resend`. Configure Resend to send inbound `email.received` events and outbound sending events such as `email.sent`, `email.delivered`, `email.bounced`, and `email.failed` to your deployed URL, for example `https://your-app.example.com/api/webhooks/resend`. Set `RESEND_API_KEY` and `RESEND_WEBHOOK_SECRET` in the runtime environment. See `docs/resend-webhooks.md` for the full dashboard setup checklist.
