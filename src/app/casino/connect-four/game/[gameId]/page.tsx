@@ -2,6 +2,7 @@
 
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import ReportPlayerButton from "../../../../../components/ReportPlayerButton";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { getDropRow } from "../../../../../lib/connectFour";
 import useGamePresence from "../../../../../hooks/useGamePresence";
@@ -390,6 +391,9 @@ export default function ConnectFourGamePage() {
     return undefined;
   }, [game, replayCountdown, router]);
 
+  const opponentClerkId = game?.role === "host" ? game?.guestClerkId : game?.role === "guest" ? game?.hostClerkId : null;
+  const opponentName = game?.role === "host" ? game?.guestName : game?.role === "guest" ? game?.hostName : null;
+
   return (
     <div className="min-h-screen bg-[#02142c] text-white px-4 py-8 page-enter">
       <div className="max-w-5xl mx-auto relative overflow-hidden rounded-2xl">
@@ -451,6 +455,11 @@ export default function ConnectFourGamePage() {
                   {game?.hostName || "Host"} (Green) vs{" "}
                   {game?.guestName || "Guest"} (Red)
                 </p>
+                {!isSpectator && opponentClerkId && (
+                  <div className="mt-1">
+                    <ReportPlayerButton reportedClerkId={opponentClerkId} reportedName={opponentName} gameKey="connect-four" gameId={gameId} />
+                  </div>
+                )}
                 <p className="font-bold text-lg">
                   Bet: {Number(game?.betAmount || 0).toFixed(2)} tokens each
                 </p>

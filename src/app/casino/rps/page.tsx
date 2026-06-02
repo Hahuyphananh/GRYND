@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import NavigationBar from "../../../components/navigation-bar";
+import ReportPlayerButton from "../../../components/ReportPlayerButton";
 import { useSocket } from "../../../context/SocketProvider";
 
 const PVP_CHOICES = ["rock", "paper", "scissors"];
@@ -34,6 +35,7 @@ export default function RPSGame() {
   const [pvpPlayer2Id, setPvpPlayer2Id] = useState<string | null>(null);
   const [pvpMyName, setPvpMyName] = useState<string>("You");
   const [pvpOpponentName, setPvpOpponentName] = useState<string>("Opponent");
+  const [pvpOpponentId, setPvpOpponentId] = useState<string | null>(null);
   const [pvpMyChoice, setPvpMyChoice] = useState<string | null>(null);
   const [pvpOpponentChoice, setPvpOpponentChoice] = useState<string | null>(null);
   const [pvpOutcome, setPvpOutcome] = useState<string | null>(null);
@@ -96,6 +98,7 @@ export default function RPSGame() {
         setPvpPlayer2Id(game.player2Id || null);
         setPvpMyName(game.myName || "You");
         setPvpOpponentName(game.opponentName || "Opponent");
+        setPvpOpponentId(game.opponentId || null);
         setPvpMyChoice(game.myChoice || null);
         setPvpOpponentChoice(game.opponentChoice || null);
         setPvpOutcome(game.outcome || null);
@@ -802,7 +805,7 @@ flex items-center justify-center rounded-xl text-5xl sm:text-6xl"
           <div className="w-full max-w-2xl flex flex-col items-center gap-4">
             <div className="w-full flex items-center justify-between sm:justify-center gap-4 sm:gap-10 text-xs sm:text-sm text-[#a8f4ff] font-semibold px-2">
               <span>{pvpMyName}</span>
-              <span>{pvpOpponentName}</span>
+              <span>{pvpOpponentName} {pvpOpponentId && <ReportPlayerButton reportedClerkId={pvpOpponentId} reportedName={pvpOpponentName} gameKey="rps" gameId={pvpGameId} className="ml-2" />}</span>
             </div>
             <div className="flex items-center justify-center gap-4 sm:gap-8 flex-wrap">
               <div

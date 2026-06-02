@@ -8,6 +8,7 @@ import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import ReportPlayerButton from "../../../components/ReportPlayerButton";
 
 
 type LobbyRoom = { id: string; wager: number; status: string };
@@ -572,7 +573,7 @@ export default function YahtzeePage() {
       <div className="mt-4 space-y-2">{availableGames.length === 0 ? <p>No open games.</p> : availableGames.map((l) => <div key={l.id} className="flex items-center justify-between rounded bg-slate-900/80 p-2"><span>{l.id} · {l.wager}</span><button onClick={() => joinGame(l.id)} className="rounded bg-cyan-500 px-3 py-1 text-black">{joiningId === l.id ? "Joining" : "Join"}</button></div>)}</div></div>}
 
       {game && (<div className="mt-6 rounded-2xl border border-cyan-700 bg-black/45 p-4">
-        <div className="mb-3 flex items-center justify-between"><div>{isYourTurn ? "Your turn" : `${opponent?.name || "Opponent"}'s turn`} · Rolls {game.rollsThisTurn}/3</div><button onClick={resign} className="rounded bg-red-600 px-3 py-1 font-bold">Resign</button></div>
+        <div className="mb-3 flex items-center justify-between"><div>{isYourTurn ? "Your turn" : `${opponent?.name || "Opponent"}'s turn`} · Rolls {game.rollsThisTurn}/3 {opponent && !opponent.isAI && <ReportPlayerButton reportedClerkId={opponent.userId} reportedName={opponent.name} gameKey="yahtzee" gameId={roomId} className="ml-2" />}</div><button onClick={resign} className="rounded bg-red-600 px-3 py-1 font-bold">Resign</button></div>
         {waitingForOpponent && <div className="mb-4 rounded border border-fuchsia-500 bg-fuchsia-950/40 p-2 text-sm">Waiting for opponent to join. You cannot roll yet.</div>}
 
         {/* YAHTZEE BOARD — scorecard integrated in center */}

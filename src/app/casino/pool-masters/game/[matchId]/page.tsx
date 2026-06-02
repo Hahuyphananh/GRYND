@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import NavigationBar from "../../../../../components/navigation-bar";
+import ReportPlayerButton from "../../../../../components/ReportPlayerButton";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { BALL_LAYOUT, MAX_PULL, TABLE_H, TABLE_W } from "../../../../../lib/pool/constants";
 import { applyShotPower, isMoving, tickPhysics } from "../../../../../lib/pool/physics";
@@ -244,6 +245,7 @@ export default function Page() {
   const [started, setStarted] = useState(aiMode);
   const [myName, setMyName] = useState("Player 1");
   const [oppName, setOppName] = useState(aiMode ? "AI" : "Player 2");
+  const [opponentClerkId, setOpponentClerkId] = useState<string | null>(null);
   const [remoteAim, setRemoteAim] = useState<{
     angle: number;
     pull: number;
@@ -1044,6 +1046,9 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       }
       if (data.viewerName) setMyName(data.viewerName);
       if (data.opponentName) setOppName(data.opponentName);
+      if (data.match && user?.id) {
+        setOpponentClerkId(data.match.player1Id === user.id ? data.match.player2Id || null : data.match.player1Id || null);
+      }
 
       // Use refs for the most current values — avoids stale closure issues
       const localShotInProgress = localShotInProgressRef.current || remoteShotInProgressRef.current;
@@ -1226,6 +1231,9 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           </div>
           <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-3 text-right shadow-inner">
             <p className="font-bold">{oppName}</p>
+            {!aiMode && opponentClerkId && (
+              <ReportPlayerButton reportedClerkId={opponentClerkId} reportedName={oppName} gameKey="pool-masters" gameId={activeMatchId} />
+            )}
             <p className="text-xs text-cyan-100">{oppTeam ?? "unassigned"}</p>
             <p className="mt-1 text-sm">Balls: {oppRemaining.join(", ") || "none"}</p>
           </div>

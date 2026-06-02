@@ -256,6 +256,7 @@ function serializeGameForUser(room, userId) {
       seatIndex: p.seatIndex,
       name: p.name,
       type: p.type,
+      userId: p.type === "human" ? p.userId : null,
       count: (active.hands[p.id] || []).length,
       isHost: Boolean(p.isHost),
     })),

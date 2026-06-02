@@ -9,6 +9,7 @@ import { useSocket } from "../../../context/SocketProvider";
 import { useTranslation } from "../../../hooks/useTranslation";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import ReportPlayerButton from "../../../components/ReportPlayerButton";
 import {
   calculateScore,
   isFarkle,
@@ -1111,6 +1112,9 @@ export default function FarklePage() {
                   <span className="rounded-full bg-purple-800/50 px-2 py-1 text-xs text-purple-300">
                     ⚔️ {t("games.farkle.pvp_label")}
                   </span>
+                )}
+                {opponent && !opponent.isAI && (
+                  <ReportPlayerButton reportedClerkId={opponent.userId} reportedName={opponent.name} gameKey="farkle" gameId={roomId} />
                 )}
               </div>
               <button

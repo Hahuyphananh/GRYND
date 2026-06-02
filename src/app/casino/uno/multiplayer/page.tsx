@@ -8,6 +8,7 @@ import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
+import ReportPlayerButton from "../../../../components/ReportPlayerButton";
 
 const UNO_MULTI_SEAT_POSITIONS = [
   { left: "50%", top: "15%" },
@@ -1104,6 +1105,9 @@ export default function UnoMultiplayerPage() {
                   className={`rounded-xl px-2 py-1 border ${unoMultiTurnPlayerId === entry.playerId ? "border-yellow-300 bg-yellow-300/20" : "border-white/25 bg-black/20"}`}
                 >
                   <p className="text-[10px] font-semibold truncate">{entry.name}</p>
+                  {entry.userId && (
+                    <ReportPlayerButton reportedClerkId={entry.userId} reportedName={entry.name} gameKey="uno" gameId={unoMultiTableCode} />
+                  )}
                   <p className="text-[10px] text-center">{entry.count} cards</p>
                 </div>
               ))}
