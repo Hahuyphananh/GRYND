@@ -3,6 +3,10 @@
     {
       "path": "/api/jobs/weekly-reset",
       "schedule": "0 0 * * 1"
+    },
+    {
+      "path": "/api/jobs/big-wins-cleanup",
+      "schedule": "0 0 * * *"
     }
   ]
 }

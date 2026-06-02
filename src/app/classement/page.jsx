@@ -67,7 +67,7 @@ const LEADERBOARD_CATEGORIES = [
 function getMetricValue(item, tab, category) {
   if (tab === "weekly") {
     if (category === "level")
-      return Number(item.weekly_level_gain || 0).toLocaleString();
+      return `Level ${Number(item.level || 0).toLocaleString()} (${Number(item.xp || 0).toLocaleString()} XP)`;
     if (category === "win_rate")
       return `${Number(item.weekly_win_rate || 0).toFixed(2)}%`;
     const weeklyMetric = `weekly_${category}`;

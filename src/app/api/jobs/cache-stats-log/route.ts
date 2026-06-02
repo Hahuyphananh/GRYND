@@ -11,7 +11,15 @@ import { auditLog } from "../../../../lib/security/auditLog";
  * Called by Vercel Cron Jobs every 5 minutes.
  * Protected by a shared secret in production.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  // Vercel Cron Jobs send a CRON_SECRET header; validate it to prevent
+  // unauthorized access to internal stats.
+  const authHeader = request.headers.get("authorization");
+  const expectedSecret = process.env.CRON_SECRET;
+  if (expectedSecret && authHeader !== `Bearer ${expectedSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     // Read current stats before resetting
     const raw = getCacheStats();

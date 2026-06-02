@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { rouletteGames, users } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 
@@ -122,26 +121,13 @@ export async function POST(req) {
       payout: payout.toFixed(2),
     });
 
-    // Track leaderboard stats
+    // Track leaderboard stats (also records big wins when payout >= 1M)
     applyLeaderboardCounters({
       clerkId: userId,
       game: "Roulette",
       betAmount: totalBetAmount,
       payout,
     }).catch(() => {});
-
-    // Record big win if payout >= 1 million tokens
-    if (payout >= 1000000) {
-      const clerkUser = await currentUser();
-      recordBigWinIfNeeded({
-        userId: userId,
-        username: clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim() : "Player",
-        game: "Roulette",
-        betAmount: totalBetAmount,
-        winAmount: payout,
-        multiplier: totalBetAmount > 0 ? payout / totalBetAmount : 0,
-      }).catch(() => {}); // Fire and forget
-    }
 
     // Fire system notification for large roulette bets (≥ 1000 tokens)
     if (totalBetAmount >= 1000) {

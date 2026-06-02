@@ -1,9 +1,8 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../db/client";
 import { users, pokerGames } from "../../../db/schema";
 import { eq } from "drizzle-orm";
 import { compareHands, dealCommunityCards } from "../../lib/ailogic";
-import { recordBigWinIfNeeded } from "../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
 
 export async function POST(request) {
@@ -135,19 +134,6 @@ export async function POST(request) {
         betAmount: playBet,
         payout: winAmount,
       }).catch(() => {});
-
-      // Record big win if winAmount >= 1 million tokens
-      if (winAmount >= 1000000) {
-        const clerkUser = await currentUser();
-        recordBigWinIfNeeded({
-          userId: userId,
-          username: clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim() : "Player",
-          game: "Poker",
-          betAmount: playBet,
-          winAmount: winAmount,
-          multiplier: playBet > 0 ? winAmount / playBet : 0,
-        }).catch(() => {}); // Fire and forget
-      }
 
       await db.transaction(async (tx) => {
         await tx

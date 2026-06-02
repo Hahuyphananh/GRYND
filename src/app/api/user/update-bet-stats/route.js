@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { checkUnlocks } from "../../../../lib/specialTitles";
+import { invalidateOnGameSettlement, invalidateBigWins } from "../../../../lib/redis/invalidation";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -83,7 +84,9 @@ export async function POST(request) {
           weekly_losses,
           weekly_biggest_win,
           weekly_best_streak,
-          weekly_win_rate
+          weekly_win_rate,
+          weekly_level_gain,
+          weekly_game_streak
         )
         SELECT
           id,
@@ -104,7 +107,9 @@ export async function POST(request) {
           CASE WHEN ${isWin} THEN 0 ELSE 1 END,
           ${payout},
           CASE WHEN ${isWin} THEN 1 ELSE 0 END,
-          CASE WHEN ${isWin} THEN 100 ELSE 0 END
+          CASE WHEN ${isWin} THEN 100 ELSE 0 END,
+          0,
+          CASE WHEN ${isWin} THEN 1 ELSE 0 END
         FROM updated_user
         ON CONFLICT (user_id) DO UPDATE SET
           total_bets = user_stats.total_bets + 1,
@@ -123,8 +128,10 @@ export async function POST(request) {
           weekly_wins = user_stats.weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END,
           weekly_losses = user_stats.weekly_losses + CASE WHEN ${isWin} THEN 0 ELSE 1 END,
           weekly_biggest_win = GREATEST(user_stats.weekly_biggest_win, ${payout}),
-          weekly_best_streak = GREATEST(user_stats.weekly_best_streak, CASE WHEN ${isWin} THEN user_stats.current_streak + 1 ELSE user_stats.weekly_best_streak END),
+          weekly_best_streak = GREATEST(COALESCE(user_stats.weekly_best_streak, 0), CASE WHEN ${isWin} THEN COALESCE(user_stats.weekly_game_streak, 0) + 1 ELSE 0 END),
           weekly_win_rate = ROUND(((user_stats.weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END)::numeric / NULLIF(user_stats.weekly_wins + user_stats.weekly_losses + 1, 0)) * 100, 2),
+          weekly_level_gain = GREATEST(0, COALESCE(EXCLUDED.level - user_stats.level, 0) + COALESCE(user_stats.weekly_level_gain, 0)),
+          weekly_game_streak = CASE WHEN ${isWin} THEN user_stats.weekly_game_streak + 1 ELSE 0 END,
           updated_at = NOW()
         RETURNING user_id
       )
@@ -133,14 +140,21 @@ export async function POST(request) {
       LEFT JOIN upserted_stats ON upserted_stats.user_id = updated_user.id
     `;
 
-    if (multiplier >= 10) {
+    if (payout >= 1000000) {
       await sql`
         INSERT INTO big_wins (id, user_id, username, game, bet_amount, win_amount, multiplier)
         SELECT gen_random_uuid(), clerk_id, name, ${parsed.data.game}, ${betAmount}, ${payout}, ${multiplier}
         FROM users
         WHERE clerk_id = ${userId}
       `;
+
+      // Invalidate big-wins feed cache (new big win recorded)
+      invalidateBigWins().catch(() => {});
     }
+
+    // Invalidate caches affected by this game settlement.
+    // Fire-and-forget — don't block the response.
+    invalidateOnGameSettlement(userId).catch(() => {});
 
     const unlockedSpecialTitles = await checkUnlocks(userId, "game_result", {
       won: isWin,

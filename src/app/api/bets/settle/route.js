@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { sql } from "@vercel/postgres";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { invalidateOnGameSettlement } from "../../../../lib/redis/invalidation";
+import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
 
 async function handler({ betId, result }) {
   const { userId } = await auth();
@@ -74,6 +75,24 @@ async function handler({ betId, result }) {
         WHERE user_id = ${userId}
       `,
     ]);
+
+    // Record big win if applicable (winAmount >= 1 million tokens)
+    if (winAmount >= 1000000) {
+      const [userData] = await sql`
+        SELECT clerk_id, name FROM users WHERE clerk_id = ${userId} LIMIT 1
+      `;
+      if (userData) {
+        const multiplier = bet.amount > 0 ? winAmount / bet.amount : 0;
+        recordBigWinIfNeeded({
+          userId: userData.clerk_id,
+          username: userData.name || "Player",
+          game: "Sports Betting",
+          betAmount: Number(bet.amount),
+          winAmount,
+          multiplier,
+        }).catch(() => {});
+      }
+    }
 
     return new Response(
       JSON.stringify({

@@ -29,6 +29,8 @@ const setCached = (key: string, payload: CacheEntry["payload"]) => {
 
 const buildOddsUrl = (sport: string, markets: string) =>
   `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=us&markets=${markets}&oddsFormat=decimal`;
+// NOTE: ODDS_API_KEY is required as a query param by the-odds-api.
+// This is a server-side fetch (never exposed to the client).
 
 export async function GET(
   req: NextRequest,

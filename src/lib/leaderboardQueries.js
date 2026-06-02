@@ -135,60 +135,6 @@ function buildAllTimeConfig(category, columns) {
   return configs[category];
 }
 
-function buildWeeklyConfig(category, columns) {
-  const weeklyLevelGain = userStatsMetric(columns, "weekly_level_gain", {
-    defaultValue: "0",
-    cast: "int",
-  });
-  const weeklyWagered = userStatsMetric(columns, "weekly_wagered", {
-    userFallback: "weekly_wagered",
-  });
-  const weeklyBiggestWin = userStatsMetric(columns, "weekly_biggest_win", {
-    userFallback: "weekly_won",
-  });
-  const weeklyBestStreak = userStatsMetric(columns, "weekly_best_streak", {
-    defaultValue: "0",
-    cast: "int",
-  });
-  const weeklyWins = userStatsMetric(columns, "weekly_wins", {
-    userFallback: "weekly_wins",
-    cast: "numeric",
-  });
-  const weeklyLosses = userStatsMetric(columns, "weekly_losses", {
-    defaultValue: "0",
-    cast: "numeric",
-  });
-  const weeklyWinRate = winRateExpression({
-    wins: weeklyWins,
-    losses: weeklyLosses,
-  });
-
-  const configs = {
-    level: {
-      fields: `${weeklyLevelGain} AS weekly_level_gain`,
-      orderBy: `${weeklyLevelGain} DESC, s.user_id ASC`,
-    },
-    total_wagered: {
-      fields: `${weeklyWagered} AS weekly_wagered`,
-      orderBy: `${weeklyWagered} DESC, s.user_id ASC`,
-    },
-    biggest_win: {
-      fields: `${weeklyBiggestWin} AS weekly_biggest_win`,
-      orderBy: `${weeklyBiggestWin} DESC, s.user_id ASC`,
-    },
-    best_streak: {
-      fields: `${weeklyBestStreak} AS weekly_best_streak`,
-      orderBy: `${weeklyBestStreak} DESC, s.user_id ASC`,
-    },
-    win_rate: {
-      fields: `${weeklyWinRate} AS weekly_win_rate, ${weeklyWins}::int AS weekly_wins, ${weeklyLosses}::int AS weekly_losses`,
-      orderBy: `${weeklyWinRate} DESC, ${weeklyWins} DESC, s.user_id ASC`,
-    },
-  };
-
-  return configs[category];
-}
-
 export function clampLeaderboardLimit(value) {
   return Math.min(100, Math.max(1, Number(value) || 20));
 }
@@ -275,6 +221,124 @@ export async function fetchAllTimeLeaderboard({
   return fetchRankedRows({ ...config, limit, offset, clerkId });
 }
 
+/**
+ * Returns the timestamp of the most recent Monday at 00:00:00 UTC.
+ * If the weekly reset cron hasn't run since this time, weekly data
+ * should be considered stale (treated as 0).
+ */
+function getLastMondayUTC() {
+  const now = new Date();
+  const day = now.getUTCDay();
+  // Monday = 1. If today is Sunday (0), last Monday was 6 days ago.
+  const daysSinceMonday = day === 0 ? 6 : day - 1;
+  const lastMonday = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() - daysSinceMonday,
+    0, 0, 0, 0
+  ));
+  return lastMonday.toISOString();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Shared helper: wraps a raw metric expression in a CASE that
+// zeroes the value when user_stats hasn't been touched since the
+// given timestamp (weekly reset cron didn't run).
+// ═══════════════════════════════════════════════════════════════
+function wrapMetricForStaleCheck(raw, lastMonday, { cast = "numeric", defaultValue = "0" } = {}) {
+  return `CASE WHEN s.updated_at >= '${lastMonday}'::timestamp THEN (${raw}) ELSE ${defaultValue}::${cast} END`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Test exports — NOT part of the public API. Exported solely so
+// unit tests can verify SQL generation without a live database.
+// ═══════════════════════════════════════════════════════════════
+export const __testExports = {
+  getLastMondayUTC,
+  buildStaleConfig,
+  userStatsMetricStale(columns, columnName, opts = {}) {
+    const lastMonday = getLastMondayUTC();
+    const raw = userStatsMetric(columns, columnName, opts);
+    if (columnName.startsWith("weekly_")) {
+      return wrapMetricForStaleCheck(raw, lastMonday, {
+        cast: opts.cast || "numeric",
+        defaultValue: opts.defaultValue || "0",
+      });
+    }
+    return raw;
+  },
+};
+
+function buildStaleConfig(category, columns) {
+  const lastMonday = getLastMondayUTC();
+
+  function userStatsMetricStale(columnName, opts = {}) {
+    const raw = userStatsMetric(columns, columnName, opts);
+    if (columnName.startsWith("weekly_")) {
+      return wrapMetricForStaleCheck(raw, lastMonday, {
+        cast: opts.cast || "numeric",
+        defaultValue: opts.defaultValue || "0",
+      });
+    }
+    return raw;
+  }
+
+  const weeklyLevelGain = userStatsMetricStale("weekly_level_gain", {
+    defaultValue: "0", cast: "int",
+  });
+  const weeklyWagered = userStatsMetricStale("weekly_wagered", {
+    userFallback: "weekly_wagered",
+  });
+  const weeklyBiggestWin = userStatsMetricStale("weekly_biggest_win", {
+    userFallback: null,
+  });
+  const weeklyBestStreak = userStatsMetricStale("weekly_best_streak", {
+    defaultValue: "0", cast: "int",
+  });
+  const weeklyWins = userStatsMetricStale("weekly_wins", {
+    userFallback: "weekly_wins", cast: "numeric",
+  });
+  const weeklyLosses = userStatsMetricStale("weekly_losses", {
+    defaultValue: "0", cast: "numeric",
+  });
+  const weeklyWinRate = winRateExpression({
+    wins: weeklyWins,
+    losses: weeklyLosses,
+  });
+
+  const rawLevel = userStatsMetric(columns, "level", {
+    userFallback: "level", defaultValue: "1", cast: "int",
+  });
+  const rawXp = userStatsMetric(columns, "xp", {
+    userFallback: "xp", defaultValue: "0", cast: "int",
+  });
+
+  const configs = {
+    level: {
+      fields: `${weeklyLevelGain} AS weekly_level_gain, ${rawLevel} AS level, ${rawXp} AS xp`,
+      orderBy: `${weeklyLevelGain} DESC, ${rawLevel} DESC, ${rawXp} DESC, s.user_id ASC`,
+    },
+    total_wagered: {
+      fields: `${weeklyWagered} AS weekly_wagered`,
+      orderBy: `${weeklyWagered} DESC, s.user_id ASC`,
+    },
+    biggest_win: {
+      fields: `${weeklyBiggestWin} AS weekly_biggest_win`,
+      orderBy: `${weeklyBiggestWin} DESC, s.user_id ASC`,
+    },
+    best_streak: {
+      fields: `${weeklyBestStreak} AS weekly_best_streak`,
+      orderBy: `${weeklyBestStreak} DESC, s.user_id ASC`,
+    },
+    win_rate: {
+      fields: `${weeklyWinRate} AS weekly_win_rate, ${weeklyWins}::int AS weekly_wins, ${weeklyLosses}::int AS weekly_losses`,
+      orderBy: `${weeklyWinRate} DESC, ${weeklyWins} DESC, s.user_id ASC`,
+    },
+  };
+
+  return configs[category];
+}
+
 export async function fetchWeeklyLeaderboard({
   category,
   limit,
@@ -282,10 +346,8 @@ export async function fetchWeeklyLeaderboard({
   clerkId,
 }) {
   const columns = await getLeaderboardColumns();
-  const config = buildWeeklyConfig(
-    normalizeLeaderboardCategory(category),
-    columns,
-  );
+  const normalizedCategory = normalizeLeaderboardCategory(category);
+  const config = buildStaleConfig(normalizedCategory, columns);
   return fetchRankedRows({ ...config, limit, offset, clerkId });
 }
 

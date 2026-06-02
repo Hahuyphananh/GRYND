@@ -135,10 +135,16 @@ function MainComponent() {
             resultDiv.style.left = `${screenX}px`;
             resultDiv.style.top = `${screenY - 60}px`;
 
-            resultDiv.innerHTML = `
-              <div class="text-xl font-bold text-[#FFD700]">x${ball.multiplier}</div>
-              <div class="text-2xl font-bold text-green-500">+${ball.winAmount.toFixed(2)}</div>
-            `;
+            const multDiv = document.createElement("div");
+            multDiv.className = "text-xl font-bold text-[#FFD700]";
+            multDiv.textContent = `x${ball.multiplier}`;
+
+            const winDiv = document.createElement("div");
+            winDiv.className = "text-2xl font-bold text-green-500";
+            winDiv.textContent = `+${ball.winAmount.toFixed(2)}`;
+
+            resultDiv.appendChild(multDiv);
+            resultDiv.appendChild(winDiv);
 
             document.body.appendChild(resultDiv);
             setTimeout(() => resultDiv.remove(), 2000);

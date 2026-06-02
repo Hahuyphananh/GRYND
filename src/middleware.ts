@@ -81,6 +81,12 @@ const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
     pattern: /^\/api\/system\/notify$/,
     config: { windowMs: 60_000, max: 30 },
   },
+  {
+    // Cron jobs — at most 2 calls per hour per IP. These fire via Vercel cron
+    // on predictable weekly/daily intervals. Any excess is abuse.
+    pattern: /^\/api\/jobs\/(weekly-reset|big-wins-cleanup)$/,
+    config: { windowMs: 3_600_000, max: 2 },
+  },
   { pattern: /^\/api\//, config: { windowMs: 60_000, max: 120 } },
 ];
 

@@ -1,9 +1,8 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { hexDuelGames, users } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 const PAYOUT_MULTIPLIER = 1.9; // 5% house edge
@@ -185,44 +184,28 @@ export async function POST(req: Request) {
       })
       .where(eq(users.clerkId, clerkId));
 
-    // Record big win if payout >= 1M tokens
-    if (payout >= 1_000_000) {
-      const clerkUser = await currentUser();
-      recordBigWinIfNeeded({
-        userId: clerkId,
-        username:
-          clerkUser?.firstName
-            ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim()
-            : "Player",
-        game: "Hex Duel",
-        betAmount: wagerAmount,
-        winAmount: payout,
-        multiplier: PAYOUT_MULTIPLIER,
-      }).catch(() => {});
-    }
-
     // Fire-and-forget history insert for win path
     db.insert(hexDuelGames)
       .values({
         player1Id: clerkId,
         player2Id: null,
         wagerAmount: wagerAmount.toFixed(2),
-          winner,
-          result,
-          payout: payout.toFixed(2),
-          isAiGame: isAiGame ?? false,
-          aiDifficulty: aiDifficulty ?? null,
-          player1Moves: player1Moves ?? 0,
-          player2Moves: player2Moves ?? 0,
-          player1Territory: player1Territory ?? 1,
-          player2Territory: player2Territory ?? 1,
-          durationSeconds: durationSeconds ?? 0,
-          status: "completed",
-          isFunMode: false,
-          startedAt: startedAt ?? null,
-          endedAt,
-        } as unknown as typeof hexDuelGames.$inferInsert)
-        .catch((e) => console.error("Failed to insert hex duel history (win):", e));
+        winner,
+        result,
+        payout: payout.toFixed(2),
+        isAiGame: isAiGame ?? false,
+        aiDifficulty: aiDifficulty ?? null,
+        player1Moves: player1Moves ?? 0,
+        player2Moves: player2Moves ?? 0,
+        player1Territory: player1Territory ?? 1,
+        player2Territory: player2Territory ?? 1,
+        durationSeconds: durationSeconds ?? 0,
+        status: "completed",
+        isFunMode: false,
+        startedAt: startedAt ?? null,
+        endedAt,
+      } as unknown as typeof hexDuelGames.$inferInsert)
+      .catch((e) => console.error("Failed to insert hex duel history (win):", e));
 
     // Record leaderboard stats for the win
     applyLeaderboardCounters({

@@ -1,8 +1,7 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { chessGames, users } from "../../../../db/schema";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 const HOUSE_EDGE_PERCENT = 10;
@@ -131,26 +130,6 @@ export async function POST(req) {
           betAmount: Number(lockedGame.betAmount),
           payout: 0,
         }).catch(() => {});
-
-        // Record big win if winnerPayout >= 1 million tokens
-        if (winnerPayout >= 1000000) {
-          const opponentUser = await tx
-            .select()
-            .from(users)
-            .where(eq(users.clerkId, opponentId))
-            .limit(1);
-          if (opponentUser.length > 0) {
-            const clerkUser = await currentUser();
-            recordBigWinIfNeeded({
-              userId: opponentId,
-              username: clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim() : "Player",
-              game: "Chess",
-              betAmount: Number(lockedGame.betAmount),
-              winAmount: winnerPayout,
-              multiplier: 2, // Winner takes pot minus house fee (roughly 2x)
-            }).catch(() => {}); // Fire and forget
-          }
-        }
         return;
       }
 

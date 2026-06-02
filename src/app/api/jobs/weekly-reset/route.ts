@@ -1,6 +1,13 @@
 import { sql } from "@vercel/postgres";
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Vercel Cron Jobs send a CRON_SECRET header; validate it to prevent
+  // unauthorized access. This also ensures weekly data actually resets.
+  const authHeader = request.headers.get("authorization");
+  const expectedSecret = process.env.CRON_SECRET;
+  if (expectedSecret && authHeader !== `Bearer ${expectedSecret}`) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
   await sql`
     UPDATE users
     SET weekly_wagered = 0,

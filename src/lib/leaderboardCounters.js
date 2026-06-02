@@ -108,13 +108,13 @@ export async function applyLeaderboardCounters({
       weekly_losses = user_stats.weekly_losses + CASE WHEN ${isWin} THEN 0 ELSE 1 END,
       weekly_biggest_win = GREATEST(user_stats.weekly_biggest_win, ${win}),
       weekly_game_streak = CASE WHEN ${isWin} THEN user_stats.weekly_game_streak + 1 ELSE 0 END,
-      weekly_best_streak = GREATEST(user_stats.weekly_best_streak, CASE WHEN ${isWin} THEN user_stats.weekly_game_streak + 1 ELSE 0 END),
+      weekly_best_streak = GREATEST(COALESCE(user_stats.weekly_best_streak, 0), CASE WHEN ${isWin} THEN COALESCE(user_stats.weekly_game_streak, 0) + 1 ELSE 0 END),
       weekly_win_rate = ROUND(((user_stats.weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END)::numeric / NULLIF(user_stats.weekly_wins + user_stats.weekly_losses + 1, 0)) * 100, 2),
-      weekly_level_gain = GREATEST(0, EXCLUDED.level - user_stats.level + user_stats.weekly_level_gain),
+      weekly_level_gain = GREATEST(0, COALESCE(EXCLUDED.level - user_stats.level, 0) + COALESCE(user_stats.weekly_level_gain, 0)),
       updated_at = NOW()
   `;
 
-  if (multiplier >= 10) {
+  if (win >= 1000000) {
     await getSql()`
       INSERT INTO big_wins (id, user_id, username, game, bet_amount, win_amount, multiplier)
       SELECT gen_random_uuid(), clerk_id, name, ${game}, ${bet}, ${win}, ${multiplier}
