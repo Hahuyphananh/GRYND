@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { verifySignedSession } from "../../../../lib/serverSession";
 import { getMinesMultiplier } from "../../../../lib/minesMath";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 
 function calculateMultiplier(mines, revealed) {
   return getMinesMultiplier(mines, revealed);
@@ -77,6 +78,15 @@ export async function POST(req) {
       payout,
     }).catch(() => {});
 
+    // Fire system notification for large mines settle (≥ 1000 tokens)
+    if (betAmount >= 1000) {
+      sendSystemNotificationEmail({
+        eventType: "bet_placed",
+        description: `User ${userId} settled a large mines game: bet ${betAmount}, payout ${payout} (${revealedCount} tiles revealed).`,
+        metadata: { userId, betAmount, payout, revealedCount, mines },
+      }).catch((err) => console.warn("[system_notify] Failed to send mines settle:", err));
+    }
+
     const response = NextResponse.json({
       success: true,
       data: {
@@ -93,6 +103,13 @@ export async function POST(req) {
     return response;
   } catch (err) {
     console.error("Error in /api/mines/settle:", err);
+
+    sendSystemNotificationEmail({
+      eventType: "error_event",
+      description: `Mines settle error for user ${userId}: ${(err).message || "Unknown error"}`,
+      metadata: { userId, error: (err).stack?.slice(0, 500) || String(err) },
+    }).catch((ew) => console.warn("[system_notify] Failed to send mines settle error:", ew));
+
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

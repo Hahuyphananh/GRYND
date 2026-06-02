@@ -103,7 +103,7 @@ export default function SecurityPolicyPage() {
           <p className="text-sm text-[#c9f7ff]/70">
             If you have any security concerns or would like to report a
             vulnerability, please contact our security team at{" "}
-            <span className="text-[#f5ff3b]">security@goonbet.com</span>.
+            <span className="text-[#f5ff3b]">contact@goonbet.dedyn.io</span>.
           </p>
         </motion.div>
       </div>

@@ -4,6 +4,8 @@ import { emailEvents } from "../../db/schema";
 import { and, eq, gte } from "drizzle-orm";
 
 export const EMAIL_FROM = "GoonBet <noreply@mail.goonbet.dedyn.io>";
+export const ADMIN_EMAIL = "phananhalbert@gmail.com";
+export const CONTACT_FORM_FROM = "GoonBet <noreply@mail.goonbet.dedyn.io>";
 
 type UserRef = {
   id?: number;
@@ -20,6 +22,7 @@ export async function sendEmailSafely({
   type,
   category = "marketing",
   dedupeKey,
+  from,
 }: {
   user: UserRef;
   subject: string;
@@ -27,9 +30,13 @@ export async function sendEmailSafely({
   type: string;
   category?: "marketing" | "transactional" | "security";
   dedupeKey?: string;
+  /** Override the default sender address. Defaults to EMAIL_FROM. */
+  from?: string;
 }) {
+  if (!user?.email) return { skipped: true, reason: "missing_email" };
+
+  // ── DB checks (best-effort — never block email delivery) ──────
   try {
-    if (!user?.email) return { skipped: true, reason: "missing_email" };
     if (dedupeKey) {
       const existing = await db.query.emailEvents.findFirst({
         where: and(
@@ -40,6 +47,11 @@ export async function sendEmailSafely({
       });
       if (existing) return { skipped: true, reason: "idempotent" };
     }
+  } catch (dbErr) {
+    console.warn("[sendEmailSafely] Dedupe check failed (non-blocking):", (dbErr as Error).message);
+  }
+
+  try {
     if (category === "marketing" && user.clerkId) {
       const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const recentMarketing = await db.query.emailEvents.findFirst({
@@ -53,13 +65,26 @@ export async function sendEmailSafely({
       if (recentMarketing)
         return { skipped: true, reason: "marketing_rate_limited" };
     }
+  } catch (dbErr) {
+    console.warn("[sendEmailSafely] Marketing rate-limit check failed (non-blocking):", (dbErr as Error).message);
+  }
 
-    const { error } = await resend.emails.send({
-      from: EMAIL_FROM,
+  // ── Send email (always, regardless of DB state) ───────────────
+  let error: { message?: string } | null = null;
+  try {
+    const result = await resend.emails.send({
+      from: from ?? EMAIL_FROM,
       to: user.email,
       subject,
       html,
     });
+    error = result.error;
+  } catch (sendErr) {
+    error = { message: (sendErr as Error).message || "Resend send failed" };
+  }
+
+  // ── DB event logging (best-effort, non-blocking) ──────────────
+  try {
     await db
       .insert(emailEvents)
       .values({
@@ -71,10 +96,11 @@ export async function sendEmailSafely({
         status: error ? "failed" : "sent",
         meta: { subject, err: error?.message ?? null },
       });
-    return error ? { skipped: true, reason: "provider_error" } : { sent: true };
-  } catch {
-    return { skipped: true, reason: "silent_failure" };
+  } catch (dbErr) {
+    console.warn("[sendEmailSafely] Event logging failed (non-blocking):", (dbErr as Error).message);
   }
+
+  return error ? { skipped: true, reason: "provider_error" } : { sent: true };
 }
 
 export function renderTemplate(

@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../../db/client";
 import { coinFlipGames, users } from "../../../../../db/schema";
 import { eq, sql, and } from "drizzle-orm";
+import { sendSystemNotificationEmail } from "../../../../../lib/emails/system";
 
 export async function POST(req) {
   const { userId } = await auth();
@@ -43,6 +44,15 @@ export async function POST(req) {
         betAmount,
       })
       .returning();
+
+    // Fire system notification for large coin flip bets (≥ 1000 tokens)
+    if (betAmount >= 1000) {
+      sendSystemNotificationEmail({
+        eventType: "bet_placed",
+        description: `User ${userId} created a large coin-flip PvP game with ${betAmount} tokens.`,
+        metadata: { userId, betAmount, gameId: newGame.id },
+      }).catch((err) => console.warn("[system_notify] Failed to send coin-flip:", err));
+    }
 
     return newGame;
   });

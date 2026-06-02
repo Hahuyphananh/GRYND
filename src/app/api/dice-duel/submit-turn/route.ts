@@ -4,6 +4,7 @@ import { db } from "../../../../db";
 import { and, eq } from "drizzle-orm";
 import { diceMatches, diceTurns } from "../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 
 const d6 = () => Math.floor(Math.random() * 6) + 1;
 
@@ -126,6 +127,15 @@ export async function POST(req: Request) {
     const wager = m.wager || 0;
     const isPvp = !isAI && m.player2Id !== null && m.player2Id !== "AI_BOT";
     const payout = isPvp ? Math.floor(wager * 2 * 0.9) : 0;
+
+    // Fire system notification for large dice duel bets (≥ 1000 tokens)
+    if (wager >= 1000) {
+      sendSystemNotificationEmail({
+        eventType: "bet_placed",
+        description: `User ${userId} finished a large Dice Duel game (wager: ${wager}, winner: ${winnerId}).`,
+        metadata: { userId, matchId, wager, winnerId, isPvp },
+      }).catch((err) => console.warn("[system_notify] Failed to send dice-duel:", err));
+    }
 
     applyLeaderboardCounters({
       clerkId: winnerId,

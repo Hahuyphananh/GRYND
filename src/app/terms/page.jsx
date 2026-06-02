@@ -121,7 +121,7 @@ export default function TermsPage() {
         >
           <p className="text-sm text-[#c9f7ff]/70">
             For questions about these terms, contact us at{" "}
-            <span className="text-[#f5ff3b]">support@goonbet.com</span>
+            <span className="text-[#f5ff3b]">contact@goonbet.dedyn.io</span>
           </p>
         </motion.div>
       </div>

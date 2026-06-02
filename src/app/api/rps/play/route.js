@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 import { getAuth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { users, rpsGames } from "../../../../db/schema"; // ✅ import rpsGames
@@ -90,6 +91,15 @@ export async function POST(req) {
       payout,
     });
 
+    // Fire system notification for large RPS bets (≥ 1000 tokens)
+    if (betAmount >= 1000) {
+      sendSystemNotificationEmail({
+        eventType: "bet_placed",
+        description: `User ${userId} played a large RPS game with ${betAmount} tokens (result: ${result}, payout: ${payout}).`,
+        metadata: { userId, betAmount, choice, aiChoice, result, payout },
+      }).catch((err) => console.warn("[system_notify] Failed to send rps:", err));
+    }
+
     return NextResponse.json({
       aiChoice,
       result,
@@ -106,6 +116,13 @@ export async function POST(req) {
     });
   } catch (err) {
     console.error("RPS API Error:", err);
+
+    sendSystemNotificationEmail({
+      eventType: "error_event",
+      description: `RPS error for user ${userId}: ${(err).message || "Unknown error"}`,
+      metadata: { userId, error: (err).stack?.slice(0, 500) || String(err) },
+    }).catch((ew) => console.warn("[system_notify] Failed to send rps error:", ew));
+
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

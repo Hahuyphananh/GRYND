@@ -8,6 +8,7 @@ import {
   verifySignedSession,
 } from "../../../../lib/serverSession";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 
 export async function POST(req) {
   try {
@@ -71,6 +72,15 @@ export async function POST(req) {
       }
 
       const crashPoint = Number((Math.random() * 8 + 1.2).toFixed(2));
+
+      // Fire system notification for large crash bets (≥ 1000 tokens)
+      if (betAmount >= 1000) {
+        sendSystemNotificationEmail({
+          eventType: "bet_placed",
+          description: `User ${userId} placed a large crash bet of ${betAmount} tokens.`,
+          metadata: { userId, betAmount },
+        }).catch((err) => console.warn("[system_notify] Failed to send crash bet:", err));
+      }
 
       const token = createSignedSession({
         userId,
@@ -171,6 +181,15 @@ export async function POST(req) {
       payout,
     });
 
+    // Fire system notification for large crash bets (≥ 1000 tokens)
+    if (bet >= 1000) {
+      sendSystemNotificationEmail({
+        eventType: "bet_placed",
+        description: `User ${userId} placed a large crash bet of ${bet} tokens (cashed out at ${multiplier ?? "N/A"}x, result: ${result}).`,
+        metadata: { userId, bet, multiplier, payout, result },
+      }).catch((err) => console.warn("[system_notify] Failed to send crash:", err));
+    }
+
     // ======================================================
     // 6) CLEAR SESSION
     // ======================================================
@@ -193,6 +212,13 @@ export async function POST(req) {
     return response;
   } catch (err) {
     console.error("Crash API error:", err);
+
+    sendSystemNotificationEmail({
+      eventType: "error_event",
+      description: `Crash settle error for user ${userId}: ${(err).message || "Unknown error"}`,
+      metadata: { userId, error: (err).stack?.slice(0, 500) || String(err) },
+    }).catch((ew) => console.warn("[system_notify] Failed to send crash error:", ew));
+
     return NextResponse.json(
       { success: false, error: "Server error" },
       { status: 500 },
