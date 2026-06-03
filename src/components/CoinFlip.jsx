@@ -1,8 +1,10 @@
 "use client";
 import NavigationBar from "../components/navigation-bar";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation"; // ✅ For navigation
+import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import { useSocket } from "../context/SocketProvider";
+import { celebrateWin } from "../lib/animations";
 
 const HOUSE_EDGE = 0.98;
 const FEE = 0.02;
@@ -54,21 +56,6 @@ export default function CoinFlipPage() {
         <style jsx>{`
           .perspective {
             perspective: 1000px;
-          }
-
-          @keyframes coin-flip {
-            0% {
-              transform: rotateY(0deg) rotateX(0deg);
-            }
-            100% {
-              transform: rotateY(1440deg) rotateX(720deg);
-            }
-          }
-
-          .animate-coin-flip {
-            animation: coin-flip 1s cubic-bezier(0.19, 1, 0.22, 1) forwards;
-            transform-style: preserve-3d;
-            backface-visibility: hidden;
           }
         `}</style>
       </div>
@@ -150,6 +137,7 @@ function SoloCoinFlip() {
       setResult(outcome);
       setUserTokens(parseFloat(newBalance));
       setMessage(won ? `✅ You won $${payout.toFixed(2)}!` : "❌ You lost.");
+      if (won) celebrateWin();
     } catch {
       setFlipping(false);
       setMessage("Server error during flip.");
@@ -229,21 +217,31 @@ shadow-[0_0_18px_rgba(236,72,153,0.6)] text-[#030817] rounded font-bold shadow-[
 
       <div className="flex justify-center mt-6 h-28">
         <div className="relative w-24 h-24 perspective">
-          <div
+          <motion.div
             key={flipKey}
-            className={`w-full h-full rounded-full text-4xl flex items-center justify-center 
+            animate={flipping ? { rotateY: [0, 720, 1440], rotateX: [0, 360, 720] } : { rotateY: 0, rotateX: 0 }}
+            transition={{ duration: flipping ? 1 : 0.3, ease: [0.19, 1, 0.22, 1] }}
+            className="w-full h-full rounded-full text-4xl flex items-center justify-center 
 bg-gradient-to-br from-purple-500 via-pink-500 to-indigo-500
 text-white font-bold
 shadow-[0_0_25px_rgba(168,85,247,0.8),inset_0_0_20px_rgba(255,255,255,0.2)]
-border border-pink-400/40
-${flipping ? "animate-coin-flip" : ""}`}
+border border-pink-400/40"
+            style={{ transformStyle: "preserve-3d" }}
           >
             {result === "heads" ? "⚡" : result === "tails" ? "💠" : "?"}
-          </div>
+          </motion.div>
         </div>
       </div>
 
-      {message && <p className="text-center mt-4 text-[#7cefff]">{message}</p>}
+      {message && (
+        <motion.p
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center mt-4 text-[#7cefff]"
+        >
+          {message}
+        </motion.p>
+      )}
     </>
   );
 }
@@ -626,19 +624,21 @@ shadow-[0_0_12px_rgba(16,185,129,0.6)]"
 
           <div className="flex justify-center mb-6">
             <div className="relative w-24 h-24 perspective">
-              <div
+              <motion.div
                 key={flipKey}
-                className={`w-full h-full rounded-full text-4xl flex items-center justify-center 
+                animate={flipping ? { rotateY: [0, 720, 1440], rotateX: [0, 360, 720] } : { rotateY: 0, rotateX: 0 }}
+                transition={{ duration: flipping ? 1 : 0.3, ease: [0.19, 1, 0.22, 1] }}
+                className="w-full h-full rounded-full text-4xl flex items-center justify-center 
 bg-gradient-to-br from-purple-500 via-pink-500 to-indigo-500
 text-white font-bold
 shadow-[0_0_25px_rgba(168,85,247,0.8),inset_0_0_20px_rgba(255,255,255,0.2)]
-border border-pink-400/40
-${flipping ? "animate-coin-flip" : ""}`}
+border border-pink-400/40"
+                style={{ transformStyle: "preserve-3d" }}
               >
                 {!result && "🪙"}
                 {result === "heads" && "H"}
                 {result === "tails" && "T"}
-              </div>
+              </motion.div>
             </div>
           </div>
 

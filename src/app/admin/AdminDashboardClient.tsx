@@ -53,6 +53,25 @@ interface AuditLogEntry {
   createdAt: string;
 }
 
+interface PlayerReport {
+  id: number;
+  reporter_clerk_id: string;
+  reported_clerk_id: string;
+  game_type: string;
+  game_id: string | null;
+  reason: string;
+  details: string | null;
+  status: string;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by_clerk_id: string | null;
+  reporter_name: string | null;
+  reporter_email: string | null;
+  reported_name: string | null;
+  reported_email: string | null;
+  reported_is_banned: boolean | null;
+}
+
 // ── Component ─────────────────────────────────────────────────────
 
 interface AdminDashboardClientProps {
@@ -77,12 +96,22 @@ export default function AdminDashboardClient({
   const [searchedUsers, setSearchedUsers] = useState<AdminUser[]>([]);
   const [userSearchLoading, setUserSearchLoading] = useState(false);
   const [userToggleLoading, setUserToggleLoading] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"cache" | "users" | "audit">("cache");
+  const [activeTab, setActiveTab] = useState<"cache" | "users" | "audit" | "reports">("cache");
   const [adminVerified, setAdminVerified] = useState(initialAdminVerified);
 
   // ── Audit log state ────────────────────────────────────────────
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditLogLoading, setAuditLogLoading] = useState(false);
+
+  // ── Reports state ──────────────────────────────────────────────
+  const [reports, setReports] = useState<PlayerReport[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [banLoading, setBanLoading] = useState<string | null>(null);
+
+  // ── Token reset state ──────────────────────────────────────────
+  const [tokenResetTarget, setTokenResetTarget] = useState<AdminUser | null>(null);
+  const [tokenResetAmount, setTokenResetAmount] = useState("");
+  const [tokenResetLoading, setTokenResetLoading] = useState(false);
 
   // Redirect non-authenticated users
   useEffect(() => {
@@ -170,6 +199,8 @@ export default function AdminDashboardClient({
     if (!userSearch.trim()) return;
     setUserSearchLoading(true);
     setActionResult(null);
+    setTokenResetTarget(null);
+    setTokenResetAmount("");
     try {
       const res = await fetch(
         "/api/admin/users?search=" + encodeURIComponent(userSearch.trim()),
@@ -184,6 +215,39 @@ export default function AdminDashboardClient({
       setActionResult("Network error searching users");
     } finally {
       setUserSearchLoading(false);
+    }
+  }
+
+  // ── Token reset handler ───────────────────────────────────────
+  async function handleResetTokens() {
+    if (!tokenResetTarget || !tokenResetAmount.trim()) return;
+    const amount = Number(tokenResetAmount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setActionResult("Please enter a valid non-negative number.");
+      return;
+    }
+    setTokenResetLoading(true);
+    setActionResult(null);
+    try {
+      const res = await fetch("/api/admin/reset-tokens", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clerkId: tokenResetTarget.clerkId, balance: amount }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionResult(
+          `${data.data.name}'s balance set to ${data.data.newBalance} tokens.`,
+        );
+        setTokenResetTarget(null);
+        setTokenResetAmount("");
+      } else {
+        setActionResult("Error: " + data.error);
+      }
+    } catch {
+      setActionResult("Network error resetting tokens");
+    } finally {
+      setTokenResetLoading(false);
     }
   }
 
@@ -287,6 +351,88 @@ export default function AdminDashboardClient({
       fetchAuditLogs();
     }
   }, [activeTab, auditLogs.length, fetchAuditLogs]);
+
+  // ── Fetch reports ──────────────────────────────────────────────
+  const fetchReports = useCallback(async () => {
+    setReportsLoading(true);
+    try {
+      const res = await fetch("/api/admin/reports?status=pending&limit=100");
+      const data = await res.json();
+      if (data.success) {
+        setReports(data.reports || []);
+      }
+    } catch {
+      setActionResult("Network error fetching reports");
+    } finally {
+      setReportsLoading(false);
+    }
+  }, []);
+
+  // Fetch reports when switching to reports tab
+  useEffect(() => {
+    if (activeTab === "reports" && reports.length === 0) {
+      fetchReports();
+    }
+  }, [activeTab, reports.length, fetchReports]);
+
+  // ── Resolve report handler ──────────────────────────────────────
+  async function handleResolveReport(reportId: number, status: string) {
+    setBanLoading(String(reportId));
+    setActionResult(null);
+    try {
+      const res = await fetch("/api/admin/reports", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId, status }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionResult("Report " + reportId + " marked as " + status + ".");
+        setReports((prev) => prev.filter((r) => r.id !== reportId));
+      } else {
+        setActionResult("Error: " + data.error);
+      }
+    } catch {
+      setActionResult("Network error updating report");
+    } finally {
+      setBanLoading(null);
+    }
+  }
+
+  // ── Ban/unban handler ───────────────────────────────────────────
+  async function handleToggleBan(clerkId: string, ban: boolean) {
+    setBanLoading(clerkId);
+    setActionResult(null);
+    try {
+      const res = await fetch("/api/admin/ban-user", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clerkId, ban }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionResult(data.name + " has been " + (ban ? "banned" : "unbanned") + ".");
+      } else {
+        setActionResult("Error: " + data.error);
+      }
+    } catch {
+      setActionResult("Network error updating user");
+    } finally {
+      setBanLoading(null);
+    }
+  }
+
+  // ── Format report reason for display ────────────────────────────
+  function formatReason(reason: string): string {
+    const labels: Record<string, string> = {
+      toxic_player: "Toxic Player",
+      hacker: "Hacker / Cheater",
+      inappropriate_name: "Inappropriate Name",
+      inappropriate_picture: "Inappropriate Picture",
+      other: "Other",
+    };
+    return labels[reason] || reason.replace(/_/g, " ");
+  }
 
   // ── Format event name for display ──────────────────────────────
   function formatEventName(event: string): string {
@@ -491,7 +637,7 @@ export default function AdminDashboardClient({
 
       {/* Tab bar */}
       <div className="mb-6 flex gap-1 rounded-lg border border-white/10 bg-white/5 p-1 w-fit">
-        {(["cache", "users", "audit"] as const).map((tab) => (
+        {(["cache", "users", "audit", "reports"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -502,7 +648,7 @@ export default function AdminDashboardClient({
                 : "text-gray-400 hover:text-gray-200")
             }
           >
-            {tab === "cache" ? "📊 Cache" : tab === "users" ? "👥 Users" : "📋 Audit Logs"}
+            {tab === "cache" ? "📊 Cache" : tab === "users" ? "👥 Users" : tab === "audit" ? "📋 Audit Logs" : "🚩 Reports"}
           </button>
         ))}
       </div>
@@ -649,27 +795,83 @@ export default function AdminDashboardClient({
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-right">
-                          <button
-                            onClick={() => handleToggleAdmin(u)}
-                            disabled={userToggleLoading === u.clerkId}
-                            className={
-                              "px-3 py-1 rounded-lg text-xs font-medium transition-colors border disabled:opacity-50 " +
-                              (u.isAdmin
-                                ? "bg-red-500/20 hover:bg-red-500/30 text-red-300 border-red-500/30"
-                                : "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/30")
-                            }
-                          >
-                            {userToggleLoading === u.clerkId
-                              ? "..."
-                              : u.isAdmin
-                                ? "Revoke Admin"
-                                : "Make Admin"}
-                          </button>
+                          <div className="flex flex-col gap-1.5 items-end">
+                            <button
+                              onClick={() => handleToggleAdmin(u)}
+                              disabled={userToggleLoading === u.clerkId}
+                              className={
+                                "px-3 py-1 rounded-lg text-xs font-medium transition-colors border disabled:opacity-50 " +
+                                (u.isAdmin
+                                  ? "bg-red-500/20 hover:bg-red-500/30 text-red-300 border-red-500/30"
+                                  : "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/30")
+                              }
+                            >
+                              {userToggleLoading === u.clerkId
+                                ? "..."
+                                : u.isAdmin
+                                  ? "Revoke Admin"
+                                  : "Make Admin"}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setTokenResetTarget(u);
+                                setTokenResetAmount("");
+                              }}
+                              className="px-3 py-1 rounded-lg text-[10px] font-medium bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors"
+                            >
+                              💰 Reset Tokens
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* ── Token Reset Panel ── */}
+            {tokenResetTarget && (
+              <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-amber-300">
+                    💰 Reset tokens for{" "}
+                    <span className="text-white">{tokenResetTarget.name}</span>
+                    <span className="ml-2 text-xs text-gray-500 font-mono">
+                      ({tokenResetTarget.clerkId})
+                    </span>
+                  </span>
+                  <button
+                    onClick={() => {
+                      setTokenResetTarget(null);
+                      setTokenResetAmount("");
+                    }}
+                    className="text-xs text-gray-500 hover:text-gray-300"
+                  >
+                    ✕ Cancel
+                  </button>
+                </div>
+                <div className="flex gap-3">
+                  <input
+                    type="number"
+                    placeholder="New token balance..."
+                    value={tokenResetAmount}
+                    onChange={(e) => setTokenResetAmount(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleResetTokens();
+                    }}
+                    className="flex-1 rounded-lg border border-amber-500/30 bg-white/5 px-4 py-2 text-sm text-gray-200 placeholder-gray-500 outline-none focus:border-amber-400/50"
+                    min={0}
+                    step="any"
+                  />
+                  <button
+                    onClick={handleResetTokens}
+                    disabled={tokenResetLoading || !tokenResetAmount.trim()}
+                    className="px-5 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                  >
+                    {tokenResetLoading ? "Setting..." : "Set Balance"}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -685,6 +887,133 @@ export default function AdminDashboardClient({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── Reports Tab ──────────────────────────────────────────── */}
+      {activeTab === "reports" && (
+        <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">
+              Player Reports
+            </h2>
+            <button
+              onClick={fetchReports}
+              disabled={reportsLoading}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+            >
+              {reportsLoading ? "Loading..." : "🔄 Refresh"}
+            </button>
+          </div>
+
+          {reportsLoading && reports.length === 0 && (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-400 border-t-transparent" />
+            </div>
+          )}
+
+          {!reportsLoading && reports.length === 0 && (
+            <div className="py-16 text-center text-gray-500 text-sm">
+              No pending reports. All clear!
+            </div>
+          )}
+
+          {reports.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b border-white/5">
+                    <th className="px-3 py-2.5 font-medium">ID</th>
+                    <th className="px-3 py-2.5 font-medium">Reported</th>
+                    <th className="px-3 py-2.5 font-medium">Reason</th>
+                    <th className="px-3 py-2.5 font-medium">Game</th>
+                    <th className="px-3 py-2.5 font-medium">Reporter</th>
+                    <th className="px-3 py-2.5 font-medium">Time</th>
+                    <th className="px-3 py-2.5 font-medium text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reports.map((r) => (
+                    <tr
+                      key={r.id}
+                      className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                    >
+                      <td className="px-3 py-2.5 text-gray-300 font-mono text-xs">
+                        #{r.id}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div>
+                          <span className="text-gray-200 font-medium">{r.reported_name || r.reported_clerk_id}</span>
+                          {r.reported_is_banned && (
+                            <span className="ml-1.5 inline-flex items-center rounded-full bg-red-500/20 border border-red-500/30 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
+                              BANNED
+                            </span>
+                          )}
+                        </div>
+                        {r.reported_email && (
+                          <p className="text-gray-500 text-[10px]">{r.reported_email}</p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="inline-flex items-center rounded-full bg-orange-500/15 border border-orange-500/30 px-2 py-0.5 text-[11px] font-medium text-orange-300">
+                          {formatReason(r.reason)}
+                        </span>
+                        {r.details && (
+                          <p className="text-gray-500 text-[10px] mt-1 max-w-[150px] truncate" title={r.details}>
+                            {r.details}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-400 text-xs capitalize">
+                        {r.game_type.replace(/-/g, " ")}
+                        {r.game_id && <span className="text-gray-600"> #{r.game_id}</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-400 text-xs">
+                        {r.reporter_name || r.reporter_clerk_id}
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-500 text-xs font-mono whitespace-nowrap">
+                        {formatTimestamp(r.created_at)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleToggleBan(r.reported_clerk_id, !r.reported_is_banned)}
+                            disabled={banLoading === r.reported_clerk_id}
+                            className={
+                              "px-2.5 py-1 rounded text-[10px] font-medium transition-colors border disabled:opacity-50 " +
+                              (r.reported_is_banned
+                                ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/30"
+                                : "bg-red-500/20 hover:bg-red-500/30 text-red-300 border-red-500/30")
+                            }
+                          >
+                            {banLoading === r.reported_clerk_id
+                              ? "..."
+                              : r.reported_is_banned
+                                ? "Unban"
+                                : "Ban"}
+                          </button>
+                          <button
+                            onClick={() => handleResolveReport(r.id, "dismissed")}
+                            disabled={banLoading === String(r.id)}
+                            className="px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 transition-colors disabled:opacity-50"
+                          >
+                            Dismiss
+                          </button>
+                          <button
+                            onClick={() => handleResolveReport(r.id, "resolved")}
+                            disabled={banLoading === String(r.id)}
+                            className="px-2.5 py-1 rounded text-[10px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 transition-colors disabled:opacity-50"
+                          >
+                            Resolve
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

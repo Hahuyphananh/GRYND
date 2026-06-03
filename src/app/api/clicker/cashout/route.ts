@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
       {
         ...result,
         payout: result.payout.toString(),
+        betAmount: result.betAmount.toString(),
       },
       {
         headers: { "Cache-Control": "no-store" },

@@ -1,12 +1,17 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
+import { useUser } from "@clerk/nextjs";
+import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../components/navigation-bar";
 import { useSocket } from "../../../context/SocketProvider";
+import ReportModal from "../../../components/ReportModal";
+
 
 const PVP_CHOICES = ["rock", "paper", "scissors"];
 
 export default function RPSGame() {
   const { socket } = useSocket();
+  const { user } = useUser();
   const [tokens, setTokens] = useState(0);
   const [betAmount, setBetAmount] = useState(10);
   const [playerChoice, setPlayerChoice] = useState<string | null>(null);
@@ -44,6 +49,7 @@ export default function RPSGame() {
   const [pvpCountdown, setPvpCountdown] = useState<number | null>(null);
   const [pvpMessage, setPvpMessage] = useState<string>("");
   const [pvpActionLoading, setPvpActionLoading] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const autoBetRef = useRef(autoBet);
   autoBetRef.current = autoBet;
@@ -171,9 +177,9 @@ export default function RPSGame() {
   const formatOutcome = (outcome) => {
     if (!outcome) return "";
 
-    const player1Name = pvpPlayer1Id && pvpPlayer1Id === pvpPlayer1Id ? pvpMyName : pvpOpponentName;
+    const player1Name = pvpPlayer1Id && pvpPlayer1Id === user?.id ? pvpMyName : pvpOpponentName;
 
-    const player2Name = pvpPlayer2Id && pvpPlayer2Id === pvpPlayer2Id ? pvpMyName : pvpOpponentName;
+    const player2Name = pvpPlayer2Id && pvpPlayer2Id === user?.id ? pvpMyName : pvpOpponentName;
 
     return outcome.replace(/player1/g, player1Name).replace(/player2/g, player2Name);
   };
@@ -720,36 +726,56 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
         )}
       </div>
 
-      <main className="flex-1 flex flex-col items-center justify-start md:justify-center gap-6 md:gap-8 ml-0 md:ml-6 w-full px-3 sm:px-4 pb-10">
+      <motion.main
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="flex-1 flex flex-col items-center justify-start md:justify-center gap-6 md:gap-8 ml-0 md:ml-6 w-full px-3 sm:px-4 pb-10"
+      >
         {mode === "pve" && (
           <>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-5 sm:gap-10 w-full">
-              <div
+              <motion.div
+                initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
+                animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 12 }}
                 className="bg-[#020617]/80 backdrop-blur-xl border border-[#00e5ff]/40 
 shadow-[0_0_20px_rgba(0,229,255,0.2)] 
 w-24 h-32 sm:w-32 sm:h-44
 flex items-center justify-center rounded-xl text-5xl sm:text-6xl"
               >
                 {getEmoji(playerChoice)}
-              </div>
+              </motion.div>
 
-              <div className="text-2xl sm:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8]">
+              <motion.div
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="text-2xl sm:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8]"
+              >
                 VS
-              </div>
+              </motion.div>
 
-              <div
+              <motion.div
+                initial={{ scale: 0.5, opacity: 0, rotate: 15 }}
+                animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.2 }}
                 className="bg-[#020617]/80 backdrop-blur-xl border border-[#00e5ff]/40 
 shadow-[0_0_20px_rgba(0,229,255,0.2)] 
 w-24 h-32 sm:w-32 sm:h-44
 flex items-center justify-center rounded-xl text-5xl sm:text-6xl"
               >
                 {getEmoji(aiChoice)}
-              </div>
+              </motion.div>
             </div>
 
-            {result && (
-              <div
-                className={`text-2xl font-bold
+            <AnimatePresence>
+              {result && (
+                <motion.div
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                  className={`text-2xl font-bold
   ${
     result === "win"
       ? "text-[#00ffa6] drop-shadow-[0_0_15px_rgba(0,255,166,1)]"
@@ -758,10 +784,13 @@ flex items-center justify-center rounded-xl text-5xl sm:text-6xl"
         : "text-gray-400"
   }
 `}
-              >
-                {result.toUpperCase()}
-              </div>
-            )}
+                >
+                  {result === "win" && "🏆 "}
+                  {result.toUpperCase()}
+                  {result === "lose" && " 💀"}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-[420px]">
               {choices.map((choice) => (
@@ -819,6 +848,15 @@ flex items-center justify-center rounded-xl text-4xl sm:text-5xl"
             </div>
 
             {pvpGameId && <p className="text-sm text-gray-300">Game ID: {pvpGameId}</p>}
+
+            {pvpGameId && pvpPlayer2Id && (
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="mt-2 text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
+              >
+                🚩 Report Player
+              </button>
+            )}
 
             {pvpStatus === "matched" && !pvpMyChoice && (
               <>
@@ -880,7 +918,32 @@ flex items-center justify-center rounded-xl text-4xl sm:text-5xl"
             )}
           </div>
         )}
-      </main>
+      </motion.main>
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const opponentId = pvpPlayer1Id && pvpPlayer2Id
+            ? (pvpPlayer1Id === user?.id ? pvpPlayer2Id : pvpPlayer1Id)
+            : "";
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentId,
+              gameType: "rps",
+              gameId: pvpGameId ? String(pvpGameId) : undefined,
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={pvpOpponentName || "Opponent"}
+        gameType="Rock Paper Scissors"
+      />
     </div>
   );
 }

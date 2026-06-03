@@ -2,9 +2,12 @@
 
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { getDropRow } from "../../../../../lib/connectFour";
 import useGamePresence from "../../../../../hooks/useGamePresence";
+import ReportModal from "../../../../../components/ReportModal";
+import { celebrateWin, gameOverModal } from "../../../../../lib/animations";
 
 const DEFAULT_MOVE_LIMIT_SECONDS = 60;
 const REPLAY_WINDOW_SECONDS = 20;
@@ -78,6 +81,7 @@ export default function ConnectFourGamePage() {
   const [sendingReplayDecision, setSendingReplayDecision] = useState(false);
   const [replayMessage, setReplayMessage] = useState("");
   const [spectatorCount, setSpectatorCount] = useState(0);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useGamePresence({
     gameKey: "connect-four",
@@ -149,6 +153,7 @@ export default function ConnectFourGamePage() {
       ) {
         setStatusText("You won!");
         playUiTone("win");
+        celebrateWin();
       } else {
         setStatusText(
           gameData.result === "timeout" ? "You lost on time." : "You lost.",
@@ -391,7 +396,40 @@ export default function ConnectFourGamePage() {
   }, [game, replayCountdown, router]);
 
   return (
-    <div className="min-h-screen bg-[#02142c] text-white px-4 py-8 page-enter">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="min-h-screen bg-[#02142c] text-white px-4 py-8 page-enter"
+    >
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const opponentId = game?.role === "host" ? game?.guestClerkId : game?.hostClerkId;
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentId,
+              gameType: "connect-four",
+              gameId: String(gameId),
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={
+          game?.role === "host"
+            ? (game?.guestName || "Opponent")
+            : (game?.hostName || "Opponent")
+        }
+        gameType="Connect Four"
+      />
+
       <div className="max-w-5xl mx-auto relative overflow-hidden rounded-2xl">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -567,12 +605,22 @@ export default function ConnectFourGamePage() {
             </p>
 
             {game?.status === "in_progress" && (
-              <button
-                onClick={resignGame}
-                className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-500 font-bold hover-lift"
-              >
-                Resign Match
-              </button>
+              <>
+                <button
+                  onClick={resignGame}
+                  className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-500 font-bold hover-lift"
+                >
+                  Resign Match
+                </button>
+                {game && game.guestClerkId && (
+                  <button
+                    onClick={() => setShowReportModal(true)}
+                    className="mt-2 w-full text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
+                  >
+                    🚩 Report Player
+                  </button>
+                )}
+              </>
             )}
 
             {(game?.status === "finished" || game?.status === "cancelled") && (
@@ -586,26 +634,66 @@ export default function ConnectFourGamePage() {
           </div>
         </div>
 
+        <AnimatePresence>
         {showResultPopup && (
-          <div className="fixed inset-0 z-50 bg-black/65 flex items-center justify-center p-4">
-            <div className="w-full max-w-md rounded-2xl border border-white/20 bg-[#031a37] p-6 shadow-2xl">
-              <h3
-                className={`text-2xl font-extrabold mb-2 ${playerWon ? "text-green-300" : "text-red-300"}`}
+          <motion.div
+            key="cf-result-popup"
+            {...gameOverModal.backdrop}
+            className="fixed inset-0 z-50 bg-black/65 flex items-center justify-center p-4"
+          >
+            <motion.div
+              {...gameOverModal.panel}
+              className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl ${
+                playerWon
+                  ? "border-yellow-400/40 bg-gradient-to-b from-[#0a2a1a] to-[#031a0a] shadow-[0_0_40px_rgba(250,204,21,0.2)]"
+                  : "border-white/20 bg-[#031a37]"
+              }`}
+            >
+              <motion.div
+                initial={{ scale: 0, rotate: -30 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.25 }}
+                className="mb-2 text-6xl text-center"
+              >
+                {playerWon ? "🏆" : "💥"}
+              </motion.div>
+              <motion.h3
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.4, duration: 0.3 }}
+                className={`text-2xl font-extrabold mb-2 text-center ${playerWon ? "text-yellow-300" : "text-red-300"}`}
               >
                 {playerWon ? "🏆 You Won!" : "💥 You Lost"}
-              </h3>
-              <p className="text-white/80 mb-3">
+              </motion.h3>
+              <motion.p
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.5, duration: 0.3 }}
+                className="text-white/80 mb-3 text-center"
+              >
                 Choose replay or quit. Auto-quit in{" "}
                 <span className="font-mono font-bold text-yellow-300">
                   {replayCountdown}s
                 </span>
                 .
-              </p>
+              </motion.p>
               {replayMessage && (
-                <p className="text-sm text-cyan-300 mb-4">{replayMessage}</p>
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.6 }}
+                  className="text-sm text-cyan-300 mb-4 text-center"
+                >
+                  {replayMessage}
+                </motion.p>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
+              <motion.div
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.7, duration: 0.3 }}
+                className="grid grid-cols-2 gap-3"
+              >
                 <button
                   onClick={() => respondReplay("replay")}
                   disabled={sendingReplayDecision}
@@ -620,11 +708,12 @@ export default function ConnectFourGamePage() {
                 >
                   Quit
                 </button>
-              </div>
-            </div>
-          </div>
+              </motion.div>
+            </motion.div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </div>
-    </div>
+    </motion.div>
   );
 }

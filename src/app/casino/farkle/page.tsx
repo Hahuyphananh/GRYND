@@ -442,9 +442,7 @@ export default function FarklePage() {
       socket.emit("leave_room", { roomId });
       socket.off("game_state_update");
     };
-  }, [socket, roomId]);
-
-  // Sync gameStateRef for polling guard
+  }, [socket, roomId]);    // Sync gameStateRef for polling guard
   useEffect(() => {
     gameStateRef.current = game?.state;
   }, [game?.state]);
@@ -458,7 +456,8 @@ export default function FarklePage() {
       await fetchHistory(roomId);
     };
     poll();
-    const p = setInterval(poll, 5000);
+    // Faster polling for better sync — reduced from 5000ms to 1500ms
+    const p = setInterval(poll, 1500);
     return () => clearInterval(p);
   }, [roomId]);
 

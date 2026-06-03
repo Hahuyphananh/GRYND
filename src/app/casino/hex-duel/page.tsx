@@ -13,6 +13,7 @@ import HexParticles from "../../../components/HexParticles";
 import HexActionPanel, { type ActionType } from "../../../components/HexActionPanel";
 import HexActionLog from "../../../components/HexActionLog";
 import NavigationBar from "../../../components/navigation-bar";
+import ReportModal from "../../../components/ReportModal";
 
 const ATTACK_COST = 1;
 const DISPLACE_COST = 1;
@@ -958,6 +959,7 @@ export default function HexDuelPage() {
 
   // ── Resign confirmation popup ──────────────────────────────────
   const [showResignConfirm, setShowResignConfirm] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // ── Winner override (for chess clock expiry) ──────────────────────
   const [winnerOverride, setWinnerOverride] = useState<DuelPlayer | null>(null);
@@ -2138,6 +2140,14 @@ export default function HexDuelPage() {
             <div className="mt-6 text-center">                <button onClick={() => setShowResignConfirm(true)} className="text-xs text-slate-500 hover:text-slate-300 transition underline underline-offset-4">
                 {gameMode === "multiplayer" ? "Resign &amp; Return to Lobby" : "Forfeit &amp; Return to Lobby"}
               </button>
+              {gameMode === "multiplayer" && (
+                <button
+                  onClick={() => setShowReportModal(true)}
+                  className="ml-4 text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
+                >
+                  🚩 Report Player
+                </button>
+              )}
             </div>
           )}
 
@@ -2284,6 +2294,30 @@ export default function HexDuelPage() {
             );
           }
         })()}
+
+        {/* Report Modal */}
+        <ReportModal
+          isOpen={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          onSubmit={async (reason, details) => {
+            const opponentLabel = isPlayer1 ? "Player 2" : "Player 1";
+            const res = await fetch("/api/reports/submit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                reportedClerkId: isPlayer1 ? "player2" : "player1",
+                gameType: "hex-duel",
+                gameId: multiplayerGameId ? String(multiplayerGameId) : undefined,
+                reason,
+                details: details || undefined,
+              }),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || "Failed to submit report");
+          }}
+          reportedPlayerName={isPlayer1 ? "Player 2" : "Player 1"}
+          gameType="Hex Duel"
+        />
       </main>
     </>
   );
