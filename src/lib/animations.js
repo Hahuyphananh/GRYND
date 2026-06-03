@@ -88,7 +88,7 @@ export const cardDeal = (index, total) => ({
 export const scorePop = {
   initial: { scale: 0 },
   animate: { scale: 1 },
-  transition: { type: "spring", stiffness: 400, damping: 15 },
+  transition: { type: "spring" as const, stiffness: 400, damping: 15 },
 };
 
 // HP bar/Damage float animation
@@ -103,7 +103,7 @@ export const turnBanner = {
   initial: { opacity: 0, y: -50, scale: 0.8 },
   animate: { opacity: 1, y: 0, scale: 1 },
   exit: { opacity: 0, y: -50, scale: 0.8 },
-  transition: { type: "spring", stiffness: 300, damping: 20 },
+  transition: { type: "spring" as const, stiffness: 300, damping: 20 },
 };
 
 // Game over modal — spring with scale bounce
@@ -118,7 +118,7 @@ export const gameOverModal = {
     initial: { scale: 0.6, opacity: 0, y: 40 },
     animate: { scale: 1, opacity: 1, y: 0 },
     exit: { scale: 0.6, opacity: 0, y: 40 },
-    transition: { type: "spring", stiffness: 250, damping: 18, delay: 0.15 },
+    transition: { type: "spring" as const, stiffness: 250, damping: 18, delay: 0.15 },
   },
 };
 
@@ -126,7 +126,7 @@ export const gameOverModal = {
 export const choiceReveal = {
   initial: { scale: 0.5, opacity: 0, rotate: -20 },
   animate: { scale: 1, opacity: 1, rotate: 0 },
-  transition: { type: "spring", stiffness: 300, damping: 12 },
+  transition: { type: "spring" as const, stiffness: 300, damping: 12 },
 };
 
 // Floating notification toast
