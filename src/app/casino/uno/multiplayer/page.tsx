@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import UnoCard from "../../../../components/UnoCard";
 import UnoBack from "../../../../components/UnoBack";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
+import { celebrateWin, gameOverModal } from "../../../../lib/animations";
 
 const UNO_MULTI_SEAT_POSITIONS = [
   { left: "50%", top: "15%" },
@@ -75,6 +77,7 @@ export default function UnoMultiplayerPage() {
     setOpponentReplayRequested(false);
     setReturnChosen(false);
     setReplaySecondsLeft(15);
+    if (result === "win") celebrateWin();
   };
 
   const closeToUnoLobby = () => {
@@ -660,59 +663,108 @@ export default function UnoMultiplayerPage() {
   const isAiThinking = currentPlayer?.type === "ai" && !loading;
 
   return (
-    <div className="bg-gradient-to-br from-[#001933] mt-12 to-[#000d1a] min-h-screen flex flex-col items-center text-white px-4 py-8">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="bg-gradient-to-br from-[#001933] mt-12 to-[#000d1a] min-h-screen flex flex-col items-center text-white px-4 py-8"
+    >
       <NavigationBar currentPath="/casino" />
-      {endPopup && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-cyan-300/60 bg-[#071124] p-6 text-center shadow-[0_0_45px_rgba(0,229,255,0.35),inset_0_0_30px_rgba(217,70,239,0.12)]">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-300 via-fuchsia-500 to-yellow-300" />
-            <p className="text-xs font-black uppercase tracking-[0.45em] text-cyan-200">
-              UNO Table Result
-            </p>
-            <h2
-              className={`mt-3 text-4xl font-black uppercase ${endPopup.result === "win" ? "text-emerald-300" : "text-fuchsia-300"}`}
+      <AnimatePresence>
+        {endPopup && (
+          <motion.div
+            key="uno-end-popup"
+            {...gameOverModal.backdrop}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+          >
+            <motion.div
+              {...gameOverModal.panel}
+              className={`relative w-full max-w-md overflow-hidden rounded-3xl border p-6 text-center shadow-2xl ${
+                endPopup.result === "win"
+                  ? "border-yellow-400/60 bg-gradient-to-b from-[#0a2a1a] to-[#031a0a] shadow-[0_0_45px_rgba(250,204,21,0.35)]"
+                  : "border-cyan-300/60 bg-[#071124] shadow-[0_0_45px_rgba(0,229,255,0.35),inset_0_0_30px_rgba(217,70,239,0.12)]"
+              }`}
             >
-              {endPopup.result === "win"
-                ? "Victory"
-                : endPopup.reason === "resigned"
-                  ? "Resigned"
-                  : "Defeat"}
-            </h2>
-            <p className="mt-3 text-sm text-slate-200">
-              {endPopup.result === "win"
-                ? "You won the table."
-                : endPopup.reason === "resigned"
-                  ? "You resigned from the table."
-                  : "You lost the table."}
-            </p>
-            <p className="mt-4 text-xs font-bold uppercase tracking-widest text-yellow-200">
-              Replay window: {replaySecondsLeft}s
-            </p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <button
-                onClick={requestReplay}
-                disabled={returnChosen || replayRequested}
-                className="rounded-xl border border-fuchsia-300/70 bg-fuchsia-500/20 px-4 py-3 font-black text-fuchsia-100 shadow-[0_0_18px_rgba(217,70,239,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
+              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-300 via-fuchsia-500 to-yellow-300" />
+              <motion.div
+                initial={{ scale: 0, rotate: -30 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
+                className="mb-2 text-6xl"
               >
-                {replayRequested ? "Replay requested" : "Replay"}
-              </button>
-              <button
-                onClick={closeToUnoLobby}
-                className="rounded-xl border border-cyan-300/70 bg-cyan-400 px-4 py-3 font-black text-[#031026] shadow-[0_0_18px_rgba(34,211,238,0.35)]"
+                {endPopup.result === "win" ? "🏆" : "💀"}
+              </motion.div>
+              <p className="text-xs font-black uppercase tracking-[0.45em] text-cyan-200">
+                UNO Table Result
+              </p>
+              <motion.h2
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.5, duration: 0.4 }}
+                className={`mt-3 text-4xl font-black uppercase ${endPopup.result === "win" ? "text-yellow-300" : "text-fuchsia-300"}`}
               >
-                Return to Lobby
-              </button>
-            </div>
-            <p className="mt-3 text-xs text-slate-300">
-              {returnChosen
-                ? "A player chose the lobby. Replay is disabled."
-                : opponentReplayRequested
-                  ? "Another player is ready for replay."
-                  : "Players must click replay before the timer ends."}
-            </p>
-          </div>
-        </div>
-      )}
+                {endPopup.result === "win"
+                  ? "Victory"
+                  : endPopup.reason === "resigned"
+                    ? "Resigned"
+                    : "Defeat"}
+              </motion.h2>
+              <motion.p
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.6, duration: 0.4 }}
+                className="mt-3 text-sm text-slate-200"
+              >
+                {endPopup.result === "win"
+                  ? "You won the table."
+                  : endPopup.reason === "resigned"
+                    ? "You resigned from the table."
+                    : "You lost the table."}
+              </motion.p>
+              <motion.p
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.7, duration: 0.4 }}
+                className="mt-4 text-xs font-bold uppercase tracking-widest text-yellow-200"
+              >
+                Replay window: {replaySecondsLeft}s
+              </motion.p>
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.8, duration: 0.4 }}
+                className="mt-6 grid gap-3 sm:grid-cols-2"
+              >
+                <button
+                  onClick={requestReplay}
+                  disabled={returnChosen || replayRequested}
+                  className="rounded-xl border border-fuchsia-300/70 bg-fuchsia-500/20 px-4 py-3 font-black text-fuchsia-100 shadow-[0_0_18px_rgba(217,70,239,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {replayRequested ? "Replay requested" : "Replay"}
+                </button>
+                <button
+                  onClick={closeToUnoLobby}
+                  className="rounded-xl border border-cyan-300/70 bg-cyan-400 px-4 py-3 font-black text-[#031026] shadow-[0_0_18px_rgba(34,211,238,0.35)]"
+                >
+                  Return to Lobby
+                </button>
+              </motion.div>
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.0, duration: 0.4 }}
+                className="mt-3 text-xs text-slate-300"
+              >
+                {returnChosen
+                  ? "A player chose the lobby. Replay is disabled."
+                  : opponentReplayRequested
+                    ? "Another player is ready for replay."
+                    : "Players must click replay before the timer ends."}
+              </motion.p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <h1 className="text-3xl mb-6 font-bold">UNO Multiplayer Table</h1>
       {tokens && <p className="text-yellow-300 mb-4 text-lg">Tokens : {tokens.balance}</p>}
 
@@ -1112,6 +1164,6 @@ export default function UnoMultiplayerPage() {
         </div>
       )}
       <Footer />
-    </div>
+    </motion.div>
   );
 }

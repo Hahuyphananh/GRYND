@@ -3,8 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Chess } from "chess.js";
+import { motion, AnimatePresence } from "framer-motion";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
+import ReportModal from "../../../../components/ReportModal";
+import { celebrateWin } from "../../../../lib/animations";
 
 const Chessboard = dynamic(
   async () => {
@@ -72,6 +75,7 @@ export default function ChessGamePage() {
   const [isResigning, setIsResigning] = useState(false);
   const [showResultPopup, setShowResultPopup] = useState(false);
   const [resultText, setResultText] = useState("");
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const { socket } = useSocket();
 
@@ -140,6 +144,7 @@ export default function ChessGamePage() {
 
       if (text.includes("won")) {
         playUiTone("win");
+        celebrateWin();
       }
 
       return;
@@ -350,6 +355,16 @@ export default function ChessGamePage() {
               </button>
             )}
 
+            {/* REPORT PLAYER */}
+            {!isSpectator && gameData && (gameData.whitePlayerId && gameData.blackPlayerId) && (
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="mt-2 w-full text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
+              >
+                🚩 Report Player
+              </button>
+            )}
+
             {/* RETURN */}
             <button
               onClick={() => router.push("/casino/chess")}
@@ -360,14 +375,66 @@ export default function ChessGamePage() {
           </div>
         </div>
       </div>
-      {showResultPopup && (
-        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center px-4">
-          <div className="relative w-full max-w-md rounded-2xl border border-cyan-400/30 bg-[#0b1020] p-6 text-center overflow-hidden shadow-[0_0_40px_rgba(0,255,255,0.25)]">
-            <h2 className="text-3xl font-black text-cyan-300 mb-3">
-              MATCH FINISHED
-            </h2>
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const opponentId = gameData
+            ? (color === "white" ? gameData.blackPlayerId : gameData.whitePlayerId)
+            : "";
+          const opponentName =
+            color === "white" ? (gameData?.blackPlayerName || "Opponent") : (gameData?.whitePlayerName || "Opponent");
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentId,
+              gameType: "chess",
+              gameId: String(gameId),
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={
+          gameData
+            ? (color === "white" ? (gameData.blackPlayerName || "Opponent") : (gameData.whitePlayerName || "Opponent"))
+            : "Opponent"
+        }
+        gameType="Chess"
+      />
 
-            <p className="text-xl text-white mb-6">{resultText}</p>
+      {showResultPopup && (
+        <AnimatePresence>
+        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center px-4">
+          <motion.div
+            key="chess-game-over"
+            initial={{ scale: 0.6, opacity: 0, y: 40 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.6, opacity: 0, y: 40 }}
+            transition={{ type: "spring", stiffness: 250, damping: 18 }}
+            className="relative w-full max-w-md rounded-2xl border border-cyan-400/30 bg-[#0b1020] p-6 text-center overflow-hidden shadow-[0_0_40px_rgba(0,255,255,0.25)]"
+          >
+            <motion.h2
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="text-3xl font-black text-cyan-300 mb-3"
+            >
+              MATCH FINISHED
+            </motion.h2>
+
+            <motion.p
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.35 }}
+              className="text-xl text-white mb-6"
+            >
+              {resultText}
+            </motion.p>
 
             {resultText.includes("won") && (
               <div className="absolute inset-0 pointer-events-none">
@@ -393,8 +460,9 @@ export default function ChessGamePage() {
             >
               Return to Lobby
             </button>
-          </div>
+          </motion.div>
         </div>
+        </AnimatePresence>
       )}
     </div>
   );

@@ -1,7 +1,10 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
+import ReportModal from "../../../../../components/ReportModal";
+
 
 const ACTIONS = [
   {
@@ -26,7 +29,7 @@ const ACTIONS = [
   },
 ];
 
-function DiceFace({ value }: { value: number }) {
+function DiceFace({ value, rolling }: { value: number; rolling?: boolean }) {
   const dots: Record<number, string[]> = {
     1: ["50% 50%"],
     2: ["30% 30%", "70% 70%"],
@@ -37,18 +40,24 @@ function DiceFace({ value }: { value: number }) {
   };
 
   return (
-    <div className="w-24 h-24 rounded-2xl bg-white border-4 border-cyan-400 relative shadow-2xl">
+    <motion.div
+      animate={rolling ? { rotate: [0, 180, 360, 540, 720], scale: [1, 1.1, 0.95, 1.05, 1] } : { rotate: 0, scale: 1 }}
+      transition={{ duration: rolling ? 0.55 : 0.2, ease: "easeInOut" }}
+      className="w-24 h-24 rounded-2xl bg-white border-4 border-cyan-400 relative shadow-2xl"
+    >
       {dots[value]?.map((pos, i) => {
         const [left, top] = pos.split(" ");
         return (
-          <span
+          <motion.span
             key={i}
             className="absolute w-3 h-3 bg-black rounded-full -translate-x-1/2 -translate-y-1/2"
             style={{ left, top }}
+            animate={rolling ? { scale: [1, 1.3, 1] } : { scale: 1 }}
+            transition={{ duration: 0.3, repeat: rolling ? Infinity : 0, delay: i * 0.05 }}
           />
         );
       })}
-    </div>
+    </motion.div>
   );
 }
 
@@ -72,6 +81,7 @@ export default function DiceDuelMatchPage() {
     { id: number; text: string; side: "left" | "right" }[]
   >([]);
   const [endPopup, setEndPopup] = useState<null | "win" | "loss">(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const spawnFloat = (
     text: string,
@@ -266,7 +276,12 @@ export default function DiceDuelMatchPage() {
     <div className="min-h-screen bg-[#050512] text-white p-4 md:p-8">
       <NavigationBar currentPath="/casino" />
 
-      <div className="max-w-5xl mx-auto rounded-2xl border border-cyan-800 bg-black/30 p-5 mt-10">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="max-w-5xl mx-auto rounded-2xl border border-cyan-800 bg-black/30 p-5 mt-10"
+      >
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-black text-fuchsia-400">Arena Match</h1>
@@ -285,44 +300,35 @@ export default function DiceDuelMatchPage() {
             >
               Back
             </button>
+            <button
+              onClick={() => setShowReportModal(true)}
+              className="text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
+            >
+              🚩 Report
+            </button>
           </div>
         </div>
 
         {/* Dice */}
         <div className="mt-6 flex justify-center">
-          <div
-            className={`transition-all duration-150 ${
-              rolling ? "rotate-[720deg] scale-125" : ""
-            }`}
-          >
-            <div
-              className={`flex items-center justify-center gap-3 ${dice2 > 0 ? "" : "w-full"}`}
-            >
-              <div
-                className={`transition-all ${rolling ? "rotate-[720deg] scale-110" : ""}`}
-              >
-                <DiceFace value={dice1} />
-              </div>
-
-              {dice2 > 0 && (
-                <div
-                  className={`transition-all ${rolling ? "rotate-[720deg] scale-110" : ""}`}
-                >
-                  <DiceFace value={dice2} />
-                </div>
-              )}
-            </div>
+          <div className="flex items-center justify-center gap-3">
+            <DiceFace value={dice1} rolling={rolling} />
+            {dice2 > 0 && <DiceFace value={dice2} rolling={rolling} />}
+          </div>
+        </div>
             <div className="mt-3 text-center text-cyan-300 font-bold">
               Total: {dice1 + dice2}
             </div>
             {lastAction && (
-              <div className="mt-2 text-center text-sm text-slate-300">
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-2 text-center text-sm text-slate-300"
+              >
                 Last action:{" "}
                 <span className="text-fuchsia-300">{lastAction}</span>
-              </div>
+              </motion.div>
             )}
-          </div>
-        </div>
 
         {/* HP / Player Cards */}
         <div className="grid md:grid-cols-2 gap-4 mt-6">
@@ -477,7 +483,38 @@ export default function DiceDuelMatchPage() {
             </div>
           ))}
         </div>
-      </div>
+      </motion.div>
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const opponentId = viewerIsPlayer1 ? match?.player2Id : match?.player1Id;
+          const opponentName = viewerIsPlayer1
+            ? (match?.player2Name || "Opponent")
+            : (match?.player1Name || "Opponent");
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentId,
+              gameType: "dice-duel",
+              gameId: String(matchId),
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={
+          viewerIsPlayer1
+            ? (match?.player2Name || "Opponent")
+            : (match?.player1Name || "Opponent")
+        }
+        gameType="Dice Duel"
+      />
+
       {endPopup && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { BALL_LAYOUT, MAX_PULL, TABLE_H, TABLE_W } from "../../../../../lib/pool/constants";
@@ -11,6 +12,8 @@ import { drawAimGuide, drawBalls, drawBankPreview, drawShotPreview, drawTable } 
 import { isNewerVersion, pushPoolState } from "../../../../../lib/pool/multiplayer";
 import { Ball, PlayerTurn, ShotLifecycle, ShotMeta, Team } from "../../../../../lib/pool/types";
 import { useUser } from "@clerk/nextjs";
+import ReportModal from "../../../../../components/ReportModal";
+import { celebrateWin, gameOverModal } from "../../../../../lib/animations";
 
 type PoolLivePayload = {
   userId?: string;
@@ -174,6 +177,8 @@ export default function Page() {
   const [resigning, setResigning] = useState(false);
   const [showWinLossPopup, setShowWinLossPopup] = useState(false);
   const resigningRef = useRef(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [opponentClerkId, setOpponentClerkId] = useState<string | null>(null);
 
   // Keep userIdRef in sync so the socket handler never captures a stale user
   useEffect(() => {
@@ -269,6 +274,8 @@ export default function Page() {
   // Show win/loss popup when winner is determined
   useEffect(() => {
     if (winner && !showWinLossPopup) {
+      // Fire confetti if local player won
+      if (winner === ownerRef.current) celebrateWin();
       // Small delay so the final ball positions render before the popup
       const timer = setTimeout(() => setShowWinLossPopup(true), 600);
       return () => clearTimeout(timer);
@@ -1044,6 +1051,11 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       }
       if (data.viewerName) setMyName(data.viewerName);
       if (data.opponentName) setOppName(data.opponentName);
+      // Capture opponent's clerkId for reporting
+      if (data.match?.player1Id && data.match?.player2Id) {
+        const oppId = data.viewerSeat === 1 ? data.match.player2Id : data.match.player1Id;
+        if (oppId) setOpponentClerkId(oppId);
+      }
 
       // Use refs for the most current values — avoids stale closure issues
       const localShotInProgress = localShotInProgressRef.current || remoteShotInProgressRef.current;
@@ -1232,40 +1244,62 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         </div>
         {/* ── Resign button ── */}
         {started && !winner && (
-          <div className="mt-3 flex justify-center">
-            {!showResignConfirm ? (
+          <div className="mt-3 flex flex-col items-center gap-2">
+            <div className="flex justify-center">
+              {!showResignConfirm ? (
+                <button
+                  onClick={() => setShowResignConfirm(true)}
+                  disabled={resigning}
+                  className="rounded-lg border border-red-500/40 bg-red-900/30 px-5 py-1.5 text-sm font-semibold text-red-300 transition-all hover:bg-red-900/50 hover:text-red-200"
+                >
+                  {resigning ? "Resigning..." : "🏳️ Resign"}
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleResign}
+                    disabled={resigning}
+                    className="rounded-lg bg-red-700 px-5 py-1.5 text-sm font-bold text-white transition-all hover:bg-red-600 disabled:opacity-60"
+                  >
+                    {resigning ? "Resigning..." : "Confirm Resign"}
+                  </button>
+                  <button
+                    onClick={() => setShowResignConfirm(false)}
+                    disabled={resigning}
+                    className="rounded-lg border border-white/20 bg-white/10 px-4 py-1.5 text-sm font-semibold text-white/70 transition-all hover:bg-white/20"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+            {!aiMode && (
               <button
-                onClick={() => setShowResignConfirm(true)}
-                disabled={resigning}
-                className="rounded-lg border border-red-500/40 bg-red-900/30 px-5 py-1.5 text-sm font-semibold text-red-300 transition-all hover:bg-red-900/50 hover:text-red-200"
+                onClick={() => setShowReportModal(true)}
+                className="text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
               >
-                {resigning ? "Resigning..." : "🏳️ Resign"}
+                🚩 Report Player
               </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleResign}
-                  disabled={resigning}
-                  className="rounded-lg bg-red-700 px-5 py-1.5 text-sm font-bold text-white transition-all hover:bg-red-600 disabled:opacity-60"
-                >
-                  {resigning ? "Resigning..." : "Confirm Resign"}
-                </button>
-                <button
-                  onClick={() => setShowResignConfirm(false)}
-                  disabled={resigning}
-                  className="rounded-lg border border-white/20 bg-white/10 px-4 py-1.5 text-sm font-semibold text-white/70 transition-all hover:bg-white/20"
-                >
-                  Cancel
-                </button>
-              </div>
             )}
           </div>
         )}
 
         {/* ── Win / Loss popup modal ── */}
+        <AnimatePresence>
         {showWinLossPopup && gameOverMessage && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
-            <div className="relative mx-4 w-full max-w-sm animate-scale-in rounded-2xl border border-white/20 bg-[#1a1a2e] p-8 shadow-2xl">
+          <motion.div
+            key="pool-end-popup"
+            {...gameOverModal.backdrop}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          >
+            <motion.div
+              {...gameOverModal.panel}
+              className={`relative mx-4 w-full max-w-sm rounded-2xl border p-8 shadow-2xl ${
+                gameOverMessage.won
+                  ? "border-yellow-400/40 bg-gradient-to-b from-[#1a2e1a] to-[#0d1a0d] shadow-[0_0_40px_rgba(250,204,21,0.3)]"
+                  : "border-white/20 bg-[#1a1a2e]"
+              }`}
+            >
               {/* Confetti / decorative glow */}
               <div
                 className={`absolute inset-0 rounded-2xl opacity-20 blur-xl ${
@@ -1277,10 +1311,20 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
 
               <div className="relative flex flex-col items-center gap-4">
                 {/* Icon */}
-                <div className="text-6xl">{gameOverMessage.won ? "🏆" : "😞"}</div>
+                <motion.div
+                  initial={{ scale: 0, rotate: -30 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
+                  className="text-6xl"
+                >
+                  {gameOverMessage.won ? "🏆" : "😞"}
+                </motion.div>
 
                 {/* Title */}
-                <h2
+                <motion.h2
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.5, duration: 0.4 }}
                   className={`text-3xl font-black ${
                     gameOverMessage.won
                       ? "bg-gradient-to-r from-yellow-300 to-amber-400 bg-clip-text text-transparent"
@@ -1288,17 +1332,27 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
                   }`}
                 >
                   {gameOverMessage.won ? "You Win!" : "You Lose"}
-                </h2>
+                </motion.h2>
 
                 {/* Subtitle */}
-                <p className="text-center text-sm text-white/60">
+                <motion.p
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.6, duration: 0.4 }}
+                  className="text-center text-sm text-white/60"
+                >
                   {gameOverMessage.won
                     ? "Congratulations! You won the match."
                     : `${oppName} won the match. Better luck next time!`}
-                </p>
+                </motion.p>
 
                 {/* Buttons */}
-                <div className="mt-2 flex w-full flex-col gap-2">
+                <motion.div
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.7, duration: 0.4 }}
+                  className="mt-2 flex w-full flex-col gap-2"
+                >
                   <button
                     onClick={handleReturnToLobby}
                     className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-3 font-bold text-white shadow-lg transition-all hover:scale-105 hover:from-indigo-500 hover:to-purple-500"
@@ -1312,11 +1366,12 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
                   >
                     {rematching ? "Creating..." : aiMode ? "Play Again" : "Find New Match"}
                   </button>
-                </div>
+                </motion.div>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         )}
+        </AnimatePresence>
 
         {/* ── Shot history toggle & panel ── */}
         <div className="mt-3">
@@ -1521,6 +1576,28 @@ ${!canShoot ? "pointer-events-none" : ""}`}
             />
         </div>
       </div>
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentClerkId,
+              gameType: "pool-masters",
+              gameId: String(matchId),
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={oppName}
+        gameType="Pool Masters"
+      />
     </div>
   );
 }

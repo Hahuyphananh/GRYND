@@ -60,7 +60,14 @@ export async function POST(req: Request) {
         : match.player1Id;
 
     const winnerSeat = isPlayer1 ? 2 : 1;
-    const wager = Number(match.wager);
+    const wager = Number(match.wager ?? 0);
+    // Guard: if wager is invalid, abort gracefully
+    if (!wager || wager <= 0 || !Number.isFinite(wager)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid wager on match" },
+        { status: 400 },
+      );
+    }
     const houseFee = Math.floor(wager * 2 * 0.02); // 2% house edge
     const payout = isAi ? 0 : wager * 2 - houseFee;
 

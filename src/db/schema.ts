@@ -73,6 +73,7 @@ export const users = pgTable("users", {
   searchName: varchar("search_name", { length: 255 }),
   termsAccepted: boolean("terms_accepted").notNull().default(false),
   isAdmin: boolean("is_admin").notNull().default(false),
+  isBanned: boolean("is_banned").notNull().default(false),
 });
 
 export const friendRelations = pgTable(
@@ -1037,6 +1038,28 @@ export const adminAuditLogs = pgTable(
   (table) => ({
     adminAuditEventIdx: index("idx_admin_audit_event").on(table.event, table.createdAt),
     adminAuditClerkIdx: index("idx_admin_audit_clerk").on(table.clerkId, table.createdAt),
+  }),
+);
+
+// PLAYER REPORTS — user-to-user reporting system for PVP games
+export const playerReports = pgTable(
+  "player_reports",
+  {
+    id: serial("id").primaryKey(),
+    reporterClerkId: varchar("reporter_clerk_id", { length: 255 }).notNull(),
+    reportedClerkId: varchar("reported_clerk_id", { length: 255 }).notNull(),
+    gameType: varchar("game_type", { length: 50 }).notNull(),
+    gameId: varchar("game_id", { length: 100 }),
+    reason: varchar("reason", { length: 50 }).notNull(),
+    details: text("details"),
+    status: varchar("status", { length: 20 }).notNull().default("pending"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at"),
+    resolvedByClerkId: varchar("resolved_by_clerk_id", { length: 255 }),
+  },
+  (table) => ({
+    statusIdx: index("idx_player_reports_status").on(table.status, table.createdAt),
+    reportedIdx: index("idx_player_reports_reported").on(table.reportedClerkId),
   }),
 );
 
