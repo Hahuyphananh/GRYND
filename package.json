@@ -51,7 +51,8 @@
     "stockfish": "^16.0.0",
     "svix": "^1.95.1",
     "swr": "^2.3.3",
-    "typescript-eslint": "^8.59.3"
+    "typescript-eslint": "^8.59.3",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.3.3",
@@ -59,6 +60,7 @@
     "@types/node": "22.14.1",
     "@types/pg": "^8.11.14",
     "@types/react": "19.1.2",
+    "@types/ws": "^8.18.1",
     "autoprefixer": "^10.0.1",
     "drizzle-kit": "^0.31.10",
     "eslint": "^8.52.0",
