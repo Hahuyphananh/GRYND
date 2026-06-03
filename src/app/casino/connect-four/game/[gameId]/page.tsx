@@ -396,12 +396,17 @@ export default function ConnectFourGamePage() {
   }, [game, replayCountdown, router]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
-      className="min-h-screen bg-[#02142c] text-white px-4 py-8 page-enter"
-    >
+  <motion.div
+  initial={{ scale: 0, rotate: -30 }}
+  animate={{ scale: 1, rotate: 0 }}
+  transition={{
+    type: "spring" as const,
+    stiffness: 300,
+    damping: 12,
+    delay: 0.25,
+  }}
+  className="mb-2 text-6xl text-center"
+>
       {/* Report Modal */}
       <ReportModal
         isOpen={showReportModal}
