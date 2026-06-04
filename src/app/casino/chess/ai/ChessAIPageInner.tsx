@@ -4,7 +4,9 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
+import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../lib/animations";
 
 const PIECE_VALUES: Record<string, number> = {
   p: 100,
@@ -186,6 +188,12 @@ export default function ChessAIPageInner() {
     "win" | "lose" | "draw" | "pending"
   >("pending");
   const [winnerText, setWinnerText] = useState("");
+  const [turnBanner, setTurnBanner] = useState<string | null>(null);
+  const [showResultModal, setShowResultModal] = useState(false);
+
+  const prevIsPlayerTurnRef = useRef<boolean | null>(null);
+  const resultCelebratedRef = useRef(false);
+  const [captureFlash, setCaptureFlash] = useState(false);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -267,6 +275,12 @@ export default function ChessAIPageInner() {
     const move = pickBestMove(gameInstance, aiColor, aiLevel);
     if (!move) return;
 
+    // Capture flash for AI capture
+    if (move.captured) {
+      setCaptureFlash(true);
+      setTimeout(() => setCaptureFlash(false), 400);
+    }
+
     gameInstance.move(move);
     setGame(new Chess(gameInstance.fen()));
 
@@ -293,6 +307,12 @@ export default function ChessAIPageInner() {
 
     if (move === null) return false;
 
+    // Capture flash
+    if (move.captured) {
+      setCaptureFlash(true);
+      setTimeout(() => setCaptureFlash(false), 400);
+    }
+
     setGame(new Chess(gameCopy.fen()));
     if (gameCopy.isGameOver()) handleGameOver(gameCopy);
     return true;
@@ -305,6 +325,7 @@ export default function ChessAIPageInner() {
       setWinnerText("Game Over!");
       setGameResult("draw");
       await endGame("draw");
+      setShowResultModal(true);
       return;
     }
 
@@ -314,11 +335,16 @@ export default function ChessAIPageInner() {
         setWinnerText("You win!");
         setGameResult("win");
         await endGame("win");
+        if (!resultCelebratedRef.current) {
+          resultCelebratedRef.current = true;
+          celebrateWin();
+        }
       } else {
         setWinnerText("AI wins!");
         setGameResult("lose");
         await endGame("loss");
       }
+      setShowResultModal(true);
       return;
     }
 
@@ -326,12 +352,14 @@ export default function ChessAIPageInner() {
       setWinnerText("Draw!");
       setGameResult("draw");
       await endGame("draw");
+      setShowResultModal(true);
       return;
     }
 
     setWinnerText("Game Over!");
     setGameResult("draw");
     await endGame("draw");
+    setShowResultModal(true);
   }
 
   async function handleResign() {
@@ -339,6 +367,7 @@ export default function ChessAIPageInner() {
     setWinnerText("AI wins! (You resigned)");
     setGameResult("lose");
     await endGame("loss");
+    setShowResultModal(true);
   }
 
   function resetGame() {
@@ -349,7 +378,9 @@ export default function ChessAIPageInner() {
     setGameOver(false);
     setWinnerText("");
     setGameResult("pending");
+    setShowResultModal(false);
     endGameCalled.current = false;
+    resultCelebratedRef.current = false;
 
     if (randomColor === "black") {
       setTimeout(() => makeAIMMove(newGame), 450);
@@ -361,9 +392,145 @@ export default function ChessAIPageInner() {
   const aiSideLabel = `AI (${opponentColor})`;
   const isPlayerTurnNow = isPlayersTurn(game);
 
+  // Turn banner animation
+  useEffect(() => {
+    if (prevIsPlayerTurnRef.current !== null && prevIsPlayerTurnRef.current !== isPlayerTurnNow && !gameOver) {
+      setTurnBanner(isPlayerTurnNow ? "Your Turn" : "AI's Turn");
+      setTimeout(() => setTurnBanner(null), 1800);
+    }
+    prevIsPlayerTurnRef.current = isPlayerTurnNow;
+  }, [isPlayerTurnNow, gameOver]);
+
   return (
     <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center p-6">
       <NavigationBar currentPath="/casino" />
+
+      {/* Turn Banner */}
+      <AnimatePresence>
+        {turnBanner && (
+          <motion.div
+            key="turn-banner"
+            {...turnBannerAnim}
+            className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-10 py-6 shadow-[0_0_60px_rgba(251,191,36,0.5)]"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.15, type: "spring", stiffness: 400 }}
+              className="text-center text-3xl font-black tracking-widest text-white drop-shadow-lg"
+            >
+              {turnBanner}
+            </motion.div>
+            <div className="mt-2 flex justify-center gap-1">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="h-2 w-2 rounded-full bg-amber-300"
+                  animate={{ scale: [1, 1.8, 1], opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.2 }}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Spring Game Over Modal */}
+      <AnimatePresence>
+        {showResultModal && (
+          <motion.div
+            key="chess-ai-end"
+            {...gameOverModal.backdrop}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+          >
+            <motion.div
+              {...gameOverModal.panel}
+              className={`relative w-full max-w-md overflow-hidden rounded-3xl border-4 p-6 text-center shadow-2xl ${
+                gameResult === "win"
+                  ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_60px_rgba(251,191,36,0.4)]"
+                  : gameResult === "draw"
+                    ? "border-yellow-400 bg-gradient-to-b from-[#1a2a1a] to-[#0d1a0d] shadow-[0_0_60px_rgba(250,204,21,0.3)]"
+                    : "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_60px_rgba(239,68,68,0.3)]"
+              }`}
+            >
+              <motion.div
+                initial={{ scale: 0, rotate: -30 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
+                className="mb-2 text-7xl"
+              >
+                {gameResult === "win" ? "🏆" : gameResult === "draw" ? "🤝" : "💀"}
+              </motion.div>
+              <motion.h2
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.5, duration: 0.4 }}
+                className={`mt-3 text-4xl font-black uppercase ${
+                  gameResult === "win" ? "text-amber-300" : gameResult === "draw" ? "text-yellow-300" : "text-red-400"
+                }`}
+              >
+                {winnerText}
+              </motion.h2>
+              {bet && (
+                <motion.p
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.6, duration: 0.4 }}
+                  className="mt-3 text-xl font-semibold"
+                >
+                  {gameResult === "win" ? (
+                    <span className="text-green-400">
+                      You won ${(Number(bet) * 1.98).toFixed(2)}!
+                    </span>
+                  ) : gameResult === "draw" ? (
+                    <span className="text-yellow-400">Bet returned.</span>
+                  ) : (
+                    <span className="text-red-400">You lost ${bet}.</span>
+                  )}
+                </motion.p>
+              )}
+              {gameResult === "win" && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 1.0 }}
+                  className="mt-3 flex justify-center gap-1"
+                >
+                  {["✨", "🌟", "✨", "🌟", "✨"].map((s, i) => (
+                    <motion.span
+                      key={i}
+                      className="text-xl"
+                      animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }}
+                      transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.12 }}
+                    >
+                      {s}
+                    </motion.span>
+                  ))}
+                </motion.div>
+              )}
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.8, duration: 0.4 }}
+                className="mt-6 flex gap-4 justify-center"
+              >
+                <button
+                  onClick={resetGame}
+                  className="rounded-xl border-b-4 border-green-700 bg-green-500 px-6 py-3 font-black text-white shadow-[0_0_15px_rgba(34,197,94,0.4)] transition active:translate-y-[2px]"
+                >
+                  Play Again
+                </button>
+                <button
+                  onClick={() => router.push("/casino/chess")}
+                  className="rounded-xl border-b-4 border-gray-600 bg-gray-700 px-6 py-3 font-black text-white transition active:translate-y-[2px]"
+                >
+                  Return to Lobby
+                </button>
+              </motion.div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <h1 className="text-4xl font-bold text-[#FFD700] mb-2 mt-12">
         ♟️ AI Chess Arena
@@ -404,12 +571,23 @@ export default function ChessAIPageInner() {
           {playerSideLabel} vs {aiSideLabel}
         </h2>
         <div className="text-sm text-yellow-300 mt-2">
-          {gameOver ? "" : isPlayerTurnNow ? "Your turn" : "AI is thinking..."}
+          {gameOver ? "" : isPlayerTurnNow ? "Your turn" : (<span className="inline-flex items-center gap-1">AI is thinking... <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="inline-block">🤖</motion.span></span>)}
         </div>
       </div>
 
       <div className="w-full flex justify-center items-center mb-8">
-        <div className="w-[500px]">
+        <div className="w-[500px] relative">
+          <AnimatePresence>
+            {captureFlash && (
+              <motion.div
+                initial={{ opacity: 0.7 }}
+                animate={{ opacity: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.4 }}
+                className="absolute inset-0 z-10 rounded-xl bg-red-500 pointer-events-none"
+              />
+            )}
+          </AnimatePresence>
           <Chessboard
             position={game.fen()}
             onPieceDrop={onDrop}
@@ -425,42 +603,6 @@ export default function ChessAIPageInner() {
         </div>
       </div>
 
-      {gameOver && (
-        <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-          <div className="bg-white text-black rounded-lg p-8 text-center shadow-lg">
-            <h2 className="text-3xl font-bold mb-4">{winnerText}</h2>
-
-            {bet && (
-              <p className="text-xl mb-4 font-semibold">
-                {gameResult === "win" ? (
-                  <span className="text-green-600">
-                    You won ${Number(bet) * 1.98}!
-                  </span>
-                ) : gameResult === "draw" ? (
-                  <span className="text-yellow-600">Bet returned.</span>
-                ) : (
-                  <span className="text-red-600">You lost ${bet}.</span>
-                )}
-              </p>
-            )}
-
-            <div className="flex gap-4 justify-center">
-              <button
-                onClick={resetGame}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow"
-              >
-                Play Again
-              </button>
-              <button
-                onClick={() => router.push("/casino/chess")}
-                className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded shadow"
-              >
-                Return to Lobby
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

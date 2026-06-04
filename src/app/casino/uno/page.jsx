@@ -2,16 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
+import { usePostHog } from "posthog-js/react";
 import UnoCard from "../../../components/UnoCard";
 import UnoBack from "../../../components/UnoBack";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import { useSocket } from "../../../context/SocketProvider";
 import useGamePresence from "../../../hooks/useGamePresence";
+import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim, fireConfetti } from "../../../lib/animations";
+import { playCardPlace, playCardDraw, playTurnSwitch, playVictory, playDefeat } from "../../../lib/gameAudio";
 
 export default function UnoGamePage() {
   const router = useRouter();
   const { socket } = useSocket();
+  const posthog = usePostHog();
 
   const [game, setGame] = useState(null);
   const [gameMode, setGameMode] = useState("ai");
@@ -38,8 +43,10 @@ export default function UnoGamePage() {
   const [opponentReplayRequested, setOpponentReplayRequested] = useState(false);
   const [returnChosen, setReturnChosen] = useState(false);
   const [replaySecondsLeft, setReplaySecondsLeft] = useState(15);
+  const [turnBanner, setTurnBanner] = useState(null);
 
   const waitingPollRef = useRef(null);
+  const prevIsPlayerTurnRef = useRef(null);
   const replayClientIdRef = useRef(Math.random().toString(36).slice(2));
 
   const openEndPopup = (result, reason = "finished") => {
@@ -48,6 +55,14 @@ export default function UnoGamePage() {
     setOpponentReplayRequested(false);
     setReturnChosen(false);
     setReplaySecondsLeft(15);
+    if (result === "win") { celebrateWin(); playVictory(); } else { playDefeat(); }
+    posthog?.capture("neon_flush_game_ended", {
+      result,
+      reason,
+      mode: gameMode,
+      bet_amount: betAmount,
+      game_id: game?.id,
+    });
   };
 
   const closeToUnoLobby = () => {
@@ -104,6 +119,16 @@ export default function UnoGamePage() {
   useEffect(() => {
     fetchAvailableGames();
   }, []);
+
+  // Turn banner animation
+  useEffect(() => {
+    if (prevIsPlayerTurnRef.current !== null && prevIsPlayerTurnRef.current !== isPlayerTurn && game) {
+      setTurnBanner(isPlayerTurn ? "Your Turn" : gameMode === "ai" ? "AI's Turn" : "Opponent's Turn");
+      playTurnSwitch(isPlayerTurn);
+      setTimeout(() => setTurnBanner(null), 1800);
+    }
+    prevIsPlayerTurnRef.current = isPlayerTurn;
+  }, [isPlayerTurn, game]);
 
   useEffect(() => {
     if (!socket) return;
@@ -220,6 +245,11 @@ export default function UnoGamePage() {
       setMessage("À ton tour !");
       setEndPopup(null);
       setTokens({ balance: data.data.newBalance });
+      posthog?.capture("neon_flush_game_started", {
+        mode: "ai",
+        bet_amount: betAmount,
+        game_id: data.data.id,
+      });
     } else {
       setMessage("Erreur d'initialisation");
     }
@@ -259,6 +289,9 @@ export default function UnoGamePage() {
       return;
     }
 
+    const isWildDrawFour = card.value?.toLowerCase()?.replace(/\s/g, "") === "wilddrawfour";
+    const cardsLeftAfterPlay = playerHand.length - 1;
+
     const res = await fetch("/api/uno/play-card", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -276,6 +309,26 @@ export default function UnoGamePage() {
       setMessage(data.data.message || "À ton tour !");
       setPendingCard(null);
       setShowColorPicker(false);
+      playCardPlace();
+      posthog?.capture("neon_flush_card_played", {
+        color: card.color,
+        value: card.value,
+        mode: gameMode,
+        game_id: game.id,
+        cards_left: data.data.playerHand?.length ?? 0,
+      });
+
+      // Hot streak confetti: Wild Draw Four
+      if (isWildDrawFour) {
+        fireConfetti({ particleCount: 50, spread: 70, origin: { x: 0.5, y: 0.5 }, colors: ["#a855f7", "#22d3ee", "#fbbf24", "#f472b6"] });
+        setTimeout(() => fireConfetti({ particleCount: 30, spread: 50, origin: { x: 0.3, y: 0.5 }, colors: ["#a855f7", "#fbbf24"] }), 200);
+      }
+
+      // Hot streak confetti: UNO! (down to last card)
+      if (cardsLeftAfterPlay === 1) {
+        fireConfetti({ particleCount: 40, spread: 60, origin: { x: 0.5, y: 0.6 }, colors: ["#fbbf24", "#22c55e", "#facc15"] });
+      }
+
       await checkForWinner(game.id);
 
       if (!data.data.isPlayerTurn && gameMode === "ai") {
@@ -320,6 +373,11 @@ export default function UnoGamePage() {
               ? "✅ Partie trouvée ! Tu commences."
               : "✅ Partie trouvée ! L'adversaire commence."
           );
+          posthog?.capture("neon_flush_game_started", {
+            mode: "online",
+            bet_amount: betAmount,
+            game_id: d2.data.id,
+          });
         }
       } catch (err) {
         console.error("Erreur check-game:", err);
@@ -388,6 +446,7 @@ export default function UnoGamePage() {
             : "✅ Partie en ligne trouvée ! L'adversaire commence."
         );
         setTokens({ balance: data.data.newBalance });
+        posthog?.capture("neon_flush_game_started", { mode: "online", bet_amount: betAmount, game_id: data.data.id });
         fetchAvailableGames();
         socket?.emit("room_event", {
           roomId: "lobby:uno",
@@ -432,6 +491,7 @@ export default function UnoGamePage() {
             : "✅ Partie en ligne trouvée ! L'adversaire commence."
         );
         setTokens({ balance: data.data.newBalance });
+        posthog?.capture("neon_flush_game_started", { mode: "online", bet_amount: betAmount, game_id: data.data.id });
         fetchAvailableGames();
         socket?.emit("room_event", {
           roomId: "lobby:uno",
@@ -558,6 +618,12 @@ export default function UnoGamePage() {
       setAiHandCount(data.data.aiHandCount ?? data.data.opponentHandCount ?? aiHandCount);
       setIsPlayerTurn(data.data.isPlayerTurn);
       setMessage(gameMode === "ai" ? "L'IA joue..." : "Tour suivant...");
+      playCardDraw();
+      posthog?.capture("neon_flush_card_drawn", {
+        mode: gameMode,
+        game_id: game.id,
+        hand_count: playerHand.length + 1,
+      });
       await checkForWinner(game.id);
 
       if (gameMode === "ai") {
@@ -594,65 +660,167 @@ export default function UnoGamePage() {
   return (
     <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
-      {endPopup && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-cyan-300/60 bg-[#071124] p-6 text-center shadow-[0_0_45px_rgba(0,229,255,0.35),inset_0_0_30px_rgba(217,70,239,0.12)]">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-300 via-fuchsia-500 to-yellow-300" />
-            <p className="text-xs font-black uppercase tracking-[0.45em] text-cyan-200">
-              UNO Result
-            </p>
-            <h2
-              className={`mt-3 text-4xl font-black uppercase ${endPopup.result === "win" ? "text-emerald-300" : "text-fuchsia-300"}`}
+      <AnimatePresence>
+        {endPopup && (
+          <motion.div
+            key="uno-end-popup"
+            {...gameOverModal.backdrop}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+          >
+            <motion.div
+              key="uno-end-panel"
+              {...gameOverModal.panel}
+              className={`relative w-full max-w-md overflow-hidden rounded-3xl border-4 p-6 text-center shadow-2xl ${
+                endPopup.result === "win"
+                  ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_60px_rgba(251,191,36,0.4)]"
+                  : "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_60px_rgba(239,68,68,0.3)]"
+              }`}
             >
-              {endPopup.result === "win"
-                ? "Victory"
-                : endPopup.reason === "resigned"
-                  ? "Resigned"
-                  : "Defeat"}
-            </h2>
-            <p className="mt-3 text-sm text-slate-200">
-              {endPopup.result === "win"
-                ? "You won the match."
-                : endPopup.reason === "resigned"
-                  ? "You resigned the match."
-                  : "Your opponent won the match."}
-            </p>
-            <p className="mt-4 text-xs font-bold uppercase tracking-widest text-yellow-200">
-              Replay window: {replaySecondsLeft}s
-            </p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <button
-                onClick={requestReplay}
-                disabled={returnChosen || replayRequested}
-                className="rounded-xl border border-fuchsia-300/70 bg-fuchsia-500/20 px-4 py-3 font-black text-fuchsia-100 shadow-[0_0_18px_rgba(217,70,239,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
+              <motion.div
+                initial={{ scale: 0, rotate: -30 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
+                className="mb-2 text-7xl"
               >
-                {replayRequested
-                  ? "Replay requested"
-                  : gameMode === "online"
-                    ? "Replay"
-                    : "Play again"}
-              </button>
-              <button
-                onClick={closeToUnoLobby}
-                className="rounded-xl border border-cyan-300/70 bg-cyan-400 px-4 py-3 font-black text-[#031026] shadow-[0_0_18px_rgba(34,211,238,0.35)]"
+                {endPopup.result === "win" ? "🏆" : "💀"}
+              </motion.div>
+              <motion.h2
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.5, duration: 0.4 }}
+                className={`mt-3 text-4xl font-black uppercase ${
+                  endPopup.result === "win" ? "text-amber-300" : "text-red-400"
+                }`}
               >
-                Return to Lobby
-              </button>
+                {endPopup.result === "win"
+                  ? "Victory"
+                  : endPopup.reason === "resigned"
+                    ? "Resigned"
+                    : "Defeat"}
+              </motion.h2>
+              <motion.p
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.6, duration: 0.4 }}
+                className="mt-3 text-sm text-slate-200"
+              >
+                {endPopup.result === "win"
+                  ? "You won the match."
+                  : endPopup.reason === "resigned"
+                    ? "You resigned the match."
+                    : "Your opponent won the match."}
+              </motion.p>
+              {endPopup.result === "win" && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 1.0 }}
+                  className="mt-3 flex justify-center gap-1"
+                >
+                  {["✨", "🌟", "✨", "🌟", "✨"].map((s, i) => (
+                    <motion.span
+                      key={i}
+                      className="text-xl"
+                      animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }}
+                      transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.12 }}
+                    >
+                      {s}
+                    </motion.span>
+                  ))}
+                </motion.div>
+              )}
+              {endPopup.result === "loss" && (
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="mt-3 text-sm text-gray-400"
+                >
+                  Better luck next time!
+                </motion.p>
+              )}
+              <motion.p
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.7, duration: 0.4 }}
+                className="mt-4 text-xs font-bold uppercase tracking-widest text-yellow-200"
+              >
+                Replay window: {replaySecondsLeft}s
+              </motion.p>
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.8, duration: 0.4 }}
+                className="mt-6 grid gap-3 sm:grid-cols-2"
+              >
+                <button
+                  onClick={requestReplay}
+                  disabled={returnChosen || replayRequested}
+                  className="rounded-xl border border-fuchsia-300/70 bg-fuchsia-500/20 px-4 py-3 font-black text-fuchsia-100 shadow-[0_0_18px_rgba(217,70,239,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {replayRequested
+                    ? "Replay requested"
+                    : gameMode === "online"
+                      ? "Replay"
+                      : "Play again"}
+                </button>
+                <button
+                  onClick={closeToUnoLobby}
+                  className="rounded-xl border border-cyan-300/70 bg-cyan-400 px-4 py-3 font-black text-[#031026] shadow-[0_0_18px_rgba(34,211,238,0.35)]"
+                >
+                  Return to Lobby
+                </button>
+              </motion.div>
+              {gameMode === "online" && (
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 1.0, duration: 0.4 }}
+                  className="mt-3 text-xs text-slate-300"
+                >
+                  {returnChosen
+                    ? "A player chose the lobby. Replay is disabled."
+                    : opponentReplayRequested
+                      ? "Opponent is ready for replay."
+                      : "Both players must click replay before the timer ends."}
+                </motion.p>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Turn Banner */}
+      <AnimatePresence>
+        {turnBanner && (
+          <motion.div
+            key="turn-banner"
+            {...turnBannerAnim}
+            className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-10 py-6 shadow-[0_0_60px_rgba(251,191,36,0.5)]"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.15, type: "spring", stiffness: 400 }}
+              className="text-center text-3xl font-black tracking-widest text-white drop-shadow-lg"
+            >
+              {turnBanner}
+            </motion.div>
+            <div className="mt-2 flex justify-center gap-1">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="h-2 w-2 rounded-full bg-amber-300"
+                  animate={{ scale: [1, 1.8, 1], opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.2 }}
+                />
+              ))}
             </div>
-            {gameMode === "online" && (
-              <p className="mt-3 text-xs text-slate-300">
-                {returnChosen
-                  ? "A player chose the lobby. Replay is disabled."
-                  : opponentReplayRequested
-                    ? "Opponent is ready for replay."
-                    : "Both players must click replay before the timer ends."}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <h1 className="text-3xl mb-2 font-bold">
-        {gameMode === "online" ? "UNO 1v1 en ligne" : "UNO vs IA"}
+        {gameMode === "online" ? "Neon Flush 1v1 en ligne" : "Neon Flush vs IA"}
       </h1>
 
       {tokens && <p className="text-yellow-300 mb-4 text-lg">Tokens : {tokens.balance}</p>}
@@ -781,7 +949,15 @@ export default function UnoGamePage() {
       ) : (
         <div className="casino-surface relative flex min-h-[560px] w-full max-w-5xl flex-col items-center justify-between overflow-hidden rounded-[1.5rem] border-4 border-green-950 bg-green-700/90 p-3 pb-32 shadow-2xl sm:min-h-[640px] sm:rounded-[2.5rem] sm:border-8 sm:p-6 sm:pb-36">
           <div className={`px-4 py-1 rounded-full ${!isPlayerTurn ? "turn-active-glow" : ""}`}>
-            {gameMode === "online" ? "Main adverse:" : "Main de l'IA:"}
+            {gameMode === "online" ? "Main adverse:" : (<>Main de l'IA: {!isPlayerTurn && gameMode === "ai" && (
+            <motion.span
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              className="inline-block ml-1"
+            >
+              🤖
+            </motion.span>
+          )}</>)}
           </div>
           <div className="flex justify-center gap-2 flex-wrap max-w-4xl">
             {Array(aiHandCount)
@@ -797,10 +973,10 @@ export default function UnoGamePage() {
                 <h2 className="text-xl font-bold mb-2">Choisis une couleur 🎨</h2>
                 <div className="grid grid-cols-2 gap-4">
                   {[
-                    { color: "red", label: "Rouge" },
-                    { color: "blue", label: "Bleu" },
-                    { color: "green", label: "Vert" },
-                    { color: "yellow", label: "Jaune" },
+                    { color: "red", label: "Magenta" },
+                    { color: "blue", label: "Cyan" },
+                    { color: "green", label: "Émeraude" },
+                    { color: "yellow", label: "Ambre" },
                   ].map(({ color, label }) => (
                     <button
                       key={color}

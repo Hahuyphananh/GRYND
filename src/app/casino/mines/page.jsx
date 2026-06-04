@@ -1,7 +1,9 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import NavigationBar from "../../../components/navigation-bar";
 import { getMinesMultiplier } from "../../../lib/minesMath";
+import { celebrateWin, gameOverModal } from "../../../lib/animations";
 
 export default function MinesGamePage() {
   const GRID_SIZE = 5;
@@ -23,6 +25,8 @@ export default function MinesGamePage() {
   const [error, setError] = useState(null);
   const [gameStarted, setGameStarted] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const resultCelebratedRef = useRef(false);
 
   // Autoplay references
   const autoplayTimerRef = useRef(null);
@@ -238,6 +242,7 @@ export default function MinesGamePage() {
         setMultiplier(0);
         setShowAllMines(true);
         setAutoplayEnabled(false);
+        setShowResultModal(true);
         if (Array.isArray(revealData.data.minePositions)) {
           const nextGrid = Array(GRID_SIZE * GRID_SIZE).fill("diamond");
           revealData.data.minePositions.forEach((pos) => {
@@ -262,6 +267,11 @@ export default function MinesGamePage() {
       setGameOver(true);
       setShowAllMines(true);
       setAutoplayEnabled(false);
+      setShowResultModal(true);
+      if (!resultCelebratedRef.current) {
+        resultCelebratedRef.current = true;
+        celebrateWin();
+      }
     }
     return false;
   }
@@ -271,6 +281,11 @@ export default function MinesGamePage() {
     setGameOver(true);
     setShowAllMines(true);
     setAutoplayEnabled(false);
+    setShowResultModal(true);
+    if (!resultCelebratedRef.current) {
+      resultCelebratedRef.current = true;
+      celebrateWin();
+    }
 
     // 🔁 Call settle API for WIN (server-authoritative)
     try {
@@ -318,7 +333,9 @@ export default function MinesGamePage() {
     setRevealedCount(0);
     setShowAllMines(false);
     setAutoplaySettings(false);
-    setGameStarted(true); // ✅ game officially starts
+    setGameStarted(true);
+    setShowResultModal(false);
+    resultCelebratedRef.current = false; // ✅ game officially starts
   }
 
   function handleMineChange(mines) {
@@ -397,15 +414,73 @@ export default function MinesGamePage() {
         )}
       </span>
     );
-  }
-
-  return (
+  }  return (
     <div className="relative flex min-h-screen flex-col items-center justify-start overflow-x-clip bg-[#030817] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
-      <div
-        className={`bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] rounded-2xl border border-[#00e5ff]/40 p-8 w-full max-w-6xl min-w-[80%] shadow-[0_0_60px_rgba(0,229,255,0.2),inset_0_0_30px_rgba(0,229,255,0.08)] ${gameOver ? "relative" : ""}`}
-      >
+      {/* Spring Result Modal */}
+      <AnimatePresence>
+        {showResultModal && (
+          <motion.div
+            key="mines-result"
+            {...gameOverModal.backdrop}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+          >
+            <motion.div
+              {...gameOverModal.panel}
+              className={`relative w-full max-w-md overflow-hidden rounded-3xl border-4 p-6 text-center shadow-2xl ${
+                hasWon
+                  ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_60px_rgba(251,191,36,0.4)]"
+                  : "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_60px_rgba(239,68,68,0.3)]"
+              }`}
+            >
+              <motion.div
+                initial={{ scale: 0, rotate: -30 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
+                className="mb-2 text-7xl"
+              >
+                {hasWon ? "🏆" : "💣"}
+              </motion.div>
+              <motion.h2
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.5, duration: 0.4 }}
+                className={`mt-3 text-4xl font-black uppercase ${hasWon ? "text-amber-300" : "text-red-400"}`}
+              >
+                {hasWon ? `Won ${multiplier.toFixed(2)}x!` : "Boom! Mine Hit"}
+              </motion.h2>
+              {hasWon && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 1.0 }}
+                  className="mt-3 flex justify-center gap-1"
+                >
+                  {["✨", "🌟", "✨", "🌟", "✨"].map((s, i) => (
+                    <motion.span key={i} className="text-xl" animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.12 }}>{s}</motion.span>
+                  ))}
+                </motion.div>
+              )}
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.8, duration: 0.4 }}
+                className="mt-6"
+              >
+                <button
+                  onClick={() => { setShowResultModal(false); handleReset(); }}
+                  className={`rounded-xl border-b-4 px-8 py-3 text-lg font-black transition active:translate-y-[2px] ${hasWon ? "border-amber-700 bg-amber-400 text-black shadow-[0_0_25px_rgba(251,191,36,0.5)]" : "border-red-700 bg-red-500 text-white shadow-[0_0_25px_rgba(239,68,68,0.4)]"}`}
+                >
+                  New Game
+                </button>
+              </motion.div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className={`bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] rounded-2xl border border-[#00e5ff]/40 p-8 w-full max-w-6xl min-w-[80%] shadow-[0_0_60px_rgba(0,229,255,0.2),inset_0_0_30px_rgba(0,229,255,0.08)] ${gameOver ? "relative" : ""}`}>
         {gameOver && (
           <div className="absolute inset-0 bg-black bg-opacity-10 rounded-lg pointer-events-none"></div>
         )}

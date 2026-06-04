@@ -92,8 +92,8 @@ export default function Footer() {
                 Poker
               </Link>
 
-              <Link href="/casino/uno" className={linkClass}>
-                Uno
+              <Link href="/casino/neon-flush" className={linkClass}>
+                Neon Flush
               </Link>
 
               <Link href="/casino/chess" className={linkClass}>

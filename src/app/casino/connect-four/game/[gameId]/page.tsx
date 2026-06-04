@@ -7,7 +7,7 @@ import { useSocket } from "../../../../../context/SocketProvider";
 import { getDropRow } from "../../../../../lib/connectFour";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import ReportModal from "../../../../../components/ReportModal";
-import { celebrateWin, gameOverModal } from "../../../../../lib/animations";
+import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../../lib/animations";
 
 const DEFAULT_MOVE_LIMIT_SECONDS = 60;
 const REPLAY_WINDOW_SECONDS = 20;
@@ -82,6 +82,8 @@ export default function ConnectFourGamePage() {
   const [replayMessage, setReplayMessage] = useState("");
   const [spectatorCount, setSpectatorCount] = useState(0);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [turnBanner, setTurnBanner] = useState<string | null>(null);
+  const prevStatusTextRef = useRef<string | null>(null);
 
   useGamePresence({
     gameKey: "connect-four",
@@ -237,6 +239,18 @@ export default function ConnectFourGamePage() {
     if (isSpectator) return false;
     return game.status === "in_progress" && game.currentTurn === game.role;
   }, [game, isSpectator]);
+
+  // Turn banner detection
+  useEffect(() => {
+    if (!statusText || !game) return;
+    const isMyTurn = statusText === "Your move";
+    const isOppTurn = statusText === "Opponent's move";
+    if (prevStatusTextRef.current !== null && prevStatusTextRef.current !== statusText && (isMyTurn || isOppTurn)) {
+      setTurnBanner(isMyTurn ? "Your Turn" : "Opponent's Turn");
+      setTimeout(() => setTurnBanner(null), 1800);
+    }
+    prevStatusTextRef.current = statusText;
+  }, [statusText, game]);
 
   const playerWon = useMemo(() => {
     if (!game || game.status !== "finished") return false;
@@ -396,6 +410,37 @@ export default function ConnectFourGamePage() {
   }, [game, replayCountdown, router]);
 
   return (
+    <>
+      {/* Turn Banner */}
+      <AnimatePresence>
+        {turnBanner && (
+          <motion.div
+            key="turn-banner"
+            {...turnBannerAnim}
+            className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-10 py-6 shadow-[0_0_60px_rgba(251,191,36,0.5)]"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.15, type: "spring", stiffness: 400 }}
+              className="text-center text-3xl font-black tracking-widest text-white drop-shadow-lg"
+            >
+              {turnBanner}
+            </motion.div>
+            <div className="mt-2 flex justify-center gap-1">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="h-2 w-2 rounded-full bg-amber-300"
+                  animate={{ scale: [1, 1.8, 1], opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.2 }}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
   <motion.div
   initial={{ scale: 0, rotate: -30 }}
   animate={{ scale: 1, rotate: 0 }}
@@ -720,5 +765,6 @@ export default function ConnectFourGamePage() {
         </AnimatePresence>
       </div>
     </motion.div>
+    </>
   );
 }

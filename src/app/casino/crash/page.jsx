@@ -4,6 +4,8 @@ import BetPanel from "../../../components/BetPanel";
 import PlayerList from "../../../components/PlayerList";
 import Link from "next/link";
 import NavigationBar from "../../../components/navigation-bar";
+import { motion, AnimatePresence } from "framer-motion";
+import { celebrateWin, gameOverModal } from "../../../lib/animations";
 
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
@@ -28,6 +30,7 @@ export default function Page() {
   const [refreshCounter, setRefreshCounter] = useState(0);
   const [showCashoutPopup, setShowCashoutPopup] = useState(false);
   const [cashoutPopupMultiplier, setCashoutPopupMultiplier] = useState(null);
+  const resultCelebratedRef = useRef(false);
   const fixedMaxMultiplierRef = useRef(2);
   const [showRules, setShowRules] = useState(false);
 
@@ -74,6 +77,7 @@ export default function Page() {
     } else if (isCountingDown && countdown === 0) {
       setIsCountingDown(false);
       actuallyStartGame();
+      resultCelebratedRef.current = false;
     }
     return () => clearTimeout(countdownRef.current);
   }, [isCountingDown, countdown]);
@@ -153,6 +157,7 @@ export default function Page() {
 
     setRefreshCounter((prev) => prev + 1); // 🔁 trigger BetPanel to refresh
     resetBet();
+    resultCelebratedRef.current = false;
   }
 
   async function placeBet(amount, autoCashoutValue) {
@@ -194,6 +199,11 @@ export default function Page() {
     setFinalMultiplier(winMultiplier);
     setGameRunning(false);
     setDisplayMultiplier(winMultiplier);
+
+    if (!resultCelebratedRef.current) {
+      resultCelebratedRef.current = true;
+      celebrateWin();
+    }
 
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     animationStateRef.current = { ...state, crashed: true };
@@ -595,29 +605,68 @@ transition-all duration-300 hover:bg-[#ffe14f] text-[#030817] px-4 py-3 rounded-
         </div>
       </div>
 
-      {showCashoutPopup && cashoutPopupMultiplier !== null && (
-        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center px-4">
-          <div
-            className="bg-[#050d1f] 
-border border-[#00e5ff]/40 
-shadow-[0_0_30px_rgba(0,229,255,0.35)]
-backdrop-blur-xl border border-[#00e5ff]/40 rounded-xl p-6 text-center w-full max-w-sm shadow-[0_0_20px_rgba(0,229,255,0.22)]"
+      <AnimatePresence>
+        {showCashoutPopup && cashoutPopupMultiplier !== null && (
+          <motion.div
+            key="crash-cashout"
+            {...gameOverModal.backdrop}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
           >
-            <h3 className="text-2xl font-bold text-[#FFD700] mb-2">
-              Cash Out Successful
-            </h3>
-            <p className="text-lg mb-6">
-              You cashed out at {cashoutPopupMultiplier.toFixed(2)}x.
-            </p>
-            <button
-              onClick={() => setShowCashoutPopup(false)}
-              className="bg-[#FFD700] hover:bg-[#ffe14f] px-4 py-2 rounded-lg font-bold text-[#030817]"
+            <motion.div
+              {...gameOverModal.panel}
+              className="relative w-full max-w-sm overflow-hidden rounded-3xl border-4 border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] p-6 text-center shadow-[0_0_60px_rgba(251,191,36,0.4)]"
             >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+              <motion.div
+                initial={{ scale: 0, rotate: -30 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
+                className="mb-2 text-7xl"
+              >
+                🚀
+              </motion.div>
+              <motion.h2
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.5, duration: 0.4 }}
+                className="mt-3 text-3xl font-black text-amber-300 uppercase"
+              >
+                Cash Out!
+              </motion.h2>
+              <motion.p
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.6, duration: 0.4 }}
+                className="mt-2 text-xl font-bold text-green-400"
+              >
+                {cashoutPopupMultiplier.toFixed(2)}x
+              </motion.p>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.0 }}
+                className="mt-3 flex justify-center gap-1"
+              >
+                {["✨", "🌟", "✨", "🌟", "✨"].map((s, i) => (
+                  <motion.span key={i} className="text-xl" animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.12 }}>{s}</motion.span>
+                ))}
+              </motion.div>
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.8, duration: 0.4 }}
+                className="mt-6"
+              >
+                <button
+                  onClick={() => setShowCashoutPopup(false)}
+                  className="rounded-xl border-b-4 border-amber-700 bg-amber-400 px-8 py-3 text-lg font-black text-black shadow-[0_0_25px_rgba(251,191,36,0.5)] transition active:translate-y-[2px]"
+                >
+                  Nice!
+                </button>
+              </motion.div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Rules Section */}
       <div className="mt-4 bg-[#08142f] rounded-lg border border-[#00e5ff]/30 shadow-[0_0_14px_rgba(0,229,255,0.15)]">
         <button
