@@ -126,20 +126,19 @@ export async function POST(req) {
         );
       }
 
-      if (
-        (card.value === "Wild" || card.value === "Wild Draw Four") &&
-        !chosenColor
-      ) {
+      const isWildCardValue =
+        card.value?.toLowerCase() === "wild" ||
+        card.value?.toLowerCase() === "wild draw four" ||
+        card.value?.toLowerCase() === "+4";
+
+      if (isWildCardValue && !chosenColor) {
         return NextResponse.json({
           success: true,
           needsColorChoice: true,
           card,
         });
       }
-      if (
-        (card.value === "Wild" || card.value === "Wild Draw Four") &&
-        !isAllowedChosenColor(chosenColor)
-      ) {
+      if (isWildCardValue && !isAllowedChosenColor(chosenColor)) {
         return NextResponse.json(
           { success: false, error: "Invalid color choice" },
           { status: 400 },
@@ -228,26 +227,22 @@ export async function POST(req) {
         { status: 400 },
       );
 
-    const isPlayable =
-      card.color === currentColor ||
-      card.value === topCard.value ||
-      card.color === "black";
-    if (!isPlayable)
+    if (!isValidPlay(card, topCard, currentColor, playerHand)) {
       return NextResponse.json(
         { success: false, error: "Card not playable" },
         { status: 400 },
       );
+    }
 
-    if (
-      (card.value === "Wild" || card.value === "Wild Draw Four") &&
-      !chosenColor
-    ) {
+    const isWildCardValue =
+      card.value?.toLowerCase() === "wild" ||
+      card.value?.toLowerCase() === "wild draw four" ||
+      card.value?.toLowerCase() === "+4";
+
+    if (isWildCardValue && !chosenColor) {
       return NextResponse.json({ success: true, needsColorChoice: true, card });
     }
-    if (
-      (card.value === "Wild" || card.value === "Wild Draw Four") &&
-      !isAllowedChosenColor(chosenColor)
-    ) {
+    if (isWildCardValue && !isAllowedChosenColor(chosenColor)) {
       return NextResponse.json(
         { success: false, error: "Invalid color choice" },
         { status: 400 },

@@ -259,6 +259,29 @@ io.on("connection", (socket) => {
     });
   });
 
+  // State sync: one player requests full state from the other
+  socket.on("hexDuel:requestSync", ({ gameId }) => {
+    if (!gameId) return;
+    const roomId = String(gameId);
+    socket.to(roomId).emit("hexDuel:requestSync", {
+      gameId: roomId,
+      userId: socket.data.userId,
+      requestedAt: new Date().toISOString(),
+    });
+  });
+
+  // State sync: relay the full state snapshot to the requesting player
+  socket.on("hexDuel:syncState", ({ gameId, snapshot }) => {
+    if (!gameId || !snapshot) return;
+    const roomId = String(gameId);
+    socket.to(roomId).emit("hexDuel:syncState", {
+      gameId: roomId,
+      snapshot,
+      userId: socket.data.userId,
+      sentAt: new Date().toISOString(),
+    });
+  });
+
   // ── Keep existing disconnect handler ──
   socket.on("disconnect", () => {
     // For hex duel: emit a dedicated disconnect event so the opponent gets a win

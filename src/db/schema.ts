@@ -1024,6 +1024,26 @@ export const hexDuelGames = pgTable(
   }),
 );
 
+// Hex Duel action log — persisted record of every multiplayer action (like diceTurns)
+export const hexDuelActions = pgTable(
+  "hex_duel_actions",
+  {
+    id: serial("id").primaryKey(),
+    gameId: integer("game_id")
+      .notNull()
+      .references(() => hexDuelGames.id, { onDelete: "cascade" }),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    actionType: varchar("action_type", { length: 20 }).notNull(),
+    sourceKey: varchar("source_key", { length: 20 }),
+    targetKey: varchar("target_key", { length: 20 }),
+    troopCount: integer("troop_count"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    gameSeqIdx: index("hex_duel_actions_game_seq_idx").on(table.gameId, table.id),
+  }),
+);
+
 // ADMIN AUDIT LOGS — persisted record of all admin actions
 export const adminAuditLogs = pgTable(
   "admin_audit_logs",

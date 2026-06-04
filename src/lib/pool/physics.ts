@@ -33,7 +33,10 @@ export function tickPhysics(balls: Ball[], shotMeta: ShotMeta) {
     if (b.animatingPocket) {
       b.opacity = Math.max(0, (b.opacity ?? 1) - 0.12);
       b.scale = Math.max(0.2, (b.scale ?? 1) - 0.09);
-      if ((b.opacity ?? 0) <= 0.02) b.pocketed = true;
+      if ((b.opacity ?? 0) <= 0.02) {
+        b.pocketed = true;
+        b.animatingPocket = false;
+      }
       continue;
     }
 

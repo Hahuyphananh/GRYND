@@ -110,7 +110,8 @@ export default function GoonBetClickerClient() {
     const data = await res.json();
     if (!res.ok) return alert(data.error);
     setRoundId(data.roundId);
-    setRoundStartTime(new Date(data.startTime).getTime());
+    const startTimeMs = new Date(data.startTime).getTime();
+    setRoundStartTime(Number.isFinite(startTimeMs) ? startTimeMs : Date.now());
     setMultiplier(1);
     multiplierRef.current = 1;
     setClicks(0);
@@ -146,7 +147,8 @@ export default function GoonBetClickerClient() {
   async function cashout() {
     const currentRoundId = roundIdRef.current;
     const currentRoundStartTime = roundStartTimeRef.current;
-    if (!currentRoundId || currentRoundStartTime === null) return;
+    if (!currentRoundId || currentRoundStartTime === null || !Number.isFinite(currentRoundStartTime)) return;
+    const durationMs = Math.max(0, Date.now() - currentRoundStartTime);
     const res = await fetch("/api/clicker/cashout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -154,7 +156,7 @@ export default function GoonBetClickerClient() {
         roundId: currentRoundId,
         clientClicks: clicksRef.current,
         clientMultiplier: multiplierRef.current,
-        durationMs: Date.now() - currentRoundStartTime,
+        durationMs,
       }),
     });
    const data = await res.json();

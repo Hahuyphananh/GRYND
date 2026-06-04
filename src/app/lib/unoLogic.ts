@@ -23,19 +23,35 @@ export function isValidPlay(
 ): boolean {
   const normalizedValue = card.value.toLowerCase();
   const normalizedTopValue = topCard.value.toLowerCase();
+  const topIsWild =
+    normalizedTopValue === "wild" ||
+    normalizedTopValue === "wild draw four" ||
+    normalizedTopValue === "+4";
 
   // Wild is always playable
   if (normalizedValue === "wild") return true;
 
-  // Wild Draw Four rule
+  // Wild Draw Four / +4 rule: only playable if no card in hand matches currentColor.
+  // Exclude wild cards from the color-match check since wilds have no meaningful color.
   if (normalizedValue === "wild draw four" || normalizedValue === "+4") {
-    if (!hand) return true; // AI safety fallback
-
-    // Can only play if no matching color exists
-    const hasMatch = hand.some((c) => c.color === currentColor);
+    if (!hand) return true; // safety fallback
+    const hasMatch = hand.some(
+      (c) =>
+        c.color === currentColor &&
+        c.value.toLowerCase() !== "wild" &&
+        c.value.toLowerCase() !== "wild draw four" &&
+        c.value.toLowerCase() !== "+4"
+    );
     return !hasMatch;
   }
 
+  // When the top card is a wild, only color-matching cards are playable.
+  // Wild cards have no number/value, so value-matching is meaningless here.
+  if (topIsWild) {
+    return card.color === currentColor;
+  }
+
+  // Regular play: match by color OR by value
   return card.color === currentColor || normalizedValue === normalizedTopValue;
 }
 

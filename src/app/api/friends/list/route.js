@@ -35,6 +35,7 @@ export async function GET() {
     const friends = await sql`
       SELECT 
         u.id, 
+        u.clerk_id,
         u.name, 
         u.profile_picture,
         u.daily_streak_current,

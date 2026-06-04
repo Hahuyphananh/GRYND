@@ -126,7 +126,12 @@ export async function cashoutRound(
 }
 
     const elapsedMs = Math.max(0, Date.now() - parseUtcTimestamp(round.created_at));
-    const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
+    // If client reports 0 or negative duration (NaN serialization / clock skew),
+    // fall back to the server's elapsed time to prevent maxClicks=0 clamp
+    const clientDurationMs = Math.max(0, durationMs);
+    const effectiveDurationMs = clientDurationMs > 0
+      ? Math.min(clientDurationMs, Math.max(elapsedMs + 500, 0))
+      : Math.max(elapsedMs + 500, 0);
     const boundedClicks = Math.max(0, Math.floor(clientClicks));
     const maxClicks = maxAllowedClicks(effectiveDurationMs);
     const verifiedClicks = Math.min(boundedClicks, maxClicks);
@@ -180,7 +185,11 @@ export async function syncRound(
   if (rounds[0].status !== "active") throw new Error("ROUND_NOT_ACTIVE");
 
   const elapsedMs = Math.max(0, Date.now() - parseUtcTimestamp(rounds[0].created_at));
-  const effectiveDurationMs = Math.min(Math.max(durationMs, 0), Math.max(elapsedMs + 500, 0));
+  // Same fallback: if client reports 0 duration, use server elapsed
+  const clientDurationMs = Math.max(0, durationMs);
+  const effectiveDurationMs = clientDurationMs > 0
+    ? Math.min(clientDurationMs, Math.max(elapsedMs + 500, 0))
+    : Math.max(elapsedMs + 500, 0);
   const expectedMultiplier = multiplierFromClicks(clientClicks);
   const maxClicks = maxAllowedClicks(effectiveDurationMs);
   const bustSeed = `${roundId}:${userId}:${toUtcIso(rounds[0].created_at)}`;

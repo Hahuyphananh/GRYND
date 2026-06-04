@@ -900,6 +900,7 @@ export default function HexDuelPage() {
     displaceCandidates, getDisplaceSources,
     handleAttack, handleDisplace, applyRemoteAction,
     endTurn, skipRound, resetGame,
+    buildSyncSnapshot, applySyncSnapshot,
   } = useHexDuel();
 
   // ── Remaining from old type (stubs kept as empty) ──
@@ -1221,11 +1222,28 @@ export default function HexDuelPage() {
       socket.emit("join_game", { gameId: multiplayerGameId });
     };
 
+    // Listen for state sync requests (from opponent whose socket dropped)
+    const handleRequestSync = () => {
+      if (socket && multiplayerGameId) {
+        const snap = buildSyncSnapshotRef.current();
+        socket.emit("hexDuel:syncState", { gameId: multiplayerGameId, snapshot: snap });
+      }
+    };
+
+    // Listen for state sync responses (to recover from desync)
+    const handleSyncState = (data: { snapshot: any }) => {
+      if (data?.snapshot && !isGameOverRef.current) {
+        applySyncSnapshot(data.snapshot);
+      }
+    };
+
     socket.on("hexDuel:action", handleOpponentAction);
     socket.on("hexDuel:opponent:ready", handleOpponentReady);
     socket.on("hexDuel:opponent:resigned", handleOpponentResigned);
     socket.on("hexDuel:opponent:disconnected", handleOpponentDisconnected);
     socket.on("hexDuel:opponent:timeout", handleOpponentTimeout);
+    socket.on("hexDuel:requestSync", handleRequestSync);
+    socket.on("hexDuel:syncState", handleSyncState);
     socket.on("disconnect", handleSocketDisconnect);
     socket.on("connect", handleSocketConnect);
     socket.emit("hexDuel:join", { gameId: multiplayerGameId });
@@ -1247,12 +1265,48 @@ export default function HexDuelPage() {
       socket.off("hexDuel:opponent:resigned", handleOpponentResigned);
       socket.off("hexDuel:opponent:disconnected", handleOpponentDisconnected);
       socket.off("hexDuel:opponent:timeout", handleOpponentTimeout);
+      socket.off("hexDuel:requestSync", handleRequestSync);
+      socket.off("hexDuel:syncState", handleSyncState);
       socket.off("disconnect", handleSocketDisconnect);
       socket.off("connect", handleSocketConnect);
       socket.emit("leave_game", { gameId: multiplayerGameId });
       if (connectionTimerRef.current) clearTimeout(connectionTimerRef.current);
     };
   }, [socket, multiplayerGameId, isPlayer1, effectiveWinner]);
+
+  // ── Polling fallback: detect both players joined even if socket event is missed ──
+  // Uses opponentReadyRef to avoid unnecessary effect re-runs
+  useEffect(() => {
+    if (gameMode !== "multiplayer" || !multiplayerGameId || opponentReadyRef.current) return;
+
+    let cancelled = false;
+
+    const pollStatus = async () => {
+      try {
+        const res = await fetch(
+          `/api/hex-duel/multiplayer/status?gameId=${multiplayerGameId}`,
+          { credentials: "include" },
+        );
+        const data = await res.json();
+        if (cancelled) return;
+        if (data?.success && data.game?.isReady) {
+          setOpponentReady(true);
+          opponentReadyRef.current = true;
+        }
+      } catch {
+        // Ignore poll errors — socket will also try to connect
+      }
+    };
+
+    // Poll immediately, then every 3 seconds
+    pollStatus();
+    const interval = setInterval(pollStatus, 3000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [gameMode, multiplayerGameId]);
 
   // Send clock expiry to opponent in multiplayer mode
   const sendClockExpiryRef = useRef<() => void>(() => {});
@@ -1290,6 +1344,28 @@ export default function HexDuelPage() {
       socket.emit("hexDuel:action", { gameId: multiplayerGameId, action });
     }
   }, [socket, multiplayerGameId]);
+
+  // ── Record action to server for action-based sync (like dice duel diceTurns) ──
+  const multiplayerGameIdRef = useRef(multiplayerGameId);
+  multiplayerGameIdRef.current = multiplayerGameId;
+  const gameModeRef = useRef(gameMode);
+  gameModeRef.current = gameMode;
+
+  const recordMultiplayerAction = useCallback((action: MultiplayerAction) => {
+    if (gameModeRef.current !== "multiplayer" || !multiplayerGameIdRef.current) return;
+    fetch("/api/hex-duel/multiplayer/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        gameId: multiplayerGameIdRef.current,
+        actionType: action.type,
+        sourceKey: action.sourceKey,
+        targetKey: action.targetKey,
+        troopCount: action.troopCount,
+      }),
+    }).catch(() => {});
+  }, []);
 
   // Ref for applyRemoteAction to avoid stale closure issues
   const applyRemoteActionRef = useRef<(a: MultiplayerAction) => void>(() => {});
@@ -1420,6 +1496,13 @@ export default function HexDuelPage() {
   }, [applyRemoteAction]);
 
   applyRemoteActionRef.current = localApplyRemote;
+
+  // Ref for buildSyncSnapshot to avoid stale closures in socket handler
+  const buildSyncSnapshotRef = useRef(buildSyncSnapshot);
+  buildSyncSnapshotRef.current = buildSyncSnapshot;
+
+  // Track the latest action ID we've seen from the opponent (for efficient polling)
+  const lastKnownActionIdRef = useRef(0);
 
   // ── Computed highlight keys for HexBoard ───────────────────────────
   const attackHighlightKeys = useMemo(
@@ -1594,25 +1677,98 @@ export default function HexDuelPage() {
   const handleToggleAI = useCallback(() => setAIEnabled((p) => { const n = !p; if (!n) { setAIThinking(false); setAIAction(null); } return n; }), []);
   const handleDifficultyChange = useCallback((diff: AIDifficulty) => setAIDifficulty(diff), []);
 
-  // Wrap endTurn to also send via socket in multiplayer
+  // Wrap endTurn to also send via socket in multiplayer AND update server turn state AND record action
   const handleEndTurn = useCallback(() => {
+    const prevTurn = currentTurn;
     endTurn();
     if (gameMode === "multiplayer") {
-      sendMultiplayerAction({ type: "endTurn" });
+      const action: MultiplayerAction = { type: "endTurn" };
+      sendMultiplayerAction(action);
+      recordMultiplayerAction(action);
+      // Update server turn state for polling fallback
+      const nextTurn = prevTurn === "player1" ? "player2" : "player1";
+      fetch(`/api/hex-duel/multiplayer/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameId: multiplayerGameId, turn: nextTurn }),
+      }).catch(() => {});
     }
-  }, [endTurn, gameMode, sendMultiplayerAction]);
+  }, [endTurn, gameMode, sendMultiplayerAction, recordMultiplayerAction, multiplayerGameId, currentTurn]);
+
+  // ── Action-based sync: poll server for opponent actions we might have missed ──
+  // Equivalent to dice duel polling /api/dice-duel/get-match every 1.5s
+  useEffect(() => {
+    if (gameMode !== "multiplayer" || !multiplayerGameId || !opponentReadyRef.current || isGameOverRef.current) return;
+
+    let cancelled = false;
+
+    const pollActions = async () => {
+      try {
+        const res = await fetch(
+          `/api/hex-duel/multiplayer/actions?gameId=${multiplayerGameId}&afterId=${lastKnownActionIdRef.current}`,
+          { credentials: "include" },
+        );
+        const data = await res.json();
+        if (cancelled || !data?.success) return;
+
+        const actions = data.actions || [];
+        if (actions.length > 0) {
+          // Apply any missed opponent actions to catch up
+          for (const a of actions) {
+            if (cancelled || isGameOverRef.current) break;
+            applyRemoteActionRef.current({
+              type: a.actionType,
+              sourceKey: a.sourceKey,
+              targetKey: a.targetKey,
+              troopCount: a.troopCount,
+            });
+          }
+          // Update the last known action ID so we don't re-process
+          lastKnownActionIdRef.current = data.latestActionId || 0;
+        }
+      } catch {
+        // Ignore poll errors — socket handles real-time sync
+      }
+    };
+
+    // Poll every 2 seconds (matching dice duel's 1.5s poll frequency)
+    pollActions();
+    const interval = setInterval(pollActions, 2000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [gameMode, multiplayerGameId, opponentReady, effectiveWinner]);
+
+  // Update initial turn state on server when game starts
+  useEffect(() => {
+    if (gameMode === "multiplayer" && multiplayerGameId && opponentReady && isPlayer1) {
+      // Host initializes the turn state on the server
+      fetch(`/api/hex-duel/multiplayer/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameId: multiplayerGameId }),
+      }).catch(() => {});
+    }
+  }, [gameMode, multiplayerGameId, opponentReady, isPlayer1]);
 
   const handleSkipRound = useCallback(() => {
     skipRound();
     if (gameMode === "multiplayer") {
-      sendMultiplayerAction({ type: "skipRound" });
+      const action: MultiplayerAction = { type: "skipRound" };
+      sendMultiplayerAction(action);
+      recordMultiplayerAction(action);
     }
-  }, [skipRound, gameMode, sendMultiplayerAction]);
+  }, [skipRound, gameMode, sendMultiplayerAction, recordMultiplayerAction]);
 
   const handleRestart = useCallback(() => {
     resetGame(); setGameMode("idle"); setWager(0); setWagerError(null);
     setPayoutResult(null); payoutProcessedRef.current = false; startedAtRef.current = null; fetchBalance();
     setMultiplayerGameId(null); setOpponentReady(false); opponentReadyRef.current = false; multiplayerJoinedRef.current = false;
+    lastKnownActionIdRef.current = 0;
   }, [resetGame, fetchBalance]);
 
   // ── Action system: wrapped click, confirm, clear ──────────────────
@@ -1690,9 +1846,11 @@ export default function HexDuelPage() {
       const sourceKey = `${pendingSource.x},${pendingSource.y}`;
       const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
       handleAttack(sourceKey, targetKey, pendingTroopCount);
-      // Send action to opponent in multiplayer
+      // Send action to opponent in multiplayer AND record to server
       if (gameMode === "multiplayer") {
-        sendMultiplayerAction({ type: "attack", sourceKey, targetKey, troopCount: pendingTroopCount });
+        const action: MultiplayerAction = { type: "attack", sourceKey, targetKey, troopCount: pendingTroopCount };
+        sendMultiplayerAction(action);
+        recordMultiplayerAction(action);
       }
       // Reset flow
       setPendingActionPhase(null);
@@ -1704,9 +1862,11 @@ export default function HexDuelPage() {
       const sourceKey = `${pendingSource.x},${pendingSource.y}`;
       const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
       handleDisplace(sourceKey, targetKey, pendingTroopCount);
-      // Send action to opponent in multiplayer
+      // Send action to opponent in multiplayer AND record to server
       if (gameMode === "multiplayer") {
-        sendMultiplayerAction({ type: "displace", sourceKey, targetKey, troopCount: pendingTroopCount });
+        const action: MultiplayerAction = { type: "displace", sourceKey, targetKey, troopCount: pendingTroopCount };
+        sendMultiplayerAction(action);
+        recordMultiplayerAction(action);
       }
       // Reset flow
       setPendingActionPhase(null);
@@ -1715,7 +1875,7 @@ export default function HexDuelPage() {
       setSelectedAction(null);
       setPendingTroopCount(1);
     }
-  }, [selectedAction, pendingSource, pendingTarget, pendingActionPhase, pendingTroopCount, handleAttack, handleDisplace, gameMode, sendMultiplayerAction]);
+  }, [selectedAction, pendingSource, pendingTarget, pendingActionPhase, pendingTroopCount, handleAttack, handleDisplace, gameMode, sendMultiplayerAction, recordMultiplayerAction]);
 
   const handleSelectUnit = useCallback(() => {
     // No-op in new system

@@ -8,6 +8,7 @@ import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import ReportModal from "../../../components/ReportModal";
 
 
 type LobbyRoom = { id: string; wager: number; status: string };
@@ -312,6 +313,7 @@ export default function YahtzeePage() {
   const [moveHistory, setMoveHistory] = useState<any[]>([]);
   const [turnBanner, setTurnBanner] = useState<string | null>(null);
   const [exploding, setExploding] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const [gameOverType, setGameOverType] = useState<"win" | "lose" | null>(null);
   const [gameOverScores, setGameOverScores] = useState<{ mine: number; theirs: number } | null>(null);
@@ -572,7 +574,7 @@ export default function YahtzeePage() {
       <div className="mt-4 space-y-2">{availableGames.length === 0 ? <p>No open games.</p> : availableGames.map((l) => <div key={l.id} className="flex items-center justify-between rounded bg-slate-900/80 p-2"><span>{l.id} · {l.wager}</span><button onClick={() => joinGame(l.id)} className="rounded bg-cyan-500 px-3 py-1 text-black">{joiningId === l.id ? "Joining" : "Join"}</button></div>)}</div></div>}
 
       {game && (<div className="mt-6 rounded-2xl border border-cyan-700 bg-black/45 p-4">
-        <div className="mb-3 flex items-center justify-between"><div>{isYourTurn ? "Your turn" : `${opponent?.name || "Opponent"}'s turn`} · Rolls {game.rollsThisTurn}/3</div><button onClick={resign} className="rounded bg-red-600 px-3 py-1 font-bold">Resign</button></div>
+        <div className="mb-3 flex items-center justify-between"><div>{isYourTurn ? "Your turn" : `${opponent?.name || "Opponent"}'s turn`} · Rolls {game.rollsThisTurn}/3</div><div className="flex items-center gap-2">{opponent && !opponent.isAI && (<button onClick={() => setShowReportModal(true)} className="rounded bg-red-500/20 border border-red-500/40 px-3 py-1 text-xs font-bold text-red-300 hover:bg-red-500/30">🚩 Report</button>)}<button onClick={resign} className="rounded bg-red-600 px-3 py-1 font-bold">Resign</button></div></div>
         {waitingForOpponent && <div className="mb-4 rounded border border-fuchsia-500 bg-fuchsia-950/40 p-2 text-sm">Waiting for opponent to join. You cannot roll yet.</div>}
 
         {/* YAHTZEE BOARD — scorecard integrated in center */}
@@ -1086,6 +1088,27 @@ export default function YahtzeePage() {
         </AnimatePresence>
       </div>)}
     </div>
+      <ReportModal
+        isOpen={showReportModal && !!opponent && !opponent.isAI}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponent?.userId,
+              gameType: "yahtzee",
+              gameId: roomId,
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={opponent?.name || "Opponent"}
+        gameType="Yahtzee"
+      />
       <Footer />
     </div>
   );
