@@ -38,14 +38,18 @@ export async function sendEmailSafely({
   // ── DB checks (best-effort — never block email delivery) ──────
   try {
     if (dedupeKey) {
-      const existing = await db.query.emailEvents.findFirst({
-        where: and(
-          eq(emailEvents.type, type),
-          eq(emailEvents.dedupeKey, dedupeKey),
-          eq(emailEvents.status, "sent"),
-        ),
-      });
-      if (existing) return { skipped: true, reason: "idempotent" };
+      const existing = await db
+        .select({ id: emailEvents.id })
+        .from(emailEvents)
+        .where(
+          and(
+            eq(emailEvents.type, type),
+            eq(emailEvents.dedupeKey, dedupeKey),
+            eq(emailEvents.status, "sent"),
+          ),
+        )
+        .limit(1);
+      if (existing.length > 0) return { skipped: true, reason: "idempotent" };
     }
   } catch (dbErr) {
     console.warn("[sendEmailSafely] Dedupe check failed (non-blocking):", (dbErr as Error).message);
@@ -54,15 +58,19 @@ export async function sendEmailSafely({
   try {
     if (category === "marketing" && user.clerkId) {
       const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const recentMarketing = await db.query.emailEvents.findFirst({
-        where: and(
-          eq(emailEvents.clerkId, user.clerkId),
-          eq(emailEvents.category, "marketing"),
-          gte(emailEvents.createdAt, last24h),
-          eq(emailEvents.status, "sent"),
-        ),
-      });
-      if (recentMarketing)
+      const recentMarketing = await db
+        .select({ id: emailEvents.id })
+        .from(emailEvents)
+        .where(
+          and(
+            eq(emailEvents.clerkId, user.clerkId),
+            eq(emailEvents.category, "marketing"),
+            gte(emailEvents.createdAt, last24h),
+            eq(emailEvents.status, "sent"),
+          ),
+        )
+        .limit(1);
+      if (recentMarketing.length > 0)
         return { skipped: true, reason: "marketing_rate_limited" };
     }
   } catch (dbErr) {
