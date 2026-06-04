@@ -3,13 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
+import { usePostHog } from "posthog-js/react";
 import UnoCard from "../../../../components/UnoCard";
 import UnoBack from "../../../../components/UnoBack";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
-import { celebrateWin, gameOverModal } from "../../../../lib/animations";
+import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../lib/animations";
+import { playCardPlace, playTurnSwitch, playVictory } from "../../../../lib/gameAudio";
 import ReportModal from "../../../../components/ReportModal";
 
 const UNO_MULTI_SEAT_POSITIONS = [
@@ -24,6 +26,7 @@ const UNO_MULTI_SEAT_POSITIONS = [
 export default function UnoMultiplayerPage() {
   const router = useRouter();
   const { socket } = useSocket();
+  const posthog = usePostHog();
   const roomSyncRef = useRef<NodeJS.Timeout | null>(null);
   const replayClientIdRef = useRef(Math.random().toString(36).slice(2));
 
@@ -31,7 +34,7 @@ export default function UnoMultiplayerPage() {
   const [loading, setLoading] = useState(false);
   const [tokens, setTokens] = useState<{ balance: number } | null>(null);
   const [unoMultiSettings, setUnoMultiSettings] = useState({
-    gameName: "UNO Table",
+    gameName: "Neon Flush Table",
     visibility: "private",
     betAmount: 100,
     maxPlayers: 4,
@@ -72,6 +75,8 @@ export default function UnoMultiplayerPage() {
   const [opponentReplayRequested, setOpponentReplayRequested] = useState(false);
   const [returnChosen, setReturnChosen] = useState(false);
   const [replaySecondsLeft, setReplaySecondsLeft] = useState(15);
+  const [turnBanner, setTurnBanner] = useState<string | null>(null);
+  const prevIsPlayerTurnRef = useRef<boolean | null>(null);
 
   const openEndPopup = (result: "win" | "loss", reason = "finished") => {
     setEndPopup({ result, reason, openedAt: Date.now() });
@@ -79,7 +84,13 @@ export default function UnoMultiplayerPage() {
     setOpponentReplayRequested(false);
     setReturnChosen(false);
     setReplaySecondsLeft(15);
-    if (result === "win") celebrateWin();
+    if (result === "win") { celebrateWin(); playVictory(); }
+    posthog?.capture("neon_flush_table_game_ended", {
+      result,
+      reason,
+      bet_amount: unoMultiSettings.betAmount,
+      game_id: game?.id,
+    });
   };
 
   const closeToUnoLobby = () => {
@@ -188,6 +199,16 @@ export default function UnoMultiplayerPage() {
   useEffect(() => {
     fetchUnoMultiplayerPublicGames();
   }, []);
+
+  // Turn banner animation
+  useEffect(() => {
+    if (prevIsPlayerTurnRef.current !== null && prevIsPlayerTurnRef.current !== isPlayerTurn && game) {
+      setTurnBanner(isPlayerTurn ? "Your Turn" : "Opponent's Turn");
+      playTurnSwitch(isPlayerTurn);
+      setTimeout(() => setTurnBanner(null), 1800);
+    }
+    prevIsPlayerTurnRef.current = isPlayerTurn;
+  }, [isPlayerTurn, game]);
 
   useEffect(() => {
     if (!socket) return;
@@ -501,6 +522,11 @@ export default function UnoMultiplayerPage() {
         setTokens({ balance: Number(data.game.newBalance) });
       }
       setUnoMultiMessage("Game started.");
+      posthog?.capture("neon_flush_table_game_started", {
+        bet_amount: unoMultiSettings.betAmount,
+        player_count: unoMultiPlayers.length,
+        game_id: data.game?.id,
+      });
       fetchUnoMultiplayerPublicGames();
     } catch (error) {
       console.error("Unable to start table game", error);
@@ -587,6 +613,13 @@ export default function UnoMultiplayerPage() {
       setMessage(data.data.message || "Move played.");
       setPendingCard(null);
       setShowColorPicker(false);
+      playCardPlace();
+      posthog?.capture("neon_flush_table_card_played", {
+        color: card.color,
+        value: card.value,
+        game_id: game?.id,
+        cards_left: data.data.playerHand?.length ?? 0,
+      });
     } finally {
       setLoading(false);
     }
@@ -622,6 +655,10 @@ export default function UnoMultiplayerPage() {
       setUnoMultiTurnPlayerId(data.data.turnPlayerId || null);
       setIsPlayerTurn(data.data.turnPlayerId === data.data.role);
       setMessage(data.data.message || "Card drawn.");
+      posthog?.capture("neon_flush_table_card_drawn", {
+        game_id: game?.id,
+        hand_count: data.data.playerHand?.length ?? 0,
+      });
     } finally {
       setLoading(false);
     }
@@ -705,7 +742,7 @@ export default function UnoMultiplayerPage() {
                 {endPopup.result === "win" ? "🏆" : "💀"}
               </motion.div>
               <p className="text-xs font-black uppercase tracking-[0.45em] text-cyan-200">
-                UNO Table Result
+                Neon Flush Table Result
               </p>
               <motion.h2
                 initial={{ y: 20, opacity: 0 }}
@@ -775,7 +812,37 @@ export default function UnoMultiplayerPage() {
           </motion.div>
         )}
       </AnimatePresence>
-      <h1 className="text-3xl mb-6 font-bold">UNO Multiplayer Table</h1>
+      {/* Turn Banner */}
+      <AnimatePresence>
+        {turnBanner && (
+          <motion.div
+            key="turn-banner"
+            {...turnBannerAnim}
+            className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-10 py-6 shadow-[0_0_60px_rgba(251,191,36,0.5)]"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.15, type: "spring", stiffness: 400 }}
+              className="text-center text-3xl font-black tracking-widest text-white drop-shadow-lg"
+            >
+              {turnBanner}
+            </motion.div>
+            <div className="mt-2 flex justify-center gap-1">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="h-2 w-2 rounded-full bg-amber-300"
+                  animate={{ scale: [1, 1.8, 1], opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.2 }}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <h1 className="text-3xl mb-6 font-bold">Neon Flush Table</h1>
       {tokens && <p className="text-yellow-300 mb-4 text-lg">Tokens : {tokens.balance}</p>}
 
       {!game ? (
@@ -786,7 +853,7 @@ export default function UnoMultiplayerPage() {
               onClick={() => router.push("/casino/uno")}
               className="px-4 py-2 bg-[#f5ff3b] text-[#031026] rounded-lg font-semibold"
             >
-              Back to UNO
+              Back to Neon Flush
             </button>
           </div>
 
@@ -1124,7 +1191,7 @@ export default function UnoMultiplayerPage() {
                 Draw card
               </button>
               <button className="px-4 py-2 bg-[#00e5ff] text-[#001933] rounded-full font-bold opacity-80">
-                UNO (coming soon)
+                FLUSH! (coming soon)
               </button>
               <button
                 onClick={() =>

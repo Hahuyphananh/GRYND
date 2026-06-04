@@ -127,8 +127,8 @@ function MainComponent() {
       descriptionKey: "games.keno_desc",
     },
     {
-      name: "Uno",
-      href: "/casino/uno",
+      name: "Neon Flush",
+      href: "/casino/neon-flush",
       leaderboardKey: "uno",
       image: Img11,
       descriptionKey: "games.uno_desc",
@@ -210,7 +210,7 @@ function MainComponent() {
 
   const skillGameKeys = new Set([
     "connect-four",
-    "uno",
+    "neon-flush",
     "poker",
     "dice-duel",
     "chess",
@@ -231,7 +231,7 @@ function MainComponent() {
     "connect-four",
     "dice-duel",
     "rps",
-    "uno",
+    "neon-flush",
     "keno",
     "coin-flip",
     "slots",

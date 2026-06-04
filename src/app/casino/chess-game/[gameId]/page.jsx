@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Chess } from "chess.js";
@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import ReportModal from "../../../../components/ReportModal";
-import { celebrateWin } from "../../../../lib/animations";
+import { celebrateWin, turnBanner as turnBannerAnim } from "../../../../lib/animations";
 
 const Chessboard = dynamic(
   async () => {
@@ -76,6 +76,12 @@ export default function ChessGamePage() {
   const [showResultPopup, setShowResultPopup] = useState(false);
   const [resultText, setResultText] = useState("");
   const [showReportModal, setShowReportModal] = useState(false);
+  const [turnBanner, setTurnBanner] = useState(null);
+  const prevActiveTurnRef = useRef(null);
+  const resultShownRef = useRef(false);
+  const [captureFlash, setCaptureFlash] = useState(false);
+  const [boardShake, setBoardShake] = useState(false);
+  const prevFenRef = useRef("");
 
   const { socket } = useSocket();
 
@@ -118,6 +124,34 @@ export default function ChessGamePage() {
         setSpectatorFocus("black");
     }
 
+    // Turn banner detection
+    if (game.activeTurn && prevActiveTurnRef.current !== null && prevActiveTurnRef.current !== game.activeTurn) {
+      const myTurn = game.activeTurn === color;
+      setTurnBanner(myTurn ? "Your Turn" : "Opponent's Turn");
+      setTimeout(() => setTurnBanner(null), 1800);
+    }
+    prevActiveTurnRef.current = game.activeTurn;
+
+    // Detect opponent capture & check by comparing FENs
+    if (prevFenRef.current && game.fen && prevFenRef.current !== game.fen && !isSpectator) {
+      const prevCount = (prevFenRef.current.match(/[pnbrqkPNBRQK]/g) || []).length;
+      const newCount = (game.fen.match(/[pnbrqkPNBRQK]/g) || []).length;
+      if (newCount < prevCount) {
+        setCaptureFlash(true);
+        setTimeout(() => setCaptureFlash(false), 400);
+      }
+      const prevFenParts = prevFenRef.current.split(" ");
+      const newFenParts = game.fen.split(" ");
+      if (newFenParts[1] !== prevFenParts[1]) {
+        const prevTurn = game.activeTurn === color;
+        if (!prevTurn) {
+          setBoardShake(true);
+          setTimeout(() => setBoardShake(false), 300);
+        }
+      }
+    }
+    prevFenRef.current = game.fen || "";
+
     setGameData(game);
     setMoves(game.moves || []);
     setLiveFen(game.fen || "start");
@@ -142,7 +176,8 @@ export default function ChessGamePage() {
       setStatus(text);
       setShowResultPopup(true);
 
-      if (text.includes("won")) {
+      if (text.includes("won") && !resultShownRef.current) {
+        resultShownRef.current = true;
         playUiTone("win");
         celebrateWin();
       }
@@ -173,6 +208,11 @@ export default function ChessGamePage() {
   }, [socket, gameId]);
 
   async function onDrop(sourceSquare, targetSquare) {
+    // Detect capture locally
+    const localGame = new Chess(displayFen);
+    const localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
+    const isCapture = localMove?.captured !== undefined;
+
     const res = await fetch("/api/chess/move", {
       method: "POST",
       headers: {
@@ -192,6 +232,12 @@ export default function ChessGamePage() {
 
     setLiveFen(data.data.fen);
     playUiTone("move");
+
+    // Capture flash
+    if (isCapture) {
+      setCaptureFlash(true);
+      setTimeout(() => setCaptureFlash(false), 400);
+    }
 
     socket?.emit("move", { gameId });
 
@@ -249,7 +295,38 @@ export default function ChessGamePage() {
       : gameData?.whiteTimeRemaining;
 
   return (
-    <div className="min-h-screen bg-[#050816] text-white px-4 py-8 overflow-x-hidden">
+    <>
+      {/* Turn Banner */}
+      <AnimatePresence>
+        {turnBanner && (
+          <motion.div
+            key="turn-banner"
+            {...turnBannerAnim}
+            className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-10 py-6 shadow-[0_0_60px_rgba(251,191,36,0.5)]"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.15, type: "spring", stiffness: 400 }}
+              className="text-center text-3xl font-black tracking-widest text-white drop-shadow-lg"
+            >
+              {turnBanner}
+            </motion.div>
+            <div className="mt-2 flex justify-center gap-1">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="h-2 w-2 rounded-full bg-amber-300"
+                  animate={{ scale: [1, 1.8, 1], opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.2 }}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="min-h-screen bg-[#050816] text-white px-4 py-8 overflow-x-hidden">
       <div className="max-w-7xl mx-auto">
         {/* HEADER */}
         <div className="text-center mb-8">
@@ -273,13 +350,25 @@ export default function ChessGamePage() {
                 <span className="font-bold text-cyan-300">
                   {opponentName || "Opponent"}
                 </span>
-                <span className="font-mono text-xl text-cyan-100">
+                <span className={`font-mono text-xl ${oppClock !== undefined && oppClock <= 10 ? "text-red-400 low-time-pulse" : "text-cyan-100"}`}>
                   {formatClock(oppClock)}
                 </span>
               </div>
 
               {/* BOARD */}
-              <div className="p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full max-w-[90vh] aspect-square mx-auto">
+              <div className={`relative p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full max-w-[90vh] aspect-square mx-auto ${boardShake ? "animate-board-shake" : ""}`}>
+                {/* Capture flash overlay */}
+                <AnimatePresence>
+                  {captureFlash && (
+                    <motion.div
+                      initial={{ opacity: 0.7 }}
+                      animate={{ opacity: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.4 }}
+                      className="absolute inset-0 z-10 rounded-2xl bg-red-500 pointer-events-none"
+                    />
+                  )}
+                </AnimatePresence>
                 <div className="rounded-2xl overflow-hidden bg-[#0b1020] w-full h-full">
                   <Chessboard
                     id="CyberBoard"
@@ -310,7 +399,7 @@ export default function ChessGamePage() {
                 <span className="font-bold text-fuchsia-300">
                   {myName || "You"}
                 </span>
-                <span className="font-mono text-xl text-fuchsia-100">
+                <span className={`font-mono text-xl ${myClock !== undefined && myClock <= 10 ? "text-red-400 low-time-pulse" : "text-fuchsia-100"}`}>
                   {formatClock(myClock)}
                 </span>
               </div>
@@ -465,5 +554,6 @@ export default function ChessGamePage() {
         </AnimatePresence>
       )}
     </div>
+    </>
   );
 }

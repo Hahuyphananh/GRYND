@@ -1,10 +1,11 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
 import { motion, AnimatePresence } from "framer-motion";
 import BlackjackCardBack from "../../../components/BlackjackCardBack";
+import { celebrateWin, gameOverModal } from "../../../lib/animations";
 
 export default function BlackjackPage() {
   const { isSignedIn, user } = useUser();
@@ -25,6 +26,9 @@ export default function BlackjackPage() {
   const [loading, setLoading] = useState(false);
   const PLACEHOLDER_CARDS = [0, 1];
   const [showRules, setShowRules] = useState(false);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [resultType, setResultType] = useState<"win" | "loss" | "push">("loss");
+  const resultCelebratedRef = useRef(false);
 
   const fetchUserTokens = async () => {
     if (!user) return;
@@ -185,7 +189,7 @@ export default function BlackjackPage() {
   const endGame = async (result: string) => {
     let winAmount = 0;
     let msg = "";
-    let blackjack =
+    const blackjack =
       playerCards.length === 2 && calculateHandValue(playerCards) === 21;
 
     switch (result) {
@@ -236,11 +240,88 @@ export default function BlackjackPage() {
     setIsSplit(false);
     setHands([]);
     setBet(10);
+
+    const outcome = result === "win" ? "win" : result === "push" ? "push" : "loss";
+    setResultType(outcome);
+    setShowResultModal(true);
+    if (outcome === "win" && !resultCelebratedRef.current) {
+      resultCelebratedRef.current = true;
+      celebrateWin();
+    }
   };
 
   return (
     <div className="min-h-screen overflow-x-clip bg-[#030817] pb-24 pt-20 md:pb-8">
       <NavigationBar currentPath="/casino" />
+
+      {/* Spring Result Modal */}
+      <AnimatePresence>
+        {showResultModal && (
+          <motion.div
+            key="blackjack-result"
+            {...gameOverModal.backdrop}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+          >
+            <motion.div
+              {...gameOverModal.panel}
+              className={`relative w-full max-w-md overflow-hidden rounded-3xl border-4 p-6 text-center shadow-2xl ${
+                resultType === "win"
+                  ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_60px_rgba(251,191,36,0.4)]"
+                  : resultType === "push"
+                    ? "border-yellow-400 bg-gradient-to-b from-[#1a2a1a] to-[#0d1a0d] shadow-[0_0_60px_rgba(250,204,21,0.3)]"
+                    : "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_60px_rgba(239,68,68,0.3)]"
+              }`}
+            >
+              <motion.div
+                initial={{ scale: 0, rotate: -30 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
+                className="mb-2 text-7xl"
+              >
+                {resultType === "win" ? "🏆" : resultType === "push" ? "🤝" : "💀"}
+              </motion.div>
+              <motion.h2
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.5, duration: 0.4 }}
+                className={`mt-3 text-4xl font-black uppercase ${
+                  resultType === "win" ? "text-amber-300" : resultType === "push" ? "text-yellow-300" : "text-red-400"
+                }`}
+              >
+                {resultType === "win" ? "You Won!" : resultType === "push" ? "Push!" : "You Lost"}
+              </motion.h2>
+              {resultType === "win" && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 1.0 }}
+                  className="mt-3 flex justify-center gap-1"
+                >
+                  {["✨", "🌟", "✨", "🌟", "✨"].map((s, i) => (
+                    <motion.span key={i} className="text-xl" animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.12 }}>{s}</motion.span>
+                  ))}
+                </motion.div>
+              )}
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.8, duration: 0.4 }}
+                className="mt-6"
+              >
+                <button
+                  onClick={() => setShowResultModal(false)}
+                  className={`rounded-xl border-b-4 px-8 py-3 text-lg font-black transition active:translate-y-[2px] ${
+                    resultType === "win" ? "border-amber-700 bg-amber-400 text-black shadow-[0_0_25px_rgba(251,191,36,0.5)]" : "border-cyan-700 bg-cyan-400 text-black shadow-[0_0_25px_rgba(0,229,255,0.4)]"
+                  }`}
+                >
+                  Play Again
+                </button>
+              </motion.div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="mx-auto max-w-4xl px-3 py-6 sm:px-4 sm:py-8">
         <div className="mb-4 flex flex-col gap-2 text-[#FFD700] sm:flex-row sm:justify-between">
           <h1 className="text-3xl font-bold">Blackjack</h1>
