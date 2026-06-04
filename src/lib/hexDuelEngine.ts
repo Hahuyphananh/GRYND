@@ -550,6 +550,52 @@ export function useHexDuel() {
     setActionLog([]);
   }, []);
 
+  // ── State sync (for multiplayer recovery) ──────────────────────────
+  // Build a serializable snapshot of all game state for sync requests
+  const buildSyncSnapshot = useCallback(() => {
+    return {
+      currentTurn,
+      currentAP,
+      moveCount,
+      p1MoveCount,
+      p2MoveCount,
+      p1Territory,
+      p2Territory,
+      winner,
+      capturedTiles: { ...capturedTiles },
+      tileTroops: { ...tileTroops },
+      actionLogId: actionIdRef.current,
+    };
+  }, [currentTurn, currentAP, moveCount, p1MoveCount, p2MoveCount, p1Territory, p2Territory, winner, capturedTiles, tileTroops]);
+
+  /** Apply a remote sync snapshot — used to recover from desync */
+  const applySyncSnapshot = useCallback((snapshot: {
+    currentTurn: DuelPlayer;
+    currentAP: number;
+    moveCount: number;
+    p1MoveCount: number;
+    p2MoveCount: number;
+    p1Territory: number;
+    p2Territory: number;
+    winner: DuelPlayer | null;
+    capturedTiles: Record<string, DuelPlayer>;
+    tileTroops: Record<string, number>;
+    actionLogId: number;
+  }) => {
+    setCurrentTurn(snapshot.currentTurn);
+    setCurrentAP(snapshot.currentAP);
+    setMoveCount(snapshot.moveCount);
+    setP1MoveCount(snapshot.p1MoveCount);
+    setP2MoveCount(snapshot.p2MoveCount);
+    setWinner(snapshot.winner);
+    setCapturedTiles(snapshot.capturedTiles);
+    setTileTroops(snapshot.tileTroops);      setRecentlyCaptured([]);
+    setCombatFlash([]);
+    actionIdRef.current = snapshot.actionLogId;
+    actionLogRef.current = [];
+    setActionLog([]);
+  }, []);
+
   // ── Derived: valid moves (empty stub for backward compat) ─────────
 
   const validMoves: { x: number; y: number }[] = [];
@@ -602,5 +648,8 @@ export function useHexDuel() {
     getAttackSources,
     displaceCandidates,
     getDisplaceSources,
+    // State sync for multiplayer recovery
+    buildSyncSnapshot,
+    applySyncSnapshot,
   };
 }

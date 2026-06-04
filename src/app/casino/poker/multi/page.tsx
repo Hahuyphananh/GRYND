@@ -10,6 +10,7 @@ import useGamePresence from "../../../../hooks/useGamePresence";
 import { usePokerAudio } from "../../../lib/pokerAudio";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
+import ReportModal from "../../../../components/ReportModal";
 
 type Player = {
   id: string;
@@ -141,6 +142,7 @@ export default function PokerPage() {
   const [turnTimeLimit, setTurnTimeLimit] = useState(60);
   const [allInFlash, setAllInFlash] = useState(false);
   const [allInParticles, setAllInParticles] = useState<{ id: string; seatIdx: number; delay: number }[]>([]);
+  const [showReportModal, setShowReportModal] = useState(false);
   const audio = usePokerAudio();
   const audioRef = useRef(audio);
   audioRef.current = audio;
@@ -1684,6 +1686,14 @@ export default function PokerPage() {
       <h1 className="text-3xl sm:text-5xl mb-4 font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] via-[#00e5ff] to-[#ff00cc] drop-shadow-[0_0_20px_rgba(255,0,204,0.8)] animate-pulse">
         TEXAS HOLD'EM
       </h1>
+      {game && game.players.some((p) => !p.isAI && p.id !== myId) && (
+        <button
+          onClick={() => setShowReportModal(true)}
+          className="mb-3 z-10 px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30 transition"
+        >
+          🚩 Report Player
+        </button>
+      )}
       
       {/* ── Sound toggle ── */}
       <button
@@ -2605,6 +2615,28 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           </div>
         </div>
       )}
+      <ReportModal
+        isOpen={showReportModal && game != null && game.players.some((p: Player) => !p.isAI && p.id !== myId)}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const humanOpp = game?.players.find((p: Player) => !p.isAI && p.id !== myId);
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: humanOpp?.id,
+              gameType: "poker",
+              gameId: game?.id ? String(game.id) : null,
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={game?.players.find((p: Player) => !p.isAI && p.id !== myId)?.name || "Opponent"}
+        gameType="Poker"
+      />
       <Footer />
     </div>
   );

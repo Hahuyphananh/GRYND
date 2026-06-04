@@ -10,6 +10,7 @@ import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import { celebrateWin, gameOverModal } from "../../../../lib/animations";
+import ReportModal from "../../../../components/ReportModal";
 
 const UNO_MULTI_SEAT_POSITIONS = [
   { left: "50%", top: "15%" },
@@ -50,6 +51,7 @@ export default function UnoMultiplayerPage() {
   const [unoMultiHandCounts, setUnoMultiHandCounts] = useState<any[]>([]);
   const [unoMultiTurnPlayerId, setUnoMultiTurnPlayerId] = useState<any>(null);
   const [showSeatPopup, setShowSeatPopup] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const [playerHand, setPlayerHand] = useState<any[]>([]);
   const [topCard, setTopCard] = useState<any>(null);
@@ -662,6 +664,14 @@ export default function UnoMultiplayerPage() {
 
   const isAiThinking = currentPlayer?.type === "ai" && !loading;
 
+  // Find first human opponent (for reporting)
+  const humanOpponent = useMemo(() => {
+    if (!game) return null;
+    return unoMultiPlayers.find(
+      (p) => p.type !== "ai" && p.userId && p.userId !== (game as any)?.currentUserId
+    ) || null;
+  }, [unoMultiPlayers, game]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -1011,6 +1021,14 @@ export default function UnoMultiplayerPage() {
           >
             Resign
           </button>
+          {humanOpponent && (
+            <button
+              onClick={() => setShowReportModal(true)}
+              className="fixed top-24 right-28 z-50 px-4 py-2 bg-red-500/20 border border-red-500/40 rounded-lg text-xs font-bold text-red-300 hover:bg-red-500/30"
+            >
+              🚩 Report
+            </button>
+          )}
           <button
             onClick={resetUnoMultiplayerLobby}
             className="fixed top-24 left-5 z-50 px-4 py-2 bg-[#f5ff3b] text-[#031026] rounded-lg font-bold"
@@ -1163,6 +1181,27 @@ export default function UnoMultiplayerPage() {
           )}
         </div>
       )}
+      <ReportModal
+        isOpen={showReportModal && !!humanOpponent}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: humanOpponent?.userId,
+              gameType: "uno",
+              gameId: game?.id ? String(game.id) : null,
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={humanOpponent?.name || "Opponent"}
+        gameType="UNO"
+      />
       <Footer />
     </motion.div>
   );

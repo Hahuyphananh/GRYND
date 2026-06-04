@@ -9,6 +9,7 @@ import { useSocket } from "../../../context/SocketProvider";
 import { useTranslation } from "../../../hooks/useTranslation";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import ReportModal from "../../../components/ReportModal";
 import {
   calculateScore,
   isFarkle,
@@ -341,6 +342,7 @@ export default function FarklePage() {
   const [rollFlash, setRollFlash] = useState(false);
   const [bankCelebrating, setBankCelebrating] = useState(false);
   const [hotDiceFlash, setHotDiceFlash] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const prevTurnRef = useRef<string | null>(null);
   const prevCanBankRef = useRef(false);
@@ -1112,6 +1114,16 @@ export default function FarklePage() {
                   </span>
                 )}
               </div>
+              <div className="flex items-center gap-2">
+              {isPvp && opponent && (
+                <button
+                  type="button"
+                  onClick={() => setShowReportModal(true)}
+                  className="relative z-20 rounded-lg bg-red-500/20 border border-red-500/40 px-3 py-1 text-xs font-bold text-red-300 hover:bg-red-500/30 transition"
+                >
+                  🚩 Report
+                </button>
+              )}
               <button
                 type="button"
                 disabled={resigning || !roomId || game.state === "finished"}
@@ -1123,6 +1135,7 @@ export default function FarklePage() {
               >
                 {resigning ? "..." : t("games.farkle.resign")}
               </button>
+              </div>
             </div>
 
             {/* Waiting for opponent alert */}
@@ -1844,6 +1857,27 @@ export default function FarklePage() {
           </div>
         )}
       </div>
+      <ReportModal
+        isOpen={showReportModal && isPvp && !!opponent}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponent?.userId,
+              gameType: "farkle",
+              gameId: roomId,
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={opponent?.name || "Opponent"}
+        gameType="Farkle"
+      />
       <Footer />
     </div>
   );

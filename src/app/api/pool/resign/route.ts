@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "../../../../db";
+import { db } from "../../../../db/client";
 import { eq, sql } from "drizzle-orm";
 import { poolMatches, users } from "../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";

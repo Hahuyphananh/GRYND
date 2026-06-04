@@ -204,15 +204,15 @@ export async function POST(req) {
 
         let playedCard = aiHand.splice(playableIndex, 1)[0];
         const normalizedValue = normalize(playedCard.value);
-        const chosenColor =
-          playedCard.color === "black" || normalize(playedCard.color) === "wild"
-            ? aiChooseColor(aiHand)
-            : playedCard.color;
+        const isWildCard =
+          normalizedValue === "wild" ||
+          normalizedValue === "wild draw four" ||
+          normalizedValue === "+4";
+        const chosenColor = isWildCard
+          ? aiChooseColor(aiHand)
+          : playedCard.color;
 
-        if (
-          playedCard.color === "black" ||
-          normalize(playedCard.color) === "wild"
-        ) {
+        if (isWildCard) {
           message = `IA joue ${playedCard.value} et choisit ${chosenColor}`;
         } else {
           message = `IA joue ${playedCard.color} ${playedCard.value}`;
@@ -252,10 +252,13 @@ export async function POST(req) {
         aiHand.push(card);
 
         if (isValidPlay(card, topCard, currentColor, aiHand)) {
-          const chosenColor =
-            card.color === "black" || normalize(card.color) === "wild"
-              ? aiChooseColor(aiHand)
-              : card.color;
+          const drawnIsWild =
+            normalize(card.value) === "wild" ||
+            normalize(card.value) === "wild draw four" ||
+            normalize(card.value) === "+4";
+          const chosenColor = drawnIsWild
+            ? aiChooseColor(aiHand)
+            : card.color;
 
           message = `IA pioche et joue ${card.color} ${card.value}`;
 

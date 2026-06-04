@@ -1463,9 +1463,10 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {myFriends.length > 0 ? (
                 myFriends.map((friend) => (
-                  <div
+                  <a
                     key={`${friend.id}-${friend.name}`}
-                    className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3"
+                    href={`/profil/${encodeURIComponent(friend.clerk_id)}`}
+                    className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3 hover:bg-white/10 transition-colors cursor-pointer"
                   >
                     {profileAvatar(friend) ? (
                       <img
@@ -1549,7 +1550,10 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
                       })()}
 
                       <button
-                        onClick={() => handleRemoveFriend(friend.id)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleRemoveFriend(friend.id);
+                        }}
                         className="rounded-lg px-2 py-1 text-xs font-semibold text-white 
 bg-gradient-to-r from-red-500 to-red-700 
 shadow-[0_0_10px_rgba(255,0,0,0.6)] 
@@ -1558,7 +1562,7 @@ hover:scale-105 transition-all"
                         Remove
                       </button>
                     </div>
-                  </div>
+                  </a>
                 ))
               ) : (
                 <p className="text-sm text-gray-300">No friends yet.</p>

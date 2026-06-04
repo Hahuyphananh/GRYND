@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
@@ -249,13 +250,18 @@ export default function LeaderboardPage() {
                     {items.map((item, i) => (
                       <tr
                         key={`${item.clerk_id}-${item.rank}`}
-                        className={`border-b border-[#00e5ff]/20 ${i % 2 ? "bg-[#08142f]" : "bg-[#0b224f]"}`}
+                        className={`border-b border-[#00e5ff]/20 ${i % 2 ? "bg-[#08142f]" : "bg-[#0b224f]"} hover:bg-white/10 transition-colors`}
                       >
                         <td className="px-3 py-3 font-bold text-[#00e5ff]">
                           {item.rank}
                         </td>
                         <td className="px-3 py-3 font-semibold">
-                          {item.user?.name || item.name}
+                          <Link
+                            href={`/profil/${encodeURIComponent(item.clerk_id)}`}
+                            className="hover:text-[#00e5ff] hover:underline transition-colors"
+                          >
+                            {item.user?.name || item.name}
+                          </Link>
                         </td>
                         <td className="px-3 py-3 text-green-300">
                           {getMetricValue(item, tab, category)}
@@ -272,9 +278,10 @@ export default function LeaderboardPage() {
                   className="space-y-2"
                 >
                   {items.map((w) => (
-                    <div
+                    <Link
+                      href={`/profil/${encodeURIComponent(w.clerk_id)}`}
                       key={`${w.clerk_id}-${w.rank}`}
-                      className="flex items-center justify-between rounded-md border border-[#00e5ff]/30 bg-[#0b224f] p-3"
+                      className="flex items-center justify-between rounded-md border border-[#00e5ff]/30 bg-[#0b224f] p-3 hover:bg-white/10 transition-colors cursor-pointer"
                     >
                       <div className="font-semibold text-gray-100">
                         #{w.rank} • {w.user?.name || w.name}
@@ -290,7 +297,7 @@ export default function LeaderboardPage() {
                           {Number(w.wins || 0).toLocaleString()} wins
                         </div>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </motion.div>
               )}

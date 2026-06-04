@@ -47,6 +47,16 @@ export default function ContactPage() {
 
   return (
     <main className="min-h-screen bg-[#0a0f1e] text-white">
+      {/* Back button */}
+      <div className="max-w-4xl mx-auto px-4 pt-6">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-white/20 bg-white/5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
+        >
+          ← Back to Home
+        </Link>
+      </div>
+
       {/* Hero header */}
       <div className="relative overflow-hidden border-b border-white/5">
         <div className="absolute inset-0 bg-gradient-to-b from-[#1a1f3e]/40 to-transparent pointer-events-none" />

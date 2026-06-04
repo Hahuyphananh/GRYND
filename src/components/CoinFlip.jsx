@@ -1,5 +1,6 @@
 "use client";
 import NavigationBar from "../components/navigation-bar";
+import ReportModal from "../components/ReportModal";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -266,6 +267,7 @@ function PvPCoinFlip() {
   const [gameStatus, setGameStatus] = useState(null);
   const [choiceDeadline, setChoiceDeadline] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     const getUser = async () => {
@@ -568,6 +570,17 @@ shadow-[0_0_12px_rgba(16,185,129,0.6)]"
         <div className="mt-6 bg-gray-900 rounded-xl p-6 shadow-xl border border-gray-700">
           <h2 className="text-center text-xl font-bold mb-6">Coin Flip PvP</h2>
 
+          <div className="flex justify-end mb-3">
+            {opponentId && (
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="px-3 py-1 rounded-lg bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30"
+              >
+                🚩 Report
+              </button>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-6 text-center mb-6">
             <div className="bg-gray-800 p-4 rounded-lg">
               <p className="font-bold text-green-400">You</p>
@@ -682,6 +695,28 @@ shadow-[0_0_12px_rgba(239,68,68,0.6)]"
           )}
         </div>
       )}
+
+      <ReportModal
+        isOpen={showReportModal && !!opponentId}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentId,
+              gameType: "coin-flip",
+              gameId: myGameId ? String(myGameId) : null,
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName="Opponent"
+        gameType="Coin Flip"
+      />
     </>
   );
 }
