@@ -134,6 +134,7 @@ export default function Page() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ballsRef = useRef<Ball[]>([]);
   const ownerRef = useRef<PlayerTurn>(1);
+  const turnRef = useRef<PlayerTurn>(initialTurn);
   const liveEmitAtRef = useRef(0);
   const livePersistAtRef = useRef(0);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
@@ -305,6 +306,10 @@ export default function Page() {
   }, [owner]);
 
   useEffect(() => {
+    turnRef.current = turn;
+  }, [turn]);
+
+  useEffect(() => {
     setActiveMatchId(matchId);
   }, [matchId]);
 
@@ -382,9 +387,7 @@ export default function Page() {
    return () => cancelAnimationFrame(rafId);
  }, []);
 
-  const isMyTurn = turn === owner;
-
-const canShoot =
+  const isMyTurn = turn === owner;  const canShoot =
   started &&
   !winner &&
   !isMoving(balls) &&
@@ -397,6 +400,11 @@ const canShoot =
     resigningRef.current = true;
     setResigning(true);
     setShowResignConfirm(false);
+    // Clean up any in-progress game state before resigning
+    shotLock.current = false;
+    localShotInProgressRef.current = false;
+    remoteShotInProgressRef.current = false;
+    settleInterpRef.current = null;
     try {
       const res = await fetch("/api/pool/resign", {
         method: "POST",
@@ -405,7 +413,8 @@ const canShoot =
       });
       const data = await res.json();
       if (data.success) {
-        setWinner(owner === 1 ? 2 : 1);
+        const resignedWinner: PlayerTurn = ownerRef.current === 1 ? 2 : 1;
+        setWinner(resignedWinner);
         setStatus("You resigned.");
         // Emit resign via socket for live opponent
         if (!aiMode && socket) {
@@ -536,6 +545,7 @@ const canShoot =
       setStatus(res.keepTurn ? "Nice shot — shoot again." : "Shot complete.");
       setLastFoul(null);
     }
+    turnRef.current = res.nextTurn;
     setTurn(res.nextTurn);
     setBallInHand(res.ballInHand);
     if (res.winner && !winner) {
@@ -643,7 +653,7 @@ const canShoot =
 )
   return;
 
-if (!aiMode && turn !== owner) return;
+if (!aiMode && turnRef.current !== owner) return;
     settleInterpRef.current = null; // cancel any in-flight SETTLED interpolation
     shotLock.current = true;
     localShotInProgressRef.current = true;
@@ -752,14 +762,14 @@ if (!aiMode && turn !== owner) return;
   }, [aiMode, socket, balls, turn, owner, aim, pull, activeMatchId, myTeam, oppTeam, openTable, ballInHand, winner]);
 
   const onDown = (e: any) => {
-    if (winner || !canShoot || turn !== owner) return;
+    if (winner || !canShoot || turnRef.current !== owner) return;
     const r = e.currentTarget.getBoundingClientRect();
     const p = touchPoint(e, r);
     dragRef.current = p;
   };
   const onMove = (e: any) => {
     const cue = balls.find((b) => b.number === 0);
-    if (!canShoot || turn !== owner) return;
+    if (!canShoot || turnRef.current !== owner) return;
     const r = e.currentTarget.getBoundingClientRect();
     const p = touchPoint(e, r);
     setAim(Math.atan2(p.y - cue.y, p.x - cue.x));
@@ -783,7 +793,7 @@ if (!aiMode && turn !== owner) return;
     }
   };
   const onUp = () => {
-    if (dragRef.current && canShoot && turn === owner) fireShot(aim, pull);
+    if (dragRef.current && canShoot && turnRef.current === owner) fireShot(aim, pull);
     dragRef.current = null;
     setPull(0);
   };
@@ -873,6 +883,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
   }
 }
       if (typeof payload.turn === "number") {
+  turnRef.current = payload.turn;
   setTurn(payload.turn);
 }
       const shouldSwapTeams = payload.sourceSeat !== ownerRef.current;
@@ -971,6 +982,11 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       // Opponent resigned — we win
       setWinner(ownerRef.current);
       setStatus("Opponent resigned. You win!");
+      // Clean up shot state so the win/loss popup shows immediately
+      shotLock.current = false;
+      localShotInProgressRef.current = false;
+      remoteShotInProgressRef.current = false;
+      settleInterpRef.current = null;
     };
 
     socket.emit("join_room", { roomId });
@@ -1038,6 +1054,10 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       if (data.match?.status === "finished" && !winner) {
         const finishedWinner = gs?.winner;
         if (finishedWinner) {
+          shotLock.current = false;
+          localShotInProgressRef.current = false;
+          remoteShotInProgressRef.current = false;
+          settleInterpRef.current = null;
           setWinner(finishedWinner);
           setStatus(
             finishedWinner === ownerRef.current
@@ -1100,7 +1120,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
             };
           }
         }
-        if (gs.turn) setTurn(gs.turn);
+        if (gs.turn) { turnRef.current = gs.turn; setTurn(gs.turn); }
         const remoteSeat = gs.perspectiveSeat;
         const shouldSwapTeams = remoteSeat && data.viewerSeat && remoteSeat !== data.viewerSeat;
         setMyTeam(shouldSwapTeams ? (gs.oppTeam ?? null) : (gs.myTeam ?? null));
