@@ -6,6 +6,7 @@ import Link from "next/link";
 export default function HexDuelMultiplayerPage() {
   const [games, setGames] = useState<any[]>([]);
   const [liveGames, setLiveGames] = useState<any[]>([]);
+  const [spectatorCounts, setSpectatorCounts] = useState<Record<number, number>>({});
   const [wager, setWager] = useState(50);
   const router = useRouter();
   const load = async () => {
@@ -13,6 +14,21 @@ export default function HexDuelMultiplayerPage() {
     const data = await res.json();
     setGames(data.games || []);
     setLiveGames(data.liveGames || []);
+
+    // Fetch spectator counts for live games
+    if (data.liveGames?.length > 0) {
+      const counts: Record<number, number> = {};
+      await Promise.all(
+        data.liveGames.map(async (g: any) => {
+          try {
+            const cr = await fetch(`/api/spectators/count?gameKey=hex-duel&gameId=${g.id}`);
+            const cd = await cr.json();
+            if (cd?.success) counts[g.id] = cd.count;
+          } catch {}
+        }),
+      );
+      setSpectatorCounts(counts);
+    }
   };
   useEffect(() => { load(); }, []);
   return <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-6 pt-24 text-white">
@@ -85,9 +101,16 @@ export default function HexDuelMultiplayerPage() {
         )}
         {liveGames.map((g) => (
           <div key={g.id} className="rounded-lg border border-white/10 p-2.5 flex justify-between items-center">
-            <span className="text-[12px] text-slate-300">
-              #{g.id} · {g.hostName || "Player"} vs Opponent · {g.wagerAmount} tokens
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-slate-300">
+                #{g.id} · {g.hostName || "Player"} vs Opponent · {g.wagerAmount} tokens
+              </span>
+              {spectatorCounts[g.id] > 0 && (
+                <span className="text-[10px] text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded-full">
+                  👁 {spectatorCounts[g.id]}
+                </span>
+              )}
+            </div>
             <button
               onClick={() => router.push(`/casino/hex-duel?gameId=${g.id}&spectator=1`)}
               className="rounded-lg border border-purple-400/40 px-3 py-1 text-[11px] text-purple-300 hover:bg-purple-500/20 transition"
