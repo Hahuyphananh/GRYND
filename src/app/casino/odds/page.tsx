@@ -633,31 +633,6 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     socket.emit("join_room", { roomId });
   }, [socket, myGameId, interactiveState]);
 
-  // ── Socket: listen for opponent events when playing ──
-  useEffect(() => {
-    if (!socket || !myGameId || !interactiveState) return;
-    const roomId = `odds_${myGameId}`;
-    socket.emit("join_room", { roomId }); // ensure joined
-
-    const handler = async () => {
-      const gid = myGameIdRef.current;
-      if (!gid) return;
-      try {
-        const res = await fetch(`/api/odds/status?gameId=${gid}`);
-        const data = await res.json();
-        if (mountedRef.current && data.success && data.data) {
-          applyStateFromServer(data.data);
-        }
-      } catch {}
-    };
-
-    socket.on("odds:state_changed", handler);
-    return () => {
-      socket.off("odds:state_changed", handler);
-      socket.emit("leave_room", { roomId });
-    };
-  }, [socket, myGameId, interactiveState, applyStateFromServer]);
-
   // Apply server state to local state
   const applyStateFromServer = useCallback(
     (serverData: any) => {
@@ -696,6 +671,31 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     },
     [isPlayer1],
   );
+
+  // ── Socket: listen for opponent events when playing ──
+  useEffect(() => {
+    if (!socket || !myGameId || !interactiveState) return;
+    const roomId = `odds_${myGameId}`;
+    socket.emit("join_room", { roomId }); // ensure joined
+
+    const handler = async () => {
+      const gid = myGameIdRef.current;
+      if (!gid) return;
+      try {
+        const res = await fetch(`/api/odds/status?gameId=${gid}`);
+        const data = await res.json();
+        if (mountedRef.current && data.success && data.data) {
+          applyStateFromServer(data.data);
+        }
+      } catch {}
+    };
+
+    socket.on("odds:state_changed", handler);
+    return () => {
+      socket.off("odds:state_changed", handler);
+      socket.emit("leave_room", { roomId });
+    };
+  }, [socket, myGameId, interactiveState, applyStateFromServer]);
 
   // ── Create / Join / Cancel ──
   const createGame = async () => {
@@ -1007,10 +1007,10 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     interactiveState &&
     ((isPlayer1 && interactiveState.player1Pick !== null) ||
       (!isPlayer1 && interactiveState.player2Pick !== null));
-  const showPickUI = gameId && interactiveState && !gameOver && !alreadyPicked && !waitingForOpponent;
-
   // Shortcuts
   const gameId = myGameId;
+
+  const showPickUI = gameId && interactiveState && !gameOver && !alreadyPicked && !waitingForOpponent;
 
   // ── Render ──
   return (
