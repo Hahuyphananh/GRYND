@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { and, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
-import { hexDuelGames } from "../../../../../db/schema";
+import { hexDuelGames, users } from "../../../../../db/schema";
 
 /** Derive currentTurn from the status string */
 function statusToTurn(status: string): "player1" | "player2" | null {
@@ -26,8 +26,16 @@ export async function GET(req: Request) {
     }
 
     const [game] = await db
-      .select()
+      .select({
+        id: hexDuelGames.id,
+        status: hexDuelGames.status,
+        player1Id: hexDuelGames.player1Id,
+        player2Id: hexDuelGames.player2Id,
+        wagerAmount: hexDuelGames.wagerAmount,
+        player1Name: users.name,
+      })
       .from(hexDuelGames)
+      .leftJoin(users, eq(users.clerkId, hexDuelGames.player1Id))
       .where(
         and(
           eq(hexDuelGames.id, gameId),
@@ -45,6 +53,17 @@ export async function GET(req: Request) {
     const isReady = bothJoined && (game.status === "in_progress" || game.status.startsWith("turn_"));
     const currentTurn = statusToTurn(game.status);
 
+    // Fetch player2 name if both joined
+    let player2Name: string | null = null;
+    if (game.player2Id) {
+      const [p2] = await db
+        .select({ name: users.name })
+        .from(users)
+        .where(eq(users.clerkId, game.player2Id))
+        .limit(1);
+      player2Name = p2?.name || null;
+    }
+
     return NextResponse.json({
       success: true,
       game: {
@@ -57,6 +76,8 @@ export async function GET(req: Request) {
         player1Id: game.player1Id,
         player2Id: game.player2Id,
         wagerAmount: game.wagerAmount,
+        player1Name: game.player1Name || null,
+        player2Name,
       },
     });
   } catch (error: any) {

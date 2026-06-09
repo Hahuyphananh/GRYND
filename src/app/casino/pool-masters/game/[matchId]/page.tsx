@@ -140,6 +140,7 @@ export default function Page() {
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const shotLock = useRef(false);
   const aiShotLock = useRef(false);
+  const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localShotInProgressRef = useRef(false);
   const remoteShotInProgressRef = useRef(false);
   const shotHistoryRef = useRef<ShotEntry[]>([]);
@@ -231,6 +232,7 @@ export default function Page() {
       if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
       if (opponentVisorTimerRef.current) clearTimeout(opponentVisorTimerRef.current);
       if (remoteAimTimerRef.current) clearTimeout(remoteAimTimerRef.current);
+      if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
     };
   }, []);
 
@@ -600,6 +602,7 @@ export default function Page() {
     if (res.ballInHand) setBalls(syncedBalls);
     const version = Date.now();
     const shotId = activeShotIdRef.current ?? `shot-${version}`;
+    syncVersionRef.current = version;
     setSyncVersion(version);
     emitLiveState({
       sourceSeat: owner,
@@ -1003,6 +1006,11 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
   useEffect(() => {
     if (!(aiMode && turn === 2 && canShoot) || winner) {
       aiShotLock.current = false;
+      // Cancel any pending AI timer when it's not the AI's turn
+      if (aiTimerRef.current) {
+        clearTimeout(aiTimerRef.current);
+        aiTimerRef.current = null;
+      }
       return;
     }
     if (aiShotLock.current) return;
@@ -1020,14 +1028,15 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       if (mountedRef.current) setShowOpponentVisor(false);
     }, 1200);
 
-    const timer = setTimeout(() => {
+    // Cancel any previously scheduled AI shot before creating a new one
+    if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
+    aiTimerRef.current = setTimeout(() => {
+      aiTimerRef.current = null;
       fireShot(shot.angle, shot.power);
       setPull(0);
       aiShotLock.current = false;
       setShowOpponentVisor(false);
     }, 1200);
-
-    return () => clearTimeout(timer);
   }, [aiMode, turn, canShoot, winner, oppTeam, openTable]);
 
   const syncMatch = async () => {

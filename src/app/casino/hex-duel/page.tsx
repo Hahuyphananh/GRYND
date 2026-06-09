@@ -592,7 +592,7 @@ function TroopBar({ troops, maxTroops, color }: { troops: number; maxTroops: num
 
 function PlayerCard({
   player, label, isActive, isSelected, color, moves, territory, currentAP, maxAP, isWinner, isAI,
-  turnJustChanged, totalTroops, maxTroops, clockTime,
+  turnJustChanged, totalTroops, maxTroops, clockTime, isLocal,
 }: {
   player: DuelPlayer; label: string;
   isActive: boolean; isSelected: boolean; color: string;
@@ -602,12 +602,15 @@ function PlayerCard({
   totalTroops: number;
   maxTroops: number;
   clockTime: number;
+  isLocal?: boolean;
 }) {
-  const borderColor = player === "player1" ? "border-cyan-400" : "border-red-500";
-  const glowColor = player === "player1"
+  // Use color to determine blue/red styling — local player always blue, opponent always red
+  const isBlue = color === "#22d3ee";
+  const borderColor = isBlue ? "border-cyan-400" : "border-red-500";
+  const glowColor = isBlue
     ? "shadow-[0_0_18px_rgba(34,211,238,0.5)]"
     : "shadow-[0_0_18px_rgba(239,68,68,0.5)]";
-  const bgColor = player === "player1"
+  const bgColor = isBlue
     ? "from-cyan-500/20 to-blue-600/10"
     : "from-red-500/20 to-rose-600/10";
   const isClockUrgent = clockTime < 60000;
@@ -648,7 +651,7 @@ function PlayerCard({
           {!isWinner && isActive && (
             <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-yellow-400/20 text-yellow-300 border border-yellow-400/40 animate-pulse"
               style={{ animation: "turnSlideIn 0.3s ease-out" }}>
-              {isAI ? "AI THINKING" : "YOUR TURN"}
+              {isAI ? "AI THINKING" : isLocal ? "YOUR TURN" : "PLAYING"}
             </span>
           )}
         </div>
@@ -788,15 +791,17 @@ function TimerBar({ fraction, isUrgent, isCritical, isActive }: {
 
 function StatusBar({
   currentTurn, currentAP, maxAP, onEndTurn, isGameOver, aiThinking, aiEnabled,
-  showEndTurn = true,
+  showEndTurn = true, isLocalTurn,
 }: {
   currentTurn: DuelPlayer; currentAP: number; maxAP: number;
   onEndTurn: () => void;
   isGameOver: boolean; aiThinking: boolean; aiEnabled: boolean;
   showEndTurn?: boolean;
+  isLocalTurn?: boolean;
 }) {
-  const turnColor = currentTurn === "player1" ? "#22d3ee" : "#ef4444";
-  const turnLabel = currentTurn === "player1" ? "BLUE" : "RED";
+  // Determine turn color from perspective — local player's color when it's their turn
+  const turnColor = isLocalTurn ? "#22d3ee" : "#ef4444";
+  const turnLabel = isGameOver ? "" : isLocalTurn ? "YOUR TURN" : "OPPONENT'S TURN";
   const isAITurn = aiEnabled && currentTurn === "player2";
 
   let message: string;
@@ -828,7 +833,7 @@ function StatusBar({
             style={{ backgroundColor: turnColor, boxShadow: `0 0 14px ${turnColor}` }}
           />
           <span className="text-sm font-bold uppercase tracking-[0.25em] text-slate-300">
-            {turnLabel}&apos;S TURN
+            {turnLabel}
           </span>
         </div>
       )}
@@ -953,6 +958,10 @@ export default function HexDuelPage() {
   const [opponentReady, setOpponentReady] = useState(false);
   const opponentReadyRef = useRef(false);
   const multiplayerJoinedRef = useRef(false);
+  const [opponentName, setOpponentName] = useState<string | null>(null);
+  const [opponentClerkId, setOpponentClerkId] = useState<string | null>(null);
+  const [isSpectator, setIsSpectator] = useState(false);
+  const [player1Name, setPlayer1Name] = useState<string | null>(null);
 
   // ── Connection status ───────────────────────────────────────────
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connected");
@@ -1021,7 +1030,7 @@ export default function HexDuelPage() {
   useEffect(() => {
     if (effectiveWinner && !victoryPlayed.current) {
       victoryPlayed.current = true;
-      if (effectiveWinner === "player1") {
+      if (effectiveWinner === localDuelPlayer) {
         setTimeout(() => audio.playVictory(), 300);
       } else {
         setTimeout(() => audio.playDefeat(), 300);
@@ -1066,15 +1075,26 @@ export default function HexDuelPage() {
     if (multiplayerJoinedFromUrl.current) return;
     const gameIdParam = searchParams.get("gameId");
     const hostParam = searchParams.get("host");
+    const spectatorParam = searchParams.get("spectator");
     if (!gameIdParam) return;
     const gameId = Number(gameIdParam);
     if (!Number.isFinite(gameId) || gameId <= 0) return;
     multiplayerJoinedFromUrl.current = true;
     setMultiplayerGameId(gameId);
-    setIsPlayer1(hostParam === "1");
-    setGameMode("multiplayer");
-    setOpponentReady(false);
-    multiplayerJoinedRef.current = false;
+
+    if (spectatorParam === "1") {
+      setIsSpectator(true);
+      setIsPlayer1(true);
+      setGameMode("multiplayer");
+      setOpponentReady(true);
+      opponentReadyRef.current = true;
+      multiplayerJoinedRef.current = true;
+    } else {
+      setIsPlayer1(hostParam === "1");
+      setGameMode("multiplayer");
+      setOpponentReady(false);
+      multiplayerJoinedRef.current = false;
+    }
   }, [searchParams]);
 
   // ── Wager handlers ─────────────────────────────────────────────────
@@ -1153,7 +1173,7 @@ export default function HexDuelPage() {
 
   // Join and listen to the multiplayer game room
   useEffect(() => {
-    if (!socket || !multiplayerGameId) return;
+    if (!socket || !multiplayerGameId || isSpectator) return;
 
     const roomId = String(multiplayerGameId);
 
@@ -1352,7 +1372,7 @@ export default function HexDuelPage() {
   gameModeRef.current = gameMode;
 
   const recordMultiplayerAction = useCallback((action: MultiplayerAction) => {
-    if (gameModeRef.current !== "multiplayer" || !multiplayerGameIdRef.current) return;
+    if (gameModeRef.current !== "multiplayer" || !multiplayerGameIdRef.current || isSpectator) return;
     fetch("/api/hex-duel/multiplayer/action", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1372,7 +1392,7 @@ export default function HexDuelPage() {
 
   // ── End-game payout ────────────────────────────────────────────────
   useEffect(() => {
-    if (!effectiveWinner || gameMode === "idle" || payoutProcessedRef.current) return;
+    if (!effectiveWinner || gameMode === "idle" || payoutProcessedRef.current || isSpectator) return;
     payoutProcessedRef.current = true;
     setPayoutLoading(true);
 
@@ -1742,6 +1762,53 @@ export default function HexDuelPage() {
     };
   }, [gameMode, multiplayerGameId, opponentReady, effectiveWinner]);
 
+  // ── Spectator polling: poll /spectate to get full state and actions ──
+  useEffect(() => {
+    if (!isSpectator || !multiplayerGameId || isGameOverRef.current) return;
+
+    let cancelled = false;
+
+    const pollSpectate = async () => {
+      try {
+        const res = await fetch(
+          `/api/hex-duel/multiplayer/spectate?gameId=${multiplayerGameId}&afterId=${lastKnownActionIdRef.current}`,
+          { credentials: "include" },
+        );
+        const data = await res.json();
+        if (cancelled || !data?.success) return;
+
+        if (data.game) {
+          if (data.game.player1Name) setPlayer1Name(data.game.player1Name);
+          if (data.game.player2Name) setOpponentName(data.game.player2Name);
+        }
+
+        const actions = data.actions || [];
+        if (actions.length > 0) {
+          for (const a of actions) {
+            if (cancelled || isGameOverRef.current) break;
+            applyRemoteActionRef.current({
+              type: a.actionType,
+              sourceKey: a.sourceKey,
+              targetKey: a.targetKey,
+              troopCount: a.troopCount,
+            });
+          }
+          lastKnownActionIdRef.current = data.latestActionId || 0;
+        }
+      } catch {
+        // Ignore poll errors
+      }
+    };
+
+    pollSpectate();
+    const interval = setInterval(pollSpectate, 2000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isSpectator, multiplayerGameId, effectiveWinner]);
+
   // Update initial turn state on server when game starts
   useEffect(() => {
     if (gameMode === "multiplayer" && multiplayerGameId && opponentReady && isPlayer1) {
@@ -1769,6 +1836,8 @@ export default function HexDuelPage() {
     setPayoutResult(null); payoutProcessedRef.current = false; startedAtRef.current = null; fetchBalance();
     setMultiplayerGameId(null); setOpponentReady(false); opponentReadyRef.current = false; multiplayerJoinedRef.current = false;
     lastKnownActionIdRef.current = 0;
+    setIsSpectator(false);
+    window.history.replaceState({}, '', window.location.pathname);
   }, [resetGame, fetchBalance]);
 
   // ── Action system: wrapped click, confirm, clear ──────────────────
@@ -1940,6 +2009,50 @@ export default function HexDuelPage() {
     const key = `${pendingSource.x},${pendingSource.y}`;
     return (tileTroops[key] ?? 1) - 1; // must leave at least 1
   }, [pendingSource, tileTroops]);
+
+  // ── Perspective-aware mapping: local player always blue, opponent always red ──
+  // Computed here after all dependencies (troop totals, clock) are declared
+  const localPlayerIsP1 = gameMode !== "multiplayer" || isPlayer1;
+  const localDuelPlayer: DuelPlayer = localPlayerIsP1 ? "player1" : "player2";
+  const opponentDuelPlayer: DuelPlayer = localPlayerIsP1 ? "player2" : "player1";
+  const localColor = "#22d3ee";
+  const opponentColor = "#ef4444";
+
+  // Stats for local player
+  const localMoves = localPlayerIsP1 ? p1MoveCount : p2MoveCount;
+  const localTerritory = localPlayerIsP1 ? p1Territory : p2Territory;
+  const localTotalTroops = localPlayerIsP1 ? p1TotalTroops : p2TotalTroops;
+  const localClockTime = localPlayerIsP1 ? clock.p1TimeLeft : clock.p2TimeLeft;
+  const localIsWinner = effectiveWinner === localDuelPlayer;
+  const localIsActive = currentTurn === localDuelPlayer;
+
+  // Stats for opponent
+  const opponentMoves = localPlayerIsP1 ? p2MoveCount : p1MoveCount;
+  const opponentTerritory = localPlayerIsP1 ? p2Territory : p1Territory;
+  const opponentTotalTroops = localPlayerIsP1 ? p2TotalTroops : p1TotalTroops;
+  const opponentClockTime = localPlayerIsP1 ? clock.p2TimeLeft : clock.p1TimeLeft;
+  const opponentIsWinner = effectiveWinner === opponentDuelPlayer;
+  const opponentIsActive = currentTurn === opponentDuelPlayer;
+
+  // Labels
+  const localLabel = isSpectator ? (player1Name || "Player 1") : (user?.firstName || user?.username || "You");
+  const opponentLabel = aiEnabled ? "AI" : gameMode === "multiplayer" ? (opponentName || "Opponent") : "Player 2";
+
+  // Fetch opponent name via status API when multiplayer game becomes ready
+  useEffect(() => {
+    if (gameMode !== "multiplayer" || !multiplayerGameId || !opponentReady) return;
+    fetch(`/api/hex-duel/multiplayer/status?gameId=${multiplayerGameId}`, { credentials: "include" })
+      .then(r => r.json())
+      .then(d => {
+        if (d?.success && d.game) {
+          const oppName = isPlayer1 ? d.game.player2Name : d.game.player1Name;
+          if (oppName) setOpponentName(oppName);
+          const oppId = isPlayer1 ? d.game.player2Id : d.game.player1Id;
+          if (oppId) setOpponentClerkId(oppId);
+        }
+      })
+      .catch(() => {});
+  }, [gameMode, multiplayerGameId, opponentReady, isPlayer1]);
 
   // ── Waiting for opponent UI ───────────────────────────────────────
   if (gameMode === "multiplayer" && multiplayerGameId && !opponentReady) {
@@ -2133,7 +2246,8 @@ export default function HexDuelPage() {
                 currentTurn={currentTurn} currentAP={currentAP} maxAP={maxAP}
                 onEndTurn={handleEndTurn}                isGameOver={isGameOver}
                 aiThinking={aiThinking} aiEnabled={aiEnabled}
-                showEndTurn={gameMode !== "multiplayer" || isLocalTurn}
+                showEndTurn={!isSpectator && (gameMode !== "multiplayer" || isLocalTurn)}
+                isLocalTurn={isLocalTurn && !(aiEnabled && currentTurn === "player2")}
               />
             </div>
           )}
@@ -2154,15 +2268,15 @@ export default function HexDuelPage() {
             >
               <div className="order-2 lg:order-1 w-full max-w-xs mx-auto lg:mx-0 space-y-3">
                 <PlayerCard
-                  player="player1" label="Player 1"
-                  isActive={currentTurn === "player1"} isSelected={false}
-                  color="#22d3ee" moves={p1MoveCount} territory={p1Territory}
-                  currentAP={currentAP} maxAP={maxAP}
-                  isWinner={effectiveWinner === "player1"} turnJustChanged={turnJustChanged}
-                  totalTroops={p1TotalTroops} maxTroops={maxTroops}
-                  clockTime={clock.p1TimeLeft}
+                  player={localDuelPlayer} label={localLabel}
+                  isActive={localIsActive} isSelected={false}
+                  color={localColor} moves={localMoves} territory={localTerritory}
+                  currentAP={localIsActive ? currentAP : 0} maxAP={maxAP}
+                  isWinner={localIsWinner} isLocal={true} turnJustChanged={turnJustChanged}
+                  totalTroops={localTotalTroops} maxTroops={maxTroops}
+                  clockTime={localClockTime}
                 />
-                {showGame && (
+                {showGame && !isSpectator && (
                   <HexActionPanel
                     currentTurn={currentTurn}
                     currentAP={currentAP}
@@ -2177,9 +2291,9 @@ export default function HexDuelPage() {
                     onConfirm={handleConfirmAction}
                     onClearAction={handleClearAction}
                     isGameOver={isGameOver}
-                    playerLabel="Player 1"
-                    playerColor="#22d3ee"
-                    isActive={isLocalTurn && currentTurn === "player1" && !aiThinking}
+                    playerLabel={localLabel}
+                    playerColor={localColor}
+                    isActive={isLocalTurn && localIsActive && !aiThinking}
                     isAITurn={false}
                     onEndTurn={handleEndTurn}
                     onSkipRound={handleSkipRound}
@@ -2235,7 +2349,7 @@ export default function HexDuelPage() {
                   onTileClick={handleTileClickWithActions}
                   recentlyCaptured={recentlyCaptured}
                   disabled={
-  isGameOver ||
+  isGameOver || isSpectator ||
   (aiThinking && currentTurn === "player2")
 }
                   attackHighlightKeys={
@@ -2256,37 +2370,14 @@ export default function HexDuelPage() {
               </div>
               <div className="order-3 w-full max-w-xs mx-auto lg:mx-0 space-y-3">
                 <PlayerCard
-                  player="player2" label={aiEnabled ? "AI" : gameMode === "multiplayer" ? "Opponent" : "Player 2"}
-                  isActive={currentTurn === "player2"} isSelected={false}
-                  color="#ef4444" moves={p2MoveCount} territory={p2Territory}
-                  currentAP={currentAP} maxAP={maxAP}
-                  isWinner={effectiveWinner === "player2"} isAI={aiEnabled} turnJustChanged={turnJustChanged}
-                  totalTroops={p2TotalTroops} maxTroops={maxTroops}
-                  clockTime={clock.p2TimeLeft}
+                  player={opponentDuelPlayer} label={opponentLabel}
+                  isActive={opponentIsActive} isSelected={false}
+                  color={opponentColor} moves={opponentMoves} territory={opponentTerritory}
+                  currentAP={opponentIsActive ? currentAP : 0} maxAP={maxAP}
+                  isWinner={opponentIsWinner} isAI={aiEnabled} isLocal={false} turnJustChanged={turnJustChanged}
+                  totalTroops={opponentTotalTroops} maxTroops={maxTroops}
+                  clockTime={opponentClockTime}
                 />
-                {showGame && !aiEnabled && (
-                  <HexActionPanel
-                    currentTurn={currentTurn}
-                    currentAP={currentAP}
-                    maxAP={maxAP}
-                    selectedUnit={selectedUnit}
-                    validMoves={validMoves}
-                    selectedAction={selectedAction}
-                    onSelectAction={setSelectedAction}
-                    onSelectUnit={handleSelectUnit}
-                    pendingDescription={pendingDescription}
-                    hasPending={hasPending}
-                    onConfirm={handleConfirmAction}
-                    onClearAction={handleClearAction}
-                    isGameOver={isGameOver}
-                    playerLabel="Player 2"
-                    playerColor="#ef4444"
-                    isActive={isLocalTurn && currentTurn === "player2" && !aiThinking}
-                    isAITurn={!!aiEnabled}
-                    onEndTurn={handleEndTurn}
-                    onSkipRound={handleSkipRound}
-                  />
-                )}
                 {/* Action history log — visible for all game modes */}
                 {showGame && actionLog.length > 0 && (
                   <HexActionLog log={actionLog} compact={true} />
@@ -2297,10 +2388,10 @@ export default function HexDuelPage() {
 
           {/* ── Forfeit button ──────────────────────────────────────── */}
           {showGame && !isGameOver && (
-            <div className="mt-6 text-center">                <button onClick={() => setShowResignConfirm(true)} className="text-xs text-slate-500 hover:text-slate-300 transition underline underline-offset-4">
+            <div className="mt-6 text-center">                <button onClick={() => { if (isSpectator) handleRestart(); else setShowResignConfirm(true); }} className="text-xs text-slate-500 hover:text-slate-300 transition underline underline-offset-4">
                 {gameMode === "multiplayer" ? "Resign &amp; Return to Lobby" : "Forfeit &amp; Return to Lobby"}
               </button>
-              {gameMode === "multiplayer" && (
+              {gameMode === "multiplayer" && !isSpectator && (
                 <button
                   onClick={() => setShowReportModal(true)}
                   className="ml-4 text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
@@ -2465,7 +2556,7 @@ export default function HexDuelPage() {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                reportedClerkId: isPlayer1 ? "player2" : "player1",
+                reportedClerkId: opponentClerkId || undefined,
                 gameType: "hex-duel",
                 gameId: multiplayerGameId ? String(multiplayerGameId) : undefined,
                 reason,

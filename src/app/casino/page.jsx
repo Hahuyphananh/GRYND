@@ -21,6 +21,7 @@ import Img15 from "../../images/towers.png";
 import Img16 from "../../images/clicker.png";
 import Img17 from "../../images/pool.png";
 import Img18 from "../../images/hex-duel.svg";
+import Img21 from "../../images/odds.svg";
 import Img19 from "../../images/yahtzee.png";
 import Img20 from "../../images/farkle.svg";
 import Image from "next/image";
@@ -195,6 +196,15 @@ function MainComponent() {
       popular: true,
     },
     {
+      name: "Odds",
+      href: "/casino/odds",
+      leaderboardKey: "odds",
+      image: Img21,
+      descriptionKey: "games.odds_desc",
+      nameKey: "games.odds_name",
+      popular: true,
+    },
+    {
       name: "Farkle",
       href: "/casino/farkle",
       leaderboardKey: "farkle",
@@ -226,6 +236,7 @@ function MainComponent() {
     "yahtzee",
     "hex-duel",
     "pool-masters",
+    "odds",
     "goonbet-clicker",
     "lane-runner",
     "connect-four",
