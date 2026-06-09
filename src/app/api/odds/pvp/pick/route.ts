@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "../../../../db/client";
-import { oddsGames, users } from "../../../../db/schema";
+import { db } from "../../../../../db/client";
+import { oddsGames, users } from "../../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { processPvPOddsRound } from "../../../../lib/odds";
-import type { PvPInteractiveOddsState } from "../../../../lib/odds";
-import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { processPvPOddsRound } from "../../../../../lib/odds";
+import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
+import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 
 /** Maximum time (ms) a player can stay inactive before being auto-forfeited */
 const TIMEOUT_MS = 60_000;
