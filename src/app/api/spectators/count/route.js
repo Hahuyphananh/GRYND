@@ -13,7 +13,7 @@ export async function GET(request) {
   const gameKey = String(searchParams.get("gameKey") || "").toLowerCase();
   const gameId = Number(searchParams.get("gameId"));
   const targetClerkId = String(searchParams.get("targetClerkId") || "");
-  const allowedGameKeys = new Set(["chess", "connect-four", "poker"]);
+  const allowedGameKeys = new Set(["chess", "connect-four", "hex-duel", "poker"]);
   if (!gameKey || !Number.isFinite(gameId)) {
     return new Response(
       JSON.stringify({ success: false, error: "Missing params" }),

@@ -1508,6 +1508,7 @@ export default function HexDuelPage() {
   isGameOverRef.current = isGameOverEffective;
   const currentTurnRef = useRef(currentTurn);
   currentTurnRef.current = currentTurn;
+  const lastHeartbeatRef = useRef<number>(0);
 
   // Set up applyRemoteActionRef
   const localApplyRemote = useCallback((action: MultiplayerAction) => {
@@ -1776,6 +1777,21 @@ export default function HexDuelPage() {
         );
         const data = await res.json();
         if (cancelled || !data?.success) return;
+
+        // ── Spectator heartbeat to keep lobby spectator counts live ──
+        const now = Date.now();
+        if (data.game?.player1Id && (!lastHeartbeatRef.current || now - lastHeartbeatRef.current > 5000)) {
+          lastHeartbeatRef.current = now;
+          fetch("/api/spectators/heartbeat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              gameKey: "hex-duel",
+              gameId: multiplayerGameId,
+              targetClerkId: data.game.player1Id,
+            }),
+          }).catch(() => {});
+        }
 
         if (data.game) {
           if (data.game.player1Name) setPlayer1Name(data.game.player1Name);
