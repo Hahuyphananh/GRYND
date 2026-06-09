@@ -1100,3 +1100,26 @@ export const bigWins = pgTable(
     multiplierIdx: index("idx_big_wins_multiplier").on(table.multiplier),
   }),
 );
+
+// ODDS GAME TABLE
+export const oddsGames = pgTable(
+  "odds_games",
+  {
+    id: serial("id").primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    wager: integer("wager").notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    winner: varchar("winner", { length: 10 }),
+    result: varchar("result", { length: 15 }),
+    payout: integer("payout"),
+    isAi: boolean("is_ai").notNull().default(false),
+    gameState: jsonb("game_state"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    endedAt: timestamp("ended_at"),
+  },
+  (table) => ({
+    statusIdx: index("idx_odds_games_status").on(table.status, table.createdAt),
+    player1Idx: index("idx_odds_games_player1").on(table.player1Id),
+  }),
+);

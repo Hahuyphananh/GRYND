@@ -10,10 +10,15 @@ export async function sendContactFormEmail(params: {
   message: string;
 }) {
   const hourKey = new Date().toISOString().slice(0, 13); // dedupe per sender per hour
+  // HTML-escape user input to prevent injection
+  const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const safeName = escapeHtml(params.senderName ?? "Anonymous");
+  const safeEmail = escapeHtml(params.senderEmail);
+  const safeMessage = escapeHtml(params.message);
   const body = `
-    <p><strong>From:</strong> ${params.senderName ?? "Anonymous"} (${params.senderEmail})</p>
+    <p><strong>From:</strong> ${safeName} (${safeEmail})</p>
     <p><strong>Message:</strong></p>
-    <p style="background:#1e293b;padding:16px;border-radius:8px;white-space:pre-wrap;">${params.message}</p>
+    <p style="background:#1e293b;padding:16px;border-radius:8px;white-space:pre-wrap;">${safeMessage}</p>
   `;
 
   return sendEmailSafely({

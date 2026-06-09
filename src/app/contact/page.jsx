@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+
+const isValidEmail = (email) => email.includes("@") && email.includes(".") && email.indexOf("@") > 0 && email.lastIndexOf(".") > email.indexOf("@") + 1;
 
 export default function ContactPage() {
   const [email, setEmail] = useState("");
@@ -10,11 +12,18 @@ export default function ContactPage() {
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState(null); // null | "sending" | "success" | "error"
   const [errorMsg, setErrorMsg] = useState("");
+  const [errorSeverity, setErrorSeverity] = useState("error"); // "info" | "warning" | "error"
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email.trim() || !message.trim()) {
+      setErrorSeverity("info");
       setErrorMsg("Email and message are required.");
+      return;
+    }
+    if (!isValidEmail(email.trim())) {
+      setErrorSeverity("info");
+      setErrorMsg("Please enter a valid email address.");
       return;
     }
     setStatus("sending");
@@ -37,13 +46,27 @@ export default function ContactPage() {
         setMessage("");
       } else {
         setStatus("error");
+        // Determine severity from HTTP status: 4xx = info/warning, 5xx = error
+        if (res.status === 429) setErrorSeverity("warning");
+        else if (res.status >= 400 && res.status < 500) setErrorSeverity("info");
+        else setErrorSeverity("error");
         setErrorMsg(data.error || "Something went wrong. Please try again.");
       }
     } catch {
       setStatus("error");
+      setErrorSeverity("error");
       setErrorMsg("Network error. Please check your connection and try again.");
     }
   };
+
+  // Auto-clear error when user starts typing
+  const handleFieldChange = useCallback((setter, value) => {
+    setter(value);
+    if (errorMsg) {
+      setErrorMsg("");
+      setErrorSeverity("error");
+    }
+  }, [errorMsg]);
 
   return (
     <main className="min-h-screen bg-[#0a0f1e] text-white">
@@ -198,7 +221,7 @@ export default function ContactPage() {
                       id="contact-name"
                       type="text"
                       value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      onChange={(e) => handleFieldChange(setName, e.target.value)}
                       placeholder="John Doe"
                       className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-none transition-all focus:border-[#f5ff3b]/50 focus:bg-white/[0.07] focus:ring-1 focus:ring-[#f5ff3b]/20"
                     />
@@ -217,7 +240,7 @@ export default function ContactPage() {
                       type="email"
                       required
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => handleFieldChange(setEmail, e.target.value)}
                       placeholder="you@example.com"
                       className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-none transition-all focus:border-[#f5ff3b]/50 focus:bg-white/[0.07] focus:ring-1 focus:ring-[#f5ff3b]/20"
                     />
@@ -236,7 +259,7 @@ export default function ContactPage() {
                       required
                       rows={5}
                       value={message}
-                      onChange={(e) => setMessage(e.target.value)}
+                      onChange={(e) => handleFieldChange(setMessage, e.target.value)}
                       placeholder="Tell us how we can help..."
                       maxLength={5000}
                       className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-none transition-all focus:border-[#f5ff3b]/50 focus:bg-white/[0.07] focus:ring-1 focus:ring-[#f5ff3b]/20 resize-y min-h-[120px]"
@@ -248,7 +271,18 @@ export default function ContactPage() {
 
                   {/* Error */}
                   {errorMsg && (
-                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-300">
+                    <div
+                      className={`p-3 border rounded-lg text-sm ${
+                        errorSeverity === "info"
+                          ? "bg-blue-500/10 border-blue-500/30 text-blue-300"
+                          : errorSeverity === "warning"
+                          ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-300"
+                          : "bg-red-500/10 border-red-500/30 text-red-300"
+                      }`}
+                    >
+                      <span className="inline-block mr-2">
+                        {errorSeverity === "info" ? "ℹ️" : errorSeverity === "warning" ? "⚠️" : "❌"}
+                      </span>
                       {errorMsg}
                     </div>
                   )}
