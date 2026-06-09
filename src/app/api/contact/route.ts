@@ -63,8 +63,11 @@ export async function POST(request: NextRequest) {
         missing_email: { status: 400, message: "A valid email address is required." },
         idempotent: { status: 429, message: "You've already sent a message recently. Please wait before sending another." },
         marketing_rate_limited: { status: 429, message: "Too many messages. Please try again later." },
-        provider_error: { status: 502, message: "The email service is temporarily unavailable. Please try again later or contact support directly." },
+        provider_error: { status: 503, message: "The email service is temporarily unavailable. Please try again later or contact support directly." },
       };
+      console.error(
+        `[api/contact] Email send skipped — reason: ${result.reason}`,
+      );
       const mapped = reasonMap[result.reason] || { status: 500, message: "Failed to send message. Please try again later." };
       return NextResponse.json(
         { success: false, error: mapped.message },

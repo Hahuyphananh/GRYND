@@ -3,6 +3,15 @@ import { db } from "../../db/index";
 import { emailEvents } from "../../db/schema";
 import { and, eq, gte } from "drizzle-orm";
 
+/** Maximum time (ms) to wait for a DB query before skipping it */
+const DB_TIMEOUT_MS = 5_000;
+
+/** Race a promise against a timeout — returns null on timeout without rejecting */
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  const timer = new Promise<null>((resolve) => setTimeout(() => resolve(null), ms));
+  return Promise.race([promise, timer]);
+}
+
 export const EMAIL_FROM = "GoonBet <noreply@mail.goonbet.dedyn.io>";
 export const ADMIN_EMAIL = "phananhalbert@gmail.com";
 export const CONTACT_FORM_FROM = "GoonBet <noreply@mail.goonbet.dedyn.io>";
@@ -35,16 +44,19 @@ export async function sendEmailSafely({
 }) {
   if (!user?.email) return { skipped: true, reason: "missing_email" };
 
-  // ── DB checks (best-effort — never block email delivery) ──────
+  // ── DB checks (best-effort, time-limited — never block email delivery) ──────
   try {
     if (dedupeKey) {
-      const existing = await db.query.emailEvents.findFirst({
-        where: and(
-          eq(emailEvents.type, type),
-          eq(emailEvents.dedupeKey, dedupeKey),
-          eq(emailEvents.status, "sent"),
-        ),
-      });
+      const existing = await withTimeout(
+        db.query.emailEvents.findFirst({
+          where: and(
+            eq(emailEvents.type, type),
+            eq(emailEvents.dedupeKey, dedupeKey),
+            eq(emailEvents.status, "sent"),
+          ),
+        }),
+        DB_TIMEOUT_MS,
+      );
       if (existing) return { skipped: true, reason: "idempotent" };
     }
   } catch (dbErr) {
@@ -54,14 +66,17 @@ export async function sendEmailSafely({
   try {
     if (category === "marketing" && user.clerkId) {
       const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const recentMarketing = await db.query.emailEvents.findFirst({
-        where: and(
-          eq(emailEvents.clerkId, user.clerkId),
-          eq(emailEvents.category, "marketing"),
-          gte(emailEvents.createdAt, last24h),
-          eq(emailEvents.status, "sent"),
-        ),
-      });
+      const recentMarketing = await withTimeout(
+        db.query.emailEvents.findFirst({
+          where: and(
+            eq(emailEvents.clerkId, user.clerkId),
+            eq(emailEvents.category, "marketing"),
+            gte(emailEvents.createdAt, last24h),
+            eq(emailEvents.status, "sent"),
+          ),
+        }),
+        DB_TIMEOUT_MS,
+      );
       if (recentMarketing)
         return { skipped: true, reason: "marketing_rate_limited" };
     }
@@ -70,7 +85,7 @@ export async function sendEmailSafely({
   }
 
   // ── Send email (always, regardless of DB state) ───────────────
-  let error: { message?: string } | null = null;
+  let error: { message?: string; name?: string } | null = null;
   try {
     const result = await resend.emails.send({
       from: from ?? EMAIL_FROM,
@@ -79,8 +94,12 @@ export async function sendEmailSafely({
       html,
     });
     error = result.error;
+    if (error) {
+      console.error("[sendEmailSafely] Resend API returned error:", JSON.stringify(error));
+    }
   } catch (sendErr) {
     error = { message: (sendErr as Error).message || "Resend send failed" };
+    console.error("[sendEmailSafely] Resend send threw:", sendErr);
   }
 
   // ── DB event logging (best-effort, non-blocking) ──────────────

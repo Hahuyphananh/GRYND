@@ -1,11 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../components/navigation-bar";
 import ReportModal from "../../../components/ReportModal";
 import { useSocket } from "../../../context/SocketProvider";
 import { celebrateWin } from "../../../lib/animations";
+import { useOddsAudio } from "../../../lib/oddsAudio";
+import type {
+  InteractiveOddsState as InteractiveOddsStateType,
+  PvPInteractiveOddsState,
+} from "../../../lib/odds";
 
 type GameRound = {
   max: number;
@@ -24,8 +29,11 @@ type GameState = {
   firstStarter: "player1" | "player2";
 };
 
+type PvPInteractiveState = PvPInteractiveOddsState;
+
 export default function OddsPage() {
   const [mode, setMode] = useState<"ai" | "pvp">("pvp");
+  const audio = useOddsAudio();
 
   return (
     <div
@@ -65,37 +73,101 @@ export default function OddsPage() {
           </button>
         </div>
 
-        {mode === "ai" ? <AIOddsGame /> : <PvPOddsGame />}
+        {mode === "ai" ? <AIOddsGame audio={audio} /> : <PvPOddsGame audio={audio} />}
       </div>
     </div>
   );
 }
 
-// ─── AI Mode ───────────────────────────────────────────────────────────────
-function AIOddsGame() {
+// ─── AI Mode (Interactive) ─────────────────────────────────────────────────
+function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
+  const PICK_TIMER_SECONDS = 15;
+
   const [wager, setWager] = useState(50);
   const [loading, setLoading] = useState(false);
-  const [gameState, setGameState] = useState<GameState | null>(null);
-  const [revealedRounds, setRevealedRounds] = useState(0);
-  const [showReverse, setShowReverse] = useState(false);
+  const [gameId, setGameId] = useState<number | null>(null);
+  const [interactiveState, setInteractiveState] = useState<InteractiveOddsStateType | null>(null);
+  const [roundHistory, setRoundHistory] = useState<GameRound[]>([]);
+  const [pickValue, setPickValue] = useState("");
+  const [autoPick, setAutoPick] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(PICK_TIMER_SECONDS);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [showReverse, setShowReverse] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const [finalWinner, setFinalWinner] = useState<"player1" | "player2">("player1");
+  const [finalResult, setFinalResult] = useState<"player1_won" | "player2_won">("player1_won");
+  const [finalPayout, setFinalPayout] = useState(0);
+  const [timeUp, setTimeUp] = useState(false);
+  const [resuming, setResuming] = useState(true);
 
-  const playGame = async () => {
+  // Wrap handlePick in a ref so timer/autopick effects can call it without stale closures
+  const handlePickRef = useRef<(n: number) => void>(() => {});
+  const mountedRef = useRef(true);
+  const autoPickTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // On mount: check for an active game to resume
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/odds/ai/status");
+        const data = await res.json();
+        if (cancelled || !data.success || !data.data.active) return;
+
+        const st = data.data.gameState;
+        setGameId(data.data.gameId);
+        setWager(data.data.wager);
+        setInteractiveState(st);
+        setRoundHistory(data.data.rounds ?? []);
+        setPickValue("");
+        setTimeLeft(PICK_TIMER_SECONDS);
+        setTimeUp(false);
+        autoPickTriggeredRef.current = false;
+
+        if (st?.gameOver) {
+          setGameOver(true);
+          setFinalWinner(st.winner ?? "player1");
+          setFinalResult(
+            st.winner === "player1" ? "player1_won" : "player2_won",
+          );
+          setFinalPayout(data.data.payout);
+        }
+      } catch {} finally {
+        if (!cancelled) setResuming(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const startGame = async () => {
     setLoading(true);
     setError("");
-    setGameState(null);
-    setRevealedRounds(0);
+    setGameId(null);
+    setInteractiveState(null);
+    setRoundHistory([]);
+    setPickValue("");
+    setTimeLeft(PICK_TIMER_SECONDS);
+    setGameOver(false);
     setShowReverse(false);
+    setFinalPayout(0);
 
     try {
-      const res = await fetch("/api/odds/create", {
+      const res = await fetch("/api/odds/ai/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wager, isAi: true }),
+        body: JSON.stringify({ wager }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Failed to start game");
-      setGameState(data.data.gameState);
+      setGameId(data.data.gameId);
+      setInteractiveState(data.data.gameState);
     } catch (err: any) {
       setError(err.message || "Error starting game");
     } finally {
@@ -103,42 +175,174 @@ function AIOddsGame() {
     }
   };
 
-  // Reveal rounds one at a time with reverse popup
-  useEffect(() => {
-    if (!gameState || revealedRounds >= gameState.rounds.length) return;
-    const timer = setTimeout(() => {
-      setRevealedRounds((r) => r + 1);
-    }, 1400);
-    return () => clearTimeout(timer);
-  }, [gameState, revealedRounds]);
+  const handlePick = useCallback(async (number: number) => {
+    if (!gameId || !interactiveState || isSubmitting || gameOver) return;
+    autoPickTriggeredRef.current = true; // prevent double-trigger
+    setIsSubmitting(true);
+    setError("");
+    audio.playPick();
+    try {
+      const res = await fetch("/api/odds/ai/pick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId, playerNumber: number }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
 
-  // Show reverse popup when revealing the second sub-round of a pair
-  useEffect(() => {
-    if (!gameState || revealedRounds < 1) return;
-    const round = gameState.rounds[revealedRounds - 1];
-    const prevRound = revealedRounds >= 2 ? gameState.rounds[revealedRounds - 2] : null;
-    // Show reverse when this round has same max as previous AND different starter
-    if (prevRound && round.max === prevRound.max && round.starter !== prevRound.starter) {
-      setShowReverse(true);
-      const t = setTimeout(() => setShowReverse(false), 1200);
-      return () => clearTimeout(t);
+      if (!mountedRef.current) return;
+
+      const newRound: GameRound = data.data.round;
+      const updatedState = data.data.updatedState;
+
+      setRoundHistory((prev) => [...prev, newRound]);
+      setInteractiveState(updatedState);
+
+      // Show reverse popup if applicable
+      if (data.data.isReverse) {
+        setShowReverse(true);
+        setTimeout(() => setShowReverse(false), 1200);
+      }
+
+      // 🎵 Sound effects
+      if (data.data.matched) {
+        audio.playMatch();
+      } else if (data.data.isReverse) {
+        audio.playReverse();
+      } else if (data.data.halved) {
+        audio.playHalve();
+      }
+
+      if (data.data.gameStatus === "finished") {
+        setGameOver(true);
+        setFinalWinner(updatedState.winner!);
+        setFinalResult(
+          updatedState.winner === "player1" ? "player1_won" : "player2_won",
+        );
+        setFinalPayout(data.data.payout);
+        if (updatedState.winner === "player1") {
+          setTimeout(() => celebrateWin(), 400);
+          setTimeout(() => audio.playVictory(), 200);
+        } else {
+          setTimeout(() => audio.playDefeat(), 200);
+        }
+      }
+    } catch (err: any) {
+      if (mountedRef.current) setError(err.message);
+    } finally {
+      // Always reset timer and pick state, even on failure, to avoid infinite loops
+      if (mountedRef.current) {
+        setIsSubmitting(false);
+        if (!gameOver) {
+          setTimeLeft(PICK_TIMER_SECONDS);
+          setTimeUp(false);
+          setPickValue("");
+          autoPickTriggeredRef.current = false;
+        }
+      }
     }
-  }, [gameState, revealedRounds]);
+  }, [gameId, interactiveState, isSubmitting, gameOver]);
 
-  // Celebrate on win
+  // Keep ref in sync
   useEffect(() => {
-    if (gameState && revealedRounds >= gameState.rounds.length && gameState.winner === "player1") {
-      const t = setTimeout(() => celebrateWin(), 400);
-      return () => clearTimeout(t);
-    }
-  }, [gameState, revealedRounds]);
+    handlePickRef.current = handlePick;
+  }, [handlePick]);
 
-  const gameOver = gameState && revealedRounds >= gameState.rounds.length;
-  const userWon = gameState?.winner === "player1";
+  // Timer countdown
+  const timerUrgentPlayed = useRef(false);
+  useEffect(() => {
+    if (!interactiveState || gameOver || isSubmitting) return;
+    if (timeLeft <= 0) {
+      setTimeUp(true);
+      timerUrgentPlayed.current = false;
+      const range = interactiveState.currentMax;
+      handlePickRef.current(Math.floor(Math.random() * range) + 1);
+      return;
+    }
+    setTimeUp(false);
+    if (timeLeft <= 5 && !timerUrgentPlayed.current) {
+      timerUrgentPlayed.current = true;
+      audio.playTimerUrgent();
+    }
+    if (timeLeft > 5) timerUrgentPlayed.current = false;
+    const timer = setInterval(() => setTimeLeft((t: number) => t - 1), 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft, interactiveState, gameOver, isSubmitting, audio.playTimerUrgent]);
+
+  // Autopick: auto-submit a random number when a new round starts and autopick is ON
+  useEffect(() => {
+    if (!interactiveState || gameOver || isSubmitting) return;
+    if (!autoPick) return;
+    if (autoPickTriggeredRef.current) return;
+    autoPickTriggeredRef.current = true;
+    const range = interactiveState.currentMax;
+    const t = setTimeout(() => {
+      handlePickRef.current(Math.floor(Math.random() * range) + 1);
+    }, 600);
+    return () => clearTimeout(t);
+  }, [interactiveState, autoPick, gameOver, isSubmitting]);
+
+  const handleSubmitPick = () => {
+    if (!interactiveState || isSubmitting || gameOver) return;
+    const num = parseInt(pickValue, 10);
+    const range = interactiveState.currentMax;
+    if (isNaN(num) || num < 1 || num > range) return;
+    handlePick(num);
+  };
+
+  const handlePickInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    // Only allow digits (no decimals, no negatives)
+    if (val === "" || /^\d+$/.test(val)) {
+      const range = interactiveState?.currentMax ?? 100;
+      const num = parseInt(val, 10);
+      // Prevent entering numbers above range
+      if (val === "" || (num >= 1 && num <= range)) {
+        setPickValue(val);
+      }
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleSubmitPick();
+  };
+
+  // Build a synthetic GameState for the display component
+  const displayGameState: GameState | null = useMemo(() => {
+    if (!interactiveState || roundHistory.length === 0) return null;
+    return {
+      rounds: roundHistory,
+      totalRounds: roundHistory.length,
+      winner: gameOver ? finalWinner : "player1",
+      result: gameOver ? finalResult : "player1_won",
+      payout: gameOver ? finalPayout : wager * 2,
+      firstStarter: interactiveState.firstStarter,
+    };
+  }, [interactiveState, roundHistory, gameOver, finalWinner, finalResult, finalPayout, wager]);
+
+  const handlePlayAgain = () => {
+    setGameId(null);
+    setInteractiveState(null);
+    setRoundHistory([]);
+    setPickValue("");
+    setGameOver(false);
+    setShowReverse(false);
+    setFinalPayout(0);
+    setError("");
+    setTimeLeft(PICK_TIMER_SECONDS);
+  };
+
+  const range = interactiveState?.currentMax ?? 100;
+  const isUserStarter = interactiveState?.currentStarter === "player1";
+  const userWon = gameOver && finalWinner === "player1";
 
   return (
     <div>
-      {!gameState && (
+      {resuming && (
+        <p className="text-center text-white/40 py-8">Loading...</p>
+      )}
+
+      {!resuming && !gameId && (
         <>
           <label className="block mb-1 text-sm font-semibold">Wager Amount</label>
           <input
@@ -149,53 +353,242 @@ function AIOddsGame() {
             min={1}
           />
           <button
-            onClick={playGame}
+            onClick={startGame}
             disabled={loading}
             className="w-full p-3 rounded font-bold text-lg bg-gradient-to-r from-yellow-500 to-amber-500 text-black hover:scale-105 transition shadow-[0_0_18px_rgba(250,204,21,0.5)]"
           >
-            {loading ? "Rolling..." : "🎲 Play vs AI"}
+            {loading ? "Starting..." : "🎲 Play vs AI"}
           </button>
           {error && <p className="mt-3 text-center text-red-400">{error}</p>}
         </>
       )}
 
-      {gameState && (
-        <OddsGameDisplay
-          gameState={gameState}
-          revealedRounds={revealedRounds}
-          gameOver={gameOver}
-          userWon={userWon}
-          isPlayer1={true}
-          userLabel="You"
-          oppLabel="AI"
-          wager={wager}
-          payout={gameState.payout}
-          showReverse={showReverse}
-          onPlayAgain={() => { setGameState(null); setRevealedRounds(0); }}
-        />
+      {gameId && interactiveState && !gameOver && (
+        <div className="space-y-4">
+          {/* Round info header */}
+          <div className="text-center">
+            <p className="text-sm text-white/50">Wager: {wager} 🪙</p>
+            <div className="mt-2 inline-block rounded-full bg-yellow-500/20 border border-yellow-400/30 px-6 py-2">
+              <span className="text-sm text-yellow-300/70">Pick a number</span>
+              <p className="text-2xl font-black text-yellow-400">1 – {range}</p>
+            </div>
+            <p className="mt-1 text-xs text-white/30">
+              Round {roundHistory.length + 1} •{" "}
+              {isUserStarter ? "You are the Starter ⭐" : "AI is the Starter"}
+            </p>
+          </div>
+
+          {/* Timer */}
+          <div className="flex items-center justify-center">
+            <div
+              className={`rounded-full border px-4 py-1 text-lg font-bold transition-colors ${
+                timeLeft <= 5
+                  ? "border-red-500/50 text-red-400 animate-pulse"
+                  : "border-white/10 text-white/60"
+              }`}
+            >
+              ⏱ {timeLeft}s
+            </div>
+          </div>
+
+          {/* Time's up indicator */}
+          {timeUp && isSubmitting && (
+            <p className="text-center text-sm text-amber-400 animate-pulse">
+              ⏰ Time's up! Auto-picking...
+            </p>
+          )}
+
+          {/* Number input + Pick button */}
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className="flex-1 rounded-lg border border-yellow-400/30 bg-[#08142f] p-3 text-center text-lg font-bold text-white placeholder-white/20"
+              placeholder={`1–${range}`}
+              value={pickValue}
+              onChange={handlePickInputChange}
+              onKeyDown={handleKeyDown}
+              disabled={isSubmitting || autoPick}
+            />
+            <button
+              onClick={handleSubmitPick}
+              disabled={isSubmitting || autoPick || pickValue === ""}
+              className="rounded-lg bg-gradient-to-r from-yellow-500 to-amber-500 px-6 py-3 font-bold text-black transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              {isSubmitting ? "..." : "Pick"}
+            </button>
+          </div>
+
+          {/* Sound toggle */}
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => audio.setEnabled(!audio.enabled)}
+              className={`rounded-full border px-3 py-1 text-sm transition ${
+                audio.enabled
+                  ? "border-white/10 text-white/60 hover:text-white"
+                  : "border-red-400/40 text-red-400/60"
+              }`}
+              title={audio.enabled ? "Sounds on" : "Sounds off"}
+            >
+              {audio.enabled ? "🔊" : "🔇"}
+            </button>
+          </div>
+
+          {/* Autopick toggle */}
+          <div className="flex items-center justify-center gap-3">
+            <label className="flex cursor-pointer select-none items-center gap-2">
+              <div
+                className={`relative h-6 w-12 rounded-full transition-colors ${
+                  autoPick ? "bg-yellow-500" : "bg-white/20"
+                }`}
+                onClick={() => {
+                  setAutoPick(!autoPick);
+                  if (!autoPick) {
+                    // Turning autopick ON: clear any manual input
+                    setPickValue("");
+                  }
+                }}
+              >
+                <div
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                    autoPick ? "translate-x-6" : "translate-x-0.5"
+                  }`}
+                />
+              </div>
+              <span className="text-sm text-white/60">Autopick</span>
+            </label>
+          </div>
+
+          {error && (
+            <p className="text-center text-sm text-red-400">{error}</p>
+          )}
+        </div>
+      )}
+
+      {/* Round history */}
+      {roundHistory.length > 0 && displayGameState && (
+        <div className="mt-6">
+          <OddsGameDisplay
+            gameState={displayGameState}
+            revealedRounds={roundHistory.length}
+            gameOver={gameOver}
+            userWon={userWon}
+            isPlayer1={true}
+            userLabel="You"
+            oppLabel="AI"
+            wager={wager}
+            payout={displayGameState.payout}
+            showReverse={showReverse}
+            onPlayAgain={handlePlayAgain}
+          />
+        </div>
+      )}
+
+      {/* Game over with no rounds (should be very rare) */}
+      {gameOver && roundHistory.length === 0 && (
+        <div className="mt-4 text-center">
+          <p className="text-white/40">Game ended unexpectedly.</p>
+          <button
+            onClick={handlePlayAgain}
+            className="mt-4 w-full rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 px-6 py-3 font-bold text-black shadow-lg transition-all hover:scale-105"
+          >
+            Play Again
+          </button>
+        </div>
       )}
     </div>
   );
 }
 
-// ─── PvP Mode ──────────────────────────────────────────────────────────────
-function PvPOddsGame() {
+// ─── PvP Mode (Interactive) ───────────────────────────────────────────────
+function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
+  const PICK_TIMER_SECONDS = 15;
   const { socket } = useSocket();
+
+  // ── Lobby state ──
   const [wager, setWager] = useState(50);
   const [userId, setUserId] = useState<string | null>(null);
   const [games, setGames] = useState<any[]>([]);
   const [myGameId, setMyGameId] = useState<number | null>(null);
-  const [gameState, setGameState] = useState<GameState | null>(null);
-  const [revealedRounds, setRevealedRounds] = useState(0);
-  const [showReverse, setShowReverse] = useState(false);
-  const [gameOver, setGameOver] = useState(false);
   const [wagerLocked, setWagerLocked] = useState<number | null>(null);
   const [opponentId, setOpponentId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
   const [isPlayer1, setIsPlayer1] = useState(true);
 
+  // ── Game state ──
+  const [interactiveState, setInteractiveState] = useState<PvPInteractiveState | null>(null);
+  const [roundHistory, setRoundHistory] = useState<GameRound[]>([]);
+  const [pickValue, setPickValue] = useState("");
+  const [timeLeft, setTimeLeft] = useState(PICK_TIMER_SECONDS);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [waitingForOpponent, setWaitingForOpponent] = useState(false);
+  const [error, setError] = useState("");
+  const [showReverse, setShowReverse] = useState(false);
+  const [timeUp, setTimeUp] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const [finalWinner, setFinalWinner] = useState<"player1" | "player2">("player1");
+  const [finalResult, setFinalResult] = useState<"player1_won" | "player2_won">("player1_won");
+  const [finalPayout, setFinalPayout] = useState(0);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [showForfeitConfirm, setShowForfeitConfirm] = useState(false);
+  const [forfeiting, setForfeiting] = useState(false);
+  const [resuming, setResuming] = useState(true);
+
+  // Refs for timer/autopick
+  const handlePickRef = useRef<(n: number) => void>(() => {});
+  const mountedRef = useRef(true);
+  const myGameIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // ── Resume: check for active PvP game on mount ──
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/odds/pvp/status");
+        const data = await res.json();
+        if (cancelled || !data.success || !data.data.active) return;
+
+        const d = data.data;
+        setMyGameId(d.gameId);
+        setWagerLocked(d.wager);
+        setOpponentId(d.opponentId ?? null);
+        setIsPlayer1(d.isPlayer1);
+        setInteractiveState(d.gameState);
+        setRoundHistory(d.rounds ?? []);
+        setPickValue("");
+        setTimeLeft(PICK_TIMER_SECONDS);
+        setTimeUp(false);
+        setError("");
+        setMessage("");
+
+        if (d.userHasPendingPick) {
+          setWaitingForOpponent(true);
+        }
+
+        if (d.gameOver) {
+          setGameOver(true);
+          setFinalWinner(d.winner ?? "player1");
+          setFinalResult(
+            d.winner === "player1" ? "player1_won" : "player2_won",
+          );
+          setFinalPayout(d.payout);
+        }
+      } catch {} finally {
+        if (!cancelled) setResuming(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Lobby: get user + subscribe to lobby updates ──
   useEffect(() => {
     const getUser = async () => {
       const res = await fetch("/api/get-user");
@@ -226,34 +619,85 @@ function PvPOddsGame() {
     };
   }, [socket, fetchGames]);
 
-  // Reveal rounds one at a time
+  // Keep myGameId ref in sync
   useEffect(() => {
-    if (!gameState || revealedRounds >= gameState.rounds.length) return;
-    const timer = setTimeout(() => setRevealedRounds((r) => r + 1), 1400);
-    return () => clearTimeout(timer);
-  }, [gameState, revealedRounds]);
+    myGameIdRef.current = myGameId;
+  }, [myGameId]);
 
-  // Show reverse popup
+  // ── Socket: auto join/leave game room based on myGameId ──
   useEffect(() => {
-    if (!gameState || revealedRounds < 1) return;
-    const round = gameState.rounds[revealedRounds - 1];
-    const prevRound = revealedRounds >= 2 ? gameState.rounds[revealedRounds - 2] : null;
-    if (prevRound && round.max === prevRound.max && round.starter !== prevRound.starter) {
-      setShowReverse(true);
-      const t = setTimeout(() => setShowReverse(false), 1200);
-      return () => clearTimeout(t);
-    }
-  }, [gameState, revealedRounds]);
+    if (!socket || !myGameId || interactiveState) return;
+    // Only join the game room when waiting (no interactive state yet)
+    // Once interactiveState is set, the game is in "playing" phase
+    const roomId = `odds_${myGameId}`;
+    socket.emit("join_room", { roomId });
+  }, [socket, myGameId, interactiveState]);
 
-  // Mark game over when all rounds revealed
+  // ── Socket: listen for opponent events when playing ──
   useEffect(() => {
-    if (gameState && revealedRounds >= gameState.rounds.length && !gameOver) {
-      setGameOver(true);
-      const iWon = isPlayer1 ? gameState.winner === "player1" : gameState.winner === "player2";
-      if (iWon) setTimeout(() => celebrateWin(), 400);
-    }
-  }, [gameState, revealedRounds, gameOver, isPlayer1]);
+    if (!socket || !myGameId || !interactiveState) return;
+    const roomId = `odds_${myGameId}`;
+    socket.emit("join_room", { roomId }); // ensure joined
 
+    const handler = async () => {
+      const gid = myGameIdRef.current;
+      if (!gid) return;
+      try {
+        const res = await fetch(`/api/odds/status?gameId=${gid}`);
+        const data = await res.json();
+        if (mountedRef.current && data.success && data.data) {
+          applyStateFromServer(data.data);
+        }
+      } catch {}
+    };
+
+    socket.on("odds:state_changed", handler);
+    return () => {
+      socket.off("odds:state_changed", handler);
+      socket.emit("leave_room", { roomId });
+    };
+  }, [socket, myGameId, interactiveState, applyStateFromServer]);
+
+  // Apply server state to local state
+  const applyStateFromServer = useCallback(
+    (serverData: any) => {
+      if (!mountedRef.current) return;
+      const st = serverData.gameState as PvPInteractiveState | null;
+      if (!st) return;
+
+      setInteractiveState(st);
+      setRoundHistory(st.rounds ?? []);
+      setWaitingForOpponent(
+        !st.gameOver &&
+          ((isPlayer1 && st.player1Pick !== null && st.player2Pick === null) ||
+            (!isPlayer1 && st.player2Pick !== null && st.player1Pick === null)),
+      );
+      setPickValue("");
+      setTimeLeft(PICK_TIMER_SECONDS);
+      setTimeUp(false);
+
+      if (st.gameOver) {
+        setGameOver(true);
+        setFinalWinner(st.winner!);
+        setFinalResult(
+          st.winner === "player1" ? "player1_won" : "player2_won",
+        );
+        setFinalPayout(serverData.payout ?? serverData.wager * 2);
+        const iWon =
+          (isPlayer1 && st.winner === "player1") ||
+          (!isPlayer1 && st.winner === "player2");
+        if (iWon) {
+          setTimeout(() => celebrateWin(), 400);
+          setTimeout(() => audio.playVictory(), 200);
+        } else {
+          setTimeout(() => audio.playDefeat(), 200);
+        }
+      }
+    },
+    [isPlayer1],
+  );
+
+  // ── Create / Join / Cancel ──
   const createGame = async () => {
     setMessage("Creating game...");
     setLoading(true);
@@ -269,7 +713,10 @@ function PvPOddsGame() {
       setWagerLocked(wager);
       setIsPlayer1(true);
       setMessage("Waiting for opponent to join...");
-      socket?.emit("room_event", { roomId: "lobby:odds", event: "lobby:updated" });
+      socket?.emit("room_event", {
+        roomId: "lobby:odds",
+        event: "lobby:updated",
+      });
     } catch (err: any) {
       setMessage(err.message);
     } finally {
@@ -290,12 +737,19 @@ function PvPOddsGame() {
       if (!data.success) throw new Error(data.error);
       setMyGameId(gameId);
       setIsPlayer1(false);
-      setGameState(data.data.gameState);
-      setRevealedRounds(0);
-      setShowReverse(false);
+      setWagerLocked(data.data.wager ?? null);
+      setOpponentId(data.data.player1Id ?? null);
+      setInteractiveState(data.data.gameState);
+      setRoundHistory(data.data.gameState?.rounds ?? []);
       setGameOver(false);
+      setShowReverse(false);
       setMessage("");
-      socket?.emit("room_event", { roomId: "lobby:odds", event: "lobby:updated" });
+      setWaitingForOpponent(false);
+      setTimeLeft(PICK_TIMER_SECONDS);
+      socket?.emit("room_event", {
+        roomId: "lobby:odds",
+        event: "lobby:updated",
+      });
     } catch (err: any) {
       setMessage(err.message);
     } finally {
@@ -303,23 +757,56 @@ function PvPOddsGame() {
     }
   };
 
+  // Poll for opponent joining (when player1 is waiting)
   useEffect(() => {
-    if (!myGameId || gameState) return;
+    if (!myGameId || interactiveState || !isPlayer1) return;
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/odds/status?gameId=${myGameId}`);
         const data = await res.json();
-        if (data.success && data.data.status === "finished") {
-          setGameState(data.data.gameState);
-          setRevealedRounds(0);
-          setShowReverse(false);
-          setGameOver(false);
-          if (data.data.player2Id) setOpponentId(data.data.player2Id);
+        if (data.success && data.data.status === "playing" && data.data.player2Id) {
+          setOpponentId(data.data.player2Id);
+          applyStateFromServer(data.data);
         }
       } catch {}
     }, 1500);
     return () => clearInterval(interval);
-  }, [myGameId, gameState]);
+  }, [myGameId, interactiveState, isPlayer1, applyStateFromServer]);
+
+  // ── Forfeit ──
+  const handleForfeit = async () => {
+    if (!myGameId || forfeiting) return;
+    setForfeiting(true);
+    try {
+      const res = await fetch("/api/odds/pvp/forfeit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId: myGameId }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+
+      // Notify opponent
+      if (socket) {
+        socket.emit("room_event", {
+          roomId: `odds_${myGameId}`,
+          event: "odds:state_changed",
+        });
+      }
+
+      // Local state reflects forfeit loss
+      setGameOver(true);
+      setFinalWinner(isPlayer1 ? "player2" : "player1");
+      setFinalResult(isPlayer1 ? "player2_won" : "player1_won");
+      setFinalPayout(data.data.payout);
+      setShowForfeitConfirm(false);
+      audio.playDefeat();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setForfeiting(false);
+    }
+  };
 
   const cancelGame = async () => {
     try {
@@ -331,31 +818,213 @@ function PvPOddsGame() {
     } catch {}
     setMyGameId(null);
     setWagerLocked(null);
+    setInteractiveState(null);
+    setRoundHistory([]);
     setMessage("");
-    socket?.emit("room_event", { roomId: "lobby:odds", event: "lobby:updated" });
+    setGameOver(false);
+    socket?.emit("room_event", {
+      roomId: "lobby:odds",
+      event: "lobby:updated",
+    });
   };
 
   const reset = () => {
     setMyGameId(null);
-    setGameState(null);
+    setInteractiveState(null);
+    setRoundHistory([]);
     setGameOver(false);
-    setRevealedRounds(0);
     setShowReverse(false);
     setWagerLocked(null);
     setOpponentId(null);
     setIsPlayer1(true);
     setMessage("");
+    setError("");
+    setWaitingForOpponent(false);
+    setPickValue("");
+    setTimeLeft(PICK_TIMER_SECONDS);
+    setFinalPayout(0);
+    setShowForfeitConfirm(false);
   };
 
-  const availableGames = games.filter((g) => g.player1Id !== userId && g.id !== myGameId);
-  const userWon = gameState ? 
-    (isPlayer1 ? gameState.winner === "player1" : gameState.winner === "player2") : false;
+  // ── Pick handling ──
+  const handlePick = useCallback(
+    async (number: number) => {
+      if (!myGameId || !interactiveState || isSubmitting || gameOver) return;
+      setIsSubmitting(true);
+      setError("");
+      audio.playPick();
+      try {
+        const res = await fetch("/api/odds/pvp/pick", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ gameId: myGameId, playerNumber: number }),
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
 
+        if (!mountedRef.current) return;
+
+        await applyStateFromServer({
+          gameState: data.data.gameState,
+          payout: data.data.payout,
+          wager: wagerLocked ?? wager,
+        });
+
+        if (data.data.resolved) {
+          // Round was resolved (both picks in)  
+          const gameRounds: GameRound[] = data.data.gameState?.rounds ?? [];
+          const lastRound = gameRounds[gameRounds.length - 1];
+          if (lastRound?.matched) {
+            audio.playMatch();
+          } else if (gameRounds.length >= 2) {
+            const prevRound = gameRounds[gameRounds.length - 2];
+            const currRound = lastRound;
+            if (currRound.max === prevRound.max && currRound.starter !== prevRound.starter) {
+              audio.playReverse();
+              setShowReverse(true);
+              setTimeout(() => setShowReverse(false), 1200);
+            } else if (currRound.max < prevRound.max) {
+              audio.playHalve();
+            }
+          }
+          setWaitingForOpponent(false);
+        } else {
+          // Waiting for opponent
+          setWaitingForOpponent(true);
+        }
+
+        // Notify opponent via socket
+        if (socket && myGameId) {
+          socket.emit("room_event", {
+            roomId: `odds_${myGameId}`,
+            event: "odds:state_changed",
+          });
+        }
+      } catch (err: any) {
+        if (mountedRef.current) setError(err.message);
+      } finally {
+        if (mountedRef.current) {
+          setIsSubmitting(false);
+          if (!gameOver) {
+            setTimeLeft(PICK_TIMER_SECONDS);
+            setTimeUp(false);
+            setPickValue("");
+          }
+        }
+      }
+    },
+    [
+      myGameId,
+      interactiveState,
+      isSubmitting,
+      gameOver,
+      socket,
+      wagerLocked,
+      wager,
+      applyStateFromServer,
+    ],
+  );
+
+  // Keep ref in sync
+  useEffect(() => {
+    handlePickRef.current = handlePick;
+  }, [handlePick]);
+
+  // Timer
+  const timerUrgentPlayed = useRef(false);
+  useEffect(() => {
+    if (!interactiveState || gameOver || isSubmitting || waitingForOpponent)
+      return;
+    if (timeLeft <= 0) {
+      setTimeUp(true);
+      timerUrgentPlayed.current = false;
+      const range = interactiveState.currentMax;
+      handlePickRef.current(Math.floor(Math.random() * range) + 1);
+      return;
+    }
+    setTimeUp(false);
+    if (timeLeft <= 5 && !timerUrgentPlayed.current) {
+      timerUrgentPlayed.current = true;
+      audio.playTimerUrgent();
+    }
+    if (timeLeft > 5) timerUrgentPlayed.current = false;
+    const timer = setInterval(() => setTimeLeft((t: number) => t - 1), 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft, interactiveState, gameOver, isSubmitting, waitingForOpponent, audio.playTimerUrgent]);
+
+  const handleSubmitPick = () => {
+    if (!interactiveState || isSubmitting || gameOver) return;
+    const num = parseInt(pickValue, 10);
+    const range = interactiveState.currentMax;
+    if (isNaN(num) || num < 1 || num > range) return;
+    handlePick(num);
+  };
+
+  const handlePickInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (val === "" || /^\d+$/.test(val)) {
+      const range = interactiveState?.currentMax ?? 100;
+      const num = parseInt(val, 10);
+      if (val === "" || (num >= 1 && num <= range)) {
+        setPickValue(val);
+      }
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleSubmitPick();
+  };
+
+  // ── Display helpers ──
+  const displayGameState: GameState | null = useMemo(() => {
+    if (!interactiveState || roundHistory.length === 0) return null;
+    return {
+      rounds: roundHistory,
+      totalRounds: roundHistory.length,
+      winner: gameOver ? finalWinner : "player1",
+      result: gameOver ? finalResult : "player1_won",
+      payout: gameOver ? finalPayout : (wagerLocked ?? wager) * 2,
+      firstStarter: interactiveState.firstStarter,
+    };
+  }, [
+    interactiveState,
+    roundHistory,
+    gameOver,
+    finalWinner,
+    finalResult,
+    finalPayout,
+    wagerLocked,
+    wager,
+  ]);
+
+  const userWon =
+    gameOver &&
+    ((isPlayer1 && finalWinner === "player1") ||
+      (!isPlayer1 && finalWinner === "player2"));
+  const range = interactiveState?.currentMax ?? 100;
+  const alreadyPicked =
+    !gameOver &&
+    interactiveState &&
+    ((isPlayer1 && interactiveState.player1Pick !== null) ||
+      (!isPlayer1 && interactiveState.player2Pick !== null));
+  const showPickUI = gameId && interactiveState && !gameOver && !alreadyPicked && !waitingForOpponent;
+
+  // Shortcuts
+  const gameId = myGameId;
+
+  // ── Render ──
   return (
     <div>
-      {!myGameId && !gameState && (
+      {resuming && (
+        <p className="text-center text-white/40 py-8">Loading...</p>
+      )}
+
+      {/* LOBBY: no game yet */}
+      {!resuming && !gameId && !interactiveState && (
         <>
-          <label className="block mb-1 text-sm font-semibold">Wager Amount</label>
+          <label className="block mb-1 text-sm font-semibold">
+            Wager Amount
+          </label>
           <input
             type="number"
             className="w-full bg-[#08142f] border border-yellow-400/30 p-2 rounded mb-4 text-white"
@@ -372,31 +1041,45 @@ function PvPOddsGame() {
           </button>
 
           <h2 className="text-lg font-bold mb-3">Available Games</h2>
-          {availableGames.length === 0 && (
-            <p className="text-center text-white/40 italic">No games available. Create one!</p>
+          {games.filter((g) => g.player1Id !== userId).length === 0 && (
+            <p className="text-center text-white/40 italic">
+              No games available. Create one!
+            </p>
           )}
           <div className="space-y-3">
-            {availableGames.map((game) => (
-              <div key={game.id} className="bg-gray-900 border border-yellow-400/20 rounded-lg p-4 flex justify-between items-center">
-                <div>
-                  <p className="font-bold text-white">{game.player1Name}</p>
-                  <p className="text-sm text-white/50">Wager: {game.wager} 🪙</p>
-                </div>
-                <button
-                  onClick={() => joinGame(game.id)}
-                  disabled={loading}
-                  className="px-4 py-2 rounded-lg font-bold bg-gradient-to-r from-emerald-400 to-green-500 text-black shadow-[0_0_12px_rgba(16,185,129,0.5)]"
+            {games
+              .filter((g) => g.player1Id !== userId)
+              .map((game) => (
+                <div
+                  key={game.id}
+                  className="bg-gray-900 border border-yellow-400/20 rounded-lg p-4 flex justify-between items-center"
                 >
-                  Join
-                </button>
-              </div>
-            ))}
+                  <div>
+                    <p className="font-bold text-white">
+                      {game.player1Name}
+                    </p>
+                    <p className="text-sm text-white/50">
+                      Wager: {game.wager} 🪙
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => joinGame(game.id)}
+                    disabled={loading}
+                    className="px-4 py-2 rounded-lg font-bold bg-gradient-to-r from-emerald-400 to-green-500 text-black shadow-[0_0_12px_rgba(16,185,129,0.5)]"
+                  >
+                    Join
+                  </button>
+                </div>
+              ))}
           </div>
-          {message && <p className="mt-3 text-center text-yellow-300">{message}</p>}
+          {message && (
+            <p className="mt-3 text-center text-yellow-300">{message}</p>
+          )}
         </>
       )}
 
-      {myGameId && !gameState && (
+      {/* WAITING for opponent */}
+      {gameId && !interactiveState && (
         <div className="text-center py-8">
           <motion.div
             animate={{ scale: [1, 1.05, 1] }}
@@ -405,8 +1088,12 @@ function PvPOddsGame() {
           >
             🎲
           </motion.div>
-          <p className="text-lg font-bold text-yellow-300">{message || "Waiting for opponent..."}</p>
-          <p className="text-sm text-white/40 mt-2">Wager: {wagerLocked} 🪙</p>
+          <p className="text-lg font-bold text-yellow-300">
+            {message || "Waiting for opponent..."}
+          </p>
+          <p className="text-sm text-white/40 mt-2">
+            Wager: {wagerLocked} 🪙
+          </p>
           <button
             onClick={cancelGame}
             className="mt-6 px-6 py-2 rounded-lg font-bold bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30"
@@ -416,32 +1103,200 @@ function PvPOddsGame() {
         </div>
       )}
 
-      {gameState && (
-        <>
+      {/* PLAYING: pick UI */}
+      {showPickUI && (
+        <div className="space-y-4">
+          <div className="text-center">
+            <p className="text-sm text-white/50">
+              Wager: {wagerLocked ?? wager} 🪙
+            </p>
+            <div className="mt-2 inline-block rounded-full bg-yellow-500/20 border border-yellow-400/30 px-6 py-2">
+              <span className="text-sm text-yellow-300/70">
+                Pick a number
+              </span>
+              <p className="text-2xl font-black text-yellow-400">
+                1 – {range}
+              </p>
+            </div>
+            <p className="mt-1 text-xs text-white/30">
+              Round {(roundHistory.length || 0) + 1} • Both players pick simultaneously
+            </p>
+          </div>
+
+          <div className="flex items-center justify-center">
+            <div
+              className={`rounded-full border px-4 py-1 text-lg font-bold transition-colors ${
+                timeLeft <= 5
+                  ? "border-red-500/50 text-red-400 animate-pulse"
+                  : "border-white/10 text-white/60"
+              }`}
+            >
+              ⏱ {timeLeft}s
+            </div>
+          </div>
+
+          {timeUp && isSubmitting && (
+            <p className="text-center text-sm text-amber-400 animate-pulse">
+              ⏰ Time's up! Auto-picking...
+            </p>
+          )}
+
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className="flex-1 rounded-lg border border-yellow-400/30 bg-[#08142f] p-3 text-center text-lg font-bold text-white placeholder-white/20"
+              placeholder={`1–${range}`}
+              value={pickValue}
+              onChange={handlePickInputChange}
+              onKeyDown={handleKeyDown}
+              disabled={isSubmitting}
+            />
+            <button
+              onClick={handleSubmitPick}
+              disabled={isSubmitting || pickValue === ""}
+              className="rounded-lg bg-gradient-to-r from-yellow-500 to-amber-500 px-6 py-3 font-bold text-black transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              {isSubmitting ? "..." : "Pick"}
+            </button>
+          </div>
+
+          {error && (
+            <p className="text-center text-sm text-red-400">{error}</p>
+          )}
+
+          {/* Sound toggle + Forfeit */}
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => audio.setEnabled(!audio.enabled)}
+              className={`rounded-full border px-3 py-1 text-sm transition ${
+                audio.enabled
+                  ? "border-white/10 text-white/60 hover:text-white"
+                  : "border-red-400/40 text-red-400/60"
+              }`}
+              title={audio.enabled ? "Sounds on" : "Sounds off"}
+            >
+              {audio.enabled ? "🔊" : "🔇"}
+            </button>
+            <button
+              onClick={() => setShowForfeitConfirm(true)}
+              className="rounded-full border border-red-400/30 px-3 py-1 text-sm text-red-400/70 hover:bg-red-500/10 hover:text-red-300 transition"
+              title="Forfeit game"
+            >
+              🏳️ Forfeit
+            </button>
+          </div>
+
+          {/* Forfeit confirmation */}
+          {showForfeitConfirm && (
+            <div className="rounded-lg border border-red-400/30 bg-red-900/10 p-3 text-center">
+              <p className="text-sm text-red-300 mb-2">
+                Forfeit? Your opponent will win the pot.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={handleForfeit}
+                  disabled={forfeiting}
+                  className="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-red-500 transition disabled:opacity-50"
+                >
+                  {forfeiting ? "Forfeiting..." : "Yes, Forfeit"}
+                </button>
+                <button
+                  onClick={() => setShowForfeitConfirm(false)}
+                  disabled={forfeiting}
+                  className="rounded-lg border border-white/20 px-4 py-1.5 text-sm text-white/60 hover:text-white transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* WAITING FOR OPPONENT after own pick */}
+      {interactiveState && !gameOver && waitingForOpponent && (
+        <div className="text-center py-8">
+          <motion.div
+            animate={{ scale: [1, 1.05, 1] }}
+            transition={{ repeat: Infinity, duration: 1.5 }}
+            className="text-4xl mb-4"
+          >
+            ⏳
+          </motion.div>
+          <p className="text-lg font-bold text-yellow-300">
+            Waiting for opponent to pick...
+          </p>
+          <p className="text-sm text-white/40 mt-2">
+            Your number has been submitted!
+          </p>
+
+          {/* Forfeit from waiting state */}
+          <div className="mt-4 flex flex-col items-center gap-2">
+            {!showForfeitConfirm ? (
+              <button
+                onClick={() => setShowForfeitConfirm(true)}
+                className="rounded-full border border-red-400/30 px-3 py-1 text-sm text-red-400/70 hover:bg-red-500/10 hover:text-red-300 transition"
+              >
+                🏳️ Forfeit
+              </button>
+            ) : (
+              <div className="rounded-lg border border-red-400/30 bg-red-900/10 p-3 text-center">
+                <p className="text-sm text-red-300 mb-2">
+                  Forfeit? Your opponent will win the pot.
+                </p>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={handleForfeit}
+                    disabled={forfeiting}
+                    className="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-red-500 transition disabled:opacity-50"
+                  >
+                    {forfeiting ? "Forfeiting..." : "Yes, Forfeit"}
+                  </button>
+                  <button
+                    onClick={() => setShowForfeitConfirm(false)}
+                    disabled={forfeiting}
+                    className="rounded-lg border border-white/20 px-4 py-1.5 text-sm text-white/60 hover:text-white transition"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Round history */}
+      {roundHistory.length > 0 && displayGameState && (
+        <div className="mt-6">
           <OddsGameDisplay
-            gameState={gameState}
-            revealedRounds={revealedRounds}
+            gameState={displayGameState}
+            revealedRounds={roundHistory.length}
             gameOver={gameOver}
             userWon={userWon}
             isPlayer1={isPlayer1}
             userLabel="You"
             oppLabel="Opponent"
             wager={wagerLocked ?? wager}
-            payout={gameState.payout}
+            payout={displayGameState.payout}
             showReverse={showReverse}
             onPlayAgain={reset}
           />
-          {gameOver && opponentId && (
-            <div className="flex justify-center mt-4">
-              <button
-                onClick={() => setShowReportModal(true)}
-                className="px-4 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30"
-              >
-                🚩 Report
-              </button>
-            </div>
-          )}
-        </>
+        </div>
+      )}
+
+      {/* Report button */}
+      {gameOver && opponentId && (
+        <div className="flex justify-center mt-4">
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="px-4 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30"
+          >
+            🚩 Report
+          </button>
+        </div>
       )}
 
       <ReportModal
@@ -460,7 +1315,8 @@ function PvPOddsGame() {
             }),
           });
           const data = await res.json();
-          if (!data.success) throw new Error(data.error || "Failed to submit report");
+          if (!data.success)
+            throw new Error(data.error || "Failed to submit report");
         }}
         reportedPlayerName="Opponent"
         gameType="Odds"
