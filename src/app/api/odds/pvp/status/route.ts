@@ -1,0 +1,67 @@
+import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { db } from "../../../../../db/client";
+import { oddsGames } from "../../../../../db/schema";
+import { eq, and, or, desc } from "drizzle-orm";
+import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
+
+export async function GET() {
+  try {
+    const { userId } = await auth();
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    // Find the user's most recent active interactive PvP game
+    const [game] = await db
+      .select()
+      .from(oddsGames)
+      .where(
+        and(
+          or(eq(oddsGames.player1Id, userId), eq(oddsGames.player2Id, userId)),
+          eq(oddsGames.status, "playing"),
+          eq(oddsGames.isAi, false),
+        ),
+      )
+      .orderBy(desc(oddsGames.createdAt))
+      .limit(1);
+
+    if (!game) {
+      return NextResponse.json({
+        success: true,
+        data: { active: false },
+      });
+    }
+
+    const isPlayer1 = game.player1Id === userId;
+    const opponentId = isPlayer1 ? game.player2Id : game.player1Id;
+    const state = game.gameState as PvPInteractiveOddsState | null;
+
+    const userHasPendingPick =
+      state &&
+      !state.gameOver &&
+      ((isPlayer1 && state.player1Pick !== null && state.player2Pick === null) ||
+        (!isPlayer1 && state.player2Pick !== null && state.player1Pick === null));
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        active: true,
+        gameId: game.id,
+        wager: game.wager,
+        isPlayer1,
+        opponentId,
+        gameState: state,
+        rounds: state?.rounds ?? [],
+        gameOver: state?.gameOver ?? false,
+        winner: state?.winner ?? null,
+        payout: game.wager * 2,
+        userHasPendingPick,
+      },
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to fetch PvP status" },
+      { status: 500 },
+    );
+  }
+}

@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { oddsGames, users } from "../../../../db/schema";
 import { eq, sql, and } from "drizzle-orm";
-import { resolveOddsGame } from "../../../../lib/odds";
+import { resolveOddsGame, initPvPOddsGame } from "../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
 export async function POST(req: Request) {
@@ -24,7 +24,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Wager exceeds maximum limit" }, { status: 400 });
     }
 
-    const gameState = resolveOddsGame(wager);
+    const isInteractivePvP = !isAi;
+    const gameState = isAi ? resolveOddsGame(wager) : initPvPOddsGame();
 
     const newGame = await db.transaction(async (tx: any) => {
       const [creator] = await tx
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
       if (!creator) throw new Error("Insufficient balance");
 
       const status = isAi ? "finished" : "waiting";
-      const player1Won = gameState.winner === "player1";
+      const player1Won = isAi && gameState.winner === "player1";
 
       const [game] = await tx
         .insert(oddsGames)

@@ -3,8 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { oddsGames, users } from "../../../../db/schema";
 import { eq, sql, and, isNull } from "drizzle-orm";
-import { resolveOddsGame } from "../../../../lib/odds";
-import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { initPvPOddsGame } from "../../../../lib/odds";
 
 export async function POST(req: Request) {
   try {
@@ -43,59 +42,29 @@ export async function POST(req: Request) {
 
       if (!joiner) throw new Error("Insufficient balance");
 
-      // Resolve the game
-      const gameState = resolveOddsGame(game.wager);
-      const player1Won = gameState.winner === "player1";
-      const winnerId = player1Won ? game.player1Id : userId;
+      // Initialize interactive PvP game state
+      const gameState = initPvPOddsGame();
 
-      // Update the game
+      // Update the game — status "playing", game is now interactive
       const [updated] = await tx
         .update(oddsGames)
         .set({
           player2Id: userId,
-          status: "finished",
-          winner: gameState.winner,
-          result: player1Won ? "player1_won" : "player2_won",
-          payout: game.wager * 2,
+          status: "playing",
           gameState,
-          endedAt: new Date(),
         })
         .where(eq(oddsGames.id, gameId))
         .returning();
 
-      // Pay winner
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${game.wager * 2}` })
-        .where(eq(users.clerkId, winnerId));
-
-      return { updated, winnerId, gameState };
+      return { updated, gameState };
     });
-
-    // Apply leaderboard counters (outside transaction)
-    const player1Won = result.gameState.winner === "player1";
-    const loserId = player1Won ? result.updated.player2Id : result.updated.player1Id;
-
-    await applyLeaderboardCounters({
-      clerkId: result.winnerId,
-      game: "odds",
-      betAmount: result.updated.wager,
-      payout: result.updated.wager * 2,
-      isPvpWin: true,
-    }).catch(() => {});
-
-    await applyLeaderboardCounters({
-      clerkId: loserId!,
-      game: "odds",
-      betAmount: result.updated.wager,
-      payout: 0,
-      isPvpWin: false,
-    }).catch(() => {});
 
     return NextResponse.json({
       success: true,
       data: {
         gameId: result.updated.id,
+        wager: result.updated.wager,
+        player1Id: result.updated.player1Id,
         gameState: result.gameState,
         winner: result.gameState.winner,
         result: result.updated.result,
