@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "../../../../db/client";
-import { oddsGames, users } from "../../../../db/schema";
+import { db } from "../../../../../db/client";
+import { oddsGames, users } from "../../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 
 export async function POST(req: Request) {
   try {
