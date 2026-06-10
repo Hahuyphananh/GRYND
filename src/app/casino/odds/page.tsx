@@ -217,6 +217,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 
       if (data.data.gameStatus === "finished") {
         setGameOver(true);
+        gameOverRef.current = true;
         setFinalWinner(updatedState.winner!);
         setFinalResult(
           updatedState.winner === "player1" ? "player1_won" : "player2_won",
@@ -660,6 +661,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 
       if (st.gameOver) {
         setGameOver(true);
+        gameOverRef.current = true;
         setFinalWinner(st.winner!);
         setFinalResult(
           st.winner === "player1" ? "player1_won" : "player2_won",
@@ -818,6 +820,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 
       // Local state reflects forfeit loss
       setGameOver(true);
+      gameOverRef.current = true;
       setFinalWinner(isPlayer1 ? "player2" : "player1");
       setFinalResult(isPlayer1 ? "player2_won" : "player1_won");
       setFinalPayout(data.data.payout);
@@ -1442,19 +1445,20 @@ function OddsGameDisplay({
         </div>
       )}
 
-      {/* Rounds display */}
+      {/* Rounds display (newest first) */}
       <div className="space-y-3">
-        {gameState.rounds.map((round, i) => {
-          const visible = i < revealedRounds;
-          const isLastRound = i === gameState.rounds.length - 1;
+        {[...gameState.rounds].reverse().map((round, reversedIdx) => {
+          const originalIdx = gameState.rounds.length - 1 - reversedIdx;
+          const visible = reversedIdx < revealedRounds;
+          const isLastRound = originalIdx === gameState.rounds.length - 1;
           const userIsStarter = isUserStarter(round);
           const userIsChallenger = !userIsStarter;
-          const prevRound = i > 0 ? gameState.rounds[i - 1] : null;
+          const prevRound = originalIdx > 0 ? gameState.rounds[originalIdx - 1] : null;
           const isReverse = prevRound && round.max === prevRound.max && round.starter !== prevRound.starter;
 
           return (
             <motion.div
-              key={i}
+              key={originalIdx}
               initial={{ opacity: 0, y: 20 }}
               animate={visible ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
               transition={{ duration: 0.4 }}
@@ -1470,7 +1474,7 @@ function OddsGameDisplay({
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-white/40">Round {i + 1}</span>
+                  <span className="text-xs font-bold text-white/40">Round {originalIdx + 1}</span>
                   {visible && isReverse && (
                     <span className="text-xs font-bold text-purple-400 animate-pulse">🔄 REVERSE</span>
                   )}
@@ -1501,7 +1505,7 @@ function OddsGameDisplay({
                   <div className="text-center">
                     <p className="text-xs text-white/50 mb-1">{userLabel}</p>
                     <motion.div
-                      key={`u-${i}`}
+                      key={`u-${originalIdx}`}
                       initial={{ scale: 0, rotate: -180 }}
                       animate={{ scale: 1, rotate: 0 }}
                       transition={{ type: "spring", stiffness: 300, damping: 15, delay: 0.1 }}
@@ -1524,7 +1528,7 @@ function OddsGameDisplay({
                   <div className="text-center">
                     <p className="text-xs text-white/50 mb-1">{oppLabel}</p>
                     <motion.div
-                      key={`o-${i}`}
+                      key={`o-${originalIdx}`}
                       initial={{ scale: 0, rotate: 180 }}
                       animate={{ scale: 1, rotate: 0 }}
                       transition={{ type: "spring", stiffness: 300, damping: 15, delay: 0.5 }}
@@ -1558,7 +1562,7 @@ function OddsGameDisplay({
                   ⚡ MATCH! Challenger loses!
                 </motion.p>
               )}
-              {visible && !round.matched && i === revealedRounds - 1 && (
+              {visible && !round.matched && isLastRound && (
                 <motion.p
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
