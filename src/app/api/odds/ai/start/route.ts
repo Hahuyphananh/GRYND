@@ -22,6 +22,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Wager exceeds maximum limit" }, { status: 400 });
     }
 
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json(
+        { success: false, error: "Database not available" },
+        { status: 503 },
+      );
+    }
+
     const gameState = initInteractiveOddsGame();
 
     const result = await db.transaction(async (tx: any) => {

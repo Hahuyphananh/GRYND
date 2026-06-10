@@ -201,11 +201,18 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // Track the action to prevent double-processing
-    const actStr = JSON.stringify(action);
-    const actKey = `${gameId}:${actStr}`;
-    if (hexDuelTurnStates.has(actKey)) return;
-    hexDuelTurnStates.set(actKey, Date.now());
+    // Track the action with a sequence counter to prevent accidental
+    // double-processing from network retries, while still allowing
+    // identical consecutive actions (e.g. same attack twice in a row).
+    if (!global.__hexDuelActionSeq) global.__hexDuelActionSeq = new Map();
+    const seqMap = global.__hexDuelActionSeq;
+    const seqKey = `${gameId}:${userId}`;
+    const prevSeq = seqMap.get(seqKey) ?? -1;
+    const thisSeq = action.__seq ?? Date.now();
+    if (!action.__seq) action.__seq = thisSeq;
+    // Only dedupe if the exact same sequence arrives (network retry)
+    if (thisSeq === prevSeq) return;
+    seqMap.set(seqKey, thisSeq);
 
     // Clean old entries after 5 minutes
     const now = Date.now();

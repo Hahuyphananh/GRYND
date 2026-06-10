@@ -24,6 +24,8 @@ export type InteractiveOddsState = {
   winner: "player1" | "player2" | null;
   firstStarter: "player1" | "player2";
   gameOver: boolean;
+  /** Counts iterations at currentMax=2 to prevent infinite loops */
+  lowRangeIterations?: number;
 };
 
 export type PickResult = {
@@ -50,6 +52,8 @@ export type PvPInteractiveOddsState = {
   player2Pick: number | null;
   // Timestamp (ms) when the current round started — used for timeout detection
   roundStartedAt: number;
+  /** Counts iterations at currentMax=2 to prevent infinite loops */
+  lowRangeIterations?: number;
 };
 
 const MAX_ITERATIONS_AT_TWO = 100;
@@ -80,8 +84,20 @@ export function processOddsPick(
   state: InteractiveOddsState,
   playerNumber: number,
 ): PickResult {
-  const aiNumber = Math.floor(Math.random() * state.currentMax) + 1;
-  const matched = playerNumber === aiNumber;
+  const iterations = (state.lowRangeIterations ?? 0) + 1;
+
+  // Safety: if stuck at currentMax=2 for too many rounds, force a match to end the game
+  const FORCE_MATCH_AFTER = 50;
+  let aiNumber: number;
+  let matched: boolean;
+  if (state.currentMax === 2 && iterations >= FORCE_MATCH_AFTER) {
+    // Force the AI to match the player's pick, ending the game immediately
+    aiNumber = playerNumber;
+    matched = true;
+  } else {
+    aiNumber = Math.floor(Math.random() * state.currentMax) + 1;
+    matched = playerNumber === aiNumber;
+  }
 
   const round: OddsRound = {
     max: state.currentMax,
@@ -104,6 +120,7 @@ export function processOddsPick(
         rounds: newRounds,
         winner: state.currentStarter,
         gameOver: true,
+        lowRangeIterations: iterations,
       },
       playerNumber,
       aiNumber,
@@ -125,6 +142,7 @@ export function processOddsPick(
         rounds: newRounds,
         currentStarter: newStarter,
         phase: "reverse_attempt",
+        lowRangeIterations: state.currentMax === 2 ? iterations : 0,
       },
       playerNumber,
       aiNumber,
@@ -147,6 +165,7 @@ export function processOddsPick(
       currentMax: newMax,
       phase: "first_attempt",
       // starter stays the same (the person who was starter in reverse attempt)
+      lowRangeIterations: newMax === 2 ? iterations : 0,
     },
     playerNumber,
     aiNumber,
@@ -183,9 +202,19 @@ export function initPvPOddsGame(): PvPInteractiveOddsState {
 export function processPvPOddsRound(
   state: PvPInteractiveOddsState,
 ): PickResult {
+  const iterations = (state.lowRangeIterations ?? 0) + 1;
+
   const player1Number = state.player1Pick!;
   const player2Number = state.player2Pick!;
-  const matched = player1Number === player2Number;
+
+  // Safety: if stuck at currentMax=2 for too many rounds, force a match
+  const FORCE_MATCH_AFTER = 50;
+  let matched: boolean;
+  if (state.currentMax === 2 && iterations >= FORCE_MATCH_AFTER) {
+    matched = true;
+  } else {
+    matched = player1Number === player2Number;
+  }
 
   const round: OddsRound = {
     max: state.currentMax,
@@ -216,6 +245,7 @@ export function processPvPOddsRound(
         ...baseState,
         winner: state.currentStarter,
         gameOver: true,
+        lowRangeIterations: iterations,
       },
       playerNumber: player1Number,
       aiNumber: player2Number,
@@ -226,7 +256,6 @@ export function processPvPOddsRound(
   }
 
   if (state.phase === "first_attempt") {
-    // No match on first attempt → reverse roles, keep same max
     const newStarter: "player1" | "player2" =
       state.currentStarter === "player1" ? "player2" : "player1";
     return {
@@ -235,6 +264,7 @@ export function processPvPOddsRound(
         ...baseState,
         currentStarter: newStarter,
         phase: "reverse_attempt",
+        lowRangeIterations: state.currentMax === 2 ? iterations : 0,
       },
       playerNumber: player1Number,
       aiNumber: player2Number,
@@ -244,7 +274,6 @@ export function processPvPOddsRound(
     };
   }
 
-  // No match on reverse attempt → halve range, back to first_attempt
   let newMax = Math.floor(state.currentMax / 2);
   if (newMax < 2) newMax = 2;
 
@@ -254,6 +283,7 @@ export function processPvPOddsRound(
       ...baseState,
       currentMax: newMax,
       phase: "first_attempt",
+      lowRangeIterations: newMax === 2 ? iterations : 0,
     },
     playerNumber: player1Number,
     aiNumber: player2Number,
@@ -261,7 +291,7 @@ export function processPvPOddsRound(
     isReverse: false,
     halved: true,
   };
-}
+  }
 
 export function resolveOddsGame(wager: number): OddsGameState {
   const rounds: OddsRound[] = [];
