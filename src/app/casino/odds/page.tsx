@@ -105,6 +105,8 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const handlePickRef = useRef<(n: number) => void>(() => {});
   const mountedRef = useRef(true);
   const autoPickTriggeredRef = useRef(false);
+  const gameOverRef = useRef(false);
+  gameOverRef.current = gameOver;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -230,10 +232,13 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     } catch (err: any) {
       if (mountedRef.current) setError(err.message);
     } finally {
-      // Always reset timer and pick state, even on failure, to avoid infinite loops
+      // Always reset timer and pick state, even on failure, to avoid infinite loops.
+      // Use gameOverRef to avoid stale closure — gameOver state may have been
+      // set to true during this handler (game ended), but the closure still sees
+      // the old value from when this useCallback was created.
       if (mountedRef.current) {
         setIsSubmitting(false);
-        if (!gameOver) {
+        if (!gameOverRef.current) {
           setTimeLeft(PICK_TIMER_SECONDS);
           setTimeUp(false);
           setPickValue("");
@@ -540,6 +545,8 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const handlePickRef = useRef<(n: number) => void>(() => {});
   const mountedRef = useRef(true);
   const myGameIdRef = useRef<number | null>(null);
+  const gameOverRef = useRef(false);
+  gameOverRef.current = gameOver;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -925,7 +932,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       } finally {
         if (mountedRef.current) {
           setIsSubmitting(false);
-          if (!gameOver) {
+          if (!gameOverRef.current) {
             setTimeLeft(PICK_TIMER_SECONDS);
             setTimeUp(false);
             setPickValue("");

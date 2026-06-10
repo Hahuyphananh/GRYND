@@ -60,6 +60,13 @@ app.get("/health", (_req, res) => {
 const httpServer = http.createServer(app);
 
 const io = new Server(httpServer, {
+  // Explicitly set transports to support both WebSocket and long-polling.
+  // Behind a reverse proxy (Render, etc.), WebSocket may fail if the
+  // proxy doesn't upgrade correctly; polling serves as a reliable fallback.
+  transports: ["websocket", "polling"],
+  // Keep connections alive through proxies by sending pings every 25s.
+  pingInterval: 25000,
+  pingTimeout: 20000,
   cors: {
     origin(origin, callback) {
       if (isOriginAllowed(origin)) return callback(null, true);
@@ -119,20 +126,14 @@ io.on("connection", (socket) => {
     });
   });
 
+  // ── Deprecated join_game handler — replaced by hexDuel:join ──
+  // Keeping as a no-op stub so old clients don't break, but no longer
+  // adds duplicate tracking. The hexDuel:join handler below is the
+  // single source of truth for hex duel room joins.
   socket.on("join_game", ({ gameId }) => {
     if (!gameId) return;
-    const roomId = String(gameId);
-    socket.join(roomId);
-
-    // Track player in module-level map
-    if (!hexDuelRoomPlayers.has(String(gameId))) {
-      hexDuelRoomPlayers.set(String(gameId), new Set());
-    }
-    hexDuelRoomPlayers.get(String(gameId)).add(socket.data.userId);
-
-    checkAndEmitHexDuelReady(gameId, roomId);
-
-    socket.to(roomId).emit("player_joined", { gameId: roomId, userId: socket.data.userId });
+    console.warn("[deprecated] join_game received for gameId", gameId, "— use hexDuel:join instead");
+    // No-op: hexDuel:join handles all game room logic.
   });
 
   socket.on("move", ({ gameId, move }) => {
