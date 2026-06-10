@@ -11,6 +11,13 @@ export async function GET() {
     if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json({
+        success: true,
+        data: { active: false },
+      });
+    }
+
     // Find the user's currently active interactive AI game (most recent first)
     const [game] = await db
       .select()

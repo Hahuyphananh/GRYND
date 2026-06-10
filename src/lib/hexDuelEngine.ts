@@ -268,9 +268,19 @@ export function useHexDuel() {
     setCombatFlash([]);
   }, []);
 
-  /** Apply troop growth: +1 troop on all owned tiles for the next player */
+  // ── Remote action flag ───────────────────────────────────────────
+  // Set to true before calling a handler from applyRemoteAction so that
+  // troop growth (which the sender already applied) is skipped.
+  const skipTroopGrowthRef = useRef(false);
+
+  /** Apply troop growth: +1 troop on all owned tiles for the next player.
+   *  When called from applyRemoteAction, the ref flag suppresses double growth. */
   const applyTroopGrowth = useCallback(
     (player: DuelPlayer) => {
+      if (skipTroopGrowthRef.current) {
+        skipTroopGrowthRef.current = false;
+        return;
+      }
       const growthTiles: string[] = [];
       setTileTroops((prev) => {
         const next = { ...prev };
@@ -506,7 +516,9 @@ export function useHexDuel() {
   }, []);
 
   // ── Apply remote action (for multiplayer sync) ──────────────────
-
+  // Sets skipTroopGrowthRef so applyTroopGrowth is a no-op.
+  // The sender already applied troop growth; turn management
+  // (AP tracking, switching) still happens normally on the receiver.
   const applyRemoteAction = useCallback((action: {
     type: 'attack' | 'displace' | 'endTurn' | 'skipRound';
     sourceKey?: string;
@@ -515,12 +527,16 @@ export function useHexDuel() {
   }) => {
     if (winner) return;
     if (action.type === 'attack' && action.sourceKey && action.targetKey && action.troopCount) {
+      skipTroopGrowthRef.current = true;
       handleAttack(action.sourceKey, action.targetKey, action.troopCount);
     } else if (action.type === 'displace' && action.sourceKey && action.targetKey && action.troopCount) {
+      skipTroopGrowthRef.current = true;
       handleDisplace(action.sourceKey, action.targetKey, action.troopCount);
     } else if (action.type === 'endTurn') {
+      skipTroopGrowthRef.current = true;
       endTurn();
     } else if (action.type === 'skipRound') {
+      skipTroopGrowthRef.current = true;
       skipRound();
     }
   }, [winner, handleAttack, handleDisplace, endTurn, skipRound]);

@@ -21,6 +21,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid game ID" }, { status: 400 });
     }
 
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json(
+        { success: false, error: "Database not available" },
+        { status: 503 },
+      );
+    }
+
     const result = await db.transaction(async (tx: any) => {
       const [game] = await tx
         .select()

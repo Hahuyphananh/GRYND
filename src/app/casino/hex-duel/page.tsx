@@ -110,6 +110,21 @@ const GLOBAL_KEYFRAMES = `
   0%, 100% { opacity: 0.95; }
   50%      { opacity: 0.7; }
 }
+
+@keyframes waitingSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes waitingPulse {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 0.8; }
+}
+
+@keyframes waitingFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
 `;
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -166,11 +181,19 @@ function WagerModal({
     <div className="fixed inset-0 z-40 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Place Wager">
       <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" />
       <div
-        className="relative z-10 w-full max-w-sm rounded-2xl border border-white/10 p-6
-          bg-gradient-to-b from-[#071230] via-[#0a1a3f] to-[#050d24]
+        className="relative z-10 w-full max-w-sm rounded-2xl border border-white/10 p-4 sm:p-6
+          bg-gradient-to-b from-[#071230] via-[#0a1a3f] to-[#050d24] overflow-y-auto max-h-[90vh]
           shadow-[0_0_60px_rgba(34,211,238,0.1)]"
         style={{ animation: "floatUp 0.35s ease-out" }}
       >
+        <div className="flex items-center justify-between mb-1">
+          <a
+            href="/casino"
+            className="text-[10px] text-slate-500 hover:text-slate-300 transition flex items-center gap-1"
+          >
+            <span className="text-xs">←</span> Back to Casino
+          </a>
+        </div>
         <h2 className="text-center text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-fuchsia-400 mb-1">
           HEX DUEL
         </h2>
@@ -1107,6 +1130,7 @@ export default function HexDuelPage() {
       if (!res.ok || !data.success) { setWagerError(data.error || "Failed to start game"); return; }
       setBalance(Number(data.data.newBalance));
       setWager(amount);
+      setAIEnabled(true); // Auto-enable AI for vs-AI real games
       setGameMode("real");
       startedAtRef.current = new Date().toISOString();
     } catch { setWagerError("Network error — please try again"); }
@@ -1359,9 +1383,11 @@ export default function HexDuelPage() {
   }, [gameMode, multiplayerGameId, socket]);
 
   // ── Send action via socket in multiplayer mode ──────────────────
+  const actionSeqRef = useRef(0);
   const sendMultiplayerAction = useCallback((action: MultiplayerAction) => {
     if (socket && multiplayerGameId) {
-      socket.emit("hexDuel:action", { gameId: multiplayerGameId, action });
+      actionSeqRef.current += 1;
+      socket.emit("hexDuel:action", { gameId: multiplayerGameId, action: { ...action, __seq: actionSeqRef.current } });
     }
   }, [socket, multiplayerGameId]);
 
@@ -1480,12 +1506,15 @@ export default function HexDuelPage() {
     }
   }, [currentTurn, isGameOverEffective, aiThinking, clock]);
 
-  // Start clock on first turn & resume after AI finishes thinking
+  // Start clock on first turn & resume after AI finishes thinking.
+  // Uses prevTurnForClock guard to avoid re-triggering on clock updates.
   useEffect(() => {
-    if (showGame && !isGameOverEffective && !aiThinking) {
+    if (showGame && !isGameOverEffective && !aiThinking && prevTurnForClock.current !== currentTurn) {
       clock.setActivePlayer(currentTurn);
+      prevTurnForClock.current = currentTurn;
     }
-  }, [aiThinking, showGame, isGameOverEffective, clock, currentTurn]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps — setActivePlayer is stable
+  }, [aiThinking, showGame, isGameOverEffective, currentTurn]);
 
   // Format milliseconds to mm:ss
   const formatClock = (ms: number) => {
@@ -1926,16 +1955,29 @@ export default function HexDuelPage() {
     }
   }, [selectedAction, pendingActionPhase, pendingTarget, attackableTargets, getAttackSources, getDisplaceSources, capturedTiles, currentTurn, tileTroops]);
 
+  // Ref for currentAP to avoid stale closure in handleConfirmAction
+  const currentAPRef = useRef(currentAP);
+  currentAPRef.current = currentAP;
+
   const handleConfirmAction = useCallback(() => {
     if (selectedAction === "attack" && pendingSource && pendingTarget && pendingActionPhase === "inputTroops") {
       const sourceKey = `${pendingSource.x},${pendingSource.y}`;
       const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
+      // If this is the last AP, the attack will auto-end the turn.
+      // We need to also send an endTurn action to the opponent.
+      // Use ref to avoid stale closure on rapid double-clicks.
+      const willDepleteAP = currentAPRef.current <= ATTACK_COST;
       handleAttack(sourceKey, targetKey, pendingTroopCount);
       // Send action to opponent in multiplayer AND record to server
       if (gameMode === "multiplayer") {
         const action: MultiplayerAction = { type: "attack", sourceKey, targetKey, troopCount: pendingTroopCount };
         sendMultiplayerAction(action);
         recordMultiplayerAction(action);
+        if (willDepleteAP) {
+          // The attack auto-ended the turn — tell the opponent
+          sendMultiplayerAction({ type: "endTurn" });
+          recordMultiplayerAction({ type: "endTurn" });
+        }
       }
       // Reset flow
       setPendingActionPhase(null);
@@ -1946,12 +1988,17 @@ export default function HexDuelPage() {
     } else if (selectedAction === "displace" && pendingSource && pendingTarget && pendingActionPhase === "inputTroops") {
       const sourceKey = `${pendingSource.x},${pendingSource.y}`;
       const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
+      const willDepleteAP = currentAPRef.current <= DISPLACE_COST;
       handleDisplace(sourceKey, targetKey, pendingTroopCount);
       // Send action to opponent in multiplayer AND record to server
       if (gameMode === "multiplayer") {
         const action: MultiplayerAction = { type: "displace", sourceKey, targetKey, troopCount: pendingTroopCount };
         sendMultiplayerAction(action);
         recordMultiplayerAction(action);
+        if (willDepleteAP) {
+          sendMultiplayerAction({ type: "endTurn" });
+          recordMultiplayerAction({ type: "endTurn" });
+        }
       }
       // Reset flow
       setPendingActionPhase(null);
@@ -2358,7 +2405,28 @@ export default function HexDuelPage() {
                   </div>
                 )}
               </div>
-              <div className="order-1 lg:order-2 flex justify-center overflow-x-auto overflow-y-hidden px-1 sm:px-2 -mx-1 sm:-mx-2" style={{ scrollbarWidth: "none" }}>
+              <div className="order-1 lg:order-2 flex flex-col items-center w-full">
+                {/* Waiting overlay for opponent's turn in multiplayer */}
+                {gameMode === "multiplayer" && !isLocalTurn && !isGameOver && opponentReady && (
+                  <div
+                    className="relative z-20 mb-3 w-full max-w-md mx-auto rounded-xl border border-red-500/20 bg-gradient-to-b from-[#071230]/90 to-[#0a1a3f]/80 backdrop-blur-md p-4 text-center"
+                    style={{ animation: "waitingFadeIn 0.4s ease-out, waitingPulse 2s ease-in-out infinite" }}
+                  >
+                    <div className="flex items-center justify-center gap-3">
+                      <span
+                        className="inline-block w-5 h-5 rounded-full border-2 border-red-400/30 border-t-red-400"
+                        style={{ animation: "waitingSpin 0.8s linear infinite" }}
+                      />
+                      <span className="text-xs font-bold uppercase tracking-[0.15em] text-red-300">
+                        Waiting for opponent...
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-[10px] text-slate-500">
+                      {opponentLabel} is planning their next move
+                    </p>
+                  </div>
+                )}
+                <div className="flex justify-center overflow-x-auto overflow-y-hidden px-1 sm:px-2 -mx-1 sm:-mx-2" style={{ scrollbarWidth: "none" }}>
                 <HexBoard
                   grid={grid}
                   selectedTile={selectedTile}
@@ -2366,7 +2434,7 @@ export default function HexDuelPage() {
                   recentlyCaptured={recentlyCaptured}
                   disabled={
   isGameOver || isSpectator ||
-  (aiThinking && currentTurn === "player2")
+  (aiThinking && currentTurn === "player2") 
 }
                   attackHighlightKeys={
   isGameOver || (aiThinking && currentTurn === "player2")
@@ -2383,6 +2451,7 @@ export default function HexDuelPage() {
     : sourceHighlightKeys
 }
                 />
+              </div>
               </div>
               <div className="order-3 w-full max-w-xs mx-auto lg:mx-0 space-y-3">
                 <PlayerCard

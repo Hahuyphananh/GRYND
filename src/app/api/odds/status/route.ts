@@ -9,6 +9,13 @@ export async function GET(req: Request) {
     const { userId } = await auth();
     if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json(
+        { success: false, error: "Database not available" },
+        { status: 503 },
+      );
+    }
+
 
     const url = new URL(req.url);
     const gameId = Number(url.searchParams.get("gameId"));

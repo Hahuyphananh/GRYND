@@ -10,6 +10,13 @@ export async function GET() {
     const { userId } = await auth();
     if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json(
+        { success: false, error: "Database not available" },
+        { status: 503 },
+      );
+    }
+
 
     // Find the user's most recent active interactive PvP game
     const [game] = await db

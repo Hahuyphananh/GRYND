@@ -678,6 +678,19 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     const roomId = `odds_${myGameId}`;
     socket.emit("join_room", { roomId }); // ensure joined
 
+    // Direct game state update from opponent (no refetch needed)
+    const handleGameUpdate = (data: any) => {
+      if (!mountedRef.current) return;
+      if (data?.gameState) {
+        applyStateFromServer({
+          gameState: data.gameState,
+          payout: data.payout,
+          wager: data.wager ?? (wagerLocked ?? wager),
+        });
+      }
+    };
+
+    // Fallback: refetch state when opponent triggers a change
     const handler = async () => {
       const gid = myGameIdRef.current;
       if (!gid) return;
@@ -690,12 +703,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       } catch {}
     };
 
+    socket.on("odds:game_update", handleGameUpdate);
     socket.on("odds:state_changed", handler);
     return () => {
+      socket.off("odds:game_update", handleGameUpdate);
       socket.off("odds:state_changed", handler);
       socket.emit("leave_room", { roomId });
     };
-  }, [socket, myGameId, interactiveState, applyStateFromServer]);
+  }, [socket, myGameId, interactiveState, applyStateFromServer, wagerLocked, wager]);
 
   // ── Create / Join / Cancel ──
   const createGame = async () => {
@@ -893,11 +908,16 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
           setWaitingForOpponent(true);
         }
 
-        // Notify opponent via socket
+        // Notify opponent via socket with full game state
         if (socket && myGameId) {
           socket.emit("room_event", {
             roomId: `odds_${myGameId}`,
-            event: "odds:state_changed",
+            event: "odds:game_update",
+            payload: {
+              gameState: data.data.gameState,
+              payout: data.data.payout,
+              wager: wagerLocked ?? wager,
+            },
           });
         }
       } catch (err: any) {
