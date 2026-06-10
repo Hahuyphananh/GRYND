@@ -1263,7 +1263,6 @@ export default function HexDuelPage() {
       setConnectionStatus("connected");
       // Re-emit join to re-establish room presence
       socket.emit("hexDuel:join", { gameId: multiplayerGameId });
-      socket.emit("join_game", { gameId: multiplayerGameId });
     };
 
     // Listen for state sync requests (from opponent whose socket dropped)
@@ -1290,17 +1289,19 @@ export default function HexDuelPage() {
     socket.on("hexDuel:syncState", handleSyncState);
     socket.on("disconnect", handleSocketDisconnect);
     socket.on("connect", handleSocketConnect);
+    // Only emit hexDuel:join — the server handles all room join logic.
+    // join_game is deprecated and kept as a no-op stub on the server.
     socket.emit("hexDuel:join", { gameId: multiplayerGameId });
-    socket.emit("join_game", { gameId: multiplayerGameId });
 
     // ── Self-healing polling: re-emit join until opponent is detected ──
-    // Handles missed ready events, reconnections, and Strict Mode races
+    // Polling interval increased from 2s → 5s to reduce server load.
+    // HTTP polling (every 3s) serves as a faster fallback when socket events
+    // are missed; this poll is a last-resort reconnection safety net.
     const readyPoll = setInterval(() => {
       if (!opponentReadyRef.current && socket.connected) {
         socket.emit("hexDuel:join", { gameId: multiplayerGameId });
-        socket.emit("join_game", { gameId: multiplayerGameId });
       }
-    }, 2000);
+    }, 5000);
 
     return () => {
       clearInterval(readyPoll);
@@ -1368,17 +1369,16 @@ export default function HexDuelPage() {
     }
   }, [gameMode, multiplayerGameId, opponentReady]);
 
-  // Mark local player as ready after joining room (allows time for socket to connect)
+  // Mark local player as ready after joining — emit immediately to avoid
+  // unnecessary delay. The socket may not be connected yet on first render,
+  // but the main socket effect (above) also emits hexDuel:join when it runs,
+  // so the join will still succeed once the socket connects.
   useEffect(() => {
     if (gameMode === "multiplayer" && multiplayerGameId && !multiplayerJoinedRef.current) {
-      const timer = setTimeout(() => {
-        multiplayerJoinedRef.current = true;
-        // Notify the other player we're ready
-        if (socket) {
-          socket.emit("hexDuel:join", { gameId: multiplayerGameId });
-        }
-      }, 500);
-      return () => clearTimeout(timer);
+      multiplayerJoinedRef.current = true;
+      if (socket) {
+        socket.emit("hexDuel:join", { gameId: multiplayerGameId });
+      }
     }
   }, [gameMode, multiplayerGameId, socket]);
 
@@ -2133,7 +2133,6 @@ export default function HexDuelPage() {
                 socket.connect();
                 if (multiplayerGameId) {
                   socket.emit("hexDuel:join", { gameId: multiplayerGameId });
-                  socket.emit("join_game", { gameId: multiplayerGameId });
                 }
               }
             }}
@@ -2206,7 +2205,6 @@ export default function HexDuelPage() {
                 socket.connect();
                 if (multiplayerGameId) {
                   socket.emit("hexDuel:join", { gameId: multiplayerGameId });
-                  socket.emit("join_game", { gameId: multiplayerGameId });
                 }
               }
             }}
