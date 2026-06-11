@@ -649,12 +649,22 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     myGameIdRef.current = myGameId;
   }, [myGameId]);
 
-  // ── Socket: join game room when game starts, leave only on unmount or game over ──
+  // ── Socket: join game room and handle reconnects ──
   useEffect(() => {
     if (!socket || !myGameId) return;
     const roomId = `odds_${myGameId}`;
-    socket.emit("join_room", { roomId });
+
+    const join = () => {
+      socket.emit("join_room", { roomId });
+    };
+
+    join();
+    socket.on("connect", join);
+    socket.on("reconnect", join);
+
     return () => {
+      socket.off("connect", join);
+      socket.off("reconnect", join);
       socket.emit("leave_room", { roomId });
     };
   }, [socket, myGameId]);
@@ -732,9 +742,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 
     socket.on("odds:game_update", handleGameUpdate);
     socket.on("odds:state_changed", handler);
+    
+    // Polling fallback to handle missed socket events
+    const pollInterval = setInterval(handler, 3000);
+
     return () => {
       socket.off("odds:game_update", handleGameUpdate);
       socket.off("odds:state_changed", handler);
+      clearInterval(pollInterval);
     };
   }, [socket, myGameId, applyStateFromServer]);
 
