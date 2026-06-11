@@ -195,11 +195,21 @@ io.on("connection", (socket) => {
     const roomId = String(gameId);
     const userId = socket.data.userId;
 
-    // Validate this is a known room
+    // Always relay to the room — if the opponent is temporarily disconnected,
+    // they will catch up via action polling. The old room-size check caused
+    // actions to be silently dropped during brief reconnect windows.
     const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
     if (!socketsInRoom || socketsInRoom.size < 2) {
-      socket.emit("hexDuel:error", { message: "Waiting for opponent to connect" });
-      return;
+      // Still relay (non-blocking) — the opponent may reconnect shortly
+      // and the client-side polling will catch any missed actions.
+      console.warn(
+        "[hex-duel] relaying action to room with < 2 sockets:",
+        roomId,
+        "action:",
+        action.type,
+        "sockets:",
+        socketsInRoom?.size ?? 0,
+      );
     }
 
     // Track the action with a sequence counter to prevent accidental

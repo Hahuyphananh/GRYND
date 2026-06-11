@@ -1,4 +1,4 @@
-import { renderTemplate, sendEmailSafely, ADMIN_EMAIL, CONTACT_FORM_FROM } from "./base";
+import { renderTemplate, sendEmailSafely, ADMIN_EMAIL, getFromAddress } from "./base";
 
 /**
  * Sends a notification to the admin when a user submits the contact form.
@@ -28,7 +28,7 @@ export async function sendContactFormEmail(params: {
     type: "contact_form",
     category: "transactional",
     dedupeKey: `contact:${params.senderEmail}:${hourKey}`,
-    from: CONTACT_FORM_FROM,
+    from: getFromAddress(),
     subject: "New Contact Form Message",
     html: renderTemplate("New Contact Form Message", body),
   });

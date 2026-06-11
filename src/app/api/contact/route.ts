@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendContactFormEmail } from "../../../lib/emails/contact";
+import { getFromAddress } from "../../../lib/emails/base";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,9 @@ export async function POST(request: NextRequest) {
         { status: 503 },
       );
     }
+
+    // Log the from address being used to help debug domain verification issues
+    console.log("[api/contact] Using from address:", getFromAddress());
 
     const body = await request.json();
     const { email, name, message } = body;
@@ -67,6 +71,7 @@ export async function POST(request: NextRequest) {
       };
       console.error(
         `[api/contact] Email send skipped — reason: ${result.reason}`,
+        "details" in result ? (result as any).details : "",
       );
       const mapped = reasonMap[result.reason] || { status: 500, message: "Failed to send message. Please try again later." };
       return NextResponse.json(

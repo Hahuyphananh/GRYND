@@ -1,6 +1,7 @@
 import { resend } from "../../../../lib/resend";
 import { db } from "../../../../db";
 import { emailEvents } from "../../../../db/schema";
+import { getFromAddress } from "../../../../lib/emails/base";
 
 // POST /api/email/test — Sends a verification test email via Resend.
 // Use this endpoint to validate backend email sending is configured correctly.
@@ -8,7 +9,7 @@ export async function POST() {
   const to = "huyphananhha@gmail.com";
 
   const { data, error } = await resend.emails.send({
-    from: "GoonBet <noreply@mail.goonbet.dedyn.io>",
+    from: getFromAddress(),
     to,
     subject: "System Test",
     html: "<p>This is a backend verification test for automatic email sending.</p>",
