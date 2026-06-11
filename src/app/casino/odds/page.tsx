@@ -547,7 +547,11 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const mountedRef = useRef(true);
   const myGameIdRef = useRef<number | null>(null);
   const gameOverRef = useRef(false);
+  const isPlayer1Ref = useRef(true);
+  const wagerLockedRef = useRef<number | null>(null);
   gameOverRef.current = gameOver;
+  isPlayer1Ref.current = isPlayer1;
+  wagerLockedRef.current = wagerLocked;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -632,14 +636,15 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     myGameIdRef.current = myGameId;
   }, [myGameId]);
 
-  // ── Socket: auto join/leave game room based on myGameId ──
+  // ── Socket: join game room when game starts, leave only on unmount or game over ──
   useEffect(() => {
-    if (!socket || !myGameId || interactiveState) return;
-    // Only join the game room when waiting (no interactive state yet)
-    // Once interactiveState is set, the game is in "playing" phase
+    if (!socket || !myGameId) return;
     const roomId = `odds_${myGameId}`;
     socket.emit("join_room", { roomId });
-  }, [socket, myGameId, interactiveState]);
+    return () => {
+      socket.emit("leave_room", { roomId });
+    };
+  }, [socket, myGameId]);
 
   // Apply server state to local state
   const applyStateFromServer = useCallback(
@@ -648,12 +653,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       const st = serverData.gameState as PvPInteractiveState | null;
       if (!st) return;
 
+      const myIsPlayer1 = isPlayer1Ref.current;
+
       setInteractiveState(st);
       setRoundHistory(st.rounds ?? []);
       setWaitingForOpponent(
         !st.gameOver &&
-          ((isPlayer1 && st.player1Pick !== null && st.player2Pick === null) ||
-            (!isPlayer1 && st.player2Pick !== null && st.player1Pick === null)),
+          ((myIsPlayer1 && st.player1Pick !== null && st.player2Pick === null) ||
+            (!myIsPlayer1 && st.player2Pick !== null && st.player1Pick === null)),
       );
       setPickValue("");
       setTimeLeft(PICK_TIMER_SECONDS);
@@ -668,8 +675,8 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         );
         setFinalPayout(serverData.payout ?? serverData.wager * 2);
         const iWon =
-          (isPlayer1 && st.winner === "player1") ||
-          (!isPlayer1 && st.winner === "player2");
+          (myIsPlayer1 && st.winner === "player1") ||
+          (!myIsPlayer1 && st.winner === "player2");
         if (iWon) {
           setTimeout(() => celebrateWin(), 400);
           setTimeout(() => audio.playVictory(), 200);
@@ -678,14 +685,12 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         }
       }
     },
-    [isPlayer1],
+    [],
   );
 
   // ── Socket: listen for opponent events when playing ──
   useEffect(() => {
-    if (!socket || !myGameId || !interactiveState) return;
-    const roomId = `odds_${myGameId}`;
-    socket.emit("join_room", { roomId }); // ensure joined
+    if (!socket || !myGameId) return;
 
     // Direct game state update from opponent (no refetch needed)
     const handleGameUpdate = (data: any) => {
@@ -694,7 +699,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         applyStateFromServer({
           gameState: data.gameState,
           payout: data.payout,
-          wager: data.wager ?? (wagerLocked ?? wager),
+          wager: data.wager ?? (wagerLockedRef.current ?? 50),
         });
       }
     };
@@ -717,9 +722,8 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     return () => {
       socket.off("odds:game_update", handleGameUpdate);
       socket.off("odds:state_changed", handler);
-      socket.emit("leave_room", { roomId });
     };
-  }, [socket, myGameId, interactiveState, applyStateFromServer, wagerLocked, wager]);
+  }, [socket, myGameId, applyStateFromServer]);
 
   // ── Create / Join / Cancel ──
   const createGame = async () => {
@@ -889,7 +893,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 
         if (!mountedRef.current) return;
 
-        await applyStateFromServer({
+        applyStateFromServer({
           gameState: data.data.gameState,
           payout: data.data.payout,
           wager: wagerLocked ?? wager,
@@ -920,14 +924,22 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 
         // Notify opponent via socket with full game state
         if (socket && myGameId) {
+          const payloadToSend = {
+            gameState: data.data.gameState,
+            payout: data.data.payout,
+            wager: wagerLocked ?? wager,
+          };
+          // Primary: direct state push to opponent
           socket.emit("room_event", {
             roomId: `odds_${myGameId}`,
             event: "odds:game_update",
-            payload: {
-              gameState: data.data.gameState,
-              payout: data.data.payout,
-              wager: wagerLocked ?? wager,
-            },
+            payload: payloadToSend,
+          });
+          // Fallback: trigger opponent to refetch from API
+          socket.emit("room_event", {
+            roomId: `odds_${myGameId}`,
+            event: "odds:state_changed",
+            payload: {},
           });
         }
       } catch (err: any) {
@@ -1578,35 +1590,71 @@ function OddsGameDisplay({
         })}
       </div>
 
-      {/* Game over result */}
+      {/* Game over popup */}
       <AnimatePresence>
         {gameOver && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: "spring", stiffness: 200, damping: 15 }}
-            className={`rounded-2xl border p-6 text-center ${
-              userWon
-                ? "border-yellow-400/40 bg-gradient-to-b from-yellow-900/30 to-black/50 shadow-[0_0_30px_rgba(250,204,21,0.3)]"
-                : "border-red-400/20 bg-gradient-to-b from-red-900/20 to-black/50"
-            }`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           >
-            <p className="text-5xl mb-2">{userWon ? "🏆" : "😞"}</p>
-            <p className={`text-2xl font-black ${userWon ? "text-yellow-400" : "text-red-400"}`}>
-              {userWon ? "You Win!" : "You Lose"}
-            </p>
-            <p className="text-sm text-white/50 mt-1">
-              {userWon ? `Payout: ${payout} 🪙` : `${oppLabel} wins the pot of ${payout} 🪙`}
-            </p>
-            <p className="text-xs text-white/30 mt-1">
-              Total rounds: {gameState.totalRounds}
-            </p>
-            <button
-              onClick={onPlayAgain}
-              className="mt-4 w-full rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 px-6 py-3 font-bold text-black shadow-lg transition-all hover:scale-105"
+            <motion.div
+              initial={{ opacity: 0, scale: 0.6, y: 40 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.6, y: 40 }}
+              transition={{ type: "spring", stiffness: 250, damping: 20, delay: 0.1 }}
+              className={`mx-4 w-full max-w-sm rounded-2xl border-2 p-8 text-center ${
+                userWon
+                  ? "border-yellow-400/50 bg-gradient-to-b from-yellow-900/60 via-[#0a1a3a]/95 to-black/95 shadow-[0_0_60px_rgba(250,204,21,0.4)]"
+                  : "border-red-400/40 bg-gradient-to-b from-red-900/50 via-[#0a1a3a]/95 to-black/95 shadow-[0_0_60px_rgba(239,68,68,0.3)]"
+              }`}
             >
-              Play Again
-            </button>
+              <motion.div
+                animate={userWon ? { scale: [1, 1.2, 1] } : {}}
+                transition={{ duration: 0.5, delay: 0.3 }}
+              >
+                <p className="text-6xl mb-3">{userWon ? "🏆" : "😞"}</p>
+              </motion.div>
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className={`text-3xl font-black ${
+                  userWon ? "text-yellow-400" : "text-red-400"
+                }`}
+              >
+                {userWon ? "You Win!" : "You Lose"}
+              </motion.p>
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.35 }}
+                className="text-sm text-white/50 mt-3"
+              >
+                {userWon
+                  ? `Payout: ${payout} 🪙`
+                  : `${oppLabel} wins the pot of ${payout} 🪙`}
+              </motion.p>
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.4 }}
+                className="text-xs text-white/30 mt-1 mb-6"
+              >
+                Total rounds: {gameState.totalRounds}
+              </motion.p>
+              <motion.button
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+                onClick={onPlayAgain}
+                className="w-full rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 px-6 py-3 font-bold text-black shadow-lg transition-all hover:scale-105 hover:shadow-[0_0_20px_rgba(250,204,21,0.5)]"
+              >
+                Play Again
+              </motion.button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -1,4 +1,4 @@
-import { renderTemplate, sendEmailSafely, ADMIN_EMAIL, CONTACT_FORM_FROM } from "./base";
+import { renderTemplate, sendEmailSafely, ADMIN_EMAIL, getFromAddress } from "./base";
 
 export type SystemEventType =
   | "bet_placed"
@@ -39,7 +39,7 @@ export async function sendSystemNotificationEmail(params: {
     },
     type: "system_notification",
     category: "transactional",
-    from: CONTACT_FORM_FROM,
+    from: getFromAddress(),
     subject: `System Notification — ${label}`,
     html: renderTemplate("System Notification", body),
   });

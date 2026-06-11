@@ -1195,11 +1195,28 @@ export default function HexDuelPage() {
 
   // ── Socket connection for multiplayer ──────────────────────────
 
-  // Join and listen to the multiplayer game room
+  // ── Socket: join game room when game starts, leave only on unmount/game reset ──
   useEffect(() => {
     if (!socket || !multiplayerGameId || isSpectator) return;
-
     const roomId = String(multiplayerGameId);
+    socket.emit("hexDuel:join", { gameId: multiplayerGameId });
+
+    // Self-healing polling: re-emit join until opponent is detected
+    const readyPoll = setInterval(() => {
+      if (!opponentReadyRef.current && socket.connected) {
+        socket.emit("hexDuel:join", { gameId: multiplayerGameId });
+      }
+    }, 5000);
+
+    return () => {
+      clearInterval(readyPoll);
+      socket.emit("leave_game", { gameId: multiplayerGameId });
+    };
+  }, [socket, multiplayerGameId, isSpectator]);
+
+  // ── Socket: listen for opponent events ──────────────────────────
+  useEffect(() => {
+    if (!socket || !multiplayerGameId || isSpectator) return;
 
     // Listen for opponent actions
     const handleOpponentAction = (data: { action: MultiplayerAction }) => {
@@ -1216,7 +1233,6 @@ export default function HexDuelPage() {
 
     // Listen for opponent resignation
     const handleOpponentResigned = () => {
-      // Opponent resigned → local player wins
       if (!isGameOverRef.current) {
         const winnerP = isPlayer1 ? "player2" : "player1";
         setWinnerOverride(winnerP);
@@ -1227,14 +1243,12 @@ export default function HexDuelPage() {
     const handleOpponentDisconnected = () => {
       if (!isGameOverRef.current) {
         setConnectionStatus("opponent_disconnected");
-        // Auto-dismiss banner after 5 seconds
         if (connectionTimerRef.current) clearTimeout(connectionTimerRef.current);
         connectionTimerRef.current = setTimeout(() => {
           setConnectionStatus("connected");
         }, 5000);
 
         if (!opponentReadyRef.current) {
-          // Game hasn't started yet — bail to lobby after brief delay so player sees the message
           setTimeout(() => {
             if (!isGameOverRef.current) handleRestart();
           }, 2000);
@@ -1261,7 +1275,6 @@ export default function HexDuelPage() {
     // Listen for socket reconnect
     const handleSocketConnect = () => {
       setConnectionStatus("connected");
-      // Re-emit join to re-establish room presence
       socket.emit("hexDuel:join", { gameId: multiplayerGameId });
     };
 
@@ -1289,22 +1302,8 @@ export default function HexDuelPage() {
     socket.on("hexDuel:syncState", handleSyncState);
     socket.on("disconnect", handleSocketDisconnect);
     socket.on("connect", handleSocketConnect);
-    // Only emit hexDuel:join — the server handles all room join logic.
-    // join_game is deprecated and kept as a no-op stub on the server.
-    socket.emit("hexDuel:join", { gameId: multiplayerGameId });
-
-    // ── Self-healing polling: re-emit join until opponent is detected ──
-    // Polling interval increased from 2s → 5s to reduce server load.
-    // HTTP polling (every 3s) serves as a faster fallback when socket events
-    // are missed; this poll is a last-resort reconnection safety net.
-    const readyPoll = setInterval(() => {
-      if (!opponentReadyRef.current && socket.connected) {
-        socket.emit("hexDuel:join", { gameId: multiplayerGameId });
-      }
-    }, 5000);
 
     return () => {
-      clearInterval(readyPoll);
       socket.off("hexDuel:action", handleOpponentAction);
       socket.off("hexDuel:opponent:ready", handleOpponentReady);
       socket.off("hexDuel:opponent:resigned", handleOpponentResigned);
@@ -1314,10 +1313,9 @@ export default function HexDuelPage() {
       socket.off("hexDuel:syncState", handleSyncState);
       socket.off("disconnect", handleSocketDisconnect);
       socket.off("connect", handleSocketConnect);
-      socket.emit("leave_game", { gameId: multiplayerGameId });
       if (connectionTimerRef.current) clearTimeout(connectionTimerRef.current);
     };
-  }, [socket, multiplayerGameId, isPlayer1, effectiveWinner]);
+  }, [socket, multiplayerGameId, isSpectator]);
 
   // ── Polling fallback: detect both players joined even if socket event is missed ──
   // Uses opponentReadyRef to avoid unnecessary effect re-runs
@@ -1782,9 +1780,56 @@ export default function HexDuelPage() {
       }
     };
 
-    // Poll every 2 seconds (matching dice duel's 1.5s poll frequency)
+    // Poll every 1.5 seconds (faster catch-up for missed socket events)
     pollActions();
-    const interval = setInterval(pollActions, 2000);
+    const interval = setInterval(pollActions, 1500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [gameMode, multiplayerGameId, opponentReady, effectiveWinner]);
+
+  // ── Turn-status polling: last-resort sync for when socket events are missed ──
+  // Periodically checks the server-stored currentTurn and applies a missed
+  // opponent endTurn if the server says it's our turn but locally it isn't.
+  const localTurnRef = useRef(currentTurn);
+  localTurnRef.current = currentTurn;
+  const isPlayer1Ref = useRef(isPlayer1);
+  isPlayer1Ref.current = isPlayer1;
+  useEffect(() => {
+    if (gameMode !== "multiplayer" || !multiplayerGameId || !opponentReadyRef.current || isGameOverRef.current) return;
+
+    let cancelled = false;
+
+    const pollTurn = async () => {
+      try {
+        const res = await fetch(
+          `/api/hex-duel/multiplayer/status?gameId=${multiplayerGameId}`,
+          { credentials: "include" },
+        );
+        const data = await res.json();
+        if (cancelled || !data?.success || !data.game?.currentTurn) return;
+
+        const serverTurn = data.game.currentTurn as DuelPlayer;
+        const myTurn: DuelPlayer = isPlayer1Ref.current ? "player1" : "player2";
+
+        // Only apply the missed endTurn when the server says it's our turn
+        // but locally we think it's still the opponent's (we missed their endTurn).
+        if (
+          serverTurn === myTurn &&
+          localTurnRef.current !== myTurn &&
+          !isGameOverRef.current
+        ) {
+          applyRemoteActionRef.current({ type: "endTurn" });
+        }
+      } catch {
+        // Ignore poll errors
+      }
+    };
+
+    pollTurn();
+    const interval = setInterval(pollTurn, 2000);
 
     return () => {
       cancelled = true;

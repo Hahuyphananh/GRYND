@@ -12,9 +12,21 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null
   return Promise.race([promise, timer]);
 }
 
-export const EMAIL_FROM = "GoonBet <noreply@mail.goonbet.dedyn.io>";
+/** Resend shared test domain — always works without domain verification.
+ *  NOTE: Resend's test domain only delivers to verified identities in the Resend dashboard.
+ *  Set RESEND_FROM_EMAIL env var to use a custom verified domain in production. */
+const RESEND_TEST_DOMAIN = "onboarding@resend.dev";
+
+/** Returns the from address at call time (reads env var fresh each call). */
+export function getFromAddress(): string {
+  const custom = process.env.RESEND_FROM_EMAIL?.trim();
+  if (custom) {
+    return custom.includes("<") ? custom : `GoonBet <${custom}>`;
+  }
+  return `GoonBet <${RESEND_TEST_DOMAIN}>`;
+}
+
 export const ADMIN_EMAIL = "phananhalbert@gmail.com";
-export const CONTACT_FORM_FROM = "GoonBet <noreply@mail.goonbet.dedyn.io>";
 
 type UserRef = {
   id?: number;
@@ -39,7 +51,7 @@ export async function sendEmailSafely({
   type: string;
   category?: "marketing" | "transactional" | "security";
   dedupeKey?: string;
-  /** Override the default sender address. Defaults to EMAIL_FROM. */
+  /** Override the default sender address. Defaults to getFromAddress(). */
   from?: string;
 }) {
   if (!user?.email) return { skipped: true, reason: "missing_email" };
@@ -88,7 +100,7 @@ export async function sendEmailSafely({
   let error: { message?: string; name?: string } | null = null;
   try {
     const result = await resend.emails.send({
-      from: from ?? EMAIL_FROM,
+      from: from ?? getFromAddress(),
       to: user.email,
       subject,
       html,
@@ -119,7 +131,7 @@ export async function sendEmailSafely({
     console.warn("[sendEmailSafely] Event logging failed (non-blocking):", (dbErr as Error).message);
   }
 
-  return error ? { skipped: true, reason: "provider_error" } : { sent: true };
+  return error ? { skipped: true, reason: "provider_error", details: error.message || JSON.stringify(error) } : { sent: true };
 }
 
 export function renderTemplate(
