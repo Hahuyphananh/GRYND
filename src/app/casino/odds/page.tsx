@@ -216,18 +216,31 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       }
 
       if (data.data.gameStatus === "finished") {
+        const winner = updatedState.winner || (data.data.matched ? updatedState.currentStarter : "player2");
+        const isPlayer1Win = winner === "player1";
+        
+        // Block further picks immediately
         setGameOver(true);
         gameOverRef.current = true;
-        setFinalWinner(updatedState.winner!);
-        setFinalResult(
-          updatedState.winner === "player1" ? "player1_won" : "player2_won",
-        );
-        setFinalPayout(data.data.payout);
-        if (updatedState.winner === "player1") {
-          setTimeout(() => celebrateWin(), 400);
-          setTimeout(() => audio.playVictory(), 200);
+        autoPickTriggeredRef.current = true;
+
+        setFinalWinner(winner as "player1" | "player2");
+        setFinalResult(isPlayer1Win ? "player1_won" : "player2_won");
+        setFinalPayout(data.data.payout || 0);
+        
+        if (isPlayer1Win) {
+          setTimeout(() => {
+            if (mountedRef.current) {
+              celebrateWin();
+              audio.playVictory();
+            }
+          }, 400);
         } else {
-          setTimeout(() => audio.playDefeat(), 200);
+          setTimeout(() => {
+            if (mountedRef.current) {
+              audio.playDefeat();
+            }
+          }, 200);
         }
       }
     } catch (err: any) {
