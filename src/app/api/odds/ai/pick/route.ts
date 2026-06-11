@@ -79,19 +79,12 @@ export async function POST(req: Request) {
           })
           .where(eq(oddsGames.id, gameId));
 
-        // Track leaderboard
-        await applyLeaderboardCounters({
-          clerkId: userId,
-          game: "odds",
-          betAmount: game.wager,
-          payout: player1Won ? payout : 0,
-        }).catch(() => {});
-
         return {
           pickResult,
           gameStatus: "finished" as const,
           player1Won,
           payout,
+          wager: game.wager,
         };
       }
 
@@ -108,6 +101,16 @@ export async function POST(req: Request) {
         payout: 0,
       };
     });
+
+    // Track leaderboard OUTSIDE the transaction to avoid deadlocks
+    if (result.gameStatus === "finished") {
+      await applyLeaderboardCounters({
+        clerkId: userId,
+        game: "odds",
+        betAmount: (result as any).wager,
+        payout: result.player1Won ? result.payout : 0,
+      }).catch((err) => console.error("Leaderboard error:", err));
+    }
 
     return NextResponse.json({
       success: true,
