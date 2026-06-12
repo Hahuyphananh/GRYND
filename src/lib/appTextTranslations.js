@@ -78,6 +78,7 @@ export const APP_TEXT_TRANSLATIONS = {
       rps_desc: "Bet your tokens in this fast strategic game.",
       dice_duel_desc: "Turn-based 1v1 dice combat. Outroll your rival and claim the pot!",
       yahtzee_desc: "Server-authoritative Yahtzee with PvP wagering or instant AI battles.",
+      dice_flush_desc: "Roll five dice, lock in combos, and outscore your rival in this strategic dice showdown.",
       odds_desc: "Two players pick numbers in a shrinking range. Match and the receiver loses! Max halves from 100 → 50 → 25 → 12 → 6 → 3 → 2.",
       odds_name: "Odds",
       farkle_desc: "Roll dice, bank points, and race to 10,000 against the AI in this classic risk-reward game.",
@@ -346,6 +347,8 @@ export const APP_TEXT_TRANSLATIONS = {
         "Combat 1v1 au dé en tour par tour. Surpasse ton rival et empoche la cagnotte !",
       yahtzee_desc:
         "Yahtzee autoritaire côté serveur avec mises JcJ ou affrontements IA instantanés.",
+      dice_flush_desc:
+        "Lancez cinq dés, verrouillez vos combinaisons, et surpassez votre rival dans ce jeu de dés stratégique.",
       odds_desc: "Deux joueurs choisissent des nombres dans une plage qui rétrécit. Égalité et le receveur perd ! Max diminue de 100 → 50 → 25 → 12 → 6 → 3 → 2.",
       odds_name: "Cotes",
       farkle_desc: "Lancez les dés, sécurisez vos points et foncez vers 10 000 contre l'IA dans ce jeu classique à risque.",
@@ -613,6 +616,8 @@ export const APP_TEXT_TRANSLATIONS = {
       dice_duel_desc: "Duelo 1v1 por turnos con dados. Supera a tu rival y gana el bote.",
       yahtzee_desc:
         "Yahtzee autoritativo del servidor con apuestas JcJ o partidas instantáneas contra IA.",
+      dice_flush_desc:
+        "Lanza cinco dados, bloquea combinaciones y supera a tu rival en este estratégico duelo de dados.",
       odds_desc: "Dos jugadores eligen números en un rango que se reduce. ¡Empate y el receptor pierde! El máximo se reduce: 100 → 50 → 25 → 12 → 6 → 3 → 2.",
       odds_name: "Probabilidades",
       farkle_desc: "Tira los dados, asegura tus puntos y corre hacia los 10,000 contra la IA en este clásico juego de riesgo.",

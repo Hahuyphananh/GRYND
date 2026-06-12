@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { appendAction, db, eq, holdDice, loadRoom, requireUser, validateMove, yahtzeeRooms } from "../_lib";
+import { appendAction, db, eq, holdDice, loadRoom, requireUser, validateMove, diceFlushRooms } from "../_lib";
 
 export async function POST(req) {
   try {
@@ -10,7 +10,7 @@ export async function POST(req) {
       const state = room.gameState;
       validateMove(state, userId, "hold_dice", { heldDice });
       const updated = holdDice(state, heldDice);
-      await tx.update(yahtzeeRooms).set({ gameState: updated }).where(eq(yahtzeeRooms.id, roomId));
+      await tx.update(diceFlushRooms).set({ gameState: updated }).where(eq(diceFlushRooms.id, roomId));
       await appendAction(tx, roomId, userId, "hold_dice", { heldDice });
       return updated;
     });

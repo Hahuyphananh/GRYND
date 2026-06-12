@@ -320,34 +320,23 @@ export function useHexDuel() {
   }, [winner, currentTurn, applyTroopGrowth, addActionLog, switchTurn]);
 
   // ── Attack action ─────────────────────────────────────────────────
+  //
+  // _applyAttackRaw: applies the raw tile state changes for an attack
+  // without any validation. Used by both handleAttack (after local
+  // validation) and applyRemoteAction (where the sender already validated).
+  // Reads current state from closure (same as handleAttack did before),
+  // which is safe because the closure is always up-to-date via useCallback
+  // dependencies on capturedTiles and tileTroops.
 
-  const handleAttack = useCallback(
-    (sourceKey: string, targetKey: string, troopCount: number) => {
-      if (winner) return;
-      if (currentAP < ATTACK_COST) return;
-
-      const sourceOwner = capturedTiles[sourceKey];
-      const targetOwner = capturedTiles[targetKey];
-      const enemy = otherPlayer(currentTurn);
-
-      // Validate: target must be enemy-owned or neutral (unowned)
-      if (sourceOwner !== currentTurn) return;
-      if (targetOwner === currentTurn) return; // can't attack own tiles
-      if (targetOwner !== undefined && targetOwner !== enemy) return;
-      if (!areAdjacent(sourceKey, targetKey)) return;
-
-      const sourceTroops = tileTroops[sourceKey] ?? 1;
-      if (sourceTroops < troopCount + 1) return; // leave at least 1
-      if (troopCount <= 0) return;
-
-      // Neutral/unowned tiles have 0 troops; enemy tiles use their actual troop count
-      const targetTroops = capturedTiles[targetKey] === undefined ? 0 : (tileTroops[targetKey] ?? 1);
-
+  const _applyAttackRaw = useCallback(
+    (sourceKey: string, targetKey: string, troopCount: number, attacker: DuelPlayer) => {
       const [sx, sy] = sourceKey.split(",").map(Number);
       const [tx, ty] = targetKey.split(",").map(Number);
+      const enemy = otherPlayer(attacker);
 
-      // Deduct AP
-      const newAP = currentAP - ATTACK_COST;
+      const sourceTroops = tileTroops[sourceKey] ?? 1;
+      const targetOwner = capturedTiles[targetKey];
+      const targetTroops = targetOwner === undefined ? 0 : (tileTroops[targetKey] ?? 1);
 
       // Source loses troops
       setTileTroops((prev) => ({
@@ -357,22 +346,21 @@ export function useHexDuel() {
 
       if (troopCount > targetTroops) {
         // ── CONQUER! ─────────────────────────────────────────────
-        // Surviving troops = attacking troops minus defender troops
         const remainingTroops = troopCount - targetTroops;
         setCapturedTiles((prev) => ({
           ...prev,
-          [targetKey]: currentTurn,
+          [targetKey]: attacker,
         }));
         setTileTroops((prev) => ({
           ...prev,
-          [targetKey]: remainingTroops, // surviving troops after battle
+          [targetKey]: remainingTroops,
         }));
 
         setRecentlyCaptured([targetKey]);
         setCombatFlash([sourceKey, targetKey]);
 
         addActionLog({
-          player: currentTurn,
+          player: attacker,
           type: "attack",
           source: { x: sx, y: sy },
           target: { x: tx, y: ty },
@@ -382,10 +370,10 @@ export function useHexDuel() {
 
         // Check if conquered tile is the enemy's capital
         if (capitals[targetKey] === enemy) {
-          setWinner(currentTurn);
-          // Don't do AP management — game is over
-          return;
+          setWinner(attacker);
+          return true; // game over
         }
+        return false;
       } else if (troopCount === targetTroops && targetTroops > 0) {
         // ── TIE: both sides wiped out, territory becomes neutral ──
         setCapturedTiles((prev) => {
@@ -401,13 +389,14 @@ export function useHexDuel() {
         setCombatFlash([sourceKey, targetKey]);
 
         addActionLog({
-          player: currentTurn,
+          player: attacker,
           type: "attack",
           source: { x: sx, y: sy },
           target: { x: tx, y: ty },
           apCost: ATTACK_COST,
           label: `Attack: sent ${troopCount} from (${sx},${sy}) → mutual destruction! (${tx},${ty}) becomes neutral`,
         });
+        return false;
       } else {
         // ── FAILED ATTACK ─────────────────────────────────────────
         const defenderLoss = Math.min(targetTroops, troopCount);
@@ -429,7 +418,7 @@ export function useHexDuel() {
         setCombatFlash([sourceKey, targetKey]);
 
         addActionLog({
-          player: currentTurn,
+          player: attacker,
           type: "attack",
           source: { x: sx, y: sy },
           target: { x: tx, y: ty },
@@ -438,21 +427,77 @@ export function useHexDuel() {
             ? `Attack: sent ${troopCount} from (${sx},${sy}) → wiped out defender! (${tx},${ty}) becomes neutral`
             : `Attack: sent ${troopCount} from (${sx},${sy}) → failed (${tx},${ty}) had ${targetTroops}, defender down to ${newDefenderTroops}`,
         });
-      }
-
-      // AP management
-      if (newAP <= 0) {
-        applyTroopGrowth(currentTurn);
-        addActionLog({ player: currentTurn, type: "endTurn", apCost: 0, label: "Ended turn (AP depleted)" });
-        switchTurn();
-      } else {
-        setCurrentAP(newAP);
+        return false;
       }
     },
-    [winner, currentAP, capturedTiles, tileTroops, capitals, addActionLog, applyTroopGrowth, switchTurn]
+    [capturedTiles, tileTroops, capitals, addActionLog]
+  );
+
+  const handleAttack = useCallback(
+    (sourceKey: string, targetKey: string, troopCount: number) => {
+      if (winner) return;
+      if (currentAP < ATTACK_COST) return;
+
+      const sourceOwner = capturedTiles[sourceKey];
+      const targetOwner = capturedTiles[targetKey];
+      const enemy = otherPlayer(currentTurn);
+
+      // Validate: target must be enemy-owned or neutral (unowned)
+      if (sourceOwner !== currentTurn) return;
+      if (targetOwner === currentTurn) return; // can't attack own tiles
+      if (targetOwner !== undefined && targetOwner !== enemy) return;
+      if (!areAdjacent(sourceKey, targetKey)) return;
+
+      const sourceTroops = tileTroops[sourceKey] ?? 1;
+      if (sourceTroops < troopCount + 1) return; // leave at least 1
+      if (troopCount <= 0) return;
+
+      const newAP = currentAP - ATTACK_COST;
+
+      // Apply the raw state changes — returns true if game ended (capital conquered)
+      const gameOver = _applyAttackRaw(sourceKey, targetKey, troopCount, currentTurn);
+
+      // AP management — skip if the attack conquered the enemy capital (game over)
+      if (!gameOver) {
+        if (newAP <= 0) {
+          applyTroopGrowth(currentTurn);
+          addActionLog({ player: currentTurn, type: "endTurn", apCost: 0, label: "Ended turn (AP depleted)" });
+          switchTurn();
+        } else {
+          setCurrentAP(newAP);
+        }
+      }
+    },
+    [winner, currentAP, capturedTiles, tileTroops, capitals, addActionLog, applyTroopGrowth, switchTurn, _applyAttackRaw]
   );
 
   // ── Displace / Reinforce action ──────────────────────────────────
+  //
+  // _applyDisplaceRaw: applies the raw tile state changes for a displace
+  // without any validation. Used by both handleDisplace and applyRemoteAction.
+
+  const _applyDisplaceRaw = useCallback(
+    (sourceKey: string, targetKey: string, troopCount: number, attacker: DuelPlayer) => {
+      const [sx, sy] = sourceKey.split(",").map(Number);
+      const [tx, ty] = targetKey.split(",").map(Number);
+
+      setTileTroops((prev) => ({
+        ...prev,
+        [sourceKey]: (prev[sourceKey] ?? 1) - troopCount,
+        [targetKey]: (prev[targetKey] ?? 1) + troopCount,
+      }));
+
+      addActionLog({
+        player: attacker,
+        type: "displace",
+        source: { x: sx, y: sy },
+        target: { x: tx, y: ty },
+        apCost: DISPLACE_COST,
+        label: `Displace: moved ${troopCount} from (${sx},${sy}) → (${tx},${ty})`,
+      });
+    },
+    [addActionLog]
+  );
 
   const handleDisplace = useCallback(
     (sourceKey: string, targetKey: string, troopCount: number) => {
@@ -472,26 +517,9 @@ export function useHexDuel() {
       if (sourceTroops < troopCount + 1) return; // leave at least 1
       if (troopCount <= 0) return;
 
-      const [sx, sy] = sourceKey.split(",").map(Number);
-      const [tx, ty] = targetKey.split(",").map(Number);
-
-      // Move troops
-      setTileTroops((prev) => ({
-        ...prev,
-        [sourceKey]: sourceTroops - troopCount,
-        [targetKey]: (prev[targetKey] ?? 1) + troopCount,
-      }));
+      _applyDisplaceRaw(sourceKey, targetKey, troopCount, currentTurn);
 
       const newAP = currentAP - DISPLACE_COST;
-
-      addActionLog({
-        player: currentTurn,
-        type: "displace",
-        source: { x: sx, y: sy },
-        target: { x: tx, y: ty },
-        apCost: DISPLACE_COST,
-        label: `Displace: moved ${troopCount} from (${sx},${sy}) → (${tx},${ty})`,
-      });
 
       // AP management
       if (newAP <= 0) {
@@ -502,7 +530,7 @@ export function useHexDuel() {
         setCurrentAP(newAP);
       }
     },
-    [winner, currentAP, capturedTiles, tileTroops, addActionLog, applyTroopGrowth, switchTurn]
+    [winner, currentAP, capturedTiles, tileTroops, addActionLog, applyTroopGrowth, switchTurn, _applyDisplaceRaw]
   );
 
   // ── Legacy: old grid actions (no-op stubs to prevent crashes) ─────
@@ -516,9 +544,18 @@ export function useHexDuel() {
   }, []);
 
   // ── Apply remote action (for multiplayer sync) ──────────────────
-  // Sets skipTroopGrowthRef so applyTroopGrowth is a no-op.
-  // The sender already applied troop growth; turn management
-  // (AP tracking, switching) still happens normally on the receiver.
+  //
+  // For attack/displace: applies state changes directly via the raw helpers,
+  // bypassing validation checks (currentAP, currentTurn matching, ownership,
+  // troop availability) that depend on the receiver's local state, which may
+  // be slightly stale compared to the sender's state at action time.
+  //
+  // For endTurn/skipRound: calls the turn functions with troop growth skipped
+  // (the sender already applied troop growth).
+  //
+  // AP management for remote attack/displace: the receiver tracks AP in sync
+  // with the sender, so we reduce AP by the cost and switch turns if depleted.
+
   const applyRemoteAction = useCallback((action: {
     type: 'attack' | 'displace' | 'endTurn' | 'skipRound';
     sourceKey?: string;
@@ -526,12 +563,43 @@ export function useHexDuel() {
     troopCount?: number;
   }) => {
     if (winner) return;
+
     if (action.type === 'attack' && action.sourceKey && action.targetKey && action.troopCount) {
       skipTroopGrowthRef.current = true;
-      handleAttack(action.sourceKey, action.targetKey, action.troopCount);
+      const sender = currentTurn;
+      const gameOver = _applyAttackRaw(action.sourceKey, action.targetKey, action.troopCount, sender);
+
+      // AP management — skip if game ended from this attack.
+      // Uses closure currentAP (same pattern as handleAttack).
+      // Does NOT switch the turn when AP depletes — the follow-up endTurn
+      // message from the sender will handle turn switching and troop growth.
+      if (!gameOver) {
+        const willDeplete = currentAP <= ATTACK_COST;
+        if (willDeplete) {
+          setCurrentAP(0);
+          // Leave skipTroopGrowthRef = true so the follow-up endTurn
+          // will skip double troop growth and switch the turn.
+        } else {
+          setCurrentAP(currentAP - ATTACK_COST);
+          skipTroopGrowthRef.current = false;
+        }
+      } else {
+        skipTroopGrowthRef.current = false;
+      }
     } else if (action.type === 'displace' && action.sourceKey && action.targetKey && action.troopCount) {
       skipTroopGrowthRef.current = true;
-      handleDisplace(action.sourceKey, action.targetKey, action.troopCount);
+      const sender = currentTurn;
+      _applyDisplaceRaw(action.sourceKey, action.targetKey, action.troopCount, sender);
+
+      // AP management — same pattern as attack (no turn switch for depleted AP)
+      const willDeplete = currentAP <= DISPLACE_COST;
+      if (willDeplete) {
+        setCurrentAP(0);
+        // Leave skipTroopGrowthRef = true for follow-up endTurn
+      } else {
+        setCurrentAP(currentAP - DISPLACE_COST);
+        skipTroopGrowthRef.current = false;
+      }
     } else if (action.type === 'endTurn') {
       skipTroopGrowthRef.current = true;
       endTurn();
@@ -539,7 +607,7 @@ export function useHexDuel() {
       skipTroopGrowthRef.current = true;
       skipRound();
     }
-  }, [winner, handleAttack, handleDisplace, endTurn, skipRound]);
+  }, [winner, _applyAttackRaw, _applyDisplaceRaw, endTurn, skipRound, currentTurn, applyTroopGrowth, addActionLog, switchTurn]);
 
   // ── Reset ─────────────────────────────────────────────────────────
 

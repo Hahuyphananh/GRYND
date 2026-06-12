@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { calculateScore } from "../../../../../game-engine/yahtzeeEngine";
-import { appendAction, db, eq, loadRoom, nextTurn, requireUser, settleIfEnded, validateMove, yahtzeeRooms } from "../_lib";
+import { calculateScore } from "../../../../../game-engine/diceFlushEngine";
+import { appendAction, db, eq, loadRoom, nextTurn, requireUser, settleIfEnded, validateMove, diceFlushRooms } from "../_lib";
 
 export async function POST(req) {
   try {
@@ -15,12 +15,12 @@ export async function POST(req) {
       state = nextTurn(state, userId, category);
       await appendAction(tx, roomId, userId, "choose_category", { category, score: playerScore });
 
-      // Check if AI is next — let the client handle it via /api/yahtzee/ai-turn
+      // Check if AI is next — let the client handle it via /api/dice-flush/ai-turn
       const aiNext = state.players.some(p => p.isAI && p.userId === state.currentTurn) && state.state === "playing";
 
       const endedResult = await settleIfEnded(tx, room, state);
       if (!endedResult.ended) {
-        await tx.update(yahtzeeRooms).set({ gameState: state }).where(eq(yahtzeeRooms.id, roomId));
+        await tx.update(diceFlushRooms).set({ gameState: state }).where(eq(diceFlushRooms.id, roomId));
       }
       return { ...endedResult, aiNext, state: endedResult.ended ? endedResult.state : state };
     });

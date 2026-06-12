@@ -1,8 +1,8 @@
-import { checkGameEnd, holdDice, nextTurn, rollDice, validateMove, type YahtzeeCategory, type YahtzeeGameState } from "../../../game-engine/yahtzeeEngine";
+import { checkGameEnd, holdDice, nextTurn, rollDice, validateMove, type DiceFlushCategory, type DiceFlushGameState } from "../../../game-engine/diceFlushEngine";
 
 type SocketLike = { emit: (event: string, payload: any) => void; to?: (room: string) => { emit: (event:string, payload:any)=>void } };
 
-const rooms = new Map<string, YahtzeeGameState>();
+const rooms = new Map<string, DiceFlushGameState>();
 
 export function registerGame(name: string, handler: any) {
   return { name, handler };
@@ -10,22 +10,22 @@ export function registerGame(name: string, handler: any) {
 
 const rakeRate = 0.05;
 
-function pickAiCategory(state: YahtzeeGameState, aiId: string): YahtzeeCategory {
+function pickAiCategory(state: DiceFlushGameState, aiId: string): DiceFlushCategory {
   const used = state.scorecards[aiId] ?? {};
-  const open = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","yahtzee","chance"] as YahtzeeCategory[];
-  const options = open.filter((c) => used[c] === undefined).map((category) => ({ category, score: require("../../../game-engine/yahtzeeEngine").calculateScore(state.dice, category) }));
+  const open = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","fiveKind","chance"] as DiceFlushCategory[];
+  const options = open.filter((c) => used[c] === undefined).map((category) => ({ category, score: require("../../../game-engine/diceFlushEngine").calculateScore(state.dice, category) }));
   options.sort((a,b)=>b.score-a.score);
   return options[Math.min(options.length - 1, Math.floor(Math.random() < 0.15 ? Math.random() * Math.min(options.length, 3) : 0))].category;
 }
 
-export function yahtzeeHandler(socket: SocketLike, ctx: { userId: string; username: string; wallet: { lockWager: Function; payoutWinner: Function } }) {
+export function diceFlushHandler(socket: SocketLike, ctx: { userId: string; username: string; wallet: { lockWager: Function; payoutWinner: Function } }) {
   socket.emit("room_updated", { game: "yahtzee", rooms: [...rooms.values()] });
 
   return {
     create_room: ({ wager }: { wager: number }) => {
       const id = `yahtzee:${Date.now()}`;
       ctx.wallet.lockWager(ctx.userId, wager);
-      const room: YahtzeeGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }], ai: false, wager, pot: wager, state: "waiting", currentTurn: ctx.userId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: { [ctx.userId]: {} } };
+      const room: DiceFlushGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }], ai: false, wager, pot: wager, state: "waiting", currentTurn: ctx.userId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: { [ctx.userId]: {} } };
       rooms.set(id, room);
       socket.emit("room_created", room);
     },
@@ -44,7 +44,7 @@ export function yahtzeeHandler(socket: SocketLike, ctx: { userId: string; userna
       const aiId = `ai:${difficulty}`;
       ctx.wallet.lockWager(ctx.userId, wager);
       const id = `yahtzee:${Date.now()}`;
-      const room: YahtzeeGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }, { userId: aiId, name: `AI (${difficulty})`, isAI: true, difficulty }], ai: true, wager, pot: wager * 2, state: "playing", currentTurn: ctx.userId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: { [ctx.userId]: {}, [aiId]: {} } };
+      const room: DiceFlushGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }, { userId: aiId, name: `AI (${difficulty})`, isAI: true, difficulty }], ai: true, wager, pot: wager * 2, state: "playing", currentTurn: ctx.userId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: { [ctx.userId]: {}, [aiId]: {} } };
       rooms.set(id, room);
       socket.emit("room_created", room);
     },
@@ -56,7 +56,7 @@ export function yahtzeeHandler(socket: SocketLike, ctx: { userId: string; userna
       const room = rooms.get(roomId); if (!room) return;
       try { validateMove(room, ctx.userId, "hold_dice", { heldDice }); const next = holdDice(room, heldDice); rooms.set(roomId, next); socket.emit("game_state_update", next); } catch (e:any) { socket.emit("error", { message: e.message }); }
     },
-    choose_category: ({ roomId, category }: { roomId: string; category: YahtzeeCategory }) => {
+    choose_category: ({ roomId, category }: { roomId: string; category: DiceFlushCategory }) => {
       const room = rooms.get(roomId); if (!room) return;
       try {
         validateMove(room, ctx.userId, "choose_category", { category });
@@ -84,4 +84,4 @@ export function yahtzeeHandler(socket: SocketLike, ctx: { userId: string; userna
   };
 }
 
-export const yahtzeeRegistration = registerGame("yahtzee", yahtzeeHandler);
+export const diceFlushRegistration = registerGame("yahtzee", diceFlushHandler);

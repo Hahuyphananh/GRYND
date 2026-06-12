@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db, getDisplayName, initialState, lockBalance, requireUser, yahtzeePlayers, yahtzeeRooms } from "../_lib";
+import { db, getDisplayName, initialState, lockBalance, requireUser, diceFlushPlayers, diceFlushRooms } from "../_lib";
 
 export async function POST(req) {
   try {
@@ -19,8 +19,8 @@ export async function POST(req) {
       state.scorecards[aiId] = {};
       state.state = "playing";
       state.pot = amount * 2;
-      await tx.insert(yahtzeeRooms).values({ id: roomId, status: "playing", wager: amount, pot: state.pot, gameState: state });
-      await tx.insert(yahtzeePlayers).values([{ roomId, userId, isAi: false, score: 0 }, { roomId, userId: aiId, isAi: true, score: 0 }]);
+      await tx.insert(diceFlushRooms).values({ id: roomId, status: "playing", wager: amount, pot: state.pot, gameState: state });
+      await tx.insert(diceFlushPlayers).values([{ roomId, userId, isAi: false, score: 0 }, { roomId, userId: aiId, isAi: true, score: 0 }]);
       return { roomId, state };
     });
 
