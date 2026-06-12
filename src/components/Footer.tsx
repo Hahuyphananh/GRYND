@@ -104,8 +104,8 @@ export default function Footer() {
                 Pool Masters
               </Link>
 
-              <Link href="/casino/yahtzee" className={linkClass}>
-                Yahtzee
+              <Link href="/casino/dice-flush" className={linkClass}>
+                Dice Flush
               </Link>
 
               <Link href="/casino/farkle" className={linkClass}>

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db, eq, loadRoom, requireUser, yahtzeeRooms } from "../_lib";
+import { db, eq, loadRoom, requireUser, diceFlushRooms } from "../_lib";
 
 const UPPER_CATS = ["ones","twos","threes","fours","fives","sixes"];
 
