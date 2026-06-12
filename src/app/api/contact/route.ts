@@ -6,6 +6,25 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
+ * GET /api/contact — Diagnostic endpoint: checks Resend configuration.
+ * Returns the from address, API key status, and verified identity info.
+ */
+export async function GET() {
+  const apiKeySet = Boolean(process.env.RESEND_API_KEY);
+  const fromEmail = getFromAddress();
+  const customFromSet = Boolean(process.env.RESEND_FROM_EMAIL?.trim());
+
+  return NextResponse.json({
+    configured: apiKeySet,
+    fromAddress: fromEmail,
+    customFromSet,
+    help: !customFromSet
+      ? "RESEND_FROM_EMAIL not set — using Resend test domain (only delivers to verified identities). Set RESEND_FROM_EMAIL to a verified domain email to fix 503 errors."
+      : null,
+  });
+}
+
+/**
  * POST /api/contact — User submits the contact form.
  * Sends the message to the admin via Resend.
  */
@@ -69,13 +88,19 @@ export async function POST(request: NextRequest) {
         marketing_rate_limited: { status: 429, message: "Too many messages. Please try again later." },
         provider_error: { status: 503, message: "The email service is temporarily unavailable. Please try again later or contact support directly." },
       };
+      const details = "details" in result ? (result as any).details : "";
       console.error(
         `[api/contact] Email send skipped — reason: ${result.reason}`,
-        "details" in result ? (result as any).details : "",
+        details ? `details: ${details}` : "",
       );
       const mapped = reasonMap[result.reason] || { status: 500, message: "Failed to send message. Please try again later." };
+      // Include provider error details so the client can show specific info
+      const extra: Record<string, unknown> = {};
+      if (result.reason === "provider_error" && details) {
+        extra.providerError = details;
+      }
       return NextResponse.json(
-        { success: false, error: mapped.message },
+        { success: false, error: mapped.message, ...extra },
         { status: mapped.status },
       );
     }

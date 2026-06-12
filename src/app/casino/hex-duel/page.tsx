@@ -1221,6 +1221,10 @@ export default function HexDuelPage() {
     // Listen for opponent actions
     const handleOpponentAction = (data: { action: MultiplayerAction }) => {
       if (data.action) {
+        // Track content signature for dedup so the polling fallback
+        // doesn't re-apply actions already received via socket.
+        const sig = `${data.action.type}:${data.action.sourceKey ?? ""}:${data.action.targetKey ?? ""}:${data.action.troopCount ?? ""}`;
+        processedSocketActionsRef.current.add(sig);
         applyRemoteActionRef.current(data.action);
       }
     };
@@ -1551,6 +1555,18 @@ export default function HexDuelPage() {
 
   // Track the latest action ID we've seen from the opponent (for efficient polling)
   const lastKnownActionIdRef = useRef(0);
+  // Deduplication: track action content signatures already received via socket
+  // so the polling fallback doesn't re-apply them, preventing double-processing.
+  const processedSocketActionsRef = useRef<Set<string>>(new Set());
+  // Periodically expire old dedup entries to prevent unbounded growth
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (processedSocketActionsRef.current.size > 40) {
+        processedSocketActionsRef.current = new Set();
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ── Computed highlight keys for HexBoard ───────────────────────────
   const attackHighlightKeys = useMemo(
@@ -1762,9 +1778,15 @@ export default function HexDuelPage() {
 
         const actions = data.actions || [];
         if (actions.length > 0) {
-          // Apply any missed opponent actions to catch up
+          // Apply any missed opponent actions to catch up.
+          // Process sequentially with await to avoid stale closures
+          // overwriting each other's state updates.
           for (const a of actions) {
             if (cancelled || isGameOverRef.current) break;
+            // Skip actions already received via socket (dedup by content signature)
+            const sig = `${a.actionType}:${a.sourceKey ?? ""}:${a.targetKey ?? ""}:${a.troopCount ?? ""}`;
+            if (processedSocketActionsRef.current.has(sig)) continue;
+            await new Promise((r) => setTimeout(r, 0)); // yield to flush React state
             applyRemoteActionRef.current({
               type: a.actionType,
               sourceKey: a.sourceKey,
@@ -1876,6 +1898,10 @@ export default function HexDuelPage() {
         if (actions.length > 0) {
           for (const a of actions) {
             if (cancelled || isGameOverRef.current) break;
+            // Skip actions already received via socket (dedup by content signature)
+            const sig = `${a.actionType}:${a.sourceKey ?? ""}:${a.targetKey ?? ""}:${a.troopCount ?? ""}`;
+            if (processedSocketActionsRef.current.has(sig)) continue;
+            await new Promise((r) => setTimeout(r, 0)); // yield to flush React state
             applyRemoteActionRef.current({
               type: a.actionType,
               sourceKey: a.sourceKey,
@@ -2000,29 +2026,21 @@ export default function HexDuelPage() {
     }
   }, [selectedAction, pendingActionPhase, pendingTarget, attackableTargets, getAttackSources, getDisplaceSources, capturedTiles, currentTurn, tileTroops]);
 
-  // Ref for currentAP to avoid stale closure in handleConfirmAction
-  const currentAPRef = useRef(currentAP);
-  currentAPRef.current = currentAP;
+
 
   const handleConfirmAction = useCallback(() => {
     if (selectedAction === "attack" && pendingSource && pendingTarget && pendingActionPhase === "inputTroops") {
       const sourceKey = `${pendingSource.x},${pendingSource.y}`;
       const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
-      // If this is the last AP, the attack will auto-end the turn.
-      // We need to also send an endTurn action to the opponent.
-      // Use ref to avoid stale closure on rapid double-clicks.
-      const willDepleteAP = currentAPRef.current <= ATTACK_COST;
       handleAttack(sourceKey, targetKey, pendingTroopCount);
-      // Send action to opponent in multiplayer AND record to server
+      // Send action to opponent in multiplayer AND record to server.
+      // Note: do NOT send a separate endTurn here — handleAttack auto-switches
+      // the turn when AP depletes, and the receiver's applyRemoteAction will
+      // also auto-switch. Sending an extra endTurn causes a double-switch bug.
       if (gameMode === "multiplayer") {
         const action: MultiplayerAction = { type: "attack", sourceKey, targetKey, troopCount: pendingTroopCount };
         sendMultiplayerAction(action);
         recordMultiplayerAction(action);
-        if (willDepleteAP) {
-          // The attack auto-ended the turn — tell the opponent
-          sendMultiplayerAction({ type: "endTurn" });
-          recordMultiplayerAction({ type: "endTurn" });
-        }
       }
       // Reset flow
       setPendingActionPhase(null);
@@ -2033,17 +2051,15 @@ export default function HexDuelPage() {
     } else if (selectedAction === "displace" && pendingSource && pendingTarget && pendingActionPhase === "inputTroops") {
       const sourceKey = `${pendingSource.x},${pendingSource.y}`;
       const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
-      const willDepleteAP = currentAPRef.current <= DISPLACE_COST;
       handleDisplace(sourceKey, targetKey, pendingTroopCount);
-      // Send action to opponent in multiplayer AND record to server
+      // Send action to opponent in multiplayer AND record to server.
+      // Note: do NOT send a separate endTurn here — handleDisplace auto-switches
+      // the turn when AP depletes, and the receiver's applyRemoteAction will
+      // also auto-switch. Sending an extra endTurn causes a double-switch bug.
       if (gameMode === "multiplayer") {
         const action: MultiplayerAction = { type: "displace", sourceKey, targetKey, troopCount: pendingTroopCount };
         sendMultiplayerAction(action);
         recordMultiplayerAction(action);
-        if (willDepleteAP) {
-          sendMultiplayerAction({ type: "endTurn" });
-          recordMultiplayerAction({ type: "endTurn" });
-        }
       }
       // Reset flow
       setPendingActionPhase(null);
