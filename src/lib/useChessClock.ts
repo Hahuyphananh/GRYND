@@ -56,9 +56,15 @@ export function useChessClock({
     p1ExpireCalledRef.current = false;
     p2ExpireCalledRef.current = false;
     activePlayerRef.current = null;
+    p1LastDisplayedRef.current = initialP1Time;
+    p2LastDisplayedRef.current = initialP2Time;
   }, [resetKey, initialP1Time, initialP2Time]);
 
-  // Main tick logic — runs every 100ms
+  // Track last displayed remaining (in ms) to avoid unnecessary re-renders
+  const p1LastDisplayedRef = useRef(initialP1Time);
+  const p2LastDisplayedRef = useRef(initialP2Time);
+
+  // Main tick logic — runs every 250ms; only sets state when visible time changes
   useEffect(() => {
     if (!isActive) {
       // Game paused or over — stop all clocks
@@ -73,11 +79,17 @@ export function useChessClock({
       if (activePlayerRef.current === "player1" && p1StartedAtRef.current !== null) {
         const elapsed = Date.now() - p1StartedAtRef.current;
         const remaining = Math.max(0, initialP1Time - elapsed);
-        setP1TimeLeft(remaining);
+        // Only re-render when the display changes by >=1 second to avoid unnecessary renders
+        if (Math.abs(p1LastDisplayedRef.current - remaining) >= 1000) {
+          p1LastDisplayedRef.current = remaining;
+          setP1TimeLeft(remaining);
+        }
 
         if (remaining <= 0 && !p1ExpireCalledRef.current) {
           p1ExpireCalledRef.current = true;
           setP1Expired(true);
+          p1LastDisplayedRef.current = 0;
+          setP1TimeLeft(0);
           activePlayerRef.current = null;
           clearInterval(interval);
           onP1ExpireRef.current();
@@ -88,17 +100,23 @@ export function useChessClock({
       if (activePlayerRef.current === "player2" && p2StartedAtRef.current !== null) {
         const elapsed = Date.now() - p2StartedAtRef.current;
         const remaining = Math.max(0, initialP2Time - elapsed);
-        setP2TimeLeft(remaining);
+        // Only re-render when the display changes by >=1 second to avoid unnecessary renders
+        if (Math.abs(p2LastDisplayedRef.current - remaining) >= 1000) {
+          p2LastDisplayedRef.current = remaining;
+          setP2TimeLeft(remaining);
+        }
 
         if (remaining <= 0 && !p2ExpireCalledRef.current) {
           p2ExpireCalledRef.current = true;
           setP2Expired(true);
+          p2LastDisplayedRef.current = 0;
+          setP2TimeLeft(0);
           activePlayerRef.current = null;
           clearInterval(interval);
           onP2ExpireRef.current();
         }
       }
-    }, 100);
+    }, 250);
 
     return () => clearInterval(interval);
   }, [isActive, initialP1Time, initialP2Time]);

@@ -393,7 +393,10 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             </div>
             <p className="mt-1 text-xs text-white/30">
               Round {roundHistory.length + 1} •{" "}
-              {isUserStarter ? "You are the Starter ⭐" : "AI is the Starter"}
+              {isUserStarter
+                ? <span className="text-yellow-400 font-semibold">You are the Starter ⭐</span>
+                : <span className="text-blue-400 font-semibold">You are the Challenger 🎯</span>
+              }
             </p>
           </div>
 
@@ -565,6 +568,8 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   gameOverRef.current = gameOver;
   isPlayer1Ref.current = isPlayer1;
   wagerLockedRef.current = wagerLocked;
+  // Track round count to avoid clearing pickValue on every poll/socket event
+  const roundCountRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -685,7 +690,12 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
           ((myIsPlayer1 && st.player1Pick !== null && st.player2Pick === null) ||
             (!myIsPlayer1 && st.player2Pick !== null && st.player1Pick === null)),
       );
-      setPickValue("");
+      // Only clear pickValue when a new round actually started
+      const newRoundCount = (st.rounds ?? []).length;
+      if (newRoundCount !== roundCountRef.current) {
+        roundCountRef.current = newRoundCount;
+        setPickValue("");
+      }
       setTimeLeft(PICK_TIMER_SECONDS);
       setTimeUp(false);
 
@@ -901,6 +911,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     setTimeLeft(PICK_TIMER_SECONDS);
     setFinalPayout(0);
     setShowForfeitConfirm(false);
+    roundCountRef.current = 0;
   };
 
   // ── Pick handling ──
@@ -1189,7 +1200,11 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
               </p>
             </div>
             <p className="mt-1 text-xs text-white/30">
-              Round {(roundHistory.length || 0) + 1} • Both players pick simultaneously
+              Round {(roundHistory.length || 0) + 1} •{" "}
+              {(isPlayer1 ? interactiveState.currentStarter === "player1" : interactiveState.currentStarter === "player2")
+                ? <span className="text-yellow-400 font-semibold">You are the Starter ⭐</span>
+                : <span className="text-blue-400 font-semibold">You are the Challenger 🎯</span>
+              }
             </p>
           </div>
 
@@ -1298,6 +1313,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
           <p className="text-lg font-bold text-yellow-300">
             Waiting for opponent to pick...
           </p>
+          {interactiveState && (
+            <p className="text-xs text-white/40 mt-1">
+              {(isPlayer1 ? interactiveState.currentStarter === "player1" : interactiveState.currentStarter === "player2")
+                ? <span className="text-yellow-400">You are the Starter ⭐</span>
+                : <span className="text-blue-400">You are the Challenger 🎯</span>
+              }
+            </p>
+          )}
           <p className="text-sm text-white/40 mt-2">
             Your number has been submitted!
           </p>
