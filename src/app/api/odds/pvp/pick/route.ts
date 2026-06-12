@@ -8,7 +8,7 @@ import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 
 /** Maximum time (ms) a player can stay inactive before being auto-forfeited */
-const TIMEOUT_MS = 60_000;
+const TIMEOUT_MS = 120_000;
 
 export async function POST(req: Request) {
   try {
