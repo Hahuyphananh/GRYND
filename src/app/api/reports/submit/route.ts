@@ -5,6 +5,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 
+// Self-healing: ensure the player_reports table exists on first request.
+// The migration (0030_add_player_reports.sql) may not have run if an earlier
+// migration stalled. This flag prevents re-running DDL on every request.
+let tableEnsured = false;
+
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
@@ -95,13 +100,38 @@ export async function POST(req: NextRequest) {
   try {
     const sql = getNeonSql();
 
+    // Self-healing: ensure the player_reports table exists (migration may not have run).
+    // Runs only once per process lifetime via module-level flag.
+    if (!tableEnsured) {
+      await sql`
+        CREATE TABLE IF NOT EXISTS player_reports (
+          id SERIAL PRIMARY KEY,
+          reporter_clerk_id VARCHAR(255) NOT NULL,
+          reported_clerk_id VARCHAR(255) NOT NULL,
+          game_type VARCHAR(50) NOT NULL,
+          game_id VARCHAR(100),
+          reason VARCHAR(50) NOT NULL,
+          details TEXT,
+          status VARCHAR(20) NOT NULL DEFAULT 'pending',
+          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          resolved_at TIMESTAMP,
+          resolved_by_clerk_id VARCHAR(255)
+        )
+      `;
+      // Also ensure the is_banned column exists on users (part of the same migration)
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN NOT NULL DEFAULT FALSE`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_users_is_banned ON users (is_banned)`;
+      tableEnsured = true;
+    }
+
     // Check for duplicate reports (same reporter, same reported, same game within 5 minutes)
+    // Use IS NOT DISTINCT FROM for proper NULL comparison on game_id
     const recentReport = await sql`
       SELECT id FROM player_reports
       WHERE reporter_clerk_id = ${userId}
         AND reported_clerk_id = ${resolvedReportedId}
         AND game_type = ${gameType}
-        AND game_id = ${gameId ?? null}
+        AND game_id IS NOT DISTINCT FROM ${gameId ?? null}
         AND created_at > NOW() - INTERVAL '5 minutes'
       LIMIT 1
     `;

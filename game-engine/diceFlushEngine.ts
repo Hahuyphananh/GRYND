@@ -1,11 +1,11 @@
-export type YahtzeeCategory =
+export type DiceFlushCategory =
   | "ones" | "twos" | "threes" | "fours" | "fives" | "sixes"
   | "threeOfKind" | "fourOfKind" | "fullHouse" | "smallStraight" | "largeStraight"
-  | "yahtzee" | "chance";
+  | "fiveKind" | "chance";
 
-export type Scorecard = Partial<Record<YahtzeeCategory, number>>;
+export type Scorecard = Partial<Record<DiceFlushCategory, number>>;
 
-export type YahtzeeGameState = {
+export type DiceFlushGameState = {
   id: string;
   game: "yahtzee";
   players: Array<{ userId: string; name: string; isAI?: boolean; difficulty?: "easy"|"medium"|"hard" }>;
@@ -21,23 +21,23 @@ export type YahtzeeGameState = {
   scorecards: Record<string, Scorecard>;
 };
 
-const ALL_CATEGORIES: YahtzeeCategory[] = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","yahtzee","chance"];
+const ALL_CATEGORIES: DiceFlushCategory[] = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","fiveKind","chance"];
 
 const sum = (dice:number[]) => dice.reduce((a,b)=>a+b,0);
 
-export function rollDice(state: YahtzeeGameState): YahtzeeGameState {
+export function rollDice(state: DiceFlushGameState): DiceFlushGameState {
   if (state.rollsThisTurn >= 3) throw new Error("Roll limit reached");
   if (state.dice.length !== 5 || state.heldDice.length !== 5) throw new Error("Invalid dice state");
   const dice = state.dice.map((d, i) => state.heldDice[i] ? d : (Math.floor(Math.random() * 6) + 1));
   return { ...state, dice, rollsThisTurn: state.rollsThisTurn + 1 };
 }
 
-export function holdDice(state: YahtzeeGameState, heldDice: boolean[]): YahtzeeGameState {
+export function holdDice(state: DiceFlushGameState, heldDice: boolean[]): DiceFlushGameState {
   if (heldDice.length !== 5) throw new Error("Must provide exactly 5 hold flags");
   return { ...state, heldDice: heldDice.map(Boolean) };
 }
 
-export function calculateScore(dice:number[], category: YahtzeeCategory): number {
+export function calculateScore(dice:number[], category: DiceFlushCategory): number {
   const counts = new Map<number, number>();
   dice.forEach(d => counts.set(d, (counts.get(d) ?? 0) + 1));
   const freq = [...counts.values()].sort((a,b)=>b-a);
@@ -52,12 +52,12 @@ export function calculateScore(dice:number[], category: YahtzeeCategory): number
     case "fullHouse": return freq[0] === 3 && freq[1] === 2 ? 25 : 0;
     case "smallStraight": return ([1,2,3,4].every(n=>unique.includes(n)) || [2,3,4,5].every(n=>unique.includes(n)) || [3,4,5,6].every(n=>unique.includes(n))) ? 30 : 0;
     case "largeStraight": return (JSON.stringify(unique) === JSON.stringify([1,2,3,4,5]) || JSON.stringify(unique) === JSON.stringify([2,3,4,5,6])) ? 40 : 0;
-    case "yahtzee": return freq[0] === 5 ? 50 : 0;
+    case "fiveKind": return freq[0] === 5 ? 50 : 0;
     case "chance": return sum(dice);
   }
 }
 
-export function validateMove(state: YahtzeeGameState, userId: string, action: "roll_dice"|"hold_dice"|"choose_category", payload?: any) {
+export function validateMove(state: DiceFlushGameState, userId: string, action: "roll_dice"|"hold_dice"|"choose_category", payload?: any) {
   if (state.state !== "playing") throw new Error("Game is not active");
   if (state.currentTurn !== userId) throw new Error("Not your turn");
   if (action === "hold_dice" && (!payload || !Array.isArray(payload.heldDice) || payload.heldDice.length !== 5)) throw new Error("Invalid hold_dice payload");
@@ -68,7 +68,7 @@ export function validateMove(state: YahtzeeGameState, userId: string, action: "r
   }
 }
 
-export function nextTurn(state: YahtzeeGameState, scoringUserId: string, category: YahtzeeCategory): YahtzeeGameState {
+export function nextTurn(state: DiceFlushGameState, scoringUserId: string, category: DiceFlushCategory): DiceFlushGameState {
   const currentCard = state.scorecards[scoringUserId] ?? {};
   const scorecards = { ...state.scorecards, [scoringUserId]: { ...currentCard, [category]: calculateScore(state.dice, category) } };
   const idx = state.players.findIndex(p => p.userId === scoringUserId);
@@ -76,14 +76,14 @@ export function nextTurn(state: YahtzeeGameState, scoringUserId: string, categor
   return { ...state, scorecards, currentTurn: next.userId, turnNumber: state.turnNumber + 1, rollsThisTurn: 0, heldDice: [false,false,false,false,false], dice:[1,1,1,1,1] };
 }
 
-const UPPER_CATS: YahtzeeCategory[] = ["ones","twos","threes","fours","fives","sixes"];
+const UPPER_CATS: DiceFlushCategory[] = ["ones","twos","threes","fours","fives","sixes"];
 
 function upperBonus(card: Scorecard) {
   const sum = UPPER_CATS.reduce((t, k) => t + ((card as any)[k] ?? 0), 0);
   return sum >= 63 ? 35 : 0;
 }
 
-export function checkGameEnd(state: YahtzeeGameState) {
+export function checkGameEnd(state: DiceFlushGameState) {
   const done = state.players.every(p => Object.keys(state.scorecards[p.userId] ?? {}).length >= 13);
   if (!done) return { ended: false as const };
   const totals = Object.fromEntries(state.players.map(p => {
@@ -95,4 +95,4 @@ export function checkGameEnd(state: YahtzeeGameState) {
   return { ended: true as const, winnerId: winner.userId, totals };
 }
 
-export const YahtzeeCategories = ALL_CATEGORIES;
+export const DiceFlushCategories = ALL_CATEGORIES;

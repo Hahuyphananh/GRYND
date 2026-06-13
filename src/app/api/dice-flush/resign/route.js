@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, db, eq, loadRoom, requireUser, sql, users, yahtzeeRooms } from "../_lib";
+import { and, db, eq, loadRoom, requireUser, sql, users, diceFlushRooms } from "../_lib";
 
 export async function POST(req) {
   try {
@@ -15,7 +15,7 @@ export async function POST(req) {
       await tx.update(users).set({ balance: sql`${users.balance} + ${payout}` }).where(eq(users.clerkId, winner.userId));
       state.state = "finished";
       state.currentTurn = winner.userId;
-      await tx.update(yahtzeeRooms).set({ status: "finished", pot: 0, gameState: state }).where(and(eq(yahtzeeRooms.id, roomId), eq(yahtzeeRooms.status, room.status)));
+      await tx.update(diceFlushRooms).set({ status: "finished", pot: 0, gameState: state }).where(and(eq(diceFlushRooms.id, roomId), eq(diceFlushRooms.status, room.status)));
       return { state, winnerId: winner.userId, payout };
     });
     return NextResponse.json({ success: true, ...result });

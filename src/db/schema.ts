@@ -763,8 +763,8 @@ export const connectFourGames = pgTable(
   }),
 );
 
-export const yahtzeeRooms = pgTable(
-  "yahtzee_rooms",
+export const diceFlushRooms = pgTable(
+  "dice_flush_rooms",
   {
     id: varchar("id", { length: 120 }).primaryKey(),
     status: varchar("status", { length: 20 }).notNull(),
@@ -774,27 +774,27 @@ export const yahtzeeRooms = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
-    yahtzeeRoomsStatusIdx: index("idx_yahtzee_rooms_status").on(table.status),
+    diceFlushRoomsStatusIdx: index("idx_dice_flush_rooms_status").on(table.status),
   }),
 );
 
-export const yahtzeePlayers = pgTable(
-  "yahtzee_players",
+export const diceFlushPlayers = pgTable(
+  "dice_flush_players",
   {
     id: serial("id").primaryKey(),
-    roomId: varchar("room_id", { length: 120 }).references(() => yahtzeeRooms.id),
+    roomId: varchar("room_id", { length: 120 }).references(() => diceFlushRooms.id),
     userId: varchar("user_id", { length: 255 }).notNull(),
     isAi: boolean("is_ai").default(false),
     score: integer("score").default(0),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
-    yahtzeePlayersRoomIdx: index("idx_yahtzee_players_room_id").on(table.roomId),
+    diceFlushPlayersRoomIdx: index("idx_dice_flush_players_room_id").on(table.roomId),
   }),
 );
 
-export const yahtzeeActions = pgTable(
-  "yahtzee_actions",
+export const diceFlushActions = pgTable(
+  "dice_flush_actions",
   {
     id: serial("id").primaryKey(),
     roomId: varchar("room_id", { length: 120 }),
@@ -804,7 +804,7 @@ export const yahtzeeActions = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
-    yahtzeeActionsRoomIdx: index("idx_yahtzee_actions_room_id").on(
+    diceFlushActionsRoomIdx: index("idx_dice_flush_actions_room_id").on(
       table.roomId,
       table.createdAt,
     ),

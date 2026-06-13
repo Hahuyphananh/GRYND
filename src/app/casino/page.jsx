@@ -22,7 +22,7 @@ import Img16 from "../../images/clicker.png";
 import Img17 from "../../images/pool.png";
 import Img18 from "../../images/hex-duel.svg";
 import Img21 from "../../images/odds.svg";
-import Img19 from "../../images/yahtzee.png";
+import Img19 from "../../images/dice-flush.svg";
 import Img20 from "../../images/farkle.svg";
 import Image from "next/image";
 import Link from "next/link";
@@ -188,11 +188,11 @@ function MainComponent() {
       nameKey: "games.hex_duel_name",
     },
      {
-      name: "Yahtzee",
-      href: "/casino/yahtzee",
+      name: "Dice Flush",
+      href: "/casino/dice-flush",
       leaderboardKey: "yahtzee",
       image: Img19,
-      descriptionKey: "games.yahtzee_desc",
+      descriptionKey: "games.dice_flush_desc",
       popular: true,
     },
     {
