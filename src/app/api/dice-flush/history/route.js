@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { asc, eq } from "drizzle-orm";
 import { db } from "../../../../db/client";
-import { yahtzeeActions } from "../../../../db/schema";
+import { diceFlushActions } from "../../../../db/schema";
 import { requireUser } from "../_lib";
 
 export async function GET(req) {
@@ -13,9 +13,9 @@ export async function GET(req) {
 
     const actions = await db
       .select()
-      .from(yahtzeeActions)
-      .where(eq(yahtzeeActions.roomId, roomId))
-      .orderBy(asc(yahtzeeActions.createdAt))
+      .from(diceFlushActions)
+      .where(eq(diceFlushActions.roomId, roomId))
+      .orderBy(asc(diceFlushActions.createdAt))
       .limit(200);
 
     return NextResponse.json({ success: true, actions });

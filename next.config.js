@@ -19,6 +19,21 @@ const nextConfig = {
       process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   },
 
+  async redirects() {
+    return [
+      {
+        source: "/casino/yahtzee",
+        destination: "/casino/dice-flush",
+        permanent: true,
+      },
+      {
+        source: "/casino/yahtzee/:path*",
+        destination: "/casino/dice-flush",
+        permanent: true,
+      },
+    ];
+  },
+
   async headers() {
     const securityHeaders = [
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

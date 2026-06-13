@@ -44,7 +44,7 @@ const isPublicRoute = createRouteMatcher([
   "/casino/goonbet-clicker(.*)",
   "/casino/pool-masters(.*)",
   "/casino/hex-duel(.*)",
-  "/casino/yahtzee(.*)",
+  "/casino/dice-flush(.*)",
   "/casino/farkle(.*)",
   "/casino/odds(.*)",
   "/sentry-example-page",

@@ -1,8 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "../../../db/client";
-import { users, yahtzeeActions, yahtzeePlayers, yahtzeeRooms } from "../../../db/schema";
-import { checkGameEnd, holdDice, nextTurn, rollDice, validateMove } from "../../../../game-engine/yahtzeeEngine";
+import { users, diceFlushActions, diceFlushPlayers, diceFlushRooms } from "../../../db/schema";
+import { checkGameEnd, holdDice, nextTurn, rollDice, validateMove } from "../../../../game-engine/diceFlushEngine";
 import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
 
 export function initialState(roomId, creatorId, creatorName, wager) {
@@ -30,13 +30,13 @@ export async function requireUser() {
 }
 
 export async function loadRoom(roomId, tx = db) {
-  const [room] = await tx.select().from(yahtzeeRooms).where(eq(yahtzeeRooms.id, roomId));
+  const [room] = await tx.select().from(diceFlushRooms).where(eq(diceFlushRooms.id, roomId));
   if (!room) throw new Error("Room not found");
   return room;
 }
 
 export async function appendAction(tx, roomId, userId, actionType, payload) {
-  await tx.insert(yahtzeeActions).values({ roomId, userId, actionType, payload });
+  await tx.insert(diceFlushActions).values({ roomId, userId, actionType, payload });
 }
 
 export async function lockBalance(tx, userId, amount) {
@@ -56,13 +56,13 @@ export async function settleIfEnded(tx, roomRow, state) {
   const payout = Math.floor(state.pot * 0.95);
   await tx.update(users).set({ balance: sql`${users.balance} + ${payout}` }).where(eq(users.clerkId, ended.winnerId));
   state.state = "finished";
-  await tx.update(yahtzeeRooms).set({ status: "finished", gameState: state, pot: 0 }).where(eq(yahtzeeRooms.id, roomRow.id));
+  await tx.update(diceFlushRooms).set({ status: "finished", gameState: state, pot: 0 }).where(eq(diceFlushRooms.id, roomRow.id));
 
   // Record leaderboard stats for winner and loser
   const wagerPerPlayer = state.wager || Math.floor(state.pot / (state.players?.length || 2));
   applyLeaderboardCounters({
     clerkId: ended.winnerId,
-    game: "Yahtzee",
+    game: "Dice Flush",
     betAmount: wagerPerPlayer,
     payout,
     isPvpWin: state.players?.length > 1 && !state.players?.some(p => p.isAI),
@@ -74,7 +74,7 @@ export async function settleIfEnded(tx, roomRow, state) {
       if (p.userId !== ended.winnerId && !p.isAI) {
         applyLeaderboardCounters({
           clerkId: p.userId,
-          game: "Yahtzee",
+          game: "Dice Flush",
           betAmount: wagerPerPlayer,
           payout: 0,
         }).catch(() => {});
@@ -85,4 +85,4 @@ export async function settleIfEnded(tx, roomRow, state) {
   return { state, ended: true, winnerId: ended.winnerId, payout, totals: ended.totals };
 }
 
-export { db, eq, and, asc, isNull, ne, sql, users, yahtzeeRooms, yahtzeePlayers, rollDice, holdDice, validateMove, nextTurn };
+export { db, eq, and, asc, isNull, ne, sql, users, diceFlushRooms, diceFlushPlayers, rollDice, holdDice, validateMove, nextTurn };

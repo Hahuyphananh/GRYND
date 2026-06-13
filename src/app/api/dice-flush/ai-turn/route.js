@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { calculateScore, rollDice } from "../../../../../game-engine/yahtzeeEngine";
-import { appendAction, db, eq, loadRoom, nextTurn, requireUser, settleIfEnded, validateMove, yahtzeeRooms } from "../_lib";
+import { calculateScore, rollDice } from "../../../../../game-engine/diceFlushEngine";
+import { appendAction, db, eq, loadRoom, nextTurn, requireUser, settleIfEnded, validateMove, diceFlushRooms } from "../_lib";
 
-const ALL_CATEGORIES = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","yahtzee","chance"];
+const ALL_CATEGORIES = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","fiveKind","chance"];
 
 function pickAiCategory(state) {
   const aiPlayer = state.players.find(p => p.isAI && p.userId === state.currentTurn);
@@ -47,7 +47,7 @@ export async function POST(req) {
       // Check game end
       const endedResult = await settleIfEnded(tx, room, state);
       if (!endedResult.ended) {
-        await tx.update(yahtzeeRooms).set({ gameState: state }).where(eq(yahtzeeRooms.id, roomId));
+        await tx.update(diceFlushRooms).set({ gameState: state }).where(eq(diceFlushRooms.id, roomId));
       }
 
       return {
