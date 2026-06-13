@@ -12,33 +12,49 @@ export async function POST(req: Request) {
       );
     }
     const body = await req.json();
-    const { slug } = body;
+    const { slug, sportKey: providedSportKey } = body;
     if (!slug)
       return NextResponse.json(
         { success: false, error: "Missing slug" },
         { status: 400 },
       );
 
-    const sportsRes = await fetch(
-      `https://api.the-odds-api.com/v4/sports/?apiKey=${ODDS_API_KEY}`,
-    );
-    const sports = await sportsRes.json();
-
     let matchEvent = null;
-    let sportKey = null;
+    let sportKey: string | null = null;
 
-    for (const sport of sports) {
+    if (providedSportKey) {
+      // Use the provided sport key directly (avoids N API calls)
       const eventsRes = await fetch(
-        `https://api.the-odds-api.com/v4/sports/${sport.key}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h`,
+        `https://api.the-odds-api.com/v4/sports/${providedSportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=us&markets=h2h`,
       );
       const eventsData = await eventsRes.json();
       const events = Array.isArray(eventsData) ? eventsData : [];
-
       matchEvent = events.find((e: any) => e.id === slug || e.slug === slug);
-
       if (matchEvent) {
-        sportKey = sport.key;
-        break;
+        sportKey = providedSportKey;
+      }
+    }
+
+    // Fallback: iterate through all sports if no sportKey provided or match not found
+    if (!matchEvent) {
+      const sportsRes = await fetch(
+        `https://api.the-odds-api.com/v4/sports/?apiKey=${ODDS_API_KEY}`,
+      );
+      const sports = await sportsRes.json();
+
+      for (const sport of sports) {
+        const eventsRes = await fetch(
+          `https://api.the-odds-api.com/v4/sports/${sport.key}/odds/?apiKey=${ODDS_API_KEY}&regions=us&markets=h2h`,
+        );
+        const eventsData = await eventsRes.json();
+        const events = Array.isArray(eventsData) ? eventsData : [];
+
+        matchEvent = events.find((e: any) => e.id === slug);
+
+        if (matchEvent) {
+          sportKey = sport.key;
+          break;
+        }
       }
     }
 

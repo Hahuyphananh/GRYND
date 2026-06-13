@@ -1,10 +1,11 @@
 "use client";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 
 export default function MatchPage() {
   const { matchId } = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { isSignedIn, user } = useUser();
 
@@ -20,10 +21,11 @@ export default function MatchPage() {
   const fetchMatch = async () => {
     setLoading(true);
     try {
+      const sportKey = searchParams.get("sport") || null;
       const res = await fetch("/api/sports/get-match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: matchId }),
+        body: JSON.stringify({ slug: matchId, sportKey }),
       });
 
       const data = await res.json();
