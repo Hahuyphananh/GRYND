@@ -564,7 +564,7 @@ export default function DiceFlushPage() {
       alert("Something went wrong");
     }
   };
-  const resign = async () => { if (!roomId) return; const res = await fetch("/api/dice-flush/resign", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Failed"); resetToLobby(); };
+  const resign = async () => { if (!roomId) return; const res = await fetch("/api/dice-flush/resign", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Failed"); if (you && opponent) { const myTotal = sectionTotals(you.userId).total; const opTotal = sectionTotals(opponent.userId).total; endedRef.current = true; setGameOverScores({ mine: myTotal, theirs: opTotal }); setGameOverType("lose"); } else { resetToLobby(); } };
   const resetToLobby = () => {
     setRoomId(null);
     setGame(null);

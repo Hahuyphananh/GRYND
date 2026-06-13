@@ -2586,68 +2586,13 @@ export default function HexDuelPage() {
             onConfirm={async () => {
               setShowResignConfirm(false);
 
-              // Call end-game API to properly settle tokens and record history
-              if (gameMode === "multiplayer") {
-                if (socket && multiplayerGameId) {
-                  socket.emit("hexDuel:resign", { gameId: multiplayerGameId });
-                }
-                const loserSide = isPlayer1 ? "player1" : "player2";
-                const endPoint = "/api/hex-duel/multiplayer/end";
-                const durationSeconds = startedAtRef.current
-                  ? Math.round((Date.now() - new Date(startedAtRef.current).getTime()) / 1000)
-                  : 0;
-                try {
-                  const res = await fetch(endPoint, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify({
-                      winner: loserSide === "player1" ? "player2" : "player1",
-                      player1Moves: p1MoveCount,
-                      player2Moves: p2MoveCount,
-                      player1Territory: p1Territory,
-                      player2Territory: p2Territory,
-                      durationSeconds,
-                      startedAt: startedAtRef.current,
-                    }),
-                  });
-                  const d = await res.json();
-                  if (d.success && d.data.newBalance !== undefined) {
-                    setBalance(Number(d.data.newBalance));
-                  }
-                } catch {}
-              } else if (gameMode === "real") {
-                const endPoint = "/api/hex-duel/end-game";
-                const durationSeconds = startedAtRef.current
-                  ? Math.round((Date.now() - new Date(startedAtRef.current).getTime()) / 1000)
-                  : 0;
-                try {
-                  const res = await fetch(endPoint, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify({
-                      wager,
-                      winner: "player2",
-                      isFunMode: false,
-                      isAiGame: aiEnabled,
-                      aiDifficulty: aiEnabled ? aiDifficulty : null,
-                      player1Moves: p1MoveCount,
-                      player2Moves: p2MoveCount,
-                      player1Territory: p1Territory,
-                      player2Territory: p2Territory,
-                      durationSeconds,
-                      startedAt: startedAtRef.current,
-                    }),
-                  });
-                  const d = await res.json();
-                  if (d.success && d.data.newBalance !== undefined) {
-                    setBalance(Number(d.data.newBalance));
-                  }
-                } catch {}
+              // Emit resign event for multiplayer so opponent gets notified
+              if (gameMode === "multiplayer" && socket && multiplayerGameId) {
+                socket.emit("hexDuel:resign", { gameId: multiplayerGameId });
               }
 
-              handleRestart();
+              // Set winner override to trigger the losing popup and end-game settlement
+              setWinnerOverride(opponentDuelPlayer);
             }}
             onCancel={() => setShowResignConfirm(false)}
           />

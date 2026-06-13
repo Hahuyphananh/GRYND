@@ -200,6 +200,7 @@ export async function POST() {
         SET result = ${result}, payout = ${payout}
         WHERE id = ${bet.id}
           AND (result IS NULL OR LOWER(result) = 'pending')
+        RETURNING id
       `;
 
       const updateRows = extractRows(updateResult);
