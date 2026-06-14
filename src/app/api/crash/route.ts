@@ -75,6 +75,7 @@ export async function POST(req) {
       const res = NextResponse.json({
         success: true,
         newBalance: Number(deducted.balance),
+        crashPoint,
       });
 
       res.cookies.set("crash_session", token, {

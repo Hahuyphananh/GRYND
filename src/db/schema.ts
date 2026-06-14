@@ -403,6 +403,7 @@ export const minesGames = pgTable("mines_games", {
   userId: integer("user_id").notNull(),
   betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
   tilesRevealed: integer("tiles_revealed").default(0),
+  minesCount: integer("mines_count").default(0),
   payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
   result: varchar("result", { length: 10 }).default("pending").notNull(),
   status: varchar("status", { length: 20 }).default("active").notNull(),

@@ -159,7 +159,7 @@ function APPips({ current, max, color, bonusCount }: { current: number; max: num
 //  Wager Modal
 // ══════════════════════════════════════════════════════════════════════════
 
-const QUICK_WAGERS = [10, 50, 100, 500];
+import { CHIP_VALUES } from "../../../lib/rouletteConfig";
 
 function WagerModal({
   balance, onStartFun, onStartReal, loading, error, isSignedIn, onCreateMultiplayer, onJoinMultiplayer,
@@ -254,7 +254,7 @@ function WagerModal({
               placeholder="Enter wager..."
             />
             <div className="flex gap-1.5">
-              {QUICK_WAGERS.map((amount) => (
+              {CHIP_VALUES.map((amount) => (
                 <button
                   key={amount}
                   onClick={() => setWager(amount)}

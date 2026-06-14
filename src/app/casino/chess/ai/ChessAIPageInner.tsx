@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../lib/animations";
+import { playVictory, playDefeat } from "../../../../lib/gameAudio";
 
 const PIECE_VALUES: Record<string, number> = {
   p: 100,
@@ -205,9 +206,7 @@ export default function ChessAIPageInner() {
   const aiColor = useMemo<"w" | "b">(
     () => (playerColor === "white" ? "b" : "w"),
     [playerColor],
-  );
-
-  async function endGame(result?: "win" | "loss" | "draw") {
+  );    async function endGame(result?: "win" | "loss" | "draw") {
     if (endGameCalled.current) return;
     endGameCalled.current = true;
 
@@ -215,6 +214,7 @@ export default function ChessAIPageInner() {
       await fetch("/api/chess/end-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           gameId: gameId ? Number(gameId) : undefined,
           result,
@@ -337,12 +337,17 @@ export default function ChessAIPageInner() {
         await endGame("win");
         if (!resultCelebratedRef.current) {
           resultCelebratedRef.current = true;
+          playVictory();
           celebrateWin();
         }
       } else {
         setWinnerText("AI wins!");
         setGameResult("lose");
         await endGame("loss");
+        if (!resultCelebratedRef.current) {
+          resultCelebratedRef.current = true;
+          playDefeat();
+        }
       }
       setShowResultModal(true);
       return;

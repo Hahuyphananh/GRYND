@@ -2,6 +2,8 @@
 import NavigationBar from "../components/navigation-bar";
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { playCardDraw, playVictory, playDefeat } from "../lib/gameAudio";
+import { CHIP_VALUES } from "../lib/rouletteConfig";
 
 /* =========================
    IMPORT YOUR 20 IMAGES HERE
@@ -52,17 +54,6 @@ const symbolImages = {
   "🪙": img20,
 };
 
-const playSound = (freq = 880) => {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.frequency.value = freq;
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start();
-  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
-};
-
 export default function SlotMachine() {
   const [reels, setReels] = useState(
     Array.from({ length: 5 }, () => Array(3).fill("💰")),
@@ -79,6 +70,8 @@ export default function SlotMachine() {
   const [winningPositions, setWinningPositions] = useState([]);
   const [animatingReels, setAnimatingReels] = useState(Array(5).fill(false));
   const spinLockRef = useRef(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchTokens = async () => {
@@ -101,8 +94,10 @@ export default function SlotMachine() {
 
   const handleBetChange = (e) => {
     const value = parseInt(e.target.value);
-    if (!isNaN(value) && value > 0) {
-      setBet(Math.min(value, balance));
+    if (e.target.value === "") {
+      setBet(0);
+    } else if (!isNaN(value) && value >= 0) {
+      setBet(value);
     }
   };
 
@@ -110,13 +105,16 @@ export default function SlotMachine() {
     if (spinLockRef.current) return;
     spinLockRef.current = true;
 
+    setError(null);
     setWinningPositions([]);
 
     if (balance < bet) {
       setLastResult("❌ Not enough balance.");
+      spinLockRef.current = false;
       return;
     }
 
+    setLoading(true);
     setSpinning(true);
     setAnimatingReels(Array(5).fill(true));
 
@@ -124,6 +122,7 @@ export default function SlotMachine() {
       const res = await fetch("/api/slots/play", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ bet }),
       });
 
@@ -135,6 +134,7 @@ export default function SlotMachine() {
       await fetch("/api/slots/save-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           betAmount: bet,
           payout: winAmount,
@@ -146,12 +146,9 @@ export default function SlotMachine() {
         setAnimatingReels(Array(5).fill(false));
         setReels(newReels);
 
-        playSound(
-          winAmount >= bet * 5 ? 1200 : winAmount >= bet * 2 ? 1000 : 700,
-        );
-
         setSpinning(false);
         spinLockRef.current = false;
+        setLoading(false);
 
         if (winAmount > 0) {
           setFlashWin(true);
@@ -166,6 +163,15 @@ export default function SlotMachine() {
               : "❌ No match.",
         );
 
+        if (winAmount >= bet * 2) {
+          playVictory();
+          playCardDraw();
+        } else if (winAmount === 0) {
+          playDefeat();
+        } else {
+          playCardDraw();
+        }
+
         if (winningLine?.positions) {
           setWinningPositions(winningLine.positions);
         }
@@ -177,7 +183,9 @@ export default function SlotMachine() {
     } catch (err) {
       setSpinning(false);
       spinLockRef.current = false;
+      setLoading(false);
       setLastResult("❌ Error playing slot");
+      setError(err.message || "Network error");
     }
   };
 
@@ -193,7 +201,7 @@ export default function SlotMachine() {
   };
 
   const setMaxBet = () => {
-    setBet(Math.min(1000, balance));
+    setBet(Math.max(1, balance));
   };
 
   /* REPLACE ONLY YOUR CURRENT RETURN JSX WITH THIS */
@@ -337,34 +345,91 @@ export default function SlotMachine() {
 
             <div className="flex justify-between items-center">
               <span>Bet Amount</span>
-              <input
-                type="number"
-                min="1"
-                max={balance}
-                value={bet}
-                onChange={handleBetChange}
-                className="w-28 px-3 py-1 rounded bg-black text-cyan-300 border border-cyan-400 outline-none"
-              />
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min="0"
+                  max={balance}
+                  value={bet}
+                  onChange={handleBetChange}
+                  onBlur={() => { if (!bet || bet < 1) setBet(100); }}
+                  className="w-28 px-3 py-1 rounded bg-black text-cyan-300 border border-cyan-400 outline-none"
+                />
+              </div>
             </div>
+
+            {/* Quick chips */}
+            <div className="flex flex-wrap gap-1 justify-center">
+              {CHIP_VALUES.map((val) => (
+                <button
+                  key={val}
+                  onClick={() => setBet(val)}
+                  className={`px-2 py-0.5 rounded-full text-xs font-bold border transition-all ${
+                    bet === val
+                      ? "bg-[#FFFF33] text-black border-[#FFFF33]"
+                      : "bg-[#0a1a3a] text-[#FFFF33]/80 border-[#FFFF33]/30 hover:bg-[#FFFF33]/20"
+                  }`}
+                >
+                  {val}
+                </button>
+              ))}
+            </div>
+
+            {/* Bet action buttons */}
+            <div className="flex gap-1.5 justify-center">
+              <button
+                onClick={() => setBet(Math.max(1, Math.floor(balance / 2)))}
+                className="px-2 py-1 rounded text-xs font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
+              >
+                ½
+              </button>
+              <button
+                onClick={() => setBet(Math.max(1, balance))}
+                className="px-2 py-1 rounded text-xs font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
+              >
+                ALL
+              </button>
+              <button
+                onClick={() => setBet((prev) => Math.min(prev * 2, balance))}
+                className="px-2 py-1 rounded text-xs font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
+              >
+                2×
+              </button>
+            </div>
+
+            {/* Error display */}
+            {error && (
+              <div className="text-red-400 text-xs text-center bg-red-900/20 p-1 rounded">
+                {error}
+              </div>
+            )}
+
+            {/* Loading indicator */}
+            {loading && (
+              <div className="text-center">
+                <span className="inline-block w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mr-1 align-middle"></span>
+                <span className="text-cyan-300 text-sm">Spinning...</span>
+              </div>
+            )}
 
             <div className="flex justify-between">
               <span>Balance</span>
               <span className="text-green-400 font-bold">
-                ${balance.toFixed(2)}
+                {balance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </span>
             </div>
 
             <div className="flex justify-between">
               <span>Total Won</span>
               <span className="text-cyan-300 font-bold">
-                ${totalWin.toFixed(2)}
+                {totalWin.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </span>
             </div>
 
             <div className="flex justify-between">
               <span>Total Lost</span>
               <span className="text-pink-400 font-bold">
-                ${totalLoss.toFixed(2)}
+                {totalLoss.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </span>
             </div>
 

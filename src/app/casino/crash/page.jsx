@@ -6,6 +6,7 @@ import Link from "next/link";
 import NavigationBar from "../../../components/navigation-bar";
 import { motion, AnimatePresence } from "framer-motion";
 import { celebrateWin, gameOverModal } from "../../../lib/animations";
+import { playCardDraw, playVictory, playDefeat } from "../../../lib/gameAudio";
 
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
@@ -19,7 +20,7 @@ export default function Page() {
   const [isCrashed, setIsCrashed] = useState(false);
   const [gameRunning, setGameRunning] = useState(false);
   const [crashPoint, setCrashPoint] = useState(0);
-  const [betAmount, setBetAmount] = useState("");
+  const [betAmount, setBetAmount] = useState(0);
   const [autoCashout, setAutoCashout] = useState(2.0);
   const [hasBet, setHasBet] = useState(false);
   const [cashedOut, setCashedOut] = useState(false);
@@ -30,9 +31,15 @@ export default function Page() {
   const [refreshCounter, setRefreshCounter] = useState(0);
   const [showCashoutPopup, setShowCashoutPopup] = useState(false);
   const [cashoutPopupMultiplier, setCashoutPopupMultiplier] = useState(null);
+  const [cashoutPopupAmount, setCashoutPopupAmount] = useState(0);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
   const resultCelebratedRef = useRef(false);
   const fixedMaxMultiplierRef = useRef(2);
   const [showRules, setShowRules] = useState(false);
+
+  // Server-authoritative crash point (received from API)
+  const serverCrashPointRef = useRef(0);
 
   const countdownRef = useRef(null);
   const canvasRef = useRef(null);
@@ -73,6 +80,7 @@ export default function Page() {
     if (isCountingDown && countdown > 0) {
       countdownRef.current = setTimeout(() => {
         setCountdown((prev) => prev - 1);
+        playCardDraw();
       }, 1000);
     } else if (isCountingDown && countdown === 0) {
       setIsCountingDown(false);
@@ -83,19 +91,22 @@ export default function Page() {
   }, [isCountingDown, countdown]);
 
   function initiateCountdown() {
-    if (!hasBet || !betAmount || betAmount === "0") {
-      alert("You must place a bet before starting the game!");
+    if (!hasBet || !betAmount || betAmount <= 0) {
+      setError("You must place a bet before starting the game!");
       return;
     }
+    setError(null);
     setCountdown(3);
     setIsCountingDown(true);
   }
 
   function actuallyStartGame() {
-    const generatedCrashPoint = generateCrashPoint();
+    // Use server-authoritative crash point
+    const generatedCrashPoint = serverCrashPointRef.current || 2.0;
     const startTime = performance.now();
 
-    fixedMaxMultiplierRef.current = Math.max(autoCashout || 2, 2);
+    const maxDisplay = Math.max(Math.max(autoCashout || 2, generatedCrashPoint * 1.2), 2);
+    fixedMaxMultiplierRef.current = maxDisplay;
 
     setDisplayMultiplier(1.0);
     setIsCrashed(false);
@@ -128,8 +139,9 @@ export default function Page() {
   }
 
   function resetBet() {
-    setBetAmount("");
+    setBetAmount(0);
     setHasBet(false);
+    setError(null);
   }
 
   async function crash() {
@@ -155,21 +167,25 @@ export default function Page() {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(drawFrozenCrashFrame);
 
-    setRefreshCounter((prev) => prev + 1); // 🔁 trigger BetPanel to refresh
+    setRefreshCounter((prev) => prev + 1);
     resetBet();
     resultCelebratedRef.current = false;
+    playDefeat();
   }
 
   async function placeBet(amount, autoCashoutValue) {
-    setBetAmount(amount.toString());
+    setBetAmount(amount);
     setAutoCashout(autoCashoutValue);
     setHasBet(true);
     setCashedOut(false);
+    setError(null);
+    setLoading(true);
 
     try {
       const res = await fetch("/api/crash", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           betAmount: amount,
           multiplier: 0,
@@ -180,12 +196,24 @@ export default function Page() {
       const data = await res.json();
 
       if (data.success) {
+        // Store server-authoritative crash point
+        if (typeof data.crashPoint === "number") {
+          serverCrashPointRef.current = data.crashPoint;
+        } else {
+          // Fallback if API doesn't return crashPoint (for backwards compat)
+          serverCrashPointRef.current = Number((Math.random() * 8 + 1.2).toFixed(2));
+        }
         setRefreshCounter((prev) => prev + 1);
       } else {
-        alert(data.error || "Failed to place bet");
+        setError(data.error || "Failed to place bet");
+        resetBet();
       }
     } catch (err) {
       console.error("Error placing bet:", err);
+      setError("Network error placing bet");
+      resetBet();
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -200,11 +228,6 @@ export default function Page() {
     setGameRunning(false);
     setDisplayMultiplier(winMultiplier);
 
-    if (!resultCelebratedRef.current) {
-      resultCelebratedRef.current = true;
-      celebrateWin();
-    }
-
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     animationStateRef.current = { ...state, crashed: true };
     drawCanvasFrame(performance.now());
@@ -213,34 +236,47 @@ export default function Page() {
       const res = await fetch("/api/crash/settle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
-          betAmount: parseFloat(betAmount),
+          betAmount,
           multiplier: winMultiplier,
           gameWon: true,
         }),
       });
 
-      await res.json();
+      const data = await res.json();
+
+      if (data.success) {
+        // Celebrate only AFTER confirmed API success
+        if (!resultCelebratedRef.current) {
+          resultCelebratedRef.current = true;
+          celebrateWin();
+          playVictory();
+        }
+        const winAmount = betAmount * winMultiplier;
+        setCashoutPopupMultiplier(winMultiplier);
+        setCashoutPopupAmount(winAmount);
+        setShowCashoutPopup(true);
+      } else {
+        setError(data.error || "Cashout failed");
+        // Revert state
+        betStateRef.current = { ...betStateRef.current, cashedOut: false };
+        setCashedOut(false);
+      }
     } catch (err) {
       console.error("Crash win network error:", err);
+      setError("Network error during cashout");
+      betStateRef.current = { ...betStateRef.current, cashedOut: false };
+      setCashedOut(false);
     }
 
     setRefreshCounter((prev) => prev + 1);
     resetBet();
-    setCashoutPopupMultiplier(winMultiplier);
-    setShowCashoutPopup(true);
   }
 
   async function cashOut() {
     if (!gameRunning || isCrashed || cashedOut) return;
     await settleCashOut(animationStateRef.current.currentMultiplier);
-  }
-
-  function generateCrashPoint() {
-    const r = Math.random();
-    if (r < 0.01) return parseFloat((Math.random() * 50 + 10).toFixed(2));
-    if (r < 0.1) return parseFloat((Math.random() * 5 + 2).toFixed(2));
-    return parseFloat((Math.random() * 2 + 1).toFixed(2));
   }
 
   function toCanvasPoint(mult) {
@@ -249,19 +285,12 @@ export default function Page() {
     const maxY = CANVAS_HEIGHT - GRAPH_PADDING;
     const minY = GRAPH_PADDING;
 
-    const state = animationStateRef.current;
-
-    // ✅ FIXED X progression (time-based, NOT tied to crash)
     const elapsed = Math.log(Math.max(mult, 1.0001)) / GROWTH_RATE;
-
-    const MAX_TIME = 8; // seconds to reach right side (tweak this)
+    const MAX_TIME = 8;
     const progress = Math.min(elapsed / MAX_TIME, 1);
-
     const x = minX + progress * (maxX - minX);
 
-    // ✅ FIXED Y scale (based on autoCashout)
     const maxMultiplier = fixedMaxMultiplierRef.current;
-
     const normalized = (mult - 1) / (maxMultiplier - 1);
     const y = maxY - Math.max(0, Math.min(1, normalized)) * (maxY - minY);
 
@@ -460,10 +489,10 @@ relative overflow-hidden w-full lg:w-1/4 flex flex-col"
                   key={index}
                   className={`px-3 py-1 rounded-full text-sm font-bold ${
                     mult < 2
-                      ? "bg-[#3b0a0a] border border-red-500 shadow-[0_0_10px_rgba(255,0,0,0.6)]"
+                      ? "bg-red-900/40 border border-red-500/60 text-red-200 shadow-[0_0_8px_rgba(255,0,0,0.3)]"
                       : mult < 5
-                        ? "bg-[#031b2e] border border-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.6)] text-[#001933]"
-                        : "bg-[#2a2200] border border-[#FFD700] shadow-[0_0_10px_rgba(255,215,0,0.7)] text-[#030817]"
+                        ? "bg-cyan-900/40 border border-cyan-400/60 text-cyan-200 shadow-[0_0_8px_rgba(0,229,255,0.3)]"
+                        : "bg-yellow-900/40 border border-yellow-400/60 text-yellow-200 shadow-[0_0_8px_rgba(255,215,0,0.3)]"
                   }`}
                 >
                   {mult}x
@@ -485,7 +514,6 @@ shadow-[0_0_25px_rgba(0,229,255,0.25),inset_0_0_25px_rgba(0,229,255,0.08)]
 p-4 rounded-2xl
 relative overflow-hidden w-full lg:w-2/4 h-[600px] overflow-hidden flex items-center justify-center"
         >
-          {/* Space background (NEW — does not affect anything else) */}
           <div className="absolute inset-0 space-bg" />
 
           {isCountingDown && (
@@ -493,6 +521,13 @@ relative overflow-hidden w-full lg:w-2/4 h-[600px] overflow-hidden flex items-ce
               <div className="text-8xl font-bold text-white animate-pulse">
                 {countdown > 0 ? countdown : "GO"}
               </div>
+            </div>
+          )}
+
+          {/* Loading overlay */}
+          {loading && (
+            <div className="absolute inset-0 bg-black/40 z-40 flex items-center justify-center">
+              <span className="inline-block w-10 h-10 border-3 border-[#00e5ff] border-t-transparent rounded-full animate-spin"></span>
             </div>
           )}
 
@@ -507,10 +542,8 @@ relative overflow-hidden w-full lg:w-2/4 h-[600px] overflow-hidden flex items-ce
             {(() => {
               const maxMultiplier = fixedMaxMultiplierRef.current;
               const steps = 6;
-
               return Array.from({ length: steps + 1 }, (_, i) => {
                 const value = 1 + ((maxMultiplier - 1) * (steps - i)) / steps;
-
                 return (
                   <div key={i} className="text-sm text-gray-400">
                     {value.toFixed(2)}x
@@ -542,22 +575,28 @@ p-4 rounded-2xl
 relative overflow-hidden w-full lg:w-1/4 flex flex-col"
         >
           <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent opacity-70" />
+
+          {/* Error display */}
+          {error && (
+            <div className="mb-3 bg-red-900/30 border border-red-400/40 text-red-300 p-2 rounded text-xs text-center">
+              {error}
+            </div>
+          )}
+
           <div className="mb-6 flex flex-col gap-3">
             {!gameRunning && !isCountingDown && (
               <button
                 onClick={startGame}
                 className={`px-4 py-3 rounded-lg font-bold text-lg w-full ${
-                  hasBet && betAmount && betAmount !== "0"
+                  hasBet && betAmount > 0
                     ? "bg-gradient-to-r from-[#00e5ff] to-[#007cf0] text-white border border-[#00e5ff] shadow-[0_0_18px_rgba(0,229,255,0.5)] hover:shadow-[0_0_30px_rgba(0,229,255,0.9)] hover:scale-105 transition-all duration-300 shadow-[0_0_16px_rgba(255,215,0,0.45)]"
                     : "bg-gray-500 cursor-not-allowed"
                 }`}
-                disabled={!hasBet || !betAmount || betAmount === "0"}
+                disabled={!hasBet || !betAmount || betAmount <= 0}
               >
-                {!hasBet || !betAmount || betAmount === "0"
+                {!hasBet || !betAmount || betAmount <= 0
                   ? "Place Bet First"
-                  : isCrashed
-                    ? "Start New Game"
-                    : "Start Game"}
+                  : "Start Game"}
               </button>
             )}
             {isCountingDown && (
@@ -640,6 +679,14 @@ transition-all duration-300 hover:bg-[#ffe14f] text-[#030817] px-4 py-3 rounded-
               >
                 {cashoutPopupMultiplier.toFixed(2)}x
               </motion.p>
+              <motion.p
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.7, duration: 0.4 }}
+                className="text-2xl font-black text-[#FFD700]"
+              >
+                +{cashoutPopupAmount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} tokens
+              </motion.p>
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -667,6 +714,7 @@ transition-all duration-300 hover:bg-[#ffe14f] text-[#030817] px-4 py-3 rounded-
           </motion.div>
         )}
       </AnimatePresence>
+
       {/* Rules Section */}
       <div className="mt-4 bg-[#08142f] rounded-lg border border-[#00e5ff]/30 shadow-[0_0_14px_rgba(0,229,255,0.15)]">
         <button
@@ -702,6 +750,8 @@ transition-all duration-300 hover:bg-[#ffe14f] text-[#030817] px-4 py-3 rounded-
           </div>
         )}
       </div>
+
+
     </div>
   );
 }

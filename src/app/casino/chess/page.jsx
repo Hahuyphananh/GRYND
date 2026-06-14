@@ -4,6 +4,7 @@ import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import { useEffect, useState } from "react";
 import { useSocket } from "../../../context/SocketProvider";
+import { CHIP_VALUES } from "../../../lib/rouletteConfig";
 
 const TABLES = [1, 5, 10, 20, 50, 100];
 const TIMER_OPTIONS = [
@@ -27,6 +28,8 @@ export default function ChessLobby() {
   const [creatingGame, setCreatingGame] = useState(false);
   const [selectedTable, setSelectedTable] = useState(null);
   const [selectedTimer, setSelectedTimer] = useState("");
+  const [error, setError] = useState(null);
+  const [aiGameLoading, setAiGameLoading] = useState(false);
 
   useEffect(() => {
     fetchAvailableGames();
@@ -79,7 +82,7 @@ export default function ChessLobby() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || "Unable to create game");
+        setError(data.error || "Unable to create game");
         return;
       }
 
@@ -107,7 +110,7 @@ export default function ChessLobby() {
       );
     } catch (error) {
       console.error("Failed to create chess game", error);
-      alert("Unable to create game");
+      setError("Unable to create game");
     } finally {
       setCreatingGame(false);
     }
@@ -124,7 +127,7 @@ export default function ChessLobby() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        alert(data.error || "Unable to join game");
+        setError(data.error || "Unable to join game");
         fetchAvailableGames();
         return;
       }
@@ -142,17 +145,20 @@ export default function ChessLobby() {
       );
     } catch (error) {
       console.error("Failed to join chess game", error);
-      alert("Unable to join game");
+      setError("Unable to join game");
     } finally {
       setJoiningGameId(null);
     }
   }
 
   async function startAIGame() {
+    setAiGameLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/chess/create-ai-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           ai_game: true,
           betAmount: Number(betAmount),
@@ -165,6 +171,9 @@ export default function ChessLobby() {
       router.push(`/casino/chess/ai?gameId=${data.gameId}&bet=${betAmount}`);
     } catch (error) {
       console.error("Error creating AI game:", error);
+      setError("Failed to create AI game");
+    } finally {
+      setAiGameLoading(false);
     }
   }
 
@@ -220,11 +229,16 @@ export default function ChessLobby() {
                 }`}
               >
                 <div>{timer.label}</div>
-                <div className="text-sm opacity-80">{timer.range}</div>
               </button>
             ))}
           </div>
         </div>
+
+        {error && (
+          <div className="mb-4 bg-red-900/30 border border-red-400/40 text-red-300 p-2 rounded text-sm text-center">
+            {error}
+          </div>
+        )}
 
         <button
           onClick={createGame}
@@ -286,14 +300,50 @@ export default function ChessLobby() {
               Enter Your Bet Amount
             </h2>
 
-            <input
-              type="number"
-              min="1"
-              value={betAmount}
-              onChange={(e) => setBetAmount(e.target.value)}
-              className="w-full border border-[#00e5ff]/40 bg-[#0d335f] px-3 py-2 mb-4 rounded"
-              placeholder="Bet amount"
-            />
+            {/* Quick chips */}
+            <div className="flex flex-wrap gap-1.5 justify-center mb-3">
+              {CHIP_VALUES.map((val) => (
+                <button
+                  key={val}
+                  onClick={() => setBetAmount(val.toString())}
+                  className={`px-2 py-0.5 rounded-full text-xs font-bold border transition-all ${
+                    Number(betAmount) === val
+                      ? "bg-[#FFFF33] text-black border-[#FFFF33]"
+                      : "bg-[#0a1a3a] text-[#FFFF33]/80 border-[#FFFF33]/30"
+                  }`}
+                >
+                  {val}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1.5 mb-2">
+              <input
+                type="number"
+                min="0"
+                value={betAmount}
+                onChange={(e) => setBetAmount(e.target.value)}
+                onBlur={() => { if (!betAmount || Number(betAmount) < 1) setBetAmount(""); }}
+                className="flex-1 border border-[#00e5ff]/40 bg-[#0d335f] px-3 py-2 rounded"
+                placeholder="Bet amount"
+              />
+              <button
+                onClick={() => setBetAmount("50")}
+                className="px-2 py-2 rounded text-xs font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
+              >
+                ½
+              </button>
+              <button
+                onClick={() => setBetAmount("100")}
+                className="px-2 py-2 rounded text-xs font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
+              >
+                100
+              </button>
+            </div>
+
+            {error && (
+              <div className="mb-2 text-red-400 text-xs text-center">{error}</div>
+            )}
 
             <div className="flex justify-between">
               <button
@@ -305,10 +355,10 @@ export default function ChessLobby() {
 
               <button
                 onClick={startAIGame}
-                disabled={!betAmount}
+                disabled={!betAmount || Number(betAmount) < 1 || aiGameLoading}
                 className="bg-[#FFD700] text-[#030817] px-4 py-2 rounded hover:bg-[#ffe14f] disabled:bg-[#7f8520] disabled:text-[#c6c6c6]"
               >
-                Start Game
+                {aiGameLoading ? "Creating..." : "Start Game"}
               </button>
             </div>
           </div>
