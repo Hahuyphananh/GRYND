@@ -2,6 +2,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import NavigationBar from "../../../components/navigation-bar";
+import { playCardDraw, playVictory, playDefeat } from "../../../lib/gameAudio";
+import { CHIP_VALUES } from "../../../lib/rouletteConfig";
 
 function MainComponent() {
   const { isSignedIn, user } = useUser();
@@ -18,15 +20,25 @@ function MainComponent() {
   const [riskLevel, setRiskLevel] = useState("medium");
   const saveTimeoutRef = useRef(null);
   const pendingBallsRef = useRef([]);
-  const [autoEnabled, setAutoEnabled] = useState(false);
   const [autoBetCount, setAutoBetCount] = useState(10);
-  const [autoDelay, setAutoDelay] = useState(400); // ms between drops
+  const [autoDelay, setAutoDelay] = useState(400);
   const [autoStopLoss, setAutoStopLoss] = useState(0);
   const [autoTakeProfit, setAutoTakeProfit] = useState(0);
   const autoIntervalRef = useRef(null);
   const [autoRunning, setAutoRunning] = useState(false);
   const [autoInfinite, setAutoInfinite] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // ── Refs to avoid stale closures in auto-bet intervals ──
+  const isProcessingRef = useRef(false);
+  const userTokensRef = useRef(userTokens);
+  const betAmountRef = useRef(betAmount);
+  const autoSessionProfitRef = useRef(0);
+
+  useEffect(() => { isProcessingRef.current = isProcessing; }, [isProcessing]);
+  useEffect(() => { userTokensRef.current = userTokens; }, [userTokens]);
+  useEffect(() => { betAmountRef.current = betAmount; }, [betAmount]);
 
   const lowRiskMultipliers = [
     20, 10, 6, 4, 2.5, 1.6, 1.2, 1, 0.7, 0.4, 0.7, 1, 1.2, 1.6, 2.5, 4, 6, 10, 20,
@@ -57,7 +69,9 @@ function MainComponent() {
     scale: 1,
   });
 
-  // Keep board sized to available area so nothing overflows the page
+  // ── Board sizing (single ResizeObserver, no duplication) ──
+  const baseSize = 800;
+
   useEffect(() => {
     if (!boardAreaRef.current) return;
 
@@ -65,8 +79,8 @@ function MainComponent() {
       const rect = boardAreaRef.current.getBoundingClientRect();
       const availableW = rect.width;
       const availableH = rect.height;
-      const scale = Math.max(0.2, Math.min(availableW / 500, availableH / 500, 1));
-      setBoardSize({ width: 500 * scale, height: 500 * scale, scale });
+      const scale = Math.max(0.2, Math.min(availableW / baseSize, availableH / baseSize, 1));
+      setBoardSize({ width: baseSize * scale, height: baseSize * scale, scale });
     };
 
     updateSize();
@@ -93,7 +107,7 @@ function MainComponent() {
     const animateBall = (ball) => {
       if (ball.isTemp && !ball.fullPath) {
         const elapsedTime = performance.now() - ball.startTime;
-        const floatY = Math.sin(elapsedTime / 200) * 0;
+        const floatY = Math.sin(elapsedTime / 300) * 3;
         setActiveBalls((prev) =>
           prev.map((b) =>
             b.id === ball.id
@@ -286,8 +300,8 @@ function MainComponent() {
     const center = (total - 1) / 2;
     const distance = Math.abs(index - center) / center;
 
-    const start = { r: 0, g: 229, b: 255 }; // cyan (center)
-    const end = { r: 255, g: 0, b: 128 }; // pink/red (edges)
+    const start = { r: 0, g: 229, b: 255 };
+    const end = { r: 255, g: 0, b: 128 };
 
     const r = Math.round(start.r + (end.r - start.r) * distance);
     const g = Math.round(start.g + (end.g - start.g) * distance);
@@ -296,24 +310,38 @@ function MainComponent() {
     return `rgb(${r}, ${g}, ${b})`;
   };
 
+  // Returns { success, newBalance, winAmount } so auto-bet can use it directly
   const handleDrop = async () => {
-    if (isProcessing) return; // ✅ ADD THIS LINE
+    if (isProcessingRef.current) return { success: false };
+    isProcessingRef.current = true;
     setIsProcessing(true);
+    setLoading(true);
+
     if (!isSignedIn) {
       setError("Vous devez être connecté pour jouer.");
-      return;
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+      setLoading(false);
+      return { success: false };
     }
 
-    if (userTokens < betAmount) {
+    const currentBet = betAmountRef.current;
+    const currentTokens = userTokensRef.current;
+
+    if (currentTokens === null || currentTokens < currentBet) {
       setError("Solde insuffisant");
+      isProcessingRef.current = false;
       setIsProcessing(false);
-      return;
+      setLoading(false);
+      return { success: false };
     }
 
     setError(null);
     setShowResult(false);
 
-    // Generate a unique temp ball
+    // Play drop sound
+    playCardDraw();
+
     const tempBallId = Date.now() + Math.random();
     const tempBall = {
       id: tempBallId,
@@ -330,14 +358,14 @@ function MainComponent() {
 
     setActiveBalls((prev) => [...prev, tempBall]);
 
-    // Immediately deduct the bet locally
-    setUserTokens((prev) => (prev !== null ? prev - betAmount : prev));
+    // Immediately deduct the bet locally (functional update for safety)
+    setUserTokens((prev) => (prev !== null ? prev - currentBet : prev));
 
     try {
       const response = await fetch("/api/play-plinko", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ betAmount, riskLevel }),
+        body: JSON.stringify({ betAmount: currentBet, riskLevel }),
       });
 
       if (!response.ok) throw new Error("Erreur réseau");
@@ -350,9 +378,10 @@ function MainComponent() {
       // Update game data
       setGameResults((prev) => [...prev, winAmount]);
       setGameMultipliers((prev) => [...prev, multiplier]);
-      // 🧠 Queue the ball result for batch saving
+
+      // Queue the ball result for batch saving
       pendingBallsRef.current.push({
-        betAmount,
+        betAmount: currentBet,
         multiplier,
         winAmount,
       });
@@ -367,15 +396,15 @@ function MainComponent() {
 
         const totalBet = pending.reduce((sum, b) => sum + b.betAmount, 0);
         const totalPayout = pending.reduce((sum, b) => sum + b.winAmount, 0);
-        const multipliers = pending.map((b) => b.multiplier);
+        const multipliersArr = pending.map((b) => b.multiplier);
 
         try {
           await fetch("/api/plinko/save-games", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ totalBet, totalPayout, multipliers }),
+            credentials: "include",
+            body: JSON.stringify({ totalBet, totalPayout, multipliers: multipliersArr }),
           });
-          console.log("✅ Saved Plinko batch:", pending);
         } catch (err) {
           console.error("Failed to save Plinko games:", err);
         } finally {
@@ -384,10 +413,17 @@ function MainComponent() {
         }
       }, 5000);
 
+      // Play sound based on result
+      if (winAmount > currentBet) {
+        setTimeout(() => playVictory(), 800);
+      } else if (winAmount === 0 && currentBet > 0) {
+        setTimeout(() => playDefeat(), 800);
+      }
+
       setUserTokens(newBalance);
       setLastMultiplier(multiplier);
 
-      // Extend path to include finalPosition so ball lands exactly on the multiplier
+      // Extend path to include finalPosition
       const adjustedPath = Array.isArray(path) ? [...path] : [];
       const lastPoint = adjustedPath[adjustedPath.length - 1];
       if (!lastPoint || lastPoint.x !== finalPosition.x || lastPoint.y !== finalPosition.y) {
@@ -413,14 +449,20 @@ function MainComponent() {
         )
       );
 
-      // Show result per-ball
       setTimeout(() => setShowResult(true), 1500);
-    } catch (error) {
-      console.error("Plinko error:", error);
-      setError(error.message || "Erreur lors du lancement du jeu");
+
+      return { success: true, newBalance, winAmount, betAmount: currentBet };
+    } catch (err) {
+      console.error("Plinko error:", err);
+      setError(err.message || "Erreur lors du lancement du jeu");
+      // 🔴 Restore the balance that was deducted locally
+      setUserTokens((prev) => (prev !== null ? prev + currentBet : prev));
       setActiveBalls((prev) => prev.filter((b) => b.id !== tempBallId));
+      return { success: false };
     } finally {
-      setIsProcessing(false); // ✅ THIS IS VERY IMPORTANT
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+      setLoading(false);
     }
   };
 
@@ -429,11 +471,12 @@ function MainComponent() {
 
     let betsPlaced = 0;
     let sessionProfit = 0;
+    autoSessionProfitRef.current = 0;
 
     setAutoRunning(true);
 
     autoIntervalRef.current = setInterval(async () => {
-      if (isProcessing) return;
+      if (isProcessingRef.current) return { success: false };
 
       // Stop if not infinite AND reached bet count
       if (!autoInfinite && betsPlaced >= autoBetCount) {
@@ -441,30 +484,36 @@ function MainComponent() {
         return;
       }
 
+      const currentBal = userTokensRef.current;
+      const currentBet = betAmountRef.current;
+
       // Stop if no balance
-      if (userTokens < betAmount) {
+      if (currentBal === null || currentBal < currentBet) {
         stopAutoBet();
         return;
       }
 
-      const beforeBalance = userTokens;
+      const beforeBalance = userTokensRef.current;
 
-      await handleDrop();
+      const result = await handleDrop();
 
-      betsPlaced++;
+      // Only count successful bets toward the limit and profit
+      if (result.success) {
+        betsPlaced++;
+        const afterBalance = result.newBalance;
+        const profitChange = (afterBalance ?? 0) - (beforeBalance ?? 0);
+        sessionProfit += profitChange;
+        autoSessionProfitRef.current = sessionProfit;
 
-      const afterBalance = userTokens;
-      const profitChange = afterBalance - beforeBalance;
-      sessionProfit += profitChange;
+        // Stop Loss
+        if (autoStopLoss > 0 && sessionProfit <= -autoStopLoss) {
+          stopAutoBet();
+        }
 
-      // Stop Loss
-      if (autoStopLoss && sessionProfit <= -autoStopLoss) {
-        stopAutoBet();
-      }
-
-      // Take Profit
-      if (autoTakeProfit && sessionProfit >= autoTakeProfit) {
-        stopAutoBet();
+        // Take Profit
+        if (autoTakeProfit > 0 && sessionProfit >= autoTakeProfit) {
+          stopAutoBet();
+        }
       }
     }, autoDelay);
   };
@@ -476,6 +525,7 @@ function MainComponent() {
     }
     setAutoRunning(false);
   };
+
   useEffect(() => {
     return () => {
       if (autoIntervalRef.current) {
@@ -486,40 +536,11 @@ function MainComponent() {
 
   const totalWinAmount = gameResults.reduce((sum, amount) => sum + amount, 0);
 
-  // In your useEffect where you set boardSize (adjust base from 500 to 800):
-  const baseSize = 800; // <-- bigger base size for scaling
-
-  useEffect(() => {
-    if (!boardAreaRef.current) return;
-
-    const updateSize = () => {
-      const rect = boardAreaRef.current.getBoundingClientRect();
-      const availableW = rect.width;
-      const availableH = rect.height;
-      const scale = Math.max(0.2, Math.min(availableW / baseSize, availableH / baseSize, 1));
-      setBoardSize({
-        width: baseSize * scale,
-        height: baseSize * scale,
-        scale,
-      });
-    };
-
-    updateSize();
-    const ro = new ResizeObserver(updateSize);
-    ro.observe(boardAreaRef.current);
-    window.addEventListener("resize", updateSize);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", updateSize);
-    };
-  }, []);
-
   const scaledBoardSize = {
     width:
       typeof window !== "undefined" && window.innerWidth < 768
         ? boardSize.width * 1.12
         : boardSize.width * 0.95,
-
     height:
       typeof window !== "undefined" && window.innerWidth < 768
         ? boardSize.height * 1.12
@@ -578,12 +599,31 @@ lg:p-6 order-2 lg:order-none
           <div className="mb-6">
             <span className="text-[#FFD700]">
               <i className="fas fa-coins mr-2"></i>
-              {userTokens !== null ? userTokens : "..."}
+              {userTokens !== null ? userTokens.toLocaleString() : "..."}
             </span>
           </div>
         )}
 
         <label className="mb-2 block text-sm text-gray-300">Montant du pari</label>
+
+        {/* ── Quick chip values ── */}
+        <div className="flex flex-wrap gap-1.5 justify-center mb-2">
+          {CHIP_VALUES.map((val) => (
+            <button
+              key={val}
+              onClick={() => setBetAmount(val)}
+              className={`px-2 py-0.5 rounded-full text-xs font-bold border transition-all duration-150
+                ${
+                  betAmount === val
+                    ? "bg-[#FFFF33] text-black border-[#FFFF33] shadow-[0_0_10px_rgba(255,255,51,0.6)] scale-110"
+                    : "bg-[#0a1a3a] text-[#FFFF33]/80 border-[#FFFF33]/30 hover:bg-[#FFFF33]/20 hover:border-[#FFFF33]/60"
+                }
+              `}
+            >
+              {val}
+            </button>
+          ))}
+        </div>
 
         <div className="mb-2 flex items-center gap-2">
           <button
@@ -604,8 +644,15 @@ transition
           </button>
           <input
             type="number"
+            min="0"
             value={betAmount}
-            onChange={(e) => setBetAmount(Math.max(1, Number(e.target.value)))}
+            onChange={(e) => {
+              const v = parseInt(e.target.value);
+              setBetAmount(isNaN(v) ? 0 : v);
+            }}
+            onBlur={() => {
+              if (!betAmount || betAmount < 1) setBetAmount(1);
+            }}
             className="
 flex-1 h-10
 rounded-xl
@@ -635,6 +682,33 @@ transition
           </button>
         </div>
 
+        {/* ── ½ and ALL-IN buttons ── */}
+        <div className="flex gap-2 mb-3">
+          <button
+            onClick={() => {
+              if (userTokens) setBetAmount(Math.max(1, Math.floor(userTokens / 2)));
+            }}
+            className="flex-1 px-2 py-1.5 rounded-lg border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] text-xs font-bold hover:bg-[#FFFF33]/25 transition"
+          >
+            ½
+          </button>
+          <button
+            onClick={() => {
+              if (userTokens) setBetAmount(Math.max(1, userTokens));
+            }}
+            className="flex-1 px-2 py-1.5 rounded-lg border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] text-xs font-bold hover:bg-[#FFFF33]/25 transition"
+          >
+            TOUT
+          </button>
+          <button
+            onClick={() => setBetAmount((prev) => prev * 2)}
+            className="flex-1 px-2 py-1.5 rounded-lg border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] text-xs font-bold hover:bg-[#FFFF33]/25 transition"
+          >
+            2×
+          </button>
+        </div>
+
+        {/* ── Drop button with loading state ── */}
         <button
           className="
 w-full h-12
@@ -648,12 +722,22 @@ hover:bg-[#FFFF33]/35
 active:scale-[0.98]
 transition
 shadow-[0_0_15px_rgba(255,255,51,0.15)]
+disabled:opacity-50 disabled:cursor-not-allowed
 "
           onClick={handleDrop}
-          disabled={autoRunning}
+          disabled={autoRunning || loading}
         >
-          Lancer
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="inline-block w-4 h-4 border-2 border-[#d8fbff] border-t-transparent rounded-full animate-spin"></span>
+              Lancement...
+            </span>
+          ) : (
+            "Lancer"
+          )}
         </button>
+
+        {/* ── Auto Bet ── */}
         <div className="mt-6 rounded-lg bg-[#020617] border border-[#00E5FF]/20 focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF] p-4">
           <h3 className="text-[#FFD700] font-bold mb-3">Auto Bet</h3>
 
@@ -772,6 +856,7 @@ shadow-[0_0_15px_rgba(255,255,51,0.15)]
 
         {error && <div className="mt-4 text-red-500">{error}</div>}
 
+        {/* ── Session History ── */}
         {showHistory && gameResults.length > 0 && (
           <div className="mt-4">
             <p className="text-xl font-bold text-[#FFD700]">
@@ -781,6 +866,27 @@ shadow-[0_0_15px_rgba(255,255,51,0.15)]
               </span>
             </p>
             <p className="text-white">Total gagné : {totalWinAmount.toFixed(2)} tokens</p>
+
+            {/* Mini multiplier history strip */}
+            {gameMultipliers.length > 1 && (
+              <div className="mt-3 flex flex-wrap gap-1 items-center">
+                <span className="text-xs text-gray-400 mr-1">Session:</span>
+                {gameMultipliers.slice(-10).map((m, i) => (
+                  <span
+                    key={i}
+                    className={`inline-flex items-center justify-center min-w-[32px] h-6 px-1.5 rounded text-[10px] font-bold ${
+                      m > 1
+                        ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                        : m === 0
+                        ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                        : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
+                    }`}
+                  >
+                    {m}x
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </aside>

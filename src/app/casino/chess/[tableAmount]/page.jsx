@@ -30,7 +30,7 @@ export default function MatchmakingPage() {
         try {
           const pollRes = await fetch(
             `/api/chess/game-state?gameId=${activeGameId}`,
-            { cache: "no-store" },
+            { cache: "no-store", credentials: "include" },
           );
           const pollData = await pollRes.json();
           if (!pollRes.ok) {
@@ -80,6 +80,7 @@ export default function MatchmakingPage() {
         const res = await fetch("/api/chess/create-game", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ tableAmount: Number(tableAmount), timerMode }),
         });
 
@@ -121,6 +122,7 @@ export default function MatchmakingPage() {
       const res = await fetch("/api/chess/cancel-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ gameId }),
       });
       const data = await res.json();

@@ -8,6 +8,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import ReportModal from "../../../../components/ReportModal";
 import { celebrateWin, turnBanner as turnBannerAnim } from "../../../../lib/animations";
+import { playCardDraw, playVictory, playDefeat } from "../../../../lib/gameAudio";
 
 const Chessboard = dynamic(
   async () => {
@@ -18,34 +19,6 @@ const Chessboard = dynamic(
 );
 
 const CONFETTI_COLORS = ["#facc15", "#22c55e", "#38bdf8", "#fb7185", "#a78bfa"];
-
-function playUiTone(type = "move") {
-  if (typeof window === "undefined") return;
-
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-
-  const config = {
-    move: { freq: 430, duration: 0.08 },
-    win: { freq: 700, duration: 0.18 },
-  }[type];
-
-  osc.frequency.value = config.freq;
-
-  gain.gain.setValueAtTime(0.001, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01);
-  gain.gain.exponentialRampToValueAtTime(
-    0.001,
-    ctx.currentTime + config.duration,
-  );
-
-  osc.start();
-  osc.stop(ctx.currentTime + config.duration);
-}
 
 function formatClock(seconds) {
   const safe = Math.max(0, Number(seconds || 0));
@@ -73,6 +46,7 @@ export default function ChessGamePage() {
   const [moves, setMoves] = useState([]);
   const [moveIndex, setMoveIndex] = useState(-1);
   const [isResigning, setIsResigning] = useState(false);
+  const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [showResultPopup, setShowResultPopup] = useState(false);
   const [resultText, setResultText] = useState("");
   const [showReportModal, setShowReportModal] = useState(false);
@@ -82,6 +56,7 @@ export default function ChessGamePage() {
   const [captureFlash, setCaptureFlash] = useState(false);
   const [boardShake, setBoardShake] = useState(false);
   const prevFenRef = useRef("");
+  const [loading, setLoading] = useState(false);
 
   const { socket } = useSocket();
 
@@ -106,6 +81,7 @@ export default function ChessGamePage() {
   async function fetchState() {
     const res = await fetch(`/api/chess/game-state?gameId=${gameId}`, {
       cache: "no-store",
+      credentials: "include",
     });
 
     const data = await res.json();
@@ -178,8 +154,11 @@ export default function ChessGamePage() {
 
       if (text.includes("won") && !resultShownRef.current) {
         resultShownRef.current = true;
-        playUiTone("win");
+        playVictory();
         celebrateWin();
+      } else if (text.includes("lost") && !resultShownRef.current) {
+        resultShownRef.current = true;
+        playDefeat();
       }
 
       return;
@@ -190,7 +169,7 @@ export default function ChessGamePage() {
 
   useEffect(() => {
     fetchState();
-    const id = setInterval(fetchState, 1000);
+    const id = setInterval(fetchState, 2000);
     return () => clearInterval(id);
   }, [gameId]);
 
@@ -208,16 +187,25 @@ export default function ChessGamePage() {
   }, [socket, gameId]);
 
   async function onDrop(sourceSquare, targetSquare) {
+    if (isSpectator) return false;
+
+    // Turn guard — only allow moves during your turn
+    const myTurn = color === "white" ? "white" : "black";
+    if (!gameData || gameData.activeTurn !== myTurn) return false;
+
     // Detect capture locally
     const localGame = new Chess(displayFen);
     const localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
     const isCapture = localMove?.captured !== undefined;
+
+    setLoading(true);
 
     const res = await fetch("/api/chess/move", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
+      credentials: "include",
       body: JSON.stringify({
         gameId: Number(gameId),
         from: sourceSquare,
@@ -227,11 +215,12 @@ export default function ChessGamePage() {
     });
 
     const data = await res.json();
+    setLoading(false);
 
     if (!res.ok) return false;
 
     setLiveFen(data.data.fen);
-    playUiTone("move");
+    playCardDraw();
 
     // Capture flash
     if (isCapture) {
@@ -246,8 +235,10 @@ export default function ChessGamePage() {
 
   async function resignGame() {
     if (!gameData || gameData.status !== "in_progress" || isResigning) return;
+    setShowResignConfirm(false);
 
     setIsResigning(true);
+    setLoading(true);
 
     try {
       const res = await fetch("/api/chess/end-game", {
@@ -255,6 +246,7 @@ export default function ChessGamePage() {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({
           gameId: Number(gameId),
           result: "loss",
@@ -271,6 +263,7 @@ export default function ChessGamePage() {
       setStatus("Failed to resign.");
     } finally {
       setIsResigning(false);
+      setLoading(false);
     }
   }
 
@@ -405,6 +398,12 @@ export default function ChessGamePage() {
               </div>
 
               {/* STATUS */}
+              {loading && (
+                <div className="mt-4 text-center">
+                  <span className="inline-block w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mr-2 align-middle"></span>
+                  <span className="text-cyan-300 text-sm">Processing...</span>
+                </div>
+              )}
               <div className="mt-4 text-center font-semibold text-cyan-300 tracking-wide">
                 {status}
               </div>
@@ -435,13 +434,51 @@ export default function ChessGamePage() {
 
             {/* RESIGN BUTTON */}
             {!isSpectator && (
-              <button
-                onClick={resignGame}
-                disabled={isResigning}
-                className="mt-5 w-full bg-red-600 hover:bg-red-700 py-3 rounded-xl font-bold transition"
-              >
-                {isResigning ? "Resigning..." : "Resign"}
-              </button>
+              <>
+                <button
+                  onClick={() => setShowResignConfirm(true)}
+                  disabled={isResigning || gameData?.status === "finished"}
+                  className="mt-5 w-full bg-red-600 hover:bg-red-700 py-3 rounded-xl font-bold transition disabled:opacity-50"
+                >
+                  {isResigning ? "Resigning..." : "Resign"}
+                </button>
+
+                {/* Resign confirmation modal */}
+                <AnimatePresence>
+                  {showResignConfirm && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 px-4"
+                    >
+                      <motion.div
+                        initial={{ scale: 0.9 }}
+                        animate={{ scale: 1 }}
+                        exit={{ scale: 0.9 }}
+                        className="bg-[#0b1020] border border-red-500/40 rounded-2xl p-6 max-w-sm w-full text-center shadow-[0_0_30px_rgba(239,68,68,0.3)]"
+                      >
+                        <h3 className="text-xl font-bold text-red-400 mb-3">Resign?</h3>
+                        <p className="text-white/70 mb-5">You will lose this game. Are you sure?</p>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => setShowResignConfirm(false)}
+                            className="flex-1 px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-500 font-semibold transition"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={resignGame}
+                            className="flex-1 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 font-bold transition"
+                          >
+                            Resign
+                          </button>
+                        </div>
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </>
             )}
 
             {/* REPORT PLAYER */}
