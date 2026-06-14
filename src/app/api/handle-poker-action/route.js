@@ -98,21 +98,21 @@ export async function POST(request) {
       );
     }
 
-    // --- Play action ---
+    // --- Jouer action (Révéler les cartes communes) ---
     if (action === "play") {
-      const playBet = betAmount * 2;
-      if (userBalance < playBet) throw new Error("Not enough tokens");
+      // No extra bet — original bet already deducted at game init
+      // Player pays nothing extra to reveal; winner takes pot
 
-      userBalance -= playBet;
-      pot += playBet;
+      const playerHand = game.playerHand || [];
+      const aiHand = game.aiHand || [];
+      const remainingDeck = game.deck || [];
 
-      const playerHand = game.playerHand;
-      const aiHand = game.aiHand;
-
+      // Deal community cards from the remaining deck (not from player/AI hands)
       const communityCards = dealCommunityCards(
         game.communityCards || [],
         playerHand,
         aiHand,
+        remainingDeck,
       );
 
       const fullPlayerHand = [...playerHand, ...communityCards.newCommunity];
@@ -153,7 +153,7 @@ export async function POST(request) {
         await tx
           .update(pokerGames)
           .set({
-            pot,
+            pot: 0,
             result,
             communityCards: communityCards.newCommunity,
             aiHand,

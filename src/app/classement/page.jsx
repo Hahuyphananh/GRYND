@@ -138,7 +138,6 @@ export default function LeaderboardPage() {
       setError(null);
 
       try {
-        await fetch("/api/get-bet-history").catch(() => null);
         const [res, statsRes] = await Promise.all([
           fetch(endpoint),
           fetch("/api/user/stats"),

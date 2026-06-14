@@ -1,4 +1,5 @@
 import { sql } from "@vercel/postgres";
+import { invalidateAllLeaderboards } from "../../../../lib/redis/invalidation";
 
 export async function GET() {
   await sql`
@@ -20,6 +21,7 @@ export async function GET() {
         weekly_biggest_win = 0,
         weekly_win_rate = 0,
         weekly_game_streak = 0,
+        weekly_streak_current = 0,
         updated_at = NOW()
   `;
 
@@ -29,6 +31,12 @@ export async function GET() {
     DELETE FROM big_wins
     WHERE created_at < NOW() - INTERVAL '7 days'
   `;
+
+  // Invalidate all leaderboard caches so the next request fetches
+  // fresh (post-reset) data instead of serving stale cached rows
+  invalidateAllLeaderboards().catch((err) =>
+    console.error("weekly-reset: failed to invalidate leaderboard caches", err),
+  );
 
   return Response.json({ ok: true, resetAt: new Date().toISOString() });
 }

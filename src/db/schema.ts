@@ -1123,3 +1123,22 @@ export const oddsGames = pgTable(
     player1Idx: index("idx_odds_games_player1").on(table.player1Id),
   }),
 );
+
+// CLICKER GAME TABLE (GoonBet Clicker history)
+export const clickerGames = pgTable(
+  "clicker_games",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    betAmount: integer("bet_amount").notNull(),
+    payout: integer("payout").notNull(),
+    multiplier: numeric("multiplier", { precision: 10, scale: 4 }).notNull(),
+    busted: boolean("busted").notNull().default(false),
+    clicks: integer("clicks").notNull().default(0),
+    durationMs: integer("duration_ms").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    userIdIdx: index("idx_clicker_games_user_id").on(table.userId, table.createdAt),
+  }),
+);

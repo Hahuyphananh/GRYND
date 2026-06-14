@@ -97,14 +97,13 @@ export async function POST(req: Request) {
     }
 
     if (winner !== "player1") {
-      // Player lost — reset streak, track weekly stats
+      // Player lost — reset streak, track games lost
+      // applyLeaderboardCounters handles all stat columns (total_wagered,
+      // weekly_wagered, weekly_profit, current_streak, etc.)
       const [updatedUser] = await db
         .update(users)
         .set({
-          currentStreak: sql`0`,
           gamesLost: sql`${users.gamesLost} + 1`,
-          weeklyWagered: sql`${users.weeklyWagered} + ${wagerAmount}`,
-          weeklyProfit: sql`${users.weeklyProfit} - ${wagerAmount}`,
         })
         .where(eq(users.clerkId, clerkId))
         .returning({ balance: users.balance });
@@ -154,15 +153,16 @@ export async function POST(req: Request) {
     // Player won — pay out
     const payout = Number((wagerAmount * PAYOUT_MULTIPLIER).toFixed(2));
 
+    // applyLeaderboardCounters handles all stat columns (total_won,
+    // weekly_wagered, weekly_won, weekly_profit, weekly_wins,
+    // current_streak, best_streak, biggest_win, etc.)
+    // Only update balance and gamesWon here — everything else goes
+    // through the shared helper to avoid double-counting.
     const [updatedUser] = await db
       .update(users)
       .set({
         balance: sql`${users.balance} + ${payout}`,
-        totalWon: sql`${users.totalWon} + ${payout}`,
         gamesWon: sql`${users.gamesWon} + 1`,
-        currentStreak: sql`${users.currentStreak} + 1`,
-        bestStreak: sql`GREATEST(${users.bestStreak}, ${users.currentStreak} + 1)`,
-        biggestWin: sql`GREATEST(${users.biggestWin}, ${payout})`,
       })
       .where(eq(users.clerkId, clerkId))
       .returning({ balance: users.balance });
@@ -173,17 +173,6 @@ export async function POST(req: Request) {
         { status: 404 }
       );
     }
-
-    // Update weekly stats for winner
-    await db
-      .update(users)
-      .set({
-        weeklyWagered: sql`${users.weeklyWagered} + ${wagerAmount}`,
-        weeklyWon: sql`${users.weeklyWon} + ${payout}`,
-        weeklyProfit: sql`${users.weeklyProfit} + ${payout - wagerAmount}`,
-        weeklyWins: sql`${users.weeklyWins} + 1`,
-      })
-      .where(eq(users.clerkId, clerkId));
 
     // Record big win if payout >= 1M tokens
     if (payout >= 1_000_000) {

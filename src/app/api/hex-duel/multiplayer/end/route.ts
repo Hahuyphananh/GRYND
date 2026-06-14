@@ -90,15 +90,14 @@ export async function POST(req: Request) {
       if (callerWon) {
         payout = Number((wagerAmount * PAYOUT_MULTIPLIER).toFixed(2));
 
+        // applyLeaderboardCounters handles totalWon, currentStreak,
+        // bestStreak, biggestWin — only update balance & gamesWon here
+        // to avoid double-counting.
         const [updatedUser] = await tx
           .update(users)
           .set({
             balance: sql`${users.balance} + ${payout}`,
-            totalWon: sql`${users.totalWon} + ${payout}`,
             gamesWon: sql`${users.gamesWon} + 1`,
-            currentStreak: sql`${users.currentStreak} + 1`,
-            bestStreak: sql`GREATEST(${users.bestStreak}, ${users.currentStreak} + 1)`,
-            biggestWin: sql`GREATEST(${users.biggestWin}, ${payout})`,
           })
           .where(eq(users.clerkId, clerkId))
           .returning({ balance: users.balance });

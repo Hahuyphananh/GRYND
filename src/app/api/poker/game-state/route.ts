@@ -58,7 +58,8 @@ export async function GET(req: Request) {
     inviteCode: game.gameCode,
     players: normalizePlayersFromSeats(seats),
     community: game.communityCards ?? [],
-    deck: game.deck ?? [],
+    deck: [], // Never expose the deck — server controls card dealing
+    deckHash: game.deck ? String((game.deck as any[]).length) : "0",
     pot: Number(game.pot ?? 0),
     currentTurn: game.currentTurn ?? 0,
     stage: game.round === "preflop" ? "pre-flop" : (game.round ?? "pre-flop"),
@@ -134,10 +135,13 @@ export async function POST(req: Request) {
       playerPositions: {
         ...(meta || {}),
         hostClerkId: meta.hostClerkId || userId,
-        state,
+        state: {
+          ...state,
+          deck: undefined, // Never persist client deck
+          deckHash: game.deck ? String((game.deck as any[]).length) : undefined,
+        },
       },
       communityCards: state.community ?? [],
-      deck: state.deck ?? [],
       pot: String(state.pot ?? 0),
       currentTurn: state.currentTurn ?? 0,
       round: state.stage ?? "pre-flop",
