@@ -11,6 +11,7 @@ import { usePokerAudio } from "../../../lib/pokerAudio";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
+import confetti from "canvas-confetti";
 
 type Player = {
   id: string;
@@ -68,7 +69,12 @@ function createDeck(): Card[] {
   return SUITS.flatMap((suit) => VALUES.map((value) => ({ suit, value })));
 }
 function shuffle(deck: Card[]): Card[] {
-  return deck.sort(() => Math.random() - 0.5);
+  const arr = [...deck];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }
 
 function nextActive(start: number, players: Player[]): number {
@@ -124,7 +130,8 @@ export default function PokerPage() {
   const raiseAmountRef = useRef(50);
   const [showRaiseInput, setShowRaiseInput] = useState(false);
   const [raiseInputValue, setRaiseInputValue] = useState(50);
-  const [balance, setBalance] = useState<number>(0);
+  const [tokenBalance, setTokenBalance] = useState<number>(0);
+  const [tableStack, setTableStack] = useState<number>(0);
   const [inviteCode, setInviteCode] = useState("");
   const [joiningGame, setJoiningGame] = useState(false);
   const [isPrivate, setIsPrivate] = useState(true);
@@ -189,6 +196,8 @@ export default function PokerPage() {
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
   const [aiNameInput, setAiNameInput] = useState("");
   const [aiStackInput, setAiStackInput] = useState<number>(1000);
+  const [showBuyInPopup, setShowBuyInPopup] = useState(false);
+  const [buyInAmount, setBuyInAmount] = useState(100);
 
   const maxCurrentBet = (players: Player[]) =>
     Math.max(...players.map((p) => p.currentBet || 0));
@@ -286,7 +295,7 @@ export default function PokerPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setBalance(parseFloat(data.data.balance));
+        setTokenBalance(parseFloat(data.data.balance));
         setName(data.data.name || "");
       } else {
         console.error("Failed to fetch tokens:", data.error);
@@ -296,13 +305,13 @@ export default function PokerPage() {
     }
   };
 
-  const leaveCurrentGame = async () => {
+  const leaveCurrentGame = async (cashOutStack?: number) => {
     if (!game?.inviteCode) return;
     try {
       await fetch("/api/poker/leave-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameCode: game.inviteCode }),
+        body: JSON.stringify({ gameCode: game.inviteCode, stack: cashOutStack ?? 0 }),
       });
       socket?.emit("room_event", {
         roomId: "lobby:poker",
@@ -604,6 +613,10 @@ export default function PokerPage() {
     players[bbIndex].currentBet = game.bigBlind;
     players[bbIndex].lastAction = "Big Blind";
 
+    // Sync tableStack with blind deductions
+    if (players[sbIndex].id === myId) setTableStack((prev) => prev - game.smallBlind);
+    if (players[bbIndex].id === myId) setTableStack((prev) => prev - game.bigBlind);
+
     const firstActorIndex = findFirstActorIndex(
       players,
       game.dealerIndex,
@@ -687,7 +700,7 @@ export default function PokerPage() {
           id: p.clerkId,
           name: p.name || "Player",
           seatIndex: p.seat,
-          stack: Number(p.stack ?? 1000),
+          stack: Number(p.stack),
           hand: [],
           isAI: !!p.isAI,
           difficulty: p.difficulty,
@@ -717,7 +730,7 @@ export default function PokerPage() {
 
       // ✅ set balance for THIS user only
       const me = players.find((p) => p.id === clerkId);
-      if (me) setBalance(me.stack);
+      if (me) setTableStack(me.stack);
     } catch (err) {
       console.error("Join game error:", err);
       alert("Failed to join game");
@@ -941,7 +954,7 @@ export default function PokerPage() {
 
       if (winner.id === myId) {
         audioRef.current.playWin();
-        setBalance((prev) => prev + pot);
+        setTableStack((prev) => prev + pot);
         fetchUserTokens();
       } else {
         audioRef.current.playLose();
@@ -1008,7 +1021,7 @@ export default function PokerPage() {
         if (checkForWinner(players, potNew)) return;
 
         if (current.id === myId) {
-          setBalance((prev) => Math.max(prev - actual, 0));
+          setTableStack((prev) => Math.max(prev - actual, 0));
           fetchUserTokens();
         }
       } else {
@@ -1035,7 +1048,7 @@ export default function PokerPage() {
         }
       });
       if (current.id === myId) {
-        setBalance((prev) => Math.max(prev - actual, 0));
+        setTableStack((prev) => Math.max(prev - actual, 0));
         fetchUserTokens();
       }
     } else if (action === "raise") {
@@ -1061,7 +1074,7 @@ export default function PokerPage() {
         }
       });
       if (current.id === myId) {
-        setBalance((prev) => Math.max(prev - actual, 0));
+        setTableStack((prev) => Math.max(prev - actual, 0));
       }
     } else if (action === "check") {
       audioRef.current.playCheck();
@@ -1081,7 +1094,7 @@ export default function PokerPage() {
         }
 
         if (current.id === myId) {
-          setBalance((prev) => Math.max(prev - actual, 0));
+          setTableStack((prev) => Math.max(prev - actual, 0));
           fetchUserTokens();
         }
       }
@@ -1255,8 +1268,10 @@ export default function PokerPage() {
 
     if (winner.id === myId) {
       audioRef.current.playWin();
-      setBalance((prev) => prev + game.pot);
+      setTableStack((prev) => prev + game.pot);
       fetchUserTokens();
+      confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 }, colors: ["#ffd700", "#ff00cc", "#00e5ff"] });
+      setTimeout(() => confetti({ particleCount: 60, spread: 120, origin: { y: 0.4 }, colors: ["#ffd700", "#ffffff"] }), 300);
     } else {
       audioRef.current.playLose();
     }
@@ -1276,7 +1291,7 @@ export default function PokerPage() {
     saveGameState(nextGame);
     if (leaveAfterHand) {
       setTimeout(() => {
-        leaveCurrentGame().finally(() => {
+        leaveCurrentGame(updated.find((p) => p.id === myId)?.stack).finally(() => {
           window.location.href = "/casino/poker";
         });
       }, 2000);
@@ -1352,14 +1367,24 @@ export default function PokerPage() {
     setSeatModalOpen(true);
   }
 
-  async function sitAsHuman() {
+  function openBuyInPopup() {
     if (selectedSeat === null || !game || !clerkId) return;
 
-    // HARD GUARD — never allow duplicates
     if (game.players.some((p) => p.id === clerkId)) {
       alert("You are already seated.");
       return;
     }
+
+    // Reset buy-in amount to a sensible default
+    const defaultBuyIn = Math.min(100, tokenBalance || 100);
+    setBuyInAmount(defaultBuyIn);
+    setShowBuyInPopup(true);
+  }
+
+  async function confirmBuyIn() {
+    if (selectedSeat === null || !game || !clerkId) return;
+    if (buyInAmount < 10) return alert("Buy-in must be at least 10 tokens");
+    if (buyInAmount > tokenBalance) return alert("Insufficient balance for this buy-in");
 
     const res = await fetch("/api/poker/sit", {
       method: "POST",
@@ -1368,15 +1393,24 @@ export default function PokerPage() {
         gameCode: game.inviteCode,
         seatIndex: selectedSeat,
         playerName: name,
+        buyIn: buyInAmount,
       }),
     });
 
     const data = await res.json();
     if (!res.ok) return alert(data.error || "Failed to sit");
 
+    // Set table stack from buy-in amount, fetch latest from DB
+    setTableStack(buyInAmount);
     await fetchGameState(game.inviteCode!);
+    await fetchUserTokens();
+    setShowBuyInPopup(false);
     setSeatModalOpen(false);
     setSelectedSeat(null);
+  }
+
+  function cancelBuyIn() {
+    setShowBuyInPopup(false);
   }
 
   async function addAiToSeat() {
@@ -1650,9 +1684,9 @@ export default function PokerPage() {
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md">
           <div className="text-6xl mb-6 animate-spin" style={{ animationDuration: "4s" }}>📱</div>
           <p className="text-2xl font-bold text-[#00e5ff] drop-shadow-[0_0_12px_#00e5ff] mb-2">
-            Rotate Your Phone
+            Tournez votre téléphone
           </p>
-          <p className="text-sm text-[#b0b0ff]/70">Landscape mode required for Texas Hold'em</p>
+          <p className="text-sm text-[#b0b0ff]/70">Mode paysage requis pour le Texas Hold'em</p>
         </div>
       )}
 
@@ -1667,7 +1701,9 @@ export default function PokerPage() {
         <button
           onClick={async () => {
             if (game?.stage === "showdown" || game?.waiting) {
-              await leaveCurrentGame();
+              const meStack = game?.players.find((p) => p.id === myId)?.stack ?? 0;
+              await leaveCurrentGame(meStack);
+              await fetchUserTokens();
               setGame(null);
             } else {
               alert("You can only return to the form after the hand ends!");
@@ -1764,6 +1800,34 @@ export default function PokerPage() {
             >
               🔄 Replay Hand
             </button>
+          )}
+
+          {/* CASH OUT button */}
+          {(game?.stage === "showdown" || game?.waiting) && me && me.stack > 0 && (
+            <button
+              onClick={async () => {
+                const cs = me.stack;
+                await leaveCurrentGame(cs);
+                await fetchUserTokens();
+                setGame(null);
+              }}
+              className="bg-gradient-to-r from-[#FFD700]/70 to-[#FFA500]/70 border border-[#FFD700]/50 text-black px-5 py-2 rounded font-bold hover:from-[#FFD700] hover:to-[#FFA500] transition shadow-[0_0_15px_rgba(255,215,0,0.4)]"
+            >
+              💰 Retirer {me.stack} jetons
+            </button>
+          )}
+
+          {/* Leave After Hand checkbox */}
+          {(game?.stage !== "showdown" && !game?.waiting) && (
+            <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={leaveAfterHand}
+                onChange={(e) => setLeaveAfterHand(e.target.checked)}
+                className="w-4 h-4 accent-[#ff00cc] rounded border-[#ff00cc]/40 bg-[#0a0a1a] focus:ring-[#ff00cc] cursor-pointer"
+              />
+              <span className="text-xs text-[#b0b0ff]/70">Quitter après cette main</span>
+            </label>
           )}
         </div>
       )}
@@ -1919,10 +1983,10 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 animate={{ rotateY: 0, opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.5, delay: i * 0.12, type: "spring", stiffness: 200 }}
                 className={`w-10 h-14 sm:w-14 sm:h-20 rounded-lg flex items-center justify-center font-bold text-sm sm:text-xl shadow-xl border-2
-      bg-gradient-to-b from-[#0a0a1a] to-[#020108]
+      bg-white
       ${c?.suit === "♥" || c?.suit === "♦"
-                    ? "border-[#ff00cc]/60 text-[#ff00cc] shadow-[0_0_15px_rgba(255,0,204,0.4)]"
-                    : "border-[#00e5ff]/60 text-[#00e5ff] shadow-[0_0_15px_rgba(0,229,255,0.4)]"
+                    ? "text-red-600 border-red-300"
+                    : "text-black border-slate-400"
                   }
     `}
               >
@@ -2149,7 +2213,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
 
             {/* HUMAN OPTION */}
             <button
-              onClick={sitAsHuman}
+              onClick={openBuyInPopup}
               className="w-full bg-yellow-500 text-black px-4 py-2 rounded font-bold mb-3 hover:bg-yellow-400"
             >
               Sit as Human
@@ -2204,6 +2268,113 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           </div>
         </div>
       )}
+      {/* ── Buy-in Popup ── */}
+      {showBuyInPopup && selectedSeat !== null && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center pointer-events-auto">
+          <div
+            className="absolute inset-0 bg-black/60 z-[105]"
+            onClick={cancelBuyIn}
+          />
+
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="relative z-[110] pointer-events-auto w-[360px] bg-[#0a0a1a]/95 backdrop-blur-xl border-2 border-[#ff00cc]/40 rounded-2xl p-5 shadow-[0_0_40px_rgba(255,0,204,0.3)]"
+          >
+            <h2 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] mb-1 text-center">
+              💰 Achat de jetons
+            </h2>
+            <p className="text-[10px] text-[#b0b0ff]/50 text-center mb-4 uppercase tracking-widest">
+              Seat {selectedSeat} — Définissez votre mise initiale
+            </p>
+
+            {/* Balance display */}
+            <div className="mb-3 flex items-center justify-between bg-[#0d0020]/60 px-4 py-2 rounded-xl border border-[#ff00cc]/20">
+              <span className="text-[#b0b0ff]/60 text-sm">Solde disponible</span>
+              <span className="text-[#FFD700] font-black text-lg">{tokenBalance.toLocaleString()} jetons</span>
+            </div>
+
+            {/* Buy-in input */}
+            <div className="mb-3">
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#ff00cc] font-bold text-lg">$</span>
+                <input
+                  type="number"
+                  value={buyInAmount}
+                  onChange={(e) => setBuyInAmount(parseInt(e.target.value) || 0)}
+                  onBlur={() => { if (!buyInAmount || buyInAmount < 10) setBuyInAmount(10); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") confirmBuyIn(); if (e.key === "Escape") cancelBuyIn(); }}
+                  min={0}
+                  max={tokenBalance}
+                  autoFocus
+                  className="w-full pl-8 pr-4 py-3 rounded-xl bg-[#0d0020]/80 border-2 border-[#ff00cc]/50 text-[#FFD700] text-2xl font-black text-center placeholder:text-[#ff00cc]/30 focus:outline-none focus:border-[#ff00cc] focus:shadow-[0_0_20px_rgba(255,0,204,0.4)] transition-all"
+                  placeholder="Mise"
+                />
+              </div>
+              <div className="text-[10px] text-[#b0b0ff]/40 text-center mt-1">
+                Minimum 10 jetons
+              </div>
+            </div>
+
+            {/* Quick presets */}
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              {[10, 25, 50, 100, 250, 500, 1000].map((v) => (
+                v <= tokenBalance ? (
+                  <button
+                    key={v}
+                    onClick={() => setBuyInAmount(v)}
+                    className={`px-2 py-1.5 rounded-xl text-xs font-bold border transition-all active:scale-95 ${
+                      buyInAmount === v
+                        ? "bg-[#ff00cc]/30 border-[#ff00cc] text-[#ff00cc] shadow-[0_0_10px_rgba(255,0,204,0.3)]"
+                        : "bg-[#0d0020]/60 border-[#ff00cc]/20 text-[#b0b0ff]/60 hover:border-[#ff00cc]/50 hover:text-[#ff00cc]"
+                    }`}
+                  >{v}</button>
+                ) : null
+              ))}
+            </div>
+
+            {/* ½ Balance / All-in */}
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <button
+                onClick={() => setBuyInAmount(Math.max(10, Math.floor(tokenBalance / 2)))}
+                className="px-3 py-2 rounded-xl text-xs font-bold border border-[#00e5ff]/30 bg-[#00e5ff]/10 text-[#00e5ff] hover:bg-[#00e5ff]/25 hover:border-[#00e5ff]/60 active:scale-95 transition-all"
+              >
+                ½ Solde
+              </button>
+              <button
+                onClick={() => setBuyInAmount(tokenBalance)}
+                className="px-3 py-2 rounded-xl text-xs font-bold border border-yellow-400/40 bg-yellow-400/10 text-yellow-300 hover:bg-yellow-400/25 hover:border-yellow-400/60 active:scale-95 transition-all shadow-[0_0_10px_rgba(255,215,0,0.15)]"
+              >
+                🔥 Tout miser
+              </button>
+            </div>
+
+            {/* Confirm / Cancel */}
+            <div className="flex gap-3">
+              <button
+                onClick={cancelBuyIn}
+                className="flex-1 px-4 py-3 rounded-xl font-bold text-sm border border-red-500/40 bg-red-900/20 text-red-300 hover:bg-red-900/40 hover:border-red-500/60 active:scale-95 transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={confirmBuyIn}
+                disabled={buyInAmount < 10 || buyInAmount > tokenBalance}
+                className={`flex-1 px-4 py-3 rounded-xl font-bold text-sm transition-all active:scale-95 ${
+                  buyInAmount >= 10 && buyInAmount <= tokenBalance
+                    ? "bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] text-black hover:from-[#ff00cc]/90 hover:to-[#00e5ff]/90 shadow-[0_0_20px_rgba(255,0,204,0.5)]"
+                    : "bg-gray-700 text-gray-400 cursor-not-allowed"
+                }`}
+              >
+                Confirmer {buyInAmount >= 10 ? `${buyInAmount} jetons` : ""}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {aiInfoOpen && selectedAi && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="bg-black/70 backdrop-blur-md border border-yellow-500/60 shadow-[0_0_15px_rgba(255,215,0,0.3)] p-6 rounded-xl w-80 shadow-xl">
@@ -2306,8 +2477,8 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               </div>
             </div>
 
-            {/* Pot-fraction quick options */}
-            <div className="grid grid-cols-3 gap-2 mb-4">
+            {/* Quick amount presets */}
+            <div className="grid grid-cols-4 gap-2 mb-4">
               <button
                 onClick={() => setRaiseFraction("half")}
                 className="px-3 py-2 rounded-xl text-xs font-bold border border-[#00e5ff]/30 bg-[#00e5ff]/10 text-[#00e5ff] hover:bg-[#00e5ff]/25 hover:border-[#00e5ff]/60 active:scale-95 transition-all"
@@ -2321,10 +2492,16 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 ¾ Pot
               </button>
               <button
+                onClick={() => { if (me) { const half = Math.floor((me.stack + (me.currentBet || 0)) / 2); const h = Math.max(...(game?.players ?? []).map(p => p.currentBet || 0)); setRaiseInputValue(Math.max(half, Math.max(20, h * 2))); } }}
+                className="px-3 py-2 rounded-xl text-xs font-bold border border-[#ff00cc]/30 bg-[#ff00cc]/10 text-[#ff00cc] hover:bg-[#ff00cc]/25 hover:border-[#ff00cc]/60 active:scale-95 transition-all"
+              >
+                ½ Stack
+              </button>
+              <button
                 onClick={() => setRaiseFraction("allIn")}
                 className="px-3 py-2 rounded-xl text-xs font-bold border border-yellow-400/40 bg-yellow-400/10 text-yellow-300 hover:bg-yellow-400/25 hover:border-yellow-400/60 active:scale-95 transition-all shadow-[0_0_10px_rgba(255,215,0,0.15)]"
               >
-                🔥 All-in
+                🔥 Tapis
               </button>
             </div>
 

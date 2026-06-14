@@ -7,7 +7,7 @@ import { CacheKeys, CacheTTL } from "../../../lib/redis/keys";
 
 // 👇 ADD THESE (from your history route)
 import { db } from "../../../db";
-import { eq, or } from "drizzle-orm";
+import { eq, or, and, sql as drizzleSql } from "drizzle-orm";
 import {
   users,
   rouletteGames,
@@ -24,6 +24,15 @@ import {
   keno_games,
   diceMatches,
   connectFourGames,
+  laneRunnerGames,
+  hexDuelGames,
+  oddsGames,
+  pokerGames,
+  farkleRooms,
+  farklePlayers,
+  diceFlushRooms,
+  diceFlushPlayers,
+  clickerGames,
 } from "../../../db/schema";
 
 export async function GET() {
@@ -78,6 +87,13 @@ export async function GET() {
       kenoRows,
       diceRows,
       connectFourRows,
+      laneRunnerRows,
+      hexDuelRows,
+      oddsRows,
+      pokerRows,
+      farkleRows,
+      diceFlushRows,
+      clickerRows,
     ] = await Promise.all([
       db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)),
       db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid)),
@@ -125,6 +141,52 @@ export async function GET() {
             eq(connectFourGames.guestClerkId, clerkId),
           ),
         ),
+      // 🏃 Lane Runner (solo, integer userId)
+      db.select().from(laneRunnerGames).where(eq(laneRunnerGames.userId, uid)),
+      // ⬡ Hex Duel (PvP + AI, clerkId-based, skip fun mode)
+      db
+        .select()
+        .from(hexDuelGames)
+        .where(
+          and(
+            or(
+              eq(hexDuelGames.player1Id, clerkId),
+              eq(hexDuelGames.player2Id, clerkId),
+            ),
+            eq(hexDuelGames.isFunMode, false),
+          ),
+        ),
+      // 🎯 Odds (PvP + AI, clerkId-based)
+      db
+        .select()
+        .from(oddsGames)
+        .where(
+          or(
+            eq(oddsGames.player1Id, clerkId),
+            eq(oddsGames.player2Id, clerkId),
+          ),
+        ),
+      // 🃏 Poker (multiplayer, jsonb players array)
+      db
+        .select()
+        .from(pokerGames)
+        .where(
+          drizzleSql`exists (select 1 from jsonb_array_elements(${pokerGames.players}) elem where elem->>'clerkId' = ${clerkId})`,
+        ),
+      // 🎲 Farkle (join players → rooms)
+      db
+        .select()
+        .from(farklePlayers)
+        .innerJoin(farkleRooms, eq(farklePlayers.roomId, farkleRooms.id))
+        .where(eq(farklePlayers.userId, clerkId)),
+      // 🎲 Dice Flush (join players → rooms)
+      db
+        .select()
+        .from(diceFlushPlayers)
+        .innerJoin(diceFlushRooms, eq(diceFlushPlayers.roomId, diceFlushRooms.id))
+        .where(eq(diceFlushPlayers.userId, clerkId)),
+      // 🖱️ GoonBet Clicker (solo, clerkId-based)
+      db.select().from(clickerGames).where(eq(clickerGames.userId, clerkId)),
     ]);
 
     // ✅ SIMPLE formatter (light version)
@@ -180,6 +242,140 @@ export async function GET() {
       })
       .filter(Boolean);
 
+    // 🏃 Lane Runner — solo game, filter completed only
+    const laneRunnerNormalized = normalize(
+      laneRunnerRows.filter((g) => g.status === "completed"),
+      "Lane Runner",
+    );
+
+    // ⬡ Hex Duel — determine win/loss from winner field
+    const hexDuelNormalized = hexDuelRows
+      .filter((g) => g.status !== "in_progress")
+      .map((g) => {
+        const amount = Number(g.wagerAmount ?? 0);
+        const payout = Number(g.payout ?? 0);
+        const isPlayer1 = g.player1Id === clerkId;
+        const won =
+          (isPlayer1 && g.winner === "player1") ||
+          (!isPlayer1 && g.winner === "player2");
+        const result = won ? "won" : "lost";
+        return {
+          type: g.isAiGame ? "Hex Duel vs AI" : "Hex Duel",
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      });
+
+    // 🎯 Odds — determine win/loss from winner field
+    const oddsNormalized = oddsRows
+      .filter((g) => g.status === "finished" || g.status === "forfeit")
+      .map((g) => {
+        const amount = Number(g.wager ?? 0);
+        const payout = Number(g.payout ?? 0);
+        const isPlayer1 = g.player1Id === clerkId;
+        const won =
+          (isPlayer1 && g.winner === "player1") ||
+          (!isPlayer1 && g.winner === "player2");
+        const result = won ? "won" : "lost";
+        return {
+          type: g.isAi ? "Odds vs AI" : "Odds",
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      });
+
+    // 🃏 Poker — determine result from winnings jsonb
+    const pokerNormalized = pokerRows
+      .filter((g) => g.status === "finished")
+      .map((g) => {
+        const playersArr = Array.isArray(g.players) ? g.players : [];
+        const mySeat = playersArr.find((p) => p?.clerkId === clerkId);
+        const winnings =
+          Array.isArray(g.winnings) && mySeat != null
+            ? g.winnings.find((w) => w?.seat === mySeat.seat)
+            : null;
+        const amount = Number(winnings?.bet || g.betAmount || 0);
+        const payout = Number(winnings?.payout || g.payout || 0);
+        const result = payout > amount ? "won" : "lost";
+        return {
+          type: "Poker",
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      });
+
+    // 🎲 Farkle — joined rows, extract winner from gameState
+    const farkleNormalized = farkleRows
+      .filter((row) => row.farkle_rooms?.status === "finished")
+      .map((row) => {
+        const room = row.farkle_rooms;
+        const amount = Number(room.wager ?? 0);
+        const gameState =
+          room.gameState && typeof room.gameState === "object"
+            ? room.gameState
+            : {};
+        const winnerId = gameState.winnerId;
+        const result = winnerId
+          ? winnerId === clerkId
+            ? "won"
+            : "lost"
+          : "completed";
+        const payout = result === "won" ? Number(room.pot ?? amount * 2) : 0;
+        return {
+          type: "Farkle",
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      });
+
+    // 🎲 Dice Flush — joined rows, extract winner from gameState
+    const diceFlushNormalized = diceFlushRows
+      .filter((row) => row.dice_flush_rooms?.status === "finished")
+      .map((row) => {
+        const room = row.dice_flush_rooms;
+        const amount = Number(room.wager ?? 0);
+        const gameState =
+          room.gameState && typeof room.gameState === "object"
+            ? room.gameState
+            : {};
+        const winnerId = gameState.winnerId;
+        const result = winnerId
+          ? winnerId === clerkId
+            ? "won"
+            : "lost"
+          : "completed";
+        const payout = result === "won" ? Number(room.pot ?? amount * 2) : 0;
+        return {
+          type: "Dice Flush",
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      });
+
+    // 🖱️ Clicker — solo game, busted = loss
+    const clickerNormalized = clickerRows.map((g) => {
+      const amount = Number(g.betAmount ?? 0);
+      const payout = Number(g.payout ?? 0);
+      const result = g.busted ? "lost" : payout > amount ? "won" : "lost";
+      return {
+        type: "Clicker",
+        amount,
+        payout,
+        result,
+        tokenDiff: result === "won" ? payout - amount : -amount,
+      };
+    });
+
     const allBets = [
       ...normalize(roulette, "Roulette"),
       ...normalize(blackjack, "Blackjack"),
@@ -195,6 +391,13 @@ export async function GET() {
       ...normalize(kenoRows, "Keno"),
       ...diceNormalized,
       ...connectFourNormalized,
+      ...laneRunnerNormalized,
+      ...hexDuelNormalized,
+      ...oddsNormalized,
+      ...pokerNormalized,
+      ...farkleNormalized,
+      ...diceFlushNormalized,
+      ...clickerNormalized,
     ];
 
     // ✅ COMPUTE STATS
@@ -217,8 +420,9 @@ export async function GET() {
 
     // Only update favorite_game (the one stat that applyLeaderboardCounters doesn't track).
     // All other stats (total_bets, wins, losses, win_rate, biggest_win, etc.) are maintained
-    // incrementally by applyLeaderboardCounters and must NOT be overwritten here — doing so
-    // would corrupt all-time values relative to weekly counters and cause weekly > all-time.
+    // incrementally by applyLeaderboardCounters in leaderboardCounters.js and must NOT be
+    // overwritten here — doing so would corrupt all-time values relative to weekly counters
+    // and cause weekly > all-time. The stats computed above are for read-only display only.
     await sql`
       INSERT INTO user_stats (user_id, favorite_game)
       VALUES (${uid}, ${favoriteGame})

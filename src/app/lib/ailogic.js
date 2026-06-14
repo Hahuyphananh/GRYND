@@ -48,7 +48,7 @@ export async function performAiAction(gameId) {
   }
 }
 
-// Deal community cards
+// Deal community cards (5 cards drawn from the remaining deck)
 export function dealCommunityCards(
   currentCards = [],
   playerHand = [],
@@ -56,8 +56,15 @@ export function dealCommunityCards(
   deck = [],
 ) {
   const needed = 5 - currentCards.length;
-  const newCards = deck.slice(0, needed);
-  const remainingDeck = deck.slice(needed);
+  // Filter out cards already in player/AI hands to prevent duplicates
+  const usedValues = new Set([
+    ...playerHand.map((c) => `${c.value}-${c.suit}`),
+    ...aiHand.map((c) => `${c.value}-${c.suit}`),
+    ...currentCards.map((c) => `${c.value}-${c.suit}`),
+  ]);
+  const cleanDeck = deck.filter((c) => !usedValues.has(`${c.value}-${c.suit}`));
+  const newCards = cleanDeck.slice(0, needed);
+  const remainingDeck = cleanDeck.slice(needed);
   return {
     newCommunity: [...currentCards, ...newCards],
     updatedDeck: remainingDeck,

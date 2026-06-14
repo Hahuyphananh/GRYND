@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
-import { pokerGames } from "../../../../db/schema";
+import { pokerGames, users } from "../../../../db/schema";
 
 export async function POST(req) {
   try {
@@ -22,6 +22,15 @@ export async function POST(req) {
       .from(pokerGames)
       .where(eq(pokerGames.gameCode, gameCode));
     if (!game) return NextResponse.json({ success: true, deleted: true });
+
+    // Credit remaining stack back to token balance
+    const cashOutAmount = Number(body?.stack) || 0;
+    if (cashOutAmount > 0) {
+      await db
+        .update(users)
+        .set({ balance: sql`${users.balance} + ${cashOutAmount}` })
+        .where(eq(users.clerkId, userId));
+    }
 
     const seats = Array.isArray(game.players) ? game.players : [];
     const updatedSeats = seats.map((seat) => {

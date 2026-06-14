@@ -1,7 +1,7 @@
 //get-bet-history/route.ts
 import { NextResponse } from "next/server";
 import { db } from "../../../db";
-import { eq, or, sql } from "drizzle-orm";
+import { eq, or, and, sql } from "drizzle-orm";
 import {
   users,
   rouletteGames,
@@ -19,6 +19,15 @@ import {
   diceMatches,
   poolMatches,
   connectFourGames,
+  laneRunnerGames,
+  hexDuelGames,
+  oddsGames,
+  pokerGames,
+  farkleRooms,
+  farklePlayers,
+  diceFlushRooms,
+  diceFlushPlayers,
+  clickerGames,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 
@@ -59,6 +68,13 @@ export async function GET() {
       diceRows,
       poolRows,
       connectFourRows,
+      laneRunnerRows,
+      hexDuelRows,
+      oddsRows,
+      pokerRows,
+      farkleRows,
+      diceFlushRows,
+      clickerRows,
     ] = await Promise.all([
       db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)),
       db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid)),
@@ -115,6 +131,52 @@ export async function GET() {
             eq(connectFourGames.guestClerkId, clerkId),
           ),
         ),
+      // 🏃 Lane Runner (solo game with integer userId)
+      db.select().from(laneRunnerGames).where(eq(laneRunnerGames.userId, uid)),
+      // ⬡ Hex Duel (PvP + AI, clerkId-based, skip fun mode)
+      db
+        .select()
+        .from(hexDuelGames)
+        .where(
+          and(
+            or(
+              eq(hexDuelGames.player1Id, clerkId),
+              eq(hexDuelGames.player2Id, clerkId),
+            ),
+            eq(hexDuelGames.isFunMode, false),
+          ),
+        ),
+      // 🎯 Odds (PvP + AI, clerkId-based)
+      db
+        .select()
+        .from(oddsGames)
+        .where(
+          or(
+            eq(oddsGames.player1Id, clerkId),
+            eq(oddsGames.player2Id, clerkId),
+          ),
+        ),
+      // 🃏 Poker (multiplayer, jsonb players array)
+      db
+        .select()
+        .from(pokerGames)
+        .where(
+          sql`exists (select 1 from jsonb_array_elements(${pokerGames.players}) elem where elem->>'clerkId' = ${clerkId})`,
+        ),
+      // 🎲 Farkle (join players → rooms)
+      db
+        .select()
+        .from(farklePlayers)
+        .innerJoin(farkleRooms, eq(farklePlayers.roomId, farkleRooms.id))
+        .where(eq(farklePlayers.userId, clerkId)),
+      // 🎲 Dice Flush (join players → rooms)
+      db
+        .select()
+        .from(diceFlushPlayers)
+        .innerJoin(diceFlushRooms, eq(diceFlushPlayers.roomId, diceFlushRooms.id))
+        .where(eq(diceFlushPlayers.userId, clerkId)),
+      // 🖱️ GoonBet Clicker (solo game, clerkId-based)
+      db.select().from(clickerGames).where(eq(clickerGames.userId, clerkId)),
     ]);
 
     const formatBet = (type, bet) => {
@@ -245,6 +307,150 @@ export async function GET() {
       })
       .filter(Boolean);
 
+    // 🏃 Lane Runner — solo game with standard bet/payout/result
+    const laneRunnerFormatted = laneRunnerRows
+      .filter((g) => g.status === "completed")
+      .map((g) => formatBet("🏃 Lane Runner", {
+        betAmount: g.betAmount,
+        payout: g.payout,
+        result: g.result,
+        createdAt: g.createdAt,
+      }));
+
+    // ⬡ Hex Duel — determine win/loss from winner field
+    const hexDuelFormatted = hexDuelRows
+      .filter((g) => g.status !== "in_progress")
+      .map((g) => {
+        const amount = Number(g.wagerAmount ?? 0);
+        const payout = Number(g.payout ?? 0);
+        const isPlayer1 = g.player1Id === clerkId;
+        const won =
+          (isPlayer1 && g.winner === "player1") ||
+          (!isPlayer1 && g.winner === "player2");
+        const result = won ? "won" : "lost";
+        return {
+          type: g.isAiGame ? "⬡ Hex Duel vs AI" : "⬡ Hex Duel",
+          date: g.endedAt || g.createdAt || new Date().toISOString(),
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      });
+
+    // 🎯 Odds — determine win/loss from winner field
+    const oddsFormatted = oddsRows
+      .filter((g) => g.status === "finished" || g.status === "forfeit")
+      .map((g) => {
+        const amount = Number(g.wager ?? 0);
+        const payout = Number(g.payout ?? 0);
+        const isPlayer1 = g.player1Id === clerkId;
+        const won =
+          (isPlayer1 && g.winner === "player1") ||
+          (!isPlayer1 && g.winner === "player2");
+        const result = won ? "won" : "lost";
+        return {
+          type: g.isAi ? "🎯 Odds vs AI" : "🎯 Odds",
+          date: g.endedAt || g.createdAt || new Date().toISOString(),
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      });
+
+    // 🃏 Poker — determine result from winnings jsonb or winner text
+    const pokerFormatted = pokerRows
+      .filter((g) => g.status === "finished")
+      .map((g) => {
+        const playersArr = Array.isArray(g.players) ? g.players : [];
+        const mySeat = playersArr.find((p) => p?.clerkId === clerkId);
+        const winnings =
+          Array.isArray(g.winnings) && mySeat != null
+            ? g.winnings.find((w) => w?.seat === mySeat.seat)
+            : null;
+        const amount = Number(winnings?.bet || g.betAmount || 0);
+        const payout = Number(winnings?.payout || g.payout || 0);
+        const result = payout > amount ? "won" : "lost";
+        return {
+          type: "🃏 Poker",
+          date: g.createdAt || new Date().toISOString(),
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      });
+
+    // 🎲 Farkle — joined rows: farkle_players + farkle_rooms
+    const farkleFormatted = farkleRows
+      .filter((row) => row.farkle_rooms?.status === "finished")
+      .map((row) => {
+        const room = row.farkle_rooms;
+        const amount = Number(room.wager ?? 0);
+        const gameState =
+          room.gameState && typeof room.gameState === "object"
+            ? (room.gameState as Record<string, unknown>)
+            : {};
+        const winnerId = gameState.winnerId as string | undefined;
+        const result = winnerId
+          ? winnerId === clerkId
+            ? "won"
+            : "lost"
+          : "completed";
+        const payout = result === "won" ? Number(room.pot ?? amount * 2) : 0;
+        return {
+          type: "🎲 Farkle",
+          date: room.createdAt || new Date().toISOString(),
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      });
+
+    // 🎲 Dice Flush — joined rows: dice_flush_players + dice_flush_rooms
+    const diceFlushFormatted = diceFlushRows
+      .filter((row) => row.dice_flush_rooms?.status === "finished")
+      .map((row) => {
+        const room = row.dice_flush_rooms;
+        const amount = Number(room.wager ?? 0);
+        const gameState =
+          room.gameState && typeof room.gameState === "object"
+            ? (room.gameState as Record<string, unknown>)
+            : {};
+        const winnerId = gameState.winnerId as string | undefined;
+        const result = winnerId
+          ? winnerId === clerkId
+            ? "won"
+            : "lost"
+          : "completed";
+        const payout = result === "won" ? Number(room.pot ?? amount * 2) : 0;
+        return {
+          type: "🎲 Dice Flush",
+          date: room.createdAt || new Date().toISOString(),
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      });
+
+    // 🖱️ GoonBet Clicker — solo game with bet/payout/multiplier/busted
+    const clickerFormatted = clickerRows.map((g) => {
+      const amount = Number(g.betAmount ?? 0);
+      const payout = Number(g.payout ?? 0);
+      const result = g.busted ? "lost" : payout > amount ? "won" : "lost";
+      return {
+        type: "🖱️ Clicker",
+        date: g.createdAt || new Date().toISOString(),
+        amount,
+        payout,
+        result,
+        tokenDiff: result === "won" ? payout - amount : -amount,
+      };
+    });
+
     const allBets = [
       ...roulette.map((b) => formatBet("🎡 Roulette", b)),
       ...blackjack.map((b) => formatBet("🃏 Blackjack", b)),
@@ -261,65 +467,20 @@ export async function GET() {
       ...diceFormatted,
       ...poolFormatted,
       ...connectFourFormatted,
+      ...laneRunnerFormatted,
+      ...hexDuelFormatted,
+      ...oddsFormatted,
+      ...pokerFormatted,
+      ...farkleFormatted,
+      ...diceFlushFormatted,
+      ...clickerFormatted,
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const now = Date.now();
-    const weeklyMs = 7 * 24 * 60 * 60 * 1000;
-    let totalWagered = 0;
-    let totalWon = 0;
-    let biggestWin = 0;
-    let bestMultiplier = 0;
-    let weeklyWagered = 0;
-    let weeklyWon = 0;
-    let weeklyProfit = 0;
-    let weeklyWins = 0;
-    let currentStreak = 0;
-    let bestStreak = 0;
-
-    const byOldest = [...allBets].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    );
-    for (const bet of byOldest) {
-      const amount = Math.max(0, Math.floor(Number(bet.amount || 0)));
-      const payout = Math.max(0, Math.floor(Number(bet.payout || 0)));
-      totalWagered += amount;
-      totalWon += payout;
-      biggestWin = Math.max(biggestWin, payout);
-      if (amount > 0)
-        bestMultiplier = Math.max(bestMultiplier, payout / amount);
-
-      const ts = new Date(bet.date).getTime();
-      if (now - ts <= weeklyMs) {
-        weeklyWagered += amount;
-        weeklyWon += payout;
-        weeklyProfit += payout - amount;
-        if (bet.result === "won") weeklyWins += 1;
-      }
-
-      if (bet.result === "won") {
-        currentStreak += 1;
-        bestStreak = Math.max(bestStreak, currentStreak);
-      } else if (bet.result === "lost") {
-        currentStreak = 0;
-      }
-    }
-
-    await db
-      .update(users)
-      .set({
-        totalWagered,
-        totalWon,
-        biggestWin,
-        bestMultiplier: sql`${bestMultiplier}`,
-        currentStreak,
-        bestStreak,
-        weeklyWagered,
-        weeklyWon,
-        weeklyProfit,
-        weeklyWins,
-      })
-      .where(eq(users.id, uid));
-
+    // ⚠ Cumulative stats (totalWagered, weeklyWagered, currentStreak, etc.)
+    // are maintained by applyLeaderboardCounters (leaderboardCounters.js)
+    // which is called by every game settlement endpoint. Recalculating them
+    // here from a subset of game history tables causes stats to DECREASE
+    // whenever a game type not listed above contributes to those counters.
     return NextResponse.json({ success: true, bets: allBets });
   } catch (err) {
     console.error("[GET_BET_HISTORY_ERROR]", err);

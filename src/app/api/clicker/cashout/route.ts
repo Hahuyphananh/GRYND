@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { cashoutRound, ensureClickerUser } from "../../../../lib/goonbet-clicker-db";
 import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { db } from "../../../../db";
+import { clickerGames } from "../../../../db/schema";
 import { sql } from "@vercel/postgres";
 
 export const runtime = "nodejs";
@@ -50,6 +52,19 @@ export async function POST(req: NextRequest) {
       betAmount: betAmount || 1,
       payout: payoutNumber,
     }).catch(() => {});
+
+    // Persist clicker round history for bet-history / user-stats
+    db.insert(clickerGames)
+      .values({
+        userId,
+        betAmount: betAmount || 1,
+        payout: payoutNumber,
+        multiplier: String(result.multiplier || 1),
+        busted: result.busted ?? false,
+        clicks: Number(body.clientClicks ?? 0),
+        durationMs: Number(body.durationMs ?? 0),
+      })
+      .catch((e) => console.error("Failed to insert clicker history:", e));
 
     // Record big win if payout >= 1 million tokens
     if (payoutNumber >= 1000000 && !result.busted) {

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
-import { pokerGames } from "../../../../db/schema";
-import { eq } from "drizzle-orm";
+import { pokerGames, users } from "../../../../db/schema";
+import { eq, sql } from "drizzle-orm";
 
 type Seat = {
   seat: number;
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { gameCode, seatIndex, playerName, isAI, aiStack, difficulty } = await req.json();
+    const { gameCode, seatIndex, playerName, isAI, aiStack, difficulty, buyIn } = await req.json();
     if (!gameCode || seatIndex === undefined) {
       return NextResponse.json(
         { error: "gameCode and seatIndex are required" },
@@ -70,6 +70,34 @@ export async function POST(req: Request) {
       );
     }
 
+    // ── Buy-in: deduct tokens from user balance ──
+    let finalStack = 1000;
+    if (!isAI) {
+      const buyInAmount = Number(buyIn) || 0;
+      if (buyInAmount < 10) {
+        return NextResponse.json(
+          { error: "Buy-in must be at least 10 tokens" },
+          { status: 400 },
+        );
+      }
+      // Deduct from token balance
+      const [updatedUser] = await db
+        .update(users)
+        .set({ balance: sql`${users.balance} - ${buyInAmount}` })
+        .where(
+          sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${buyInAmount}`,
+        )
+        .returning({ balance: users.balance });
+
+      if (!updatedUser) {
+        return NextResponse.json(
+          { error: "Insufficient balance for buy-in" },
+          { status: 400 },
+        );
+      }
+      finalStack = buyInAmount;
+    }
+
     const seatObj = players.find((p) => p.seat === seatIndex);
     if (!seatObj)
       return NextResponse.json({ error: "Invalid seat" }, { status: 400 });
@@ -96,7 +124,7 @@ export async function POST(req: Request) {
         clerkId: userId,
         name: playerName || "Player",
         isAI: false,
-        stack: p.stack ?? 1000,
+        stack: finalStack,
       };
     });
 
