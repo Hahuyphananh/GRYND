@@ -31,6 +31,13 @@ export default function ChessLobby() {
   const [error, setError] = useState(null);
   const [aiGameLoading, setAiGameLoading] = useState(false);
 
+  // Auto-clear errors after 5 seconds
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 5000);
+    return () => clearTimeout(t);
+  }, [error]);
+
   useEffect(() => {
     fetchAvailableGames();
   }, []);
@@ -39,10 +46,16 @@ export default function ChessLobby() {
     if (!socket) return;
     const roomId = "lobby:chess";
     const handleLobbyUpdate = () => fetchAvailableGames();
-    socket.emit("join_room", { roomId });
+
+    // Join room and re-join on reconnect
+    const joinRoom = () => socket.emit("join_room", { roomId });
+    joinRoom();
+    socket.on("connect", joinRoom);
     socket.on("lobby:updated", handleLobbyUpdate);
+
     return () => {
       socket.emit("leave_room", { roomId });
+      socket.off("connect", joinRoom);
       socket.off("lobby:updated", handleLobbyUpdate);
     };
   }, [socket]);
@@ -68,6 +81,7 @@ export default function ChessLobby() {
   async function createGame() {
     if (!selectedTable || !selectedTimer || creatingGame) return;
 
+    setError(null);
     setCreatingGame(true);
     try {
       const res = await fetch("/api/chess/create-game", {
@@ -96,7 +110,7 @@ export default function ChessLobby() {
           event: "lobby:updated",
         });
         router.push(
-          `/casino/chess-game/${data.gameId}?color=${data.color}&timer=${timerParam}`,
+          `/casino/chess-game/${data.gameId}?color=${data.color}&timer=${selectedTimer}`,
         );
         return;
       }
@@ -106,7 +120,7 @@ export default function ChessLobby() {
         event: "lobby:updated",
       });
       router.push(
-        `/casino/chess/${selectedTable}?gameId=${data.gameId}&color=${data.color}&timer=${timerParam}`,
+        `/casino/chess/${selectedTable}?gameId=${data.gameId}&color=${data.color}&timer=${selectedTimer}`,
       );
     } catch (error) {
       console.error("Failed to create chess game", error);
@@ -117,6 +131,7 @@ export default function ChessLobby() {
   }
 
   async function joinSpecificGame(gameId) {
+    setError(null);
     setJoiningGameId(gameId);
     try {
       const targetGame = availableGames.find((game) => game.id === gameId);
@@ -141,7 +156,7 @@ export default function ChessLobby() {
       );
 
       router.push(
-        `/casino/chess-game/${gameId}?color=black&timer=${joinTimer?.time || 300}`,
+        `/casino/chess-game/${gameId}?color=black&timer=${targetGame?.timerMode || "5min"}`,
       );
     } catch (error) {
       console.error("Failed to join chess game", error);
@@ -181,7 +196,7 @@ export default function ChessLobby() {
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-center text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
       <h1 className="mb-4 mt-4 text-3xl font-bold text-[#FFD700] drop-shadow-[0_0_12px_rgba(255,215,0,0.55)] sm:text-4xl">
-        ♟️ Chess Tables
+        ♟️ Chess Arena — Challenge Players
       </h1>
 
       <div className="max-w-4xl mx-auto bg-[#0b224f]/85 p-6 rounded-xl border border-[#00e5ff]/30 mb-8 shadow-[0_0_24px_rgba(0,229,255,0.18)]">
@@ -189,12 +204,12 @@ export default function ChessLobby() {
           Create Multiplayer Game
         </h2>
         <p className="text-white/80 mb-5">
-          Select exactly 1 table and 1 timer, then create your game.
+          Select a stake and timer, then create your game. Winner gets the pot minus 10% house fee.
         </p>
 
         <div className="mb-6">
           <h3 className="text-lg font-semibold text-left mb-3">
-            1) Choose Table
+            1) Choose Stake
           </h3>
           <div className="flex flex-wrap justify-center gap-4">
             {TABLES.map((amount) => (
@@ -207,7 +222,7 @@ export default function ChessLobby() {
                     : "bg-[#08142f] text-[#a8f4ff] border-[#00e5ff]/40 hover:bg-[#0d335f]"
                 }`}
               >
-                ${amount} Table
+                ${amount} Stake
               </button>
             ))}
           </div>
@@ -240,6 +255,12 @@ export default function ChessLobby() {
           </div>
         )}
 
+        {selectedTable && selectedTimer && (
+          <div className="mb-4 bg-emerald-900/20 border border-emerald-400/30 text-emerald-300 p-2 rounded text-sm text-center">
+            Pot: ${selectedTable * 2} · Winner gets ~${(selectedTable * 2 * 0.9).toFixed(2)} (after 10% house fee)
+          </div>
+        )}
+
         <button
           onClick={createGame}
           disabled={!selectedTable || !selectedTimer || creatingGame}
@@ -247,6 +268,21 @@ export default function ChessLobby() {
         >
           {creatingGame ? "Creating..." : "Create Game"}
         </button>
+
+        <div className="mt-6 pt-6 border-t border-[#00e5ff]/20">
+          <h2 className="text-2xl font-bold text-[#FFD700] mb-3">
+            Play vs AI
+          </h2>
+          <p className="text-white/80 mb-4">
+            Challenge the computer with a custom bet amount.
+          </p>
+          <button
+            onClick={() => setShowBetPopup(true)}
+            className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-8 py-3 rounded-lg text-lg font-bold hover:from-purple-500 hover:to-indigo-500 shadow-[0_0_16px_rgba(139,92,246,0.45)] transition-colors"
+          >
+            🤖 Play vs AI
+          </button>
+        </div>
       </div>
 
       <div className="max-w-3xl mx-auto mt-10 bg-[#0b224f]/85 p-5 rounded-xl border border-[#00e5ff]/30 text-left shadow-[0_0_24px_rgba(0,229,255,0.18)]">
@@ -261,9 +297,12 @@ export default function ChessLobby() {
         </div>
 
         {availableGames.length === 0 ? (
-          <p className="text-white/80">
-            No open games right now. Create one from the options above.
-          </p>
+          <div className="text-center py-8">
+            <span className="text-5xl opacity-30">♟️</span>
+            <p className="text-white/60 mt-2">
+              No open games right now. Create one from the options above.
+            </p>
+          </div>
         ) : (
           <div className="space-y-3">
             {availableGames.map((game) => (
@@ -274,10 +313,16 @@ export default function ChessLobby() {
                 <div>
                   <p className="font-semibold">Game #{game.id}</p>
                   <p className="text-sm text-white/80">
-                    Host: {game.hostName || "Player"} · Bet: $
+                    Host: {game.hostName || "Player"} · Stake: $
                     {Number(game.betAmount)} · Timer:{" "}
                     {TIMER_OPTIONS.find((t) => t.id === game.timerMode)
                       ?.label || "Unknown"}
+                    {game.createdAt && (
+                      <> · Waiting {(() => {
+                        const mins = Math.floor((Date.now() - new Date(game.createdAt).getTime()) / 60000);
+                        return mins < 1 ? "<1m" : `${mins}m`;
+                      })()}</>
+                    )}
                   </p>
                 </div>
                 <button

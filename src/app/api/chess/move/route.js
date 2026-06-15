@@ -36,10 +36,12 @@ export async function POST(req) {
 
     const userAliases = await getUserAliases(userId);
 
+    // Lock the game row to prevent concurrent moves
     const [game] = await db
       .select()
       .from(chessGames)
       .where(eq(chessGames.id, normalizedGameId))
+      .for("update")
       .limit(1);
 
     if (!game)

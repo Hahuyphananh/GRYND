@@ -35,6 +35,8 @@ export function useChessClock({
 
   const p1StartedAtRef = useRef<number | null>(null);
   const p2StartedAtRef = useRef<number | null>(null);
+  const p1RemainingAtTurnStartRef = useRef(initialP1Time);
+  const p2RemainingAtTurnStartRef = useRef(initialP2Time);
   const p1ExpireCalledRef = useRef(false);
   const p2ExpireCalledRef = useRef(false);
   const onP1ExpireRef = useRef(onPlayer1Expire);
@@ -53,6 +55,8 @@ export function useChessClock({
     setP2Expired(false);
     p1StartedAtRef.current = null;
     p2StartedAtRef.current = null;
+    p1RemainingAtTurnStartRef.current = initialP1Time;
+    p2RemainingAtTurnStartRef.current = initialP2Time;
     p1ExpireCalledRef.current = false;
     p2ExpireCalledRef.current = false;
     activePlayerRef.current = null;
@@ -78,7 +82,7 @@ export function useChessClock({
       // P1's clock is ticking
       if (activePlayerRef.current === "player1" && p1StartedAtRef.current !== null) {
         const elapsed = Date.now() - p1StartedAtRef.current;
-        const remaining = Math.max(0, initialP1Time - elapsed);
+        const remaining = Math.max(0, p1RemainingAtTurnStartRef.current - elapsed);
         // Only re-render when the display changes by >=1 second to avoid unnecessary renders
         if (Math.abs(p1LastDisplayedRef.current - remaining) >= 1000) {
           p1LastDisplayedRef.current = remaining;
@@ -99,7 +103,7 @@ export function useChessClock({
       // P2's clock is ticking
       if (activePlayerRef.current === "player2" && p2StartedAtRef.current !== null) {
         const elapsed = Date.now() - p2StartedAtRef.current;
-        const remaining = Math.max(0, initialP2Time - elapsed);
+        const remaining = Math.max(0, p2RemainingAtTurnStartRef.current - elapsed);
         // Only re-render when the display changes by >=1 second to avoid unnecessary renders
         if (Math.abs(p2LastDisplayedRef.current - remaining) >= 1000) {
           p2LastDisplayedRef.current = remaining;
@@ -126,23 +130,36 @@ export function useChessClock({
    * Passing null pauses all clocks (e.g. game over).
    */
   const setActivePlayer = useCallback((player: "player1" | "player2" | null) => {
-    // Pause previous clock
+    // Pause previous clock and record remaining time
     if (activePlayerRef.current === "player1" && p1StartedAtRef.current !== null) {
       const elapsed = Date.now() - p1StartedAtRef.current;
-      setP1TimeLeft((prev) => Math.max(0, prev - elapsed));
+      const remaining = Math.max(0, p1RemainingAtTurnStartRef.current - elapsed);
+      setP1TimeLeft(remaining);
+      p1RemainingAtTurnStartRef.current = remaining;
       p1StartedAtRef.current = null;
     }
     if (activePlayerRef.current === "player2" && p2StartedAtRef.current !== null) {
       const elapsed = Date.now() - p2StartedAtRef.current;
-      setP2TimeLeft((prev) => Math.max(0, prev - elapsed));
+      const remaining = Math.max(0, p2RemainingAtTurnStartRef.current - elapsed);
+      setP2TimeLeft(remaining);
+      p2RemainingAtTurnStartRef.current = remaining;
       p2StartedAtRef.current = null;
     }
 
-    // Start new clock
+    // Start new clock with current remaining time
     activePlayerRef.current = player;
     if (player === "player1") {
+      // Use current state value for accuracy
+      setP1TimeLeft((prev) => {
+        p1RemainingAtTurnStartRef.current = prev;
+        return prev;
+      });
       p1StartedAtRef.current = Date.now();
     } else if (player === "player2") {
+      setP2TimeLeft((prev) => {
+        p2RemainingAtTurnStartRef.current = prev;
+        return prev;
+      });
       p2StartedAtRef.current = Date.now();
     }
   }, []);

@@ -2,6 +2,32 @@
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+const TIMER_OPTIONS = [
+  { id: "1min", label: "1 Min", time: 60 },
+  { id: "2min", label: "2 Min", time: 120 },
+  { id: "3min", label: "3 Min", time: 180 },
+  { id: "5min", label: "5 Min", time: 300 },
+  { id: "10min", label: "10 Min", time: 600 },
+  { id: "30min", label: "30 Min", time: 1800 },
+  // Legacy numeric handlers for backward compatibility
+];
+
+function resolveTimerMode(rawTimer) {
+  // If it's a valid timer key already, use it
+  const knownKey = TIMER_OPTIONS.find((t) => t.id === rawTimer);
+  if (knownKey) return { mode: knownKey.id, seconds: knownKey.time };
+
+  // If it's a numeric value (seconds), find the matching timer
+  const num = Number(rawTimer);
+  if (Number.isFinite(num) && num > 0) {
+    const match = TIMER_OPTIONS.find((t) => t.time === num);
+    if (match) return { mode: match.id, seconds: match.time };
+  }
+
+  // Fallback to blitz
+  return { mode: "5min", seconds: 300 };
+}
+
 export default function MatchmakingPage() {
   const { tableAmount } = useParams();
   const searchParams = useSearchParams();
@@ -9,7 +35,10 @@ export default function MatchmakingPage() {
 
   const precreatedGameId = Number(searchParams.get("gameId"));
   const presetColor = searchParams.get("color") || "white";
-  const timerMode = searchParams.get("timer") || "blitz";
+  const rawTimer = searchParams.get("timer") || "5min";
+  const resolvedTimer = resolveTimerMode(rawTimer);
+  const timerMode = resolvedTimer.mode;
+  const timerSeconds = resolvedTimer.seconds;
 
   const [statusText, setStatusText] = useState("Creating game...");
   const [gameId, setGameId] = useState(
@@ -20,13 +49,22 @@ export default function MatchmakingPage() {
   const [color, setColor] = useState(presetColor);
   const [isCanceling, setIsCanceling] = useState(false);
   const pollFailuresRef = useRef(0);
+  const pollIntervalRef = useRef(null);
+  const isCreatingRef = useRef(false);
 
   useEffect(() => {
-    let pollId;
+    let cancelled = false;
 
     const beginPolling = (activeGameId, activeColor) => {
+      // Clear any existing poll interval first
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+
       setStatusText("Waiting for opponent...");
-      pollId = setInterval(async () => {
+      pollIntervalRef.current = setInterval(async () => {
+        if (cancelled) return;
         try {
           const pollRes = await fetch(
             `/api/chess/game-state?gameId=${activeGameId}`,
@@ -42,7 +80,10 @@ export default function MatchmakingPage() {
                 pollData?.error ||
                   "Unable to refresh waiting room. Please retry.",
               );
-              clearInterval(pollId);
+              if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+              }
             }
             return;
           }
@@ -53,9 +94,12 @@ export default function MatchmakingPage() {
             pollData.data.status === "in_progress" &&
             pollData.data.blackPlayerId
           ) {
-            clearInterval(pollId);
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
             router.push(
-              `/casino/chess-game/${activeGameId}?color=${activeColor}&timer=${pollData.data.timerMode || timerMode}`,
+              `/casino/chess-game/${activeGameId}?color=${activeColor}&timer=${timerSeconds}`,
             );
           }
         } catch {
@@ -64,24 +108,36 @@ export default function MatchmakingPage() {
 
           if (nextFailures >= 3) {
             setStatusText("Unable to refresh waiting room. Please retry.");
-            clearInterval(pollId);
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
           }
         }
       }, 2000);
     };
 
     const createOrJoin = async () => {
+      // If we already have a gameId from the URL, just poll it
       if (gameId) {
         beginPolling(gameId, color);
         return;
       }
+
+      // Prevent duplicate create calls
+      if (isCreatingRef.current) return;
+      isCreatingRef.current = true;
 
       try {
         const res = await fetch("/api/chess/create-game", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ tableAmount: Number(tableAmount), timerMode }),
+          body: JSON.stringify({
+            tableAmount: Number(tableAmount),
+            timerMode,
+            timeLimit: timerSeconds,
+          }),
         });
 
         const data = await res.json();
@@ -90,16 +146,20 @@ export default function MatchmakingPage() {
           return;
         }
 
+        if (cancelled) return;
+
+        // Set state for UI display (effect won't re-run with [] deps)
         setGameId(data.gameId);
         setColor(data.color || "white");
 
         if (data.ready || data.status === "in_progress") {
           router.push(
-            `/casino/chess-game/${data.gameId}?color=${data.color}&timer=${data.timerMode || timerMode}`,
+            `/casino/chess-game/${data.gameId}?color=${data.color}&timer=${timerSeconds}`,
           );
           return;
         }
 
+        // Start polling with the new game directly — don't trigger state change
         beginPolling(data.gameId, data.color || "white");
       } catch (error) {
         console.error("Failed to create or join chess game", error);
@@ -110,9 +170,13 @@ export default function MatchmakingPage() {
     createOrJoin();
 
     return () => {
-      if (pollId) clearInterval(pollId);
+      cancelled = true;
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
     };
-  }, [tableAmount, router, gameId, color, timerMode]);
+  }, []); // Only run once on mount — stable closure over gameId from URL params
 
   async function cancelWaitingGame() {
     if (!gameId) return;

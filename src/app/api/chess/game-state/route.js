@@ -87,13 +87,39 @@ async function settleTimeoutIfNeeded(game, clocks) {
     clocks.whiteTimeRemaining <= 0 ? game.playerBlackId : game.playerWhiteId;
   if (!winnerId) return game;
 
+  let updatedGame = game;
+
   await db.transaction(async (tx) => {
+    // Lock and re-read in a single step to avoid TOCTOU
     const [lockedGame] = await tx
       .select()
       .from(chessGames)
       .where(eq(chessGames.id, game.id))
       .for("update");
-    if (!lockedGame || lockedGame.status !== "in_progress") return;
+    if (!lockedGame || lockedGame.status !== "in_progress") {
+      updatedGame = lockedGame || game;
+      return;
+    }
+
+    // Recompute clocks inside the lock to ensure accuracy
+    const moves = await tx
+      .select()
+      .from(chessMoves)
+      .where(eq(chessMoves.gameId, game.id))
+      .orderBy(asc(chessMoves.id));
+
+    const lockedClocks = computeClocks(lockedGame, moves);
+    if (lockedClocks.whiteTimeRemaining > 0 && lockedClocks.blackTimeRemaining > 0) {
+      updatedGame = lockedGame;
+      return;
+    }
+
+    const lockedWinnerId =
+      lockedClocks.whiteTimeRemaining <= 0 ? lockedGame.playerBlackId : lockedGame.playerWhiteId;
+    if (!lockedWinnerId) {
+      updatedGame = lockedGame;
+      return;
+    }
 
     const pot = Number(lockedGame.betAmount) * 2;
     const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
@@ -102,27 +128,30 @@ async function settleTimeoutIfNeeded(game, clocks) {
     await tx
       .update(users)
       .set({ balance: sql`${users.balance} + ${winnerPayout}` })
-      .where(eq(users.clerkId, winnerId));
+      .where(eq(users.clerkId, lockedWinnerId));
 
     await tx
       .update(chessGames)
       .set({
         status: "finished",
-        winnerId,
+        winnerId: lockedWinnerId,
         result: "timeout",
         payout: winnerPayout.toString(),
       })
       .where(
         and(eq(chessGames.id, game.id), eq(chessGames.status, "in_progress")),
       );
+
+    // Fetch the updated game state
+    const [after] = await tx
+      .select()
+      .from(chessGames)
+      .where(eq(chessGames.id, game.id))
+      .limit(1);
+    updatedGame = after || lockedGame;
   });
 
-  const [updated] = await db
-    .select()
-    .from(chessGames)
-    .where(eq(chessGames.id, game.id))
-    .limit(1);
-  return updated || game;
+  return updatedGame;
 }
 
 export async function GET(req) {

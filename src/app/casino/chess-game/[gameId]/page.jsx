@@ -20,11 +20,57 @@ const Chessboard = dynamic(
 
 const CONFETTI_COLORS = ["#facc15", "#22c55e", "#38bdf8", "#fb7185", "#a78bfa"];
 
+const PIECE_SYMBOLS = {
+  p: "♟", n: "♞", b: "♝", r: "♜", q: "♛",
+  P: "♙", N: "♘", B: "♗", R: "♖", Q: "♕",
+};
+
+const PIECE_VALUES = {
+  p: 1, n: 3, b: 3, r: 5, q: 9,
+  P: 1, N: 3, B: 3, R: 5, Q: 9,
+};
+
+const INITIAL_PIECES = {
+  p: 8, n: 2, b: 2, r: 2, q: 1,
+  P: 8, N: 2, B: 2, R: 2, Q: 1,
+};
+
+// Precomputed inverted symbol map for O(1) lookups
+const SYMBOL_TO_KEY = {};
+for (const [k, v] of Object.entries(PIECE_SYMBOLS)) SYMBOL_TO_KEY[v] = k;
+
 function formatClock(seconds) {
   const safe = Math.max(0, Number(seconds || 0));
   const mins = Math.floor(safe / 60);
   const secs = safe % 60;
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function getCapturedPieces(fen) {
+  if (!fen) return { white: [], black: [] };
+  const boardPart = fen.split(" ")[0];
+  const pieceCounts = {};
+  for (const ch of boardPart) {
+    if (/[pnbrqkPNBRQK]/.test(ch)) {
+      pieceCounts[ch] = (pieceCounts[ch] || 0) + 1;
+    }
+  }
+  const captured = { white: [], black: [] };
+  for (const [piece, initialCount] of Object.entries(INITIAL_PIECES)) {
+    const currentCount = pieceCounts[piece] || 0;
+    const diff = Math.max(0, initialCount - currentCount);
+    for (let i = 0; i < diff; i++) {
+      if (piece === piece.toUpperCase()) {
+        captured.black.push(PIECE_SYMBOLS[piece]);
+      } else {
+        captured.white.push(PIECE_SYMBOLS[piece]);
+      }
+    }
+  }
+  // Sort by value (high to low) for nice display
+  captured.white.sort((a, b) => (PIECE_VALUES[SYMBOL_TO_KEY[b]] || 0) - (PIECE_VALUES[SYMBOL_TO_KEY[a]] || 0));
+  captured.black.sort((a, b) => (PIECE_VALUES[SYMBOL_TO_KEY[b]] || 0) - (PIECE_VALUES[SYMBOL_TO_KEY[a]] || 0));
+  return captured;
 }
 
 export default function ChessGamePage() {
@@ -49,6 +95,7 @@ export default function ChessGamePage() {
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [showResultPopup, setShowResultPopup] = useState(false);
   const [resultText, setResultText] = useState("");
+  const [resultPayout, setResultPayout] = useState("");
   const [showReportModal, setShowReportModal] = useState(false);
   const [turnBanner, setTurnBanner] = useState(null);
   const prevActiveTurnRef = useRef(null);
@@ -56,7 +103,19 @@ export default function ChessGamePage() {
   const [captureFlash, setCaptureFlash] = useState(false);
   const [boardShake, setBoardShake] = useState(false);
   const prevFenRef = useRef("");
+  const firstFetchDoneRef = useRef(false);
+  const gameFinishedRef = useRef(false);
   const [loading, setLoading] = useState(false);
+
+  // Draw offer state
+  const [drawOffered, setDrawOffered] = useState(false);
+  const [drawOfferReceived, setDrawOfferReceived] = useState(false);
+  // Handle promotion piece selection from react-chessboard dialog
+  const promotionHandledRef = useRef(false);
+
+  // Pre-move support
+  const premoveRef = useRef(null); // { from, to } | null
+  const [premove, setPremove] = useState(null); // mirror for re-renders
 
   const { socket } = useSocket();
 
@@ -68,9 +127,6 @@ export default function ChessGamePage() {
     enabled: !isSpectator && Boolean(gameId),
   });
 
-  const boardSize =
-    typeof window !== "undefined" ? Math.min(window.innerWidth - 32, 640) : 640;
-
   const displayFen = useMemo(() => {
     if (moveIndex >= 0 && moves[moveIndex]?.fenAfter) {
       return moves[moveIndex].fenAfter;
@@ -78,7 +134,89 @@ export default function ChessGamePage() {
     return liveFen;
   }, [moveIndex, moves, liveFen]);
 
+  // --- Derived board state ---
+
+  // Last move highlight squares
+  const lastMoveSquares = useMemo(() => {
+    if (moves.length === 0) return null;
+    const lastMove = moveIndex >= 0 ? moves[moveIndex] : moves[moves.length - 1];
+    if (!lastMove?.moveUci || lastMove.moveUci.length < 4) return null;
+    return {
+      from: lastMove.moveUci.substring(0, 2),
+      to: lastMove.moveUci.substring(2, 4),
+    };
+  }, [moves, moveIndex]);
+
+  // Check detection
+  const isInCheck = useMemo(() => {
+    try {
+      const chess = new Chess(displayFen);
+      return chess.inCheck();
+    } catch {
+      return false;
+    }
+  }, [displayFen]);
+
+  // King square in check
+  const checkSquare = useMemo(() => {
+    if (!isInCheck) return null;
+    try {
+      const chess = new Chess(displayFen);
+      const turn = chess.turn();
+      const board = chess.board();
+      for (let r = 0; r < 8; r++) {
+        for (let f = 0; f < 8; f++) {
+          const piece = board[r][f];
+          if (piece && piece.type === "k" && piece.color === turn) {
+            return String.fromCharCode(97 + f) + (8 - r);
+          }
+        }
+      }
+    } catch { /* ignore */ }
+    return null;
+  }, [isInCheck, displayFen]);
+
+  // Captured pieces
+  const capturedPieces = useMemo(() => getCapturedPieces(displayFen), [displayFen]);
+
+  // Custom square styles: highlight last move + check
+  const customSquareStyles = useMemo(() => {
+    const styles = {};
+
+    if (lastMoveSquares) {
+      styles[lastMoveSquares.from] = {
+        backgroundColor: "rgba(255, 255, 0, 0.35)",
+      };
+      styles[lastMoveSquares.to] = {
+        backgroundColor: "rgba(255, 255, 0, 0.45)",
+      };
+    }
+
+    if (checkSquare) {
+      styles[checkSquare] = {
+        backgroundColor: "rgba(255, 50, 50, 0.7)",
+        boxShadow: "inset 0 0 20px 4px rgba(255, 0, 0, 0.5)",
+      };
+    }
+
+    // Pre-move squares (blue highlight)
+    if (premove) {
+      styles[premove.from] = {
+        backgroundColor: "rgba(59, 130, 246, 0.4)",
+        border: "2px solid rgba(59, 130, 246, 0.7)",
+      };
+      styles[premove.to] = {
+        backgroundColor: "rgba(59, 130, 246, 0.5)",
+        border: "2px solid rgba(59, 130, 246, 0.8)",
+      };
+    }
+
+    return styles;
+  }, [lastMoveSquares, checkSquare, premove]);
+
   async function fetchState() {
+    if (gameFinishedRef.current) return;
+
     const res = await fetch(`/api/chess/game-state?gameId=${gameId}`, {
       cache: "no-store",
       credentials: "include",
@@ -108,8 +246,8 @@ export default function ChessGamePage() {
     }
     prevActiveTurnRef.current = game.activeTurn;
 
-    // Detect opponent capture & check by comparing FENs
-    if (prevFenRef.current && game.fen && prevFenRef.current !== game.fen && !isSpectator) {
+    // Detect opponent capture & check by comparing FENs (skip on first fetch)
+    if (firstFetchDoneRef.current && prevFenRef.current && game.fen && prevFenRef.current !== game.fen && !isSpectator) {
       const prevCount = (prevFenRef.current.match(/[pnbrqkPNBRQK]/g) || []).length;
       const newCount = (game.fen.match(/[pnbrqkPNBRQK]/g) || []).length;
       if (newCount < prevCount) {
@@ -132,23 +270,93 @@ export default function ChessGamePage() {
     setMoves(game.moves || []);
     setLiveFen(game.fen || "start");
 
+    // Auto-reset move index to latest
+    if (moveIndex !== -1 && game.moves && moveIndex !== game.moves.length - 1) {
+      // Keep user's history view until they click latest
+    }
+
+    // Check for pre-move execution: turn just switched to us and we have a queued move
+    if (!isSpectator && premoveRef.current && game.activeTurn === color && game.status === "in_progress") {
+      const pm = premoveRef.current;
+      // Clear pre-move before executing (avoid re-entry)
+      premoveRef.current = null;
+      setPremove(null);
+      // Validate and execute the pre-move against the current position
+      const chess = new Chess(game.fen || "start");
+      const pmMove = chess.move({ from: pm.from, to: pm.to, promotion: pm.promotion || "q" });
+      if (pmMove) {
+        // Execute pre-move immediately
+        const pmRes = await fetch("/api/chess/move", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            gameId: Number(gameId),
+            from: pm.from,
+            to: pm.to,
+            promotion: pm.promotion || "q",
+          }),
+        });
+        const pmData = await pmRes.json();
+        if (pmRes.ok) {
+          setLiveFen(pmData.data.fen);
+          playCardDraw();
+          if (pmMove.captured) {
+            setCaptureFlash(true);
+            setTimeout(() => setCaptureFlash(false), 400);
+          }
+          socket?.emit("move", { gameId });
+          return;
+        }
+      }
+    }
+
     if (!game.blackPlayerId) {
       setStatus("Waiting for opponent...");
       return;
     }
 
     if (game.status === "finished" || game.status === "expired") {
+      gameFinishedRef.current = true;
       const myId = color === "white" ? game.whitePlayerId : game.blackPlayerId;
 
       let text = "Game Over.";
+      let payoutText = "";
 
       if (game.result === "draw") {
         text = "Draw.";
+        payoutText = "Stake returned.";
+      } else if (game.result === "timeout") {
+        const iWon = game.winnerId === myId;
+        text = iWon ? "You won on time!" : "You lost on time.";
+        if (iWon) {
+          const houseFee = Number(game.betAmount) * 2 * 0.1;
+          const payout = Number(game.betAmount) * 2 - houseFee;
+          payoutText = `+$${payout.toFixed(2)}`;
+        } else {
+          payoutText = `-$${Number(game.betAmount).toFixed(2)}`;
+        }
       } else if (game.winnerId) {
-        text = game.winnerId === myId ? "You won!" : "You lost.";
+        const iWon = game.winnerId === myId;
+        text = iWon ? "You won!" : "You lost.";
+        if (iWon) {
+          const payout = game.payout
+            ? Number(game.payout).toFixed(2)
+            : (Number(game.betAmount) * 2 * 0.9).toFixed(2);
+          payoutText = `+$${payout}`;
+        } else {
+          payoutText = `-$${Number(game.betAmount).toFixed(2)}`;
+        }
+      } else if (game.result === "opponent_left") {
+        const iWon = game.winnerId === myId;
+        text = iWon ? "Opponent left — You win!" : "You left the game.";
+        if (iWon && game.payout) {
+          payoutText = `+$${Number(game.payout).toFixed(2)}`;
+        }
       }
 
       setResultText(text);
+      setResultPayout(payoutText);
       setStatus(text);
       setShowResultPopup(true);
 
@@ -165,14 +373,24 @@ export default function ChessGamePage() {
     }
 
     setStatus("Game active");
+    firstFetchDoneRef.current = true;
   }
 
   useEffect(() => {
+    let cancelled = false;
+
     fetchState();
-    const id = setInterval(fetchState, 2000);
-    return () => clearInterval(id);
+    const id = setInterval(() => {
+      if (cancelled) return;
+      fetchState();
+    }, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [gameId]);
 
+  // Socket: game events + draw offers
   useEffect(() => {
     if (!socket) return;
 
@@ -180,23 +398,70 @@ export default function ChessGamePage() {
 
     socket.on("move", fetchState);
 
+    // Draw offer handling
+    socket.on("draw_offered", () => {
+      setDrawOfferReceived(true);
+    });
+    socket.on("draw_declined", () => {
+      setDrawOffered(false);
+      setDrawOfferReceived(false);
+    });
+    socket.on("draw_accepted", () => {
+      setDrawOfferReceived(false);
+      setDrawOffered(false);
+      fetchState();
+    });
+
     return () => {
       socket.emit("leave_game", { gameId });
       socket.off("move", fetchState);
+      socket.off("draw_offered");
+      socket.off("draw_declined");
+      socket.off("draw_accepted");
     };
   }, [socket, gameId]);
 
   async function onDrop(sourceSquare, targetSquare) {
+    // Always reset promotion guard and check if promotion already handled
+    const promotionAlreadyHandled = promotionHandledRef.current;
+    promotionHandledRef.current = false;
+    if (promotionAlreadyHandled) return true;
+
     if (isSpectator) return false;
+    // Don't allow moves while browsing history
+    if (moveIndex >= 0) return false;
 
-    // Turn guard — only allow moves during your turn
     const myTurn = color === "white" ? "white" : "black";
-    if (!gameData || gameData.activeTurn !== myTurn) return false;
 
-    // Detect capture locally
+    // If it's not our turn, try to queue as pre-move
+    if (!gameData || gameData.activeTurn !== myTurn) {
+      // Cancel pre-move if dropping on the pre-move source square
+      if (premoveRef.current && sourceSquare === premoveRef.current.from && targetSquare === premoveRef.current.from) {
+        premoveRef.current = null;
+        setPremove(null);
+        return false;
+      }
+
+      if (gameData?.status !== "in_progress") return false;
+
+      // Validate the move locally
+      const localGame = new Chess(displayFen);
+      const localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
+      localGame.undo();
+      if (!localMove) return false;
+
+      // Queue as pre-move (or replace existing one)
+      premoveRef.current = { from: sourceSquare, to: targetSquare, promotion: "q" };
+      setPremove({ from: sourceSquare, to: targetSquare });
+      return true;
+    }
+
+    // Auto-promote to queen (promotion dialog handles selection)
     const localGame = new Chess(displayFen);
     const localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
-    const isCapture = localMove?.captured !== undefined;
+    if (!localMove) return false;
+
+    const isCapture = localMove.captured !== undefined;
 
     setLoading(true);
 
@@ -222,13 +487,83 @@ export default function ChessGamePage() {
     setLiveFen(data.data.fen);
     playCardDraw();
 
-    // Capture flash
     if (isCapture) {
       setCaptureFlash(true);
       setTimeout(() => setCaptureFlash(false), 400);
     }
 
     socket?.emit("move", { gameId });
+
+    // Clear any pre-move after executing our own move
+    premoveRef.current = null;
+    setPremove(null);
+
+    return true;
+  }
+
+  // Handle promotion piece selection from react-chessboard dialog
+  async function onPromotionPieceCheck(sourceSquare, targetSquare, piece) {
+    if (isSpectator) return false;
+    if (moveIndex >= 0) return false;
+
+    // If it's not our turn, queue as pre-move
+    if (!gameData || gameData.activeTurn !== (color === "white" ? "white" : "black")) {
+      if (gameData?.status !== "in_progress") return false;
+      const promo = piece ? piece[1]?.toLowerCase() : "q";
+      const localGame = new Chess(displayFen);
+      const localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion: promo });
+      localGame.undo();
+      if (!localMove) return false;
+      premoveRef.current = { from: sourceSquare, to: targetSquare, promotion: promo };
+      setPremove({ from: sourceSquare, to: targetSquare });
+      return true;
+    }
+
+    // Flag that promotion handled this move so onDrop skips it
+    promotionHandledRef.current = true;
+
+    const myTurn = color === "white" ? "white" : "black";
+    if (gameData.activeTurn !== myTurn) return false;
+
+    const promo = piece ? piece[1]?.toLowerCase() : "q"; // e.g., "wQ" → "q"
+    const localGame = new Chess(displayFen);
+    const localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion: promo });
+    if (!localMove) return false;
+
+    const isCapture = localMove.captured !== undefined;
+
+    setLoading(true);
+
+    const res = await fetch("/api/chess/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        gameId: Number(gameId),
+        from: sourceSquare,
+        to: targetSquare,
+        promotion: promo,
+      }),
+    });
+
+    const data = await res.json();
+    setLoading(false);
+
+    if (!res.ok) return false;
+
+    setLiveFen(data.data.fen);
+    playCardDraw();
+
+    if (isCapture) {
+      setCaptureFlash(true);
+      setTimeout(() => setCaptureFlash(false), 400);
+    }
+
+    socket?.emit("move", { gameId });
+
+    // Clear any pre-move after executing promotion
+    premoveRef.current = null;
+    setPremove(null);
 
     return true;
   }
@@ -267,6 +602,36 @@ export default function ChessGamePage() {
     }
   }
 
+  // Draw offer
+  function offerDraw() {
+    if (!gameData || gameData.status !== "in_progress") return;
+    setDrawOffered(true);
+    socket?.emit("draw_offer", { gameId });
+  }
+
+  function acceptDraw() {
+    if (!gameData) return;
+    setDrawOfferReceived(false);
+    // End game as draw via API
+    fetch("/api/chess/end-game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        gameId: Number(gameId),
+        result: "draw",
+      }),
+    }).then(() => {
+      socket?.emit("draw_accepted", { gameId });
+      fetchState();
+    }).catch(() => {});
+  }
+
+  function declineDraw() {
+    setDrawOfferReceived(false);
+    socket?.emit("draw_decline", { gameId });
+  }
+
   const myName =
     activeColor === "white"
       ? gameData?.whitePlayerName
@@ -286,6 +651,9 @@ export default function ChessGamePage() {
     activeColor === "white"
       ? gameData?.blackTimeRemaining
       : gameData?.whiteTimeRemaining;
+
+  const myCaptured = activeColor === "white" ? capturedPieces.white : capturedPieces.black;
+  const oppCaptured = activeColor === "white" ? capturedPieces.black : capturedPieces.white;
 
   return (
     <>
@@ -319,6 +687,49 @@ export default function ChessGamePage() {
         )}
       </AnimatePresence>
 
+      {/* Check Banner */}
+      <AnimatePresence>
+        {isInCheck && !gameData?.status?.match(/finished|expired/) && (
+          <motion.div
+            key="check-banner"
+            initial={{ opacity: 0, y: -30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -30 }}
+            className="fixed left-1/2 top-24 z-40 -translate-x-1/2 rounded-xl border-2 border-red-500 bg-red-900/80 px-6 py-2 shadow-[0_0_24px_rgba(255,0,0,0.4)]"
+          >
+            <span className="text-lg font-bold text-red-300 tracking-wider">⚠ CHECK!</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Draw offer notification */}
+      <AnimatePresence>
+        {drawOfferReceived && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 rounded-2xl border-2 border-yellow-400 bg-[#1a1a0d] p-6 shadow-[0_0_30px_rgba(250,204,21,0.3)]"
+          >
+            <p className="text-yellow-300 font-bold text-lg mb-3">Opponent offers a draw</p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={acceptDraw}
+                className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold"
+              >
+                Accept
+              </button>
+              <button
+                onClick={declineDraw}
+                className="bg-gray-600 hover:bg-gray-500 text-white px-6 py-2 rounded-lg font-bold"
+              >
+                Decline
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="min-h-screen bg-[#050816] text-white px-4 py-8 overflow-x-hidden">
       <div className="max-w-7xl mx-auto">
         {/* HEADER */}
@@ -339,10 +750,17 @@ export default function ChessGamePage() {
           <div className="flex justify-center">
             <div className="w-full max-w-[660px]">
               {/* OPPONENT */}
-              <div className="mb-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 flex justify-between backdrop-blur-md">
-                <span className="font-bold text-cyan-300">
-                  {opponentName || "Opponent"}
-                </span>
+              <div className="mb-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-cyan-300">
+                    {opponentName || "Opponent"}
+                  </span>
+                  {oppCaptured.length > 0 && (
+                    <span className="text-lg tracking-tight opacity-80">
+                      {oppCaptured.join(" ")}
+                    </span>
+                  )}
+                </div>
                 <span className={`font-mono text-xl ${oppClock !== undefined && oppClock <= 10 ? "text-red-400 low-time-pulse" : "text-cyan-100"}`}>
                   {formatClock(oppClock)}
                 </span>
@@ -366,18 +784,19 @@ export default function ChessGamePage() {
                   <Chessboard
                     id="CyberBoard"
                     animationDuration={320}
-                    arePiecesDraggable={!isSpectator}
+                    arePiecesDraggable={!isSpectator && moveIndex === -1}
                     boardOrientation={activeColor}
                     position={displayFen}
                     onPieceDrop={onDrop}
+                    onPromotionPieceSelect={onPromotionPieceCheck}
+                    promotionDialogVariant="modal"
                     customDarkSquareStyle={{
                       background: "linear-gradient(135deg,#131b3a,#1b2554)",
                     }}
                     customLightSquareStyle={{
                       background: "linear-gradient(135deg,#0ff6,#13d8ff)",
                     }}
-                    // Removed fixed boardWidth
-                    // Added styling to ensure it fills the container
+                    customSquareStyles={customSquareStyles}
                     customBoardStyle={{
                       width: "100%",
                       height: "100%",
@@ -388,10 +807,17 @@ export default function ChessGamePage() {
               </div>
 
               {/* YOU */}
-              <div className="mt-3 rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-3 flex justify-between backdrop-blur-md">
-                <span className="font-bold text-fuchsia-300">
-                  {myName || "You"}
-                </span>
+              <div className="mt-3 rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-fuchsia-300">
+                    {myName || "You"}
+                  </span>
+                  {myCaptured.length > 0 && (
+                    <span className="text-lg tracking-tight opacity-80">
+                      {myCaptured.join(" ")}
+                    </span>
+                  )}
+                </div>
                 <span className={`font-mono text-xl ${myClock !== undefined && myClock <= 10 ? "text-red-400 low-time-pulse" : "text-fuchsia-100"}`}>
                   {formatClock(myClock)}
                 </span>
@@ -406,6 +832,12 @@ export default function ChessGamePage() {
               )}
               <div className="mt-4 text-center font-semibold text-cyan-300 tracking-wide">
                 {status}
+                {premove && !isSpectator && (
+                  <span className="ml-2 inline-flex items-center gap-1 text-blue-400 text-sm">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                    ⚡ Pre-move queued
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -416,29 +848,74 @@ export default function ChessGamePage() {
               Move History
             </h2>
 
-            <div className="max-h-[420px] overflow-y-auto space-y-2 pr-1">
+            <div className="max-h-[320px] overflow-y-auto space-y-2 pr-1">
               {moves.length === 0 ? (
                 <p className="text-white/60">No moves yet.</p>
               ) : (
                 moves.map((move, i) => (
                   <button
-                    key={move.id}
+                    key={move.id ?? i}
                     onClick={() => setMoveIndex(i)}
                     className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-cyan-400 hover:text-black transition-all duration-200"
                   >
-                    {i + 1}. {move.moveSan}
+                    <span className="text-white/40 text-xs mr-2">
+                      {Math.floor(i / 2) + 1}{i % 2 === 0 ? "." : "..."}
+                    </span>
+                    {move.moveSan}
                   </button>
                 ))
               )}
             </div>
 
-            {/* RESIGN BUTTON */}
+            {/* Move navigation */}
+            {moves.length > 0 && (
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => setMoveIndex(Math.max(-1, moveIndex - 1))}
+                  disabled={moveIndex <= -1}
+                  className="flex-1 px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/20 disabled:opacity-30 transition"
+                >
+                  ◀ Prev
+                </button>
+                <button
+                  onClick={() => setMoveIndex(-1)}
+                  className={`flex-1 px-2 py-1 text-xs rounded transition ${moveIndex === -1 ? "bg-cyan-500/30 text-cyan-300" : "bg-white/10 hover:bg-white/20"}`}
+                >
+                  Live
+                </button>
+                <button
+                  onClick={() => setMoveIndex(Math.min(moves.length - 1, moveIndex + 1))}
+                  disabled={moveIndex >= moves.length - 1}
+                  className="flex-1 px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/20 disabled:opacity-30 transition"
+                >
+                  Next ▶
+                </button>
+              </div>
+            )}
+
+            {/* ACTION BUTTONS */}
             {!isSpectator && (
               <>
+                {/* Draw Offer */}
+                {drawOffered ? (
+                  <div className="mt-3 w-full text-center text-yellow-400 text-sm py-2 border border-yellow-400/30 rounded-lg bg-yellow-400/5">
+                    Draw offered — waiting...
+                  </div>
+                ) : (
+                  <button
+                    onClick={offerDraw}
+                    disabled={gameData?.status !== "in_progress" || drawOfferReceived}
+                    className="mt-3 w-full bg-yellow-600 hover:bg-yellow-500 py-2 rounded-xl font-bold transition disabled:opacity-40 text-sm"
+                  >
+                    🤝 Offer Draw
+                  </button>
+                )}
+
+                {/* Resign */}
                 <button
                   onClick={() => setShowResignConfirm(true)}
                   disabled={isResigning || gameData?.status === "finished"}
-                  className="mt-5 w-full bg-red-600 hover:bg-red-700 py-3 rounded-xl font-bold transition disabled:opacity-50"
+                  className="mt-2 w-full bg-red-600 hover:bg-red-700 py-3 rounded-xl font-bold transition disabled:opacity-50"
                 >
                   {isResigning ? "Resigning..." : "Resign"}
                 </button>
@@ -496,7 +973,7 @@ export default function ChessGamePage() {
               onClick={() => router.push("/casino/chess")}
               className="mt-4 w-full bg-cyan-400 text-black font-bold py-3 rounded-xl hover:scale-[1.02] transition"
             >
-              Return Lobby
+              Return to Lobby
             </button>
           </div>
         </div>
@@ -557,10 +1034,21 @@ export default function ChessGamePage() {
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.35 }}
-              className="text-xl text-white mb-6"
+              className="text-xl text-white mb-2"
             >
               {resultText}
             </motion.p>
+
+            {resultPayout && (
+              <motion.p
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.45 }}
+                className={`text-lg font-bold mb-6 ${resultPayout.startsWith("+") ? "text-green-400" : resultPayout.startsWith("-") ? "text-red-400" : "text-yellow-300"}`}
+              >
+                {resultPayout}
+              </motion.p>
+            )}
 
             {resultText.includes("won") && (
               <div className="absolute inset-0 pointer-events-none">
