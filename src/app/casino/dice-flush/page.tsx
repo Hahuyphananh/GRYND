@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 // @ts-ignore: no types for canvas-confetti in this project
 import confetti from "canvas-confetti";
 import { useUser } from "@clerk/nextjs";
+import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
@@ -308,6 +309,7 @@ export default function DiceFlushPage() {
   const [wager, setWager] = useState(100); const [balance, setBalance] = useState(0); const [loading, setLoading] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null); const [availableGames, setAvailableGames] = useState<LobbyRoom[]>([]);
   const [roomId, setRoomId] = useState<string | null>(null); const [game, setGame] = useState<GameState | null>(null);
+  const posthog = usePostHog();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null); const [rolling, setRolling] = useState(false);
   const [aiCategoryHighlight, setAiCategoryHighlight] = useState<string | null>(null);
   const [moveHistory, setMoveHistory] = useState<any[]>([]);
@@ -397,6 +399,7 @@ export default function DiceFlushPage() {
 
     if (myTotal >= opTotal) {
       setGameOverType("win");
+      posthog?.capture("dice_flush_game_ended", { result: "win", bet_amount: game?.players?.[0]?.isAI ? (game as any)?.wager || wager : (game as any)?.wager || wager, mode: opponent?.isAI ? "ai" : "pvp", my_score: myTotal, opponent_score: opTotal });
       // Fire confetti cannon multiple times
       const fire = () => {
         confetti({
@@ -524,8 +527,8 @@ export default function DiceFlushPage() {
   }, [game?.currentTurn, game?.turnNumber]);
 
   const createGame = async () => { if (wager <= 0 || wager > balance) return alert("Invalid wager amount"); setLoading(true); try { const res = await fetch("/api/dice-flush/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to create room"); setRoomId(d.roomId); setGame(d.state); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
-  const playAI = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager, difficulty: "medium" }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); setRoomId(d.roomId); setGame(d.state); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
-  const joinGame = async (id: string) => { setLoading(true); setJoiningId(id); try { const res = await fetch("/api/dice-flush/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId: id }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to join"); setRoomId(id); setGame(d.state); if (socket) { socket.emit("join_room", { roomId: id }); socket.emit("room_event", { roomId: id, event: "game_state_update" }); }} finally { setLoading(false); setJoiningId(null);} };
+  const playAI = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager, difficulty: "medium" }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); setRoomId(d.roomId); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "ai", wager }); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
+  const joinGame = async (id: string) => { setLoading(true); setJoiningId(id); try { const res = await fetch("/api/dice-flush/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId: id }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to join"); setRoomId(id); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "pvp", wager: (d.state as any)?.wager || 0, game_id: id }); if (socket) { socket.emit("join_room", { roomId: id }); socket.emit("room_event", { roomId: id, event: "game_state_update" }); }} finally { setLoading(false); setJoiningId(null);} };
   const emitRoomEvent = () => {
     if (!socket || !roomId) return;
     socket.emit("room_event", { roomId, event: "game_state_update" });

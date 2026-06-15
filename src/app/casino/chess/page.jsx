@@ -4,9 +4,15 @@ import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import { useEffect, useState } from "react";
 import { useSocket } from "../../../context/SocketProvider";
-import { CHIP_VALUES } from "../../../lib/rouletteConfig";
-
 const TABLES = [1, 5, 10, 20, 50, 100];
+
+const AI_DIFFICULTY_LEVELS = [
+  { level: 1, label: "🎓 Beginner", desc: "Easy opponent" },
+  { level: 2, label: "🟢 Casual", desc: "Relaxed play" },
+  { level: 3, label: "🟡 Intermediate", desc: "Moderate challenge" },
+  { level: 4, label: "🟠 Advanced", desc: "Strong opponent" },
+  { level: 5, label: "🔴 Expert", desc: "Very tough" },
+];
 const TIMER_OPTIONS = [
   { id: "1min", label: "1 Min", time: 60 },
   { id: "2min", label: "2 Min", time: 120 },
@@ -21,7 +27,9 @@ export default function ChessLobby() {
   const { socket } = useSocket();
 
   const [showBetPopup, setShowBetPopup] = useState(false);
-  const [betAmount, setBetAmount] = useState("");
+  const [aiDifficulty, setAiDifficulty] = useState(3);
+  const [aiTimer, setAiTimer] = useState("5min");
+  const [aiColor, setAiColor] = useState<string>("random");
   const [availableGames, setAvailableGames] = useState([]);
   const [isLoadingAvailableGames, setIsLoadingAvailableGames] = useState(false);
   const [joiningGameId, setJoiningGameId] = useState(null);
@@ -176,14 +184,15 @@ export default function ChessLobby() {
         credentials: "include",
         body: JSON.stringify({
           ai_game: true,
-          betAmount: Number(betAmount),
+          difficultyLevel: aiDifficulty,
         }),
       });
 
       if (!res.ok) throw new Error("Failed to create AI game");
 
       const data = await res.json();
-      router.push(`/casino/chess/ai?gameId=${data.gameId}&bet=${betAmount}`);
+      const timerObj = TIMER_OPTIONS.find((t) => t.id === aiTimer);
+      router.push(`/casino/chess/ai?gameId=${data.gameId}&difficulty=${aiDifficulty}&timer=${timerObj?.time || 300}&color=${aiColor}`);
     } catch (error) {
       console.error("Error creating AI game:", error);
       setError("Failed to create AI game");
@@ -274,7 +283,7 @@ export default function ChessLobby() {
             Play vs AI
           </h2>
           <p className="text-white/80 mb-4">
-            Challenge the computer with a custom bet amount.
+            Challenge the computer for free — choose your difficulty.
           </p>
           <button
             onClick={() => setShowBetPopup(true)}
@@ -341,49 +350,72 @@ export default function ChessLobby() {
       {showBetPopup && (
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50">
           <div className="bg-[#08142f] text-white p-8 rounded-lg w-96 border border-[#00e5ff]/40 shadow-[0_0_22px_rgba(0,229,255,0.25)]">
-            <h2 className="text-2xl font-bold mb-4 text-center text-[#FFD700]">
-              Enter Your Bet Amount
+            <h2 className="text-2xl font-bold mb-2 text-center text-[#FFD700]">
+              Choose AI Difficulty
             </h2>
+            <p className="text-white/60 text-xs text-center mb-4">
+              Free to play — no stakes!
+            </p>
 
-            {/* Quick chips */}
-            <div className="flex flex-wrap gap-1.5 justify-center mb-3">
-              {CHIP_VALUES.map((val) => (
+            {/* Color selection */}
+            <h3 className="text-sm font-semibold text-white/70 mb-2">🎨 Play as:</h3>
+            <div className="flex gap-2 justify-center mb-4">
+              {[
+                { key: "white", label: "♔ White", desc: "Move first" },
+                { key: "black", label: "♚ Black", desc: "AI moves first" },
+                { key: "random", label: "🎲 Random", desc: "Surprise me" },
+              ].map((opt) => (
                 <button
-                  key={val}
-                  onClick={() => setBetAmount(val.toString())}
-                  className={`px-2 py-0.5 rounded-full text-xs font-bold border transition-all ${
-                    Number(betAmount) === val
-                      ? "bg-[#FFFF33] text-black border-[#FFFF33]"
-                      : "bg-[#0a1a3a] text-[#FFFF33]/80 border-[#FFFF33]/30"
+                  key={opt.key}
+                  onClick={() => setAiColor(opt.key)}
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold border transition-all text-center ${
+                    aiColor === opt.key
+                      ? "bg-[#FFD700] text-[#030817] border-[#FFD700]"
+                      : "bg-[#0a1a3a] text-white/70 border-[#00e5ff]/20 hover:border-[#00e5ff]/40"
                   }`}
                 >
-                  {val}
+                  <div>{opt.label}</div>
+                  <div className={`text-[10px] mt-0.5 ${aiColor === opt.key ? "text-[#030817]/60" : "text-white/30"}`}>{opt.desc}</div>
                 </button>
               ))}
             </div>
 
-            <div className="flex items-center gap-1.5 mb-2">
-              <input
-                type="number"
-                min="0"
-                value={betAmount}
-                onChange={(e) => setBetAmount(e.target.value)}
-                onBlur={() => { if (!betAmount || Number(betAmount) < 1) setBetAmount(""); }}
-                className="flex-1 border border-[#00e5ff]/40 bg-[#0d335f] px-3 py-2 rounded"
-                placeholder="Bet amount"
-              />
-              <button
-                onClick={() => setBetAmount("50")}
-                className="px-2 py-2 rounded text-xs font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
-              >
-                ½
-              </button>
-              <button
-                onClick={() => setBetAmount("100")}
-                className="px-2 py-2 rounded text-xs font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
-              >
-                100
-              </button>
+            {/* Timer selection */}
+            <h3 className="text-sm font-semibold text-white/70 mb-2">⏱ Timer:</h3>
+            <div className="flex flex-wrap gap-2 justify-center mb-4">
+              {TIMER_OPTIONS.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setAiTimer(t.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                    aiTimer === t.id
+                      ? "bg-[#FFD700] text-[#030817] border-[#FFD700]"
+                      : "bg-[#0a1a3a] text-white/70 border-[#00e5ff]/20 hover:border-[#00e5ff]/40"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Difficulty levels */}
+            <div className="flex flex-col gap-2 mb-4">
+              {AI_DIFFICULTY_LEVELS.map((diff) => (
+                <button
+                  key={diff.level}
+                  onClick={() => setAiDifficulty(diff.level)}
+                  className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-all ${
+                    aiDifficulty === diff.level
+                      ? "bg-[#FFD700] text-[#030817] border-[#FFD700] shadow-[0_0_14px_rgba(255,215,0,0.45)]"
+                      : "bg-[#0a1a3a] text-white/80 border-[#00e5ff]/20 hover:bg-[#0d224f] hover:border-[#00e5ff]/40"
+                  }`}
+                >
+                  <span className="font-bold">{diff.label}</span>
+                  <span className={`ml-2 text-xs ${aiDifficulty === diff.level ? "text-[#030817]/70" : "text-white/40"}`}>
+                    — {diff.desc}
+                  </span>
+                </button>
+              ))}
             </div>
 
             {error && (
@@ -400,7 +432,7 @@ export default function ChessLobby() {
 
               <button
                 onClick={startAIGame}
-                disabled={!betAmount || Number(betAmount) < 1 || aiGameLoading}
+                disabled={aiGameLoading}
                 className="bg-[#FFD700] text-[#030817] px-4 py-2 rounded hover:bg-[#ffe14f] disabled:bg-[#7f8520] disabled:text-[#c6c6c6]"
               >
                 {aiGameLoading ? "Creating..." : "Start Game"}

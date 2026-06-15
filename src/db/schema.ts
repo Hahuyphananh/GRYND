@@ -1125,6 +1125,21 @@ export const oddsGames = pgTable(
   }),
 );
 
+// PROGRESSIVE SLOT JACKPOT — one row per theme
+// Grows with every spin (2% contribution). Resets to seed after a 5-match win.
+export const slotJackpots = pgTable("slot_jackpots", {
+  theme: varchar("theme", { length: 30 }).primaryKey(),
+  amount: numeric("amount", { precision: 14, scale: 2 }).notNull().default("1000.00"),
+  seedAmount: numeric("seed_amount", { precision: 14, scale: 2 }).notNull().default("1000.00"),
+  contributionRate: numeric("contribution_rate", { precision: 5, scale: 4 }).notNull().default("0.0200"),
+  totalContributed: numeric("total_contributed", { precision: 14, scale: 2 }).notNull().default("0.00"),
+  timesWon: integer("times_won").notNull().default(0),
+  lastWonBy: varchar("last_won_by", { length: 255 }),
+  lastWonAmount: numeric("last_won_amount", { precision: 14, scale: 2 }),
+  lastWonAt: timestamp("last_won_at"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // CLICKER GAME TABLE (GoonBet Clicker history)
 export const clickerGames = pgTable(
   "clicker_games",

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import GameTrack from "./components/GameTrack";
 import {
@@ -13,6 +14,7 @@ import {
 const MAX_LANES = DEFAULT_LANES;
 
 export default function LaneRunnerPage() {
+  const posthog = usePostHog();
   const [betAmount, setBetAmount] = useState(10);
   const [difficulty, setDifficulty] = useState("easy");
 
@@ -119,6 +121,7 @@ export default function LaneRunnerPage() {
     setRunning(true);
     setPayout(Number(betAmount * (json.data.multiplier || 1)));
     setUserTokens(Number(json.data.newBalance ?? userTokens));
+    posthog?.capture("lane_runner_game_started", { bet_amount: betAmount, difficulty });
 
     setFairData({
       serverSeedHash: json.data.serverSeedHash,
@@ -174,6 +177,7 @@ export default function LaneRunnerPage() {
       setHasLost(true);
       setRunning(false);
       loseSoundRef.current?.play().catch(() => {});
+      posthog?.capture("lane_runner_game_ended", { result: "loss", bet_amount: betAmount, difficulty, lane: data.lane + 1, multiplier: data.multiplier });
 
       setHistory((prev) =>
         [
@@ -195,6 +199,7 @@ export default function LaneRunnerPage() {
       setHasCashedOut(true);
       setRunning(false);
       setShowCashoutPopup(true);
+      posthog?.capture("lane_runner_game_ended", { result: "win", bet_amount: betAmount, difficulty, multiplier: data.multiplier, payout: data.payout });
 
       setHistory((prev) =>
         [
@@ -236,6 +241,7 @@ export default function LaneRunnerPage() {
 
     setHasCashedOut(true);
     setRunning(false);
+    posthog?.capture("lane_runner_game_ended", { result: "cashout", bet_amount: betAmount, difficulty, multiplier: json.data.multiplier, payout: json.data.payout });
 
     setPopupData({
       payout: json.data.payout,

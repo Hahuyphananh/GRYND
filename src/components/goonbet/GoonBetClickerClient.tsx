@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../navigation-bar";
+import { usePostHog } from "posthog-js/react";
 import {
   bustChanceAtClick,
   CLICKER_GROWTH_RATE,
@@ -31,6 +32,7 @@ export default function GoonBetClickerClient() {
   const [lastPayout, setLastPayout] = useState<string | null>(null);
   const [history, setHistory] = useState<RoundHistory[]>([]);
   const [roundStartTime, setRoundStartTime] = useState<number | null>(null);
+  const posthog = usePostHog();
   const roundIdRef = useRef<number | null>(null);
   const roundStartTimeRef = useRef<number | null>(null);
   const clicksRef = useRef(0);
@@ -117,6 +119,7 @@ export default function GoonBetClickerClient() {
     setClicks(0);
     clicksRef.current = 0;
     setBusted(false);
+    posthog?.capture("goonbet_clicker_round_started", { bet_amount: bet });
     await refresh();
   }
 
@@ -133,6 +136,11 @@ export default function GoonBetClickerClient() {
       setBusted(true);
       setRoundId(null);
       setRoundStartTime(null);
+      posthog?.capture("goonbet_clicker_round_ended", {
+        result: "bust",
+        clicks: nextClicks,
+        multiplier: nextMultiplier,
+      });
       refresh();
       return;
     }
@@ -171,6 +179,11 @@ setClicks(data.clicks ?? 0);
 setMultiplier(Number(data.multiplier ?? 1));
 setBusted(data.busted ?? false);
 setLastPayout(data.payout ? data.payout.toString() : "0");
+posthog?.capture("goonbet_clicker_cashout", {
+  clicks: data.clicks ?? 0,
+  multiplier: Number(data.multiplier ?? 1),
+  payout: data.payout ? data.payout.toString() : "0",
+});
 
 setRoundId(null);
 setRoundStartTime(null);

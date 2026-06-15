@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import confetti from "canvas-confetti";
+import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import { playCardDraw, playVictory, playDefeat } from "../../../lib/gameAudio";
@@ -71,6 +72,7 @@ type Card = { suit: string; value: string };
 export default function ShowdownPage() {
   const { user } = useUser();
   const router = useRouter();
+  const posthog = usePostHog();
 
   const [userTokens, setUserTokens] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -130,6 +132,7 @@ export default function ShowdownPage() {
       setPot(data.data.pot ?? betAmount * 2);
       setUserTokens(data.data.newBalance);
       setResult(null);
+      posthog?.capture("poker_game_started", { bet_amount: betAmount });
     } catch {
       setError("Impossible de démarrer la partie");
     } finally {
@@ -163,10 +166,12 @@ export default function ShowdownPage() {
         setResult(data.result);
         if (data.result.won) {
           playVictory();
+          posthog?.capture("poker_game_ended", { result: "win", bet_amount: betAmount, hand: evaluateHand(playerHand), action: "play" });
           confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#ffd700", "#ff00cc", "#00e5ff"] });
           setTimeout(() => confetti({ particleCount: 50, spread: 100, origin: { y: 0.5 }, colors: ["#ffd700", "#ffffff"] }), 400);
         } else {
           playDefeat();
+          posthog?.capture("poker_game_ended", { result: "loss", bet_amount: betAmount, hand: evaluateHand(playerHand), action: "play" });
         }
         setStats((s) => ({
           played: s.played + 1,
@@ -205,6 +210,7 @@ export default function ShowdownPage() {
       if (data.result) {
         setResult(data.result);
         playDefeat();
+        posthog?.capture("poker_game_ended", { result: "loss", bet_amount: betAmount, reason: "fold" });
         setStats((s) => ({
           ...s,
           played: s.played + 1,

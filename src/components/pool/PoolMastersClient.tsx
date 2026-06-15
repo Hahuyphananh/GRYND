@@ -1,9 +1,16 @@
 "use client";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../components/navigation-bar";
+import { usePostHog } from "posthog-js/react";
+import { useEffect } from "react";
 
 export default function PoolMastersClient() {
   const router = useRouter();
+  const posthog = usePostHog();
+
+  useEffect(() => {
+    posthog?.capture("pool_masters_lobby_viewed");
+  }, []);
   return (
     <div className="mx-auto max-w-5xl rounded-2xl border border-cyan-400/40 bg-black/30 p-6 shadow-[0_0_30px_rgba(34,211,238,.25)]">
       <NavigationBar currentPath="/casino" />

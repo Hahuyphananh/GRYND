@@ -8,6 +8,7 @@ import { SocketProvider } from "../context/SocketProvider";
 import PresenceHeartbeat from "../components/PresenceHeartbeat";
 import RouteTransition from "../components/RouteTransition";
 import { PostHogProvider } from "../components/PostHogProvider";
+import { PostHogIdentify } from "../components/PostHogIdentify";
 
 function AppProviders({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
@@ -37,6 +38,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <PostHogProvider>
       <ClerkProvider {...clerkProps}>
+        <PostHogIdentify />
         <AppProviders>{children}</AppProviders>
       </ClerkProvider>
     </PostHogProvider>

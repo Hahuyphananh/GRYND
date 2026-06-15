@@ -65,7 +65,9 @@ async function resolveGameIfReady(game) {
     const outcome = crypto.randomInt(0, 2) === 0 ? "heads" : "tails";
     const winnerId =
       outcome === locked.player1Choice ? locked.player1Id : locked.player2Id;
-    const payout = Number(locked.betAmount) * 2;
+    const totalPot = Number(locked.betAmount) * 2;
+    const houseFee = Math.floor(totalPot * 0.02); // 2% rake
+    const payout = totalPot - houseFee;
 
     await tx
       .update(users)

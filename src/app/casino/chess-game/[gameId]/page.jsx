@@ -9,6 +9,7 @@ import useGamePresence from "../../../../hooks/useGamePresence";
 import ReportModal from "../../../../components/ReportModal";
 import { celebrateWin, turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat } from "../../../../lib/gameAudio";
+import { usePostHog } from "posthog-js/react";
 
 const Chessboard = dynamic(
   async () => {
@@ -106,6 +107,7 @@ export default function ChessGamePage() {
   const firstFetchDoneRef = useRef(false);
   const gameFinishedRef = useRef(false);
   const [loading, setLoading] = useState(false);
+  const posthog = usePostHog();
 
   // Draw offer state
   const [drawOffered, setDrawOffered] = useState(false);
@@ -360,6 +362,14 @@ export default function ChessGamePage() {
       setStatus(text);
       setShowResultPopup(true);
 
+      const resultType = text.includes("won") ? "win" : text.includes("Draw") ? "draw" : "lose";
+      posthog?.capture("chess_pvp_game_ended", {
+        game_id: Number(gameId),
+        result: resultType,
+        game_result: game.result,
+        bet_amount: Number(game.betAmount),
+      });
+
       if (text.includes("won") && !resultShownRef.current) {
         resultShownRef.current = true;
         playVictory();
@@ -373,6 +383,14 @@ export default function ChessGamePage() {
     }
 
     setStatus("Game active");
+    if (!firstFetchDoneRef.current) {
+      posthog?.capture("chess_pvp_game_started", {
+        game_id: Number(gameId),
+        color,
+        bet_amount: Number(game.betAmount),
+        opponent: game.whitePlayerId && game.blackPlayerId ? "matched" : "waiting",
+      });
+    }
     firstFetchDoneRef.current = true;
   }
 

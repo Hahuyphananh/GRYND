@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import { getMinesMultiplier } from "../../../lib/minesMath";
 import { celebrateWin, gameOverModal } from "../../../lib/animations";
@@ -8,6 +9,7 @@ import { playCardDraw, playVictory, playDefeat } from "../../../lib/gameAudio";
 import { CHIP_VALUES } from "../../../lib/rouletteConfig";
 
 export default function MinesGamePage() {
+  const posthog = usePostHog();
   const GRID_SIZE = 5;
   const [totalMines, setTotalMines] = useState(3);
   const [grid, setGrid] = useState(Array(GRID_SIZE ** 2).fill("diamond"));
@@ -188,11 +190,10 @@ export default function MinesGamePage() {
               nextGrid[pos] = "mine";
           });
           setGrid(nextGrid);
-        }
-
-        // Record in session history
+        }          // Record in session history
         setSessionResults((prev) => [...prev, { multiplier: 0, result: "loss" }]);
         playDefeat();
+        posthog?.capture("mines_game_ended", { result: "loss", bet_amount: betAmountRef.current, multiplier: 0, mines: totalMines, revealed: revealedCountRef.current });
         return;
       }
 
@@ -220,6 +221,7 @@ export default function MinesGamePage() {
           celebrateWin();
         }
         playVictory();
+        posthog?.capture("mines_game_ended", { result: "win", bet_amount: betAmountRef.current, multiplier: newMultiplier, mines: totalMines, revealed: newRevealedCount });
         await handleCashOutInternal();
       }
     } catch (err) {
@@ -301,6 +303,7 @@ export default function MinesGamePage() {
         gameOverRef.current = true;
         setSessionResults((prev) => [...prev, { multiplier: 0, result: "loss" }]);
         playDefeat();
+        posthog?.capture("mines_game_ended", { result: "loss", bet_amount: betAmount, multiplier: 0, mines: totalMines, revealed: revealedCount + 1 });
 
         if (Array.isArray(revealData.data.minePositions)) {
           const nextGrid = Array(GRID_SIZE * GRID_SIZE).fill("diamond");
@@ -345,6 +348,7 @@ export default function MinesGamePage() {
         celebrateWin();
       }
       playVictory();
+      posthog?.capture("mines_game_ended", { result: "win", bet_amount: betAmount, multiplier: newMultiplier, mines: totalMines, revealed: newRevealedCount });
     }
     return false;
   }
@@ -381,6 +385,7 @@ export default function MinesGamePage() {
       celebrateWin();
     }
     playVictory();
+    posthog?.capture("mines_game_ended", { result: "win", bet_amount: betAmount, multiplier: currentMult, mines: totalMines, revealed: revealedCount });
     await handleCashOutInternal();
   }
 
@@ -425,10 +430,10 @@ export default function MinesGamePage() {
     setRevealedCount(0);
     revealedCountRef.current = 0;
     setShowAllMines(false);
-    setAutoplaySettings(false);
-    setGameStarted(true);
+    setAutoplaySettings(false);      setGameStarted(true);
     setShowResultModal(false);
     resultCelebratedRef.current = false;
+    posthog?.capture("mines_game_started", { bet_amount: betAmount, mines: totalMines });
   }
 
   function handleMineChange(mines) {
