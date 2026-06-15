@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
+import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 
 const multiplierTable: Record<number, Record<number, number>> = {
@@ -16,6 +17,7 @@ const multiplierTable: Record<number, Record<number, number>> = {
 export default function KenoGame() {
   const router = useRouter();
   const { isSignedIn, user } = useUser();
+  const posthog = usePostHog();
 
   const [betAmount, setBetAmount] = useState(100);
   const [selectedNumbers, setSelectedNumbers] = useState<number[]>([]);
@@ -126,6 +128,12 @@ export default function KenoGame() {
       }
       setResult(data);
       await fetchUserBalance();
+      posthog?.capture("keno_game_started", { bet_amount: betAmount, numbers_count: selectedNumbers.length });
+      if (data.payout > 0) {
+        posthog?.capture("keno_game_ended", { result: "win", bet_amount: betAmount, payout: data.payout, matches: data.matches?.length ?? 0 });
+      } else {
+        posthog?.capture("keno_game_ended", { result: "loss", bet_amount: betAmount, payout: 0, matches: data.matches?.length ?? 0 });
+      }
     } catch {
       setError("Error starting game");
     }

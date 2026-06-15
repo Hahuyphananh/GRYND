@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import ReportModal from "../../../components/ReportModal";
 import { useSocket } from "../../../context/SocketProvider";
@@ -87,6 +88,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const [loading, setLoading] = useState(false);
   const [gameId, setGameId] = useState<number | null>(null);
   const [interactiveState, setInteractiveState] = useState<InteractiveOddsStateType | null>(null);
+  const posthog = usePostHog();
   const [roundHistory, setRoundHistory] = useState<GameRound[]>([]);
   const [pickValue, setPickValue] = useState("");
   const [autoPick, setAutoPick] = useState(false);
@@ -170,6 +172,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       if (!data.success) throw new Error(data.error || "Failed to start game");
       setGameId(data.data.gameId);
       setInteractiveState(data.data.gameState);
+      posthog?.capture("odds_game_started", { mode: "ai", wager, game_id: data.data.gameId });
     } catch (err: any) {
       setError(err.message || "Error starting game");
     } finally {
@@ -227,6 +230,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         setFinalWinner(winner as "player1" | "player2");
         setFinalResult(isPlayer1Win ? "player1_won" : "player2_won");
         setFinalPayout(data.data.payout || 0);
+        posthog?.capture("odds_game_ended", { result: isPlayer1Win ? "win" : "loss", mode: "ai", wager, payout: data.data.payout || 0 });
         
         if (isPlayer1Win) {
           setTimeout(() => {

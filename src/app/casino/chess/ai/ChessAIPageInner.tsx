@@ -2,23 +2,55 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Chess } from "chess.js";
-import { Chessboard } from "react-chessboard";
 import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../lib/animations";
-import { playVictory, playDefeat } from "../../../../lib/gameAudio";
+import { playCardDraw, playVictory, playDefeat, playTick } from "../../../../lib/gameAudio";
+import { useChessClock } from "../../../../lib/useChessClock";
+import { usePostHog } from "posthog-js/react";
 
-const PIECE_VALUES: Record<string, number> = {
-  p: 100,
-  n: 320,
-  b: 330,
-  r: 500,
-  q: 900,
-  k: 20000,
+function formatClock(seconds: number) {
+  const safe = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+const Chessboard = dynamic(
+  async () => {
+    const mod = await import("react-chessboard");
+    return mod.Chessboard;
+  },
+  { ssr: false },
+);
+
+const PIECE_SYMBOLS: Record<string, string> = {
+  p: "♟", n: "♞", b: "♝", r: "♜", q: "♛",
+  P: "♙", N: "♘", B: "♗", R: "♖", Q: "♕",
 };
 
-const PST = {
+const PIECE_VALS: Record<string, number> = {
+  p: 1, n: 3, b: 3, r: 5, q: 9,
+  P: 1, N: 3, B: 3, R: 5, Q: 9,
+};
+
+const INITIAL_PIECES: Record<string, number> = {
+  p: 8, n: 2, b: 2, r: 2, q: 1,
+  P: 8, N: 2, B: 2, R: 2, Q: 1,
+};
+
+const SYMBOL_TO_KEY: Record<string, string> = {};
+for (const [k, v] of Object.entries(PIECE_SYMBOLS)) SYMBOL_TO_KEY[v] = k;
+
+// ── AI evaluation tables ──
+
+const PIECE_VALUES: Record<string, number> = {
+  p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000,
+};
+
+const PST: Record<string, number[]> = {
   p: [
     0, 0, 0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50, 50, 50, 10, 10, 20, 30, 30,
     20, 10, 10, 5, 5, 10, 25, 25, 10, 5, 5, 0, 0, 0, 20, 20, 0, 0, 0, 5, -5,
@@ -63,7 +95,7 @@ function toIndex(square: string) {
 }
 
 function pieceSquareValue(type: string, color: "w" | "b", square: string) {
-  const table = PST[type as keyof typeof PST] || null;
+  const table = PST[type] || null;
   if (!table) return 0;
   const idx = toIndex(square);
   return color === "w" ? table[idx] : table[63 - idx];
@@ -90,7 +122,6 @@ function evaluatePosition(game: Chess, aiColor: "w" | "b") {
     }
   }
 
-  // Small mobility bonus
   const moveCount = game.moves().length;
   score += game.turn() === aiColor ? moveCount * 2 : -moveCount * 2;
   return score;
@@ -180,9 +211,59 @@ function pickBestMove(game: Chess, aiColor: "w" | "b", aiLevel: number) {
   return bestMove;
 }
 
+// ── Captured pieces helpers ──
+
+function getCapturedPieces(fen: string) {
+  if (!fen) return { white: [], black: [] };
+  const boardPart = fen.split(" ")[0];
+  const pieceCounts: Record<string, number> = {};
+  for (const ch of boardPart) {
+    if (/[pnbrqkPNBRQK]/.test(ch)) {
+      pieceCounts[ch] = (pieceCounts[ch] || 0) + 1;
+    }
+  }
+  const captured: { white: string[]; black: string[] } = { white: [], black: [] };
+  for (const [piece, initialCount] of Object.entries(INITIAL_PIECES)) {
+    const currentCount = pieceCounts[piece] || 0;
+    const diff = Math.max(0, initialCount - currentCount);
+    for (let i = 0; i < diff; i++) {
+      if (piece === piece.toUpperCase()) {
+        captured.black.push(PIECE_SYMBOLS[piece]);
+      } else {
+        captured.white.push(PIECE_SYMBOLS[piece]);
+      }
+    }
+  }
+  captured.white.sort((a, b) => (PIECE_VALS[SYMBOL_TO_KEY[b]] || 0) - (PIECE_VALS[SYMBOL_TO_KEY[a]] || 0));
+  captured.black.sort((a, b) => (PIECE_VALS[SYMBOL_TO_KEY[b]] || 0) - (PIECE_VALS[SYMBOL_TO_KEY[a]] || 0));
+  return captured;
+}
+
+// ── Move annotation helper ──
+const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+function computeAnnotation(fenBefore: string, fenAfter: string, perspectiveColor: "w" | "b"): string {
+  try {
+    const gameBefore = new Chess(fenBefore);
+    const gameAfter = new Chess(fenAfter);
+    const evalBefore = evaluatePosition(gameBefore, perspectiveColor);
+    const evalAfter = evaluatePosition(gameAfter, perspectiveColor);
+    const swing = evalAfter - evalBefore;
+    if (swing >= 300) return "!!";
+    if (swing >= 100) return "!";
+    if (swing <= -300) return "??";
+    if (swing <= -100) return "?";
+    return "";
+  } catch {
+    return "";
+  }
+}
+
+// ── Main component ──
+
 export default function ChessAIPageInner() {
   const [game, setGame] = useState(new Chess());
-  const [aiLevel, setAiLevel] = useState(5);
+  const [aiLevel, setAiLevel] = useState(3);
   const [gameOver, setGameOver] = useState(false);
   const [playerColor, setPlayerColor] = useState<"white" | "black">("white");
   const [gameResult, setGameResult] = useState<
@@ -192,22 +273,142 @@ export default function ChessAIPageInner() {
   const [turnBanner, setTurnBanner] = useState<string | null>(null);
   const [showResultModal, setShowResultModal] = useState(false);
 
+  // Move history (local tracking)
+  const [moves, setMoves] = useState<{ moveSan: string; fenAfter: string; moveUci: string; annotation: string }[]>([]);
+  const [moveIndex, setMoveIndex] = useState(-1);
+  const promotionHandledRef = useRef(false);
+  const aiTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const prevIsPlayerTurnRef = useRef<boolean | null>(null);
   const resultCelebratedRef = useRef(false);
   const [captureFlash, setCaptureFlash] = useState(false);
+  const [boardShake, setBoardShake] = useState(false);
+  const [clockResetKey, setClockResetKey] = useState(0);
+  const [hintMove, setHintMove] = useState<{ from: string; to: string } | null>(null);
+  const [tickMuted, setTickMuted] = useState(false);
+  const [autoHint, setAutoHint] = useState(false);
+  const posthog = usePostHog();
 
   const router = useRouter();
   const searchParams = useSearchParams();
-  const bet = searchParams.get("bet");
   const gameId = searchParams.get("gameId");
+  const difficultyParam = searchParams.get("difficulty");
+  const timerParam = searchParams.get("timer");
+  const colorParam = searchParams.get("color");
 
   const endGameCalled = useRef(false);
   const initCompleteRef = useRef(false);
+  const prevFenRef = useRef("");
 
   const aiColor = useMemo<"w" | "b">(
     () => (playerColor === "white" ? "b" : "w"),
     [playerColor],
-  );    async function endGame(result?: "win" | "loss" | "draw") {
+  );
+
+  // ── Chess clock ──
+  const timerMs = (timerParam ? Number(timerParam) : 300) * 1000;
+  const playerClockKey = playerColor === "white" ? "player1" : "player2";
+  const aiClockKey = playerColor === "white" ? "player2" : "player1";
+
+  const { p1TimeLeft, p2TimeLeft, setActivePlayer } = useChessClock({
+    isActive: !gameOver,
+    player1Time: timerMs,
+    player2Time: timerMs,
+    onPlayer1Expire: () => handleTimeout(playerClockKey === "player1"),
+    onPlayer2Expire: () => handleTimeout(playerClockKey === "player2"),
+    resetKey: clockResetKey,
+  });
+
+  const playerClock = playerClockKey === "player1" ? p1TimeLeft : p2TimeLeft;
+  const aiClock = aiClockKey === "player1" ? p1TimeLeft : p2TimeLeft;
+
+  // ── Display FEN (respect history navigation) ──
+  const displayFen = useMemo(() => {
+    if (moveIndex >= 0 && moves[moveIndex]?.fenAfter) {
+      return moves[moveIndex].fenAfter;
+    }
+    return game.fen();
+  }, [moveIndex, moves, game]);
+
+  // ── Last move squares ──
+  const lastMoveSquares = useMemo(() => {
+    if (moves.length === 0) return null;
+    const lastMove = moveIndex >= 0 ? moves[moveIndex] : moves[moves.length - 1];
+    if (!lastMove?.moveUci || lastMove.moveUci.length < 4) return null;
+    return {
+      from: lastMove.moveUci.substring(0, 2),
+      to: lastMove.moveUci.substring(2, 4),
+    };
+  }, [moves, moveIndex]);
+
+  // ── Check detection ──
+  const isInCheck = useMemo(() => {
+    try {
+      const chess = new Chess(displayFen);
+      return chess.inCheck();
+    } catch {
+      return false;
+    }
+  }, [displayFen]);
+
+  const checkSquare = useMemo(() => {
+    if (!isInCheck) return null;
+    try {
+      const chess = new Chess(displayFen);
+      const turn = chess.turn();
+      const board = chess.board();
+      for (let r = 0; r < 8; r++) {
+        for (let f = 0; f < 8; f++) {
+          const piece = board[r][f];
+          if (piece && piece.type === "k" && piece.color === turn) {
+            return String.fromCharCode(97 + f) + (8 - r);
+          }
+        }
+      }
+    } catch { /* ignore */ }
+    return null;
+  }, [isInCheck, displayFen]);
+
+  // ── Captured pieces ──
+  const capturedPieces = useMemo(() => getCapturedPieces(displayFen), [displayFen]);
+
+  // ── Custom square styles ──
+  const customSquareStyles = useMemo(() => {
+    const styles: Record<string, Record<string, string>> = {};
+
+    // Hint squares first (lowest priority)
+    if (hintMove) {
+      styles[hintMove.from] = {
+        backgroundColor: "rgba(52, 211, 153, 0.5)",
+        border: "2px solid rgba(52, 211, 153, 0.8)",
+      };
+      styles[hintMove.to] = {
+        backgroundColor: "rgba(52, 211, 153, 0.6)",
+        border: "2px solid rgba(52, 211, 153, 0.9)",
+      };
+    }
+
+    if (lastMoveSquares) {
+      styles[lastMoveSquares.from] = {
+        backgroundColor: "rgba(255, 255, 0, 0.35)",
+      };
+      styles[lastMoveSquares.to] = {
+        backgroundColor: "rgba(255, 255, 0, 0.45)",
+      };
+    }
+
+    if (checkSquare) {
+      styles[checkSquare] = {
+        backgroundColor: "rgba(255, 50, 50, 0.7)",
+        boxShadow: "inset 0 0 20px 4px rgba(255, 0, 0, 0.5)",
+      };
+    }
+
+    return styles;
+  }, [lastMoveSquares, checkSquare]);
+
+  // ── endGame API call ──
+  async function endGame(result?: "win" | "loss" | "draw") {
     if (endGameCalled.current) return;
     endGameCalled.current = true;
 
@@ -226,6 +427,7 @@ export default function ChessAIPageInner() {
     }
   }
 
+  // ── beforeunload handler ──
   useEffect(() => {
     const handleLeave = () => {
       if (endGameCalled.current) return;
@@ -247,20 +449,37 @@ export default function ChessAIPageInner() {
     };
   }, [gameId]);
 
+  // ── Initialize ──
   useEffect(() => {
-    const randomColor = Math.random() > 0.5 ? "white" : "black";
+    const level = difficultyParam ? Number(difficultyParam) : 3;
+    setAiLevel(Math.min(5, Math.max(1, level)));
+
+    const chosenColor =
+      colorParam === "white" || colorParam === "black"
+        ? colorParam
+        : Math.random() > 0.5
+          ? "white"
+          : "black";
     const newGame = new Chess();
-    setPlayerColor(randomColor);
+    setPlayerColor(chosenColor);
     setGame(newGame);
     setGameOver(false);
     setWinnerText("");
     setGameResult("pending");
+    setMoves([]);
+    setMoveIndex(-1);
     endGameCalled.current = false;
     initCompleteRef.current = false;
+    prevFenRef.current = newGame.fen();
+    setClockResetKey((k) => k + 1);
 
-    if (randomColor === "black") {
-      // Set initComplete AFTER the initial AI move is scheduled so the AI
-      // effect doesn't also fire. After the move processes, mark init as done.
+    posthog?.capture("chess_ai_game_started", {
+      difficulty: level,
+      color: chosenColor,
+      timer_ms: timerMs,
+    });
+
+    if (chosenColor === "black") {
       setTimeout(() => {
         makeAIMMove(newGame);
         initCompleteRef.current = true;
@@ -270,6 +489,7 @@ export default function ChessAIPageInner() {
     }
   }, []);
 
+  // ── Helpers ──
   function isPlayersTurn(gameInstance: Chess) {
     const playerTurnChar = playerColor === "white" ? "w" : "b";
     return gameInstance.turn() === playerTurnChar;
@@ -284,30 +504,126 @@ export default function ChessAIPageInner() {
     const move = pickBestMove(gameInstance, aiColor, aiLevel);
     if (!move) return;
 
-    // Capture flash for AI capture
     if (move.captured) {
       setCaptureFlash(true);
       setTimeout(() => setCaptureFlash(false), 400);
     }
 
     gameInstance.move(move);
+
+    // Record move in history
+    const fenBeforeAI = moves.length > 0 ? moves[moves.length - 1].fenAfter : START_FEN;
+    const newMove = {
+      moveSan: move.san,
+      fenAfter: gameInstance.fen(),
+      moveUci: `${move.from}${move.to}${move.promotion || ""}`,
+      annotation: computeAnnotation(fenBeforeAI, gameInstance.fen(), (gameInstance.turn() === "w" ? "b" : "w") as "w" | "b"),
+    };
+    setMoves((prev) => [...prev, newMove]);
+    setHintMove(null);
+
+    // Detect if this AI move caused check for shake effect
+    const prevParts = prevFenRef.current.split(" ");
+    const newParts = gameInstance.fen().split(" ");
+    if (newParts[1] !== prevParts[1]) {
+      setBoardShake(true);
+      setTimeout(() => setBoardShake(false), 300);
+    }
+
+    prevFenRef.current = gameInstance.fen();
     setGame(new Chess(gameInstance.fen()));
+
+    // Switch clock to player
+    setActivePlayer(playerClockKey as "player1" | "player2");
+
+    // Auto-show hint if enabled
+    if (autoHint && !gameInstance.isGameOver()) {
+      const hintGame = new Chess(gameInstance.fen());
+      const playerWb = gameInstance.turn() as "w" | "b";
+      const bestMove = pickBestMove(hintGame, playerWb, aiLevel);
+      if (bestMove) {
+        setHintMove({ from: bestMove.from, to: bestMove.to });
+      }
+    }
 
     if (gameInstance.isGameOver()) handleGameOver(gameInstance);
   }
 
+  // ── AI effect ──
   useEffect(() => {
     if (!game || game.isGameOver()) return;
-    if (game.turn() !== aiColor) return;
-    // Don't trigger AI move until initialization is complete (prevents double move)
+    if (game.turn() !== aiColor) {
+      // It's the player's turn — ensure player's clock is ticking
+      if (initCompleteRef.current) {
+        setActivePlayer(playerClockKey as "player1" | "player2");
+      }
+      return;
+    }
     if (!initCompleteRef.current) return;
 
+    // Switch clock to AI during its turn
+    setActivePlayer(aiClockKey as "player1" | "player2");
+
     const t = setTimeout(() => makeAIMMove(new Chess(game.fen())), 300);
+    aiTimeoutRef.current = t;
     return () => clearTimeout(t);
   }, [game, aiColor, aiLevel]);
 
+  // ── Show hint ──
+  function showHint() {
+    if (gameOver || !isPlayersTurn(game) || moveIndex >= 0) return;
+    const gameCopy = new Chess(game.fen());
+    const playerWb: "w" | "b" = playerColor === "white" ? "w" : "b";
+    const bestMove = pickBestMove(gameCopy, playerWb, aiLevel);
+    if (bestMove) {
+      setHintMove({ from: bestMove.from, to: bestMove.to });
+    }
+  }
+
+  // ── Undo move ──
+  function undoMove() {
+    if (gameOver || moves.length === 0) return;
+
+    // Cancel any pending AI move
+    if (aiTimeoutRef.current) {
+      clearTimeout(aiTimeoutRef.current);
+      aiTimeoutRef.current = null;
+    }
+
+    // Clear hint
+    setHintMove(null);
+
+    // Reset history navigation to live
+    setMoveIndex(-1);
+
+    // If it's the AI's turn, the player just moved and AI hasn't responded — undo 1 move.
+    // If it's the player's turn, AI just moved — undo 2 moves (AI + player).
+    const isAITurn = game.turn() === aiColor;
+    const movesToRemove = isAITurn ? 1 : Math.min(2, moves.length);
+
+    const newMoves = moves.slice(0, moves.length - movesToRemove);
+    setMoves(newMoves);
+
+    // Rebuild game state from remaining moves (via UCI for precision)
+    const newGame = new Chess();
+    for (const m of newMoves) {
+      const from = m.moveUci.substring(0, 2);
+      const to = m.moveUci.substring(2, 4);
+      const promo = m.moveUci.length > 4 ? m.moveUci.substring(4) : undefined;
+      newGame.move({ from, to, promotion: promo });
+    }
+    setGame(newGame);
+    prevFenRef.current = newGame.fen();
+  }
+
+  // ── onDrop (player move) ──
   function onDrop(sourceSquare: string, targetSquare: string) {
+    const alreadyHandled = promotionHandledRef.current;
+    promotionHandledRef.current = false;
+    if (alreadyHandled) return true;
+
     if (game.isGameOver() || !isPlayersTurn(game)) return false;
+    if (moveIndex >= 0) return false;
 
     const gameCopy = new Chess(game.fen());
     const move = gameCopy.move({
@@ -318,17 +634,98 @@ export default function ChessAIPageInner() {
 
     if (move === null) return false;
 
-    // Capture flash
     if (move.captured) {
       setCaptureFlash(true);
       setTimeout(() => setCaptureFlash(false), 400);
     }
 
+    // Record move
+    const fenBeforePlayer = moves.length > 0 ? moves[moves.length - 1].fenAfter : START_FEN;
+    const newMove = {
+      moveSan: move.san,
+      fenAfter: gameCopy.fen(),
+      moveUci: `${move.from}${move.to}${move.promotion || ""}`,
+      annotation: computeAnnotation(fenBeforePlayer, gameCopy.fen(), (gameCopy.turn() === "w" ? "b" : "w") as "w" | "b"),
+    };
+    setMoves((prev) => [...prev, newMove]);
+
+    prevFenRef.current = gameCopy.fen();
     setGame(new Chess(gameCopy.fen()));
+    setActivePlayer(aiClockKey as "player1" | "player2");
+    setHintMove(null);
+    playCardDraw();
+
     if (gameCopy.isGameOver()) handleGameOver(gameCopy);
     return true;
   }
 
+  // ── Promotion piece selection ──
+  function onPromotionPieceCheck(sourceSquare: string, targetSquare: string, piece: string) {
+    if (game.isGameOver() || !isPlayersTurn(game)) return false;
+    if (moveIndex >= 0) return false;
+
+    promotionHandledRef.current = true;
+
+    const promo = piece ? piece[1]?.toLowerCase() : "q";
+    const gameCopy = new Chess(game.fen());
+    const move = gameCopy.move({ from: sourceSquare, to: targetSquare, promotion: promo });
+    if (!move) return false;
+
+    if (move.captured) {
+      setCaptureFlash(true);
+      setTimeout(() => setCaptureFlash(false), 400);
+    }
+
+    const fenBeforePromo = moves.length > 0 ? moves[moves.length - 1].fenAfter : START_FEN;
+    const newMove = {
+      moveSan: move.san,
+      fenAfter: gameCopy.fen(),
+      moveUci: `${move.from}${move.to}${move.promotion || ""}`,
+      annotation: computeAnnotation(fenBeforePromo, gameCopy.fen(), (gameCopy.turn() === "w" ? "b" : "w") as "w" | "b"),
+    };
+    setMoves((prev) => [...prev, newMove]);
+
+    prevFenRef.current = gameCopy.fen();
+    setGame(new Chess(gameCopy.fen()));
+    setActivePlayer(aiClockKey as "player1" | "player2");
+    setHintMove(null);
+    playCardDraw();
+
+    if (gameCopy.isGameOver()) handleGameOver(gameCopy);
+    return true;
+  }
+
+  // ── Timeout handler ──
+  function handleTimeout(playerTimedOut: boolean) {
+    if (gameOver) return;
+    if (playerTimedOut) {
+      setGameOver(true);
+      setWinnerText("AI wins! (Time's up)");
+      setGameResult("lose");
+      posthog?.capture("chess_ai_game_ended", { result: "lose", reason: "timeout" });
+      if (!resultCelebratedRef.current) {
+        resultCelebratedRef.current = true;
+        playDefeat();
+      }
+      endGame("loss");
+      setShowResultModal(true);
+    } else {
+      // AI timed out (shouldn't happen, but handle gracefully)
+      setGameOver(true);
+      setWinnerText("You win! (AI timeout)");
+      setGameResult("win");
+      posthog?.capture("chess_ai_game_ended", { result: "win", reason: "ai_timeout" });
+      if (!resultCelebratedRef.current) {
+        resultCelebratedRef.current = true;
+        playVictory();
+        celebrateWin();
+      }
+      endGame("win");
+      setShowResultModal(true);
+    }
+  }
+
+  // ── Game over ──
   async function handleGameOver(gameInstance: Chess) {
     setGameOver(true);
 
@@ -336,6 +733,7 @@ export default function ChessAIPageInner() {
       setWinnerText("Game Over!");
       setGameResult("draw");
       await endGame("draw");
+      posthog?.capture("chess_ai_game_ended", { result: "draw", reason: "unknown" });
       setShowResultModal(true);
       return;
     }
@@ -346,6 +744,7 @@ export default function ChessAIPageInner() {
         setWinnerText("You win!");
         setGameResult("win");
         await endGame("win");
+        posthog?.capture("chess_ai_game_ended", { result: "win", reason: "checkmate" });
         if (!resultCelebratedRef.current) {
           resultCelebratedRef.current = true;
           playVictory();
@@ -355,6 +754,7 @@ export default function ChessAIPageInner() {
         setWinnerText("AI wins!");
         setGameResult("lose");
         await endGame("loss");
+        posthog?.capture("chess_ai_game_ended", { result: "lose", reason: "checkmate" });
         if (!resultCelebratedRef.current) {
           resultCelebratedRef.current = true;
           playDefeat();
@@ -368,6 +768,7 @@ export default function ChessAIPageInner() {
       setWinnerText("Draw!");
       setGameResult("draw");
       await endGame("draw");
+      posthog?.capture("chess_ai_game_ended", { result: "draw", reason: "stalemate" });
       setShowResultModal(true);
       return;
     }
@@ -375,6 +776,7 @@ export default function ChessAIPageInner() {
     setWinnerText("Game Over!");
     setGameResult("draw");
     await endGame("draw");
+    posthog?.capture("chess_ai_game_ended", { result: "draw", reason: "unknown" });
     setShowResultModal(true);
   }
 
@@ -382,24 +784,41 @@ export default function ChessAIPageInner() {
     setGameOver(true);
     setWinnerText("AI wins! (You resigned)");
     setGameResult("lose");
+    posthog?.capture("chess_ai_game_ended", { result: "lose", reason: "resign" });
     await endGame("loss");
     setShowResultModal(true);
   }
 
   function resetGame() {
     const newGame = new Chess();
-    const randomColor = Math.random() > 0.5 ? "white" : "black";
-    setPlayerColor(randomColor);
+    const chosenColor =
+      colorParam === "white" || colorParam === "black"
+        ? colorParam
+        : Math.random() > 0.5
+          ? "white"
+          : "black";
+    setPlayerColor(chosenColor);
     setGame(newGame);
     setGameOver(false);
     setWinnerText("");
     setGameResult("pending");
     setShowResultModal(false);
+    setMoves([]);
+    setMoveIndex(-1);
+    setHintMove(null);
     endGameCalled.current = false;
     resultCelebratedRef.current = false;
     initCompleteRef.current = false;
+    prevFenRef.current = newGame.fen();
+    setClockResetKey((k) => k + 1);
 
-    if (randomColor === "black") {
+    posthog?.capture("chess_ai_game_started", {
+      difficulty: aiLevel,
+      color: chosenColor,
+      timer_ms: timerMs,
+    });
+
+    if (chosenColor === "black") {
       setTimeout(() => {
         makeAIMMove(newGame);
         initCompleteRef.current = true;
@@ -414,7 +833,24 @@ export default function ChessAIPageInner() {
   const aiSideLabel = `AI (${opponentColor})`;
   const isPlayerTurnNow = isPlayersTurn(game);
 
-  // Turn banner animation
+  // ── Low-time tick sound (under 10 seconds) ──
+  const lastTickSecondRef = useRef(-1);
+  useEffect(() => {
+    if (gameOver || playerClock <= 0 || playerClock > 10000 || !isPlayerTurnNow || moveIndex >= 0) {
+      lastTickSecondRef.current = -1;
+      return;
+    }
+    const currentSecond = Math.ceil(playerClock / 1000);
+    if (currentSecond !== lastTickSecondRef.current) {
+      lastTickSecondRef.current = currentSecond;
+      if (!tickMuted) playTick();
+    }
+  }, [playerClock, gameOver, isPlayerTurnNow, tickMuted]);
+
+  const myCaptured = playerColor === "white" ? capturedPieces.white : capturedPieces.black;
+  const oppCaptured = playerColor === "white" ? capturedPieces.black : capturedPieces.white;
+
+  // ── Turn banner animation ──
   useEffect(() => {
     if (prevIsPlayerTurnRef.current !== null && prevIsPlayerTurnRef.current !== isPlayerTurnNow && !gameOver) {
       setTurnBanner(isPlayerTurnNow ? "Your Turn" : "AI's Turn");
@@ -424,7 +860,7 @@ export default function ChessAIPageInner() {
   }, [isPlayerTurnNow, gameOver]);
 
   return (
-    <div className="min-h-screen bg-[#030817] text-white flex flex-col items-center p-6">
+    <div className="min-h-screen bg-[#050816] text-white px-4 py-8 overflow-x-hidden">
       <NavigationBar currentPath="/casino" />
 
       {/* Turn Banner */}
@@ -457,7 +893,22 @@ export default function ChessAIPageInner() {
         )}
       </AnimatePresence>
 
-      {/* Spring Game Over Modal */}
+      {/* Check Banner */}
+      <AnimatePresence>
+        {isInCheck && !gameOver && (
+          <motion.div
+            key="check-banner"
+            initial={{ opacity: 0, y: -30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -30 }}
+            className="fixed left-1/2 top-24 z-40 -translate-x-1/2 rounded-xl border-2 border-red-500 bg-red-900/80 px-6 py-2 shadow-[0_0_24px_rgba(255,0,0,0.4)]"
+          >
+            <span className="text-lg font-bold text-red-300 tracking-wider">⚠ CHECK!</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Game Over Modal */}
       <AnimatePresence>
         {showResultModal && (
           <motion.div
@@ -493,24 +944,6 @@ export default function ChessAIPageInner() {
               >
                 {winnerText}
               </motion.h2>
-              {bet && (
-                <motion.p
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.6, duration: 0.4 }}
-                  className="mt-3 text-xl font-semibold"
-                >
-                  {gameResult === "win" ? (
-                    <span className="text-green-400">
-                      You won ${(Number(bet) * 1.98).toFixed(2)}!
-                    </span>
-                  ) : gameResult === "draw" ? (
-                    <span className="text-yellow-400">Bet returned.</span>
-                  ) : (
-                    <span className="text-red-400">You lost ${bet}.</span>
-                  )}
-                </motion.p>
-              )}
               {gameResult === "win" && (
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -554,77 +987,250 @@ export default function ChessAIPageInner() {
         )}
       </AnimatePresence>
 
-      <h1 className="text-4xl font-bold text-[#FFD700] mb-2 mt-12">
-        ♟️ AI Chess Arena
-      </h1>
-
-      {bet && (
-        <p className="text-2xl font-semibold text-green-400 mb-6">
-          Bet: ${bet}
-        </p>
-      )}
-
-      <div className="flex gap-4 mb-4 items-center">
-        <button
-          onClick={handleResign}
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded shadow"
-        >
-          Resign
-        </button>
-
-        <div className="mb-0 text-center">
-          <label className="mr-2 font-semibold">AI Level:</label>
-          <select
-            value={aiLevel}
-            onChange={(e) => setAiLevel(Number(e.target.value))}
-            className="text-black px-2 py-1 rounded"
-          >
-            {[1, 2, 3, 4, 5].map((level) => (
-              <option key={level} value={level}>
-                {level}
-              </option>
-            ))}
-          </select>
+      <div className="max-w-7xl mx-auto">
+        {/* HEADER */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-black tracking-widest text-cyan-400 drop-shadow-[0_0_20px_#00ffff]">
+            CHESS ARENA
+          </h1>
+          <p className="text-white/70 mt-3">
+            AI Battle • Free to Play
+          </p>
         </div>
-      </div>
 
-      <div className="w-full max-w-4xl mx-auto text-center mb-4">
-        <h2 className="text-xl font-semibold">
-          {playerSideLabel} vs {aiSideLabel}
-        </h2>
-        <div className="text-sm text-yellow-300 mt-2">
-          {gameOver ? "" : isPlayerTurnNow ? "Your turn" : (<span className="inline-flex items-center gap-1">AI is thinking... <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="inline-block">🤖</motion.span></span>)}
-        </div>
-      </div>
+        {/* MAIN */}
+        <div className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
+          {/* BOARD AREA */}
+          <div className="flex justify-center">
+            <div className="w-full max-w-[660px]">
+              {/* AI (OPPONENT) */}
+              <div className="mb-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-cyan-300">
+                    {aiSideLabel}
+                  </span>
+                  {oppCaptured.length > 0 && (
+                    <span className="text-lg tracking-tight opacity-80">
+                      {oppCaptured.join(" ")}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  {!gameOver && game.turn() === aiColor && (
+                    <span className="inline-flex items-center gap-1 text-cyan-400 text-sm">
+                      <motion.span
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        className="inline-block"
+                      >
+                        🤖
+                      </motion.span>
+                      Thinking...
+                    </span>
+                  )}
+                  <span className={`font-mono text-xl ${aiClock <= 10000 ? "text-red-400 low-time-pulse" : "text-cyan-100"}`}>
+                    {formatClock(aiClock / 1000)}
+                  </span>
+                </div>
+              </div>
 
-      <div className="w-full flex justify-center items-center mb-8">
-        <div className="w-[500px] relative">
-          <AnimatePresence>
-            {captureFlash && (
-              <motion.div
-                initial={{ opacity: 0.7 }}
-                animate={{ opacity: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.4 }}
-                className="absolute inset-0 z-10 rounded-xl bg-red-500 pointer-events-none"
-              />
+              {/* BOARD */}
+              <div className={`relative p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full max-w-[90vh] aspect-square mx-auto ${boardShake ? "animate-board-shake" : ""}`}>
+                <AnimatePresence>
+                  {captureFlash && (
+                    <motion.div
+                      initial={{ opacity: 0.7 }}
+                      animate={{ opacity: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.4 }}
+                      className="absolute inset-0 z-10 rounded-2xl bg-red-500 pointer-events-none"
+                    />
+                  )}
+                </AnimatePresence>
+                <div className="rounded-2xl overflow-hidden bg-[#0b1020] w-full h-full">
+                  <Chessboard
+                    id="AI-CyberBoard"
+                    animationDuration={320}
+                    arePiecesDraggable={!gameOver && moveIndex === -1}
+                    boardOrientation={playerColor}
+                    position={displayFen}
+                    onPieceDrop={onDrop}
+                    onPromotionPieceSelect={onPromotionPieceCheck}
+                    promotionDialogVariant="modal"
+                    customDarkSquareStyle={{
+                      background: "linear-gradient(135deg,#131b3a,#1b2554)",
+                    }}
+                    customLightSquareStyle={{
+                      background: "linear-gradient(135deg,#0ff6,#13d8ff)",
+                    }}
+                    customSquareStyles={customSquareStyles}
+                    customBoardStyle={{
+                      width: "100%",
+                      height: "100%",
+                      display: "block",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* PLAYER */}
+              <div className="mt-3 rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-fuchsia-300">
+                    {playerSideLabel}
+                  </span>
+                  {myCaptured.length > 0 && (
+                    <span className="text-lg tracking-tight opacity-80">
+                      {myCaptured.join(" ")}
+                    </span>
+                  )}
+                </div>
+                <span className={`font-mono text-xl ${playerClock <= 10000 ? "text-red-400 low-time-pulse" : "text-fuchsia-100"}`}>
+                  {formatClock(playerClock / 1000)}
+                </span>
+              </div>
+
+              {/* STATUS */}
+              <div className="mt-4 text-center font-semibold text-cyan-300 tracking-wide">
+                {gameOver
+                  ? "Game Over"
+                  : isPlayerTurnNow
+                    ? "Your turn"
+                    : "AI is thinking..."}
+              </div>
+            </div>
+          </div>
+
+          {/* SIDEBAR */}
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+            <h2 className="text-2xl font-bold text-cyan-400 mb-4">
+              Move History
+            </h2>
+
+            <div className="max-h-[260px] overflow-y-auto space-y-2 pr-1">
+              {moves.length === 0 ? (
+                <p className="text-white/60">No moves yet.</p>
+              ) : (
+                moves.map((move, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setMoveIndex(i)}
+                    className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-cyan-400 hover:text-black transition-all duration-200"
+                  >
+                    <span className="text-white/40 text-xs mr-2">
+                      {Math.floor(i / 2) + 1}{i % 2 === 0 ? "." : "..."}
+                    </span>
+                    {move.moveSan}
+                    {move.annotation && (
+                      <span className={`ml-1.5 text-xs font-bold ${
+                        move.annotation === "!!" ? "text-emerald-400" :
+                        move.annotation === "!" ? "text-green-400" :
+                        move.annotation === "?" ? "text-amber-400" :
+                        "text-red-400"
+                      }`}>
+                        {move.annotation}
+                      </span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* Move navigation */}
+            {moves.length > 0 && (
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => setMoveIndex(Math.max(-1, moveIndex - 1))}
+                  disabled={moveIndex <= -1}
+                  className="flex-1 px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/20 disabled:opacity-30 transition"
+                >
+                  ◀ Prev
+                </button>
+                <button
+                  onClick={() => setMoveIndex(-1)}
+                  className={`flex-1 px-2 py-1 text-xs rounded transition ${moveIndex === -1 ? "bg-cyan-500/30 text-cyan-300" : "bg-white/10 hover:bg-white/20"}`}
+                >
+                  Live
+                </button>
+                <button
+                  onClick={() => setMoveIndex(Math.min(moves.length - 1, moveIndex + 1))}
+                  disabled={moveIndex >= moves.length - 1}
+                  className="flex-1 px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/20 disabled:opacity-30 transition"
+                >
+                  Next ▶
+                </button>
+              </div>
             )}
-          </AnimatePresence>
-          <Chessboard
-            position={game.fen()}
-            onPieceDrop={onDrop}
-            boardWidth={500}
-            boardOrientation={playerColor}
-            customBoardStyle={{
-              borderRadius: "12px",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
-            }}
-            customDarkSquareStyle={{ backgroundColor: "#779952" }}
-            customLightSquareStyle={{ backgroundColor: "#edeed1" }}
-          />
+
+            {/* Undo */}
+            <button
+              onClick={undoMove}
+              disabled={gameOver || moves.length === 0 || moveIndex >= 0}
+              className="mt-3 w-full bg-yellow-600 hover:bg-yellow-500 py-2 rounded-xl font-bold transition disabled:opacity-40 text-sm"
+            >
+              ↩ Undo Move
+            </button>
+
+            {/* Hint */}
+            <button
+              onClick={showHint}
+              disabled={gameOver || !isPlayerTurnNow || moveIndex >= 0}
+              className="mt-2 w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded-xl font-bold transition disabled:opacity-40 text-sm"
+            >
+              💡 Show Best Move
+            </button>
+
+            {/* Sound toggle */}
+            <button
+              onClick={() => setTickMuted((m) => !m)}
+              className="mt-3 w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition text-sm"
+            >
+              {tickMuted ? "🔇 Tick sounds muted" : "🔊 Tick sounds on"}
+            </button>
+
+            {/* Auto-hint toggle */}
+            <button
+              onClick={() => setAutoHint((a) => !a)}
+              className="mt-2 w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition text-sm"
+            >
+              {autoHint ? "💡 Auto-hint: ON" : "💡 Auto-hint: OFF"}
+            </button>
+
+            {/* Difficulty level */}
+            <div className="mt-4">
+              <label className="text-white/60 text-sm mb-1 block">AI Difficulty:</label>
+              <select
+                value={aiLevel}
+                onChange={(e) => setAiLevel(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 text-white text-sm"
+              >
+                <option value={1}>🎓 Beginner</option>
+                <option value={2}>🟢 Casual</option>
+                <option value={3}>🟡 Intermediate</option>
+                <option value={4}>🟠 Advanced</option>
+                <option value={5}>🔴 Expert</option>
+              </select>
+            </div>
+
+            {/* Resign */}
+            <button
+              onClick={handleResign}
+              disabled={gameOver}
+              className="mt-3 w-full bg-red-600 hover:bg-red-700 py-3 rounded-xl font-bold transition disabled:opacity-50"
+            >
+              {gameOver ? "Game Over" : "Resign"}
+            </button>
+
+            {/* RETURN */}
+            <button
+              onClick={() => router.push("/casino/chess")}
+              className="mt-4 w-full bg-cyan-400 text-black font-bold py-3 rounded-xl hover:scale-[1.02] transition"
+            >
+              Return to Lobby
+            </button>
+          </div>
         </div>
       </div>
-
     </div>
   );
 }

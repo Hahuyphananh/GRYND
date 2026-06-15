@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import confetti from "canvas-confetti";
+import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import {
   ROULETTE_NUMBERS,
@@ -25,6 +26,7 @@ const pocketColor = (num) => {
 };
 
 export default function RoulettePage() {
+  const posthog = usePostHog();
   const [betAmount, setBetAmount] = useState(10);
   const [spinning, setSpinning] = useState(false);
   const [result, setResult] = useState(null);
@@ -45,6 +47,10 @@ export default function RoulettePage() {
   const [showRules, setShowRules] = useState(false);
   const [winningNumber, setWinningNumber] = useState(null); // highlight on grid
   const [newChipKeys, setNewChipKeys] = useState([]); // scale-in animation (new chips only)
+
+  // Gamble states
+  const [showGamble, setShowGamble] = useState(false);
+  const [gambleWinAmount, setGambleWinAmount] = useState(0);
 
   const canvasRef = useRef(null);
   const autoBetRef = useRef(autoBet);
@@ -343,9 +349,18 @@ export default function RoulettePage() {
       totalBets: prev.totalBets + 1,
       totalWins: won ? prev.totalWins + 1 : prev.totalWins,
     }));
+    posthog?.capture("roulette_game_ended", { result: won ? "win" : "loss", bet_amount: totalBetAmount, payout: winAmount, winning_number: data.data.spinResult });
 
-    // Confetti on win
-    if (won) {
+    // Save bets + current auto-bet state BEFORE gamble logic
+    const savedBets = { ...currentBets };
+    const currentAuto = autoBetRef.current;
+
+    // Show gamble on win (skip during auto-bet)
+    if (won && !currentAuto?.enabled) {
+      setGambleWinAmount(winAmount);
+      setShowGamble(true);
+    } else if (won) {
+      // Auto-bet: celebrate normally
       confetti({
         particleCount: 80,
         spread: 70,
@@ -368,13 +383,10 @@ export default function RoulettePage() {
       }, 300);
     }
 
-    // Save bets before clearing (for auto-bet replay)
-    const savedBets = { ...currentBets };
     setBets({});
     setSpinning(false);
 
     // Auto-bet continuation with balance check
-    const currentAuto = autoBetRef.current;
     if (currentAuto?.enabled) {
       // Stop if balance is too low for the SAME bets
       if (newBalance < totalBetAmount) {
@@ -398,6 +410,29 @@ export default function RoulettePage() {
     }
   };
 
+
+  // ─── Gamble handlers ─────────────────────────────────────────
+  const handleGambleResult = (newAmount) => {
+    setShowGamble(false);
+    if (newAmount > 0) {
+      const extra = newAmount - gambleWinAmount;
+      setUserTokens(prev => prev + extra);
+      setResult(prev => ({ ...prev, amount: newAmount, win: true }));
+      posthog?.capture("roulette_gamble_won", { winAmount: gambleWinAmount, gambleResult: newAmount });
+      confetti({ particleCount: 60, spread: 60, origin: { y: 0.5 }, colors: [COLORS.gold, "#FFD700"] });
+    } else {
+      setUserTokens(prev => prev - gambleWinAmount);
+      setResult(prev => ({ ...prev, amount: 0, win: false }));
+      posthog?.capture("roulette_gamble_lost", { winAmount: gambleWinAmount });
+    }
+    setGambleWinAmount(0);
+  };
+
+  const handleCollect = () => {
+    setShowGamble(false);
+    posthog?.capture("roulette_gamble_collected", { collected: gambleWinAmount });
+    setGambleWinAmount(0);
+  };
 
   // Clear winning highlight after a delay
   useEffect(() => {
@@ -661,8 +696,35 @@ export default function RoulettePage() {
             )}
           </div>
 
-          {/* Result */}
-          {result && (
+      {/* Gamble Modal */}
+      {showGamble && gambleWinAmount > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="rounded-2xl p-6 border-2 border-[#FFFF33]/30 bg-[#001933] text-white max-w-sm w-full shadow-[0_0_40px_rgba(255,215,0,0.2)]">
+            <h3 className="text-xl font-black text-center mb-2">🎲 GAMBLE?</h3>
+            <p className="text-center text-white/60 text-sm mb-4">Double your {gambleWinAmount.toLocaleString()} win or lose it all?</p>
+            <div className="flex gap-4 justify-center mb-4">
+              <button onClick={() => {
+                setTimeout(() => {
+                  const won = Math.random() < 0.5;
+                  handleGambleResult(won ? gambleWinAmount * 2 : 0);
+                }, 800);
+              }} className="px-6 py-8 rounded-xl bg-red-600 hover:bg-red-500 font-black text-lg shadow-[0_0_15px_red] transition">🔴 RED</button>
+              <button onClick={() => {
+                setTimeout(() => {
+                  const won = Math.random() < 0.5;
+                  handleGambleResult(won ? gambleWinAmount * 2 : 0);
+                }, 800);
+              }} className="px-6 py-8 rounded-xl bg-gray-800 hover:bg-gray-700 font-black text-lg shadow-[0_0_15px_white] transition">⚫ BLACK</button>
+            </div>
+            <button onClick={handleCollect} className="w-full py-2 rounded-lg bg-green-500/20 border border-green-400/40 text-green-300 hover:bg-green-500/30 transition text-sm">
+              Collect {gambleWinAmount.toLocaleString()}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Result — hidden during gamble to avoid overlapping displays */}
+      {result && !showGamble && (
             <div
               className={`w-full p-3 rounded-lg border text-center font-bold text-sm transition-all duration-300 animate-fade-in
                 ${

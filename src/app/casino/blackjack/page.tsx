@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
+import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
@@ -55,6 +56,7 @@ const CardFace: React.FC<{ card: Card; small?: boolean }> = ({ card, small }) =>
 export default function BlackjackPage() {
   const { isSignedIn, user } = useUser();
   const router = useRouter();
+  const posthog = usePostHog();
 
   const [userTokens, setUserTokens] = useState<number | null>(null);
   const [gameState, setGameState] = useState<"idle" | "dealing" | "playing" | "finished">("idle");
@@ -76,6 +78,12 @@ export default function BlackjackPage() {
   const [stats, setStats] = useState({ wins: 0, losses: 0, pushes: 0, played: 0 });
   const [dealerRevealed, setDealerRevealed] = useState(false);
   const resultCelebratedRef = useRef(false);
+
+  // Gamble states
+  const [showGamble, setShowGamble] = useState(false);
+  const [gambleWinAmount, setGambleWinAmount] = useState(0);
+  const [gambleBet, setGambleBet] = useState(0);
+  const gambleBlackjackRef = useRef(false);
   const handsRef = useRef<Card[][]>([]);
   const splitBustsRef = useRef<boolean[]>([false, false]);
   const splitBetRef = useRef<number>(10);
@@ -163,6 +171,7 @@ export default function BlackjackPage() {
       setCanSplit(sameVal && newBal >= bet * 2);
 
       playCardDraw(); // initial deal sound
+      posthog?.capture("blackjack_game_started", { bet_amount: bet });
       if (calcHandValue(pCards) === 21) {
         setDealerRevealed(true);
         endGame("win", bet);
@@ -344,12 +353,11 @@ export default function BlackjackPage() {
 
     const winCount = results.filter(r => r.result === "win").length;
     const pushCount = results.filter(r => r.result === "push").length;
-    const lossCount = 2 - winCount - pushCount;
-
-    const outcome: GameResult = winCount > lossCount ? "win" : lossCount > winCount ? "lose" : "push";
+    const lossCount = 2 - winCount - pushCount;      const outcome: GameResult = winCount > lossCount ? "win" : lossCount > winCount ? "lose" : "push";
     setResultType(outcome);
     setResultMsg(msg);
     setShowResultModal(true);
+    posthog?.capture("blackjack_game_ended", { result: outcome, bet_amount: splitBetRef.current, split: true });
 
     setStats(prev => ({
       wins: prev.wins + winCount,
@@ -370,6 +378,56 @@ export default function BlackjackPage() {
     }
   };
 
+  // ─── Gamble handlers ────────────────────────────────────────
+  const handleGambleResult = (newAmount: number) => {
+    setShowGamble(false);
+    if (newAmount > 0) {
+      const extra = newAmount - gambleWinAmount;
+      setUserTokens(prev => (prev !== null ? prev + extra : prev));
+      posthog?.capture("blackjack_gamble_won", { bet: gambleBet, winAmount: gambleWinAmount, gambleResult: newAmount });
+      // Stats: still a win
+      setStats(prev => ({ wins: prev.wins + 1, losses: prev.losses, pushes: prev.pushes, played: prev.played + 1 }));
+      playVictory();
+      if (!resultCelebratedRef.current) {
+        resultCelebratedRef.current = true;
+        confetti({ particleCount: 60, spread: 60, origin: { y: 0.5 }, colors: ["#FFD700", "#FFFFFF"] });
+      }
+      posthog?.capture("blackjack_game_ended", { result: "win", bet_amount: gambleBet, blackjack: gambleBlackjackRef.current });
+    } else {
+      // Lost gamble: net result is a loss
+      setUserTokens(prev => (prev !== null ? prev - gambleWinAmount : prev));
+      posthog?.capture("blackjack_gamble_lost", { bet: gambleBet, winAmount: gambleWinAmount });
+      setStats(prev => ({ wins: prev.wins, losses: prev.losses + 1, pushes: prev.pushes, played: prev.played + 1 }));
+      setResultType("lose");
+      setResultMsg("Gamble perdu ! Gain annulé.");
+      playDefeat();
+      posthog?.capture("blackjack_game_ended", { result: "lose", bet_amount: gambleBet, blackjack: gambleBlackjackRef.current });
+    }
+    // Show result modal after gamble resolves
+    setTimeout(() => {
+      setShowResultModal(true);
+    }, 300);
+    setGambleWinAmount(0);
+    setGambleBet(0);
+  };
+
+  const handleCollect = () => {
+    setShowGamble(false);
+    posthog?.capture("blackjack_gamble_collected", { collected: gambleWinAmount, bet: gambleBet });
+    // Stats: original win stands
+    setStats(prev => ({ wins: prev.wins + 1, losses: prev.losses, pushes: prev.pushes, played: prev.played + 1 }));
+    posthog?.capture("blackjack_game_ended", { result: "win", bet_amount: gambleBet, blackjack: gambleBlackjackRef.current });
+    playVictory();
+    if (!resultCelebratedRef.current) {
+      resultCelebratedRef.current = true;
+      confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 }, colors: ["#FFD700", "#FFA500", "#FFFFFF"] });
+      setTimeout(() => confetti({ particleCount: 30, spread: 50, origin: { y: 0.5 }, colors: ["#FFD700", "#FFFFFF"] }), 300);
+    }
+    setTimeout(() => setShowResultModal(true), 200);
+    setGambleWinAmount(0);
+    setGambleBet(0);
+  };
+
   // ─── End game ─────────────────────────────────────────────────
   const endGame = useCallback(async (result: GameResult, betAmt: number) => {
     const blackjack = playerCards.length === 2 && calcHandValue(playerCards) === 21;
@@ -386,36 +444,43 @@ export default function BlackjackPage() {
       msg = result === "bust" ? "Vous avez dépassé 21 !" : "Vous avez perdu !";
     }
 
-    await settleGame(result, blackjack, betAmt, winAmount);
+    await settleGame(result, blackjack, betAmt, winAmount);      setMessage(msg);
+      setGameState("finished");
+      setIsSplit(false);
+      setHands([]);
 
-    setMessage(msg);
-    setGameState("finished");
-    setIsSplit(false);
-    setHands([]);
-
-    const outcome: GameResult = result === "win" ? "win" : result === "push" ? "push" : "lose";
-    setResultType(outcome);
-    setResultMsg(msg);
-    setShowResultModal(true);
-
-    setStats(prev => ({
-      wins: outcome === "win" ? prev.wins + 1 : prev.wins,
-      losses: outcome === "lose" ? prev.losses + 1 : prev.losses,
-      pushes: outcome === "push" ? prev.pushes + 1 : prev.pushes,
-      played: prev.played + 1,
-    }));
-
-    // Celebration
-    if (outcome === "win") {
-      playVictory();
-      if (!resultCelebratedRef.current) {
-        resultCelebratedRef.current = true;
-        confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 }, colors: ["#FFD700", "#FFA500", "#FFFFFF"] });
-        setTimeout(() => confetti({ particleCount: 30, spread: 50, origin: { y: 0.5 }, colors: ["#FFD700", "#FFFFFF"] }), 300);
+      const outcome: GameResult = result === "win" ? "win" : result === "push" ? "push" : "lose";
+      // On win, show gamble before result modal — defer stats/celebration
+      if (outcome === "win" && winAmount > betAmt) {
+        gambleBlackjackRef.current = blackjack;
+        setResultType(outcome);
+        setResultMsg(msg);
+        setGambleWinAmount(winAmount);
+        setGambleBet(betAmt);
+        setShowGamble(true);
+        // Stats & celebration deferred to handleGambleResult / handleCollect
+      } else {
+        setResultType(outcome);
+        setResultMsg(msg);
+        setShowResultModal(true);
+        posthog?.capture("blackjack_game_ended", { result: outcome, bet_amount: betAmt, blackjack });
+        setStats(prev => ({
+          wins: outcome === "win" ? prev.wins + 1 : prev.wins,
+          losses: outcome === "lose" ? prev.losses + 1 : prev.losses,
+          pushes: outcome === "push" ? prev.pushes + 1 : prev.pushes,
+          played: prev.played + 1,
+        }));
+        if (outcome === "win") {
+          playVictory();
+          if (!resultCelebratedRef.current) {
+            resultCelebratedRef.current = true;
+            confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 }, colors: ["#FFD700", "#FFA500", "#FFFFFF"] });
+            setTimeout(() => confetti({ particleCount: 30, spread: 50, origin: { y: 0.5 }, colors: ["#FFD700", "#FFFFFF"] }), 300);
+          }
+        } else {
+          playDefeat();
+        }
       }
-    } else {
-      playDefeat();
-    }
   }, [playerCards, settleGame]);
 
   // ─── New game ──────────────────────────────────────────────────
@@ -438,6 +503,25 @@ export default function BlackjackPage() {
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] pb-24 pt-20 text-white md:pb-8">
       <NavigationBar currentPath="/casino" />
+
+      {/* Gamble Modal */}
+      {showGamble && gambleWinAmount > 0 && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70">
+          <div className="rounded-2xl p-6 border-2 border-[#FFD700]/30 bg-[#001933] text-white max-w-sm w-full shadow-[0_0_40px_rgba(255,215,0,0.2)]">
+            <h3 className="text-xl font-black text-center mb-2">🎲 GAMBLE?</h3>
+            <p className="text-center text-white/60 text-sm mb-4">Double your {gambleWinAmount.toLocaleString()} win or lose it all?</p>
+            <div className="flex gap-4 justify-center mb-4">
+              <button onClick={() => { const w = Math.random() < 0.5; handleGambleResult(w ? gambleWinAmount * 2 : 0); }}
+                className="px-6 py-8 rounded-xl bg-red-600 hover:bg-red-500 font-black text-lg shadow-[0_0_15px_red] transition">🔴 RED</button>
+              <button onClick={() => { const w = Math.random() < 0.5; handleGambleResult(w ? gambleWinAmount * 2 : 0); }}
+                className="px-6 py-8 rounded-xl bg-gray-800 hover:bg-gray-700 font-black text-lg shadow-[0_0_15px_white] transition">⚫ BLACK</button>
+            </div>
+            <button onClick={handleCollect} className="w-full py-2 rounded-lg bg-green-500/20 border border-green-400/40 text-green-300 hover:bg-green-500/30 transition text-sm">
+              Collect {gambleWinAmount.toLocaleString()}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Result Modal */}
       <AnimatePresence>

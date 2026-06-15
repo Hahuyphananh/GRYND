@@ -1,12 +1,14 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
+import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import { playCardDraw, playVictory, playDefeat } from "../../../lib/gameAudio";
 import { CHIP_VALUES } from "../../../lib/rouletteConfig";
 
 function MainComponent() {
   const { isSignedIn, user } = useUser();
+  const posthog = usePostHog();
   const [betAmount, setBetAmount] = useState(1);
   const [activeBalls, setActiveBalls] = useState([]);
   const [gameResults, setGameResults] = useState([]);
@@ -416,8 +418,12 @@ function MainComponent() {
       // Play sound based on result
       if (winAmount > currentBet) {
         setTimeout(() => playVictory(), 800);
+        posthog?.capture("plinko_game_ended", { result: "win", bet_amount: currentBet, multiplier, payout: winAmount, risk_level: riskLevel });
       } else if (winAmount === 0 && currentBet > 0) {
         setTimeout(() => playDefeat(), 800);
+        posthog?.capture("plinko_game_ended", { result: "loss", bet_amount: currentBet, multiplier, payout: 0, risk_level: riskLevel });
+      } else {
+        posthog?.capture("plinko_game_ended", { result: "partial", bet_amount: currentBet, multiplier, payout: winAmount, risk_level: riskLevel });
       }
 
       setUserTokens(newBalance);

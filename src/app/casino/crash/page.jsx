@@ -4,6 +4,7 @@ import BetPanel from "../../../components/BetPanel";
 import PlayerList from "../../../components/PlayerList";
 import Link from "next/link";
 import NavigationBar from "../../../components/navigation-bar";
+import { usePostHog } from "posthog-js/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { celebrateWin, gameOverModal } from "../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat } from "../../../lib/gameAudio";
@@ -16,6 +17,7 @@ const UI_MULTIPLIER_UPDATE_MS = 80;
 const TRAIL_FADE_ALPHA = 0.12;
 
 export default function Page() {
+  const posthog = usePostHog();
   const [displayMultiplier, setDisplayMultiplier] = useState(1.0);
   const [isCrashed, setIsCrashed] = useState(false);
   const [gameRunning, setGameRunning] = useState(false);
@@ -171,6 +173,7 @@ export default function Page() {
     resetBet();
     resultCelebratedRef.current = false;
     playDefeat();
+    posthog?.capture("crash_game_ended", { result: "loss", bet_amount: betAmount, multiplier: lossMultiplier });
   }
 
   async function placeBet(amount, autoCashoutValue) {
@@ -204,6 +207,7 @@ export default function Page() {
           serverCrashPointRef.current = Number((Math.random() * 8 + 1.2).toFixed(2));
         }
         setRefreshCounter((prev) => prev + 1);
+        posthog?.capture("crash_game_started", { bet_amount: amount, auto_cashout: autoCashoutValue });
       } else {
         setError(data.error || "Failed to place bet");
         resetBet();
@@ -257,6 +261,7 @@ export default function Page() {
         setCashoutPopupMultiplier(winMultiplier);
         setCashoutPopupAmount(winAmount);
         setShowCashoutPopup(true);
+        posthog?.capture("crash_game_ended", { result: "win", bet_amount: betAmount, multiplier: winMultiplier, payout: winAmount });
       } else {
         setError(data.error || "Cashout failed");
         // Revert state

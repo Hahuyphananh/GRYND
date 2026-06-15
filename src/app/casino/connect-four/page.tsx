@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
+import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
@@ -12,6 +13,7 @@ export default function ConnectFourLobbyPage() {
   const { isSignedIn, user } = useUser();
   const { socket } = useSocket();
   const router = useRouter();
+  const posthog = usePostHog();
 
   const [betAmount, setBetAmount] = useState(10);
   const [timerSeconds, setTimerSeconds] = useState(60);
@@ -83,6 +85,7 @@ export default function ConnectFourLobbyPage() {
         event: "lobby:updated",
       });
       router.push(`/casino/connect-four/game/${data.gameId}`);
+      posthog?.capture("connect_four_game_started", { mode: "create", bet_amount: betAmount, game_id: data.gameId, timer_seconds: timerSeconds });
     } finally {
       setLoading(false);
     }
@@ -110,6 +113,7 @@ export default function ConnectFourLobbyPage() {
         event: "lobby:updated",
       });
       router.push(`/casino/connect-four/game/${data.gameId}`);
+      posthog?.capture("connect_four_game_started", { mode: gameId ? "join" : "quick_join", game_id: data.gameId });
     } finally {
       setLoading(false);
       setJoiningId(null);

@@ -1,9 +1,10 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
-import { users } from "../../../../db/schema";
+import { users, slotJackpots } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
+import { getTheme } from "../../../../lib/slotThemes.jsx";
 import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 
 export async function POST(req) {
@@ -12,7 +13,8 @@ export async function POST(req) {
     if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { bet } = await req.json();
+    const { bet, theme, freeSpin } = await req.json();
+    const isFreeSpin = !!freeSpin;
     if (typeof bet !== "number" || bet <= 0) {
       return NextResponse.json(
         { error: "Invalid bet amount" },
@@ -20,41 +22,36 @@ export async function POST(req) {
       );
     }
 
-    // Deduct bet
-    const [user] = await db
-      .update(users)
-      .set({ balance: sql`balance - ${bet}` })
-      .where(sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${bet}`)
-      .returning({ balance: users.balance });
+    const themeConfig = getTheme(theme || "fruit");
+    const symbols = themeConfig.symbols;
 
-    if (!user)
-      return NextResponse.json(
-        { error: "Insufficient balance" },
-        { status: 400 },
-      );
+    // Deduct bet (skip for free spins)
+    let user;
+    if (!isFreeSpin) {
+      const [deducted] = await db
+        .update(users)
+        .set({ balance: sql`balance - ${bet}` })
+        .where(sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${bet}`)
+        .returning({ balance: users.balance });
 
-    const fruitIcons = [
-      "🍉",
-      "🍌",
-      "🍍",
-      "🍏",
-      "🍓",
-      "🥭",
-      "🍈",
-      "🍇",
-      "🍒",
-      "🍎",
-      "🍊",
-      "🍋",
-      "🥝",
-      "🍐",
-      "🍑",
-      "🥥",
-      "🍅",
-      "🍆",
-      "🌽",
-      "🍠",
-    ];
+      if (!deducted)
+        return NextResponse.json(
+          { error: "Insufficient balance" },
+          { status: 400 },
+        );
+      user = deducted;
+    } else {
+      const [current] = await db
+        .select({ balance: users.balance })
+        .from(users)
+        .where(eq(users.clerkId, userId));
+      if (!current)
+        return NextResponse.json(
+          { error: "User not found" },
+          { status: 400 },
+        );
+      user = current;
+    }
 
     // ---------------------------
     // 🎰 DECIDE OUTCOME FIRST
@@ -71,7 +68,7 @@ export async function POST(req) {
     else matchCount = 0; // 75%
 
     const matchSymbol =
-      fruitIcons[Math.floor(Math.random() * fruitIcons.length)];
+      symbols[Math.floor(Math.random() * symbols.length)];
 
     const paylines = [
       { name: "top", rows: [0, 0, 0, 0, 0] },
@@ -87,7 +84,7 @@ export async function POST(req) {
     const reels = Array.from({ length: 5 }, () =>
       Array.from(
         { length: 3 },
-        () => fruitIcons[Math.floor(Math.random() * fruitIcons.length)],
+        () => symbols[Math.floor(Math.random() * symbols.length)],
       ),
     );
 
@@ -103,15 +100,75 @@ export async function POST(req) {
     }
 
     // ---------------------------
+    // 🎰 PROGRESSIVE JACKPOT
+    // ---------------------------
+    const themeKey = theme || "fruit";
+    const contribution = isFreeSpin ? 0 : Math.floor(bet * 0.02); // 2% of bet (0 for free spins)
+    let jackpotAmount = 0;
+    let jackpotWon = false;
+
+    if (contribution > 0) {
+      try {
+        // Contribute to jackpot (atomic upsert)
+        await db
+          .insert(slotJackpots)
+          .values({
+            theme: themeKey,
+            amount: sql`${contribution}`,
+            totalContributed: sql`${contribution}`,
+          })
+          .onConflictDoUpdate({
+            target: slotJackpots.theme,
+            set: {
+              amount: sql`${slotJackpots.amount} + ${contribution}`,
+              totalContributed: sql`${slotJackpots.totalContributed} + ${contribution}`,
+              updatedAt: sql`NOW()`,
+            },
+          });
+      } catch {
+        // Jackpot table may not exist yet — gracefully skip
+      }
+    }
+
+    // ---------------------------
     // 💰 PAYOUT
     // ---------------------------
     let winAmount = 0;
 
-    if (matchCount === 5)
-      winAmount = bet * 6; // bet + 5x
-    else if (matchCount === 4)
-      winAmount = bet * 4; // bet + 3x
-    else if (matchCount === 3) winAmount = bet * 3; // bet + 2x
+    if (matchCount === 5) {
+      winAmount = bet * 6; // base 5x win
+
+      // Award progressive jackpot on 5-match
+      try {
+        const [jpRow] = await db
+          .select({ amount: slotJackpots.amount })
+          .from(slotJackpots)
+          .where(eq(slotJackpots.theme, themeKey));
+
+        if (jpRow && Number(jpRow.amount) > 0) {
+          jackpotAmount = Number(jpRow.amount);
+          winAmount += jackpotAmount;
+          jackpotWon = true;
+
+          // Reset jackpot to seed
+          await db
+            .update(slotJackpots)
+            .set({
+              amount: sql`${slotJackpots.seedAmount}`,
+              timesWon: sql`${slotJackpots.timesWon} + 1`,
+              lastWonBy: userId,
+              lastWonAmount: sql`${jackpotAmount}`,
+              lastWonAt: sql`NOW()`,
+              updatedAt: sql`NOW()`,
+            })
+            .where(eq(slotJackpots.theme, themeKey));
+        }
+      } catch {
+        // Jackpot table not available — base win only
+      }
+    } else if (matchCount === 4)
+      winAmount = bet * 4;
+    else if (matchCount === 3) winAmount = bet * 3;
 
     await db
       .update(users)
@@ -126,7 +183,7 @@ export async function POST(req) {
       recordBigWinIfNeeded({
         userId: userId,
         username: clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim() : "Player",
-        game: "Slots",
+        game: `Slots (${theme || "fruit"})`,
         betAmount: bet,
         winAmount: winAmount,
         multiplier: winAmount / bet,
@@ -149,6 +206,8 @@ export async function POST(req) {
         winAmount,
         profit: winAmount - bet,
         newBalance,
+        jackpotWon,
+        jackpotAmount,
         winningLine:
           matchCount >= 3
             ? {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
+import { usePostHog } from "posthog-js/react";
 import { useHexDuel, type DuelPlayer } from "../../../lib/hexDuelEngine";
 import { useSocket } from "../../../context/SocketProvider";
 import { decideAIAction, type AIDifficulty, type AIAction, type AIStateSnapshot } from "../../../lib/hexDuelAI";
@@ -917,6 +918,7 @@ export default function HexDuelPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { socket } = useSocket();
+  const posthog = usePostHog();
 
   const {
     grid, currentTurn, currentAP, maxAP,
@@ -1121,7 +1123,7 @@ export default function HexDuelPage() {
   }, [searchParams]);
 
   // ── Wager handlers ─────────────────────────────────────────────────
-  const handleStartFun = useCallback(() => { setAIEnabled(true); setGameMode("for-fun"); setWager(0); setWagerError(null); startedAtRef.current = new Date().toISOString(); }, []);
+  const handleStartFun = useCallback(() => { setAIEnabled(true); setGameMode("for-fun"); setWager(0); setWagerError(null); startedAtRef.current = new Date().toISOString(); posthog?.capture("hex_duel_game_started", { mode: "fun", difficulty: aiDifficulty }); }, []);
   const handleStartReal = useCallback(async (amount: number) => {
     setWagerLoading(true); setWagerError(null);
     try {
@@ -1133,6 +1135,7 @@ export default function HexDuelPage() {
       setAIEnabled(true); // Auto-enable AI for vs-AI real games
       setGameMode("real");
       startedAtRef.current = new Date().toISOString();
+      posthog?.capture("hex_duel_game_started", { mode: "real", bet_amount: amount, difficulty: aiDifficulty });
     } catch { setWagerError("Network error — please try again"); }
     finally { setWagerLoading(false); }
   }, []);
@@ -1431,6 +1434,19 @@ export default function HexDuelPage() {
     const endPoint = gameMode === "multiplayer"
       ? "/api/hex-duel/multiplayer/end"
       : "/api/hex-duel/end-game";
+
+    const won =
+      (gameMode === "multiplayer" && effectiveWinner === (isPlayer1 ? "player2" : "player1")) ||
+      (gameMode !== "multiplayer" && effectiveWinner === "player2");
+    posthog?.capture("hex_duel_game_ended", {
+      result: won ? "win" : "loss",
+      mode: gameMode === "for-fun" ? "fun" : gameMode === "multiplayer" ? "pvp" : "real",
+      bet_amount: gameMode === "for-fun" ? 0 : wager,
+      difficulty: aiEnabled ? aiDifficulty : undefined,
+      player1_moves: p1MoveCount,
+      player2_moves: p2MoveCount,
+      duration_seconds: durationSeconds,
+    });
 
     fetch(endPoint, {
       method: "POST",

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 
@@ -10,6 +11,7 @@ export default function DiceDuelLobbyPage() {
   const [loading, setLoading] = useState(false);
   const [tokens, setTokens] = useState<number | null>(null);
   const router = useRouter();
+  const posthog = usePostHog();
 
   const loadTokens = async () => {
     const res = await fetch("/api/get-user-tokens", {
@@ -51,7 +53,10 @@ export default function DiceDuelLobbyPage() {
     });
     const data = await res.json();
     setLoading(false);
-    if (data.lobbyId) router.push(`/casino/dice-duel/game/${data.lobbyId}`);
+    if (data.lobbyId) {
+      router.push(`/casino/dice-duel/game/${data.lobbyId}`);
+      posthog?.capture("dice_duel_game_started", { mode: "pvp", wager, lobby_id: data.lobbyId });
+    }
   };
 
   const joinLobby = async (lobbyId: string) => {
@@ -62,6 +67,7 @@ export default function DiceDuelLobbyPage() {
     });
     const data = await res.json();
     router.push(`/casino/dice-duel/game/${data.matchId || lobbyId}`);
+    posthog?.capture("dice_duel_game_started", { mode: "pvp_join", lobby_id: lobbyId });
   };
 
   const playAI = async () => {
@@ -73,6 +79,7 @@ export default function DiceDuelLobbyPage() {
     const data = await res.json();
     if (data.matchId) {
       router.push(`/casino/dice-duel/game/${data.matchId}`);
+      posthog?.capture("dice_duel_game_started", { mode: "ai", wager });
     } else {
       alert(data.message || "Unable to start game");
     }

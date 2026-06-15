@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 // @ts-ignore: no types for canvas-confetti in this project
 import confetti from "canvas-confetti";
 import { useUser } from "@clerk/nextjs";
+import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
 import { useTranslation } from "../../../hooks/useTranslation";
 import NavigationBar from "../../../components/navigation-bar";
@@ -321,6 +322,7 @@ export default function FarklePage() {
   const [availableGames, setAvailableGames] = useState<LobbyRoom[]>([]);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [game, setGame] = useState<FarkleGameState | null>(null);
+  const posthog = usePostHog();
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [rolling, setRolling] = useState(false);
   const [aiAnimating, setAiAnimating] = useState(false);
@@ -496,6 +498,7 @@ export default function FarklePage() {
 
       if (didWin) {
         setGameOverType("win");
+        posthog?.capture("farkle_game_ended", { result: "win", bet_amount: finishedGame.wager || 0, mode: finishedGame.ai ? "ai" : "pvp", my_score: mine, opponent_score: theirs });
         const fire = () => {
           confetti({
             particleCount: 80,
@@ -567,6 +570,7 @@ export default function FarklePage() {
       if (!res.ok || !d.success) return alert(d.error || "Unable to create room");
       setRoomId(d.roomId);
       setGame(d.state);
+      posthog?.capture("farkle_game_started", { mode: "pvp_create", wager, game_id: d.roomId });
       if (socket) socket.emit("join_room", { roomId: d.roomId });
     } finally {
       setLoading(false);
@@ -586,6 +590,7 @@ export default function FarklePage() {
       if (!res.ok || !d.success) return alert(d.error || "Unable to start");
       setRoomId(d.roomId);
       setGame(d.state);
+      posthog?.capture("farkle_game_started", { mode: "ai", wager, difficulty });
       if (socket) socket.emit("join_room", { roomId: d.roomId });
     } finally {
       setLoading(false);
@@ -605,6 +610,7 @@ export default function FarklePage() {
       if (!res.ok || !d.success) return alert(d.error || "Unable to join");
       setRoomId(id);
       setGame(d.state);
+      posthog?.capture("farkle_game_started", { mode: "pvp_join", wager: (d.state as any)?.wager || 0, game_id: id });
       if (socket) {
         socket.emit("join_room", { roomId: id });
         socket.emit("room_event", { roomId: id, event: "game_state_update" });
@@ -733,6 +739,7 @@ export default function FarklePage() {
 
       if (d.state?.state === "finished") {
         showGameOver(d.state, d.winnerId === user?.id ? "win" : "lose");
+        posthog?.capture("farkle_game_ended", { result: "loss", reason: "resigned", bet_amount: d.state?.wager || 0, mode: d.state?.ai ? "ai" : "pvp" });
       }
     } catch {
       alert("Failed to resign");
