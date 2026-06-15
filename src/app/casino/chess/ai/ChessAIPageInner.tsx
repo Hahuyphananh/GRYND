@@ -202,6 +202,7 @@ export default function ChessAIPageInner() {
   const gameId = searchParams.get("gameId");
 
   const endGameCalled = useRef(false);
+  const initCompleteRef = useRef(false);
 
   const aiColor = useMemo<"w" | "b">(
     () => (playerColor === "white" ? "b" : "w"),
@@ -255,9 +256,17 @@ export default function ChessAIPageInner() {
     setWinnerText("");
     setGameResult("pending");
     endGameCalled.current = false;
+    initCompleteRef.current = false;
 
     if (randomColor === "black") {
-      setTimeout(() => makeAIMMove(newGame), 450);
+      // Set initComplete AFTER the initial AI move is scheduled so the AI
+      // effect doesn't also fire. After the move processes, mark init as done.
+      setTimeout(() => {
+        makeAIMMove(newGame);
+        initCompleteRef.current = true;
+      }, 450);
+    } else {
+      initCompleteRef.current = true;
     }
   }, []);
 
@@ -290,6 +299,8 @@ export default function ChessAIPageInner() {
   useEffect(() => {
     if (!game || game.isGameOver()) return;
     if (game.turn() !== aiColor) return;
+    // Don't trigger AI move until initialization is complete (prevents double move)
+    if (!initCompleteRef.current) return;
 
     const t = setTimeout(() => makeAIMMove(new Chess(game.fen())), 300);
     return () => clearTimeout(t);
@@ -386,9 +397,15 @@ export default function ChessAIPageInner() {
     setShowResultModal(false);
     endGameCalled.current = false;
     resultCelebratedRef.current = false;
+    initCompleteRef.current = false;
 
     if (randomColor === "black") {
-      setTimeout(() => makeAIMMove(newGame), 450);
+      setTimeout(() => {
+        makeAIMMove(newGame);
+        initCompleteRef.current = true;
+      }, 450);
+    } else {
+      initCompleteRef.current = true;
     }
   }
 

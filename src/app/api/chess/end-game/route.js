@@ -134,16 +134,15 @@ export async function POST(req) {
 
         // Record big win if winnerPayout >= 1 million tokens
         if (winnerPayout >= 1000000) {
-          const opponentUser = await tx
+          const winnerUser = await tx
             .select()
             .from(users)
             .where(eq(users.clerkId, opponentId))
             .limit(1);
-          if (opponentUser.length > 0) {
-            const clerkUser = await currentUser();
+          if (winnerUser.length > 0) {
             recordBigWinIfNeeded({
               userId: opponentId,
-              username: clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim() : "Player",
+              username: winnerUser[0]?.name || "Player",
               game: "Chess",
               betAmount: Number(lockedGame.betAmount),
               winAmount: winnerPayout,
