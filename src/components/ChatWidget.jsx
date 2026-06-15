@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../context/SocketProvider";
 
-const MINIMUM_BIG_WIN = 1000000; // 1 million tokens
+const MINIMUM_BIG_WIN = 1000000; // 1 million tokens maximum
 
 const GLOBAL_ROUTES = new Set(["/", "/casino", "/classement", "/rankings"]);
 
