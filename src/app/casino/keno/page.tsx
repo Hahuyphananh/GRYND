@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
+import { playCardDraw, playVictory, playDefeat } from "../../../lib/gameAudio";
+import { KENO_MULTIPLIER_TABLE, KENO_MAX_PICKS, KENO_POOL_SIZE, KENO_DRAW_COUNT, KENO_AUTO_PICK_COUNT, calcKenoPayout } from "../../../lib/kenoMultipliers";
 
-const multiplierTable: Record<number, Record<number, number>> = {
-  1: { 1: 3 },
-  2: { 1: 1.5, 2: 6 },
-  3: { 1: 1.2, 2: 3, 3: 12 },
-  4: { 2: 2, 3: 6, 4: 20 },
-  5: { 2: 2, 3: 5, 4: 15, 5: 50 },
-};
+const QUICK_BETS = [
+  { label: "½×", factor: 0.5 },
+  { label: "2×", factor: 2 },
+  { label: "Max", factor: -1 }, // -1 = use user balance
+];
 
 export default function KenoGame() {
   const router = useRouter();
@@ -29,6 +29,9 @@ export default function KenoGame() {
   const [animationDone, setAnimationDone] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const [showWinScreen, setShowWinScreen] = useState(false);
+
+  // Bet history
+  const [roundHistory, setRoundHistory] = useState<{ picks: number; hits: number; payout: number; winningNumbers: number[] }[]>([]);
 
   const fetchUserBalance = async () => {
     if (!user) return;
@@ -57,10 +60,11 @@ export default function KenoGame() {
     }
 
     setSelectedNumbers((prev) =>
-      prev.includes(num) ? prev.filter((n) => n !== num) : prev.length < 5 ? [...prev, num] : prev
+      prev.includes(num) ? prev.filter((n) => n !== num) : prev.length < KENO_MAX_PICKS ? [...prev, num] : prev
     );
   };
 
+  // Winning number reveal animation
   useEffect(() => {
     if (!result?.winningNumbers) return;
 
@@ -87,8 +91,14 @@ export default function KenoGame() {
   }, [result]);
 
   const handleAutoPick = () => {
+    // Clear previous results when auto-picking
+    setHighlightedWins([]);
+    setResult(null);
+    setAnimationDone(false);
+
+    const pickCount = KENO_AUTO_PICK_COUNT;
     const picks: number[] = [];
-    while (picks.length < 5) {
+    while (picks.length < pickCount) {
       const rand = Math.floor(Math.random() * 40) + 1;
       if (!picks.includes(rand)) picks.push(rand);
     }
@@ -100,6 +110,15 @@ export default function KenoGame() {
     setHighlightedWins([]);
     setResult(null);
     setAnimationDone(false);
+  };
+
+  const handleQuickBet = (factor: number) => {
+    if (factor === -1 && userBalance !== null) {
+      setBetAmount(userBalance);
+    } else if (factor > 0) {
+      const newBet = Math.max(1, Math.round(betAmount * factor));
+      setBetAmount(newBet);
+    }
   };
 
   const handleBet = async () => {
@@ -118,6 +137,7 @@ export default function KenoGame() {
       const res = await fetch("/api/keno/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ betAmount, numbers: selectedNumbers }),
       });
       const data = await res.json();
@@ -128,6 +148,21 @@ export default function KenoGame() {
       }
       setResult(data);
       await fetchUserBalance();
+
+      // Add to round history
+      setRoundHistory((prev) => [
+        { picks: selectedNumbers.length, hits: data.matches.length, payout: data.payout, winningNumbers: data.winningNumbers },
+        ...prev.slice(0, 9), // keep last 10 rounds
+      ]);
+
+      // Audio feedback
+      if (data.payout > 0) {
+        setTimeout(() => playVictory(), 500);
+      } else {
+        setTimeout(() => playDefeat(), 500);
+      }
+      playCardDraw();
+
       posthog?.capture("keno_game_started", { bet_amount: betAmount, numbers_count: selectedNumbers.length });
       if (data.payout > 0) {
         posthog?.capture("keno_game_ended", { result: "win", bet_amount: betAmount, payout: data.payout, matches: data.matches?.length ?? 0 });
@@ -140,7 +175,19 @@ export default function KenoGame() {
     setLoading(false);
   };
 
-  const payoutTable = multiplierTable[selectedNumbers.length] || {};
+  const payoutTable = KENO_MULTIPLIER_TABLE[selectedNumbers.length] || {};
+
+  // Estimated payout for a realistic hit scenario — clamps to nearest valid multiplier tier
+  const table = selectedNumbers.length > 0 ? KENO_MULTIPLIER_TABLE[selectedNumbers.length] : null;
+  const validHits = table ? Object.keys(table).map(Number).sort((a, b) => a - b) : [];
+  const rawEstimate = Math.max(1, Math.floor(selectedNumbers.length * 0.35));
+  const displayHits = validHits.find((h) => h >= rawEstimate) ?? validHits[0] ?? 0;
+  const estimatedPayout = selectedNumbers.length > 0
+    ? calcKenoPayout(selectedNumbers.length, displayHits, betAmount)
+    : 0;
+  const maxPossiblePayout = selectedNumbers.length > 0
+    ? calcKenoPayout(selectedNumbers.length, selectedNumbers.length, betAmount)
+    : 0;
 
   return (
     <div
@@ -211,22 +258,21 @@ shadow-[0_0_25px_rgba(0,229,255,0.25),inset_0_0_25px_rgba(0,229,255,0.08)]
 p-3 sm:p-5
 rounded-2xl
 
-flex flex-col sm:flex-row
-gap-3 sm:gap-4
-
-items-stretch sm:items-end
+flex flex-col gap-3
 mb-5 sm:mb-6
 "
       >
-        {/* Bet Input */}
-        <div className="flex flex-col gap-1">
-          <label className="text-sm text-gray-300">Bet Amount</label>
-          <input
-            type="number"
-            min={1}
-            value={betAmount}
-            onChange={(e) => setBetAmount(Number(e.target.value))}
-            className="
+        {/* Top row: bet + buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
+          {/* Bet Input */}
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-gray-300">Bet Amount</label>
+            <input
+              type="number"
+              min={1}
+              value={betAmount}
+              onChange={(e) => setBetAmount(Number(e.target.value))}
+              className="
 bg-[#020617]
 border border-[#00e5ff]/30
 
@@ -243,44 +289,71 @@ transition-all duration-300
 w-full sm:w-28
 h-12
 "
-          />
-        </div>
+            />
+          </div>
 
-        <button
-          onClick={handleBet}
-          disabled={loading}
-          className={`w-full sm:w-auto h-12 px-6 rounded-xl font-bold text-base sm:text-lg transition-all duration-300
+          {/* Quick-bet buttons */}
+          {QUICK_BETS.map((qb) => (
+            <button
+              key={qb.label}
+              onClick={() => handleQuickBet(qb.factor)}
+              className="w-full sm:w-auto h-12 px-4 rounded-xl font-bold text-sm transition-all duration-300
+                         bg-[#0d335f] text-[#a8f4ff] border border-[#00e5ff]/30
+                         hover:bg-[#1a4a7a] hover:border-[#00e5ff]/60 hover:text-white active:scale-95"
+            >
+              {qb.label}
+            </button>
+          ))}
+
+          <button
+            onClick={handleBet}
+            disabled={loading}
+            className={`w-full sm:w-auto h-12 px-6 rounded-xl font-bold text-base sm:text-lg transition-all duration-300
   ${
     loading
       ? "bg-[#1a2333] text-gray-400 border border-gray-600"
       : "bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-[#001933] border border-[#ff4fd8] shadow-[0_0_20px_#ff4fd8] hover:shadow-[0_0_35px_#a855f7] hover:scale-105"
   }
 `}
-        >
-          {loading ? "Playing..." : "Bet"}
-        </button>
+          >
+            {loading ? "Playing..." : "Bet"}
+          </button>
 
-        {/* Auto Pick */}
-        <button
-          onClick={handleAutoPick}
-          className="w-full sm:w-auto h-12 px-5 rounded-xl font-bold text-sm sm:text-base transition-all duration-300
+          {/* Auto Pick */}
+          <button
+            onClick={handleAutoPick}
+            className="w-full sm:w-auto h-12 px-5 rounded-xl font-bold text-sm sm:text-base transition-all duration-300
                bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933]
                border border-[#00e5ff]
                shadow-[0_0_20px_rgba(0,229,255,0.6)]
                hover:shadow-[0_0_35px_rgba(0,255,166,1)] hover:scale-105"
-        >
-          AUTO PICK
-        </button>
+          >
+            AUTO PICK
+          </button>
 
-        {/* Clear */}
-        <button
-          onClick={handleClear}
-          className="w-full sm:w-auto h-12 px-5 rounded-xl font-bold text-sm sm:text-base transition-all duration-300
+          {/* Clear */}
+          <button
+            onClick={handleClear}
+            className="w-full sm:w-auto h-12 px-5 rounded-xl font-bold text-sm sm:text-base transition-all duration-300
                bg-[#1a2333] text-gray-400 border border-gray-600
                hover:bg-[#2a3446] hover:text-white"
-        >
-          CLEAR
-        </button>
+          >
+            CLEAR
+          </button>
+        </div>
+
+        {/* Payout estimate */}
+        {selectedNumbers.length > 0 && (
+          <div className="text-center text-xs sm:text-sm text-gray-300 bg-[#020617]/60 rounded-lg py-2 px-3 border border-[#00e5ff]/15">
+            Pick {selectedNumbers.length} — ~{displayHits} hit{displayHits !== 1 ? "s" : ""}:{" "}
+            <span className="text-[#00ffa6] font-bold">{estimatedPayout > 0 ? `+${estimatedPayout} tokens` : "no payout"}</span>
+            {maxPossiblePayout > estimatedPayout && (
+              <span className="text-gray-500">
+                {" "}· all {selectedNumbers.length}: <span className="text-[#00ffa6]/60">+{maxPossiblePayout}</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Gameboard */}
@@ -319,11 +392,12 @@ flex-1
 justify-items-center
 "
           >
-            {Array.from({ length: 40 }, (_, i) => i + 1).map((num) => {
+            {Array.from({ length: KENO_POOL_SIZE }, (_, i) => i + 1).map((num) => {
               const isSelected = selectedNumbers.includes(num);
               const isWinning = highlightedWins.includes(num);
-              const isDisabled = !isSelected && selectedNumbers.length >= 5;
+              const isDisabled = !isSelected && selectedNumbers.length >= KENO_MAX_PICKS;
               const isMatch = isSelected && isWinning;
+              const isDrawnNonMatch = isWinning && !isSelected;
 
               return (
                 <button
@@ -355,8 +429,8 @@ active:scale-95
   ${
     isMatch
       ? "bg-[#00ffa6] text-[#001933] scale-110 ring-4 ring-[#00ffa6]/70 shadow-[0_0_30px_rgba(0,255,166,1)] animate-pulse"
-      : isWinning
-        ? "bg-[#00ffa6]/30 text-white"
+      : isDrawnNonMatch
+        ? "bg-[#00ffa6]/25 text-[#00ffa6]/80 border border-[#00ffa6]/40"
         : isSelected
           ? "bg-[#00e5ff] text-[#001933] shadow-[0_0_20px_rgba(0,229,255,0.8)] scale-105"
           : isDisabled
@@ -407,7 +481,7 @@ border border-[#00e5ff]/40
                   <span>
                     {hits} hit{hits !== "1" ? "s" : ""}
                   </span>
-                  <span>x{mult}</span>
+                  <span>×{mult}</span>
                 </div>
               );
             })}
@@ -419,12 +493,13 @@ border border-[#00e5ff]/40
         </div>
       </div>
 
+      {/* Result panel */}
       {result && (
         <div
           className="
 w-full max-w-3xl
 
-mt-6
+mt-2
 bg-[#050d1f]/80
 backdrop-blur-xl
 border border-[#00e5ff]/40
@@ -436,11 +511,54 @@ text-sm sm:text-base
 shadow-[0_0_20px_rgba(0,229,255,0.2)]
 "
         >
-          <p>🎯 Winning Numbers: {result.winningNumbers.join(", ")}</p>
-          <p>✅ Matches: {result.matches.length}</p>
+          <p>🎯 Drawn Numbers: {result.winningNumbers.join(", ")}</p>
+          <p>✅ Matches: {result.matches.length} {result.matches.length > 0 && `(${result.matches.join(", ")})`}</p>
           <p>💰 Payout: {result.payout} tokens</p>
         </div>
       )}
+
+      {/* Bet History */}
+      {roundHistory.length > 0 && (
+        <div
+          className="
+w-full max-w-3xl
+
+mt-4
+bg-[#0b224f]/85
+border-2 border-[#00e5ff]/35
+
+rounded-xl
+
+p-3 sm:p-4
+
+shadow-[0_0_20px_rgba(0,229,255,0.15)]
+"
+        >
+          <h3 className="text-[#FFD700] font-bold text-lg mb-3">📋 Recent Rounds</h3>
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {roundHistory.map((round, i) => {
+              const isWin = round.payout > 0;
+              return (
+                <div
+                  key={i}
+                  className={`flex-shrink-0 rounded-lg px-3 py-2 text-xs min-w-[130px] border ${
+                    isWin ? "bg-green-900/30 border-green-500/30" : "bg-red-900/20 border-red-500/20"
+                  }`}
+                >
+                  <div className="font-bold text-white mb-1">Pick {round.picks} • {round.hits} hit{round.hits !== 1 ? "s" : ""}</div>
+                  <div className={isWin ? "text-green-400" : "text-red-400"}>
+                    {isWin ? `+${round.payout}` : `− loss`}
+                  </div>
+                  <div className="text-gray-500 mt-1 truncate" title={round.winningNumbers.join(", ")}>
+                    {round.winningNumbers.join(", ")}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Game Rules (Collapsible) */}
       <div
         className="
@@ -475,12 +593,12 @@ shadow-[0_0_20px_rgba(0,229,255,0.15)]
 
             <p>
               🔢 <strong>How to Play:</strong>
-              <br />• Select between <strong>1 to 5 numbers</strong> from the 1–40 grid. • Choose
-              your bet amount. • Click <strong>“Bet”</strong> to start the round.
+              <br />• Select between <strong>1 to {KENO_MAX_PICKS} numbers</strong> from the 1–40 grid. • Choose
+              your bet amount. • Click <strong>"Bet"</strong> to start the round.
             </p>
 
             <p>
-              🎲 <strong>Draw:</strong> 20 random numbers are drawn each round.
+              🎲 <strong>Draw:</strong> {KENO_DRAW_COUNT} random numbers are drawn each round.
             </p>
 
             <p>
@@ -492,7 +610,7 @@ shadow-[0_0_20px_rgba(0,229,255,0.15)]
 
             <p>
               ⚠️ <strong>Important:</strong>
-              <br />• You must select at least 1 number to play. • Maximum of 5 numbers can be
+              <br />• You must select at least 1 number to play. • Maximum of {KENO_MAX_PICKS} numbers can be
               selected. • You cannot bet more than your available balance.
             </p>
 
@@ -506,6 +624,8 @@ shadow-[0_0_20px_rgba(0,229,255,0.15)]
           </div>
         )}
       </div>
+
+      {/* Win overlay */}
       {showWinScreen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md">
           {/* Glow background */}

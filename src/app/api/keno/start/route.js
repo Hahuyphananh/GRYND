@@ -4,15 +4,7 @@ import { db } from "../../../../db/client";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 import { users, keno_games } from "../../../../db/schema";
-
-const multiplierTable = {
-  1: { 1: 3 },
-  2: { 1: 1.5, 2: 6 },
-  3: { 1: 1.2, 2: 3, 3: 12 },
-  4: { 2: 2, 3: 6, 4: 20 },
-  5: { 2: 2, 3: 5, 4: 15, 5: 50 },
-  // Extend if needed
-};
+import { KENO_MAX_PICKS, KENO_POOL_SIZE, KENO_DRAW_COUNT, calcKenoPayout, getKenoMultiplier } from "../../../../lib/kenoMultipliers";
 
 export async function POST(req) {
   try {
@@ -26,7 +18,7 @@ export async function POST(req) {
 
     const { betAmount, numbers } = await req.json();
 
-    if (!Array.isArray(numbers) || numbers.length < 1 || numbers.length > 10) {
+    if (!Array.isArray(numbers) || numbers.length < 1 || numbers.length > KENO_MAX_PICKS) {
       return new Response(JSON.stringify({ error: "Invalid numbers" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -64,10 +56,10 @@ export async function POST(req) {
       });
     }
 
-    // Draw 10 unique winning numbers (1-40)
-    const available = Array.from({ length: 40 }, (_, i) => i + 1);
+    // Draw winning numbers from the pool
+    const available = Array.from({ length: KENO_POOL_SIZE }, (_, i) => i + 1);
     const winningNumbers = [];
-    while (winningNumbers.length < 10) {
+    while (winningNumbers.length < KENO_DRAW_COUNT) {
       const idx = Math.floor(Math.random() * available.length);
       winningNumbers.push(available[idx]);
       available.splice(idx, 1);
@@ -77,8 +69,8 @@ export async function POST(req) {
     const matches = numbers.filter((n) => winningNumbers.includes(n));
     const picks = numbers.length;
     const matchCount = matches.length;
-    const multiplier = multiplierTable[picks]?.[matchCount] || 0;
-    const payout = +(betAmount * multiplier).toFixed(2);
+    const multiplier = getKenoMultiplier(picks, matchCount);
+    const payout = calcKenoPayout(picks, matchCount, betAmount);
 
     // Insert game record
     await db.insert(keno_games).values({
@@ -100,12 +92,17 @@ export async function POST(req) {
         .set({
           balance: sql`${users.balance} + ${payout}`,
           gamesWon: (user.gamesWon ?? 0) + 1,
+          totalWagered: sql`${users.totalWagered} + ${betAmount}`,
+          totalWon: sql`${users.totalWon} + ${payout}`,
         })
         .where(eq(users.id, user.id));
     } else {
       await db
         .update(users)
-        .set({ gamesLost: (user.gamesLost ?? 0) + 1 })
+        .set({
+          gamesLost: (user.gamesLost ?? 0) + 1,
+          totalWagered: sql`${users.totalWagered} + ${betAmount}`,
+        })
         .where(eq(users.id, user.id));
     }
 
@@ -134,8 +131,8 @@ export async function POST(req) {
 
     sendSystemNotificationEmail({
       eventType: "error_event",
-      description: `Keno error for user ${userId}: ${(error).message || "Unknown error"}`,
-      metadata: { userId, error: (error).stack?.slice(0, 500) || String(error) },
+      description: `Keno error: ${(error).message || "Unknown error"}`,
+      metadata: { error: (error).stack?.slice(0, 500) || String(error) },
     }).catch((ew) => console.warn("[system_notify] Failed to send keno error:", ew));
 
     return new Response(JSON.stringify({ error: "Internal Server Error" }), {

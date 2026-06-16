@@ -1,6 +1,8 @@
 "use client";
 
 import { ClerkProvider } from "@clerk/nextjs";
+// @ts-expect-error - @clerk/ui package.json has "type":"module", but Next.js bundler handles ESM interop
+import { ui } from "@clerk/ui";
 import { useState, useEffect } from "react";
 import { LanguageProvider } from "../context/LanguageContext";
 import { ThemeProvider } from "../context/ThemeContext";
@@ -37,7 +39,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <PostHogProvider>
-      <ClerkProvider {...clerkProps}>
+      <ClerkProvider {...clerkProps} ui={ui}>
         <PostHogIdentify />
         <AppProviders>{children}</AppProviders>
       </ClerkProvider>
