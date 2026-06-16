@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
+import BlackjackCardBack from "../../../components/BlackjackCardBack";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
@@ -152,7 +153,10 @@ export default function BlackjackPage() {
       setUserTokens(newBal);
 
       // Get server-side shuffled deck
-      const dealRes = await fetch("/api/blackjack/deal", { method: "POST" });
+      const dealRes = await fetch("/api/blackjack/deal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
       const dealData = await dealRes.json();
       if (!dealData.success) { setError("Erreur lors de la distribution"); setGameState("idle"); return; }
 

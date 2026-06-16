@@ -1,4 +1,5 @@
 import Image from "next/image";
+import smallLogo from "../images/smalllogo.png";
 
 export default function BlackjackCardBack() {
   return (
@@ -35,7 +36,7 @@ export default function BlackjackCardBack() {
 
           {/* 🧠 Logo */}
           <Image
-            src={require("../images/smalllogo.png")}
+            src={smallLogo}
             alt="GoonBet logo"
             width={120}
             height={120}
