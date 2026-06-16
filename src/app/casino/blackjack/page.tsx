@@ -1,5 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import Image from "next/image";
+import smallLogo from "../../../images/smalllogo.png";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
@@ -39,9 +41,17 @@ const CardFace: React.FC<{ card: Card; small?: boolean }> = ({ card, small }) =>
         <span>{card.value}</span>
         <span className={small ? "text-[10px]" : "text-xs"}>{card.suit}</span>
       </div>
-      {/* Center suit */}
-      <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none" style={{ color: red ? "#c0392b" : "#1a1a2e" }}>
-        <span className={small ? "text-4xl" : "text-5xl"}>{card.suit}</span>
+      {/* Center G logo watermark */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <Image
+          src={smallLogo}
+          alt=""
+          aria-hidden="true"
+          width={small ? 48 : 56}
+          height={small ? 48 : 56}
+          className="opacity-15 select-none"
+          draggable={false}
+        />
       </div>
       {/* Bottom-right pip (inverted) */}
       <div className={`flex flex-col items-end leading-tight ${pipSize} font-bold rotate-180`} style={{ color: red ? "#c0392b" : "#1a1a2e" }}>
@@ -152,7 +162,10 @@ export default function BlackjackPage() {
       setUserTokens(newBal);
 
       // Get server-side shuffled deck
-      const dealRes = await fetch("/api/blackjack/deal", { method: "POST" });
+      const dealRes = await fetch("/api/blackjack/deal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
       const dealData = await dealRes.json();
       if (!dealData.success) { setError("Erreur lors de la distribution"); setGameState("idle"); return; }
 
