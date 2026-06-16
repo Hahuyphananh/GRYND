@@ -29,7 +29,7 @@ export default function ChessLobby() {
   const [showBetPopup, setShowBetPopup] = useState(false);
   const [aiDifficulty, setAiDifficulty] = useState(3);
   const [aiTimer, setAiTimer] = useState("5min");
-  const [aiColor, setAiColor] = useState<string>("random");
+  const [aiColor, setAiColor] = useState("random");
   const [availableGames, setAvailableGames] = useState([]);
   const [isLoadingAvailableGames, setIsLoadingAvailableGames] = useState(false);
   const [joiningGameId, setJoiningGameId] = useState(null);
