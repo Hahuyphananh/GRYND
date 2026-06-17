@@ -16,6 +16,15 @@ export async function POST(req) {
 
     const gameCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
+    // Explicitly seed an empty 6-seat grid so the /sit route can find a seat
+    // regardless of whether the schema-level default JSON applies. Without
+    // this, sit requests fail with "Invalid seat" before the host can ever
+    // occupy one.
+    const emptySeats = Array.from({ length: 6 }, (_, i) => ({
+      seat: i,
+      clerkId: null,
+    }));
+
     const [newGame] = await db
       .insert(pokerGames)
       .values({
@@ -25,6 +34,7 @@ export async function POST(req) {
         status: "waiting",
         pot: "0",
         round: "pre-flop",
+        players: emptySeats,
         communityCards: [],
         deck: [],
         discardPile: [],

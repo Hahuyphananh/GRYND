@@ -4,6 +4,10 @@ import { pokerGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 
+const SEAT_COUNT = 6;
+const emptySeatGrid = () =>
+  Array.from({ length: SEAT_COUNT }, (_, i) => ({ seat: i, clerkId: null }));
+
 export async function POST(req) {
   try {
     const { userId } = await auth();
@@ -41,7 +45,14 @@ export async function POST(req) {
         { status: 404 },
       );
 
-    const seats = Array.isArray(randomGame.players) ? randomGame.players : [];
+    const rawSeats = Array.isArray(randomGame.players) ? randomGame.players : [];
+    // Self-heal rows whose `players` column was NULL or empty before the
+    // create-game route started seeding an explicit 6-seat grid. The seed
+    // is folded into the same UPDATE that places the joining user, so
+    // legacy rows permanently heal without a second round-trip.
+    const seats = rawSeats.length
+      ? rawSeats
+      : Array.from({ length: 6 }, (_, i) => ({ seat: i, clerkId: null }));
     const emptySeat = seats.find((s) => s?.clerkId === null);
     if (!emptySeat)
       return NextResponse.json({ error: "No open seat" }, { status: 400 });

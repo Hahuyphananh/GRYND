@@ -631,11 +631,12 @@ lg:p-6 order-2 lg:order-none
           ))}
         </div>
 
-        <div className="mb-2 flex items-center gap-2">
+        <div className="mb-2 flex items-center gap-1.5 min-w-0">
           <button
             onClick={() => setBetAmount((prev) => Math.max(1, prev - 1))}
+            aria-label="Decrease bet"
             className="
-h-10 min-w-[42px]
+h-9 shrink-0 min-w-0 px-3
 rounded-xl
 border border-[#FFFF33]/40
 bg-[#FFFF33]/20
@@ -646,7 +647,7 @@ active:scale-95
 transition
 "
           >
-            -
+            −
           </button>
           <input
             type="number"
@@ -660,20 +661,21 @@ transition
               if (!betAmount || betAmount < 1) setBetAmount(1);
             }}
             className="
-flex-1 h-10
+flex-1 min-w-0 h-9 w-full
 rounded-xl
 bg-[#020617]
 border border-[#00E5FF]/20
 focus:border-[#00E5FF]
 focus:ring-1 focus:ring-[#00E5FF]
-px-2
+px-1.5
 text-center text-white
 "
           />
           <button
             onClick={() => setBetAmount((prev) => prev + 1)}
+            aria-label="Increase bet"
             className="
-h-10 min-w-[42px]
+h-9 shrink-0 min-w-0 px-3
 rounded-xl
 border border-[#FFFF33]/40
 bg-[#FFFF33]/20

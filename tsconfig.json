@@ -32,7 +32,6 @@
     "src/app/api/mines/settle/route.js",
     "src/app/api/crash/settle/route.js",
     "src/app/api/play-plinko/route.js",
-    "src/app/api/initialize-poker-vs-ai/route.js",
     "src/app/api/uno/initialize-vs-ai/route.js",
     "src/app/api/create-2048-game/route.js",
     "src/app/api/keno/start/route.js",

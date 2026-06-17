@@ -17,6 +17,8 @@ const WHEEL_RADIUS = CANVAS_SIZE / 2;
 const BALL_RADIUS = 7;
 const BALL_ORBIT_RADIUS = WHEEL_RADIUS - 24; // ball rides near the rim
 const SEGMENT_ANGLE = (2 * Math.PI) / ROULETTE_NUMBERS.length;
+const POINTER_ANGLE = -Math.PI / 2; // pointer is at the top of the canvas (canvas: +x = 0, +y down → top is −π/2)
+const POINTER_RADIUS = BALL_ORBIT_RADIUS - 28; // where the ball settles inside the winning pocket
 
 // Pocket color lookup (outside component to avoid recreation)
 const isRedNum = (num) => RED_NUMBERS.includes(num);
@@ -226,44 +228,63 @@ export default function RoulettePage() {
   }, [drawWheel]);
 
   // ─── Spin animation with ball ──────────────────────────────────
+  // Normalize an angle into [0, 2π)
+  const normAngle = (a) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
   const spinWheel = (finalIndex) => {
     return new Promise((resolve) => {
-      const totalSegments = ROULETTE_NUMBERS.length;
-      const fullRotations = 6;
-      const initialOffset = Math.random() * 2 * Math.PI; // random start
-      const finalAngle =
-        initialOffset +
-        fullRotations * 2 * Math.PI +
-        (totalSegments - finalIndex - 0.5) * SEGMENT_ANGLE;
-
-      const duration = 4200; // ms
-      const ballDropStart = 0.72; // fraction of duration when ball starts dropping
+      const fullRotations = 7;
+      const duration = 4500; // ms — slightly longer for a more cinematic feel
+      const ballOrbitEnd = 0.78; // fraction of duration when the ball begins to settle
       const start = performance.now();
+
+      // ── Target wheel rotation ──
+      // Segment `finalIndex` must end up centered under the pointer (top, −π/2).
+      // Segment i's center angle in the unrotated wheel is (i · SEGMENT_ANGLE + SEGMENT_ANGLE/2),
+      // so the wheel must rotate so that this center maps onto POINTER_ANGLE.
+      const winningCenter = finalIndex * SEGMENT_ANGLE + SEGMENT_ANGLE / 2;
+      const endRotation = normAngle(POINTER_ANGLE - winningCenter);
+
+      // Random start rotation for visual variety per spin
+      const startRotation = Math.random() * (2 * Math.PI);
+
+      // Forward angular distance to travel: at least fullRotations, then land at endRotation.
+      let delta = endRotation - startRotation;
+      if (delta <= 0) delta += 2 * Math.PI;
+      delta += fullRotations * 2 * Math.PI;
+
+      const finalAngle = startRotation + delta;
+
+      // Ball starts at a random orbital position (variety)
+      const ballStartAngle = Math.random() * (2 * Math.PI);
 
       const animate = (now) => {
         const elapsed = now - start;
         const progress = Math.min(elapsed / duration, 1);
 
-        // Wheel: ease-out cubic
+        // Wheel: ease-out cubic (decelerating, mimics real-wheel friction)
         const wheelEased = 1 - Math.pow(1 - progress, 3);
-        const wheelAngle = wheelEased * finalAngle;
+        const wheelAngle = startRotation + wheelEased * delta;
 
-        // Ball: orbits opposite direction, then spirals in
+        // Ball: orbits opposite the wheel, then snaps into the winning pocket
         let ballAngle, ballDist;
-        if (progress < ballDropStart) {
-          // Orbiting opposite direction at rim
-          ballAngle = ((1 - progress / ballDropStart) * fullRotations * 2 * Math.PI) % (2 * Math.PI);
+        if (progress < ballOrbitEnd) {
+          const orbitProgress = progress / ballOrbitEnd;
+          const orbitEased = 1 - Math.pow(1 - orbitProgress, 2); // ease-out
+          ballAngle = ballStartAngle - orbitEased * fullRotations * 2 * Math.PI;
           ballDist = BALL_ORBIT_RADIUS;
         } else {
-          const dropProgress = (progress - ballDropStart) / (1 - ballDropStart);
-          // Ball settles into winning pocket
-          const settleAngle = finalIndex * SEGMENT_ANGLE + SEGMENT_ANGLE / 2;
-          const easedDrop = 1 - Math.pow(1 - dropProgress, 2); // ease-out quad
-          ballDist = BALL_ORBIT_RADIUS - easedDrop * 26; // drop 26px inward
-          // Small wobble around the pocket
+          const dropProgress = (progress - ballOrbitEnd) / (1 - ballOrbitEnd);
+          const dropEased = 1 - Math.pow(1 - dropProgress, 2); // ease-out
+          // Drop straight inward from the rim to the pocket
+          ballDist =
+            BALL_ORBIT_RADIUS - dropEased * (BALL_ORBIT_RADIUS - POINTER_RADIUS);
+          // Tiny wobble that decays fast (cubic) so the ball clearly settles inside the pocket
+          // rather than straddling the divider between two pockets.
+          const wobbleDecay = Math.pow(1 - dropProgress, 3);
           const wobble =
-            Math.sin(dropProgress * Math.PI * 4) * (1 - dropProgress) * 0.12;
-          ballAngle = settleAngle + initialOffset + wobble;
+            Math.sin(dropProgress * Math.PI * 3) * wobbleDecay * 0.05;
+          ballAngle = POINTER_ANGLE + wobble;
         }
 
         drawWheel(wheelAngle, ballAngle, ballDist);
@@ -271,6 +292,9 @@ export default function RoulettePage() {
         if (progress < 1) {
           requestAnimationFrame(animate);
         } else {
+          // Final frame: exact alignment, no wobble — guarantees the ball
+          // lands exactly on the result regardless of floating-point drift.
+          drawWheel(finalAngle, POINTER_ANGLE, POINTER_RADIUS);
           resolve();
         }
       };
