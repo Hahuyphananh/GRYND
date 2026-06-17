@@ -104,9 +104,9 @@ export default function BetPanel({
         </div>
 
         {/* Bet Amount */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 min-w-0">
           <label className="text-sm text-gray-300">Bet Amount</label>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 min-w-0">
             <input
               type="number"
               min="0"
@@ -115,29 +115,32 @@ export default function BetPanel({
               onBlur={() => { if (!amount || parseInt(amount) < 1) setAmount(""); }}
               placeholder="Enter bet..."
               disabled={gameRunning || hasBet}
-              className="flex-1 bg-[#020617] border border-[#00e5ff]/30 
+              className="flex-1 min-w-0 w-full bg-[#020617] border border-[#00e5ff]/30
                        focus:border-[#00e5ff] focus:shadow-[0_0_15px_rgba(0,229,255,0.6)]
-                       rounded-xl px-3 py-2 text-white outline-none
+                       rounded-xl px-2 py-2 text-white outline-none
                        transition-all duration-300 text-center"
             />
             <button
               onClick={() => setAmount(Math.max(1, Math.floor(userTokens / 2)).toString())}
               disabled={gameRunning || hasBet}
-              className="px-2 py-2 rounded-lg border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] text-xs font-bold hover:bg-[#FFFF33]/25 transition disabled:opacity-50"
+              aria-label="Bet half of balance"
+              className="shrink-0 px-2.5 py-2 rounded-lg border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] text-xs font-bold hover:bg-[#FFFF33]/25 transition disabled:opacity-50 whitespace-nowrap"
             >
               ½
             </button>
             <button
               onClick={() => setAmount(Math.max(1, userTokens).toString())}
               disabled={gameRunning || hasBet}
-              className="px-2 py-2 rounded-lg border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] text-xs font-bold hover:bg-[#FFFF33]/25 transition disabled:opacity-50"
+              aria-label="Bet entire balance"
+              className="shrink-0 px-2.5 py-2 rounded-lg border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] text-xs font-bold hover:bg-[#FFFF33]/25 transition disabled:opacity-50 whitespace-nowrap"
             >
-              TOUT
+              MAX
             </button>
             <button
               onClick={() => setAmount(Math.min((numericAmount || 1) * 2, userTokens).toString())}
               disabled={gameRunning || hasBet}
-              className="px-2 py-2 rounded-lg border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] text-xs font-bold hover:bg-[#FFFF33]/25 transition disabled:opacity-50"
+              aria-label="Double the bet"
+              className="shrink-0 px-2.5 py-2 rounded-lg border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] text-xs font-bold hover:bg-[#FFFF33]/25 transition disabled:opacity-50 whitespace-nowrap"
             >
               2×
             </button>

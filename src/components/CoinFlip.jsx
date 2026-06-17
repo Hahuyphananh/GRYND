@@ -145,6 +145,12 @@ function SoloCoinFlip() {
   const [showAutoSettings, setShowAutoSettings] = useState(false);
   const [autoSettings, setAutoSettings] = useState({ maxFlips: 0, stopOnWin: 0, stopOnBalance: 0, flipsRemaining: 0 });
 
+  // Lazily mount the <audio> element after the first user interaction so it's
+  // not present in the SSR HTML. Next.js auto-injects a <link rel="preload"> for
+  // SSR'd audio sources, and if the user doesn't play within a few seconds the
+  // browser raises a console error that surfaces in the dev error overlay.
+  const [audioSrc, setAudioSrc] = useState("");
+
   const posthog = usePostHog();
   const flipLockRef = useRef(false);
   const flipRef = useRef(null);
@@ -185,9 +191,17 @@ function SoloCoinFlip() {
     setFlipKey(prev => prev + 1);
     posthog?.capture("coin_flip_solo_started", { bet, choice });
 
-    if (soundOn && audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => {});
+    if (soundOn) {
+      // Mount the <audio> element on first flip so it isn't SSR'd.
+      setAudioSrc((cur) => cur || "/sounds/coin-flip.mp3");
+      // Defer playback to the next frame so the audio element has time to mount.
+      requestAnimationFrame(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        audio.currentTime = 0;
+        const p = audio.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      });
     }
 
     try {
@@ -458,8 +472,9 @@ function SoloCoinFlip() {
         )}
       </div>
 
-      {/* Hidden audio element — created once, reused */}
-      <audio ref={audioRef} src="/sounds/coin-flip.mp3" preload="auto" />
+      {/* Hidden audio element — mounted client-side only after the first flip
+          to avoid Next.js auto-preloading the src in the SSR HTML. */}
+      {audioSrc && <audio ref={audioRef} src={audioSrc} preload="auto" />}
     </>
   );
 }

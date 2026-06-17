@@ -51,7 +51,14 @@ export async function POST(req: Request) {
     if (!game)
       return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
-    const players = (game.players as Seat[]) || [];
+    const rawPlayers = (game.players as Seat[] | null | undefined) ?? [];
+    // Self-heal rows whose `players` column was stored as NULL or [] before
+    // the create-game route started seeding an explicit 6-seat grid. Without
+    // this fallback, /sit returns "Invalid seat" on legacy rows.
+    const players: Seat[] =
+      rawPlayers.length === 0
+        ? Array.from({ length: 6 }, (_, i) => ({ seat: i, clerkId: null }))
+        : rawPlayers;
     const meta =
       (game.playerPositions as { hostClerkId?: string } | null) || {};
     const isHost = meta.hostClerkId === userId;
