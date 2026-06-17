@@ -1,8 +1,6 @@
 "use client";
 
 import { ClerkProvider } from "@clerk/nextjs";
-// @ts-expect-error - @clerk/ui package.json has "type":"module", but Next.js bundler handles ESM interop
-import { ui } from "@clerk/ui";
 import { useState, useEffect } from "react";
 import { LanguageProvider } from "../context/LanguageContext";
 import { ThemeProvider } from "../context/ThemeContext";
@@ -35,11 +33,18 @@ function AppProviders({ children }: { children: React.ReactNode }) {
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-  const clerkProps = publishableKey ? { publishableKey } : {};
 
+  // `clerkJSVariant="headless"` removes Clerk's auto-preload of the
+  // @clerk/ui browser bundle, which caused "preloaded but not used
+  // within a few seconds" warnings on pages like /casino/coin-flip
+  // that only use useUser()/useAuth() hooks. The UI bundle is still
+  // fetched on-demand when a page renders a <SignIn /> or <SignUp />.
   return (
     <PostHogProvider>
-      <ClerkProvider {...clerkProps} ui={ui}>
+      {/* `dynamic` defers Clerk's UI bundle load — disables the
+          <link rel="preload"> and fixes the "preloaded but not used"
+          warning on pages that only use useUser()/useAuth(). */}
+      <ClerkProvider publishableKey={publishableKey} dynamic>
         <PostHogIdentify />
         <AppProviders>{children}</AppProviders>
       </ClerkProvider>

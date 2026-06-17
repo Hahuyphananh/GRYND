@@ -264,9 +264,16 @@ export default function PokerPage() {
             },
           );
 
+          // The server intentionally strips `deck` (anti-cheat), so fall
+          // back to the local deck to avoid wiping the in-progress deal.
+          const remoteDeck = Array.isArray(data.game.deck)
+            ? data.game.deck
+            : undefined;
+
           return {
             ...data.game,
             players: mergedPlayers,
+            deck: remoteDeck ?? prev.deck,
           };
         });
       }
@@ -280,7 +287,20 @@ export default function PokerPage() {
       const res = await fetch(`/api/poker/game-state?gameId=${id}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (data?.game) setGame(data.game);
+      if (data?.game) {
+        setGame((prev) => {
+          if (!prev) return data.game;
+          // The server intentionally strips `deck` (anti-cheat), so fall
+          // back to the local deck to avoid wiping the in-progress deal.
+          const remoteDeck = Array.isArray(data.game.deck)
+            ? data.game.deck
+            : undefined;
+          return {
+            ...data.game,
+            deck: remoteDeck ?? prev.deck,
+          };
+        });
+      }
     } catch (err) {
       console.error("Failed to fetch game state by id", err);
     }
@@ -590,8 +610,12 @@ export default function PokerPage() {
   function startGame() {
     if (!game) return;
 
+    // Defensive: `game.deck` may be undefined/empty if the polled game-state
+    // stripped it (the server never exposes the deck). Always rebuild a
+    // deck if we don't have one with cards left.
+    const existingDeck = Array.isArray(game.deck) ? game.deck : [];
     const newDeck =
-      game.deck.length > 0 ? [...game.deck] : shuffle(createDeck());
+      existingDeck.length > 0 ? [...existingDeck] : shuffle(createDeck());
 
     const players = game.players.map((p) => ({
       ...p,
