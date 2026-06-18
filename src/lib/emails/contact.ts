@@ -1,4 +1,11 @@
-import { renderTemplate, sendEmailSafely, ADMIN_EMAIL, getFromAddress } from "./base";
+import { renderTemplate, sendEmailSafely, getFromAddress } from "./base";
+
+/**
+ * Destination email for contact form submissions.
+ * Matches the contact email advertised on /contact and in the privacy policy footer
+ * (src/app/privacy-policy/page.jsx and src/app/contact/page.jsx).
+ */
+const CONTACT_FORM_RECIPIENT = "contact@goonbet.dedyn.io";
 
 /**
  * Sends a notification to the admin when a user submits the contact form.
@@ -23,7 +30,7 @@ export async function sendContactFormEmail(params: {
 
   return sendEmailSafely({
     user: {
-      email: ADMIN_EMAIL,
+      email: CONTACT_FORM_RECIPIENT,
     },
     type: "contact_form",
     category: "transactional",
