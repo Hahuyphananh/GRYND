@@ -442,15 +442,10 @@ export default function ConnectFourGamePage() {
       </AnimatePresence>
 
   <motion.div
-  initial={{ scale: 0, rotate: -30 }}
-  animate={{ scale: 1, rotate: 0 }}
-  transition={{
-    type: "spring" as const,
-    stiffness: 300,
-    damping: 12,
-    delay: 0.25,
-  }}
-  className="mb-2 text-6xl text-center"
+  initial={{ opacity: 0, y: 8 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ duration: 0.35, ease: "easeOut" }}
+  className="text-base"
 >
       {/* Report Modal */}
       <ReportModal
@@ -618,41 +613,77 @@ export default function ConnectFourGamePage() {
           <div
             className={`casino-surface p-4 rounded-2xl ${canPlay ? "turn-active-glow" : ""}`}
           >
-            <h2 className="text-xl font-bold text-yellow-300 mb-3">
-              Match Details
+            <h2 className="text-base font-bold text-yellow-300 mb-3 flex items-center gap-2 uppercase tracking-wider">
+              <span aria-hidden>🎯</span>
+              <span>Match Details</span>
             </h2>
-            <p className="mb-2">
-              Status: <span className="font-semibold">{statusText}</span>
-            </p>
+
+            <div className="mb-3 flex items-baseline gap-2">
+              <span className="text-[10px] uppercase tracking-wider text-white/50">
+                Status
+              </span>
+              <span className="text-sm font-semibold text-white">
+                {statusText}
+              </span>
+            </div>
+
             {!isSpectator && spectatorCount > 0 && (
-              <p className="text-xs text-cyan-300 mb-2">
-                👀 {spectatorCount} spectator{spectatorCount > 1 ? "s" : ""}
-              </p>
+              <div className="mb-3 flex items-center gap-1.5 text-xs text-cyan-300">
+                <span aria-hidden>👀</span>
+                <span>
+                  {spectatorCount} spectator{spectatorCount > 1 ? "s" : ""}
+                </span>
+              </div>
             )}
-            <p className="mb-2">
-              Your color:{" "}
-              <span className="font-semibold">
+
+            <div className="mb-3 flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-wider text-white/50">
+                Color
+              </span>
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  game?.role === "host"
+                    ? "bg-green-500/15 text-green-300 border border-green-400/30"
+                    : game?.role === "guest"
+                      ? "bg-red-500/15 text-red-300 border border-red-400/30"
+                      : "bg-white/5 text-white/60 border border-white/10"
+                }`}
+              >
+                <span
+                  className={`inline-block h-2 w-2 rounded-full ${
+                    game?.role === "host"
+                      ? "bg-green-400"
+                      : game?.role === "guest"
+                        ? "bg-red-400"
+                        : "bg-white/40"
+                  }`}
+                />
                 {game?.role === "host"
                   ? "Green"
                   : game?.role === "guest"
                     ? "Red"
-                    : "-"}
+                    : "—"}
               </span>
-            </p>
-            <p className="mb-2">
-              Discs used:{" "}
-              {game?.role === "host"
-                ? game?.hostDiscsUsed
-                : game?.guestDiscsUsed}{" "}
-              / 21
-            </p>
-            <p className="mb-4">
-              Opponent discs:{" "}
-              {game?.role === "host"
-                ? game?.guestDiscsUsed
-                : game?.hostDiscsUsed}{" "}
-              / 21
-            </p>
+            </div>
+
+            <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+              <span className="text-white/50">Your discs</span>
+              <span className="font-mono font-semibold text-white">
+                {game?.role === "host"
+                  ? game?.hostDiscsUsed
+                  : game?.guestDiscsUsed}{" "}
+                <span className="text-white/40">/ 21</span>
+              </span>
+            </div>
+            <div className="mb-4 flex items-center justify-between gap-2 text-xs">
+              <span className="text-white/50">Opponent discs</span>
+              <span className="font-mono font-semibold text-white">
+                {game?.role === "host"
+                  ? game?.guestDiscsUsed
+                  : game?.hostDiscsUsed}{" "}
+                <span className="text-white/40">/ 21</span>
+              </span>
+            </div>
 
             {game?.status === "in_progress" && (
               <>

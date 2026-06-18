@@ -159,9 +159,6 @@ function SoloCoinFlip() {
 
   useEffect(() => { fetchBalance(); }, []);
 
-  // Sync flipRef
-  useEffect(() => { flipRef.current = flip; }, [flip]);
-
   const fetchBalance = async () => {
     try {
       const res = await fetch("/api/get-user-tokens", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include" });
@@ -262,6 +259,10 @@ function SoloCoinFlip() {
     }
     flipLockRef.current = false;
   }, [bet, choice, balance, soundOn, posthog]);
+
+  // Sync flipRef (kept AFTER the `flip` declaration to avoid a Temporal
+  // Dead Zone ReferenceError that throws a client-side render exception.)
+  useEffect(() => { flipRef.current = flip; }, [flip]);
 
   const handleGambleResult = (newPayout) => {
     setShowGamble(false);
