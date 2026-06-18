@@ -165,6 +165,45 @@ export async function POST(req) {
       `;
     };
 
+    // Explicit user existence + balance check BEFORE the place-bet CTE.
+    // Replaces the previous "post-CTE exists query to disambiguate" approach
+    // which produced the misleading "User not found" symptom: a separate
+    // existence query running after a no-row CTE could return rows=true on a
+    // real user (so -> Insufficient balance) but on a transient DB hiccup
+    // could return rows=false (so -> User not found while the user's row was
+    // actually fine). Doing the check upfront makes the error contract
+    // deterministic and matches the user's account state at request time.
+    const userLookup = await sql`
+      SELECT id, balance::numeric AS balance
+      FROM users
+      WHERE clerk_id = ${userId}
+      LIMIT 1
+    `;
+    const userRows = Array.isArray(userLookup)
+      ? userLookup
+      : userLookup.rows ?? [];
+    const dbUserRow = userRows[0];
+
+    if (!dbUserRow) {
+      console.error(
+        `[PLACE_BET] Clerk user ${userId} has no DB row - refusing to place bet`,
+      );
+      return Response.json(
+        {
+          error: "Account setup incomplete. Please refresh and try again.",
+          code: "USER_NOT_FOUND",
+        },
+        { status: 404 },
+      );
+    }
+
+    if (Number(dbUserRow.balance) < betAmount) {
+      return Response.json(
+        { error: "Insufficient balance", code: "INSUFFICIENT_BALANCE" },
+        { status: 400 },
+      );
+    }
+
     let placeResult;
     try {
       placeResult = await placeBetWithMarketCols();
@@ -189,12 +228,49 @@ export async function POST(req) {
     }
 
     if (!placeResult.rows?.length) {
-      const exists =
-        await sql`SELECT 1 FROM users WHERE clerk_id = ${userId} LIMIT 1`;
-      if (!exists.rows?.length) {
-        return Response.json({ error: "User not found" }, { status: 404 });
+      // 0-row CTE. Two possible causes:
+      //   (a) Concurrent deduction by another request dropped the balance
+      //       below betAmount between our pre-check and the CTE — surface
+      //       this as 400 INSUFFICIENT_BALANCE so the UI shows the correct
+      //       reason (a 500 here would look like a server fault to the user).
+      //   (b) Genuine unexpected CTE failure (rare — DB hiccup, schema drift
+      //       we couldn't catch via column-missing fallback, etc.) — keep the
+      //       500 PLACE_FAILED fallback.
+      // Re-querying here adds one indexed lookup on a slow path only, and
+      // recovers the right error code in the common race case.
+      try {
+        const recheck = await sql`
+          SELECT balance::numeric AS balance
+          FROM users
+          WHERE clerk_id = ${userId}
+          LIMIT 1
+        `;
+        const recheckRows = Array.isArray(recheck) ? recheck : recheck.rows ?? [];
+        const currentBalance = Number(recheckRows[0]?.balance ?? -1);
+
+        if (Number.isFinite(currentBalance) && currentBalance < betAmount) {
+          console.warn(
+            `[PLACE_BET] Race-detected: balance ${dbUserRow.balance} -> ${currentBalance} between pre-check and CTE; reporting INSUFFICIENT_BALANCE`,
+          );
+          return Response.json(
+            { error: "Insufficient balance", code: "INSUFFICIENT_BALANCE" },
+            { status: 400 },
+          );
+        }
+      } catch (recheckErr) {
+        console.warn("[PLACE_BET] Race-disambiguation recheck failed:", recheckErr);
       }
-      return Response.json({ error: "Insufficient balance" }, { status: 400 });
+
+      console.error(
+        `[PLACE_BET] Defensive: CTE returned 0 rows despite user=${dbUserRow.id} balance=${dbUserRow.balance} amount=${betAmount}`,
+      );
+      return Response.json(
+        {
+          error: "Could not place bet. Please try again.",
+          code: "PLACE_FAILED",
+        },
+        { status: 500 },
+      );
     }
 
     const newBalance = Number(placeResult.rows[0].new_balance);
