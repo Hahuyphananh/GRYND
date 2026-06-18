@@ -2574,81 +2574,97 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
   return (
     <>
       {/* ───────────────────────────── */}
-      {/* DESKTOP SIDE CONTROLS */}
+      {/* DESKTOP BOTTOM-CENTER DOCK */}
       {/* ───────────────────────────── */}
-      <div className="hidden lg:flex fixed right-6 top-1/2 -translate-y-1/2 z-50 flex-col gap-3">
-        
-        {/* Fold */}
+      <div className="hidden lg:flex fixed left-1/2 -translate-x-1/2 bottom-10 z-50 items-center justify-center gap-2.5">
+
+        {/* Fold — smaller, quieter (destructive but secondary) */}
         <button
           onClick={() => performAction("fold")}
-          className="w-40 px-5 py-3 rounded-2xl font-bold text-sm
-          bg-gradient-to-r from-red-900/80 to-red-700/70
-          border border-red-500/50
-          text-red-200
-          hover:scale-105 hover:shadow-[0_0_25px_rgba(255,0,0,0.45)]
-          transition-all duration-200"
+          aria-label="Fold"
+          data-action="fold"
+          className="px-4 py-2.5 rounded-2xl font-bold text-xs
+          bg-red-900/60 border border-red-500/40
+          text-red-200/90
+          hover:bg-red-900/80 hover:border-red-400/60 hover:scale-[1.03]
+          hover:shadow-[0_0_18px_rgba(255,0,0,0.35)]
+          transition-all duration-150 active:scale-95
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60"
         >
           ❌ Fold
         </button>
 
-        {/* Check / Call */}
+        {/* Check / Call — mid-tier */}
         {canCheck ? (
           <button
             onClick={() => performAction("check")}
-            className="w-40 px-5 py-3 rounded-2xl font-bold text-sm
+            aria-label="Check"
+            data-action="check"
+            className="px-5 py-3 rounded-2xl font-bold text-sm
             bg-gradient-to-r from-[#00e5ff]/30 to-cyan-400/20
             border border-[#00e5ff]/50
             text-[#00e5ff]
-            hover:scale-105 hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
-            transition-all duration-200"
+            hover:scale-[1.04] hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
+            transition-all duration-150 active:scale-95
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
           >
             ✓ Check
           </button>
         ) : (
           <button
             onClick={() => performAction("call")}
-            className="w-40 px-5 py-3 rounded-2xl font-bold text-sm
+            aria-label={`Call ${toCall}`}
+            data-action="call"
+            className="px-5 py-3 rounded-2xl font-bold text-sm
             bg-gradient-to-r from-[#00e5ff]/30 to-cyan-400/20
             border border-[#00e5ff]/50
             text-[#00e5ff]
-            hover:scale-105 hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
-            transition-all duration-200"
+            hover:scale-[1.04] hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
+            transition-all duration-150 active:scale-95
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
           >
             📞 Call ${toCall}
           </button>
         )}
 
-        {/* Raise */}
+        {/* Quick Bet — when no bet to call, post-flop */}
+        {canUseBetShortcut && (
+          <button
+            onClick={() => performAction("bet20")}
+            aria-label="Bet 20 tokens"
+            data-action="bet20"
+            className="px-5 py-3 rounded-2xl font-bold text-sm
+            bg-gradient-to-r from-yellow-500/30 to-amber-400/15
+            border border-yellow-400/55
+            text-yellow-200
+            hover:scale-[1.04] hover:shadow-[0_0_25px_rgba(255,215,0,0.5)]
+            transition-all duration-150 active:scale-95
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300/60"
+          >
+            💰 Bet $20
+          </button>
+        )}
+
+        {/* Raise — PRIMARY action, brightest, rightmost */}
         <button
           onClick={() => {
             const minRaise = Math.max(20, highestBetInRound * 2);
             setRaiseInputValue(Math.max(raiseAmount, minRaise));
             setShowRaiseInput(true);
           }}
-          className="w-40 px-5 py-3 rounded-2xl font-bold text-sm
-          bg-gradient-to-r from-[#ff00cc]/30 to-fuchsia-500/20
-          border border-[#ff00cc]/50
-          text-[#ff00cc]
-          hover:scale-105 hover:shadow-[0_0_25px_rgba(255,0,204,0.45)]
-          transition-all duration-200"
+          aria-label="Raise"
+          data-action="raise"
+          className="px-6 py-3.5 rounded-2xl font-black text-base
+          bg-gradient-to-r from-[#ff00cc] via-fuchsia-500 to-pink-500
+          border-2 border-[#ff00cc]/70
+          text-black
+          shadow-[0_0_28px_rgba(255,0,204,0.55),inset_0_0_8px_rgba(255,255,255,0.2)]
+          hover:scale-[1.05] hover:shadow-[0_0_38px_rgba(255,0,204,0.75)]
+          transition-all duration-150 active:scale-95
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300/70"
         >
           ⬆ Raise
         </button>
-
-        {/* Quick Bet */}
-        {canUseBetShortcut && (
-          <button
-            onClick={() => performAction("bet20")}
-            className="w-40 px-5 py-3 rounded-2xl font-bold text-sm
-            bg-gradient-to-r from-yellow-500/20 to-amber-400/10
-            border border-yellow-400/40
-            text-yellow-200
-            hover:scale-105 hover:shadow-[0_0_25px_rgba(255,215,0,0.35)]
-            transition-all duration-200"
-          >
-            💰 Bet $20
-          </button>
-        )}
       </div>
 
       {/* ───────────────────────────── */}

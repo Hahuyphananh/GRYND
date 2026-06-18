@@ -91,6 +91,15 @@ export default function ConnectFourLobbyPage() {
     }
   };
 
+  const playVsAi = () => {
+    if (!isSignedIn) {
+      alert("Please sign in to play vs AI.");
+      return;
+    }
+    posthog?.capture("connect_four_game_started", { mode: "ai" });
+    router.push("/casino/connect-four/play-ai");
+  };
+
   const joinGame = async (gameId?: number) => {
     setLoading(true);
     if (gameId) setJoiningId(gameId);
@@ -125,21 +134,22 @@ export default function ConnectFourLobbyPage() {
       <NavigationBar currentPath="/casino" />
       <div className="mx-auto mt-4 max-w-4xl sm:mt-8">
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
+          initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: 0.4 }}
         >
           <h1
-            className="text-4xl font-extrabold text-center mb-3 
-  text-transparent bg-clip-text 
+            className="text-3xl sm:text-4xl font-extrabold text-center mb-2
+  text-transparent bg-clip-text
   bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500
   drop-shadow-[0_0_18px_rgba(0,229,255,0.6)] tracking-wide"
           >
             CONNECT FOUR
           </h1>
         </motion.div>
-        <p className="text-center text-white/80 mb-8">
-          Create, join, and wager in live multiplayer Connect Four games.
+        <p className="text-center text-sm text-white/60 mb-7 max-w-xl mx-auto">
+          Create, join, and wager in live multiplayer Connect Four games. Or
+          play the AI for free.
         </p>
 
         <motion.div
@@ -149,36 +159,42 @@ export default function ConnectFourLobbyPage() {
 border border-[#00e5ff]/20 
 shadow-[0_0_40px_rgba(0,229,255,0.15)] rounded-2xl p-6 shadow-[0_0_28px_rgba(0,229,255,0.2)]"
         >
-          <div className="text-center mb-4 text-lg">
-            Balance:{" "}
-            <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500">
+          <div className="text-center mb-4 text-sm">
+            <span className="uppercase tracking-wider text-[11px] text-white/50 mr-2">
+              Balance
+            </span>
+            <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500 text-base">
               {balance.toFixed(2)}
             </span>{" "}
-            tokens
+            <span className="text-white/50">tokens</span>
           </div>
 
           <div className="grid md:grid-cols-4 gap-3 items-end">
             <div className="md:col-span-1">
-              <label className="text-sm text-white/80">Bet amount</label>
+              <label className="text-[11px] uppercase tracking-wider text-white/60">
+                Bet amount
+              </label>
               <input
                 type="number"
                 value={betAmount}
                 min={1}
                 max={balance}
                 onChange={(e) => setBetAmount(Number(e.target.value))}
-                className="w-full mt-1 p-3 rounded-lg 
-bg-[#020617] border border-[#00e5ff]/30 
+                className="w-full mt-1 p-2.5 rounded-lg text-sm
+bg-[#020617] border border-[#00e5ff]/30
 focus:border-[#00e5ff] focus:ring-0
 outline-none text-white"
               />
             </div>
             <div className="md:col-span-1">
-              <label className="text-sm text-white/80">Turn timer</label>
+              <label className="text-[11px] uppercase tracking-wider text-white/60">
+                Turn timer
+              </label>
               <select
                 value={timerSeconds}
                 onChange={(e) => setTimerSeconds(Number(e.target.value))}
-                className="w-full mt-1 p-3 rounded-lg 
-bg-[#020617] border border-[#00e5ff]/30 
+                className="w-full mt-1 p-2.5 rounded-lg text-sm
+bg-[#020617] border border-[#00e5ff]/30
 focus:border-[#00e5ff] focus:ring-0
 outline-none text-white"
               >
@@ -191,62 +207,87 @@ outline-none text-white"
             <button
               onClick={createGame}
               disabled={loading}
-              className="p-3 rounded-xl font-bold text-black
+              className="p-2.5 rounded-xl text-sm font-bold text-black
 bg-gradient-to-r from-yellow-200 to-yellow-600
 hover:scale-105 active:scale-95
 transition-all duration-150
-shadow-[0_0_18px_rgba(255,215,0,0.6)]"
+shadow-[0_0_18px_rgba(255,215,0,0.6)] disabled:opacity-50 disabled:hover:scale-100"
             >
               {loading ? "Creating..." : "Create Game"}
             </button>
             <button
               onClick={() => joinGame()}
               disabled={loading}
-              className="p-3 rounded-xl font-bold text-[#001933]
+              className="p-2.5 rounded-xl text-sm font-bold text-[#001933]
 bg-gradient-to-r from-cyan-400 to-blue-500
 hover:scale-105 active:scale-95
 transition-all duration-150
-shadow-[0_0_18px_rgba(0,229,255,0.6)]"
+shadow-[0_0_18px_rgba(0,229,255,0.6)] disabled:opacity-50 disabled:hover:scale-100"
             >
               {loading ? "Joining..." : "Quick Join"}
             </button>
           </div>
+
+          <div className="relative my-5 flex items-center gap-3">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[#00e5ff]/30 to-transparent" />
+            <span className="text-[10px] uppercase tracking-[0.3em] text-white/40">
+              or
+            </span>
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[#00e5ff]/30 to-transparent" />
+          </div>
+
+          <button
+            onClick={playVsAi}
+            disabled={loading}
+            className="group w-full p-3 rounded-xl text-sm font-bold text-white
+bg-gradient-to-r from-fuchsia-500 via-purple-500 to-indigo-500
+hover:scale-[1.02] active:scale-95
+transition-all duration-200
+shadow-[0_0_22px_rgba(168,85,247,0.45)]
+border border-purple-300/30
+flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
+          >
+            <span aria-hidden className="text-base">🤖</span>
+            <span className="tracking-wide">Play vs AI — Free, no wager</span>
+            <span aria-hidden className="text-base group-hover:translate-x-0.5 transition-transform">→</span>
+          </button>
         </motion.div>
 
         <div className="mt-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-2xl p-5 shadow-[0_0_22px_rgba(0,229,255,0.15)]">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-[#FFD700]">
-              Available Games
+            <h2 className="text-lg font-bold text-[#FFD700] flex items-center gap-2 uppercase tracking-wider">
+              <span aria-hidden>🎮</span>
+              <span>Available Games</span>
             </h2>
             <button
               onClick={fetchGames}
-              className="px-3 py-1 rounded-lg bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] text-sm font-semibold shadow-[0_0_10px_rgba(0,229,255,0.35)]"
+              className="px-3 py-1.5 rounded-lg bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] text-xs font-semibold shadow-[0_0_10px_rgba(0,229,255,0.35)] transition-colors"
             >
               Refresh
             </button>
           </div>
 
           {availableGames.length === 0 ? (
-            <p className="text-white/70">No open games right now.</p>
+            <p className="text-sm text-white/60">No open games right now.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {availableGames.map((game) => (
                 <div
                   key={game.id}
-                  className="flex items-center justify-between rounded-xl bg-[#08142f] p-3 border border-[#00e5ff]/20"
+                  className="flex items-center justify-between rounded-xl bg-[#08142f]/80 p-3 border border-[#00e5ff]/20 hover:border-[#00e5ff]/40 transition-colors"
                 >
                   <div>
-                    <p className="font-semibold">Game #{game.id}</p>
-                    <p className="text-sm text-white/75">
+                    <p className="text-sm font-semibold">Game #{game.id}</p>
+                    <p className="text-xs text-white/60">
                       Host: {game.hostName || "Player"} · Bet:{" "}
-                      {Number(game.betAmount).toFixed(2)} · Timer:{" "}
+                      <span className="text-yellow-300">{Number(game.betAmount).toFixed(2)}</span> · Timer:{" "}
                       {Number(game.timerSeconds || 60)}s
                     </p>
                   </div>
                   <button
                     onClick={() => joinGame(game.id)}
                     disabled={loading || joiningId === game.id}
-                    className="px-4 py-2 rounded-lg bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] font-bold disabled:bg-[#246874]"
+                    className="px-4 py-1.5 rounded-lg bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] text-sm font-bold disabled:bg-[#246874] disabled:text-white/60 transition-colors"
                   >
                     {joiningId === game.id ? "Joining..." : "Join"}
                   </button>
