@@ -242,37 +242,47 @@ export default function ConnectFourVsAiPage() {
     [posthog],
   );
 
-  // AI move scheduler: triggers after the board advances to AI's turn.
-  useEffect(() => {
-    if (aiThinking || status !== "playing") return;
-    if (moveLockRef.current) return;
-    if (countPieces(board) % 2 !== 1) return; // not AI's turn
-    if (isBoardFull(board)) return;
-
-    moveLockRef.current = true;
-    setAiThinking(true);
-    const timer = window.setTimeout(() => {
-      const epoch = gameEpochRef.current;
-      const col = pickAiMove(board);
-      const row = col >= 0 ? getDropRow(board, col) : -1;
-      if (row < 0) {
-        setAiThinking(false);
-        moveLockRef.current = false;
+  // Schedule the AI's next move against the given board snapshot.
+  // Called explicitly from handleHumanMove after the human's drop completes,
+  // so we never depend on a useEffect re-running to trigger the AI — the previous
+  // implementation relied on [board, aiThinking, status] but those deps don't
+  // actually change after the human's lock release in normal play, so the AI
+  // never got scheduled (it's locked in a frozen board "still your turn" state).
+  const scheduleAiTurn = useCallback(
+    (boardState: ConnectFourBoard) => {
+      if (isBoardFull(boardState)) {
         return;
       }
-      const next = cloneBoard(board);
-      next[row][col] = AI_PLAYER;
-      placeDisc(next, col, row, AI_PLAYER);
+      // The caller (handleHumanMove) just released the lock; re-acquire it for the AI's turn.
+      moveLockRef.current = true;
+      setAiThinking(true);
 
+      const epoch = gameEpochRef.current;
       window.setTimeout(() => {
-        if (gameEpochRef.current !== epoch) return;
-        finalizeMoveOutcome(next, row, col, AI_PLAYER);
-        setAiThinking(false);
-        moveLockRef.current = false;
-      }, DROP_DURATION_MS);
-    }, AI_THINK_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [board, aiThinking, status, placeDisc, finalizeMoveOutcome]);
+        if (gameEpochRef.current !== epoch) {
+          return;
+        }
+        const col = pickAiMove(boardState);
+        const row = col >= 0 ? getDropRow(boardState, col) : -1;
+        if (row < 0) {
+          setAiThinking(false);
+          moveLockRef.current = false;
+          return;
+        }
+        const next = cloneBoard(boardState);
+        next[row][col] = AI_PLAYER;
+        placeDisc(next, col, row, AI_PLAYER);
+
+        window.setTimeout(() => {
+          if (gameEpochRef.current !== epoch) return;
+          finalizeMoveOutcome(next, row, col, AI_PLAYER);
+          setAiThinking(false);
+          moveLockRef.current = false;
+        }, DROP_DURATION_MS);
+      }, AI_THINK_DELAY_MS);
+    },
+    [placeDisc, finalizeMoveOutcome],
+  );
 
   const handleHumanMove = useCallback(
     (col: number) => {
@@ -291,9 +301,16 @@ export default function ConnectFourVsAiPage() {
         if (gameEpochRef.current !== epoch) return;
         finalizeMoveOutcome(next, row, col, HUMAN_PLAYER);
         moveLockRef.current = false;
+        // Human is done — if the game continues, hand the turn to the AI.
+        // Pass the snapshot board (`next`) so the AI move is computed against
+        // the post-drop state without relying on a useEffect re-run.
+        const humanWon = checkWinner(next, row, col, HUMAN_PLAYER);
+        if (!humanWon) {
+          scheduleAiTurn(next);
+        }
       }, DROP_DURATION_MS);
     },
-    [board, aiThinking, status, placeDisc, finalizeMoveOutcome],
+    [board, aiThinking, status, placeDisc, finalizeMoveOutcome, scheduleAiTurn],
   );
 
   const resetGame = useCallback(() => {
