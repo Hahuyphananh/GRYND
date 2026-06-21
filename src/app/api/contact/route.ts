@@ -1,46 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendContactFormEmail } from "../../../lib/emails/contact";
-import { getFromAddress } from "../../../lib/emails/base";
+import { isGmailConfigured, getGmailFromAddress } from "../../../lib/emails/gmail";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/contact — Diagnostic endpoint: checks Resend configuration.
- * Returns the from address, API key status, and verified identity info.
+ * GET /api/contact — Diagnostic endpoint: reports Gmail SMTP configuration.
+ * Returns whether GMAIL_USER + GMAIL_APP_PASSWORD are set, and what From
+ * address will be used to send the message.
  */
 export async function GET() {
-  const apiKeySet = Boolean(process.env.RESEND_API_KEY);
-  const fromEmail = getFromAddress();
-  const customFromSet = Boolean(process.env.RESEND_FROM_EMAIL?.trim());
+  const configured = isGmailConfigured();
+  const fromAddress = getGmailFromAddress();
+  // Redact the local part of the email to discourage enumeration from this
+  // auth-free endpoint while still letting the operator see what is wired up.
+  const redactedFrom = fromAddress
+    ? fromAddress.replace(/^(.{1,3}).*?(@.*)$/, "$1***$2")
+    : null;
 
   return NextResponse.json({
-    configured: apiKeySet,
-    fromAddress: fromEmail,
-    customFromSet,
-    help: !customFromSet
-      ? "RESEND_FROM_EMAIL not set — using Resend test domain (only delivers to verified identities). Set RESEND_FROM_EMAIL to a verified domain email to fix 503 errors."
+    transport: "gmail-smtp",
+    configured,
+    fromAddress: redactedFrom,
+    help: !configured
+      ? "Gmail SMTP not configured. Set GMAIL_USER and GMAIL_APP_PASSWORD env vars (GMAIL_APP_PASSWORD is a 16-char app password from myaccount.google.com)."
       : null,
   });
 }
 
 /**
  * POST /api/contact — User submits the contact form.
- * Sends the message to the admin via Resend.
+ * Sends the message via Gmail SMTP to contact@goonbet.dedyn.io (which the
+ * dedyn.io forwarder routes to the admin's Gmail inbox). The Reply-To
+ * header is set to the form-submitter's email so the admin can reply
+ * directly. No third-party transactional email service is used.
  */
 export async function POST(request: NextRequest) {
   try {
-    // Pre-check: Resend API key must be configured
-    if (!process.env.RESEND_API_KEY) {
-      console.error("[api/contact] RESEND_API_KEY is not configured");
+    // Pre-check: Gmail SMTP must be configured
+    if (!isGmailConfigured()) {
+      console.error("[api/contact] Gmail SMTP is not configured (missing GMAIL_USER or GMAIL_APP_PASSWORD)");
       return NextResponse.json(
         { success: false, error: "Email service is not configured. Please try again later or contact support directly." },
         { status: 503 },
       );
     }
 
-    // Log the from address being used to help debug domain verification issues
-    console.log("[api/contact] Using from address:", getFromAddress());
+    // Redact the From address before logging — same form as the GET diagnostic.
+    const _fromAddr = getGmailFromAddress();
+    const _loggedFrom = _fromAddr
+      ? _fromAddr.replace(/^(.{1,3}).*?(@.*)$/, "$1***$2")
+      : null;
+    console.log("[api/contact] Sending via Gmail SMTP from:", _loggedFrom);
 
     const body = await request.json();
     const { email, name, message } = body;
@@ -86,6 +98,7 @@ export async function POST(request: NextRequest) {
         missing_email: { status: 400, message: "A valid email address is required." },
         idempotent: { status: 429, message: "You've already sent a message recently. Please wait before sending another." },
         marketing_rate_limited: { status: 429, message: "Too many messages. Please try again later." },
+        not_configured: { status: 503, message: "Email service is not configured. Please try again later." },
         provider_error: { status: 503, message: "The email service is temporarily unavailable. Please try again later or contact support directly." },
       };
       const details = "details" in result ? (result as any).details : "";
