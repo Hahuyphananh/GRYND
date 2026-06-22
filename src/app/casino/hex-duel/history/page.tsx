@@ -25,6 +25,14 @@ interface HexDuelGameRecord {
   startedAt: string | null;
   endedAt: string | null;
   createdAt: string;
+  // Perspective-aware fields supplied by /api/hex-duel/history:
+  isHost?: boolean;
+  viewerMoves?: number;
+  opponentMoves?: number;
+  viewerTerritory?: number;
+  opponentTerritory?: number;
+  opponentDisplayName?: string;
+  opponentName?: string | null;
 }
 
 const PAGE_SIZE = 15;
@@ -168,7 +176,7 @@ export default function HexDuelHistoryPage() {
                       <th className="text-right px-4 py-3 text-[10px] text-slate-500 uppercase tracking-widest">Wager</th>
                       <th className="text-center px-4 py-3 text-[10px] text-slate-500 uppercase tracking-widest">Result</th>
                       <th className="text-right px-4 py-3 text-[10px] text-slate-500 uppercase tracking-widest">Payout</th>
-                      <th className="text-center px-4 py-3 text-[10px] text-slate-500 uppercase tracking-widest">P1/P2 Moves</th>
+                      <th className="text-center px-4 py-3 text-[10px] text-slate-500 uppercase tracking-widest">You / Opp Moves</th>
                       <th className="text-center px-4 py-3 text-[10px] text-slate-500 uppercase tracking-widest">Duration</th>
                       <th className="text-center px-4 py-3 text-[10px] text-slate-500 uppercase tracking-widest">Opponent</th>
                     </tr>
@@ -222,7 +230,7 @@ export default function HexDuelHistoryPage() {
                             )}
                           </td>
                           <td className="px-4 py-3 text-center text-xs text-slate-400">
-                            {game.player1Moves} / {game.player2Moves}
+                            {game.viewerMoves ?? game.player1Moves} / {game.opponentMoves ?? game.player2Moves}
                           </td>
                           <td className="px-4 py-3 text-center text-xs text-slate-400">
                             {formatDuration(game.durationSeconds)}
@@ -230,8 +238,10 @@ export default function HexDuelHistoryPage() {
                           <td className="px-4 py-3 text-center">
                             {game.isAiGame ? (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30 capitalize">
-                                🤖 AI ({game.aiDifficulty || "medium"})
+                                🤖 {game.opponentDisplayName || `AI (${game.aiDifficulty || "medium"})`}
                               </span>
+                            ) : game.opponentDisplayName ? (
+                              <span className="text-[11px] text-slate-300">👤 {game.opponentDisplayName}</span>
                             ) : (
                               <span className="text-[10px] text-slate-500">👤 Human</span>
                             )}

@@ -44,3 +44,6 @@ next-env.d.ts
 # Sentry Config File
 .env.sentry-build-plugin
 .env.local
+
+# Windows shell quirk: `> NUL` redirection sometimes creates a literal file named NUL
+/NUL

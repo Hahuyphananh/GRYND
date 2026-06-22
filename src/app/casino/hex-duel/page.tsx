@@ -2158,6 +2158,22 @@ export default function HexDuelPage() {
   const localColor = "#22d3ee";
   const opponentColor = "#ef4444";
 
+  // ── View-layer perspective swap ──────────────────────────────────────
+  // The engine tracks owners absolutely ("player1" at capital 0,0, "player2" at capital 4,4).
+  // For the board UI we want each player to see their own tiles as their own color
+  // (Clash Royale style). Coordinates stay the same on both sides so engine
+  // interactions are unaffected — only the visual owner label is swapped.
+  const displayGrid = useMemo(() => {
+    if (localPlayerIsP1) return grid;
+    return grid.map((row) =>
+      row.map((tile) => {
+        if (tile.owner === "player1") return { ...tile, owner: "player2" as const };
+        if (tile.owner === "player2") return { ...tile, owner: "player1" as const };
+        return tile;
+      })
+    );
+  }, [grid, localPlayerIsP1]);
+
   // Stats for local player
   const localMoves = localPlayerIsP1 ? p1MoveCount : p2MoveCount;
   const localTerritory = localPlayerIsP1 ? p1Territory : p2Territory;
@@ -2503,7 +2519,11 @@ export default function HexDuelPage() {
                 )}
                 <div className="flex justify-center overflow-x-auto overflow-y-hidden px-1 sm:px-2 -mx-1 sm:-mx-2" style={{ scrollbarWidth: "none" }}>
                 <HexBoard
-                  grid={grid}
+                  grid={displayGrid}
+                  localColor={localColor}
+                  opponentColor={opponentColor}
+                  localLabel={localLabel}
+                  opponentLabel={opponentLabel}
                   selectedTile={selectedTile}
                   onTileClick={handleTileClickWithActions}
                   recentlyCaptured={recentlyCaptured}

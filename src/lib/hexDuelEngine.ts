@@ -565,49 +565,61 @@ export function useHexDuel() {
     if (winner) return;
 
     if (action.type === 'attack' && action.sourceKey && action.targetKey && action.troopCount) {
-      skipTroopGrowthRef.current = true;
       const sender = currentTurn;
       const gameOver = _applyAttackRaw(action.sourceKey, action.targetKey, action.troopCount, sender);
 
-      // AP management — skip if game ended from this attack.
-      // Uses closure currentAP (same pattern as handleAttack).
-      // Does NOT switch the turn when AP depletes — the follow-up endTurn
-      // message from the sender will handle turn switching and troop growth.
+      // Mirror the sender's handleAttack behavior:
+      //   - Normal case: just decrement AP and stay on the same turn.
+      //   - AP deplete case: drop to 0, grow sender's troops, log endTurn, switch turn.
+      // This is self-sufficient — the sender does NOT send a follow-up endTurn
+      // action for auto-depletion, so the receiver must handle turn switching here.
       if (!gameOver) {
         const willDeplete = currentAP <= ATTACK_COST;
         if (willDeplete) {
           setCurrentAP(0);
-          // Leave skipTroopGrowthRef = true so the follow-up endTurn
-          // will skip double troop growth and switch the turn.
+          applyTroopGrowth(sender);
+          addActionLog({
+            player: sender,
+            type: "endTurn",
+            apCost: 0,
+            label: "Ended turn (AP depleted)",
+          });
+          switchTurn();
         } else {
           setCurrentAP(currentAP - ATTACK_COST);
-          skipTroopGrowthRef.current = false;
         }
-      } else {
-        skipTroopGrowthRef.current = false;
       }
     } else if (action.type === 'displace' && action.sourceKey && action.targetKey && action.troopCount) {
-      skipTroopGrowthRef.current = true;
       const sender = currentTurn;
       _applyDisplaceRaw(action.sourceKey, action.targetKey, action.troopCount, sender);
 
-      // AP management — same pattern as attack (no turn switch for depleted AP)
+      // Same auto-end behavior as attack, mirrored for displace.
       const willDeplete = currentAP <= DISPLACE_COST;
       if (willDeplete) {
         setCurrentAP(0);
-        // Leave skipTroopGrowthRef = true for follow-up endTurn
+        applyTroopGrowth(sender);
+        addActionLog({
+          player: sender,
+          type: "endTurn",
+          apCost: 0,
+          label: "Ended turn (AP depleted)",
+        });
+        switchTurn();
       } else {
         setCurrentAP(currentAP - DISPLACE_COST);
-        skipTroopGrowthRef.current = false;
       }
     } else if (action.type === 'endTurn') {
+      // Sender already grew their own troops and switched turns locally.
+      // Receiver mirrors the same effect — applyTroopGrowth here is skipped
+      // because skipTroopGrowthRef is set, preventing double growth on the
+      // sender's tiles. The endTurn() call still adds the log and switches.
       skipTroopGrowthRef.current = true;
       endTurn();
     } else if (action.type === 'skipRound') {
       skipTroopGrowthRef.current = true;
       skipRound();
     }
-  }, [winner, _applyAttackRaw, _applyDisplaceRaw, endTurn, skipRound, currentTurn, applyTroopGrowth, addActionLog, switchTurn]);
+  }, [winner, _applyAttackRaw, _applyDisplaceRaw, endTurn, skipRound, currentTurn, currentAP, applyTroopGrowth, addActionLog, switchTurn]);
 
   // ── Reset ─────────────────────────────────────────────────────────
 

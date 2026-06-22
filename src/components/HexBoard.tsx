@@ -20,6 +20,17 @@ interface HexBoardProps {
   attackHighlightKeys?: string[];
   /** Set of "x,y" keys of friendly source tiles for attack/displace */
   sourceHighlightKeys?: string[];
+  /**
+   * Optional perspective-aware legend props.
+   * When passed, the legend shows perspective-relative labels + colors so the
+   * "your side" cell reads as "You" (local color) and the opponent cell as
+   * "Opponent" (opponent color) regardless of which engine player the local
+   * viewer is. Falls back to absolute P1/P2 labels with cyan/red if omitted.
+   */
+  localColor?: string;
+  opponentColor?: string;
+  localLabel?: string;
+  opponentLabel?: string;
 }
 
 export default function HexBoard({
@@ -34,6 +45,10 @@ export default function HexBoard({
   reinforceTargetKeys,
   attackHighlightKeys,
   sourceHighlightKeys,
+  localColor,
+  opponentColor,
+  localLabel,
+  opponentLabel,
 }: HexBoardProps) {
   const [dims, setDims] = React.useState({ width: 90, height: 90 });
   const boardRef = React.useRef<HTMLDivElement>(null);
@@ -200,16 +215,43 @@ export default function HexBoard({
         <div className="absolute bottom-0 right-0 w-5 h-5 sm:w-7 sm:h-7 border-b border-r border-cyan-400/20 rounded-br-xl" />
       </div>
 
-      {/* Legend */}
+      {/* Legend — perspective-aware when localColor/opponentColor are supplied */}
       <div className="mt-4 flex items-center gap-4 text-[10px] sm:text-[11px] text-slate-500 flex-wrap justify-center">
-        <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-sm bg-cyan-400/60 shadow-[0_0_6px_rgba(34,211,238,0.3)]" />
-          P1
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-sm bg-red-400/60 shadow-[0_0_6px_rgba(239,68,68,0.3)]" />
-          P2
-        </span>
+        {localColor && opponentColor ? (
+          <>
+            <span className="flex items-center gap-1.5">
+              <span
+                className="w-2.5 h-2.5 rounded-sm"
+                style={{
+                  backgroundColor: `${localColor}99`,
+                  boxShadow: `0 0 6px ${localColor}55`,
+                }}
+              />
+              {localLabel || "You"}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span
+                className="w-2.5 h-2.5 rounded-sm"
+                style={{
+                  backgroundColor: `${opponentColor}99`,
+                  boxShadow: `0 0 6px ${opponentColor}55`,
+                }}
+              />
+              {opponentLabel || "Opponent"}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-cyan-400/60 shadow-[0_0_6px_rgba(34,211,238,0.3)]" />
+              P1
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-red-400/60 shadow-[0_0_6px_rgba(239,68,68,0.3)]" />
+              P2
+            </span>
+          </>
+        )}
         <span className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-sm bg-slate-700/40 border border-slate-600/30" />
           Empty
