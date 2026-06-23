@@ -83,7 +83,25 @@ export default function ReportModal({
       await onSubmit(selectedReason, details.trim());
       setSubmitted(true);
     } catch (err: any) {
-      setError(err.message || "Failed to submit report. Please try again.");
+      // `fetch()` throws a TypeError ("Failed to fetch" / "Load failed" /
+      // "NetworkError") when the user has no internet, the browser blocks
+      // the request, or a CORS/preflight check fails. Restrict the message
+      // match to real fetch TypeErrors so a server-supplied error string
+      // containing these substrings can't falsely trip the offline branch.
+      const raw = String(err?.message ?? "").toLowerCase();
+      const fetchNetworkError =
+        err instanceof TypeError &&
+        (raw.includes("failed to fetch") ||
+          raw.includes("networkerror") ||
+          raw.includes("load failed") ||
+          raw.includes("network request failed"));
+      if (fetchNetworkError || navigator.onLine === false) {
+        setError(
+          "You appear to be offline. Please check your internet connection and try again.",
+        );
+      } else {
+        setError(err?.message || "Failed to submit report. Please try again.");
+      }
     } finally {
       setSubmitting(false);
     }

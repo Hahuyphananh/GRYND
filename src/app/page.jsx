@@ -610,10 +610,10 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               initial={{ opacity: 0, y: 8 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.25 }}
-              whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }}
+              whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
               transition={{ duration: 0.25 }}
               href="/casino/roulette"
-              className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
+              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
@@ -633,10 +633,10 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               initial={{ opacity: 0, y: 8 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.25 }}
-              whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }}
+              whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
               transition={{ duration: 0.25 }}
               href="/casino/blackjack"
-              className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
+              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
@@ -658,10 +658,10 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               initial={{ opacity: 0, y: 8 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.25 }}
-              whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }}
+              whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
               transition={{ duration: 0.25 }}
               href="/casino/poker"
-              className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
+              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
@@ -681,10 +681,10 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               initial={{ opacity: 0, y: 8 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.25 }}
-              whileHover={{ scale: shouldReduceMotion ? 1 : 1.01 }}
+              whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
               transition={{ duration: 0.25 }}
               href="/casino/plinko"
-              className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
+              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg">
                 <Image
@@ -723,7 +723,16 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           </div>
 
           {loadingSports ? (
-            <div className="text-center text-[#00e5ff]">{t("ui.loading")}</div>
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={`sport-skeleton-${i}`}
+                  className="rounded-lg border border-[#00e5ff]/15 bg-[#040d24]/40 px-4 py-4"
+                >
+                  <div className="h-5 w-40 animate-pulse rounded bg-[#06142f]/60" />
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="space-y-4">
               {Object.keys(sports).map((groupKey) => (

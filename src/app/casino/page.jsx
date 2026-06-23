@@ -290,9 +290,9 @@ function MainComponent() {
   }, [user]);
 
   const GameCard = ({ game }) => (
-    <div className="group relative overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-2 transition-all duration-300 hover:-translate-y-1 sm:hover:-translate-y-2 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,229,255,0.4)]">
+    <div className="group relative overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,229,255,0.4)]">
       <Link href={game.href} className="block cursor-pointer">
-        <div className="mb-2 h-28 overflow-hidden rounded-lg">
+        <div className="mb-3 h-32 overflow-hidden rounded-lg">
           <Image
             src={game.image}
             alt={game.nameKey ? t(game.nameKey) : game.name}
@@ -355,18 +355,18 @@ function MainComponent() {
       <NavigationBar currentPath="/casino" />
 
       <div className="mx-auto max-w-7xl px-3 py-8 sm:px-4 sm:py-12">
-        <section className="mb-5 text-center">
-          <h1 className="mb-2 text-3xl font-bold text-[#f5ff3b] sm:text-4xl md:text-6xl fade-slide-up">
+        <section className="mb-8 space-y-3 text-center">
+          <h1 className="text-3xl font-extrabold tracking-tight leading-tight text-[#f5ff3b] sm:text-4xl md:text-6xl fade-slide-up">
             {t("home.title")}
           </h1>
           <p
-            className="mb-2 text-base text-[#d8fbff] sm:text-lg md:text-xl fade-slide-up"
+            className="text-base leading-relaxed text-[#d8fbff] sm:text-lg md:text-xl fade-slide-up"
             style={{ animationDelay: "0.15s" }}
           >
             {t("home.subtitle")}
           </p>
           <p
-            className="mb-2 text-base text-[#d8fbff] sm:text-lg md:text-xl fade-slide-up"
+            className="text-base leading-relaxed text-[#d8fbff] sm:text-lg md:text-xl fade-slide-up"
             style={{ animationDelay: "0.2s" }}
           >
             {t("home.description")}
@@ -381,7 +381,7 @@ function MainComponent() {
           )}
           {user && <></>}
         </section>
-        <div className="mb-5 flex justify-center px-4">
+        <div className="mb-8 flex justify-center px-4">
           <div className="relative w-full max-w-4xl">
             {/* Search Icon */}
             <svg
@@ -404,36 +404,40 @@ function MainComponent() {
               placeholder={t("home.search_placeholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl border border-[#00e5ff]/45 bg-[#040d24] py-3 pl-12 pr-4 text-[#ecf8ff] placeholder-[#6aa4d8] focus:outline-none focus:ring-2 focus:ring-[#00e5ff] "
+              className="w-full rounded-xl border border-[#00e5ff]/45 bg-[#040d24] py-3 pl-12 pr-4 text-[#ecf8ff] placeholder-[#6aa4d8] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#00e5ff]"
             />
           </div>
         </div>
 
-        <div className="mb-8 flex flex-wrap justify-center gap-2 sm:gap-3">
-          <p className="flex flex-wrap justify-center gap-3 mt-2">Sort By:</p>
-          {[
-            { key: "all", label: "All Games" },
-            { key: "popular", label: "Popular Games" },
-            { key: "skill", label: "Skill-Based Games" },
-            { key: "newest", label: "Newest Games" },
-          ].map((btn) => (
-            <button
-              key={btn.key}
-              onClick={() => setActiveFilter(btn.key)}
-              className={`rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-300 sm:px-5 sm:text-base ${
-                activeFilter === btn.key
-                  ? "bg-[#00e5ff] text-black shadow-[0_0_15px_rgba(0,229,255,0.7)]"
-                  : "bg-[#08142f] text-[#d8fbff] border border-[#00e5ff]/30 hover:bg-[#10234a]"
-              }`}
-            >
-              {btn.label}
-            </button>
-          ))}
+        <div className="mb-10 flex flex-col items-center gap-4">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-[#9dd8ff] opacity-80">
+            Sort By
+          </p>
+          <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
+            {[
+              { key: "all", label: "All Games" },
+              { key: "popular", label: "Popular Games" },
+              { key: "skill", label: "Skill-Based Games" },
+              { key: "newest", label: "Newest Games" },
+            ].map((btn) => (
+              <button
+                key={btn.key}
+                onClick={() => setActiveFilter(btn.key)}
+                className={`rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-200 sm:px-5 sm:text-base ${
+                  activeFilter === btn.key
+                    ? "bg-[#00e5ff] text-black shadow-[0_0_15px_rgba(0,229,255,0.7)]"
+                    : "bg-[#08142f] text-[#d8fbff] border border-[#00e5ff]/30 hover:bg-[#10234a]"
+                }`}
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {displayedGames.length > 0 && (
           <>
-            <h2 className="mb-6 text-2xl font-bold text-[#00e5ff] sm:text-3xl">
+            <h2 className="mb-6 text-2xl font-extrabold tracking-tight text-[#00e5ff] sm:text-3xl">
               {activeFilter === "popular"
                 ? "Popular Games"
                 : activeFilter === "skill"
@@ -452,6 +456,17 @@ function MainComponent() {
             </div>
           </>
         )}
+        {displayedGames.length === 0 &&
+          (search.trim().length > 0 || activeFilter !== "all") && (
+            <div className="mt-4 rounded-2xl border border-[#00e5ff]/20 bg-[#040d24]/40 px-6 py-16 text-center sm:py-20">
+              <p className="text-lg font-semibold text-[#d8fbff] opacity-90">
+                No games match your search.
+              </p>
+              <p className="mt-2 text-sm text-[#9dd8ff] opacity-80">
+                Try a different keyword or change the filter.
+              </p>
+            </div>
+          )}
       </div>
 
       <style jsx global>{`
