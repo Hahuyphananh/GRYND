@@ -11,7 +11,12 @@ export const fadeUp = {
   initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: 8 },
-  transition: { duration: 0.3, ease: "easeOut" },
+  // `as const` keeps the literal "easeOut" type when consumers spread
+  // `{...fadeUp}` into a framer-motion component. Without it, TS widens
+  // to `string`, which framer-motion's `Easing | Easing[]` transition
+  // type rejects. Used by the match-page phase AnimatePresence wrappers
+  // (waiting ↔ ready ↔ arming ↔ active ↔ finished).
+  transition: { duration: 0.3, ease: "easeOut" as const },
 };
 
 export const stagger = {

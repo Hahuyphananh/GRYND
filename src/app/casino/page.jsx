@@ -24,6 +24,7 @@ import Img18 from "../../images/hex-duel.svg";
 import Img21 from "../../images/odds.svg";
 import Img19 from "../../images/dice-flush.svg";
 import Img20 from "../../images/farkle.svg";
+import Img22 from "../../images/precision.svg";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -212,6 +213,14 @@ function MainComponent() {
       descriptionKey: "games.farkle_desc",
       popular: true,
     },
+    {
+      name: "Precision",
+      href: "/casino/precision",
+      leaderboardKey: "precision",
+      image: Img22,
+      descriptionKey: "games.precision_desc",
+      nameKey: "games.precision_name",
+    },
   ];
 
   const filteredGames = games.filter((game) =>
@@ -229,9 +238,11 @@ function MainComponent() {
     "hex-duel",
     "yahtzee",
     "farkle",
+    "precision",
   ]);
 
   const newestOrder = [
+    "precision",
     "farkle",
     "yahtzee",
     "hex-duel",

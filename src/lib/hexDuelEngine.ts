@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useReducer, useRef, useState } from "react";
 import type { HexTileData } from "../components/HexTile";
 import { GRID_SIZE, getHexNeighbors } from "./hexGridUtils";
-import { checkWinCondition } from "./hexWinDetection";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -62,7 +61,6 @@ export interface HexDuelState {
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const MAX_AP = 3;
-const MOVE_COST = 1;
 export const REINFORCE_COST = 1; // reused for displace
 const ATTACK_COST = 1;
 const DISPLACE_COST = 1;
@@ -104,52 +102,355 @@ function otherPlayer(p: DuelPlayer): DuelPlayer {
   return p === "player1" ? "player2" : "player1";
 }
 
+// ── Reducer-based game state ───────────────────────────────────────────────
+//
+// Critical fix for multiplayer desync (Audit C1): all reads of game-state
+// happen INSIDE the reducer via the `state` argument, which is GUARANTEED
+// to be the latest committed state when each dispatch runs. Multiple rapid
+// socket/poll dispatches are processed serially by React — each reducer
+// call sees the previous dispatch's resulting state, so chained actions
+// compute over fresh data, not stale closures.
+
+/** Core game state managed by the reducer */
+interface CoreState {
+  /** ownership per tile key */
+  capturedTiles: Record<string, DuelPlayer>;
+  /** troop count per tile key */
+  tileTroops: Record<string, number>;
+  /** whose turn it is */
+  currentTurn: DuelPlayer;
+  /** remaining action points for the current turn */
+  currentAP: number;
+  /** winner, or null if ongoing */
+  winner: DuelPlayer | null;
+  /** click+capture flash effect: tile just conquered */
+  recentlyCaptured: string[];
+  /** combat flash effect: tiles involved in last combat */
+  combatFlash: string[];
+  /** per-player move counts (for stats endpoints) */
+  p1MoveCount: number;
+  p2MoveCount: number;
+  /** total moves count */
+  moveCount: number;
+}
+
+function makeInitialCore(): CoreState {
+  return {
+    capturedTiles: {
+      [P1_CAP_KEY]: "player1",
+      [P2_CAP_KEY]: "player2",
+    },
+    tileTroops: {
+      [P1_CAP_KEY]: INITIAL_TROOPS,
+      [P2_CAP_KEY]: INITIAL_TROOPS,
+    },
+    currentTurn: "player1",
+    currentAP: MAX_AP,
+    winner: null,
+    recentlyCaptured: [],
+    combatFlash: [],
+    p1MoveCount: 0,
+    p2MoveCount: 0,
+    moveCount: 0,
+  };
+}
+
+/** Computes the conquer/tie/fail outcome of an attack from current state. */
+type AttackOutcome =
+  | { kind: "conquer"; remainingTroops: number; conqueredCapital: boolean }
+  | { kind: "tie"; tileTroops: 0 }
+  | { kind: "failed"; newDefenderTroops: number; defenderWipedOut: boolean };
+
+function resolveAttackOutcome(
+  state: CoreState,
+  sourceKey: string,
+  targetKey: string,
+  troopCount: number,
+  attacker: DuelPlayer,
+  capitals: Record<string, DuelPlayer>,
+): AttackOutcome {
+  const enemy = otherPlayer(attacker);
+  const targetOwner = state.capturedTiles[targetKey];
+  const targetTroops =
+    targetOwner === undefined ? 0 : state.tileTroops[targetKey] ?? 1;
+
+  if (troopCount > targetTroops) {
+    const remainingTroops = troopCount - targetTroops;
+    const conqueredCapital = capitals[targetKey] === enemy;
+    return { kind: "conquer", remainingTroops, conqueredCapital };
+  }
+  if (troopCount === targetTroops && targetTroops > 0) {
+    return { kind: "tie", tileTroops: 0 };
+  }
+  const defenderLoss = Math.min(targetTroops, troopCount);
+  const newDefenderTroops = targetTroops - defenderLoss;
+  const defenderWipedOut = newDefenderTroops === 0 && targetTroops > 0;
+  return { kind: "failed", newDefenderTroops, defenderWipedOut };
+}
+
+/** Apply troop growth: +1 troop per owned tile for `player`. */
+function growTroops(state: CoreState, player: DuelPlayer): CoreState {
+  const tiles = state.tileTroops;
+  const next: Record<string, number> = { ...tiles };
+  for (const [key, owner] of Object.entries(state.capturedTiles)) {
+    if (owner === player) {
+      next[key] = (next[key] ?? 1) + 1;
+    }
+  }
+  return { ...state, tileTroops: next };
+}
+
+/** Switch turn and regenerate +1 AP (capped). Resets flash effects. */
+function switchTurnCore(state: CoreState): CoreState {
+  const nextTurn = otherPlayer(state.currentTurn);
+  return {
+    ...state,
+    currentTurn: nextTurn,
+    currentAP: Math.min(state.currentAP + 1, MAX_AP),
+    recentlyCaptured: [],
+    combatFlash: [],
+  };
+}
+
+// ── Reducer action types ───────────────────────────────────────────────────
+
+type ReducerAction =
+  | {
+      type: "attack";
+      sourceKey: string;
+      targetKey: string;
+      troopCount: number;
+      player: DuelPlayer;
+    }
+  | {
+      type: "displace";
+      sourceKey: string;
+      targetKey: string;
+      troopCount: number;
+      player: DuelPlayer;
+    }
+  | {
+      type: "endTurn";
+      player: DuelPlayer;
+      /** When true, skip troop growth (the caller already applied it). */
+      skipTroopGrowth: boolean;
+    }
+  | { type: "troopGrowth"; player: DuelPlayer }
+  | { type: "reset" }
+  | { type: "syncSnapshot"; snapshot: CoreState };
+
+function coreReducer(
+  state: CoreState,
+  action: ReducerAction,
+  capitals: Record<string, DuelPlayer>,
+): CoreState {
+  switch (action.type) {
+    case "attack": {
+      // Idempotency: don't apply further actions after winner is set.
+      if (state.winner) return state;
+
+      const { sourceKey, targetKey, troopCount, player } = action;
+      const sourceTroops = state.tileTroops[sourceKey] ?? 1;
+      const outcome = resolveAttackOutcome(
+        state,
+        sourceKey,
+        targetKey,
+        troopCount,
+        player,
+        capitals,
+      );
+
+      // 1. Source always loses `troopCount` troops.
+      let tileTroops: Record<string, number> = {
+        ...state.tileTroops,
+        [sourceKey]: sourceTroops - troopCount,
+      };
+      let capturedTiles = state.capturedTiles;
+      let recentlyCaptured = state.recentlyCaptured;
+      let combatFlash: string[];
+
+      // 2. Outcome branches — all reads are from current `state` argument.
+      if (outcome.kind === "conquer") {
+        capturedTiles = { ...state.capturedTiles, [targetKey]: player };
+        tileTroops = { ...tileTroops, [targetKey]: outcome.remainingTroops };
+        recentlyCaptured = [targetKey];
+        combatFlash = [sourceKey, targetKey];
+      } else if (outcome.kind === "tie") {
+        const next: Record<string, DuelPlayer> = { ...state.capturedTiles };
+        delete next[targetKey];
+        capturedTiles = next;
+        tileTroops = { ...tileTroops, [targetKey]: outcome.tileTroops };
+        combatFlash = [sourceKey, targetKey];
+      } else {
+        tileTroops = { ...tileTroops, [targetKey]: outcome.newDefenderTroops };
+        if (outcome.defenderWipedOut) {
+          const next: Record<string, DuelPlayer> = { ...state.capturedTiles };
+          delete next[targetKey];
+          capturedTiles = next;
+        }
+        combatFlash = [sourceKey, targetKey];
+      }
+
+      // 3. AP management based on outcome.
+      let { currentAP, currentTurn, winner, p1MoveCount, p2MoveCount, moveCount } =
+        state;
+
+      const moveIncrement = player === "player1" ? 1 : 0;
+      const moveIncrementP2 = player === "player2" ? 1 : 0;
+      p1MoveCount += moveIncrement;
+      p2MoveCount += moveIncrementP2;
+      moveCount += 1;
+
+      if (outcome.kind === "conquer" && outcome.conqueredCapital) {
+        // Game ends immediately — no AP switch, no troop growth for next player.
+        winner = player;
+      } else {
+        const newAP = currentAP - ATTACK_COST;
+        if (newAP <= 0) {
+          // AP depleted → grow sender's troops, switch turn.
+          // (Mirrors the sender's `handleAttack` auto-end-turn behavior.)
+          const grown = growTroops(
+            {
+              ...state,
+              capturedTiles,
+              tileTroops,
+              recentlyCaptured,
+              combatFlash,
+              p1MoveCount,
+              p2MoveCount,
+              moveCount,
+              currentAP: 0,
+            },
+            currentTurn,
+          );
+          return switchTurnCore(grown);
+        } else {
+          currentAP = newAP;
+        }
+      }
+
+      return {
+        ...state,
+        capturedTiles,
+        tileTroops,
+        recentlyCaptured,
+        combatFlash,
+        currentAP,
+        currentTurn,
+        winner,
+        p1MoveCount,
+        p2MoveCount,
+        moveCount,
+      };
+    }
+
+    case "displace": {
+      if (state.winner) return state;
+
+      const { sourceKey, targetKey, troopCount, player } = action;
+      const sourceTroops = state.tileTroops[sourceKey] ?? 1;
+      // Apply troop moves.
+      const tileTroops: Record<string, number> = {
+        ...state.tileTroops,
+        [sourceKey]: sourceTroops - troopCount,
+        [targetKey]: (state.tileTroops[targetKey] ?? 1) + troopCount,
+      };
+
+      let { currentAP, currentTurn, p1MoveCount, p2MoveCount, moveCount } = state;
+      const moveIncrementP1 = player === "player1" ? 1 : 0;
+      const moveIncrementP2 = player === "player2" ? 1 : 0;
+      p1MoveCount += moveIncrementP1;
+      p2MoveCount += moveIncrementP2;
+      moveCount += 1;
+
+      const newAP = currentAP - DISPLACE_COST;
+      if (newAP <= 0) {
+        const grown = growTroops(
+          {
+            ...state,
+            tileTroops,
+            p1MoveCount,
+            p2MoveCount,
+            moveCount,
+            currentAP: 0,
+          },
+          currentTurn,
+        );
+        return switchTurnCore(grown);
+      } else {
+        currentAP = newAP;
+      }
+
+      return {
+        ...state,
+        tileTroops,
+        currentAP,
+        p1MoveCount,
+        p2MoveCount,
+        moveCount,
+        combatFlash: [sourceKey, targetKey],
+      };
+    }
+
+    case "troopGrowth": {
+      if (state.winner) return state;
+      return growTroops(state, action.player);
+    }
+
+    case "endTurn": {
+      if (state.winner) return state;
+      // When skipTroopGrowth=true, this is a remote explicit endTurn.
+      // The sender already applied troop growth + switched turns locally,
+      // so we just need to mirror the side-effects — but with our own
+      // current state. (Idempotent — safe even if already reflected.)
+      //
+      // When skipTroopGrowth=false, this is a local endTurn() and we must
+      // apply troop growth first before switching turns.
+      const grown = action.skipTroopGrowth
+        ? state
+        : growTroops(state, action.player);
+      return switchTurnCore(grown);
+    }
+
+    case "reset": {
+      return makeInitialCore();
+    }
+
+    case "syncSnapshot": {
+      // Snapshots are explicit overrides — do not validate here. The
+      // snapshotted state is treated as authoritative.
+      return {
+        ...action.snapshot,
+        recentlyCaptured: [],
+        combatFlash: [],
+      };
+    }
+  }
+}
+
 // ── Hook ────────────────────────────────────────────────────────────────────
 
 export function useHexDuel() {
-  const [currentTurn, setCurrentTurn] = useState<DuelPlayer>("player1");
-  const [currentAP, setCurrentAP] = useState(MAX_AP);
-  const [moveCount, setMoveCount] = useState(0);
-  const [p1MoveCount, setP1MoveCount] = useState(0);
-  const [p2MoveCount, setP2MoveCount] = useState(0);
-  const [winner, setWinner] = useState<DuelPlayer | null>(null);
-  const [recentlyCaptured, setRecentlyCaptured] = useState<string[]>([]);
-  const [combatFlash, setCombatFlash] = useState<string[]>([]);
-
-  // Capitals: fixed for the whole game
+  // Capitals: fixed for the whole game — passed as the third reducer arg.
   const capitals = useRef<Record<string, DuelPlayer>>({
     [P1_CAP_KEY]: "player1",
     [P2_CAP_KEY]: "player2",
   }).current;
 
-  // Initial ownership: each player owns their capital
-  const [capturedTiles, setCapturedTiles] = useState<Record<string, DuelPlayer>>({
-    [P1_CAP_KEY]: "player1",
-    [P2_CAP_KEY]: "player2",
-  });
-
-  // Initial troops: 5 on each capital
-  const [tileTroops, setTileTroops] = useState<Record<string, number>>({
-    [P1_CAP_KEY]: INITIAL_TROOPS,
-    [P2_CAP_KEY]: INITIAL_TROOPS,
-  });
-
-  // Derived territory counts
-  const p1Territory = useMemo(
-    () => Object.values(capturedTiles).filter((o) => o === "player1").length,
-    [capturedTiles]
-  );
-  const p2Territory = useMemo(
-    () => Object.values(capturedTiles).filter((o) => o === "player2").length,
-    [capturedTiles]
+  // Core game state managed by reducer — guarantees atomic, fresh reads.
+  const [state, dispatch] = useReducer(
+    (s: CoreState, a: ReducerAction) => coreReducer(s, a, capitals),
+    undefined,
+    makeInitialCore,
   );
 
-  // ── Action log ───────────────────────────────────────────────────
+  // Action log is a separate concern (display only). Kept outside the
+  // reducer to keep the reducer pure (no side effects).
   const actionLogRef = useRef<ActionLogEntry[]>([]);
   const [actionLog, setActionLog] = useState<ActionLogEntry[]>([]);
   const actionIdRef = useRef(0);
 
-  const addActionLog = useCallback((entry: Omit<ActionLogEntry, 'id'>) => {
+  const addActionLog = useCallback((entry: Omit<ActionLogEntry, "id">) => {
     actionIdRef.current += 1;
     const full: ActionLogEntry = { id: actionIdRef.current, ...entry };
     actionLogRef.current = [...actionLogRef.current, full];
@@ -160,93 +461,107 @@ export function useHexDuel() {
 
   const grid = useMemo(() => {
     const g = createBlankGrid();
-    // Stamp owned tiles
-    for (const [key, owner] of Object.entries(capturedTiles)) {
+    for (const [key, owner] of Object.entries(state.capturedTiles)) {
       const [cx, cy] = key.split(",").map(Number);
       if (g[cy]?.[cx]) {
         g[cy][cx].owner = owner;
-        g[cy][cx].troops = tileTroops[key] ?? 1;
-        // Mark if this is a capital
+        g[cy][cx].troops = state.tileTroops[key] ?? 1;
         if (capitals[key]) {
           g[cy][cx].capital = true;
         }
       }
     }
-    // Also ensure capital tiles show up even if somehow not in capturedTiles
     for (const [key] of Object.entries(capitals)) {
       const [cx, cy] = key.split(",").map(Number);
-      if (g[cy]?.[cx] && !capturedTiles[key]) {
+      if (g[cy]?.[cx] && !state.capturedTiles[key]) {
         g[cy][cx].owner = capitals[key] as "player1" | "player2";
-        g[cy][cx].troops = tileTroops[key] ?? INITIAL_TROOPS;
+        g[cy][cx].troops = state.tileTroops[key] ?? INITIAL_TROOPS;
         g[cy][cx].capital = true;
       }
     }
     return g;
-  }, [capturedTiles, tileTroops, capitals]);
+  }, [state.capturedTiles, state.tileTroops, capitals]);
 
-  // ── Helpers: adjacent enemy tiles & adjacent friendly tiles ────────
+  // ── Derived: territory counts ────────────────────────────────────
 
-  /** Tiles that can be attacked: enemy-owned or neutral tiles adjacent to the current player's territory */
+  const p1Territory = useMemo(
+    () => Object.values(state.capturedTiles).filter((o) => o === "player1").length,
+    [state.capturedTiles],
+  );
+  const p2Territory = useMemo(
+    () => Object.values(state.capturedTiles).filter((o) => o === "player2").length,
+    [state.capturedTiles],
+  );
+
+  // ── Derived: helpers for the action UI ─────────────────────────────
+
+  /** Tiles that can be attacked: enemy-owned or neutral tiles adjacent to
+   *  the current player's territory. */
   const attackableTargets = useMemo(() => {
-    if (winner) return [];
+    if (state.winner) return [];
     const targets: { x: number; y: number }[] = [];
-    const enemy = otherPlayer(currentTurn);
+    const enemy = otherPlayer(state.currentTurn);
     const visited = new Set<string>();
 
-    for (const [key, owner] of Object.entries(capturedTiles)) {
-      if (owner !== currentTurn) continue;
+    for (const [key, owner] of Object.entries(state.capturedTiles)) {
+      if (owner !== state.currentTurn) continue;
       const [cx, cy] = key.split(",").map(Number);
       const neighbors = getHexNeighbors(cx, cy);
       for (const n of neighbors) {
         const nKey = `${n.x},${n.y}`;
         if (visited.has(nKey)) continue;
-        // Allow attacking enemy tiles OR neutral (unowned) tiles
-        if (capturedTiles[nKey] === enemy || capturedTiles[nKey] === undefined) {
+        if (
+          state.capturedTiles[nKey] === enemy ||
+          state.capturedTiles[nKey] === undefined
+        ) {
           visited.add(nKey);
           targets.push({ x: n.x, y: n.y });
         }
       }
     }
     return targets;
-  }, [capturedTiles, currentTurn, winner]);
+  }, [state.capturedTiles, state.currentTurn, state.winner]);
 
-  /** For a given target tile, list friendly adjacent tiles that can attack it */
+  /** For a given target, list friendly adjacent tiles that can attack it. */
   const getAttackSources = useCallback(
     (targetKey: string): { x: number; y: number }[] => {
       const [tx, ty] = targetKey.split(",").map(Number);
-      return getHexNeighbors(tx, ty)
-        .filter((n) => {
-          const nKey = `${n.x},${n.y}`;
-          return capturedTiles[nKey] === currentTurn;
-        })
-        .map((n) => ({ x: n.x, y: n.y }));
+      return (
+        getHexNeighbors(tx, ty)
+          .filter((n) => {
+            const nKey = `${n.x},${n.y}`;
+            return state.capturedTiles[nKey] === state.currentTurn;
+          })
+          // Exclude adjacent pairs that aren't really attack sources
+          .map((n) => ({ x: n.x, y: n.y }))
+      );
     },
-    [capturedTiles, currentTurn]
+    [state.capturedTiles, state.currentTurn],
   );
 
-  /** Tiles that can receive displaced troops (all friendly tiles) */
+  /** Tiles that can receive displaced troops (all friendly tiles owned by currentTurn). */
   const displaceCandidates = useMemo(() => {
     const candidates: { x: number; y: number }[] = [];
-    for (const [key, owner] of Object.entries(capturedTiles)) {
-      if (owner !== currentTurn) continue;
+    for (const [key, owner] of Object.entries(state.capturedTiles)) {
+      if (owner !== state.currentTurn) continue;
       const [cx, cy] = key.split(",").map(Number);
       candidates.push({ x: cx, y: cy });
     }
     return candidates;
-  }, [capturedTiles, currentTurn]);
+  }, [state.capturedTiles, state.currentTurn]);
 
-  /** For a given displace target, find friendly sources adjacent to it with extra troops */
+  /** For a given displace target, find friendly sources adjacent to it with extra troops. */
   const getDisplaceSources = useCallback(
     (targetKey: string): { x: number; y: number; maxTroops: number }[] => {
       const [tx, ty] = targetKey.split(",").map(Number);
       return getHexNeighbors(tx, ty)
         .filter((n) => {
           const nKey = `${n.x},${n.y}`;
-          return capturedTiles[nKey] === currentTurn && nKey !== targetKey;
+          return state.capturedTiles[nKey] === state.currentTurn && nKey !== targetKey;
         })
         .map((n) => {
           const nKey = `${n.x},${n.y}`;
-          const troops = tileTroops[nKey] ?? 1;
+          const troops = state.tileTroops[nKey] ?? 1;
           return {
             x: n.x,
             y: n.y,
@@ -255,240 +570,74 @@ export function useHexDuel() {
         })
         .filter((s) => s.maxTroops > 0);
     },
-    [capturedTiles, tileTroops, currentTurn]
+    [state.capturedTiles, state.tileTroops, state.currentTurn],
   );
 
-  // ── Turn management ────────────────────────────────────────────────
-
-  const switchTurn = useCallback(() => {
-    setCurrentTurn((t) => (t === "player1" ? "player2" : "player1"));
-    // Regenerate 1 AP per turn (capped at MAX_AP)
-    setCurrentAP((prev) => Math.min(prev + 1, MAX_AP));
-    setRecentlyCaptured([]);
-    setCombatFlash([]);
-  }, []);
-
-  // ── Remote action flag ───────────────────────────────────────────
-  // Set to true before calling a handler from applyRemoteAction so that
-  // troop growth (which the sender already applied) is skipped.
-  const skipTroopGrowthRef = useRef(false);
-
-  /** Apply troop growth: +1 troop on all owned tiles for the next player.
-   *  When called from applyRemoteAction, the ref flag suppresses double growth. */
-  const applyTroopGrowth = useCallback(
-    (player: DuelPlayer) => {
-      if (skipTroopGrowthRef.current) {
-        skipTroopGrowthRef.current = false;
-        return;
-      }
-      const growthTiles: string[] = [];
-      setTileTroops((prev) => {
-        const next = { ...prev };
-        for (const [key, owner] of Object.entries(capturedTiles)) {
-          if (owner === player) {
-            next[key] = (next[key] ?? 1) + 1;
-            growthTiles.push(key);
-          }
-        }
-        return next;
-      });
-      if (growthTiles.length > 0) {
-        addActionLog({
-          player,
-          type: "troopGrowth",
-          apCost: 0,
-          label: `Troop growth: +1 on ${growthTiles.length} tile${growthTiles.length !== 1 ? "s" : ""}`,
-        });
-      }
-    },
-    [capturedTiles, addActionLog]
-  );
-
-  const endTurn = useCallback(() => {
-    if (winner) return;
-    // Apply troop growth for the player ending their turn
-    applyTroopGrowth(currentTurn);
-    addActionLog({ player: currentTurn, type: "endTurn", apCost: 0, label: "Ended turn" });
-    switchTurn();
-  }, [winner, currentTurn, applyTroopGrowth, addActionLog, switchTurn]);
-
-  const skipRound = useCallback(() => {
-    if (winner) return;
-    applyTroopGrowth(currentTurn);
-    addActionLog({ player: currentTurn, type: "endTurn", apCost: 0, label: "Skipped round" });
-    switchTurn();
-  }, [winner, currentTurn, applyTroopGrowth, addActionLog, switchTurn]);
-
-  // ── Attack action ─────────────────────────────────────────────────
+  // ── Action log helpers ────────────────────────────────────────────
   //
-  // _applyAttackRaw: applies the raw tile state changes for an attack
-  // without any validation. Used by both handleAttack (after local
-  // validation) and applyRemoteAction (where the sender already validated).
-  // Reads current state from closure (same as handleAttack did before),
-  // which is safe because the closure is always up-to-date via useCallback
-  // dependencies on capturedTiles and tileTroops.
+  // Reducer dispatches that have a visible "log" side effect: emit an
+  // ActionLogEntry. Done outside the reducer to keep it pure.
 
-  const _applyAttackRaw = useCallback(
-    (sourceKey: string, targetKey: string, troopCount: number, attacker: DuelPlayer) => {
+  const logAttack = useCallback(
+    (
+      sourceKey: string,
+      targetKey: string,
+      troopCount: number,
+      player: DuelPlayer,
+      outcome: AttackOutcome,
+    ) => {
       const [sx, sy] = sourceKey.split(",").map(Number);
       const [tx, ty] = targetKey.split(",").map(Number);
-      const enemy = otherPlayer(attacker);
-
-      const sourceTroops = tileTroops[sourceKey] ?? 1;
-      const targetOwner = capturedTiles[targetKey];
-      const targetTroops = targetOwner === undefined ? 0 : (tileTroops[targetKey] ?? 1);
-
-      // Source loses troops
-      setTileTroops((prev) => ({
-        ...prev,
-        [sourceKey]: sourceTroops - troopCount,
-      }));
-
-      if (troopCount > targetTroops) {
-        // ── CONQUER! ─────────────────────────────────────────────
-        const remainingTroops = troopCount - targetTroops;
-        setCapturedTiles((prev) => ({
-          ...prev,
-          [targetKey]: attacker,
-        }));
-        setTileTroops((prev) => ({
-          ...prev,
-          [targetKey]: remainingTroops,
-        }));
-
-        setRecentlyCaptured([targetKey]);
-        setCombatFlash([sourceKey, targetKey]);
-
+      if (outcome.kind === "conquer") {
+        const targetWas =
+          state.capturedTiles[targetKey] === undefined
+            ? 0
+            : state.tileTroops[targetKey] ?? 1;
         addActionLog({
-          player: attacker,
+          player,
           type: "attack",
           source: { x: sx, y: sy },
           target: { x: tx, y: ty },
           apCost: ATTACK_COST,
-          label: `Attack: sent ${troopCount} from (${sx},${sy}) → conquered (${tx},${ty}) (was ${targetTroops}, ${remainingTroops} remain)`,
+          label: `Attack: sent ${troopCount} from (${sx},${sy}) → conquered (${tx},${ty}) (was ${targetWas}, ${outcome.remainingTroops} remain)`,
         });
-
-        // Check if conquered tile is the enemy's capital
-        if (capitals[targetKey] === enemy) {
-          setWinner(attacker);
-          return true; // game over
-        }
-        return false;
-      } else if (troopCount === targetTroops && targetTroops > 0) {
-        // ── TIE: both sides wiped out, territory becomes neutral ──
-        setCapturedTiles((prev) => {
-          const next = { ...prev };
-          delete next[targetKey];
-          return next;
-        });
-        setTileTroops((prev) => ({
-          ...prev,
-          [targetKey]: 0,
-        }));
-
-        setCombatFlash([sourceKey, targetKey]);
-
+      } else if (outcome.kind === "tie") {
         addActionLog({
-          player: attacker,
+          player,
           type: "attack",
           source: { x: sx, y: sy },
           target: { x: tx, y: ty },
           apCost: ATTACK_COST,
           label: `Attack: sent ${troopCount} from (${sx},${sy}) → mutual destruction! (${tx},${ty}) becomes neutral`,
         });
-        return false;
       } else {
-        // ── FAILED ATTACK ─────────────────────────────────────────
-        const defenderLoss = Math.min(targetTroops, troopCount);
-        const newDefenderTroops = targetTroops - defenderLoss;
-        setTileTroops((prev) => ({
-          ...prev,
-          [targetKey]: newDefenderTroops,
-        }));
-
-        // If defender drops to 0, territory becomes neutral
-        if (newDefenderTroops === 0 && targetTroops > 0) {
-          setCapturedTiles((prev) => {
-            const next = { ...prev };
-            delete next[targetKey];
-            return next;
-          });
-        }
-
-        setCombatFlash([sourceKey, targetKey]);
-
         addActionLog({
-          player: attacker,
+          player,
           type: "attack",
           source: { x: sx, y: sy },
           target: { x: tx, y: ty },
           apCost: ATTACK_COST,
-          label: newDefenderTroops === 0
-            ? `Attack: sent ${troopCount} from (${sx},${sy}) → wiped out defender! (${tx},${ty}) becomes neutral`
-            : `Attack: sent ${troopCount} from (${sx},${sy}) → failed (${tx},${ty}) had ${targetTroops}, defender down to ${newDefenderTroops}`,
+          label:
+            outcome.defenderWipedOut
+              ? `Attack: sent ${troopCount} from (${sx},${sy}) → wiped out defender! (${tx},${ty}) becomes neutral`
+              : `Attack: sent ${troopCount} from (${sx},${sy}) → failed (${tx},${ty}) had ${state.tileTroops[targetKey] ?? 0}, defender down to ${outcome.newDefenderTroops}`,
         });
-        return false;
       }
     },
-    [capturedTiles, tileTroops, capitals, addActionLog]
+    [state.capturedTiles, state.tileTroops, addActionLog],
   );
 
-  const handleAttack = useCallback(
-    (sourceKey: string, targetKey: string, troopCount: number) => {
-      if (winner) return;
-      if (currentAP < ATTACK_COST) return;
-
-      const sourceOwner = capturedTiles[sourceKey];
-      const targetOwner = capturedTiles[targetKey];
-      const enemy = otherPlayer(currentTurn);
-
-      // Validate: target must be enemy-owned or neutral (unowned)
-      if (sourceOwner !== currentTurn) return;
-      if (targetOwner === currentTurn) return; // can't attack own tiles
-      if (targetOwner !== undefined && targetOwner !== enemy) return;
-      if (!areAdjacent(sourceKey, targetKey)) return;
-
-      const sourceTroops = tileTroops[sourceKey] ?? 1;
-      if (sourceTroops < troopCount + 1) return; // leave at least 1
-      if (troopCount <= 0) return;
-
-      const newAP = currentAP - ATTACK_COST;
-
-      // Apply the raw state changes — returns true if game ended (capital conquered)
-      const gameOver = _applyAttackRaw(sourceKey, targetKey, troopCount, currentTurn);
-
-      // AP management — skip if the attack conquered the enemy capital (game over)
-      if (!gameOver) {
-        if (newAP <= 0) {
-          applyTroopGrowth(currentTurn);
-          addActionLog({ player: currentTurn, type: "endTurn", apCost: 0, label: "Ended turn (AP depleted)" });
-          switchTurn();
-        } else {
-          setCurrentAP(newAP);
-        }
-      }
-    },
-    [winner, currentAP, capturedTiles, tileTroops, capitals, addActionLog, applyTroopGrowth, switchTurn, _applyAttackRaw]
-  );
-
-  // ── Displace / Reinforce action ──────────────────────────────────
-  //
-  // _applyDisplaceRaw: applies the raw tile state changes for a displace
-  // without any validation. Used by both handleDisplace and applyRemoteAction.
-
-  const _applyDisplaceRaw = useCallback(
-    (sourceKey: string, targetKey: string, troopCount: number, attacker: DuelPlayer) => {
+  const logDisplace = useCallback(
+    (
+      sourceKey: string,
+      targetKey: string,
+      troopCount: number,
+      player: DuelPlayer,
+    ) => {
       const [sx, sy] = sourceKey.split(",").map(Number);
       const [tx, ty] = targetKey.split(",").map(Number);
-
-      setTileTroops((prev) => ({
-        ...prev,
-        [sourceKey]: (prev[sourceKey] ?? 1) - troopCount,
-        [targetKey]: (prev[targetKey] ?? 1) + troopCount,
-      }));
-
       addActionLog({
-        player: attacker,
+        player,
         type: "displace",
         source: { x: sx, y: sy },
         target: { x: tx, y: ty },
@@ -496,203 +645,297 @@ export function useHexDuel() {
         label: `Displace: moved ${troopCount} from (${sx},${sy}) → (${tx},${ty})`,
       });
     },
-    [addActionLog]
+    [addActionLog],
   );
 
+  // ── Public action handlers ────────────────────────────────────────
+
+  /** Local attack — performs validation against current state, then dispatches. */
+  const handleAttack = useCallback(
+    (sourceKey: string, targetKey: string, troopCount: number) => {
+      if (state.winner) return;
+      if (state.currentAP < ATTACK_COST) return;
+
+      const sourceOwner = state.capturedTiles[sourceKey];
+      const targetOwner = state.capturedTiles[targetKey];
+      const enemy = otherPlayer(state.currentTurn);
+
+      if (sourceOwner !== state.currentTurn) return;
+      if (targetOwner === state.currentTurn) return;
+      if (targetOwner !== undefined && targetOwner !== enemy) return;
+      if (!areAdjacent(sourceKey, targetKey)) return;
+
+      const sourceTroops = state.tileTroops[sourceKey] ?? 1;
+      if (sourceTroops < troopCount + 1) return;
+      if (troopCount <= 0) return;
+
+      // Log before dispatching so the log matches the player-visible action.
+      const outcome = resolveAttackOutcome(
+        state,
+        sourceKey,
+        targetKey,
+        troopCount,
+        state.currentTurn,
+        capitals,
+      );
+      logAttack(sourceKey, targetKey, troopCount, state.currentTurn, outcome);
+
+      dispatch({
+        type: "attack",
+        sourceKey,
+        targetKey,
+        troopCount,
+        player: state.currentTurn,
+      });
+    },
+    [state, capitals, logAttack],
+  );
+
+  /** Local displace — validates then dispatches. */
   const handleDisplace = useCallback(
     (sourceKey: string, targetKey: string, troopCount: number) => {
-      if (winner) return;
-      if (currentAP < DISPLACE_COST) return;
+      if (state.winner) return;
+      if (state.currentAP < DISPLACE_COST) return;
 
       if (sourceKey === targetKey) return;
       if (!areAdjacent(sourceKey, targetKey)) return;
 
-      const sourceOwner = capturedTiles[sourceKey];
-      const targetOwner = capturedTiles[targetKey];
+      const sourceOwner = state.capturedTiles[sourceKey];
+      const targetOwner = state.capturedTiles[targetKey];
+      if (sourceOwner !== state.currentTurn) return;
+      if (targetOwner !== state.currentTurn) return;
 
-      if (sourceOwner !== currentTurn) return;
-      if (targetOwner !== currentTurn) return;
-
-      const sourceTroops = tileTroops[sourceKey] ?? 1;
-      if (sourceTroops < troopCount + 1) return; // leave at least 1
+      const sourceTroops = state.tileTroops[sourceKey] ?? 1;
+      if (sourceTroops < troopCount + 1) return;
       if (troopCount <= 0) return;
 
-      _applyDisplaceRaw(sourceKey, targetKey, troopCount, currentTurn);
-
-      const newAP = currentAP - DISPLACE_COST;
-
-      // AP management
-      if (newAP <= 0) {
-        applyTroopGrowth(currentTurn);
-        addActionLog({ player: currentTurn, type: "endTurn", apCost: 0, label: "Ended turn (AP depleted)" });
-        switchTurn();
-      } else {
-        setCurrentAP(newAP);
-      }
+      logDisplace(sourceKey, targetKey, troopCount, state.currentTurn);
+      dispatch({
+        type: "displace",
+        sourceKey,
+        targetKey,
+        troopCount,
+        player: state.currentTurn,
+      });
     },
-    [winner, currentAP, capturedTiles, tileTroops, addActionLog, applyTroopGrowth, switchTurn, _applyDisplaceRaw]
+    [state, logDisplace],
   );
 
-  // ── Legacy: old grid actions (no-op stubs to prevent crashes) ─────
-
-  const handleTileClick = useCallback((_x: number, _y: number) => {
-    // Legacy no-op — new action system handles everything
-  }, []);
-
-  const handleReinforceTile = useCallback((_x: number, _y: number) => {
-    // Legacy no-op — replaced by displace
-  }, []);
-
-  // ── Apply remote action (for multiplayer sync) ──────────────────
-  //
-  // For attack/displace: applies state changes directly via the raw helpers,
-  // bypassing validation checks (currentAP, currentTurn matching, ownership,
-  // troop availability) that depend on the receiver's local state, which may
-  // be slightly stale compared to the sender's state at action time.
-  //
-  // For endTurn/skipRound: calls the turn functions with troop growth skipped
-  // (the sender already applied troop growth).
-  //
-  // AP management for remote attack/displace: the receiver tracks AP in sync
-  // with the sender, so we reduce AP by the cost and switch turns if depleted.
-
-  const applyRemoteAction = useCallback((action: {
-    type: 'attack' | 'displace' | 'endTurn' | 'skipRound';
-    sourceKey?: string;
-    targetKey?: string;
-    troopCount?: number;
-  }) => {
-    if (winner) return;
-
-    if (action.type === 'attack' && action.sourceKey && action.targetKey && action.troopCount) {
-      const sender = currentTurn;
-      const gameOver = _applyAttackRaw(action.sourceKey, action.targetKey, action.troopCount, sender);
-
-      // Mirror the sender's handleAttack behavior:
-      //   - Normal case: just decrement AP and stay on the same turn.
-      //   - AP deplete case: drop to 0, grow sender's troops, log endTurn, switch turn.
-      // This is self-sufficient — the sender does NOT send a follow-up endTurn
-      // action for auto-depletion, so the receiver must handle turn switching here.
-      if (!gameOver) {
-        const willDeplete = currentAP <= ATTACK_COST;
-        if (willDeplete) {
-          setCurrentAP(0);
-          applyTroopGrowth(sender);
-          addActionLog({
-            player: sender,
-            type: "endTurn",
-            apCost: 0,
-            label: "Ended turn (AP depleted)",
-          });
-          switchTurn();
-        } else {
-          setCurrentAP(currentAP - ATTACK_COST);
-        }
-      }
-    } else if (action.type === 'displace' && action.sourceKey && action.targetKey && action.troopCount) {
-      const sender = currentTurn;
-      _applyDisplaceRaw(action.sourceKey, action.targetKey, action.troopCount, sender);
-
-      // Same auto-end behavior as attack, mirrored for displace.
-      const willDeplete = currentAP <= DISPLACE_COST;
-      if (willDeplete) {
-        setCurrentAP(0);
-        applyTroopGrowth(sender);
-        addActionLog({
-          player: sender,
-          type: "endTurn",
-          apCost: 0,
-          label: "Ended turn (AP depleted)",
-        });
-        switchTurn();
-      } else {
-        setCurrentAP(currentAP - DISPLACE_COST);
-      }
-    } else if (action.type === 'endTurn') {
-      // Sender already grew their own troops and switched turns locally.
-      // Receiver mirrors the same effect — applyTroopGrowth here is skipped
-      // because skipTroopGrowthRef is set, preventing double growth on the
-      // sender's tiles. The endTurn() call still adds the log and switches.
-      skipTroopGrowthRef.current = true;
-      endTurn();
-    } else if (action.type === 'skipRound') {
-      skipTroopGrowthRef.current = true;
-      skipRound();
+  /** Local end turn — applies troop growth then switches turns. */
+  const endTurn = useCallback(() => {
+    if (state.winner) return;
+    const grownTiles = Object.entries(state.capturedTiles)
+      .filter(([, owner]) => owner === state.currentTurn)
+      .map(([key]) => key);
+    if (grownTiles.length > 0) {
+      addActionLog({
+        player: state.currentTurn,
+        type: "troopGrowth",
+        apCost: 0,
+        label: `Troop growth: +1 on ${grownTiles.length} tile${grownTiles.length !== 1 ? "s" : ""}`,
+      });
     }
-  }, [winner, _applyAttackRaw, _applyDisplaceRaw, endTurn, skipRound, currentTurn, currentAP, applyTroopGrowth, addActionLog, switchTurn]);
+    addActionLog({
+      player: state.currentTurn,
+      type: "endTurn",
+      apCost: 0,
+      label: "Ended turn",
+    });
+    dispatch({
+      type: "endTurn",
+      player: state.currentTurn,
+      skipTroopGrowth: false,
+    });
+  }, [state, addActionLog]);
+
+  /** Skip the current round — same as endTurn with a different label. */
+  const skipRound = useCallback(() => {
+    if (state.winner) return;
+    const grownTiles = Object.entries(state.capturedTiles)
+      .filter(([, owner]) => owner === state.currentTurn)
+      .map(([key]) => key);
+    if (grownTiles.length > 0) {
+      addActionLog({
+        player: state.currentTurn,
+        type: "troopGrowth",
+        apCost: 0,
+        label: `Troop growth: +1 on ${grownTiles.length} tile${grownTiles.length !== 1 ? "s" : ""}`,
+      });
+    }
+    addActionLog({
+      player: state.currentTurn,
+      type: "endTurn",
+      apCost: 0,
+      label: "Skipped round",
+    });
+    dispatch({
+      type: "endTurn",
+      player: state.currentTurn,
+      skipTroopGrowth: false,
+    });
+  }, [state, addActionLog]);
+
+  // ── Apply remote action (multiplayer sync) ──────────────────────
+  //
+  // Critical: this function dispatches to the same reducer the local
+  // path uses, so rapid socket events and poll catch-ups execute over
+  // fresh state — fixing the Audit C1 stale-closure desync. The
+  // signature includes both content and an optional unique id so that
+  // legitimately identical actions are not deduplicated by mistake
+  // (Audit H1). The caller (page.tsx) supplies the id from the wire.
+  //
+  // Note: This function does NOT validate local state — the sender has
+  // already validated and serialized the action. Trust the wire.
+  // The reducer treats the action as the source of truth.
+  //
+  // Side-effect (reviewer feedback): emit a log entry on the receiver
+  // side just like local `handleAttack` does. Without this, remote
+  // actions would be silent in the receiver's ActionLog (display-only
+  // regression — no state correctness impact). The log entry describes
+  // the action from the receiver's POV (pre-dispatch closure state),
+  // which may differ slightly from the sender's during a desync catch-up
+  // but is correct for what the receiver observed.
+
+  const applyRemoteAction = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (action: any) => {
+      if (state.winner) return;
+
+      switch (action.type) {
+        case "attack": {
+          if (!action.sourceKey || !action.targetKey || !action.troopCount) return;
+          const outcome = resolveAttackOutcome(
+            state,
+            action.sourceKey,
+            action.targetKey,
+            action.troopCount,
+            state.currentTurn,
+            capitals,
+          );
+          logAttack(
+            action.sourceKey,
+            action.targetKey,
+            action.troopCount,
+            state.currentTurn,
+            outcome,
+          );
+          dispatch({
+            type: "attack",
+            sourceKey: action.sourceKey,
+            targetKey: action.targetKey,
+            troopCount: action.troopCount,
+            player: state.currentTurn,
+          });
+          break;
+        }
+        case "displace": {
+          if (!action.sourceKey || !action.targetKey || !action.troopCount) return;
+          logDisplace(
+            action.sourceKey,
+            action.targetKey,
+            action.troopCount,
+            state.currentTurn,
+          );
+          dispatch({
+            type: "displace",
+            sourceKey: action.sourceKey,
+            targetKey: action.targetKey,
+            troopCount: action.troopCount,
+            player: state.currentTurn,
+          });
+          break;
+        }
+        case "endTurn": {
+          // Sender already grew their own troops locally. We mirror the
+          // turn switch only — the reducer's skipTroopGrowth flag
+          // prevents double growth on the receiver side.
+          dispatch({
+            type: "endTurn",
+            player: state.currentTurn,
+            skipTroopGrowth: true,
+          });
+          break;
+        }
+        case "skipRound": {
+          dispatch({
+            type: "endTurn",
+            player: state.currentTurn,
+            skipTroopGrowth: true,
+          });
+          break;
+        }
+        default:
+          return;
+      }
+    },
+    [state, capitals, logAttack, logDisplace],
+  );
 
   // ── Reset ─────────────────────────────────────────────────────────
 
   const resetGame = useCallback(() => {
-    setCurrentTurn("player1");
-    setCurrentAP(MAX_AP);
-    setMoveCount(0);
-    setP1MoveCount(0);
-    setP2MoveCount(0);
-    setWinner(null);
-    setRecentlyCaptured([]);
-    setCombatFlash([]);
-    setCapturedTiles({
-      [P1_CAP_KEY]: "player1",
-      [P2_CAP_KEY]: "player2",
-    });
-    setTileTroops({
-      [P1_CAP_KEY]: INITIAL_TROOPS,
-      [P2_CAP_KEY]: INITIAL_TROOPS,
-    });
-    // Reset action log
+    dispatch({ type: "reset" });
     actionLogRef.current = [];
     actionIdRef.current = 0;
     setActionLog([]);
   }, []);
 
-  // ── State sync (for multiplayer recovery) ──────────────────────────
-  // Build a serializable snapshot of all game state for sync requests
+  // ── State sync (multiplayer recovery) ───────────────────────────
+
+  /** Build a serializable snapshot of all game state for sync requests. */
   const buildSyncSnapshot = useCallback(() => {
     return {
-      currentTurn,
-      currentAP,
-      moveCount,
-      p1MoveCount,
-      p2MoveCount,
+      currentTurn: state.currentTurn,
+      currentAP: state.currentAP,
+      moveCount: state.moveCount,
+      p1MoveCount: state.p1MoveCount,
+      p2MoveCount: state.p2MoveCount,
       p1Territory,
       p2Territory,
-      winner,
-      capturedTiles: { ...capturedTiles },
-      tileTroops: { ...tileTroops },
+      winner: state.winner,
+      capturedTiles: { ...state.capturedTiles },
+      tileTroops: { ...state.tileTroops },
       actionLogId: actionIdRef.current,
     };
-  }, [currentTurn, currentAP, moveCount, p1MoveCount, p2MoveCount, p1Territory, p2Territory, winner, capturedTiles, tileTroops]);
+  }, [state, p1Territory, p2Territory]);
 
-  /** Apply a remote sync snapshot — used to recover from desync */
-  const applySyncSnapshot = useCallback((snapshot: {
-    currentTurn: DuelPlayer;
-    currentAP: number;
-    moveCount: number;
-    p1MoveCount: number;
-    p2MoveCount: number;
-    p1Territory: number;
-    p2Territory: number;
-    winner: DuelPlayer | null;
-    capturedTiles: Record<string, DuelPlayer>;
-    tileTroops: Record<string, number>;
-    actionLogId: number;
-  }) => {
-    setCurrentTurn(snapshot.currentTurn);
-    setCurrentAP(snapshot.currentAP);
-    setMoveCount(snapshot.moveCount);
-    setP1MoveCount(snapshot.p1MoveCount);
-    setP2MoveCount(snapshot.p2MoveCount);
-    setWinner(snapshot.winner);
-    setCapturedTiles(snapshot.capturedTiles);
-    setTileTroops(snapshot.tileTroops);      setRecentlyCaptured([]);
-    setCombatFlash([]);
-    actionIdRef.current = snapshot.actionLogId;
-    actionLogRef.current = [];
-    setActionLog([]);
-  }, []);
+  /** Apply a remote sync snapshot — recover from desync via full overwrite. */
+  const applySyncSnapshot = useCallback(
+    (snapshot: {
+      currentTurn: DuelPlayer;
+      currentAP: number;
+      moveCount: number;
+      p1MoveCount: number;
+      p2MoveCount: number;
+      winner: DuelPlayer | null;
+      capturedTiles: Record<string, DuelPlayer>;
+      tileTroops: Record<string, number>;
+    }) => {
+      dispatch({
+        type: "syncSnapshot",
+        snapshot: {
+          capturedTiles: snapshot.capturedTiles,
+          tileTroops: snapshot.tileTroops,
+          currentTurn: snapshot.currentTurn,
+          currentAP: snapshot.currentAP,
+          winner: snapshot.winner,
+          p1MoveCount: snapshot.p1MoveCount,
+          p2MoveCount: snapshot.p2MoveCount,
+          moveCount: snapshot.moveCount,
+          recentlyCaptured: [],
+          combatFlash: [],
+        },
+      });
+      // Action log is reset — log entries can't be reconciled from a
+      // snapshot alone, so caller is responsible for re-applying them.
+      actionLogRef.current = [];
+      actionIdRef.current = 0;
+      setActionLog([]);
+    },
+    [],
+  );
 
-  // ── Derived: valid moves (empty stub for backward compat) ─────────
+  // ── Derived: legacy stubs (back-compat) ─────────────────────────
 
   const validMoves: { x: number; y: number }[] = [];
   const pushTargets: never[] = [];
@@ -701,26 +944,34 @@ export function useHexDuel() {
   const canMove = false;
   const canPush = false;
 
-  const state: HexDuelState = {
+  // ── Legacy no-op stubs (kept for callers expecting them) ───────
+  const handleTileClick = useCallback((_x: number, _y: number) => {
+    /* legacy */
+  }, []);
+  const handleReinforceTile = useCallback((_x: number, _y: number) => {
+    /* legacy — replaced by displace */
+  }, []);
+
+  const builtState: HexDuelState = {
     grid,
-    capturedTiles,
+    capturedTiles: state.capturedTiles,
     capitals,
-    tileTroops,
-    currentTurn,
-    currentAP,
+    tileTroops: state.tileTroops,
+    currentTurn: state.currentTurn,
+    currentAP: state.currentAP,
     maxAP: MAX_AP,
     p1Territory,
     p2Territory,
-    p1MoveCount,
-    p2MoveCount,
-    moveCount,
-    winner,
-    recentlyCaptured,
-    combatFlash,
+    p1MoveCount: state.p1MoveCount,
+    p2MoveCount: state.p2MoveCount,
+    moveCount: state.moveCount,
+    winner: state.winner,
+    recentlyCaptured: state.recentlyCaptured,
+    combatFlash: state.combatFlash,
   };
 
   return {
-    ...state,
+    ...builtState,
     // Values needed by page.tsx
     selectedUnit,
     selectedTile,

@@ -107,14 +107,58 @@ io.on("connection", (socket) => {
     at: new Date().toISOString(),
   });
 
+  // ── Precision room-participant tracking ─────────────────────────
+  // Required so the precision:stop handler below can reject submissions
+  // from sockets that haven't actually joined the requested match
+  // (mirrors the hexDuel M3 fix: stops can't be injected by sockets
+  // that only joined via a generic join_room). Anchored on globalThis
+  // so multiple sockets see one shared source of truth — matching the
+  // existing `global.__hexDuelRoomPlayers` pattern. Keyed by matchId.
+  const PRECISION_MATCH_ROOM_PREFIX = "precision:match:";
+  if (!global.__precisionRoomParticipants) {
+    global.__precisionRoomParticipants = new Map();
+  }
+  const precisionRoomParticipants = global.__precisionRoomParticipants;
+
+  function trackPrecisionJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(PRECISION_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(PRECISION_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!precisionRoomParticipants.has(matchId)) {
+      precisionRoomParticipants.set(matchId, new Set());
+    }
+    precisionRoomParticipants.get(matchId).add(userId);
+  }
+  function trackPrecisionLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(PRECISION_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(PRECISION_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = precisionRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) precisionRoomParticipants.delete(matchId);
+  }
+  function forgetPrecisionUser(userId) {
+    for (const [mid, set] of precisionRoomParticipants.entries()) {
+      set.delete(userId);
+      if (set.size === 0) precisionRoomParticipants.delete(mid);
+    }
+  }
+
   socket.on("join_room", ({ roomId }) => {
     if (!roomId) return;
     socket.join(String(roomId));
+    trackPrecisionJoin(String(roomId), socket.data.userId);
   });
 
   socket.on("leave_room", ({ roomId }) => {
     if (!roomId) return;
     socket.leave(String(roomId));
+    trackPrecisionLeave(String(roomId), socket.data.userId);
   });
 
   socket.on("room_event", ({ roomId, event, payload }) => {
@@ -194,6 +238,21 @@ io.on("connection", (socket) => {
     if (!gameId || !action) return;
     const roomId = String(gameId);
     const userId = socket.data.userId;
+
+    // Audit M3 fix: only relay actions from sockets that have been
+    // tracked as a player in this game's room. Without this, any socket
+    // that joined the room via join_room could inject adversarial
+    // hexDuel:action events to the opponent.
+    const players = hexDuelRoomPlayers.get(String(gameId));
+    if (!players || !players.has(userId)) {
+      console.warn(
+        "[hex-duel] rejecting action from non-participant:",
+        userId,
+        "gameId:",
+        gameId,
+      );
+      return;
+    }
 
     // Always relay to the room — if the opponent is temporarily disconnected,
     // they will catch up via action polling. The old room-size check caused
@@ -300,8 +359,152 @@ io.on("connection", (socket) => {
     });
   });
 
+  // ── Precision: stop ─────────────────────────────────────────────
+  // The client emits `precision:stop` exactly once per round when the
+  // user presses STOP. We validate that the calling socket is a
+  // participant of the requested precision match (tracked above) and
+  // that the stopMs falls in the server-allowed range, then proxy the
+  // stopMs to the Next.js `/api/precision/round-stop` route via HTTP.
+  // That route calls the canonical `recordRoundStop` in
+  // `src/lib/precision/serverStore.ts`, which is the only code path
+  // that computes the round winner — the realtime server does NO
+  // winner computation, matching the codebase's "never trust the
+  // client" and "do not determine the winner on the client" invariants.
+  //
+  // Response is delivered via the Socket.IO ACK callback: `{ success,
+  // error? }`. The match state is rebroadcast back to ALL sockets in
+  // the match room (including the sender) ONLY once BOTH seats have
+  // submitted (`bothStopped === true`) — partial stops keep the
+  // sender's optimistic "stopped, awaiting opponent" UI intact.
+  socket.on("precision:stop", async ({ matchId, roundId, nonce } = {}, ack) => {
+    const matchIdStr = String(matchId || "");
+    if (!matchIdStr) {
+      if (typeof ack === "function") ack({ success: false, error: "Missing matchId." });
+      return;
+    }
+    const roundIdStr = String(roundId || "");
+    const nonceStr = String(nonce || "");
+    if (!roundIdStr) {
+      if (typeof ack === "function") ack({ success: false, error: "Missing roundId." });
+      return;
+    }
+    if (!nonceStr) {
+      if (typeof ack === "function") ack({ success: false, error: "Missing nonce." });
+      return;
+    }
+    // Participation check — reject submissions from sockets that
+    // didn't actually join the requested match room. This handler
+    // is intentionally dumb about timing: the server-authoritative
+    // STOP instant is stamped inside the Next.js route's
+    // `recordRoundStop`, and elapsed time is computed there from
+    // `match.roundGoInstant`. We forward ONLY the bare STOP signal
+    // PLUS the round-replay envelope (roundId, nonce) so the
+    // canonical recordRoundStop function can validate and reject
+    // stale packets without trusting the realtime layer's
+    // intermediate state.
+    const participants = precisionRoomParticipants.get(matchIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      if (typeof ack === "function") {
+        ack({ success: false, error: "Caller is not a participant in this match." });
+      }
+      return;
+    }
+    try {
+      const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+      // ── CRITICAL fix: AbortController timeout on the Next.js proxy
+      // ── Without this, if Next.js hangs or drops the connection, the
+      // ── Promise never resolves, the `ack(...)` callback is never
+      // ── fired, and the client's STOP button stays permanently
+      // ── disabled (locked by `stopSubmitting = true`). The same
+      // ── pattern mirrors the existing pool/dice/farkle realtime
+      // ── proxies in this file.
+      const forwardController = new AbortController();
+      const forwardTimeout = setTimeout(
+        () => forwardController.abort(),
+        4000,
+      );
+      const res = await fetch(
+        `${baseUrl}/api/precision/round-stop`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            matchId: matchIdStr,
+            userId: socket.data.userId,
+            roundId: roundIdStr,
+            nonce: nonceStr,
+          }),
+          signal: forwardController.signal,
+        },
+      );
+      clearTimeout(forwardTimeout);
+      const payload = await res.json().catch(() => null);
+      if (!payload || !payload.success) {
+        if (typeof ack === "function") {
+          ack({
+            success: false,
+            error: (payload && payload.error) || "Server rejected the stop.",
+          });
+        }
+        return;
+      }
+      // Acknowledge the caller FIRST so they can flip their
+      // `stopSubmitting` spinner off even before the broadcast is
+      // delivered (the broadcast fans out below; the ACK is direct).
+      if (typeof ack === "function") ack({ success: true });
+      // Only rebroadcast the updated match state to the room once
+      // BOTH seats have submitted — partial stops (one seat only)
+      // keep the sender's "✓ STOP SENT" UI intact and let the
+      // opponent's timer keep running until they also submit.
+      const roomId = `${PRECISION_MATCH_ROOM_PREFIX}${matchIdStr}`;
+      if (payload.bothStopped) {
+        io.to(roomId).emit("precision:roundResult", {
+          matchId: matchIdStr,
+          match: payload.match,
+          bothStopped: true,
+          roundWinnerSeat: payload.roundWinnerSeat ?? null,
+          matchFinished: payload.matchFinished === true,
+        });
+        if (payload.matchFinished) {
+          io.to(roomId).emit("precision:matchFinished", {
+            matchId: matchIdStr,
+            match: payload.match,
+          });
+        } else {
+          // Round decided but match continues — server-side
+          // armMatchRound will fire after a random delay; emit
+          // roundArmStart so the opponent flips to the "Get ready…"
+          // screen without waiting for the 1.5s poll.
+          io.to(roomId).emit("precision:roundArmStart", {
+            matchId: matchIdStr,
+            match: payload.match,
+          });
+        }
+      }
+    } catch (err) {
+      // Internal fetch failure (Next.js down, network blip, or the
+      // AbortController above fired). Surface to the caller so they
+      // can unlock the optimistic STOP button. Map `AbortError` to
+      // a friendlier message so the player understands the network
+      // didn't deliver in time.
+      if (typeof ack === "function") {
+        const isAbort = err && (err.name === "AbortError" || /aborted/i.test(String(err.message)));
+        ack({
+          success: false,
+          error: isAbort
+            ? "Stop timed out before the server confirmed. Please try again."
+            : ((err && err.message) || "Realtime proxy unreachable."),
+        });
+      }
+    }
+  });
+
   // ── Keep existing disconnect handler ──
   socket.on("disconnect", () => {
+    // For Precision: drop user from all precision match rooms they
+    // had joined so the next reconnect starts a clean participant set.
+    forgetPrecisionUser(socket.data.userId);
+
     // For hex duel: emit a dedicated disconnect event so the opponent gets a win
     if (hexDuelGameIds.size > 0) {
       for (const gid of hexDuelGameIds) {
