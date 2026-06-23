@@ -1045,6 +1045,89 @@ export const hexDuelActions = pgTable(
   }),
 );
 
+// PRECISION TABLES — PvP "Precision" casino game (waiting → active → finished)
+// Schema mirrors dice_matches / pool_matches / hex_duel_games conventions:
+//   • clerkIds stored as varchar(255) without FK references to `users`
+//     (matches every other PvP table in the project so existing scripts
+//      and indexes remain compatible).
+//   • `status` is varchar(20) instead of a pgEnum so it can be extended
+//     without a destructive migration later.
+export const precisionMatches = pgTable(
+  "precision_matches",
+  {
+    id: serial("id").primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    wager: numeric("wager", { precision: 10, scale: 2 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    winnerId: varchar("winner_id", { length: 255 }),
+    currentRound: integer("current_round").notNull().default(1),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Per-project convention: open-lobby queries + per-player history.
+    statusIdx: index("idx_precision_matches_status").on(
+      table.status,
+      table.createdAt,
+    ),
+    player1Idx: index("idx_precision_matches_player1").on(
+      table.player1Id,
+      table.createdAt,
+    ),
+    player2Idx: index("idx_precision_matches_player2").on(
+      table.player2Id,
+      table.createdAt,
+    ),
+  }),
+);
+
+// One row per round of a Precision match. Cascade deleting with the
+// parent match keeps history tidy when a match is purged. Per-round
+// `winnerId` is nullable so rounds in progress still persist cleanly.
+export const precisionRounds = pgTable(
+  "precision_rounds",
+  {
+    id: serial("id").primaryKey(),
+    matchId: integer("match_id")
+      .notNull()
+      .references(() => precisionMatches.id, { onDelete: "cascade" }),
+    roundNumber: integer("round_number").notNull(),
+    targetMilliseconds: integer("target_milliseconds").notNull(),
+    startTimestamp: timestamp("start_timestamp").notNull(),
+    player1StopTimestamp: timestamp("player1_stop_timestamp"),
+    player2StopTimestamp: timestamp("player2_stop_timestamp"),
+    player1Difference: integer("player1_difference"),
+    player2Difference: integer("player2_difference"),
+    winnerId: varchar("winner_id", { length: 255 }),
+  },
+  (table) => ({
+    // Lookup is always ("all rounds of match X in order") so a
+    // composite index on (match_id, round_number) is the right shape.
+    matchRoundIdx: index("idx_precision_rounds_match_round").on(
+      table.matchId,
+      table.roundNumber,
+    ),
+  }),
+);
+
+// Precision relations — declared here (after the tables) so the symbols
+// are bound before `relations(...)` runs. Drizzle relations are read at
+// query time, not module-load, so the position is purely about lexical
+// ordering for the TS compiler.
+export const precisionMatchesRelations = relations(
+  precisionMatches,
+  ({ many }) => ({
+    rounds: many(precisionRounds),
+  }),
+);
+
+export const precisionRoundsRelations = relations(precisionRounds, ({ one }) => ({
+  match: one(precisionMatches, {
+    fields: [precisionRounds.matchId],
+    references: [precisionMatches.id],
+  }),
+}));
+
 // ADMIN AUDIT LOGS — persisted record of all admin actions
 export const adminAuditLogs = pgTable(
   "admin_audit_logs",

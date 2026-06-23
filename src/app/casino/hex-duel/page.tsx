@@ -1222,13 +1222,13 @@ export default function HexDuelPage() {
     if (!socket || !multiplayerGameId || isSpectator) return;
 
     // Listen for opponent actions
+    //
+    // Audit H1 + C2 fix: route through the shared enqueueRemoteAction
+    // helper so socket and polling paths produce identical, identity-
+    // based dedup signatures and run through the same serialized queue.
     const handleOpponentAction = (data: { action: MultiplayerAction }) => {
       if (data.action) {
-        // Track content signature for dedup so the polling fallback
-        // doesn't re-apply actions already received via socket.
-        const sig = `${data.action.type}:${data.action.sourceKey ?? ""}:${data.action.targetKey ?? ""}:${data.action.troopCount ?? ""}`;
-        processedSocketActionsRef.current.add(sig);
-        applyRemoteActionRef.current(data.action);
+        enqueueRemoteAction(data.action);
       }
     };
 
@@ -1279,10 +1279,21 @@ export default function HexDuelPage() {
       setConnectionStatus("connection_lost");
     };
 
-    // Listen for socket reconnect
+    // Listen for socket reconnect — also request a full state sync so we
+    // don't have to wait for the slow action-by-action polling walk.
+    // The server relays this to the opponent, who responds with a
+    // hexDuel:syncState snapshot we apply in handleSyncState.
+    // Audit M2 fix.
+    let lastReconnectSyncAt = 0;
     const handleSocketConnect = () => {
       setConnectionStatus("connected");
       socket.emit("hexDuel:join", { gameId: multiplayerGameId });
+      // Throttle: at most once per 2s, only while a game is active.
+      const now = Date.now();
+      if (now - lastReconnectSyncAt > 2000 && !isGameOverRef.current) {
+        lastReconnectSyncAt = now;
+        socket.emit("hexDuel:requestSync", { gameId: multiplayerGameId });
+      }
     };
 
     // Listen for state sync requests (from opponent whose socket dropped)
@@ -1418,8 +1429,8 @@ export default function HexDuelPage() {
     }).catch(() => {});
   }, []);
 
-  // Ref for applyRemoteAction to avoid stale closure issues
-  const applyRemoteActionRef = useRef<(a: MultiplayerAction) => void>(() => {});
+  // Ref for applyRemoteAction to avoid stale closure issues (kept above as
+  // part of the queue plumbing; the queue calls the latest ref value).
 
   // ── End-game payout ────────────────────────────────────────────────
   useEffect(() => {
@@ -1558,6 +1569,10 @@ export default function HexDuelPage() {
   const lastHeartbeatRef = useRef<number>(0);
 
   // Set up applyRemoteActionRef
+  //
+  // Kept as a ref so the action queue's processQueue always invokes the
+  // latest `applyRemoteAction` from the engine, regardless of when it ran.
+  const applyRemoteActionRef = useRef<(a: MultiplayerAction) => void>(() => {});
   const localApplyRemote = useCallback((action: MultiplayerAction) => {
     if (isGameOverRef.current) return;
     applyRemoteAction(action);
@@ -1571,18 +1586,62 @@ export default function HexDuelPage() {
 
   // Track the latest action ID we've seen from the opponent (for efficient polling)
   const lastKnownActionIdRef = useRef(0);
-  // Deduplication: track action content signatures already received via socket
-  // so the polling fallback doesn't re-apply them, preventing double-processing.
+  // Deduplication: track processed actions by signature so socket + polling
+  // can't double-apply the same action. Audit H1 + C2 fix.
   const processedSocketActionsRef = useRef<Set<string>>(new Set());
-  // Periodically expire old dedup entries to prevent unbounded growth
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (processedSocketActionsRef.current.size > 40) {
-        processedSocketActionsRef.current = new Set();
-      }
-    }, 15000);
-    return () => clearInterval(interval);
+  // Monotonic counter for actions missing a wire id — disambiguates
+  // locally-synthesized fallbacks so signature collisions never happen.
+  const processedSeqRef = useRef(0);
+
+  // ── Sequenced action queue (Audit C2 + legacy races) ──
+  //
+  // Multiple socket/polling dispatches arriving in the same tick are
+  // serialized through this queue. The engine reducer now operates on
+  // each one in order against fresh state, so application correctness
+  // is fine, but this layer enforces a single in-order applier and a
+  // single dedup set that's updated consistently across delivery paths.
+  const actionQueueRef = useRef<Array<MultiplayerAction & { __seq?: number; id?: number }>>([]);
+  const processingRef = useRef(false);
+  const processQueue = useCallback(() => {
+    if (processingRef.current) return;
+    if (isGameOverRef.current) {
+      actionQueueRef.current = [];
+      return;
+    }
+    const next = actionQueueRef.current.shift();
+    if (!next) {
+      processingRef.current = false;
+      return;
+    }
+    processingRef.current = true;
+    try {
+      applyRemoteActionRef.current(next);
+    } finally {
+      // Yield then continue draining. setTimeout(0) lets React flush any
+      // setState from the dispatch before the next action's reducer call.
+      setTimeout(() => {
+        processingRef.current = false;
+        processQueue();
+      }, 0);
+    }
   }, []);
+
+  const enqueueRemoteAction = useCallback(
+    (action: MultiplayerAction & { __seq?: number; id?: number }) => {
+      // Compute signature FIRST and only enqueue if it's new. Identity-
+      // based dedup: the signature includes a wire-unique id (`__seq` or
+      // `id` from the DB) so two legitimately distinct actions with the
+      // same content get distinct signatures.
+      processedSeqRef.current += 1;
+      const wireId = action.__seq ?? action.id ?? `local-${processedSeqRef.current}`;
+      const sig = `${action.type}:${action.sourceKey ?? ""}:${action.targetKey ?? ""}:${action.troopCount ?? ""}:${wireId}`;
+      if (processedSocketActionsRef.current.has(sig)) return;
+      processedSocketActionsRef.current.add(sig);
+      actionQueueRef.current.push(action);
+      processQueue();
+    },
+    [processQueue],
+  );
 
   // ── Computed highlight keys for HexBoard ───────────────────────────
   const attackHighlightKeys = useMemo(
@@ -1777,7 +1836,10 @@ export default function HexDuelPage() {
   }, [endTurn, gameMode, sendMultiplayerAction, recordMultiplayerAction, multiplayerGameId, currentTurn]);
 
   // ── Action-based sync: poll server for opponent actions we might have missed ──
-  // Equivalent to dice duel polling /api/dice-duel/get-match every 1.5s
+  // Equivalent to dice duel polling /api/dice-duel/get-match every 1.5s.
+  // Audit C2 fix: use the shared `enqueueRemoteAction` helper so polling
+  // goes through the same dedup queue as the socket handler, preventing
+  // double-apply when both delivery paths arrive for the same action.
   useEffect(() => {
     if (gameMode !== "multiplayer" || !multiplayerGameId || !opponentReadyRef.current || isGameOverRef.current) return;
 
@@ -1793,24 +1855,17 @@ export default function HexDuelPage() {
         if (cancelled || !data?.success) return;
 
         const actions = data.actions || [];
+        for (const a of actions) {
+          if (cancelled || isGameOverRef.current) break;
+          enqueueRemoteAction({
+            type: a.actionType,
+            sourceKey: a.sourceKey ?? undefined,
+            targetKey: a.targetKey ?? undefined,
+            troopCount: a.troopCount ?? undefined,
+            id: a.id,
+          });
+        }
         if (actions.length > 0) {
-          // Apply any missed opponent actions to catch up.
-          // Process sequentially with await to avoid stale closures
-          // overwriting each other's state updates.
-          for (const a of actions) {
-            if (cancelled || isGameOverRef.current) break;
-            // Skip actions already received via socket (dedup by content signature)
-            const sig = `${a.actionType}:${a.sourceKey ?? ""}:${a.targetKey ?? ""}:${a.troopCount ?? ""}`;
-            if (processedSocketActionsRef.current.has(sig)) continue;
-            await new Promise((r) => setTimeout(r, 0)); // yield to flush React state
-            applyRemoteActionRef.current({
-              type: a.actionType,
-              sourceKey: a.sourceKey,
-              targetKey: a.targetKey,
-              troopCount: a.troopCount,
-            });
-          }
-          // Update the last known action ID so we don't re-process
           lastKnownActionIdRef.current = data.latestActionId || 0;
         }
       } catch {
@@ -1826,15 +1881,22 @@ export default function HexDuelPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [gameMode, multiplayerGameId, opponentReady, effectiveWinner]);
+  }, [gameMode, multiplayerGameId, opponentReady, effectiveWinner, enqueueRemoteAction]);
 
   // ── Turn-status polling: last-resort sync for when socket events are missed ──
   // Periodically checks the server-stored currentTurn and applies a missed
   // opponent endTurn if the server says it's our turn but locally it isn't.
+  //
+  // Audit H2 fix: gate the synthetic endTurn on the action queue being
+  // drained — otherwise we may flip the turn BEFORE slower action catches
+  // up via polling, then apply a missed attack that itself auto-switches
+  // the turn again, causing a 2x flip desync. We do this by requiring an
+  // empty queue AND a stable local turn over consecutive polls.
   const localTurnRef = useRef(currentTurn);
   localTurnRef.current = currentTurn;
   const isPlayer1Ref = useRef(isPlayer1);
   isPlayer1Ref.current = isPlayer1;
+  const pendingTurnFlipRef = useRef(false);
   useEffect(() => {
     if (gameMode !== "multiplayer" || !multiplayerGameId || !opponentReadyRef.current || isGameOverRef.current) return;
 
@@ -1852,15 +1914,28 @@ export default function HexDuelPage() {
         const serverTurn = data.game.currentTurn as DuelPlayer;
         const myTurn: DuelPlayer = isPlayer1Ref.current ? "player1" : "player2";
 
-        // Only apply the missed endTurn when the server says it's our turn
-        // but locally we think it's still the opponent's (we missed their endTurn).
+        if (serverTurn !== myTurn) {
+          pendingTurnFlipRef.current = false;
+          return;
+        }
+
+        // Wait for the action queue to drain — otherwise an in-flight
+        // attack could flip the turn back after we do.
+        if (actionQueueRef.current.length > 0 || processingRef.current) {
+          pendingTurnFlipRef.current = true;
+          return;
+        }
+
+        // Require a stable local-turn observation across two poll cycles
+        // to avoid reacting to transient render-time mismatches.
         if (
-          serverTurn === myTurn &&
+          pendingTurnFlipRef.current &&
           localTurnRef.current !== myTurn &&
           !isGameOverRef.current
         ) {
-          applyRemoteActionRef.current({ type: "endTurn" });
+          enqueueRemoteAction({ type: "endTurn", __seq: -Date.now() });
         }
+        pendingTurnFlipRef.current = true;
       } catch {
         // Ignore poll errors
       }
@@ -1873,9 +1948,11 @@ export default function HexDuelPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [gameMode, multiplayerGameId, opponentReady, effectiveWinner]);
+  }, [gameMode, multiplayerGameId, opponentReady, effectiveWinner, enqueueRemoteAction]);
 
   // ── Spectator polling: poll /spectate to get full state and actions ──
+  // Audit C2 fix: spectator path uses the same enqueueRemoteAction queue
+  // as the player paths so dedup is identity-based, not content-based.
   useEffect(() => {
     if (!isSpectator || !multiplayerGameId || isGameOverRef.current) return;
 
@@ -1911,20 +1988,17 @@ export default function HexDuelPage() {
         }
 
         const actions = data.actions || [];
+        for (const a of actions) {
+          if (cancelled || isGameOverRef.current) break;
+          enqueueRemoteAction({
+            type: a.actionType,
+            sourceKey: a.sourceKey ?? undefined,
+            targetKey: a.targetKey ?? undefined,
+            troopCount: a.troopCount ?? undefined,
+            id: a.id,
+          });
+        }
         if (actions.length > 0) {
-          for (const a of actions) {
-            if (cancelled || isGameOverRef.current) break;
-            // Skip actions already received via socket (dedup by content signature)
-            const sig = `${a.actionType}:${a.sourceKey ?? ""}:${a.targetKey ?? ""}:${a.troopCount ?? ""}`;
-            if (processedSocketActionsRef.current.has(sig)) continue;
-            await new Promise((r) => setTimeout(r, 0)); // yield to flush React state
-            applyRemoteActionRef.current({
-              type: a.actionType,
-              sourceKey: a.sourceKey,
-              targetKey: a.targetKey,
-              troopCount: a.troopCount,
-            });
-          }
           lastKnownActionIdRef.current = data.latestActionId || 0;
         }
       } catch {
@@ -1939,7 +2013,7 @@ export default function HexDuelPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isSpectator, multiplayerGameId, effectiveWinner]);
+  }, [isSpectator, multiplayerGameId, effectiveWinner, enqueueRemoteAction]);
 
   // Update initial turn state on server when game starts
   useEffect(() => {
@@ -1968,6 +2042,19 @@ export default function HexDuelPage() {
     setPayoutResult(null); payoutProcessedRef.current = false; startedAtRef.current = null; fetchBalance();
     setMultiplayerGameId(null); setOpponentReady(false); opponentReadyRef.current = false; multiplayerJoinedRef.current = false;
     lastKnownActionIdRef.current = 0;
+    // Audit reviewer HIGH fix: clear the action queue + dedup set so queued
+    // actions from the previous game cannot drain against a fresh game's
+    // state. Without this, after restart `processQueue` would resume
+    // applying old actions (whose `processQueue` guard `isGameOverRef` is
+    // now false again) and corrupt the new game.
+    actionQueueRef.current = [];
+    processedSocketActionsRef.current.clear();
+    processedSeqRef.current = 0;
+    if (connectionTimerRef.current) {
+      clearTimeout(connectionTimerRef.current);
+      connectionTimerRef.current = null;
+    }
+    setConnectionStatus("connected");
     setIsSpectator(false);
     window.history.replaceState({}, '', window.location.pathname);
   }, [resetGame, fetchBalance]);
