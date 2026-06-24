@@ -909,7 +909,7 @@ export default function ProfilePage() {
           </p>
           <a
             href="/sign-in?redirect_url=/profil"
-            className="rounded-lg bg-[#FFD700] px-6 py-3 text-[#003366] hover:bg-[#FFD700]/80"
+            className="rounded-lg bg-[#FFD700] px-6 py-3 text-[#003366] hover:bg-[#FFD700]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#003366]"
           >
             Connexion
           </a>
@@ -949,7 +949,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                   setSelectedProfileImageName("");
                   setIsEditOpen(true);
                 }}
-                className={cyberButton + " text-sm px-3 py-1"}
+                className={cyberButton + " text-sm px-3 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"}
               >
                 Edit Profile
               </button>
@@ -990,7 +990,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-lg f
                 </p>
                 {/* Streak info line */}
                 <p className="text-xs text-amber-300 mt-1">
-                  🔥 Daily Streak: {streakState.dailyStreakCurrent} day{(streakState.dailyStreakCurrent || 0) !== 1 ? "s" : ""}{" "}
+                  <svg className="w-3.5 h-3.5 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg> Daily Streak: {streakState.dailyStreakCurrent} day{(streakState.dailyStreakCurrent || 0) !== 1 ? "s" : ""}{" "}
                   (Best: {streakState.dailyStreakBest})
                 </p>
               </div>
@@ -1014,7 +1014,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)] text-center"
 bg-gradient-to-r from-red-500 to-pink-500 
 shadow-[0_0_10px_rgba(255,0,100,0.6)] 
 hover:shadow-[0_0_20px_rgba(255,0,100,1)] 
-hover:scale-105 transition-all duration-300"
+hover:scale-105 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
               {isResetting ? "Réinitialisation..." : "Réinitialiser les tokens"}
             </button>
@@ -1067,7 +1067,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
             <div className="flex gap-2">
               <button
                 onClick={() => setTitlesView("special")}
-                className={`rounded px-3 py-1 text-sm ${
+                className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
                   titlesView === "special"
                     ? "bg-fuchsia-500 text-white"
                     : "bg-white/10 text-gray-300"
@@ -1078,7 +1078,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
 
               <button
                 onClick={() => setTitlesView("vip")}
-                className={`rounded px-3 py-1 text-sm ${
+                className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
                   titlesView === "vip"
                     ? "bg-cyan-500 text-white"
                     : "bg-white/10 text-gray-300"
@@ -1088,13 +1088,13 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
               </button>
               <button
                 onClick={() => setTitlesView("streak")}
-                className={`rounded px-3 py-1 text-sm ${
+                className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
                   titlesView === "streak"
                     ? "bg-amber-500 text-black"
                     : "bg-white/10 text-gray-300"
                 }`}
               >
-                Streak Titles 🔥
+                Streak Titles <svg className="w-4 h-4 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg>
               </button>
             </div>
           </div>
@@ -1149,7 +1149,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
               <div className="rounded-lg border border-amber-300/40 bg-amber-500/10 p-4">
                 <p className="text-xs uppercase tracking-wider text-amber-300 mb-2">Current Streak</p>
                 <p className="text-2xl font-bold text-white">
-                  🔥 {streakState.dailyStreakCurrent} day{(streakState.dailyStreakCurrent || 0) !== 1 ? "s" : ""}
+                  <svg className="w-6 h-6 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg> {streakState.dailyStreakCurrent} day{(streakState.dailyStreakCurrent || 0) !== 1 ? "s" : ""}
                 </p>
                 <p className="text-sm text-amber-200 mt-1">
                   Best: {streakState.dailyStreakBest} day{(streakState.dailyStreakBest || 0) !== 1 ? "s" : ""}
@@ -1210,7 +1210,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                       >
                         <span className="text-slate-400">{milestone.days} days</span>
                         <span className="ml-2 font-semibold text-white">{milestone.title}</span>
-                        {reached && <span className="ml-1 text-green-400">✓</span>}
+                        {reached && <svg className="ml-1 w-3.5 h-3.5 inline text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>}
                       </div>
                     );
                   })}
@@ -1320,7 +1320,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
           />
 
           <div className="flex flex-wrap gap-3 mb-4">
-            <button onClick={handleCopyReferralCode} className={cyberButton}>
+            <button onClick={handleCopyReferralCode} className={cyberButton + " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"}>
               Copy Code
             </button>
 
@@ -1329,7 +1329,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
               className="rounded-lg px-4 py-2 font-semibold text-white 
   border border-[#00e5ff] 
   hover:bg-[#00e5ff]/10 
-  shadow-[0_0_10px_rgba(0,229,255,0.4)]"
+  shadow-[0_0_10px_rgba(0,229,255,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
               Share Code
             </button>
@@ -1345,7 +1345,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-none focus:ring-2 focus:ring
             />
             <button
               onClick={handleRedeemCode}
-              className="rounded bg-green-500 px-4 py-2 font-semibold hover:bg-green-600"
+              className="rounded bg-green-500 px-4 py-2 font-semibold hover:bg-green-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
               Redeem
             </button>
@@ -1373,7 +1373,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
             <button
               onClick={handleSearchFriends}
               disabled={isSearchingFriends}
-              className="rounded bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold disabled:opacity-50"
+              className="rounded bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
               {isSearchingFriends ? "Searching..." : "Refresh"}
             </button>
@@ -1407,7 +1407,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
                   className="rounded-lg px-3 py-1 text-sm font-semibold text-white 
 bg-gradient-to-r from-[#00ffcc] to-[#00e5ff] 
 shadow-[0_0_10px_rgba(0,255,200,0.6)] 
-hover:scale-105 transition-all"
+hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                 >
                   Add Friend
                 </button>
@@ -1440,7 +1440,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                 await loadFriendPresence();
                 await loadFriendInvites();
               }}
-              className="rounded bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80"
+              className="rounded bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
               Refresh
             </button>
@@ -1448,13 +1448,13 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
           <div className="mb-4 flex gap-2">
             <button
               onClick={() => setActiveFriendsTab("friends")}
-              className={`rounded px-3 py-1 text-sm font-semibold ${activeFriendsTab === "friends" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
+              className={`rounded px-3 py-1 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${activeFriendsTab === "friends" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
             >
               Friends
             </button>
             <button
               onClick={() => setActiveFriendsTab("invites")}
-              className={`rounded px-3 py-1 text-sm font-semibold ${activeFriendsTab === "invites" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
+              className={`rounded px-3 py-1 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${activeFriendsTab === "invites" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
             >
               Invites ({receivedInvites.length})
             </button>
@@ -1485,8 +1485,8 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
                     <div className="flex-1">
                       <span>{friend.name}</span>
                       {friend.streakTitle && (
-                        <span className="ml-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
-                          🔥 {friend.streakTitle}
+                        <span                        className="ml-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
+                          <svg className="w-3 h-3 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg> {friend.streakTitle}
                         </span>
                       )}
                       {(() => {
@@ -1541,10 +1541,10 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
                               setSpectateLoadError("");
                               setSpectateIsLoaded(false);
                               setSpectateOverlayUrl(spectateUrl);
-                            }}
-                            className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse"
-                          >
-                            Spectate
+                            }}                              aria-label={`Spectate ${friend.name}`}
+                              className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                            >
+                              Spectate
                           </button>
                         );
                       })()}
@@ -1554,10 +1554,11 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
                           e.preventDefault();
                           handleRemoveFriend(friend.id);
                         }}
+                        aria-label={`Remove ${friend.name}`}
                         className="rounded-lg px-2 py-1 text-xs font-semibold text-white 
 bg-gradient-to-r from-red-500 to-red-700 
 shadow-[0_0_10px_rgba(255,0,0,0.6)] 
-hover:scale-105 transition-all"
+hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                       >
                         Remove
                       </button>
@@ -1601,7 +1602,8 @@ hover:scale-105 transition-all"
                         onClick={() =>
                           handleRespondToInvite(invite.id, "accept")
                         }
-                        className="rounded bg-green-500 px-2 py-1 text-xs font-semibold text-white"
+                        aria-label={`Accept invite from ${invite.sender_name}`}
+                      className="rounded bg-green-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                       >
                         Accept
                       </button>
@@ -1609,7 +1611,8 @@ hover:scale-105 transition-all"
                         onClick={() =>
                           handleRespondToInvite(invite.id, "decline")
                         }
-                        className="rounded bg-red-500 px-2 py-1 text-xs font-semibold text-white"
+                        aria-label={`Decline invite from ${invite.sender_name}`}
+                      className="rounded bg-red-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                       >
                         Decline
                       </button>
@@ -1631,7 +1634,7 @@ hover:scale-105 transition-all"
                   setSpectateLoadError("");
                   setSpectateIsLoaded(false);
                 }}
-                className="absolute right-3 top-3 z-10 rounded bg-red-600 px-3 py-1 text-sm font-semibold text-white"
+                className="absolute right-3 top-3 z-10 rounded bg-red-600 px-3 py-1 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
               >
                 Close Spectate
               </button>
@@ -1651,7 +1654,7 @@ hover:scale-105 transition-all"
                         (prev) => `${prev.split("#")[0]}#retry-${Date.now()}`,
                       );
                     }}
-                    className="rounded bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366]"
+                    className="rounded bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                   >
                     Retry
                   </button>
@@ -1803,7 +1806,7 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
           <button
             onClick={handleDeleteAccount}
             disabled={!delayDone || !password || isDeleting}
-            className="mt-4 rounded bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50"
+            className="mt-4 rounded bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
           >
             {isDeleting
               ? "Deleting..."
@@ -1880,7 +1883,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                         }));
                         setSelectedProfileImageName("");
                       }}
-                      className="rounded border border-white/30 px-3 py-1 text-sm"
+                      className="rounded border border-white/30 px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                     >
                       Remove image
                     </button>
@@ -1906,14 +1909,14 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setIsEditOpen(false)}
-                className="rounded border border-white/30 px-4 py-2"
+                className="rounded border border-white/30 px-4 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
               >
                 Close
               </button>
               <button
                 disabled={isSavingEdit}
                 onClick={handleSaveEditProfile}
-                className={cyberButton}
+                className={cyberButton + " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"}
               >
                 {isSavingEdit ? "Saving..." : "Save changes"}
               </button>
@@ -1929,14 +1932,14 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
 shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
           >
             <p className="text-2xl font-bold text-[#00e5ff]">
-              🎉 Level Up! You reached Level {levelUpModal.level}
+              <svg className="w-7 h-7 inline text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2l2.4 7.2h7.6l-6 4.8 2.4 7.2-6.4-4.8-6.4 4.8 2.4-7.2-6-4.8h7.6z"/></svg> Level Up! You reached Level {levelUpModal.level}
             </p>
             <p className="mt-2 text-gray-200">
               Bonus received: {levelUpModal.bonus} tokens
             </p>
             <button
               onClick={() => setLevelUpModal(null)}
-              className={cyberButton}
+              className={cyberButton + " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"}
             >
               Awesome!
             </button>

@@ -289,9 +289,8 @@ function MainComponent() {
     return () => clearInterval(id);
   }, [user]);
 
-  const GameCard = ({ game }) => (
-    <div className="group relative overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,229,255,0.4)]">
-      <Link href={game.href} className="block cursor-pointer">
+  const GameCard = ({ game }) => (        <div className="group relative overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,229,255,0.4)] focus-within:ring-2 focus-within:ring-[#00e5ff] focus-within:ring-offset-2 focus-within:ring-offset-[#040d24]">
+      <Link href={game.href} className="block cursor-pointer" aria-label={`Play ${game.nameKey ? t(game.nameKey) : game.name}`}>
         <div className="mb-3 h-32 overflow-hidden rounded-lg">
           <Image
             src={game.image}
@@ -308,13 +307,13 @@ function MainComponent() {
 
         <div className="mt-4 flex items-center text-[#00e5ff]">
           <span>{t("home.play_now")}</span>
-          <i className="fas fa-arrow-right ml-2"></i>
+          <svg className="ml-2 w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </div>
       </Link>
       <div className="mt-2">
         <Link
           href={`/classement?game=${game.leaderboardKey}`}
-          className="text-xs text-[#00e5ff] underline underline-offset-2 hover:text-[#d8fbff]"
+          className="text-xs text-[#00e5ff] underline underline-offset-2 hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24] rounded"
         >
           {t("home.view_leaderboard")} {game.nameKey ? t(game.nameKey) : game.name}
         </Link>
@@ -423,7 +422,7 @@ function MainComponent() {
               <button
                 key={btn.key}
                 onClick={() => setActiveFilter(btn.key)}
-                className={`rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-200 sm:px-5 sm:text-base ${
+                className={`rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-200 sm:px-5 sm:text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24] ${
                   activeFilter === btn.key
                     ? "bg-[#00e5ff] text-black shadow-[0_0_15px_rgba(0,229,255,0.7)]"
                     : "bg-[#08142f] text-[#d8fbff] border border-[#00e5ff]/30 hover:bg-[#10234a]"
