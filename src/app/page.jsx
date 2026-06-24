@@ -42,6 +42,7 @@ function MainComponent() {
   const { isLoaded, isSignedIn, getToken, signOut } = useAuth();
   const { user } = useUser();
   const [openGroup, setOpenGroup] = useState(null);
+  const [sportsLoaded, setSportsLoaded] = useState(false);
   const [selectedBet, setSelectedBet] = useState(null);
   const [selectedOdds, setSelectedOdds] = useState(null);
   const [sports, setSports] = useState({});
@@ -81,6 +82,7 @@ function MainComponent() {
   const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsLoading, setTermsLoading] = useState(true);
+  const [liveStats, setLiveStats] = useState({ playersOnline: 0, gamesPlayedToday: 0 });
   const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
   const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
@@ -178,6 +180,7 @@ function MainComponent() {
       });
 
       setSports(grouped);
+      setSportsLoaded(true);
     } catch (err) {
       console.error(err);
       setErrorSports(t("home.errors.load_sports"));
@@ -394,6 +397,32 @@ function MainComponent() {
     handleLoadSports();
   }, []);
 
+  // ── Live stats ticker fetch ──
+  const fetchLiveStats = async () => {
+    try {
+      const res = await fetch("/api/stats/live");
+      const data = await res.json();
+      if (data.success) {
+        setLiveStats({ playersOnline: data.playersOnline, gamesPlayedToday: data.gamesPlayedToday });
+      }
+    } catch {
+      // Silently fail — ticker is non-critical
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveStats();
+    const id = setInterval(fetchLiveStats, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Default expand first sport group when sports load
+  useEffect(() => {
+    if (sportsLoaded && sports && Object.keys(sports).length > 0 && openGroup === null) {
+      setOpenGroup(Object.keys(sports)[0]);
+    }
+  }, [sports, sportsLoaded, openGroup]);
+
   useEffect(() => {
     if (!user) return;
     fetchFriendPresence();
@@ -517,21 +546,24 @@ function MainComponent() {
         initial={fadeInVariant.initial}
         animate={fadeInVariant.animate}
         transition={fadeInVariant.transition}
-        className="relative mt-8 px-4 min-h-[70vh] flex items-center overflow-hidden"
+        className="relative mt-8 px-6 sm:px-4 min-h-[55vh] sm:min-h-[65vh] md:min-h-[70vh] flex items-center overflow-hidden"
       >
+        {/* Static gradient background for mobile (perf + contrast) */}
+        <div className="absolute inset-0 z-0 block sm:hidden bg-gradient-to-b from-[#050b1e] via-[#0a1a3d] to-[#030817]" />
+
         {/* Background Video */}
         <video
           autoPlay
           muted
           loop
           playsInline
-          className="absolute inset-0 h-full w-full object-cover z-0"
+          className="absolute inset-0 h-full w-full object-cover z-0 hidden sm:block"
         >
           <source src="/videos/casino-bg-video.mp4" type="video/mp4" />
         </video>
 
         {/* Dark overlay for readability */}
-        <div className="absolute inset-0 bg-black/80 z-10" />
+        <div className="absolute inset-0 bg-black/70 z-10" />
         <div className="absolute inset-0 z-10 pointer-events-none bg-[radial-gradient(circle_at_30%_20%,rgba(0,229,255,0.15),transparent_60%)] mix-blend-screen" />
 
         <div className="relative z-20 mx-auto max-w-7xl text-center reveal">
@@ -539,11 +571,11 @@ function MainComponent() {
             initial={fadeUpVariant.initial}
             animate={fadeUpVariant.animate}
             transition={fadeUpVariant.transition}
-            className="mb-4 text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text 
+            className="mb-4 text-3xl sm:text-5xl md:text-6xl font-black sm:font-extrabold text-transparent bg-clip-text 
 bg-gradient-to-r from-[#ff4fd8] via-[#00e5ff] to-[#ff4fd8]
-drop-shadow-[0_0_50px_rgba(255,79,216,0.5)] tracking-widest uppercase 
+drop-shadow-[0_0_40px_rgba(255,79,216,0.4)] tracking-widest uppercase 
 animate-[shimmerGradient_8s_ease-in-out_infinite]"
-            style={{ backgroundSize: "200% auto" }}
+            style={{ backgroundSize: "200% auto", textShadow: "0 0 3px rgba(0,0,0,0.9), 0 0 18px rgba(255,79,216,0.35)" }}
           >
             {t("home.landing.title")}
           </motion.h1>
@@ -555,7 +587,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               ...fadeUpVariant.transition,
               delay: shouldReduceMotion ? 0 : 0.05,
             }}
-            className="mb-8 text-xl text-[#d8fbff]"
+            className="mb-8 text-xl text-[#d8fbff] drop-shadow-[0_0_8px_rgba(0,0,0,0.7)]"
           >
             {t("home.landing.subtitle")}
           </motion.p>
@@ -563,7 +595,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
             variants={stagger}
             initial="initial"
             animate="animate"
-            className="flex flex-col space-y-4 sm:flex-row sm:justify-center sm:space-x-4 sm:space-y-0"
+            className="flex flex-col items-center space-y-5"
           >
             <motion.div
               whileHover={
@@ -571,24 +603,30 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               }
               whileTap={shouldReduceMotion ? undefined : hoverScale.whileTap}
               transition={hoverScale.transition}
+              className="w-full sm:w-auto"
             >
               <UIPro06PrimaryButton
                 href="/sign-up"
-                className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] px-8 py-4 text-lg font-medium text-[#041125] transition-all shadow-[0_0_16px_#00ffa6] hover:shadow-[0_0_25px_rgba(0, 255, 166,0.65)] hover:scale-105"
+                className="inline-block w-full sm:w-auto rounded-lg border border-[#f5ff3b]/40 bg-gradient-to-r from-[#00ffff] via-[#00e5ff] to-[#00ff88] px-10 py-5 text-xl font-bold text-[#041125] transition-all shadow-[0_0_35px_rgba(0,255,166,0.55)] hover:shadow-[0_0_55px_rgba(0,255,166,0.75)] hover:scale-105 animate-primary-cta-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+                aria-label={t("home.landing.start_betting")}
               >
                 {t("home.landing.start_betting")}
               </UIPro06PrimaryButton>
+              <p className="mt-3 text-sm text-[#7dd3fc]/70">Free virtual tokens — no real money required</p>
             </motion.div>
             <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15, duration: 0.3, ease: "easeOut" }}
               whileHover={
                 shouldReduceMotion ? undefined : hoverScale.whileHover
               }
               whileTap={shouldReduceMotion ? undefined : hoverScale.whileTap}
-              transition={hoverScale.transition}
             >
               <UIPro07SecondaryButton
                 href="/casino"
-                className="inline-block rounded-lg border border-[#ff4fd8]/40 bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] px-8 py-4 text-lg font-medium text-[#041125] transition-all shadow-[0_0_16px_rgba(168,85,247,0.5)] hover:shadow-[0_0_25px_rgba(255,79,216,0.65)] hover:scale-105"
+                className="inline-block rounded-lg border border-[#ff4fd8]/40 bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] px-6 py-3 text-base font-semibold text-[#041125] transition-all shadow-[0_0_35px_rgba(255,79,216,0.5)] hover:shadow-[0_0_55px_rgba(255,79,216,0.75)] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4fd8] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+                aria-label={t("home.landing.discover_casino")}
               >
                 {t("home.landing.discover_casino")}
               </UIPro07SecondaryButton>
@@ -597,15 +635,81 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
         </div>
       </motion.section>
 
-      <div className="mx-auto max-w-7xl px-4 py-8">
+      {/* Value Proposition Strip */}
+      <div className="mx-auto max-w-7xl px-4 py-6 reveal">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#00e5ff]/35 hover:shadow-[0_0_20px_rgba(0,229,255,0.1)]">
+            <svg className="w-10 h-10 mx-auto mb-3 text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a4 4 0 00-4 4c0 1.5.8 2.8 2 3.5V9a2 2 0 012-2h4a2 2 0 012 2v.5c1.2-.7 2-2 2-3.5a4 4 0 00-4-4z"/><path d="M9 22h6M12 18v4"/><circle cx="12" cy="12" r="3"/></svg>
+            <h3 className="text-lg font-bold text-[#00e5ff] mb-1">100% Skill-Based</h3>
+            <p className="text-sm text-[#7dd3fc]">No luck, no house edge. Your ability decides every outcome.</p>
+          </div>
+          <div className="rounded-xl border border-[#f5ff3b]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#f5ff3b]/35 hover:shadow-[0_0_20px_rgba(245,255,59,0.1)]">
+            <svg className="w-10 h-10 mx-auto mb-3 text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="6" x2="12" y2="12"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+            <h3 className="text-lg font-bold text-[#f5ff3b] mb-1">Free Virtual Tokens</h3>
+            <p className="text-sm text-[#7dd3fc]">Start with tokens on signup. No real money needed to play.</p>
+          </div>
+          <div className="rounded-xl border border-[#ff4fd8]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#ff4fd8]/35 hover:shadow-[0_0_20px_rgba(255,79,216,0.1)]">
+            <svg className="w-10 h-10 mx-auto mb-3 text-[#ff4fd8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+            <h3 className="text-lg font-bold text-[#ff4fd8] mb-1">Multiplayer Competition</h3>
+            <p className="text-sm text-[#7dd3fc]">Challenge friends and climb the global leaderboard.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Live Stats Ticker */}
+      {(liveStats.playersOnline > 0 || liveStats.gamesPlayedToday > 0) && (
+        <div className="mx-auto max-w-7xl px-4 pb-4 reveal">
+          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-8 rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/50 px-6 py-3 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-sm text-[#9dd8ff]">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500"></span>
+              </span>
+              <span className="font-semibold text-[#d8fbff]">{liveStats.playersOnline.toLocaleString()}</span>
+              players online
+            </div>
+            <span className="hidden sm:inline text-[#00e5ff]/30">|</span>
+            <div className="flex items-center gap-2 text-sm text-[#9dd8ff]">
+              <svg className="w-4 h-4 text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+              <span className="font-semibold text-[#d8fbff]">{liveStats.gamesPlayedToday.toLocaleString()}</span>
+              games played today
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* How It Works */}
+      <div className="mx-auto max-w-7xl px-4 pb-8 reveal">
+        <h2 className="text-2xl font-bold text-center text-[#f5ff3b] mb-8">How It Works</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="flex flex-col items-center text-center p-4">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#00e5ff]/15 border border-[#00e5ff]/30 text-[#00e5ff] text-xl font-bold mb-3">1</div>
+            <h3 className="text-base font-semibold text-[#d8fbff] mb-1">Create Account</h3>
+            <p className="text-sm text-[#7dd3fc]">Sign up in 30 seconds with email or social login.</p>
+          </div>
+          <div className="flex flex-col items-center text-center p-4">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#f5ff3b]/15 border border-[#f5ff3b]/30 text-[#f5ff3b] text-xl font-bold mb-3">2</div>
+            <h3 className="text-base font-semibold text-[#d8fbff] mb-1">Claim Free Tokens</h3>
+            <p className="text-sm text-[#7dd3fc]">Get daily login rewards and bonus tokens to start playing.</p>
+          </div>
+          <div className="flex flex-col items-center text-center p-4">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#ff4fd8]/15 border border-[#ff4fd8]/30 text-[#ff4fd8] text-xl font-bold mb-3">3</div>
+            <h3 className="text-base font-semibold text-[#d8fbff] mb-1">Play & Win</h3>
+            <p className="text-sm text-[#7dd3fc]">Compete in skill-based games and climb the leaderboard.</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-7xl px-4 py-8" id="main-content">
         <section className="mb-16 reveal">
-          <div className="flex items-center justify-between mb-8">
+          <div className="mb-3">
             <h2 className="text-2xl font-bold text-[#f5ff3b]">
-              {t("home.title")}
+              {t("home.title")} — Pick Your Game
             </h2>
+            <p className="mt-1 text-sm text-[#7dd3fc]">Skill-based multiplayer — compete against real players</p>
           </div>
 
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4 reveal-stagger">
+          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4 reveal-stagger">
             <motion.a
               initial={{ opacity: 0, y: 8 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -613,14 +717,22 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
               transition={{ duration: 0.25 }}
               href="/casino/roulette"
-              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
+              aria-label="Play Roulette"
+              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
             >
-              <div className="mb-4 h-48 overflow-hidden rounded-lg">
+              <div className="mb-4 h-48 overflow-hidden rounded-lg relative">
                 <Image
                   src={Img1}
                   alt={t("home.game_cards.roulette_alt")}
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
+                {/* Quick-play overlay */}
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <span className="flex items-center gap-2 rounded-lg bg-[#00e5ff]/90 px-4 py-2 text-sm font-bold text-[#030817]">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    Play Now
+                  </span>
+                </div>
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">
                 Roulette
@@ -636,14 +748,21 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
               transition={{ duration: 0.25 }}
               href="/casino/blackjack"
-              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
+              aria-label="Play Blackjack"
+              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
             >
-              <div className="mb-4 h-48 overflow-hidden rounded-lg">
+              <div className="mb-4 h-48 overflow-hidden rounded-lg relative">
                 <Image
                   src={Img2}
                   alt={t("home.game_cards.blackjack_alt")}
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <span className="flex items-center gap-2 rounded-lg bg-[#00e5ff]/90 px-4 py-2 text-sm font-bold text-[#030817]">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    Play Now
+                  </span>
+                </div>
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">
                 Blackjack
@@ -661,14 +780,21 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
               transition={{ duration: 0.25 }}
               href="/casino/poker"
-              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
+              aria-label="Play Poker"
+              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
             >
-              <div className="mb-4 h-48 overflow-hidden rounded-lg">
+              <div className="mb-4 h-48 overflow-hidden rounded-lg relative">
                 <Image
                   src={Img3}
                   alt={t("home.game_cards.poker_alt")}
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <span className="flex items-center gap-2 rounded-lg bg-[#00e5ff]/90 px-4 py-2 text-sm font-bold text-[#030817]">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    Play Now
+                  </span>
+                </div>
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Poker</h3>
               <p className="text-[#9dd8ff]">
@@ -684,14 +810,21 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
               transition={{ duration: 0.25 }}
               href="/casino/plinko"
-              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)]"
+              aria-label="Play Plinko"
+              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
             >
-              <div className="mb-4 h-48 overflow-hidden rounded-lg">
+              <div className="mb-4 h-48 overflow-hidden rounded-lg relative">
                 <Image
                   src={Img4}
                   alt={t("home.game_cards.plinko_alt")}
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <span className="flex items-center gap-2 rounded-lg bg-[#00e5ff]/90 px-4 py-2 text-sm font-bold text-[#030817]">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    Play Now
+                  </span>
+                </div>
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Plinko</h3>
               <p className="text-[#9dd8ff]">
@@ -708,7 +841,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           >
             <a
               href="/casino"
-              className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-6 py-3 text-lg font-semibold text-[#031026] transition-all glow-pulse more-hover cyber-glow-button"
+              className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-6 py-3 text-base font-semibold text-[#031026] transition-all glow-pulse more-hover cyber-glow-button shadow-[0_0_16px_rgba(245,255,59,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
             >
               {t("home.more_games")}
             </a>
@@ -716,10 +849,11 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
         </section>
 
         <section className="mb-16 reveal">
-          <div className="mb-8 flex justify-between items-center">
+          <div className="mb-3">
             <h2 className="text-2xl font-bold text-[#00e5ff]">
-              {t("home.popular_sports")}
+              Live Sports — Bet on Real Outcomes
             </h2>
+            <p className="mt-1 text-sm text-[#7dd3fc]">Virtual token betting on real-world sports events</p>
           </div>
 
           {loadingSports ? (
@@ -748,15 +882,17 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                     onClick={() =>
                       setOpenGroup(openGroup === groupKey ? null : groupKey)
                     }
+                    aria-expanded={openGroup === groupKey}
+                    aria-controls={`sport-group-${groupKey}`}
                     className="w-full flex justify-between items-center px-4 py-3
-                   bg-[#06142f] text-[#00e5ff] font-bold hover:bg-[#0b224f]"
+                   bg-[#06142f] text-[#00e5ff] font-bold hover:bg-[#0b224f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050f24]"
                   >
                     <span>{groupKey}</span>
                     <span>{openGroup === groupKey ? "▲" : "▼"}</span>
                   </motion.button>
 
                   {openGroup === groupKey && (
-                    <div className="grid grid-cols-2 gap-4 bg-[#050f24] p-4 md:grid-cols-3 lg:grid-cols-5 reveal-stagger">
+                    <div id={`sport-group-${groupKey}`} className="grid grid-cols-2 gap-4 bg-[#050f24] p-4 md:grid-cols-3 lg:grid-cols-5 reveal-stagger">
                       {Array.isArray(sports[groupKey]) &&
                         sports[groupKey].map((league) => (
                           <SportCard
@@ -779,7 +915,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           <div className="flex justify-center mt-8">
             <a
               href="/sport"
-              className="inline-block rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff] px-6 py-3 text-lg font-semibold text-[#041125] transition-all glow-pulse more-hover cyber-glow-button"
+              className="inline-block rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff] px-6 py-3 text-base font-semibold text-[#041125] transition-all glow-pulse more-hover cyber-glow-button shadow-[0_0_16px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
             >
               {t("home.more_sports")}
             </a>
@@ -809,9 +945,11 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
         <div className="fixed left-4 top-20 z-50">
           <button
             onClick={() => setShowExpandedBadge(!showExpandedBadge)}
-            className="group relative flex items-center gap-2 rounded-full bg-black/70 border border-amber-400/40 px-3 py-2 text-sm text-amber-300 backdrop-blur-sm hover:border-amber-400 hover:bg-black/85 transition-all shadow-[0_0_12px_rgba(251,191,36,0.15)]"
+            className="group relative flex items-center gap-2 rounded-full bg-black/70 border border-amber-400/40 px-3 py-2 text-sm text-amber-300 backdrop-blur-sm hover:border-amber-400 hover:bg-black/85 transition-all shadow-[0_0_12px_rgba(251,191,36,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
           >
-            <span className="text-lg">🔥</span>
+            <span className="text-lg text-amber-400">
+              <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg>
+            </span>
             <span className="font-bold">{streakData.dailyStreakCurrent || 0}</span>
             <span className="hidden sm:inline text-xs text-amber-200/70">
               {streakData.streakTitle || "days"}
@@ -854,7 +992,9 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 </div>
               )}
               {!streakData.nextMilestone && (streakData.dailyStreakCurrent || 0) >= 365 && (
-                <p className="mt-2 text-center text-amber-400 font-bold">👑 All milestones reached!</p>
+                <p className="mt-2 text-center text-amber-400 font-bold">
+                  <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z"/><path d="M3 19h18"/></svg>
+                  All milestones reached!</p>
               )}
             </div>
           )}
@@ -863,7 +1003,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
       {isSignedIn && !dailyRewardCooldown && (
         <button
           onClick={claimDailyReward}
-          className="fixed right-4 bottom-16 z-50 rounded-lg px-4 py-3 text-lg font-semibold text-white transition-all shadow-lg bg-[#FFD700] hover:scale-110 animate-pulse"
+          className="fixed right-4 bottom-16 z-50 rounded-lg px-4 py-2 text-sm font-semibold text-[#031026] transition-all shadow-lg bg-[#FFD700] hover:scale-110 animate-pulse border border-amber-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
           title={t("home.rewards.claim_daily_title")}
         >
           {t("home.rewards.claim_button")}
@@ -872,7 +1012,8 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
 
       {isSignedIn && dailyRewardCooldown && (
         <div className="fixed right-4 bottom-16 z-50 text-sm text-[#FFD700] bg-black/60 px-3 py-2 rounded-lg">
-          ⏳ {t("home.rewards.next_reward_in")} {cooldownTimeLeft}
+          <svg className="w-4 h-4 inline mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          {t("home.rewards.next_reward_in")} {cooldownTimeLeft}
         </div>
       )}
       {/* reward modal */}
@@ -900,8 +1041,9 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 max-w-4xl w-[95%] text-center shadow-2xl
                 max-h-[90vh] overflow-y-auto"
               >
-                <h2 className="text-3xl font-extrabold text-[#FFD700] mb-2">
-                  🎉 {t("home.rewards.modal_title")}
+                <h2 className="text-3xl font-extrabold text-[#FFD700] mb-2 flex items-center justify-center gap-2">
+                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2l2.4 7.2h7.6l-6 4.8 2.4 7.2-6.4-4.8-6.4 4.8 2.4-7.2-6-4.8h7.6z"/></svg>
+                  {t("home.rewards.modal_title")}
                 </h2>
 
                 <p className="mb-6 text-lg">
@@ -938,7 +1080,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                           {/* DARK OVERLAY */}
                           {claimed && (
                             <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-10">
-                              <span className="text-3xl">✅</span>
+                              <svg className="w-8 h-8 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
                             </div>
                           )}
 
@@ -946,8 +1088,10 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                             {t("home.rewards.day")} {day}
                           </div>
 
-                          <div className="text-2xl">
-                            {"💰".repeat(Math.min(day, 5))}
+                          <div className="text-lg flex justify-center gap-0.5 flex-wrap">
+                            {Array.from({ length: Math.min(day, 5) }).map((_, j) => (
+                              <svg key={j} className="w-5 h-5 text-[#FFD700]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10" fill="currentColor" fillOpacity="0.15"/><circle cx="12" cy="12" r="6" fill="currentColor" fillOpacity="0.3"/></svg>
+                            ))}
                           </div>
 
                           <div className="text-xs text-[#FFD700]">
@@ -961,7 +1105,8 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
 
                 {/* Streak message */}
                 <div className="mb-4 text-lg">
-                  🔥 {t("home.rewards.current_streak")}:
+                  <svg className="w-5 h-5 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg>
+                  {t("home.rewards.current_streak")}:
                   <span className="text-[#FFD700] font-bold">
                     {" "}
                     {streakData.dailyStreakCurrent || streakData.currentDay} {t("home.rewards.days")}
@@ -977,7 +1122,8 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 {milestoneBonus > 0 && (
                   <div className="mb-4 rounded-xl border-2 border-amber-400 bg-gradient-to-r from-amber-500/20 to-amber-600/20 p-4 animate-pulse">
                     <p className="text-lg font-bold text-amber-300">
-                      🏆 Streak Milestone Reached!
+                      <svg className="w-6 h-6 inline text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg>
+                      Streak Milestone Reached!
                     </p>
                     <p className="text-2xl font-extrabold text-amber-400 mt-1">
                       {milestoneTitle}
@@ -995,8 +1141,8 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                   }}
                   className="mt-2 px-6 py-3 
                    bg-[#FFD700] text-[#003366] 
-                   font-bold rounded-lg
-                   hover:scale-105 transition-all"
+                   font-bold rounded-lg border border-amber-400/30
+                   hover:scale-105 transition-all shadow-[0_0_16px_rgba(255,215,0,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#001a33]"
                 >
                   {t("ui.confirm")}
                 </button>
@@ -1022,10 +1168,15 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ duration: 0.3 }}
             >
-              <div className="relative mx-4 max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#00e5ff]/30 bg-gradient-to-b from-[#030817] to-[#0a1a3d] p-6 shadow-[0_0_40px_rgba(0,229,255,0.15)] md:p-8">
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="terms-modal-title"
+                className="relative mx-4 max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#00e5ff]/30 bg-gradient-to-b from-[#030817] to-[#0a1a3d] p-6 shadow-[0_0_40px_rgba(0,229,255,0.15)] md:p-8"
+              >
                 {/* Header */}
                 <div className="mb-6 text-center">
-                  <h2 className="mb-2 text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b]">
+                  <h2 id="terms-modal-title" className="mb-2 text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b]">
                     Terms & Conditions
                   </h2>
                   <p className="text-sm text-[#9dd8ff]">
@@ -1090,6 +1241,10 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                     <Link href="/fair-play" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
                       Fair Play Policy
                     </Link>
+                    , and{" "}
+                    <Link href="/accessibility" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
+                      Accessibility Policy
+                    </Link>
                     .
                   </p>
                 </div>
@@ -1098,13 +1253,13 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
                   <button
                     onClick={handleAcceptTerms}
-                    className="rounded-lg border border-[#00e5ff]/40 bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] px-8 py-3 font-bold text-[#041125] transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.5)] hover:scale-105"
+                    className="rounded-lg border border-[#00e5ff]/40 bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] px-6 py-3 text-base font-bold text-[#041125] transition-all hover:shadow-[0_0_30px_rgba(0,229,255,0.5)] hover:scale-105 shadow-[0_0_16px_rgba(0,255,166,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
                   >
                     I Agree
                   </button>
                   <button
                     onClick={handleRejectTerms}
-                    className="rounded-lg border border-red-500/40 bg-red-500/10 px-8 py-3 font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_20px_rgba(239,68,68,0.3)] hover:scale-105"
+                    className="rounded-lg border border-red-500/40 bg-red-500/10 px-6 py-3 text-base font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_20px_rgba(239,68,68,0.3)] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
                   >
                     I Disagree
                   </button>

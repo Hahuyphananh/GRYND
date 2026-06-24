@@ -147,6 +147,10 @@ export default function Footer() {
               <Link href="/fair-play" className={linkClass}>
                 Fair Play
               </Link>
+
+              <Link href="/accessibility" className={linkClass}>
+                Accessibility
+              </Link>
             </div>
           </div>
         </div>

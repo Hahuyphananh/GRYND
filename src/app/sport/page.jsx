@@ -202,7 +202,9 @@ const MainComponent = () => {
                   className="overflow-hidden rounded-lg border border-[#00e5ff]/35"
                 >
                   <button
-                    className="flex w-full items-center justify-between bg-[#06122b] px-3 py-2 text-left text-[#00e5ff]"
+                    aria-expanded={openGroup === group}
+                    aria-controls={`sport-league-group-${group}`}
+                    className="flex w-full items-center justify-between bg-[#06122b] px-3 py-2 text-left text-[#00e5ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#06122b]"
                     onClick={() =>
                       setOpenGroup(openGroup === group ? null : group)
                     }
@@ -212,7 +214,7 @@ const MainComponent = () => {
                   </button>
 
                   {openGroup === group && (
-                    <ul className="bg-[#0c1d45]">
+                    <ul id={`sport-league-group-${group}`} className="bg-[#0c1d45]">
                       {selectedSport && (
                         <div className="flex items-center justify-between rounded-xl border border-[#00e5ff]/45 bg-[#08142f]/95 p-3">
                           <div>
@@ -226,7 +228,7 @@ const MainComponent = () => {
 
                           <button
                             onClick={() => fetchEvents({ forceRefresh: true })}
-                            className="rounded-lg border border-[#00e5ff] px-3 py-2 text-sm font-semibold text-[#00e5ff] hover:bg-[#00e5ff]/10"
+                            className="rounded-lg border border-[#00e5ff] px-3 py-2 text-sm font-semibold text-[#00e5ff] hover:bg-[#00e5ff]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c1d45]"
                           >
                             {t("sports.refresh")}
                           </button>
@@ -235,11 +237,20 @@ const MainComponent = () => {
                       {sports[group].map((league) => (
                         <li
                           key={league.key}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => {
                             setSelectedSport(league.key);
                             fetchEvents({ sportKey: league.key }); // auto load events
                           }}
-                          className={`cursor-pointer border-t border-[#00e5ff]/20 px-3 py-2 text-sm ${
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedSport(league.key);
+                              fetchEvents({ sportKey: league.key });
+                            }
+                          }}
+                          className={`cursor-pointer border-t border-[#00e5ff]/20 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c1d45] ${
                             selectedSport === league.key
                               ? "bg-[#f5ff3b] text-[#071421]"
                               : "text-[#9dd8ff] hover:bg-[#003b8e]"
@@ -261,7 +272,7 @@ const MainComponent = () => {
                                 setSelectedSport(league.key);
                                 fetchEvents({ sportKey: league.key });
                               }}
-                              className="ml-2 rounded-md border border-[#f5ff3b]/50 bg-[#f5ff3b] px-2 py-1 text-xs font-bold text-[#031026] hover:brightness-95"
+                              className="ml-2 rounded-md border border-[#f5ff3b]/50 bg-[#f5ff3b] px-2 py-1 text-xs font-bold text-[#031026] hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c1d45]"
                             >
                               {t("sports.view")}
                             </button>
@@ -284,7 +295,7 @@ const MainComponent = () => {
                     <button
                       key={type.key}
                       onClick={() => setSelectedMarket(type.key)}
-                      className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${
                         selectedMarket === type.key
                           ? "border-[#f5ff3b] bg-[#f5ff3b] text-[#051127] shadow-[0_0_14px_rgba(245,255,59,0.4)]"
                           : "border-[#00e5ff]/50 text-[#00e5ff] hover:bg-[#003b8e]/50"

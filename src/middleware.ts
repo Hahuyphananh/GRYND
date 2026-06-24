@@ -55,6 +55,7 @@ const isPublicRoute = createRouteMatcher([
   "/privacy-policy",
   "/terms",
   "/fair-play",
+  "/accessibility",
 
   // Public contact page
   "/contact",

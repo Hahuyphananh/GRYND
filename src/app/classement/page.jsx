@@ -76,16 +76,16 @@ function getMetricValue(item, tab, category) {
   }
 
   if (tab === "daily-current") {
-    return `${Number(item.daily_streak_current || 0).toLocaleString()} days 🔥`;
+    return `${Number(item.daily_streak_current || 0).toLocaleString()} days`;
   }
   if (tab === "daily-best") {
-    return `${Number(item.daily_streak_best || 0).toLocaleString()} days 🏆`;
+    return `${Number(item.daily_streak_best || 0).toLocaleString()} days`;
   }
   if (tab === "weekly-streak") {
-    return `${Number(item.weekly_streak_current || 0).toLocaleString()} days 📅`;
+    return `${Number(item.weekly_streak_current || 0).toLocaleString()} days`;
   }
   if (tab === "weekly-best") {
-    return `${Number(item.weekly_streak_best || 0).toLocaleString()} days 🏆`;
+    return `${Number(item.weekly_streak_best || 0).toLocaleString()} days`;
   }
 
   if (category === "level")
@@ -175,7 +175,7 @@ export default function LeaderboardPage() {
         {tab === "weekly" && weeklyCountdown && (
           <div className="mb-4 flex justify-center">
             <div className="inline-flex items-center gap-2 rounded-lg border border-[#f5ff3b]/40 bg-[#0a214d]/90 px-4 py-2 text-sm">
-              <span className="text-[#00e5ff]">⏳</span>
+              <svg className="w-4 h-4 inline text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
               <span className="text-gray-300">Weekly reset in:</span>
               <span className="font-mono font-bold text-[#f5ff3b]">{weeklyCountdown}</span>
             </div>
@@ -187,19 +187,20 @@ export default function LeaderboardPage() {
             <button
               key={x}
               onClick={() => setTab(x)}
-              className={`rounded-lg border px-5 py-2 text-sm font-semibold transition-all ${tab === x ? "border-[#f5ff3b]/60 bg-[#f5ff3b] text-[#041125]" : "border-[#00e5ff]/50 bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"}`}
-            >                {x === "wins"
-                ? "Wins 💥"
+              className={`rounded-lg border px-5 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${tab === x ? "border-[#f5ff3b]/60 bg-[#f5ff3b] text-[#041125]" : "border-[#00e5ff]/50 bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"}`}
+            >
+                {x === "wins"
+                ? <span>Wins <svg className="w-4 h-4 inline text-[#f5ff3b]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span>
                 : x === "all-time"
                   ? "All-Time"
                   : x === "daily-current"
-                    ? "Daily Streak 🔥"
+                    ? <span>Daily Streak <svg className="w-4 h-4 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg></span>
                     : x === "daily-best"
-                      ? "Best Streak 🏆"
+                      ? <span>Best Streak <svg className="w-4 h-4 inline text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>
                       : x === "weekly-streak"
-                        ? "Weekly Streak 📅"
+                        ? <span>Weekly Streak <svg className="w-4 h-4 inline text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
                         : x === "weekly-best"
-                          ? "Weekly Best 🏆"
+                          ? <span>Weekly Best <svg className="w-4 h-4 inline text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>
                           : "Weekly"}
             </button>
           ))}
@@ -211,7 +212,7 @@ export default function LeaderboardPage() {
               <button
                 key={x}
                 onClick={() => setCategory(x)}
-                className={`rounded-md px-4 py-2 text-xs font-semibold ${category === x ? "bg-[#f5ff3b] text-[#06152c]" : "bg-[#0a214d] text-[#00e5ff]"}`}
+                className={`rounded-md px-4 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${category === x ? "bg-[#f5ff3b] text-[#06152c]" : "bg-[#0a214d] text-[#00e5ff]"}`}
               >
                 {x}
               </button>
@@ -257,7 +258,7 @@ export default function LeaderboardPage() {
                         <td className="px-3 py-3 font-semibold">
                           <Link
                             href={`/profil/${encodeURIComponent(item.clerk_id)}`}
-                            className="hover:text-[#00e5ff] hover:underline transition-colors"
+                            className="hover:text-[#00e5ff] hover:underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] rounded"
                           >
                             {item.user?.name || item.name}
                           </Link>
@@ -280,14 +281,14 @@ export default function LeaderboardPage() {
                     <Link
                       href={`/profil/${encodeURIComponent(w.clerk_id)}`}
                       key={`${w.clerk_id}-${w.rank}`}
-                      className="flex items-center justify-between rounded-md border border-[#00e5ff]/30 bg-[#0b224f] p-3 hover:bg-white/10 transition-colors cursor-pointer"
+                      className="flex items-center justify-between rounded-md border border-[#00e5ff]/30 bg-[#0b224f] p-3 hover:bg-white/10 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
                     >
                       <div className="font-semibold text-gray-100">
                         #{w.rank} • {w.user?.name || w.name}
                       </div>
                       <div className="text-right">
                         <span className="animate-pulse rounded bg-[#f5ff3b] px-2 py-1 font-bold text-[#041125]">
-                          Gross Wins 💥
+                          Gross Wins <svg className="w-3.5 h-3.5 inline" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
                         </span>
                         <div className="mt-1 text-green-300">
                           {Number(w.total_won || 0).toLocaleString()}

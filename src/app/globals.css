@@ -642,6 +642,19 @@ a[class*="bg-[#f5ff3b]"] {
 .animate-neonPulse {
   animation: neonPulse 3s ease-in-out infinite;
 }
+
+@keyframes primaryCtaPulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(0, 255, 166, 0.4), 0 0 40px rgba(0, 255, 166, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(0, 255, 166, 0.65), 0 0 65px rgba(0, 255, 166, 0.35);
+  }
+}
+
+.animate-primary-cta-pulse {
+  animation: primaryCtaPulse 2.5s ease-in-out infinite;
+}
 .animate-neonButton {
   animation: neonButton 2.5s ease-in-out infinite;
 }
