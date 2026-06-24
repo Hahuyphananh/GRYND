@@ -636,6 +636,14 @@ export const coinFlipGames = pgTable(
     result: varchar("result", { length: 10 }).default("pending").notNull(),
     status: coinFlipStatusEnum("status").default("active").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    // ── Best-of-N (default best-of-3) support ──────────────────────
+    // First player to reach `target_wins` round wins ends the match.
+    // Per-round outcome / choices are reset between rounds (the
+    // per-round state is still on the row, not a child table) so the
+    // status route can stay single-row focused. See status/route.js.
+    targetWins: integer("target_wins").default(2).notNull(),
+    scorePlayer1: integer("score_player1").default(0).notNull(),
+    scorePlayer2: integer("score_player2").default(0).notNull(),
   },
   (table) => ({
     openGamesIdx: index("coin_flip_open_games_idx").on(table.player2Id),
