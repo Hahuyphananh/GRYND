@@ -14,8 +14,8 @@
 // IMPORTANT: All timing calculations live on the server. The client
 // emits ONLY a bare STOP signal over the realtime socket; the server
 // stamps the STOP instant and computes elapsed = stopInstant -
-// match.roundGoInstant. The page does NOT call performance.now(), run
-// a requestAnimationFrame loop, or compute any elapsed value locally.
+// match.roundGoInstant. The local running timer is visual-only (for UX)
+// and does not affect scoring.
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -48,10 +48,12 @@ import {
   SOCKET_NAMESPACE,
 } from "../../../../../lib/precision/constants";
 import {
+  diffToRank,
   formatTokens,
   getReplaySecondsLeft,
   makeInitialEndPopupState,
 } from "../../../../../lib/precision/utils";
+import { playRankSound } from "../../../../../lib/precisionAudio";
 import { fadeUp } from "../../../../../lib/animations";
 import type {
   PrecisionEndPopupState,
@@ -146,6 +148,35 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   // snapshot the previous value here so the reveal panel can show the
   // target the round JUST used instead of "—".
   const lastRevealedTargetRef = useRef<number | null>(null);
+
+  // ── Running-timer state (client-side, visual-only) ─────────────────
+  // When the round flips to `active`, we start a local rAF loop that
+  // updates `timerMs` every frame. The value is informational — the
+  // player sees the elapsed time live so they can stop near the target.
+  // Server timing is authoritative for scoring; this display is for UX.
+  const [timerMs, setTimerMs] = useState(0);
+  const timerRafRef = useRef<number | null>(null);
+  const localGoInstantRef = useRef<number | null>(null);
+
+  // Start / stop helpers for the local timer rAF loop.
+  const stopTimer = useCallback(() => {
+    if (timerRafRef.current !== null) {
+      cancelAnimationFrame(timerRafRef.current);
+      timerRafRef.current = null;
+    }
+    localGoInstantRef.current = null;
+  }, []);
+
+  const startTimer = useCallback(() => {
+    stopTimer();
+    localGoInstantRef.current = performance.now();
+    const tick = () => {
+      if (localGoInstantRef.current === null) return;
+      setTimerMs(performance.now() - localGoInstantRef.current);
+      timerRafRef.current = requestAnimationFrame(tick);
+    };
+    timerRafRef.current = requestAnimationFrame(tick);
+  }, [stopTimer]);
   // TODO(gameplay): when the auth flow lands in the scaffold, derive this
   // from the Clerk session id compared to `state.players[*].userId` so the
   // opponent-aware logic below actually flips sides correctly. For the
@@ -597,6 +628,32 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     state?.targetMs,
   ]);
 
+  // ── Round-result sound effect ───────────────────────────────────
+  // When the per-round reveal panel appears (roundResultReveal is set),
+  // play the rank-appropriate sound for the local player's diff.
+  useEffect(() => {
+    if (!roundResultReveal) return;
+    const localDiff =
+      localSeat === 1
+        ? roundResultReveal.seat1DiffMs
+        : roundResultReveal.seat2DiffMs;
+    playRankSound(localDiff);
+  }, [roundResultReveal, localSeat]);
+
+  // ── Start / stop the local running timer based on phase ────────
+  // When the round flips from `arming` to `active`, the local timer
+  // begins. When the round resolves (any phase other than `active`),
+  // the timer is stopped and reset.
+  useEffect(() => {
+    if (state?.phase === "active") {
+      startTimer();
+    } else {
+      stopTimer();
+      setTimerMs(0);
+    }
+    return () => stopTimer();
+  }, [state?.phase, startTimer, stopTimer]);
+
   // Cancel the auto-dismiss timer on unmount so a stale timer can't
   // call setState on a torn-down React tree.
   useEffect(() => {
@@ -605,8 +662,9 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
         clearTimeout(roundResultTimerRef.current);
         roundResultTimerRef.current = null;
       }
+      stopTimer();
     };
-  }, []);
+  }, [stopTimer]);
 
   // NOTE: the optimistic `selfStopPending` clear is folded into the
   // consolidated round-resolution useEffect above (one effect for both
@@ -863,6 +921,13 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
       : "Opponent's turn"
     : null;
 
+  // Live rank preview for the active phase — computed once per render
+  // instead of via an inline IIFE in JSX.
+  const previewRank =
+    state?.targetMs !== null && state?.phase === "active"
+      ? diffToRank(Math.abs(timerMs - state.targetMs))
+      : null;
+
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#06120f] to-[#050816] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
@@ -1014,6 +1079,20 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                   currentRound={currentRound}
                   lastRoundWinnerSeat={lastRoundWinnerSeat}
                   awaitingOpponentStop={awaitingOpponentStop}
+                  lastRoundStops={
+                    state.lastRoundStops
+                      ? {
+                          seat1: {
+                            elapsedMs: state.lastRoundStops.seat1.elapsedMs,
+                            diffMs: state.lastRoundStops.seat1.diffMs,
+                          },
+                          seat2: {
+                            elapsedMs: state.lastRoundStops.seat2.elapsedMs,
+                            diffMs: state.lastRoundStops.seat2.diffMs,
+                          },
+                        }
+                      : null
+                  }
                 />
 
                 <div className="rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-5 text-center sm:p-8">
@@ -1021,11 +1100,24 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                   <h2 className="mt-4 text-2xl font-black text-fuchsia-300">
                     Round {currentRound}
                   </h2>
+
+                  {/* ── Running timer (client-side, visual-only) ── */}
+                  <p className="mt-3 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
+                    Elapsed
+                  </p>
+                  <p
+                    data-testid="precision-round-timer"
+                    className="mt-1 font-mono text-6xl font-black tabular-nums text-cyan-200 sm:text-7xl"
+                  >
+                    {Math.round(timerMs).toLocaleString()}
+                    <span className="ml-1 text-3xl text-cyan-300/60">ms</span>
+                  </p>
+
                   {/* Per-round target revealed by the server when the
                       arming→active timer fires. The value is `null` if the
                       state hasn't been refreshed yet on the very first
                       active tick — show a placeholder rather than crashing. */}
-                  <p className="mt-3 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
+                  <p className="mt-4 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
                     Target
                   </p>
                   <p
@@ -1036,6 +1128,17 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                       ? `${state.targetMs.toLocaleString()} ms`
                       : "—"}
                   </p>
+
+                  {/* Live rank preview — shows what rank the player would
+                      earn if they stopped at the current timer value. */}
+                  {previewRank && (
+                    <p className={`mt-3 text-lg font-bold ${previewRank.color}`}>
+                      {previewRank.emoji} {previewRank.label}{" "}
+                      <span className="text-sm font-normal text-cyan-100/70">
+                        ({Math.abs(Math.round(timerMs - (state.targetMs ?? 0))).toLocaleString()} ms off)
+                      </span>
+                    </p>
+                  )}
                   {state.lastRoundStops && (
                     <div
                       data-testid="precision-last-round-stops"

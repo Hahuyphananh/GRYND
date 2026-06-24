@@ -29,6 +29,7 @@ import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { gameOverModal } from "../../lib/animations";
+import { diffToRank } from "../../lib/precision/utils";
 import type { PlayerSeat } from "../../lib/precision/types";
 
 /** Auto-dismiss delay (ms) before the panel returns control to the
@@ -140,6 +141,19 @@ const PlayerRow = React.memo(function PlayerRow({
           </span>{" "}
           ms
         </span>
+        {/* ── Rank badge ── */}
+        {(() => {
+          const rank = diffToRank(diffMs);
+          return (
+            <span
+              data-testid={`precision-round-result-rank-${seat}`}
+              className={`mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${rank.bg} ${rank.border}`}
+            >
+              <span>{rank.emoji}</span>
+              <span className={rank.color}>{rank.label}</span>
+            </span>
+          );
+        })()}
       </div>
     </motion.div>
   );

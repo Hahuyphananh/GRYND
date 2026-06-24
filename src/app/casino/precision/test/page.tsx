@@ -43,19 +43,24 @@ import {
   MIN_TARGET_MS,
 } from "../../../../lib/precision/constants";
 import { fadeUp } from "../../../../lib/animations";
+import {
+  diffToRank,
+  PRECISION_RANK_ENTRIES,
+  RANK_LABELS,
+  type PrecisionRank,
+} from "../../../../lib/precision/utils";
+import { playRankSound } from "../../../../lib/precisionAudio";
 
 // ── Per-round telemetry. ──────────────────────────────────────────
-// `reactionMs` is the primary scoring input (display + bands).
-// `targetMs` is captured for display parity with the PvP round UI
-// but is NOT used for grading — see the file header for the
-// rationale. No `diffMs` field: scoring on `|reaction − target|`
-// would always read as ≈targetMs (reactionMs is two orders of
-// magnitude smaller) and would always classify as "Off", so we
-// grade on reactionMs alone.
+// `diffMs = |elapsedMs - targetMs|` is the PRIMARY scoring input.
+// The player tries to STOP exactly when the running timer matches
+// the target; closer = better rank. `reactionMs` is kept for the
+// per-round log (raw elapsed time) but grading uses `diffMs` only.
 interface RoundStat {
   round: number;
   targetMs: number;
-  reactionMs: number;
+  elapsedMs: number;
+  diffMs: number;
 }
 
 type TestPhase =
@@ -65,25 +70,50 @@ type TestPhase =
   | "round-done" // Post-round overlay shown for ~1.6s before the next.
   | "finished";   // All 5 rounds played; show summary stats.
 
-// Lower-is-better reaction-time bands so users get a concrete
-// takeaway. Calibrated against the standard reaction-time literature:
-//   * Elite:     ≤ 150ms
-//   * Sharp:     ≤ 250ms
-//   * Solid:     ≤ 400ms
-//   * Casual:    ≤ 700ms
-//   * Off:        > 700ms
-// These thresholds grade on the user's reaction time directly —
-// NOT on `|reaction − target|`. Grading on the delta would be
-// meaningless because target is 2.5–10 s and human reaction is
-// 100–500 ms, so the delta would always land in the "Off" bucket.
-function reactionBand(
-  reactionMs: number,
-): { label: string; color: string } {
-  if (reactionMs <= 150) return { label: "Elite", color: "text-emerald-300" };
-  if (reactionMs <= 250) return { label: "Sharp", color: "text-cyan-300" };
-  if (reactionMs <= 400) return { label: "Solid", color: "text-yellow-300" };
-  if (reactionMs <= 700) return { label: "Casual", color: "text-orange-300" };
-  return { label: "Off", color: "text-red-300" };
+// Rank is based on |elapsedMs - targetMs| — how close the player
+// landed to the server-style rolled target. Reuses the shared
+// `diffToRank` from lib/precision/utils so the solo test and
+// PvP round-result panel use identical thresholds.
+
+// ── Personal-best persistence (localStorage) ──────────────────────
+const PB_KEY = "precision:solo:personalBest";
+
+interface PersonalBest {
+  label: string;
+  emoji: string;
+  color: string;
+  bestDiffMs: number;
+}
+
+function loadPersonalBest(): PersonalBest | null {
+  try {
+    const raw = localStorage.getItem(PB_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.label === "string") return parsed as PersonalBest;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function savePersonalBest(pb: PersonalBest): void {
+  try {
+    localStorage.setItem(PB_KEY, JSON.stringify(pb));
+  } catch {
+    // Silently ignore — storage may be full or unavailable.
+  }
+}
+
+/** Compare two rank labels: returns true if `a` is a better (lower-index)
+ *  tier than `b`. Uses the canonical `PRECISION_RANK_ENTRIES` ordering. */
+function isBetterRank(a: string, b: string): boolean {
+  const idxA = PRECISION_RANK_ENTRIES.findIndex((e) => e.rank.label === a);
+  const idxB = PRECISION_RANK_ENTRIES.findIndex((e) => e.rank.label === b);
+  // Lower index = better. Unknown labels fall back conservatively.
+  if (idxA === -1) return false;
+  if (idxB === -1) return true;
+  return idxA < idxB;
 }
 
 function rollArmingDelayMs(): number {
@@ -107,8 +137,16 @@ export default function PrecisionTestPage() {
   const [phase, setPhase] = useState<TestPhase>("idle");
   const [currentRound, setCurrentRound] = useState(1);
   const [targetMs, setTargetMs] = useState<number | null>(null);
-  const [currentReactionMs, setCurrentReactionMs] = useState<number | null>(null);
+  const [currentElapsedMs, setCurrentElapsedMs] = useState<number | null>(null);
+  const [currentDiffMs, setCurrentDiffMs] = useState<number | null>(null);
+  // Running-timer display — updated every ~16ms via rAF during the
+  // active phase so the player sees a live counter of elapsed time.
+  const [timerMs, setTimerMs] = useState(0);
+  const timerRafRef = useRef<number | null>(null);
   const [history, setHistory] = useState<RoundStat[]>([]);
+  // Personal best — loaded from localStorage on mount, updated when a
+  // finished test produces a better best-rank than the stored value.
+  const [personalBest, setPersonalBest] = useState<PersonalBest | null>(() => loadPersonalBest());
 
   // Tracks the GO instant for the ACTIVE phase — the wall-clock time at
   // which the arming timer flipped the round into "active" and the
@@ -130,7 +168,7 @@ export default function PrecisionTestPage() {
   // doesn't open two arming timers racing each other.
   const sessionIdRef = useRef(0);
 
-  // Cleanup: cancel both pending timers on unmount.
+  // Cleanup: cancel all pending timers on unmount.
   useEffect(() => {
     return () => {
       if (armingTimerRef.current !== null) {
@@ -141,16 +179,44 @@ export default function PrecisionTestPage() {
         clearTimeout(roundDoneTimerRef.current);
         roundDoneTimerRef.current = null;
       }
+      if (timerRafRef.current !== null) {
+        cancelAnimationFrame(timerRafRef.current);
+        timerRafRef.current = null;
+      }
     };
+  }, []);
+
+  // ── Running timer (rAF loop) ───────────────────────────────────
+  // Starts when the round flips to "active" and stops on STOP click
+  // or phase change. Uses requestAnimationFrame so the display stays
+  // smooth (compositor-thread) and doesn't spam React re-renders.
+  const startTimer = useCallback(() => {
+    if (goInstantRef.current === null) return;
+    const tick = () => {
+      if (goInstantRef.current === null) return;
+      setTimerMs(performance.now() - goInstantRef.current);
+      timerRafRef.current = requestAnimationFrame(tick);
+    };
+    timerRafRef.current = requestAnimationFrame(tick);
+  }, []);
+  const stopTimer = useCallback(() => {
+    if (timerRafRef.current !== null) {
+      cancelAnimationFrame(timerRafRef.current);
+      timerRafRef.current = null;
+    }
   }, []);
 
   const beginRound = useCallback((roundIndex: number) => {
     const session = sessionIdRef.current;
+    stopTimer();
     setPhase("arming");
     setCurrentRound(roundIndex);
     setTargetMs(null);
-    setCurrentReactionMs(null);
+    setCurrentElapsedMs(null);
+    setCurrentDiffMs(null);
+    setTimerMs(0);
     stopLockedRef.current = false;
+    goInstantRef.current = null;
 
     if (armingTimerRef.current !== null) {
       clearTimeout(armingTimerRef.current);
@@ -163,8 +229,9 @@ export default function PrecisionTestPage() {
       goInstantRef.current = performance.now();
       setTargetMs(rollTargetMs());
       setPhase("active");
+      startTimer();
     }, rollArmingDelayMs());
-  }, []);
+  }, [startTimer, stopTimer]);
 
   const handleStart = useCallback(() => {
     posthog?.capture("precision_test_started");
@@ -200,18 +267,25 @@ export default function PrecisionTestPage() {
     if (stopLockedRef.current) return;
     if (goInstantRef.current === null) return;
     stopLockedRef.current = true;
-    const reactionMs = performance.now() - goInstantRef.current;
+    stopTimer();
+    const elapsedMs = performance.now() - goInstantRef.current;
     const target = targetMs ?? 0;
-    setCurrentReactionMs(reactionMs);
+    const diffMs = Math.abs(elapsedMs - target);
+    // Play the rank-appropriate sound effect
+    playRankSound(diffMs);
+    setCurrentElapsedMs(elapsedMs);
+    setCurrentDiffMs(diffMs);
     const stat: RoundStat = {
       round: currentRound,
       targetMs: target,
-      reactionMs,
+      elapsedMs,
+      diffMs,
     };
     setHistory((h) => [...h, stat]);
     posthog?.capture("precision_test_round_completed", {
       round: currentRound,
-      reactionMs,
+      elapsedMs,
+      diffMs,
     });
     setPhase("round-done");
     if (currentRound >= MAX_ROUNDS) {
@@ -228,38 +302,58 @@ export default function PrecisionTestPage() {
         beginRound(currentRound + 1);
       }, 1600);
     }
-  }, [phase, currentRound, targetMs, beginRound, posthog]);
+  }, [phase, currentRound, targetMs, beginRound, posthog, stopTimer]);
 
 // === Derived summary stats ──────────────────────────────────
-// All values grade on `reactionMs` directly, NOT on a delta vs
-// the rolled target (see the file header for the rationale).
+// All values grade on `diffMs` (|elapsedMs - targetMs|) — how
+// close the player landed to the target. Lower diff = better.
 // Per-tier counts are EXCLUSIVE so the zone-distribution bars
-// stack into non-overlapping segments. Thresholds must stay in
-// sync with `reactionBand()` above.
+// stack into non-overlapping segments.
 const summary = useMemo(() => {
   if (history.length === 0) return null;
-  const reactions = history.map((r) => r.reactionMs);
-  const avgReaction =
-    reactions.reduce((a, b) => a + b, 0) / reactions.length;
-  const bestReaction = Math.min(...reactions);
-  const worstReaction = Math.max(...reactions);
-  const elite = reactions.filter((r) => r <= 150).length;
-  const sharp = reactions.filter((r) => r > 150 && r <= 250).length;
-  const solid = reactions.filter((r) => r > 250 && r <= 400).length;
-  const casual = reactions.filter((r) => r > 400 && r <= 700).length;
-  const off = reactions.filter((r) => r > 700).length;
+  const diffs = history.map((r) => r.diffMs);
+  const avgDiff = diffs.reduce((a, b) => a + b, 0) / diffs.length;
+  const bestDiff = Math.min(...diffs);
+  const worstDiff = Math.max(...diffs);
+  // Count rounds in each rank tier using the shared thresholds.
+  const rankCounts: Record<string, number> = {};
+  for (const label of RANK_LABELS) rankCounts[label] = 0;
+  for (const r of history) {
+    const rank = diffToRank(r.diffMs);
+    rankCounts[rank.label] = (rankCounts[rank.label] || 0) + 1;
+  }
   return {
-    avgReaction,
-    bestReaction,
-    worstReaction,
-    elite,
-    sharp,
-    solid,
-    casual,
-    off,
+    avgDiff,
+    bestDiff,
+    worstDiff,
+    rankCounts,
     rounds: history.length,
+    bestRank: diffToRank(bestDiff),
   };
 }, [history]);
+
+// ── Persist personal best when a test finishes ──────────────────
+// Compares the session's best rank against the stored personal best.
+// If the session's best is strictly better (lower index in the rank
+// table), update both state and localStorage so it survives refreshes.
+// Reads directly from localStorage (not `personalBest` state) to avoid
+// a needless re-render cycle from including personalBest in deps.
+useEffect(() => {
+  if (phase !== "finished" || !summary) return;
+  const sessionLabel = summary.bestRank.label;
+  const stored = loadPersonalBest();
+  const currentLabel = stored?.label ?? "MISS";
+  if (isBetterRank(sessionLabel, currentLabel)) {
+    const newPb: PersonalBest = {
+      label: summary.bestRank.label,
+      emoji: summary.bestRank.emoji,
+      color: summary.bestRank.color,
+      bestDiffMs: summary.bestDiff,
+    };
+    setPersonalBest(newPb);
+    savePersonalBest(newPb);
+  }
+}, [phase, summary]);
   return (
     <div
       data-testid="precision-test-page"
@@ -308,7 +402,7 @@ const summary = useMemo(() => {
         <AnimatePresence mode="wait" initial={false}>
           {phase === "idle" && (
             <motion.div key="phase-idle" {...fadeUp}>
-              <IdleStartScreen onStart={handleStart} />
+              <IdleStartScreen onStart={handleStart} personalBest={personalBest} />
             </motion.div>
           )}
 
@@ -323,19 +417,22 @@ const summary = useMemo(() => {
               <ActivePanel
                 currentRound={currentRound}
                 targetMs={targetMs}
+                timerMs={timerMs}
                 onStop={handleStop}
               />
             </motion.div>
           )}
 
           {phase === "round-done" &&
-            currentReactionMs !== null &&
+            currentElapsedMs !== null &&
+            currentDiffMs !== null &&
             targetMs !== null && (
               <motion.div key="phase-round-done" {...fadeUp}>
                 <RoundDonePanel
                   round={currentRound}
                   targetMs={targetMs}
-                  reactionMs={currentReactionMs}
+                  elapsedMs={currentElapsedMs}
+                  diffMs={currentDiffMs}
                   isLastRound={currentRound >= MAX_ROUNDS}
                 />
               </motion.div>
@@ -346,6 +443,7 @@ const summary = useMemo(() => {
               <FinishedSummaryPanel
                 history={history}
                 summary={summary}
+                personalBest={personalBest}
                 onRestart={handleRestart}
                 onLeave={handleLeave}
               />
@@ -363,47 +461,59 @@ const summary = useMemo(() => {
 // drop-in module that doesn't pollute `/components/precision/` with
 // solo-mode-only files.) ────────────────────────────────────────────
 
-function IdleStartScreen({ onStart }: { onStart: () => void }) {
+function IdleStartScreen({ onStart, personalBest }: { onStart: () => void; personalBest: PersonalBest | null }) {
   return (
     <div className="mt-6 grid gap-5 lg:grid-cols-3">
       <div className="lg:col-span-2 rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-6 sm:p-10">
         <p className="text-5xl">🎯</p>
         <h2 className="mt-3 text-2xl font-black text-fuchsia-300 sm:text-3xl">
-          Sharpen your reaction time
+          Sharpen your precision
         </h2>
         <p className="mt-3 max-w-xl text-sm text-cyan-100/90 sm:text-base">
-          You&apos;ll play 5 solo rounds. Each round the screen arms for a
-          randomised 2.5–7.5&nbsp;second delay, then the target appears —
-          click <span className="font-bold text-yellow-300">STOP</span> the
-          instant you see it. We grade on <span className="font-bold text-cyan-300">reaction
-          time</span>, not on the delta between your click and the target
-          instant.
+          You&apos;ll play 5 solo rounds. Each round a random target time
+          appears with a live timer — click{" "}
+          <span className="font-bold text-yellow-300">STOP</span> the
+          instant the timer matches the target. We grade on how{" "}
+          <span className="font-bold text-cyan-300">close</span> you
+          land to the target, from 🌟 PERFECT (0&nbsp;ms off) down to
+          ❌ MISS (&gt;100&nbsp;ms off).
         </p>
         <ul className="mt-5 space-y-2 text-sm text-cyan-100/90">
           <li>
-            <span className="mr-2 inline-block w-2 h-2 rounded-full bg-emerald-400" />
-            <span className="font-bold text-emerald-300">Elite</span> ·
-            ≤ 150&nbsp;ms reaction
-          </li>
-          <li>
-            <span className="mr-2 inline-block w-2 h-2 rounded-full bg-cyan-400" />
-            <span className="font-bold text-cyan-300">Sharp</span> ·
-            ≤ 250&nbsp;ms
-          </li>
-          <li>
             <span className="mr-2 inline-block w-2 h-2 rounded-full bg-yellow-400" />
-            <span className="font-bold text-yellow-300">Solid</span> ·
-            ≤ 400&nbsp;ms
+            <span className="font-bold text-yellow-300">🌟 PERFECT</span> · 0&nbsp;ms
           </li>
           <li>
-            <span className="mr-2 inline-block w-2 h-2 rounded-full bg-orange-400" />
-            <span className="font-bold text-orange-300">Casual</span> ·
-            ≤ 700&nbsp;ms
+            <span className="mr-2 inline-block w-2 h-2 rounded-full bg-purple-400" />
+            <span className="font-bold text-purple-300">💎 LEGENDARY</span> · 1–3&nbsp;ms
           </li>
           <li>
             <span className="mr-2 inline-block w-2 h-2 rounded-full bg-red-400" />
-            <span className="font-bold text-red-300">Off</span> ·
-            &gt; 700&nbsp;ms
+            <span className="font-bold text-red-300">🔥 MASTERFUL</span> · 4–8&nbsp;ms
+          </li>
+          <li>
+            <span className="mr-2 inline-block w-2 h-2 rounded-full bg-yellow-500" />
+            <span className="font-bold text-yellow-400">⭐ EXCELLENT</span> · 9–15&nbsp;ms
+          </li>
+          <li>
+            <span className="mr-2 inline-block w-2 h-2 rounded-full bg-green-400" />
+            <span className="font-bold text-green-300">✅ GREAT</span> · 16–25&nbsp;ms
+          </li>
+          <li>
+            <span className="mr-2 inline-block w-2 h-2 rounded-full bg-blue-400" />
+            <span className="font-bold text-blue-300">👍 GOOD</span> · 26–40&nbsp;ms
+          </li>
+          <li>
+            <span className="mr-2 inline-block w-2 h-2 rounded-full bg-cyan-400" />
+            <span className="font-bold text-cyan-300">🎯 FAIR</span> · 41–60&nbsp;ms
+          </li>
+          <li>
+            <span className="mr-2 inline-block w-2 h-2 rounded-full bg-orange-400" />
+            <span className="font-bold text-orange-300">⚠️ CLOSE</span> · 61–100&nbsp;ms
+          </li>
+          <li>
+            <span className="mr-2 inline-block w-2 h-2 rounded-full bg-gray-400" />
+            <span className="font-bold text-gray-400">❌ MISS</span> · &gt;100&nbsp;ms
           </li>
         </ul>
         <button
@@ -426,6 +536,19 @@ function IdleStartScreen({ onStart }: { onStart: () => void }) {
           When you&apos;re ready to play for stakes, head back to the
           lobby and pick a wager on a PvP match.
         </p>
+        {personalBest && (
+          <div className="mt-4 rounded-xl border border-yellow-400/30 bg-yellow-400/5 px-3 py-3">
+            <p className="text-[10px] uppercase tracking-[0.3em] text-yellow-300/80">
+              Personal Best
+            </p>
+            <p className={`mt-1 text-lg font-black ${personalBest.color}`}>
+              {personalBest.emoji} {personalBest.label}
+            </p>
+            <p className="mt-0.5 text-xs text-cyan-100/80">
+              {Math.round(personalBest.bestDiffMs).toLocaleString()} ms off
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -457,19 +580,39 @@ function ArmingPanel({ currentRound }: { currentRound: number }) {
 function ActivePanel({
   currentRound,
   targetMs,
+  timerMs,
   onStop,
 }: {
   currentRound: number;
   targetMs: number;
+  timerMs: number;
   onStop: () => void;
 }) {
+  // Live rank preview — shows the rank the player WOULD earn if they
+  // stopped right now. Updates continuously as the timer advances.
+  const previewDiff = Math.abs(timerMs - targetMs);
+  const previewRank = diffToRank(previewDiff);
   return (
     <div className="mt-6 rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-5 text-center sm:p-10">
       <p className="text-5xl">🎯</p>
       <h2 className="mt-4 text-2xl font-black text-fuchsia-300 sm:text-3xl">
         Round {currentRound}
       </h2>
+
+      {/* ── Running timer ──────────────────────────────────── */}
       <p className="mt-3 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
+        Elapsed
+      </p>
+      <p
+        data-testid="precision-test-timer"
+        className="mt-1 font-mono text-6xl font-black tabular-nums text-cyan-200 sm:text-7xl"
+      >
+        {Math.round(timerMs).toLocaleString()}
+        <span className="ml-1 text-3xl text-cyan-300/60">ms</span>
+      </p>
+
+      {/* ── Target ─────────────────────────────────────────── */}
+      <p className="mt-4 text-xs uppercase tracking-[0.35em] text-yellow-300/80">
         Target
       </p>
       <p
@@ -478,9 +621,18 @@ function ActivePanel({
       >
         {targetMs.toLocaleString()} ms
       </p>
+
+      {/* ── Live rank preview ─────────────────────────────── */}
+      <p className={`mt-3 text-lg font-bold ${previewRank.color}`}>
+        {previewRank.emoji} {previewRank.label}{" "}
+        <span className="text-sm font-normal text-cyan-100/70">
+          ({previewDiff.toLocaleString()} ms off)
+        </span>
+      </p>
+
       <p className="mt-4 text-sm text-cyan-100/90 sm:text-base">
-        Click <span className="font-bold text-yellow-300">STOP</span> now.
-        We measure how fast you reacted the instant the target appeared.
+        Click <span className="font-bold text-yellow-300">STOP</span> the
+        instant the timer matches the target.
       </p>
       <div className="mx-auto mt-5 flex max-w-md flex-col gap-3">
         <button
@@ -499,31 +651,30 @@ function ActivePanel({
 function RoundDonePanel({
   round,
   targetMs,
-  reactionMs,
+  elapsedMs,
+  diffMs,
   isLastRound,
 }: {
   round: number;
   targetMs: number;
-  reactionMs: number;
+  elapsedMs: number;
+  diffMs: number;
   isLastRound: boolean;
 }) {
-  // Grade on `reactionMs` directly — see the file header. Using the
-  // shared `reactionBand` keeps the per-round overlay and the
-  // finished-summary panel in lock-step so the colour thresholds
-  // never drift out of sync.
-  const band = reactionBand(reactionMs);
+  const rank = diffToRank(diffMs);
   return (
     <div className="mt-6 rounded-2xl border border-cyan-400/40 bg-cyan-400/5 p-5 sm:p-10">
       <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">
         Round {round} result
       </p>
-      <p className={`mt-2 text-3xl font-black ${band.color} sm:text-4xl`}>
-        {band.label}
+      <p className={`mt-2 text-3xl font-black ${rank.color} sm:text-4xl`}>
+        {rank.emoji} {rank.label}
       </p>
-      <div className="mt-5 grid gap-3 sm:grid-cols-3 sm:gap-5">
+      <div className="mt-5 grid gap-3 sm:grid-cols-4 sm:gap-5">
         <Stat label="Target" value={`${targetMs.toLocaleString()} ms`} accent="text-yellow-300" />
-        <Stat label="Your reaction" value={`${Math.round(reactionMs).toLocaleString()} ms`} accent="text-cyan-300" />
-        <Stat label="Band" value={band.label} accent={band.color} />
+        <Stat label="Your stop" value={`${Math.round(elapsedMs).toLocaleString()} ms`} accent="text-cyan-300" />
+        <Stat label="Difference" value={`${Math.round(diffMs).toLocaleString()} ms`} accent={rank.color} />
+        <Stat label="Rank" value={`${rank.emoji} ${rank.label}`} accent={rank.color} />
       </div>
       <p className="mt-5 text-sm text-cyan-100/90">
         {isLastRound
@@ -556,28 +707,33 @@ function Stat({
 function FinishedSummaryPanel({
   history,
   summary,
+  personalBest,
   onRestart,
   onLeave,
 }: {
   history: RoundStat[];
   summary: TestSummary;
+  personalBest: PersonalBest | null;
   onRestart: () => void;
   onLeave: () => void;
 }) {
-  // Headline cascade: any Elite → "⚡ Elite finish"; else 3+ Sharp →
-  // "🎉 Sharp across the board"; else 1+ Solid → "💪 Solid run";
-  // else "🤔 Keep practicing". The best-reaction pill on the right
-  // always colours to the actual tier so the user can see how their
-  // fastest run scored even on an otherwise weak overall session.
-  const bestBand = reactionBand(summary.bestReaction);
+  // Headline based on the best rank achieved across all 5 rounds.
+  const { bestRank } = summary;
+  const perfectCount = summary.rankCounts["PERFECT"] ?? 0;
+  const legendaryCount = summary.rankCounts["LEGENDARY"] ?? 0;
+  const masterfulCount = summary.rankCounts["MASTERFUL"] ?? 0;
   const headline =
-    summary.elite > 0
-      ? "⚡ Elite finish"
-      : summary.sharp >= 3
-        ? "🎉 Sharp across the board"
-        : summary.solid > 0
-          ? "💪 Solid run"
-          : "🤔 Keep practicing";
+    perfectCount > 0
+      ? "🌟 Perfection achieved"
+      : legendaryCount > 0
+        ? "💎 Legendary performance"
+        : masterfulCount > 0
+          ? "🔥 Masterful run"
+          : bestRank.label === "EXCELLENT"
+            ? "⭐ Excellent showing"
+            : bestRank.label === "GREAT"
+              ? "✅ Great effort"
+              : "🎯 Keep practicing";
   return (
     <div className="mt-6 space-y-5">
       <div className="rounded-2xl border border-fuchsia-500/40 bg-[#0a0420]/80 p-5 sm:p-8">
@@ -586,29 +742,37 @@ function FinishedSummaryPanel({
         </p>
         <h2 className="mt-2 text-3xl font-black text-fuchsia-300">
           {headline}
-          <span className={`ml-3 text-base font-bold ${bestBand.color}`}>
-            best {Math.round(summary.bestReaction)}&nbsp;ms
+          <span className={`ml-3 text-base font-bold ${bestRank.color}`}>
+            best {bestRank.emoji} {bestRank.label}
           </span>
         </h2>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-4">
-          <Stat label="Avg reaction" value={`${Math.round(summary.avgReaction)} ms`} accent="text-cyan-300" />
-          <Stat label="Best reaction" value={`${Math.round(summary.bestReaction)} ms`} accent="text-emerald-300" />
-          <Stat label="Worst reaction" value={`${Math.round(summary.worstReaction)} ms`} accent="text-red-300" />
-          <Stat label="Elite rounds" value={`${summary.elite} / ${summary.rounds}`} accent="text-emerald-300" />
+          <Stat label="Avg difference" value={`${Math.round(summary.avgDiff)} ms`} accent="text-cyan-300" />
+          <Stat label="Best diff" value={`${Math.round(summary.bestDiff)} ms`} accent={bestRank.color} />
+          <Stat label="Worst diff" value={`${Math.round(summary.worstDiff)} ms`} accent="text-red-300" />
+          <Stat label="Best rank" value={`${bestRank.emoji} ${bestRank.label}`} accent={bestRank.color} />
         </div>
+
+        {personalBest && (
+          <div className="mt-4 rounded-xl border border-yellow-400/30 bg-yellow-400/5 px-4 py-3">
+            <span className="text-[10px] uppercase tracking-[0.3em] text-yellow-300/80">
+              All-time Best
+            </span>
+            <span className={`ml-3 text-sm font-black ${personalBest.color}`}>
+              {personalBest.emoji} {personalBest.label}
+            </span>
+            <span className="ml-2 text-xs text-cyan-100/70">
+              ({Math.round(personalBest.bestDiffMs).toLocaleString()} ms off)
+            </span>
+          </div>
+        )}
 
         <div className="mt-6">
           <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-300/80">
-            Zone distribution
+            Rank distribution
           </p>
-          <ZoneBars
-            elite={summary.elite}
-            sharp={summary.sharp}
-            solid={summary.solid}
-            casual={summary.casual}
-            off={summary.off}
-          />
+          <RankBars rankCounts={summary.rankCounts} />
         </div>
       </div>
 
@@ -618,7 +782,7 @@ function FinishedSummaryPanel({
         </p>
         <div className="mt-3 grid gap-2 sm:grid-cols-5">
           {history.map((s) => {
-            const band = reactionBand(s.reactionMs);
+            const rank = diffToRank(s.diffMs);
             return (
               <div
                 key={s.round}
@@ -627,14 +791,17 @@ function FinishedSummaryPanel({
                 <p className="text-[10px] uppercase tracking-[0.3em] text-cyan-300/80">
                   Round {s.round}
                 </p>
-                <p className={`mt-1 font-mono text-lg font-black ${band.color}`}>
-                  {Math.round(s.reactionMs)}&nbsp;ms
+                <p className={`mt-1 font-mono text-lg font-black ${rank.color}`}>
+                  {Math.round(s.diffMs)}&nbsp;ms
                 </p>
                 <p className="mt-1 font-mono text-[11px] text-cyan-100/80">
                   target {s.targetMs.toLocaleString()} ms
                 </p>
-                <p className={`mt-1 text-[10px] font-bold ${band.color}`}>
-                  {band.label}
+                <p className="mt-1 font-mono text-[10px] text-cyan-100/70">
+                  stop {Math.round(s.elapsedMs).toLocaleString()} ms
+                </p>
+                <p className={`mt-1 text-[10px] font-bold ${rank.color}`}>
+                  {rank.emoji} {rank.label}
                 </p>
               </div>
             );
@@ -668,56 +835,49 @@ function FinishedSummaryPanel({
 // EXCLUSIVE (not cumulative) so the zone-distribution bars are
 // non-overlapping and sum to `rounds`.
 interface TestSummary {
-  avgReaction: number;
-  bestReaction: number;
-  worstReaction: number;
-  elite: number;
-  sharp: number;
-  solid: number;
-  casual: number;
-  off: number;
+  avgDiff: number;
+  bestDiff: number;
+  worstDiff: number;
+  rankCounts: Record<string, number>;
   rounds: number;
+  bestRank: PrecisionRank;
 }
 
-function ZoneBars({
-  elite,
-  sharp,
-  solid,
-  casual,
-  off,
+function RankBars({
+  rankCounts,
 }: {
-  elite: number;
-  sharp: number;
-  solid: number;
-  casual: number;
-  off: number;
+  rankCounts: Record<string, number>;
 }) {
-  const segments = [
-    { v: elite, label: "Elite", color: "bg-emerald-400" },
-    { v: sharp, label: "Sharp", color: "bg-cyan-400" },
-    { v: solid, label: "Solid", color: "bg-yellow-400" },
-    { v: casual, label: "Casual", color: "bg-orange-400" },
-    { v: off, label: "Off", color: "bg-red-400" },
-  ];
+  // Use the exported PRECISION_RANK_ENTRIES from the shared utility so
+  // the bar colours stay locked to `diffToRank` thresholds. Each entry
+  // carries its own `rank.bg` and `rank.color` — no manual mapping needed.
+  const segments = PRECISION_RANK_ENTRIES.map((entry) => ({
+    v: rankCounts[entry.rank.label] ?? 0,
+    label: entry.rank.label,
+    emoji: entry.rank.emoji,
+    bg: entry.rank.bg,
+    textColor: entry.rank.color,
+  }));
   const stack = segments.filter((s) => s.v > 0);
   const total = stack.reduce((a, b) => a + b.v, 0) || 1;
   return (
     <div className="mt-2">
       <div className="flex h-3 w-full overflow-hidden rounded-full bg-black/40">
-        {stack.map((s, i) => (
+        {stack.map((s) => (
           <div
             key={s.label}
-            className={`${s.color} transition-all`}
+            className={`${s.bg} transition-all`}
             style={{ width: `${(s.v / total) * 100}%` }}
-            data-testid={`precision-test-zone-${s.label.toLowerCase()}`}
+            data-testid={`precision-test-rank-${s.label.toLowerCase()}`}
           />
         ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-cyan-100/90">
         {stack.map((s) => (
           <span key={s.label} className="flex items-center gap-1">
-            <span className={`inline-block h-2.5 w-2.5 rounded-sm ${s.color}`} />
-            {s.label} <span className="text-cyan-300/80">× {s.v}</span>
+            <span className={`inline-block h-2.5 w-2.5 rounded-sm ${s.bg}`} />
+            <span className={`font-bold ${s.textColor}`}>{s.emoji} {s.label}</span>{" "}
+            <span className="text-cyan-300/80">× {s.v}</span>
           </span>
         ))}
       </div>

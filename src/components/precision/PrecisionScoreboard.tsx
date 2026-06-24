@@ -15,7 +15,16 @@ import React from "react";
 import { motion } from "framer-motion";
 import { TARGET_WINS, MAX_ROUNDS } from "../../lib/precision/constants";
 import { scorePop } from "../../lib/animations";
+import { diffToRank } from "../../lib/precision/utils";
 import type { PlayerSeat, PrecisionPlayer, PrecisionScore } from "../../lib/precision/types";
+
+/** Per-seat stop telemetry for the most recently decided round.
+ *  Subset of `PrecisionState.lastRoundStops` — we only need the
+ *  server-stamped diff to compute the rank badge. */
+export interface LastRoundStopSnapshot {
+  seat1: { elapsedMs: number; diffMs: number };
+  seat2: { elapsedMs: number; diffMs: number };
+}
 
 interface PrecisionScoreboardProps {
   score: PrecisionScore;
@@ -24,9 +33,41 @@ interface PrecisionScoreboardProps {
   lastRoundWinnerSeat: PlayerSeat | null;
   /** When true, the opponent's stop is still pending — hint at it visually. */
   awaitingOpponentStop?: boolean;
+  /** Per-seat stop telemetry from the most recently decided round.
+   *  When provided, rank badges appear below each seat card. */
+  lastRoundStops?: LastRoundStopSnapshot | null;
 }
 
 const RING_LAST_WINNER = "ring-2 ring-emerald-300/60";
+
+// ── Rank badge (inline sub-component) ──────────────────────────────
+// Renders the rank emoji + label + elapsed + diff for a single seat.
+// Used below each seat card when last-round stop data is available.
+function RankBadge({
+  elapsedMs,
+  diffMs,
+  seat,
+}: {
+  elapsedMs: number;
+  diffMs: number;
+  seat: 1 | 2;
+}) {
+  const rank = diffToRank(diffMs);
+  return (
+    <div
+      className={`mt-2 flex items-center gap-1.5 rounded-lg border ${rank.bg} ${rank.border} px-2 py-1`}
+      data-testid={`precision-scoreboard-rank-${seat}`}
+    >
+      <span className="text-sm">{rank.emoji}</span>
+      <span className={`text-[10px] font-black uppercase ${rank.color}`}>
+        {rank.label}
+      </span>
+      <span className="ml-auto font-mono text-[10px] text-slate-400 tabular-nums">
+        {elapsedMs.toLocaleString()}ms Δ{Math.round(diffMs)}
+      </span>
+    </div>
+  );
+}
 
 interface SeatDotsProps {
   seat: PlayerSeat;
@@ -74,6 +115,7 @@ function PrecisionScoreboardImpl({
   currentRound,
   lastRoundWinnerSeat,
   awaitingOpponentStop = false,
+  lastRoundStops,
 }: PrecisionScoreboardProps) {
   const seat1Player = players.find((p) => p.seat === 1);
   const seat2Player = players.find((p) => p.seat === 2);
@@ -145,6 +187,13 @@ function PrecisionScoreboardImpl({
               emptyColor="border-fuchsia-700/60 bg-fuchsia-950/30"
             />
           </div>
+          {lastRoundStops && (
+            <RankBadge
+              seat={1}
+              elapsedMs={lastRoundStops.seat1.elapsedMs}
+              diffMs={lastRoundStops.seat1.diffMs}
+            />
+          )}
         </motion.div>
         <motion.div
           key={`seat-2-${score.seat2}-${
@@ -179,6 +228,13 @@ function PrecisionScoreboardImpl({
               emptyColor="border-cyan-700/60 bg-cyan-950/30"
             />
           </div>
+          {lastRoundStops && (
+            <RankBadge
+              seat={2}
+              elapsedMs={lastRoundStops.seat2.elapsedMs}
+              diffMs={lastRoundStops.seat2.diffMs}
+            />
+          )}
         </motion.div>
       </div>
 
