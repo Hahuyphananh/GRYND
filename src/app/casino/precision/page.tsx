@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import { useTranslation } from "../../../hooks/useTranslation";
 import {
   createLobby,
   joinLobby,
@@ -39,6 +40,7 @@ export default function PrecisionLobbyPage() {
   const router = useRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
+  const { t } = useTranslation();
   const [lobbies, setLobbies] = useState<PrecisionLobby[]>([]);
   const [wager, setWager] = useState<number>(DEFAULT_WAGER);
   const [creating, setCreating] = useState(false);
@@ -100,7 +102,7 @@ export default function PrecisionLobbyPage() {
       posthog?.capture("precision_find_match", { wager, mode: "pvp" });
       const res = await createLobby({ wager, gameMode: "pvp" });
       if (!res.success || !res.gameId) {
-        setError(res.error ?? "Unable to find a match.");
+        setError(res.error ?? t("games.precision.match_unavailable"));
         return;
       }
       posthog?.capture("precision_matchmaking_status", {
@@ -135,7 +137,7 @@ export default function PrecisionLobbyPage() {
     try {
       const res = await joinLobby(lobbyId);
       if (!res.success || !res.matchId) {
-        setError(res.error ?? "Unable to join lobby.");
+        setError(res.error ?? t("games.precision.join_failed"));
         return;
       }
       // Joining an open lobby from the public list means we're the
@@ -154,18 +156,17 @@ export default function PrecisionLobbyPage() {
 
       <div className="mx-auto mt-4 max-w-6xl rounded-2xl border border-cyan-500/40 bg-black/30 p-4 sm:mt-8 sm:p-5">
         <h1 className="text-2xl font-black text-fuchsia-300 sm:text-3xl md:text-4xl">
-          Precision Lobby
+          {t("games.precision.lobby_page_title")}
         </h1>
         <p className="mt-2 text-sm text-cyan-100/90">
-          Wager tokens and face another player in a 1v1 precision duel.
-          Step into <span className="font-bold text-fuchsia-300">Test Mode</span>{" "}
-          first if you want to sharpen your reaction time solo — no wager,
-          no opponent.
+          {t("games.precision.lobby_page_subtitle")}
+          {/* Test Mode intro hint, contextualised via precision.ready_explainer */}
+          {" "}{t("games.precision.ready_explainer", { ready: t("games.precision.test_solo_label") })}
         </p>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
           <div className="rounded-xl border border-fuchsia-500/40 bg-black/30 p-4">
-            <h2 className="text-xl font-bold">Create game</h2>
+            <h2 className="text-xl font-bold">{t("games.precision.create_game_section")}</h2>
             <div className="mt-3 flex flex-wrap gap-2">
               {DEFAULT_WAGER_OPTIONS.map((v) => (
                 <button
@@ -185,7 +186,7 @@ export default function PrecisionLobbyPage() {
               disabled={creating}
               className="mt-4 w-full rounded bg-cyan-400 py-2 font-bold text-black disabled:opacity-50"
             >
-              {creating ? "Creating…" : "Find PvP Match"}
+              {creating ? t("games.precision.creating") : t("games.precision.create_pvp_game")}
             </button>
             <Link
               href="/casino/precision/test"
@@ -193,7 +194,7 @@ export default function PrecisionLobbyPage() {
               onClick={handleTestClick}
               className="mt-2 block w-full rounded border border-fuchsia-400/60 bg-fuchsia-500/10 py-2 text-center font-bold text-fuchsia-200 transition hover:bg-fuchsia-500/20"
             >
-              🎯 Test Mode (solo, no wager)
+              🎯 {t("games.precision.test_solo_label")} ({t("games.precision.no_wager_label").toLowerCase()})
             </Link>
             {error && (
               <p className="mt-3 rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -203,10 +204,10 @@ export default function PrecisionLobbyPage() {
           </div>
 
           <div className="rounded-xl border border-cyan-500/40 bg-black/30 p-4 lg:col-span-2">
-            <h2 className="text-xl font-bold">Available Games</h2>
+            <h2 className="text-xl font-bold">{t("games.precision.available_games")}</h2>
             <div className="mt-3 space-y-3">
               {lobbies.length === 0 && (
-                <p className="text-slate-300">No open lobbies.</p>
+                <p className="text-slate-300">{t("games.precision.no_open_lobbies")}</p>
               )}
               {lobbies.map((l) => (
                 <div
@@ -214,9 +215,9 @@ export default function PrecisionLobbyPage() {
                   className="flex flex-col gap-2 rounded border border-slate-700 p-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div>
-                    <p>Wager: {l.wager}</p>
+                    <p>{t("games.precision.wager_label")} {l.wager}</p>
                     <p className="text-xs text-slate-400">
-                      PvP · Waiting for player
+                      PvP · {t("games.precision.waiting_for_player")}
                     </p>
                   </div>
                   <button
@@ -224,7 +225,7 @@ export default function PrecisionLobbyPage() {
                     disabled={joining === l.id}
                     className="min-h-11 rounded bg-fuchsia-600 px-3 py-2 disabled:opacity-50"
                   >
-                    {joining === l.id ? "Joining…" : "Join"}
+                    {joining === l.id ? t("games.precision.joining") : t("games.precision.join_game")}
                   </button>
                 </div>
               ))}

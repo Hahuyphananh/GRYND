@@ -16,6 +16,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { SEAT_COUNT } from "../../lib/precision/constants";
 import type { PrecisionPlayer } from "../../lib/precision/types";
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface PrecisionReadyRoomProps {
   matchId: string;
@@ -40,6 +41,7 @@ function PrecisionReadyRoomImpl({
   onReadyClick,
   onLeave,
 }: PrecisionReadyRoomProps) {
+  const { t } = useTranslation();
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -50,18 +52,17 @@ function PrecisionReadyRoomImpl({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-            Precision · Match #{matchId.slice(0, 6)}
+            {t("games.precision.match_label", { id: matchId.slice(0, 6) })}
           </p>
           <h2 className="mt-1 text-2xl font-black text-fuchsia-300 sm:text-3xl">
-            Waiting for opponent…
+            {t("games.precision.waiting_room_title")}
           </h2>
           <p className="mt-1 text-sm text-cyan-100">
-            Both players must click <span className="font-semibold text-yellow-300">Ready</span>{" "}
-            to begin.{" "}
+            {t("games.precision.ready_explainer", { ready: t("games.precision.ready_button") })}{" "}
             <span className="text-cyan-300/80">
-              Wager{" "}
-              <span className="font-semibold text-yellow-300">{wager}</span>{" "}
-              tokens
+              {t("games.precision.wager_tokens", { wager })}
+              {" "}
+              {t("games.precision.tokens_suffix")}
             </span>
           </p>
         </div>
@@ -77,7 +78,7 @@ function PrecisionReadyRoomImpl({
               className="flex flex-col items-center justify-center rounded-xl border border-fuchsia-500/35 bg-[#0b0220]/50 p-4 text-center"
             >
               <p className="text-xs font-bold uppercase tracking-widest text-fuchsia-200/90">
-                Seat {SEAT_LABELS[i]}
+                {seat === 1 ? t("games.precision.seat_alpha") : t("games.precision.seat_bravo")}
               </p>
               {occupant ? (
                 <>
@@ -95,12 +96,12 @@ function PrecisionReadyRoomImpl({
                         occupant.isReady ? "text-emerald-300" : "text-slate-300"
                       }`}
                     >
-                      {occupant.isReady ? "Ready" : "Not ready"}
+                      {occupant.isReady ? t("games.precision.ready_label") : t("games.precision.not_ready_label")}
                     </p>
                   </div>
                 </>
               ) : (
-                <p className="mt-3 text-slate-400">Slot empty</p>
+                <p className="mt-3 text-slate-400">{t("games.precision.slot_empty")}</p>
               )}
             </div>
           );
@@ -112,7 +113,7 @@ function PrecisionReadyRoomImpl({
           onClick={onLeave}
           className="rounded-lg border border-slate-500/40 bg-slate-800/40 px-4 py-2 text-sm font-bold text-slate-200 hover:bg-slate-800/70"
         >
-          Leave
+          {t("games.precision.leave_button")}
         </button>
         <button
           onClick={onReadyClick}
@@ -126,10 +127,10 @@ function PrecisionReadyRoomImpl({
           }`}
         >
           {selfReady
-            ? "\u2713 Ready"
+            ? t("games.precision.ready_done")
             : readySubmitting
-              ? "Submitting\u2026"
-              : "Ready"}
+              ? t("games.precision.ready_submitting")
+              : t("games.precision.ready_button")}
         </button>
       </div>
     </motion.div>

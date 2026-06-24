@@ -24,6 +24,7 @@ import { AnimatePresence, motion } from "framer-motion";
 
 import NavigationBar from "../../../../../components/navigation-bar";
 import Footer from "../../../../../components/Footer";
+import { useTranslation } from "../../../../../hooks/useTranslation";
 import PrecisionWaitingRoom from "../../../../../components/precision/PrecisionWaitingRoom";
 import PrecisionReadyRoom from "../../../../../components/precision/PrecisionReadyRoom";
 import PrecisionScoreboard from "../../../../../components/precision/PrecisionScoreboard";
@@ -82,6 +83,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   const router = useRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
+  const { t } = useTranslation();
   // Unwrap the dynamic-route params Promise. `use()` suspends this
   // component until the param is resolved; the result is a plain
   // object, so `matchId` is a real string (or falls back to "" if
@@ -694,9 +696,9 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
       );
       posthog?.capture("precision_match_resigned", { matchId });
     } catch (err) {
-      setError((err as Error)?.message ?? "Resign failed.");
+      setError((err as Error)?.message ?? t("games.precision.resign_failed"));
     }
-  }, [matchId, posthog]);
+  }, [matchId, posthog, t]);
 
   const handleReadyClick = useCallback(async () => {
     if (!matchId || readySubmitting || selfReady) return;
@@ -719,7 +721,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
       if (!response.success || !response.match) {
         // Roll back the optimistic flip on failure.
         setSelfReady(false);
-        setError(response.error ?? "Couldn't mark ready.");
+        setError(response.error ?? t("games.precision.ready_failed"));
         return;
       }
       setState(response.match);
@@ -742,7 +744,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     } catch (err) {
       // Roll back on thrown errors too.
       setSelfReady(false);
-      setError((err as Error)?.message ?? "Ready failed.");
+      setError((err as Error)?.message ?? t("games.precision.ready_threw"));
     } finally {
       setReadySubmitting(false);
     }
@@ -794,7 +796,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
       // No realtime connection — the round can't resolve without it.
       // Unlock so the user can retry the next round.
       stopLockedThisRoundRef.current = false;
-      setError("Realtime connection unavailable — STOP not sent.");
+      setError(t("games.precision.stop_no_socket"));
       return;
     }
     setStopSubmitting(true);
@@ -831,7 +833,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
         // can try again on the next round.
         stopLockedThisRoundRef.current = false;
         setSelfStopPending(false);
-        setError((ack && ack.error) || "Server rejected the stop.");
+        setError((ack && ack.error) || t("games.precision.stop_rejected"));
         posthog?.capture("precision_round_stop_rejected", {
           matchId,
           error: (ack && ack.error) || "unknown",
@@ -917,8 +919,8 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
 
   const turnBanner = state?.phase === "active"
     ? isLocalPlayerTurn(state, localSeat)
-      ? "Your turn"
-      : "Opponent's turn"
+      ? t("games.precision.your_turn")
+      : t("games.precision.opponent_turn")
     : null;
 
   // Live rank preview for the active phase — computed once per render
@@ -936,18 +938,14 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-              Precision · Match #{matchId.slice(0, 6)}
+              {t("games.precision.match_label", { id: matchId.slice(0, 6) })}
             </p>
             <h1 className="mt-1 text-2xl font-black text-fuchsia-300 sm:text-3xl">
-              {state?.phase === "active" ? "Duel in progress" : "Setting up"}
+              {state?.phase === "active" ? t("games.precision.duel_in_progress") : t("games.precision.setting_up")}
             </h1>
             {state && (
               <p className="mt-1 text-sm text-cyan-100/90">
-                Wager{" "}
-                <span className="font-semibold text-yellow-300">
-                  {formatTokens(state.wager)}
-                </span>{" "}
-                tokens
+                {t("games.precision.wager_tokens", { wager: formatTokens(state.wager) })}
               </p>
             )}
           </div>
@@ -956,14 +954,14 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
               onClick={handleLeave}
               className="rounded bg-[#f5ff3b] px-4 py-2 font-bold text-black"
             >
-              Lobby
+              {t("games.precision.lobby_button")}
             </button>
             {state?.phase === "active" && (
               <button
                 onClick={handleResign}
                 className="rounded bg-red-600 px-4 py-2 font-bold text-white hover:bg-red-500"
               >
-                Resign
+                {t("games.precision.resign")}
               </button>
             )}
           </div>
@@ -1053,17 +1051,16 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                 <div className="flex flex-col items-center justify-center rounded-2xl border border-yellow-400/40 bg-[#1a120a]/80 p-8 text-center sm:p-10">
                   <p className="animate-pulse text-5xl">⏱</p>
                   <h2 className="mt-4 text-2xl font-black text-yellow-300 sm:text-3xl">
-                    Round {currentRound} — Get ready…
+                    {t("games.precision.round_get_ready", { round: currentRound })}
                   </h2>
                   <p className="mt-3 max-w-md text-sm text-cyan-100/90 sm:text-base">
-                    The server is arming the next round at a random time. The
-                    input will appear when the round opens — hold steady.
+                    {t("games.precision.arming_hint")}
                   </p>
                   <button
                     onClick={handleResign}
                     className="mt-6 rounded bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-500"
                   >
-                    Resign
+                    {t("games.precision.resign")}
                   </button>
                 </div>
               </motion.div>
@@ -1098,19 +1095,19 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                 <div className="rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-5 text-center sm:p-8">
                   <p className="text-5xl">🎯</p>
                   <h2 className="mt-4 text-2xl font-black text-fuchsia-300">
-                    Round {currentRound}
+                    {t("games.precision.round_label", { round: currentRound })}
                   </h2>
 
                   {/* ── Running timer (client-side, visual-only) ── */}
                   <p className="mt-3 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-                    Elapsed
+                    {t("games.precision.elapsed_label")}
                   </p>
                   <p
                     data-testid="precision-round-timer"
                     className="mt-1 font-mono text-6xl font-black tabular-nums text-cyan-200 sm:text-7xl"
                   >
                     {Math.round(timerMs).toLocaleString()}
-                    <span className="ml-1 text-3xl text-cyan-300/60">ms</span>
+                    <span className="ml-1 text-3xl text-cyan-300/60">{t("games.precision.ms_suffix")}</span>
                   </p>
 
                   {/* Per-round target revealed by the server when the
@@ -1118,14 +1115,14 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                       state hasn't been refreshed yet on the very first
                       active tick — show a placeholder rather than crashing. */}
                   <p className="mt-4 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-                    Target
+                    {t("games.precision.target")}
                   </p>
                   <p
                     data-testid="precision-round-target"
                     className="mt-1 text-4xl font-black text-yellow-300 sm:text-5xl"
                   >
                     {state.targetMs !== null
-                      ? `${state.targetMs.toLocaleString()} ms`
+                      ? `${state.targetMs.toLocaleString()} ${t("games.precision.ms_suffix")}`
                       : "—"}
                   </p>
 
@@ -1135,7 +1132,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                     <p className={`mt-3 text-lg font-bold ${previewRank.color}`}>
                       {previewRank.emoji} {previewRank.label}{" "}
                       <span className="text-sm font-normal text-cyan-100/70">
-                        ({Math.abs(Math.round(timerMs - (state.targetMs ?? 0))).toLocaleString()} ms off)
+                        ({t("games.precision.ms_off_format", { ms: Math.abs(Math.round(timerMs - (state.targetMs ?? 0))).toLocaleString() })})
                       </span>
                     </p>
                   )}
@@ -1145,33 +1142,31 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                       className="mt-5 rounded-2xl border border-cyan-400/40 bg-black/30 px-4 py-2 text-xs text-cyan-100"
                     >
                       <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-200/80">
-                        Previous round (snapshot)
+                        {t("games.precision.previous_round_snapshot")}
                       </p>
                       <p className="mt-1 font-mono">
-                        you:{" "}
+                        {t("games.precision.you_label_short")}{" "}
                         <span className="font-bold text-yellow-300">
                           {state.lastRoundStops[
                             localSeat === 1 ? "seat1" : "seat2"
-                          ]?.elapsedMs ?? 0}
-                          ms
+                          ]?.elapsedMs ?? 0}{" "}
+                          {t("games.precision.ms_suffix")}
                         </span>{" "}
-                        · opponent:{" "}
+                        · {t("games.precision.opponent_label_short")}{" "}
                         <span className="font-bold text-fuchsia-300">
                           {state.lastRoundStops[
                             localSeat === 1 ? "seat2" : "seat1"
-                          ]?.elapsedMs ?? 0}
-                          ms
+                          ]?.elapsedMs ?? 0}{" "}
+                          {t("games.precision.ms_suffix")}
                         </span>
                       </p>
                       <p className="mt-1 text-[10px] text-cyan-100/70">
-                        Detailed reveal shown above; full breakdown appears in the per-round panel.
+                        {t("games.precision.snapshot_hint")}
                       </p>
                     </div>
                   )}
                   <p className="mt-4 text-sm text-cyan-100/90 sm:text-base">
-                    Click STOP when ready. The server records the exact
-                    moment and computes your reaction time authoritatively
-                    — your elapsed time cannot be spoofed.
+                    {t("games.precision.stop_hint")}
                   </p>
                   <div className="mx-auto mt-5 flex max-w-md flex-col gap-3">
                     <button
@@ -1192,17 +1187,17 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                       }
                     >
                       {selfStopPending
-                        ? "✓ STOP SENT"
+                        ? t("games.precision.stop_sent")
                         : stopSubmitting
-                          ? "SUBMITTING…"
-                          : "STOP"}
+                          ? t("games.precision.submitting")
+                          : t("games.precision.stop_button")}
                     </button>
                   </div>
                   <button
                     onClick={handleResign}
                     className="mt-6 rounded bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-500"
                   >
-                    Resign
+                    {t("games.precision.resign")}
                   </button>
                 </div>
               </div>
@@ -1221,7 +1216,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                   />
                 )}
                 <p className="rounded border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-100">
-                  Match finished — closing…
+                  {t("games.precision.match_finished_short")}
                 </p>
               </div>
             </motion.div>
@@ -1242,12 +1237,12 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
         <PrecisionRoundResultPanel
           targetMs={roundResultReveal.targetMs}
           seat1Name={
-            players.find((p) => p.seat === 1)?.name ?? "Seat 1"
+            players.find((p) => p.seat === 1)?.name ?? t("games.precision.seat_alpha")
           }
           seat1ElapsedMs={roundResultReveal.seat1ElapsedMs}
           seat1DiffMs={roundResultReveal.seat1DiffMs}
           seat2Name={
-            players.find((p) => p.seat === 2)?.name ?? "Seat 2"
+            players.find((p) => p.seat === 2)?.name ?? t("games.precision.seat_bravo")
           }
           seat2ElapsedMs={roundResultReveal.seat2ElapsedMs}
           seat2DiffMs={roundResultReveal.seat2DiffMs}

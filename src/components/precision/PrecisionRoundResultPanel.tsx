@@ -31,6 +31,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { gameOverModal } from "../../lib/animations";
 import { diffToRank } from "../../lib/precision/utils";
 import type { PlayerSeat } from "../../lib/precision/types";
+import { useTranslation } from "../../hooks/useTranslation";
 
 /** Auto-dismiss delay (ms) before the panel returns control to the
  *  underlying page. 3 seconds — matches the spec: results are visible
@@ -70,6 +71,10 @@ interface RowProps {
   isTiedRounding: boolean;
   delay: number;
 }
+
+// Hook called at module scope so PlayerRow (defined above as a sibling
+// component) shares the same `t` reference instead of needing its own.
+const { t } = useTranslation();
 
 const PlayerRow = React.memo(function PlayerRow({
   seat,
@@ -115,15 +120,15 @@ const PlayerRow = React.memo(function PlayerRow({
     >
       <div className="flex min-w-0 flex-col">
         <span className={`text-[10px] font-bold uppercase tracking-[0.3em] ${palette.label}`}>
-          Seat {seat}{" "}
+          {seat === 1 ? t("games.precision.seat_alpha") : t("games.precision.seat_bravo")}{" "}
           {isLocal ? (
             <span data-testid="precision-round-result-local-tag" className="ml-1 rounded bg-white/10 px-1.5 py-0.5 text-[9px] tracking-wide text-white">
-              YOU
+              {t("games.precision.you_tag")}
             </span>
           ) : null}
           {isWinner ? (
             <span data-testid="precision-round-result-winner-tag" className="ml-1 rounded bg-yellow-300/90 px-1.5 py-0.5 text-[9px] font-black tracking-wide text-black">
-              WINNER
+              {t("games.precision.winner_tag")}
             </span>
           ) : null}
         </span>
@@ -132,7 +137,7 @@ const PlayerRow = React.memo(function PlayerRow({
       <div className="flex flex-col items-end">
         <span className={`text-3xl font-black tabular-nums ${palette.time}`}>
           {elapsedMs.toLocaleString()}
-          <span className="ml-1 text-base font-bold text-slate-300">ms</span>
+          <span className="ml-1 text-base font-bold text-slate-300">{t("games.precision.ms_suffix")}</span>
         </span>
         <span className="text-[11px] font-bold uppercase tracking-widest text-slate-300">
           Δ{" "}
@@ -171,6 +176,7 @@ function PrecisionRoundResultPanelImpl({
   localSeat,
   onDismiss,
 }: PrecisionRoundResultPanelProps) {
+  const { t } = useTranslation();
   // OPTIMIZATION — render-shield: gate the auto-dismiss setTimeout on
   // a STABLE inner wrapper that calls `onDismissRef.current?.()` rather
   // than the `onDismiss` prop directly. The parent (match page)
@@ -236,9 +242,9 @@ function PrecisionRoundResultPanelImpl({
         ring: "border-yellow-300/70",
         bg: "bg-gradient-to-b from-[#0a2a1a] to-[#031a0a]",
         heading: "text-yellow-200",
-        word: "TIE — ROUND REPLAYING",
+        word: t("games.precision.tie_replaying"),
         icon: "🤝",
-        subtitle: "Both players landed the same distance from the target. The round is being re-armed with a fresh target.",
+        subtitle: t("games.precision.tie_explainer"),
       }
     : roundWinnerSeat === localSeat
       ? {
@@ -246,18 +252,18 @@ function PrecisionRoundResultPanelImpl({
           ring: "border-yellow-300/80",
           bg: "bg-gradient-to-b from-[#0a2a1a] to-[#031a0a]",
           heading: "text-yellow-200",
-          word: "YOU WIN THE ROUND",
+          word: t("games.precision.you_win_round"),
           icon: "🏆",
-          subtitle: `Seat ${roundWinnerSeat} was closer to the target.`,
+          subtitle: t("games.precision.seat_closer", { seat: roundWinnerSeat }),
         }
       : {
           glow: "shadow-[0_0_45px_rgba(217,70,239,0.45)]",
           ring: "border-fuchsia-300/70",
           bg: "bg-gradient-to-b from-[#2a0a1f] to-[#160322]",
           heading: "text-fuchsia-200",
-          word: `ROUND WON BY ${roundWinnerSeat === 1 ? seat1Name : seat2Name}`,
+          word: t("games.precision.round_won_by_player", { name: roundWinnerSeat === 1 ? seat1Name : seat2Name }),
           icon: "🥈",
-          subtitle: `Seat ${roundWinnerSeat} was closer to the target.`,
+          subtitle: t("games.precision.seat_closer", { seat: roundWinnerSeat }),
         };
 
   return (
@@ -286,7 +292,7 @@ function PrecisionRoundResultPanelImpl({
             transition={{ delay: 0.1, duration: 0.3 }}
             className="text-[10px] font-black uppercase tracking-[0.45em] text-cyan-200"
           >
-            Round Result
+            {t("games.precision.round_result_title")}
           </motion.p>
 
           {/* Target value */}
@@ -297,10 +303,10 @@ function PrecisionRoundResultPanelImpl({
             className="mt-2"
             data-testid="precision-round-result-target"
           >
-            <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-yellow-200/80">Target</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-yellow-200/80">{t("games.precision.target_label")}</p>
             <p className="text-5xl font-black tabular-nums text-yellow-200 sm:text-6xl">
               {targetMs.toLocaleString()}
-              <span className="ml-1 text-2xl text-yellow-200/70">ms</span>
+              <span className="ml-1 text-2xl text-yellow-200/70">{t("games.precision.ms_suffix")}</span>
             </p>
           </motion.div>
 
@@ -362,7 +368,7 @@ function PrecisionRoundResultPanelImpl({
             className="mt-4 text-[11px] font-bold uppercase tracking-widest text-cyan-100/80"
             data-testid="precision-round-result-countdown"
           >
-            Next round in 3s…
+            {t("games.precision.next_round_in")}
           </motion.p>
         </motion.div>
       </motion.div>

@@ -17,6 +17,7 @@ import { TARGET_WINS, MAX_ROUNDS } from "../../lib/precision/constants";
 import { scorePop } from "../../lib/animations";
 import { diffToRank } from "../../lib/precision/utils";
 import type { PlayerSeat, PrecisionPlayer, PrecisionScore } from "../../lib/precision/types";
+import { useTranslation } from "../../hooks/useTranslation";
 
 /** Per-seat stop telemetry for the most recently decided round.
  *  Subset of `PrecisionState.lastRoundStops` — we only need the
@@ -39,6 +40,10 @@ interface PrecisionScoreboardProps {
 }
 
 const RING_LAST_WINNER = "ring-2 ring-emerald-300/60";
+
+// Hook called at module scope so sub-components (SeatDots, RankBadge) defined
+// below share the same `t` reference rather than each needing their own.
+const { t } = useTranslation();
 
 // ── Rank badge (inline sub-component) ──────────────────────────────
 // Renders the rank emoji + label + elapsed + diff for a single seat.
@@ -80,7 +85,7 @@ function SeatDots({ seat, wins, filledColor, emptyColor }: SeatDotsProps) {
   return (
     <div className="flex items-center gap-2">
       <span className="text-[10px] font-bold uppercase tracking-widest text-slate-300">
-        Seat {seat}
+        {seat === 1 ? t("games.precision.seat_alpha") : t("games.precision.seat_bravo")}
       </span>
       {Array.from({ length: TARGET_WINS }).map((_, i) => {
         // Key includes `wins` so when a new win lands (e.g., wins: 1→2),
@@ -95,8 +100,8 @@ function SeatDots({ seat, wins, filledColor, emptyColor }: SeatDotsProps) {
             key={`${seat}-${i}-${wins}-${filled ? "filled" : "empty"}`}
             aria-label={
               filled
-                ? `Seat ${seat} round win ${i + 1}`
-                : `Seat ${seat} round ${i + 1} pending`
+                ? `${seat === 1 ? t("games.precision.seat_alpha") : t("games.precision.seat_bravo")} win ${i + 1}`
+                : `${seat === 1 ? t("games.precision.seat_alpha") : t("games.precision.seat_bravo")} ${i + 1} pending`
             }
             className={`inline-block h-3 w-3 rounded-full border transition-shadow ${
               filled ? filledColor : emptyColor
@@ -126,23 +131,29 @@ function PrecisionScoreboardImpl({
 
   let bannerText: string;
   if (awaitingOpponentStop) {
-    bannerText = "Stop recorded. Waiting for opponent to stop…";
+    bannerText = t("games.precision.waiting_opponent_stop");
   } else if (lastRoundWinnerSeat === 1) {
-    bannerText = `Round ${currentRound - 1} won by ${seat1Player?.name ?? "Seat 1"}.`;
+    bannerText = t("games.precision.round_won_by", {
+      round: currentRound - 1,
+      name: seat1Player?.name ?? t("games.precision.seat_alpha"),
+    });
   } else if (lastRoundWinnerSeat === 2) {
-    bannerText = `Round ${currentRound - 1} won by ${seat2Player?.name ?? "Seat 2"}.`;
+    bannerText = t("games.precision.round_won_by", {
+      round: currentRound - 1,
+      name: seat2Player?.name ?? t("games.precision.seat_bravo"),
+    });
   } else {
-    bannerText = `First to ${TARGET_WINS} round wins takes the match.`;
+    bannerText = t("games.precision.first_to_target", { target: TARGET_WINS });
   }
 
   return (
     <div className="w-full rounded-2xl border border-cyan-400/30 bg-black/30 p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-bold uppercase tracking-[0.35em] text-cyan-200/90">
-          Best of {MAX_ROUNDS}
+          {t("games.precision.best_of", { n: MAX_ROUNDS })}
         </p>
         <p className="text-xs font-bold uppercase tracking-[0.35em] text-yellow-200">
-          Round {currentRound}
+          {t("games.precision.round_n", { round: currentRound })}
         </p>
       </div>
 
@@ -178,7 +189,7 @@ function PrecisionScoreboardImpl({
           }
           transition={{ duration: 0.6, ease: "easeOut" }}
         >
-          <p className="text-xs text-slate-300">{seat1Player?.name ?? "Seat 1"}</p>
+          <p className="text-xs text-slate-300">{seat1Player?.name ?? t("games.precision.seat_alpha")}</p>
           <div className="mt-2">
             <SeatDots
               seat={1}
@@ -219,7 +230,7 @@ function PrecisionScoreboardImpl({
           }
           transition={{ duration: 0.6, ease: "easeOut" }}
         >
-          <p className="text-xs text-slate-300">{seat2Player?.name ?? "Seat 2"}</p>
+          <p className="text-xs text-slate-300">{seat2Player?.name ?? t("games.precision.seat_bravo")}</p>
           <div className="mt-2">
             <SeatDots
               seat={2}
