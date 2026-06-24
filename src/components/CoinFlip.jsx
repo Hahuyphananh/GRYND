@@ -500,6 +500,32 @@ function PvPCoinFlip() {
   const [choiceDeadline, setChoiceDeadline] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const [showReportModal, setShowReportModal] = useState(false);
+  // Best-of-N scoreboard state — surfaced by /status so the client can
+  // show running round progress alongside the existing choice UI.
+  const [scoreP1, setScoreP1] = useState(0);
+  const [scoreP2, setScoreP2] = useState(0);
+  const [targetWins, setTargetWins] = useState(2);
+  const [totalRounds, setTotalRounds] = useState(0);
+  const [roundBanner, setRoundBanner] = useState(null);
+  // Ref-tracked timeout so we can clear it on rematch/closeGame before
+  // the auto-dismiss fires — otherwise a stale timer from the prior
+  // round could clear a banner for the new round mid-DOM.
+  const roundBannerTimerRef = useRef(null);
+  // Same idea for the post-finish 1.2s flip-anim setTimeout — if the
+  // user clicks Close mid-animation, the stale callback would fire
+  // after closeGame and re-set `gameFinished=true` on a closed game,
+  // gating the NEXT match's result-flip animation. Track & clear it.
+  const flipAnimTimerRef = useRef(null);
+  // `imPlayer1` is true when `userId` is the player who created the
+  // game (player1). It gates the "You" / "Opponent" labels on the
+  // best-of-3 scoreboard so the running scoreboard reads from each
+  // player's perspective.
+  const [imPlayer1, setImPlayer1] = useState(true);
+  // Refs hold the polled totals between renders so we can fire a
+  // round-just-resolved banner without false positives on first poll.
+  const prevTotalRoundsRef = useRef(null);
+  const prevScoreP1Ref = useRef(null);
+  const prevScoreP2Ref = useRef(null);
   const posthog = usePostHog();
   const animationLockRef = useRef(false);
 
@@ -541,9 +567,69 @@ function PvPCoinFlip() {
       setChoiceDeadline(game.choiceDeadline || null);
       const opponent = game.player1Id === userId ? game.player2Id : game.player1Id;
       setOpponentId(opponent || null);
+      setImPlayer1(game.player1Id === userId);
 
       if (game.player1Id === userId) { setMyChoice(game.player1Choice || null); setOpponentChoice(game.player2Choice || null); }
       else { setMyChoice(game.player2Choice || null); setOpponentChoice(game.player1Choice || null); }
+
+      // Best-of-N scoreboard surface.
+      const nextScoreP1 = game.scorePlayer1 ?? 0;
+      const nextScoreP2 = game.scorePlayer2 ?? 0;
+      const nextTargetWins = game.targetWins ?? 2;
+      const nextTotalRounds = game.totalRounds ?? 0;
+      setScoreP1(nextScoreP1);
+      setScoreP2(nextScoreP2);
+      setTargetWins(nextTargetWins);
+      setTotalRounds(nextTotalRounds);
+
+      // Round-just-resolved detection — first poll: initialise refs
+      // silently so we don't fire a spurious banner on the very first
+      // status read (which could land AFTER a round has already
+      // resolved). Subsequent polls: if totalRounds advanced AND the
+      // match is still in progress, pulse a brief banner noting who
+      // took the just-completed round.
+      const isFirstPoll = prevTotalRoundsRef.current === null;
+      if (isFirstPoll) {
+        prevTotalRoundsRef.current = nextTotalRounds;
+        prevScoreP1Ref.current = nextScoreP1;
+        prevScoreP2Ref.current = nextScoreP2;
+      } else if (
+        game.status === "matched" &&
+        nextTotalRounds > prevTotalRoundsRef.current
+      ) {
+        const completedRound = nextTotalRounds;
+        const p1Delta = nextScoreP1 - (prevScoreP1Ref.current ?? 0);
+        const p2Delta = nextScoreP2 - (prevScoreP2Ref.current ?? 0);
+        // The seat whose score JUST advanced is the round winner.
+        let roundWinnerIsPlayer1 = null;
+        if (p1Delta > 0 && p2Delta === 0) roundWinnerIsPlayer1 = true;
+        else if (p2Delta > 0 && p1Delta === 0) roundWinnerIsPlayer1 = false;
+        const youWonRound = roundWinnerIsPlayer1 === null
+          ? null
+          : (imPlayer1 ? roundWinnerIsPlayer1 : !roundWinnerIsPlayer1);
+        setRoundBanner({
+          roundNumber: completedRound,
+          winnerIsYou: youWonRound,
+        });
+        // Auto-dismiss after a short window so it doesn't linger into
+        // the next round's choice phase. Track the handle so we can
+        // cancel it on rematch / closeGame.
+        if (roundBannerTimerRef.current) clearTimeout(roundBannerTimerRef.current);
+        roundBannerTimerRef.current = setTimeout(
+          () => {
+            setRoundBanner((cur) => (cur && cur.roundNumber === completedRound ? null : cur));
+            roundBannerTimerRef.current = null;
+          },
+          2500
+        );
+        prevTotalRoundsRef.current = nextTotalRounds;
+        prevScoreP1Ref.current = nextScoreP1;
+        prevScoreP2Ref.current = nextScoreP2;
+      } else {
+        prevTotalRoundsRef.current = nextTotalRounds;
+        prevScoreP1Ref.current = nextScoreP1;
+        prevScoreP2Ref.current = nextScoreP2;
+      }
 
       if (game.status === "matched") setMessage("Choose heads or tails before the timer ends.");
       if (game.status === "cancelled") { setFlipping(false); setMessage("Game cancelled: choice timer expired. Bets refunded."); }
@@ -553,7 +639,12 @@ function PvPCoinFlip() {
         setFlipping(true);
         setMessage("Flipping coin...");
         setFlipKey(k => k + 1);
-        setTimeout(() => {
+        // Track the handle so closeGame can cancel a stale animation
+        // before it re-asserts `gameFinished=true` against a closed
+        // game and gates the next match's flip animation.
+        if (flipAnimTimerRef.current) clearTimeout(flipAnimTimerRef.current);
+        flipAnimTimerRef.current = setTimeout(() => {
+          flipAnimTimerRef.current = null;
           setResult(game.outcome);
           setFlipping(false);
           setMessage(game.winner === "you" ? "✅ You won!" : "❌ You lost.");
@@ -562,6 +653,7 @@ function PvPCoinFlip() {
           posthog?.capture("coin_flip_pvp_ended", {
             game_id: myGameId, result: game.winner === "you" ? "win" : "lose",
             outcome: game.outcome, my_choice: myChoice, opponent_choice: opponentChoice,
+            rounds_played: nextTotalRounds,
           });
         }, 1200);
       }
@@ -570,7 +662,7 @@ function PvPCoinFlip() {
     checkGame();
     const interval = setInterval(checkGame, 1000);
     return () => clearInterval(interval);
-  }, [myGameId, userId, gameFinished]);
+  }, [myGameId, userId, gameFinished, scoreP1, scoreP2]);
 
   useEffect(() => {
     if (!choiceDeadline || gameStatus !== "matched") { setTimeLeft(0); return; }
@@ -615,6 +707,28 @@ function PvPCoinFlip() {
     setGameFinished(false); setMyGameId(null); setMyBet(null); setOpponentId(null);
     setMyChoice(null); setOpponentChoice(null); setResult(null); setChoiceDeadline(null);
     setGameStatus(null); setMessage("");
+    // Drop any in-flight round banner from the previous match so it
+    // can't bleed into the next one.
+    if (roundBannerTimerRef.current) clearTimeout(roundBannerTimerRef.current);
+    roundBannerTimerRef.current = null;
+    setRoundBanner(null);
+    // Cancel any in-flight post-finish flip-animation timeout. Without
+    // this, closing mid-anim would let the stale callback re-assert
+    // `gameFinished=true` against a closed game and gate the next
+    // match's flip animation behind `!gameFinished`.
+    if (flipAnimTimerRef.current) clearTimeout(flipAnimTimerRef.current);
+    flipAnimTimerRef.current = null;
+    // Reset best-of-N refs so the next match's first poll doesn't
+    // inherit stale finished-game totals. Without this, an
+    // accidentally-too-lax `nextTotalRounds > prev` comparison in a
+    // future edit would silently fire a spurious banner.
+    prevTotalRoundsRef.current = null;
+    prevScoreP1Ref.current = null;
+    prevScoreP2Ref.current = null;
+    // Also clear the result-flip animation lock — if the user closes
+    // mid-animation, the next game's finish must still be allowed to
+    // play the flip.
+    animationLockRef.current = false;
   };
 
   const rematch = async () => {
@@ -732,6 +846,53 @@ function PvPCoinFlip() {
         <div className="mt-6 bg-gray-900 rounded-xl p-6 shadow-xl border border-gray-700">
           <h2 className="text-center text-xl font-bold mb-6">Coin Flip PvP</h2>
           <p className="text-center text-[10px] text-white/20 mb-2">House fee: {(PVP_HOUSE_FEE * 100).toFixed(0)}%</p>
+
+          {/* Best-of-N scoreboard — visible the entire time an opponent
+              is present so both players see the running score alongside
+              the existing choice / flip UI. `targetWins * 2 - 1` is the
+              canonical "Best of N" formulation (best-of-3 = max 3
+              rounds, best-of-5 = max 5 rounds, etc.). */}
+          {opponentId && (
+            <div className="mb-3 px-3 py-2 rounded-lg border border-[#00e5ff]/20 bg-black/30 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] sm:text-xs">
+              <span className="text-[#00e5ff] font-bold uppercase tracking-widest">
+                Best of {targetWins * 2 - 1}
+              </span>
+              <span className="text-white/60 font-semibold">
+                {gameStatus === "finished"
+                  ? `Match complete`
+                  : `Round ${totalRounds + 1}`}
+              </span>
+              <span className="font-bold text-white whitespace-nowrap">
+                {imPlayer1 ? (
+                  <>
+                    <span className="text-green-300">You {scoreP1}</span>
+                    <span className="text-white/40 mx-1">–</span>
+                    <span className="text-yellow-300">{scoreP2}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-green-300">You {scoreP2}</span>
+                    <span className="text-white/40 mx-1">–</span>
+                    <span className="text-yellow-300">{scoreP1}</span>
+                  </>
+                )}
+              </span>
+            </div>
+          )}
+
+          {/* Round-just-resolved banner — pulses briefly when a round
+              ends mid-match (status still "matched") so both players
+              see who took the round before the next choice phase. */}
+          {roundBanner && gameStatus === "matched" && (
+            <div className="mb-3 text-center text-sm font-semibold text-[#7cefff] tracking-wide">
+              {roundBanner.winnerIsYou === null
+                ? `Round ${roundBanner.roundNumber} resolved.`
+                : `Round ${roundBanner.roundNumber} won by ${roundBanner.winnerIsYou ? "You" : "Opponent"}.`}
+              {totalRounds >= targetWins
+                ? " — wait for final result…"
+                : " — next round, pick your side."}
+            </div>
+          )}
 
           <div className="flex justify-end mb-3">
             {opponentId && (

@@ -226,11 +226,17 @@ export async function GET() {
     };
 
     const coinflipFormatted = coinflipRows.map((bet) => {
-      const amount = Number(bet.betAmount ?? 0);
-      let result = bet.result?.toLowerCase?.() ?? "pending";
-      if (!bet.result) {
-        if (bet.winnerId) result = bet.winnerId === clerkId ? "won" : "lost";
+      // Only finished matches contribute a Win/Loss — in-flight
+      // matches (status='active' / 'matched' / 'cancelled') and even
+      // mid-match rounds (where the server briefly stamps the round
+      // winner onto `winnerId` between rounds of a best-of-N match)
+      // are deliberately excluded so the bet history never shows a
+      // misleading win/loss for an unfinished game.
+      if (bet.status !== "finished") {
+        return null;
       }
+      const amount = Number(bet.betAmount ?? 0);
+      const result = bet.winnerId === clerkId ? "won" : "lost";
       const payout = result === "won" ? Number((amount * 1.98).toFixed(2)) : 0;
       return {
         type: "💰 Coinflip",
@@ -240,7 +246,7 @@ export async function GET() {
         result,
         tokenDiff: result === "won" ? payout - amount : -amount,
       };
-    });
+    }).filter(Boolean);
 
     const kenoFormatted = kenoRows.map((row) => {
       const amount = Number(row.bet_amount ?? 0);

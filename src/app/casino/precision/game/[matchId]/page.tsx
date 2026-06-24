@@ -17,7 +17,7 @@
 // match.roundGoInstant. The page does NOT call performance.now(), run
 // a requestAnimationFrame loop, or compute any elapsed value locally.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -59,8 +59,16 @@ import type {
   PrecisionState,
 } from "../../../../../lib/precision/types";
 
+// ── Next.js 16 dynamic params are async (Promise-based).
+// The match page receives `params` as a Promise that must be unwrapped
+// with `React.use()` before accessing properties. Accessing
+// `params.matchId` directly leaves `matchId` undefined and triggers a
+// client-side TypeError on the next `.slice(0, 6)` render below —
+// manifesting to the user as the "Application error: a client-side
+// exception has occurred" overlay when navigating from the lobby to the
+// match page after Create PvP / Create AI.
 interface PrecisionMatchPageProps {
-  params: { matchId: string };
+  params: Promise<{ matchId: string }>;
 }
 
 const DEFAULT_PLAYERS: PrecisionPlayer[] = [
@@ -72,7 +80,18 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   const router = useRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
-  const matchId = params.matchId;
+  // Unwrap the dynamic-route params Promise. `use()` suspends this
+  // component until the param is resolved; the result is a plain
+  // object, so `matchId` is a real string (or falls back to "" if
+  // somehow absent — see the guard below).
+  const { matchId: rawMatchId } = use(params);
+  // Defensive fallback: if the URL is missing the dynamic segment the
+  // page would otherwise render with `matchId === undefined` and crash
+  // on the first `.slice()` call. Strictly a safety-net — Next.js
+  // always supplies the segment when routing through [matchId].
+  const matchId = typeof rawMatchId === "string" && rawMatchId.length > 0
+    ? rawMatchId
+    : "unknown";
 
   const [state, setState] = useState<PrecisionState | null>(null);
   const [endPopup, setEndPopup] = useState<PrecisionEndPopupState | null>(null);
