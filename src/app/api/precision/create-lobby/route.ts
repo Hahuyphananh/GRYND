@@ -1,12 +1,18 @@
 // POST /api/precision/create-lobby
 //
-// Lifts the scaffold stub to the project's actual matchmaking behaviour:
-//   * `gameMode === "pvp"` — auto-pair with another player at the SAME
-//     wager, otherwise enqueue a waiting lobby.
-//   * `gameMode === "ai"`  — create a single-player match against the
-//     "Precision AI" stub opponent.
-// In both cases the response carries a unified `gameId` so the client has
-// a single field to navigate to.
+// PvP-only matchmaking for the Precision reaction-time casino game.
+// Auto-pairs two callers at the SAME wager or, if no waiting lobby is
+// at that wager, enqueues a single waiting lobby so the caller can
+// poll the public lobby list until someone joins.
+//
+// Solo practice lives client-side at `/casino/precision/test` and
+// never touches this route — Precision's PvP wagering is
+// intentionally the only entry point here so we don't fake a "vs AI"
+// opponent that would be game-theoretically rigged.
+//
+// The response carries a unified `gameId` so the client has a single
+// field to navigate to regardless of whether they were queued or
+// matched.
 
 import { NextRequest, NextResponse } from "next/server";
 import { MIN_WAGER, MAX_WAGER } from "../../../../lib/precision/constants";
@@ -23,11 +29,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const wager = clampWager(Number(body?.wager));
-    const gameMode = body?.gameMode === "ai" ? "ai" : "pvp";
     const hostUserId = String(body?.hostUserId ?? "host");
     const hostName = String(body?.hostName ?? "Player 1");
 
-    const result = tryAutoMatch({ wager, hostUserId, hostName, gameMode });
+    // PvP-only — any `gameMode` other than "pvp" is normalised away in
+    // case a stale client still sends the legacy `"ai"` literal. Solo
+    // practice goes through `/casino/precision/test` instead.
+    const result = tryAutoMatch({ wager, hostUserId, hostName });
 
     if (result.status === "waiting") {
       return NextResponse.json({
@@ -39,11 +47,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Matched paths (PvP pair or AI) — same shape, opponent metadata
-    // differs.
+    // Matched PvP pair — the lobby id becomes the match id so both
+    // players navigate to the same /casino/precision/game/[id] URL.
     return NextResponse.json({
       success: true,
-      status: gameMode === "ai" ? "ai" : "matched",
+      status: "matched",
       gameId: result.gameId,
       lobbyId: null,
       matchId: result.gameId,
