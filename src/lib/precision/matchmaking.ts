@@ -17,10 +17,10 @@ import { precisionLobbyStore, precisionMatchStore } from "./serverStore";
 import type { PrecisionLobby, PrecisionPlayer, PrecisionState } from "./types";
 
 /** Construct the initial server-authoritative state for a new match.
- *  Used by both the PvP pairing path and the AI entry path so the score /
- *  round / target fields stay consistent. Exported so other routes (e.g.
- *  /api/precision/join-lobby) can build a canonical match state without
- *  duplicating the field defaults. */
+ *  PvP-only (Precision's solo practice lives at
+ *  `/casino/precision/test`, not through this store). Exported so other
+ *  routes (e.g. /api/precision/join-lobby) can build a canonical match
+ *  state without duplicating the field defaults. */
 export function makeInitialMatch(
   matchId: string,
   wager: number,
@@ -90,8 +90,6 @@ interface AutoPairOptions {
   hostUserId: string;
   /** Display name, surfaces in the next pairing callback if matched. */
   hostName: string;
-  /** Game mode — only "pvp" enters the matchmaking queue. */
-  gameMode: "pvp" | "ai";
 }
 
 /**
@@ -108,13 +106,7 @@ export function tryAutoMatch({
   wager,
   hostUserId,
   hostName,
-  gameMode,
 }: AutoPairOptions): AutoMatchResult {
-  // AI flow skips matchmaking entirely (the caller wants to play alone).
-  if (gameMode === "ai") {
-    return createAiEntry(wager, hostUserId, hostName);
-  }
-
   // Idempotency: if this user already has a PvP queue entry at this
   // wager, return it instead of carving out a second waiting lobby.
   // Prevents double-click orphans that would surface in the public list
@@ -200,51 +192,4 @@ export function tryAutoMatch({
   };
   precisionLobbyStore.set(lobbyId, lobby);
   return { status: "waiting", gameId: lobbyId, lobby };
-}
-
-function createAiEntry(
-  wager: number,
-  hostUserId: string,
-  hostName: string,
-): AutoMatchResult {
-  const id = `match-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const lobby: PrecisionLobby = {
-    id,
-    hostUserId,
-    hostName,
-    opponentUserId: "ai-opponent",
-    opponentName: "Precision AI",
-    wager,
-    gameMode: "ai",
-    status: "active",
-    createdAt: Date.now(),
-  };
-  precisionLobbyStore.set(id, lobby);
-  const match = makeInitialMatch(
-    id,
-    wager,
-    [
-      {
-        seat: 1,
-        userId: hostUserId,
-        name: hostName,
-        isReady: true,
-        isConnected: true,
-      },
-      {
-        seat: 2,
-        userId: "ai-opponent",
-        name: "Precision AI",
-        isReady: true,
-        isConnected: true,
-      },
-    ],
-    "active",
-  );
-  precisionMatchStore.set(id, match);
-  return { status: "matched", gameId: id, match, opponent: {
-    userId: "ai-opponent",
-    name: "Precision AI",
-    seat: 2,
-  } };
 }

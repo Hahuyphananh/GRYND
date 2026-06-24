@@ -23,7 +23,11 @@ import type {
 
 export interface CreateLobbyRequest {
   wager: number;
-  gameMode: "pvp" | "ai";
+  /** Precision is PvP-only — solo practice lives at
+   *  `/casino/precision/test`, not here. The field is kept on the wire
+   *  for backwards-compat with any persisted request payloads, but
+   *  the route ignores anything other than `"pvp"`. */
+  gameMode: "pvp";
 }
 
 export interface CreateLobbyResponse {
@@ -35,11 +39,10 @@ export interface CreateLobbyResponse {
   gameId: string | null;
   /** Set when the response represents a queued / waiting entry. */
   lobbyId: string | null;
-  /** Set when the response represents an active match (auto-matched or AI). */
+  /** Set when the response represents an auto-matched PvP match. */
   matchId: string | null;
   /** Lifecycle status of the newly created entity. */
-  status?: "waiting" | "matched" | "ai";
-  /** Opponent info when status === "matched" or "ai". */
+  status?: "waiting" | "matched";
   opponent?: { userId: string; name: string; seat: 1 | 2 };
   error?: string;
 }

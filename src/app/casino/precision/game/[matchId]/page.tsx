@@ -824,12 +824,6 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   // flag is only a hint for the brief window between click and response.
   const selfPlayer = players.find((p) => p.seat === localSeat) ?? null;
   const effectiveSelfReady = selfReady || selfPlayer?.isReady === true;
-  // Detect an AI opponent via the sentinel userId assigned by matchmaking's
-  // createAiEntry. The server-side recordRoundStop requires both seats to
-  // submit, so without an AI auto-submitter the round would deadlock
-  // until resign. Hide the input for AI matches.
-  const opponentRecord = players.find((p) => p.seat !== localSeat) ?? null;
-  const isAiMatch = opponentRecord?.userId === "ai-opponent";
 
   // Arming is the pre-round random delay the server imposes. During
   // arming the input form is hidden and a "Get ready..." screen shows.
@@ -1072,37 +1066,35 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                     </div>
                   )}
                   <p className="mt-4 text-sm text-cyan-100/90 sm:text-base">
-                    {isAiMatch
-                      ? "AI opponent detected \u2014 the auto-stop agent is wired when gameplay lands."
-                      : "Click STOP when ready. The server records the exact moment and computes your reaction time authoritatively — your elapsed time cannot be spoofed."}
+                    Click STOP when ready. The server records the exact
+                    moment and computes your reaction time authoritatively
+                    — your elapsed time cannot be spoofed.
                   </p>
-                  {!isAiMatch && (
-                    <div className="mx-auto mt-5 flex max-w-md flex-col gap-3">
-                      <button
-                        type="button"
-                        onClick={handleStopClick}
-                        disabled={
-                          selfStopPending ||
-                          stopSubmitting ||
-                          awaitingOpponentStop
-                        }
-                        data-testid="precision-stop-button"
-                        className={
-                          selfStopPending
-                            ? "w-full cursor-default rounded-2xl border-2 border-emerald-300/40 bg-emerald-400/20 px-6 py-6 text-3xl font-black tracking-widest text-emerald-100"
-                            : stopSubmitting
-                              ? "w-full cursor-wait rounded-2xl border-2 border-yellow-300/40 bg-yellow-400/20 px-6 py-6 text-3xl font-black tracking-widest text-yellow-100"
-                              : "w-full rounded-2xl border-2 border-red-400/60 bg-gradient-to-b from-red-500 to-red-600 px-6 py-6 text-3xl font-black tracking-widest text-white shadow-[0_0_30px_rgba(239,68,68,0.65)] transition active:scale-95 hover:from-red-400 hover:to-red-500 animate-pulse"
-                        }
-                      >
-                        {selfStopPending
-                          ? "\u2713 STOP SENT"
+                  <div className="mx-auto mt-5 flex max-w-md flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={handleStopClick}
+                      disabled={
+                        selfStopPending ||
+                        stopSubmitting ||
+                        awaitingOpponentStop
+                      }
+                      data-testid="precision-stop-button"
+                      className={
+                        selfStopPending
+                          ? "w-full cursor-default rounded-2xl border-2 border-emerald-300/40 bg-emerald-400/20 px-6 py-6 text-3xl font-black tracking-widest text-emerald-100"
                           : stopSubmitting
-                            ? "SUBMITTING\u2026"
-                            : "STOP"}
-                      </button>
-                    </div>
-                  )}
+                            ? "w-full cursor-wait rounded-2xl border-2 border-yellow-300/40 bg-yellow-400/20 px-6 py-6 text-3xl font-black tracking-widest text-yellow-100"
+                            : "w-full rounded-2xl border-2 border-red-400/60 bg-gradient-to-b from-red-500 to-red-600 px-6 py-6 text-3xl font-black tracking-widest text-white shadow-[0_0_30px_rgba(239,68,68,0.65)] transition active:scale-95 hover:from-red-400 hover:to-red-500 animate-pulse"
+                      }
+                    >
+                      {selfStopPending
+                        ? "✓ STOP SENT"
+                        : stopSubmitting
+                          ? "SUBMITTING…"
+                          : "STOP"}
+                    </button>
+                  </div>
                   <button
                     onClick={handleResign}
                     className="mt-6 rounded bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-500"

@@ -46,7 +46,12 @@ export interface PrecisionLobby {
   opponentUserId: string | null;
   opponentName?: string | null;
   wager: number;
-  gameMode: "pvp" | "ai";
+  /** Precision is PvP-only — solo practice lives at
+   * `/casino/precision/test`, a self-contained client-side page that
+   * bypasses the lobby/match store entirely. Kept as a typed literal
+   * (rather than removed) so historical lobby snapshots in
+   * `precisionLobbyStore` continue to type-check on read. */
+  gameMode: "pvp";
   status: "waiting" | "active";
   createdAt: number;
 }

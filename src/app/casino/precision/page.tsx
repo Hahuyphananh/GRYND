@@ -7,11 +7,16 @@
 //   * Live list of open lobbies (polled every 3s)
 //   * On "Create PvP", redirect to /casino/precision/game/[lobbyId] which
 //     then renders the waiting room while the host waits for an opponent.
+//   * On "Test Mode", redirect to /casino/precision/test — a self-contained
+//     solo reaction-time sandbox that runs entirely client-side (no wager,
+//     no opponent, no server interaction). See that page's header comment
+//     for the rationale.
 //
 // The multi-step flow (lobby → match page) keeps the matchmaking state on
 // the server and avoids duplicating it client-side.
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
@@ -116,22 +121,12 @@ export default function PrecisionLobbyPage() {
     }
   };
 
-  const handleCreateAI = async () => {
-    setCreating(true);
-    setError(null);
-    try {
-      posthog?.capture("precision_find_match", { wager, mode: "ai" });
-      const res = await createLobby({ wager, gameMode: "ai" });
-      if (!res.success || !res.gameId) {
-        setError(res.error ?? "AI match creation is not yet available.");
-        return;
-      }
-      // AI matches: caller is always seat 1; AI stub occupies seat 2.
-      persistLocalSeat(1);
-      router.push(`/casino/precision/game/${res.gameId}?ai=1`);
-    } finally {
-      setCreating(false);
-    }
+  // The Test button is a plain `<Link>` navigation, not a server call.
+  // See `src/app/casino/precision/test/page.tsx` for the solo sandbox.
+  // We capture analytics on click so the funnel / "test_to_pvp"
+  // conversion ratio can be measured without leaning on hover-tracking.
+  const handleTestClick = () => {
+    posthog?.capture("precision_test_clicked", { source: "lobby" });
   };
 
   const handleJoin = async (lobbyId: string) => {
@@ -163,8 +158,9 @@ export default function PrecisionLobbyPage() {
         </h1>
         <p className="mt-2 text-sm text-cyan-100/90">
           Wager tokens and face another player in a 1v1 precision duel.
-          Gameplay is currently in scaffolding — lobbies, matchmaking and
-          the waiting room are wired up but the actual duel is on the way.
+          Step into <span className="font-bold text-fuchsia-300">Test Mode</span>{" "}
+          first if you want to sharpen your reaction time solo — no wager,
+          no opponent.
         </p>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
@@ -184,19 +180,21 @@ export default function PrecisionLobbyPage() {
               ))}
             </div>
             <button
+              data-testid="precision-create-pvp-button"
               onClick={handleCreatePvP}
               disabled={creating}
               className="mt-4 w-full rounded bg-cyan-400 py-2 font-bold text-black disabled:opacity-50"
             >
-              {creating ? "Creating…" : "Create PvP Game"}
+              {creating ? "Creating…" : "Find PvP Match"}
             </button>
-            <button
-              onClick={handleCreateAI}
-              disabled={creating}
-              className="mt-2 w-full rounded bg-pink-500 py-2 font-bold text-black disabled:opacity-50"
+            <Link
+              href="/casino/precision/test"
+              data-testid="precision-test-link"
+              onClick={handleTestClick}
+              className="mt-2 block w-full rounded border border-fuchsia-400/60 bg-fuchsia-500/10 py-2 text-center font-bold text-fuchsia-200 transition hover:bg-fuchsia-500/20"
             >
-              Create AI Game
-            </button>
+              🎯 Test Mode (solo, no wager)
+            </Link>
             {error && (
               <p className="mt-3 rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
                 {error}
@@ -218,7 +216,7 @@ export default function PrecisionLobbyPage() {
                   <div>
                     <p>Wager: {l.wager}</p>
                     <p className="text-xs text-slate-400">
-                      Mode: {l.gameMode} · Waiting for player
+                      PvP · Waiting for player
                     </p>
                   </div>
                   <button
