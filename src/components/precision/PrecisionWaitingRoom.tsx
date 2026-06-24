@@ -11,6 +11,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { SEAT_COUNT } from "../../lib/precision/constants";
 import type { PrecisionPlayer } from "../../lib/precision/types";
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface PrecisionWaitingRoomProps {
   matchId: string;
@@ -35,6 +36,7 @@ function PrecisionWaitingRoomImpl({
   isHost,
   copyCode,
 }: PrecisionWaitingRoomProps) {
+  const { t } = useTranslation();
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = async () => {
@@ -58,14 +60,13 @@ function PrecisionWaitingRoomImpl({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-            Precision · Match #{matchId.slice(0, 6)}
+            {t("games.precision.match_label", { id: matchId.slice(0, 6) })}
           </p>
           <h2 className="mt-1 text-2xl font-black text-fuchsia-300 sm:text-3xl">
-            Waiting for opponent…
+            {t("games.precision.waiting_room_title")}
           </h2>
           <p className="mt-1 text-sm text-cyan-100">
-            Hosted by <span className="font-semibold text-white">{hostName}</span>{" "}
-            · Wager <span className="font-semibold text-yellow-300">{wager}</span>
+            {t("games.precision.hosted_by", { name: hostName, wager })}
           </p>
         </div>
         {copyCode && (
@@ -73,7 +74,7 @@ function PrecisionWaitingRoomImpl({
             onClick={handleCopy}
             className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2 text-xs font-bold text-[#9dd8ff] hover:bg-[#00e5ff]/20"
           >
-            {copied ? "Copied!" : `Invite · ${copyCode}`}
+            {copied ? t("games.precision.copied") : t("games.precision.invite_code", { code: copyCode })}
           </button>
         )}
       </div>
@@ -88,20 +89,20 @@ function PrecisionWaitingRoomImpl({
               className="flex flex-col items-center justify-center rounded-xl border border-fuchsia-500/35 bg-[#0b0220]/50 p-4 text-center"
             >
               <p className="text-xs font-bold uppercase tracking-widest text-fuchsia-200/90">
-                Seat {SEAT_LABELS[i]}
+                {seat === 1 ? t("games.precision.seat_alpha") : t("games.precision.seat_bravo")}
               </p>
               {occupant ? (
                 <>
                   <p className="mt-2 text-xl font-black text-white">{occupant.name}</p>
-                  <p className="mt-1 text-xs text-cyan-200">Ready · Connected</p>
+                  <p className="mt-1 text-xs text-cyan-200">{t("games.precision.ready_connected")}</p>
                 </>
               ) : (
                 <>
                   <p className="mt-3 animate-pulse text-lg font-semibold text-cyan-200">
-                    Awaiting player…
+                    {t("games.precision.awaiting_player")}
                   </p>
                   <p className="mt-2 text-xs text-cyan-100/60">
-                    Share the invite code to begin
+                    {t("games.precision.share_invite")}
                   </p>
                 </>
               )}
@@ -116,14 +117,14 @@ function PrecisionWaitingRoomImpl({
             onClick={onCancel}
             className="rounded-lg border border-red-500/40 bg-red-500/15 px-4 py-2 font-bold text-red-200 hover:bg-red-500/25"
           >
-            Cancel lobby
+            {t("games.precision.cancel_lobby")}
           </button>
         )}
         <button
           onClick={onLeave}
           className="rounded-lg bg-cyan-400 px-4 py-2 font-bold text-black hover:bg-cyan-300"
         >
-          Leave
+          {t("games.precision.leave_button")}
         </button>
       </div>
     </motion.div>

@@ -34,6 +34,7 @@ import { usePostHog } from "posthog-js/react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import NavigationBar from "../../../../components/navigation-bar";
+import { useTranslation } from "../../../../hooks/useTranslation";
 import Footer from "../../../../components/Footer";
 import {
   MAX_DELAY_MS,
@@ -133,6 +134,7 @@ function rollTargetMs(): number {
 export default function PrecisionTestPage() {
   const router = useRouter();
   const posthog = usePostHog();
+  const { t } = useTranslation();
 
   const [phase, setPhase] = useState<TestPhase>("idle");
   const [currentRound, setCurrentRound] = useState(1);
@@ -365,19 +367,19 @@ useEffect(() => {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-fuchsia-300/80">
-              Precision · Solo Test
+              {t("games.precision.test_solo_label")}
             </p>
             <h1 className="mt-1 text-2xl font-black text-fuchsia-300 sm:text-3xl">
               {phase === "idle"
-                ? "Practice Mode"
+                ? t("games.precision.practice_mode_title")
                 : phase === "finished"
-                  ? "Test Complete"
-                  : `Round ${currentRound} of ${MAX_ROUNDS}`}
+                  ? t("games.precision.test_complete_title")
+                  : t("games.precision.test_round_label_of", { current: currentRound, total: MAX_ROUNDS })}
             </h1>
             <p className="mt-1 text-sm text-cyan-100/90">
               {phase === "idle"
-                ? "Sharpen your reaction time solo — no wager, no opponent."
-                : "Click STOP the instant the target appears. We measure the delay locally."}
+                ? t("games.precision.test_idle_intro")
+                : t("games.precision.test_active_intro")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -386,14 +388,14 @@ useEffect(() => {
               onClick={handleLeave}
               className="rounded bg-[#f5ff3b] px-4 py-2 font-bold text-black"
             >
-              Lobby
+              {t("games.precision.lobby_button")}
             </button>
             {phase !== "idle" && phase !== "finished" && (
               <button
                 onClick={handleRestart}
                 className="rounded bg-cyan-400 px-4 py-2 font-bold text-black"
               >
-                Restart
+                {t("games.precision.restart")}
               </button>
             )}
           </div>
@@ -402,13 +404,13 @@ useEffect(() => {
         <AnimatePresence mode="wait" initial={false}>
           {phase === "idle" && (
             <motion.div key="phase-idle" {...fadeUp}>
-              <IdleStartScreen onStart={handleStart} personalBest={personalBest} />
+              <IdleStartScreen onStart={handleStart} personalBest={personalBest} t={t} />
             </motion.div>
           )}
 
           {phase === "arming" && (
             <motion.div key="phase-arming" {...fadeUp}>
-              <ArmingPanel currentRound={currentRound} />
+              <ArmingPanel currentRound={currentRound} t={t} />
             </motion.div>
           )}
 
@@ -419,6 +421,7 @@ useEffect(() => {
                 targetMs={targetMs}
                 timerMs={timerMs}
                 onStop={handleStop}
+                t={t}
               />
             </motion.div>
           )}
@@ -434,6 +437,7 @@ useEffect(() => {
                   elapsedMs={currentElapsedMs}
                   diffMs={currentDiffMs}
                   isLastRound={currentRound >= MAX_ROUNDS}
+                  t={t}
                 />
               </motion.div>
             )}
@@ -446,6 +450,7 @@ useEffect(() => {
                 personalBest={personalBest}
                 onRestart={handleRestart}
                 onLeave={handleLeave}
+                t={t}
               />
             </motion.div>
           )}
@@ -461,22 +466,20 @@ useEffect(() => {
 // drop-in module that doesn't pollute `/components/precision/` with
 // solo-mode-only files.) ────────────────────────────────────────────
 
-function IdleStartScreen({ onStart, personalBest }: { onStart: () => void; personalBest: PersonalBest | null }) {
+function IdleStartScreen({ onStart, personalBest, t }: { onStart: () => void; personalBest: PersonalBest | null; t: (key: string, params?: Record<string, string | number>) => string }) {
   return (
     <div className="mt-6 grid gap-5 lg:grid-cols-3">
       <div className="lg:col-span-2 rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-6 sm:p-10">
         <p className="text-5xl">🎯</p>
         <h2 className="mt-3 text-2xl font-black text-fuchsia-300 sm:text-3xl">
-          Sharpen your precision
+          {t("games.precision.sharpen_title")}
         </h2>
         <p className="mt-3 max-w-xl text-sm text-cyan-100/90 sm:text-base">
-          You&apos;ll play 5 solo rounds. Each round a random target time
-          appears with a live timer — click{" "}
-          <span className="font-bold text-yellow-300">STOP</span> the
-          instant the timer matches the target. We grade on how{" "}
-          <span className="font-bold text-cyan-300">close</span> you
-          land to the target, from 🌟 PERFECT (0&nbsp;ms off) down to
-          ❌ MISS (&gt;100&nbsp;ms off).
+          {t("games.precision.sharpen_description_lead")}{" "}
+          <span className="font-bold text-yellow-300">{t("games.precision.stop_button")}</span>{" "}
+          {t("games.precision.sharpen_description_mid")}{" "}
+          <span className="font-bold text-cyan-300">{t("games.precision.sharpen_description_close")}</span>{" "}
+          {t("games.precision.sharpen_description_tail")}
         </p>
         <ul className="mt-5 space-y-2 text-sm text-cyan-100/90">
           <li>
@@ -521,31 +524,29 @@ function IdleStartScreen({ onStart, personalBest }: { onStart: () => void; perso
           onClick={onStart}
           className="mt-7 w-full rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-500 px-6 py-5 text-2xl font-black tracking-widest text-black shadow-[0_0_30px_rgba(34,211,238,0.5)] transition active:scale-95 hover:from-cyan-300 hover:to-cyan-400"
         >
-          START TEST
+          {t("games.precision.start_test_button")}
         </button>
       </div>
       <div className="rounded-2xl border border-amber-300/30 bg-amber-300/5 p-5 text-sm text-amber-100/90">
         <p className="text-[10px] uppercase tracking-[0.35em] text-amber-300/80">
-          No wager · Local only
+          {t("games.precision.no_wager_label")}
         </p>
         <p className="mt-3">
-          Practice mode is <span className="font-bold">off the books</span>:
-          no tokens are deducted and no leaderboard stats are updated.
+          {t("games.precision.off_books_description", { style: t("games.precision.off_the_books") })}
         </p>
         <p className="mt-3">
-          When you&apos;re ready to play for stakes, head back to the
-          lobby and pick a wager on a PvP match.
+          {t("games.precision.ready_to_play_for_stakes")}
         </p>
         {personalBest && (
           <div className="mt-4 rounded-xl border border-yellow-400/30 bg-yellow-400/5 px-3 py-3">
             <p className="text-[10px] uppercase tracking-[0.3em] text-yellow-300/80">
-              Personal Best
+              {t("games.precision.personal_best_title")}
             </p>
             <p className={`mt-1 text-lg font-black ${personalBest.color}`}>
               {personalBest.emoji} {personalBest.label}
             </p>
             <p className="mt-0.5 text-xs text-cyan-100/80">
-              {Math.round(personalBest.bestDiffMs).toLocaleString()} ms off
+              {t("games.precision.ms_off_format", { ms: Math.round(personalBest.bestDiffMs).toLocaleString() })}
             </p>
           </div>
         )}
@@ -554,7 +555,7 @@ function IdleStartScreen({ onStart, personalBest }: { onStart: () => void; perso
   );
 }
 
-function ArmingPanel({ currentRound }: { currentRound: number }) {
+function ArmingPanel({ currentRound, t }: { currentRound: number; t: (key: string, params?: Record<string, string | number>) => string }) {
   // The pulsing arming indicator intentionally mirrors the match
   // page's pre-round phase so the transitions feel consistent — the
   // user sees the same "hold steady" beat before the green light.
@@ -566,12 +567,12 @@ function ArmingPanel({ currentRound }: { currentRound: number }) {
     >
       <p className="animate-pulse text-6xl">⏱</p>
       <h2 className="mt-4 text-2xl font-black text-yellow-300 sm:text-3xl">
-        Round {currentRound} — Get ready…
+        {t("games.precision.round_get_ready", { round: currentRound })}
       </h2>
       <p className="mt-3 max-w-md text-sm text-cyan-100/90 sm:text-base">
-        The round is arming. The target will appear at a random moment —
-        hold steady and wait for it. Click <span className="font-bold text-yellow-300">STOP</span> the
-        instant it shows up.
+        {t("games.precision.test_arming_description", {
+          defaultValue: "The round is arming. The target will appear at a random moment — hold steady and wait for it. Click STOP the instant it shows up.",
+        })}
       </p>
     </motion.div>
   );
@@ -582,11 +583,13 @@ function ActivePanel({
   targetMs,
   timerMs,
   onStop,
+  t,
 }: {
   currentRound: number;
   targetMs: number;
   timerMs: number;
   onStop: () => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   // Live rank preview — shows the rank the player WOULD earn if they
   // stopped right now. Updates continuously as the timer advances.
@@ -596,43 +599,42 @@ function ActivePanel({
     <div className="mt-6 rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-5 text-center sm:p-10">
       <p className="text-5xl">🎯</p>
       <h2 className="mt-4 text-2xl font-black text-fuchsia-300 sm:text-3xl">
-        Round {currentRound}
+        {t("games.precision.round_label", { round: currentRound })}
       </h2>
 
       {/* ── Running timer ──────────────────────────────────── */}
       <p className="mt-3 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-        Elapsed
+        {t("games.precision.elapsed_label")}
       </p>
       <p
         data-testid="precision-test-timer"
         className="mt-1 font-mono text-6xl font-black tabular-nums text-cyan-200 sm:text-7xl"
       >
         {Math.round(timerMs).toLocaleString()}
-        <span className="ml-1 text-3xl text-cyan-300/60">ms</span>
+        <span className="ml-1 text-3xl text-cyan-300/60">{t("games.precision.ms_suffix")}</span>
       </p>
 
       {/* ── Target ─────────────────────────────────────────── */}
       <p className="mt-4 text-xs uppercase tracking-[0.35em] text-yellow-300/80">
-        Target
+        {t("games.precision.target_label")}
       </p>
       <p
         data-testid="precision-test-target"
         className="mt-1 text-4xl font-black text-yellow-300 sm:text-5xl"
       >
-        {targetMs.toLocaleString()} ms
+        {targetMs.toLocaleString()} {t("games.precision.ms_suffix")}
       </p>
 
       {/* ── Live rank preview ─────────────────────────────── */}
       <p className={`mt-3 text-lg font-bold ${previewRank.color}`}>
         {previewRank.emoji} {previewRank.label}{" "}
         <span className="text-sm font-normal text-cyan-100/70">
-          ({previewDiff.toLocaleString()} ms off)
+          ({t("games.precision.ms_off_format", { ms: previewDiff.toLocaleString() })})
         </span>
       </p>
 
       <p className="mt-4 text-sm text-cyan-100/90 sm:text-base">
-        Click <span className="font-bold text-yellow-300">STOP</span> the
-        instant the timer matches the target.
+        {t("games.precision.test_click_stop_hint", { stop: "STOP" })}
       </p>
       <div className="mx-auto mt-5 flex max-w-md flex-col gap-3">
         <button
@@ -654,32 +656,34 @@ function RoundDonePanel({
   elapsedMs,
   diffMs,
   isLastRound,
+  t,
 }: {
   round: number;
   targetMs: number;
   elapsedMs: number;
   diffMs: number;
   isLastRound: boolean;
+  t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const rank = diffToRank(diffMs);
   return (
     <div className="mt-6 rounded-2xl border border-cyan-400/40 bg-cyan-400/5 p-5 sm:p-10">
       <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-        Round {round} result
+        {t("games.precision.test_round_result_title", { round })}
       </p>
       <p className={`mt-2 text-3xl font-black ${rank.color} sm:text-4xl`}>
         {rank.emoji} {rank.label}
       </p>
       <div className="mt-5 grid gap-3 sm:grid-cols-4 sm:gap-5">
-        <Stat label="Target" value={`${targetMs.toLocaleString()} ms`} accent="text-yellow-300" />
-        <Stat label="Your stop" value={`${Math.round(elapsedMs).toLocaleString()} ms`} accent="text-cyan-300" />
-        <Stat label="Difference" value={`${Math.round(diffMs).toLocaleString()} ms`} accent={rank.color} />
-        <Stat label="Rank" value={`${rank.emoji} ${rank.label}`} accent={rank.color} />
+        <Stat label={t("games.precision.target_label")} value={`${targetMs.toLocaleString()} ${t("games.precision.ms_suffix")}`} accent="text-yellow-300" />
+        <Stat label={t("games.precision.test_your_stop")} value={`${Math.round(elapsedMs).toLocaleString()} ${t("games.precision.ms_suffix")}`} accent="text-cyan-300" />
+        <Stat label={t("games.precision.test_difference")} value={`${Math.round(diffMs).toLocaleString()} ${t("games.precision.ms_suffix")}`} accent={rank.color} />
+        <Stat label={t("games.precision.test_rank")} value={`${rank.emoji} ${rank.label}`} accent={rank.color} />
       </div>
       <p className="mt-5 text-sm text-cyan-100/90">
         {isLastRound
-          ? "That was the last round — your summary is coming up…"
-          : "Next round arming in a moment…"}
+          ? t("games.precision.round_summary_last_round")
+          : t("games.precision.round_summary_next")}
       </p>
     </div>
   );
@@ -710,12 +714,14 @@ function FinishedSummaryPanel({
   personalBest,
   onRestart,
   onLeave,
+  t,
 }: {
   history: RoundStat[];
   summary: TestSummary;
   personalBest: PersonalBest | null;
   onRestart: () => void;
   onLeave: () => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   // Headline based on the best rank achieved across all 5 rounds.
   const { bestRank } = summary;
@@ -724,53 +730,53 @@ function FinishedSummaryPanel({
   const masterfulCount = summary.rankCounts["MASTERFUL"] ?? 0;
   const headline =
     perfectCount > 0
-      ? "🌟 Perfection achieved"
+      ? t("games.precision.headline_perfection")
       : legendaryCount > 0
-        ? "💎 Legendary performance"
+        ? t("games.precision.headline_legendary")
         : masterfulCount > 0
-          ? "🔥 Masterful run"
+          ? t("games.precision.headline_masterful")
           : bestRank.label === "EXCELLENT"
-            ? "⭐ Excellent showing"
+            ? t("games.precision.headline_excellent")
             : bestRank.label === "GREAT"
-              ? "✅ Great effort"
-              : "🎯 Keep practicing";
+              ? t("games.precision.headline_great")
+              : t("games.precision.headline_keep_practicing");
   return (
     <div className="mt-6 space-y-5">
       <div className="rounded-2xl border border-fuchsia-500/40 bg-[#0a0420]/80 p-5 sm:p-8">
         <p className="text-xs uppercase tracking-[0.35em] text-fuchsia-300/80">
-          Test summary · 5 rounds
+          {t("games.precision.final_summary_title", { total: MAX_ROUNDS })}
         </p>
         <h2 className="mt-2 text-3xl font-black text-fuchsia-300">
           {headline}
           <span className={`ml-3 text-base font-bold ${bestRank.color}`}>
-            best {bestRank.emoji} {bestRank.label}
+            {t("games.precision.best_rank_prefix", { emoji: bestRank.emoji, label: bestRank.label })}
           </span>
         </h2>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-4">
-          <Stat label="Avg difference" value={`${Math.round(summary.avgDiff)} ms`} accent="text-cyan-300" />
-          <Stat label="Best diff" value={`${Math.round(summary.bestDiff)} ms`} accent={bestRank.color} />
-          <Stat label="Worst diff" value={`${Math.round(summary.worstDiff)} ms`} accent="text-red-300" />
-          <Stat label="Best rank" value={`${bestRank.emoji} ${bestRank.label}`} accent={bestRank.color} />
+          <Stat label={t("games.precision.stat_avg_difference")} value={`${Math.round(summary.avgDiff)} ${t("games.precision.ms_suffix")}`} accent="text-cyan-300" />
+          <Stat label={t("games.precision.stat_best_difference")} value={`${Math.round(summary.bestDiff)} ${t("games.precision.ms_suffix")}`} accent={bestRank.color} />
+          <Stat label={t("games.precision.stat_worst_difference")} value={`${Math.round(summary.worstDiff)} ${t("games.precision.ms_suffix")}`} accent="text-red-300" />
+          <Stat label={t("games.precision.stat_best_rank")} value={`${bestRank.emoji} ${bestRank.label}`} accent={bestRank.color} />
         </div>
 
         {personalBest && (
           <div className="mt-4 rounded-xl border border-yellow-400/30 bg-yellow-400/5 px-4 py-3">
             <span className="text-[10px] uppercase tracking-[0.3em] text-yellow-300/80">
-              All-time Best
+              {t("games.precision.all_time_best")}
             </span>
             <span className={`ml-3 text-sm font-black ${personalBest.color}`}>
               {personalBest.emoji} {personalBest.label}
             </span>
             <span className="ml-2 text-xs text-cyan-100/70">
-              ({Math.round(personalBest.bestDiffMs).toLocaleString()} ms off)
+              ({t("games.precision.ms_off_format", { ms: Math.round(personalBest.bestDiffMs).toLocaleString() })})
             </span>
           </div>
         )}
 
         <div className="mt-6">
           <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-300/80">
-            Rank distribution
+            {t("games.precision.rank_distribution")}
           </p>
           <RankBars rankCounts={summary.rankCounts} />
         </div>
@@ -778,7 +784,7 @@ function FinishedSummaryPanel({
 
       <div className="rounded-2xl border border-cyan-500/30 bg-black/30 p-4 sm:p-5">
         <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-          Per-round log
+          {t("games.precision.per_round_log")}
         </p>
         <div className="mt-3 grid gap-2 sm:grid-cols-5">
           {history.map((s) => {
@@ -789,16 +795,16 @@ function FinishedSummaryPanel({
                 className="rounded-xl border border-slate-700/80 bg-black/40 p-3 text-center"
               >
                 <p className="text-[10px] uppercase tracking-[0.3em] text-cyan-300/80">
-                  Round {s.round}
+                  {t("games.precision.round_label", { round: s.round })}
                 </p>
                 <p className={`mt-1 font-mono text-lg font-black ${rank.color}`}>
-                  {Math.round(s.diffMs)}&nbsp;ms
+                  {Math.round(s.diffMs)}&nbsp;{t("games.precision.ms_suffix")}
                 </p>
                 <p className="mt-1 font-mono text-[11px] text-cyan-100/80">
-                  target {s.targetMs.toLocaleString()} ms
+                  {t("games.precision.target_inline", { target: s.targetMs.toLocaleString() })}
                 </p>
                 <p className="mt-1 font-mono text-[10px] text-cyan-100/70">
-                  stop {Math.round(s.elapsedMs).toLocaleString()} ms
+                  {t("games.precision.stop_inline", { stop: Math.round(s.elapsedMs).toLocaleString() })}
                 </p>
                 <p className={`mt-1 text-[10px] font-bold ${rank.color}`}>
                   {rank.emoji} {rank.label}
@@ -815,13 +821,13 @@ function FinishedSummaryPanel({
           onClick={onRestart}
           className="flex-1 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-500 px-6 py-4 text-xl font-black tracking-widest text-black shadow-[0_0_30px_rgba(34,211,238,0.5)] transition active:scale-95 hover:from-cyan-300 hover:to-cyan-400"
         >
-          PLAY AGAIN
+          {t("games.precision.play_again_button")}
         </button>
         <button
           onClick={onLeave}
           className="rounded-2xl bg-[#f5ff3b] px-6 py-4 text-xl font-black tracking-widest text-black"
         >
-          BACK TO LOBBY
+          {t("games.precision.back_to_lobby_button")}
         </button>
       </div>
     </div>

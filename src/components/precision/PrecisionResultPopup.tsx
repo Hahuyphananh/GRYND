@@ -14,6 +14,7 @@ import { endReasonToLabel, formatTokens, getReplaySecondsLeft } from "../../lib/
 import type {
   PrecisionEndPopupState,
 } from "../../lib/precision/types";
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface PrecisionResultPopupProps {
   popup: PrecisionEndPopupState | null;
@@ -32,6 +33,7 @@ function PrecisionResultPopupImpl({
   opponentReplayRequested,
   returnChosen,
 }: PrecisionResultPopupProps) {
+  const { t } = useTranslation();
   // Tick the countdown so the user sees live seconds remaining even if
   // the surrounding page isn't re-rendering for some other reason.
   //
@@ -76,7 +78,7 @@ function PrecisionResultPopupImpl({
           heading: "text-yellow-300",
           bg: "bg-gradient-to-b from-[#0a2a1a] to-[#031a0a]",
           icon: "🏆",
-          word: "Victory",
+          word: t("games.precision.victory"),
         }
       : popup?.result === "draw"
         ? {
@@ -85,7 +87,7 @@ function PrecisionResultPopupImpl({
             heading: "text-cyan-200",
             bg: "bg-gradient-to-b from-[#0a1f2a] to-[#031622]",
             icon: "🤝",
-            word: "Draw",
+            word: t("games.precision.draw"),
           }
         : {
             ring: "border-fuchsia-300/60",
@@ -93,7 +95,7 @@ function PrecisionResultPopupImpl({
             heading: "text-fuchsia-300",
             bg: "bg-gradient-to-b from-[#2a0a1f] to-[#160322]",
             icon: "💀",
-            word: "Defeat",
+            word: t("games.precision.defeat"),
           };
 
   // ── Winner / Score / Prize derivation ────────────────────────────
@@ -151,7 +153,7 @@ function PrecisionResultPopupImpl({
               {palette.icon}
             </motion.div>
             <p className="text-xs font-black uppercase tracking-[0.45em] text-cyan-200">
-              Precision · Match Result
+              {t("games.precision.match_result_label")}
             </p>
             <motion.h2
               initial={{ y: 20, opacity: 0 }}
@@ -185,7 +187,7 @@ function PrecisionResultPopupImpl({
               className="mt-4 grid gap-2"
             >
               <ResultRow
-                label="Winner"
+                label={t("games.precision.winner_label")}
                 value={winnerLine}
                 tone={
                   popup?.result === "win"
@@ -196,28 +198,26 @@ function PrecisionResultPopupImpl({
                 }
               />
               <ResultRow
-                label="Score"
+                label={t("games.precision.score_label")}
                 value={scoreLine}
                 tone="slate"
                 emphasize
               />
               <ResultRow
-                label="Prize"
+                label={t("games.precision.prize_label")}
                 value={
-                  popup?.result === "loss"
-                    ? payoutValue > 0
-                      ? `+${formatTokens(payoutValue)} tokens`
+                  payoutValue > 0
+                    ? `+${formatTokens(payoutValue)} ${t("games.precision.tokens_suffix")}`
+                    : popup?.result === "win"
+                      ? t("games.precision.zero_tokens")
                       : "—"
-                    : payoutValue > 0
-                      ? `+${formatTokens(payoutValue)} tokens`
-                      : "0 tokens"
                 }
                 subValue={
                   payoutValue > 0 && wagerValue > 0
-                    ? `${multiplier}× on ${formatTokens(wagerValue)} wagered`
+                    ? t("games.precision.multiplier_suffix", { multiplier, wager: formatTokens(wagerValue) })
                     : payoutValue > 0
-                      ? `${multiplier}× payout`
-                      : "No payout this round"
+                      ? t("games.precision.payout_multiplier_only", { multiplier })
+                      : t("games.precision.no_payout")
                 }
                 tone={payoutValue > 0 ? "gold" : "slate"}
                 emphasize
@@ -229,7 +229,7 @@ function PrecisionResultPopupImpl({
               transition={{ delay: 0.7, duration: 0.4 }}
               className="mt-4 text-xs font-bold uppercase tracking-widest text-yellow-200"
             >
-              Replay window:{" "}
+              {t("games.precision.replay_window_label")}{" "}
               {/* Smooth countdown — wrap the digit text in AnimatePresence
                   with mode=wait so each integer-second decrement fades the
                   OLD digit up+out and the NEW digit down+in. Each swap is a
@@ -265,13 +265,13 @@ function PrecisionResultPopupImpl({
                 disabled={returnChosen || replayRequested || expired}
                 className="rounded-xl border border-fuchsia-300/70 bg-fuchsia-500/20 px-4 py-3 font-black text-fuchsia-100 shadow-[0_0_18px_rgba(217,70,239,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {replayRequested ? "Replay requested" : "Replay"}
+                {replayRequested ? t("games.precision.replay_requested") : t("games.precision.replay_button")}
               </button>
               <button
                 onClick={onReturnToLobby}
                 className="rounded-xl border border-cyan-300/70 bg-cyan-400 px-4 py-3 font-black text-[#031026] shadow-[0_0_18px_rgba(34,211,238,0.35)]"
               >
-                Return to Lobby
+                {t("games.precision.return_to_lobby")}
               </button>
             </motion.div>
             <motion.p
@@ -281,14 +281,12 @@ function PrecisionResultPopupImpl({
               className="mt-3 text-xs text-slate-300"
             >
               {expired
-                ? "Replay window expired."
+                ? t("games.precision.expired")
                 : returnChosen
-                  ? "A player chose the lobby. Replay is disabled."
+                  ? t("games.precision.replay_disabled_return")
                   : opponentReplayRequested
-                    ? "Opponent is ready for replay."
-                    : `Both players must click replay before the ${Math.round(
-                        RESULT_POPUP_REPLAY_WINDOW_MS / 1000,
-                      )}s timer ends.`}
+                    ? t("games.precision.opponent_ready_replay")
+                    : t("games.precision.replay_explainer", { seconds: Math.round(RESULT_POPUP_REPLAY_WINDOW_MS / 1000) })}
             </motion.p>
           </motion.div>
         </motion.div>

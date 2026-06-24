@@ -410,14 +410,14 @@ function MainComponent() {
 
         <div className="mb-10 flex flex-col items-center gap-4">
           <p className="text-[11px] font-bold uppercase tracking-widest text-[#9dd8ff] opacity-80">
-            Sort By
+            {t("home.casino_lobby.sort_by")}
           </p>
           <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
             {[
-              { key: "all", label: "All Games" },
-              { key: "popular", label: "Popular Games" },
-              { key: "skill", label: "Skill-Based Games" },
-              { key: "newest", label: "Newest Games" },
+              { key: "all", labelKey: "home.casino_lobby.filter_all" },
+              { key: "popular", labelKey: "home.casino_lobby.filter_popular" },
+              { key: "skill", labelKey: "home.casino_lobby.filter_skill" },
+              { key: "newest", labelKey: "home.casino_lobby.filter_newest" },
             ].map((btn) => (
               <button
                 key={btn.key}
@@ -428,7 +428,7 @@ function MainComponent() {
                     : "bg-[#08142f] text-[#d8fbff] border border-[#00e5ff]/30 hover:bg-[#10234a]"
                 }`}
               >
-                {btn.label}
+                {t(btn.labelKey)}
               </button>
             ))}
           </div>
@@ -438,11 +438,11 @@ function MainComponent() {
           <>
             <h2 className="mb-6 text-2xl font-extrabold tracking-tight text-[#00e5ff] sm:text-3xl">
               {activeFilter === "popular"
-                ? "Popular Games"
+                ? t("home.casino_lobby.filter_popular")
                 : activeFilter === "skill"
-                  ? "Skill-Based Games"
+                  ? t("home.casino_lobby.filter_skill")
                   : activeFilter === "newest"
-                    ? "Newest Games"
+                    ? t("home.casino_lobby.filter_newest")
                     : t("home.all_games")}
             </h2>
 
@@ -459,10 +459,10 @@ function MainComponent() {
           (search.trim().length > 0 || activeFilter !== "all") && (
             <div className="mt-4 rounded-2xl border border-[#00e5ff]/20 bg-[#040d24]/40 px-6 py-16 text-center sm:py-20">
               <p className="text-lg font-semibold text-[#d8fbff] opacity-90">
-                No games match your search.
+                {t("home.casino_lobby.no_results_title")}
               </p>
               <p className="mt-2 text-sm text-[#9dd8ff] opacity-80">
-                Try a different keyword or change the filter.
+                {t("home.casino_lobby.no_results_hint")}
               </p>
             </div>
           )}

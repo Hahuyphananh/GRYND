@@ -575,7 +575,7 @@ function MainComponent() {
 bg-gradient-to-r from-[#ff4fd8] via-[#00e5ff] to-[#ff4fd8]
 drop-shadow-[0_0_40px_rgba(255,79,216,0.4)] tracking-widest uppercase 
 animate-[shimmerGradient_8s_ease-in-out_infinite]"
-            style={{ backgroundSize: "200% auto", textShadow: "0 0 3px rgba(0,0,0,0.9), 0 0 18px rgba(255,79,216,0.35)" }}
+            style={{ backgroundSize: "200% auto", textShadow: "0 0 3px rgba(238, 255, 0, 0.82), 0 0 18px rgb(238, 255, 0)" }}
           >
             {t("home.landing.title")}
           </motion.h1>
@@ -612,7 +612,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               >
                 {t("home.landing.start_betting")}
               </UIPro06PrimaryButton>
-              <p className="mt-3 text-sm text-[#7dd3fc]/70">Free virtual tokens — no real money required</p>
+              <p className="mt-3 text-sm text-[#7dd3fc]/70">{t("home.push_intro")}</p>
             </motion.div>
             <motion.div
               initial={{ opacity: 0, y: 12 }}
@@ -636,22 +636,21 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
       </motion.section>
 
       {/* Value Proposition Strip */}
-      <div className="mx-auto max-w-7xl px-4 py-6 reveal">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="mx-auto max-w-7xl px-4 py-6 reveal">          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#00e5ff]/35 hover:shadow-[0_0_20px_rgba(0,229,255,0.1)]">
             <svg className="w-10 h-10 mx-auto mb-3 text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a4 4 0 00-4 4c0 1.5.8 2.8 2 3.5V9a2 2 0 012-2h4a2 2 0 012 2v.5c1.2-.7 2-2 2-3.5a4 4 0 00-4-4z"/><path d="M9 22h6M12 18v4"/><circle cx="12" cy="12" r="3"/></svg>
-            <h3 className="text-lg font-bold text-[#00e5ff] mb-1">100% Skill-Based</h3>
-            <p className="text-sm text-[#7dd3fc]">No luck, no house edge. Your ability decides every outcome.</p>
+            <h3 className="text-lg font-bold text-[#00e5ff] mb-1">{t("home.value_props.skill_based_title")}</h3>
+            <p className="text-sm text-[#7dd3fc]">{t("home.value_props.skill_based_desc")}</p>
           </div>
           <div className="rounded-xl border border-[#f5ff3b]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#f5ff3b]/35 hover:shadow-[0_0_20px_rgba(245,255,59,0.1)]">
             <svg className="w-10 h-10 mx-auto mb-3 text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="6" x2="12" y2="12"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-            <h3 className="text-lg font-bold text-[#f5ff3b] mb-1">Free Virtual Tokens</h3>
-            <p className="text-sm text-[#7dd3fc]">Start with tokens on signup. No real money needed to play.</p>
+            <h3 className="text-lg font-bold text-[#f5ff3b] mb-1">{t("home.value_props.free_tokens_title")}</h3>
+            <p className="text-sm text-[#7dd3fc]">{t("home.value_props.free_tokens_desc")}</p>
           </div>
           <div className="rounded-xl border border-[#ff4fd8]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#ff4fd8]/35 hover:shadow-[0_0_20px_rgba(255,79,216,0.1)]">
             <svg className="w-10 h-10 mx-auto mb-3 text-[#ff4fd8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-            <h3 className="text-lg font-bold text-[#ff4fd8] mb-1">Multiplayer Competition</h3>
-            <p className="text-sm text-[#7dd3fc]">Challenge friends and climb the global leaderboard.</p>
+            <h3 className="text-lg font-bold text-[#ff4fd8] mb-1">{t("home.value_props.multiplayer_title")}</h3>
+            <p className="text-sm text-[#7dd3fc]">{t("home.value_props.multiplayer_desc")}</p>
           </div>
         </div>
       </div>
@@ -666,13 +665,13 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500"></span>
               </span>
               <span className="font-semibold text-[#d8fbff]">{liveStats.playersOnline.toLocaleString()}</span>
-              players online
+              {t("home.live_stats.players_online")}
             </div>
             <span className="hidden sm:inline text-[#00e5ff]/30">|</span>
             <div className="flex items-center gap-2 text-sm text-[#9dd8ff]">
               <svg className="w-4 h-4 text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
               <span className="font-semibold text-[#d8fbff]">{liveStats.gamesPlayedToday.toLocaleString()}</span>
-              games played today
+              {t("home.live_stats.games_played_today")}
             </div>
           </div>
         </div>
@@ -680,22 +679,21 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
 
       {/* How It Works */}
       <div className="mx-auto max-w-7xl px-4 pb-8 reveal">
-        <h2 className="text-2xl font-bold text-center text-[#f5ff3b] mb-8">How It Works</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <h2 className="text-2xl font-bold text-center text-[#f5ff3b] mb-8">{t("home.how_it_works_title")}</h2>          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="flex flex-col items-center text-center p-4">
             <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#00e5ff]/15 border border-[#00e5ff]/30 text-[#00e5ff] text-xl font-bold mb-3">1</div>
-            <h3 className="text-base font-semibold text-[#d8fbff] mb-1">Create Account</h3>
-            <p className="text-sm text-[#7dd3fc]">Sign up in 30 seconds with email or social login.</p>
+            <h3 className="text-base font-semibold text-[#d8fbff] mb-1">{t("home.how_it_works_steps.create_account_title")}</h3>
+            <p className="text-sm text-[#7dd3fc]">{t("home.how_it_works_steps.create_account_desc")}</p>
           </div>
           <div className="flex flex-col items-center text-center p-4">
             <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#f5ff3b]/15 border border-[#f5ff3b]/30 text-[#f5ff3b] text-xl font-bold mb-3">2</div>
-            <h3 className="text-base font-semibold text-[#d8fbff] mb-1">Claim Free Tokens</h3>
-            <p className="text-sm text-[#7dd3fc]">Get daily login rewards and bonus tokens to start playing.</p>
+            <h3 className="text-base font-semibold text-[#d8fbff] mb-1">{t("home.how_it_works_steps.claim_tokens_title")}</h3>
+            <p className="text-sm text-[#7dd3fc]">{t("home.how_it_works_steps.claim_tokens_desc")}</p>
           </div>
           <div className="flex flex-col items-center text-center p-4">
             <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#ff4fd8]/15 border border-[#ff4fd8]/30 text-[#ff4fd8] text-xl font-bold mb-3">3</div>
-            <h3 className="text-base font-semibold text-[#d8fbff] mb-1">Play & Win</h3>
-            <p className="text-sm text-[#7dd3fc]">Compete in skill-based games and climb the leaderboard.</p>
+            <h3 className="text-base font-semibold text-[#d8fbff] mb-1">{t("home.how_it_works_steps.play_win_title")}</h3>
+            <p className="text-sm text-[#7dd3fc]">{t("home.how_it_works_steps.play_win_desc")}</p>
           </div>
         </div>
       </div>
@@ -705,8 +703,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           <div className="mb-3">
             <h2 className="text-2xl font-bold text-[#f5ff3b]">
               {t("home.title")} — Pick Your Game
-            </h2>
-            <p className="mt-1 text-sm text-[#7dd3fc]">Skill-based multiplayer — compete against real players</p>
+            </h2>              <p className="mt-1 text-sm text-[#7dd3fc]">{t("home.pick_your_game_subtitle")}</p>
           </div>
 
           <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4 reveal-stagger">
@@ -730,12 +727,12 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <span className="flex items-center gap-2 rounded-lg bg-[#00e5ff]/90 px-4 py-2 text-sm font-bold text-[#030817]">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                    Play Now
+                    {t("home.play_now_overlay")}
                   </span>
                 </div>
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">
-                Roulette
+                {t("games.roulette_name")}
               </h3>
               <p className="text-[#9dd8ff]">{t("games.roulette_desc")}</p>
               {renderFriendWidget("roulette")}
@@ -760,12 +757,12 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <span className="flex items-center gap-2 rounded-lg bg-[#00e5ff]/90 px-4 py-2 text-sm font-bold text-[#030817]">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                    Play Now
+                    {t("home.play_now_overlay")}
                   </span>
                 </div>
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">
-                Blackjack
+                {t("games.blackjack_name")}
               </h3>
               <p className="text-[#9dd8ff]">
                 {t("home.game_cards.blackjack_desc")}
@@ -792,11 +789,11 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <span className="flex items-center gap-2 rounded-lg bg-[#00e5ff]/90 px-4 py-2 text-sm font-bold text-[#030817]">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                    Play Now
+                    {t("home.play_now_overlay")}
                   </span>
                 </div>
               </div>
-              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Poker</h3>
+              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">{t("games.poker_name")}</h3>
               <p className="text-[#9dd8ff]">
                 {t("home.game_cards.poker_desc")}
               </p>
@@ -822,11 +819,11 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <span className="flex items-center gap-2 rounded-lg bg-[#00e5ff]/90 px-4 py-2 text-sm font-bold text-[#030817]">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                    Play Now
+                    {t("home.play_now_overlay")}
                   </span>
                 </div>
               </div>
-              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">Plinko</h3>
+              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">{t("games.plinko_name")}</h3>
               <p className="text-[#9dd8ff]">
                 {t("home.game_cards.plinko_desc")}
               </p>
@@ -851,9 +848,9 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
         <section className="mb-16 reveal">
           <div className="mb-3">
             <h2 className="text-2xl font-bold text-[#00e5ff]">
-              Live Sports — Bet on Real Outcomes
+              {t("home.live_sports_title")}
             </h2>
-            <p className="mt-1 text-sm text-[#7dd3fc]">Virtual token betting on real-world sports events</p>
+            <p className="mt-1 text-sm text-[#7dd3fc]">{t("home.live_sports_subtitle")}</p>
           </div>
 
           {loadingSports ? (
@@ -961,25 +958,25 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
           {showExpandedBadge && (
             <div className="mt-1 rounded-xl border border-amber-400/30 bg-black/85 backdrop-blur-md p-3 text-xs text-amber-200 shadow-[0_0_20px_rgba(251,191,36,0.2)] w-52">
               <div className="flex justify-between mb-1">
-                <span>Daily Streak</span>
-                <span className="font-bold text-amber-400">{streakData.dailyStreakCurrent || 0} day{(streakData.dailyStreakCurrent || 0) !== 1 ? "s" : ""}</span>
+                <span>{t("home.streak.daily_streak")}</span>
+                <span className="font-bold text-amber-400">{streakData.dailyStreakCurrent || 0} {t("home.rewards.days")}</span>
               </div>
               <div className="flex justify-between mb-1">
-                <span>Best</span>
-                <span className="text-amber-300">{streakData.dailyStreakBest || 0} day{(streakData.dailyStreakBest || 0) !== 1 ? "s" : ""}</span>
+                <span>{t("home.streak.best")}</span>
+                <span className="text-amber-300">{streakData.dailyStreakBest || 0} {t("home.rewards.days")}</span>
               </div>
               {streakData.streakTitle && (
                 <div className="flex justify-between mb-1">
-                  <span>Title</span>
+                  <span>{t("home.streak.title")}</span>
                   <span className="text-amber-400 font-semibold">{streakData.streakTitle}</span>
                 </div>
               )}
               {streakData.nextMilestone && (
                 <div className="mt-2 pt-2 border-t border-amber-400/20">
-                  <p className="text-[10px] text-amber-300/60 uppercase tracking-wider">Next Milestone</p>
+                  <p className="text-[10px] text-amber-300/60 uppercase tracking-wider">{t("home.streak.next_milestone")}</p>
                   <div className="flex justify-between items-center">
                     <span className="font-semibold text-amber-400">{streakData.nextMilestone.title}</span>
-                    <span className="text-amber-300">{streakData.nextMilestone.days} days</span>
+                    <span className="text-amber-300">{streakData.nextMilestone.days} {t("home.rewards.days")}</span>
                   </div>
                   <div className="mt-1 h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
                     <div
@@ -994,7 +991,7 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
               {!streakData.nextMilestone && (streakData.dailyStreakCurrent || 0) >= 365 && (
                 <p className="mt-2 text-center text-amber-400 font-bold">
                   <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z"/><path d="M3 19h18"/></svg>
-                  All milestones reached!</p>
+                  {t("home.streak.all_complete")}</p>
               )}
             </div>
           )}
@@ -1177,73 +1174,59 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                 {/* Header */}
                 <div className="mb-6 text-center">
                   <h2 id="terms-modal-title" className="mb-2 text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b]">
-                    Terms & Conditions
+                    {t("home.terms.title")}
                   </h2>
                   <p className="text-sm text-[#9dd8ff]">
-                    Please read and accept our terms to start playing
+                    {t("home.terms.subtitle")}
                   </p>
                 </div>
 
                 {/* Terms Content */}
                 <div className="mb-6 space-y-4 rounded-lg border border-[#00e5ff]/10 bg-[#040d24]/60 p-4 text-sm leading-relaxed text-[#c9f7ff]/90 md:p-6">
                   <p>
-                    <strong className="text-[#00e5ff]">Welcome to GoonBet.</strong> By
-                    accepting these terms, you agree to the following:
+                    <strong className="text-[#00e5ff]">{t("home.terms.welcome")}</strong> {t("home.terms.intro_lead")}
                   </p>
 
                   <div className="space-y-3">
                     <div>
-                      <strong className="text-[#f5ff3b]">1. Eligibility:</strong> You confirm
-                      that you are at least 18 years old and that your use of this platform
-                      complies with all applicable laws in your jurisdiction.
+                      <strong className="text-[#f5ff3b]">{t("home.terms.eligibility_label")}</strong> {t("home.terms.eligibility_body")}
                     </div>
                     <div>
-                      <strong className="text-[#f5ff3b]">2. Account Responsibility:</strong> You
-                      are solely responsible for maintaining the confidentiality of your
-                      account and for all activities under your account.
+                      <strong className="text-[#f5ff3b]">{t("home.terms.account_label")}</strong> {t("home.terms.account_body")}
                     </div>
                     <div>
-                      <strong className="text-[#f5ff3b]">3. Virtual Tokens:</strong> Tokens have
-                      no real-world monetary value and are not redeemable for cash. We may
-                      modify or suspend the token system at any time.
+                      <strong className="text-[#f5ff3b]">{t("home.terms.virtual_tokens_label")}</strong> {t("home.terms.virtual_tokens_body")}
                     </div>
                     <div>
-                      <strong className="text-[#f5ff3b]">4. Fair Play:</strong> You agree not to
-                      use bots, exploits, or engage in any form of cheating. Violations may
-                      result in account suspension or permanent ban.
+                      <strong className="text-[#f5ff3b]">{t("home.terms.fair_play_label")}</strong> {t("home.terms.fair_play_body")}
                     </div>
                     <div>
-                      <strong className="text-[#f5ff3b]">5. Prohibited Conduct:</strong> You may
-                      not create multiple accounts, harass other users, or attempt to
-                      manipulate game outcomes.
+                      <strong className="text-[#f5ff3b]">{t("home.terms.prohibited_label")}</strong> {t("home.terms.prohibited_body")}
                     </div>
                     <div>
-                      <strong className="text-[#f5ff3b]">6. Privacy:</strong> Your data is
-                      handled in accordance with our Privacy Policy. We do not sell your
-                      personal information to third parties.
+                      <strong className="text-[#f5ff3b]">{t("home.terms.privacy_label")}</strong> {t("home.terms.privacy_body")}
                     </div>
                     <div>
-                      <strong className="text-[#f5ff3b]">7. Termination:</strong> We reserve the
-                      right to suspend or terminate accounts that violate these terms.
+                      <strong className="text-[#f5ff3b]">{t("home.terms.termination_label")}</strong> {t("home.terms.termination_body")}
                     </div>
                   </div>
 
                   <p className="pt-2 text-xs text-[#6b91b3]">
-                    By clicking "I Agree", you accept our{" "}
+                    {t("home.terms.by_clicking_lead", { action: t("home.terms.i_agree") })}{" "}
                     <Link href="/terms" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
-                      full Terms & Conditions
+                      {t("home.terms.full_tos")}
                     </Link>
                     ,{" "}
                     <Link href="/privacy-policy" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
-                      Privacy Policy
+                      {t("home.terms.privacy_policy")}
                     </Link>
                     , and{" "}
                     <Link href="/fair-play" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
-                      Fair Play Policy
+                      {t("home.terms.fair_play_policy")}
                     </Link>
                     , and{" "}
                     <Link href="/accessibility" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
-                      Accessibility Policy
+                      {t("home.terms.accessibility_policy")}
                     </Link>
                     .
                   </p>
@@ -1255,18 +1238,18 @@ animate-[shimmerGradient_8s_ease-in-out_infinite]"
                     onClick={handleAcceptTerms}
                     className="rounded-lg border border-[#00e5ff]/40 bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] px-6 py-3 text-base font-bold text-[#041125] transition-all hover:shadow-[0_0_30px_rgba(0,229,255,0.5)] hover:scale-105 shadow-[0_0_16px_rgba(0,255,166,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
                   >
-                    I Agree
+                    {t("home.terms.i_agree")}
                   </button>
                   <button
                     onClick={handleRejectTerms}
                     className="rounded-lg border border-red-500/40 bg-red-500/10 px-6 py-3 text-base font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_20px_rgba(239,68,68,0.3)] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
                   >
-                    I Disagree
+                    {t("home.terms.i_disagree")}
                   </button>
                 </div>
 
                 <p className="mt-4 text-center text-xs text-[#6b91b3]">
-                  You must accept the Terms & Conditions to use GoonBet.
+                  {t("home.terms.must_accept")}
                 </p>
               </div>
             </motion.div>
