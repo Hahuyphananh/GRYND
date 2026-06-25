@@ -116,12 +116,18 @@ export async function recordFarkleLeaderboardResults({ state, winnerId, payout =
     const winnerPlayer = state.players?.find((p) => p.userId === winnerId);
     const loser = state.players?.find((p) => !p.isAI && p.userId !== winnerId);
     const isPvp = !state.ai && (state.players?.length ?? 0) >= 2;
+    // `state.ai === true` or fewer-than-2 players means this was a
+    // free-play vs-AI match — no wager ever moved on the ledger, so
+    // we must record betAmount=0 to avoid inflating
+    // total_wagered / weekly_wagered with phantom wagers.
+    const isAiMatch = !!state.ai || (state.players?.length ?? 0) < 2;
+    const betAmountForCounters = isAiMatch ? 0 : state.wager;
 
     if (winnerPlayer && !winnerPlayer.isAI) {
       await applyLeaderboardCounters({
         clerkId: winnerId,
         game: "farkle",
-        betAmount: state.wager,
+        betAmount: betAmountForCounters,
         payout,
         isPvpWin: isPvp,
       });
@@ -131,7 +137,7 @@ export async function recordFarkleLeaderboardResults({ state, winnerId, payout =
       await applyLeaderboardCounters({
         clerkId: loser.userId,
         game: "farkle",
-        betAmount: state.wager,
+        betAmount: betAmountForCounters,
         payout: 0,
       });
     }

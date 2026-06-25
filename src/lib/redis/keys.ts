@@ -54,6 +54,18 @@ export const CacheKeys = {
   // ── Big Wins ─────────────────────────────────────────────────
   bigWins: () => `${PREFIX}:big-wins:latest`,
   bigWinsAll: `${PREFIX}:big-wins:*`,
+
+  // ── Hex Duel AI Session Tokens ──────────────────────────────
+  /**
+   * Short-lived, single-use proof that a user recently started a Hex
+   * Duel AI match via /api/hex-duel/start-game. The token is required
+   * on the matching /api/hex-duel/end-game call so the server can
+   * verify the `isAiGame` claim didn't come from a forged PvP request.
+   *
+   * goonbet:hex-duel:ai-session:<sessionId>
+   */
+  hexDuelAiSession: (sessionId: string) =>
+    `${PREFIX}:hex-duel:ai-session:${sessionId}`,
 } as const;
 
 /**
@@ -74,4 +86,12 @@ export const CacheTTL = {
 
   /** Big wins feed: 60s backup TTL */
   bigWins: 60,
+
+  /**
+   * Hex Duel AI session token. 15 min is plenty for a full AI match
+   * (including reconnect windows) but short enough that a leaked
+   * token can't be replayed for long if a user's DevTools network
+   * tab is exposed.
+   */
+  hexDuelAiSession: 15 * 60,
 } as const;

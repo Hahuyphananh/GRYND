@@ -29,17 +29,13 @@ export async function POST(req: Request) {
       );
     }
 
+    // AI mode is free play — we DO NOT deduct the wager here. We still
+    // persist `wager` on the game row for display/history, and the pick/end
+    // routes skip any payout when `game.isAi === true` so this can't be
+    // exploited as a free-token credit on a player win.
     const gameState = initInteractiveOddsGame();
 
     const result = await db.transaction(async (tx: any) => {
-      const [creator] = await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${wager}` })
-        .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${wager}`))
-        .returning();
-
-      if (!creator) throw new Error("Insufficient balance");
-
       const [game] = await tx
         .insert(oddsGames)
         .values({

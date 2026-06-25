@@ -315,6 +315,7 @@ export default function FarklePage() {
   const [wager, setWager] = useState(100);
   const [balance, setBalance] = useState(0);
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
+  const [mode, setMode] = useState<"pvp" | "ai">("pvp");
   const [loading, setLoading] = useState(false);
   const [banking, setBanking] = useState(false);
   const [resigning, setResigning] = useState(false);
@@ -587,10 +588,7 @@ export default function FarklePage() {
         body: JSON.stringify({ wager, difficulty }),
       });
       const d = await res.json();
-      if (!res.ok || !d.success) return alert(d.error || "Unable to start");
-      setRoomId(d.roomId);
-      setGame(d.state);
-      posthog?.capture("farkle_game_started", { mode: "ai", wager, difficulty });
+      if (!res.ok || !d.success) return alert(d.error || "Unable to start");setRoomId(d.roomId); setGame(d.state); posthog?.capture("farkle_game_started", { mode: "ai", wager: 0, difficulty });
       if (socket) socket.emit("join_room", { roomId: d.roomId });
     } finally {
       setLoading(false);
@@ -975,68 +973,108 @@ export default function FarklePage() {
               💰 {t("games.balance")}: {balance.toFixed(2)} tokens
             </div>
 
-            {/* Wager Input */}
-            <div className="mb-4">
-              <label className="mb-1 block text-sm font-semibold text-amber-200">{t("games.farkle.wager")}</label>
-              <input
-                type="number"
-                value={wager}
-                onChange={(e) => setWager(Number(e.target.value || 0))}
-                className="w-full rounded-xl border border-amber-600/50 bg-slate-900 px-4 py-3 text-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                min={1}
-              />
+            {/* Mode toggle: PvP vs AI */}
+            <div className="mb-4 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setMode("pvp")}
+                className={`rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
+                  mode === "pvp"
+                    ? "border-cyan-400 bg-cyan-500/20 text-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.3)]"
+                    : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-cyan-600/50"
+                }`}
+              >
+                👥 {t("games.farkle.create_pvp") /* PvP */}
+              </button>
+              <button
+                onClick={() => setMode("ai")}
+                className={`rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
+                  mode === "ai"
+                    ? "border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
+                    : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50"
+                }`}
+              >
+                🤖 {t("games.farkle.play_vs_ai") /* vs AI */}
+              </button>
             </div>
 
-            {/* AI Difficulty Selector */}
-            <div className="mb-4">
-              <label className="mb-2 block text-sm font-semibold text-amber-200">
-                {t("games.farkle.ai_difficulty")}
-              </label>
-              <div className="flex gap-2">
-                {(["easy", "medium", "hard"] as const).map((d) => (
+            {mode === "pvp" ? (
+              <>
+                {/* Wager Input (PvP only) */}
+                <div className="mb-4">
+                  <label className="mb-1 block text-sm font-semibold text-amber-200">{t("games.farkle.wager")}</label>
+                  <input
+                    type="number"
+                    value={wager}
+                    onChange={(e) => setWager(Number(e.target.value || 0))}
+                    className="w-full rounded-xl border border-amber-600/50 bg-slate-900 px-4 py-3 text-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    min={1}
+                  />
+                </div>
+
+                {/* Action Button (PvP only) */}
+                <div className="mb-6 flex gap-3">
                   <button
-                    key={d}
-                    onClick={() => setDifficulty(d)}
-                    className={`flex-1 rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
-                      difficulty === d
-                        ? "border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
-                        : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50"
-                    }`}
+                    onClick={createGame}
+                    disabled={loading}
+                    className="flex-1 rounded-2xl border-b-4 border-cyan-700 bg-cyan-500 px-6 py-3.5 text-lg font-black text-black shadow-[0_0_25px_rgba(34,211,238,0.4)] transition active:translate-y-[2px] disabled:opacity-50"
                   >
-                    {d === "easy" ? `🟢 ${t("games.farkle.difficulty_easy")}` : d === "medium" ? `🟡 ${t("games.farkle.difficulty_medium")}` : `🔴 ${t("games.farkle.difficulty_hard")}`}
+                    {loading ? t("games.farkle.starting") : `${t("games.farkle.create_pvp")} 🎲`}
                   </button>
-                ))}
-              </div>
-              <p className="mt-1 text-xs text-gray-400">
-                {difficulty === "easy" && t("games.farkle.ai_desc_easy")}
-                {difficulty === "medium" && t("games.farkle.ai_desc_medium")}
-                {difficulty === "hard" && t("games.farkle.ai_desc_hard")}
-              </p>
-            </div>
+                  <button
+                    onClick={fetchGames}
+                    className="rounded-2xl border-b-4 border-gray-600 bg-gray-700 px-4 py-3.5 text-lg font-black text-white shadow-[0_0_15px_rgba(255,255,255,0.1)] transition active:translate-y-[2px]"
+                  >
+                    🔄
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Free Play badge */}
+                <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-center">
+                  <p className="text-xs font-bold uppercase tracking-widest text-amber-300">🎮 Free Play</p>
+                  <p className="mt-1 text-[10px] text-amber-200/70">No tokens are wagered. Playing vs AI is free.</p>
+                </div>
 
-            {/* Action Buttons */}
-            <div className="mb-6 flex gap-3">
-              <button
-                onClick={createGame}
-                disabled={loading}
-                className="flex-1 rounded-2xl border-b-4 border-cyan-700 bg-cyan-500 px-6 py-3.5 text-lg font-black text-black shadow-[0_0_25px_rgba(34,211,238,0.4)] transition active:translate-y-[2px] disabled:opacity-50"
-              >
-                {loading ? t("games.farkle.starting") : `${t("games.farkle.create_pvp")} 🎲`}
-              </button>
-              <button
-                onClick={playAI}
-                disabled={loading}
-                className="flex-1 rounded-2xl border-b-4 border-amber-700 bg-amber-500 px-6 py-3.5 text-lg font-black text-black shadow-[0_0_25px_rgba(251,191,36,0.4)] transition active:translate-y-[2px] disabled:opacity-50"
-              >
-                {loading ? t("games.farkle.starting") : `${t("games.farkle.play_vs_ai")} 🤖`}
-              </button>
-              <button
-                onClick={fetchGames}
-                className="rounded-2xl border-b-4 border-gray-600 bg-gray-700 px-4 py-3.5 text-lg font-black text-white shadow-[0_0_15px_rgba(255,255,255,0.1)] transition active:translate-y-[2px]"
-              >
-                🔄
-              </button>
-            </div>
+                {/* AI Difficulty Selector */}
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm font-semibold text-amber-200">
+                    {t("games.farkle.ai_difficulty")}
+                  </label>
+                  <div className="flex gap-2">
+                    {(["easy", "medium", "hard"] as const).map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setDifficulty(d)}
+                        className={`flex-1 rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
+                          difficulty === d
+                            ? "border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
+                            : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50"
+                        }`}
+                      >
+                        {d === "easy" ? `🟢 ${t("games.farkle.difficulty_easy")}` : d === "medium" ? `🟡 ${t("games.farkle.difficulty_medium")}` : `🔴 ${t("games.farkle.difficulty_hard")}`}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">
+                    {difficulty === "easy" && t("games.farkle.ai_desc_easy")}
+                    {difficulty === "medium" && t("games.farkle.ai_desc_medium")}
+                    {difficulty === "hard" && t("games.farkle.ai_desc_hard")}
+                  </p>
+                </div>
+
+                {/* Action Button (AI only) */}
+                <div className="mb-6">
+                  <button
+                    onClick={playAI}
+                    disabled={loading}
+                    className="w-full rounded-2xl border-b-4 border-amber-700 bg-amber-500 px-6 py-3.5 text-lg font-black text-black shadow-[0_0_25px_rgba(251,191,36,0.4)] transition active:translate-y-[2px] disabled:opacity-50"
+                  >
+                    {loading ? t("games.farkle.starting") : `${t("games.farkle.play_vs_ai")} 🤖`}
+                  </button>
+                </div>
+              </>
+            )}
 
             {/* Rules Summary */}
             <div className="mb-5 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs text-amber-200/80">

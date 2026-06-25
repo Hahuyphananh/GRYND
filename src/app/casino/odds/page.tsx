@@ -367,14 +367,10 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 
       {!resuming && !gameId && (
         <>
-          <label className="block mb-1 text-sm font-semibold">Wager Amount</label>
-          <input
-            type="number"
-            className="w-full bg-[#08142f] border border-yellow-400/30 p-2 rounded mb-4 text-white"
-            value={wager}
-            onChange={(e) => setWager(Number(e.target.value))}
-            min={1}
-          />
+          <div className="mb-4 rounded-lg border-2 border-dashed border-yellow-400/40 bg-yellow-500/10 p-3 text-center">
+            <p className="text-xs font-bold uppercase tracking-widest text-yellow-300">🎮 Free Play</p>
+            <p className="mt-1 text-[10px] text-yellow-100/80">No tokens are wagered. Playing vs AI is free.</p>
+          </div>
           <button
             onClick={startGame}
             disabled={loading}

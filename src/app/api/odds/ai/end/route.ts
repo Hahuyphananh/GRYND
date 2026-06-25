@@ -54,13 +54,20 @@ export async function POST(req: Request) {
         player1Won = false;
       }
 
-      if (player1Won) {
+      // AI games are free play — `game.isAi` is guaranteed true for this
+      // route, but the guard keeps the credit logic defensive. Never pay
+      // out on AI-mode game end even if the persisted `wager` is non-zero.
+      if (player1Won && !game.isAi) {
         // Credit winnings to the player
         await tx
           .update(users)
           .set({ balance: sql`${users.balance} + ${payout}` })
           .where(eq(users.clerkId, userId));
       }
+
+      // Recorded payout is 0 in AI mode so history reflects the free-play
+      // outcome rather than a phantom `wager * 2` credit.
+      const recordedPayout = game.isAi ? 0 : player1Won ? payout : 0;
 
       const finalState: InteractiveOddsState = state
         ? { ...state, winner, gameOver: true }
@@ -80,21 +87,22 @@ export async function POST(req: Request) {
           status: "finished",
           winner,
           result: player1Won ? "won" : "lost",
-          payout: player1Won ? payout : 0,
+          payout: recordedPayout,
           gameState: finalState,
           endedAt: new Date(),
         })
         .where(eq(oddsGames.id, gameId));
 
-      // Track leaderboard
+      // Track leaderboard — AI-mode wins/losses use the actual wager value
+      // for visibility, but the payout column on the game is 0.
       await applyLeaderboardCounters({
         clerkId: userId,
         game: "odds",
         betAmount: game.wager,
-        payout: player1Won ? payout : 0,
+        payout: recordedPayout,
       }).catch(() => {});
 
-      return { winner, player1Won, payout };
+      return { winner, player1Won, payout: recordedPayout };
     });
 
     return NextResponse.json({
