@@ -47,3 +47,9 @@ next-env.d.ts
 
 # Windows shell quirk: `> NUL` redirection sometimes creates a literal file named NUL
 /NUL
+
+# Numeric-prefixed stray files at the project root (typically from
+# accidental `curl -o <status_code>` smoke tests; the trailing bytes were
+# original UTF-8 emoji that were mangled to replacement characters).
+# Prevents re-creation. Match anything starting with a digit at the root.
+/[0-9]*
