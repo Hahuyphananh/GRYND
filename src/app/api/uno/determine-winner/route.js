@@ -171,18 +171,20 @@ export async function POST(req) {
       });
     }
 
+    // AI mode is free play — `initialize-vs-ai` already stored `pot = 0`,
+    // so `parseFloat(game.pot) * 0.95` is also 0 and `newBalance` does not
+    // move on a player win. We deliberately do NOT credit any tokens here:
+    // a human-vs-AI win must not pay out, otherwise the AI free-play path
+    // becomes a free-token credit tap.
     const playerCards = safeParse(game.playerHand, []);
     const aiCards = safeParse(game.aiHand, []);
 
-    let newBalance = parseFloat(requester.balance);
     let winner = null;
     let result = "pending";
 
     if (playerCards.length === 0) {
       winner = "player";
       result = "win";
-      const taxedProfit = parseFloat(game.pot || "0") * 0.95;
-      newBalance += taxedProfit;
     } else if (aiCards.length === 0) {
       winner = "ai";
       result = "lose";
@@ -201,10 +203,9 @@ export async function POST(req) {
         winner,
         result,
         status: "finished",
-        payout:
-          result === "win"
-            ? (parseFloat(game.pot || "0") * 0.95).toFixed(2)
-            : "0.00",
+        // Payout is always 0 in AI mode — even if a legacy row somehow has
+        // `pot > 0`, this free-play path never credits it.
+        payout: "0.00",
       })
       .where(
         and(
@@ -225,28 +226,23 @@ export async function POST(req) {
       });
     }
 
-    if (result === "win") {
-      await applyLeaderboardCounters({
-        clerkId: userId,
-        game: "uno-ai",
-        betAmount: Number(game.betAmount || 0),
-        payout: Number((parseFloat(game.pot || "0") * 0.95).toFixed(2)),
-      });
-      await db
-        .update(users)
-        .set({ balance: newBalance.toFixed(2) })
-        .where(eq(users.clerkId, userId));
-    }
+    // No `users.balance` update and no payout credit for AI games.
+    // (Stats/wager values are still tracked for visibility.)
+    //
+    // Note: we deliberately no longer call `applyLeaderboardCounters` here.
+    // The AI free-play path doesn't move real tokens, so leaderboard
+    // counters would inflate `total_wagered`/`total_won` with phantom
+    // stats. The classic multiplayer path below still counts wins/losses.
 
     return NextResponse.json({
       success: true,
       winner,
       result,
-      newBalance,
+      newBalance: parseFloat(requester.balance),
       message:
         result === "win"
-          ? `🎉 You won! Payout after tax: ${(parseFloat(game.pot || "0") * 0.95).toFixed(2)}`
-          : "😢 The AI won. You lost your bet.",
+          ? "🎉 You won!"
+          : "😢 The AI won. Better luck next time!",
     });
   } catch (error) {
     console.error("Error determining UNO winner:", error);

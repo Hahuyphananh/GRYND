@@ -5,7 +5,6 @@ import {
   farkleRooms,
   getDisplayName,
   initialState,
-  lockBalance,
   requireUser,
 } from "../_lib";
 
@@ -18,7 +17,8 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: "Invalid wager" }, { status: 400 });
 
     const result = await db.transaction(async (tx) => {
-      await lockBalance(tx, userId, amount);
+      // AI mode is free play — skip `lockBalance` (no token deduction) and
+      // keep `state.pot` at 0 so no payout gets credited on game end either.
       const roomId = `farkle:${Date.now()}:ai`;
       const name = await getDisplayName(userId, tx);
       const state = initialState(roomId, userId, name, amount);
@@ -33,7 +33,10 @@ export async function POST(req) {
       });
       state.scores[aiId] = 0;
       state.state = "playing";
-      state.pot = amount * 2;
+      // Free play: record the requested wager for display, but the pot must
+      // remain 0 so `settleIfEnded` does not credit any tokens to either side.
+      state.wager = amount;
+      state.pot = 0;
       // Initial roll for the player
       state.dice = Array.from({ length: 6 }, () => Math.floor(Math.random() * 6) + 1);
 

@@ -20,6 +20,7 @@ export default function UnoGamePage() {
 
   const [game, setGame] = useState(null);
   const [gameMode, setGameMode] = useState("ai");
+  const [lobbyMode, setLobbyMode] = useState<"ai" | "online">("ai");
   const [playerHand, setPlayerHand] = useState([]);
   const [aiHandCount, setAiHandCount] = useState(0);
   const [topCard, setTopCard] = useState(null);
@@ -827,8 +828,38 @@ export default function UnoGamePage() {
 
       {!game ? (
         <div className="casino-surface flex w-full max-w-4xl flex-col items-center justify-center rounded-[1.5rem] border-2 border-[#00e5ff]/35 bg-[#0b224f]/85 p-4 text-center shadow-[0_0_28px_rgba(0,229,255,0.2)] sm:aspect-[2/1] sm:rounded-[2rem] sm:p-8">
-          <h2 className="text-2xl font-bold mb-6 text-white">Prépare ta partie</h2>
+        <h2 className="text-2xl font-bold mb-6 text-white">Prépare ta partie</h2>
 
+        {/* Mode toggle: free-play AI vs wagered 1v1 online */}
+        <div className="mb-4 grid grid-cols-2 gap-2 w-full max-w-xs">
+          <button
+            onClick={() => setLobbyMode("ai")}
+            className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
+              lobbyMode === "ai"
+                ? "bg-[#f5ff3b] text-black shadow-[0_0_12px_rgba(245,255,59,0.4)]"
+                : "bg-[#f5ff3b]/10 border border-[#f5ff3b]/30 text-[#f5ff3b]"
+            }`}
+          >
+            🤖 vs IA
+          </button>
+          <button
+            onClick={() => setLobbyMode("online")}
+            className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
+              lobbyMode === "online"
+                ? "bg-[#00e5ff] text-black shadow-[0_0_12px_rgba(0,229,255,0.35)]"
+                : "bg-[#00e5ff]/10 border border-[#00e5ff]/30 text-[#00e5ff]"
+            }`}
+          >
+            🌐 1v1 en ligne
+          </button>
+        </div>
+
+        {lobbyMode === "ai" ? (
+          <div className="mb-6 rounded-lg border-2 border-dashed border-[#f5ff3b]/40 bg-[#f5ff3b]/10 p-3 text-center w-full max-w-xs">
+            <p className="text-xs font-bold uppercase tracking-widest text-[#f5ff3b]">🎮 Free Play</p>
+            <p className="mt-1 text-[10px] text-[#f5ff3b]/80">No tokens are wagered. Playing vs AI is free.</p>
+          </div>
+        ) : (
           <label className="mb-6 text-lg font-semibold flex flex-col items-center">
             <span className="mb-2">Mise :</span>
             <input
@@ -840,6 +871,7 @@ export default function UnoGamePage() {
               max={1000}
             />
           </label>
+        )}
 
           <button
             onClick={() => setShowGameModeModal(true)}

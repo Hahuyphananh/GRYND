@@ -242,9 +242,12 @@ function WagerModal({
             <p className="text-xs text-amber-300 font-medium">Sign in to wager real tokens</p>
             <p className="text-[10px] text-slate-400 mt-1">You can still play for fun!</p>
           </div>
-        )}
-
-        {!playForFun && (
+        )}        {!playForFun && (queueMode === "ai" ? (
+          <div className="mb-4 rounded-lg border border-cyan-400/40 bg-cyan-500/15 p-3 text-center">
+            <p className="text-[10px] text-cyan-300 uppercase tracking-widest font-bold mb-1">🎮 Free Play</p>
+            <p className="text-[10px] text-cyan-100/70">No tokens are wagered. Playing vs AI is free.</p>
+          </div>
+        ) : (
           <div className="mb-4">
             <label className="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5 block">Wager Amount</label>
             <input
@@ -263,15 +266,14 @@ function WagerModal({
                     wager === amount
                       ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/50 shadow-[0_0_8px_rgba(34,211,238,0.2)]"
                       : "bg-white/[0.03] text-slate-400 border-white/10 hover:border-white/20 hover:text-white"
-                  }`}
-                >{amount}</button>
+                  }`}>{amount}</button>
               ))}
             </div>
             {!canAfford && wager > 0 && (
               <p className="text-[10px] text-red-400 mt-2 font-medium">Insufficient balance — you need {wager} tokens</p>
             )}
           </div>
-        )}
+        ))}
 
         <div className="mb-5 flex items-center justify-between rounded-lg bg-white/[0.03] border border-white/10 p-3">
           <div>
@@ -310,7 +312,9 @@ function WagerModal({
             </span>
           ) : queueMode === "multiplayer"
             ? (playForFun ? "🌐 Create Multiplayer (Fun)" : `🌐 Wager ${wager} Tokens (Multiplayer)`)
-            : (playForFun ? "🎮 Play for Fun" : `💰 Wager ${wager} Tokens vs AI`)}
+            : queueMode === "ai"
+              ? "🎮 Free Play vs AI"
+              : (playForFun ? "🎮 Play for Fun" : `💰 Wager ${wager} Tokens vs AI`)}
         </button>
 
         <p className="mt-3 text-center text-[9px] text-slate-600">
@@ -326,9 +330,10 @@ function WagerModal({
 // ══════════════════════════════════════════════════════════════════════════
 
 function ResignConfirmation({
-  gameMode, onConfirm, onCancel,
+  gameMode, noRealTokensWagered, onConfirm, onCancel,
 }: {
   gameMode: GameMode;
+  noRealTokensWagered?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -350,7 +355,7 @@ function ResignConfirmation({
             ? "Your opponent will win the match."
             : "You will forfeit this game."}
         </p>
-        {gameMode === "real" && (
+        {gameMode === "real" && !noRealTokensWagered && (
           <p className="mb-4 text-[11px] text-yellow-400/80">You will lose your wagered tokens.</p>
         )}
         <div className="flex gap-3">
@@ -546,8 +551,10 @@ function VictoryModal({
           </div>
         </div>
 
-        {/* Payout info — animated reveal */}
-        {payoutInfo && (
+        {/* Payout info — animated reveal. Hidden for AI/free-play wins
+            where payoutInfo.wager is 0 (nothing was actually wagered or
+            paid out). */}
+        {payoutInfo && payoutInfo.wager > 0 && (
           <div
             className="mb-5 rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-3"
             style={{ animation: "payoutReveal 0.6s cubic-bezier(0.34,1.56,0.64,1) both" }}
@@ -967,6 +974,30 @@ export default function HexDuelPage() {
   const [payoutLoading, setPayoutLoading] = useState(false);
   const payoutProcessedRef = useRef(false);
   const startedAtRef = useRef<string | null>(null);
+  // Single-use proof that the user actually started an AI match on the
+  // server. end-game verifies this against Redis before honoring `isAiGame`.
+  const aiSessionIdRef = useRef<string | null>(null);
+  // Frozen aiDifficulty captured at start-game. The page state
+  // `aiDifficulty` is mutable (driven by the slider) — if the user
+  // changes it mid-game, end-game would no longer match the value
+  // start-game cached. Bind the difficulty we forwarded at start.
+  const aiDifficultyAtStartRef = useRef<AIDifficulty | null>(null);
+
+  // localStorage is shared across same-browser users; namespace the AI
+  // session key by Clerk userId so a sign-out / sign-in as a different
+  // user doesn't leak an in-progress token between sessions. User id
+  // comes from `useUser()` (`user.id`) which matches what the server
+  // routes receive from `auth()`.
+  const aiSessionStorageKey = user?.id
+    ? `hexDuelAiSessionId:${user.id}`
+    : null;
+  // True only while the active game is an AI/free-play match (no real
+  // tokens are wagered by the user even though the wager UI may show
+  // a value). Lifted from WagerModal so ResignConfirmation (rendered
+  // by HexDuelPage, not WagerModal) can suppress the "you will lose
+  // your wagered tokens" warning during AI resigns. Reset by
+  // handleRestart() and on entering a real PvP / multiplayer match.
+  const [isAiGame, setIsAiGame] = useState(false);
 
   // ── Attack / Displace flow state ────────────────────────────────
   const [selectedAction, setSelectedAction] = useState<ActionType>(null);
@@ -1076,6 +1107,34 @@ export default function HexDuelPage() {
 
   useEffect(() => { fetchBalance(); }, [fetchBalance]);
 
+  // ── Restore AI session token from localStorage on mount ──────
+  // Without this, if the user refreshes the page between start-game
+  // and end-game, `aiSessionIdRef.current` would be null and the
+  // end-game call would silently fall into the PvP path, deducting
+  // tokens from a session that actually started in AI mode.
+  // The entry is namespaced by Clerk userId so a different user
+  // signing in on the same browser can't inherit a stale token.
+  useEffect(() => {
+    if (typeof window === "undefined" || !aiSessionStorageKey) return;
+    try {
+      const persisted = window.localStorage.getItem(aiSessionStorageKey);
+      if (!persisted) return;
+      const parsed = JSON.parse(persisted) as { sessionId?: string; difficulty?: AIDifficulty };
+      if (parsed?.sessionId && aiSessionIdRef.current === null) {
+        aiSessionIdRef.current = parsed.sessionId;
+      }
+      if (parsed?.difficulty && aiDifficultyAtStartRef.current === null) {
+        aiDifficultyAtStartRef.current = parsed.difficulty;
+      }
+    } catch {
+      // ignore — localStorage unavailable or stale/corrupt value
+    }
+    // Re-run on user change so a sign-out → sign-in as a different
+    // user on the same browser doesn't inherit the previous user's
+    // token (or, if it's the same user, picks up a token written by a
+    // newer AI match).
+  }, [aiSessionStorageKey]);
+
   const fetchMultiplayerGames = useCallback(async () => {
     setMultiplayerLoading(true);
     try {
@@ -1123,22 +1182,54 @@ export default function HexDuelPage() {
   }, [searchParams]);
 
   // ── Wager handlers ─────────────────────────────────────────────────
-  const handleStartFun = useCallback(() => { setAIEnabled(true); setGameMode("for-fun"); setWager(0); setWagerError(null); startedAtRef.current = new Date().toISOString(); posthog?.capture("hex_duel_game_started", { mode: "fun", difficulty: aiDifficulty }); }, []);
+  const handleStartFun = useCallback(() => { setAIEnabled(true); setIsAiGame(true); setGameMode("for-fun"); setWager(0); setWagerError(null); startedAtRef.current = new Date().toISOString(); posthog?.capture("hex_duel_game_started", { mode: "fun", difficulty: aiDifficulty }); }, []);
   const handleStartReal = useCallback(async (amount: number) => {
     setWagerLoading(true); setWagerError(null);
     try {
-      const res = await fetch("/api/hex-duel/start-game", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ wager: amount }) });
+      const res = await fetch("/api/hex-duel/start-game", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ wager: amount, isAiGame: true, aiDifficulty }) });
       const data = await res.json();
       if (!res.ok || !data.success) { setWagerError(data.error || "Failed to start game"); return; }
       setBalance(Number(data.data.newBalance));
       setWager(amount);
       setAIEnabled(true); // Auto-enable AI for vs-AI real games
+      setIsAiGame(true); // Mark this game as AI (no real wager moved despite gameMode="real")
       setGameMode("real");
+      // Capture the server-issued AI session token so the equivalent
+      // end-game call can verify the `isAiGame:true` claim.
+      const sid =
+        typeof data?.data?.aiSessionId === "string"
+          ? data.data.aiSessionId
+          : null;
+      // Freeze the difficulty used at start-time. The `aiDifficulty`
+      // page state is mutable (driven by the difficulty slider) and a
+      // mid-game change would otherwise break the matcher in
+      // /end-game (which compares against the value start-game
+      // cached).
+      aiDifficultyAtStartRef.current = aiDifficulty;
+      aiSessionIdRef.current = sid;
+      // Mirror into localStorage so a page reload mid-game still has
+      // the token (and matching difficulty) to forward on end-game.
+      // Without this, a route refresh would silently degrade the user
+      // into the PvP path and deduct tokens the user never wagered.
+      // The key is namespaced by Clerk userId so a sign-in as a
+      // different user on the same browser can't inherit a stale
+      // token.
+      if (typeof window !== "undefined" && aiSessionStorageKey && sid) {
+        try {
+          window.localStorage.setItem(
+            aiSessionStorageKey,
+            JSON.stringify({ sessionId: sid, difficulty: aiDifficulty }),
+          );
+        } catch {
+          // localStorage may be unavailable (private mode, sandbox
+          // iframe, quota). The in-session ref still works.
+        }
+      }
       startedAtRef.current = new Date().toISOString();
       posthog?.capture("hex_duel_game_started", { mode: "real", bet_amount: amount, difficulty: aiDifficulty });
     } catch { setWagerError("Network error — please try again"); }
     finally { setWagerLoading(false); }
-  }, []);
+  }, [aiDifficulty]);
 
   const handleCreateMultiplayer = useCallback(async (amount: number) => {
     setWagerError(null);
@@ -1468,13 +1559,20 @@ export default function HexDuelPage() {
         winner: effectiveWinner,
         isFunMode: gameMode === "for-fun",
         isAiGame: aiEnabled,
-        aiDifficulty: aiEnabled ? aiDifficulty : null,
+        // Use the difficulty captured at start-game time so end-game's
+        // matcher sees the exact value start-game cached. If the user
+        // moved the difficulty slider mid-game this protects us from
+        // breaking the strict-match check.
+        aiDifficulty: aiEnabled ? (aiDifficultyAtStartRef.current ?? aiDifficulty) : null,
         player1Moves: p1MoveCount,
         player2Moves: p2MoveCount,
         player1Territory: p1Territory,
         player2Territory: p2Territory,
         durationSeconds,
         startedAt: startedAtRef.current,
+        // Single-use proof that the user actually started this AI match.
+        // end-game verifies this against Redis before honoring `isAiGame`.
+        aiSessionId: aiSessionIdRef.current,
       }),
     })
       .then((r) => r.json())
@@ -1488,6 +1586,21 @@ export default function HexDuelPage() {
           if (d.data.newBalance !== undefined) setBalance(Number(d.data.newBalance));
         } else if (gameMode === "for-fun") {
           setPayoutResult(null);
+        }
+        // Consume the AI session token client-side once end-game has
+        // succeeded. The server already burned it, so a re-fire of this
+        // effect (e.g., a second winnerOverride set) would otherwise
+        // re-submit the same token and silently degrade into the PvP
+        // path because /end-game would no longer find the entry in
+        // Redis. Skip clearing on error so a retry path can still try
+        // to reuse the still-valid token (if the server hasn't
+        // processed the consume yet, e.g., a transient 5xx).
+        if (d?.success && aiSessionIdRef.current) {
+          aiSessionIdRef.current = null;
+          aiDifficultyAtStartRef.current = null;
+          if (typeof window !== "undefined" && aiSessionStorageKey) {
+            try { window.localStorage.removeItem(aiSessionStorageKey); } catch {}
+          }
         }
       })
       .catch(() => {})
@@ -2056,6 +2169,15 @@ export default function HexDuelPage() {
     }
     setConnectionStatus("connected");
     setIsSpectator(false);
+    // Drop any persisted AI session token — restart means a new game
+    // (with a new token) and we don't want the old token's 15-min TTL
+    // window to leak into a later match.
+    aiSessionIdRef.current = null;
+    aiDifficultyAtStartRef.current = null;
+    if (typeof window !== "undefined" && aiSessionStorageKey) {
+      try { window.localStorage.removeItem(aiSessionStorageKey); } catch {}
+    }
+    setIsAiGame(false);
     window.history.replaceState({}, '', window.location.pathname);
   }, [resetGame, fetchBalance]);
 
@@ -2706,6 +2828,7 @@ export default function HexDuelPage() {
         {showResignConfirm && (
           <ResignConfirmation
             gameMode={gameMode}
+            noRealTokensWagered={isAiGame || gameMode === "for-fun" || gameMode === "idle"}
             onConfirm={async () => {
               setShowResignConfirm(false);
 

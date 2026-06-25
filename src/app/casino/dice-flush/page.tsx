@@ -307,6 +307,7 @@ function MoveHistoryPanel({ history, you, opponent }: { history: any[]; you: any
 export default function DiceFlushPage() {
   const { isSignedIn, user } = useUser();
   const [wager, setWager] = useState(100); const [balance, setBalance] = useState(0); const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"pvp" | "ai">("pvp");
   const [joiningId, setJoiningId] = useState<string | null>(null); const [availableGames, setAvailableGames] = useState<LobbyRoom[]>([]);
   const [roomId, setRoomId] = useState<string | null>(null); const [game, setGame] = useState<GameState | null>(null);
   const posthog = usePostHog();
@@ -527,7 +528,7 @@ export default function DiceFlushPage() {
   }, [game?.currentTurn, game?.turnNumber]);
 
   const createGame = async () => { if (wager <= 0 || wager > balance) return alert("Invalid wager amount"); setLoading(true); try { const res = await fetch("/api/dice-flush/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to create room"); setRoomId(d.roomId); setGame(d.state); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
-  const playAI = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager, difficulty: "medium" }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); setRoomId(d.roomId); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "ai", wager }); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
+  const playAI = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager, difficulty: "medium" }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); setRoomId(d.roomId); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "ai", wager: 0 }); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
   const joinGame = async (id: string) => { setLoading(true); setJoiningId(id); try { const res = await fetch("/api/dice-flush/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId: id }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to join"); setRoomId(id); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "pvp", wager: (d.state as any)?.wager || 0, game_id: id }); if (socket) { socket.emit("join_room", { roomId: id }); socket.emit("room_event", { roomId: id, event: "game_state_update" }); }} finally { setLoading(false); setJoiningId(null);} };
   const emitRoomEvent = () => {
     if (!socket || !roomId) return;
@@ -603,12 +604,35 @@ export default function DiceFlushPage() {
 
       {!roomId && <div className="rounded-2xl border border-[#00e5ff]/30 bg-[#040d24]/80 p-4 backdrop-blur">
         <div className="mb-3 font-bold text-[#f5ff3b]">Balance: {balance.toFixed(2)} tokens</div>
-        <div className="flex flex-wrap gap-2">
-          <input type="number" value={wager} onChange={(e) => setWager(Number(e.target.value || 0))} className="rounded-lg bg-[#08142f] border border-[#00e5ff]/30 px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#00e5ff]" placeholder="Wager" />
-          <button onClick={createGame} className="rounded-lg bg-[#00e5ff] px-4 py-2 font-bold text-black hover:bg-[#00e5ff]/80 transition">Create PvP</button>
-          <button onClick={playAI} className="rounded-lg bg-[#f5ff3b] px-4 py-2 font-bold text-black hover:bg-[#f5ff3b]/80 transition">Play vs AI</button>
-          <button onClick={fetchGames} className="rounded-lg bg-[#a855f7] px-4 py-2 font-bold text-white hover:bg-[#a855f7]/80 transition">Refresh</button>
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setMode("pvp")}
+            className={`rounded-lg px-4 py-2 font-bold transition ${mode === "pvp" ? "bg-[#00e5ff] text-black shadow-[0_0_12px_rgba(0,229,255,0.35)]" : "bg-[#00e5ff]/10 border border-[#00e5ff]/30 text-[#00e5ff]"}`}
+          >
+            👥 PvP
+          </button>
+          <button
+            onClick={() => setMode("ai")}
+            className={`rounded-lg px-4 py-2 font-bold transition ${mode === "ai" ? "bg-[#f5ff3b] text-black shadow-[0_0_12px_rgba(245,255,59,0.4)]" : "bg-[#f5ff3b]/10 border border-[#f5ff3b]/30 text-[#f5ff3b]"}`}
+          >
+            🤖 vs AI
+          </button>
         </div>
+        {mode === "pvp" ? (
+          <div className="flex flex-wrap gap-2">
+            <input type="number" value={wager} onChange={(e) => setWager(Number(e.target.value || 0))} className="rounded-lg bg-[#08142f] border border-[#00e5ff]/30 px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#00e5ff]" placeholder="Wager" />
+            <button onClick={createGame} className="rounded-lg bg-[#00e5ff] px-4 py-2 font-bold text-black hover:bg-[#00e5ff]/80 transition">Create PvP</button>
+            <button onClick={fetchGames} className="rounded-lg bg-[#a855f7] px-4 py-2 font-bold text-white hover:bg-[#a855f7]/80 transition">Refresh</button>
+          </div>
+        ) : (
+          <>
+            <div className="rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 p-3 text-center">
+              <p className="text-xs font-bold uppercase tracking-widest text-[#f5ff3b]">🎮 Free Play</p>
+              <p className="text-[10px] text-[#f5ff3b]/70 mt-1">No tokens are wagered. Playing vs AI is free.</p>
+            </div>
+            <button onClick={playAI} className="mt-3 w-full rounded-lg bg-[#f5ff3b] px-4 py-2 font-bold text-black hover:bg-[#f5ff3b]/80 transition">Play vs AI</button>
+          </>
+        )}
       <div className="mt-4 space-y-2">{availableGames.length === 0 ? <p className="text-gray-400 text-sm">No open games. Create one or play vs AI!</p> : availableGames.map((l) => <div key={l.id} className="flex items-center justify-between rounded-lg bg-[#08142f]/80 border border-[#00e5ff]/20 p-2"><span className="text-sm text-gray-300">{l.id} · {l.wager} tokens</span><button onClick={() => joinGame(l.id)} className="rounded-lg bg-[#00e5ff] px-3 py-1 text-sm font-bold text-black hover:bg-[#00e5ff]/80">{joiningId === l.id ? "Joining" : "Join"}</button></div>)}</div></div>}
 
       {game && (<div className="mt-6 rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/70 p-4 backdrop-blur">

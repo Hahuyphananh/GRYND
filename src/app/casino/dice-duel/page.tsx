@@ -10,6 +10,7 @@ export default function DiceDuelLobbyPage() {
   const [wager, setWager] = useState(10);
   const [loading, setLoading] = useState(false);
   const [tokens, setTokens] = useState<number | null>(null);
+  const [mode, setMode] = useState<"pvp" | "ai">("pvp");
   const router = useRouter();
   const posthog = usePostHog();
 
@@ -79,7 +80,7 @@ export default function DiceDuelLobbyPage() {
     const data = await res.json();
     if (data.matchId) {
       router.push(`/casino/dice-duel/game/${data.matchId}`);
-      posthog?.capture("dice_duel_game_started", { mode: "ai", wager });
+      posthog?.capture("dice_duel_game_started", { mode: "ai", wager: 0 });
     } else {
       alert(data.message || "Unable to start game");
     }
@@ -100,31 +101,56 @@ export default function DiceDuelLobbyPage() {
         </p>
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
           <div className="col-span-1 rounded-xl border border-fuchsia-500/50 bg-black/30 p-4">
-            <h2 className="font-bold text-xl">Create Game</h2>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {[5, 10, 25, 50, 100].map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setWager(v)}
-                  className={`min-h-11 rounded px-3 py-2 text-sm sm:text-base ${wager === v ? "bg-fuchsia-600" : "bg-slate-800"}`}
-                >
-                  {v}
-                </button>
-              ))}
+            <h2 className="font-bold text-xl">Choose Mode</h2>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setMode("pvp")}
+                className={`min-h-11 rounded px-3 py-2 text-sm sm:text-base font-bold transition ${mode === "pvp" ? "bg-cyan-500 text-black shadow-[0_0_12px_rgba(34,211,238,0.35)]" : "bg-slate-800 text-slate-200 border border-white/10"}`}
+              >
+                👥 PvP
+              </button>
+              <button
+                onClick={() => setMode("ai")}
+                className={`min-h-11 rounded px-3 py-2 text-sm sm:text-base font-bold transition ${mode === "ai" ? "bg-pink-500 text-white shadow-[0_0_12px_rgba(236,72,153,0.45)]" : "bg-slate-800 text-slate-200 border border-white/10"}`}
+              >
+                🤖 vs AI
+              </button>
             </div>
-            <button
-              disabled={loading}
-              onClick={createLobby}
-              className="mt-4 w-full py-2 rounded bg-cyan-500 text-black font-bold"
-            >
-              Create PvP Lobby
-            </button>
-            <button
-              onClick={playAI}
-              className="mt-2 w-full py-2 rounded bg-pink-500 font-bold"
-            >
-              Play vs AI
-            </button>
+            {mode === "pvp" ? (
+              <>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {[5, 10, 25, 50, 100].map((v) => (
+                    <button
+                      key={v}
+                      onClick={() => setWager(v)}
+                      className={`min-h-11 rounded px-3 py-2 text-sm sm:text-base ${wager === v ? "bg-fuchsia-600" : "bg-slate-800"}`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  disabled={loading}
+                  onClick={createLobby}
+                  className="mt-4 w-full py-2 rounded bg-cyan-500 text-black font-bold"
+                >
+                  Create PvP Lobby
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="mt-4 rounded-lg border border-pink-400/40 bg-pink-500/15 p-3 text-center">
+                  <p className="text-xs font-bold uppercase tracking-widest text-pink-200">🎮 Free Play</p>
+                  <p className="text-[10px] text-pink-300/80 mt-1">No tokens are wagered. Playing vs AI is free.</p>
+                </div>
+                <button
+                  onClick={playAI}
+                  className="mt-3 w-full py-2 rounded bg-pink-500 font-bold"
+                >
+                  Play vs AI
+                </button>
+              </>
+            )}
           </div>
           <div className="col-span-2 rounded-xl border border-cyan-500/50 bg-black/30 p-4">
             <h2 className="font-bold text-xl">Available Games</h2>

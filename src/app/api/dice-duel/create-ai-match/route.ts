@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
-import { diceMatches, users } from "../../../../db/schema";
-import { eq } from "drizzle-orm";
+import { diceMatches } from "../../../../db/schema";
 
 export async function POST(req: Request) {
   const { userId } = await auth();
@@ -11,33 +10,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
-  const { wager = 5 } = await req.json().catch(() => ({}));
+  // AI matches are free play — do NOT deduct tokens. We still record the
+  // wager the client sent so the match row has a wager value (for display
+  // and history), but no money actually moves on either end of the match.
+  // `wager` is intentionally defaulted to 0.
+  const { wager = 0 } = await req.json().catch(() => ({}));
+  const amount = Math.max(0, Number(wager) || 0);
 
-  const amount = Number(wager);
-
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(eq(users.clerkId, userId))
-    .limit(1);
-
-  if (!user) {
-    return NextResponse.json({ ok: false });
-  }
-
-  if (Number(user.balance) < amount) {
-    return NextResponse.json({
-      ok: false,
-      message: "Not enough tokens",
-    });
-  }
-
-  await db
-    .update(users)
-    .set({
-      balance: String(Number(user.balance) - amount),
-    })
-    .where(eq(users.clerkId, userId));
+  // No balance check / deduction — AI is free play. The match row simply
+  // records `wager` (capped at 0 by the default) and `houseFee = 0`.
 
   const [row] = await db
     .insert(diceMatches)
@@ -47,7 +28,7 @@ export async function POST(req: Request) {
       player2Id: "AI_BOT",
       wager: amount,
       prizePaid: 0,
-      houseFee: Math.floor(amount * 2 * 0.02),
+      houseFee: 0,
       hp1: 20,
       hp2: 22,
       turnUserId: userId,

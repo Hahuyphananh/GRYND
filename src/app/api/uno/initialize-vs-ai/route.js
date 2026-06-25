@@ -124,13 +124,12 @@ export async function POST(request) {
 
     const discardPile = [topCard];
     const currentColor = topCard.color;
-    const pot = (betAmount * 2).toFixed(2);
+    // AI mode is free play — `pot` is recorded at 0 so `determine-winner`
+    // does not credit a phantom `pot * 0.95` win payout.
+    const pot = "0.00";
 
     const result = await db.transaction(async (tx) => {
-      await tx
-        .update(users)
-        .set({ balance: (balance - betAmount).toFixed(2) })
-        .where(eq(users.clerkId, userId));
+      // No balance deduction — AI mode does NOT touch `users.balance`.
 
       const inserted = await tx
         .insert(unoGames)
@@ -160,7 +159,7 @@ export async function POST(request) {
         success: true,
         data: {
           id: result.id,
-          newBalance: (balance - betAmount).toFixed(2),
+          newBalance: balance.toFixed(2),
           playerHand,
           aiHand: ["?", "?", "?", "?", "?", "?", "?"],
           discardPile,

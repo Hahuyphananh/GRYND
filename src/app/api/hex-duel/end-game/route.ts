@@ -5,8 +5,27 @@ import { hexDuelGames, users } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { CacheKeys } from "../../../../lib/redis/keys";
+import { cacheDelete, cacheGet } from "../../../../lib/redis/cache";
 
 const PAYOUT_MULTIPLIER = 1.9; // 5% house edge
+
+/**
+ * AI session payload stored in Redis at start-game time.
+ * `end-game` re-reads it (and deletes it) to confirm the caller
+ * actually started a Hex Duel AI match — defeating forged
+ * `isAiGame: true` claims on PvP end-game requests.
+ *
+ * We deliberately do NOT cache `startedAt` — the client and server
+ * clocks can drift milliseconds apart and a strict equality check
+ * would 400 legitimate users. The 15-min TTL + atomic consume
+ * already bound replay tightly enough.
+ */
+interface HexDuelAiSessionPayload {
+  userId: string;
+  wager: number;
+  aiDifficulty: string | null;
+}
 
 export async function POST(req: Request) {
   try {
@@ -32,6 +51,7 @@ export async function POST(req: Request) {
       player2Territory,
       durationSeconds,
       startedAt,
+      aiSessionId,
     } = body as {
       wager: unknown;
       winner: string;
@@ -44,6 +64,8 @@ export async function POST(req: Request) {
       player2Territory?: number;
       durationSeconds?: number;
       startedAt?: string;
+      /** Single-use token issued by /api/hex-duel/start-game for AI matches. */
+      aiSessionId?: string | null;
     };
 
     if (winner !== "player1" && winner !== "player2") {
@@ -53,11 +75,103 @@ export async function POST(req: Request) {
       );
     }
 
+    // Normalize wager once up front so it can be used by both the AI
+    // session guard (above) and the balance / payout paths (below).
+    const wagerAmount = Number(wager);
+    if (!Number.isFinite(wagerAmount) || wagerAmount <= 0) {
+      // For pure "for fun" matches (no wager ever placed) this would
+      // reject — allow wager=0 in the fun-mode-only shape.
+      if (!isFunMode) {
+        return NextResponse.json(
+          { success: false, error: "Invalid wager amount" },
+          { status: 400 }
+        );
+      }
+    }
+
     const result = winner === "player1" ? "win" : "loss";
     const endedAt = new Date().toISOString();
-    const funMode = isFunMode === true;
 
-    // ── Fun mode: only record history, skip all balance changes ─────
+    // ── Defense-in-depth: when the caller claims `isAiGame: true`, verify
+    //    against the AI session token that /start-game stored in Redis.
+    //    If no matching token exists (or it's malformed / belongs to a
+    //    different user / has expired) we refuse the AI/fun-mode
+    //    treatment entirely so a forged PvP request cannot skip a
+    //    winner's payout. Pure "for fun" matches (`isFunMode: true` only)
+    //    don't need this — they bypass /start-game and never credited any
+    //    wager in the first place.
+    let aiModeAuthorised = false;
+    if (isAiGame === true) {
+      if (typeof aiSessionId !== "string" || aiSessionId.length === 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "AI session token required for isAiGame claim.",
+          },
+          { status: 400 }
+        );
+      }
+      // Wrap the matcher + token burn in try/finally so the token is
+      // consumed on EVERY exit (success, mismatch, or unexpected
+      // throw). Burning on a mismatch prevents an attacker from
+      // re-attaching a captured token to a forged end-game that
+      // simply corrects the wager/difficulty.
+      //
+      // Two genuinely simultaneous end-game calls with the same
+      // token still race between `cacheGet` and `await cacheDelete`
+      // resolving — both may observe the cached entry before the
+      // first DEL fires. For true single-round-trip atomicity, port
+      // `cacheGet` to use Redis `GETDEL` (Redis 6.2+) which deletes
+      // as part of the read. For AI-flow this is benign (no balance
+      // moves): the worst case is a duplicate history row.
+      const tokenIdToBurn = aiSessionId;
+      try {
+        const session = await cacheGet<HexDuelAiSessionPayload>(
+          CacheKeys.hexDuelAiSession(aiSessionId),
+        );
+        // Strict match on the fields we bind at start-game time —
+        //   userId (cache must belong to this Clerk user)
+        //   wager   (an intercepted token can't be re-attached to a
+        //            different wager within the 15-min TTL window)
+        //   aiDifficulty (same rationale)
+        // We deliberately do NOT match startedAt: the server and
+        // client take their timestamps a few ms apart and `Date.now()`
+        // can drift across timezones, so a strict equality check
+        // would 400 legitimate users on clock skew.
+        if (
+          !session ||
+          session.userId !== clerkId ||
+          Number(session.wager) !== wagerAmount ||
+          // difficulty may be null/missing in either the cached
+          // entry or the request body — treat both null as a match.
+          (session.aiDifficulty ?? null) !== (aiDifficulty ?? null)
+        ) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Invalid or expired AI session token.",
+            },
+            { status: 400 }
+          );
+        }
+        aiModeAuthorised = true;
+      } finally {
+        // Fires on every exit above: success, 400 mismatch, throw.
+        // Idempotent — DEL on a missing key is a no-op.
+        await cacheDelete(
+          CacheKeys.hexDuelAiSession(tokenIdToBurn),
+        ).catch((err) => {
+          console.error(
+            "[hex-duel] failed to delete AI session token after consume:",
+            err,
+          );
+        });
+      }
+    }
+
+    const funMode = isFunMode === true || aiModeAuthorised;
+
+    // ── Fun mode / AI mode: only record history, skip all balance changes ─────
     if (funMode) {
       db.insert(hexDuelGames)
         .values({
@@ -88,14 +202,6 @@ export async function POST(req: Request) {
     }
 
     // ── Real mode: validate wager, update balances, record history ──
-    const wagerAmount = Number(wager);
-    if (!Number.isFinite(wagerAmount) || wagerAmount <= 0) {
-      return NextResponse.json(
-        { success: false, error: "Invalid wager amount" },
-        { status: 400 }
-      );
-    }
-
     if (winner !== "player1") {
       // Player lost — reset streak, track games lost
       // applyLeaderboardCounters handles all stat columns (total_wagered,

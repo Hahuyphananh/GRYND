@@ -127,6 +127,12 @@ export async function POST(req: Request) {
     const wager = m.wager || 0;
     const isPvp = !isAI && m.player2Id !== null && m.player2Id !== "AI_BOT";
     const payout = isPvp ? Math.floor(wager * 2 * 0.9) : 0;
+    // For vs-AI matches no wager was ever deducted from the player's
+    // balance, so the leaderboard must record betAmount=0; otherwise
+    // total_wagered / weekly_wagered get inflated by phantom wagers
+    // and the user appears to have risked tokens they never actually
+    // put on the line.
+    const betAmountForCounters = isPvp ? wager : 0;
 
     // Fire system notification for large dice duel bets (≥ 1000 tokens)
     if (wager >= 1000) {
@@ -140,7 +146,7 @@ export async function POST(req: Request) {
     applyLeaderboardCounters({
       clerkId: winnerId,
       game: "Dice Duel",
-      betAmount: wager,
+      betAmount: betAmountForCounters,
       payout,
       isPvpWin: isPvp,
     }).catch(() => {});
@@ -151,7 +157,7 @@ export async function POST(req: Request) {
       applyLeaderboardCounters({
         clerkId: loserId,
         game: "Dice Duel",
-        betAmount: wager,
+        betAmount: betAmountForCounters,
         payout: 0,
       }).catch(() => {});
     }

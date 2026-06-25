@@ -60,12 +60,19 @@ export async function settleIfEnded(tx, roomRow, state) {
 
   // Record leaderboard stats for winner and loser
   const wagerPerPlayer = state.wager || Math.floor(state.pot / (state.players?.length || 2));
+  // Any player being AI means this was a free-play match: no wagers
+  // ever moved on the ledger, so we must pass betAmount=0 to the
+  // leaderboard counters — otherwise total_wagered / weekly_wagered
+  // get inflated by phantom wagers and the player appears to have
+  // wagered tokens they never actually risked.
+  const isAiMatch = !!state.players?.some((p) => p.isAI);
+  const betAmountForCounters = isAiMatch ? 0 : wagerPerPlayer;
   applyLeaderboardCounters({
     clerkId: ended.winnerId,
     game: "Dice Flush",
-    betAmount: wagerPerPlayer,
+    betAmount: betAmountForCounters,
     payout,
-    isPvpWin: state.players?.length > 1 && !state.players?.some(p => p.isAI),
+    isPvpWin: state.players?.length > 1 && !isAiMatch,
   }).catch(() => {});
 
   // Record loss for other player(s)
@@ -75,7 +82,7 @@ export async function settleIfEnded(tx, roomRow, state) {
         applyLeaderboardCounters({
           clerkId: p.userId,
           game: "Dice Flush",
-          betAmount: wagerPerPlayer,
+          betAmount: betAmountForCounters,
           payout: 0,
         }).catch(() => {});
       }

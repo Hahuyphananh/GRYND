@@ -42,9 +42,11 @@ export function diceFlushHandler(socket: SocketLike, ctx: { userId: string; user
     },
     start_ai_match: ({ wager, difficulty = "medium" }: { wager: number; difficulty?: "easy"|"medium"|"hard" }) => {
       const aiId = `ai:${difficulty}`;
-      ctx.wallet.lockWager(ctx.userId, wager);
+      // AI mode is free play — skip `lockWager` (no token deduction) and
+      // keep `pot` at 0 so the eventual match_ended payout can't credit
+      // the AI or the human on game end (mirrors the HTTP route fix).
       const id = `yahtzee:${Date.now()}`;
-      const room: DiceFlushGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }, { userId: aiId, name: `AI (${difficulty})`, isAI: true, difficulty }], ai: true, wager, pot: wager * 2, state: "playing", currentTurn: ctx.userId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: { [ctx.userId]: {}, [aiId]: {} } };
+      const room: DiceFlushGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }, { userId: aiId, name: `AI (${difficulty})`, isAI: true, difficulty }], ai: true, wager, pot: 0, state: "playing", currentTurn: ctx.userId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: { [ctx.userId]: {}, [aiId]: {} } };
       rooms.set(id, room);
       socket.emit("room_created", room);
     },
@@ -71,10 +73,15 @@ export function diceFlushHandler(socket: SocketLike, ctx: { userId: string; user
         }
         const ended = checkGameEnd(next);
         if (ended.ended) {
-          const payout = Math.floor(next.pot * (1 - rakeRate));
-          ctx.wallet.payoutWinner(ended.winnerId, payout, { roomId, game: "yahtzee" });
+          // AI mode is free play — `pot` is 0 when started via
+          // `start_ai_match`, so even on AI-mode match end there is no
+          // payout to issue. PvP rooms still pay out normally.
+          const payout = Math.max(0, Math.floor(next.pot * (1 - rakeRate)));
+          if (payout > 0) {
+            ctx.wallet.payoutWinner(ended.winnerId, payout, { roomId, game: "yahtzee" });
+            socket.emit("payout_event", { roomId, winnerId: ended.winnerId, amount: payout, rake: next.pot - payout });
+          }
           next.state = "finished";
-          socket.emit("payout_event", { roomId, winnerId: ended.winnerId, amount: payout, rake: next.pot - payout });
           socket.emit("match_ended", { roomId, ...ended });
         }
         rooms.set(roomId, next);
