@@ -63,6 +63,21 @@ const VARIANT_CONFIG = {
       tap: { scale: 0.94 },
     },
   },
+  // Splash variant — tuned for the initial boot screen. No parallax, no
+  // cursor orb, no ripples (so window listeners don't churn), tiny chips
+  // pinned static. Slow 60s rotation just to suggest motion during the
+  // 2.2s splash window. Wireframe + chip opacity halved.
+  splash: {
+    springs: { damping: 42, stiffness: 130, mass: 0.7 },
+    parallax: { strong: 0, weak: 0 },
+    orb: { size: 0, blur: 0, gradient: "none" },
+    ripple: { scale: 0, duration: 0 },
+    chip: {
+      sizes: [80, 70, 60, 50],
+      hover: { scale: 1, rotate: 0 },
+      tap: { scale: 1 },
+    },
+  },
 };
 
 // A friendly cartoon casino chip — used as the foreground depth layer.
@@ -260,7 +275,8 @@ const RouletteWireframe = ({ size, uid }) => (
  * without paying for the interactive parallax cost.
  */
 const MobileStaticBg = ({ variant, uid }) => {
-  const chipOpacityMul = variant === "subtle" ? 0.45 : 0.7;
+  const chipOpacityMul =
+    variant === "splash" ? 0.22 : variant === "subtle" ? 0.45 : 0.7;
   return (
     <svg
       viewBox="0 0 400 400"
@@ -277,7 +293,7 @@ const MobileStaticBg = ({ variant, uid }) => {
       </defs>
       <rect width="400" height="400" fill={`url(#${uid}-mobRad)`} />
       {/* Faint perspective grid */}
-      <g opacity={variant === "subtle" ? 0.25 : 0.45} stroke="#00e5ff" strokeWidth="0.6">
+      <g opacity={variant === "splash" ? 0.12 : variant === "subtle" ? 0.25 : 0.45} stroke="#00e5ff" strokeWidth="0.6">
         {Array.from({ length: 12 }).map((_, i) => (
           <line key={`mv-${i}`} x1={i * 36} y1="280" x2={200 + (i * 36 - 200) * 2.4} y2="400" />
         ))}
@@ -386,6 +402,12 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
   const spawnRipple = useCallback(
     (event) => {
       if (reduceMotion) return;
+      // Skip decorative ripple for clicks on real interactive controls (CTA
+      // buttons, nav links, form fields, and labels). The magnetic orb
+      // still tracks; we just don't paint a ring under every keyboard-able
+      // action. Ripple on chip hover/tap (motion.div) still fires because
+      // chips aren't buttons/links/inputs.
+      if (event.target?.closest?.("button, a, input, textarea, select, label")) return;
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const x = event.clientX - rect.left;
@@ -410,7 +432,11 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
   // directly — pointermove still fires there regardless of hit testing.
   // mouseleave on <html> is the closest proxy for "cursor left the page".
   useEffect(() => {
-    if (reduceMotion) return;
+    // The splash shows for ~2.2s on initial load — skip window pointer
+    // listeners so we don't churn motion values on every cursor move and
+    // don't run ripple state updates. React cleans up automatically when
+    // SplashScreen unmounts.
+    if (reduceMotion || variant === "splash") return;
     window.addEventListener("pointermove", handlePointerMove, { passive: true });
     window.addEventListener("pointerdown", spawnRipple, { passive: true });
     document.documentElement.addEventListener("mouseleave", handlePointerLeave);
@@ -419,7 +445,7 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
       window.removeEventListener("pointerdown", spawnRipple);
       document.documentElement.removeEventListener("mouseleave", handlePointerLeave);
     };
-  }, [handlePointerMove, handlePointerLeave, spawnRipple, reduceMotion]);
+  }, [handlePointerMove, handlePointerLeave, spawnRipple, reduceMotion, variant]);
 
   const fgChipSizes = cfg.chip.sizes;
   const foregroundChips = useMemo(
@@ -460,10 +486,14 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
         x: parallaxStrongX,
         y: parallaxStrongY,
       }}
-      initial={{ opacity: 0, scale: 0.6, rotate: -10 }}
+      initial={
+        variant === "splash"
+          ? { opacity: 0.55, scale: 1, rotate: 0 }
+          : { opacity: 0, scale: 0.6, rotate: -10 }
+      }
       animate={
-        reduceMotion
-          ? { opacity: 0.75, scale: 1, rotate: 0 }
+        reduceMotion || variant === "splash"
+          ? { opacity: variant === "splash" ? 0.55 : 0.75, scale: 1, rotate: 0 }
           : variant === "subtle"
             ? {
                 opacity: [0.5, 0.7, 0.5],
@@ -475,7 +505,7 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
               }
       }
       transition={
-        reduceMotion
+        reduceMotion || variant === "splash"
           ? { duration: 0.2 }
           : {
               duration: 7 + idx * 0.6,
@@ -555,7 +585,12 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
           style={{
             x: parallaxWeakX,
             y: parallaxWeakY,
-            opacity: variant === "subtle" ? 0.32 : 0.55,
+            opacity:
+              variant === "splash"
+                ? 0.18
+                : variant === "subtle"
+                  ? 0.32
+                  : 0.55,
           }}
         >
           <motion.div
@@ -565,7 +600,12 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
             transition={
               reduceMotion
                 ? undefined
-                : { duration: variant === "subtle" ? 35 : 22, repeat: Infinity, ease: "linear" }
+                : {
+                    duration:
+                      variant === "splash" ? 60 : variant === "subtle" ? 35 : 22,
+                    repeat: Infinity,
+                    ease: "linear",
+                  }
             }
             style={{ width: "min(150vh, 1300px)", height: "min(150vh, 1300px)" }}
           >
@@ -614,12 +654,14 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
           </g>
         </svg>
 
-        {/* ── Layer 3 — Midground drifters */}
-        <div className="absolute inset-0">
-          {midgroundItems.map((item) => (
-            <MidgroundItem key={item.id} item={item} />
-          ))}
-        </div>
+        {/* ── Layer 3 — Midground drifters (omitted on splash — keeps initial paint lean) */}
+        {variant !== "splash" && (
+          <div className="absolute inset-0">
+            {midgroundItems.map((item) => (
+              <MidgroundItem key={item.id} item={item} />
+            ))}
+          </div>
+        )}
 
         {/* ── Layer 4 — Foreground chips with parallax + hover/tap */}
         <div className="absolute inset-0">
@@ -628,8 +670,8 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
           ))}
         </div>
 
-        {/* ── Layer 5 — Cursor-following magnetic orb (hidden under reduced motion) */}
-        {!reduceMotion && (
+        {/* ── Layer 5 — Cursor-following magnetic orb (omitted on splash; hidden under reduced motion) */}
+        {!reduceMotion && variant !== "splash" && (
           <motion.div
             className="pointer-events-none absolute left-0 top-0 rounded-full"
             aria-hidden="true"
