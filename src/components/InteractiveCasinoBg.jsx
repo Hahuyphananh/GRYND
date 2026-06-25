@@ -402,6 +402,25 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
   );
 
   // Foreground chips — sizes & positions scaled per variant.
+  // ── Window-level pointer listeners ─────────────────────────
+  // The wrapper above has `pointer-events:none` so pointer events pass
+  // through to underlying buttons (e.g. leaderboard tabs, "Back to home").
+  // But that would also kill cursor tracking for the magnetic orb. We
+  // keep the existing handler logic and attach the listeners to `window`
+  // directly — pointermove still fires there regardless of hit testing.
+  // mouseleave on <html> is the closest proxy for "cursor left the page".
+  useEffect(() => {
+    if (reduceMotion) return;
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    window.addEventListener("pointerdown", spawnRipple, { passive: true });
+    document.documentElement.addEventListener("mouseleave", handlePointerLeave);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerdown", spawnRipple);
+      document.documentElement.removeEventListener("mouseleave", handlePointerLeave);
+    };
+  }, [handlePointerMove, handlePointerLeave, spawnRipple, reduceMotion]);
+
   const fgChipSizes = cfg.chip.sizes;
   const foregroundChips = useMemo(
     () => [
@@ -430,7 +449,7 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
 
   const ForegroundChip = ({ chip, idx }) => (
     <motion.div
-      className="absolute"
+      className="absolute pointer-events-auto"
       style={{
         left: chip.left,
         right: chip.right,
@@ -526,10 +545,7 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
       {/* Interactive desktop background. One pointer listener on the wrapper. */}
       <motion.div
         ref={containerRef}
-        onPointerMove={handlePointerMove}
-        onPointerLeave={handlePointerLeave}
-        onPointerDown={spawnRipple}
-        className="absolute inset-0 z-[-1] hidden overflow-hidden touch-none sm:block"
+        className="absolute inset-0 z-0 hidden overflow-hidden pointer-events-none sm:block"
         style={{ willChange: "transform" }}
         aria-hidden="true"
       >
