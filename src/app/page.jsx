@@ -1,10 +1,11 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useRouter } from "next/navigation"; // add this at the top
 import Link from "next/link";
 import NavigationBar from "../components/navigation-bar";
 import Footer from "../components/Footer";
+import AnimatedBgSvgs from "../components/AnimatedBgSvgs";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
 import Img1 from "../images/roulette.jpg";
@@ -83,6 +84,21 @@ function MainComponent() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsLoading, setTermsLoading] = useState(true);
   const [liveStats, setLiveStats] = useState({ playersOnline: 0, gamesPlayedToday: 0 });
+  const videoRef = useRef(null);
+
+  // Seamless video loop: when the clip ends, snap to the beginning before
+  // the browser paints a black / paused frame.
+  const handleVideoEnded = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = 0;
+    const playPromise = v.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => {
+        /* autoplay may be blocked; native loop attr is a fallback */
+      });
+    }
+  };
   const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
   const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
@@ -553,14 +569,20 @@ function MainComponent() {
 
         {/* Background Video */}
         <video
+          ref={videoRef}
           autoPlay
           muted
           loop
           playsInline
+          preload="auto"
+          onEnded={handleVideoEnded}
           className="absolute inset-0 h-full w-full object-cover z-0 hidden sm:block"
         >
           <source src="/videos/casino-bg-video.mp4" type="video/mp4" />
         </video>
+
+        {/* Animated SVG overlays (chips, cards, dice, sparkles, …) */}
+        <AnimatedBgSvgs />
 
         {/* Dark overlay for readability */}
         <div className="absolute inset-0 bg-black/70 z-10" />
@@ -571,11 +593,14 @@ function MainComponent() {
             initial={fadeUpVariant.initial}
             animate={fadeUpVariant.animate}
             transition={fadeUpVariant.transition}
-            className="mb-4 text-3xl sm:text-5xl md:text-6xl font-black sm:font-extrabold text-transparent bg-clip-text 
-bg-gradient-to-r from-[#ff4fd8] via-[#00e5ff] to-[#ff4fd8]
-drop-shadow-[0_0_40px_rgba(255,79,216,0.4)] tracking-widest uppercase 
-animate-[shimmerGradient_8s_ease-in-out_infinite]"
-            style={{ backgroundSize: "200% auto", textShadow: "0 0 3px rgba(238, 255, 0, 0.82), 0 0 18px rgb(238, 255, 0)" }}
+            className="mb-4 text-3xl sm:text-5xl md:text-6xl font-black sm:font-extrabold text-transparent bg-clip-text
+bg-gradient-to-r from-[#ff4fd8] via-[#9be8ff] to-[#ff4fd8]
+tracking-widest uppercase drop-shadow-[0_0_12px_rgba(255,79,216,0.18)]"
+            style={{
+              backgroundSize: "200% auto",
+              textShadow:
+                "0 0 5px rgba(0,0,0,0.45), 0 0 1px rgba(255,255,255,0.5)",
+            }}
           >
             {t("home.landing.title")}
           </motion.h1>
