@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
+import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useTranslation } from "../../hooks/useTranslation";
 
 function getNextMondayReset() {
@@ -165,7 +166,9 @@ export default function LeaderboardPage() {
   }, [endpoint]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] text-[#c9f7ff]">
+    <div className="relative min-h-screen text-[#c9f7ff]">
+      <InteractiveCasinoBg variant="subtle" />
+
       <NavigationBar currentPath="/classement" />
       <div className="mx-auto max-w-6xl px-6 py-24">
         <h1 className="mb-6 text-center text-4xl font-bold text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)]">

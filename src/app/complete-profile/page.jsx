@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
+import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 
 export default function CompleteProfilePage() {
   const { user } = useUser();
@@ -60,7 +61,8 @@ export default function CompleteProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#003366] flex items-center justify-center px-4">
+    <div className="relative min-h-screen bg-[#003366] flex items-center justify-center px-4">
+      <InteractiveCasinoBg variant="subtle" />
       <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-[#003366] mb-2">

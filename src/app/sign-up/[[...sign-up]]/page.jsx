@@ -1,10 +1,12 @@
 "use client";
 
 import { SignUp } from "@clerk/nextjs";
+import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
 
 export default function Page() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#001a33]">
+    <div className="relative min-h-screen flex items-center justify-center bg-[#001a33]">
+      <InteractiveCasinoBg variant="subtle" />
       <SignUp
         fallbackRedirectUrl="/sync"
         appearance={{

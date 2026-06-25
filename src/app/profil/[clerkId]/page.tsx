@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
+import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
 
 type PublicUser = {
   id: number;
@@ -99,7 +100,8 @@ export default function PublicProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] flex items-center justify-center">
+      <div className="relative min-h-screen flex items-center justify-center">
+        <InteractiveCasinoBg variant="subtle" />
         <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#00e5ff] border-t-transparent" />
       </div>
     );
@@ -107,7 +109,8 @@ export default function PublicProfilePage() {
 
   if (error || !profile) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] text-white">
+      <div className="relative min-h-screen text-white">
+        <InteractiveCasinoBg variant="subtle" />
         <NavigationBar currentPath="/profil" />
         <div className="max-w-2xl mx-auto px-6 pt-24 text-center">
           <h1 className="text-2xl font-bold text-red-400 mb-4">
@@ -125,12 +128,8 @@ export default function PublicProfilePage() {
   }
 
   return (
-    <div
-      className="min-h-screen text-white"
-      style={{
-        backgroundImage: "linear-gradient(135deg, #001933 0%, #000d1a 100%)",
-      }}
-    >
+    <div className="relative min-h-screen text-white">
+      <InteractiveCasinoBg variant="subtle" />
       <div className="max-w-4xl mx-auto px-6 pt-24 pb-20">
         <NavigationBar currentPath="/profil" />
 

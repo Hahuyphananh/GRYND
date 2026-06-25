@@ -3,6 +3,7 @@
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import { motion } from "framer-motion";
+import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 
 const sections = [
   {
@@ -49,7 +50,9 @@ const sections = [
 
 export default function FairPlayPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e]">
+    <div className="relative min-h-screen">
+      <InteractiveCasinoBg variant="subtle" />
+
       <NavigationBar currentPath="/" />
 
       <div className="mx-auto max-w-4xl px-4 py-16">

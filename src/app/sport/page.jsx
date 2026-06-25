@@ -3,6 +3,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
+import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useUser } from "@clerk/nextjs";
 import EventCard from "../../components/event-card";
 import BetSlip from "../../components/bet-slip";
@@ -156,9 +157,13 @@ const MainComponent = () => {
   };
 
   return (
-    <div>
+    <div className="relative">
+      {/* Full-page interactive casino background (quiet "subtle" variant
+          for the sportsbetting layout). */}
+      <InteractiveCasinoBg variant="subtle" />
+
       <NavigationBar currentPath="/sport" />
-      <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#071536] to-[#003b8e]">
+      <div className="relative min-h-screen">
         <div className="container mx-auto max-w-7xl px-4 py-24">
           <div className="mb-6 rounded-xl border border-[#00e5ff]/50 bg-[#091537]/90 p-4 text-[#f5ff3b] shadow-[0_0_24px_rgba(0,229,255,0.2)]">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
