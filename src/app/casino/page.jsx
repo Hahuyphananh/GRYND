@@ -1,6 +1,7 @@
 "use client";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
+import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useUser } from "@clerk/nextjs";
 import React, { useEffect, useState } from "react";
 import Img1 from "../../images/roulette.jpg";
@@ -350,7 +351,11 @@ function MainComponent() {
   );
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] pb-24 pt-20 md:pb-8">
+    <div className="relative min-h-screen overflow-x-clip pb-24 pt-20 md:pb-8">
+      {/* Full-page interactive casino background (quieter "subtle" variant
+          so it doesn't compete with the 22-card grid). */}
+      <InteractiveCasinoBg variant="subtle" />
+
       <NavigationBar currentPath="/casino" />
 
       <div className="mx-auto max-w-7xl px-3 py-8 sm:px-4 sm:py-12">

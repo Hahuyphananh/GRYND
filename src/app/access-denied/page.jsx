@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 
 const SignOutButton = dynamic(
   () => import("@clerk/nextjs").then((mod) => mod.SignOutButton),
@@ -9,7 +10,8 @@ const SignOutButton = dynamic(
 
 export default function AccessDeniedPage() {
   return (
-    <div className="min-h-screen bg-[#003366] flex items-center justify-center px-4">
+    <div className="relative min-h-screen bg-[#003366] flex items-center justify-center px-4">
+      <InteractiveCasinoBg variant="subtle" />
       <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
         <div className="text-6xl mb-4">🚫</div>
         <h1 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h1>

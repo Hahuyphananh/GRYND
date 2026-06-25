@@ -1,11 +1,12 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useRouter } from "next/navigation"; // add this at the top
 import Link from "next/link";
 import NavigationBar from "../components/navigation-bar";
 import Footer from "../components/Footer";
 import AnimatedBgSvgs from "../components/AnimatedBgSvgs";
+import InteractiveCasinoBg from "../components/InteractiveCasinoBg";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
 import Img1 from "../images/roulette.jpg";
@@ -84,21 +85,6 @@ function MainComponent() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsLoading, setTermsLoading] = useState(true);
   const [liveStats, setLiveStats] = useState({ playersOnline: 0, gamesPlayedToday: 0 });
-  const videoRef = useRef(null);
-
-  // Seamless video loop: when the clip ends, snap to the beginning before
-  // the browser paints a black / paused frame.
-  const handleVideoEnded = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.currentTime = 0;
-    const playPromise = v.play();
-    if (playPromise && typeof playPromise.catch === "function") {
-      playPromise.catch(() => {
-        /* autoplay may be blocked; native loop attr is a fallback */
-      });
-    }
-  };
   const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
   const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
@@ -555,7 +541,7 @@ function MainComponent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] cyberpunk-grid">
+    <div className="relative min-h-screen cyberpunk-grid">
       <NavigationBar currentPath="/" />
 
       <motion.section
@@ -564,28 +550,18 @@ function MainComponent() {
         transition={fadeInVariant.transition}
         className="relative mt-8 px-6 sm:px-4 min-h-[55vh] sm:min-h-[65vh] md:min-h-[70vh] flex items-center overflow-hidden"
       >
-        {/* Static gradient background for mobile (perf + contrast) */}
-        <div className="absolute inset-0 z-0 block sm:hidden bg-gradient-to-b from-[#050b1e] via-[#0a1a3d] to-[#030817]" />
-
-        {/* Background Video */}
-        <video
-          ref={videoRef}
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="auto"
-          onEnded={handleVideoEnded}
-          className="absolute inset-0 h-full w-full object-cover z-0 hidden sm:block"
-        >
-          <source src="/videos/casino-bg-video.mp4" type="video/mp4" />
-        </video>
+        {/* Interactive SVG casino background — replaces the old static MP4.
+            Layered depth field with cursor parallax, press ripples, and a
+            magnetic orb. Includes its own mobile static fallback. */}
+        <InteractiveCasinoBg />
 
         {/* Animated SVG overlays (chips, cards, dice, sparkles, …) */}
         <AnimatedBgSvgs />
 
-        {/* Dark overlay for readability */}
-        <div className="absolute inset-0 bg-black/70 z-10" />
+        {/* Dark overlay for readability — pointer-events-none so the cursor
+            orb in InteractiveCasinoBg (z-0 underneath) still receives
+            pointermove events. */}
+        <div className="absolute inset-0 bg-black/70 z-10 pointer-events-none" />
         <div className="absolute inset-0 z-10 pointer-events-none bg-[radial-gradient(circle_at_30%_20%,rgba(0,229,255,0.15),transparent_60%)] mix-blend-screen" />
 
         <div className="relative z-20 mx-auto max-w-7xl text-center reveal">

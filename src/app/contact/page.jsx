@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 
 const isValidEmail = (email) => email.includes("@") && email.includes(".") && email.indexOf("@") > 0 && email.lastIndexOf(".") > email.indexOf("@") + 1;
 
@@ -69,7 +70,9 @@ export default function ContactPage() {
   }, [errorMsg]);
 
   return (
-    <main className="min-h-screen bg-[#0a0f1e] text-white">
+    <main className="relative min-h-screen bg-[#0a0f1e] text-white">
+      <InteractiveCasinoBg variant="subtle" />
+
       {/* Back button */}
       <div className="max-w-4xl mx-auto px-4 pt-6">
         <Link
