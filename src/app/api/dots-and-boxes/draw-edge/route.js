@@ -4,21 +4,29 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { dotsAndBoxesGames } from "../../../../db/schema";
 import {
-  createInitialState,
-  drawEdge,
+  determineResult,
+  drawEdge as engineDrawEdge,
+  ensureState,
   hEdgeKey,
-  vEdgeKey,
+  isGameOver,
   remainingEdges,
+  vEdgeKey,
 } from "../../../../lib/dotsAndBoxesEngine";
+import {
+  getGameMoveSeconds,
+  nextMoveDeadline,
+  settleDotsAndBoxesGame,
+} from "../../../../lib/dotsAndBoxesServer";
 
 export async function POST(req) {
   try {
     const { userId } = await auth();
-    if (!userId)
+    if (!userId) {
       return NextResponse.json(
         { success: false, error: "Unauthorized" },
         { status: 401 },
       );
+    }
 
     const body = await req.json();
     const gameId = Number(body?.gameId);
@@ -30,14 +38,12 @@ export async function POST(req) {
         { status: 400 },
       );
     }
-
     if (type !== "h" && type !== "v") {
       return NextResponse.json(
         { success: false, error: "Invalid edge type" },
         { status: 400 },
       );
     }
-
     if (typeof row !== "number" || typeof col !== "number") {
       return NextResponse.json(
         { success: false, error: "Invalid edge coordinates" },
@@ -58,7 +64,6 @@ export async function POST(req) {
       if (!game) throw new Error("Game not found");
       if (game.status !== "in_progress") throw new Error("Game is not active");
 
-      // Determine player role
       const role =
         game.hostClerkId === userId
           ? "host"
@@ -67,42 +72,78 @@ export async function POST(req) {
             : null;
       if (!role) throw new Error("You are not a player in this game");
 
-      // Parse current game state with fallback
-      let state;
-      try {
-        state =
-          game.gameState &&
-          typeof game.gameState === "object" &&
-          Object.keys(game.gameState).length > 0
-            ? (game.gameState as any)
-            : createInitialState();
-      } catch {
-        state = createInitialState();
-      }
+      const state = ensureState(game.gameState);
 
-      // Process the edge draw
-      const drawResult = drawEdge(state, edgeKey, role);
+      const drawResult = engineDrawEdge(state, edgeKey, role);
       if (drawResult.error) throw new Error(drawResult.error);
 
       const newState = drawResult.state;
 
+      if (isGameOver(newState)) {
+        // Persist the final board state first. settleDotsAndBoxesGame
+        // owns the terminal write (status=finished, result, winner,
+        // payout, endedAt, clearing the deadline) and runs in a
+        // separate transaction after this one commits.
+        const { winnerClerkId, result: resultStr } = determineResult(
+          newState,
+          game.hostClerkId,
+          game.guestClerkId,
+        );
+
+        await tx
+          .update(dotsAndBoxesGames)
+          .set({ gameState: newState })
+          .where(eq(dotsAndBoxesGames.id, gameId));
+
+        return {
+          gameState: newState,
+          role,
+          remaining: 0,
+          gameOver: true,
+          winnerClerkId,
+          result: resultStr,
+          moveDeadlineAt: null,
+        };
+      }
+
+      const moveDeadlineAt = nextMoveDeadline(getGameMoveSeconds(game));
       await tx
         .update(dotsAndBoxesGames)
-        .set({ gameState: newState })
+        .set({ gameState: newState, moveDeadlineAt })
         .where(eq(dotsAndBoxesGames.id, gameId));
 
       return {
         gameState: newState,
         role,
         remaining: remainingEdges(newState),
+        gameOver: false,
+        winnerClerkId: null,
+        result: null,
+        moveDeadlineAt,
       };
     });
+
+    // Settle payout if the game just ended (separate transaction)
+    if (result.gameOver) {
+      if (result.winnerClerkId) {
+        await settleDotsAndBoxesGame(
+          gameId,
+          result.winnerClerkId,
+          result.result || "host_win",
+        );
+      } else {
+        await settleDotsAndBoxesGame(gameId, null, "draw");
+      }
+    }
 
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     const message = error?.message || "Internal Server Error";
     let status = 500;
-    if (message === "Game not found" || message === "You are not a player in this game") {
+    if (
+      message === "Game not found" ||
+      message === "You are not a player in this game"
+    ) {
       status = 403;
     } else if (
       message === "Not your turn" ||
@@ -114,6 +155,9 @@ export async function POST(req) {
     ) {
       status = 400;
     }
-    return NextResponse.json({ success: false, error: message }, { status });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status },
+    );
   }
 }

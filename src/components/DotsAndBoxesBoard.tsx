@@ -17,6 +17,10 @@ interface DotsAndBoxesBoardProps {
   drawnH?: Set<string>;
   /** Currently drawn vertical edges: Set of "row,col" keys (0-5 rows × 0-6 cols) */
   drawnV?: Set<string>;
+  /** Completed boxes: "row,col" (0-5) */
+  boxes?: string[];
+  /** Box ownership keys: row,col → "host" | "guest" */
+  boxOwners?: Record<string, "host" | "guest">;
   /** Called when a horizontal edge is clicked (row, col) */
   onEdgeHClick?: (row: number, col: number) => void;
   /** Called when a vertical edge is clicked (row, col) */
@@ -32,6 +36,8 @@ interface DotsAndBoxesBoardProps {
 export default function DotsAndBoxesBoard({
   drawnH,
   drawnV,
+  boxes,
+  boxOwners,
   onEdgeHClick,
   onEdgeVClick,
   interactive = false,
@@ -40,6 +46,8 @@ export default function DotsAndBoxesBoard({
 }: DotsAndBoxesBoardProps) {
   const drawnHSet = drawnH ?? new Set<string>();
   const drawnVSet = drawnV ?? new Set<string>();
+  const boxesArr = boxes ?? [];
+  const boxOwnersMap = boxOwners ?? {};
 
   // ─── Generate all edge positions ──────────────────────────────────
 
@@ -234,7 +242,52 @@ export default function DotsAndBoxesBoard({
         );
       })}
 
-      {/* ── Dots ──────────────────────────────────────────────────── */}
+      {/* ── Claimed boxes ─────────────────────────────────────── */}
+      {boxesArr.map((bk) => {
+        const parts = bk.split(",");
+        const r = Number(parts[0]);
+        const c = Number(parts[1]);
+        if (Number.isNaN(r) || Number.isNaN(c)) return null;
+        const owner = boxOwnersMap[bk];
+        const fillColor =
+          owner === "host"
+            ? player1Color
+            : owner === "guest"
+              ? player2Color
+              : "#888";
+        const bx = MARGIN + c * CELL_SIZE + DOT_RADIUS;
+        const by = MARGIN + r * CELL_SIZE + DOT_RADIUS;
+        return (
+          <g key={`box-${bk}`}>
+            <rect
+              x={bx + 2}
+              y={by + 2}
+              width={BOX_SIZE - 4}
+              height={BOX_SIZE - 4}
+              fill={fillColor}
+              fillOpacity={0.28}
+              stroke={fillColor}
+              strokeWidth={1.5}
+              strokeOpacity={0.65}
+              rx={6}
+            />
+            <text
+              x={bx + BOX_SIZE / 2}
+              y={by + BOX_SIZE / 2 + 5}
+              textAnchor="middle"
+              fill={fillColor}
+              fillOpacity={0.95}
+              fontSize={16}
+              fontWeight={700}
+              style={{ pointerEvents: "none", userSelect: "none" }}
+            >
+              {owner === "host" ? "H" : owner === "guest" ? "G" : "?"}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* ── Dots ──────────────────────────────────────────────── */}
       {dots.map((dot, i) => (
         <circle
           key={`dot-${i}`}

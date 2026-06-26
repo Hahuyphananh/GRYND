@@ -4,9 +4,14 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { dotsAndBoxesGames, users } from "../../../../db/schema";
 import {
-  createInitialState,
+  ensureState,
   remainingEdges,
 } from "../../../../lib/dotsAndBoxesEngine";
+import {
+  computeMoveTimeRemaining,
+  getGameMoveSeconds,
+  settleAutoMoveIfNeeded,
+} from "../../../../lib/dotsAndBoxesServer";
 
 function getPlayerRole(game, clerkId) {
   if (game.hostClerkId === clerkId) return "host";
@@ -17,8 +22,9 @@ function getPlayerRole(game, clerkId) {
 export async function GET(req) {
   try {
     const { userId } = await auth();
-    if (!userId)
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const { searchParams } = new URL(req.url);
     const gameId = Number(searchParams.get("gameId"));
@@ -26,13 +32,20 @@ export async function GET(req) {
       return NextResponse.json({ error: "Invalid gameId" }, { status: 400 });
     }
 
-    const [game] = await db
+    const initial = await db
       .select()
       .from(dotsAndBoxesGames)
       .where(eq(dotsAndBoxesGames.id, gameId))
       .limit(1);
-    if (!game)
+    const fetched = initial[0];
+    if (!fetched) {
       return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    }
+
+    // Lazy server-side auto-move: if any player is fetching and the
+    // current turn's deadline has expired, server runs a random legal
+    // edge for the current player before returning state.
+    const game = await settleAutoMoveIfNeeded(fetched);
 
     const role = getPlayerRole(game, userId) || "spectator";
 
@@ -53,16 +66,14 @@ export async function GET(req) {
         : null,
     ]);
 
-    // Parse game state with fallback
-    let gameState;
-    try {
-      gameState =
-        game.gameState && typeof game.gameState === "object" && Object.keys(game.gameState).length > 0
-          ? game.gameState
-          : createInitialState();
-    } catch {
-      gameState = createInitialState();
-    }
+    const gameState = ensureState(game.gameState);
+
+    const timerSeconds = getGameMoveSeconds(game);
+    const moveDeadlineAt = game.moveDeadlineAt
+      ? new Date(game.moveDeadlineAt).toISOString()
+      : null;
+    const remainingSeconds = computeMoveTimeRemaining(game.moveDeadlineAt);
+    const remaining = remainingEdges(gameState);
 
     return NextResponse.json({
       success: true,
@@ -72,7 +83,10 @@ export async function GET(req) {
         role,
         hostName: hostName || "Host",
         guestName: guestName || "Guest",
-        remainingEdges: remainingEdges(gameState),
+        remainingEdges: remaining,
+        timerSeconds,
+        moveDeadlineAt,
+        remainingSeconds,
       },
     });
   } catch (error) {
