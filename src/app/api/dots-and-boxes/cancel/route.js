@@ -4,8 +4,20 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { dotsAndBoxesGames, users } from "../../../../db/schema";
 import { settleDotsAndBoxesGame } from "../../../../lib/dotsAndBoxesServer";
+import { recordInvalidAction } from "../../../../lib/dotsAndBoxesAudit";
+
+// Map cancel/forfeit rejections to an audit "reason" tag.
+const REJECTION_REASONS = {
+  "Game not found": "invalid_game_id",
+  "Only the host can cancel a waiting game": "cancel_forbidden_non_host",
+  "You are not a player in this game": "not_a_player",
+  "Both players required to forfeit": "incomplete_game_forfeit",
+  "Game no longer cancellable in its current state": "bad_state",
+  "Game cannot be cancelled in its current state": "bad_state",
+};
 
 export async function POST(req) {
+  let resolvedGameId: number | null = null;
   try {
     const { userId } = await auth();
     if (!userId) {
@@ -17,6 +29,7 @@ export async function POST(req) {
 
     const body = await req.json();
     const gameId = Number(body?.gameId);
+    resolvedGameId = Number.isFinite(gameId) && gameId > 0 ? gameId : null;
 
     if (!Number.isFinite(gameId) || gameId <= 0) {
       return NextResponse.json(
@@ -92,8 +105,24 @@ export async function POST(req) {
 
     return NextResponse.json({ success: true, outcome, game: final });
   } catch (error) {
+    const message = error?.message || "Unable to cancel game";
+    const reason = REJECTION_REASONS[message];
+    if (reason) {
+      try {
+        const { userId: caller } = await auth();
+        await recordInvalidAction({
+          clerkId: caller,
+          gameId: resolvedGameId,
+          action: "cancel",
+          reason,
+          headers: req?.headers,
+        });
+      } catch {
+        // audit must never crash the route
+      }
+    }
     return NextResponse.json(
-      { success: false, error: error?.message || "Unable to cancel game" },
+      { success: false, error: message },
       { status: 400 },
     );
   }
