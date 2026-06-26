@@ -7,6 +7,18 @@ import { useSocket } from "../../../../../context/SocketProvider";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
 
+// ─── Module-level empty defaults (shared reference across renders) ─
+// Mutable types so passing into the board component (typed
+// `Set<string>` / `string[]`) doesn't trigger a covariant mismatch.
+const EMPTY_EDGES: string[] = [];
+const EMPTY_BOX_OWNERS: Record<string, "host" | "guest"> = {};
+const EMPTY_SCORES = { host: 0, guest: 0 };
+
+// ─── Active poll interval — slower when finished so we let the user
+//      read the result without burning CPU/DB on stale polls. ────────
+const ACTIVE_POLL_MS = 1500;
+const IDLE_POLL_MS = 5000;
+
 export default function DotsAndBoxesGamePage() {
   const { gameId } = useParams<{ gameId: string }>();
   const router = useRouter();
@@ -19,65 +31,86 @@ export default function DotsAndBoxesGamePage() {
   // Visual-only countdown. Source of truth is the server's moveDeadlineAt.
   const [now, setNow] = useState<number>(() => Date.now());
 
+  // AbortController ref so each new poll/request cancels the previous
+  // in-flight fetch. Prevents stale responses from clobbering newer
+  // state when the network is slow.
+  const abortRef = useRef<AbortController | null>(null);
+
   useGamePresence({
     gameKey: "dots-and-boxes",
     gameId: Number(gameId),
     enabled: Boolean(gameId),
   });
 
-  const fetchState = useCallback(async () => {
-    const res = await fetch(
-      `/api/dots-and-boxes/game-state?gameId=${gameId}`,
-      { cache: "no-store" },
-    );
-    const data = await res.json();
-    if (!res.ok) {
-      setStatusText(data.error || "Unable to load game");
-      return;
-    }
-
-    const gameData = data.data;
-    setGame(gameData);
-
-    if (gameData.status === "waiting") {
-      setStatusText("Waiting for opponent to join...");
-    } else if (gameData.status === "in_progress") {
-      const gs = gameData.gameState;
-      if (gameData.role === gs?.currentTurn) {
-        setStatusText("Your turn — draw an edge!");
-      } else if (gameData.remainingSeconds === 0) {
-        setStatusText(
-          `Opponent's turn expired — auto-playing...`,
+  // ─── fetchState: cancellable, ref-equality guarded ────────────────
+  const fetchState = useCallback(
+    async (opts?: { signal?: AbortSignal }) => {
+      try {
+        const res = await fetch(
+          `/api/dots-and-boxes/game-state?gameId=${gameId}`,
+          { cache: "no-store", signal: opts?.signal },
         );
-      } else {
-        setStatusText("Opponent's turn...");
-      }
-    } else if (gameData.status === "finished") {
-      if (gameData.result === "draw") setStatusText("Draw game.");
-      else if (
-        gameData.winnerClerkId &&
-        ((gameData.role === "host" &&
-          gameData.winnerClerkId === gameData.hostClerkId) ||
-          (gameData.role === "guest" &&
-            gameData.winnerClerkId === gameData.guestClerkId))
-      ) {
-        setStatusText("You won!");
-      } else {
-        setStatusText("You lost.");
-      }
-    } else if (gameData.status === "cancelled") {
-      setStatusText("Match cancelled.");
-    }
-  }, [gameId]);
+        // Server returned "no-change" sentinel — nothing to render.
+        if (res.status === 304) return;
+        const data = await res.json();
+        if (opts?.signal?.aborted) return;
+        if (!res.ok) {
+          setStatusText(data.error || "Unable to load game");
+          return;
+        }
+        const gameData = data.data;
 
-  // Poll every 1.5s
+        // ── Ref-equality guard ────────────────────────────────
+        // Skip the setGame call entirely if every gameplay field is
+        // byte-identical to the current state. This prevents React
+        // from re-running derived useMemos each poll when nothing
+        // actually changed (e.g., during opponent's deliberation
+        // the server returns the same deadline + score + edges).
+        setGame((prev) => (gameStateUnchanged(prev, gameData) ? prev : gameData));
+
+        setStatusText(computeStatusText(gameData));
+      } catch (err) {
+        if (err?.name === "AbortError") return;
+        console.error("dots-and-boxes fetch failed", err);
+      }
+    },
+    [gameId],
+  );
+
+  // ─── Polling with adaptive interval + abort ───────────────────────
+  // - 1.5s while in_progress, 5s once finished/cancelled (so we still
+  //   pick up any late payout writes but don't burn CPU).
+  // - Cancel stale fetches when a new one fires.
   useEffect(() => {
-    fetchState();
-    const interval = setInterval(fetchState, 1500);
-    return () => clearInterval(interval);
-  }, [fetchState]);
+    let cancelled = false;
+    let intervalId: ReturnType<typeof setTimeout> | null = null;
 
-  // Visual countdown — server is source of truth, this just renders the clock
+    const tick = () => {
+      if (cancelled) return;
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+      void fetchState({ signal: ac.signal });
+      const delay =
+        game?.status === "finished" || game?.status === "cancelled"
+          ? IDLE_POLL_MS
+          : ACTIVE_POLL_MS;
+      intervalId = setTimeout(tick, delay);
+    };
+
+    // Initial fetch, then schedule.
+    tick();
+
+    return () => {
+      cancelled = true;
+      if (intervalId) clearTimeout(intervalId);
+      abortRef.current?.abort();
+    };
+    // game?.status is included so the interval adapts when the match ends.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchState, game?.status]);
+
+  // ─── Visual countdown — server is source of truth, this just renders
   useEffect(() => {
     const tick = () => setNow(Date.now());
     tick();
@@ -85,11 +118,16 @@ export default function DotsAndBoxesGamePage() {
     return () => clearInterval(id);
   }, []);
 
-  // Socket sync
+  // ─── Socket sync ───────────────────────────────────────────────────
   useEffect(() => {
     if (!socket) return;
     const roomId = `dots-and-boxes:${gameId}`;
-    const refresh = () => fetchState();
+    const refresh = () => {
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+      void fetchState({ signal: ac.signal });
+    };
     socket.emit("join_room", { roomId });
     socket.on("match:updated", refresh);
     return () => {
@@ -99,6 +137,16 @@ export default function DotsAndBoxesGamePage() {
   }, [socket, gameId, fetchState]);
 
   // ─── Derived board props ────────────────────────────────────────────
+  // Memoize against the raw game state so an unchanged set won't
+  // recompute, and so the Set/Array references are stable across
+  // renders (which the memoed board relies on for skip-render).
+  const gameState = game?.gameState ?? null;
+  const edgesKey = useMemo(() => {
+    if (!gameState || !Array.isArray(gameState.edges)) return "";
+    // Hash content order doesn't matter; canonicalize so equal sets
+    // produce equal signatures regardless of insertion order.
+    return [...(gameState.edges as string[])].sort().join("|");
+  }, [gameState?.edges]);
 
   const {
     drawnH,
@@ -111,6 +159,8 @@ export default function DotsAndBoxesGamePage() {
     remainingSeconds,
     timerSeconds,
     boardLocked,
+    boxesForBoard,
+    boxOwnersForBoard,
   } = useMemo(() => {
     const gs = game?.gameState;
     if (!gs || !Array.isArray(gs.edges)) {
@@ -119,27 +169,38 @@ export default function DotsAndBoxesGamePage() {
         drawnV: new Set<string>(),
         isMyTurn: false,
         currentTurn: null as "host" | "guest" | null,
-        scores: { host: 0, guest: 0 },
+        scores: EMPTY_SCORES,
         isFinished: false,
         remainingMs: 0,
         remainingSeconds: 0,
         timerSeconds: 10,
         boardLocked: true,
+        boxesForBoard: EMPTY_EDGES,
+        boxOwnersForBoard: EMPTY_BOX_OWNERS,
       };
     }
 
     const hSet = new Set<string>();
     const vSet = new Set<string>();
-    for (const e of gs.edges) {
-      const parts = e.split(":");
-      if (parts[0] === "h") hSet.add(parts[1]);
-      else if (parts[0] === "v") vSet.add(parts[1]);
+    for (const e of gs.edges as string[]) {
+      const idx = e.indexOf(":");
+      if (idx < 0) continue;
+      const type = e.slice(0, idx);
+      const coords = e.slice(idx + 1);
+      if (type === "h") hSet.add(coords);
+      else if (type === "v") vSet.add(coords);
     }
 
-    const finished = game.status === "finished" || game.status === "cancelled";
-    const myTurn = !finished && game.status === "in_progress" && game.role === gs.currentTurn;
+    const finished =
+      game.status === "finished" || game.status === "cancelled";
+    const myTurn =
+      !finished &&
+      game.status === "in_progress" &&
+      game.role === gs.currentTurn;
 
-    const deadline = game.moveDeadlineAt ? new Date(game.moveDeadlineAt).getTime() : 0;
+    const deadline = game.moveDeadlineAt
+      ? new Date(game.moveDeadlineAt).getTime()
+      : 0;
     const ms = deadline ? Math.max(0, deadline - now) : 0;
     const seconds = Math.ceil(ms / 1000);
 
@@ -148,14 +209,32 @@ export default function DotsAndBoxesGamePage() {
       drawnV: vSet,
       isMyTurn: myTurn,
       currentTurn: gs.currentTurn as "host" | "guest" | null,
-      scores: gs.scores || { host: 0, guest: 0 },
+      scores: gs.scores || EMPTY_SCORES,
       isFinished: finished,
       remainingMs: ms,
       remainingSeconds: seconds,
       timerSeconds: game.timerSeconds || 10,
       boardLocked: finished,
+      boxesForBoard: (gs.boxes as string[]) ?? EMPTY_EDGES,
+      boxOwnersForBoard:
+        (gs.boxOwners as Record<string, "host" | "guest">) ??
+        EMPTY_BOX_OWNERS,
     };
-  }, [game, now]);
+    // The only deps we need: the canonical edges key, status, role,
+    // currentTurn, deadline, and now. Splitting this way means a
+    // field like `payout` (which we never read here) won't recompute.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    edgesKey,
+    game?.status,
+    game?.role,
+    game?.moveDeadlineAt,
+    gameState?.currentTurn,
+    gameState?.scores,
+    gameState?.boxes,
+    gameState?.boxOwners,
+    now,
+  ]);
 
   // ─── Edge drawing ───────────────────────────────────────────────────
 
@@ -174,7 +253,11 @@ export default function DotsAndBoxesGamePage() {
         const data = await res.json();
 
         if (!data.success) {
-          await fetchState();
+          // Refresh state to resync on error (e.g. stale turn)
+          abortRef.current?.abort();
+          const ac = new AbortController();
+          abortRef.current = ac;
+          await fetchState({ signal: ac.signal });
           return;
         }
 
@@ -195,7 +278,12 @@ export default function DotsAndBoxesGamePage() {
   // ─── Cancel/forfeit handler ─────────────────────────────────────────
 
   const cancelGame = useCallback(async () => {
-    if (!confirm("Cancel or forfeit this game? Tokens will be refunded or opponent credited.")) return;
+    if (
+      !confirm(
+        "Cancel or forfeit this game? Tokens will be refunded or opponent credited.",
+      )
+    )
+      return;
     const res = await fetch("/api/dots-and-boxes/cancel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -212,7 +300,11 @@ export default function DotsAndBoxesGamePage() {
         roomId: "lobby:dots-and-boxes",
         event: "lobby:updated",
       });
-      await fetchState();
+      // Re-sync state via a fresh fetch
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+      await fetchState({ signal: ac.signal });
     } else {
       alert(data.error || "Failed to cancel game");
     }
@@ -221,7 +313,8 @@ export default function DotsAndBoxesGamePage() {
   // ─── Render helpers ─────────────────────────────────────────────────
 
   const timerUrgent = remainingSeconds > 0 && remainingSeconds <= 3;
-  const timerExpired = game?.status === "in_progress" && remainingMs <= 0;
+  const timerExpired =
+    game?.status === "in_progress" && remainingMs <= 0;
 
   const timerPct =
     timerSeconds > 0
@@ -292,7 +385,10 @@ export default function DotsAndBoxesGamePage() {
                           ? "bg-amber-400"
                           : "bg-white/40"
                     }`}
-                    style={{ width: `${timerPct}%` }}
+                    style={{
+                      width: `${timerPct}%`,
+                      transform: "translateZ(0)", // GPU layer
+                    }}
                   />
                 </div>
                 <span
@@ -318,8 +414,8 @@ export default function DotsAndBoxesGamePage() {
               <DotsAndBoxesBoard
                 drawnH={drawnH}
                 drawnV={drawnV}
-                boxes={Array.isArray(game?.gameState?.boxes) ? game.gameState.boxes : []}
-                boxOwners={game?.gameState?.boxOwners || {}}
+                boxes={boxesForBoard}
+                boxOwners={boxOwnersForBoard}
                 player1Color="#f59e0b"
                 player2Color="#f97316"
                 interactive={isMyTurn && !drawing && !boardLocked}
@@ -383,9 +479,9 @@ export default function DotsAndBoxesGamePage() {
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <div
-                    className={`flex flex-col items-center flex-1 rounded-lg px-3 py-2 transition-all ${
+                    className={`flex flex-col items-center flex-1 rounded-lg px-3 py-2 transition-transform ${
                       currentTurn === "host"
-                        ? "bg-amber-500/15 border border-amber-400/40"
+                        ? "bg-amber-500/15 border border-amber-400/40 scale-[1.02]"
                         : "bg-transparent"
                     }`}
                   >
@@ -398,9 +494,9 @@ export default function DotsAndBoxesGamePage() {
                   </div>
                   <span className="text-white/30 text-sm font-bold">vs</span>
                   <div
-                    className={`flex flex-col items-center flex-1 rounded-lg px-3 py-2 transition-all ${
+                    className={`flex flex-col items-center flex-1 rounded-lg px-3 py-2 transition-transform ${
                       currentTurn === "guest"
-                        ? "bg-orange-500/15 border border-orange-400/40"
+                        ? "bg-orange-500/15 border border-orange-400/40 scale-[1.02]"
                         : "bg-transparent"
                     }`}
                   >
@@ -452,11 +548,13 @@ export default function DotsAndBoxesGamePage() {
                 <div className="text-center text-sm font-semibold text-white">
                   {statusText}
                 </div>
-                {game?.payout !== null && game?.payout !== undefined && Number(game.payout) > 0 && (
-                  <div className="text-center text-xs text-yellow-300 mt-1">
-                    Payout: {Number(game.payout).toFixed(2)} tokens
-                  </div>
-                )}
+                {game?.payout !== null &&
+                  game?.payout !== undefined &&
+                  Number(game.payout) > 0 && (
+                    <div className="text-center text-xs text-yellow-300 mt-1">
+                      Payout: {Number(game.payout).toFixed(2)} tokens
+                    </div>
+                  )}
               </div>
             )}
 
@@ -468,7 +566,9 @@ export default function DotsAndBoxesGamePage() {
               >
                 Cancel Game (Refund)
               </button>
-            ) : game?.status === "in_progress" && game?.role && game.role !== "spectator" ? (
+            ) : game?.status === "in_progress" &&
+              game?.role &&
+              game.role !== "spectator" ? (
               <button
                 onClick={cancelGame}
                 className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-500 font-bold hover-lift mb-2"
@@ -492,4 +592,80 @@ export default function DotsAndBoxesGamePage() {
       </div>
     </motion.div>
   );
+}
+
+// ─── Helpers (module-level) ────────────────────────────────────────────
+
+/** Cheap deep-ish equality check for the gameplay fields we render
+ *  from. Skips parent.setGame when polled state hasn't changed. */
+function gameStateUnchanged(prev: any, next: any): boolean {
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  if (prev.status !== next.status) return false;
+
+  const a = prev.gameState || {};
+  const b = next.gameState || {};
+
+  if ((a.edges?.length ?? 0) !== (b.edges?.length ?? 0)) return false;
+  if ((a.boxes?.length ?? 0) !== (b.boxes?.length ?? 0)) return false;
+  if (a.currentTurn !== b.currentTurn) return false;
+  if (a.scores?.host !== b.scores?.host) return false;
+  if (a.scores?.guest !== b.scores?.guest) return false;
+  if (prev.moveDeadlineAt !== next.moveDeadlineAt) return false;
+  if (prev.result !== next.result) return false;
+  if (prev.winnerClerkId !== next.winnerClerkId) return false;
+  if (prev.payout !== next.payout) return false;
+
+  // Edge-level content equality (cheap when lengths already match).
+  const ae = a.edges as string[] | undefined;
+  const be = b.edges as string[] | undefined;
+  if (ae && be) {
+    const aeSorted = ae.slice().sort();
+    const beSorted = be.slice().sort();
+    for (let i = 0; i < aeSorted.length; i++) {
+      if (aeSorted[i] !== beSorted[i]) return false;
+    }
+  }
+
+  // Box owners
+  const aBo = (a.boxOwners as Record<string, string> | undefined) || {};
+  const bBo = (b.boxOwners as Record<string, string> | undefined) || {};
+  const aKeys = Object.keys(aBo);
+  const bKeys = Object.keys(bBo);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const k of aKeys) {
+    if (aBo[k] !== bBo[k]) return false;
+  }
+
+  return true;
+}
+
+function computeStatusText(gameData: any): string {
+  if (gameData.status === "waiting") {
+    return "Waiting for opponent to join...";
+  }
+  if (gameData.status === "cancelled") {
+    return "Match cancelled.";
+  }
+  if (gameData.status === "in_progress") {
+    const gs = gameData.gameState;
+    if (gameData.role === gs?.currentTurn) {
+      return "Your turn — draw an edge!";
+    }
+    if (gameData.remainingSeconds === 0) {
+      return "Opponent's turn expired — auto-playing...";
+    }
+    return "Opponent's turn...";
+  }
+  if (gameData.status === "finished") {
+    if (gameData.result === "draw") return "Draw game.";
+    const won =
+      gameData.winnerClerkId &&
+      ((gameData.role === "host" &&
+        gameData.winnerClerkId === gameData.hostClerkId) ||
+        (gameData.role === "guest" &&
+          gameData.winnerClerkId === gameData.guestClerkId));
+    return won ? "You won!" : "You lost.";
+  }
+  return "";
 }

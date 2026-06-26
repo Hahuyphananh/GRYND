@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 
 // ─── Board constants ──────────────────────────────────────────────────
 const DOTS = 7; // 7×7 dot grid
@@ -33,7 +33,57 @@ interface DotsAndBoxesBoardProps {
   player2Color?: string;
 }
 
-export default function DotsAndBoxesBoard({
+// ── Helpers for the custom React.memo comparator ────────────────────
+// Default shallow comparison can't compare Sets / nested objects, so
+// we serialize to a sorted string for O(n) cheap equality.
+function setSig(s: Set<string> | undefined): string {
+  if (!s || s.size === 0) return "";
+  const arr = Array.from(s);
+  arr.sort();
+  return arr.join("|");
+}
+
+function arrSig(a: ReadonlyArray<string> | undefined): string {
+  if (!a || a.length === 0) return "";
+  return a.join("|");
+}
+
+function objSig(o: Record<string, string> | undefined): string {
+  if (!o) return "";
+  const keys = Object.keys(o);
+  if (keys.length === 0) return "";
+  keys.sort();
+  return keys.map((k) => `${k}:${o[k]}`).join("|");
+}
+
+/**
+ * Custom comparator: treats two prop sets as equal when their
+ * gameplay-relevant content is identical, even if Set/Record/Array
+ * references differ. Reference-stable callbacks from the parent
+ * continue to skip render via reference equality.
+ */
+function propsAreEqual(
+  prev: Readonly<DotsAndBoxesBoardProps>,
+  next: Readonly<DotsAndBoxesBoardProps>,
+): boolean {
+  if (
+    prev.onEdgeHClick !== next.onEdgeHClick ||
+    prev.onEdgeVClick !== next.onEdgeVClick ||
+    prev.interactive !== next.interactive ||
+    prev.player1Color !== next.player1Color ||
+    prev.player2Color !== next.player2Color
+  ) {
+    return false;
+  }
+  return (
+    setSig(prev.drawnH) === setSig(next.drawnH) &&
+    setSig(prev.drawnV) === setSig(next.drawnV) &&
+    arrSig(prev.boxes) === arrSig(next.boxes) &&
+    objSig(prev.boxOwners) === objSig(next.boxOwners)
+  );
+}
+
+function DotsAndBoxesBoardImpl({
   drawnH,
   drawnV,
   boxes,
@@ -44,10 +94,10 @@ export default function DotsAndBoxesBoard({
   player1Color = "#f59e0b",
   player2Color = "#f97316",
 }: DotsAndBoxesBoardProps) {
-  const drawnHSet = drawnH ?? new Set<string>();
-  const drawnVSet = drawnV ?? new Set<string>();
-  const boxesArr = boxes ?? [];
-  const boxOwnersMap = boxOwners ?? {};
+  const drawnHSet = drawnH ?? EMPTY_SET;
+  const drawnVSet = drawnV ?? EMPTY_SET;
+  const boxesArr = boxes ?? EMPTY_ARR;
+  const boxOwnersMap = boxOwners ?? EMPTY_OBJ;
 
   // ─── Track "newly drawn" edges + "newly claimed" boxes ─────────────
   //
@@ -56,33 +106,36 @@ export default function DotsAndBoxesBoard({
   // keyframes fire on class attachment, then we overwrite the ref in
   // a post-render effect — so the animation triggers exactly once per
   // change, regardless of whether it's a user move or an auto-move.
-  const prevDrawnHRef = useRef<Set<string>>(new Set());
-  const prevDrawnVRef = useRef<Set<string>>(new Set());
-  const prevBoxesRef = useRef<Set<string>>(new Set());
+  const prevDrawnHRef = useRef<Set<string>>(EMPTY_SET);
+  const prevDrawnVRef = useRef<Set<string>>(EMPTY_SET);
+  const prevBoxesRef = useRef<Set<string>>(EMPTY_SET);
   // First-render guard: skip animation on mount/refresh so an already-in-
   // progress match doesn't replay every edge and box appearing in again.
   const isFirstRenderRef = useRef(true);
 
-  const newHKeys = useMemo(() => {
-    if (isFirstRenderRef.current) return new Set<string>();
+  // Compute new-keys inline (cheap; ≤84 entries). Skipping useMemo here
+  // also avoids passing a Set<string> as a dependency-array dependency,
+  // which React's DependencyList signature does not accept.
+  const newHKeys: Set<string> = (() => {
+    if (isFirstRenderRef.current) return EMPTY_SET;
     const out = new Set<string>();
     for (const k of drawnHSet) if (!prevDrawnHRef.current.has(k)) out.add(k);
     return out;
-  }, [drawnHSet]);
+  })();
 
-  const newVKeys = useMemo(() => {
-    if (isFirstRenderRef.current) return new Set<string>();
+  const newVKeys: Set<string> = (() => {
+    if (isFirstRenderRef.current) return EMPTY_SET;
     const out = new Set<string>();
     for (const k of drawnVSet) if (!prevDrawnVRef.current.has(k)) out.add(k);
     return out;
-  }, [drawnVSet]);
+  })();
 
-  const newBoxKeys = useMemo(() => {
-    if (isFirstRenderRef.current) return new Set<string>();
+  const newBoxKeys: Set<string> = (() => {
+    if (isFirstRenderRef.current) return EMPTY_SET;
     const out = new Set<string>();
     for (const k of boxesArr) if (!prevBoxesRef.current.has(k)) out.add(k);
     return out;
-  }, [boxesArr]);
+  })();
 
   useEffect(() => {
     // On first commit, prime the refs to the current sets so the
@@ -94,7 +147,7 @@ export default function DotsAndBoxesBoard({
   });
 
   // ─── Generate all edge positions ──────────────────────────────────
-
+  // Memoized once; never recomputed for the lifetime of the component.
   const horizontalEdges = useMemo(() => {
     const edges: Array<{
       key: string;
@@ -152,8 +205,6 @@ export default function DotsAndBoxesBoard({
     return d;
   }, []);
 
-  // ─── Box size ─────────────────────────────────────────────────────
-
   const edgeHWidth = BOX_SIZE;
   const edgeVHeight = BOX_SIZE;
 
@@ -163,6 +214,11 @@ export default function DotsAndBoxesBoard({
       className="w-full h-auto max-w-[560px] mx-auto select-none"
       role="img"
       aria-label="Dots and Boxes game board"
+      style={
+        // Promote to a GPU compositing layer to keep the grid crisp
+        // while edges / boxes animate above it.
+        { transform: "translateZ(0)", willChange: "auto" }
+      }
     >
       {/* ── Animation keyframes (scoped to this SVG) ─────────────── */}
       <style>{`
@@ -181,19 +237,22 @@ export default function DotsAndBoxesBoard({
           55%  { opacity: 1; transform: scale(1.15); }
           100% { opacity: 0.95; transform: scale(1); }
         }
-        .dnb-edge-anim    { animation: dnb-edge-draw 280ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .dnb-edge-anim    { animation: dnb-edge-draw 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+                            will-change: stroke-width, opacity; }
         .dnb-box-anim     { animation: dnb-box-fill 380ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
-                            transform-box: fill-box; transform-origin: center; }
+                            transform-box: fill-box; transform-origin: center;
+                            will-change: transform, fill-opacity; }
         .dnb-text-anim    { animation: dnb-text-pop  420ms cubic-bezier(0.25, 0.46, 0.45, 0.94) 60ms both;
-                            transform-box: fill-box; transform-origin: center; }
+                            transform-box: fill-box; transform-origin: center;
+                            will-change: transform, opacity; }
         @media (prefers-reduced-motion: reduce) {
-          .dnb-edge-anim, .dnb-box-anim, .dnb-text-anim { animation: none; }
+          .dnb-edge-anim, .dnb-box-anim, .dnb-text-anim { animation: none; will-change: auto; }
         }
       `}</style>
 
-      {/* ── Subtle grid lines for box interiors (cosmetic) ─────────── */}
-      {Array.from({ length: DOTS - 1 }).map((_, row) =>
-        Array.from({ length: DOTS - 1 }).map((_, col) => (
+      {/* ── Subtle grid lines for box interiors (cosmetic, static) ─── */}
+      {GRID.map((rowArr, row) =>
+        rowArr.map((_, col) => (
           <rect
             key={`cell-${row}-${col}`}
             x={MARGIN + col * CELL_SIZE + DOT_RADIUS}
@@ -212,18 +271,23 @@ export default function DotsAndBoxesBoard({
         const drawn = drawnHSet.has(edge.key);
         const isNew = drawn && newHKeys.has(edge.key);
         const showDisabled = !drawn && !interactive;
+        const cursorCls =
+          interactive && !drawn ? "cursor-pointer" : "cursor-default";
+        const visible =
+          drawn
+            ? player1Color
+            : interactive
+              ? "rgba(251, 191, 36, 0.22)"
+              : "rgba(251, 191, 36, 0.10)";
         return (
           <g key={`he-${edge.key}`}>
-            {/* Invisible hit area */}
             <rect
               x={edge.x}
               y={edge.y}
               width={edgeHWidth}
               height={EDGE_HIT}
               fill="transparent"
-              className={
-                interactive && !drawn ? "cursor-pointer" : "cursor-default"
-              }
+              className={cursorCls}
               onClick={() => {
                 if (interactive && !drawn && onEdgeHClick) {
                   onEdgeHClick(edge.row, edge.col);
@@ -237,26 +301,21 @@ export default function DotsAndBoxesBoard({
               )}
             </rect>
 
-            {/* Visual edge indicator */}
             <line
               x1={edge.x + 2}
               y1={edge.y + EDGE_HIT / 2}
               x2={edge.x + edgeHWidth - 2}
               y2={edge.y + EDGE_HIT / 2}
-              stroke={
-                drawn ? player1Color : "rgba(251, 191, 36, 0.18)"
-              }
+              stroke={visible}
               strokeWidth={drawn ? 3 : 1}
               strokeLinecap="round"
               opacity={showDisabled ? 0.45 : 1}
-              className={[
-                isNew ? "dnb-edge-anim" : "",
-                interactive && !drawn
-                  ? "transition-all duration-150 hover:stroke-amber-300 hover:stroke-[2.8]"
-                  : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
+              className={
+                (isNew ? "dnb-edge-anim" : "") +
+                (interactive && !drawn
+                  ? " transition-all duration-150 hover:stroke-amber-300 hover:stroke-[2.8]"
+                  : "")
+              }
             />
           </g>
         );
@@ -267,18 +326,23 @@ export default function DotsAndBoxesBoard({
         const drawn = drawnVSet.has(edge.key);
         const isNew = drawn && newVKeys.has(edge.key);
         const showDisabled = !drawn && !interactive;
+        const cursorCls =
+          interactive && !drawn ? "cursor-pointer" : "cursor-default";
+        const visible =
+          drawn
+            ? player2Color
+            : interactive
+              ? "rgba(251, 191, 36, 0.22)"
+              : "rgba(251, 191, 36, 0.10)";
         return (
           <g key={`ve-${edge.key}`}>
-            {/* Invisible hit area */}
             <rect
               x={edge.x}
               y={edge.y}
               width={EDGE_HIT}
               height={edgeVHeight}
               fill="transparent"
-              className={
-                interactive && !drawn ? "cursor-pointer" : "cursor-default"
-              }
+              className={cursorCls}
               onClick={() => {
                 if (interactive && !drawn && onEdgeVClick) {
                   onEdgeVClick(edge.row, edge.col);
@@ -292,26 +356,21 @@ export default function DotsAndBoxesBoard({
               )}
             </rect>
 
-            {/* Visual edge indicator */}
             <line
               x1={edge.x + EDGE_HIT / 2}
               y1={edge.y + 2}
               x2={edge.x + EDGE_HIT / 2}
               y2={edge.y + edgeVHeight - 2}
-              stroke={
-                drawn ? player2Color : "rgba(251, 191, 36, 0.18)"
-              }
+              stroke={visible}
               strokeWidth={drawn ? 3 : 1}
               strokeLinecap="round"
               opacity={showDisabled ? 0.45 : 1}
-              className={[
-                isNew ? "dnb-edge-anim" : "",
-                interactive && !drawn
-                  ? "transition-all duration-150 hover:stroke-orange-300 hover:stroke-[2.8]"
-                  : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
+              className={
+                (isNew ? "dnb-edge-anim" : "") +
+                (interactive && !drawn
+                  ? " transition-all duration-150 hover:stroke-orange-300 hover:stroke-[2.8]"
+                  : "")
+              }
             />
           </g>
         );
@@ -333,8 +392,6 @@ export default function DotsAndBoxesBoard({
         const bx = MARGIN + c * CELL_SIZE + DOT_RADIUS;
         const by = MARGIN + r * CELL_SIZE + DOT_RADIUS;
         const isNew = newBoxKeys.has(bk);
-        const groupClass = isNew ? "dnb-box-anim" : "";
-        const textClass = isNew ? "dnb-text-anim" : "";
         return (
           <g key={`box-${bk}`}>
             <rect
@@ -348,7 +405,7 @@ export default function DotsAndBoxesBoard({
               strokeWidth={1.5}
               strokeOpacity={0.65}
               rx={6}
-              className={groupClass}
+              className={isNew ? "dnb-box-anim" : ""}
               style={
                 isNew
                   ? undefined
@@ -373,7 +430,7 @@ export default function DotsAndBoxesBoard({
                       fillOpacity: 0.95,
                     }
               }
-              className={textClass}
+              className={isNew ? "dnb-text-anim" : ""}
             >
               {owner === "host" ? "H" : owner === "guest" ? "G" : "?"}
             </text>
@@ -395,3 +452,22 @@ export default function DotsAndBoxesBoard({
     </svg>
   );
 }
+
+// ─── Module-level constants used as defaults ────────────────────────
+// Re-using the same empty objects prevents passing a fresh reference
+// each render, which would defeat React.memo's prop equality check.
+// Mutable types so callers that expect `Set<string>` / `string[]` can
+// accept them without a covariant mismatch.
+const EMPTY_SET: Set<string> = new Set();
+const EMPTY_ARR: string[] = [];
+const EMPTY_OBJ: Record<string, string> = {};
+const GRID = Array.from({ length: DOTS - 1 }, () =>
+  Array.from({ length: DOTS - 1 }, () => 0),
+);
+
+// ─── Memoized export ─────────────────────────────────────────────────
+// Default-export React.memo so the SVG re-renders ONLY when gameplay
+// signals (drawn edges, claimed boxes, owners) actually change. Polls
+// returning byte-identical game state therefore skip the SVG commit.
+const DotsAndBoxesBoard = memo(DotsAndBoxesBoardImpl, propsAreEqual);
+export default DotsAndBoxesBoard;
