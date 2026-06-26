@@ -17,10 +17,6 @@ interface DotsAndBoxesBoardProps {
   drawnH?: Set<string>;
   /** Currently drawn vertical edges: Set of "row,col" keys (0-5 rows × 0-6 cols) */
   drawnV?: Set<string>;
-  /** Completed box keys: "row,col" (0-5 rows × 0-5 cols) */
-  boxes?: string[];
-  /** Box ownership: Record<"row,col", "host" | "guest"> */
-  boxOwners?: Record<string, "host" | "guest">;
   /** Called when a horizontal edge is clicked (row, col) */
   onEdgeHClick?: (row: number, col: number) => void;
   /** Called when a vertical edge is clicked (row, col) */
@@ -36,8 +32,6 @@ interface DotsAndBoxesBoardProps {
 export default function DotsAndBoxesBoard({
   drawnH,
   drawnV,
-  boxes,
-  boxOwners,
   onEdgeHClick,
   onEdgeVClick,
   interactive = false,
@@ -46,8 +40,6 @@ export default function DotsAndBoxesBoard({
 }: DotsAndBoxesBoardProps) {
   const drawnHSet = drawnH ?? new Set<string>();
   const drawnVSet = drawnV ?? new Set<string>();
-  const boxesArr = boxes ?? [];
-  const boxOwnersMap = boxOwners ?? {};
 
   // ─── Generate all edge positions ──────────────────────────────────
 
@@ -238,46 +230,6 @@ export default function DotsAndBoxesBoard({
                   : ""
               }
             />
-          </g>
-        );
-      })}
-
-      {/* ── Completed boxes ──────────────────────────────────────── */}
-      {boxesArr.map((bk) => {
-        const [r, c] = bk.split(",").map(Number);
-        if (isNaN(r) || isNaN(c)) return null;
-        const owner = boxOwnersMap[bk];
-        const fillColor =
-          owner === "host" ? player1Color : owner === "guest" ? player2Color : "#888";
-        const bx = MARGIN + c * CELL_SIZE + DOT_RADIUS;
-        const by = MARGIN + r * CELL_SIZE + DOT_RADIUS;
-        return (
-          <g key={`box-${bk}`}>
-            <rect
-              x={bx + 1}
-              y={by + 1}
-              width={BOX_SIZE - 2}
-              height={BOX_SIZE - 2}
-              fill={fillColor}
-              fillOpacity={0.25}
-              stroke={fillColor}
-              strokeWidth={1.5}
-              strokeOpacity={0.5}
-              rx={6}
-            />
-            <text
-              x={bx + BOX_SIZE / 2}
-              y={by + BOX_SIZE / 2 + 1}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill={fillColor}
-              fillOpacity={0.9}
-              fontSize={16}
-              fontWeight={700}
-              style={{ pointerEvents: "none", userSelect: "none" }}
-            >
-              {owner === "host" ? "H" : "G"}
-            </text>
           </g>
         );
       })}

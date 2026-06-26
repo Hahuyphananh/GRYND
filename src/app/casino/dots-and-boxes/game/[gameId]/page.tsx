@@ -84,17 +84,15 @@ export default function DotsAndBoxesGamePage() {
 
   // ─── Derived board props ────────────────────────────────────────────
 
-  const { drawnH, drawnV, boxes, boxOwners, isMyTurn, scores } =
+  const { drawnH, drawnV, isMyTurn, currentTurn } =
     useMemo(() => {
       const gs = game?.gameState;
       if (!gs || !gs.edges) {
         return {
           drawnH: new Set<string>(),
           drawnV: new Set<string>(),
-          boxes: [],
-          boxOwners: {},
           isMyTurn: false,
-          scores: { host: 0, guest: 0 },
+          currentTurn: null as "host" | "guest" | null,
         };
       }
 
@@ -113,10 +111,8 @@ export default function DotsAndBoxesGamePage() {
       return {
         drawnH: hSet,
         drawnV: vSet,
-        boxes: gs.boxes || [],
-        boxOwners: gs.boxOwners || {},
         isMyTurn: myTurn,
-        scores: gs.scores || { host: 0, guest: 0 },
+        currentTurn: gs.currentTurn as "host" | "guest" | null,
       };
     }, [game]);
 
@@ -212,8 +208,6 @@ export default function DotsAndBoxesGamePage() {
               <DotsAndBoxesBoard
                 drawnH={drawnH}
                 drawnV={drawnV}
-                boxes={boxes}
-                boxOwners={boxOwners}
                 player1Color="#f59e0b"
                 player2Color="#f97316"
                 interactive={isMyTurn && !drawing}
@@ -269,28 +263,40 @@ export default function DotsAndBoxesGamePage() {
               </span>
             </div>
 
-            {/* Scores */}
-            {game?.status !== "waiting" && (
+            {/* Turn */}
+            {game?.status === "in_progress" && currentTurn && (
               <div className="mb-4 p-3 rounded-xl bg-white/5 border border-white/10">
                 <div className="text-[10px] uppercase tracking-wider text-white/50 mb-2 text-center">
-                  Score
+                  Turn
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex flex-col items-center flex-1">
+                <div className="flex items-center justify-around gap-3">
+                  <div
+                    className={`flex flex-col items-center flex-1 rounded-lg px-3 py-2 transition-all ${
+                      currentTurn === "host"
+                        ? "bg-amber-500/15 border border-amber-400/40"
+                        : "bg-transparent opacity-50"
+                    }`}
+                  >
                     <span className="text-xs text-amber-300 font-medium">
                       {game?.hostName || "Host"}
                     </span>
-                    <span className="text-2xl font-extrabold text-amber-400 tabular-nums">
-                      {scores.host}
+                    <span className="text-[10px] uppercase tracking-wider text-white/50 mt-0.5">
+                      Host
                     </span>
                   </div>
-                  <span className="text-white/30 text-sm font-bold">vs</span>
-                  <div className="flex flex-col items-center flex-1">
+                  <span className="text-white/30 text-xs font-bold">vs</span>
+                  <div
+                    className={`flex flex-col items-center flex-1 rounded-lg px-3 py-2 transition-all ${
+                      currentTurn === "guest"
+                        ? "bg-orange-500/15 border border-orange-400/40"
+                        : "bg-transparent opacity-50"
+                    }`}
+                  >
                     <span className="text-xs text-orange-300 font-medium">
                       {game?.guestName || "Guest"}
                     </span>
-                    <span className="text-2xl font-extrabold text-orange-400 tabular-nums">
-                      {scores.guest}
+                    <span className="text-[10px] uppercase tracking-wider text-white/50 mt-0.5">
+                      Guest
                     </span>
                   </div>
                 </div>
