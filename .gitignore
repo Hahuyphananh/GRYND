@@ -53,3 +53,4 @@ next-env.d.ts
 # original UTF-8 emoji that were mangled to replacement characters).
 # Prevents re-creation. Match anything starting with a digit at the root.
 /[0-9]*
+.env*
