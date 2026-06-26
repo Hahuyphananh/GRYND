@@ -3,6 +3,11 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { dotsAndBoxesGames, users } from "../../../../db/schema";
+import {
+  createInitialState,
+  isGameOver,
+  remainingEdges,
+} from "../../../../lib/dotsAndBoxesEngine";
 
 function getPlayerRole(game, clerkId) {
   if (game.hostClerkId === clerkId) return "host";
@@ -49,13 +54,27 @@ export async function GET(req) {
         : null,
     ]);
 
+    // Parse game state with fallback
+    let gameState;
+    try {
+      gameState =
+        game.gameState && typeof game.gameState === "object" && Object.keys(game.gameState).length > 0
+          ? game.gameState
+          : createInitialState();
+    } catch {
+      gameState = createInitialState();
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         ...game,
+        gameState,
         role,
         hostName: hostName || "Host",
         guestName: guestName || "Guest",
+        isGameOver: isGameOver(gameState),
+        remainingEdges: remainingEdges(gameState),
       },
     });
   } catch (error) {

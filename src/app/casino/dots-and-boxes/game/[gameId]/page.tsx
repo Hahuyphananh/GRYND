@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useSocket } from "../../../../../context/SocketProvider";
@@ -14,6 +14,8 @@ export default function DotsAndBoxesGamePage() {
 
   const [game, setGame] = useState<any>(null);
   const [statusText, setStatusText] = useState("Loading game...");
+  const [drawing, setDrawing] = useState(false);
+  const drawingRef = useRef(false);
 
   useGamePresence({
     gameKey: "dots-and-boxes",
@@ -21,7 +23,7 @@ export default function DotsAndBoxesGamePage() {
     enabled: Boolean(gameId),
   });
 
-  const fetchState = async () => {
+  const fetchState = useCallback(async () => {
     const res = await fetch(
       `/api/dots-and-boxes/game-state?gameId=${gameId}`,
       { cache: "no-store" },
@@ -38,7 +40,12 @@ export default function DotsAndBoxesGamePage() {
     if (gameData.status === "waiting") {
       setStatusText("Waiting for opponent to join...");
     } else if (gameData.status === "in_progress") {
-      setStatusText("Match in progress");
+      const gs = gameData.gameState;
+      if (gameData.role === gs?.currentTurn) {
+        setStatusText("Your turn — draw an edge!");
+      } else {
+        setStatusText("Opponent's turn...");
+      }
     } else if (gameData.status === "finished") {
       if (gameData.result === "draw") setStatusText("Draw game.");
       else if (
@@ -53,14 +60,13 @@ export default function DotsAndBoxesGamePage() {
         setStatusText("You lost.");
       }
     }
-  };
+  }, [gameId]);
 
   useEffect(() => {
     fetchState();
     const interval = setInterval(fetchState, 1500);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameId]);
+  }, [fetchState]);
 
   useEffect(() => {
     if (!socket) return;
@@ -74,8 +80,80 @@ export default function DotsAndBoxesGamePage() {
       socket.emit("leave_room", { roomId });
       socket.off("match:updated", refresh);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket, gameId]);
+  }, [socket, gameId, fetchState]);
+
+  // ─── Derived board props ────────────────────────────────────────────
+
+  const { drawnH, drawnV, boxes, boxOwners, isMyTurn, scores } =
+    useMemo(() => {
+      const gs = game?.gameState;
+      if (!gs || !gs.edges) {
+        return {
+          drawnH: new Set<string>(),
+          drawnV: new Set<string>(),
+          boxes: [],
+          boxOwners: {},
+          isMyTurn: false,
+          scores: { host: 0, guest: 0 },
+        };
+      }
+
+      const hSet = new Set<string>();
+      const vSet = new Set<string>();
+      for (const e of gs.edges) {
+        const [type, coords] = e.split(":");
+        if (type === "h") hSet.add(coords);
+        else if (type === "v") vSet.add(coords);
+      }
+
+      const myTurn =
+        game.status === "in_progress" &&
+        game.role === gs.currentTurn;
+
+      return {
+        drawnH: hSet,
+        drawnV: vSet,
+        boxes: gs.boxes || [],
+        boxOwners: gs.boxOwners || {},
+        isMyTurn: myTurn,
+        scores: gs.scores || { host: 0, guest: 0 },
+      };
+    }, [game]);
+
+  // ─── Edge drawing ───────────────────────────────────────────────────
+
+  const drawEdge = useCallback(async (type: "h" | "v", row: number, col: number) => {
+    if (drawingRef.current) return;
+    drawingRef.current = true;
+    setDrawing(true);
+
+    try {
+      const res = await fetch("/api/dots-and-boxes/draw-edge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId: Number(gameId), type, row, col }),
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        // Refresh state to resync on error (e.g. stale turn)
+        await fetchState();
+        return;
+      }
+
+      // Broadcast to opponent via socket (also triggers our own refresh via listener)
+      socket?.emit("room_event", {
+        roomId: `dots-and-boxes:${gameId}`,
+        event: "match:updated",
+        payload: { gameId: Number(gameId) },
+      });
+    } finally {
+      drawingRef.current = false;
+      setDrawing(false);
+    }
+  }, [socket, gameId, fetchState]);
+
+  // ─── Render ─────────────────────────────────────────────────────────
 
   return (
     <motion.div
@@ -102,6 +180,29 @@ export default function DotsAndBoxesGamePage() {
         <div className="grid lg:grid-cols-[1fr_320px] gap-6">
           {/* Game Board Area */}
           <div className="casino-surface p-4 sm:p-6 rounded-2xl flex flex-col items-center justify-center border-[#f59e0b]/20">
+            {/* Turn indicator */}
+            {game?.status === "in_progress" && (
+              <div className="mb-3 flex items-center gap-2">
+                <span
+                  className={`inline-block h-3 w-3 rounded-full animate-pulse ${
+                    isMyTurn ? "bg-green-400" : "bg-white/30"
+                  }`}
+                />
+                <span
+                  className={`text-sm font-semibold ${
+                    isMyTurn ? "text-green-300" : "text-white/50"
+                  }`}
+                >
+                  {isMyTurn ? "Your turn — draw an edge!" : "Opponent is thinking..."}
+                </span>
+                {drawing && (
+                  <span className="text-xs text-amber-400 animate-pulse ml-1">
+                    Drawing...
+                  </span>
+                )}
+              </div>
+            )}
+
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -109,12 +210,17 @@ export default function DotsAndBoxesGamePage() {
               className="w-full flex justify-center"
             >
               <DotsAndBoxesBoard
-                interactive={false}
+                drawnH={drawnH}
+                drawnV={drawnV}
+                boxes={boxes}
+                boxOwners={boxOwners}
+                player1Color="#f59e0b"
+                player2Color="#f97316"
+                interactive={isMyTurn && !drawing}
+                onEdgeHClick={drawEdge.bind(null, "h")}
+                onEdgeVClick={drawEdge.bind(null, "v")}
               />
             </motion.div>
-            <p className="mt-4 text-center text-xs text-white/40">
-              Gameplay is coming soon — the board is ready!
-            </p>
           </div>
 
           {/* Sidebar */}
@@ -163,6 +269,34 @@ export default function DotsAndBoxesGamePage() {
               </span>
             </div>
 
+            {/* Scores */}
+            {game?.status !== "waiting" && (
+              <div className="mb-4 p-3 rounded-xl bg-white/5 border border-white/10">
+                <div className="text-[10px] uppercase tracking-wider text-white/50 mb-2 text-center">
+                  Score
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col items-center flex-1">
+                    <span className="text-xs text-amber-300 font-medium">
+                      {game?.hostName || "Host"}
+                    </span>
+                    <span className="text-2xl font-extrabold text-amber-400 tabular-nums">
+                      {scores.host}
+                    </span>
+                  </div>
+                  <span className="text-white/30 text-sm font-bold">vs</span>
+                  <div className="flex flex-col items-center flex-1">
+                    <span className="text-xs text-orange-300 font-medium">
+                      {game?.guestName || "Guest"}
+                    </span>
+                    <span className="text-2xl font-extrabold text-orange-400 tabular-nums">
+                      {scores.guest}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="mb-2 flex items-center justify-between gap-2 text-xs">
               <span className="text-white/50">Host</span>
               <span className="font-semibold text-white">
@@ -181,6 +315,15 @@ export default function DotsAndBoxesGamePage() {
                 {Number(game?.betAmount || 0).toFixed(2)} tokens each
               </span>
             </div>
+
+            {game?.remainingEdges !== undefined && (
+              <div className="mb-4 flex items-center justify-between gap-2 text-xs">
+                <span className="text-white/50">Edges Left</span>
+                <span className="font-mono font-semibold text-white">
+                  {game.remainingEdges}
+                </span>
+              </div>
+            )}
 
             {game?.status === "waiting" && game?.role === "host" ? (
               <button
