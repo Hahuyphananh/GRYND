@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 // ─── Board constants ──────────────────────────────────────────────────
 const DOTS = 7; // 7×7 dot grid
@@ -48,6 +48,50 @@ export default function DotsAndBoxesBoard({
   const drawnVSet = drawnV ?? new Set<string>();
   const boxesArr = boxes ?? [];
   const boxOwnersMap = boxOwners ?? {};
+
+  // ─── Track "newly drawn" edges + "newly claimed" boxes ─────────────
+  //
+  // We snapshot the previous render's sets in a ref so we can compute,
+  // during the current render, which entries are brand new. CSS
+  // keyframes fire on class attachment, then we overwrite the ref in
+  // a post-render effect — so the animation triggers exactly once per
+  // change, regardless of whether it's a user move or an auto-move.
+  const prevDrawnHRef = useRef<Set<string>>(new Set());
+  const prevDrawnVRef = useRef<Set<string>>(new Set());
+  const prevBoxesRef = useRef<Set<string>>(new Set());
+  // First-render guard: skip animation on mount/refresh so an already-in-
+  // progress match doesn't replay every edge and box appearing in again.
+  const isFirstRenderRef = useRef(true);
+
+  const newHKeys = useMemo(() => {
+    if (isFirstRenderRef.current) return new Set<string>();
+    const out = new Set<string>();
+    for (const k of drawnHSet) if (!prevDrawnHRef.current.has(k)) out.add(k);
+    return out;
+  }, [drawnHSet]);
+
+  const newVKeys = useMemo(() => {
+    if (isFirstRenderRef.current) return new Set<string>();
+    const out = new Set<string>();
+    for (const k of drawnVSet) if (!prevDrawnVRef.current.has(k)) out.add(k);
+    return out;
+  }, [drawnVSet]);
+
+  const newBoxKeys = useMemo(() => {
+    if (isFirstRenderRef.current) return new Set<string>();
+    const out = new Set<string>();
+    for (const k of boxesArr) if (!prevBoxesRef.current.has(k)) out.add(k);
+    return out;
+  }, [boxesArr]);
+
+  useEffect(() => {
+    // On first commit, prime the refs to the current sets so the
+    // existing edges/boxes don't trigger animations on the next update.
+    prevDrawnHRef.current = new Set(drawnHSet);
+    prevDrawnVRef.current = new Set(drawnVSet);
+    prevBoxesRef.current = new Set(boxesArr);
+    isFirstRenderRef.current = false;
+  });
 
   // ─── Generate all edge positions ──────────────────────────────────
 
@@ -120,6 +164,33 @@ export default function DotsAndBoxesBoard({
       role="img"
       aria-label="Dots and Boxes game board"
     >
+      {/* ── Animation keyframes (scoped to this SVG) ─────────────── */}
+      <style>{`
+        @keyframes dnb-edge-draw {
+          0%   { stroke-width: 0;   opacity: 0; }
+          55%  { stroke-width: 4.5; opacity: 1; }
+          100% { stroke-width: 3;   opacity: 1; }
+        }
+        @keyframes dnb-box-fill {
+          0%   { fill-opacity: 0;    transform: scale(0.55); }
+          55%  { fill-opacity: 0.45; transform: scale(1.05); }
+          100% { fill-opacity: 0.28; transform: scale(1); }
+        }
+        @keyframes dnb-text-pop {
+          0%   { opacity: 0; transform: scale(0.4); }
+          55%  { opacity: 1; transform: scale(1.15); }
+          100% { opacity: 0.95; transform: scale(1); }
+        }
+        .dnb-edge-anim    { animation: dnb-edge-draw 280ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .dnb-box-anim     { animation: dnb-box-fill 380ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+                            transform-box: fill-box; transform-origin: center; }
+        .dnb-text-anim    { animation: dnb-text-pop  420ms cubic-bezier(0.25, 0.46, 0.45, 0.94) 60ms both;
+                            transform-box: fill-box; transform-origin: center; }
+        @media (prefers-reduced-motion: reduce) {
+          .dnb-edge-anim, .dnb-box-anim, .dnb-text-anim { animation: none; }
+        }
+      `}</style>
+
       {/* ── Subtle grid lines for box interiors (cosmetic) ─────────── */}
       {Array.from({ length: DOTS - 1 }).map((_, row) =>
         Array.from({ length: DOTS - 1 }).map((_, col) => (
@@ -139,6 +210,8 @@ export default function DotsAndBoxesBoard({
       {/* ── Horizontal edges ──────────────────────────────────────── */}
       {horizontalEdges.map((edge) => {
         const drawn = drawnHSet.has(edge.key);
+        const isNew = drawn && newHKeys.has(edge.key);
+        const showDisabled = !drawn && !interactive;
         return (
           <g key={`he-${edge.key}`}>
             {/* Invisible hit area */}
@@ -149,9 +222,7 @@ export default function DotsAndBoxesBoard({
               height={EDGE_HIT}
               fill="transparent"
               className={
-                interactive && !drawn
-                  ? "cursor-pointer"
-                  : "cursor-default"
+                interactive && !drawn ? "cursor-pointer" : "cursor-default"
               }
               onClick={() => {
                 if (interactive && !drawn && onEdgeHClick) {
@@ -166,24 +237,26 @@ export default function DotsAndBoxesBoard({
               )}
             </rect>
 
-            {/* Visual edge indicator — faint line always visible */}
+            {/* Visual edge indicator */}
             <line
               x1={edge.x + 2}
               y1={edge.y + EDGE_HIT / 2}
               x2={edge.x + edgeHWidth - 2}
               y2={edge.y + EDGE_HIT / 2}
               stroke={
-                drawn
-                  ? player1Color
-                  : "rgba(251, 191, 36, 0.18)"
+                drawn ? player1Color : "rgba(251, 191, 36, 0.18)"
               }
               strokeWidth={drawn ? 3 : 1}
               strokeLinecap="round"
-              className={
+              opacity={showDisabled ? 0.45 : 1}
+              className={[
+                isNew ? "dnb-edge-anim" : "",
                 interactive && !drawn
-                  ? "transition-all duration-150 hover:stroke-amber-400/70 hover:stroke-[2.5]"
-                  : ""
-              }
+                  ? "transition-all duration-150 hover:stroke-amber-300 hover:stroke-[2.8]"
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
             />
           </g>
         );
@@ -192,6 +265,8 @@ export default function DotsAndBoxesBoard({
       {/* ── Vertical edges ────────────────────────────────────────── */}
       {verticalEdges.map((edge) => {
         const drawn = drawnVSet.has(edge.key);
+        const isNew = drawn && newVKeys.has(edge.key);
+        const showDisabled = !drawn && !interactive;
         return (
           <g key={`ve-${edge.key}`}>
             {/* Invisible hit area */}
@@ -202,9 +277,7 @@ export default function DotsAndBoxesBoard({
               height={edgeVHeight}
               fill="transparent"
               className={
-                interactive && !drawn
-                  ? "cursor-pointer"
-                  : "cursor-default"
+                interactive && !drawn ? "cursor-pointer" : "cursor-default"
               }
               onClick={() => {
                 if (interactive && !drawn && onEdgeVClick) {
@@ -219,24 +292,26 @@ export default function DotsAndBoxesBoard({
               )}
             </rect>
 
-            {/* Visual edge indicator — faint line always visible */}
+            {/* Visual edge indicator */}
             <line
               x1={edge.x + EDGE_HIT / 2}
               y1={edge.y + 2}
               x2={edge.x + EDGE_HIT / 2}
               y2={edge.y + edgeVHeight - 2}
               stroke={
-                drawn
-                  ? player2Color
-                  : "rgba(251, 191, 36, 0.18)"
+                drawn ? player2Color : "rgba(251, 191, 36, 0.18)"
               }
               strokeWidth={drawn ? 3 : 1}
               strokeLinecap="round"
-              className={
+              opacity={showDisabled ? 0.45 : 1}
+              className={[
+                isNew ? "dnb-edge-anim" : "",
                 interactive && !drawn
-                  ? "transition-all duration-150 hover:stroke-amber-400/70 hover:stroke-[2.5]"
-                  : ""
-              }
+                  ? "transition-all duration-150 hover:stroke-orange-300 hover:stroke-[2.8]"
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
             />
           </g>
         );
@@ -257,6 +332,9 @@ export default function DotsAndBoxesBoard({
               : "#888";
         const bx = MARGIN + c * CELL_SIZE + DOT_RADIUS;
         const by = MARGIN + r * CELL_SIZE + DOT_RADIUS;
+        const isNew = newBoxKeys.has(bk);
+        const groupClass = isNew ? "dnb-box-anim" : "";
+        const textClass = isNew ? "dnb-text-anim" : "";
         return (
           <g key={`box-${bk}`}>
             <rect
@@ -270,16 +348,32 @@ export default function DotsAndBoxesBoard({
               strokeWidth={1.5}
               strokeOpacity={0.65}
               rx={6}
+              className={groupClass}
+              style={
+                isNew
+                  ? undefined
+                  : { transformBox: "fill-box", transformOrigin: "center" }
+              }
             />
             <text
               x={bx + BOX_SIZE / 2}
               y={by + BOX_SIZE / 2 + 5}
               textAnchor="middle"
               fill={fillColor}
-              fillOpacity={0.95}
               fontSize={16}
               fontWeight={700}
-              style={{ pointerEvents: "none", userSelect: "none" }}
+              style={
+                isNew
+                  ? { pointerEvents: "none", userSelect: "none" }
+                  : {
+                      pointerEvents: "none",
+                      userSelect: "none",
+                      transformBox: "fill-box",
+                      transformOrigin: "center",
+                      fillOpacity: 0.95,
+                    }
+              }
+              className={textClass}
             >
               {owner === "host" ? "H" : owner === "guest" ? "G" : "?"}
             </text>
