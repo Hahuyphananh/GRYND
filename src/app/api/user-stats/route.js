@@ -407,7 +407,11 @@ export async function GET() {
 
     const winRate = totalBets > 0 ? (wins / totalBets) * 100 : 0;
 
-    const biggestWin = Math.max(0, ...allBets.map((b) => b.tokenDiff || 0));
+    // Use a reduce loop instead of `Math.max(...arr)` to avoid RangeError on huge bet histories.
+    const biggestWin = allBets.reduce(
+      (m, b) => Math.max(m, Number(b.tokenDiff) || 0),
+      0,
+    );
     const totalWagered = allBets.reduce((sum, b) => sum + b.amount, 0);
 
     const gameCount = {};

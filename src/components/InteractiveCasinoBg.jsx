@@ -9,7 +9,6 @@ import {
   useSpring,
   useTransform,
 } from "framer-motion";
-import smallLogo from "../images/smalllogo.png";
 
 /* ──────────────────────────────────────────────────────────────────────
  * InteractiveCasinoBg
@@ -258,14 +257,9 @@ const RouletteWireframe = ({ size, uid }) => (
     <circle cx="400" cy="400" r="80" fill="#041125" fillOpacity="0.85" />
     <circle cx="400" cy="400" r="80" fill="none" stroke="#ffd700" strokeOpacity="0.7" strokeWidth="2" />
     <circle cx="400" cy="400" r="60" fill="none" stroke="#00e5ff" strokeOpacity="0.55" strokeWidth="1" strokeDasharray="4 4" />
-    <image
-      href={smallLogo}
-      x="340"
-      y="340"
-      width="120"
-      height="120"
-      preserveAspectRatio="xMidYMid meet"
-    />
+    {/* (Hub logo was removed from the SVG—it's now rendered as a separate
+        <img> overlay OUTSIDE the dimming opacity wrapper. See Layer 1b in
+        the parent's render.) */}
   </svg>
 );
 
@@ -610,6 +604,58 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
             style={{ width: "min(150vh, 1300px)", height: "min(150vh, 1300px)" }}
           >
             <RouletteWireframe size="100%" uid={uid} />
+          </motion.div>
+        </motion.div>
+
+        {/* ── Layer 1b — Hub logo overlay (TRUE opacity, mirrors wheel rotation).
+            Same parallax + rotation anchors as Layer 1 so the emblem stays
+            glued to the (now dimmed) wireframe hub center, but this wrapper
+            deliberately OMITS the opacity style. The <img> therefore renders
+            at full alpha on top of the 0.32 / 0.55 / 0.18-dimmed wheel —
+            the logo reads clearly on subtle-variant pages instead of fading
+            into the dark hub background. */}
+        <motion.div
+          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          style={{
+            x: parallaxWeakX,
+            y: parallaxWeakY,
+          }}
+        >
+          <motion.div
+            animate={
+              reduceMotion ? undefined : { rotate: [0, 360] }
+            }
+            transition={
+              reduceMotion
+                ? undefined
+                : {
+                    duration:
+                      variant === "splash" ? 60 : variant === "subtle" ? 35 : 22,
+                    repeat: Infinity,
+                    ease: "linear",
+                  }
+            }
+            style={{ width: "min(150vh, 1300px)", height: "min(150vh, 1300px)" }}
+          >
+            {/* Sized to 24% of the rotating wrapper so the visible 3:2 logo
+                content (~24% wide × 16% tall after `contain` letterbox) is
+                ~44% larger than the previous 20% setting and reads as filling
+                the coin disc. The coin itself (hub fill r=80 / gold-stroke
+                ring r=80) is intentionally NOT scaled up — only the <img>
+                box. axis-edge overflow is ~2% on each side which sits inside
+                the cyan dashed inner ring and feels like a snug inlay. */}
+            <img
+              src="/images/smalllogo.png"
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+              style={{
+                width: "35%",
+                height: "35%",
+                objectFit: "contain",
+              }}
+            />
           </motion.div>
         </motion.div>
 
