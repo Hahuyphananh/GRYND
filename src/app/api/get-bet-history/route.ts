@@ -161,7 +161,7 @@ export async function GET() {
         .select()
         .from(pokerGames)
         .where(
-          sql`exists (select 1 from jsonb_array_elements(${pokerGames.players}) elem where elem->>'clerkId' = ${clerkId})`,
+          sql`${pokerGames.players} @> ${JSON.stringify([{ clerkId }])}::jsonb`,
         ),
       // 🎲 Farkle (join players → rooms)
       db
