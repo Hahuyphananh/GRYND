@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useSocket } from "../../../../../context/SocketProvider";
 import useGamePresence from "../../../../../hooks/useGamePresence";
+import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
 
 export default function DotsAndBoxesGamePage() {
   const { gameId } = useParams<{ gameId: string }>();
@@ -100,32 +101,20 @@ export default function DotsAndBoxesGamePage() {
 
         <div className="grid lg:grid-cols-[1fr_320px] gap-6">
           {/* Game Board Area */}
-          <div className="casino-surface p-4 rounded-2xl flex flex-col items-center justify-center min-h-[400px] border-[#f59e0b]/20">
+          <div className="casino-surface p-4 sm:p-6 rounded-2xl flex flex-col items-center justify-center border-[#f59e0b]/20">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.2, duration: 0.5 }}
-              className="text-center"
+              className="w-full flex justify-center"
             >
-              <div className="text-6xl mb-4">📐</div>
-              <h2 className="text-2xl font-bold text-amber-300 mb-2">
-                Waiting for gameplay implementation
-              </h2>
-              <p className="text-white/50 max-w-md">
-                The Dots &amp; Boxes game engine is coming soon. Your match is
-                active and your wager is secured. Stay tuned!
-              </p>
+              <DotsAndBoxesBoard
+                interactive={false}
+              />
             </motion.div>
-
-            {/* Decorative dots grid */}
-            <div className="mt-8 grid grid-cols-5 gap-6 opacity-20">
-              {Array.from({ length: 25 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="w-3 h-3 rounded-full bg-amber-400"
-                />
-              ))}
-            </div>
+            <p className="mt-4 text-center text-xs text-white/40">
+              Gameplay is coming soon — the board is ready!
+            </p>
           </div>
 
           {/* Sidebar */}
