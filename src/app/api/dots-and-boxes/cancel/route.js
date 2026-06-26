@@ -17,7 +17,7 @@ const REJECTION_REASONS = {
 };
 
 export async function POST(req) {
-  let resolvedGameId: number | null = null;
+  let resolvedGameId = null;
   try {
     const { userId } = await auth();
     if (!userId) {
