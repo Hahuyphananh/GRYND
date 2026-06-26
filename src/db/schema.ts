@@ -1249,3 +1249,30 @@ export const clickerGames = pgTable(
     userIdIdx: index("idx_clicker_games_user_id").on(table.userId, table.createdAt),
   }),
 );
+
+// DOTS & BOXES PvP GAME TABLE
+export const dotsAndBoxesGames = pgTable(
+  "dots_and_boxes_games",
+  {
+    id: serial("id").primaryKey(),
+    hostClerkId: varchar("host_clerk_id", { length: 255 }).notNull(),
+    guestClerkId: varchar("guest_clerk_id", { length: 255 }),
+    betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
+    status: varchar("status", { length: 30 }).notNull().default("waiting"),
+    gameState: jsonb("game_state").default(sql`'{}'::jsonb`),
+    winnerClerkId: varchar("winner_clerk_id", { length: 255 }),
+    result: varchar("result", { length: 30 }),
+    payout: numeric("payout", { precision: 10, scale: 2 }),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    dotsStatusIdx: index("dots_and_boxes_status_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+    dotsHostIdx: index("dots_and_boxes_host_idx").on(table.hostClerkId),
+    dotsGuestIdx: index("dots_and_boxes_guest_idx").on(table.guestClerkId),
+  }),
+);

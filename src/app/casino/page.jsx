@@ -222,6 +222,13 @@ function MainComponent() {
       descriptionKey: "games.precision_desc",
       nameKey: "games.precision_name",
     },
+    {
+      name: "Dots & Boxes",
+      href: "/casino/dots-and-boxes",
+      leaderboardKey: "dots-and-boxes",
+      image: Img14,
+      descriptionKey: "games.dots_and_boxes_desc",
+    },
   ];
 
   const filteredGames = games.filter((game) =>
@@ -229,6 +236,7 @@ function MainComponent() {
   );
 
   const skillGameKeys = new Set([
+    "dots-and-boxes",
     "connect-four",
     "neon-flush",
     "poker",
@@ -243,6 +251,7 @@ function MainComponent() {
   ]);
 
   const newestOrder = [
+    "dots-and-boxes",
     "precision",
     "farkle",
     "yahtzee",
