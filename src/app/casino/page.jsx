@@ -26,6 +26,7 @@ import Img21 from "../../images/odds.svg";
 import Img19 from "../../images/dice-flush.svg";
 import Img20 from "../../images/farkle.svg";
 import Img22 from "../../images/precision.svg";
+import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -226,8 +227,9 @@ function MainComponent() {
       name: "Dots & Boxes",
       href: "/casino/dots-and-boxes",
       leaderboardKey: "dots-and-boxes",
-      image: Img14,
+      image: ImgDotsBoxes,
       descriptionKey: "games.dots_and_boxes_desc",
+      nameKey: "games.dots_and_boxes_name",
     },
   ];
 

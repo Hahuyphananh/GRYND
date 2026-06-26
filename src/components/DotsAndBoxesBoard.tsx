@@ -31,6 +31,14 @@ interface DotsAndBoxesBoardProps {
   player1Color?: string;
   /** Player 2 (guest) color */
   player2Color?: string;
+  /**
+   * Optional pre-translated tooltip strings for hoverable edges (a11y).
+   * Each receives `{ row, col }` and should return a localized string.
+   * If omitted, a sensible English fallback is used so the board remains
+   * usable in tests, Storybook, or any caller that doesn't pass translations.
+   */
+  edgeTooltipH?: (row: number, col: number) => string;
+  edgeTooltipV?: (row: number, col: number) => string;
 }
 
 // ── Helpers for the custom React.memo comparator ────────────────────
@@ -71,7 +79,9 @@ function propsAreEqual(
     prev.onEdgeVClick !== next.onEdgeVClick ||
     prev.interactive !== next.interactive ||
     prev.player1Color !== next.player1Color ||
-    prev.player2Color !== next.player2Color
+    prev.player2Color !== next.player2Color ||
+    prev.edgeTooltipH !== next.edgeTooltipH ||
+    prev.edgeTooltipV !== next.edgeTooltipV
   ) {
     return false;
   }
@@ -93,6 +103,8 @@ function DotsAndBoxesBoardImpl({
   interactive = false,
   player1Color = "#f59e0b",
   player2Color = "#f97316",
+  edgeTooltipH = (row, col) => `Draw horizontal edge (${row}, ${col})`,
+  edgeTooltipV = (row, col) => `Draw vertical edge (${row}, ${col})`,
 }: DotsAndBoxesBoardProps) {
   const drawnHSet = drawnH ?? EMPTY_SET;
   const drawnVSet = drawnV ?? EMPTY_SET;
@@ -295,9 +307,7 @@ function DotsAndBoxesBoardImpl({
               }}
             >
               {interactive && !drawn && (
-                <title>
-                  Draw horizontal edge ({edge.row}, {edge.col})
-                </title>
+                <title>{edgeTooltipH(edge.row, edge.col)}</title>
               )}
             </rect>
 
@@ -350,9 +360,7 @@ function DotsAndBoxesBoardImpl({
               }}
             >
               {interactive && !drawn && (
-                <title>
-                  Draw vertical edge ({edge.row}, {edge.col})
-                </title>
+                <title>{edgeTooltipV(edge.row, edge.col)}</title>
               )}
             </rect>
 

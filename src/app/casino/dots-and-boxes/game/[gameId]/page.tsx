@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { useSocket } from "../../../../../context/SocketProvider";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
+import { useTranslation } from "../../../../../hooks/useTranslation";
 
 // ─── Module-level empty defaults (shared reference across renders) ─
 // Mutable types so passing into the board component (typed
@@ -23,9 +24,10 @@ export default function DotsAndBoxesGamePage() {
   const { gameId } = useParams<{ gameId: string }>();
   const router = useRouter();
   const { socket } = useSocket();
+  const { t } = useTranslation();
 
   const [game, setGame] = useState<any>(null);
-  const [statusText, setStatusText] = useState("Loading game...");
+  const [statusText, setStatusText] = useState(t("games.dots_and_boxes.loading_game"));
   const [drawing, setDrawing] = useState(false);
   const drawingRef = useRef(false);
   // Visual-only countdown. Source of truth is the server's moveDeadlineAt.
@@ -55,7 +57,7 @@ export default function DotsAndBoxesGamePage() {
         const data = await res.json();
         if (opts?.signal?.aborted) return;
         if (!res.ok) {
-          setStatusText(data.error || "Unable to load game");
+          setStatusText(data.error || t("games.dots_and_boxes.load_failed"));
           return;
         }
         const gameData = data.data;
@@ -68,13 +70,13 @@ export default function DotsAndBoxesGamePage() {
         // the server returns the same deadline + score + edges).
         setGame((prev) => (gameStateUnchanged(prev, gameData) ? prev : gameData));
 
-        setStatusText(computeStatusText(gameData));
+        setStatusText(computeStatusText(gameData, t));
       } catch (err) {
         if (err?.name === "AbortError") return;
         console.error("dots-and-boxes fetch failed", err);
       }
     },
-    [gameId],
+    [gameId, t],
   );
 
   // ─── Polling with adaptive interval + abort ───────────────────────
@@ -280,7 +282,7 @@ export default function DotsAndBoxesGamePage() {
   const cancelGame = useCallback(async () => {
     if (
       !confirm(
-        "Cancel or forfeit this game? Tokens will be refunded or opponent credited.",
+        t("games.dots_and_boxes.cancel_confirm"),
       )
     )
       return;
@@ -306,9 +308,9 @@ export default function DotsAndBoxesGamePage() {
       abortRef.current = ac;
       await fetchState({ signal: ac.signal });
     } else {
-      alert(data.error || "Failed to cancel game");
+      alert(data.error || t("games.dots_and_boxes.cancel_failed_alert"));
     }
-  }, [socket, gameId, fetchState]);
+  }, [socket, gameId, fetchState, t]);
 
   // ─── Render helpers ─────────────────────────────────────────────────
 
@@ -334,14 +336,14 @@ export default function DotsAndBoxesGamePage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
-              Dots &amp; Boxes — Match #{gameId}
+              {t("games.dots_and_boxes.match_title", { gameId })}
             </h1>
           </div>
           <button
             onClick={() => router.push("/casino/dots-and-boxes")}
             className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 hover-lift"
           >
-            Back to Lobby
+            {t("games.dots_and_boxes.back_to_lobby")}
           </button>
         </div>
 
@@ -363,14 +365,14 @@ export default function DotsAndBoxesGamePage() {
                     }`}
                   >
                     {isMyTurn
-                      ? "Your turn — draw an edge!"
+                      ? t("games.dots_and_boxes.your_turn")
                       : timerExpired
-                        ? "Time expired — drawing for opponent…"
-                        : "Opponent is thinking…"}
+                        ? t("games.dots_and_boxes.time_expired")
+                        : t("games.dots_and_boxes.opponent_thinking")}
                   </span>
                   {drawing && (
                     <span className="text-xs text-amber-400 animate-pulse ml-1">
-                      Drawing…
+                      {t("games.dots_and_boxes.drawing_now")}
                     </span>
                   )}
                 </div>
@@ -400,7 +402,7 @@ export default function DotsAndBoxesGamePage() {
                         : "text-white/50"
                   }`}
                 >
-                  {remainingSeconds}s remaining
+                  {t("games.dots_and_boxes.remaining_seconds", { seconds: remainingSeconds })}
                 </span>
               </div>
             )}
@@ -421,6 +423,12 @@ export default function DotsAndBoxesGamePage() {
                 interactive={isMyTurn && !drawing && !boardLocked}
                 onEdgeHClick={drawEdge.bind(null, "h")}
                 onEdgeVClick={drawEdge.bind(null, "v")}
+                edgeTooltipH={(row, col) =>
+                  t("games.dots_and_boxes.edge_tooltip_h", { row, col })
+                }
+                edgeTooltipV={(row, col) =>
+                  t("games.dots_and_boxes.edge_tooltip_v", { row, col })
+                }
               />
             </motion.div>
           </div>
@@ -429,12 +437,12 @@ export default function DotsAndBoxesGamePage() {
           <div className="casino-surface p-4 rounded-2xl border-[#f59e0b]/20">
             <h2 className="text-base font-bold text-amber-300 mb-3 flex items-center gap-2 uppercase tracking-wider">
               <span aria-hidden>📐</span>
-              <span>Match Details</span>
+              <span>{t("games.dots_and_boxes.match_details_title")}</span>
             </h2>
 
             <div className="mb-3 flex items-baseline gap-2">
               <span className="text-[10px] uppercase tracking-wider text-white/50">
-                Status
+                {t("games.dots_and_boxes.status_label")}
               </span>
               <span className="text-sm font-semibold text-white">
                 {statusText}
@@ -443,7 +451,7 @@ export default function DotsAndBoxesGamePage() {
 
             <div className="mb-3 flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-wider text-white/50">
-                Role
+                {t("games.dots_and_boxes.role_label")}
               </span>
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -464,10 +472,10 @@ export default function DotsAndBoxesGamePage() {
                   }`}
                 />
                 {game?.role === "host"
-                  ? "Host"
+                  ? t("games.dots_and_boxes.role_host")
                   : game?.role === "guest"
-                    ? "Guest"
-                    : "—"}
+                    ? t("games.dots_and_boxes.role_guest")
+                    : t("games.dots_and_boxes.role_unknown")}
               </span>
             </div>
 
@@ -475,7 +483,7 @@ export default function DotsAndBoxesGamePage() {
             {game?.status !== "waiting" && (
               <div className="mb-4 p-3 rounded-xl bg-white/5 border border-white/10">
                 <div className="text-[10px] uppercase tracking-wider text-white/50 mb-2 text-center">
-                  Score
+                  {t("games.dots_and_boxes.score_label")}
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <div
@@ -486,13 +494,13 @@ export default function DotsAndBoxesGamePage() {
                     }`}
                   >
                     <span className="text-xs text-amber-300 font-medium">
-                      {game?.hostName || "Host"}
+                      {game?.hostName || t("games.dots_and_boxes.host_default")}
                     </span>
                     <span className="text-3xl font-extrabold text-amber-400 tabular-nums">
                       {scores.host}
                     </span>
                   </div>
-                  <span className="text-white/30 text-sm font-bold">vs</span>
+                  <span className="text-white/30 text-sm font-bold">{t("games.dots_and_boxes.versus")}</span>
                   <div
                     className={`flex flex-col items-center flex-1 rounded-lg px-3 py-2 transition-transform ${
                       currentTurn === "guest"
@@ -501,7 +509,7 @@ export default function DotsAndBoxesGamePage() {
                     }`}
                   >
                     <span className="text-xs text-orange-300 font-medium">
-                      {game?.guestName || "Guest"}
+                      {game?.guestName || t("games.dots_and_boxes.guest_default")}
                     </span>
                     <span className="text-3xl font-extrabold text-orange-400 tabular-nums">
                       {scores.guest}
@@ -512,29 +520,33 @@ export default function DotsAndBoxesGamePage() {
             )}
 
             <div className="mb-2 flex items-center justify-between gap-2 text-xs">
-              <span className="text-white/50">Host</span>
+              <span className="text-white/50">{t("games.dots_and_boxes.host_label")}</span>
               <span className="font-semibold text-white">
                 {game?.hostName || "—"}
               </span>
             </div>
             <div className="mb-2 flex items-center justify-between gap-2 text-xs">
-              <span className="text-white/50">Guest</span>
+              <span className="text-white/50">{t("games.dots_and_boxes.guest_label")}</span>
               <span className="font-semibold text-white">
-                {game?.guestName || "Waiting..."}
+                {game?.guestName || t("games.dots_and_boxes.guest_waiting")}
               </span>
             </div>
             <div className="mb-4 flex items-center justify-between gap-2 text-xs">
-              <span className="text-white/50">Bet</span>
+              <span className="text-white/50">{t("games.dots_and_boxes.bet_field")}</span>
               <span className="font-mono font-semibold text-yellow-300">
-                {Number(game?.betAmount || 0).toFixed(2)} tokens each
+                {t("games.dots_and_boxes.bet_each", {
+                  amount: Number(game?.betAmount || 0).toFixed(2),
+                })}
               </span>
             </div>
 
             {game?.remainingEdges !== undefined && !isFinished && (
               <div className="mb-4 flex items-center justify-between gap-2 text-xs">
-                <span className="text-white/50">Edges Left</span>
+                <span className="text-white/50">{t("games.dots_and_boxes.edges_left")}</span>
                 <span className="font-mono font-semibold text-white">
-                  {game.remainingEdges} / 84
+                  {t("games.dots_and_boxes.edges_left_value", {
+                    remaining: game.remainingEdges,
+                  })}
                 </span>
               </div>
             )}
@@ -543,7 +555,7 @@ export default function DotsAndBoxesGamePage() {
             {isFinished && (
               <div className="mb-4 p-3 rounded-xl bg-white/5 border border-white/10">
                 <div className="text-[10px] uppercase tracking-wider text-white/50 mb-1 text-center">
-                  Result
+                  {t("games.dots_and_boxes.result_label")}
                 </div>
                 <div className="text-center text-sm font-semibold text-white">
                   {statusText}
@@ -552,7 +564,9 @@ export default function DotsAndBoxesGamePage() {
                   game?.payout !== undefined &&
                   Number(game.payout) > 0 && (
                     <div className="text-center text-xs text-yellow-300 mt-1">
-                      Payout: {Number(game.payout).toFixed(2)} tokens
+                      {t("games.dots_and_boxes.payout_label", {
+                        amount: Number(game.payout).toFixed(2),
+                      })}
                     </div>
                   )}
               </div>
@@ -564,7 +578,7 @@ export default function DotsAndBoxesGamePage() {
                 onClick={cancelGame}
                 className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-500 font-bold hover-lift mb-2"
               >
-                Cancel Game (Refund)
+                {t("games.dots_and_boxes.cancel_game_button")}
               </button>
             ) : game?.status === "in_progress" &&
               game?.role &&
@@ -573,7 +587,7 @@ export default function DotsAndBoxesGamePage() {
                 onClick={cancelGame}
                 className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-500 font-bold hover-lift mb-2"
               >
-                Forfeit Match
+                {t("games.dots_and_boxes.forfeit_button")}
               </button>
             ) : null}
 
@@ -585,7 +599,7 @@ export default function DotsAndBoxesGamePage() {
                   : "bg-white/10 hover:bg-white/20"
               }`}
             >
-              {isFinished ? "Return to Lobby" : "Back to Lobby"}
+              {isFinished ? t("games.dots_and_boxes.return_to_lobby") : t("games.dots_and_boxes.back_to_lobby")}
             </button>
           </div>
         </div>
@@ -640,32 +654,32 @@ function gameStateUnchanged(prev: any, next: any): boolean {
   return true;
 }
 
-function computeStatusText(gameData: any): string {
+function computeStatusText(gameData: any, t: (key: string, params?: any) => string): string {
   if (gameData.status === "waiting") {
-    return "Waiting for opponent to join...";
+    return t("games.dots_and_boxes.status_waiting");
   }
   if (gameData.status === "cancelled") {
-    return "Match cancelled.";
+    return t("games.dots_and_boxes.status_cancelled");
   }
   if (gameData.status === "in_progress") {
     const gs = gameData.gameState;
     if (gameData.role === gs?.currentTurn) {
-      return "Your turn — draw an edge!";
+      return t("games.dots_and_boxes.status_your_turn");
     }
     if (gameData.remainingSeconds === 0) {
-      return "Opponent's turn expired — auto-playing...";
+      return t("games.dots_and_boxes.status_opp_timeout");
     }
-    return "Opponent's turn...";
+    return t("games.dots_and_boxes.status_opp_turn");
   }
   if (gameData.status === "finished") {
-    if (gameData.result === "draw") return "Draw game.";
+    if (gameData.result === "draw") return t("games.dots_and_boxes.status_result_draw");
     const won =
       gameData.winnerClerkId &&
       ((gameData.role === "host" &&
         gameData.winnerClerkId === gameData.hostClerkId) ||
         (gameData.role === "guest" &&
           gameData.winnerClerkId === gameData.guestClerkId));
-    return won ? "You won!" : "You lost.";
+    return won ? t("games.dots_and_boxes.status_result_win") : t("games.dots_and_boxes.status_result_loss");
   }
   return "";
 }

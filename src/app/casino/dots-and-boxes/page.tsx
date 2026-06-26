@@ -8,12 +8,14 @@ import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 export default function DotsAndBoxesLobbyPage() {
   const { isSignedIn, user } = useUser();
   const { socket } = useSocket();
   const router = useRouter();
   const posthog = usePostHog();
+  const { t } = useTranslation();
 
   const [betAmount, setBetAmount] = useState(10);
   const [balance, setBalance] = useState(0);
@@ -61,7 +63,7 @@ export default function DotsAndBoxesLobbyPage() {
 
   const createGame = async () => {
     if (betAmount <= 0 || betAmount > balance) {
-      alert("Invalid bet amount");
+      alert(t("games.dots_and_boxes.invalid_bet_alert"));
       return;
     }
 
@@ -75,7 +77,7 @@ export default function DotsAndBoxesLobbyPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || "Unable to create game");
+        alert(data.error || t("games.dots_and_boxes.unable_to_create_alert"));
         return;
       }
 
@@ -107,7 +109,7 @@ export default function DotsAndBoxesLobbyPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        alert(data.error || "Unable to join game");
+        alert(data.error || t("games.dots_and_boxes.unable_to_join_alert"));
         return;
       }
 
@@ -141,12 +143,11 @@ export default function DotsAndBoxesLobbyPage() {
   bg-gradient-to-r from-orange-400 via-amber-400 to-yellow-500
   drop-shadow-[0_0_18px_rgba(251,191,36,0.6)] tracking-wide"
           >
-            DOTS &amp; BOXES
+            {t("games.dots_and_boxes_name")}
           </h1>
         </motion.div>
         <p className="text-center text-sm text-white/60 mb-7 max-w-xl mx-auto">
-          A classic pencil-and-paper strategy game. Take turns drawing lines
-          between dots. Complete a box to score a point and earn another turn.
+          {t("games.dots_and_boxes.lobby_subtitle")}
         </p>
 
         <motion.div
@@ -158,18 +159,18 @@ shadow-[0_0_40px_rgba(245,158,11,0.15)] rounded-2xl p-6 shadow-[0_0_28px_rgba(24
         >
           <div className="text-center mb-4 text-sm">
             <span className="uppercase tracking-wider text-[11px] text-white/50 mr-2">
-              Balance
+              {t("games.dots_and_boxes.balance_label")}
             </span>
             <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500 text-base">
               {balance.toFixed(2)}
             </span>{" "}
-            <span className="text-white/50">tokens</span>
+            <span className="text-white/50">{t("games.dots_and_boxes.tokens_suffix")}</span>
           </div>
 
           <div className="grid md:grid-cols-3 gap-3 items-end">
             <div className="md:col-span-1">
               <label className="text-[11px] uppercase tracking-wider text-white/60">
-                Bet amount
+                {t("games.dots_and_boxes.bet_input_label")}
               </label>
               <input
                 type="number"
@@ -192,7 +193,7 @@ hover:scale-105 active:scale-95
 transition-all duration-150
 shadow-[0_0_18px_rgba(251,191,36,0.6)] disabled:opacity-50 disabled:hover:scale-100"
             >
-              {loading ? "Creating..." : "Create Game"}
+              {loading ? t("games.dots_and_boxes.creating") : t("games.dots_and_boxes.create_button")}
             </button>
             <button
               onClick={() => joinGame()}
@@ -203,13 +204,12 @@ hover:scale-105 active:scale-95
 transition-all duration-150
 shadow-[0_0_18px_rgba(251,191,36,0.6)] disabled:opacity-50 disabled:hover:scale-100"
             >
-              {loading ? "Joining..." : "Quick Join"}
+              {loading ? t("games.dots_and_boxes.joining") : t("games.dots_and_boxes.quick_join_button")}
             </button>
           </div>
 
           <p className="mt-4 text-center text-xs text-white/40">
-            Gameplay is currently in development — join a match to reserve your
-            seat!
+            {t("games.dots_and_boxes.lobby_tagline")}
           </p>
         </motion.div>
 
@@ -217,18 +217,18 @@ shadow-[0_0_18px_rgba(251,191,36,0.6)] disabled:opacity-50 disabled:hover:scale-
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-[#FFD700] flex items-center gap-2 uppercase tracking-wider">
               <span aria-hidden>📐</span>
-              <span>Open Challenges</span>
+              <span>{t("games.dots_and_boxes.open_challenges_title")}</span>
             </h2>
             <button
               onClick={fetchGames}
               className="px-3 py-1.5 rounded-lg bg-[#f59e0b] text-[#001933] hover:bg-[#fbbf24] text-xs font-semibold shadow-[0_0_10px_rgba(245,158,11,0.35)] transition-colors"
             >
-              Refresh
+              {t("games.dots_and_boxes.refresh_button")}
             </button>
           </div>
 
           {availableGames.length === 0 ? (
-            <p className="text-sm text-white/60">No open games right now.</p>
+            <p className="text-sm text-white/60">{t("games.dots_and_boxes.no_open_games")}</p>
           ) : (
             <div className="space-y-2.5">
               {availableGames.map((game) => (
@@ -237,9 +237,11 @@ shadow-[0_0_18px_rgba(251,191,36,0.6)] disabled:opacity-50 disabled:hover:scale-
                   className="flex items-center justify-between rounded-xl bg-[#08142f]/80 p-3 border border-[#f59e0b]/20 hover:border-[#f59e0b]/40 transition-colors"
                 >
                   <div>
-                    <p className="text-sm font-semibold">Game #{game.id}</p>
+                    <p className="text-sm font-semibold">
+                      {t("games.dots_and_boxes.game_row_label", { gameId: game.id })}
+                    </p>
                     <p className="text-xs text-white/60">
-                      Host: {game.hostName || "Player"} · Bet:{" "}
+                      {t("games.dots_and_boxes.host_field")}: {game.hostName || t("games.dots_and_boxes.host_fallback")} · {t("games.dots_and_boxes.bet_field")}:{" "}
                       <span className="text-yellow-300">
                         {Number(game.betAmount).toFixed(2)}
                       </span>
@@ -250,7 +252,7 @@ shadow-[0_0_18px_rgba(251,191,36,0.6)] disabled:opacity-50 disabled:hover:scale-
                     disabled={loading || joiningId === game.id}
                     className="px-4 py-1.5 rounded-lg bg-[#f59e0b] text-[#001933] hover:bg-[#fbbf24] text-sm font-bold disabled:bg-[#7c5a16] disabled:text-white/60 transition-colors"
                   >
-                    {joiningId === game.id ? "Joining..." : "Join"}
+                    {joiningId === game.id ? t("games.dots_and_boxes.joining") : t("games.dots_and_boxes.join_button")}
                   </button>
                 </div>
               ))}
