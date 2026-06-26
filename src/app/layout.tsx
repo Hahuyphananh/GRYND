@@ -12,12 +12,27 @@ export const metadata = {
   title: "GoonBet, skill-based betting platform",
   description:
     "Skilled Based gambling platform for esports and sports betting. Bet on your skills and win big with GoonBet.",
+  // Explicit icon metadata so the browser tab uses our smalllogo.
+  // (Next.js also auto-generates a <link rel="icon"> from
+  // src/app/icon.png, but listing it here keeps the intent obvious
+  // for future maintainers and covers browsers that respect the
+  // metadata.icons field before scanning convention paths.)
+  icons: {
+    icon: [
+      { url: "/icon.png", type: "image/png" },
+      { url: "/images/smalllogo.png", type: "image/png" },
+    ],
+    apple: "/icon-192.png",
+  },
 };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <link rel="manifest" href="/manifest.json" />
+        <link rel="icon" type="image/png" href="/icon.png" />
+        <link rel="icon" type="image/png" href="/images/smalllogo.png" />
+        <link rel="apple-touch-icon" type="image/png" href="/icon-192.png" />
         <meta name="theme-color" content="#000000" />
       </head>
 
