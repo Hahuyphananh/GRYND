@@ -5,7 +5,6 @@ import { db } from "../../../../db/client";
 import { dotsAndBoxesGames, users } from "../../../../db/schema";
 import {
   createInitialState,
-  isGameOver,
   remainingEdges,
 } from "../../../../lib/dotsAndBoxesEngine";
 
@@ -73,7 +72,6 @@ export async function GET(req) {
         role,
         hostName: hostName || "Host",
         guestName: guestName || "Guest",
-        isGameOver: isGameOver(gameState),
         remainingEdges: remainingEdges(gameState),
       },
     });
