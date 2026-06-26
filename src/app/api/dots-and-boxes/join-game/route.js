@@ -70,6 +70,7 @@ export async function POST(req) {
           guestClerkId: userId,
           status: "in_progress",
           startedAt: new Date(),
+          moveDeadlineAt: new Date(Date.now() + 10 * 1000),
         })
         .where(
           and(
