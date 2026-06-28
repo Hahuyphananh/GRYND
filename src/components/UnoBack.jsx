@@ -1,4 +1,7 @@
+"use client";
+
 import Image from "next/image";
+import smallLogo from "../images/smalllogo.png";
 
 export default function UnoBack() {
   return (
@@ -61,7 +64,7 @@ export default function UnoBack() {
 
           {/* 🧠 Logo */}
           <Image
-            src={require("../images/smalllogo.png")}
+            src={smallLogo}
             alt="GoonBet logo"
             width={90}
             height={90}
