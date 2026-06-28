@@ -157,11 +157,28 @@ export async function GET() {
           ),
         ),
       // 🃏 Poker (multiplayer, jsonb players array)
+      // Guard against legacy rows where `players` is null or a non-array
+      // jsonb value; jsonb_array_elements on a non-array would throw
+      // "cannot extract elements from a scalar/object" and 500 the route.
+      // Also: the older `@>` form relied on exact key containment, which
+      // never matched because every stored player object has a `seat`
+      // key in addition to `clerkId` — so it silently never returned any
+      // rows even when the user had played poker.
       db
         .select()
         .from(pokerGames)
         .where(
-          sql`${pokerGames.players} @> ${JSON.stringify([{ clerkId }])}::jsonb`,
+          sql`exists (
+            select 1
+            from jsonb_array_elements(
+              case
+                when jsonb_typeof(${pokerGames.players}) = 'array'
+                  then ${pokerGames.players}
+                else '[]'::jsonb
+              end
+            ) elem
+            where elem->>'clerkId' = ${clerkId}
+          )`,
         ),
       // 🎲 Farkle (join players → rooms)
       db
