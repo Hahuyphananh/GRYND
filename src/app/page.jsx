@@ -9,7 +9,7 @@ import AnimatedBgSvgs from "../components/AnimatedBgSvgs";
 import InteractiveCasinoBg from "../components/InteractiveCasinoBg";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
-import Img1 from "../images/roulette.jpg";
+import Img1 from "../images/roulette.png";
 import Img2 from "../images/blackjack.jpg";
 import Img3 from "../images/poker.jpg";
 import Img4 from "../images/plinko.jpg";
