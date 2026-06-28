@@ -193,6 +193,26 @@ function NavigationBar({ currentPath }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Close language dropdown on Escape — per accessibility policy promise
+  useEffect(() => {
+    if (!langOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") closeLang();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [langOpen, closeLang]);
+
+  // Close mobile menu on Escape — per accessibility policy promise
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") setMobileMenuOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mobileMenuOpen]);
+
   useEffect(() => {
     const interval = setInterval(
       async () => {
@@ -260,7 +280,7 @@ function NavigationBar({ currentPath }) {
                 >
                   <Link
                     href={path}
-                    className={`px-3 py-2 text-sm font-medium ${currentPath === path || (path === "/casino" && isCasinoPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                    className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path || (path === "/casino" && isCasinoPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                   >
                     {t(NAV_TRANSLATION_KEYS[path])}
                   </Link>
@@ -275,7 +295,7 @@ function NavigationBar({ currentPath }) {
               >
                 <Link
                   href="/contact"
-                  className={`px-3 py-2 text-sm font-medium ${currentPath === "/contact" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/contact" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                 >
                   ✉️ Contact
                 </Link>
@@ -290,7 +310,7 @@ function NavigationBar({ currentPath }) {
                 >
                   <Link
                     href="/admin"
-                    className={`px-3 py-2 text-sm font-medium ${currentPath === "/admin" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#ff8c42] hover:text-[#ffb347]"}`}
+                    className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff8c42] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/admin" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#ff8c42] hover:text-[#ffb347]"}`}
                   >
                     ⚙️ Admin
                   </Link>
@@ -308,35 +328,51 @@ function NavigationBar({ currentPath }) {
                 </button>
               )}
               <div className="relative">
-                <div
+                <button
                   onClick={() => (langOpen ? closeLang() : setLangOpen(true))}
-                  className="cursor-pointer rounded-lg border border-[#00e5ff]/50 bg-[#091737] px-2 py-1 text-xs text-[#c9f7ff] focus:outline-none sm:text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      langOpen ? closeLang() : setLangOpen(true);
+                    }
+                  }}
+                  aria-expanded={langOpen}
+                  aria-label={`Select language, currently ${language === "en" ? "English" : language === "fr" ? "French" : "Spanish"}`}
+                  className="cursor-pointer rounded-lg border border-[#00e5ff]/50 bg-[#091737] px-2 py-1 text-xs text-[#c9f7ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] sm:text-sm"
                 >
                   {language === "en" && "EN 🇺🇸 🌐"}
                   {language === "fr" && "FR 🇫🇷 🌐"}
                   {language === "es" && "ES 🇪🇸 🌐"}
-                </div>
+                </button>
 
                 {(langOpen || langClosing) && (
                   <div
                     className={`absolute right-0 mt-2 w-full ${langOpen ? "animate-parchment" : "animate-parchment-close"}`}
                   >
-                    <div className="overflow-hidden rounded-lg border border-[#00e5ff]/50 bg-[#091737] shadow-lg">
+                    <div role="menu" className="overflow-hidden rounded-lg border border-[#00e5ff]/50 bg-[#091737] shadow-lg">
                       {[
                         { value: "en", label: "EN 🇺🇸 🌐" },
                         { value: "fr", label: "FR 🇫🇷 🌐" },
                         { value: "es", label: "ES 🇪🇸 🌐" },
                       ].map((lang) => (
-                        <div
+                        <button
                           key={lang.value}
                           onClick={() => {
                             setLanguage(lang.value);
                             closeLang();
                           }}
-                          className="cursor-pointer px-2 py-1 text-sm text-[#c9f7ff] hover:bg-[#00e5ff]/20"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setLanguage(lang.value);
+                              closeLang();
+                            }
+                          }}
+                          role="menuitem"
+                          className="w-full text-left cursor-pointer px-2 py-1 text-sm text-[#c9f7ff] hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:bg-[#00e5ff]/20"
                         >
                           {lang.label}
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -450,7 +486,7 @@ function NavigationBar({ currentPath }) {
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-3"
                 >
-                  <img src={avatarSrc} className="h-10 w-10 rounded-full" />
+                  <img src={avatarSrc} className="h-10 w-10 rounded-full" alt="User avatar" />
                   <div>
                     <div className="text-[#c9f7ff] text-sm flex items-center gap-1.5">{profile?.name || "User"}{isAdmin && <AdminBadge />}</div>
                     <div className="text-xs text-[#f5ff3b]">{profile?.selectedTitle}</div>

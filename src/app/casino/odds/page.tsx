@@ -422,7 +422,9 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 
           {/* Number input + Pick button */}
           <div className="flex items-center gap-3">
+            <label htmlFor="odds-ai-pick" className="sr-only">Pick a number 1–{range}</label>
             <input
+              id="odds-ai-pick"
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
@@ -1103,10 +1105,11 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       {/* LOBBY: no game yet */}
       {!resuming && !gameId && !interactiveState && (
         <>
-          <label className="block mb-1 text-sm font-semibold">
+          <label className="block mb-1 text-sm font-semibold" htmlFor="odds-pvp-wager">
             Wager Amount
           </label>
           <input
+            id="odds-pvp-wager"
             type="number"
             className="w-full bg-[#08142f] border border-yellow-400/30 p-2 rounded mb-4 text-white"
             value={wager}
@@ -1227,7 +1230,9 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
           )}
 
           <div className="flex items-center gap-3">
+            <label htmlFor="odds-pvp-pick" className="sr-only">Pick a number 1–{range}</label>
             <input
+              id="odds-pvp-pick"
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"

@@ -1336,7 +1336,9 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
           </div>
 
           <div className="flex flex-col md:flex-row gap-3">
+            <label htmlFor="profil-redeem-code" className="sr-only">Enter referral code</label>
             <input
+              id="profil-redeem-code"
               value={referralCodeInput}
               onChange={(e) => setReferralCodeInput(e.target.value)}
               placeholder="Enter referral code"
@@ -1363,7 +1365,9 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
         >
           <h2 className="text-xl text-[#00e5ff] mb-4">Add Friends</h2>
           <div className="flex gap-2 mb-4">
+            <label htmlFor="profil-friend-search" className="sr-only">Search users by name</label>
             <input
+              id="profil-friend-search"
               value={friendSearch}
               onChange={(e) => setFriendSearch(e.target.value)}
               placeholder="Type letters to search users (like Ctrl+F)"
@@ -1794,8 +1798,9 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
             removed forever.
           </p>
 
-          <label className="text-sm text-red-200">Confirm password</label>
+          <label className="text-sm text-red-200" htmlFor="profil-delete-password">Confirm password</label>
           <input
+            id="profil-delete-password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -1834,7 +1839,9 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6"
               Edit Profile
             </h3>
             <div className="space-y-3">
+              <label htmlFor="profil-edit-name" className="sr-only">Name</label>
               <input
+                id="profil-edit-name"
                 value={editForm.name}
                 onChange={(e) =>
                   setEditForm((prev) => ({ ...prev, name: e.target.value }))
@@ -1843,7 +1850,9 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6"
                 className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
+              <label htmlFor="profil-edit-email" className="sr-only">Email</label>
               <input
+                id="profil-edit-email"
                 value={editForm.email}
                 onChange={(e) =>
                   setEditForm((prev) => ({ ...prev, email: e.target.value }))
@@ -1853,10 +1862,11 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
               <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
-                <label className="block mb-2 text-sm text-gray-200">
+                <label className="block mb-2 text-sm text-gray-200" htmlFor="profil-edit-picture">
                   Profile picture
                 </label>
                 <input
+                  id="profil-edit-picture"
                   type="file"
                   accept="image/*"
                   onChange={handleProfileImageFileChange}
@@ -1890,7 +1900,9 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   </div>
                 )}
               </div>
+              <label htmlFor="profil-edit-password" className="sr-only">New password (optional)</label>
               <input
+                id="profil-edit-password"
                 type="password"
                 value={editForm.password}
                 onChange={(e) =>

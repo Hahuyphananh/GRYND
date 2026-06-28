@@ -488,12 +488,14 @@ bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-center mt-16 sm:mt-20 leading-
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <label
+            htmlFor="rps-bet-amount"
             className="text-lg text-[#00e5ff] font-semibold 
               drop-shadow-[0_0_10px_rgba(0,229,255,0.8)] text-center md:text-left"
           >
             Bet:
           </label>
           <input
+            id="rps-bet-amount"
             type="number"
             min={1}
             max={tokens}
@@ -525,8 +527,9 @@ rounded-xl px-3 py-2 text-white outline-none text-center w-24"
               className="mt-4 bg-[#020617]/80 backdrop-blur-xl border border-[#00e5ff]/40 
 rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border border-[#00e5ff]/40 shadow-[0_0_16px_rgba(0,229,255,0.14)]"
             >
-              <label className="flex items-center gap-2 font-semibold mb-2">
+              <label className="flex items-center gap-2 font-semibold mb-2" htmlFor="rps-autobet-checkbox">
                 <input
+                  id="rps-autobet-checkbox"
                   type="checkbox"
                   checked={autoBet.enabled}
                   onChange={(e) => {
@@ -548,7 +551,9 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
 
               {autoBet.enabled && (
                 <>
+                  <label htmlFor="rps-autobet-mode" className="sr-only">Auto bet mode</label>
                   <select
+                    id="rps-autobet-mode"
                     value={autoBet.mode}
                     onChange={(e) =>
                       setAutoBet((prev) => ({
@@ -563,18 +568,22 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
                   </select>
 
                   {autoBet.mode === "finite" && (
-                    <input
-                      type="number"
-                      min={1}
-                      value={autoBet.spinsLeft}
-                      onChange={(e) =>
-                        setAutoBet((prev) => ({
-                          ...prev,
-                          spinsLeft: Number(e.target.value),
-                        }))
-                      }
-                      className="w-full mt-2 rounded border border-[#00e5ff]/40 bg-[#102542] px-2 py-1 text-center text-white"
-                    />
+                    <>
+                      <label htmlFor="rps-autobet-spins" className="sr-only">Number of spins</label>
+                      <input
+                        id="rps-autobet-spins"
+                        type="number"
+                        min={1}
+                        value={autoBet.spinsLeft}
+                        onChange={(e) =>
+                          setAutoBet((prev) => ({
+                            ...prev,
+                            spinsLeft: Number(e.target.value),
+                          }))
+                        }
+                        className="w-full mt-2 rounded border border-[#00e5ff]/40 bg-[#102542] px-2 py-1 text-center text-white"
+                      />
+                    </>
                   )}
 
                   <button

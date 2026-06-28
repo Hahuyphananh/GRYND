@@ -414,7 +414,9 @@ function MainComponent() {
               />
             </svg>
 
+            <label htmlFor="game-search" className="sr-only">{t("home.search_placeholder")}</label>
             <input
+              id="game-search"
               type="text"
               placeholder={t("home.search_placeholder")}
               value={search}
