@@ -20,7 +20,7 @@ export default function UnoGamePage() {
 
   const [game, setGame] = useState(null);
   const [gameMode, setGameMode] = useState("ai");
-  const [lobbyMode, setLobbyMode] = useState<"ai" | "online">("ai");
+  const [lobbyMode, setLobbyMode] = useState("ai");
   const [playerHand, setPlayerHand] = useState([]);
   const [aiHandCount, setAiHandCount] = useState(0);
   const [topCard, setTopCard] = useState(null);
