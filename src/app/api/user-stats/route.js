@@ -167,11 +167,24 @@ export async function GET() {
           ),
         ),
       // 🃏 Poker (multiplayer, jsonb players array)
+      // Guard against legacy rows where `players` is null or a non-array
+      // jsonb value; jsonb_array_elements on a non-array would throw
+      // "cannot extract elements from a scalar/object" and 500 the route.
       db
         .select()
         .from(pokerGames)
         .where(
-          drizzleSql`exists (select 1 from jsonb_array_elements(${pokerGames.players}) elem where elem->>'clerkId' = ${clerkId})`,
+          drizzleSql`exists (
+            select 1
+            from jsonb_array_elements(
+              case
+                when jsonb_typeof(${pokerGames.players}) = 'array'
+                  then ${pokerGames.players}
+                else '[]'::jsonb
+              end
+            ) elem
+            where elem->>'clerkId' = ${clerkId}
+          )`,
         ),
       // 🎲 Farkle (join players → rooms)
       db
