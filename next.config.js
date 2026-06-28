@@ -19,6 +19,19 @@ const nextConfig = {
       process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   },
 
+  async rewrites() {
+    // Proxy PostHog ingestion through the app domain to prevent ad-blockers
+    // from blocking analytics requests. The /ingest path must match the
+    // api_host set in PostHogProvider.tsx.
+    const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://app.posthog.com";
+    return [
+      {
+        source: "/ingest/:path*",
+        destination: `${posthogHost}/:path*`,
+      },
+    ];
+  },
+
   async redirects() {
     return [
       {

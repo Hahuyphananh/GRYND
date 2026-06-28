@@ -36,7 +36,6 @@ import {
 } from "../../../db/schema";
 
 export async function GET() {
-  const sql = getNeonSql();
   const { userId } = await auth();
 
   if (!userId) {
@@ -50,6 +49,9 @@ export async function GET() {
   }
 
   try {
+    // ✅ Get DB connections inside try so failures don't 500 outside the catch
+    const sql = getNeonSql();
+
     // ✅ Get DB user
     const dbUser = await db.query.users.findFirst({
       where: eq(users.clerkId, userId),
@@ -71,7 +73,16 @@ export async function GET() {
     // Cache the heavy stat computation. Side-effect writes happen only on miss.
     const stats = await cacheOrFetch(cacheKey, CacheTTL.userStats, async () => {
 
-    // ✅ Fetch all bets
+    // ✅ Fetch all bets – each query wrapped so one failure doesn't tank the request
+    const safeQuery = async (label, fn) => {
+      try {
+        return await fn();
+      } catch (err) {
+        console.error(`[user-stats] Query failed for ${label}:`, err);
+        return [];
+      }
+    };
+
     const [
       roulette,
       blackjack,
@@ -95,111 +106,129 @@ export async function GET() {
       diceFlushRows,
       clickerRows,
     ] = await Promise.all([
-      db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)),
-      db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid)),
-      db.select().from(minesGames).where(eq(minesGames.userId, uid)),
-      db.select().from(plinkoGames).where(eq(plinkoGames.userId, userId)),
-      db.select().from(crashGames).where(eq(crashGames.userId, uid)),
-      db.select().from(rpsGames).where(eq(rpsGames.userId, clerkId)),
-      db.select().from(unoGames).where(eq(unoGames.userId, uid)),
-      db
-        .select()
-        .from(chessGames)
-        .where(
-          or(
-            eq(chessGames.playerWhiteId, clerkId),
-            eq(chessGames.playerBlackId, clerkId),
-          ),
-        ),
-      db.select().from(sportsBets).where(eq(sportsBets.userId, uid)),
-      db.select().from(slotGames).where(eq(slotGames.userId, userId)),
-      db
-        .select()
-        .from(coinFlipGames)
-        .where(
-          or(
-            eq(coinFlipGames.player1Id, clerkId),
-            eq(coinFlipGames.player2Id, clerkId),
-          ),
-        ),
-      db.select().from(keno_games).where(eq(keno_games.user_id, uid)),
-      db
-        .select()
-        .from(diceMatches)
-        .where(
-          or(
-            eq(diceMatches.player1Id, clerkId),
-            eq(diceMatches.player2Id, clerkId),
-          ),
-        ),
-      db
-        .select()
-        .from(connectFourGames)
-        .where(
-          or(
-            eq(connectFourGames.hostClerkId, clerkId),
-            eq(connectFourGames.guestClerkId, clerkId),
-          ),
-        ),
-      // 🏃 Lane Runner (solo, integer userId)
-      db.select().from(laneRunnerGames).where(eq(laneRunnerGames.userId, uid)),
-      // ⬡ Hex Duel (PvP + AI, clerkId-based, skip fun mode)
-      db
-        .select()
-        .from(hexDuelGames)
-        .where(
-          and(
+      safeQuery("roulette", () => db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid))),
+      safeQuery("blackjack", () => db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid))),
+      safeQuery("mines", () => db.select().from(minesGames).where(eq(minesGames.userId, uid))),
+      safeQuery("plinko", () => db.select().from(plinkoGames).where(eq(plinkoGames.userId, userId))),
+      safeQuery("crash", () => db.select().from(crashGames).where(eq(crashGames.userId, uid))),
+      safeQuery("rps", () => db.select().from(rpsGames).where(eq(rpsGames.userId, clerkId))),
+      safeQuery("uno", () => db.select().from(unoGames).where(eq(unoGames.userId, uid))),
+      safeQuery("chess", () =>
+        db
+          .select()
+          .from(chessGames)
+          .where(
             or(
-              eq(hexDuelGames.player1Id, clerkId),
-              eq(hexDuelGames.player2Id, clerkId),
+              eq(chessGames.playerWhiteId, clerkId),
+              eq(chessGames.playerBlackId, clerkId),
             ),
-            eq(hexDuelGames.isFunMode, false),
           ),
-        ),
+      ),
+      safeQuery("sports", () => db.select().from(sportsBets).where(eq(sportsBets.userId, uid))),
+      safeQuery("slots", () => db.select().from(slotGames).where(eq(slotGames.userId, userId))),
+      safeQuery("coinflip", () =>
+        db
+          .select()
+          .from(coinFlipGames)
+          .where(
+            or(
+              eq(coinFlipGames.player1Id, clerkId),
+              eq(coinFlipGames.player2Id, clerkId),
+            ),
+          ),
+      ),
+      safeQuery("keno", () => db.select().from(keno_games).where(eq(keno_games.user_id, uid))),
+      safeQuery("dice", () =>
+        db
+          .select()
+          .from(diceMatches)
+          .where(
+            or(
+              eq(diceMatches.player1Id, clerkId),
+              eq(diceMatches.player2Id, clerkId),
+            ),
+          ),
+      ),
+      safeQuery("connect-four", () =>
+        db
+          .select()
+          .from(connectFourGames)
+          .where(
+            or(
+              eq(connectFourGames.hostClerkId, clerkId),
+              eq(connectFourGames.guestClerkId, clerkId),
+            ),
+          ),
+      ),
+      // 🏃 Lane Runner (solo, integer userId)
+      safeQuery("lane-runner", () => db.select().from(laneRunnerGames).where(eq(laneRunnerGames.userId, uid))),
+      // ⬡ Hex Duel (PvP + AI, clerkId-based, skip fun mode)
+      safeQuery("hex-duel", () =>
+        db
+          .select()
+          .from(hexDuelGames)
+          .where(
+            and(
+              or(
+                eq(hexDuelGames.player1Id, clerkId),
+                eq(hexDuelGames.player2Id, clerkId),
+              ),
+              eq(hexDuelGames.isFunMode, false),
+            ),
+          ),
+      ),
       // 🎯 Odds (PvP + AI, clerkId-based)
-      db
-        .select()
-        .from(oddsGames)
-        .where(
-          or(
-            eq(oddsGames.player1Id, clerkId),
-            eq(oddsGames.player2Id, clerkId),
+      safeQuery("odds", () =>
+        db
+          .select()
+          .from(oddsGames)
+          .where(
+            or(
+              eq(oddsGames.player1Id, clerkId),
+              eq(oddsGames.player2Id, clerkId),
+            ),
           ),
-        ),
+      ),
       // 🃏 Poker (multiplayer, jsonb players array)
       // Guard against legacy rows where `players` is null or a non-array
       // jsonb value; jsonb_array_elements on a non-array would throw
       // "cannot extract elements from a scalar/object" and 500 the route.
-      db
-        .select()
-        .from(pokerGames)
-        .where(
-          drizzleSql`exists (
-            select 1
-            from jsonb_array_elements(
-              case
-                when jsonb_typeof(${pokerGames.players}) = 'array'
-                  then ${pokerGames.players}
-                else '[]'::jsonb
-              end
-            ) elem
-            where elem->>'clerkId' = ${clerkId}
-          )`,
-        ),
+      safeQuery("poker", () =>
+        db
+          .select()
+          .from(pokerGames)
+          .where(
+            drizzleSql`exists (
+              select 1
+              from jsonb_array_elements(
+                case
+                  when jsonb_typeof(${pokerGames.players}) = 'array'
+                    then ${pokerGames.players}
+                  else '[]'::jsonb
+                end
+              ) elem
+              where elem->>'clerkId' = ${clerkId}
+            )`,
+          ),
+      ),
       // 🎲 Farkle (join players → rooms)
-      db
-        .select()
-        .from(farklePlayers)
-        .innerJoin(farkleRooms, eq(farklePlayers.roomId, farkleRooms.id))
-        .where(eq(farklePlayers.userId, clerkId)),
+      safeQuery("farkle", () =>
+        db
+          .select()
+          .from(farklePlayers)
+          .innerJoin(farkleRooms, eq(farklePlayers.roomId, farkleRooms.id))
+          .where(eq(farklePlayers.userId, clerkId)),
+      ),
       // 🎲 Dice Flush (join players → rooms)
-      db
-        .select()
-        .from(diceFlushPlayers)
-        .innerJoin(diceFlushRooms, eq(diceFlushPlayers.roomId, diceFlushRooms.id))
-        .where(eq(diceFlushPlayers.userId, clerkId)),
+      safeQuery("dice-flush", () =>
+        db
+          .select()
+          .from(diceFlushPlayers)
+          .innerJoin(diceFlushRooms, eq(diceFlushPlayers.roomId, diceFlushRooms.id))
+          .where(eq(diceFlushPlayers.userId, clerkId)),
+      ),
       // 🖱️ GoonBet Clicker (solo, clerkId-based)
-      db.select().from(clickerGames).where(eq(clickerGames.userId, clerkId)),
+      safeQuery("clicker", () => db.select().from(clickerGames).where(eq(clickerGames.userId, clerkId))),
     ]);
 
     // ✅ SIMPLE formatter (light version)
@@ -440,12 +469,22 @@ export async function GET() {
     // incrementally by applyLeaderboardCounters in leaderboardCounters.js and must NOT be
     // overwritten here — doing so would corrupt all-time values relative to weekly counters
     // and cause weekly > all-time. The stats computed above are for read-only display only.
-    await sql`
-      INSERT INTO user_stats (user_id, favorite_game)
-      VALUES (${uid}, ${favoriteGame})
-      ON CONFLICT (user_id)
-      DO UPDATE SET favorite_game = EXCLUDED.favorite_game;
-    `;      // ✅ Get user meta (level, referrals)
+    //
+    // Write operations are fire-and-forget — they must not fail the request.
+    try {
+      await sql`
+        INSERT INTO user_stats (user_id, favorite_game)
+        VALUES (${uid}, ${favoriteGame})
+        ON CONFLICT (user_id)
+        DO UPDATE SET favorite_game = EXCLUDED.favorite_game;
+      `;
+    } catch (writeErr) {
+      console.error("[user-stats] Failed to update user_stats:", writeErr);
+    }
+
+    // ✅ Get user meta (level, referrals)
+    let row = null;
+    try {
       const rows = await sql`
         SELECT
           referral_code,
@@ -457,21 +496,27 @@ export async function GET() {
         WHERE clerk_id = ${userId}
         LIMIT 1
       `;
-
-      const row = rows[0];
+      row = rows[0];
+    } catch (selectErr) {
+      console.error("[user-stats] Failed to fetch user meta:", selectErr);
+    }
 
       const computedLevel = getUserLevel(totalWagered);
       const progress = getLevelProgress(totalWagered);
       const computedHighestTitle = getHighestTitle(computedLevel)?.title || null;
 
-      // Only update level / highest_title here. total_wagered is maintained
-      // incrementally by applyLeaderboardCounters and must NOT be overwritten.
+    // Only update level / highest_title here. total_wagered is maintained
+    // incrementally by applyLeaderboardCounters and must NOT be overwritten.
+    try {
       await sql`
         UPDATE users
         SET level = ${computedLevel},
             highest_title = COALESCE(${computedHighestTitle}, highest_title)
         WHERE clerk_id = ${userId}
       `;
+    } catch (updateErr) {
+      console.error("[user-stats] Failed to update user level:", updateErr);
+    }
 
       const statsResult = {
         totalBets,

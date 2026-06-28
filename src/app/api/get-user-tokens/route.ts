@@ -87,7 +87,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("❌ Error in /api/get-user-tokens:", error);
     return NextResponse.json(
-      { success: true, data: { balance: 0 } },
+      { success: false, error: "Failed to fetch user tokens", data: { balance: 0 } },
       { status: 200 },
     );
   }
