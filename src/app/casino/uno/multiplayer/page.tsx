@@ -860,7 +860,9 @@ export default function UnoMultiplayerPage() {
           {!unoMultiTableCode ? (
             <>
               <div className="grid md:grid-cols-2 gap-3">
+                <label htmlFor="uno-multi-table-name" className="sr-only">Table name</label>
                 <input
+                  id="uno-multi-table-name"
                   value={unoMultiSettings.gameName}
                   onChange={(e) =>
                     setUnoMultiSettings((s) => ({
@@ -884,7 +886,9 @@ export default function UnoMultiplayerPage() {
                   <option value="private">Private</option>
                   <option value="public">Public</option>
                 </select>
+                <label htmlFor="uno-multi-bet-amount" className="sr-only">Bet amount</label>
                 <input
+                  id="uno-multi-bet-amount"
                   type="number"
                   min={1}
                   max={1000}
@@ -922,7 +926,9 @@ export default function UnoMultiplayerPage() {
               </button>
 
               <div className="mt-3 flex gap-2">
+                <label htmlFor="uno-multi-invite-code" className="sr-only">Invite code</label>
                 <input
+                  id="uno-multi-invite-code"
                   value={unoMultiJoinCode}
                   onChange={(e) => setUnoMultiJoinCode(e.target.value.toUpperCase())}
                   className="flex-1 bg-[#001933] border border-[#00e5ff]/35 rounded px-3 py-2"

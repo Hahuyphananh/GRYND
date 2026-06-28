@@ -620,7 +620,8 @@ export default function DiceFlushPage() {
         </div>
         {mode === "pvp" ? (
           <div className="flex flex-wrap gap-2">
-            <input type="number" value={wager} onChange={(e) => setWager(Number(e.target.value || 0))} className="rounded-lg bg-[#08142f] border border-[#00e5ff]/30 px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#00e5ff]" placeholder="Wager" />
+            <label htmlFor="dice-flush-wager" className="sr-only">Wager amount</label>
+            <input id="dice-flush-wager" type="number" value={wager} onChange={(e) => setWager(Number(e.target.value || 0))} className="rounded-lg bg-[#08142f] border border-[#00e5ff]/30 px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#00e5ff]" placeholder="Wager" />
             <button onClick={createGame} className="rounded-lg bg-[#00e5ff] px-4 py-2 font-bold text-black hover:bg-[#00e5ff]/80 transition">Create PvP</button>
             <button onClick={fetchGames} className="rounded-lg bg-[#a855f7] px-4 py-2 font-bold text-white hover:bg-[#a855f7]/80 transition">Refresh</button>
           </div>

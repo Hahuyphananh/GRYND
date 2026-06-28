@@ -744,9 +744,10 @@ export default function AdminDashboardClient({
               </button>
             </div>
             <div className="flex gap-3">
+              <label htmlFor="admin-user-search" className="sr-only">Search users</label>
               <input
+                id="admin-user-search"
                 type="text"
-                placeholder="Search by name, email, or Clerk ID..."
                 value={userSearch}
                 onChange={(e) => setUserSearch(e.target.value)}
                 onKeyDown={(e) => {
@@ -860,9 +861,10 @@ export default function AdminDashboardClient({
                   </button>
                 </div>
                 <div className="flex gap-3">
+                  <label htmlFor="admin-token-reset-amount" className="sr-only">New token balance</label>
                   <input
+                    id="admin-token-reset-amount"
                     type="number"
-                    placeholder="New token balance..."
                     value={tokenResetAmount}
                     onChange={(e) => setTokenResetAmount(e.target.value)}
                     onKeyDown={(e) => {
