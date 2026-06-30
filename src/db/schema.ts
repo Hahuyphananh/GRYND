@@ -1250,6 +1250,199 @@ export const clickerGames = pgTable(
   }),
 );
 
+// ROULETTE PvP MATCHES — server-authoritative two-player roulette
+// Match flow:
+//   waiting → ready → round_1 → round_2 → round_3 → sudden_death → finished
+//
+// Win rule per round (single shared spin):
+//   Both players start the match with `starting_points` (default 100).
+//   Points PERSIST across rounds: each round's net = (payout − total_bet)
+//   is debited/credited directly from/to the player's match balance.
+//   Players may only bet up to their current match balance, never reset
+//   to `starting_points` between rounds. The same spin result is used
+//   for both players' bets. The player with the higher net wins the
+//   round (DRAW on identical net result). After 3 rounds with a tied
+//   round-win score, match → sudden_death; otherwise → finished.
+//
+// Per-round detail (bets placed, spin result, payouts, draw flag) lives
+// on `roulette_pvp_rounds` so the full match history is replayable.
+export const roulettePvpStatusEnum = pgEnum("roulette_pvp_status", [
+  "waiting",
+  "ready",
+  "round_1",
+  "round_2",
+  "round_3",
+  "sudden_death",
+  "finished",
+  "cancelled",
+]);
+
+export const roulettePvpMatches = pgTable(
+  "roulette_pvp_matches",
+  {
+    id: serial("id").primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
+    status: roulettePvpStatusEnum("status").notNull().default("waiting"),
+    currentRound: integer("current_round").notNull().default(1),
+    // Round wins (best of 3 + sudden death). Each round contributes 0
+    // (draw), +1 to player1, or +1 to player2.
+    scorePlayer1: integer("score_player1").notNull().default(0),
+    scorePlayer2: integer("score_player2").notNull().default(0),
+    // Per-round transient state (cleared between rounds). bet_deadline
+    // enforces a server-side timer so a disconnected player can be
+    // auto-treated as having submitted empty bets.
+    roundDeadline: timestamp("round_deadline"),
+    // Latest spin primitives — exposed via /status so both clients can
+    // render the same wheel animation in sync without each having to
+    // roll its own random number.
+    lastSpinResultIndex: integer("last_spin_result_index"),
+    lastSpinResult: integer("last_spin_result"),
+    // Final match bookkeeping.
+    winnerId: varchar("winner_id", { length: 255 }),
+    result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    // ── Persistent match "points" balance ─────────────────────────
+    // Each player starts the match with `starting_points` (default
+    // 100) and that balance PERSISTS across rounds — bets debit it,
+    // spin payouts credit it. No inter-round reset.
+    startingPoints: numeric("starting_points", {
+      precision: 10,
+      scale: 2,
+    })
+      .notNull()
+      .default("100.00"),
+    playerOnePoints: numeric("player_one_points", {
+      precision: 10,
+      scale: 2,
+    })
+      .notNull()
+      .default("100.00"),
+    playerTwoPoints: numeric("player_two_points", {
+      precision: 10,
+      scale: 2,
+    })
+      .notNull()
+      .default("100.00"),
+    // Round-deadline countdown duration in seconds. Match-flow
+    // constant: the per-round `round_deadline` timestamp is computed
+    // as `now() + round_timer_seconds` whenever a new betting window
+    // opens. Surfaced as a column so future admin tooling can tweak
+    // a match's pacing without changing code.
+    roundTimerSeconds: integer("round_timer_seconds")
+      .notNull()
+      .default(25),
+    // Match-level sudden-death flag (mirrors the per-round
+    // `is_sudden_death` on roulette_pvp_rounds so admin / status
+    // queries don't have to walk child rows).
+    suddenDeath: boolean("sudden_death").notNull().default(false),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Lobby listing — `status='waiting'` AND player2_id IS NULL.
+    statusIdx: index("roulette_pvp_status_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+    player1Idx: index("roulette_pvp_player1_idx").on(
+      table.player1Id,
+      table.createdAt,
+    ),
+    player2Idx: index("roulette_pvp_player2_idx").on(
+      table.player2Id,
+      table.createdAt,
+    ),
+    // Stake matchmaking — finding a waiting lobby whose stake matches
+    // the joiner's request. `stake` + `status='waiting'` + player2 null
+    // is the canonical query for "join any open match of this stake".
+    stakeIdx: index("roulette_pvp_stake_open_idx").on(
+      table.stakeAmount,
+      table.status,
+    ),
+  }),
+);
+
+// One row per round of a Roulette PvP match. Cascade-deleted with the
+// parent match so history stays tidy. Per-round winner is nullable
+// because rounds that end in a draw leave it null.
+export const roulettePvpRounds = pgTable(
+  "roulette_pvp_rounds",
+  {
+    id: serial("id").primaryKey(),
+    matchId: integer("match_id")
+      .notNull()
+      .references(() => roulettePvpMatches.id, { onDelete: "cascade" }),
+    roundNumber: integer("round_number").notNull(),
+    isSuddenDeath: boolean("is_sudden_death").notNull().default(false),
+    spinResultIndex: integer("spin_result_index").notNull(),
+    spinResult: integer("spin_result").notNull(),
+    player1Bets: jsonb("player1_bets").notNull().default(sql`'{}'::jsonb`),
+    player2Bets: jsonb("player2_bets").notNull().default(sql`'{}'::jsonb`),
+    player1TotalBet: numeric("player1_total_bet", {
+      precision: 10,
+      scale: 2,
+    })
+      .notNull()
+      .default("0.00"),
+    player2TotalBet: numeric("player2_total_bet", {
+      precision: 10,
+      scale: 2,
+    })
+      .notNull()
+      .default("0.00"),
+    player1Payout: numeric("player1_payout", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    player2Payout: numeric("player2_payout", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    // net = payout − total_bet. Persisted for fast round-resolution
+    // queries (the live match state is in roulette_pvp_matches but
+    // history is in this table).
+    player1Net: numeric("player1_net", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    player2Net: numeric("player2_net", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    // Round winner — null when the round ended in a draw (identical
+    // net result for both players).
+    roundWinner: varchar("round_winner", { length: 10 }), // 'player1' | 'player2' | null
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    matchRoundIdx: index("roulette_pvp_rounds_match_round_idx").on(
+      table.matchId,
+      table.roundNumber,
+    ),
+  }),
+);
+
+export const roulettePvpMatchesRelations = relations(
+  roulettePvpMatches,
+  ({ many }) => ({
+    rounds: many(roulettePvpRounds),
+  }),
+);
+
+export const roulettePvpRoundsRelations = relations(
+  roulettePvpRounds,
+  ({ one }) => ({
+    match: one(roulettePvpMatches, {
+      fields: [roulettePvpRounds.matchId],
+      references: [roulettePvpMatches.id],
+    }),
+  }),
+);
+
 // DOTS & BOXES PvP GAME TABLE
 export const dotsAndBoxesGames = pgTable(
   "dots_and_boxes_games",
