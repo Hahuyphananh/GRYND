@@ -31,6 +31,7 @@ import React, {
   useRef,
   useCallback,
   useMemo,
+  use,
 } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
@@ -54,8 +55,36 @@ import {
   ROULETTE_PVP_MATCH_UPDATED,
   roulettePvpMatchRoom,
 } from "../../../../lib/roulette-pvp/rooms";
+import {
+  RouletteWheelIcon,
+  CoinIcon,
+  BoltIcon,
+  ClockIcon,
+  TrophyIcon,
+  SkullIcon,
+  HandshakeIcon,
+  BookIcon,
+  CheckIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+  LoadingDotsIcon,
+  TargetIcon,
+  AlertIcon,
+} from "../../../../components/roulette-pvp/RouletteIcons";
 
 const POLL_INTERVAL_MS = 1500;
+
+// ── Next.js 16 dynamic-route params arrived async (Promise). ──────────
+// In Next.js 15+/16 the `params` prop on a dynamic-route page is a
+// Promise; accessing `params.matchId` synchronously yields a Promise
+// value, and `Number(promise)` evaluates to `NaN`. Without unwrapping
+// it here, `fetchMatchId === NaN`, `matchId` inside `fetchStatus` is not
+// finite, the function returns early *without* calling setLoading,
+// and both players get stuck on the "Loading match…" page forever.
+// `use()` suspends the component until the route params resolve so the
+// final returned value is a plain object with `matchId` already as a
+// real string. The grandparent `<Suspense>` boundary provided by the
+// route segment (Next.js default behaviour) covers the brief suspend.
 
 const ROUND_STATUS_LABELS = {
   waiting: "Waiting for opponent",
@@ -97,7 +126,30 @@ const lastNumColor = (num) => {
 };
 
 export default function RoulettePvpGamePage({ params }) {
-  const matchId = Number(params?.matchId);
+  // Unwrap params Promise (Next.js 15+/16 async dynamic API). We
+  // memoize a stable Promise wrapping the raw `params` prop so `use()`
+  // is called unconditionally on every render — this satisfies the
+  // React rules-of-hooks (no conditional `use(...)` per render). When
+  // `params` is itself a thenable, `Promise.resolve(p)` flattens to
+  // the existing promise; when it's a plain object (older Next.js
+  // versions), we wrap it ourselves so `use()` still receives a
+  // thenable. Same pattern as `src/app/casino/precision/game/
+  // [matchId]/page.tsx` (which types it as `Promise<{...}>` directly).
+  const paramsPromise = useMemo(
+    () => Promise.resolve(params),
+    [params],
+  );
+  const resolvedParams = use(paramsPromise);
+  const rawMatchId =
+    resolvedParams && typeof resolvedParams === "object"
+      ? resolvedParams.matchId
+      : undefined;
+  // Defensive fallback for malformed URLs. `Number.isFinite` rejects
+  // `NaN` (which is exactly what `Number(undefined)` or
+  // `Number("not-a-number")` produces) so this guards both the async
+  // and the malformed-URL cases alike.
+  const numericMatchId = Number(rawMatchId);
+  const matchId = Number.isFinite(numericMatchId) ? numericMatchId : null;
   const router = useRouter();
   const { user, isSignedIn, isLoaded } = useUser();
   const { socket } = useSocket();
@@ -146,14 +198,35 @@ export default function RoulettePvpGamePage({ params }) {
 
   // ── Polling match status (server-authoritative) ────────────────
   const fetchStatus = useCallback(async () => {
-    if (!Number.isFinite(matchId)) return;
+    // Defensive: matchId may legitimately be null if the dynamic route
+    // delivered us an unparseable segment (e.g. someone pasted a
+    // non-numeric link, or the Next.js 16 async params Promise somehow
+    // resolved to an unexpected shape). Setting loading=false here flips
+    // the UI out of the eternal "Loading match…" view and lets the
+    // "Match not found" panel render instead. Pre-fix, we returned
+    // early here without setLoading(false), which left both players
+    // stranded on the loading spinner as soon as the URL was off in
+    // any way that produced a non-finite matchId.
+    if (matchId === null) {
+      setError("Invalid match link.");
+      setLoading(false);
+      return;
+    }
     try {
       const res = await fetch(`/api/roulette-pvp/match/${matchId}`, {
         cache: "no-store",
       });
       const data = await res.json();
       if (!res.ok || !data?.success) {
+        // Critical: any non-2xx response or `success: false` payload
+        // must NOT strand the UI on the loading spinner — pre-fix the
+        // page rendered "Loading match…" forever because setLoading
+        // was only called on the success path. Now we flip loading
+        // off unconditionally so the "Match not found" panel can
+        // render with the error message.
         setError(data?.error || "Unable to load match");
+        setMatch(null);
+        setLoading(false);
         return;
       }
       setError(null);
@@ -245,17 +318,27 @@ export default function RoulettePvpGamePage({ params }) {
     };
   }, []);
 
-  // Start polling once signed in
+  // Start polling once signed in. We intentionally bail out before
+  // spinning up the polling interval if the matchId is invalid (e.g.
+  // Next.js 16 async params resolved to an unexpected shape or the URL
+  // is unsalvageable). The fetchStatus guard already sets loading=false
+  // on the bad-matchId path so the user sees the "Match not found"
+  // panel instead of a perpetual spinner.
   useEffect(() => {
     if (!isLoaded) return;
     if (!isSignedIn) {
       router.push("/sign-in");
       return;
     }
+    if (matchId === null) {
+      setError("Invalid match link.");
+      setLoading(false);
+      return;
+    }
     fetchStatus();
     const interval = setInterval(fetchStatus, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [isLoaded, isSignedIn, fetchStatus, router]);
+  }, [isLoaded, isSignedIn, fetchStatus, router, matchId]);
 
   // Subscribe to socket `lobby:updated` on the per-match room for
   // live fanout (the lobby page emits to this room on create-or-join;
@@ -774,8 +857,12 @@ export default function RoulettePvpGamePage({ params }) {
   // ── Render ────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white md:pb-8 flex items-center justify-center">
+      <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white md:pb-8 flex flex-col items-center justify-center gap-3">
         <NavigationBar currentPath="/casino" />
+        <LoadingDotsIcon
+          className="w-8 h-8 text-yellow-300 animate-pulse"
+          title="Loading"
+        />
         <div className="text-yellow-200 text-sm animate-pulse">
           Loading match…
         </div>
@@ -787,8 +874,12 @@ export default function RoulettePvpGamePage({ params }) {
     return (
       <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white md:pb-8">
         <NavigationBar currentPath="/casino" />
-        <div className="mx-auto mt-6 max-w-xl text-center">
-          <p className="text-red-300 mb-4">{error || "Match not found"}</p>
+        <div className="mx-auto mt-6 max-w-xl text-center flex flex-col items-center gap-4">
+          <AlertIcon
+            className="w-10 h-10 text-red-300"
+            title="Match not found"
+          />
+          <p className="text-red-300">{error || "Match not found"}</p>
           <button
             onClick={leaveOrContinue}
             className="px-4 py-2 rounded-lg bg-yellow-300 text-[#001933] font-bold"
@@ -841,17 +932,23 @@ export default function RoulettePvpGamePage({ params }) {
       <div className="mx-auto mt-2 flex w-full max-w-[1300px] flex-col gap-4 px-3 sm:mt-6 sm:flex-row sm:gap-8 sm:p-6">
         {/* ── Left sidebar: PvP state + controls ─────────────────── */}
         <div className="flex w-full flex-shrink-0 flex-col items-start gap-3 sm:w-[280px] sm:gap-4">
-          <h1 className="mt-2 w-full text-center text-2xl font-bold text-[#FFFF33] drop-shadow-[0_0_12px_rgba(255,255,51,0.6)] sm:text-3xl">
-            🎰 Roulette PvP
+          <h1 className="mt-2 w-full text-center text-2xl font-bold text-[#FFFF33] drop-shadow-[0_0_12px_rgba(255,255,51,0.6)] sm:text-3xl inline-flex items-center justify-center gap-2">
+            <RouletteWheelIcon
+              className="w-7 h-7 sm:w-8 sm:h-8 text-[#FFFF33]"
+              title="Roulette wheel"
+            />
+            <span>Roulette PvP</span>
           </h1>
 
           <div className="flex w-full flex-wrap items-center justify-center gap-2">
             {renderStatusPill()}
-            <span className="px-3 py-1 rounded-full bg-[#FFFF33]/15 border border-[#FFFF33]/40 text-yellow-200 text-xs font-bold">
-              Stake: {stake.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 🪙
+            <span className="px-3 py-1 rounded-full bg-[#FFFF33]/15 border border-[#FFFF33]/40 text-yellow-200 text-xs font-bold inline-flex items-center gap-1.5">
+              <span>Stake: {stake.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <CoinIcon className="w-3.5 h-3.5 text-yellow-200" title="Tokens" />
             </span>
-            <span className="px-3 py-1 rounded-full bg-[#00e5ff]/15 border border-[#00e5ff]/40 text-cyan-200 text-xs font-bold">
-              Pot: {totalPot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 🪙
+            <span className="px-3 py-1 rounded-full bg-[#00e5ff]/15 border border-[#00e5ff]/40 text-cyan-200 text-xs font-bold inline-flex items-center gap-1.5">
+              <span>Pot: {totalPot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <CoinIcon className="w-3.5 h-3.5 text-cyan-200" title="Tokens" />
             </span>
           </div>
 
@@ -960,22 +1057,32 @@ export default function RoulettePvpGamePage({ params }) {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div
-                    className={`rounded-md px-2 py-1 border text-center text-xs ${
+                    className={`rounded-md px-2 py-1 border text-center text-xs inline-flex items-center justify-center gap-1 ${
                       mySubmittedBets
                         ? "border-green-400/40 bg-green-500/10 text-green-200"
                         : "border-yellow-300/30 bg-yellow-300/10 text-yellow-200"
                     }`}
                   >
-                    You {mySubmittedBets ? "✓" : "…"}
+                    <span>You</span>
+                    {mySubmittedBets ? (
+                      <CheckIcon className="w-3.5 h-3.5 text-green-200" title="Submitted" />
+                    ) : (
+                      <LoadingDotsIcon className="w-3.5 h-3.5 text-yellow-200 animate-pulse" title="Waiting" />
+                    )}
                   </div>
                   <div
-                    className={`rounded-md px-2 py-1 border text-center text-xs ${
+                    className={`rounded-md px-2 py-1 border text-center text-xs inline-flex items-center justify-center gap-1 ${
                       opponentSubmittedBets
                         ? "border-green-400/40 bg-green-500/10 text-green-200"
                         : "border-cyan-400/30 bg-cyan-400/10 text-cyan-200"
                     }`}
                   >
-                    Opp {opponentSubmittedBets ? "✓" : "…"}
+                    <span>Opp</span>
+                    {opponentSubmittedBets ? (
+                      <CheckIcon className="w-3.5 h-3.5 text-green-200" title="Submitted" />
+                    ) : (
+                      <LoadingDotsIcon className="w-3.5 h-3.5 text-cyan-200 animate-pulse" title="Waiting" />
+                    )}
                   </div>
                 </div>
               </div>
@@ -1040,19 +1147,30 @@ export default function RoulettePvpGamePage({ params }) {
               <button
                 onClick={submitBets}
                 disabled={submitting || spinning || myTotalBet <= 0 || myTotalBet > myMatchPoints + 0.0001}
-                className={`px-6 py-3 rounded-full font-bold text-lg border border-[#FFFF33]/40 transition-all duration-200 ${
+                className={`px-6 py-3 rounded-full font-bold text-lg border border-[#FFFF33]/40 transition-all duration-200 inline-flex items-center justify-center gap-2 ${
                   submitting || spinning || myTotalBet <= 0 || myTotalBet > myMatchPoints + 0.0001
                     ? "bg-gray-600 text-gray-300 cursor-not-allowed"
                     : "bg-[#FFFF33]/20 text-[#FFFF33] hover:bg-[#FFFF33]/35 shadow-[0_0_20px_rgba(255,255,51,0.5)] hover:shadow-[0_0_30px_rgba(255,255,51,0.7)] active:scale-95"
                 }`}
               >
-                {submitting
-                  ? "Submitting…"
-                  : spinning
-                    ? "Spinning…"
-                    : myTotalBet > 0
-                      ? `🎯 Lock in bets (${myTotalBet} pts)`
-                      : "Place bets first"}
+                {submitting ? (
+                  <>
+                    <LoadingDotsIcon className="w-5 h-5 text-gray-300 animate-pulse" title="Submitting" />
+                    <span>Submitting…</span>
+                  </>
+                ) : spinning ? (
+                  <>
+                    <LoadingDotsIcon className="w-5 h-5 text-gray-300 animate-pulse" title="Spinning" />
+                    <span>Spinning…</span>
+                  </>
+                ) : myTotalBet > 0 ? (
+                  <>
+                    <TargetIcon className="w-5 h-5 text-[#FFFF33]" title="Lock in bets" />
+                    <span>Lock in bets ({myTotalBet} pts)</span>
+                  </>
+                ) : (
+                  "Place bets first"
+                )}
               </button>
               <button
                 onClick={resetBets}
@@ -1124,9 +1242,17 @@ export default function RoulettePvpGamePage({ params }) {
           {/* Waiting panel (creator can cancel) */}
           {match.status === MATCH_STATUS.WAITING && (
             <div className="w-full rounded-2xl border border-yellow-300/40 bg-yellow-300/10 px-4 py-4 text-center">
-              <p className="font-bold text-yellow-200">
-                🕒 Waiting for an opponent to join your{" "}
-                {stake.toLocaleString()} 🪙 lobby…
+              <p className="font-bold text-yellow-200 inline-flex items-center justify-center gap-2">
+                <ClockIcon
+                  className="w-5 h-5 text-yellow-200 animate-pulse"
+                  title="Waiting"
+                />
+                <span>
+                  Waiting for an opponent to join your{" "}
+                  {stake.toLocaleString()}
+                </span>
+                <CoinIcon className="w-4 h-4 text-yellow-200" title="Tokens" />
+                <span>lobby…</span>
               </p>
               <p className="text-xs text-white/60 mt-1">
                 When someone joins with the same stake, your Round 1 begins.
@@ -1134,9 +1260,16 @@ export default function RoulettePvpGamePage({ params }) {
               <button
                 onClick={cancelWaiting}
                 disabled={cancelling}
-                className="mt-3 px-4 py-2 rounded-lg bg-red-500/80 hover:bg-red-500 text-white font-bold text-sm disabled:opacity-50"
+                className="mt-3 px-4 py-2 rounded-lg bg-red-500/80 hover:bg-red-500 text-white font-bold text-sm disabled:opacity-50 inline-flex items-center gap-2"
               >
-                {cancelling ? "Cancelling…" : "Cancel & refund"}
+                {cancelling ? (
+                  <>
+                    <LoadingDotsIcon className="w-3.5 h-3.5 text-white animate-pulse" title="Cancelling" />
+                    <span>Cancelling…</span>
+                  </>
+                ) : (
+                  "Cancel & refund"
+                )}
               </button>
             </div>
           )}
@@ -1144,8 +1277,9 @@ export default function RoulettePvpGamePage({ params }) {
           {/* Ready window (3s transition before Round 1) */}
           {match.status === MATCH_STATUS.READY && (
             <div className="w-full rounded-2xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-4 text-center">
-              <p className="font-bold text-cyan-200 animate-pulse">
-                ⚡ Match starting…
+              <p className="font-bold text-cyan-200 animate-pulse inline-flex items-center justify-center gap-2">
+                <BoltIcon className="w-5 h-5 text-cyan-200" title="Match starting" />
+                <span>Match starting…</span>
               </p>
               <p className="text-xs text-white/60 mt-1">
                 Round 1 will begin in{" "}
@@ -1216,16 +1350,37 @@ export default function RoulettePvpGamePage({ params }) {
                   : "bg-red-500/15 border-red-400/40 text-red-200"
               }`}
             >
-              {matchEndedBanner === "you"
-                ? `🎉 You won ${Number(match.prizePaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 🪙!`
-                : matchEndedBanner === "opponent"
-                  ? `💀 You lost. Opponent took ${Number(match.prizePaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 🪙.`
-                  : matchEndedBanner === "draw"
-                    ? "🤝 Mutual wipeout — match is a draw and stakes were refunded."
-                    : "Match finished"}
+              {matchEndedBanner === "you" ? (
+                <span className="inline-flex items-center justify-center gap-2 flex-wrap">
+                  <TrophyIcon className="w-6 h-6 text-green-300" title="You won" />
+                  <span>
+                    You won {Number(match.prizePaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <CoinIcon className="w-5 h-5 text-green-300" title="Tokens" />
+                  <span>!</span>
+                </span>
+              ) : matchEndedBanner === "opponent" ? (
+                <span className="inline-flex items-center justify-center gap-2 flex-wrap">
+                  <SkullIcon className="w-6 h-6 text-red-300" title="You lost" />
+                  <span>
+                    You lost. Opponent took {Number(match.prizePaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <CoinIcon className="w-5 h-5 text-red-300" title="Tokens" />
+                  <span>.</span>
+                </span>
+              ) : matchEndedBanner === "draw" ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <HandshakeIcon className="w-6 h-6 text-white/80" title="Draw" />
+                  <span>Mutual wipeout — match is a draw and stakes were refunded.</span>
+                </span>
+              ) : (
+                "Match finished"
+              )}
               {Number(match.prizePaid) > 0 && (
-                <span className="ml-2 text-xs text-white/60">
-                  (house fee: {Number(match.houseFee || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 🪙)
+                <span className="block mt-1 text-xs text-white/60 inline-flex items-center gap-1">
+                  <span>(house fee: {Number(match.houseFee || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <CoinIcon className="w-3 h-3 text-white/60" title="Tokens" />
+                  <span>)</span>
                 </span>
               )}
             </motion.div>
@@ -1244,8 +1399,15 @@ export default function RoulettePvpGamePage({ params }) {
               onClick={() => setShowRules(!showRules)}
               className="w-full flex items-center justify-between px-3 py-2.5 bg-[#FFFF33]/15 text-[#FFFF33] font-bold rounded-lg border border-[#FFFF33]/35 text-sm hover:bg-[#FFFF33]/25 transition"
             >
-              <span>📖 Rules</span>
-              <span>{showRules ? "▲" : "▼"}</span>
+              <span className="inline-flex items-center gap-2">
+                <BookIcon className="w-4 h-4 text-[#FFFF33]" title="Rules" />
+                <span>Rules</span>
+              </span>
+              {showRules ? (
+                <ChevronUpIcon className="w-4 h-4 text-[#FFFF33]" title="Collapse" />
+              ) : (
+                <ChevronDownIcon className="w-4 h-4 text-[#FFFF33]" title="Expand" />
+              )}
             </button>
             {showRules && (
               <div className="mt-2 bg-[#020617] border border-[#FFFF33]/25 rounded-xl p-3 text-white text-xs sm:text-sm leading-relaxed max-h-56 overflow-y-auto">
@@ -1254,11 +1416,14 @@ export default function RoulettePvpGamePage({ params }) {
                 </h2>
                 <div className="space-y-3">
                   <div>
-                    <h3 className="text-yellow-400 font-semibold">🎯 Goal</h3>
+                    <h3 className="text-yellow-400 font-semibold inline-flex items-center gap-1.5">
+                      <TargetIcon className="w-4 h-4 text-yellow-400" title="Goal" />
+                      <span>Goal</span>
+                    </h3>
                     <p>Both players bet on the same wheel spin; higher net payout wins the round.</p>
                   </div>
                   <div>
-                    <h3 className="text-yellow-400 font-semibold">🎲 Bets</h3>
+                    <h3 className="text-yellow-400 font-semibold">Bets</h3>
                     <ul className="list-disc ml-4">
                       <li>Single number (×35)</li>
                       <li>Red/Black/Even/Odd (×2)</li>
@@ -1266,15 +1431,24 @@ export default function RoulettePvpGamePage({ params }) {
                     </ul>
                   </div>
                   <div>
-                    <h3 className="text-yellow-400 font-semibold">⏱️ Timer</h3>
+                    <h3 className="text-yellow-400 font-semibold inline-flex items-center gap-1.5">
+                      <ClockIcon className="w-4 h-4 text-yellow-400" title="Timer" />
+                      <span>Timer</span>
+                    </h3>
                     <p>Each round gives both players exactly 20 seconds to place bets. The timer starts simultaneously for both players — when it hits zero, betting locks and boards are saved server-side.</p>
                   </div>
                   <div>
-                    <h3 className="text-yellow-400 font-semibold">🏆 Match</h3>
+                    <h3 className="text-yellow-400 font-semibold inline-flex items-center gap-1.5">
+                      <TrophyIcon className="w-4 h-4 text-yellow-400" title="Match" />
+                      <span>Match</span>
+                    </h3>
                     <p>Best of 3 rounds. Tied after Round 3 → Sudden Death. 2.5% house fee.</p>
                   </div>
                   <div>
-                    <h3 className="text-yellow-400 font-semibold">💰 Points</h3>
+                    <h3 className="text-yellow-400 font-semibold inline-flex items-center gap-1.5">
+                      <CoinIcon className="w-4 h-4 text-yellow-400" title="Points" />
+                      <span>Points</span>
+                    </h3>
                     <p>You start with 100 match points. They persist round-to-round. You cannot wager more than your current balance.</p>
                   </div>
                 </div>
@@ -1298,8 +1472,9 @@ export default function RoulettePvpGamePage({ params }) {
         <div className="flex w-full min-w-0 flex-col items-center">
           {/* Spinning overlay indicator */}
           {spinning && (
-            <div className="mb-2 px-3 py-1 rounded-full bg-black/60 text-yellow-300 text-xs font-bold tracking-wider animate-pulse">
-              Spinning…
+            <div className="mb-2 px-3 py-1 rounded-full bg-black/60 text-yellow-300 text-xs font-bold tracking-wider animate-pulse inline-flex items-center gap-2">
+              <span>Spinning</span>
+              <LoadingDotsIcon className="w-3.5 h-3.5 text-yellow-300" title="Spinning" />
             </div>
           )}
 

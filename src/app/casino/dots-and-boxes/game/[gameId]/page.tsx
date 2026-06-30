@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useSocket } from "../../../../../context/SocketProvider";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
 import { useTranslation } from "../../../../../hooks/useTranslation";
+import { playTimerUrgent, playTimerExpired } from "../../../../../lib/dotsAndBoxesAudio";
 
 // ─── Module-level empty defaults (shared reference across renders) ─
 // Mutable types so passing into the board component (typed
@@ -37,6 +38,18 @@ export default function DotsAndBoxesGamePage() {
   // in-flight fetch. Prevents stale responses from clobbering newer
   // state when the network is slow.
   const abortRef = useRef<AbortController | null>(null);
+
+// Keyed-debounce ref so the "almost up" audio cue fires exactly once
+// per turn. The string is the current moveDeadlineAt; on each new
+// deadline (new turn) the ref no longer matches and we re-arm.
+const urgentCuePlayedFor = useRef<string | null>(null);
+// Mirror ref for the deadline-passed cue so it also fires exactly once
+// per turn. Without this we'd loop the lower-pitched tone on every
+// poll that reports remainingMs <= 0.
+const expiredCuePlayedFor = useRef<string | null>(null);
+// A11y: skip the motion-driven visual cue (but keep the audio beep,
+// which is functional feedback) when the user prefers reduced motion.
+const prefersReducedMotion = useReducedMotion();
 
   useGamePresence({
     gameKey: "dots-and-boxes",
@@ -175,7 +188,7 @@ export default function DotsAndBoxesGamePage() {
         isFinished: false,
         remainingMs: 0,
         remainingSeconds: 0,
-        timerSeconds: 10,
+        timerSeconds: 20,
         boardLocked: true,
         boxesForBoard: EMPTY_EDGES,
         boxOwnersForBoard: EMPTY_BOX_OWNERS,
@@ -215,7 +228,7 @@ export default function DotsAndBoxesGamePage() {
       isFinished: finished,
       remainingMs: ms,
       remainingSeconds: seconds,
-      timerSeconds: game.timerSeconds || 10,
+      timerSeconds: game.timerSeconds || 20,
       boardLocked: finished,
       boxesForBoard: (gs.boxes as string[]) ?? EMPTY_EDGES,
       boxOwnersForBoard:
@@ -312,6 +325,50 @@ export default function DotsAndBoxesGamePage() {
     }
   }, [socket, gameId, fetchState, t]);
 
+  // ─── Audio cues (urgent + expired), each fires exactly once per turn ───
+  // Both refs are keyed on `moveDeadlineAt` so they re-arm on every new
+  // turn automatically. Effects are placed AFTER the derived-board
+  // useMemo so `isMyTurn` / `remainingSeconds` / `remainingMs` are
+  // safely in scope (no TDZ) when the effect runs.
+  useEffect(() => {
+    const deadlineKey = game?.moveDeadlineAt
+      ? String(game.moveDeadlineAt)
+      : null;
+    if (!deadlineKey) {
+      urgentCuePlayedFor.current = null;
+      return;
+    }
+    if (
+      urgentCuePlayedFor.current &&
+      urgentCuePlayedFor.current !== deadlineKey
+    ) {
+      urgentCuePlayedFor.current = null;
+    }
+    if (!isMyTurn || remainingSeconds <= 0 || remainingSeconds > 3) return;
+    if (urgentCuePlayedFor.current === deadlineKey) return;
+    urgentCuePlayedFor.current = deadlineKey;
+    playTimerUrgent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMyTurn, remainingSeconds, game?.moveDeadlineAt]);
+
+  useEffect(() => {
+    const deadlineKey = game?.moveDeadlineAt
+      ? String(game.moveDeadlineAt)
+      : null;
+    // Recompute locally so we don't depend on `timerExpired` (which
+    // is declared further down and would be in the TDZ).
+    const turnExpired =
+      game?.status === "in_progress" && remainingMs <= 0;
+    if (!deadlineKey || !turnExpired) {
+      expiredCuePlayedFor.current = null;
+      return;
+    }
+    if (expiredCuePlayedFor.current === deadlineKey) return;
+    expiredCuePlayedFor.current = deadlineKey;
+    playTimerExpired();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game?.status, remainingMs, game?.moveDeadlineAt]);
+
   // ─── Render helpers ─────────────────────────────────────────────────
 
   const timerUrgent = remainingSeconds > 0 && remainingSeconds <= 3;
@@ -377,8 +434,9 @@ export default function DotsAndBoxesGamePage() {
                   )}
                 </div>
 
-                {/* Timer bar */}
-                <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+                {/* Timer bar. position-relative so the urgency icon
+                    below can anchor next to it without reflow. */}
+                <div className="relative w-full h-2 rounded-full bg-white/10 overflow-hidden">
                   <div
                     className={`h-full transition-all duration-200 ease-linear ${
                       timerUrgent
@@ -394,7 +452,7 @@ export default function DotsAndBoxesGamePage() {
                   />
                 </div>
                 <span
-                  className={`text-xs font-mono ${
+                  className={`inline-flex items-center gap-1 text-xs font-mono ${
                     timerUrgent
                       ? "text-red-300"
                       : timerExpired
@@ -402,7 +460,33 @@ export default function DotsAndBoxesGamePage() {
                         : "text-white/50"
                   }`}
                 >
-                  {t("games.dots_and_boxes.remaining_seconds", { seconds: remainingSeconds })}
+                  <span>
+                    {t("games.dots_and_boxes.remaining_seconds", {
+                      seconds: remainingSeconds,
+                    })}
+                  </span>
+                  {/* One-shot urgency badge: a small ⚠ that scales in
+                      next to the seconds counter when remainingSeconds
+                      first drops into the (0, 3] window on the local
+                      player's turn. Re-mounted per deadline (via key)
+                      so the animation re-runs each turn. Skipped under
+                      `prefers-reduced-motion`; the audio beep still
+                      fires because it is functional feedback. */}
+                  {timerUrgent && isMyTurn && !prefersReducedMotion && (
+                    <motion.span
+                      key={`urgent-badge-${String(
+                        game?.moveDeadlineAt ?? "",
+                      )}`}
+                      aria-hidden
+                      initial={{ opacity: 0, scale: 0.6 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.3, ease: "easeOut" }}
+                      className="inline-flex items-center justify-center text-amber-300 leading-none"
+                      style={{ fontSize: "0.95em" }}
+                    >
+                      ⚠
+                    </motion.span>
+                  )}
                 </span>
               </div>
             )}

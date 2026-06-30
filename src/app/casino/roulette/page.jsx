@@ -33,6 +33,14 @@ import {
   ROULETTE_PVP_MATCH_UPDATED,
   roulettePvpMatchRoom,
 } from "../../../lib/roulette-pvp/rooms";
+import {
+  RouletteWheelIcon,
+  CoinIcon,
+  TargetIcon,
+  RefreshIcon,
+  LoadingDotsIcon,
+  StackCoinIcon,
+} from "../../../components/roulette-pvp/RouletteIcons";
 
 const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
 
@@ -188,8 +196,12 @@ export default function RoulettePvpLobbyPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <h1 className="text-center text-3xl sm:text-4xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-300 to-yellow-500 drop-shadow-[0_0_18px_rgba(255,255,51,0.55)]">
-            🎰 Roulette PvP Lobby
+          <h1 className="flex items-center justify-center gap-3 text-center text-3xl sm:text-4xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-300 to-yellow-500 drop-shadow-[0_0_18px_rgba(255,255,51,0.55)]">
+            <RouletteWheelIcon
+              className="w-9 h-9 sm:w-10 sm:h-10 text-yellow-300 drop-shadow-[0_0_12px_rgba(255,255,51,0.55)] flex-shrink-0"
+              title="Roulette wheel"
+            />
+            <span>Roulette PvP Lobby</span>
           </h1>
         </motion.div>
         <p className="text-center text-sm text-white/60 mt-2 mb-7 max-w-2xl mx-auto">
@@ -254,9 +266,26 @@ export default function RoulettePvpLobbyPage() {
             <button
               onClick={() => createOrJoin(stake)}
               disabled={busy || !isSignedIn || (balance ?? 0) < stake}
-              className="p-3 rounded-xl text-base font-extrabold text-black bg-gradient-to-r from-yellow-300 to-amber-500 hover:scale-105 active:scale-95 transition shadow-[0_0_22px_rgba(255,255,51,0.55)] disabled:opacity-50 disabled:hover:scale-100"
+              className="p-3 rounded-xl text-base font-extrabold text-black bg-gradient-to-r from-yellow-300 to-amber-500 hover:scale-105 active:scale-95 transition shadow-[0_0_22px_rgba(255,255,51,0.55)] disabled:opacity-50 disabled:hover:scale-100 inline-flex items-center gap-2"
             >
-              {busy ? "…" : stake.toLocaleString()} 🪙 · Play
+              {busy ? (
+                <>
+                  <LoadingDotsIcon
+                    className="w-4 h-4 text-black animate-pulse"
+                    title="Loading"
+                  />
+                  <span>Finding match…</span>
+                </>
+              ) : (
+                <>
+                  <span>{stake.toLocaleString()}</span>
+                  <CoinIcon
+                    className="w-5 h-5 text-amber-900"
+                    title="Tokens"
+                  />
+                  <span>· Play</span>
+                </>
+              )}
             </button>
             <div className="text-xs text-white/55 leading-relaxed">
               We pair you with another player of the <b>exact same</b> stake.
@@ -275,14 +304,21 @@ export default function RoulettePvpLobbyPage() {
         <div className="mt-6 bg-[#0b224f]/85 border border-yellow-300/30 rounded-2xl p-5 shadow-[0_0_22px_rgba(255,255,51,0.16)]">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-yellow-300 uppercase tracking-wider flex items-center gap-2">
-              <span aria-hidden>🎯</span>
+              <TargetIcon
+                className="w-4 h-4 text-yellow-300"
+                title="Open lobbies"
+              />
               Open Lobbies
             </h2>
             <button
               onClick={fetchAvailable}
-              className="px-3 py-1.5 rounded-lg bg-yellow-300 text-[#001933] hover:bg-yellow-200 text-xs font-semibold shadow-[0_0_10px_rgba(255,255,51,0.45)] transition"
+              className="px-3 py-1.5 rounded-lg bg-yellow-300 text-[#001933] hover:bg-yellow-200 text-xs font-semibold shadow-[0_0_10px_rgba(255,255,51,0.45)] transition inline-flex items-center gap-1.5"
             >
-              🔄 Refresh
+              <RefreshIcon
+                className="w-3.5 h-3.5 text-[#001933]"
+                title="Refresh"
+              />
+              Refresh
             </button>
           </div>
           {availableMatches.length === 0 ? (
@@ -303,19 +339,33 @@ export default function RoulettePvpLobbyPage() {
                         host #{m.player1Id?.slice(0, 6) ?? "?"}…
                       </span>
                     </p>
-                    <p className="text-xs text-white/60 mt-0.5">
-                      Stake:{" "}
-                      <span className="text-yellow-300 font-semibold">
-                        {Number(m.stakeAmount).toLocaleString()} 🪙
+                    <p className="text-xs text-white/60 mt-0.5 flex items-center gap-1">
+                      <span>Stake:</span>
+                      <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
+                        {Number(m.stakeAmount).toLocaleString()}
+                        <CoinIcon
+                          className="w-3.5 h-3.5 text-yellow-300"
+                          title="Tokens"
+                        />
                       </span>
                     </p>
                   </div>
                   <button
                     onClick={() => joinSpecific(m.id)}
                     disabled={busy || joiningId === m.id}
-                    className="px-4 py-1.5 rounded-lg bg-yellow-300 text-[#001933] hover:bg-yellow-200 text-sm font-bold disabled:bg-yellow-300/30 disabled:text-white/60 transition"
+                    className="px-4 py-1.5 rounded-lg bg-yellow-300 text-[#001933] hover:bg-yellow-200 text-sm font-bold disabled:bg-yellow-300/30 disabled:text-white/60 transition inline-flex items-center gap-1.5"
                   >
-                    {joiningId === m.id ? "Joining…" : "Join"}
+                    {joiningId === m.id ? (
+                      <>
+                        <StackCoinIcon
+                          className="w-3.5 h-3.5 text-[#001933] animate-pulse"
+                          title="Joining"
+                        />
+                        <span>Joining…</span>
+                      </>
+                    ) : (
+                      "Join"
+                    )}
                   </button>
                 </div>
               ))}

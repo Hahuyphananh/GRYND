@@ -1457,7 +1457,7 @@ export const dotsAndBoxesGames = pgTable(
     result: varchar("result", { length: 30 }),
     payout: numeric("payout", { precision: 10, scale: 2 }),
     moveDeadlineAt: timestamp("move_deadline_at"),
-    timerSeconds: integer("timer_seconds").notNull().default(10),
+    timerSeconds: integer("timer_seconds").notNull().default(20),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
