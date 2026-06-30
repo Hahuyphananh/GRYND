@@ -794,7 +794,16 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       const eitherMissing =
         !match.player1Bets || !match.player2Bets;
       if (deadlineElapsed && eitherMissing && match.status !== MATCH_STATUS.READY) {
-        return await resolveRound(tx, match);
+        // Wrap the resolveRound result in `{ match: ... }` so it
+        // matches the canonical API-route contract — callers do
+        // `result.match` and the API's `normaliseMatch(result.match)`.
+        // Pre-fix this returned the raw match object directly; the
+        // route then did `result.match === undefined`, which in turn
+        // yielded `match: null` on the wire and a confusing "Match
+        // not found" UI for the opponent whose poll triggered the AFK
+        // auto-resolve on a round that did finish.
+        const resolved = await resolveRound(tx, match);
+        return { match: resolved };
       }
     }
 

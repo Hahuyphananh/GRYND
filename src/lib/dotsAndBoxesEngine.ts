@@ -18,7 +18,13 @@ export const DOTS = 7; // 7×7 dot grid → 6×6 boxes
 export const BOXES = 6;
 export const TOTAL_BOXES = BOXES * BOXES; // 36
 export const TOTAL_EDGES = DOTS * (DOTS - 1) * 2; // 7×6 + 6×7 = 84
-export const TURN_SECONDS = 10;
+// Default turn timer (per player move). Tuned via user feedback:
+// 10s felt rushed for many players since Dots & Boxes needs the
+// player to scan the board for safe edges before committing.
+// Bumped to 20s on 2026-XX-XX after player survey. The DB column
+// default and the migration shipped alongside the bump mirror this
+// integer; clamped 5–120s at runtime by dotsAndBoxesServer.js.
+export const TURN_SECONDS = 20;
 
 export type Player = "host" | "guest";
 
