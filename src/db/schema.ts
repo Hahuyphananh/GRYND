@@ -1471,3 +1471,189 @@ export const dotsAndBoxesGames = pgTable(
     dotsGuestIdx: index("dots_and_boxes_guest_idx").on(table.guestClerkId),
   }),
 );
+
+// BLACKJACK PvP MATCHES — server-authoritative Best-of-3 simultaneous
+// blackjack between two real players (no dealer).
+//
+// Match flow:
+//   waiting → ready → round_1 → round_2 → round_3 → finished
+//
+// Per-round flow:
+//   Both players are dealt 2 starting cards from `deck`.
+//   Each player independently hits / stands. A round resolves when
+//   BOTH players have reached a terminal per-round state (`stood` or
+//   `busted`). When `round_deadline` elapses, any player still in
+//   `playing` is force-marked `stood` so the round can resolve.
+//
+// Round winner: closer to 21 without busting. Both bust → draw.
+// Match winner: first to score_player = 2; otherwise decided by
+// round_3. Tied after round_3 → match result is `draw` (full refund).
+//
+// Hands are kept hidden from the opponent during the round —
+// `player1_hand` / `player2_hand` are stored server-side in their
+// real form on the match row, but the match state API scrubs the
+// opponent's hand before returning it to the requesting seat.
+export const blackjackPvpStatusEnum = pgEnum("blackjack_pvp_status", [
+  "waiting",
+  "ready",
+  "round_1",
+  "round_2",
+  "round_3",
+  "between_rounds",
+  "finished",
+  "cancelled",
+]);
+
+export const blackjackPvpPlayerStateEnum = pgEnum(
+  "blackjack_pvp_player_state",
+  ["playing", "stood", "busted"],
+);
+
+export const blackjackPvpMatches = pgTable(
+  "blackjack_pvp_matches",
+  {
+    id: serial("id").primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
+    status: blackjackPvpStatusEnum("status").notNull().default("waiting"),
+    currentRound: integer("current_round").notNull().default(1),
+    scorePlayer1: integer("score_player1").notNull().default(0),
+    scorePlayer2: integer("score_player2").notNull().default(0),
+    // Live per-round transient state — both hands stored server-side
+    // in JSONB. The match state route scrubs the OPPONENT's hand
+    // before returning so cards stay hidden until the round resolves.
+    player1Hand: jsonb("player1_hand").notNull().default(sql`'[]'::jsonb`),
+    player2Hand: jsonb("player2_hand").notNull().default(sql`'[]'::jsonb`),
+    // Per-seat round action state.
+    player1State: blackjackPvpPlayerStateEnum("player1_state")
+      .notNull()
+      .default("playing"),
+    player2State: blackjackPvpPlayerStateEnum("player2_state")
+      .notNull()
+      .default("playing"),
+    // Server-authoritative shoe. `deck[0]` is the next available card.
+    deck: jsonb("deck").notNull().default(sql`'[]'::jsonb`),
+    // ── Swap + Hold (1 use per round, per seat) ────────────────────
+    // The Swap action targets one of the hand's TWO ORIGINAL starting
+    // cards (always at indices 0 and 1 because Hit pushes to the end).
+    // The Hold action stores the most-recently drawn card into the
+    // side-slot below; Use Held resolves it to 'add' or 'discard'.
+    // ALL of these columns are SERVER-ONLY state — the GET match
+    // route SCRUBS the opponent's columns before returning so neither
+    // side ever sees the other's swaps / holds / held card.
+    player1SwapsUsed: integer("player1_swaps_used").notNull().default(0),
+    player2SwapsUsed: integer("player2_swaps_used").notNull().default(0),
+    player1HoldsUsed: integer("player1_holds_used").notNull().default(0),
+    player2HoldsUsed: integer("player2_holds_used").notNull().default(0),
+    player1HeldCard: jsonb("player1_held_card").default(sql`NULL`),
+    player2HeldCard: jsonb("player2_held_card").default(sql`NULL`),
+    player1HeldResolved: varchar("player1_held_resolved", { length: 10 })
+      .default(sql`NULL`),
+    player2HeldResolved: varchar("player2_held_resolved", { length: 10 })
+      .default(sql`NULL`),
+    roundDeadline: timestamp("round_deadline"),
+    // Final match bookkeeping.
+    winnerId: varchar("winner_id", { length: 255 }),
+    result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    // Per-round turn-window duration in seconds (mirrors
+    // roulette-pvp's `round_timer_seconds`). Match-flow constant:
+    // `round_deadline` is computed as `now() + round_timer_seconds`
+    // whenever a new betting window opens. Surfaced as a column so
+    // future admin tooling can tweak a match's pacing without code.
+    roundTimerSeconds: integer("round_timer_seconds")
+      .notNull()
+      .default(20),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Lobby listing — `status='waiting'` AND player2_id IS NULL.
+    statusIdx: index("blackjack_pvp_status_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+    player1Idx: index("blackjack_pvp_player1_idx").on(
+      table.player1Id,
+      table.createdAt,
+    ),
+    player2Idx: index("blackjack_pvp_player2_idx").on(
+      table.player2Id,
+      table.createdAt,
+    ),
+    // Stake matchmaking — finding a waiting lobby whose stake matches
+    // the joiner's request.
+    stakeIdx: index("blackjack_pvp_stake_open_idx").on(
+      table.stakeAmount,
+      table.status,
+    ),
+  }),
+);
+
+// Per-round final snapshots for replay/history. Cascades from the
+// parent match. round_winner is null when the round ended in a draw.
+export const blackjackPvpRounds = pgTable(
+  "blackjack_pvp_rounds",
+  {
+    id: serial("id").primaryKey(),
+    matchId: integer("match_id")
+      .notNull()
+      .references(() => blackjackPvpMatches.id, { onDelete: "cascade" }),
+    roundNumber: integer("round_number").notNull(),
+    player1Hand: jsonb("player1_hand").notNull().default(sql`'[]'::jsonb`),
+    player2Hand: jsonb("player2_hand").notNull().default(sql`'[]'::jsonb`),
+    // Hand value as scored by `calcHandValue`; -1 for busted hands so a
+    // busted hand always loses to a non-busted hand regardless of score.
+    player1Score: integer("player1_score").notNull(),
+    player2Score: integer("player2_score").notNull(),
+    player1State: blackjackPvpPlayerStateEnum("player1_state").notNull(),
+    player2State: blackjackPvpPlayerStateEnum("player2_state").notNull(),
+    // ── Snapshot of the Swap/Hold usage + held-card at the moment
+    // the round resolved — used for post-match history replay. NOT
+    // scrubbed on join: history rows are public so replays can show
+    // actions truthfully. ──────────────────────────────────────────
+    player1SwapsUsed: integer("player1_swaps_used").notNull().default(0),
+    player2SwapsUsed: integer("player2_swaps_used").notNull().default(0),
+    player1HoldsUsed: integer("player1_holds_used").notNull().default(0),
+    player2HoldsUsed: integer("player2_holds_used").notNull().default(0),
+    player1HeldCard: jsonb("player1_held_card").default(sql`NULL`),
+    player2HeldCard: jsonb("player2_held_card").default(sql`NULL`),
+    player1HeldResolved: varchar("player1_held_resolved", { length: 10 })
+      .default(sql`NULL`),
+    player2HeldResolved: varchar("player2_held_resolved", { length: 10 })
+      .default(sql`NULL`),
+    // 'player1' | 'player2' | 'draw' | null
+    roundWinner: varchar("round_winner", { length: 10 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    matchRoundIdx: index("blackjack_pvp_rounds_match_round_idx").on(
+      table.matchId,
+      table.roundNumber,
+    ),
+  }),
+);
+
+export const blackjackPvpMatchesRelations = relations(
+  blackjackPvpMatches,
+  ({ many }) => ({
+    rounds: many(blackjackPvpRounds),
+  }),
+);
+
+export const blackjackPvpRoundsRelations = relations(
+  blackjackPvpRounds,
+  ({ one }) => ({
+    match: one(blackjackPvpMatches, {
+      fields: [blackjackPvpRounds.matchId],
+      references: [blackjackPvpMatches.id],
+    }),
+  }),
+);
