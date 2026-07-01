@@ -100,6 +100,15 @@ const PAYLOAD = {
     lockedAfterStand: "Hand locked — both hands reveal when the round ends",
     revealTeaser: "Revealing hands\u2026",
     revealTeaserHint: "Both hands flip simultaneously",
+    // Prompt 10 — 6-phase orchestrated round-end reveal: SKIP button
+    // label shown during the teaser/player/opponent/scores/highlight
+    // phases (the full Continue label only appears at phase 5 once
+    // the AWARD header is on screen).
+    skipReveal: "Skip reveal",
+    awardRoundYou: "Round {n} awarded to You",
+    awardRoundOpp: "Round {n} awarded to Opponent",
+    awardRoundDraw: "Round {n} tied",
+    ptsUnit: "pts",
   },
   fr: {
     title: "\u{1F0CF} Blackjack PvP",
@@ -174,6 +183,11 @@ const PAYLOAD = {
     lockedAfterStand: "Main verrouill\u00e9e \u2014 les deux mains se r\u00e9v\u00e8lent \u00e0 la fin de la manche",
     revealTeaser: "R\u00e9v\u00e9lation des mains\u2026",
     revealTeaserHint: "Les deux mains se d\u00e9couvrent simultan\u00e9ment",
+    skipReveal: "Passer la r\u00e9v\u00e9lation",
+    awardRoundYou: "Manche {n} remport\u00e9e par Vous",
+    awardRoundOpp: "Manche {n} remport\u00e9e par l\u2019Adversaire",
+    awardRoundDraw: "Manche {n} \u2014 \u00e9galit\u00e9",
+    ptsUnit: "pts",
   },
   es: {
     title: "\u{1F0CF} Blackjack PvP",
@@ -248,6 +262,11 @@ const PAYLOAD = {
     lockedAfterStand: "Mano bloqueada \u2014 ambas manos se revelan al final de la ronda",
     revealTeaser: "Revelando manos\u2026",
     revealTeaserHint: "Las dos manos se descubren simult\u00e1neamente",
+    skipReveal: "Saltar revelaci\u00f3n",
+    awardRoundYou: "Ronda {n} adjudicada a Ti",
+    awardRoundOpp: "Ronda {n} adjudicada al Oponente",
+    awardRoundDraw: "Ronda {n} \u2014 empate",
+    ptsUnit: "pts",
   },
 };
 

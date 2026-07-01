@@ -1339,8 +1339,10 @@ function RoundResultModal({
     (round.roundWinner === "player2" && viewerIsPlayer1);
   const isDraw = round.roundWinner === "draw";
 
-  // Round-end reveal — both hands disclosed simultaneously so each
-  // player can see the comparison that produced the round-winner.
+  // Round-end reveal — both hands fully revealed by the server's
+  // rounds history payload. The orchestration of WHEN each element
+  // becomes visible is a client-only concern handled by the phase
+  // state machine below.
   const p1Hand = round.player1Hand;
   const p2Hand = round.player2Hand;
   const p1Score = round.player1Score;
@@ -1348,47 +1350,68 @@ function RoundResultModal({
   const p1Busted = round.player1State === "busted";
   const p2Busted = round.player2State === "busted";
 
-  // Per-seat winner highlighting for the side-by-side reveal. The
-  // modal ALWAYS lays out the viewer first (top) for narrative flow,
-  // even though the actual seat keys are player1/player2.
-  const topWon =
-    round.roundWinner === "player1" || round.roundWinner === "player2"
-      ? (round.roundWinner === "player1" && viewerIsPlayer1) ||
-        (round.roundWinner === "player2" && !viewerIsPlayer1)
-      : false;
-  const bottomWon =
-    round.roundWinner === "player1" || round.roundWinner === "player2"
-      ? (round.roundWinner === "player1" && !viewerIsPlayer1) ||
-        (round.roundWinner === "player2" && viewerIsPlayer1)
-      : false;
-
-  // 5-second auto-dismiss: the matching flow requires the round-
-  // result screen to appear BEFORE the next round starts (server has
-  // already moved status; this is a soft hold so the player can read
-  // the comparison). Player can also dismiss manually.
-  const [secondsLeft, setSecondsLeft] = useState(5);
-
-  // Two-phase simultaneous reveal:
-  //   Phase 1 (~700ms): teaser "Revealing… hands…" pulse so the
-  //   simultaneous flip feels deliberate instead of instantaneous.
-  //   Phase 2: BOTH seats' cards flip in unison (existing per-card
-  //   stagger inside each seat preserved; both seats share the same
-  //   start time so they animate together).
-  const [introDone, setIntroDone] = useState(false);
+  // ── 6-phase orchestrated reveal ────────────────────────────────
+  //   phase 0 — TEASER  (0–700ms):   "Revealing hands…" pulse; both
+  //                                seats face-down with pulse.
+  //   phase 1 — PLAYER  (700–1500ms): viewer's hand flips face-up,
+  //                                 opponent remains face-down.
+  //   phase 2 — OPPONENT(1500–2300ms): opponent's hand flips face-up.
+  //   phase 3 — SCORES  (2300–3100ms): both totals appear below the
+  //                                 hands + priority rule banner.
+  //   phase 4 — HIGHLIGHT(3100–3900ms): winning seat gets gold
+  //                                 border + crown badge; losing
+  //                                 seat dims. Modal container
+  //                                 border shifts to win/loss tint.
+  //   phase 5 — AWARD   (3900ms+):   full outcome header (emoji +
+  //                                 "Round N awarded to YOU/OPPONENT/
+  //                                 tie") + Continue button +
+  //                                 5-second auto-dismiss.
+  //
+  // Both click targets (backdrop + footer button) dismiss
+  // immediately at any phase. The footer button has a different
+  // label across phases so the player can read the intent of their
+  // action without having to deconstruct the animation. The 5-second
+  // auto-dismiss countdown is the safety net for impatient players
+  // who don't tap anything.
+  type Phase = 0 | 1 | 2 | 3 | 4 | 5;
+  const PHASE_TIMES_MS: Array<[Phase, number]> = [
+    [1, 700],
+    [2, 1500],
+    [3, 2300],
+    [4, 3100],
+    [5, 3900],
+  ];
+  const AUTO_DISMISS_SECONDS = 5;
+  const [phase, setPhase] = useState<Phase>(0);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
   useEffect(() => {
+    const timers = PHASE_TIMES_MS.map(([target, ms]) =>
+      setTimeout(() => setPhase(target), ms),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  // Auto-dismiss countdown only kicks in once the AWARD header is
+  // visible — i.e. phase 5. Before that, the modal stays until the
+  // player presses Continue / Skip / clicks the backdrop.
+  useEffect(() => {
+    if (phase !== 5) return;
+    setSecondsLeft(AUTO_DISMISS_SECONDS);
+  }, [phase]);
+
+  useEffect(() => {
+    if (secondsLeft == null) return;
     if (secondsLeft <= 0) {
       onDismiss();
       return;
     }
-    const id = setTimeout(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
+    const id = setTimeout(
+      () => setSecondsLeft((s) => (s == null ? null : s - 1)),
+      1000,
+    );
     return () => clearTimeout(id);
   }, [secondsLeft, onDismiss]);
-
-  useEffect(() => {
-    const id = setTimeout(() => setIntroDone(true), 700);
-    return () => clearTimeout(id);
-  }, []);
 
   return (
     <motion.div
@@ -1404,153 +1427,220 @@ function RoundResultModal({
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.85, y: 30 }}
         transition={{ type: "spring", stiffness: 300, damping: 18 }}
-        className={`relative w-full max-w-lg rounded-3xl border-4 p-5 sm:p-7 text-center shadow-2xl ${
-          won
-            ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_50px_rgba(251,191,36,0.35)]"
-            : lost
-            ? "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_40px_rgba(239,68,68,0.25)]"
-            : "border-yellow-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_40px_rgba(250,204,21,0.25)]"
+        onClick={(e) => e.stopPropagation()}
+        className={`relative w-full max-w-lg rounded-3xl border-4 p-5 sm:p-7 text-center shadow-2xl transition-colors duration-700 ${
+          phase >= 4
+            ? won
+              ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_50px_rgba(251,191,36,0.35)]"
+              : lost
+              ? "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_40px_rgba(239,68,68,0.25)]"
+              : "border-yellow-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_40px_rgba(250,204,21,0.25)]"
+            : "border-[#FFD700]/35 bg-gradient-to-b from-[#0c1633]/95 to-[#040a1a]/95 shadow-[0_0_30px_rgba(255,215,0,0.12)]"
         }`}
       >
-        <motion.div
-          initial={{ scale: 0, rotate: -30 }}
-          animate={{ scale: 1, rotate: 0 }}
-          transition={{ delay: 0.18 }}
-          className="mb-2 text-6xl"
-        >
-          {won ? "🏆" : isDraw ? "🤝" : "💀"}
-        </motion.div>
-        <h2
-          className={`text-2xl sm:text-3xl font-black uppercase ${
-            won ? "text-amber-300" : isDraw ? "text-yellow-300" : "text-red-400"
-          }`}
-        >
-          {won
-            ? t("blackjackPvp.roundWon", "Manche gagnée !")
-            : isDraw
-            ? t("blackjackPvp.roundDraw", "Égalité")
-            : t("blackjackPvp.roundLost", "Manche perdue")}
-        </h2>
-        <p className="mt-1 text-sm text-white/80">
-          {t(
-            "blackjackPvp.roundResultHeader",
-            "Manche {n} — Révelation des mains",
-          ).replace("{n}", String(round.roundNumber))}
-        </p>
+        {/* ── Header — phase < 5 shows the "Revealing hands…"
+               teaser with a sparkle pulse. Phase 5 swaps in the
+               full outcome banner (trophy/skull/handshake + bold
+               "Round N awarded to YOU / OPPONENT / tied" + tight
+               WIN/LOSS/DRAW headline) for the auto-dismiss hold. */}
+        <div className="min-h-[132px] flex flex-col items-center justify-center">
+          <AnimatePresence mode="wait" initial={false}>
+            {phase < 5 ? (
+              <motion.div
+                key="teaser-header"
+                initial={{ opacity: 0, scale: 0.94 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.97 }}
+                transition={{ duration: 0.35 }}
+                className="flex flex-col items-center"
+              >
+                <div className="text-3xl mb-1">✨</div>
+                <h2 className="text-xl sm:text-2xl font-black uppercase text-white/90">
+                  {t(
+                    "blackjackPvp.roundResultHeader",
+                    "Manche {n} — Révelation des mains",
+                  ).replace("{n}", String(round.roundNumber))}
+                </h2>
+                <p className="mt-2 text-sm font-black uppercase tracking-[0.25em] text-[#FFD700] animate-pulse">
+                  {t("blackjackPvp.revealTeaser", "Révélation des mains…")}
+                </p>
+                <p className="mt-1 text-[10px] uppercase tracking-widest text-white/55">
+                  {t(
+                    "blackjackPvp.revealTeaserHint",
+                    "Les deux mains se découvrent simultanément",
+                  )}
+                </p>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="award-header"
+                initial={{ opacity: 0, y: -16, scale: 0.92 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ type: "spring", stiffness: 260, damping: 18 }}
+                className="flex flex-col items-center"
+              >
+                <motion.div
+                  initial={{ scale: 0, rotate: -30 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ delay: 0.15, type: "spring", stiffness: 220 }}
+                  className="mb-2 text-6xl"
+                >
+                  {won ? "🏆" : isDraw ? "🤝" : "💀"}
+                </motion.div>
+                <h2
+                  className={`text-2xl sm:text-3xl font-black uppercase ${
+                    won
+                      ? "text-amber-300"
+                      : isDraw
+                      ? "text-yellow-300"
+                      : "text-red-400"
+                  }`}
+                >
+                  {won
+                    ? t("blackjackPvp.roundWon", "Manche gagnée !")
+                    : isDraw
+                    ? t("blackjackPvp.roundDraw", "Égalité")
+                    : t("blackjackPvp.roundLost", "Manche perdue")}
+                </h2>
+                <p className="mt-1 text-sm text-white/85">
+                  {won
+                    ? t(
+                        "blackjackPvp.awardRoundYou",
+                        "Manche {n} remportée par Vous",
+                      ).replace("{n}", String(round.roundNumber))
+                    : isDraw
+                    ? t(
+                        "blackjackPvp.awardRoundDraw",
+                        "Manche {n} — égalité",
+                      ).replace("{n}", String(round.roundNumber))
+                    : t(
+                        "blackjackPvp.awardRoundOpp",
+                        "Manche {n} remportée par l'Adversaire",
+                      ).replace("{n}", String(round.roundNumber))}
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
-        {/* ── Phase 1: brief "Revealing" teaser pulse so the
-               simultaneous flip feels deliberate. The intro is
-               AnimatePresence-swapped with the reveal grid so both
-               pieces mount/unmount cleanly without overlapping. */}
-        <AnimatePresence mode="wait" initial={false}>
-          {!introDone ? (
+        {/* ── Dynamic seats — the per-phase rollout of cards →
+               score → highlight is encoded by the three booleans
+               on each `<RevealedSeat>`. The seat on the LEFT is
+               always the VIEWER; the right is the opponent. */}
+        <div className="mt-5 grid grid-cols-2 gap-3 text-left">
+          <RevealedSeat
+            label={
+              viewerIsPlayer1
+                ? t("blackjackPvp.seat.player1", "Joueur 1")
+                : t("blackjackPvp.seat.player2", "Joueur 2")
+            }
+            hand={viewerIsPlayer1 ? p1Hand : p2Hand}
+            score={viewerIsPlayer1 ? p1Score : p2Score}
+            busted={viewerIsPlayer1 ? p1Busted : p2Busted}
+            didWin={won}
+            highlight="self"
+            showCards={phase >= 1}
+            showScore={phase >= 3}
+            showHighlight={phase >= 4}
+            t={t}
+          />
+          <RevealedSeat
+            label={t("blackjackPvp.seat.opponent", "Adversaire")}
+            hand={viewerIsPlayer1 ? p2Hand : p1Hand}
+            score={viewerIsPlayer1 ? p2Score : p1Score}
+            busted={viewerIsPlayer1 ? p2Busted : p1Busted}
+            didWin={lost}
+            highlight="opp"
+            showCards={phase >= 2}
+            showScore={phase >= 3}
+            showHighlight={phase >= 4}
+            t={t}
+          />
+        </div>
+
+        {/* ── Phase 3+: priority rule banner slides in to remind the
+               player WHY this round outcome was decided. */}
+        <AnimatePresence>
+          {phase >= 3 && (
             <motion.div
-              key="reveal-intro"
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ duration: 0.35 }}
-              className="mt-5 flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-5 py-6"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.3 }}
+              className="mt-4 rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-left"
             >
-              <div className="text-3xl">✨</div>
-              <p className="text-sm font-black uppercase tracking-[0.25em] text-[#FFD700] animate-pulse">
-                {t(
-                  "blackjackPvp.revealTeaser",
-                  "Révélation des mains…",
-                )}
+              <p className="text-[10px] sm:text-xs uppercase tracking-widest text-[#FFD700]/80 font-bold">
+                {t("blackjackPvp.priority.title", "Règle de résolution")}
               </p>
-              <p className="text-[10px] uppercase tracking-widest text-white/55">
-                {t(
-                  "blackjackPvp.revealTeaserHint",
-                  "Les deux mains se découvrent simultanément",
-                )}
-              </p>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="reveal-grid"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.2 }}
-              className="mt-4 grid grid-cols-2 gap-3 text-left"
-            >
-              {/* ── BOTH hands simultaneously revealed ─────────── */}
-              <RevealedSeat
-                label={
-                  viewerIsPlayer1
-                    ? t("blackjackPvp.seat.player1", "Joueur 1")
-                    : t("blackjackPvp.seat.player2", "Joueur 2")
-                }
-                hand={viewerIsPlayer1 ? p1Hand : p2Hand}
-                score={viewerIsPlayer1 ? p1Score : p2Score}
-                busted={viewerIsPlayer1 ? p1Busted : p2Busted}
-                didWin={topWon}
-                highlight="self"
-                t={t}
-              />
-              <RevealedSeat
-                label={t("blackjackPvp.seat.opponent", "Adversaire")}
-                hand={viewerIsPlayer1 ? p2Hand : p1Hand}
-                score={viewerIsPlayer1 ? p2Score : p1Score}
-                busted={viewerIsPlayer1 ? p2Busted : p1Busted}
-                didWin={bottomWon}
-                highlight="opp"
-                t={t}
-              />
+              <ol className="mt-1 text-xs text-white/85 space-y-0.5 list-decimal list-inside">
+                <li>
+                  {t(
+                    "blackjackPvp.priority.rule1",
+                    "Score le plus élevé ≤ 21 gagne",
+                  )}
+                </li>
+                <li>
+                  {t(
+                    "blackjackPvp.priority.rule2",
+                    "Sauté (>21) = défaite automatique",
+                  )}
+                </li>
+                <li>
+                  {t(
+                    "blackjackPvp.priority.rule3",
+                    "Score égal = manche nulle",
+                  )}
+                </li>
+              </ol>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ── Winner-priority text explaining why the round ended
-               this way (highest ≤21 wins, bust loses, equal = tie). */}
-        <div className="mt-4 rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-left">
-          <p className="text-[10px] sm:text-xs uppercase tracking-widest text-[#FFD700]/80 font-bold">
-            {t("blackjackPvp.priority.title", "Règle de résolution")}
-          </p>
-          <ol className="mt-1 text-xs text-white/85 space-y-0.5 list-decimal list-inside">
-            <li>
-              {t(
-                "blackjackPvp.priority.rule1",
-                "Score le plus élevé ≤ 21 gagne",
-              )}
-            </li>
-            <li>
-              {t(
-                "blackjackPvp.priority.rule2",
-                "Sauté (>21) = défaite automatique",
-              )}
-            </li>
-            <li>
-              {t(
-                "blackjackPvp.priority.rule3",
-                "Score égal = manche nulle",
-              )}
-            </li>
-          </ol>
-        </div>
-
-        {/* ── Continue + auto-dismiss countdown ─────────────────────── */}
+        {/* ── Footer button — before phase 5 the button reads
+               "Skip reveal" and clicking it jumps to phase 5. After
+               phase 5 it reads "Continue" and clicks dismiss.
+               Auto-dismiss countdown is rendered as a transparent
+               suffix only during phase 5 so the player always knows
+               how long the modal will hold. */}
         <button
           onClick={(e) => {
             e.stopPropagation();
             onDismiss();
           }}
-          className={`mt-5 rounded-xl border-b-4 px-6 py-2 text-base font-black transition active:translate-y-[2px] ${
-            won
-              ? "border-amber-700 bg-amber-400 text-black"
-              : "border-cyan-700 bg-cyan-400 text-black"
+          className={`mt-5 inline-flex items-center justify-center gap-2 rounded-xl border-b-4 px-6 py-2.5 text-base font-black transition active:translate-y-[2px] ${
+            phase >= 5
+              ? won
+                ? "border-amber-700 bg-amber-400 text-black"
+                : "border-cyan-700 bg-cyan-400 text-black"
+              : "border-white/15 bg-white/10 text-white/80 hover:bg-white/15"
           }`}
         >
-          {t("blackjackPvp.continue", "Continuer")}{" "}
-          <span className="text-xs opacity-80">({secondsLeft}s)</span>
+          {phase >= 5
+            ? t("blackjackPvp.continue", "Continuer")
+            : t("blackjackPvp.skipReveal", "Skip reveal")}
+          {phase >= 5 && secondsLeft != null && (
+            <span className="text-xs opacity-80">({secondsLeft}s)</span>
+          )}
         </button>
       </motion.div>
     </motion.div>
   );
 }
 
-// One seat of the side-by-side round-result display. Both hands are
-// fully visible here because rounds only contain resolved-game data.
+// One seat of the side-by-side round-result display. The 3 booleans
+// (`showCards`, `showScore`, `showHighlight`) are driven by the
+// parent's phase state machine so this component stays purely
+// declarative — it doesn't know WHETHER it's the player's hand vs
+// the opponent's, just whether each visual layer should be visible.
+//
+//   showCards    — when false the seat renders card backs; flipping
+//                  face-up uses the rotateY + stagger delays below.
+//   showScore    — the total line below the cards; reveals in
+//                  spring-bounce fashion so the comparison lands as a
+//                  distinct visual beat after both hands are open.
+//   showHighlight— the gold border + glow + crown badge on the
+//                  winning seat. The losing seat dims slightly so
+//                  the contrast reads at a glance.
 function RevealedSeat({
   label,
   hand,
@@ -1558,6 +1648,9 @@ function RevealedSeat({
   busted,
   didWin,
   highlight,
+  showCards,
+  showScore,
+  showHighlight,
   t,
 }: {
   label: string;
@@ -1566,33 +1659,78 @@ function RevealedSeat({
   busted: boolean;
   didWin: boolean;
   highlight: "self" | "opp";
+  showCards: boolean;
+  showScore: boolean;
+  showHighlight: boolean;
   t: TFn;
 }) {
-  const isDraw = !didWin && (score === 0 || score > 0); // draw row uses neutral palette
-  const accent =
-    didWin
-      ? "border-amber-300/80"
-      : busted
-      ? "border-red-400/80"
-      : "border-white/20";
-  const scoreText = busted
-    ? t("blackjackPvp.bustedScore", "Sauté ({score})").replace(
-        "{score}",
-        String(score),
-      )
-    : `${score} ${t("blackjackPvp.ptsUnit", "pts")}`;
+  // Border / glow palette. While !showHighlight we keep the seat on
+  // the neutral palette so the gold border sweep at phase 4 reads as
+  // a deliberate decision event, not a fixed visual decoration.
+  const seatBorder = busted
+    ? "border-red-400/70"
+    : didWin
+    ? "border-amber-300/80"
+    : "border-white/20";
+  const seatBg = busted
+    ? "bg-red-950/35"
+    : didWin
+    ? "bg-amber-950/30"
+    : "bg-black/30";
+  const seatGlow = didWin
+    ? "shadow-[0_0_22px_rgba(251,191,36,0.55)]"
+    : "shadow-none";
   return (
-    <div
-      className={`rounded-2xl border-2 ${accent} bg-black/30 p-2 flex flex-col items-center gap-2`}
+    <motion.div
+      className={`relative rounded-2xl border-2 p-2 flex flex-col items-center gap-2 transition-colors duration-500 ${
+        showHighlight
+          ? `${seatBorder} ${seatBg} ${didWin ? seatGlow : "shadow-none"}`
+          : "border-white/10 bg-black/20 shadow-none"
+      } ${!showHighlight && didWin ? "opacity-90" : ""} ${
+        showHighlight && !didWin && !busted ? "opacity-65" : ""
+      }`}
     >
-      <div className="flex items-center gap-1 text-[10px] sm:text-xs font-bold text-white/85">
-        {highlight === "self"
-          ? `★ ${label}`
-          : label}
+      {/* Crown badge — only on the winning seat during phase 5
+         (HIGHLIGHT). Spring-bounce entrance so it reads as a
+         decision event rather than a static decoration. */}
+      <AnimatePresence>
+        {showHighlight && didWin && (
+          <motion.div
+            key="crown-badge"
+            initial={{ scale: 0, rotate: -30, opacity: 0 }}
+            animate={{ scale: 1, rotate: 0, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 14 }}
+            className="absolute -top-3 -right-2 text-2xl drop-shadow-md pointer-events-none"
+            aria-hidden
+          >
+            👑
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div
+        className={`flex items-center gap-1 text-[10px] sm:text-xs font-bold ${
+          showHighlight && didWin ? "text-amber-200" : "text-white/85"
+        }`}
+      >
+        {highlight === "self" ? `★ ${label}` : label}
       </div>
-      <div className="flex justify-center gap-1.5 flex-wrap">
+
+      <div className="flex justify-center gap-1.5 flex-wrap min-h-[96px]">
         {hand.length === 0 ? (
           <BlackjackCardBack />
+        ) : !showCards ? (
+          hand.map((_, i) => (
+            <motion.div
+              key={`back-${i}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+            >
+              <BlackjackCardBack />
+            </motion.div>
+          ))
         ) : (
           hand.map((c, i) => (
             <motion.div
@@ -1606,20 +1744,44 @@ function RevealedSeat({
           ))
         )}
       </div>
-      <div
-        className={`text-sm font-black ${
-          busted
-            ? "text-red-300"
-            : didWin
-            ? "text-amber-300"
-            : isDraw
-            ? "text-yellow-200"
-            : "text-white/80"
-        }`}
-      >
-        {scoreText}
+
+      {/* Score line — appears at phase 3 with a brief pulse so the
+         numerical comparison lands AFTER both hands are visible.
+         Score line is always reserved height so swapping in/out
+         doesn't reflow the parent grid. */}
+      <div className="h-6 flex items-center justify-center">
+        <AnimatePresence>
+          {showScore && (
+            <motion.div
+              key="score"
+              initial={{ opacity: 0, scale: 0.7, y: 4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{
+                type: "spring",
+                stiffness: 320,
+                damping: 16,
+                delay: 0.05,
+              }}
+              className={`text-sm font-black ${
+                busted
+                  ? "text-red-300"
+                  : didWin
+                  ? "text-amber-300"
+                  : "text-white/80"
+              }`}
+            >
+              {busted
+                ? t("blackjackPvp.bustedScore", "Sauté ({score})").replace(
+                    "{score}",
+                    String(score),
+                  )
+                : `${score} ${t("blackjackPvp.ptsUnit", "pts")}`}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
