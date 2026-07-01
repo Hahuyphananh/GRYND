@@ -1,6 +1,9 @@
 export const APP_TEXT_TRANSLATIONS = {
   en: {
     blackjackPvp: {
+      "awardRoundDraw": "Round {n} tied",
+      "awardRoundOpp": "Round {n} awarded to Opponent",
+      "awardRoundYou": "Round {n} awarded to You",
       "betweenRounds.auto": "Auto",
       "betweenRounds.continue": "Continue",
       "betweenRounds.nextRoundHint": "Next round starts shortly…",
@@ -29,6 +32,7 @@ export const APP_TEXT_TRANSLATIONS = {
       "priority.rule2": "2. Bust loses automatically",
       "priority.rule3": "3. Equal score = tied round",
       "priority.title": "Winner priority",
+      "ptsUnit": "pts",
       "ready": "Ready",
       "result.draw": "Draw",
       "result.lose": "You lost",
@@ -43,6 +47,7 @@ export const APP_TEXT_TRANSLATIONS = {
       "seat.opponent": "Opponent",
       "seat.player1": "Player 1",
       "seat.player2": "Player 2",
+      "skipReveal": "Skip reveal",
       "stake": "Stake: {amount}",
       "status.activePlay": "In play",
       "status.betweenRounds": "Round {n} won — round {m} next",
@@ -65,6 +70,7 @@ export const APP_TEXT_TRANSLATIONS = {
       "waitingBusted": "Waiting…",
       "waitingStood": "Stood — waiting for opponent",
     },
+    
     
     
     
@@ -1048,6 +1054,9 @@ export const APP_TEXT_TRANSLATIONS = {
   },
   fr: {
     blackjackPvp: {
+      "awardRoundDraw": "Manche {n} — égalité",
+      "awardRoundOpp": "Manche {n} remportée par l’Adversaire",
+      "awardRoundYou": "Manche {n} remportée par Vous",
       "betweenRounds.auto": "Auto",
       "betweenRounds.continue": "Continuer",
       "betweenRounds.nextRoundHint": "La prochaine manche commence bientôt…",
@@ -1076,6 +1085,7 @@ export const APP_TEXT_TRANSLATIONS = {
       "priority.rule2": "2. Dépassement = perte automatique",
       "priority.rule3": "3. Score égal = manche nulle",
       "priority.title": "Priorité du gagnant",
+      "ptsUnit": "pts",
       "ready": "Prêt",
       "result.draw": "Égalité",
       "result.lose": "Vous avez perdu",
@@ -1090,6 +1100,7 @@ export const APP_TEXT_TRANSLATIONS = {
       "seat.opponent": "Adversaire",
       "seat.player1": "Joueur 1",
       "seat.player2": "Joueur 2",
+      "skipReveal": "Passer la révélation",
       "stake": "Mise : {amount}",
       "status.activePlay": "En jeu",
       "status.betweenRounds": "Manche {n} gagnée — manche {m} suivante",
@@ -1112,6 +1123,7 @@ export const APP_TEXT_TRANSLATIONS = {
       "waitingBusted": "En attente…",
       "waitingStood": "Resté — en attente de l’adversaire",
     },
+    
     
     
     
@@ -1713,6 +1725,9 @@ export const APP_TEXT_TRANSLATIONS = {
   },
   es: {
     blackjackPvp: {
+      "awardRoundDraw": "Ronda {n} — empate",
+      "awardRoundOpp": "Ronda {n} adjudicada al Oponente",
+      "awardRoundYou": "Ronda {n} adjudicada a Ti",
       "betweenRounds.auto": "Auto",
       "betweenRounds.continue": "Continuar",
       "betweenRounds.nextRoundHint": "La siguiente ronda empieza pronto…",
@@ -1741,6 +1756,7 @@ export const APP_TEXT_TRANSLATIONS = {
       "priority.rule2": "2. Pasarse pierde automáticamente",
       "priority.rule3": "3. Puntuación igual = ronda empatada",
       "priority.title": "Prioridad del ganador",
+      "ptsUnit": "pts",
       "ready": "Listo",
       "result.draw": "Empatado",
       "result.lose": "Perdiste",
@@ -1755,6 +1771,7 @@ export const APP_TEXT_TRANSLATIONS = {
       "seat.opponent": "Oponente",
       "seat.player1": "Jugador 1",
       "seat.player2": "Jugador 2",
+      "skipReveal": "Saltar revelación",
       "stake": "Apuesta: {amount}",
       "status.activePlay": "En juego",
       "status.betweenRounds": "Ronda {n} ganada — ronda {m} siguiente",
@@ -1777,6 +1794,7 @@ export const APP_TEXT_TRANSLATIONS = {
       "waitingBusted": "Esperando…",
       "waitingStood": "Plantado — esperando al oponente",
     },
+    
     
     
     
