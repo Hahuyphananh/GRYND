@@ -24,10 +24,13 @@
 //
 // Anti-cheat considerations baked into `recordAction`:
 //   * a player can only act on their own seat (server-trusted clerkId)
-//   * a stale or empty shoe cannot be drawn from (deck.length gate)
-//   * per-round caps (1 swap, 1 hold) prevent stacking
-//   * swap-after-bust is allowed for revival but still locks in BUSTED
-//     if the post-swap hand value is still >21
+//   * a stale or empty shoe cannot be drawn from (deck.length gate)// * per-round caps (1 swap, 1 hold) prevent stacking
+//   * Per Prompt 7: once a seat leaves `playing` (stood or busted)
+//     every remaining gameplay action is rejected with a 409 — the
+//     previous swap-after-bust revival escape hatch is closed so the
+//     "any additional gameplay actions disabled" invariant holds
+//     from the moment the player finalises their hand.
+
 //
 // Response shape matches
 // `src/app/api/roulette-pvp/match/[matchId]/bet/route.js` so any
@@ -35,7 +38,10 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { recordAction } from "../../../../../../lib/blackjack-pvp/serverStore";
+import {
+  recordAction,
+  viewerPlayerState,
+} from "../../../../../../lib/blackjack-pvp/serverStore";
 import {
   ACTION_TYPE,
   MATCH_STATUS,
@@ -71,19 +77,26 @@ function normaliseMatchForViewer(match, viewerUserId) {
     player2Id: match.player2Id,
     stakeAmount: Number(match.stakeAmount),
     status: match.status,
-    currentRound: match.currentRound,
-    scorePlayer1: match.scorePlayer1,
-    scorePlayer2: match.scorePlayer2,
+    roundNumber: match.roundNumber,
+    roundsWonPlayer1: match.roundsWonPlayer1,
+    roundsWonPlayer2: match.roundsWonPlayer2,
     player1Hand:
       terminal || viewerIsPlayer1 ? match.player1Hand : scrubHandInPlace(match.player1Hand),
     player2Hand:
       terminal || !viewerIsPlayer1 ? match.player2Hand : scrubHandInPlace(match.player2Hand),
-    player1State: match.player1State || "playing",
-    player2State: match.player2State || "playing",
+    // Per Prompt 7: opponent's seat state is hidden during active
+    // play (round_1/2/3) so we can't infer whether they've stood.
+    // After the round resolves (between_rounds/finished) both seats
+    // are revealed via the persisted rounds history payload.
+    player1State: viewerPlayerState(match, 1, viewerUserId),
+    player2State: viewerPlayerState(match, 2, viewerUserId),
+    // Wire-only computed booleans (Prompt 9 schema refactor).
+    player1Standing: viewerPlayerState(match, 1, viewerUserId) !== "playing",
+    player2Standing: viewerPlayerState(match, 2, viewerUserId) !== "playing",
     viewerIsPlayer1,
     opponentHandRevealed: terminal,
     roundDeadline: match.roundDeadline,
-    winnerId: match.winnerId,
+    winner: match.winner,
     result: match.result,
     prizePaid: match.prizePaid ? Number(match.prizePaid) : 0,
     houseFee: match.houseFee ? Number(match.houseFee) : 0,
@@ -94,34 +107,34 @@ function normaliseMatchForViewer(match, viewerUserId) {
     // Per-seat Swap/Hold counters. Only the VIEWER's seat is in full;
     // the opponent's seat is collapsed to a boolean so the UI can't
     // infer their strategy.
-    player1SwapsUsed: viewerIsPlayer1
-      ? match.player1SwapsUsed
-      : match.player1SwapsUsed > 0
+    player1UsedSwap: viewerIsPlayer1
+      ? match.player1UsedSwap
+      : match.player1UsedSwap > 0
         ? 1
         : 0,
-    player2SwapsUsed: !viewerIsPlayer1
-      ? match.player2SwapsUsed
-      : match.player2SwapsUsed > 0
+    player2UsedSwap: !viewerIsPlayer1
+      ? match.player2UsedSwap
+      : match.player2UsedSwap > 0
         ? 1
         : 0,
-    player1HoldsUsed: viewerIsPlayer1
-      ? match.player1HoldsUsed
-      : match.player1HoldsUsed > 0
+    player1UsedFreeze: viewerIsPlayer1
+      ? match.player1UsedFreeze
+      : match.player1UsedFreeze > 0
         ? 1
         : 0,
-    player2HoldsUsed: !viewerIsPlayer1
-      ? match.player2HoldsUsed
-      : match.player2HoldsUsed > 0
+    player2UsedFreeze: !viewerIsPlayer1
+      ? match.player2UsedFreeze
+      : match.player2UsedFreeze > 0
         ? 1
         : 0,
     // The viewer sees their own heldCard in full (so they can preview
     // it before deciding add vs discard). The opponent sees a stub.
-    player1HeldCard: viewerIsPlayer1
-      ? match.player1HeldCard
-      : scrubHeldCardInPlace(match.player1HeldCard),
-    player2HeldCard: !viewerIsPlayer1
-      ? match.player2HeldCard
-      : scrubHeldCardInPlace(match.player2HeldCard),
+    player1FrozenCard: viewerIsPlayer1
+      ? match.player1FrozenCard
+      : scrubHeldCardInPlace(match.player1FrozenCard),
+    player2FrozenCard: !viewerIsPlayer1
+      ? match.player2FrozenCard
+      : scrubHeldCardInPlace(match.player2FrozenCard),
     player1HeldResolved: viewerIsPlayer1
       ? match.player1HeldResolved
       : Boolean(match.player1HeldResolved),

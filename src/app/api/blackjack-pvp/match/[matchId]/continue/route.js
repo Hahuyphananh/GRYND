@@ -15,7 +15,10 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { continueMatch } from "../../../../../../lib/blackjack-pvp/serverStore";
+import {
+  continueMatch,
+  viewerPlayerState,
+} from "../../../../../../lib/blackjack-pvp/serverStore";
 import { MATCH_STATUS } from "../../../../../../lib/blackjack-pvp/constants";
 
 function isTerminalStatus(status) {
@@ -77,13 +80,21 @@ export async function POST(req, { params }) {
           player2Id: match.player2Id,
           stakeAmount: Number(match.stakeAmount),
           status: match.status,
-          currentRound: match.currentRound,
-          scorePlayer1: match.scorePlayer1,
-          scorePlayer2: match.scorePlayer2,
+          roundNumber: match.roundNumber,
+          roundsWonPlayer1: match.roundsWonPlayer1,
+          roundsWonPlayer2: match.roundsWonPlayer2,
           player1Hand: player1HandForViewer,
           player2Hand: player2HandForViewer,
-          player1State: match.player1State || "playing",
-          player2State: match.player2State || "playing",
+          // Wire-only computed booleans (Prompt 9 schema refactor).
+          player1Standing:
+            viewerPlayerState(match, 1, userId) !== "playing",
+          player2Standing:
+            viewerPlayerState(match, 2, userId) !== "playing",
+          // Between-rounds has resolved so opponent state is no
+          // longer secret — but route through viewerPlayerState for
+          // type-consistency with the other match reads.
+          player1State: viewerPlayerState(match, 1, userId),
+          player2State: viewerPlayerState(match, 2, userId),
           viewerIsPlayer1,
           roundDeadline: match.roundDeadline,
           roundTimer: match.roundTimerSeconds ?? 20,

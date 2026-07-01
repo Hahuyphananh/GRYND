@@ -31,11 +31,14 @@ const PAYLOAD = {
     "status.ready": "Get ready\u2026",
     "status.roundN": "Round {n} / 3",
     "status.betweenRounds": "Round {n} won \u2014 round {m} next",
+    // Prompt 8 — replaces the legacy `scoreboardLabel` flat key now
+    // that GameTableCenter drives the round scoreboard on the live
+    // page. Kept for any unrelated call site during a transition.
     "status.finishedDraw": "Match ended in a draw",
     "status.finishedWin": "You won the match",
     "status.finishedLose": "You lost the match",
     "status.cancelled": "Match cancelled",
-    scoreboardLabel: "Match score",
+    "status.activePlay": "In play",
     waitingBusted: "Waiting\u2026",
     waitingStood: "Stood \u2014 waiting for opponent",
     ready: "Ready",
@@ -54,11 +57,11 @@ const PAYLOAD = {
     heldReserved: "(reserved)",
     heldAdded: "(added to hand)",
     heldDiscarded: "(discarded)",
-    swap1st: "Swap card 1",
-    swap2nd: "Swap card 2",
-    hold: "Hold last card",
+    // Prompt 8: removed swap1st/swap2nd/hold/swap1stHint/swap2ndHint/
+    // scoreboardLabel — consolidated Swap button + Freeze rename moved
+    // the surface text under `swap` / `freeze` (and the swap target
+    // pill under `swapCard1st` / `swapCard2nd`).
     useHeldAdd: "Use held (add)",
-    useHeldDiscard: "Use held (discard)",
     betweenRounds: {
       title: "Round {n} incoming",
       subtitle: "Round {n} of 3 \u2014 best-of-3",
@@ -77,6 +80,26 @@ const PAYLOAD = {
     bustTag: "(busted)",
     roundResultHeader: "Round {n} result",
     matchEndHeader: "Match over",
+    // Redrawn PvP interface (Prompt 8) — Swap consolidation + Freeze rename.
+    swap: "Swap",
+    swapHint: "Replace your {n} starting card",
+    swapTargetLabel: "Swap target",
+    swapCard1st: "1st",
+    swapCard2nd: "2nd",
+    freeze: "Freeze",
+    freezeHint: "Stash your most recently drawn card aside for later",
+    useHeldAdd: "Use frozen card",
+    useHeldDiscard: "Discard frozen",
+    scoreboard: {
+      player: "Player",
+      opponent: "Opponent",
+      roundLabel: "Round",
+      roundsUnit: "rd",
+    },
+    // Prompt 7 / 8 — locked-hand + simultaneous reveal text.
+    lockedAfterStand: "Hand locked — both hands reveal when the round ends",
+    revealTeaser: "Revealing hands\u2026",
+    revealTeaserHint: "Both hands flip simultaneously",
   },
   fr: {
     title: "\u{1F0CF} Blackjack PvP",
@@ -93,7 +116,7 @@ const PAYLOAD = {
     "status.finishedWin": "Vous avez gagn\u00e9 le match",
     "status.finishedLose": "Vous avez perdu le match",
     "status.cancelled": "Match annul\u00e9",
-    scoreboardLabel: "Score du match",
+    "status.activePlay": "En jeu",
     waitingBusted: "En attente\u2026",
     waitingStood: "Rest\u00e9 \u2014 en attente de l\u2019adversaire",
     ready: "Pr\u00eat",
@@ -112,11 +135,8 @@ const PAYLOAD = {
     heldReserved: "(r\u00e9serv\u00e9)",
     heldAdded: "(ajout\u00e9 \u00e0 la main)",
     heldDiscarded: "(d\u00e9fauss\u00e9)",
-    swap1st: "\u00c9changer carte 1",
-    swap2nd: "\u00c9changer carte 2",
-    hold: "Mettre la derni\u00e8re carte de c\u00f4t\u00e9",
+    // Prompt 8 — see en note above.
     useHeldAdd: "Utiliser la carte r\u00e9serv\u00e9e (ajouter)",
-    useHeldDiscard: "Utiliser la carte r\u00e9serv\u00e9e (d\u00e9fausser)",
     betweenRounds: {
       title: "Manche {n} \u00e0 venir",
       subtitle: "Manche {n} sur 3 \u2014 meilleur des 3",
@@ -135,6 +155,25 @@ const PAYLOAD = {
     bustTag: "(saut\u00e9)",
     roundResultHeader: "R\u00e9sultat de la manche {n}",
     matchEndHeader: "Match termin\u00e9",
+    // Redrawn PvP interface (Prompt 8) — Swap consolidation + Freeze rename.
+    swap: "Permuter",
+    swapHint: "Remplacer votre carte de d\u00e9part n\u00b0 {n}",
+    swapTargetLabel: "Carte \u00e0 permuter",
+    swapCard1st: "1\u00e8re",
+    swapCard2nd: "2\u00e8me",
+    freeze: "Geler",
+    freezeHint: "Mettre de c\u00f4t\u00e9 votre carte tir\u00e9e pour plus tard",
+    useHeldAdd: "Ajouter la carte gel\u00e9e",
+    useHeldDiscard: "Jeter la carte gel\u00e9e",
+    scoreboard: {
+      player: "Joueur",
+      opponent: "Adversaire",
+      roundLabel: "Manche",
+      roundsUnit: "v.",
+    },
+    lockedAfterStand: "Main verrouill\u00e9e \u2014 les deux mains se r\u00e9v\u00e8lent \u00e0 la fin de la manche",
+    revealTeaser: "R\u00e9v\u00e9lation des mains\u2026",
+    revealTeaserHint: "Les deux mains se d\u00e9couvrent simultan\u00e9ment",
   },
   es: {
     title: "\u{1F0CF} Blackjack PvP",
@@ -151,7 +190,7 @@ const PAYLOAD = {
     "status.finishedWin": "Ganaste el partido",
     "status.finishedLose": "Perdiste el partido",
     "status.cancelled": "Partido cancelado",
-    scoreboardLabel: "Puntuaci\u00f3n del partido",
+    "status.activePlay": "En juego",
     waitingBusted: "Esperando\u2026",
     waitingStood: "Plantado \u2014 esperando al oponente",
     ready: "Listo",
@@ -170,11 +209,8 @@ const PAYLOAD = {
     heldReserved: "(reservado)",
     heldAdded: "(a\u00f1adido a la mano)",
     heldDiscarded: "(descartado)",
-    swap1st: "Cambiar carta 1",
-    swap2nd: "Cambiar carta 2",
-    hold: "Apartar \u00faltima carta",
+    // Prompt 8 — see en note above.
     useHeldAdd: "Usar carta apartada (a\u00f1adir)",
-    useHeldDiscard: "Usar carta apartada (descartar)",
     betweenRounds: {
       title: "Ronda {n} entrante",
       subtitle: "Ronda {n} de 3 \u2014 mejor de 3",
@@ -193,6 +229,25 @@ const PAYLOAD = {
     bustTag: "(pasado)",
     roundResultHeader: "Resultado de la ronda {n}",
     matchEndHeader: "Partido terminado",
+    // Redrawn PvP interface (Prompt 8) — Swap consolidation + Freeze rename.
+    swap: "Cambiar",
+    swapHint: "Reemplazar tu carta inicial n\u00b0 {n}",
+    swapTargetLabel: "Carta a cambiar",
+    swapCard1st: "1.\u00aa",
+    swapCard2nd: "2.\u00aa",
+    freeze: "Congelar",
+    freezeHint: "Apartar la \u00faltima carta que robaste",
+    useHeldAdd: "Usar carta congelada",
+    useHeldDiscard: "Descartar carta congelada",
+    scoreboard: {
+      player: "Jugador",
+      opponent: "Oponente",
+      roundLabel: "Ronda",
+      roundsUnit: "r.",
+    },
+    lockedAfterStand: "Mano bloqueada \u2014 ambas manos se revelan al final de la ronda",
+    revealTeaser: "Revelando manos\u2026",
+    revealTeaserHint: "Las dos manos se descubren simult\u00e1neamente",
   },
 };
 

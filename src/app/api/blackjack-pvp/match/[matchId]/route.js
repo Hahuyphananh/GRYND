@@ -34,6 +34,7 @@ import { auth } from "@clerk/nextjs/server";
 import {
   fetchMatchWithAutoResolve,
   fetchMatchRounds,
+  viewerPlayerState,
 } from "../../../../../lib/blackjack-pvp/serverStore";
 import { MATCH_STATUS } from "../../../../../lib/blackjack-pvp/constants";
 
@@ -116,17 +117,20 @@ export async function GET(req, { params }) {
           player2Id: match.player2Id,
           stakeAmount: Number(match.stakeAmount),
           status: match.status,
-          currentRound: match.currentRound,
-          scorePlayer1: match.scorePlayer1,
-          scorePlayer2: match.scorePlayer2,
+          roundNumber: match.roundNumber,
+          roundsWonPlayer1: match.roundsWonPlayer1,
+          roundsWonPlayer2: match.roundsWonPlayer2,
           // Active hand: VIEWER's real cards; opponent's hidden.
           player1Hand: player1HandForViewer,
           player2Hand: player2HandForViewer,
-          player1State: match.player1State || "playing",
-          player2State: match.player2State || "playing",
+          // Per Prompt 7: opponent's seat state is hidden during
+          // active play so they can't infer whether we've stood
+          // (or busted) before the round-end reveal.
+          player1State: viewerPlayerState(match, 1, userId),
+          player2State: viewerPlayerState(match, 2, userId),
           viewerIsPlayer1,
           roundDeadline: match.roundDeadline,
-          winnerId: match.winnerId,
+          winner: match.winner,
           result: match.result,
           prizePaid:
             viewerIsWinner && match.prizePaid
@@ -141,32 +145,32 @@ export async function GET(req, { params }) {
           // Per-seat Swap/Hold counters. Only the VIEWER's seat is in
           // full; the opponent's seat is collapsed to a boolean so the
           // UI can't infer their strategy.
-          player1SwapsUsed: viewerIsPlayer1
-            ? match.player1SwapsUsed
-            : match.player1SwapsUsed > 0
+          player1UsedSwap: viewerIsPlayer1
+            ? match.player1UsedSwap
+            : match.player1UsedSwap > 0
               ? 1
               : 0,
-          player2SwapsUsed: !viewerIsPlayer1
-            ? match.player2SwapsUsed
-            : match.player2SwapsUsed > 0
+          player2UsedSwap: !viewerIsPlayer1
+            ? match.player2UsedSwap
+            : match.player2UsedSwap > 0
               ? 1
               : 0,
-          player1HoldsUsed: viewerIsPlayer1
-            ? match.player1HoldsUsed
-            : match.player1HoldsUsed > 0
+          player1UsedFreeze: viewerIsPlayer1
+            ? match.player1UsedFreeze
+            : match.player1UsedFreeze > 0
               ? 1
               : 0,
-          player2HoldsUsed: !viewerIsPlayer1
-            ? match.player2HoldsUsed
-            : match.player2HoldsUsed > 0
+          player2UsedFreeze: !viewerIsPlayer1
+            ? match.player2UsedFreeze
+            : match.player2UsedFreeze > 0
               ? 1
               : 0,
-          player1HeldCard: viewerIsPlayer1
-            ? match.player1HeldCard
-            : scrubHeldCardInPlace(match.player1HeldCard),
-          player2HeldCard: !viewerIsPlayer1
-            ? match.player2HeldCard
-            : scrubHeldCardInPlace(match.player2HeldCard),
+          player1FrozenCard: viewerIsPlayer1
+            ? match.player1FrozenCard
+            : scrubHeldCardInPlace(match.player1FrozenCard),
+          player2FrozenCard: !viewerIsPlayer1
+            ? match.player2FrozenCard
+            : scrubHeldCardInPlace(match.player2FrozenCard),
           player1HeldResolved: viewerIsPlayer1
             ? match.player1HeldResolved
             : Boolean(match.player1HeldResolved),

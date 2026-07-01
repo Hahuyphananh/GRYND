@@ -1480,19 +1480,28 @@ export const dotsAndBoxesGames = pgTable(
 //
 // Per-round flow:
 //   Both players are dealt 2 starting cards from `deck`.
+//   The 2-card deal is also snapshotted to `player1OriginalCards` /
+//   `player2OriginalCards` so the round-end reveal + post-match
+//   replay can show what was dealt independent of any later SWAP
+//   that corrupted the live `player1Hand` / `player2Hand`.
 //   Each player independently hits / stands. A round resolves when
 //   BOTH players have reached a terminal per-round state (`stood` or
 //   `busted`). When `round_deadline` elapses, any player still in
 //   `playing` is force-marked `stood` so the round can resolve.
 //
 // Round winner: closer to 21 without busting. Both bust → draw.
-// Match winner: first to score_player = 2; otherwise decided by
+// Match winner: first to rounds_won_player = 2; otherwise decided by
 // round_3. Tied after round_3 → match result is `draw` (full refund).
 //
 // Hands are kept hidden from the opponent during the round —
-// `player1_hand` / `player2_hand` are stored server-side in their
+// `player1Hand` / `player2Hand` are stored server-side in their
 // real form on the match row, but the match state API scrubs the
 // opponent's hand before returning it to the requesting seat.
+//
+// `player1Standing` / `player2Standing` are NOT columns — they are
+// computed on read by the API route as `player{N}_state !== 'playing'`.
+// Storing them as a denormalized boolean would introduce split-brain
+// risk with the `player_state` enum.
 export const blackjackPvpStatusEnum = pgEnum("blackjack_pvp_status", [
   "waiting",
   "ready",
@@ -1517,14 +1526,25 @@ export const blackjackPvpMatches = pgTable(
     player2Id: varchar("player2_id", { length: 255 }),
     stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
     status: blackjackPvpStatusEnum("status").notNull().default("waiting"),
-    currentRound: integer("current_round").notNull().default(1),
-    scorePlayer1: integer("score_player1").notNull().default(0),
-    scorePlayer2: integer("score_player2").notNull().default(0),
+    roundNumber: integer("round_number").notNull().default(1),
+    roundsWonPlayer1: integer("rounds_won_player1").notNull().default(0),
+    roundsWonPlayer2: integer("rounds_won_player2").notNull().default(0),
     // Live per-round transient state — both hands stored server-side
     // in JSONB. The match state route scrubs the OPPONENT's hand
     // before returning so cards stay hidden until the round resolves.
     player1Hand: jsonb("player1_hand").notNull().default(sql`'[]'::jsonb`),
     player2Hand: jsonb("player2_hand").notNull().default(sql`'[]'::jsonb`),
+    // ── Original 2-card deal snapshot. Stamped the moment cards are
+    // dealt (ready → round_1, between_rounds → round_(N+1)). NOT
+    // updated by SWAP because a swap modifies the LIVE hand but the
+    // originals stay fixed per spec. Mirrored onto rounds history
+    // for post-match replays. ────────────────────────────────────────
+    player1OriginalCards: jsonb("player1_original_cards")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    player2OriginalCards: jsonb("player2_original_cards")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Per-seat round action state.
     player1State: blackjackPvpPlayerStateEnum("player1_state")
       .notNull()
@@ -1534,27 +1554,33 @@ export const blackjackPvpMatches = pgTable(
       .default("playing"),
     // Server-authoritative shoe. `deck[0]` is the next available card.
     deck: jsonb("deck").notNull().default(sql`'[]'::jsonb`),
-    // ── Swap + Hold (1 use per round, per seat) ────────────────────
+    // ── Swap + Freeze (1 use per round, per seat) ──────────────────
     // The Swap action targets one of the hand's TWO ORIGINAL starting
     // cards (always at indices 0 and 1 because Hit pushes to the end).
-    // The Hold action stores the most-recently drawn card into the
-    // side-slot below; Use Held resolves it to 'add' or 'discard'.
+    // The Freeze action stores the most-recently drawn card into the
+    // side-slot below; Use Frozen Card resolves it to 'add' or
+    // 'discard'.
     // ALL of these columns are SERVER-ONLY state — the GET match
     // route SCRUBS the opponent's columns before returning so neither
-    // side ever sees the other's swaps / holds / held card.
-    player1SwapsUsed: integer("player1_swaps_used").notNull().default(0),
-    player2SwapsUsed: integer("player2_swaps_used").notNull().default(0),
-    player1HoldsUsed: integer("player1_holds_used").notNull().default(0),
-    player2HoldsUsed: integer("player2_holds_used").notNull().default(0),
-    player1HeldCard: jsonb("player1_held_card").default(sql`NULL`),
-    player2HeldCard: jsonb("player2_held_card").default(sql`NULL`),
+    // side ever sees the other's swaps / freezes / frozen card.
+    // Column types remain integer for forward compatibility with a
+    // hypothetical future cap > 1 (SWAP_LIMIT_PER_ROUND == 1 today).
+    player1UsedSwap: integer("player1_used_swap").notNull().default(0),
+    player2UsedSwap: integer("player2_used_swap").notNull().default(0),
+    player1UsedFreeze: integer("player1_used_freeze").notNull().default(0),
+    player2UsedFreeze: integer("player2_used_freeze").notNull().default(0),
+    player1FrozenCard: jsonb("player1_frozen_card").default(sql`NULL`),
+    player2FrozenCard: jsonb("player2_frozen_card").default(sql`NULL`),
     player1HeldResolved: varchar("player1_held_resolved", { length: 10 })
       .default(sql`NULL`),
     player2HeldResolved: varchar("player2_held_resolved", { length: 10 })
       .default(sql`NULL`),
     roundDeadline: timestamp("round_deadline"),
-    // Final match bookkeeping.
-    winnerId: varchar("winner_id", { length: 255 }),
+    // Final match bookkeeping. `winner` stores the userId of the
+    // winning player (replaces the pre-refactor `winner_id`). The
+    // side identifier "player1" | "player2" | "draw" continues to
+    // live on `result`.
+    winner: varchar("winner", { length: 255 }),
     result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
     houseFee: numeric("house_fee", { precision: 10, scale: 2 })
       .notNull()
@@ -1599,6 +1625,11 @@ export const blackjackPvpMatches = pgTable(
 
 // Per-round final snapshots for replay/history. Cascades from the
 // parent match. round_winner is null when the round ended in a draw.
+//
+// Player1Standing / Player2Standing are computed from the per-round
+// `player1State` / `player2State` enum columns above (they live on
+// every rows so post-match replays can render them without rejoin).
+// The standing boolean is intentionally NOT a column.
 export const blackjackPvpRounds = pgTable(
   "blackjack_pvp_rounds",
   {
@@ -1615,16 +1646,25 @@ export const blackjackPvpRounds = pgTable(
     player2Score: integer("player2_score").notNull(),
     player1State: blackjackPvpPlayerStateEnum("player1_state").notNull(),
     player2State: blackjackPvpPlayerStateEnum("player2_state").notNull(),
-    // ── Snapshot of the Swap/Hold usage + held-card at the moment
-    // the round resolved — used for post-match history replay. NOT
-    // scrubbed on join: history rows are public so replays can show
-    // actions truthfully. ──────────────────────────────────────────
-    player1SwapsUsed: integer("player1_swaps_used").notNull().default(0),
-    player2SwapsUsed: integer("player2_swaps_used").notNull().default(0),
-    player1HoldsUsed: integer("player1_holds_used").notNull().default(0),
-    player2HoldsUsed: integer("player2_holds_used").notNull().default(0),
-    player1HeldCard: jsonb("player1_held_card").default(sql`NULL`),
-    player2HeldCard: jsonb("player2_held_card").default(sql`NULL`),
+    // ── Round-start deal snapshot mirrored onto history rows so
+    // post-match replays can show what was dealt, even after a SWAP
+    // corrupted the live hand. ──────────────────────────────────────
+    player1OriginalCards: jsonb("player1_original_cards")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    player2OriginalCards: jsonb("player2_original_cards")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    // ── Snapshot of the Swap/Freeze usage + frozen-card at the
+    // moment the round resolved — used for post-match history
+    // replay. NOT scrubbed on join: history rows are public so
+    // replays can show actions truthfully. ──────────────────────────
+    player1UsedSwap: integer("player1_used_swap").notNull().default(0),
+    player2UsedSwap: integer("player2_used_swap").notNull().default(0),
+    player1UsedFreeze: integer("player1_used_freeze").notNull().default(0),
+    player2UsedFreeze: integer("player2_used_freeze").notNull().default(0),
+    player1FrozenCard: jsonb("player1_frozen_card").default(sql`NULL`),
+    player2FrozenCard: jsonb("player2_frozen_card").default(sql`NULL`),
     player1HeldResolved: varchar("player1_held_resolved", { length: 10 })
       .default(sql`NULL`),
     player2HeldResolved: varchar("player2_held_resolved", { length: 10 })
