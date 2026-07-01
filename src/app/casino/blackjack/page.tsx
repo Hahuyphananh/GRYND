@@ -1,656 +1,586 @@
 "use client";
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useUser } from "@clerk/nextjs";
-import BlackjackCardBack from "../../../components/BlackjackCardBack";
+
+// src/app/casino/blackjack/page.tsx
+//
+// LOBBY page for the Blackjack PvP match system. Previously this route
+// hosted the player-vs-dealer game; that's been split so the lobby
+// sits at /casino/blackjack (entry-point where players pick a stake
+// and either pair with an existing lobby of the same stake or create
+// a fresh waiting lobby) and the live match view lives at the dynamic
+// sibling `/casino/blackjack/[matchId]/page.tsx`.
+//
+// Flow:
+//   1. Pick a stake (preset chips or custom).
+//   2. Hit Play → POST /api/blackjack-pvp/create-or-join
+//        • matches on stake equality (server-authoritative)
+//        • escrow stake on success
+//   3. Redirect to /casino/blackjack/[matchId]
+//
+// Server-side canonical logic (match state machine, stake escrow,
+// round resolution, payout) lives in
+// `src/lib/blackjack-pvp/serverStore.js` — this page is a thin
+// client.
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
-import NavigationBar from "../../../components/navigation-bar";
+import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
-import confetti from "canvas-confetti";
-import { playCardDraw, playVictory, playDefeat } from "../../../lib/gameAudio";
-import { CHIP_VALUES } from "../../../lib/rouletteConfig";
+import NavigationBar from "../../../components/navigation-bar";
+import Footer from "../../../components/Footer";
+import { useSocket } from "../../../context/SocketProvider";
+import {
+  BLACKJACK_PVP_LOBBY_ROOM,
+  BLACKJACK_PVP_MATCH_UPDATED,
+  blackjackPvpMatchRoom,
+} from "../../../lib/blackjack-pvp/rooms";
+import { STAKE_PRESETS } from "../../../lib/blackjack-pvp/constants";
 
-// ─── Card types & helpers ───────────────────────────────────────
-type Card = { suit: string; value: string };
-type GameResult = "win" | "lose" | "push" | "bust";
-
-const isRedSuit = (suit: string) => suit === "♥" || suit === "♦";
-
-const calcHandValue = (cards: Card[]) => {
-  let value = 0;
-  let aces = 0;
-  for (const c of cards) {
-    if (c.value === "A") { aces++; value += 11; }
-    else if (["K", "Q", "J"].includes(c.value)) value += 10;
-    else value += parseInt(c.value);
-  }
-  while (value > 21 && aces > 0) { value -= 10; aces--; }
-  return value;
-};
-
-// ─── Card face component ────────────────────────────────────────
-const CardFace: React.FC<{ card: Card; small?: boolean }> = ({ card, small }) => {
-  const red = isRedSuit(card.suit);
-  const size = small ? "h-24 w-16 text-base" : "h-28 w-20 text-xl";
-  const pipSize = small ? "text-xs" : "text-sm";
+// ── Inline SVG icons (avoid importing poker/roulette icon set) ──────
+// Kept in-file so this lobby doesn't pull in card-game-specific deps.
+function CardIcon({ className = "" }) {
   return (
-    <div className={`${size} bg-gradient-to-br from-white to-gray-100 rounded-lg shadow-lg border border-gray-300 flex flex-col justify-between p-1.5 select-none relative overflow-hidden`}>
-      {/* Top-left pip */}
-      <div className={`flex flex-col items-start leading-tight ${pipSize} font-bold`} style={{ color: red ? "#c0392b" : "#1a1a2e" }}>
-        <span>{card.value}</span>
-        <span className={small ? "text-[10px]" : "text-xs"}>{card.suit}</span>
-      </div>
-      {/* Center suit */}
-      <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none" style={{ color: red ? "#c0392b" : "#1a1a2e" }}>
-        <span className={small ? "text-4xl" : "text-5xl"}>{card.suit}</span>
-      </div>
-      {/* Bottom-right pip (inverted) */}
-      <div className={`flex flex-col items-end leading-tight ${pipSize} font-bold rotate-180`} style={{ color: red ? "#c0392b" : "#1a1a2e" }}>
-        <span>{card.value}</span>
-        <span className={small ? "text-[10px]" : "text-xs"}>{card.suit}</span>
-      </div>
-    </div>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      {/* Spade + diamond glyph in the middle, suit of choice */}
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M9 9 L15 9" />
+      <path d="M9 13 L13 13" />
+      <path d="M12 17 L12 17.01" />
+      <path d="M7 9 L7 17" opacity="0.55" />
+    </svg>
   );
-};
+}
 
-// ─── Main page ──────────────────────────────────────────────────
-export default function BlackjackPage() {
+function CoinIcon({ className = "" }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <ellipse cx="12" cy="6" rx="8" ry="2.5" />
+      <path d="M4 6 V18 a8 2.5 0 0 0 16 0 V6" />
+      <ellipse cx="12" cy="18" rx="8" ry="2.5" />
+    </svg>
+  );
+}
+
+function TargetIcon({ className = "" }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function RefreshIcon({ className = "" }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M21 12a9 9 0 0 0-15.5-6.3L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 15.5 6.3L21 16" />
+      <path d="M21 21v-5h-5" />
+    </svg>
+  );
+}
+
+function TrophyIcon({ className = "" }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M7 4 H17 V10 a5 5 0 0 1 -10 0 Z" />
+      <path d="M7 5 H4 a2 2 0 0 0 -2 2 v2 a4 4 0 0 0 4 4" />
+      <path d="M17 5 H20 a2 2 0 0 1 2 2 v2 a4 4 0 0 1 -4 4" />
+      <line x1="12" y1="15" x2="12" y2="19" />
+      <rect x="8" y="19" width="8" height="2.5" rx="0.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function LoadingDotsIcon({ className = "" }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={className}
+      aria-hidden
+    >
+      <circle cx="6" cy="12" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="18" cy="12" r="2" />
+    </svg>
+  );
+}
+
+function AlertIcon({ className = "" }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M12 3 L22 20 H2 Z" />
+      <line x1="12" y1="10" x2="12" y2="15" />
+      <circle cx="12" cy="17.5" r="0.8" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export default function BlackjackPvpLobbyPage() {
   const { isSignedIn, user } = useUser();
   const router = useRouter();
   const posthog = usePostHog();
+  const { socket } = useSocket();
 
-  const [userTokens, setUserTokens] = useState<number | null>(null);
-  const [gameState, setGameState] = useState<"idle" | "dealing" | "playing" | "finished">("idle");
-  const [bet, setBet] = useState(10);
-  const [dealerCards, setDealerCards] = useState<Card[]>([]);
-  const [playerCards, setPlayerCards] = useState<Card[]>([]);
-  const [remainingDeck, setRemainingDeck] = useState<Card[]>([]);
-  const [message, setMessage] = useState("");
+  const [stake, setStake] = useState(50);
+  const [availableMatches, setAvailableMatches] = useState<{ id: number; player1Id: string; stakeAmount: number; createdAt: string }[]>([]);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [joiningId, setJoiningId] = useState<number | null>(null);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [canDouble, setCanDouble] = useState(false);
-  const [canSplit, setCanSplit] = useState(false);
-  const [isSplit, setIsSplit] = useState(false);
-  const [hands, setHands] = useState<Card[][]>([]);
-  const [activeHandIndex, setActiveHandIndex] = useState(0);
-  const [showRules, setShowRules] = useState(false);
-  const [showResultModal, setShowResultModal] = useState(false);
-  const [resultType, setResultType] = useState<GameResult>("lose");
-  const [resultMsg, setResultMsg] = useState("");
-  const [stats, setStats] = useState({ wins: 0, losses: 0, pushes: 0, played: 0 });
-  const [dealerRevealed, setDealerRevealed] = useState(false);
-  const resultCelebratedRef = useRef(false);
 
-  const handsRef = useRef<Card[][]>([]);
-  const splitBustsRef = useRef<boolean[]>([false, false]);
-  const splitBetRef = useRef<number>(10);
-  const playerCardsRef = useRef<Card[]>([]);
-
-  useEffect(() => { playerCardsRef.current = playerCards; }, [playerCards]);
-
-  // ─── Fetch balance ────────────────────────────────────────────
-  const fetchTokens = useCallback(async () => {
-    if (!user) return;
+  const fetchAvailable = useCallback(async () => {
     try {
-      const res = await fetch("/api/get-user-tokens", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" } });
-      const data = await res.json();
-      if (data.success) setUserTokens(data.data.balance);
-    } catch { /* silent */ }
-  }, [user]);
-
-  useEffect(() => { if (isSignedIn && user) fetchTokens(); }, [isSignedIn, user, fetchTokens]);
-
-  // ─── Deduct extra bet (for double/split) ──────────────────────
-  const deductExtraBet = async (amount: number): Promise<boolean> => {
-    try {
-      const res = await fetch("/api/blackjack/place-bet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount }),
+      const res = await fetch("/api/blackjack-pvp/available", {
+        cache: "no-store",
       });
       const data = await res.json();
-      if (data.success) { setUserTokens(data.data.newBalance); return true; }
-      setError("Solde insuffisant pour cette action");
-      return false;
-    } catch { setError("Erreur lors du prélèvement"); return false; }
-  };
+      if (data?.success) {
+        setAvailableMatches(data.data.matches || []);
+      }
+    } catch {
+      // Silent — polling retries on the next tick.
+    }
+  }, []);
 
-  // ─── Settle game ──────────────────────────────────────────────
-  const settleGame = useCallback(async (result: GameResult, bj: boolean, betAmt: number, payout: number) => {
+  const fetchBalance = useCallback(async () => {
+    if (!isSignedIn) return;
     try {
-      await fetch("/api/blackjack/update-stats", {
+      const res = await fetch("/api/get-user-tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ result, blackjack: bj ? 1 : 0, amount: betAmt, payout }),
+        credentials: "include",
       });
-      await fetchTokens();
-    } catch { setError("Erreur en fin de partie"); }
-  }, [fetchTokens]);
-
-  // ─── Start game ───────────────────────────────────────────────
-  const startGame = async () => {
-    if (!isSignedIn) return router.push("/sign-in?redirect_url=/casino/blackjack");
-    if (userTokens! < bet) return setError("Solde insuffisant pour cette mise");
-    setError(null);
-    setGameState("dealing");
-    setDealerRevealed(false);
-    resultCelebratedRef.current = false;
-    setIsSplit(false);
-    setHands([]);
-
-    try {
-      // Deduct bet
-      const placeRes = await fetch("/api/blackjack/place-bet", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount: bet }),
-      });
-      const placeData = await placeRes.json();
-      if (!placeData.success) { setError(placeData.error || "Erreur lors de la mise"); setGameState("idle"); return; }
-      const newBal = Number(placeData.data.newBalance);
-      setUserTokens(newBal);
-
-      // Get server-side shuffled deck
-      const dealRes = await fetch("/api/blackjack/deal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const dealData = await dealRes.json();
-      if (!dealData.success) { setError("Erreur lors de la distribution"); setGameState("idle"); return; }
-
-      const pCards: Card[] = dealData.data.playerCards;
-      const dCards: Card[] = dealData.data.dealerCards;
-      const deck: Card[] = dealData.data.remainingDeck;
-
-      setPlayerCards(pCards);
-      setDealerCards(dCards);
-      setRemainingDeck(deck);
-      setMessage("");
-      setGameState("playing");
-
-      const sameVal = pCards[0].value === pCards[1].value;
-      setCanDouble(newBal >= bet * 2);
-      setCanSplit(sameVal && newBal >= bet * 2);
-
-      playCardDraw(); // initial deal sound
-      posthog?.capture("blackjack_game_started", { bet_amount: bet });
-      if (calcHandValue(pCards) === 21) {
-        setDealerRevealed(true);
-        endGame("win", bet);
-      }
-    } catch { setError("Erreur au démarrage"); setGameState("idle"); }
-  };
-
-  // ─── Hit ──────────────────────────────────────────────────────
-  const hit = async () => {
-    if (remainingDeck.length === 0) return;
-    playCardDraw();
-    const card = remainingDeck[0];
-    const newDeck = remainingDeck.slice(1);
-    setRemainingDeck(newDeck);
-    const newHand = [...playerCards, card];
-    setPlayerCards(newHand);
-    // Keep handsRef in sync during split
-    if (isSplit) {
-      const updated = [...handsRef.current];
-      updated[activeHandIndex] = newHand;
-      handsRef.current = updated;
+      const data = await res.json();
+      if (data?.success) setBalance(Number(data.data.balance));
+    } catch {
+      // Silent
     }
-    const val = calcHandValue(newHand);
-    if (val > 21) {
-      if (isSplit) {
-        // Record bust and move to next hand
-        splitBustsRef.current[activeHandIndex] = true;
-        setTimeout(() => finishCurrentHand(), 400);
-      } else {
-        endGame("bust", bet);
-      }
-    } else if (val === 21) {
-      if (isSplit) setTimeout(() => finishCurrentHand(), 400);
-      else setTimeout(() => stand(), 600);
-    }
-  };
+  }, [isSignedIn]);
 
-  // ─── Stand ─────────────────────────────────────────────────────
-  const stand = () => {
-    setDealerRevealed(true);
-    let currentDealer = [...dealerCards];
-    let currentDeck = [...remainingDeck];
-    // Dealer draws
-    while (calcHandValue(currentDealer) < 17 && currentDeck.length > 0) {
-      playCardDraw();
-      currentDealer = [...currentDealer, currentDeck[0]];
-      currentDeck = currentDeck.slice(1);
-    }
-    setDealerCards(currentDealer);
-    setRemainingDeck(currentDeck);
+  useEffect(() => {
+    fetchAvailable();
+    fetchBalance();
+    const interval = setInterval(() => {
+      fetchAvailable();
+      fetchBalance();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [fetchAvailable, fetchBalance]);
 
-    const pVal = calcHandValue(playerCards);
-    const dVal = calcHandValue(currentDealer);
-    setTimeout(() => {
-      if (dVal > 21 || pVal > dVal) endGame("win", bet);
-      else if (dVal > pVal) endGame("lose", bet);
-      else endGame("push", bet);
-    }, 600);
-  };
+  // Derive any lobby the current user owns FROM the availableMatches
+  // payload (which already carries the player's clerkId as
+  // player1Id). This avoids exposing an /api/blackjack-pvp/my-open-match
+  // route just to surface a single banner.
+  const myOpenMatch = useMemo(() => {
+    if (!user?.id) return null;
+    return availableMatches.find((m) => m.player1Id === user.id) ?? null;
+  }, [availableMatches, user?.id]);
 
-  // ─── Double Down ──────────────────────────────────────────────
-  const doubleDown = async () => {
-    // Deduct extra bet
-    const ok = await deductExtraBet(bet);
-    if (!ok) return;
-    setCanDouble(false);
-    const newBet = bet * 2;
-    setBet(newBet);
-    playCardDraw();
-    const card = remainingDeck[0];
-    const newDeck = remainingDeck.slice(1);
-    setRemainingDeck(newDeck);
-    const newHand = [...playerCards, card];
-    setPlayerCards(newHand);
-    if (calcHandValue(newHand) > 21) { endGame("bust", newBet); }
-    else { setTimeout(() => { setBet(newBet); stand(); }, 50); }
-  };
+  // Subscribe to lobby room updates.
+  useEffect(() => {
+    if (!socket) return;
+    const refresh = () => fetchAvailable();
+    socket.emit("join_room", { roomId: BLACKJACK_PVP_LOBBY_ROOM });
+    socket.on("lobby:updated", refresh);
+    return () => {
+      socket.emit("leave_room", { roomId: BLACKJACK_PVP_LOBBY_ROOM });
+      socket.off("lobby:updated", refresh);
+    };
+  }, [socket, fetchAvailable]);
 
-  // ─── Split ────────────────────────────────────────────────────
-  const splitHand = async () => {
-    if (playerCards.length !== 2) return;
-    const ok = await deductExtraBet(bet);
-    if (!ok) return;
-    const [first, second] = playerCards;
-    const deck = [...remainingDeck];
-    const newHands = [[first, deck[0]], [second, deck[1]]];
-    const newDeck = deck.slice(2);
-    handsRef.current = newHands;
-    splitBustsRef.current = [false, false];
-    splitBetRef.current = bet;
-    setHands(newHands);
-    setRemainingDeck(newDeck);
-    setActiveHandIndex(0);
-    setIsSplit(true);
-    setPlayerCards(newHands[0]);
-    setCanSplit(false);
-  };
-
-  const finishCurrentHand = () => {
-    // Save current hand's cards from latest ref (avoids stale closure)
-    const updated = [...handsRef.current];
-    updated[activeHandIndex] = [...playerCardsRef.current];
-    handsRef.current = updated;
-    setHands(updated);
-
-    if (activeHandIndex === 0 && handsRef.current[1]) {
-      // Switch to hand 1
-      setActiveHandIndex(1);
-      setPlayerCards(handsRef.current[1]);
-    } else {
-      // Both hands done — resolve split
-      resolveSplit();
-    }
-  };
-
-  const nextSplitHand = () => {
-    finishCurrentHand();
-  };
-
-  // ─── Resolve split hands against dealer ──────────────────────
-  const resolveSplit = async () => {
-    setDealerRevealed(true);
-    // Play dealer once
-    let currentDealer = [...dealerCards];
-    let currentDeck = [...remainingDeck];
-    while (calcHandValue(currentDealer) < 17 && currentDeck.length > 0) {
-      playCardDraw();
-      currentDealer = [...currentDealer, currentDeck[0]];
-      currentDeck = currentDeck.slice(1);
-    }
-    setDealerCards(currentDealer);
-    setRemainingDeck(currentDeck);
-
-    const dVal = calcHandValue(currentDealer);
-    const handBets = splitBetRef.current;
-    const handCards = handsRef.current;
-    const busts = splitBustsRef.current;
-
-    // Settle each hand independently
-    const results: { result: GameResult; msg: string }[] = [];
-    let totalPayout = 0;
-
-    for (let h = 0; h < 2; h++) {
-      let result: GameResult;
-      let payout = 0;
-
-      if (busts[h]) {
-        result = "bust";
-      } else {
-        const pVal = calcHandValue(handCards[h]);
-        if (dVal > 21 || pVal > dVal) {
-          result = "win";
-          payout = handBets * 2;
-        } else if (dVal === pVal) {
-          result = "push";
-          payout = handBets;
-        } else {
-          result = "lose";
+  const createOrJoin = useCallback(
+    async (stakeAmount: number) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/blackjack-pvp/create-or-join", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ stakeAmount }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setError(data?.error || "Unable to start match");
+          return;
         }
-      }
-
-      results.push({
-        result,
-        msg: result === "win" ? `Main ${h + 1} : Gagné (+${payout - handBets})`
-          : result === "push" ? `Main ${h + 1} : Égalité`
-          : `Main ${h + 1} : Perdu`,
-      });
-      totalPayout += payout;
-
-      // Settle each hand (await for proper error handling)
-      await settleGame(result, false, handBets, payout);
-    }
-
-    const msg = results.map(r => r.msg).join(" | ");
-    setMessage(msg);
-    setGameState("finished");
-    setIsSplit(false);
-    setHands([]);
-
-    const winCount = results.filter(r => r.result === "win").length;
-    const pushCount = results.filter(r => r.result === "push").length;
-    const lossCount = 2 - winCount - pushCount;      const outcome: GameResult = winCount > lossCount ? "win" : lossCount > winCount ? "lose" : "push";
-    setResultType(outcome);
-    setResultMsg(msg);
-    setShowResultModal(true);
-    posthog?.capture("blackjack_game_ended", { result: outcome, bet_amount: splitBetRef.current, split: true });
-
-    setStats(prev => ({
-      wins: prev.wins + winCount,
-      losses: prev.losses + lossCount,
-      pushes: prev.pushes + pushCount,
-      played: prev.played + 1,
-    }));
-
-    if (outcome === "win") {
-      playVictory();
-      if (!resultCelebratedRef.current) {
-        resultCelebratedRef.current = true;
-        confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 }, colors: ["#FFD700", "#FFA500", "#FFFFFF"] });
-        setTimeout(() => confetti({ particleCount: 30, spread: 50, origin: { y: 0.5 }, colors: ["#FFD700", "#FFFFFF"] }), 300);
-      }
-    } else {
-      playDefeat();
-    }
-  };
-
-  // ─── End game ────────────────────────────────────────────────────────────────────
-  const endGame = useCallback(async (result: GameResult, betAmt: number) => {
-    const blackjack = playerCards.length === 2 && calcHandValue(playerCards) === 21;
-    let winAmount = 0;
-    let msg = "";
-
-    if (result === "win") {
-      winAmount = blackjack ? betAmt * 2.5 : betAmt * 2;
-      msg = blackjack ? "Blackjack !" : "Vous avez gagné !";
-    } else if (result === "push") {
-      winAmount = betAmt;
-      msg = "Égalité !";
-    } else {
-      msg = result === "bust" ? "Vous avez dépassé 21 !" : "Vous avez perdu !";
-    }
-
-    await settleGame(result, blackjack, betAmt, winAmount);
-    setMessage(msg);
-      setGameState("finished");
-      setIsSplit(false);
-      setHands([]);
-
-      const outcome: GameResult = result === "win" ? "win" : result === "push" ? "push" : "lose";
-      setResultType(outcome);
-      setResultMsg(msg);
-      setShowResultModal(true);
-      posthog?.capture("blackjack_game_ended", { result: outcome, bet_amount: betAmt, blackjack });
-      setStats(prev => ({
-        wins: outcome === "win" ? prev.wins + 1 : prev.wins,
-        losses: outcome === "lose" ? prev.losses + 1 : prev.losses,
-        pushes: outcome === "push" ? prev.pushes + 1 : prev.pushes,
-        played: prev.played + 1,
-      }));
-      if (outcome === "win") {
-        playVictory();
-        if (!resultCelebratedRef.current) {
-          resultCelebratedRef.current = true;
-          confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 }, colors: ["#FFD700", "#FFA500", "#FFFFFF"] });
-          setTimeout(() => confetti({ particleCount: 30, spread: 50, origin: { y: 0.5 }, colors: ["#FFD700", "#FFFFFF"] }), 300);
+        socket?.emit("room_event", {
+          roomId: BLACKJACK_PVP_LOBBY_ROOM,
+          event: "lobby:updated",
+        });
+        const matchId = data?.data?.match?.id;
+        if (matchId) {
+          socket?.emit("room_event", {
+            roomId: blackjackPvpMatchRoom(matchId),
+            event: BLACKJACK_PVP_MATCH_UPDATED,
+          });
         }
-      } else {
-        playDefeat();
+        posthog?.capture("blackjack_pvp_match_created_or_joined", {
+          stake: stakeAmount,
+          joined: Boolean(data?.data?.joined),
+          match_id: data?.data?.match?.id,
+        });
+        router.push(`/casino/blackjack/${data.data.match.id}`);
+      } finally {
+        setBusy(false);
       }
-  }, [playerCards, settleGame]);
+    },
+    [posthog, router, socket],
+  );
 
-  // ─── New game ──────────────────────────────────────────────────
-  const newGame = () => {
-    setGameState("idle");
-    setBet(10);
-    setPlayerCards([]);
-    setDealerCards([]);
-    setRemainingDeck([]);
-    setMessage("");
-    setDealerRevealed(false);
-    setShowResultModal(false);
-    resultCelebratedRef.current = false;
-    handsRef.current = [];
-    splitBustsRef.current = [false, false];
-    splitBetRef.current = 10;
-    playerCardsRef.current = [];
-  };
+  const joinSpecific = useCallback(
+    async (matchId: number) => {
+      setJoiningId(matchId);
+      setError(null);
+      try {
+        const target = availableMatches.find((m) => m.id === matchId);
+        if (!target) {
+          setError("Lobby no longer available.");
+          return;
+        }
+        const res = await fetch("/api/blackjack-pvp/create-or-join", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ stakeAmount: target.stakeAmount }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setError(data?.error || "Unable to join match");
+          return;
+        }
+        socket?.emit("room_event", {
+          roomId: BLACKJACK_PVP_LOBBY_ROOM,
+          event: "lobby:updated",
+        });
+        socket?.emit("room_event", {
+          roomId: blackjackPvpMatchRoom(data.data.match.id),
+          event: BLACKJACK_PVP_MATCH_UPDATED,
+        });
+        posthog?.capture("blackjack_pvp_match_joined", {
+          match_id: matchId,
+          stake: target.stakeAmount,
+        });
+        router.push(`/casino/blackjack/${data.data.match.id}`);
+      } finally {
+        setJoiningId(null);
+      }
+    },
+    [availableMatches, posthog, router, socket],
+  );
+
+  const cancelMyMatch = useCallback(
+    async (matchId: number) => {
+      setCancellingId(matchId);
+      setError(null);
+      try {
+        const res = await fetch(
+          `/api/blackjack-pvp/match/${matchId}/cancel`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setError(data?.error || "Unable to cancel match");
+          return;
+        }
+        socket?.emit("room_event", {
+          roomId: BLACKJACK_PVP_LOBBY_ROOM,
+          event: "lobby:updated",
+        });
+        // The derived `myOpenMatchId` refreshes once `fetchAvailable`
+        // returns, so no local state to clear here.
+        fetchAvailable();
+      } finally {
+        setCancellingId(null);
+      }
+    },
+    [fetchAvailable, socket],
+  );
+
+  // Derived from `myOpenMatch` so it's reactive to the polled lobby list.
+  const myOpenMatchId = myOpenMatch?.id ?? null;
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] pb-24 pt-20 text-white md:pb-8">
+    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
-      {/* Result Modal */}
-      <AnimatePresence>
-        {showResultModal && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ scale: 0.8, y: 40 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.8, y: 40 }}
-              transition={{ type: "spring", stiffness: 300, damping: 15 }}
-              className={`relative w-full max-w-md rounded-3xl border-4 p-6 text-center shadow-2xl ${
-                resultType === "win" ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_50px_rgba(251,191,36,0.3)]"
-                : resultType === "push" ? "border-yellow-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_40px_rgba(250,204,21,0.2)]"
-                : "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_40px_rgba(239,68,68,0.2)]"
-              }`}
-            >
-              <motion.div initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={{ delay: 0.2 }} className="mb-2 text-7xl">
-                {resultType === "win" ? "🏆" : resultType === "push" ? "🤝" : "💀"}
-              </motion.div>
-              <h2 className={`mt-2 text-3xl font-black uppercase ${resultType === "win" ? "text-amber-300" : resultType === "push" ? "text-yellow-300" : "text-red-400"}`}>
-                {resultType === "win" ? "Gagné !" : resultType === "push" ? "Égalité" : "Perdu"}
-              </h2>
-              <p className="mt-2 text-white/80">{resultMsg}</p>
-              <button onClick={newGame} className={`mt-6 rounded-xl border-b-4 px-8 py-3 text-lg font-black transition active:translate-y-[2px] ${resultType === "win" ? "border-amber-700 bg-amber-400 text-black" : "border-cyan-700 bg-cyan-400 text-black"}`}>
-                Rejouer
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className="mx-auto mt-4 max-w-5xl sm:mt-8">
+        <motion.div
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+        >
+          <h1 className="flex items-center justify-center gap-3 text-center text-3xl sm:text-4xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-300 to-yellow-500 drop-shadow-[0_0_18px_rgba(255,255,51,0.55)]">
+            <CardIcon className="w-9 h-9 sm:w-10 sm:h-10 text-yellow-300 drop-shadow-[0_0_12px_rgba(255,255,51,0.55)] flex-shrink-0" />
+            <span>Blackjack PvP Lobby</span>
+          </h1>
+        </motion.div>
+        <p className="text-center text-sm text-white/60 mt-2 mb-7 max-w-2xl mx-auto">
+          Pick a stake. We pair you with another player of the{" "}
+          <b>exact same</b> token amount. Best of 3 rounds: each round
+          you and your opponent play <b>simultaneously</b> with hidden
+          hands. Closest to 21 without busting wins the round. First
+          to 2 round wins takes the pot minus a 2.5% house fee.
+        </p>
 
-      <div className="mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
-        {/* Header */}
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-2xl sm:text-3xl font-bold text-[#FFD700] drop-shadow-[0_0_10px_rgba(255,215,0,0.4)]">🃏 Blackjack</h1>
-          {userTokens !== null && (
-            <span className="px-4 py-1.5 bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#fffec7] rounded-full font-extrabold text-sm shadow-[0_0_10px_rgba(255,215,0,0.3)]">
-              Jetons : {userTokens.toLocaleString()}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-[#0b224f]/70 backdrop-blur-xl border border-yellow-400/30 shadow-[0_0_30px_rgba(255,255,51,0.18)] rounded-2xl p-6"
+        >
+          <div className="text-center mb-5 text-sm">
+            <span className="uppercase tracking-widest text-[11px] text-white/55 mr-2">
+              Tokens
             </span>
-          )}
-        </div>
-
-        {error && <div className="mb-3 bg-red-500/10 border border-red-500/30 text-red-400 p-2 rounded text-sm text-center">{error}</div>}
-
-        {/* Game table */}
-        <div className="rounded-2xl border border-[#FFD700]/25 bg-gradient-to-br from-[#001933]/90 via-[#00111f]/90 to-[#000814]/90 shadow-[0_0_30px_rgba(255,215,0,0.12)] p-4 sm:p-6">
-          {/* Dealer */}
-          <div className="text-center mb-2">
-            <h2 className="text-[#FFD700]/80 text-sm font-semibold">Croupier</h2>
-            {dealerCards.length > 0 && <p className="text-[#FFD700]/60 text-xs mt-0.5">{dealerRevealed ? `${calcHandValue(dealerCards)} pts` : `? + ${dealerCards[1] ? calcHandValue([dealerCards[1]]) : "?"}`}</p>}
-          </div>
-          <div className="flex justify-center gap-3 mb-5 flex-wrap">
-            {gameState === "idle" ? (
-              [0, 1].map(i => (
-                <BlackjackCardBack key={i} />
-              ))
-            ) : (
-              dealerCards.map((card, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ y: -40, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ duration: 0.35, delay: i * 0.12 }}
-                >
-                  {!dealerRevealed && i === 0 ? (
-                    <motion.div
-                      animate={dealerRevealed ? { rotateY: 0 } : {}}
-                    >
-                      <BlackjackCardBack />
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      initial={i === 0 && dealerRevealed ? { rotateY: 90 } : {}}
-                      animate={{ rotateY: 0 }}
-                      transition={{ duration: 0.4 }}
-                    >
-                      <CardFace card={card} />
-                    </motion.div>
-                  )}
-                </motion.div>
-              ))
-            )}
+            <span className="font-bold text-yellow-300 text-lg">
+              {balance === null
+                ? "…"
+                : balance.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+            </span>
           </div>
 
-          <div className="my-3 h-px bg-[#FFD700]/20" />
-
-          {/* Player */}
-          <div className="text-center mb-2">
-            <h2 className="text-[#FFD700]/80 text-sm font-semibold">Vos cartes</h2>
-            {playerCards.length > 0 && <p className="text-[#FFD700]/60 text-xs mt-0.5">{calcHandValue(playerCards)} pts</p>}
-          </div>
-          <div className="flex justify-center gap-3 mb-4 flex-wrap">
-            {gameState === "idle" ? (
-              [0, 1].map(i => (
-                <BlackjackCardBack key={i} />
-              ))
-            ) : (
-              playerCards.map((card, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ y: 60, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ duration: 0.35, delay: i * 0.12 }}
-                  className={calcHandValue(playerCards) > 21 ? "animate-shake" : ""}
-                >
-                  <CardFace card={card} />
-                </motion.div>
-              ))
-            )}
-          </div>
-
-          {/* Result text */}
-          {message && <div className={`text-center text-lg font-bold mb-3 ${resultType === "win" ? "text-amber-400" : resultType === "push" ? "text-yellow-400" : "text-red-400"}`}>{message}</div>}
-
-          {/* Idle / Finished: bet controls */}
-          {(gameState === "idle" || gameState === "finished") && (
-            <div className="flex flex-col items-center gap-3">
-              {/* Quick-select chips */}
-              <div className="flex flex-wrap gap-1.5 justify-center">
-                {CHIP_VALUES.map(val => (
+          {/* Your own open match notification */}
+          <AnimatePresence>
+            {myOpenMatchId !== null && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-3 py-2 text-sm"
+              >
+                <span className="flex items-center gap-2 text-cyan-200">
+                  <LoadingDotsIcon className="w-4 h-4 text-cyan-200 animate-pulse" />
+                  Your open lobby #{myOpenMatchId} is waiting for an
+                  opponent…
+                </span>
+                <div className="flex items-center gap-2">
                   <button
-                    key={val}
-                    onClick={() => setBet(val)}
-                    className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all duration-150 ${
-                      bet === val ? "bg-[#FFD700] text-black border-[#FFD700] shadow-[0_0_10px_rgba(255,215,0,0.5)] scale-110"
-                      : "bg-[#0a1a3a] text-[#FFD700]/80 border-[#FFD700]/30 hover:bg-[#FFD700]/20"
+                    onClick={() =>
+                      router.push(`/casino/blackjack/${myOpenMatchId}`)
+                    }
+                    className="px-3 py-1.5 rounded-lg bg-cyan-400 text-[#001933] hover:bg-cyan-300 text-xs font-bold transition"
+                  >
+                    Resume
+                  </button>
+                  <button
+                    onClick={() => cancelMyMatch(myOpenMatchId)}
+                    disabled={cancellingId === myOpenMatchId}
+                    className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-200 hover:bg-red-500/30 text-xs font-bold border border-red-500/30 transition disabled:opacity-50"
+                  >
+                    {cancellingId === myOpenMatchId
+                      ? "Cancelling…"
+                      : "Cancel"}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="grid md:grid-cols-[1fr_auto_1fr] gap-3 items-end">
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-white/60">
+                Stake (per player)
+              </label>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {STAKE_PRESETS.map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setStake(v)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
+                      stake === v
+                        ? "bg-yellow-300 text-black border-yellow-300 shadow-[0_0_10px_rgba(255,255,51,0.7)]"
+                        : "bg-[#08142f] text-yellow-200/80 border-yellow-300/30 hover:bg-yellow-300/15"
                     }`}
-                  >{val}</button>
+                  >
+                    {v.toLocaleString()}
+                  </button>
                 ))}
               </div>
-
-              <div className="flex items-center gap-3">
-                <label className="text-[#FFD700] text-sm font-semibold">Mise :</label>
-                <input type="number" min={1} max={userTokens ?? 999999} value={bet}
-                  onChange={e => { const v = Number(e.target.value); setBet(isNaN(v) ? 0 : Math.min(v, userTokens ?? v)); }}
-                    onBlur={() => { if (!bet || bet < 1) setBet(1); }}
-                  className="w-28 px-3 py-1.5 rounded-lg bg-[#00111f] text-[#d8fbff] border border-[#FFD700]/30 focus:outline-none focus:ring-2 focus:ring-[#FFD700]/40 text-center text-sm" />
-                <button onClick={() => userTokens && setBet(Math.max(1, Math.floor(userTokens / 2)))} className="px-3 py-1.5 rounded-lg border border-[#FFD700]/30 bg-[#FFD700]/15 text-[#FFD700] text-xs font-bold hover:bg-[#FFD700]/25 transition">½</button>
-                <button onClick={() => userTokens && setBet(userTokens)} className="px-3 py-1.5 rounded-lg border border-[#FFD700]/30 bg-[#FFD700]/15 text-[#FFD700] text-xs font-bold hover:bg-[#FFD700]/25 transition">TOUT</button>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={balance ?? undefined}
+                  value={stake}
+                  onChange={(e) =>
+                    setStake(Math.max(1, Number(e.target.value) || 0))
+                  }
+                  className="flex-1 rounded-lg bg-[#020617] border border-yellow-300/30 focus:border-yellow-300 outline-none p-2 text-white text-sm"
+                />
               </div>
-
-              <button onClick={startGame} className="px-8 py-3 rounded-full font-bold text-lg border border-[#FFD700]/40 bg-[#FFD700]/20 text-[#FFD700] hover:bg-[#FFD700]/35 active:scale-95 transition shadow-[0_0_18px_rgba(255,215,0,0.35)]">
-                Miser
-              </button>
             </div>
-          )}
-
-          {/* Playing: action buttons */}
-          {gameState === "playing" && !isSplit && (
-            <div className="flex justify-center gap-3 flex-wrap mt-4">
-              <button onClick={hit} className="px-5 py-2 rounded-lg border border-[#FFD700]/30 bg-[#FFD700]/15 text-[#FFD700] font-semibold text-sm hover:bg-[#FFD700]/25 transition">Carte</button>
-              <button onClick={stand} className="px-5 py-2 rounded-lg border border-[#00e5ff]/30 bg-[#00e5ff]/15 text-[#00e5ff] font-semibold text-sm hover:bg-[#00e5ff]/25 transition">Rester</button>
-              {canDouble && <button onClick={doubleDown} className="px-5 py-2 rounded-lg border border-purple-400/30 bg-purple-400/15 text-purple-300 font-semibold text-sm hover:bg-purple-400/25 transition">Doubler</button>}
-              {canSplit && <button onClick={splitHand} className="px-5 py-2 rounded-lg border border-pink-400/30 bg-pink-400/15 text-pink-300 font-semibold text-sm hover:bg-pink-400/25 transition">Séparer</button>}
-            </div>
-          )}
-          {gameState === "playing" && isSplit && (
-            <div className="flex justify-center gap-3 flex-wrap mt-4">
-              <button onClick={hit} className="px-5 py-2 rounded-lg border border-[#FFD700]/30 bg-[#FFD700]/15 text-[#FFD700] font-semibold text-sm">Carte (Main {activeHandIndex + 1})</button>
-              <button onClick={nextSplitHand} className="px-5 py-2 rounded-lg border border-[#00e5ff]/30 bg-[#00e5ff]/15 text-[#00e5ff] font-semibold text-sm">{activeHandIndex === 0 && hands[1] ? "Main suivante" : "Rester"}</button>
-            </div>
-          )}
-        </div>
-
-        {/* Rules + Stats */}
-        <div className="mt-4 flex flex-col sm:flex-row gap-3">
-          {/* Stats */}
-          {stats.played > 0 && (
-            <div className="flex-1 bg-[#001933]/60 border border-[#FFD700]/15 rounded-lg p-3 text-xs text-[#FFD700]/70 space-y-1">
-              <h3 className="text-[#FFD700] font-bold text-sm mb-1">Statistiques</h3>
-              <div className="flex justify-between"><span>Parties</span><span className="text-white font-bold">{stats.played}</span></div>
-              <div className="flex justify-between"><span>Victoires</span><span className="text-green-400 font-bold">{stats.wins}</span></div>
-              <div className="flex justify-between"><span>Défaites</span><span className="text-red-400 font-bold">{stats.losses}</span></div>
-              <div className="flex justify-between"><span>Égalités</span><span className="text-yellow-400 font-bold">{stats.pushes}</span></div>
-            </div>
-          )}
-
-          {/* Rules toggle */}
-          <div className="flex-1">
-            <button onClick={() => setShowRules(!showRules)} className="w-full px-4 py-2.5 rounded-lg border border-[#FFD700]/25 bg-[#FFD700]/10 text-[#FFD700] font-bold text-sm hover:bg-[#FFD700]/20 transition text-left">
-              📖 {showRules ? "Masquer les règles ▲" : "Voir les règles ▼"}
+            <button
+              onClick={() => createOrJoin(stake)}
+              disabled={
+                busy || !isSignedIn || (balance ?? 0) < stake || myOpenMatchId !== null
+              }
+              className="p-3 rounded-xl text-base font-extrabold text-black bg-gradient-to-r from-yellow-300 to-amber-500 hover:scale-105 active:scale-95 transition shadow-[0_0_22px_rgba(255,255,51,0.55)] disabled:opacity-50 disabled:hover:scale-100 inline-flex items-center gap-2"
+            >
+              {busy ? (
+                <>
+                  <LoadingDotsIcon className="w-4 h-4 text-black animate-pulse" />
+                  <span>Finding match…</span>
+                </>
+              ) : (
+                <>
+                  <span>{stake.toLocaleString()}</span>
+                  <CoinIcon className="w-5 h-5 text-amber-900" />
+                  <span>· Play</span>
+                </>
+              )}
             </button>
-            {showRules && (
-              <div className="mt-2 bg-[#020617] border border-[#FFD700]/20 rounded-xl p-4 text-white text-xs sm:text-sm max-h-52 overflow-y-auto leading-relaxed">
-                <h3 className="text-[#FFD700] font-bold mb-2 text-center">Règles du Blackjack</h3>
-                <div className="space-y-2">
-                  <p><strong>🎯 Objectif :</strong> Battre le croupier en obtenant un total proche de 21 sans dépasser.</p>
-                  <p><strong>🃏 Valeurs :</strong> 2-10 = valeur faciale · J/Q/K = 10 · As = 1 ou 11</p>
-                  <p><strong>⚡ Actions :</strong> Carte (tirer), Rester (arrêter), Doubler (×2 mise + 1 carte), Séparer (paires en 2 mains)</p>
-                  <p><strong>🏆 Paiements :</strong> Blackjack naturel = ×2.5 · Victoire standard = ×2 · Égalité = mise rendue</p>
-                </div>
-              </div>
-            )}
+            <div className="text-xs text-white/55 leading-relaxed">
+              We pair you with another player of the <b>exact same</b>{" "}
+              stake. If no one is waiting, your stake is escrowed in a
+              private lobby until someone joins or you cancel.
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Animations */}
-      <style jsx>{`
-        @keyframes shake {
-          0%,100% { transform: translateX(0); }
-          20% { transform: translateX(-6px); }
-          40% { transform: translateX(6px); }
-          60% { transform: translateX(-4px); }
-          80% { transform: translateX(4px); }
-        }
-        .animate-shake { animation: shake 0.4s ease-in-out; }
-      `}</style>
+          {error && (
+            <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-2 text-sm text-red-200">
+              <AlertIcon className="w-4 h-4 text-red-300" />
+              <span>{error}</span>
+            </div>
+          )}
+        </motion.div>
+
+        <div className="mt-6 bg-[#0b224f]/85 border border-yellow-300/30 rounded-2xl p-5 shadow-[0_0_22px_rgba(255,255,51,0.16)]">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold text-yellow-300 uppercase tracking-wider flex items-center gap-2">
+              <TargetIcon className="w-4 h-4 text-yellow-300" />
+              Open Lobbies
+            </h2>
+            <button
+              onClick={fetchAvailable}
+              className="px-3 py-1.5 rounded-lg bg-yellow-300 text-[#001933] hover:bg-yellow-200 text-xs font-semibold shadow-[0_0_10px_rgba(255,255,51,0.45)] transition inline-flex items-center gap-1.5"
+            >
+              <RefreshIcon className="w-3.5 h-3.5 text-[#001933]" />
+              Refresh
+            </button>
+          </div>
+          {availableMatches.filter((m) => m.id !== myOpenMatchId).length === 0 ? (
+            <div className="text-sm text-white/60 flex items-center gap-2">
+              <TrophyIcon className="w-4 h-4 text-white/40" />
+              <span>No open lobbies yet. Be the first to make one.</span>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {availableMatches
+                .filter((m) => m.id !== myOpenMatchId)
+                .map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between rounded-xl bg-[#08142f]/80 p-3 border border-yellow-300/20 hover:border-yellow-300/40 transition"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">
+                        Lobby #{m.id}
+                        <span className="ml-2 text-[10px] text-white/40">
+                          host #{m.player1Id?.slice(0, 6) ?? "?"}…
+                        </span>
+                      </p>
+                      <p className="text-xs text-white/60 mt-0.5 flex items-center gap-1">
+                        <span>Stake:</span>
+                        <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
+                          {Number(m.stakeAmount).toLocaleString()}
+                          <CoinIcon className="w-3.5 h-3.5 text-yellow-300" />
+                        </span>
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => joinSpecific(m.id)}
+                      disabled={busy || joiningId === m.id}
+                      className="px-4 py-1.5 rounded-lg bg-yellow-300 text-[#001933] hover:bg-yellow-200 text-sm font-bold disabled:bg-yellow-300/30 disabled:text-white/60 transition inline-flex items-center gap-1.5"
+                    >
+                      {joiningId === m.id ? (
+                        <>
+                          <LoadingDotsIcon className="w-3.5 h-3.5 text-[#001933] animate-pulse" />
+                          <span>Joining…</span>
+                        </>
+                      ) : (
+                        "Join"
+                      )}
+                    </button>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+        <Footer />
+      </div>
     </div>
   );
 }
