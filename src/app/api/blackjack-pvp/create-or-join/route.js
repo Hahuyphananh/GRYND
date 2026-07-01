@@ -17,21 +17,28 @@ import { MAX_STAKE, MIN_STAKE } from "../../../../lib/blackjack-pvp/constants";
 
 function normaliseMatch(match) {
   if (!match) return null;
+  // Wire-only computed booleans — derived from the per-seat state
+  // enum to avoid split-brain with stored denormalized columns.
+  //   standing = state !== 'playing'
+  const p1Standing = match.player1State !== "playing";
+  const p2Standing = match.player2State !== "playing";
   return {
     id: match.id,
     player1Id: match.player1Id,
     player2Id: match.player2Id,
     stakeAmount: Number(match.stakeAmount),
     status: match.status,
-    currentRound: match.currentRound,
-    scorePlayer1: match.scorePlayer1,
-    scorePlayer2: match.scorePlayer2,
+    roundNumber: match.roundNumber,
+    roundsWonPlayer1: match.roundsWonPlayer1,
+    roundsWonPlayer2: match.roundsWonPlayer2,
     player1Hand: match.player1Hand || [],
     player2Hand: match.player2Hand || [],
     player1State: match.player1State || "playing",
     player2State: match.player2State || "playing",
+    player1Standing: p1Standing,
+    player2Standing: p2Standing,
     roundDeadline: match.roundDeadline,
-    winnerId: match.winnerId,
+    winner: match.winner,
     result: match.result,
     prizePaid: match.prizePaid ? Number(match.prizePaid) : 0,
     houseFee: match.houseFee ? Number(match.houseFee) : 0,

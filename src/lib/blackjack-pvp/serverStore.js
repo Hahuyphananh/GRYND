@@ -112,24 +112,58 @@ function isPlayer1(match, userId) {
   return Boolean(match && userId && match.player1Id === userId);
 }
 
+// ── Per-seat state scrub for the active-play phase ───────────────────
+// Opponent's `playerState` is hidden during an active round so the
+// viewer can't infer whether they've stood (or busted) before the
+// round's natural resolution. Outside an active round (between-
+// rounds transition, finished match) the row's real state is
+// returned because the round-end reveal has already disclosed both
+// seats' final states through the `rounds` history payload.
+//
+// Returns a stable "playing" sentinel for the opponent's seat so the
+// client can derive its UI off the same string union without
+// branching on match.status.
+export function viewerPlayerState(match, seatNumber, viewerUserId) {
+  if (!match) return PLAYER_STATE.PLAYING;
+  const realState =
+    seatNumber === 1 ? match.player1State : match.player2State;
+  // After resolution (between-rounds, finished, cancelled) the round
+  // is no longer secret — reveal both seats' real states.
+  if (!PLAYABLE_STATES.has(match.status)) {
+    return realState || PLAYER_STATE.PLAYING;
+  }
+  const viewerIsPlayer1 = isPlayer1(match, viewerUserId);
+  const viewerOwnsSeat =
+    seatNumber === 1 ? viewerIsPlayer1 : !viewerIsPlayer1;
+  return viewerOwnsSeat
+    ? realState || PLAYER_STATE.PLAYING
+    : PLAYER_STATE.PLAYING;
+}
+
 // String identifiers used to pick the right per-seat column on the
 // blackjack_pvp_matches row. We keep these consistent with the schema
 // so future drift would be caught at compile time.
+//
+// Schema refactor (Prompt 9): Swaps → UsedSwap, Holds → UsedFreeze,
+// HeldCard → FrozenCard. Player{N}OriginalCards is NOT in this map
+// because it never differs per seat during play — it's stamped ONCE
+// at deal time and never mutated (SWAP modifies the LIVE hand
+// without touching the originals).
 const SEAT_FIELDS = Object.freeze({
   player1: {
     hand: "player1Hand",
     state: "player1State",
-    swapsUsed: "player1SwapsUsed",
-    holdsUsed: "player1HoldsUsed",
-    heldCard: "player1HeldCard",
+    swapsUsed: "player1UsedSwap",
+    holdsUsed: "player1UsedFreeze",
+    heldCard: "player1FrozenCard",
     heldResolved: "player1HeldResolved",
   },
   player2: {
     hand: "player2Hand",
     state: "player2State",
-    swapsUsed: "player2SwapsUsed",
-    holdsUsed: "player2HoldsUsed",
-    heldCard: "player2HeldCard",
+    swapsUsed: "player2UsedSwap",
+    holdsUsed: "player2UsedFreeze",
+    heldCard: "player2FrozenCard",
     heldResolved: "player2HeldResolved",
   },
 });
@@ -202,12 +236,17 @@ async function createWaitingMatch(tx, userId, stakeAmount) {
       player1Id: userId,
       stakeAmount: Number(stakeAmount).toFixed(2),
       status: MATCH_STATUS.WAITING,
-      currentRound: 1,
+      roundNumber: 1,
       roundTimerSeconds: ROUND_TIMER_SECONDS,
       // Both players start with empty hands; the dealing happens when
       // round_1 actually opens (after the 3-second ready window).
+      // Original-card snapshots also stay empty until the first deal
+      // (Prompt 9 schema refactor: the per-match originals column is
+      // stamped at deal time, not at lobby-create time).
       player1Hand: [],
       player2Hand: [],
+      player1OriginalCards: [],
+      player2OriginalCards: [],
       deck: [],
       startedAt: new Date(),
     })
@@ -289,18 +328,30 @@ async function advanceFromReady(tx, match) {
   // Build a fresh shoe and deal 2 cards to each player. Cards are
   // drawn alternately so the visual hand layout doesn't imply a
   // turn order — both players play simultaneously.
+  //
+  // Per Prompt 9 schema refactor: snapshot the freshly-dealt pair
+  // into player{N}OriginalCards so the round-end reveal can show
+  // what was dealt independently of any later SWAP.
   const deck = buildDeck();
   const p1Cards = drawCards(deck, 2);
   const p2Cards = drawCards(deck, 2);
+  // Per Prompt 9: snapshot the freshly-dealt pair into
+  // player{N}OriginalCards so the round-end reveal can show what was
+  // dealt unmodified by any later SWAP. Clone the arrays so a later
+  // mutation of the LIVE hand can't alias the deal-time snapshot.
+  const p1Originals = [...p1Cards];
+  const p2Originals = [...p2Cards];
 
   await tx
     .update(blackjackPvpMatches)
     .set({
       status: MATCH_STATUS.ROUND_1,
       roundDeadline: deadline,
-      currentRound: 1,
+      roundNumber: 1,
       player1Hand: p1Cards,
       player2Hand: p2Cards,
+      player1OriginalCards: p1Originals,
+      player2OriginalCards: p2Originals,
       player1State: PLAYER_STATE.PLAYING,
       player2State: PLAYER_STATE.PLAYING,
       deck,
@@ -509,10 +560,18 @@ function applyAction(match, action, seat, fields, payload) {
     }
 
     case ACTION_TYPE.SWAP: {
-      // Swap is unrestricted by seat-state — even if a player busted
-      // via Hit they may still consume their per-round Swap in an
-      // attempt to revive (or, if the post-swap value still busts,
-      // the bust locks in immediately as the rule specifies).
+      // Per Prompt 7: standing (or busting) locks the hand and
+      // disables every remaining gameplay action — including Swap.
+      // Even the post-bust revival swap path is now gated to
+      // `playing`-only; revival must happen BEFORE the player
+      // finalises a stand.
+      if (currentState !== PLAYER_STATE.PLAYING) {
+        return {
+          ok: false,
+          error: `Seat already in '${currentState}' — no further action possible`,
+          status: 409,
+        };
+      }
       const swapsUsed = Number(match[fields.swapsUsed]) || 0;
       if (swapsUsed >= SWAP_LIMIT_PER_ROUND) {
         return {
@@ -619,13 +678,13 @@ function applyAction(match, action, seat, fields, payload) {
       // doomed unless the opponent also busts. Swap-after-bust is
       // the canonical revival path; Hold-after-bust is intentionally
       // excluded per game spec.
-      if (
-        currentState !== PLAYER_STATE.PLAYING &&
-        currentState !== PLAYER_STATE.STAND
-      ) {
+      // Per Prompt 7: once a seat leaves `playing` (stood or busted)
+      // every remaining gameplay action is blocked — including
+      // Use-Held. The hold-and-stand post-resolution path is closed.
+      if (currentState !== PLAYER_STATE.PLAYING) {
         return {
           ok: false,
-          error: "Held card can only be resolved while playing or stood",
+          error: `Seat already in '${currentState}' — no further action possible`,
           status: 409,
         };
       }
@@ -754,7 +813,7 @@ async function forceDeadlineAdvance(tx, match) {
 //      • Otherwise → BETWEEN_ROUNDS (the per-spec transition screen
 //        before the next fresh shuffled deck is dealt).
 async function resolveRound(tx, match) {
-  const slot = Number(match.currentRound) || 1;
+  const slot = Number(match.roundNumber) || 1;
 
   const decision = decideRoundWinner({
     p1Cards: match.player1Hand,
@@ -766,22 +825,38 @@ async function resolveRound(tx, match) {
   const roundWinner = decision.winner; // 'player1' | 'player2' | 'draw'
 
   // Persist per-round snapshot BEFORE we mutate the match row so the
-  // history always reflects the round's final state.
+  // history always reflects the round's final state. Prompt 9 adds:
+  //   * player{N}OriginalCards snapshot (deal-time pair, unmodified
+  //     by SWAP so the round-end reveal can show it back).
+  //   * player{N}UsedSwap / UsedFreeze / FrozenCard columns renamed
+  //     from the swap/hold vocabulary (FrozenCard was HeldCard).
   await tx.insert(blackjackPvpRounds).values({
     matchId: match.id,
     roundNumber: slot,
     player1Hand: match.player1Hand ?? [],
     player2Hand: match.player2Hand ?? [],
+    player1OriginalCards: match.player1OriginalCards ?? [],
+    player2OriginalCards: match.player2OriginalCards ?? [],
     player1Score: decision.p1Score,
     player2Score: decision.p2Score,
     player1State: match.player1State,
     player2State: match.player2State,
+    player1UsedSwap: Number(match.player1UsedSwap) || 0,
+    player2UsedSwap: Number(match.player2UsedSwap) || 0,
+    player1UsedFreeze: Number(match.player1UsedFreeze) || 0,
+    player2UsedFreeze: Number(match.player2UsedFreeze) || 0,
+    player1FrozenCard: match.player1FrozenCard ?? null,
+    player2FrozenCard: match.player2FrozenCard ?? null,
+    player1HeldResolved: match.player1HeldResolved ?? null,
+    player2HeldResolved: match.player2HeldResolved ?? null,
     roundWinner,
   });
 
-  // Score totals
-  let newScoreP1 = Number(match.scorePlayer1) || 0;
-  let newScoreP2 = Number(match.scorePlayer2) || 0;
+  // Score totals — read from rounds_won_playerN columns (renamed
+  // from score_playerN by the Prompt 9 schema refactor). The score
+  // is the MATCH-LEVEL round-win counter, not the hand value.
+  let newScoreP1 = Number(match.roundsWonPlayer1) || 0;
+  let newScoreP2 = Number(match.roundsWonPlayer2) || 0;
   if (roundWinner === RESULT.PLAYER1) newScoreP1 += 1;
   else if (roundWinner === RESULT.PLAYER2) newScoreP2 += 1;
 
@@ -789,7 +864,10 @@ async function resolveRound(tx, match) {
   let nextStatus;
   let nextRound = slot + 1;
   let nextDeadline = null;
-  let winnerId = null;
+  // Renamed from `winnerId` so it doesn't shadow the Drizzle column
+  // `winner` after the schema refactor (winner column stores the
+  // userId of the winning player).
+  let winnerUserId = null;
   let prizePaid = "0.00";
   let houseFee = "0.00";
   let result = null;
@@ -803,13 +881,13 @@ async function resolveRound(tx, match) {
     nextDeadline = null;
     if (newScoreP1 > newScoreP2) {
       const credit = await creditWinner(tx, match, RESULT.PLAYER1);
-      winnerId = credit.winnerId;
+      winnerUserId = credit.winnerId;
       prizePaid = credit.payout.toFixed(2);
       houseFee = credit.fee.toFixed(2);
       result = RESULT.PLAYER1;
     } else if (newScoreP2 > newScoreP1) {
       const credit = await creditWinner(tx, match, RESULT.PLAYER2);
-      winnerId = credit.winnerId;
+      winnerUserId = credit.winnerId;
       prizePaid = credit.payout.toFixed(2);
       houseFee = credit.fee.toFixed(2);
       result = RESULT.PLAYER2;
@@ -842,9 +920,9 @@ async function resolveRound(tx, match) {
 
     const setValues = {
       status: nextStatus,
-      currentRound: nextRound,
-      scorePlayer1: newScoreP1,
-      scorePlayer2: newScoreP2,
+      roundNumber: nextRound,
+      roundsWonPlayer1: newScoreP1,
+      roundsWonPlayer2: newScoreP2,
       roundDeadline: nextDeadline,
       // Preserve the just-resolved round's hand + state on the row
       // until `advanceFromBetweenRounds` flips it to round_(X+1).
@@ -854,13 +932,13 @@ async function resolveRound(tx, match) {
       player2State: match.player2State ?? PLAYER_STATE.STAND,
       // Stash the (now-consumed) deck; the next round will rebuild.
       deck: match.deck ?? [],
-      // Reset all per-round counters + held cards for the next round.
-      player1SwapsUsed: 0,
-      player2SwapsUsed: 0,
-      player1HoldsUsed: 0,
-      player2HoldsUsed: 0,
-      player1HeldCard: null,
-      player2HeldCard: null,
+      // Reset all per-round counters + frozen cards for the next round.
+      player1UsedSwap: 0,
+      player2UsedSwap: 0,
+      player1UsedFreeze: 0,
+      player2UsedFreeze: 0,
+      player1FrozenCard: null,
+      player2FrozenCard: null,
       player1HeldResolved: null,
       player2HeldResolved: null,
     };
@@ -877,9 +955,9 @@ async function resolveRound(tx, match) {
   // Apply final-set values for the finished branch.
   const setValues = {
     status: nextStatus,
-    currentRound: nextRound,
-    scorePlayer1: newScoreP1,
-    scorePlayer2: newScoreP2,
+    roundNumber: nextRound,
+    roundsWonPlayer1: newScoreP1,
+    roundsWonPlayer2: newScoreP2,
     roundDeadline: nextDeadline,
     player1State: PLAYER_STATE.STAND, // round is over; both seats 'stood' for read consistency
     player2State: PLAYER_STATE.STAND,
@@ -892,7 +970,7 @@ async function resolveRound(tx, match) {
     prizePaid: prizePaid,
     endedAt: new Date(),
   };
-  if (winnerId !== null) setValues.winnerId = winnerId;
+  if (winnerUserId !== null) setValues.winner = winnerUserId;
   if (result !== null) setValues.result = result;
 
   const [updated] = await tx
@@ -907,7 +985,7 @@ async function resolveRound(tx, match) {
   // passed into resolveRound.
   const finalRow = updated || match;
   if (result === RESULT.PLAYER1 || result === RESULT.PLAYER2) {
-    await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
+    await recordPvPResult(tx, finalRow, winnerUserId, result).catch(() => {});
   }
 
   return finalRow;
@@ -974,7 +1052,7 @@ async function recordPvPResult(tx, match, winnerId, result) {
 // longer in `BETWEEN_ROUNDS` simply confirms the match row (no
 // UPDATE applied — see WHERE status guard).
 async function advanceFromBetweenRounds(tx, match) {
-  const upcomingRound = (Number(match.currentRound) || 1) + 1;
+  const upcomingRound = (Number(match.roundNumber) || 1) + 1;
   if (upcomingRound > TOTAL_ROUNDS) {
     // Shouldn't reach here — `resolveRound` finished the match when
     // `slot >= TOTAL_ROUNDS` — but guard defensively so the lobby is
@@ -987,29 +1065,42 @@ async function advanceFromBetweenRounds(tx, match) {
   // round" — a single shoe from which cards are drawn sequentially,
   // with the remainder persisted on the row's `deck` column for
   // later hit / swap draws inside the same round.
+  //
+  // Prompt 9: snapshot the freshly-dealt pair into
+  // player{N}OriginalCards so the round-end reveal can show what was
+  // dealt unmodified by any later SWAP.
   const freshShoe = buildDeck();
   const player1Hand = drawCards(freshShoe, 2);
   const player2Hand = drawCards(freshShoe, 2);
+  // Snapshot the freshly-dealt pair as the round-start originals so
+  // the round-end reveal shows what was dealt (unmodified by SWAP).
+  // Clone the arrays to avoid aliasing — any later in-place mutation
+  // of player1Hand / player2Hand (HIT, SWAP) must NOT bleed into the
+  // deal-time snapshot.
+  const player1OriginalCards = [...player1Hand];
+  const player2OriginalCards = [...player2Hand];
 
   // Idempotency guard: only advance while status is BETWEEN_ROUNDS.
   const [updated] = await tx
     .update(blackjackPvpMatches)
     .set({
       status: statusForRoundNumber(upcomingRound),
-      currentRound: upcomingRound,
+      roundNumber: upcomingRound,
       roundDeadline: new Date(Date.now() + roundDeadlineMs(match)),
       deck: freshShoe,
       player1Hand,
       player2Hand,
+      player1OriginalCards,
+      player2OriginalCards,
       player1State: PLAYER_STATE.PLAYING,
       player2State: PLAYER_STATE.PLAYING,
-      // Reset all per-round counters + held cards for the next round.
-      player1SwapsUsed: 0,
-      player2SwapsUsed: 0,
-      player1HoldsUsed: 0,
-      player2HoldsUsed: 0,
-      player1HeldCard: null,
-      player2HeldCard: null,
+      // Reset all per-round counters + frozen cards for the next round.
+      player1UsedSwap: 0,
+      player2UsedSwap: 0,
+      player1UsedFreeze: 0,
+      player2UsedFreeze: 0,
+      player1FrozenCard: null,
+      player2FrozenCard: null,
       player1HeldResolved: null,
       player2HeldResolved: null,
     })

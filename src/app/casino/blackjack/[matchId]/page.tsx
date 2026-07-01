@@ -42,6 +42,7 @@ import {
   SWAP_LIMIT_PER_ROUND,
   HOLD_LIMIT_PER_ROUND,
   BETWEEN_ROUNDS_SECONDS,
+  TOTAL_ROUNDS,
 } from "../../../../lib/blackjack-pvp/constants";
 import { useTranslation } from "../../../../hooks/useTranslation";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -66,16 +67,24 @@ type MatchState = {
   player2Id: string | null;
   stakeAmount: number;
   status: string;
-  currentRound: number;
-  scorePlayer1: number;
-  scorePlayer2: number;
+  roundNumber: number;
+  roundsWonPlayer1: number;
+  roundsWonPlayer2: number;
   player1Hand: Card[];
   player2Hand: Card[];
   player1State: string;
   player2State: string;
+  // Wire-only computed booleans (Prompt 9 schema refactor): true
+  // iff the per-seat `state !== 'playing'`. The opponent's standing
+  // is collapsed to a boolean on the wire so the UI can't infer
+  // their strategy.
+  player1Standing: boolean;
+  player2Standing: boolean;
   viewerIsPlayer1: boolean;
   roundDeadline: string | null;
-  winnerId: string | null;
+  // Pre-refactor: winnerId. Renamed to `winner` per Prompt 9 spec;
+  // the column still stores the userId of the winning player.
+  winner: string | null;
   result: string | null;
   prizePaid: number;
   houseFee: number;
@@ -83,12 +92,12 @@ type MatchState = {
   startedAt: string | null;
   endedAt: string | null;
   createdAt: string;
-  player1SwapsUsed: number;
-  player2SwapsUsed: number;
-  player1HoldsUsed: number;
-  player2HoldsUsed: number;
-  player1HeldCard: Card | null;
-  player2HeldCard: Card | null;
+  player1UsedSwap: number;
+  player2UsedSwap: number;
+  player1UsedFreeze: number;
+  player2UsedFreeze: number;
+  player1FrozenCard: Card | null;
+  player2FrozenCard: Card | null;
   player1HeldResolved: string | null;
   player2HeldResolved: string | null;
 };
@@ -213,18 +222,29 @@ export default function BlackjackPvpMatchPage({
       ? match.player1State
       : match.player2State
     : "playing";
+  // Prompt 9 schema refactor: derive the spec's `player{N}Standing`
+  // wire boolean into a local memo so the action gates can lean on a
+  // single boolean instead of tautologically comparing state strings.
+  // The opponent's standing wire value is already collapsed to a
+  // boolean on the server side during active play so we don't keep
+  // an `oppStanding` mirror here — it's noise the page doesn't need.
+  const myStanding = match
+    ? viewerIsPlayer1
+      ? Boolean(match.player1Standing)
+      : Boolean(match.player2Standing)
+    : false;
   const myActions: SeatActions = match
     ? viewerIsPlayer1
       ? {
-          swapsUsed: match.player1SwapsUsed,
-          holdsUsed: match.player1HoldsUsed,
-          heldCard: match.player1HeldCard,
+          swapsUsed: match.player1UsedSwap,
+          holdsUsed: match.player1UsedFreeze,
+          heldCard: match.player1FrozenCard,
           heldResolved: match.player1HeldResolved,
         }
       : {
-          swapsUsed: match.player2SwapsUsed,
-          holdsUsed: match.player2HoldsUsed,
-          heldCard: match.player2HeldCard,
+          swapsUsed: match.player2UsedSwap,
+          holdsUsed: match.player2UsedFreeze,
+          heldCard: match.player2FrozenCard,
           heldResolved: match.player2HeldResolved,
         }
     : {
@@ -280,7 +300,7 @@ export default function BlackjackPvpMatchPage({
 
         posthog?.capture(`blackjack_pvp_match_${next.status}`, {
           match_id: matchId,
-          round: next.currentRound,
+          round: next.roundNumber,
         });
       } catch (e) {
         if (!opts?.silent) setErrorMsg("Network error");
@@ -397,8 +417,8 @@ export default function BlackjackPvpMatchPage({
   useEffect(() => {
     if (
       match?.status === "finished" &&
-      match.winnerId &&
-      user?.id === match.winnerId &&
+      match.winner &&
+      user?.id === match.winner &&
       !victoryCelebratedRef.current
     ) {
       victoryCelebratedRef.current = true;
@@ -422,8 +442,8 @@ export default function BlackjackPvpMatchPage({
     }
     if (
       match?.status === "finished" &&
-      match.winnerId &&
-      user?.id !== match.winnerId &&
+      match.winner &&
+      user?.id !== match.winner &&
       match.result !== "draw" &&
       !victoryCelebratedRef.current
     ) {
@@ -448,29 +468,38 @@ export default function BlackjackPvpMatchPage({
     ? t("blackjackPvp.seat.opponent", "Adversaire")
     : t("blackjackPvp.seat.opponent", "Adversaire");
 
+  // Action gates (Prompt 9): switched from `myState === "playing"`
+  // string comparisons to `!myStanding` for cleaner semantics. The
+  // standing wire boolean is derived from the server's player{N}_state
+  // enum, so the action-disabled invariant is enforced by the same
+  // server-authoritative rule that gates the engine's recordAction.
   const canSwap =
     isMyTurn &&
-    myState === "playing" &&
+    !myStanding &&
     myHand.length >= 2 &&
     (myActions.swapsUsed ?? 0) < SWAP_LIMIT_PER_ROUND;
   const canHold =
     isMyTurn &&
-    myState === "playing" &&
+    !myStanding &&
     myHand.length >= 2 &&
     (myActions.holdsUsed ?? 0) < HOLD_LIMIT_PER_ROUND &&
     !myActions.heldCard;
+  // Per Prompt 7: once a seat leaves `playing` (stood or busted)
+  // no further gameplay actions are allowed — including Use-Held.
+  // The hold-then-stand post-resolution path is intentionally gone: a
+  // player who holds must add or discard BEFORE standing.
   const canUseHeldAdd =
     isMyTurn &&
-    (myState === "playing" || myState === "stood") &&
+    !myStanding &&
     Boolean(myActions.heldCard) &&
     !myActions.heldResolved;
   const canUseHeldDiscard =
     isMyTurn &&
-    (myState === "playing" || myState === "stood") &&
+    !myStanding &&
     Boolean(myActions.heldCard) &&
     !myActions.heldResolved;
-  const canHit = isMyTurn && myState === "playing" && myScore < 21;
-  const canStand = isMyTurn && myState === "playing";
+  const canHit = isMyTurn && !myStanding && myScore < 21;
+  const canStand = isMyTurn && !myStanding;
 
   // ── Render: header / status banner / 403 / not-found ──────────────
   const statusLabel = (() => {
@@ -488,28 +517,21 @@ export default function BlackjackPvpMatchPage({
           "blackjackPvp.status.betweenRounds",
           "Manche suivante imminente…",
         );
+      // Round N/3 is rendered by <GameTableCenter /> for every active
+      // round status. The status banner stays intentionally lean
+      // during play, otherwise the same round number appears in two
+      // spots (banner + scoreboard chip).
       case "round_1":
-        return t("blackjackPvp.status.roundN", "Manche {n} / 3").replace(
-          "{n}",
-          "1",
-        );
       case "round_2":
-        return t("blackjackPvp.status.roundN", "Manche {n} / 3").replace(
-          "{n}",
-          "2",
-        );
       case "round_3":
-        return t("blackjackPvp.status.roundN", "Manche {n} / 3").replace(
-          "{n}",
-          "3",
-        );
+        return t("blackjackPvp.status.activePlay", "En jeu");
       case "finished":
         if (match.result === "draw")
           return t(
             "blackjackPvp.status.finishedDraw",
             "Égalité — mise remboursée",
           );
-        if (match.winnerId === user?.id)
+        if (match.winner === user?.id)
           return t("blackjackPvp.status.finishedWin", "Vous avez gagné !");
         return t("blackjackPvp.status.finishedLose", "Vous avez perdu");
       case "cancelled":
@@ -584,7 +606,8 @@ export default function BlackjackPvpMatchPage({
         )}
 
         <div className="rounded-2xl border border-[#FFD700]/25 bg-gradient-to-br from-[#001933]/90 via-[#00111f]/90 to-[#000814]/90 shadow-[0_0_30px_rgba(255,215,0,0.12)] p-4 sm:p-6">
-          {/* Status banner */}
+          {/* Status banner — transient status only (round indicator
+              lives in the GameTableCenter below). */}
           <div className="text-center mb-3">
             <motion.h2
               key={match?.status ?? "loading"}
@@ -594,22 +617,11 @@ export default function BlackjackPvpMatchPage({
             >
               {statusLabel}
             </motion.h2>
-            {match?.status !== "waiting" &&
-              match?.status !== "cancelled" && (
-                <p className="text-[#FFD700]/70 text-xs mt-0.5">
-                  {t(
-                    "blackjackPvp.scoreboardLabel",
-                    "Score : {p1} – {p2}",
-                  )
-                    .replace("{p1}", String(match?.scorePlayer1 ?? 0))
-                    .replace("{p2}", String(match?.scorePlayer2 ?? 0))}
-                </p>
-              )}
           </div>
 
-          {/* Opponent's section — always face-down + localized
-             "Opponent Playing…" placeholder text. Never reveals
-             anything else. */}
+          {/* ▶ TOP SECTION — Opponent
+              Always face-down + localized "Opponent Playing…"
+              placeholder text. Never reveals anything else. */}
           <OpponentHand
             t={t}
             label={oppSeatLabel}
@@ -617,9 +629,37 @@ export default function BlackjackPvpMatchPage({
             isMatchFinished={match?.status === "finished"}
           />
 
-          <div className="my-4 h-px bg-[#FFD700]/20" />
+          {/* ▶ MIDDLE SECTION — Game table
+              Round scoreboard + Round N/3 chip (Player | Round |
+              Opponent). Hidden during the between-rounds transition
+              because that screen overlays the table instead. */}
+          <GameTableCenter
+            t={t}
+            viewerIsPlayer1={viewerIsPlayer1}
+            status={match?.status || "waiting"}
+            roundNumber={
+              match?.roundNumber && match.roundNumber >= 1
+                ? match.roundNumber
+                : 1
+            }
+            totalRounds={TOTAL_ROUNDS}
+            myRounds={
+              viewerIsPlayer1
+                ? Number(match?.roundsWonPlayer1 || 0)
+                : Number(match?.roundsWonPlayer2 || 0)
+            }
+            oppRounds={
+              viewerIsPlayer1
+                ? Number(match?.roundsWonPlayer2 || 0)
+                : Number(match?.roundsWonPlayer1 || 0)
+            }
+            mySeatLabel={mySeatLabel}
+            oppSeatLabel={oppSeatLabel}
+          />
 
-          {/* My section — face-up cards. */}
+          {/* ▶ BOTTOM SECTION — You
+              Face-up cards + my score (with bust / stood states
+              surfaced through the same MyHand component). */}
           <MyHand
             t={t}
             label={mySeatLabel}
@@ -644,14 +684,14 @@ export default function BlackjackPvpMatchPage({
           {match?.status === "finished" && (
             <div
               className={`text-center text-lg font-bold mt-3 ${
-                match.winnerId === user?.id
+                match.winner === user?.id
                   ? "text-amber-300"
                   : match.result === "draw"
                   ? "text-yellow-300"
                   : "text-red-300"
               }`}
             >
-              {match.winnerId === user?.id
+              {match.winner === user?.id
                 ? t("blackjackPvp.result.win", "Victoire !")
                 : match.result === "draw"
                 ? t(
@@ -673,10 +713,10 @@ export default function BlackjackPvpMatchPage({
             <BetweenRoundsScreen
               t={t}
               matchId={matchId}
-              nextRound={Number(match.currentRound) + 1}
-              totalRounds={3}
-              scorePlayer1={Number(match.scorePlayer1) || 0}
-              scorePlayer2={Number(match.scorePlayer2) || 0}
+              nextRound={Number(match.roundNumber) + 1}
+              totalRounds={TOTAL_ROUNDS}
+              roundsWonPlayer1={Number(match.roundsWonPlayer1) || 0}
+              roundsWonPlayer2={Number(match.roundsWonPlayer2) || 0}
               onAfter={fetchStatus}
             />
           )}
@@ -704,29 +744,18 @@ export default function BlackjackPvpMatchPage({
               }
             />
           )}
-          {/* After standing, the player can still resolve their held
-              card (Add or Discard). No Hit/Stand allowed here. */}
-          {isMyTurn && myState === "stood" && (canUseHeldAdd || canUseHeldDiscard) && (
-            <ActionPanel
-              t={t}
-              submitting={submitting}
-              canHit={false}
-              canStand={false}
-              canSwap={false}
-              canHold={false}
-              canUseHeldAdd={canUseHeldAdd}
-              canUseHeldDiscard={canUseHeldDiscard}
-              onHit={() => {}}
-              onStand={() => {}}
-              onSwap={() => {}}
-              onHold={() => {}}
-              onUseHeldAdd={() =>
-                sendAction("use_held", { subaction: "add" })
-              }
-              onUseHeldDiscard={() =>
-                sendAction("use_held", { subaction: "discard" })
-              }
-            />
+          {/* After standing, the hand is locked and the player has
+              NO remaining actions. The "en attente de l'adversaire"
+              hint below mirrors the busted posture identically so
+              the opponent can't tell the two apart without seeing
+              the active cards. */}
+          {isMyTurn && myState === "stood" && (
+            <div className="mt-3 text-center text-xs text-white/55 italic">
+              {t(
+                "blackjackPvp.lockedAfterStand",
+                "Hand locked — both hands reveal when the round ends.",
+              )}
+            </div>
           )}
           {isMyTurn && myState !== "playing" && (
             <div className="mt-4 text-center text-xs text-white/55">
@@ -869,7 +898,7 @@ export default function BlackjackPvpMatchPage({
             stake={Number(match.stakeAmount)}
             prizePaid={Number(match.prizePaid)}
             houseFee={Number(match.houseFee)}
-            winnerId={match.winnerId}
+            winner={match.winner}
             userId={user?.id ?? null}
             result={match.result}
             onBackToLobby={() => {
@@ -1047,76 +1076,115 @@ function ActionPanel({
   onUseHeldAdd: () => void;
   onUseHeldDiscard: () => void;
 }) {
+  // Hit / Stand / Swap / Freeze — the four core gameplay buttons per
+  // the redesigned layout spec. The consolidated Swap button uses an
+  // inline 1st / 2nd toggle to pick which starting card to replace
+  // (the underlying server action still requires `swapIndex`).
   const baseBtn =
-    "px-4 py-2 rounded-lg font-semibold text-sm transition disabled:opacity-40 disabled:cursor-not-allowed";
+    "px-4 py-2.5 rounded-xl font-bold text-sm transition disabled:opacity-40 disabled:cursor-not-allowed border-b-2";
   const busy = submitting ? "…" : null;
+
+  // Local state — only lives inside the panel so the parent page.tsx
+  // signature stays untouched (no callback shape changes). The
+  // natural remount when the ActionPanel unmounts between rounds
+  // (during between_rounds / busted / stood reset) means the pick
+  // deliberately resets to the first card at the start of every new
+  // round — intentional UX, do not lift into parent state.
+  const [swapTarget, setSwapTarget] = useState<0 | 1>(0);
+
+  const swapDisabled = !canSwap || submitting;
+
   return (
-    <div className="mt-4 space-y-2">
+    <div className="mt-4 space-y-2.5">
+      {/* ── 1st / 2nd toggle pill — selects which starting card the
+        consolidated Swap button will replace. Disabled en masse
+        when canSwap is false so the player can't pre-arm an inert
+        Swap target. */}
+      <div className="flex items-center justify-center gap-2">
+        <span className="text-[10px] uppercase tracking-[0.25em] text-purple-200/85 font-bold">
+          {t("blackjackPvp.swapTargetLabel", "Swap target")}
+        </span>
+        <div className="inline-flex items-center rounded-full border border-purple-400/40 bg-purple-500/10 p-0.5 shadow-[inset_0_0_8px_rgba(168,85,247,0.18)]">
+          {([0, 1] as const).map((idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setSwapTarget(idx)}
+              disabled={swapDisabled}
+              className={`px-3 py-1 text-xs font-bold rounded-full transition ${
+                swapTarget === idx
+                  ? "bg-purple-400 text-black shadow-[0_0_10px_rgba(168,85,247,0.55)]"
+                  : "text-purple-200 hover:bg-purple-400/25"
+              } disabled:hover:bg-transparent`}
+              aria-pressed={swapTarget === idx}
+            >
+              {idx === 0
+                ? t("blackjackPvp.swapCard1st", "1st")
+                : t("blackjackPvp.swapCard2nd", "2nd")}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Hit / Stand / Swap / Freeze — 4-button row */ }
       <div className="flex justify-center gap-2 flex-wrap">
         <button
           onClick={onHit}
           disabled={!canHit || submitting}
-          className={`${baseBtn} border border-[#FFD700]/30 bg-[#FFD700]/15 text-[#FFD700] hover:bg-[#FFD700]/25`}
+          className={`${baseBtn} border-[#FFD700]/40 bg-[#FFD700]/15 text-[#FFD700] hover:bg-[#FFD700]/25 shadow-[0_0_10px_rgba(255,215,0,0.35)]`}
         >
-          {busy ?? t("blackjackPvp.hit", "Carte")}
+          {busy ?? t("blackjackPvp.hit", "Hit")}
         </button>
         <button
           onClick={onStand}
           disabled={!canStand || submitting}
-          className={`${baseBtn} border border-[#00e5ff]/30 bg-[#00e5ff]/15 text-[#00e5ff] hover:bg-[#00e5ff]/25`}
+          className={`${baseBtn} border-[#00e5ff]/45 bg-[#00e5ff]/15 text-[#9ff4ff] hover:bg-[#00e5ff]/25 shadow-[0_0_10px_rgba(0,229,255,0.35)]`}
         >
-          {busy ?? t("blackjackPvp.stand", "Rester")}
+          {busy ?? t("blackjackPvp.stand", "Stand")}
         </button>
         <button
-          onClick={() => onSwap(0)}
-          disabled={!canSwap || submitting}
+          onClick={() => onSwap(swapTarget)}
+          disabled={swapDisabled}
           title={t(
-            "blackjackPvp.swap1stHint",
-            "Replace your 1st starting card",
-          )}
-          className={`${baseBtn} border border-purple-400/30 bg-purple-400/10 text-purple-200 hover:bg-purple-400/20`}
+            "blackjackPvp.swapHint",
+            "Replace your {n} starting card",
+          ).replace("{n}", swapTarget === 0 ? "1st" : "2nd")}
+          className={`${baseBtn} border-purple-400/45 bg-purple-500/15 text-purple-100 hover:bg-purple-500/25 shadow-[0_0_10px_rgba(168,85,247,0.35)]`}
         >
-          {busy ?? t("blackjackPvp.swap1st", "Permuter 1ère carte")}
-        </button>
-        <button
-          onClick={() => onSwap(1)}
-          disabled={!canSwap || submitting}
-          title={t(
-            "blackjackPvp.swap2ndHint",
-            "Replace your 2nd starting card",
-          )}
-          className={`${baseBtn} border border-purple-400/30 bg-purple-400/10 text-purple-200 hover:bg-purple-400/20`}
-        >
-          {busy ?? t("blackjackPvp.swap2nd", "Permuter 2ème carte")}
+          {busy ?? t("blackjackPvp.swap", "Swap")}
         </button>
         <button
           onClick={onHold}
           disabled={!canHold || submitting}
           title={t(
-            "blackjackPvp.holdHint",
-            "Set aside your most recently drawn card",
+            "blackjackPvp.freezeHint",
+            "Stash your most recently drawn card aside for later",
           )}
-          className={`${baseBtn} border border-amber-400/30 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20`}
+          className={`${baseBtn} border-sky-300/45 bg-sky-300/10 text-sky-100 hover:bg-sky-300/25 shadow-[0_0_10px_rgba(125,211,252,0.30)]`}
         >
-          {busy ?? t("blackjackPvp.hold", "Mettre de côté")}
+          {busy ?? t("blackjackPvp.freeze", "Freeze")}
         </button>
       </div>
+
+      {/* ── Resolve frozen (held) card sub-row. Sub-button row only
+        surfaces when the player has a card on hold that hasn't been
+        resolved yet. Stylistic complement to the Swap pill so the
+        decision grid feels deliberate. */}
       {(canUseHeldAdd || canUseHeldDiscard) && (
-        <div className="flex justify-center gap-2 flex-wrap">
+        <div className="flex justify-center gap-2 flex-wrap pt-1">
           <button
             onClick={onUseHeldAdd}
             disabled={!canUseHeldAdd || submitting}
-            className={`${baseBtn} border border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20`}
+            className={`${baseBtn} border-emerald-400/45 bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/25 shadow-[0_0_10px_rgba(16,185,129,0.30)]`}
           >
-            {busy ?? t("blackjackPvp.useHeldAdd", "Ajouter la réserve")}
+            {busy ?? t("blackjackPvp.useHeldAdd", "Use frozen card")}
           </button>
           <button
             onClick={onUseHeldDiscard}
             disabled={!canUseHeldDiscard || submitting}
-            className={`${baseBtn} border border-red-400/30 bg-red-400/10 text-red-200 hover:bg-red-400/20`}
+            className={`${baseBtn} border-red-400/45 bg-red-500/15 text-red-200 hover:bg-red-500/25 shadow-[0_0_10px_rgba(239,68,68,0.30)]`}
           >
-            {busy ??
-              t("blackjackPvp.useHeldDiscard", "Jeter la réserve")}
+            {busy ?? t("blackjackPvp.useHeldDiscard", "Discard frozen")}
           </button>
         </div>
       )}
@@ -1147,6 +1215,108 @@ function WaitingBanner({
         </button>
       )}
     </div>
+  );
+}
+
+function GameTableCenter({
+  t,
+  viewerIsPlayer1,
+  status,
+  roundNumber,
+  totalRounds,
+  myRounds,
+  oppRounds,
+  mySeatLabel,
+  oppSeatLabel,
+}: {
+  t: TFn;
+  viewerIsPlayer1: boolean;
+  status: string;
+  // Prompt 9 schema refactor: caller passes `roundNumber` (the spec
+  // name) so the destructure + type field use roundNumber.
+  roundNumber: number;
+  totalRounds: number;
+  myRounds: number;
+  oppRounds: number;
+  mySeatLabel: string;
+  oppSeatLabel: string;
+}) {
+  // GameTableCenter stays visible across `ready` (warm-up banner) and
+  // `between_rounds` (transitional countdown) — both surface the round
+  // indicator so the table layout doesn't flicker in/out. We hide
+  // only the pre-pairing `waiting` state, where there's no match row
+  // yet and showing "Round 1/3" would be misleading.
+  if (status === "waiting") {
+    return null;
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      className="my-5 rounded-2xl border border-[#FFD700]/30 bg-gradient-to-b from-[#00111f]/85 via-[#000c1a]/85 to-[#000814]/85 px-4 sm:px-6 py-4 shadow-[0_0_24px_rgba(255,215,0,0.15)]"
+    >
+      <div className="flex items-center justify-between gap-3 sm:gap-6">
+        {/* LEFT — viewer's seat round score */}
+        <div className="flex flex-col items-start min-w-0">
+          <span className="text-[10px] sm:text-xs uppercase tracking-[0.25em] text-[#FFD700]/75 font-bold">
+            {t("blackjackPvp.scoreboard.player", "Player")}
+          </span>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span
+              className={`text-3xl sm:text-4xl font-black leading-none ${
+                viewerIsPlayer1 ? "text-white" : "text-white"
+              }`}
+            >
+              {myRounds}
+            </span>
+            <span className="text-[11px] uppercase tracking-widest text-[#FFD700]/70 font-bold">
+              {t("blackjackPvp.scoreboard.roundsUnit", "rd")}
+            </span>
+          </div>
+          <span className="text-[10px] uppercase tracking-widest text-white/50 mt-1 truncate max-w-[110px]">
+            {mySeatLabel}
+          </span>
+        </div>
+
+        {/* CENTER — current round chip (prominent Round N/3) */}
+        <div className="flex flex-col items-center gap-1.5">
+          <span className="text-[10px] sm:text-xs uppercase tracking-[0.25em] text-[#FFD700]/70 font-bold">
+            {t("blackjackPvp.scoreboard.roundLabel", "Round")}
+          </span>
+          <div
+            className="rounded-full border-2 border-[#FFD700]/65 bg-gradient-to-b from-[#FFD700]/30 to-[#FFD700]/8 px-4 sm:px-5 py-1.5 sm:py-2 shadow-[0_0_18px_rgba(255,215,0,0.45)] flex items-center gap-0.5"
+          aria-label={`Round ${roundNumber} of ${totalRounds}`}
+        >
+          <span className="text-2xl sm:text-3xl font-black text-[#fffec7] leading-none">
+            {roundNumber}
+          </span>
+            <span className="text-base sm:text-lg text-[#FFD700]/65 font-black leading-none">
+              /{totalRounds}
+            </span>
+          </div>
+        </div>
+
+        {/* RIGHT — opponent's seat round score */}
+        <div className="flex flex-col items-end min-w-0">
+          <span className="text-[10px] sm:text-xs uppercase tracking-[0.25em] text-[#FFD700]/75 font-bold">
+            {t("blackjackPvp.scoreboard.opponent", "Opponent")}
+          </span>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-3xl sm:text-4xl font-black text-white leading-none">
+              {oppRounds}
+            </span>
+            <span className="text-[11px] uppercase tracking-widest text-[#FFD700]/70 font-bold">
+              {t("blackjackPvp.scoreboard.roundsUnit", "rd")}
+            </span>
+          </div>
+          <span className="text-[10px] uppercase tracking-widest text-white/50 mt-1 truncate max-w-[110px]">
+            {oppSeatLabel}
+          </span>
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
@@ -1197,6 +1367,15 @@ function RoundResultModal({
   // already moved status; this is a soft hold so the player can read
   // the comparison). Player can also dismiss manually.
   const [secondsLeft, setSecondsLeft] = useState(5);
+
+  // Two-phase simultaneous reveal:
+  //   Phase 1 (~700ms): teaser "Revealing… hands…" pulse so the
+  //   simultaneous flip feels deliberate instead of instantaneous.
+  //   Phase 2: BOTH seats' cards flip in unison (existing per-card
+  //   stagger inside each seat preserved; both seats share the same
+  //   start time so they animate together).
+  const [introDone, setIntroDone] = useState(false);
+
   useEffect(() => {
     if (secondsLeft <= 0) {
       onDismiss();
@@ -1205,6 +1384,11 @@ function RoundResultModal({
     const id = setTimeout(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
     return () => clearTimeout(id);
   }, [secondsLeft, onDismiss]);
+
+  useEffect(() => {
+    const id = setTimeout(() => setIntroDone(true), 700);
+    return () => clearTimeout(id);
+  }, []);
 
   return (
     <motion.div
@@ -1254,31 +1438,68 @@ function RoundResultModal({
           ).replace("{n}", String(round.roundNumber))}
         </p>
 
-        {/* ── Both hands simultaneously revealed ───────────────────── */}
-        <div className="mt-4 grid grid-cols-2 gap-3 text-left">
-          <RevealedSeat
-            label={
-              viewerIsPlayer1
-                ? t("blackjackPvp.seat.player1", "Joueur 1")
-                : t("blackjackPvp.seat.player2", "Joueur 2")
-            }
-            hand={viewerIsPlayer1 ? p1Hand : p2Hand}
-            score={viewerIsPlayer1 ? p1Score : p2Score}
-            busted={viewerIsPlayer1 ? p1Busted : p2Busted}
-            didWin={topWon}
-            highlight="self"
-            t={t}
-          />
-          <RevealedSeat
-            label={t("blackjackPvp.seat.opponent", "Adversaire")}
-            hand={viewerIsPlayer1 ? p2Hand : p1Hand}
-            score={viewerIsPlayer1 ? p2Score : p1Score}
-            busted={viewerIsPlayer1 ? p2Busted : p1Busted}
-            didWin={bottomWon}
-            highlight="opp"
-            t={t}
-          />
-        </div>
+        {/* ── Phase 1: brief "Revealing" teaser pulse so the
+               simultaneous flip feels deliberate. The intro is
+               AnimatePresence-swapped with the reveal grid so both
+               pieces mount/unmount cleanly without overlapping. */}
+        <AnimatePresence mode="wait" initial={false}>
+          {!introDone ? (
+            <motion.div
+              key="reveal-intro"
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.35 }}
+              className="mt-5 flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-5 py-6"
+            >
+              <div className="text-3xl">✨</div>
+              <p className="text-sm font-black uppercase tracking-[0.25em] text-[#FFD700] animate-pulse">
+                {t(
+                  "blackjackPvp.revealTeaser",
+                  "Révélation des mains…",
+                )}
+              </p>
+              <p className="text-[10px] uppercase tracking-widest text-white/55">
+                {t(
+                  "blackjackPvp.revealTeaserHint",
+                  "Les deux mains se découvrent simultanément",
+                )}
+              </p>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="reveal-grid"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+              className="mt-4 grid grid-cols-2 gap-3 text-left"
+            >
+              {/* ── BOTH hands simultaneously revealed ─────────── */}
+              <RevealedSeat
+                label={
+                  viewerIsPlayer1
+                    ? t("blackjackPvp.seat.player1", "Joueur 1")
+                    : t("blackjackPvp.seat.player2", "Joueur 2")
+                }
+                hand={viewerIsPlayer1 ? p1Hand : p2Hand}
+                score={viewerIsPlayer1 ? p1Score : p2Score}
+                busted={viewerIsPlayer1 ? p1Busted : p2Busted}
+                didWin={topWon}
+                highlight="self"
+                t={t}
+              />
+              <RevealedSeat
+                label={t("blackjackPvp.seat.opponent", "Adversaire")}
+                hand={viewerIsPlayer1 ? p2Hand : p1Hand}
+                score={viewerIsPlayer1 ? p2Score : p1Score}
+                busted={viewerIsPlayer1 ? p2Busted : p1Busted}
+                didWin={bottomWon}
+                highlight="opp"
+                t={t}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ── Winner-priority text explaining why the round ended
                this way (highest ≤21 wins, bust loses, equal = tie). */}
@@ -1407,7 +1628,7 @@ function MatchEndModal({
   stake,
   prizePaid,
   houseFee,
-  winnerId,
+  winner: winnerId,
   userId,
   result,
   onBackToLobby,
@@ -1416,7 +1637,9 @@ function MatchEndModal({
   stake: number;
   prizePaid: number;
   houseFee: number;
-  winnerId: string | null;
+  // Prompt 9 schema refactor: caller passes `winner` so the prop
+  // rename matches.
+  winner: string | null;
   userId: string | null;
   result: string | null;
   onBackToLobby: () => void;
@@ -1567,16 +1790,16 @@ function BetweenRoundsScreen({
   matchId,
   nextRound,
   totalRounds,
-  scorePlayer1,
-  scorePlayer2,
+  roundsWonPlayer1: scorePlayer1,
+  roundsWonPlayer2: scorePlayer2,
   onAfter,
 }: {
   t: TFn;
   matchId: number;
   nextRound: number;
   totalRounds: number;
-  scorePlayer1: number;
-  scorePlayer2: number;
+  roundsWonPlayer1: number;
+  roundsWonPlayer2: number;
   onAfter: () => Promise<void>;
 }) {
   // Local countdown — counts down once per second, emits an explicit
