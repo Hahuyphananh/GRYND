@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Neon Flush — stack of glowing UNO cards">
+  <title>Neon Flush</title>
+  <defs>
+    <!-- Tight, small-radius glow so cards stay crisp at thumb size (no mush). -->
+    <filter id="neonGlow" x="-12%" y="-12%" width="124%" height="124%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Deep-casino radial backdrop. -->
+    <radialGradient id="bg" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#030817"/>
+    </radialGradient>
+
+    <!-- Card body gradients — saturated, on-brand UNO colors. -->
+    <linearGradient id="red" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ff527d"/>
+      <stop offset="100%" stop-color="#b91c3c"/>
+    </linearGradient>
+    <linearGradient id="yellow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff36e"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5eead4"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#67e8f9"/>
+      <stop offset="100%" stop-color="#1e40af"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background. -->
+  <rect width="480" height="480" fill="url(#bg)"/>
+
+  <!-- Ambient light pool aligned with the fan pivot (240,240). -->
+  <ellipse cx="240" cy="240" rx="220" ry="120" fill="#5b21b6" opacity="0.25"/>
+
+  <!-- Edge sparkles to add casino-night ambience. -->
+  <g fill="#ffffff">
+    <circle cx="50"  cy="80"  r="2"   opacity="0.9"/>
+    <circle cx="430" cy="100" r="2.5" opacity="0.9"/>
+    <circle cx="70"  cy="380" r="2"   opacity="0.9"/>
+    <circle cx="410" cy="420" r="3"   opacity="0.9"/>
+    <circle cx="240" cy="40"  r="1.5" opacity="0.7"/>
+    <circle cx="240" cy="440" r="1.5" opacity="0.7"/>
+    <circle cx="55"  cy="240" r="2"   fill="#00e5ff" opacity="0.8"/>
+    <circle cx="425" cy="260" r="2"   fill="#ff4fd8" opacity="0.8"/>
+  </g>
+
+  <!-- Card 4 (back-most): RED, "7". -->
+  <g transform="rotate(-28 240 240)" filter="url(#neonGlow)">
+    <rect x="175" y="145" width="130" height="190" rx="16" fill="url(#red)" stroke="#ff527d" stroke-width="2"/>
+    <!-- Top-left corner index. -->
+    <text x="195" y="172" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="900" font-size="24" fill="#b91c3c" stroke="#b91c3c" stroke-width="0.4">7</text>
+    <!-- Center white oval. -->
+    <ellipse cx="240" cy="240" rx="40" ry="58" fill="#ffffff" stroke="#b91c3c" stroke-width="2.5"/>
+    <!-- Big central numeral. -->
+    <text x="240" y="272" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="900" font-size="72" fill="#b91c3c" stroke="#b91c3c" stroke-width="0.8">7</text>
+    <!-- Bottom-right rotated corner index. -->
+    <g transform="rotate(180 240 240)">
+      <text x="195" y="172" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="900" font-size="24" fill="#b91c3c" stroke="#b91c3c" stroke-width="0.4">7</text>
+    </g>
+  </g>
+
+  <!-- Card 3: YELLOW, Reverse (two opposing arrows). -->
+  <g transform="rotate(-10 240 240)" filter="url(#neonGlow)">
+    <rect x="175" y="145" width="130" height="190" rx="16" fill="url(#yellow)" stroke="#fbbf24" stroke-width="2"/>
+    <!-- Top-left corner index — mini reverse arrows. -->
+    <g transform="translate(195 162)" stroke="#b45309" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="-7" y1="-3" x2="7" y2="-3"/>
+      <polyline points="4,-6 7,-3 4,0"/>
+      <line x1="7" y1="3" x2="-7" y2="3"/>
+      <polyline points="-4,0 -7,3 -4,6"/>
+    </g>
+    <!-- Center white oval. -->
+    <ellipse cx="240" cy="240" rx="40" ry="58" fill="#ffffff" stroke="#b45309" stroke-width="2.5"/>
+    <!-- Big central reverse arrows. -->
+    <g transform="translate(240 240)" stroke="#b45309" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="-22" y1="-12" x2="22" y2="-12"/>
+      <polyline points="14,-18 22,-12 14,-6"/>
+      <line x1="22" y1="12" x2="-22" y2="12"/>
+      <polyline points="-14,6 -22,12 -14,18"/>
+    </g>
+    <!-- Bottom-right rotated corner index. -->
+    <g transform="rotate(180 240 240)">
+      <g transform="translate(195 162)" stroke="#b45309" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="-7" y1="-3" x2="7" y2="-3"/>
+        <polyline points="4,-6 7,-3 4,0"/>
+        <line x1="7" y1="3" x2="-7" y2="3"/>
+        <polyline points="-4,0 -7,3 -4,6"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- Card 2: GREEN, Skip (no-entry symbol). -->
+  <g transform="rotate(8 240 240)" filter="url(#neonGlow)">
+    <rect x="175" y="145" width="130" height="190" rx="16" fill="url(#green)" stroke="#5eead4" stroke-width="2"/>
+    <!-- Top-left corner index — mini no-entry. -->
+    <g transform="translate(195 162)" stroke="#047857" stroke-width="2.4" fill="none" stroke-linecap="round">
+      <circle r="9"/>
+      <line x1="-6.5" y1="-6.5" x2="6.5" y2="6.5"/>
+    </g>
+    <!-- Center white oval. -->
+    <ellipse cx="240" cy="240" rx="40" ry="58" fill="#ffffff" stroke="#047857" stroke-width="2.5"/>
+    <!-- Big no-entry symbol. -->
+    <circle cx="240" cy="240" r="32" fill="none" stroke="#047857" stroke-width="9"/>
+    <line x1="217" y1="217" x2="263" y2="263" stroke="#047857" stroke-width="9" stroke-linecap="round"/>
+    <!-- Bottom-right rotated corner index. -->
+    <g transform="rotate(180 240 240)">
+      <g transform="translate(195 162)" stroke="#047857" stroke-width="2.4" fill="none" stroke-linecap="round">
+        <circle r="9"/>
+        <line x1="-6.5" y1="-6.5" x2="6.5" y2="6.5"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- Card 1 (front-most): BLUE, +2. -->
+  <g transform="rotate(26 240 240)" filter="url(#neonGlow)">
+    <rect x="175" y="145" width="130" height="190" rx="16" fill="url(#blue)" stroke="#67e8f9" stroke-width="2"/>
+    <!-- Top-left corner index. -->
+    <text x="195" y="172" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="900" font-size="22" fill="#1e40af" stroke="#1e40af" stroke-width="0.4">+2</text>
+    <!-- Center white oval. -->
+    <ellipse cx="240" cy="240" rx="40" ry="58" fill="#ffffff" stroke="#1e40af" stroke-width="2.5"/>
+    <!-- Big "+2". -->
+    <text x="240" y="266" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="900" font-size="44" fill="#1e40af" stroke="#1e40af" stroke-width="0.8">+2</text>
+    <!-- Bottom-right rotated corner index. -->
+    <g transform="rotate(180 240 240)">
+      <text x="195" y="172" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="900" font-size="22" fill="#1e40af" stroke="#1e40af" stroke-width="0.4">+2</text>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Cyberpunk Poker — neon 5-card hand fanned out with chip stack">
+  <title>Poker</title>
+  <defs>
+    <filter id="neonGlow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="glow"/><feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="bigGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="glow"/><feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="hotGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="glow"/><feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <radialGradient id="bg" cx="50%" cy="50%" r="80%"><stop offset="0%" stop-color="#261c5b"/><stop offset="100%" stop-color="#030817"/></radialGradient>
+    <pattern id="hexGrid" x="0" y="0" width="48" height="42" patternUnits="userSpaceOnUse"><polygon points="24,1 47,12 47,30 24,41 1,30 1,12" fill="none" stroke="#ff4fd8" stroke-width="0.4" opacity="0.22"/></pattern>
+    <linearGradient id="cardFace" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e0e7f5"/></linearGradient>
+    <linearGradient id="cardEdge" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#ff4fd8"/><stop offset="50%" stop-color="#00e5ff"/><stop offset="100%" stop-color="#fcd34d"/></linearGradient>
+  </defs>
+  <rect width="480" height="480" fill="url(#bg)"/><rect width="480" height="480" fill="url(#hexGrid)"/>
+  <ellipse cx="240" cy="290" rx="220" ry="190" fill="#5b21b6" opacity="0.18"/>
+  <g opacity="0.08" fill="none" stroke="#00e5ff" stroke-width="0.5"><line x1="0" y1="40" x2="480" y2="40"/><line x1="0" y1="100" x2="480" y2="100"/><line x1="0" y1="160" x2="480" y2="160"/><line x1="0" y1="220" x2="480" y2="220"/><line x1="0" y1="280" x2="480" y2="280"/><line x1="0" y1="340" x2="480" y2="340"/><line x1="0" y1="400" x2="480" y2="400"/><line x1="0" y1="460" x2="480" y2="460"/></g>
+  <g fill="#ffffff"><circle cx="40" cy="80" r="2" opacity="0.9"/><circle cx="440" cy="100" r="2.5" opacity="0.9"/><circle cx="50" cy="430" r="2" opacity="0.9"/><circle cx="430" cy="420" r="3" opacity="0.9"/><circle cx="240" cy="20" r="1.5" opacity="0.7"/><circle cx="55" cy="240" r="2" fill="#00e5ff" opacity="0.95"/><circle cx="425" cy="240" r="2" fill="#ff4fd8" opacity="0.95"/></g>
+  <g transform="translate(240 56)">
+    <rect x="-110" y="-22" width="220" height="40" rx="3" fill="#000816" stroke="#00e5ff" stroke-width="2" filter="url(#bigGlow)"/>
+    <rect x="-104" y="-16" width="208" height="28" rx="2" fill="none" stroke="#ff4fd8" stroke-width="0.6" opacity="0.7"/>
+    <text x="0" y="6" font-family="'Courier New', Consolas, monospace" font-size="20" font-weight="900" fill="#67e8f9" text-anchor="middle" letter-spacing="4">0x14  ROYAL FLUSH</text>
+  </g>
+  <g stroke="#ff4fd8" stroke-width="1.2" fill="none" stroke-linecap="round" filter="url(#hotGlow)">
+    <polyline points="40,140 70,160 88,160 96,172"/><polyline points="40,200 56,200 70,210"/>
+    <polyline points="440,140 410,160 392,160 384,172"/><polyline points="440,200 424,200 410,210"/>
+    <circle cx="40" cy="140" r="2" fill="#ff4fd8"/><circle cx="40" cy="200" r="1.6" fill="#00e5ff"/>
+    <circle cx="440" cy="140" r="2" fill="#ff4fd8"/><circle cx="440" cy="200" r="1.6" fill="#00e5ff"/>
+  </g>
+  <!-- 5-card fan (Royal Flush-ish: A♠, K♥, Q♦, J♣, 10♠) -->
+  <g filter="url(#neonGlow)">
+    <!-- Card 1 (back-most, slightly tilted left): A♠ -->
+    <g transform="translate(170 280) rotate(-12)">
+      <rect x="-50" y="-72" width="100" height="144" rx="6" fill="none" stroke="url(#cardEdge)" stroke-width="2.5"/>
+      <rect x="-48" y="-70" width="96" height="140" rx="5" fill="url(#cardFace)" stroke="#1f2937" stroke-width="0.6"/>
+      <text x="-42" y="-50" font-family="serif, Georgia" font-size="20" font-weight="900" fill="#0f172a">A</text>
+      <g transform="translate(-22 -45) scale(0.55)" fill="#0f172a"><path d="M 0,-15 C -12,-5 -12,8 0,12 C 12,8 12,-5 0,-15 Z M -3,12 L 3,12 L 0,20 Z"/></g>
+      <g transform="scale(2.8)" fill="#0f172a"><path d="M 0,-15 C -12,-5 -12,8 0,12 C 12,8 12,-5 0,-15 Z M -3,12 L 3,12 L 0,20 Z"/></g>
+    </g>
+    <!-- Card 2: K♥ -->
+    <g transform="translate(220 290) rotate(-6)">
+      <rect x="-50" y="-72" width="100" height="144" rx="6" fill="none" stroke="url(#cardEdge)" stroke-width="2.5"/>
+      <rect x="-48" y="-70" width="96" height="140" rx="5" fill="url(#cardFace)" stroke="#1f2937" stroke-width="0.6"/>
+      <text x="-42" y="-50" font-family="serif, Georgia" font-size="20" font-weight="900" fill="#dc2626">K</text>
+      <g transform="translate(-18 -45) scale(0.55)" fill="#dc2626"><path d="M 0,15 C -12,5 -15,-8 -8,-10 C -3,-11 -1,-7 0,-5 C 1,-7 3,-11 8,-10 C 15,-8 12,5 0,15 Z"/></g>
+      <text x="0" y="-6" font-family="serif, Georgia" font-size="40" font-weight="900" fill="#dc2626" text-anchor="middle">K</text>
+      <g transform="translate(0 30) scale(2)" fill="#dc2626"><path d="M 0,15 C -12,5 -15,-8 -8,-10 C -3,-11 -1,-7 0,-5 C 1,-7 3,-11 8,-10 C 15,-8 12,5 0,15 Z"/></g>
+    </g>
+    <!-- Card 3 (center, no rotation): Q♦ -->
+    <g transform="translate(270 295)">
+      <rect x="-50" y="-72" width="100" height="144" rx="6" fill="none" stroke="url(#cardEdge)" stroke-width="3"/>
+      <rect x="-48" y="-70" width="96" height="140" rx="5" fill="url(#cardFace)" stroke="#1f2937" stroke-width="0.6"/>
+      <text x="-42" y="-50" font-family="serif, Georgia" font-size="20" font-weight="900" fill="#dc2626">Q</text>
+      <g transform="translate(-18 -45) scale(0.55)" fill="#dc2626"><polygon points="0,-9 9,0 0,9 -9,0"/></g>
+      <text x="0" y="-6" font-family="serif, Georgia" font-size="40" font-weight="900" fill="#dc2626" text-anchor="middle">Q</text>
+      <g transform="translate(0 30) scale(2)" fill="#dc2626"><polygon points="0,-9 9,0 0,9 -9,0"/></g>
+    </g>
+    <!-- Card 4: J♣ -->
+    <g transform="translate(320 290) rotate(6)">
+      <rect x="-50" y="-72" width="100" height="144" rx="6" fill="none" stroke="url(#cardEdge)" stroke-width="2.5"/>
+      <rect x="-48" y="-70" width="96" height="140" rx="5" fill="url(#cardFace)" stroke="#1f2937" stroke-width="0.6"/>
+      <text x="-42" y="-50" font-family="serif, Georgia" font-size="20" font-weight="900" fill="#0f172a">J</text>
+      <g transform="translate(-22 -45) scale(0.55)" fill="#0f172a"><path d="M 0,-12 C -10,-2 -10,8 0,8 C 10,8 10,-2 0,-12 Z M 7,-10 L 10,-7 L 7,-7 Z"/></g>
+      <text x="0" y="-6" font-family="serif, Georgia" font-size="40" font-weight="900" fill="#0f172a" text-anchor="middle">J</text>
+      <g transform="translate(0 30) scale(2)" fill="#0f172a"><path d="M 0,-12 C -10,-2 -10,8 0,8 C 10,8 10,-2 0,-12 Z M 7,-10 L 10,-7 L 7,-7 Z"/></g>
+    </g>
+    <!-- Card 5: 10♠ -->
+    <g transform="translate(370 280) rotate(12)">
+      <rect x="-50" y="-72" width="100" height="144" rx="6" fill="none" stroke="url(#cardEdge)" stroke-width="2.5"/>
+      <rect x="-48" y="-70" width="96" height="140" rx="5" fill="url(#cardFace)" stroke="#1f2937" stroke-width="0.6"/>
+      <text x="-46" y="-50" font-family="serif, Georgia" font-size="20" font-weight="900" fill="#0f172a">10</text>
+      <g transform="translate(-16 -45) scale(0.55)" fill="#0f172a"><path d="M 0,-15 C -12,-5 -12,8 0,12 C 12,8 12,-5 0,-15 Z M -3,12 L 3,12 L 0,20 Z"/></g>
+      <text x="0" y="-6" font-family="serif, Georgia" font-size="32" font-weight="900" fill="#0f172a" text-anchor="middle">10</text>
+      <g transform="translate(0 30) scale(2)" fill="#0f172a"><path d="M 0,-15 C -12,-5 -12,8 0,12 C 12,8 12,-5 0,-15 Z M -3,12 L 3,12 L 0,20 Z"/></g>
+    </g>
+  </g>
+  <!-- Chip stack bottom-left. -->
+  <g transform="translate(115 412)" filter="url(#bigGlow)">
+    <ellipse cx="0" cy="14" rx="42" ry="9" fill="#000816" stroke="#ff4fd8" stroke-width="1"/>
+    <ellipse cx="0" cy="6"  rx="42" ry="9" fill="#dc2626" stroke="#0a1428" stroke-width="1"/>
+    <ellipse cx="0" cy="6"  rx="36" ry="6" fill="none" stroke="#fcd34d" stroke-width="0.8" stroke-dasharray="3 2"/>
+    <ellipse cx="0" cy="-2" rx="42" ry="9" fill="#dc2626" stroke="#0a1428" stroke-width="1"/>
+    <ellipse cx="0" cy="-2" rx="36" ry="6" fill="none" stroke="#fcd34d" stroke-width="0.8" stroke-dasharray="3 2"/>
+    <ellipse cx="0" cy="-10" rx="42" ry="9" fill="#dc2626" stroke="#0a1428" stroke-width="1"/>
+    <ellipse cx="0" cy="-10" rx="36" ry="6" fill="none" stroke="#fcd34d" stroke-width="0.8" stroke-dasharray="3 2"/>
+  </g>
+  <g transform="translate(240 460)">
+    <rect x="-100" y="-14" width="200" height="28" rx="3" fill="#000816" stroke="#ff4fd8" stroke-width="1" opacity="0.85"/>
+    <text x="0" y="6" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="700" fill="#ff4fd8" text-anchor="middle" letter-spacing="3">ANTE UP  --  ALL IN</text>
+  </g>
+</svg>

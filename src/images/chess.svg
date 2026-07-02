@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Chess — realistic gold king chess piece with cross pattée on casino-night backdrop">
+  <title>Chess</title>
+  <defs>
+    <!-- Tight glow for body. -->
+    <filter id="neonGlow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Stronger glow for the crown / cross. -->
+    <filter id="crownGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Casino-night backdrop. -->
+    <radialGradient id="bg" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#030817"/>
+    </radialGradient>
+
+    <!-- Gold king fill — vertical falloff with a top-light emphasis. -->
+    <linearGradient id="kingGold" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fffaa8"/>
+      <stop offset="40%" stop-color="#f5c842"/>
+      <stop offset="80%" stop-color="#c08800"/>
+      <stop offset="100%" stop-color="#7a4f08"/>
+    </linearGradient>
+
+    <!-- Bulb-specific deeper gold to make the bulb read as a different element. -->
+    <radialGradient id="bulbGold" cx="35%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#fffae8"/>
+      <stop offset="55%" stop-color="#f7d54a"/>
+      <stop offset="100%" stop-color="#8d6210"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Backdrop. -->
+  <rect width="480" height="480" fill="url(#bg)"/>
+  <ellipse cx="240" cy="290" rx="220" ry="200" fill="#5b21b6" opacity="0.22"/>
+
+  <!-- Edge sparkles. -->
+  <g fill="#ffffff">
+    <circle cx="40"  cy="100" r="2"   opacity="0.9"/>
+    <circle cx="440" cy="120" r="2.5" opacity="0.9"/>
+    <circle cx="50"  cy="380" r="2"   opacity="0.9"/>
+    <circle cx="430" cy="360" r="3"   opacity="0.9"/>
+    <circle cx="240" cy="40"  r="1.5" opacity="0.7"/>
+    <circle cx="55"  cy="240" r="2"   fill="#00e5ff" opacity="0.85"/>
+    <circle cx="425" cy="240" r="2"   fill="#ff4fd8" opacity="0.85"/>
+  </g>
+
+  <!-- 3-tier base molding (realistic: pedestal + lower molding + upper collar). -->
+  <g filter="url(#neonGlow)">
+    <!-- Bottom pedestal: widest, lowest slab. -->
+    <rect x="130" y="420" width="220" height="20" rx="4" fill="url(#kingGold)" stroke="#5a4010" stroke-width="2.5"/>
+    <!-- Lower molding: medium width between base and stem. -->
+    <rect x="140" y="395" width="200" height="25" rx="5" fill="url(#kingGold)" stroke="#5a4010" stroke-width="2.5"/>
+    <!-- Upper collar: narrowest top of base stack. -->
+    <rect x="170" y="370" width="140" height="25" rx="4" fill="url(#kingGold)" stroke="#5a4010" stroke-width="2.5"/>
+
+    <!-- Top-light highlight stripes on each band. -->
+    <rect x="138" y="423" width="204" height="3" rx="1.5" fill="#fff5cc" opacity="0.65"/>
+    <rect x="148" y="398" width="184" height="3" rx="1.5" fill="#fff5cc" opacity="0.65"/>
+    <rect x="178" y="373" width="124" height="3" rx="1.5" fill="#fff5cc" opacity="0.65"/>
+  </g>
+
+  <!-- Body column — tapered silhouette rising into the crown collar. -->
+  <g filter="url(#neonGlow)">
+    <path d="M 200,370 Q 200,310 218,275 Q 226,255 240,255 Q 254,255 262,275 Q 282,310 282,370 Z"
+          fill="url(#kingGold)" stroke="#5a4010" stroke-width="2.5" stroke-linejoin="round"/>
+  </g>
+  <!-- Center highlight stripe on the body for top-light shading. -->
+  <path d="M 232,370 Q 232,318 234,295 L 240,285 L 240,370 L 232,370 Z" fill="#fff5cc" opacity="0.4"/>
+
+  <!-- Decorative rivet ring around the middle of the stem. -->
+  <g filter="url(#neonGlow)">
+    <ellipse cx="240" cy="320" rx="42" ry="6" fill="url(#kingGold)" stroke="#5a4010" stroke-width="2"/>
+    <!-- Rivet dots: 5 evenly spaced across the ring's forward (lower) edge. -->
+    <circle cx="207" cy="320" r="2" fill="#5a4010"/>
+    <circle cx="222" cy="320" r="2" fill="#5a4010"/>
+    <circle cx="240" cy="320" r="2" fill="#5a4010"/>
+    <circle cx="258" cy="320" r="2" fill="#5a4010"/>
+    <circle cx="273" cy="320" r="2" fill="#5a4010"/>
+  </g>
+
+  <!-- Crown collar — wider, where the bulb sits. -->
+  <g filter="url(#neonGlow)">
+    <ellipse cx="240" cy="240" rx="38" ry="11" fill="url(#kingGold)" stroke="#5a4010" stroke-width="2.5"/>
+    <rect x="206" y="232" width="68" height="3" rx="1.5" fill="#fff5cc" opacity="0.6"/>
+  </g>
+
+  <!-- Bulb — egg-shaped (slightly taller than wide) with a thin pearl-stud band. -->
+  <g filter="url(#neonGlow)">
+    <ellipse cx="240" cy="210" rx="22" ry="26" fill="url(#bulbGold)" stroke="#5a4010" stroke-width="2.5"/>
+    <!-- Decorative equator band on the bulb (thin ellipse tracing the bulb's midsection). -->
+    <ellipse cx="240" cy="210" rx="22" ry="4" fill="none" stroke="#5a4010" stroke-width="0.9" opacity="0.6"/>
+    <!-- Subtle upper-shoulder ring just below the top. -->
+    <ellipse cx="240" cy="194" rx="16" ry="3" fill="#5a4010" opacity="0.45"/>
+  </g>
+
+  <!-- Cross pattée — flared arms, embedded in the bulb top. -->
+  <g filter="url(#crownGlow)">
+    <path d="M 234,158
+             L 246,158
+             L 246,168
+             L 268,176
+             L 268,196
+             L 246,204
+             L 246,214
+             L 234,214
+             L 234,204
+             L 212,196
+             L 212,176
+             L 234,168 Z"
+          fill="url(#bulbGold)" stroke="#5a4010" stroke-width="2" stroke-linejoin="round"/>
+    <!-- Center jewel dot of the cross. -->
+    <circle cx="240" cy="186" r="2.8" fill="#5a4010" opacity="0.7"/>
+  </g>
+
+  <!-- Bulb specular highlight (drawn last on top of everything). -->
+  <ellipse cx="230" cy="194" rx="6" ry="3" fill="#fffae8" opacity="0.75"/>
+</svg>

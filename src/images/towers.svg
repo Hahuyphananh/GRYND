@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Cyberpunk Towers — neon 3-tower climb board with player on a tier">
+  <title>Towers</title>
+  <defs>
+    <filter id="neonGlow" x="-15%" y="-15%" width="130%" height="130%"><feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="glow"/><feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="bigGlow" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="glow"/><feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="hotGlow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceGraphic" stdDeviation="3" result="glow"/><feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <radialGradient id="bg" cx="50%" cy="50%" r="80%"><stop offset="0%" stop-color="#261c5b"/><stop offset="100%" stop-color="#030817"/></radialGradient>
+    <pattern id="hexGrid" x="0" y="0" width="48" height="42" patternUnits="userSpaceOnUse"><polygon points="24,1 47,12 47,30 24,41 1,30 1,12" fill="none" stroke="#ff4fd8" stroke-width="0.4" opacity="0.22"/></pattern>
+    <linearGradient id="towerFloor" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0e7490"/><stop offset="100%" stop-color="#0a1428"/></linearGradient>
+  </defs>
+  <rect width="480" height="480" fill="url(#bg)"/><rect width="480" height="480" fill="url(#hexGrid)"/>
+  <ellipse cx="240" cy="290" rx="220" ry="180" fill="#5b21b6" opacity="0.18"/>
+  <g opacity="0.08" fill="none" stroke="#00e5ff" stroke-width="0.5"><line x1="0" y1="40" x2="480" y2="40"/><line x1="0" y1="100" x2="480" y2="100"/><line x1="0" y1="160" x2="480" y2="160"/><line x1="0" y1="220" x2="480" y2="220"/><line x1="0" y1="280" x2="480" y2="280"/><line x1="0" y1="340" x2="480" y2="340"/><line x1="0" y1="400" x2="480" y2="400"/><line x1="0" y1="460" x2="480" y2="460"/></g>
+  <g fill="#ffffff"><circle cx="40" cy="80" r="2" opacity="0.9"/><circle cx="440" cy="100" r="2.5" opacity="0.9"/><circle cx="50" cy="430" r="2" opacity="0.9"/><circle cx="430" cy="420" r="3" opacity="0.9"/><circle cx="240" cy="20" r="1.5" opacity="0.7"/><circle cx="55" cy="240" r="2" fill="#00e5ff" opacity="0.95"/><circle cx="425" cy="240" r="2" fill="#ff4fd8" opacity="0.95"/></g>
+  <g transform="translate(240 56)">
+    <rect x="-110" y="-22" width="220" height="40" rx="3" fill="#000816" stroke="#00e5ff" stroke-width="2" filter="url(#bigGlow)"/>
+    <rect x="-104" y="-16" width="208" height="28" rx="2" fill="none" stroke="#ff4fd8" stroke-width="0.6" opacity="0.7"/>
+    <text x="0" y="6" font-family="'Courier New', Consolas, monospace" font-size="20" font-weight="900" fill="#67e8f9" text-anchor="middle" letter-spacing="4">0x0D  CLIMB</text>
+  </g>
+  <g stroke="#ff4fd8" stroke-width="1.2" fill="none" stroke-linecap="round" filter="url(#hotGlow)">
+    <polyline points="40,140 70,160 88,160 96,172"/><polyline points="40,200 56,200 70,210"/>
+    <polyline points="440,140 410,160 392,160 384,172"/><polyline points="440,200 424,200 410,210"/>
+    <circle cx="40" cy="140" r="2" fill="#ff4fd8"/><circle cx="40" cy="200" r="1.6" fill="#00e5ff"/>
+    <circle cx="440" cy="140" r="2" fill="#ff4fd8"/><circle cx="440" cy="200" r="1.6" fill="#00e5ff"/>
+  </g>
+  <!-- 3 ascending towers.
+       Tower 1 (left): 1 floor only.
+       Tower 2 (middle): 4 floors.
+       Tower 3 (right): 7 floors.
+       Each floor: rect 90x36 stacked.
+       Tower 1 center x = 110.
+       Tower 2 center x = 240.
+       Tower 3 center x = 370.
+       Floor 1 (bottom): y = 380; floor 2: y = 344; floor 3: y = 308; floor 4: y = 272; floor 5: y = 236; floor 6: y = 200; floor 7: y = 164. -->
+  <g filter="url(#neonGlow)">
+    <!-- Tower 1: 1 floor -->
+    <rect x="65"  y="380" width="90" height="36" rx="3" fill="url(#towerFloor)" stroke="#0e7490" stroke-width="1.4"/>
+    <text x="110" y="404" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="900" fill="#fcd34d" text-anchor="middle">1.5x</text>
+    <!-- Tower 2: 4 floors -->
+    <rect x="195" y="380" width="90" height="36" rx="3" fill="url(#towerFloor)" stroke="#0e7490" stroke-width="1.4"/>
+    <text x="240" y="404" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="900" fill="#fcd34d" text-anchor="middle">1.4x</text>
+    <rect x="195" y="344" width="90" height="36" rx="3" fill="url(#towerFloor)" stroke="#0e7490" stroke-width="1.4"/>
+    <text x="240" y="368" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="900" fill="#fcd34d" text-anchor="middle">1.7x</text>
+    <rect x="195" y="308" width="90" height="36" rx="3" fill="url(#towerFloor)" stroke="#0e7490" stroke-width="1.4"/>
+    <text x="240" y="332" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="900" fill="#fcd34d" text-anchor="middle">2.4x</text>
+    <rect x="195" y="272" width="90" height="36" rx="3" fill="url(#towerFloor)" stroke="#fcd34d" stroke-width="1.6"/>
+    <text x="240" y="296" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="900" fill="#fcd34d" text-anchor="middle">3.9x</text>
+    <!-- Tower 3: 7 floors -->
+    <rect x="325" y="380" width="90" height="36" rx="3" fill="url(#towerFloor)" stroke="#0e7490" stroke-width="1.4"/>
+    <text x="370" y="404" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="900" fill="#fcd34d" text-anchor="middle">1.2x</text>
+    <rect x="325" y="344" width="90" height="36" rx="3" fill="url(#towerFloor)" stroke="#0e7490" stroke-width="1.4"/>
+    <text x="370" y="368" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="900" fill="#fcd34d" text-anchor="middle">1.4x</text>
+    <rect x="325" y="308" width="90" height="36" rx="3" fill="url(#towerFloor)" stroke="#0e7490" stroke-width="1.4"/>
+    <text x="370" y="332" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="900" fill="#fcd34d" text-anchor="middle">1.6x</text>
+    <rect x="325" y="272" width="90" height="36" rx="3" fill="url(#towerFloor)" stroke="#0e7490" stroke-width="1.4"/>
+    <text x="370" y="296" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="900" fill="#fcd34d" text-anchor="middle">2.0x</text>
+    <rect x="325" y="236" width="90" height="36" rx="3" fill="url(#towerFloor)" stroke="#0e7490" stroke-width="1.4"/>
+    <text x="370" y="260" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="900" fill="#fcd34d" text-anchor="middle">3.0x</text>
+    <rect x="325" y="200" width="90" height="36" rx="3" fill="url(#towerFloor)" stroke="#0e7490" stroke-width="1.4"/>
+    <text x="370" y="224" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="900" fill="#fcd34d" text-anchor="middle">5.0x</text>
+    <rect x="325" y="164" width="90" height="36" rx="3" fill="url(#towerFloor)" stroke="#0e7490" stroke-width="1.4"/>
+    <text x="370" y="188" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="900" fill="#fcd34d" text-anchor="middle">10.0x</text>
+  </g>
+  <!-- Player character (chibi figure with magenta body + cyan visor) standing on the highlighted floor of tower 2. -->
+  <g transform="translate(240 264)" filter="url(#bigGlow)">
+    <rect x="-8" y="0" width="16" height="8" rx="2" fill="#ff4fd8"/>
+    <circle cy="-6" r="6" fill="#ff4fd8" stroke="#00e5ff" stroke-width="1.2"/>
+    <rect x="-5" y="-9" width="10" height="3" fill="#00e5ff"/>
+  </g>
+  <g transform="translate(240 432)">
+    <rect x="-90" y="-14" width="180" height="28" rx="3" fill="#000816" stroke="#ff4fd8" stroke-width="1" opacity="0.85"/>
+    <text x="0" y="6" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="700" fill="#ff4fd8" text-anchor="middle" letter-spacing="3">CLIMB  --  CASH OUT 3.9x</text>
+  </g>
+</svg>

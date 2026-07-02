@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Cyberpunk Pool Masters — neon pool table with standard 8-ball opening layout">
+  <title>Pool Masters</title>
+  <defs>
+    <filter id="neonGlow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="glow"/>
+      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="bigGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="glow"/>
+      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="hotGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="glow"/>
+      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <radialGradient id="bg" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#261c5b"/>
+      <stop offset="100%" stop-color="#030817"/>
+    </radialGradient>
+
+    <pattern id="hexGrid" x="0" y="0" width="48" height="42" patternUnits="userSpaceOnUse">
+      <polygon points="24,1 47,12 47,30 24,41 1,30 1,12" fill="none" stroke="#ff4fd8" stroke-width="0.4" opacity="0.22"/>
+    </pattern>
+
+    <linearGradient id="feltCyber" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a7c3a"/>
+      <stop offset="50%" stop-color="#054022"/>
+      <stop offset="100%" stop-color="#022814"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="480" height="480" fill="url(#bg)"/>
+  <rect width="480" height="480" fill="url(#hexGrid)"/>
+  <ellipse cx="240" cy="280" rx="220" ry="180" fill="#5b21b6" opacity="0.18"/>
+
+  <g opacity="0.08" fill="none" stroke="#00e5ff" stroke-width="0.5">
+    <line x1="0" y1="40" x2="480" y2="40"/><line x1="0" y1="100" x2="480" y2="100"/>
+    <line x1="0" y1="160" x2="480" y2="160"/><line x1="0" y1="220" x2="480" y2="220"/>
+    <line x1="0" y1="280" x2="480" y2="280"/><line x1="0" y1="340" x2="480" y2="340"/>
+    <line x1="0" y1="400" x2="480" y2="400"/><line x1="0" y1="460" x2="480" y2="460"/>
+  </g>
+
+  <g fill="#ffffff">
+    <circle cx="40"  cy="80"  r="2"   opacity="0.9"/>
+    <circle cx="440" cy="100" r="2.5" opacity="0.9"/>
+    <circle cx="50"  cy="430" r="2"   opacity="0.9"/>
+    <circle cx="430" cy="420" r="3"   opacity="0.9"/>
+    <circle cx="240" cy="20"  r="1.5" opacity="0.7"/>
+    <circle cx="55"  cy="240" r="2"   fill="#00e5ff" opacity="0.95"/>
+    <circle cx="425" cy="240" r="2"   fill="#ff4fd8" opacity="0.95"/>
+  </g>
+
+  <g transform="translate(240 56)">
+    <rect x="-110" y="-22" width="220" height="40" rx="3" fill="#000816" stroke="#00e5ff" stroke-width="2" filter="url(#bigGlow)"/>
+    <rect x="-104" y="-16" width="208" height="28" rx="2" fill="none" stroke="#ff4fd8" stroke-width="0.6" opacity="0.7"/>
+    <text x="0" y="6" font-family="'Courier New', Consolas, monospace" font-size="20" font-weight="900" fill="#67e8f9" text-anchor="middle" letter-spacing="4">0x08  8-BALL</text>
+  </g>
+
+  <g stroke="#ff4fd8" stroke-width="1.2" fill="none" stroke-linecap="round" filter="url(#hotGlow)">
+    <polyline points="40,140 70,160 88,160 96,172"/>
+    <polyline points="40,200 56,200 70,210"/>
+    <polyline points="440,140 410,160 392,160 384,172"/>
+    <polyline points="440,200 424,200 410,210"/>
+    <circle cx="40"  cy="140" r="2" fill="#ff4fd8"/>
+    <circle cx="40"  cy="200" r="1.6" fill="#00e5ff"/>
+    <circle cx="440" cy="140" r="2" fill="#ff4fd8"/>
+    <circle cx="440" cy="200" r="1.6" fill="#00e5ff"/>
+  </g>
+
+  <!-- Pool table. -->
+  <g filter="url(#neonGlow)">
+    <rect x="80" y="120" width="320" height="240" rx="14" fill="#0a1428" stroke="#67e8f9" stroke-width="3"/>
+    <rect x="92" y="132" width="296" height="216" rx="6" fill="url(#feltCyber)"/>
+    <g fill="#0e7490" stroke="#67e8f9" stroke-width="0.6">
+      <circle cx="240" cy="132" r="2.2"/><circle cx="92" cy="132" r="2.2"/><circle cx="388" cy="132" r="2.2"/>
+      <circle cx="240" cy="348" r="2.2"/><circle cx="92" cy="348" r="2.2"/><circle cx="388" cy="348" r="2.2"/>
+      <circle cx="92" cy="240" r="2.2"/><circle cx="388" cy="240" r="2.2"/>
+    </g>
+    <g>
+      <circle cx="92" cy="132" r="9" fill="#000816" stroke="#5a6b80" stroke-width="0.8"/>
+      <circle cx="388" cy="132" r="9" fill="#000816" stroke="#5a6b80" stroke-width="0.8"/>
+      <circle cx="92" cy="348" r="9" fill="#000816" stroke="#5a6b80" stroke-width="0.8"/>
+      <circle cx="388" cy="348" r="9" fill="#000816" stroke="#5a6b80" stroke-width="0.8"/>
+      <circle cx="240" cy="132" r="7" fill="#000816" stroke="#5a6b80" stroke-width="0.8"/>
+      <circle cx="240" cy="348" r="7" fill="#000816" stroke="#5a6b80" stroke-width="0.8"/>
+    </g>
+  </g>
+
+  <!-- CUE BALL at HEAD SPOT (166, 240). -->
+  <g filter="url(#bigGlow)" transform="translate(166 240)">
+    <circle r="14" fill="#ffffff"/>
+    <circle r="14" fill="none" stroke="#67e8f9" stroke-width="1.6"/>
+    <ellipse cx="-4" cy="-5" rx="4" ry="2" fill="#cffafe" opacity="0.95"/>
+  </g>
+
+  <!-- TRIANGLE RACK anchored at the foot spot with 1-BALL (yellow) at the apex (left side of rack).
+       Apex (closest to cue ball) at x=266, 8-ball (center of rack, on foot spot) at x=314,
+       base (5 balls) at x=362. Row spacing (long axis) = 24; in-row vertical spacing = 28.
+       Rack centered vertically on y=240. -->
+  <g filter="url(#neonGlow)">
+    <!-- Row 1: APEX (1 ball). 1-yellow solid at (266,240). -->
+    <g transform="translate(266 240)">
+      <circle r="14" fill="#fbbf24" stroke="#1f2937" stroke-width="1" filter="url(#bigGlow)"/>
+      <ellipse cx="-4" cy="-5" rx="4" ry="2" fill="#fff5cc" opacity="0.95"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">1</text>
+    </g>
+    <!-- Row 2 (2 balls) at x=290: 9-stripe at top (y=226), 2-blue solid at bottom (y=254). -->
+    <g transform="translate(290 226)">
+      <circle r="14" fill="#ffffff" stroke="#1f2937" stroke-width="1"/>
+      <path d="M -14,-3 A 14,14 0 0 1 14,-3 L 14,3 A 14,14 0 0 0 -14,3 Z" fill="#fbbf24"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">9</text>
+    </g>
+    <g transform="translate(290 254)">
+      <circle r="14" fill="#3b82f6" stroke="#1f2937" stroke-width="1"/>
+      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#a3c9ff" opacity="0.95"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">2</text>
+    </g>
+    <!-- Row 3 (3 balls) at x=314: 3-red at top (y=212), 8-black solid in CENTER (y=240), 14-green stripe at bottom (y=268). -->
+    <g transform="translate(314 212)">
+      <circle r="14" fill="#dc2626" stroke="#1f2937" stroke-width="1"/>
+      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#fca5a5" opacity="0.95"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">3</text>
+    </g>
+    <g transform="translate(314 240)">
+      <circle r="14" fill="#0a0a14" stroke="#67e8f9" stroke-width="1.6" filter="url(#bigGlow)"/>
+      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#5a6b80" opacity="0.7"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#0a0a14" text-anchor="middle">8</text>
+    </g>
+    <g transform="translate(314 268)">
+      <circle r="14" fill="#ffffff" stroke="#1f2937" stroke-width="1"/>
+      <path d="M -14,-3 A 14,14 0 0 1 14,-3 L 14,3 A 14,14 0 0 0 -14,3 Z" fill="#22c55e"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">14</text>
+    </g>
+    <!-- Row 4 (4 balls) at x=338: 4-purple (198), 10-blue stripe (226), 5-orange (254), 11-red stripe (282). -->
+    <g transform="translate(338 198)">
+      <circle r="14" fill="#9333ea" stroke="#1f2937" stroke-width="1"/>
+      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#d8b4fe" opacity="0.95"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">4</text>
+    </g>
+    <g transform="translate(338 226)">
+      <circle r="14" fill="#ffffff" stroke="#1f2937" stroke-width="1"/>
+      <path d="M -14,-3 A 14,14 0 0 1 14,-3 L 14,3 A 14,14 0 0 0 -14,3 Z" fill="#3b82f6"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">10</text>
+    </g>
+    <g transform="translate(338 254)">
+      <circle r="14" fill="#fb923c" stroke="#1f2937" stroke-width="1"/>
+      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#fbd9a8" opacity="0.95"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">5</text>
+    </g>
+    <g transform="translate(338 282)">
+      <circle r="14" fill="#ffffff" stroke="#1f2937" stroke-width="1"/>
+      <path d="M -14,-3 A 14,14 0 0 1 14,-3 L 14,3 A 14,14 0 0 0 -14,3 Z" fill="#dc2626"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">11</text>
+    </g>
+    <!-- Row 5 (5 balls, BASE) at x=362. -->
+    <g transform="translate(362 184)">
+      <circle r="14" fill="#22c55e" stroke="#1f2937" stroke-width="1"/>
+      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#a7f3d0" opacity="0.95"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">6</text>
+    </g>
+    <g transform="translate(362 212)">
+      <circle r="14" fill="#ffffff" stroke="#1f2937" stroke-width="1"/>
+      <path d="M -14,-3 A 14,14 0 0 1 14,-3 L 14,3 A 14,14 0 0 0 -14,3 Z" fill="#9333ea"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">12</text>
+    </g>
+    <g transform="translate(362 240)">
+      <circle r="14" fill="#7c3aed" stroke="#1f2937" stroke-width="1"/>
+      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#c4b5fd" opacity="0.95"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">7</text>
+    </g>
+    <g transform="translate(362 268)">
+      <circle r="14" fill="#ffffff" stroke="#1f2937" stroke-width="1"/>
+      <path d="M -14,-3 A 14,14 0 0 1 14,-3 L 14,3 A 14,14 0 0 0 -14,3 Z" fill="#fb923c"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">13</text>
+    </g>
+    <g transform="translate(362 296)">
+      <circle r="14" fill="#a16207" stroke="#1f2937" stroke-width="1"/>
+      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#fde68a" opacity="0.95"/>
+      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
+      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">15</text>
+    </g>
+  </g>
+
+  <g transform="translate(240 415)">
+    <rect x="-90" y="-14" width="180" height="28" rx="3" fill="#000816" stroke="#ff4fd8" stroke-width="1" opacity="0.85"/>
+    <text x="0" y="6" font-family="'Courier New', Consolas, monospace" font-size="14" font-weight="700" fill="#ff4fd8" text-anchor="middle" letter-spacing="3">BREAK  --  RACK</text>
+  </g>
+</svg>

@@ -66,7 +66,12 @@ export async function GET(req, { params }) {
     );
   }
 
-  const matchId = Number(params?.matchId);
+  // Next.js 15+/16: API route `params` is a Promise — must await before
+  // reading properties. Accessing it synchronously yields `undefined`,
+  // which `Number(undefined)` coerces to `NaN`, which the finite-check
+  // below rejects with "Invalid matchId" — masking the real match.
+  const resolvedParams = (await params) || {};
+  const matchId = Number(resolvedParams?.matchId);
   if (!Number.isFinite(matchId)) {
     return NextResponse.json(
       { success: false, error: "Invalid matchId" },

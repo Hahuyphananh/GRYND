@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Rock Paper Scissors — three neon icons in a triangle">
+  <title>Rock Paper Scissors</title>
+  <defs>
+    <!-- Tight glow. -->
+    <filter id="neonGlow" x="-12%" y="-12%" width="124%" height="124%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Stronger glow reserved for badge rings. -->
+    <filter id="strongGlow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Casino-night backdrop. -->
+    <radialGradient id="bg" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#030817"/>
+    </radialGradient>
+
+    <!-- Paper fill — warm cream highlight into golden fold. -->
+    <radialGradient id="paperFill" cx="35%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#fffae0"/>
+      <stop offset="100%" stop-color="#f4d97a"/>
+    </radialGradient>
+
+    <!-- Rock fill — slate highlight into deep gray-purple. -->
+    <radialGradient id="rockFill" cx="30%" cy="25%" r="85%">
+      <stop offset="0%" stop-color="#bcbfd2"/>
+      <stop offset="60%" stop-color="#7c8194"/>
+      <stop offset="100%" stop-color="#454a5d"/>
+    </radialGradient>
+
+    <!-- Blade fill — silver highlight into dark blade. -->
+    <linearGradient id="bladeSilver" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8ecf3"/>
+      <stop offset="100%" stop-color="#7c8b9e"/>
+    </linearGradient>
+
+    <!-- Badge ring gradients. -->
+    <linearGradient id="paperBadge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#67e8f9"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="rockBadge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+    <linearGradient id="scissorsBadge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fb7185"/>
+      <stop offset="100%" stop-color="#be185d"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Backdrop. -->
+  <rect width="480" height="480" fill="url(#bg)"/>
+
+  <!-- Ambient violet wash behind the trio. -->
+  <ellipse cx="240" cy="240" rx="220" ry="190" fill="#5b21b6" opacity="0.2"/>
+
+  <!-- Edge sparkles. -->
+  <g fill="#ffffff">
+    <circle cx="40"  cy="80"  r="2"   opacity="0.9"/>
+    <circle cx="440" cy="100" r="2.5" opacity="0.9"/>
+    <circle cx="50"  cy="430" r="2"   opacity="0.9"/>
+    <circle cx="430" cy="420" r="3"   opacity="0.9"/>
+    <circle cx="240" cy="40"  r="1.5" opacity="0.7"/>
+    <circle cx="35"  cy="240" r="2"   fill="#00e5ff" opacity="0.8"/>
+    <circle cx="445" cy="260" r="2"   fill="#ff4fd8" opacity="0.8"/>
+    <circle cx="240" cy="455" r="1.5" opacity="0.6"/>
+  </g>
+
+  <!-- PAPER badge (top center). -->
+  <g transform="translate(240 150)">
+    <circle r="80" fill="url(#paperBadge)" filter="url(#strongGlow)" opacity="0.95"/>
+    <circle r="73" fill="#0a1733" opacity="0.9"/>
+    <g filter="url(#neonGlow)">
+      <!-- Paper body. -->
+      <rect x="-40" y="-50" width="80" height="100" rx="6" fill="url(#paperFill)" stroke="#b07a04" stroke-width="2"/>
+      <!-- Folded corner (triangle overlay). -->
+      <path d="M 18,-50 L 40,-50 L 40,-28 Z" fill="#e6c468" stroke="#b07a04" stroke-width="2" stroke-linejoin="round"/>
+      <!-- Subtle text/print lines. -->
+      <line x1="-25" y1="-25" x2="22" y2="-25" stroke="#a37830" stroke-width="2.2" opacity="0.6" stroke-linecap="round"/>
+      <line x1="-25" y1="-10" x2="22" y2="-10" stroke="#a37830" stroke-width="2.2" opacity="0.6" stroke-linecap="round"/>
+      <line x1="-25" y1="5"   x2="22" y2="5"   stroke="#a37830" stroke-width="2.2" opacity="0.6" stroke-linecap="round"/>
+      <line x1="-25" y1="20"  x2="14" y2="20"  stroke="#a37830" stroke-width="2.2" opacity="0.6" stroke-linecap="round"/>
+      <line x1="-25" y1="35"  x2="22" y2="35"  stroke="#a37830" stroke-width="2.2" opacity="0.6" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- ROCK badge (bottom-left). -->
+  <g transform="translate(130 340)">
+    <circle r="76" fill="url(#rockBadge)" filter="url(#strongGlow)" opacity="0.95"/>
+    <circle r="69" fill="#0a1733" opacity="0.9"/>
+    <g filter="url(#neonGlow)">
+      <!-- Rock main body — irregular heptagon for stone feel. -->
+      <path d="M -52,0 Q -57,-26 -32,-40 Q -2,-50 24,-40 Q 48,-32 52,-2 Q 54,28 26,40 Q -8,50 -28,40 Q -55,30 -52,0 Z"
+            fill="url(#rockFill)" stroke="#2a2c40" stroke-width="2" stroke-linejoin="round"/>
+      <!-- Facet cracks. -->
+      <path d="M -22,-30 Q -10,-2 -25,18" stroke="#2a2c40" stroke-width="2" fill="none" opacity="0.55" stroke-linecap="round"/>
+      <path d="M 14,-30 Q 8,-2 20,18"     stroke="#2a2c40" stroke-width="2" fill="none" opacity="0.55" stroke-linecap="round"/>
+      <path d="M -3,-38 Q 4,-22 -2,-8"    stroke="#2a2c40" stroke-width="1.6" fill="none" opacity="0.4" stroke-linecap="round"/>
+      <!-- Top-light highlight. -->
+      <ellipse cx="-10" cy="-32" rx="22" ry="6" fill="#ffffff" opacity="0.32"/>
+    </g>
+  </g>
+
+  <!-- SCISSORS badge (bottom-right). -->
+  <g transform="translate(350 340)">
+    <circle r="76" fill="url(#scissorsBadge)" filter="url(#strongGlow)" opacity="0.95"/>
+    <circle r="69" fill="#0a1733" opacity="0.9"/>
+    <g filter="url(#neonGlow)">
+      <!-- Two finger-hole rings. -->
+      <circle cx="-22" cy="32" r="14" fill="none" stroke="#9caec5" stroke-width="5.5"/>
+      <circle cx="22"  cy="32" r="14" fill="none" stroke="#9caec5" stroke-width="5.5"/>
+      <!-- Blade 1 — wide base anchored at left ring, tapering to upper-right tip. -->
+      <polygon points="-25,25 -12,40 33,-32" fill="url(#bladeSilver)" stroke="#3a4757" stroke-width="3" stroke-linejoin="round"/>
+      <!-- Blade 2 — wide base anchored at right ring, tapering to upper-left tip. -->
+      <polygon points="25,25 12,40 -33,-32" fill="url(#bladeSilver)" stroke="#3a4757" stroke-width="3" stroke-linejoin="round"/>
+      <!-- Pivot dot where blades cross. -->
+      <circle cx="0" cy="2" r="4.5" fill="#3a4757" stroke="#9caec5" stroke-width="1.2"/>
+    </g>
+  </g>
+</svg>
