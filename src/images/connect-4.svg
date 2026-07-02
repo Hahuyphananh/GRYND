@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Connect Four — neon 7×6 board with red and yellow discs">
+  <title>Connect Four</title>
+  <defs>
+    <!-- Tight glow so chips and frame stay crisp at thumb size. -->
+    <filter id="neonGlow" x="-12%" y="-12%" width="124%" height="124%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Stronger glow reserved for the winning 4-in-a-row. -->
+    <filter id="winGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4.5" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Casino-night backdrop. -->
+    <radialGradient id="bg" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#030817"/>
+    </radialGradient>
+
+    <!-- Board body — deep navy with vertical falloff. -->
+    <linearGradient id="boardFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0c1e3f"/>
+      <stop offset="100%" stop-color="#04101f"/>
+    </linearGradient>
+
+    <!-- Slot hole — recessed dark interior. -->
+    <radialGradient id="slot" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#000511"/>
+      <stop offset="100%" stop-color="#0a1224"/>
+    </radialGradient>
+
+    <!-- Red chip — highlight in upper-left, darkening toward edge for roundness. -->
+    <radialGradient id="red" cx="35%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#ff8a9c"/>
+      <stop offset="55%" stop-color="#ff3045"/>
+      <stop offset="100%" stop-color="#9c0014"/>
+    </radialGradient>
+
+    <!-- Yellow chip — same lighting model. -->
+    <radialGradient id="yellow" cx="35%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#fffaa8"/>
+      <stop offset="55%" stop-color="#ffd131"/>
+      <stop offset="100%" stop-color="#b07a04"/>
+    </radialGradient>
+
+    <!-- Drop-indicator chip — slightly hotter red so it pops above the board. -->
+    <radialGradient id="redHint" cx="35%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#ffb0bf"/>
+      <stop offset="55%" stop-color="#ff5263"/>
+      <stop offset="100%" stop-color="#b8001a"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Backdrop. -->
+  <rect width="480" height="480" fill="url(#bg)"/>
+
+  <!-- Ambient ellipse behind the board. -->
+  <ellipse cx="240" cy="240" rx="220" ry="170" fill="#5b21b6" opacity="0.22"/>
+
+  <!-- Edge sparkles. -->
+  <g fill="#ffffff">
+    <circle cx="40"  cy="60"  r="2"   opacity="0.9"/>
+    <circle cx="440" cy="80"  r="2.5" opacity="0.9"/>
+    <circle cx="50"  cy="420" r="2"   opacity="0.9"/>
+    <circle cx="430" cy="400" r="3"   opacity="0.9"/>
+    <circle cx="240" cy="30"  r="1.5" opacity="0.7"/>
+    <circle cx="240" cy="450" r="1.5" opacity="0.7"/>
+    <circle cx="35"  cy="240" r="2"   fill="#00e5ff" opacity="0.8"/>
+    <circle cx="445" cy="260" r="2"   fill="#ff4fd8" opacity="0.8"/>
+  </g>
+
+  <!-- Board frame (cyan neon border, deep-navy fill). -->
+  <g filter="url(#neonGlow)">
+    <rect x="90" y="80" width="300" height="300" rx="18" fill="url(#boardFill)" stroke="#67e8f9" stroke-width="2.5"/>
+    <!-- Inner edge highlight along top to suggest a polished frame. -->
+    <line x1="104" y1="84" x2="376" y2="84" stroke="#67e8f9" stroke-width="1" opacity="0.55"/>
+    <!-- Bottom edge faint shadow line. -->
+    <line x1="104" y1="376" x2="376" y2="376" stroke="#000814" stroke-width="1" opacity="0.7"/>
+  </g>
+
+  <!-- 42 empty slot holes, drawn under the chips so chips pixel-overlap them. -->
+  <g>
+    <!-- Row 0 (top). -->
+    <circle cx="120" cy="135" r="17" fill="url(#slot)"/>
+    <circle cx="160" cy="135" r="17" fill="url(#slot)"/>
+    <circle cx="200" cy="135" r="17" fill="url(#slot)"/>
+    <circle cx="240" cy="135" r="17" fill="url(#slot)"/>
+    <circle cx="280" cy="135" r="17" fill="url(#slot)"/>
+    <circle cx="320" cy="135" r="17" fill="url(#slot)"/>
+    <circle cx="360" cy="135" r="17" fill="url(#slot)"/>
+    <!-- Row 1. -->
+    <circle cx="120" cy="175" r="17" fill="url(#slot)"/>
+    <circle cx="160" cy="175" r="17" fill="url(#slot)"/>
+    <circle cx="200" cy="175" r="17" fill="url(#slot)"/>
+    <circle cx="240" cy="175" r="17" fill="url(#slot)"/>
+    <circle cx="280" cy="175" r="17" fill="url(#slot)"/>
+    <circle cx="320" cy="175" r="17" fill="url(#slot)"/>
+    <circle cx="360" cy="175" r="17" fill="url(#slot)"/>
+    <!-- Row 2. -->
+    <circle cx="120" cy="215" r="17" fill="url(#slot)"/>
+    <circle cx="160" cy="215" r="17" fill="url(#slot)"/>
+    <circle cx="200" cy="215" r="17" fill="url(#slot)"/>
+    <circle cx="240" cy="215" r="17" fill="url(#slot)"/>
+    <circle cx="280" cy="215" r="17" fill="url(#slot)"/>
+    <circle cx="320" cy="215" r="17" fill="url(#slot)"/>
+    <circle cx="360" cy="215" r="17" fill="url(#slot)"/>
+    <!-- Row 3. -->
+    <circle cx="120" cy="255" r="17" fill="url(#slot)"/>
+    <circle cx="160" cy="255" r="17" fill="url(#slot)"/>
+    <circle cx="200" cy="255" r="17" fill="url(#slot)"/>
+    <circle cx="240" cy="255" r="17" fill="url(#slot)"/>
+    <circle cx="280" cy="255" r="17" fill="url(#slot)"/>
+    <circle cx="320" cy="255" r="17" fill="url(#slot)"/>
+    <circle cx="360" cy="255" r="17" fill="url(#slot)"/>
+    <!-- Row 4. -->
+    <circle cx="120" cy="295" r="17" fill="url(#slot)"/>
+    <circle cx="160" cy="295" r="17" fill="url(#slot)"/>
+    <circle cx="200" cy="295" r="17" fill="url(#slot)"/>
+    <circle cx="240" cy="295" r="17" fill="url(#slot)"/>
+    <circle cx="280" cy="295" r="17" fill="url(#slot)"/>
+    <circle cx="320" cy="295" r="17" fill="url(#slot)"/>
+    <circle cx="360" cy="295" r="17" fill="url(#slot)"/>
+    <!-- Row 5 (bottom). -->
+    <circle cx="120" cy="335" r="17" fill="url(#slot)"/>
+    <circle cx="160" cy="335" r="17" fill="url(#slot)"/>
+    <circle cx="200" cy="335" r="17" fill="url(#slot)"/>
+    <circle cx="240" cy="335" r="17" fill="url(#slot)"/>
+    <circle cx="280" cy="335" r="17" fill="url(#slot)"/>
+    <circle cx="320" cy="335" r="17" fill="url(#slot)"/>
+    <circle cx="360" cy="335" r="17" fill="url(#slot)"/>
+  </g>
+
+  <!-- Yellow chips (Player 2). -->
+  <g filter="url(#neonGlow)">
+    <circle cx="120" cy="335" r="16" fill="url(#yellow)"/>
+    <circle cx="160" cy="335" r="16" fill="url(#yellow)"/>
+    <circle cx="160" cy="295" r="16" fill="url(#yellow)"/>
+    <circle cx="200" cy="295" r="16" fill="url(#yellow)"/>
+    <circle cx="240" cy="295" r="16" fill="url(#yellow)"/>
+    <circle cx="280" cy="255" r="16" fill="url(#yellow)"/>
+    <circle cx="280" cy="215" r="16" fill="url(#yellow)"/>
+    <circle cx="320" cy="295" r="16" fill="url(#yellow)"/>
+    <circle cx="360" cy="295" r="16" fill="url(#yellow)"/>
+    <circle cx="360" cy="215" r="16" fill="url(#yellow)"/>
+    <circle cx="240" cy="255" r="16" fill="url(#yellow)"/>
+    <!-- Specular highlights for roundness. -->
+    <circle cx="116" cy="330" r="3.5" fill="#fff8c4" opacity="0.7"/>
+    <circle cx="156" cy="330" r="3.5" fill="#fff8c4" opacity="0.7"/>
+    <circle cx="156" cy="290" r="3.5" fill="#fff8c4" opacity="0.7"/>
+    <circle cx="196" cy="290" r="3.5" fill="#fff8c4" opacity="0.7"/>
+    <circle cx="236" cy="290" r="3.5" fill="#fff8c4" opacity="0.7"/>
+    <circle cx="276" cy="250" r="3.5" fill="#fff8c4" opacity="0.7"/>
+    <circle cx="276" cy="210" r="3.5" fill="#fff8c4" opacity="0.7"/>
+    <circle cx="316" cy="290" r="3.5" fill="#fff8c4" opacity="0.7"/>
+    <circle cx="356" cy="290" r="3.5" fill="#fff8c4" opacity="0.7"/>
+    <circle cx="356" cy="210" r="3.5" fill="#fff8c4" opacity="0.7"/>
+    <circle cx="236" cy="250" r="3.5" fill="#fff8c4" opacity="0.7"/>
+  </g>
+
+  <!-- Red chips (Player 1, regular — non-winning). -->
+  <g filter="url(#neonGlow)">
+    <circle cx="120" cy="295" r="16" fill="url(#red)"/>
+    <circle cx="200" cy="255" r="16" fill="url(#red)"/>
+    <circle cx="240" cy="215" r="16" fill="url(#red)"/>
+    <circle cx="280" cy="295" r="16" fill="url(#red)"/>
+    <circle cx="320" cy="255" r="16" fill="url(#red)"/>
+    <circle cx="360" cy="335" r="16" fill="url(#red)"/>
+    <circle cx="360" cy="255" r="16" fill="url(#red)"/>
+    <circle cx="360" cy="175" r="16" fill="url(#red)"/>
+    <!-- Specular highlights. -->
+    <circle cx="116" cy="290" r="3.5" fill="#ffd6dc" opacity="0.7"/>
+    <circle cx="196" cy="250" r="3.5" fill="#ffd6dc" opacity="0.7"/>
+    <circle cx="236" cy="210" r="3.5" fill="#ffd6dc" opacity="0.7"/>
+    <circle cx="276" cy="290" r="3.5" fill="#ffd6dc" opacity="0.7"/>
+    <circle cx="316" cy="250" r="3.5" fill="#ffd6dc" opacity="0.7"/>
+    <circle cx="356" cy="330" r="3.5" fill="#ffd6dc" opacity="0.7"/>
+    <circle cx="356" cy="250" r="3.5" fill="#ffd6dc" opacity="0.7"/>
+    <circle cx="356" cy="170" r="3.5" fill="#ffd6dc" opacity="0.7"/>
+  </g>
+
+  <!-- Winning 4-in-a-row: reds on bottom row cols 2..5. Stronger glow + connector line. -->
+  <g filter="url(#winGlow)">
+    <circle cx="200" cy="335" r="16" fill="url(#red)"/>
+    <circle cx="240" cy="335" r="16" fill="url(#red)"/>
+    <circle cx="280" cy="335" r="16" fill="url(#red)"/>
+    <circle cx="320" cy="335" r="16" fill="url(#red)"/>
+  </g>
+  <!-- Specular highlights on winning chips (drawn without filter so they stay crisp). -->
+  <g>
+    <circle cx="196" cy="330" r="4"   fill="#ffd6dc" opacity="0.85"/>
+    <circle cx="236" cy="330" r="4"   fill="#ffd6dc" opacity="0.85"/>
+    <circle cx="276" cy="330" r="4"   fill="#ffd6dc" opacity="0.85"/>
+    <circle cx="316" cy="330" r="4"   fill="#ffd6dc" opacity="0.85"/>
+  </g>
+  <!-- Subtle horizontal beam under the winning 4 to emphasize the line. -->
+  <line x1="200" y1="335" x2="320" y2="335" stroke="#ff8a9c" stroke-width="2.4" opacity="0.55" filter="url(#winGlow)" stroke-linecap="round"/>
+
+  <!-- Drop indicator: small incoming red chip with a downward chevron at column 0. -->
+  <g>
+    <circle cx="120" cy="98" r="11" fill="url(#redHint)" filter="url(#neonGlow)"/>
+    <circle cx="117" cy="95" r="2.5" fill="#ffd6dc" opacity="0.85"/>
+    <!-- Down chevron pointing into the slots above column 0. -->
+    <polyline points="113,108 120,116 127,108" stroke="#ff8a9c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#neonGlow)"/>
+  </g>
+</svg>
