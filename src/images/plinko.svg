@@ -63,20 +63,8 @@
     </radialGradient>
   </defs>
 
-  <!-- Backdrop. -->
-  <rect width="480" height="480" fill="url(#bg)"/>
-  <ellipse cx="240" cy="220" rx="220" ry="180" fill="#5b21b6" opacity="0.22"/>
-
-  <!-- Edge sparkles. -->
-  <g fill="#ffffff">
-    <circle cx="40"  cy="80"  r="2"   opacity="0.9"/>
-    <circle cx="440" cy="100" r="2.5" opacity="0.9"/>
-    <circle cx="50"  cy="430" r="2"   opacity="0.9"/>
-    <circle cx="430" cy="420" r="3"   opacity="0.9"/>
-    <circle cx="240" cy="20"  r="1.5" opacity="0.7"/>
-    <circle cx="55"  cy="240" r="2"   fill="#00e5ff" opacity="0.85"/>
-    <circle cx="425" cy="240" r="2"   fill="#ff4fd8" opacity="0.85"/>
-  </g>
+  <!-- Plain marine blue backdrop. -->
+  <rect width="480" height="480" fill="#0b1f3f"/>
 
   <!-- Plinko board frame. -->
   <g filter="url(#neonGlow)">
@@ -146,16 +134,7 @@
   <rect x="310" y="370" width="40" height="70" fill="url(#slotHigh)" opacity="0.92"/>
   <rect x="355" y="370" width="40" height="70" fill="url(#slotMax)"  filter="url(#bigGlow)"/>
 
-  <!-- Multiplier labels — realistic Plinko payout table. -->
-  <g font-family="system-ui, sans-serif" font-weight="900" text-anchor="middle" fill="#ffffff" paint-order="stroke fill" stroke="#000000" stroke-width="0.7">
-    <text x="105" y="402" font-size="12">1000x</text>
-    <text x="150" y="402" font-size="13">100x</text>
-    <text x="195" y="402" font-size="14">5x</text>
-    <text x="240" y="402" font-size="14" fill="#ffe2a8">0.5x</text>
-    <text x="285" y="402" font-size="14">5x</text>
-    <text x="330" y="402" font-size="13">100x</text>
-    <text x="375" y="402" font-size="12">1000x</text>
-  </g>
+  <!-- (Multiplier labels removed — game speaks for itself) -->
 
   <!-- Bottom triangle hints at each slot base (where balls settle). -->
   <g fill="#0a1733" filter="url(#neonGlow)">

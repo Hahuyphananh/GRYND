@@ -41,16 +41,8 @@
     </clipPath>
   </defs>
 
-  <!-- Background -->
-  <rect width="400" height="225" rx="12" fill="url(#bg)"/>
-  <rect width="400" height="225" rx="12" fill="url(#bg)" clip-path="url(#card)"/>
-
-  <!-- Subtle grid overlay -->
-  <g opacity="0.04" stroke="#fbbf24" stroke-width="0.5">
-    <line x1="0" y1="37" x2="400" y2="37"/><line x1="0" y1="75" x2="400" y2="75"/>
-    <line x1="0" y1="112" x2="400" y2="112"/><line x1="0" y1="150" x2="400" y2="150"/>
-    <line x1="0" y1="188" x2="400" y2="188"/>
-  </g>
+  <!-- Plain marine blue backdrop. -->
+  <rect width="400" height="225" rx="12" fill="#0b1f3f"/>
 
   <!-- Shrinking range bar visualization (right side) -->
   <g transform="translate(250, 28)">
@@ -101,32 +93,4 @@
     <text x="0" y="58" text-anchor="middle" font-family="system-ui" font-size="7" font-weight="700" fill="#a855f7" opacity="0.7">CHALLENGER</text>
   </g>
 
-  <!-- Center swap icon -->
-  <g transform="translate(140, 95)" filter="url(#softGlow)">
-    <circle cx="0" cy="0" r="14" fill="#1a0533" stroke="#c084fc" stroke-width="1" opacity="0.8"/>
-    <text x="0" y="4" text-anchor="middle" font-family="system-ui" font-size="14">🔄</text>
-  </g>
-
-  <!-- Title -->
-  <g filter="url(#glow)">
-    <text x="200" y="193" text-anchor="middle"
-          font-family="system-ui, -apple-system, sans-serif"
-          font-size="28" font-weight="900" letter-spacing="8"
-          fill="url(#title)">ODDS</text>
-  </g>
-
-  <!-- Subtitle -->
-  <text x="200" y="213" text-anchor="middle"
-        font-family="system-ui, -apple-system, sans-serif"
-        font-size="7.5" font-weight="500" letter-spacing="3"
-        fill="#78716c" opacity="0.7">SHRINKING RANGE • REVERSE ON MISS</text>
-
-  <!-- Floating accent dots -->
-  <g opacity="0.5">
-    <circle cx="40" cy="25" r="1.5" fill="#fbbf24" filter="url(#softGlow)"/>
-    <circle cx="360" cy="45" r="1" fill="#a855f7"/>
-    <circle cx="380" cy="185" r="1.5" fill="#22d3ee"/>
-    <circle cx="15" cy="170" r="1" fill="#fbbf24"/>
-    <circle cx="250" cy="155" r="1" fill="#c084fc"/>
-  </g>
 </svg>
