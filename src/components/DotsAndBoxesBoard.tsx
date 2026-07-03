@@ -7,7 +7,14 @@ const DOTS = 7; // 7×7 dot grid
 const CELL_SIZE = 100; // SVG units between dots
 const MARGIN = 50; // padding around the grid
 const DOT_RADIUS = 5;
-const EDGE_HIT = 14; // thickness of the clickable/hoverable area
+// Hit-area thickness for edges. Bumped from 14 → 22 so users (especially
+// on small mobile screens, where each SVG unit maps to fewer pixels) can
+// tap an edge on the first try. Capped at 22 (rather than 28) so that
+// horizontal + vertical hit-rect corners don't overlap each other —
+// an EDGE_HIT larger than ~25 caused every corner intersection to
+// paint the horizontal rect over the vertical, making vertical taps
+// impossible in the corner zone.
+const EDGE_HIT = 22;
 const VIEWBOX = MARGIN * 2 + (DOTS - 1) * CELL_SIZE; // 700
 
 export const BOX_SIZE = CELL_SIZE - DOT_RADIUS * 2; // 90
@@ -283,16 +290,18 @@ function DotsAndBoxesBoardImpl({
         const drawn = drawnHSet.has(edge.key);
         const isNew = drawn && newHKeys.has(edge.key);
         const showDisabled = !drawn && !interactive;
-        const cursorCls =
-          interactive && !drawn ? "cursor-pointer" : "cursor-default";
+        const isInteractive = interactive && !drawn;
+        const cursorCls = isInteractive ? "cursor-pointer" : "cursor-default";
         const visible =
           drawn
             ? player1Color
             : interactive
-              ? "rgba(251, 191, 36, 0.22)"
+              ? "rgba(251, 191, 36, 0.40)"
               : "rgba(251, 191, 36, 0.10)";
         return (
-          <g key={`he-${edge.key}`}>
+          // `group` lets us trigger the visible-line hover state by
+          // hovering the larger transparent hit rect above it.
+          <g key={`he-${edge.key}`} className={isInteractive ? "group" : undefined}>
             <rect
               x={edge.x}
               y={edge.y}
@@ -317,13 +326,13 @@ function DotsAndBoxesBoardImpl({
               x2={edge.x + edgeHWidth - 2}
               y2={edge.y + EDGE_HIT / 2}
               stroke={visible}
-              strokeWidth={drawn ? 3 : 1}
+              strokeWidth={drawn ? 3 : 2.4}
               strokeLinecap="round"
               opacity={showDisabled ? 0.45 : 1}
               className={
                 (isNew ? "dnb-edge-anim" : "") +
-                (interactive && !drawn
-                  ? " transition-all duration-150 hover:stroke-amber-300 hover:stroke-[2.8]"
+                (isInteractive
+                  ? " transition-all duration-150 group-hover:stroke-amber-300 group-hover:stroke-[3.2] group-hover:opacity-100"
                   : "")
               }
             />
@@ -336,16 +345,16 @@ function DotsAndBoxesBoardImpl({
         const drawn = drawnVSet.has(edge.key);
         const isNew = drawn && newVKeys.has(edge.key);
         const showDisabled = !drawn && !interactive;
-        const cursorCls =
-          interactive && !drawn ? "cursor-pointer" : "cursor-default";
+        const isInteractive = interactive && !drawn;
+        const cursorCls = isInteractive ? "cursor-pointer" : "cursor-default";
         const visible =
           drawn
             ? player2Color
             : interactive
-              ? "rgba(251, 191, 36, 0.22)"
+              ? "rgba(251, 191, 36, 0.40)"
               : "rgba(251, 191, 36, 0.10)";
         return (
-          <g key={`ve-${edge.key}`}>
+          <g key={`ve-${edge.key}`} className={isInteractive ? "group" : undefined}>
             <rect
               x={edge.x}
               y={edge.y}
@@ -370,13 +379,13 @@ function DotsAndBoxesBoardImpl({
               x2={edge.x + EDGE_HIT / 2}
               y2={edge.y + edgeVHeight - 2}
               stroke={visible}
-              strokeWidth={drawn ? 3 : 1}
+              strokeWidth={drawn ? 3 : 2.4}
               strokeLinecap="round"
               opacity={showDisabled ? 0.45 : 1}
               className={
                 (isNew ? "dnb-edge-anim" : "") +
-                (interactive && !drawn
-                  ? " transition-all duration-150 hover:stroke-orange-300 hover:stroke-[2.8]"
+                (isInteractive
+                  ? " transition-all duration-150 group-hover:stroke-orange-300 group-hover:stroke-[3.2] group-hover:opacity-100"
                   : "")
               }
             />
