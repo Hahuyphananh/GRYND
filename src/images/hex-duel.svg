@@ -1,25 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 225" fill="none">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#030817"/>
-      <stop offset="50%" stop-color="#081a3d"/>
+      <stop offset="0%"   stop-color="#030817"/>
+      <stop offset="50%"  stop-color="#081a3d"/>
       <stop offset="100%" stop-color="#003b8e"/>
     </linearGradient>
     <linearGradient id="hexGrad1" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.8"/>
+      <stop offset="0%"   stop-color="#22d3ee" stop-opacity="0.8"/>
       <stop offset="100%" stop-color="#0891b2" stop-opacity="0.3"/>
     </linearGradient>
     <linearGradient id="hexGrad2" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.7"/>
+      <stop offset="0%"   stop-color="#ef4444" stop-opacity="0.7"/>
       <stop offset="100%" stop-color="#dc2626" stop-opacity="0.25"/>
     </linearGradient>
     <linearGradient id="hexGradGlow" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#a855f7" stop-opacity="0.9"/>
+      <stop offset="0%"   stop-color="#a855f7" stop-opacity="0.9"/>
       <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.4"/>
-    </linearGradient>
-    <linearGradient id="textGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#22d3ee"/>
-      <stop offset="100%" stop-color="#a855f7"/>
     </linearGradient>
     <filter id="glow">
       <feGaussianBlur stdDeviation="3" result="blur"/>
@@ -40,68 +36,31 @@
     </clipPath>
   </defs>
 
-  <!-- Background -->
+  <!-- Quadrilatic gradient background. -->
   <rect width="400" height="225" rx="12" fill="url(#bg)"/>
-  <rect width="400" height="225" rx="12" fill="url(#bg)" clip-path="url(#card)"/>
 
-  <!-- Grid lines -->
-  <g opacity="0.08" stroke="#22d3ee" stroke-width="0.5">
-    <line x1="0" y1="37" x2="400" y2="37"/><line x1="0" y1="75" x2="400" y2="75"/>
-    <line x1="0" y1="112" x2="400" y2="112"/><line x1="0" y1="150" x2="400" y2="150"/>
-    <line x1="0" y1="188" x2="400" y2="188"/>
-    <line x1="50" y1="0" x2="50" y2="225"/><line x1="100" y1="0" x2="100" y2="225"/>
-    <line x1="150" y1="0" x2="150" y2="225"/><line x1="200" y1="0" x2="200" y2="225"/>
-    <line x1="250" y1="0" x2="250" y2="225"/><line x1="300" y1="0" x2="300" y2="225"/>
-    <line x1="350" y1="0" x2="350" y2="225"/>
-  </g>
-
-  <!-- Hex grid cluster - center -->
-  <g filter="url(#softGlow)" transform="translate(120, 85)">
-    <!-- Center hex (purple power node) -->
+  <!-- Hex grid cluster — centered (cluster spans -60..80 vertically → translated so cluster center y = 112). -->
+  <g filter="url(#softGlow)" transform="translate(200 102)">
+    <!-- Center hex (purple power node). -->
     <polygon points="0,-35 30.3,-17.5 30.3,17.5 0,35 -30.3,17.5 -30.3,-17.5"
              fill="url(#hexGradGlow)" stroke="#a855f7" stroke-width="1.5" opacity="0.9"/>
-    <!-- Top-right hex (cyan) -->
+    <!-- Top-right hex (cyan). -->
     <polygon points="45.5,-26 75.8,-8.5 75.8,26.5 45.5,44 15.2,26.5 15.2,-8.5"
              fill="url(#hexGrad1)" stroke="#22d3ee" stroke-width="1.2" opacity="0.8"/>
-    <!-- Bottom-left hex (red) -->
+    <!-- Bottom-left hex (red). -->
     <polygon points="-45.5,-26 -15.2,-8.5 -15.2,26.5 -45.5,44 -75.8,26.5 -75.8,-8.5"
              fill="url(#hexGrad2)" stroke="#ef4444" stroke-width="1.2" opacity="0.75"/>
-    <!-- Top-left hex -->
+    <!-- Top-left hex. -->
     <polygon points="-15,-60 15.3,-42.5 15.3,-7.5 -15,10 -45.3,-7.5 -45.3,-42.5"
              fill="url(#hexGrad1)" stroke="#22d3ee" stroke-width="1" opacity="0.6"/>
-    <!-- Bottom-right hex -->
+    <!-- Bottom-right hex. -->
     <polygon points="15,-60 45.3,-42.5 45.3,-7.5 15,10 -15.3,-7.5 -15.3,-42.5"
              fill="url(#hexGrad2)" stroke="#ef4444" stroke-width="1" opacity="0.55"/>
-    <!-- Bottom hex -->
+    <!-- Bottom hex. -->
     <polygon points="-30,10 0.3,27.5 0.3,62.5 -30,80 -60.3,62.5 -60.3,27.5"
              fill="url(#hexGrad1)" stroke="#22d3ee" stroke-width="0.8" opacity="0.45"/>
-    <!-- Top hex -->
+    <!-- Top hex. -->
     <polygon points="30,10 60.3,27.5 60.3,62.5 30,80 -0.3,62.5 -0.3,27.5"
              fill="url(#hexGrad2)" stroke="#ef4444" stroke-width="0.8" opacity="0.4"/>
   </g>
-
-  <!-- Floating particles -->
-  <g opacity="0.6">
-    <circle cx="85" cy="55" r="2" fill="#22d3ee" filter="url(#softGlow)"/>
-    <circle cx="330" cy="170" r="1.5" fill="#a855f7" filter="url(#softGlow)"/>
-    <circle cx="60" cy="175" r="1.5" fill="#22d3ee"/>
-    <circle cx="340" cy="45" r="2" fill="#ef4444" filter="url(#softGlow)"/>
-    <circle cx="200" cy="30" r="1" fill="#22d3ee"/>
-    <circle cx="370" cy="120" r="1.5" fill="#a855f7"/>
-    <circle cx="30" cy="100" r="1" fill="#22d3ee"/>
-  </g>
-
-  <!-- Title -->
-  <g filter="url(#glow)">
-    <text x="200" y="195" text-anchor="middle"
-          font-family="system-ui, -apple-system, sans-serif"
-          font-size="28" font-weight="900" letter-spacing="6"
-          fill="url(#textGrad)">HEX DUEL</text>
-  </g>
-
-  <!-- Subtitle -->
-  <text x="200" y="215" text-anchor="middle"
-        font-family="system-ui, -apple-system, sans-serif"
-        font-size="9" font-weight="500" letter-spacing="4"
-        fill="#64748b" opacity="0.7">STRATEGIC TERRITORY CONQUEST</text>
 </svg>

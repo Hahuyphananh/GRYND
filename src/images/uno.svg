@@ -36,23 +36,8 @@
     </linearGradient>
   </defs>
 
-  <!-- Background. -->
-  <rect width="480" height="480" fill="url(#bg)"/>
-
-  <!-- Ambient light pool aligned with the fan pivot (240,240). -->
-  <ellipse cx="240" cy="240" rx="220" ry="120" fill="#5b21b6" opacity="0.25"/>
-
-  <!-- Edge sparkles to add casino-night ambience. -->
-  <g fill="#ffffff">
-    <circle cx="50"  cy="80"  r="2"   opacity="0.9"/>
-    <circle cx="430" cy="100" r="2.5" opacity="0.9"/>
-    <circle cx="70"  cy="380" r="2"   opacity="0.9"/>
-    <circle cx="410" cy="420" r="3"   opacity="0.9"/>
-    <circle cx="240" cy="40"  r="1.5" opacity="0.7"/>
-    <circle cx="240" cy="440" r="1.5" opacity="0.7"/>
-    <circle cx="55"  cy="240" r="2"   fill="#00e5ff" opacity="0.8"/>
-    <circle cx="425" cy="260" r="2"   fill="#ff4fd8" opacity="0.8"/>
-  </g>
+  <!-- Plain marine blue backdrop. -->
+  <rect width="480" height="480" fill="#0b1f3f"/>
 
   <!-- Card 4 (back-most): RED, "7". -->
   <g transform="rotate(-28 240 240)" filter="url(#neonGlow)">
