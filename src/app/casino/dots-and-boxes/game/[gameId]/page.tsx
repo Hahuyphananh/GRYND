@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useSocket } from "../../../../../context/SocketProvider";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import { playTimerUrgent, playTimerExpired } from "../../../../../lib/dotsAndBoxesAudio";
+import { gameOverModal as gameOverModalAnim } from "../../../../../lib/animations";
 
 // ─── Module-level empty defaults (shared reference across renders) ─
 // Mutable types so passing into the board component (typed
@@ -31,6 +32,11 @@ export default function DotsAndBoxesGamePage() {
   const [statusText, setStatusText] = useState(t("games.dots_and_boxes.loading_game"));
   const [drawing, setDrawing] = useState(false);
   const drawingRef = useRef(false);
+  // Forfeit/cancel UX: a real in-app confirmation modal instead of the
+  // native confirm() dialog — and a second flag for "we're calling the
+  // API right now" so the buttons can show a spinner state.
+  const [showForfeitConfirm, setShowForfeitConfirm] = useState(false);
+  const [forfeiting, setForfeiting] = useState(false);
   // Visual-only countdown. Source of truth is the server's moveDeadlineAt.
   const [now, setNow] = useState<number>(() => Date.now());
 
@@ -291,39 +297,44 @@ const prefersReducedMotion = useReducedMotion();
   );
 
   // ─── Cancel/forfeit handler ─────────────────────────────────────────
-
+  // The button now opens a real in-app confirmation modal (see JSX
+  // below). After the user confirms, we POST to the cancel endpoint
+  // and re-sync state; the post-game result modal then appears for
+  // both natural finishes and forfeits.
   const cancelGame = useCallback(async () => {
-    if (
-      !confirm(
-        t("games.dots_and_boxes.cancel_confirm"),
-      )
-    )
-      return;
-    const res = await fetch("/api/dots-and-boxes/cancel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gameId: Number(gameId) }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      socket?.emit("room_event", {
-        roomId: `dots-and-boxes:${gameId}`,
-        event: "match:updated",
-        payload: { gameId: Number(gameId) },
+    if (forfeiting) return;
+    setShowForfeitConfirm(false);
+    setForfeiting(true);
+    try {
+      const res = await fetch("/api/dots-and-boxes/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId: Number(gameId) }),
       });
-      socket?.emit("room_event", {
-        roomId: "lobby:dots-and-boxes",
-        event: "lobby:updated",
-      });
-      // Re-sync state via a fresh fetch
-      abortRef.current?.abort();
-      const ac = new AbortController();
-      abortRef.current = ac;
-      await fetchState({ signal: ac.signal });
-    } else {
-      alert(data.error || t("games.dots_and_boxes.cancel_failed_alert"));
+      const data = await res.json();
+      if (data.success) {
+        socket?.emit("room_event", {
+          roomId: `dots-and-boxes:${gameId}`,
+          event: "match:updated",
+          payload: { gameId: Number(gameId) },
+        });
+        socket?.emit("room_event", {
+          roomId: "lobby:dots-and-boxes",
+          event: "lobby:updated",
+        });
+        // Re-sync state via a fresh fetch so status flips to "finished"
+        // and the result popup below mounts.
+        abortRef.current?.abort();
+        const ac = new AbortController();
+        abortRef.current = ac;
+        await fetchState({ signal: ac.signal });
+      } else {
+        alert(data.error || t("games.dots_and_boxes.cancel_failed_alert"));
+      }
+    } finally {
+      setForfeiting(false);
     }
-  }, [socket, gameId, fetchState, t]);
+  }, [socket, gameId, fetchState, t, forfeiting]);
 
   // ─── Audio cues (urgent + expired), each fires exactly once per turn ───
   // Both refs are keyed on `moveDeadlineAt` so they re-arm on every new
@@ -369,6 +380,19 @@ const prefersReducedMotion = useReducedMotion();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game?.status, remainingMs, game?.moveDeadlineAt]);
 
+  // ─── Modal close keyboard handlers (escape) ──────────────────────────
+  // Forfeit confirm modal: ESC closes the prompt, but is gated on
+  // `!forfeiting` so we can't accidentally orphan an in-flight API
+  // request by closing the prompt mid-flight.
+  useEffect(() => {
+    if (!showForfeitConfirm || forfeiting) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowForfeitConfirm(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showForfeitConfirm, forfeiting]);
+
   // ─── Render helpers ─────────────────────────────────────────────────
 
   const timerUrgent = remainingSeconds > 0 && remainingSeconds <= 3;
@@ -379,6 +403,38 @@ const prefersReducedMotion = useReducedMotion();
     timerSeconds > 0
       ? Math.max(0, Math.min(100, (remainingMs / (timerSeconds * 1000)) * 100))
       : 0;
+
+  // ─── Result-popup derived state ─────────────────────────────────────
+  // Show a centered win/loss/draw modal whenever the match is over
+  // (finished OR cancelled). The host's "cancel the waiting lobby"
+  // path lands in `cancelled`, not `finished`, so we include both.
+  const showResultPopup =
+    game?.status === "finished" || game?.status === "cancelled";
+  const playerWon = useMemo(() => {
+    if (!game || game.status !== "finished") return false;
+    if (!game.winnerClerkId) return false;
+    return (
+      (game.role === "host" &&
+        game.winnerClerkId === game.hostClerkId) ||
+      (game.role === "guest" &&
+        game.winnerClerkId === game.guestClerkId)
+    );
+  }, [game?.status, game?.winnerClerkId, game?.hostClerkId, game?.guestClerkId, game?.role]);
+  const isDraw = game?.status === "finished" && game?.result === "draw";
+  const isCancelled = game?.status === "cancelled";
+  const isForfeitLoss =
+    isResultLoss(game) && game?.result === "forfeit";
+
+  // ── Keyboard handler for the result popup ────────────────────────
+  // Lives below `showResultPopup` so the variable is in scope.
+  useEffect(() => {
+    if (!showResultPopup) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") router.push("/casino/dots-and-boxes");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showResultPopup, router]);
 
   // ─── Render ─────────────────────────────────────────────────────────
 
@@ -656,10 +712,10 @@ const prefersReducedMotion = useReducedMotion();
               </div>
             )}
 
-            {/* Forfeit / Cancel */}
+            {/* Forfeit / Cancel — opens a real in-app confirmation modal */}
             {game?.status === "waiting" && game?.role === "host" ? (
               <button
-                onClick={cancelGame}
+                onClick={() => setShowForfeitConfirm(true)}
                 className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-500 font-bold hover-lift mb-2"
               >
                 {t("games.dots_and_boxes.cancel_game_button")}
@@ -668,10 +724,13 @@ const prefersReducedMotion = useReducedMotion();
               game?.role &&
               game.role !== "spectator" ? (
               <button
-                onClick={cancelGame}
-                className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-500 font-bold hover-lift mb-2"
+                onClick={() => setShowForfeitConfirm(true)}
+                disabled={forfeiting}
+                className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-500 font-bold hover-lift mb-2 disabled:opacity-60"
               >
-                {t("games.dots_and_boxes.forfeit_button")}
+                {forfeiting
+                  ? t("games.dots_and_boxes.forfeiting_button")
+                  : t("games.dots_and_boxes.forfeit_button")}
               </button>
             ) : null}
 
@@ -688,6 +747,194 @@ const prefersReducedMotion = useReducedMotion();
           </div>
         </div>
       </div>
+
+      {/* ─── Forfeit / Cancel confirmation modal ─────────────────── */}
+      <AnimatePresence>
+        {showForfeitConfirm && (
+          <motion.div
+            key="dnf-forfeit-confirm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            onClick={(e) => {
+              // Backdrop dismiss: only close when the click hits the
+              // backdrop itself (not bubbling from the panel) AND no
+              // forfeit fetch is in flight, so we can't orphan loading state.
+              if (e.target === e.currentTarget && !forfeiting) {
+                setShowForfeitConfirm(false);
+              }
+            }}
+            className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 6 }}
+              transition={{ type: "spring", stiffness: 320, damping: 22 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="dnf-forfeit-title"
+              aria-describedby="dnf-forfeit-body"
+              className="bg-[#031a37] border border-red-500/40 rounded-2xl p-6 max-w-sm w-full text-center shadow-[0_0_36px_rgba(239,68,68,0.35)]"
+            >
+              <div className="text-5xl mb-3" aria-hidden>🚩</div>
+              <h3 id="dnf-forfeit-title" className="text-xl font-extrabold text-red-300 mb-2">
+                {game?.status === "in_progress"
+                  ? t("games.dots_and_boxes.forfeit_confirm_title")
+                  : t("games.dots_and_boxes.cancel_confirm_title")}
+              </h3>
+              <p id="dnf-forfeit-body" className="text-white/70 mb-5">
+                {game?.status === "in_progress"
+                  ? t("games.dots_and_boxes.forfeit_confirm_body")
+                  : t("games.dots_and_boxes.cancel_confirm")}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowForfeitConfirm(false)}
+                  disabled={forfeiting}
+                  autoFocus
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-white/10 hover:bg-white/20 font-semibold transition disabled:opacity-50"
+                >
+                  {t("games.dots_and_boxes.stay_button")}
+                </button>
+                <button
+                  onClick={cancelGame}
+                  disabled={forfeiting}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 font-bold transition disabled:opacity-60"
+                >
+                  {forfeiting
+                    ? t("games.dots_and_boxes.forfeiting_button")
+                    : game?.status === "in_progress"
+                      ? t("games.dots_and_boxes.forfeit_button")
+                      : t("games.dots_and_boxes.cancel_game_button")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Result / Loss popup (win/loss/draw/cancelled) ─────────── */}
+      <AnimatePresence>
+        {showResultPopup && (
+          <motion.div
+            key="dnf-result-popup"
+            {...gameOverModalAnim.backdrop}
+            onClick={(e) => {
+              // Backdrop dismiss: route user back to lobby when they
+              // click outside the panel. Single universal action so
+              // we don't leave them stuck behind a modal that won't
+              // go away on mobile.
+              if (e.target === e.currentTarget) {
+                router.push("/casino/dots-and-boxes");
+              }
+            }}
+            className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              {...gameOverModalAnim.panel}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="dnf-result-title"
+              aria-describedby="dnf-result-body"
+              className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl text-center ${
+                playerWon
+                  ? "border-amber-400/40 bg-gradient-to-b from-[#0a2a1a] to-[#031a0a] shadow-[0_0_40px_rgba(250,204,21,0.25)]"
+                  : isDraw
+                    ? "border-white/20 bg-[#031a37]"
+                    : isCancelled
+                      ? "border-white/20 bg-[#031a37]"
+                      : "border-red-500/40 bg-gradient-to-b from-[#2a0a0a] to-[#1a0303] shadow-[0_0_40px_rgba(239,68,68,0.25)]"
+              }`}
+            >
+              <motion.div
+                initial={{ scale: 0, rotate: -25 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 320,
+                  damping: 14,
+                  delay: 0.25,
+                }}
+                className="mb-2 text-6xl"
+                aria-hidden
+              >
+                {isCancelled ? "🚪" : playerWon ? "🏆" : isDraw ? "🤝" : "💥"}
+              </motion.div>
+              <motion.h3
+                id="dnf-result-title"
+                initial={{ y: 12, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.4, duration: 0.3 }}
+                className={`text-2xl font-extrabold mb-2 ${
+                  playerWon
+                    ? "text-amber-300"
+                    : isDraw
+                      ? "text-yellow-200"
+                      : "text-red-300"
+                }`}
+              >
+                {isCancelled
+                  ? t("games.dots_and_boxes.result_cancelled_title")
+                  : playerWon
+                    ? t("games.dots_and_boxes.result_win_title")
+                    : isDraw
+                      ? t("games.dots_and_boxes.result_draw_title")
+                      : isForfeitLoss
+                        ? t("games.dots_and_boxes.result_forfeit_title")
+                        : t("games.dots_and_boxes.result_loss_title")}
+              </motion.h3>
+              <motion.p
+                id="dnf-result-body"
+                initial={{ y: 12, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.5, duration: 0.3 }}
+                className="text-white/80 mb-2"
+              >
+                {isCancelled
+                  ? t("games.dots_and_boxes.result_cancelled_body")
+                  : playerWon
+                    ? (scores?.host ?? 0) > (scores?.guest ?? 0)
+                      ? `${scores?.host ?? 0} – ${scores?.guest ?? 0}`
+                      : `${scores?.guest ?? 0} – ${scores?.host ?? 0}`
+                    : isDraw
+                      ? `${scores?.host ?? 0} – ${scores?.guest ?? 0}`
+                      : (scores?.host ?? 0) > (scores?.guest ?? 0)
+                        ? `${scores?.host ?? 0} – ${scores?.guest ?? 0}`
+                        : `${scores?.guest ?? 0} – ${scores?.host ?? 0}`}
+              </motion.p>
+              {game?.payout !== null &&
+                game?.payout !== undefined &&
+                playerWon && (
+                  <motion.p
+                    initial={{ y: 12, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.6, duration: 0.3 }}
+                    className="text-lg font-bold text-yellow-300 mb-3"
+                  >
+                    +{Number(game.payout).toFixed(2)}{" "}
+                    {t("games.dots_and_boxes.tokens_suffix")}
+                  </motion.p>
+                )}
+              <motion.div
+                initial={{ y: 12, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.7, duration: 0.3 }}
+                className="mt-4"
+              >
+                <button
+                  onClick={() => router.push("/casino/dots-and-boxes")}
+                  autoFocus
+                  className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-[#08133a] font-extrabold transition shadow-[0_0_18px_rgba(245,158,11,0.45)]"
+                >
+                  {t("games.dots_and_boxes.return_to_lobby")}
+                </button>
+              </motion.div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -766,4 +1013,18 @@ function computeStatusText(gameData: any, t: (key: string, params?: any) => stri
     return won ? t("games.dots_and_boxes.status_result_win") : t("games.dots_and_boxes.status_result_loss");
   }
   return "";
+}
+
+// ── Helpers (module-level) ─────────────────────────────────────────────
+
+/** True when the local player is the loser of a finished match. */
+function isResultLoss(game: any): boolean {
+  if (!game || game.status !== "finished") return false;
+  if (game.result === "draw") return false;
+  if (!game.winnerClerkId) return false;
+  // Loss = somebody else won.
+  return (
+    (game.role === "host" && game.winnerClerkId !== game.hostClerkId) ||
+    (game.role === "guest" && game.winnerClerkId !== game.guestClerkId)
+  );
 }
