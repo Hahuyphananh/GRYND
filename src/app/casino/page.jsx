@@ -5,7 +5,7 @@ import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useUser } from "@clerk/nextjs";
 import React, { useEffect, useState } from "react";
 import Img1 from "../../images/roulette.png";
-import Img2 from "../../images/blackjack.png";
+import Img2 from "../../images/blackjack.jpg";
 import Img3 from "../../images/poker.jpg";
 import Img4 from "../../images/plinko.svg";
 import Img5 from "../../images/mines.svg";
