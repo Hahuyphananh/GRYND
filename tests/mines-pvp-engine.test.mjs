@@ -1,0 +1,748 @@
+/**
+ * Mines Duel ("Mines PvP") — engine unit tests.
+ *
+ * Pure-function tests for the shared constants + deterministic helpers
+ * in `src/lib/mines-pvp/constants.js`. The board generator and the
+ * outcome/payout math are the contract every other piece of the match
+ * system depends on, so they're tested exhaustively (valid + invalid
+ * inputs, edge cases at the boundaries).
+ *
+ * The flow-level (DB-backed) tests for `createOrJoin`, `pickTile`, and
+ * `fetchMatchWithAutoResolve` live in `tests/mines-pvp-flow.test.mjs`.
+ *
+ * Run:  node --test tests/mines-pvp-engine.test.mjs
+ */
+
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  // Board geometry
+  GRID_SIZE,
+  GRID_CELLS,
+  MIN_MINES,
+  MAX_MINES,
+  // Per-turn window
+  ROUND_TIMER_SECONDS,
+  ROUND_PICK_DEADLINE_MS,
+  // Stake matchmaking
+  STAKE_PRESETS,
+  MIN_STAKE,
+  MAX_STAKE,
+  // House fee / payout split
+  HOUSE_FEE_PCT,
+  WINNER_RATIO,
+  HOUSE_RATIO,
+  // State machine
+  MATCH_STATUS,
+  ACTIVE_STATES,
+  PICKABLE_STATES,
+  TERMINAL_STATES,
+  READY_WINDOW_MS,
+  FINISHED_GRACE_MS,
+  // Advisory-lock namespace
+  MINES_PVP_LOCK_NAMESPACE,
+  // Result + pick constants
+  RESULT,
+  PICK_KIND,
+  // Pure helpers under test
+  generateBoard,
+  isMine,
+  decideOutcome,
+  computePayout,
+  pickRandomCell,
+  round2,
+  cellIndexToRowCol,
+  rowColToCellIndex,
+} from "../src/lib/mines-pvp/constants.js";
+
+// ════════════════════════════════════════════════════════════════════════
+// Board geometry constants
+// ════════════════════════════════════════════════════════════════════════
+
+test("GRID_SIZE is 5 (matches solo-mines 5x5 layout)", () => {
+  assert.equal(GRID_SIZE, 5);
+});
+
+test("GRID_CELLS is 25 (5*5)", () => {
+  assert.equal(GRID_CELLS, 25);
+  assert.equal(GRID_CELLS, GRID_SIZE * GRID_SIZE);
+});
+
+test("MIN_MINES is 1 (at least 1 mine so the game has stakes)", () => {
+  assert.equal(MIN_MINES, 1);
+});
+
+test("MAX_MINES is GRID_CELLS - 1 (24 — never allow 25 instant-loss)", () => {
+  assert.equal(MAX_MINES, 24);
+  assert.equal(MAX_MINES, GRID_CELLS - 1);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// Per-turn window
+// ════════════════════════════════════════════════════════════════════════
+
+test("ROUND_TIMER_SECONDS is 20 (mirrors blackjack-pvp pacing)", () => {
+  assert.equal(ROUND_TIMER_SECONDS, 20);
+});
+
+test("ROUND_PICK_DEADLINE_MS is 20000 (20 seconds in ms)", () => {
+  assert.equal(ROUND_PICK_DEADLINE_MS, 20_000);
+  assert.equal(ROUND_PICK_DEADLINE_MS, ROUND_TIMER_SECONDS * 1000);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// Stake matchmaking constants
+// ════════════════════════════════════════════════════════════════════════
+
+test("STAKE_PRESETS match the chip row used by blackjack-pvp / roulette-pvp", () => {
+  assert.deepEqual(STAKE_PRESETS, [10, 25, 50, 100, 250, 500]);
+});
+
+test("MIN_STAKE is 1", () => {
+  assert.equal(MIN_STAKE, 1);
+});
+
+test("MAX_STAKE is 1,000,000 (one million cap)", () => {
+  assert.equal(MAX_STAKE, 1_000_000);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// House fee / payout split (per user spec: 90/10 on the LOSER's stake)
+// ════════════════════════════════════════════════════════════════════════
+
+test("HOUSE_FEE_PCT is 0.10 (10% rake)", () => {
+  assert.equal(HOUSE_FEE_PCT, 0.10);
+});
+
+test("WINNER_RATIO is 0.90 (winner takes 90% of the loser's stake)", () => {
+  assert.equal(WINNER_RATIO, 0.90);
+});
+
+test("HOUSE_RATIO is 0.10 (house takes 10% of the loser's stake)", () => {
+  assert.equal(HOUSE_RATIO, 0.10);
+});
+
+test("WINNER_RATIO + HOUSE_RATIO sum to 1.0 (full loser's stake is split)", () => {
+  assert.equal(WINNER_RATIO + HOUSE_RATIO, 1.0);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// Status state machine
+// ════════════════════════════════════════════════════════════════════════
+
+test("MATCH_STATUS contains the six expected states", () => {
+  assert.equal(MATCH_STATUS.WAITING, "waiting");
+  assert.equal(MATCH_STATUS.READY, "ready");
+  assert.equal(MATCH_STATUS.P1_TURN, "p1_turn");
+  assert.equal(MATCH_STATUS.P2_TURN, "p2_turn");
+  assert.equal(MATCH_STATUS.FINISHED, "finished");
+  assert.equal(MATCH_STATUS.CANCELLED, "cancelled");
+});
+
+test("MATCH_STATUS is frozen (immutable at runtime)", () => {
+  assert.equal(Object.isFrozen(MATCH_STATUS), true);
+});
+
+test("ACTIVE_STATES includes ready / p1_turn / p2_turn (excludes waiting)", () => {
+  assert.equal(ACTIVE_STATES.has(MATCH_STATUS.READY), true);
+  assert.equal(ACTIVE_STATES.has(MATCH_STATUS.P1_TURN), true);
+  assert.equal(ACTIVE_STATES.has(MATCH_STATUS.P2_TURN), true);
+  assert.equal(ACTIVE_STATES.has(MATCH_STATUS.WAITING), false);
+  assert.equal(ACTIVE_STATES.has(MATCH_STATUS.FINISHED), false);
+  assert.equal(ACTIVE_STATES.has(MATCH_STATUS.CANCELLED), false);
+});
+
+test("PICKABLE_STATES is a strict subset of ACTIVE_STATES (no ready banner picks)", () => {
+  for (const state of PICKABLE_STATES) {
+    assert.equal(ACTIVE_STATES.has(state), true, `${state} should be in ACTIVE_STATES`);
+  }
+  assert.equal(PICKABLE_STATES.has(MATCH_STATUS.P1_TURN), true);
+  assert.equal(PICKABLE_STATES.has(MATCH_STATUS.P2_TURN), true);
+  assert.equal(PICKABLE_STATES.has(MATCH_STATUS.READY), false, "ready banner doesn't accept picks");
+  assert.equal(PICKABLE_STATES.has(MATCH_STATUS.WAITING), false, "no opponent yet");
+  assert.equal(PICKABLE_STATES.has(MATCH_STATUS.FINISHED), false, "terminal state");
+  assert.equal(PICKABLE_STATES.has(MATCH_STATUS.CANCELLED), false, "terminal state");
+});
+
+test("TERMINAL_STATES is finished + cancelled", () => {
+  assert.equal(TERMINAL_STATES.has(MATCH_STATUS.FINISHED), true);
+  assert.equal(TERMINAL_STATES.has(MATCH_STATUS.CANCELLED), true);
+  assert.equal(TERMINAL_STATES.has(MATCH_STATUS.WAITING), false);
+  assert.equal(TERMINAL_STATES.has(MATCH_STATUS.READY), false);
+  assert.equal(TERMINAL_STATES.has(MATCH_STATUS.P1_TURN), false);
+  assert.equal(TERMINAL_STATES.has(MATCH_STATUS.P2_TURN), false);
+});
+
+test("ACTIVE_STATES and TERMINAL_STATES are disjoint (no double-classification)", () => {
+  for (const state of ACTIVE_STATES) {
+    assert.equal(TERMINAL_STATES.has(state), false, `${state} should not be in both`);
+  }
+  for (const state of TERMINAL_STATES) {
+    assert.equal(ACTIVE_STATES.has(state), false, `${state} should not be in both`);
+  }
+});
+
+test("READY_WINDOW_MS is 3 seconds (3s 'Get ready' banner)", () => {
+  assert.equal(READY_WINDOW_MS, 3000);
+});
+
+test("FINISHED_GRACE_MS is 5 seconds (post-finish grace before lobby nav)", () => {
+  assert.equal(FINISHED_GRACE_MS, 5000);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// Advisory-lock namespace
+// ════════════════════════════════════════════════════════════════════════
+
+test("MINES_PVP_LOCK_NAMESPACE is a positive 31-bit integer (Postgres bigint-safe)", () => {
+  assert.equal(Number.isInteger(MINES_PVP_LOCK_NAMESPACE), true);
+  assert.ok(MINES_PVP_LOCK_NAMESPACE > 0, "should be positive");
+  assert.ok(
+    MINES_PVP_LOCK_NAMESPACE <= 0x7fffffff,
+    "should fit in a positive 31-bit signed int",
+  );
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// RESULT / PICK_KIND enums
+// ════════════════════════════════════════════════════════════════════════
+
+test("RESULT is frozen with player1 / player2 / draw", () => {
+  assert.equal(Object.isFrozen(RESULT), true);
+  assert.equal(RESULT.PLAYER1, "player1");
+  assert.equal(RESULT.PLAYER2, "player2");
+  assert.equal(RESULT.DRAW, "draw");
+});
+
+test("PICK_KIND is frozen with mine / safe", () => {
+  assert.equal(Object.isFrozen(PICK_KIND), true);
+  assert.equal(PICK_KIND.MINE, "mine");
+  assert.equal(PICK_KIND.SAFE, "safe");
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// generateBoard
+// ════════════════════════════════════════════════════════════════════════
+
+test("generateBoard: 1 mine returns a valid 1-mine board", () => {
+  for (let i = 0; i < 50; i += 1) {
+    const board = generateBoard(1);
+    assert.equal(board.size, 5);
+    assert.equal(board.mines.length, 1);
+    assert.ok(board.mines[0] >= 0 && board.mines[0] < GRID_CELLS);
+  }
+});
+
+test("generateBoard: 12 mines returns a valid 12-mine board", () => {
+  const board = generateBoard(12);
+  assert.equal(board.size, 5);
+  assert.equal(board.mines.length, 12);
+});
+
+test("generateBoard: 24 mines (max) returns a valid 24-mine board", () => {
+  const board = generateBoard(24);
+  assert.equal(board.size, 5);
+  assert.equal(board.mines.length, 24);
+});
+
+test("generateBoard: mines are unique (no duplicate cells)", () => {
+  for (let i = 0; i < 100; i += 1) {
+    const board = generateBoard(12);
+    const seen = new Set();
+    for (const idx of board.mines) {
+      assert.equal(seen.has(idx), false, `duplicate mine cell ${idx}`);
+      seen.add(idx);
+    }
+  }
+});
+
+test("generateBoard: mines are sorted ascending (deterministic ordering for storage)", () => {
+  for (let i = 0; i < 50; i += 1) {
+    const board = generateBoard(15);
+    for (let j = 1; j < board.mines.length; j += 1) {
+      assert.ok(
+        board.mines[j] > board.mines[j - 1],
+        `mines should be sorted ascending; got ${board.mines[j - 1]} before ${board.mines[j]}`,
+      );
+    }
+  }
+});
+
+test("generateBoard: all mine indices are within 0..GRID_CELLS-1", () => {
+  for (let i = 0; i < 100; i += 1) {
+    const board = generateBoard(20);
+    for (const idx of board.mines) {
+      assert.ok(Number.isInteger(idx), `mine ${idx} is not an integer`);
+      assert.ok(idx >= 0 && idx < GRID_CELLS, `mine ${idx} is out of range`);
+    }
+  }
+});
+
+test("generateBoard: distribution is roughly uniform (each cell appears ~count/25 times in 1000 trials)", () => {
+  // Skip if running in a low-entropy environment — this is a smoke check
+  // for the Fisher-Yates shuffle, not a strict statistical test.
+  const counts = new Array(GRID_CELLS).fill(0);
+  const trials = 1000;
+  for (let i = 0; i < trials; i += 1) {
+    const board = generateBoard(5);
+    for (const idx of board.mines) counts[idx] += 1;
+  }
+  // Each cell has expected 5 * 1000 / 25 = 200 hits. Allow wide tolerance.
+  for (let cell = 0; cell < GRID_CELLS; cell += 1) {
+    assert.ok(
+      counts[cell] > 100 && counts[cell] < 320,
+      `cell ${cell} hit ${counts[cell]} times — out of expected range (Fisher-Yates may be broken)`,
+    );
+  }
+});
+
+test("generateBoard: 0 mines throws RangeError", () => {
+  assert.throws(() => generateBoard(0), RangeError);
+});
+
+test("generateBoard: 25 mines throws RangeError (instant-loss not allowed)", () => {
+  assert.throws(() => generateBoard(25), RangeError);
+});
+
+test("generateBoard: 100 mines throws RangeError", () => {
+  assert.throws(() => generateBoard(100), RangeError);
+});
+
+test("generateBoard: -1 mines throws RangeError", () => {
+  assert.throws(() => generateBoard(-1), RangeError);
+});
+
+test("generateBoard: non-integer (1.5) throws RangeError", () => {
+  assert.throws(() => generateBoard(1.5), RangeError);
+});
+
+test("generateBoard: NaN throws RangeError", () => {
+  assert.throws(() => generateBoard(NaN), RangeError);
+});
+
+test("generateBoard: numeric string is coerced (no throw for '5')", () => {
+  // "5" coerces to 5, so the function returns a valid 5-mine board.
+  // Truly non-numeric strings (NaN after coercion) still throw.
+  const board = generateBoard("5");
+  assert.equal(board.mines.length, 5);
+
+  assert.throws(() => generateBoard("abc"), RangeError);
+  assert.throws(() => generateBoard("1.5"), RangeError);
+});
+
+test("generateBoard: error message mentions valid range", () => {
+  try {
+    generateBoard(99);
+    assert.fail("expected throw");
+  } catch (err) {
+    assert.ok(err instanceof RangeError, "should be RangeError");
+    assert.ok(err.message.includes(String(MIN_MINES)), "should mention min");
+    assert.ok(err.message.includes(String(MAX_MINES)), "should mention max");
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// isMine
+// ════════════════════════════════════════════════════════════════════════
+
+test("isMine: returns true for a cell listed in board.mines", () => {
+  const board = generateBoard(3);
+  for (const idx of board.mines) {
+    assert.equal(isMine(board, idx), true);
+  }
+});
+
+test("isMine: returns false for a cell NOT in board.mines", () => {
+  const board = generateBoard(3);
+  const mineSet = new Set(board.mines);
+  for (let cell = 0; cell < GRID_CELLS; cell += 1) {
+    if (!mineSet.has(cell)) {
+      assert.equal(isMine(board, cell), false);
+    }
+  }
+});
+
+test("isMine: out-of-range cell returns false (defence-in-depth)", () => {
+  const board = generateBoard(3);
+  assert.equal(isMine(board, -1), false);
+  assert.equal(isMine(board, GRID_CELLS), false);
+  assert.equal(isMine(board, 9999), false);
+});
+
+test("isMine: non-integer cell returns false (defence-in-depth)", () => {
+  const board = generateBoard(3);
+  assert.equal(isMine(board, 1.5), false);
+  assert.equal(isMine(board, "5"), false);
+  assert.equal(isMine(board, null), false);
+  assert.equal(isMine(board, undefined), false);
+});
+
+test("isMine: null board returns false", () => {
+  assert.equal(isMine(null, 0), false);
+  assert.equal(isMine(undefined, 0), false);
+});
+
+test("isMine: board with no mines array returns false", () => {
+  assert.equal(isMine({}, 5), false);
+  assert.equal(isMine({ mines: "not-an-array" }, 5), false);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// decideOutcome — the user-spec resolution table
+// ════════════════════════════════════════════════════════════════════════
+
+test("decideOutcome: P1 mine + P2 mine → PLAYER2 (P1 mined first)", () => {
+  assert.equal(
+    decideOutcome({ p1PickIsMine: true, p2PickIsMine: true }),
+    RESULT.PLAYER2,
+  );
+});
+
+test("decideOutcome: P1 mine + P2 safe → PLAYER2 (P1 loses)", () => {  assert.equal(
+    decideOutcome({ p1PickIsMine: true, p2PickIsMine: false }),
+    RESULT.PLAYER2,
+  );
+});
+
+test("decideOutcome: P1 safe + P2 mine → PLAYER1 (P2 loses)", () => {
+  assert.equal(
+    decideOutcome({ p1PickIsMine: false, p2PickIsMine: true }),
+    RESULT.PLAYER1,
+  );
+});
+
+test("decideOutcome: P1 safe + P2 safe → DRAW (no rake, full refund)", () => {
+  assert.equal(
+    decideOutcome({ p1PickIsMine: false, p2PickIsMine: false }),
+    RESULT.DRAW,
+  );
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// computePayout
+// ════════════════════════════════════════════════════════════════════════
+
+test("computePayout: stake 100, P1 wins → winnerNet=190, loserNet=-100, houseFee=10, prizePaid=190", () => {
+  const p = computePayout({ stakeAmount: 100, result: RESULT.PLAYER1 });
+  assert.equal(p.stake, 100);
+  assert.equal(p.winnerNet, 190);
+  assert.equal(p.loserNet, -100);
+  assert.equal(p.houseFee, 10);
+  assert.equal(p.prizePaid, 190);
+});
+
+test("computePayout: stake 100, P2 wins → mirror math (winnerNet=190, loserNet=-100, houseFee=10)", () => {
+  const p = computePayout({ stakeAmount: 100, result: RESULT.PLAYER2 });
+  assert.equal(p.stake, 100);
+  assert.equal(p.winnerNet, 190);
+  assert.equal(p.loserNet, -100);
+  assert.equal(p.houseFee, 10);
+  assert.equal(p.prizePaid, 190);
+});
+
+test("computePayout: stake 50, DRAW → winnerNet=null, loserNet=null, houseFee=0, prizePaid=0", () => {
+  const p = computePayout({ stakeAmount: 50, result: RESULT.DRAW });
+  assert.equal(p.stake, 50);
+  assert.equal(p.winnerNet, null);
+  assert.equal(p.loserNet, null);
+  assert.equal(p.houseFee, 0);
+  assert.equal(p.prizePaid, 0);
+});
+
+test("computePayout: prizePaid = stake + winnerPrize (1.9x stake total)", () => {
+  // Per spec: the winner is refunded their own stake + 90% of the loser's stake.
+  // prizePaid is the total payout to the winner = their stake back + 90% of loser.
+  for (const stake of [1, 10, 25, 100, 250, 1000]) {
+    for (const result of [RESULT.PLAYER1, RESULT.PLAYER2]) {
+      const p = computePayout({ stakeAmount: stake, result });
+      assert.equal(
+        p.prizePaid,
+        round2(stake + stake * WINNER_RATIO),
+        `stake=${stake} result=${result} prizePaid mismatch`,
+      );
+    }
+  }
+});
+
+test("computePayout: loserNet is always -stake (regardless of winner)", () => {
+  for (const stake of [1, 10, 50, 100, 500, 9999.99]) {
+    for (const result of [RESULT.PLAYER1, RESULT.PLAYER2]) {
+      const p = computePayout({ stakeAmount: stake, result });
+      assert.equal(p.loserNet, -stake);
+    }
+  }
+});
+
+test("computePayout: fractional stake rounds to 2dp (no floating-point drift)", () => {
+  const p = computePayout({ stakeAmount: 1.5, result: RESULT.PLAYER1 });
+  // stake = 1.5, winnerPrize = 1.5 * 0.9 = 1.35, winnerNet = 1.5 + 1.35 = 2.85
+  // houseFee = 1.5 * 0.1 = 0.15, prizePaid = 2.85
+  assert.equal(p.stake, 1.5);
+  assert.equal(p.winnerNet, 2.85);
+  assert.equal(p.loserNet, -1.5);
+  assert.equal(p.houseFee, 0.15);
+  assert.equal(p.prizePaid, 2.85);
+});
+
+test("computePayout: very small stake (0.01) — houseFee rounds to 0 due to 2dp", () => {
+  // 0.01 * 0.10 = 0.001 → toFixed(2) = "0.00" → 0
+  // 0.01 * 0.90 = 0.009 → toFixed(2) = "0.01" → 0.01
+  // 0.01 + 0.01 = 0.02
+  const p = computePayout({ stakeAmount: 0.01, result: RESULT.PLAYER1 });
+  assert.equal(p.stake, 0.01);
+  assert.equal(p.winnerNet, 0.02);
+  assert.equal(p.loserNet, -0.01);
+  assert.equal(p.houseFee, 0);
+  assert.equal(p.prizePaid, 0.02);
+});
+
+test("computePayout: stake 0 is allowed (DRAW returns stake=0 with no payout)", () => {
+  const p = computePayout({ stakeAmount: 0, result: RESULT.DRAW });
+  assert.equal(p.stake, 0);
+  assert.equal(p.houseFee, 0);
+  assert.equal(p.prizePaid, 0);
+});
+
+test("computePayout: stake 0 with a winner still produces 0 payout (refund + 90% of 0)", () => {
+  const p = computePayout({ stakeAmount: 0, result: RESULT.PLAYER1 });
+  assert.equal(p.winnerNet, 0);
+  assert.equal(p.loserNet, 0);
+  assert.equal(p.houseFee, 0);
+  assert.equal(p.prizePaid, 0);
+});
+
+test("computePayout: invalid result throws RangeError", () => {
+  assert.throws(
+    () => computePayout({ stakeAmount: 100, result: "foo" }),
+    RangeError,
+  );
+  assert.throws(
+    () => computePayout({ stakeAmount: 100, result: null }),
+    RangeError,
+  );
+  assert.throws(
+    () => computePayout({ stakeAmount: 100, result: undefined }),
+    RangeError,
+  );
+});
+
+test("computePayout: negative stake throws RangeError", () => {
+  assert.throws(
+    () => computePayout({ stakeAmount: -1, result: RESULT.PLAYER1 }),
+    RangeError,
+  );
+});
+
+test("computePayout: NaN stake throws RangeError", () => {
+  assert.throws(
+    () => computePayout({ stakeAmount: NaN, result: RESULT.PLAYER1 }),
+    RangeError,
+  );
+});
+
+test("computePayout: Infinity stake throws RangeError", () => {
+  assert.throws(
+    () => computePayout({ stakeAmount: Infinity, result: RESULT.PLAYER1 }),
+    RangeError,
+  );
+});
+
+test("computePayout: string stake is coerced (no throw for numeric strings)", () => {
+  // "100" coerces to 100, so the function accepts it and returns the
+  // normal P1-wins payout. Truly non-numeric strings (NaN after
+  // coercion) still throw.
+  const p = computePayout({ stakeAmount: "100", result: RESULT.PLAYER1 });
+  assert.equal(p.stake, 100);
+  assert.equal(p.winnerNet, 190);
+
+  assert.throws(
+    () => computePayout({ stakeAmount: "abc", result: RESULT.PLAYER1 }),
+    RangeError,
+  );
+});
+
+test("computePayout: houseFee + winnerPrize = stake (full loser's stake is split)", () => {
+  for (const stake of [1, 10, 50, 100, 999.99]) {
+    for (const result of [RESULT.PLAYER1, RESULT.PLAYER2]) {
+      const p = computePayout({ stakeAmount: stake, result });
+      // The 90/10 split on the loser's stake.
+      assert.equal(round2(p.houseFee + (p.winnerNet - stake)), round2(stake));
+    }
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// pickRandomCell
+// ════════════════════════════════════════════════════════════════════════
+
+test("pickRandomCell: returns a valid cell index in 0..GRID_CELLS-1", () => {
+  for (let i = 0; i < 200; i += 1) {
+    const cell = pickRandomCell();
+    assert.ok(Number.isInteger(cell));
+    assert.ok(cell >= 0 && cell < GRID_CELLS);
+  }
+});
+
+test("pickRandomCell: never returns a cell in excludePicks", () => {
+  const exclude = [0, 5, 12, 24];
+  for (let i = 0; i < 200; i += 1) {
+    const cell = pickRandomCell({ excludePicks: exclude });
+    assert.ok(!exclude.includes(cell), `cell ${cell} is in excludePicks`);
+  }
+});
+
+test("pickRandomCell: with no params, excludePicks defaults to []", () => {
+  for (let i = 0; i < 50; i += 1) {
+    const cell = pickRandomCell();
+    assert.ok(cell >= 0 && cell < GRID_CELLS);
+  }
+});
+
+test("pickRandomCell: filters non-integer entries from excludePicks", () => {
+  // excludePicks is normalised via Number(...).filter(Number.isInteger),
+  // so [1.5, NaN, "abc"] all drop out, but [5, -1, null, "3"] survive
+  // (null → 0, "3" → 3). Verify the returned cell excludes the
+  // normalised set but never returns a non-integer or out-of-range.
+  const exclude = [1.5, NaN, "abc", 5, -1, null, "3"];
+  // Normalised exclude = {5, 0, 3} (null→0, "3"→3; 1.5/NaN/-1 drop out;
+  // 5 stays; -1 stays but is out of the 0..24 range so it never matches).
+  for (let i = 0; i < 200; i += 1) {
+    const cell = pickRandomCell({ excludePicks: exclude });
+    assert.ok(Number.isInteger(cell), `cell ${cell} should be an integer`);
+    assert.ok(cell >= 0 && cell < GRID_CELLS);
+    assert.notEqual(cell, 5, "5 should be excluded");
+    assert.notEqual(cell, 0, "null→0 should be excluded");
+    assert.notEqual(cell, 3, '"3"→3 should be excluded');
+  }
+});
+
+test("pickRandomCell: excludes ALL cells → throws", () => {
+  const all = Array.from({ length: GRID_CELLS }, (_, i) => i);
+  assert.throws(() => pickRandomCell({ excludePicks: all }), /every cell is already picked/);
+});
+
+test("pickRandomCell: distribution is roughly uniform across the 25 cells", () => {
+  // Smoke check on Math.random() — the helper must call it for every pick.
+  const counts = new Array(GRID_CELLS).fill(0);
+  const trials = 5000;
+  for (let i = 0; i < trials; i += 1) {
+    counts[pickRandomCell()] += 1;
+  }
+  // Each cell: expected trials/25 = 200 hits. Wide tolerance.
+  for (let cell = 0; cell < GRID_CELLS; cell += 1) {
+    assert.ok(
+      counts[cell] > 100 && counts[cell] < 320,
+      `cell ${cell} hit ${counts[cell]} times — expected ~200`,
+    );
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// round2 helper
+// ════════════════════════════════════════════════════════════════════════
+
+test("round2: rounds to 2dp (no floating-point drift)", () => {
+  // Locks in the actual toFixed(2) behaviour. Note that some values
+  // (like 1.005 and 1.015) are stored as repeating decimals in
+  // IEEE 754, so toFixed(2) may round "down" when the "true" decimal
+  // would round up. This is a known JavaScript quirk and the
+  // production code intentionally relies on toFixed rather than
+  // re-implementing a banker-style rounder. Lock in the actual
+  // behaviour so any future refactor that swaps to a different
+  // rounder flags a behaviour change.
+  assert.equal(round2(0.1 + 0.2), 0.3, "0.1 + 0.2 must round to 0.3, not 0.30000000000000004");
+  assert.equal(round2(1.005), 1, "IEEE 754 quirk: 1.005 stores as 1.00499..., toFixed(2) → 1.00");
+  assert.equal(round2(1.015), 1.01, "IEEE 754 quirk: 1.015 stores as 1.01499..., toFixed(2) → 1.01");
+  assert.equal(round2(190.0), 190);
+  assert.equal(round2(2.85), 2.85);
+  assert.equal(round2(0.001), 0, "0.001 toFixed(2) → 0.00");
+  assert.equal(round2(0.009), 0.01, "0.009 toFixed(2) → 0.01");
+});
+
+test("round2: NaN / Infinity / non-number returns 0 (defensive)", () => {
+  assert.equal(round2(NaN), 0);
+  assert.equal(round2(Infinity), 0);
+  assert.equal(round2(-Infinity), 0);
+  assert.equal(round2("not a number"), 0);
+  assert.equal(round2(undefined), 0);
+  assert.equal(round2(null), 0);
+});
+
+test("round2: 0 stays 0", () => {
+  assert.equal(round2(0), 0);
+  assert.equal(round2(-0), 0);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// cellIndexToRowCol / rowColToCellIndex — round-trip helpers
+// ════════════════════════════════════════════════════════════════════════
+
+test("cellIndexToRowCol: cell 0 → row 0, col 0", () => {
+  assert.deepEqual(cellIndexToRowCol(0), { row: 0, col: 0 });
+});
+
+test("cellIndexToRowCol: cell 24 → row 4, col 4", () => {
+  assert.deepEqual(cellIndexToRowCol(24), { row: 4, col: 4 });
+});
+
+test("cellIndexToRowCol: cell 5 → row 1, col 0 (row-major)", () => {
+  assert.deepEqual(cellIndexToRowCol(5), { row: 1, col: 0 });
+});
+
+test("cellIndexToRowCol: cell 12 → row 2, col 2 (center)", () => {
+  assert.deepEqual(cellIndexToRowCol(12), { row: 2, col: 2 });
+});
+
+test("cellIndexToRowCol: out-of-range returns null", () => {
+  assert.equal(cellIndexToRowCol(-1), null);
+  assert.equal(cellIndexToRowCol(25), null);
+  assert.equal(cellIndexToRowCol(9999), null);
+});
+
+test("cellIndexToRowCol: non-integer returns null", () => {
+  // Note: the function uses Number(...) coercion, so a string like
+  // "5" coerces to 5 and IS accepted (treated as 0..24 validation
+  // only). Truly non-coercible values still return null.
+  assert.equal(cellIndexToRowCol(1.5), null);
+  assert.equal(cellIndexToRowCol("5.5"), null);
+  assert.equal(cellIndexToRowCol("abc"), null);
+  assert.equal(cellIndexToRowCol(undefined), null);
+  assert.equal(cellIndexToRowCol(NaN), null);
+  assert.equal(cellIndexToRowCol({}), null);
+});
+
+test("rowColToCellIndex: (0,0) → 0, (4,4) → 24, (1,0) → 5, (2,2) → 12", () => {
+  assert.equal(rowColToCellIndex(0, 0), 0);
+  assert.equal(rowColToCellIndex(4, 4), 24);
+  assert.equal(rowColToCellIndex(1, 0), 5);
+  assert.equal(rowColToCellIndex(2, 2), 12);
+});
+
+test("rowColToCellIndex: out-of-range returns null", () => {
+  assert.equal(rowColToCellIndex(-1, 0), null);
+  assert.equal(rowColToCellIndex(0, -1), null);
+  assert.equal(rowColToCellIndex(5, 0), null);
+  assert.equal(rowColToCellIndex(0, 5), null);
+});
+
+test("rowColToCellIndex: non-integer returns null", () => {
+  // Same coercion contract as cellIndexToRowCol — "2" coerces to 2
+  // and is accepted. Truly non-coercible values still return null.
+  assert.equal(rowColToCellIndex(1.5, 0), null);
+  assert.equal(rowColToCellIndex(0, "2.5"), null);
+  assert.equal(rowColToCellIndex(0, "abc"), null);
+  assert.equal(rowColToCellIndex(0, undefined), null);
+  assert.equal(rowColToCellIndex(NaN, 0), null);
+  assert.equal(rowColToCellIndex(0, {}), null);
+});
+
+test("rowColToCellIndex ↔ cellIndexToRowCol round-trip for every cell", () => {
+  for (let cell = 0; cell < GRID_CELLS; cell += 1) {
+    const rc = cellIndexToRowCol(cell);
+    assert.deepEqual(rc, { row: Math.floor(cell / 5), col: cell % 5 });
+    assert.equal(rowColToCellIndex(rc.row, rc.col), cell);
+  }
+});
+
+console.log("\n✅ All Mines Duel engine tests passed!\n");

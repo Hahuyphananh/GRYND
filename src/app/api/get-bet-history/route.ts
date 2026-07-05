@@ -28,6 +28,7 @@ import {
   diceFlushRooms,
   diceFlushPlayers,
   clickerGames,
+  minesPvpMatches,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 
@@ -75,6 +76,7 @@ export async function GET() {
       farkleRows,
       diceFlushRows,
       clickerRows,
+      minesPvpRows,
     ] = await Promise.all([
       db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)),
       db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid)),
@@ -194,6 +196,18 @@ export async function GET() {
         .where(eq(diceFlushPlayers.userId, clerkId)),
       // 🖱️ GoonBet Clicker (solo game, clerkId-based)
       db.select().from(clickerGames).where(eq(clickerGames.userId, clerkId)),
+      // 💣 Mines Duel (PvP, clerkId-based, best-of-1 — only finished
+      // matches contribute a win/loss; cancelled / in-flight matches
+      // are excluded so the history never shows a misleading entry).
+      db
+        .select()
+        .from(minesPvpMatches)
+        .where(
+          or(
+            eq(minesPvpMatches.player1Id, clerkId),
+            eq(minesPvpMatches.player2Id, clerkId),
+          ),
+        ),
     ]);
 
     const formatBet = (type, bet) => {
@@ -474,6 +488,43 @@ export async function GET() {
       };
     });
 
+    // 💣 Mines Duel — only finished matches count. Maps the
+    // server-side `result` enum ('player1' | 'player2' | 'draw')
+    // plus `winner_id` (null on draw) to a UI-friendly
+    // won/lost/draw string. The 90/10 split means a winner's
+    // payout is `stake * 1.9` and a loser's payout is 0; a draw
+    // refunds both stakes (payout = stake, tokenDiff = 0). Named
+    // `outcome` instead of `result` to avoid shadowing the server
+    // row's `result` field in this scope (matches the style of
+    // the dice/pool/connectFour formatters which don't shadow).
+    const minesPvpFormatted = minesPvpRows
+      .map((g) => {
+        if (g.status !== "finished") return null;
+        const amount = Number(g.stakeAmount ?? 0);
+        const payout = Number(g.prizePaid ?? 0);
+        const isDraw = g.result === "draw" || !g.winnerId;
+        const outcome = isDraw
+          ? "draw"
+          : g.winnerId === clerkId
+            ? "won"
+            : "lost";
+        const tokenDiff =
+          outcome === "won"
+            ? payout - amount
+            : outcome === "lost"
+              ? -amount
+              : 0;
+        return {
+          type: "💣 Mines Duel",
+          date: g.endedAt || g.createdAt || new Date().toISOString(),
+          amount,
+          payout,
+          result: outcome,
+          tokenDiff,
+        };
+      })
+      .filter(Boolean);
+
     const allBets = [
       ...roulette.map((b) => formatBet("🎡 Roulette", b)),
       ...blackjack.map((b) => formatBet("🃏 Blackjack", b)),
@@ -497,6 +548,7 @@ export async function GET() {
       ...farkleFormatted,
       ...diceFlushFormatted,
       ...clickerFormatted,
+      ...minesPvpFormatted,
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     // ⚠ Cumulative stats (totalWagered, weeklyWagered, currentStreak, etc.)

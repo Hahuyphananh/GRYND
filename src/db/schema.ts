@@ -1697,3 +1697,193 @@ export const blackjackPvpRoundsRelations = relations(
     }),
   }),
 );
+
+// MINES PvP MATCHES — server-authoritative two-player "Mines Duel".
+// Both players on the same 5×5 board; the HOST picks the mine count
+// at lobby creation. The server randomizes turn order at match
+// creation (when player2 joins), then each player gets a 20s window
+// to pick a single cell. The match resolves after both picks.
+//
+// Match flow:
+//   waiting → ready → p1_turn → p2_turn → finished
+//
+// Resolution rules (per user spec):
+//   P1 mine + P2 mine → P2 loses (P1 mined first)
+//   P1 mine + P2 safe → P1 loses
+//   P1 safe + P2 mine → P2 loses
+//   P1 safe + P2 safe → DRAW (full refund, no house fee)
+//
+// Payout:
+//   Winner: own stake back + 90% of loser's stake
+//   Loser:   loses entire stake
+//   House:   10% rake on loser's stake only
+//   Draw:    both refunded, no rake
+//
+// Schema conventions match roulette_pvp_matches / blackjack_pvp_matches:
+//   * clerkIds stored as varchar(255), no FK to `users`
+//   * stake/financials as numeric(10, 2)
+//   * pgEnum for `status` keeps the 6 match states strongly typed
+//   * `mines_pvp_rounds` cascades from `mines_pvp_matches`
+//
+// The `board` jsonb column is SERVER-ONLY state. The match-state API
+// route scrubs it from /status responses while the match is in
+// {waiting, ready, p1_turn, p2_turn} so neither player can inspect
+// the mine positions during the match. Once the match reaches
+// `finished` the board is exposed to both clients for replay.
+export const minesPvpStatusEnum = pgEnum("mines_pvp_status", [
+  "waiting",
+  "ready",
+  "p1_turn",
+  "p2_turn",
+  "finished",
+  "cancelled",
+]);
+
+export const minesPvpMatches = pgTable(
+  "mines_pvp_matches",
+  {
+    id: serial("id").primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
+      .notNull(),
+    status: minesPvpStatusEnum("status").notNull().default("waiting"),
+    // Host-chosen mine count at lobby creation (1-24, since 25 would
+    // be 100% mines and an instant loss for every pick).
+    minesCount: integer("mines_count").notNull(),
+    // 5×5 board — server-only state. Shape:
+    //   { "size": 5, "mines": [3, 7, 12] }
+    // where `mines.length === mines_count` and each entry is a unique
+    // 0-24 row-major cell index. Scrubbed from /status responses
+    // while the match is in {waiting, ready, p1_turn, p2_turn}.
+    board: jsonb("board")
+      .notNull()
+      .default(sql`'{"size":5,"mines":[]}'::jsonb`),
+    // Server-decided at match creation (when player2 joins). Either
+    // equals `player1Id` or `player2Id`. Null until both players
+    // have joined.
+    firstPlayerId: varchar("first_player_id", { length: 255 }),
+    // clerkId of the player currently being asked to pick. Null
+    // when status is in {waiting, ready, finished, cancelled}.
+    currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
+    // 0-24 row-major cell index the player picked. Null until the
+    // player picks (or gets auto-picked at deadline).
+    p1Pick: integer("p1_pick"),
+    p2Pick: integer("p2_pick"),
+    // Whether the player's pick landed on a mine. Computed at pick
+    // time and persisted so post-match replays don't have to walk
+    // `board` to render the result.
+    p1PickIsMine: boolean("p1_pick_is_mine"),
+    p2PickIsMine: boolean("p2_pick_is_mine"),
+    // True when the server auto-picked because round_deadline
+    // elapsed before the player acted. Persisted for history /
+    // replay so spectators can see when a player went AFK.
+    p1AutoPicked: boolean("p1_auto_picked").notNull().default(false),
+    p2AutoPicked: boolean("p2_auto_picked").notNull().default(false),
+    p1PickedAt: timestamp("p1_picked_at"),
+    p2PickedAt: timestamp("p2_picked_at"),
+    // Pick-window deadline. 20s per spec. The server's
+    // `fetchMatchWithAutoResolve` mirrors blackjack-pvp /
+    // roulette-pvp: when this timestamp elapses and the active
+    // player hasn't picked, auto-pick a random cell.
+    roundDeadline: timestamp("round_deadline"),
+    // 20 seconds default per spec. Stored on the row for parity
+    // with roulette-pvp.round_timer_seconds and admin-tweakable
+    // without code changes.
+    roundTimerSeconds: integer("round_timer_seconds")
+      .notNull()
+      .default(20),
+    // Final match bookkeeping.
+    winnerId: varchar("winner_id", { length: 255 }),
+    result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Lobby listing — `status='waiting'` AND player2_id IS NULL.
+    statusIdx: index("mines_pvp_status_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+    player1Idx: index("mines_pvp_player1_idx").on(
+      table.player1Id,
+      table.createdAt,
+    ),
+    player2Idx: index("mines_pvp_player2_idx").on(
+      table.player2Id,
+      table.createdAt,
+    ),
+    // Stake matchmaking — finding a waiting lobby whose stake
+    // matches the joiner's request. `stake + status='waiting' +
+    // player2 IS NULL` is the canonical "join any open match of
+    // this stake" query.
+    stakeIdx: index("mines_pvp_stake_open_idx").on(
+      table.stakeAmount,
+      table.status,
+    ),
+  }),
+);
+
+// Per-match final snapshot. Cascade-deleted with the parent match so
+// history stays tidy when a match is purged. `round_winner` mirrors
+// the match's `result` column for parity with the other PvP systems
+// (e.g., coin_flip best-of-3 also persists `round_winner` even
+// though it only ever has one row per match).
+export const minesPvpRounds = pgTable(
+  "mines_pvp_rounds",
+  {
+    id: serial("id").primaryKey(),
+    matchId: integer("match_id")
+      .notNull()
+      .references(() => minesPvpMatches.id, { onDelete: "cascade" }),
+    roundNumber: integer("round_number").notNull().default(1),
+    p1Pick: integer("p1_pick"),
+    p2Pick: integer("p2_pick"),
+    p1PickIsMine: boolean("p1_pick_is_mine"),
+    p2PickIsMine: boolean("p2_pick_is_mine"),
+    p1AutoPicked: boolean("p1_auto_picked").notNull().default(false),
+    p2AutoPicked: boolean("p2_auto_picked").notNull().default(false),
+    // Final board state snapshotted at resolution so post-match
+    // replays can render the full mine layout without having to
+    // walk the live match row.
+    boardSnapshot: jsonb("board_snapshot")
+      .notNull()
+      .default(sql`'{"size":5,"mines":[]}'::jsonb`),
+    // 'player1' | 'player2' | 'draw' | null
+    roundWinner: varchar("round_winner", { length: 10 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Lookup is always "all rounds of match X in order" so a
+    // composite index on (match_id, round_number) is the right
+    // shape (mirrors roulette_pvp_rounds_match_round_idx).
+    matchRoundIdx: index("mines_pvp_rounds_match_round_idx").on(
+      table.matchId,
+      table.roundNumber,
+    ),
+  }),
+);
+
+export const minesPvpMatchesRelations = relations(
+  minesPvpMatches,
+  ({ many }) => ({
+    rounds: many(minesPvpRounds),
+  }),
+);
+
+export const minesPvpRoundsRelations = relations(
+  minesPvpRounds,
+  ({ one }) => ({
+    match: one(minesPvpMatches, {
+      fields: [minesPvpRounds.matchId],
+      references: [minesPvpMatches.id],
+    }),
+  }),
+);

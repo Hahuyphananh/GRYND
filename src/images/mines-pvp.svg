@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 225" fill="none" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#001933"/>
+      <stop offset="55%"  stop-color="#00264d"/>
+      <stop offset="100%" stop-color="#000814"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#0e7490"/>
+    </linearGradient>
+    <linearGradient id="fuchsia" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#d946ef"/>
+      <stop offset="100%" stop-color="#86198f"/>
+    </linearGradient>
+    <linearGradient id="bomb" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#1f2937"/>
+      <stop offset="100%" stop-color="#0b0f17"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="60%">
+      <stop offset="0%"  stop-color="#22d3ee" stop-opacity="0.18"/>
+      <stop offset="60%" stop-color="#d946ef" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#0b1f3f" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="neonGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Marine blue backdrop. -->
+  <rect width="400" height="225" fill="url(#bg)"/>
+
+  <!-- Centered halo. -->
+  <rect width="400" height="225" fill="url(#halo)"/>
+
+  <!-- 5×5 grid: 30px cells, 5px gap → 5*30 + 4*5 = 170.
+       Centered: x = (400-170)/2 = 115, y = (225-170)/2 = 27.5. -->
+  <g transform="translate(115 27.5)" filter="url(#neonGlow)">
+    <!-- Row 0 -->
+    <rect x="0"   y="0"  width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="35"  y="0"  width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="70"  y="0"  width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="105" y="0"  width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="140" y="0"  width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <!-- Row 1 — P1 picked column 3 (cyan gem). -->
+    <rect x="0"   y="35" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="35"  y="35" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="70"  y="35" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="105" y="35" width="30" height="30" rx="3" fill="url(#cyan)" stroke="#67e8f9" stroke-width="0.9"/>
+    <text x="120" y="56" text-anchor="middle" font-size="18" fill="#00142b" font-weight="900">💎</text>
+    <rect x="140" y="35" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <!-- Row 2 -->
+    <rect x="0"   y="70" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="35"  y="70" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="70"  y="70" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="105" y="70" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="140" y="70" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <!-- Row 3 — mine at column 1 + P2 picked column 4 (fuchsia gem). -->
+    <rect x="0"   y="105" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="35"  y="105" width="30" height="30" rx="3" fill="url(#bomb)" stroke="#d946ef" stroke-width="0.9"/>
+    <text x="50"  y="126" text-anchor="middle" font-size="18" fill="#f0abfc" font-weight="900">💣</text>
+    <rect x="70"  y="105" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="105" y="105" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="140" y="105" width="30" height="30" rx="3" fill="url(#fuchsia)" stroke="#f0abfc" stroke-width="0.9"/>
+    <text x="155" y="126" text-anchor="middle" font-size="18" fill="#1a0026" font-weight="900">💎</text>
+    <!-- Row 4 -->
+    <rect x="0"   y="140" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="35"  y="140" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="70"  y="140" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="105" y="140" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+    <rect x="140" y="140" width="30" height="30" rx="3" fill="#082345" stroke="#22d3ee" stroke-width="0.7" stroke-opacity="0.7"/>
+  </g>
+</svg>
