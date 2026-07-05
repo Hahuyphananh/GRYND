@@ -8,7 +8,6 @@ import Img1 from "../../images/roulette.png";
 import Img2 from "../../images/blackjack.jpg";
 import Img3 from "../../images/poker.jpg";
 import Img4 from "../../images/plinko.svg";
-import Img5 from "../../images/mines.svg";
 import Img6 from "../../images/crash.svg";
 import Img7 from "../../images/chess.svg";
 import Img8 from "../../images/slots.jpg";
@@ -27,6 +26,7 @@ import Img19 from "../../images/dice-flush.svg";
 import Img20 from "../../images/farkle.svg";
 import Img22 from "../../images/precision.svg";
 import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
+import ImgMinesPvp from "../../images/mines-pvp.svg";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -70,11 +70,12 @@ function MainComponent() {
       popular: true,
     },
     {
-      name: "Mines",
-      href: "/casino/mines",
-      leaderboardKey: "mines",
-      image: Img5,
-      descriptionKey: "games.mines_desc",
+      name: "Mines Duel",
+      href: "/casino/mines-pvp",
+      leaderboardKey: "mines-pvp",
+      image: ImgMinesPvp,
+      descriptionKey: "games.mines_pvp_desc",
+      nameKey: "games.mines_pvp_name",
       popular: true,
     },
 
@@ -253,6 +254,7 @@ function MainComponent() {
   ]);
 
   const newestOrder = [
+    "mines-pvp",
     "dots-and-boxes",
     "precision",
     "farkle",
@@ -273,7 +275,6 @@ function MainComponent() {
     "crash",
     "poker",
     "plinko",
-    "mines",
     "blackjack",
     "roulette",
   ];
