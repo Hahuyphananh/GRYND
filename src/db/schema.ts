@@ -1887,3 +1887,227 @@ export const minesPvpRoundsRelations = relations(
     }),
   }),
 );
+
+// PLINKO PvP MATCHES — server-authoritative two-player "Plinko Duel".
+// Both players launch 3 balls on the SAME shared board. The player
+// with the higher cumulative base-points across all 3 balls wins
+// the match. Per ball, each player commits (start_x, power, angle)
+// inputs; the server-side physics engine simulates both balls and
+// decides the per-ball outcome (bucket resolution + fall-out
+// detection).
+//
+// Match flow:
+//   waiting → ready → ball_1 → ball_2 → ball_3 → finished
+//   (waiting/ready/active → cancelled for AFK cancels)
+//
+// Per-ball scoring (bucket table from `lib/plinko-pvp/constants.js`):
+//   Far left safe  (x ∈ [0,100))   → 100 points
+//   Left precision (x ∈ [100,200)) → 140 points
+//   Center trap    (x ∈ [200,300)) →  40 points
+//   Right precision(x ∈ [300,400)) → 140 points
+//   Far right safe (x ∈ [400,500)) → 100 points
+//   FELL OUT (x < 0 || x > 500 before y reaches bucket row) → 0 points
+//
+// Payout (90/10 split, mirrors mines-pvp / roulette-pvp):
+//   Winner: own stake back + 90% of loser's stake (1.9× net)
+//   Loser:   loses entire stake
+//   House:   10% rake on loser's stake only
+//   Tied:    both refunded, no rake
+//
+// Schema conventions identical to other PvP tables:
+//   * clerkIds stored as varchar(255), no FK to `users`
+//   * stake/financials as numeric(10, 2)
+//   * pgEnum for `status` keeps the 7 match states strongly typed
+//   * `plinko_pvp_rounds` cascades from `plinko_pvp_matches`
+//
+// Live transient state per ball (p1_current_inputs / p2_current_inputs)
+// lives server-side on the match row so turn-mutations are atomic.
+// The match state API scrubs the OPPONENT's current_inputs from the
+// /status response until status='finished'. Treat
+// `p1_current_inputs IS NOT NULL` as "this player has submitted for
+// the current ball"; reset to NULL whenever status advances to the
+// next ball.
+//
+// `plinko_pvp_rounds` is a strict HISTORY snapshot — written only
+// after a ball resolves. ballNumber ∈ {1, 2, 3}. The per-ball
+// `ball_winner` is 'player1' | 'player2' | 'draw'.
+export const plinkoPvpStatusEnum = pgEnum("plinko_pvp_status", [
+  "waiting",
+  "ready",
+  "ball_1",
+  "ball_2",
+  "ball_3",
+  "finished",
+  "cancelled",
+]);
+
+// Per-ball outcome (who scored more points for this ball, or tie).
+// Distinct from the match-level `winner_id` (which is a clerkId).
+// Stored on each `plinko_pvp_rounds` row at resolution time.
+export const plinkoPvpBallOutcomeEnum = pgEnum("plinko_pvp_ball_outcome", [
+  "p1",
+  "p2",
+  "tie",
+]);
+
+export const plinkoPvpMatches = pgTable(
+  "plinko_pvp_matches",
+  {
+    id: serial("id").primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
+    status: plinkoPvpStatusEnum("status").notNull().default("waiting"),
+    // 1 / 2 / 3 — which ball the match is collecting inputs for
+    // right now. Stamped at match creation and advance+stamp at
+    // each ball resolution.
+    currentBall: integer("current_ball").notNull().default(1),
+    // 3-ball cumulative base-points sums. Live, advanced at each
+    // ball resolution. Compared at match end to decide winner.
+    p1Score: integer("p1_score").notNull().default(0),
+    p2Score: integer("p2_score").notNull().default(0),
+    // Live per-ball launch inputs — server-only state. Treat
+    // `IS NOT NULL` as "this player has submitted for the current
+    // ball". Reset to NULL when status advances to the next ball
+    // so the column doubles as a "submitted" boolean.
+    p1CurrentInputs: jsonb("p1_current_inputs").default(sql`NULL`),
+    p2CurrentInputs: jsonb("p2_current_inputs").default(sql`NULL`),
+    // Per-ball decision-window deadline. The match-flow constant:
+    // `round_deadline` is computed as `now() + round_timer_seconds`
+    // whenever a new ball window opens. Surfaced as a column so
+    // future admin tooling can tweak per-match pacing without
+    // code changes (mirrors mines-pvp / roulette-pvp /
+    // blackjack-pvp).
+    roundDeadline: timestamp("round_deadline"),
+    roundTimerSeconds: integer("round_timer_seconds")
+      .notNull()
+      .default(20),
+    // Final match bookkeeping.
+    winnerId: varchar("winner_id", { length: 255 }),
+    result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Lobby listing — `status='waiting'` AND player2_id IS NULL.
+    statusIdx: index("plinko_pvp_status_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+    // Per-player history (matches the mines-pvp / blackjack-pvp
+    // / roulette-pvp convention).
+    player1Idx: index("plinko_pvp_player1_idx").on(
+      table.player1Id,
+      table.createdAt,
+    ),
+    player2Idx: index("plinko_pvp_player2_idx").on(
+      table.player2Id,
+      table.createdAt,
+    ),
+    // Stake matchmaking — finding a waiting lobby whose stake
+    // matches the joiner's request. Same shape as the other PvP
+    // stake_open_idx columns.
+    stakeIdx: index("plinko_pvp_stake_open_idx").on(
+      table.stakeAmount,
+      table.status,
+    ),
+  }),
+);
+
+// One row per ball of a Plinko Duel match (3 rows per match).
+// Cascade-deleted with the parent match so history stays tidy.
+// Inputs/result jsonb shapes (kept in sync with the physics
+// engine contract in `lib/plinko-pvp/physics.js`):
+//   inputs:  { start_x, power, angle, autoLaunched }
+//   result:  { bucket: 0..4|null, points: 0|40|100|140,
+//              fellOut, finalX, finalY, path: [{ x, y }, ...] }
+export const plinkoPvpRounds = pgTable(
+  "plinko_pvp_rounds",
+  {
+    id: serial("id").primaryKey(),
+    matchId: integer("match_id")
+      .notNull()
+      .references(() => plinkoPvpMatches.id, { onDelete: "cascade" }),
+    // 1 / 2 / 3. Composite index on (match_id, ball_number) is
+    // the canonical lookup so per-ball history reads stay O(1).
+    ballNumber: integer("ball_number").notNull(),
+    // Inputs in their pre-simulation form. Stored exactly as the
+    // player committed them so replay can show the original
+    // inputs even after a future feature changes bucketing rules.
+    player1Inputs: jsonb("player1_inputs")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    player2Inputs: jsonb("player2_inputs")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    // Per-ball result snapshots — bucket index, base points,
+    // fall-out flag, final x/y, and full animation path. The
+    // `path` array lets the client re-play the ball drop
+    // identically without re-running the physics simulation.
+    player1Result: jsonb("player1_result")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    player2Result: jsonb("player2_result")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    // True when the server auto-launched because round_deadline
+    // elapsed before the player committed. Persisted for history
+    // and replay so a spectator can see when a player went AFK.
+    player1AutoLaunched: boolean("player1_auto_launched")
+      .notNull()
+      .default(false),
+    player2AutoLaunched: boolean("player2_auto_launched")
+      .notNull()
+      .default(false),
+    // Per-ball base-points awarded. Same values as
+    // player{1,2}_result.points at resolution time, exposed as
+    // a column so aggregate-totals queries can sum without
+    // unpacking jsonb.
+    ballPointsPlayer1: integer("ball_points_player1")
+      .notNull()
+      .default(0),
+    ballPointsPlayer2: integer("ball_points_player2")
+      .notNull()
+      .default(0),
+    // Per-ball outcome ('player1' | 'player2' | 'draw') — null
+    // while the ball is in flight. NOTE: match-level `result`
+    // is the AGGREGATE across all 3 balls, so per-ball `draw`
+    // here does NOT mean the whole match is a tie.
+    ballOutcome: plinkoPvpBallOutcomeEnum("ball_outcome"), // 'p1' | 'p2' | 'tie' | null
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    matchBallIdx: index("plinko_pvp_rounds_match_ball_idx").on(
+      table.matchId,
+      table.ballNumber,
+    ),
+  }),
+);
+
+// Drizzle relations — declared after the tables so all symbols
+// are bound before `relations(...)` runs. Relations are read at
+// query time, not module-load, so the position is purely about
+// lexical ordering for the TS compiler.
+export const plinkoPvpMatchesRelations = relations(
+  plinkoPvpMatches,
+  ({ many }) => ({
+    rounds: many(plinkoPvpRounds),
+  }),
+);
+
+export const plinkoPvpRoundsRelations = relations(
+  plinkoPvpRounds,
+  ({ one }) => ({
+    match: one(plinkoPvpMatches, {
+      fields: [plinkoPvpRounds.matchId],
+      references: [plinkoPvpMatches.id],
+    }),
+  }),
+);
