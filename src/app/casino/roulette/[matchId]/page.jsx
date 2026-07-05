@@ -49,6 +49,7 @@ import {
 import {
   MATCH_STATUS,
   STARTING_POINTS,
+  sumBetAmounts,
 } from "../../../../lib/roulette-pvp/constants";
 import {
   ROULETTE_PVP_LOBBY_ROOM,
@@ -195,6 +196,12 @@ export default function RoulettePvpGamePage({ params }) {
   }, [matchEndedBanner]);
   const lastRoundCountRef = useRef(null);
   const bannerTimerRef = useRef(null);
+  // Last server-stamped spin-result index we saw. Used by the
+  // round-transition-reset effect below to detect "a new round just
+  // began" (server cleared both players' bets but lastSpinResultIndex
+  // is the same as before — i.e., the previous round settled and the
+  // next one is fresh).
+  const lastSeenSpinIndexRef = useRef(null);
 
   // ── Polling match status (server-authoritative) ────────────────
   const fetchStatus = useCallback(async () => {
@@ -630,6 +637,32 @@ export default function RoulettePvpGamePage({ params }) {
     }
   }, [winningNumber]);
 
+  // BUG-FIX ("points/effective balance stale between rounds") ─────
+  // Previously the locally-staged `bets` state carried the previous
+  // round's chips forward into the next round, so the chip selector's
+  // "X pts remaining" calculation would silently deduct those stale
+  // chips against the new round's freshly-credited balance. Detect
+  // "new round just begun" (server cleared both players' bets AND a
+  // spin result is present for the new round) and wipe the local
+  // `bets` so the player starts each round with an empty ladder.
+  // The `lastSeenSpinIndexRef` sentinel suppresses re-runs we already
+  // processed, so this effect is idempotent across re-renders.
+  //
+  // Note: `lastSpinResultIndex === 0` is a valid spin (the wheel's
+  // green zero pocket is ROULETTE_NUMBERS[0]), so the predicate MUST
+  // use a null-check (e.g. `tx != null`) rather than `Boolean(tx)`,
+  // which would silently skip the reset on green-zero spins.
+  useEffect(() => {
+    const tx = match?.lastSpinResultIndex ?? null;
+    if (tx === lastSeenSpinIndexRef.current) return;
+    lastSeenSpinIndexRef.current = tx;
+    const newRoundBegun =
+      tx != null && !match?.player1Bets && !match?.player2Bets;
+    if (newRoundBegun) {
+      setBets({});
+    }
+  }, [match?.lastSpinResultIndex, match?.player1Bets, match?.player2Bets]);
+
   // ── Bet placement (PvP-aware: only allowed when match is bettable
   //    AND you haven't already submitted your bets for this round) ───
   const isPlayer1 = match?.player1Id === user?.id;
@@ -664,6 +697,27 @@ export default function RoulettePvpGamePage({ params }) {
   const pointsRemaining = Math.max(
     0,
     (Number.isFinite(myMatchPoints) ? myMatchPoints : 0) - myTotalBet,
+  );
+
+  // BUG-FIX ("points not updating when betting") ──────────────────
+  // `myCommittedBet` is the sum of the player's server-stored bets
+  // (i.e. what they actually locked in). Mirrors `myTotalBet` but
+  // reads from the server-stored `mySubmittedBets` so the optimistic
+  // points display below updates even before the round resolves
+  // (server still writes `playerOnePoints` / `playerTwoPoints` only
+  // on resolution — this is a CLIENT-ONLY projection until then).
+  const myCommittedBet = useMemo(
+    () => sumBetAmounts(mySubmittedBets),
+    [mySubmittedBets],
+  );
+  // Effective current points: persistent balance minus currently
+  // staged chips (if still placing) OR locked-in chips (if already
+  // submitted). Falls back to the raw server balance when no
+  // staged/locked bets exist.
+  const myEffectivePoints = Math.max(
+    0,
+    (Number.isFinite(myMatchPoints) ? myMatchPoints : 0) -
+      (myBetsAreLocked ? myCommittedBet : myTotalBet),
   );
 
   const placeBet = (target) => {
@@ -986,9 +1040,7 @@ export default function RoulettePvpGamePage({ params }) {
                   First to 2 wins. Sudden death if tied after Round 3.
                 </div>
               </div>
-            )}
-
-          {/* Persistent match-points panel (Prompt 2) */}
+            )}          {/* Persistent match-points panel (Prompt 2) */}
           {match.status !== MATCH_STATUS.WAITING &&
             match.status !== MATCH_STATUS.CANCELLED && (
               <div className="w-full bg-[#001933] border border-[#FFFF33]/30 rounded-xl p-3">
@@ -1003,31 +1055,68 @@ export default function RoulettePvpGamePage({ params }) {
                 <div className="grid grid-cols-2 gap-2 text-center">
                   <div>
                     <div
-                      className={`text-lg font-bold tabular-nums ${
-                        !Number.isFinite(myMatchPoints)
+                      className={`text-xl font-bold tabular-nums transition-colors duration-200 ${
+                        !Number.isFinite(myEffectivePoints)
                           ? "text-white/40"
-                          : myMatchPoints > STARTING_POINTS
+                          : myEffectivePoints > STARTING_POINTS
                             ? "text-green-300"
-                            : myMatchPoints < STARTING_POINTS
+                            : myEffectivePoints < STARTING_POINTS
                               ? "text-red-300"
                               : "text-white/80"
                       }`}
+                      title={
+                        (myCommittedBet > 0 || myTotalBet > 0)
+                          ? `Server balance ${(myMatchPoints || 0).toFixed(
+                              0,
+                            )} − ${(myBetsAreLocked
+                              ? myCommittedBet
+                              : myTotalBet
+                            ).toFixed(0)} pts (${myBetsAreLocked
+                              ? "locked"
+                              : "staged"})`
+                          : "Server-authoritative balance"
+                      }
                     >
-                      {Number.isFinite(myMatchPoints)
-                        ? myMatchPoints.toFixed(0)
+                      {Number.isFinite(myEffectivePoints)
+                        ? myEffectivePoints.toFixed(0)
                         : "—"}
                     </div>
+                    {(myCommittedBet > 0 || myTotalBet > 0) && (
+                      <div
+                        className={`mt-1.5 text-[10px] font-bold inline-flex items-center gap-1 mx-auto px-1.5 py-0.5 rounded-full border ${
+                          myBetsAreLocked
+                            ? "border-green-400/40 bg-green-500/10 text-green-200"
+                            : "border-yellow-300/30 bg-yellow-300/10 text-yellow-200"
+                        }`}
+                      >
+                        <span>
+                          −
+                          {(myBetsAreLocked ? myCommittedBet : myTotalBet).toFixed(
+                            0,
+                          )}
+                        </span>
+                        <span>
+                          {myBetsAreLocked ? "locked" : "staged"}
+                        </span>
+                        {myBetsAreLocked && (
+                          <CheckIcon
+                            className="w-2.5 h-2.5"
+                            title="Bets locked"
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div
-                      className={`text-lg font-bold tabular-nums ${
+                      className={`text-xl font-bold tabular-nums ${
                         !Number.isFinite(oppMatchPoints)
                           ? "text-white/40"
                           : oppMatchPoints > STARTING_POINTS
-                            ? "text-green-300"
-                            : oppMatchPoints < STARTING_POINTS
-                              ? "text-red-300"
-                              : "text-white/80"
+                          ? "text-green-300"
+                          : oppMatchPoints < STARTING_POINTS
+                            ? "text-red-300"
+                            : "text-white/80"
                       }`}
                     >
                       {Number.isFinite(oppMatchPoints)
@@ -1492,15 +1581,56 @@ export default function RoulettePvpGamePage({ params }) {
             </div>
           )}
 
-          {/* Wheel + pointer */}
+          {/* Wheel + pointer.
+              The canvas is deliberately rendered on every
+              non-loading, non-null-match render — i.e. ALWAYS visible,
+              even when the player is between rounds, in FINISHED,
+              or waiting for the opponent to lock in. This is the
+              "keep wheel even when not betting" invariant: the wheel
+              canvas DOM node is never conditionally removed. The
+              status indicator below doubles down on the same promise
+              with an explicit textual cue so the player has strong
+              visual confirmation the wheel is still "live". */}
           <div className="relative mx-auto w-full max-w-[420px] aspect-square">
             <canvas
               ref={canvasRef}
               width={CANVAS_SIZE}
               height={CANVAS_SIZE}
-              className="w-full h-full rounded-full"
+              className="w-full h-full rounded-full ring-1 ring-[#FFFF33]/15 shadow-[0_0_35px_rgba(255,255,51,0.12)]"
               style={{ maxWidth: CANVAS_SIZE, maxHeight: CANVAS_SIZE }}
             />
+          </div>
+          {/* Wheel status indicator. Always visible so the player has
+              a constant textual cue that the wheel is present and
+              active. Shows the spin state, the last spin result (if
+              any), and whether bets are still being accepted. */}
+          <div className="mt-2 text-center">
+            <span className="text-[10px] uppercase tracking-widest text-white/45 inline-flex items-center gap-1.5">
+              {spinning ? (
+                <>
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-300 animate-pulse" />
+                  <span>Spinning…</span>
+                </>
+              ) : Number.isFinite(match?.lastSpinResultIndex) ? (
+                <>
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-300" />
+                  <span>
+                    Last spin{" "}
+                    <b className="text-yellow-200">
+                      {match.lastSpinResult}
+                    </b>
+                    {match.player1Bets || match.player2Bets
+                      ? " · awaiting opponent"
+                      : " · next round open"}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-300 animate-pulse" />
+                  <span>Wheel ready · awaiting first spin</span>
+                </>
+              )}
+            </span>
           </div>
 
           {/* Number grid */}

@@ -14,7 +14,7 @@
 // turn indicator + 20 s countdown + a post-match result screen
 // that reveals the full board + payout breakdown.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -222,12 +222,51 @@ type MatchRow = {
   createdAt: string;
 };
 
+// ── Dynamic-route params arrive async (Promise) on Next.js 15+/16. ─────
+// BUG-FIX ("both players stuck in loading mode when starting a game")
+// ────────────────────────────────────────────────────────
+// The original code synchronously read `params.matchId`. On Next.js 16
+// the `params` prop is a Promise (not a plain object), so
+// `params.matchId` returns `undefined`, and `Number(undefined) === NaN`
+// flipped `fetchStatus` to early-return on its
+// `!Number.isFinite(matchId)` guard without ever reaching its
+// `finally { setLoading(false) }` block — leaving `loading=true`
+// forever once both players navigated to the match view. The fix
+// below mirrors the roulette + blackjack match views: unwrap the
+// Promise with React's `use()`, store a nullable `matchId`, and let
+// the existing `if (!match)` render branch catch the genuinely
+// malformed URLs (e.g. /casino/mines-pvp/not-a-number) instead of an
+// eternal "Loading match…" spinner. The fetchStatus early-returns
+// in change #3 below also flip `setLoading(false)` so the page can
+// gracefully fall through to the "Match not found" panel.
 export default function MinesPvpMatchPage({
   params,
 }: {
-  params: { matchId: string };
+  params: Promise<{ matchId: string }>;
 }) {
-  const matchId = Number(params.matchId);
+  // Memoize a stable Promise wrapping the raw `params` prop so `use()`
+  // is callable unconditionally on every render (React rules-of-
+  // hooks). `Promise.resolve(p)` flattens when `params` is itself a
+  // thenable; wraps a plain object on older Next.js so the call is
+  // safe there too. The grandparent <Suspense> boundary provided by
+  // the route segment (Next.js default behaviour) covers the brief
+  // suspend.
+  const paramsPromise = useMemo(
+    () => Promise.resolve(params),
+    [params],
+  );
+  const resolvedParams = use(paramsPromise);
+  const rawMatchId =
+    resolvedParams && typeof resolvedParams === "object"
+      ? resolvedParams.matchId
+      : undefined;
+  const numericMatchId = Number(rawMatchId);
+  // `matchId` is `null` until params resolve and on truly malformed
+  // URLs (e.g. /casino/mines-pvp/not-a-number). Used everywhere the
+  // route id is needed; downstream `if (!isValidMatchId)` guards in
+  // fetchStatus / effects keep API calls safe.
+  const matchId = Number.isFinite(numericMatchId) ? numericMatchId : null;
+  const isValidMatchId = matchId !== null;
   const { isSignedIn, user } = useUser();
   const router = useRouter();
   const posthog = usePostHog();
@@ -261,7 +300,20 @@ export default function MinesPvpMatchPage({
   // polling it on the 1.5s tick is enough — no client-side
   // deadline handling.
   const fetchStatus = useCallback(async () => {
-    if (!isSignedIn || !Number.isFinite(matchId)) return;
+    // BUG-FIX: the original guard was `if (!isSignedIn || !Number.isFinite(matchId)) return;`
+    // — that early `return` skipped the `finally { setLoading(false) }`, so any
+    // page mount where `matchId` wasn't a finite number left the user pinned to the
+    // "Loading match…" spinner. We now branch + flip `loading=false` so the
+    // existing `if (!match)` render path renders the "Match not found" panel.
+    if (!isSignedIn) {
+      setLoading(false);
+      return;
+    }
+    if (!isValidMatchId) {
+      setLoading(false);
+      setError("Invalid match link.");
+      return;
+    }
     try {
       const res = await fetch(`/api/mines-pvp/${matchId}/status`, {
         cache: "no-store",
@@ -279,7 +331,7 @@ export default function MinesPvpMatchPage({
     } finally {
       setLoading(false);
     }
-  }, [isSignedIn, matchId]);
+  }, [isSignedIn, isValidMatchId, matchId]);
 
   useEffect(() => {
     fetchStatus();
