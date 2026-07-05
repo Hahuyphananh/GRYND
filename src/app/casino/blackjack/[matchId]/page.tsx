@@ -24,7 +24,7 @@
 //   • No client-side round resolution or winner decision — the
 //     server is authoritative; the page is a thin renderer.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
@@ -177,10 +177,23 @@ const HiddenOppCard: React.FC = () => (
 );
 
 // ── Page ─────────────────────────────────────────────────────────────
+// ── Dynamic-route params arrive async (Promise) on Next.js 15+/16. ─────
+// BUG-FIX ("creating a game auto-redirects back to lobby") ───────────
+// The original code synchronously read `params?.matchId`, which on
+// Next.js 16 returns `undefined` (because the prop is a Promise, not
+// a plain object). `Number(undefined) === NaN` flipped
+// `isValidMatchId` to false, and the mount-effect below then
+// router.push'd back to /casino/blackjack — losing the freshly
+// created match the user had just escrowed a stake for, and never
+// showing them the "waiting for opponent" waiting-room UI. The fix
+// here mirrors the roulette match view: unwrap the Promise with
+// React's `use()`, fall back to a null matchId on resolution, and
+// keep the actual invalid-id redirect strictly for true bad URLs
+// (e.g. /casino/blackjack/foo) — not for the legitimate async window.
 export default function BlackjackPvpMatchPage({
   params,
 }: {
-  params: { matchId: string };
+  params: Promise<{ matchId: string }>;
 }) {
   const { isSignedIn, user } = useUser();
   const router = useRouter();
@@ -188,8 +201,27 @@ export default function BlackjackPvpMatchPage({
   const { socket } = useSocket();
   const { t } = useTranslation();
 
-  const matchId = Number(params?.matchId);
-  const isValidMatchId = Number.isFinite(matchId);
+  // Memoize a stable Promise wrapping the raw `params` prop so `use()`
+  // can be called unconditionally on every render (React rules-of-
+  // hooks). `Promise.resolve(p)` flattens when `params` is itself a
+  // thenable; wraps a plain object on older Next.js so the call is
+  // safe there too.
+  const paramsPromise = useMemo(
+    () => Promise.resolve(params),
+    [params],
+  );
+  const resolvedParams = use(paramsPromise);
+  const rawMatchId =
+    resolvedParams && typeof resolvedParams === "object"
+      ? resolvedParams.matchId
+      : undefined;
+  const numericMatchId = Number(rawMatchId);
+  // `matchId` is `null` until params resolve and on truly malformed
+  // URLs (e.g. /casino/blackjack/not-a-number). `isValidMatchId` is
+  // only true for finite numeric ids — guarding both the API calls
+  // below and the mount-effect redirect against the async window.
+  const matchId = Number.isFinite(numericMatchId) ? numericMatchId : null;
+  const isValidMatchId = matchId !== null;
 
   const [match, setMatch] = useState<MatchState | null>(null);
   const [rounds, setRounds] = useState<RoundRow[]>([]);
