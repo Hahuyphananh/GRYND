@@ -8,6 +8,10 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { cancelMatch } from "../../../../../../lib/blackjack-pvp/serverStore";
 
+// BUG-FIX (async params on Next.js 16): await `params` so `matchId`
+// is the actual numeric segment instead of `undefined → NaN`, which
+// would short-circuit the cancel POST to a 400 and block the
+// creator's "Cancel" button while their opponent is waiting.
 export async function POST(req, { params }) {
   const { userId } = await auth();
   if (!userId) {
@@ -17,7 +21,8 @@ export async function POST(req, { params }) {
     );
   }
 
-  const matchId = Number(params?.matchId);
+  const resolvedParams = await params;
+  const matchId = Number(resolvedParams?.matchId);
   if (!Number.isFinite(matchId)) {
     return NextResponse.json(
       { success: false, error: "Invalid matchId" },

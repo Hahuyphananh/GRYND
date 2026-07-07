@@ -52,6 +52,15 @@ function scrubHeldCardInPlace(heldCard) {
   return { suit: "?", value: "?" };
 }
 
+// BUG-FIX (async params on Next.js 16): the [matchId] segment's
+// `params` is a Promise — reading `params?.matchId` synchronously
+// returns `undefined` and `Number(undefined) === NaN`, which made
+// every polling fetch hit the 400 "Invalid matchId" branch, silently
+// dropping the response on the client (silent mode) and leaving both
+// players stuck on the "Chargement…" loading screen with the match
+// never auto-advancing from `ready` to `round_1`. Awaiting `params`
+// matches the page-side fix from the `fix(pvp-match-views)` commit
+// that already covers the dynamic-route page handlers.
 export async function GET(req, { params }) {
   const { userId } = await auth();
   if (!userId) {
@@ -61,7 +70,8 @@ export async function GET(req, { params }) {
     );
   }
 
-  const matchId = Number(params?.matchId);
+  const resolvedParams = await params;
+  const matchId = Number(resolvedParams?.matchId);
   if (!Number.isFinite(matchId)) {
     return NextResponse.json(
       { success: false, error: "Invalid matchId" },
