@@ -32,6 +32,10 @@ function scrubHandInPlace(hand) {
   return hand.map(() => ({ suit: "?", value: "?" }));
 }
 
+// BUG-FIX (async params on Next.js 16): await `params` so the
+// BetweenRoundsScreen "Continue now" button actually reaches
+// `continueMatch` server-side. Synchronous access turned matchId
+// into NaN and short-circuited this endpoint to a 400.
 export async function POST(req, { params }) {
   const { userId } = await auth();
   if (!userId) {
@@ -41,7 +45,8 @@ export async function POST(req, { params }) {
     );
   }
 
-  const matchId = Number(params?.matchId);
+  const resolvedParams = await params;
+  const matchId = Number(resolvedParams?.matchId);
   if (!Number.isFinite(matchId)) {
     return NextResponse.json(
       { success: false, error: "Invalid matchId" },

@@ -144,6 +144,11 @@ function normaliseMatchForViewer(match, viewerUserId) {
   };
 }
 
+// BUG-FIX (async params on Next.js 16): wait for `params` before
+// reading `matchId`. Otherwise `Number(params?.matchId)` yields NaN
+// and every action POST falls into the 400 branch, blocking the
+// per-round hit/stand/swap/hold/use_held verbs. Matches the
+// page-side fix from the `fix(pvp-match-views)` commit.
 export async function POST(req, { params }) {
   const { userId } = await auth();
   if (!userId) {
@@ -153,7 +158,8 @@ export async function POST(req, { params }) {
     );
   }
 
-  const matchId = Number(params?.matchId);
+  const resolvedParams = await params;
+  const matchId = Number(resolvedParams?.matchId);
   if (!Number.isFinite(matchId)) {
     return NextResponse.json(
       { success: false, error: "Invalid matchId" },
