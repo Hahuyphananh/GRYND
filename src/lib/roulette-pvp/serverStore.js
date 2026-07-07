@@ -485,14 +485,89 @@ export async function submitBets({ userId, matchId, bets }) {
       return { error: validation.error, status: 400 };
     }
 
+    // BUG-FIX ("bets locked in, not deducting from player points") ─
+    // Previously only `player{N}Bets` was written on lock-in; the
+    // `playerOnePoints` / `playerTwoPoints` columns were untouched
+    // until `resolveRound` ran. The column was the single source of
+    // truth for "what's actually in my match wallet right now", so
+    // any process that read `playerOnePoints` directly (admin tools,
+    // replays, future spectator mode) saw a stale balance until the
+    // round resolved — and when a player AFK'd through the
+    // `fetchMatchWithAutoResolve` auto-resolve path, `resolveRound`
+    // never re-debited the bet that DID submit (it was never
+    // deducted in the first place), so the locker's wallet silently
+    // kept the wager. The fix: deduct the bet total HERE so
+    // `playerOnePoints`/`playerTwoPoints` is the post-lock balance
+    // the moment betting closes. `resolveRound` is updated
+    // accordingly to only ADD payouts (no double-deduction).
+    const totalLocked = sumBetAmounts(bets);
+    const newPoints = (currentPoints - totalLocked).toFixed(2);
     const updates = isPlayer1
-      ? { player1Bets: bets }
-      : { player2Bets: bets };
+      ? { player1Bets: bets, playerOnePoints: newPoints }
+      : { player2Bets: bets, playerTwoPoints: newPoints };
+    // Guard the UPDATE on the row's current status AND the lock-in
+    // state we just verified in-memory: WITHOUT this, a stale POST
+    // landing AFTER an AFK auto-resolve (or a parallel resolve
+    // triggered by the opponent's commit) would clobber the
+    // just-cleared `player1Bets` / `player2Bets` and DOUBLE-debit
+    // the points column (the row's status is already past round_1
+    // but the previous WHERE used only `id`). The conditional
+    // UPDATE returns 0 rows instead, and we surface a clean 409
+    // so the UI sees the race honestly.
     const [updated] = await tx
       .update(roulettePvpMatches)
       .set(updates)
-      .where(eq(roulettePvpMatches.id, matchId))
+      .where(
+        and(
+          eq(roulettePvpMatches.id, matchId),
+          // Status must still be a bettable round; reject stale POSTs
+          // that landed after the row advanced (e.g. AFK auto-resolve).
+          eq(roulettePvpMatches.status, match.status),
+          // Re-assert lock-in state at the SQL layer as belt-and-braces
+          // alongside the earlier in-memory duplicate-submission guard.
+          isPlayer1
+            ? isNull(roulettePvpMatches.player1Bets)
+            : isNull(roulettePvpMatches.player2Bets),
+        ),
+      )
       .returning();
+
+    if (!updated) {
+      // Row mutated under us between the FOR UPDATE SELECT and this
+      // UPDATE. Re-fetch so we can disambiguate "match vanished" vs
+      // "lock-in already happened / round advanced" and return a
+      // single, accurate error. Throwing a TypeError on a null pointer
+      // here would crash the route and surface a generic 500 — much
+      // worse UX than the deliberate 409 below.
+      const [fresh] = await tx
+        .select()
+        .from(roulettePvpMatches)
+        .where(eq(roulettePvpMatches.id, matchId));
+      if (!fresh) {
+        return { error: "Match not found", status: 404 };
+      }
+      const seatNowLocked = isPlayer1
+        ? Boolean(fresh.player1Bets)
+        : Boolean(fresh.player2Bets);
+      if (seatNowLocked) {
+        return {
+          error: "Bets already locked for this round",
+          status: 409,
+        };
+      }
+      if (!BETTABLE_STATES.has(fresh.status)) {
+        return {
+          error: "Match is no longer in an active round",
+          status: 400,
+        };
+      }
+      // Couldn't bucket the failure — surface it but don't lose the
+      // deduction: refund the points by reversing the in-memory math.
+      return {
+        error: "Betting window state changed during submit — please refresh",
+        status: 409,
+      };
+    }
 
     // Determine if both players are now ready (have non-null bets).
     const bothReady = updated.player1Bets && updated.player2Bets;
@@ -560,12 +635,18 @@ export async function resolveRound(tx, match) {
   });
 
   // Persist match-currency balances. The balance carries between
-  // rounds (do NOT reset to starting_points): each round's net
-  // (payout − total_bet) is debited/credited from this column
-  // directly. The match-level `sudden_death` flag mirrors
-  // `is_sudden_death` for fast queries without walking rounds.
-  const newP1Points = Number(match.playerOnePoints) - p1.totalBet + p1.payout;
-  const newP2Points = Number(match.playerTwoPoints) - p2.totalBet + p2.payout;
+  // rounds (do NOT reset to starting_points). The wager was
+  // already debited at lock-in inside `submitBets` (so the
+  // committed `playerOnePoints` / `playerTwoPoints` columns already
+  // reflect the deduction by the time we get here) — we only credit
+  // the payout on top. Per-round net effect = `+ payout`. Pre-fix
+  // the deduction happened here too, which double-counted against
+  // the lock-in deduction and silently returned the wager to the
+  // player when they AFK'd through the auto-resolve path.
+  // The match-level `sudden_death` flag mirrors `is_sudden_death`
+  // for fast queries without walking rounds.
+  const newP1Points = Number(match.playerOnePoints) + p1.payout;
+  const newP2Points = Number(match.playerTwoPoints) + p2.payout;
 
   // Decide next match status
   const nextDeadlineMs = roundDeadlineMs(match);

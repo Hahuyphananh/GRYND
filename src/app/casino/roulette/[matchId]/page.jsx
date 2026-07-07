@@ -172,7 +172,6 @@ export default function RoulettePvpGamePage({ params }) {
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [timeLeft, setTimeLeft] = useState(null);
-  const [lastAnimatedIndex, setLastAnimatedIndex] = useState(null);
   const [roundResultBanner, setRoundResultBanner] = useState(null);
   const [matchEndedBanner, setMatchEndedBanner] = useState(null);
 
@@ -196,6 +195,25 @@ export default function RoulettePvpGamePage({ params }) {
   }, [matchEndedBanner]);
   const lastRoundCountRef = useRef(null);
   const bannerTimerRef = useRef(null);
+  // Last server-stamped spin-result index we animated on. Held in a
+  // ref (NOT useState) so updating it inside the spin effect doesn't
+  // re-run the effect with `lastAnimatedIndex` in its dep list — the
+  // update would race with the in-flight spinWheel IIFE, fire its
+  // cleanup, and `cancelled = true` would skip the pending banner
+  // reveal AND leave `spinning` stuck `true` forever. Bug caught at
+  // code review.
+  const lastAnimatedIndexRef = useRef(null);
+  // BUG-FIX ("round banner appears and disappears while wheel is
+  // still spinning"): the round-result popup used to fire
+  // immediately on `poll detects rounds.length++`, well before
+  // the 4.5 s canvas spin animation completed on this client's
+  // machine — so a player could click Lock in, see the banner flash
+  // for 2.2 s while the wheel was mid-spin, and then the spin
+  // settled with no banner at all. We now stash the pending banner
+  // payload in this ref inside `fetchStatus` and only mount it via
+  // `setRoundResultBanner(...)` after `spinWheel(...)` resolves, so
+  // the popup and the wheel settle at the same time.
+  const pendingBannerRef = useRef(null);
   // Last server-stamped spin-result index we saw. Used by the
   // round-transition-reset effect below to detect "a new round just
   // began" (server cleared both players' bets but lastSpinResultIndex
@@ -240,7 +258,10 @@ export default function RoulettePvpGamePage({ params }) {
       setMatch(data.data.match);
       setRounds(data.data.rounds || []);
 
-      // Round-just-resolved banner (count of rounds increased)
+      // Round-just-resolved banner (count of rounds increased).
+      // Stash the banner payload in a ref so the spinWheel effect can
+      // pop it once the canvas animation completes — see
+      // `pendingBannerRef` for the full reasoning.
       const counted = (data.data.rounds || []).length;
       if (lastRoundCountRef.current === null) {
         lastRoundCountRef.current = counted;
@@ -250,14 +271,14 @@ export default function RoulettePvpGamePage({ params }) {
         const won =
           latest?.roundWinner === (meIsP1 ? "player1" : "player2");
         const drew = !latest?.roundWinner;
-        setRoundResultBanner({
+        pendingBannerRef.current = {
           roundNumber: latest?.roundNumber,
           winner: won ? "you" : drew ? "draw" : "opponent",
           spinResult: latest?.spinResult,
           p1Net: latest?.player1Net,
           p2Net: latest?.player2Net,
           isSuddenDeath: Boolean(latest?.isSuddenDeath),
-        });
+        };
         posthog?.capture("roulette_pvp_round_resolved", {
           match_id: matchId,
           round: latest?.roundNumber,
@@ -265,11 +286,6 @@ export default function RoulettePvpGamePage({ params }) {
           spin_result: latest?.spinResult,
           is_sudden_death: Boolean(latest?.isSuddenDeath),
         });
-        if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
-        bannerTimerRef.current = setTimeout(
-          () => setRoundResultBanner(null),
-          2200,
-        );
         lastRoundCountRef.current = counted;
       } else {
         lastRoundCountRef.current = counted;
@@ -600,9 +616,11 @@ export default function RoulettePvpGamePage({ params }) {
   );
 
   // When the server reveals a new spin result, kick off the wheel
-  // animation. lastAnimatedIndex guards against re-animating on
-  // identical re-renders (React strict-mode double-effect invocation,
-  // concurrent renders, etc.).
+  // animation. `lastAnimatedIndexRef` (a ref, not state) guards
+  // against re-animating on identical re-renders without re-running
+  // this effect and triggering a spurious cleanup mid-animation.
+  // See `lastAnimatedIndexRef` for the full reasoning on why this
+  // value must NOT be React state.
   useEffect(() => {
     if (
       match?.lastSpinResultIndex === null ||
@@ -610,24 +628,36 @@ export default function RoulettePvpGamePage({ params }) {
     ) {
       return;
     }
-    if (match.lastSpinResultIndex === lastAnimatedIndex) {
+    if (match.lastSpinResultIndex === lastAnimatedIndexRef.current) {
       return;
     }
     setWinningNumber(match.lastSpinResult ?? null);
     setSpinning(true);
+    lastAnimatedIndexRef.current = match.lastSpinResultIndex;
     let cancelled = false;
     (async () => {
       try {
         await spinWheel(match.lastSpinResultIndex);
+        // Wheel settled — if a round banner was queued while the
+        // animation was playing, surface it now so the popup lands
+        // at the same moment the player sees the final ball pocket.
+        if (!cancelled && pendingBannerRef.current) {
+          setRoundResultBanner(pendingBannerRef.current);
+          if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+          bannerTimerRef.current = setTimeout(
+            () => setRoundResultBanner(null),
+            3000,
+          );
+          pendingBannerRef.current = null;
+        }
       } finally {
         if (!cancelled) setSpinning(false);
       }
     })();
-    setLastAnimatedIndex(match.lastSpinResultIndex);
     return () => {
       cancelled = true;
     };
-  }, [match?.lastSpinResultIndex, match?.lastSpinResult, lastAnimatedIndex, spinWheel]);
+  }, [match?.lastSpinResultIndex, match?.lastSpinResult, spinWheel]);
 
   // Clear wheel highlight after a delay (preserved from solo roulette)
   useEffect(() => {
@@ -701,24 +731,28 @@ export default function RoulettePvpGamePage({ params }) {
 
   // BUG-FIX ("points not updating when betting") ──────────────────
   // `myCommittedBet` is the sum of the player's server-stored bets
-  // (i.e. what they actually locked in). Mirrors `myTotalBet` but
-  // reads from the server-stored `mySubmittedBets` so the optimistic
-  // points display below updates even before the round resolves
-  // (server still writes `playerOnePoints` / `playerTwoPoints` only
-  // on resolution — this is a CLIENT-ONLY projection until then).
+  // (i.e. what they actually locked in). Used by the
+  // −/locked/staged chip-usage badge below the points display so
+  // the player can see HOW MUCH they're committed to. The actual
+  // points balance now comes from the server directly (commit-time
+  // deduction lives inside `submitBets`, not in `resolveRound`),
+  // so we no longer subtract `myCommittedBet` from `myMatchPoints`
+  // here — that would double-deduct against the server-side
+  // commitment.
   const myCommittedBet = useMemo(
     () => sumBetAmounts(mySubmittedBets),
     [mySubmittedBets],
   );
-  // Effective current points: persistent balance minus currently
-  // staged chips (if still placing) OR locked-in chips (if already
-  // submitted). Falls back to the raw server balance when no
-  // staged/locked bets exist.
-  const myEffectivePoints = Math.max(
-    0,
-    (Number.isFinite(myMatchPoints) ? myMatchPoints : 0) -
-      (myBetsAreLocked ? myCommittedBet : myTotalBet),
-  );
+  // Effective current points: server-authoritative once locked-in
+  // (the wager was deducted at commit time inside `submitBets`,
+  // so `myMatchPoints` already reflects it); optimistic-projection
+  // while staging chips (server hasn't been touched yet).
+  const myEffectivePoints = myBetsAreLocked
+    ? Math.max(0, Number.isFinite(myMatchPoints) ? myMatchPoints : 0)
+    : Math.max(
+        0,
+        (Number.isFinite(myMatchPoints) ? myMatchPoints : 0) - myTotalBet,
+      );
 
   const placeBet = (target) => {
     if (myBetsAreLocked) return;
@@ -1089,8 +1123,15 @@ export default function RoulettePvpGamePage({ params }) {
                             : "border-yellow-300/30 bg-yellow-300/10 text-yellow-200"
                         }`}
                       >
+                        {/* After the server commits the wager, the big
+                            number above already reflects the deduction.
+                            Prefix with the minus ONLY during staging
+                            (player hasn't locked in yet — they're
+                            projecting how much of their balance will be
+                            consumed). When locked, drop the minus so the
+                            badge isn't read as "balance − locked = 0". */}
+                        {!myBetsAreLocked && <span>−</span>}
                         <span>
-                          −
                           {(myBetsAreLocked ? myCommittedBet : myTotalBet).toFixed(
                             0,
                           )}
