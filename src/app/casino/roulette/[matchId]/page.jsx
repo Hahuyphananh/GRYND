@@ -126,6 +126,133 @@ const lastNumColor = (num) => {
     : "bg-[#1a1a2e] text-[#FFFF33]";
 };
 
+// Reusable swatch + label for an arbitrary bet key. Mirrors the
+// radar-pocket / betting-zone styling so the side panel reads at a
+// glance: red/black/green chips for colours, numeric chips for singles,
+// a generic dark pill for the dozens / parity ranges.
+function formatBetDisplay(bet) {
+  const k = String(bet);
+  const num = Number(bet);
+  if (Number.isFinite(num)) {
+    if (num === 0)
+      return { label: "0", swatch: "bg-[#0d5e2e] text-white" };
+    if (RED_NUMBERS.includes(num))
+      return { label: String(num), swatch: "bg-[#c0392b] text-white" };
+    return { label: String(num), swatch: "bg-[#1a1a2e] text-[#FFFF33]" };
+  }
+  const map = {
+    red: { label: "Red", swatch: "bg-[#c0392b] text-white" },
+    black: { label: "Black", swatch: "bg-[#1a1a2e] text-[#FFFF33]" },
+    green: { label: "Green", swatch: "bg-[#0d5e2e] text-white" },
+    even: { label: "Even", swatch: "bg-[#102542] text-white" },
+    odd: { label: "Odd", swatch: "bg-[#102542] text-white" },
+    "1-12": { label: "1–12", swatch: "bg-[#102542] text-white" },
+    "13-24": { label: "13–24", swatch: "bg-[#102542] text-white" },
+    "25-36": { label: "25–36", swatch: "bg-[#102542] text-white" },
+    "1-18": { label: "1–18", swatch: "bg-[#102542] text-white" },
+    "19-36": { label: "19–36", swatch: "bg-[#102542] text-white" },
+  };
+  return (
+    map[k] || { label: k, swatch: "bg-[#102542] text-white" }
+  );
+}
+
+// Side-panel that lists each player's locked-in bet targets plus the
+// wager amount. Renders while either player has submitted AND the
+// match is in an active state (i.e. between submission and the next
+// round's betting window). Pulls from `displayMyBets` /
+// `displayOppBets` so it works during the spin animation too (those
+// memos fall back to the just-resolved round's `player1Bets` /
+// `player2Bets` snapshot when the server has cleared the live row).
+function LockedInBetsPanel({ displayMyBets, displayOppBets, spinning }) {
+  const renderColumn = (bets, accent) => {
+    const entries = Object.entries(bets || {}).filter(
+      ([, v]) => Number(v) > 0,
+    );
+    if (entries.length === 0) {
+      // Distinguish "no bets placed yet" (panel won't render here —
+      // its visibility gate requires at least one seat with entries)
+      // from "locked in with zero wager", which is the only path
+      // that reaches this branch.
+      return (
+        <div className="text-xs text-white/45 italic">
+          No bets placed
+          <span className="ml-1 inline-flex items-center gap-0.5 text-green-300/80 not-italic">
+            <CheckIcon className="w-3 h-3" title="Locked in" /> locked
+          </span>
+        </div>
+      );
+    }
+    const total = entries.reduce(
+      (acc, [, v]) => acc + (Number(v) || 0),
+      0,
+    );
+    const baseText = accent === "yellow" ? "text-yellow-300" : "text-cyan-300";
+    const totalText =
+      accent === "yellow" ? "text-yellow-200" : "text-cyan-200";
+    return (
+      <>
+        <ul className="space-y-1">
+          {entries.map(([k, v]) => {
+            const { label, swatch } = formatBetDisplay(k);
+            return (
+              <li
+                key={String(k)}
+                className="flex items-center justify-between gap-2 text-xs"
+              >
+                <span
+                  className={`inline-flex items-center justify-center min-w-[28px] h-7 px-2 rounded-md text-[11px] font-bold border border-white/10 ${swatch}`}
+                >
+                  {label}
+                </span>
+                <span className={`font-bold tabular-nums ${baseText}`}>
+                  {Number(v)} pts
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="mt-2 pt-1.5 border-t border-white/10 text-[10px] flex items-center justify-between">
+          <span className="text-white/45">Total</span>
+          <span className={`font-bold tabular-nums ${totalText}`}>
+            {total} pts
+          </span>
+        </div>
+      </>
+    );
+  };
+  return (
+    <div className="w-full bg-[#001933] border border-purple-400/30 rounded-xl p-3 text-sm">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] uppercase tracking-widest text-white/55 inline-flex items-center gap-1.5">
+          <TargetIcon
+            className="w-3.5 h-3.5 text-purple-200"
+            title="Locked bets"
+          />
+          <span>Locked-In Bets</span>
+        </span>
+        <span className="text-[10px] text-white/35">
+          {spinning ? "Spin in progress" : "Both locked in"}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-yellow-200 mb-1.5">
+            You
+          </div>
+          {renderColumn(displayMyBets, "yellow")}
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-cyan-200 mb-1.5">
+            Opp
+          </div>
+          {renderColumn(displayOppBets, "cyan")}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function RoulettePvpGamePage({ params }) {
   // Unwrap params Promise (Next.js 15+/16 async dynamic API). We
   // memoize a stable Promise wrapping the raw `params` prop so `use()`
@@ -716,6 +843,108 @@ export default function RoulettePvpGamePage({ params }) {
     isPlayer1 ? match?.playerTwoPoints : match?.playerOnePoints,
   );
 
+  // ── Spin-animation display masking ───────────────────────────────
+  // The server is authoritative. `submitBets` runs `resolveRound`
+  // immediately when the *second* player locks in, so by the time
+  // the canvas 4.5 s spin animation starts on either client, the
+  // server-side `match.playerOnePoints` / `playerTwoPoints` ALREADY
+  // include the new payout and `match.player1Bets` /
+  // `match.player2Bets` are ALREADY null (cleared by `resolveRound`
+  // for the next round). Without intervention this reveals the
+  // result before the wheel settles and wipes the locked-in chip
+  // badges the moment the spin starts — which is why one screen
+  // appeared to "show the bets deducted" while the other didn't, and
+  // why the big-number display "jumps to the new balance" before the
+  // ball visibly lands.
+  //
+  // The masking below freezes the displayed values at the post-lock
+  // balance for the duration of `spinning`, and reads the locked-in
+  // bets from the round's history row (`rounds[].player{N}Bets`) so
+  // the "✓" check-marks, chip badges, and the new reveal panel stay
+  // visible through the animation. The moment `spinning` flips to
+  // false, the real server-balance surfaces in lockstep with the
+  // round-result banner so the player sees the points change at the
+  // same moment the ball visibly settles in its pocket.
+  const latestResolvedRound = useMemo(() => {
+    const idx = match?.lastSpinResultIndex;
+    if (idx === null || idx === undefined) return null;
+    return (rounds || []).find((r) => r.spinResultIndex === idx) ?? null;
+  }, [match?.lastSpinResultIndex, rounds]);
+
+  const resolvedMyPayout = useMemo(() => {
+    if (!latestResolvedRound) return 0;
+    return (
+      Number(
+        isPlayer1
+          ? latestResolvedRound.player1Payout
+          : latestResolvedRound.player2Payout,
+      ) || 0
+    );
+  }, [latestResolvedRound, isPlayer1]);
+  const resolvedOppPayout = useMemo(() => {
+    if (!latestResolvedRound) return 0;
+    return (
+      Number(
+        isPlayer1
+          ? latestResolvedRound.player2Payout
+          : latestResolvedRound.player1Payout,
+      ) || 0
+    );
+  }, [latestResolvedRound, isPlayer1]);
+
+  // Locked-in bets for display. The server clears `player1Bets` /
+  // `player2Bets` to null the moment the round resolves — and for
+  // the player who triggered resolution, their `submitBets` response
+  // arrives AFTER the resolve, so their own UI also sees nulls. We
+  // therefore fall back to the just-resolved round's snapshot while
+  // the wheel is still animating so the chip badges and the new
+  // reveal panel stay populated throughout the spin.
+  //
+  // Empty `{}` submissions are valid (the server's `validateBets`
+  // accepts a zero-wager lock-in), so the truthy check is
+  // `mySubmittedBets != null` rather than `Object.keys(...).length
+  // > 0` — a player who locks in with zero chips is still "locked
+  // in" and the round-bet-status pill should show green ✓ instead
+  // of the spinner used while a player hasn't submitted at all.
+  const displayMyBets = useMemo(() => {
+    if (mySubmittedBets != null) {
+      return mySubmittedBets;
+    }
+    if (spinning && latestResolvedRound) {
+      return isPlayer1
+        ? latestResolvedRound.player1Bets
+        : latestResolvedRound.player2Bets;
+    }
+    return null;
+  }, [mySubmittedBets, spinning, latestResolvedRound, isPlayer1]);
+  const displayOppBets = useMemo(() => {
+    if (opponentSubmittedBets != null) {
+      return opponentSubmittedBets;
+    }
+    if (spinning && latestResolvedRound) {
+      return isPlayer1
+        ? latestResolvedRound.player2Bets
+        : latestResolvedRound.player1Bets;
+    }
+    return null;
+  }, [opponentSubmittedBets, spinning, latestResolvedRound, isPlayer1]);
+
+  // Symmetric display masking for the OPPONENT column. The server's
+  // post-resolve match state already includes the opponent's payout
+  // in `oppMatchPoints`; until the wheel animation completes the
+  // player should see the opponent's POST-LOCK balance too, then
+  // the resolve bumps up in sync with the round-result banner. Same
+  // gate as `myEffectivePoints` so the two columns balance-update in
+  // lockstep when the spin settles.
+  const oppEffectivePoints = useMemo(() => {
+    const safe =
+      Number.isFinite(Number(oppMatchPoints)) ? Number(oppMatchPoints) : 0;
+    if (spinning && latestResolvedRound) {
+      return Math.max(0, safe - (resolvedOppPayout || 0));
+    }
+    return Math.max(0, safe);
+  }, [oppMatchPoints, spinning, latestResolvedRound, resolvedOppPayout]);
+
   const myTotalBet = useMemo(
     () =>
       Object.values(bets || {}).reduce((acc, v) => {
@@ -740,19 +969,44 @@ export default function RoulettePvpGamePage({ params }) {
   // here — that would double-deduct against the server-side
   // commitment.
   const myCommittedBet = useMemo(
-    () => sumBetAmounts(mySubmittedBets),
-    [mySubmittedBets],
+    // Use `displayMyBets` instead of `mySubmittedBets` so the
+    // "−X locked" badge keeps showing the wager after the server
+    // clears `player{N}Bets` (i.e. while the wheel is animating) and
+    // we fall back to the round-history snapshot.
+    () => sumBetAmounts(displayMyBets),
+    [displayMyBets],
   );
   // Effective current points: server-authoritative once locked-in
   // (the wager was deducted at commit time inside `submitBets`,
   // so `myMatchPoints` already reflects it); optimistic-projection
   // while staging chips (server hasn't been touched yet).
-  const myEffectivePoints = myBetsAreLocked
-    ? Math.max(0, Number.isFinite(myMatchPoints) ? myMatchPoints : 0)
-    : Math.max(
-        0,
-        (Number.isFinite(myMatchPoints) ? myMatchPoints : 0) - myTotalBet,
-      );
+  //
+  // During the spin animation the server has already credited the
+  // new round's payout to `match.playerOnePoints` /
+  // `match.playerTwoPoints`. Subtracting that payout here freezes
+  // the displayed balance at the post-lock value, preserved until
+  // the wheel animation settles and the round-result banner reveals
+  // the outcome. The "real" new balance is then surfaced on the
+  // next render in perfect sync with `spinning → false`.
+  const myEffectivePoints = useMemo(() => {
+    const base = myBetsAreLocked
+      ? Math.max(0, Number.isFinite(myMatchPoints) ? myMatchPoints : 0)
+      : Math.max(
+          0,
+          (Number.isFinite(myMatchPoints) ? myMatchPoints : 0) - myTotalBet,
+        );
+    if (spinning && latestResolvedRound) {
+      return Math.max(0, base - (resolvedMyPayout || 0));
+    }
+    return base;
+  }, [
+    myBetsAreLocked,
+    myMatchPoints,
+    myTotalBet,
+    spinning,
+    latestResolvedRound,
+    resolvedMyPayout,
+  ]);
 
   const placeBet = (target) => {
     if (myBetsAreLocked) return;
@@ -870,9 +1124,11 @@ export default function RoulettePvpGamePage({ params }) {
     for (let i = 1; i <= 36; i++) {
       rows[(i - 1) % 3].push(i);
     }
-    // While bets are locked-in by the server, show the persisted bets
-    // from the server so both players see the same locked-in layout.
-    const displayBets = myBetsAreLocked ? mySubmittedBets || {} : bets;
+    // While bets are locked-in (either still on the server OR
+    // pulled from the just-resolved round's snapshot via
+    // `displayMyBets`), show the locked-in layout on the chips so
+    // both players see the same bets through the spin animation.
+    const displayBets = myBetsAreLocked ? displayMyBets || {} : bets;
 
     return (
       <div className="w-full overflow-x-auto pb-2">
@@ -1150,18 +1406,23 @@ export default function RoulettePvpGamePage({ params }) {
                   </div>
                   <div>
                     <div
-                      className={`text-xl font-bold tabular-nums ${
-                        !Number.isFinite(oppMatchPoints)
+                      className={`text-xl font-bold tabular-nums transition-colors duration-200 ${
+                        !Number.isFinite(oppEffectivePoints)
                           ? "text-white/40"
-                          : oppMatchPoints > STARTING_POINTS
+                          : oppEffectivePoints > STARTING_POINTS
                           ? "text-green-300"
-                          : oppMatchPoints < STARTING_POINTS
+                          : oppEffectivePoints < STARTING_POINTS
                             ? "text-red-300"
                             : "text-white/80"
                       }`}
+                      title={
+                        spinning
+                          ? "Frozen during spin · payout revealed when wheel settles"
+                          : "Server-authoritative balance"
+                      }
                     >
-                      {Number.isFinite(oppMatchPoints)
-                        ? oppMatchPoints.toFixed(0)
+                      {Number.isFinite(oppEffectivePoints)
+                        ? oppEffectivePoints.toFixed(0)
                         : "—"}
                     </div>
                   </div>
@@ -1188,13 +1449,13 @@ export default function RoulettePvpGamePage({ params }) {
                 <div className="grid grid-cols-2 gap-2">
                   <div
                     className={`rounded-md px-2 py-1 border text-center text-xs inline-flex items-center justify-center gap-1 ${
-                      mySubmittedBets
+                      displayMyBets
                         ? "border-green-400/40 bg-green-500/10 text-green-200"
                         : "border-yellow-300/30 bg-yellow-300/10 text-yellow-200"
                     }`}
                   >
                     <span>You</span>
-                    {mySubmittedBets ? (
+                    {displayMyBets ? (
                       <CheckIcon className="w-3.5 h-3.5 text-green-200" title="Submitted" />
                     ) : (
                       <LoadingDotsIcon className="w-3.5 h-3.5 text-yellow-200 animate-pulse" title="Waiting" />
@@ -1202,13 +1463,13 @@ export default function RoulettePvpGamePage({ params }) {
                   </div>
                   <div
                     className={`rounded-md px-2 py-1 border text-center text-xs inline-flex items-center justify-center gap-1 ${
-                      opponentSubmittedBets
+                      displayOppBets
                         ? "border-green-400/40 bg-green-500/10 text-green-200"
                         : "border-cyan-400/30 bg-cyan-400/10 text-cyan-200"
                     }`}
                   >
                     <span>Opp</span>
-                    {opponentSubmittedBets ? (
+                    {displayOppBets ? (
                       <CheckIcon className="w-3.5 h-3.5 text-green-200" title="Submitted" />
                     ) : (
                       <LoadingDotsIcon className="w-3.5 h-3.5 text-cyan-200 animate-pulse" title="Waiting" />
@@ -1216,6 +1477,24 @@ export default function RoulettePvpGamePage({ params }) {
                   </div>
                 </div>
               </div>
+            )}
+
+          {/* Locked-In Bets breakdown panel — shows each player's bet
+              targets and amounts after both have locked in. Reachable
+              via the live `displayMyBets` / `displayOppBets` (which
+              fall back to the just-resolved round's snapshot during
+              the spin so a brand-new submitter can see what the
+              opponent wagered without a polling round-trip). */}
+          {match.status !== MATCH_STATUS.WAITING &&
+            match.status !== MATCH_STATUS.CANCELLED &&
+            match.status !== MATCH_STATUS.FINISHED &&
+            ((displayMyBets && Object.keys(displayMyBets).length > 0) ||
+              (displayOppBets && Object.keys(displayOppBets).length > 0)) && (
+              <LockedInBetsPanel
+                displayMyBets={displayMyBets}
+                displayOppBets={displayOppBets}
+                spinning={spinning}
+              />
             )}
 
           {/* Chip selector (replaces solo "Valeur du jeton") */}
