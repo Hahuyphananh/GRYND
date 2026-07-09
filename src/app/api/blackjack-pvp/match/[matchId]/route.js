@@ -100,17 +100,35 @@ export async function GET(req, { params }) {
     // Active match hands stay seat-scrubbed — the in-play view still
     // shows the "Opponent Playing…" placeholder. Reveal happens
     // exclusively in the resolved `rounds` history array (below).
+    //
+    // BUG-FIX (defensive: avoid stuck-on-Loading after both players
+    // join): During the `waiting` / `ready` transitions the row's
+    // player{N}Hand may be transiently missing/null on some Drizzle
+    // adapters. Coerce non-arrays to `[]` so scrubHandInPlace never
+    // throws and the polling loop can settle — otherwise the page's
+    // `fetchStatus` returns silently (silent:true) with no match
+    // update, and the "Chargement…" banner is held indefinitely.
+    const safeArr = (v) => (Array.isArray(v) ? v : []);
     const player1HandForViewer = viewerIsPlayer1
-      ? match.player1Hand
-      : scrubHandInPlace(match.player1Hand);
+      ? safeArr(match.player1Hand)
+      : scrubHandInPlace(safeArr(match.player1Hand));
     const player2HandForViewer = viewerIsPlayer1
-      ? scrubHandInPlace(match.player2Hand)
-      : match.player2Hand;
+      ? scrubHandInPlace(safeArr(match.player2Hand))
+      : safeArr(match.player2Hand);
+
+    // ── Wire-only computed booleans (Prompt 9 schema refactor) ─────
+    // standing = state !== 'playing'. Derived on the server so the
+    // client doesn't reach into the per-seat state enum.
+    const p1Standing = viewerPlayerState(match, 1, userId) !== "playing";
+    const p2Standing = viewerPlayerState(match, 2, userId) !== "playing";
 
     // Winner-only prize disclosure so losers don't see the opponent's
-    // payout amount in the response payload.
+    // payout amount in the response payload. Column rename (Prompt
+    // 9): `winnerId` → `winner`. Defensively coerce the stored value
+    // (which may be null during a non-finished match).
+    const winnerUserId = match.winner ?? null;
     const viewerIsWinner =
-      match.winnerId !== null && match.winnerId === userId;
+      winnerUserId !== null && winnerUserId === userId;
 
     // Fetch the resolved-rounds history. Every row here represents a
     // round that has ENDED, so both hands + scores + states on each
@@ -128,8 +146,8 @@ export async function GET(req, { params }) {
           stakeAmount: Number(match.stakeAmount),
           status: match.status,
           roundNumber: match.roundNumber,
-          roundsWonPlayer1: match.roundsWonPlayer1,
-          roundsWonPlayer2: match.roundsWonPlayer2,
+          roundsWonPlayer1: match.roundsWonPlayer1 ?? 0,
+          roundsWonPlayer2: match.roundsWonPlayer2 ?? 0,
           // Active hand: VIEWER's real cards; opponent's hidden.
           player1Hand: player1HandForViewer,
           player2Hand: player2HandForViewer,
@@ -138,6 +156,12 @@ export async function GET(req, { params }) {
           // (or busted) before the round-end reveal.
           player1State: viewerPlayerState(match, 1, userId),
           player2State: viewerPlayerState(match, 2, userId),
+          // Wire-only computed booleans (Prompt 9): true iff the
+          // per-seat `state !== 'playing'`. The opponent's standing
+          // is collapsed to a boolean on the wire so the UI can't
+          // infer their strategy.
+          player1Standing: p1Standing,
+          player2Standing: p2Standing,
           viewerIsPlayer1,
           roundDeadline: match.roundDeadline,
           winner: match.winner,
@@ -154,25 +178,27 @@ export async function GET(req, { params }) {
           createdAt: match.createdAt,
           // Per-seat Swap/Hold counters. Only the VIEWER's seat is in
           // full; the opponent's seat is collapsed to a boolean so the
-          // UI can't infer their strategy.
+          // UI can't infer their strategy. `?? 0` guards against
+          // transient nulls during a freshly-created waiting / ready
+          // match on some Drizzle adapters.
           player1UsedSwap: viewerIsPlayer1
-            ? match.player1UsedSwap
-            : match.player1UsedSwap > 0
+            ? (match.player1UsedSwap ?? 0)
+            : (match.player1UsedSwap ?? 0) > 0
               ? 1
               : 0,
           player2UsedSwap: !viewerIsPlayer1
-            ? match.player2UsedSwap
-            : match.player2UsedSwap > 0
+            ? (match.player2UsedSwap ?? 0)
+            : (match.player2UsedSwap ?? 0) > 0
               ? 1
               : 0,
           player1UsedFreeze: viewerIsPlayer1
-            ? match.player1UsedFreeze
-            : match.player1UsedFreeze > 0
+            ? (match.player1UsedFreeze ?? 0)
+            : (match.player1UsedFreeze ?? 0) > 0
               ? 1
               : 0,
           player2UsedFreeze: !viewerIsPlayer1
-            ? match.player2UsedFreeze
-            : match.player2UsedFreeze > 0
+            ? (match.player2UsedFreeze ?? 0)
+            : (match.player2UsedFreeze ?? 0) > 0
               ? 1
               : 0,
           player1FrozenCard: viewerIsPlayer1
