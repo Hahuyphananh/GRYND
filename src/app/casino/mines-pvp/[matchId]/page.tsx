@@ -225,20 +225,21 @@ type MatchRow = {
 // ── Dynamic-route params arrive async (Promise) on Next.js 15+/16. ─────
 // BUG-FIX ("both players stuck in loading mode when starting a game")
 // ────────────────────────────────────────────────────────
-// The original code synchronously read `params.matchId`. On Next.js 16
-// the `params` prop is a Promise (not a plain object), so
-// `params.matchId` returns `undefined`, and `Number(undefined) === NaN`
-// flipped `fetchStatus` to early-return on its
-// `!Number.isFinite(matchId)` guard without ever reaching its
-// `finally { setLoading(false) }` block — leaving `loading=true`
-// forever once both players navigated to the match view. The fix
-// below mirrors the roulette + blackjack match views: unwrap the
-// Promise with React's `use()`, store a nullable `matchId`, and let
-// the existing `if (!match)` render branch catch the genuinely
-// malformed URLs (e.g. /casino/mines-pvp/not-a-number) instead of an
-// eternal "Loading match…" spinner. The fetchStatus early-returns
-// in change #3 below also flip `setLoading(false)` so the page can
-// gracefully fall through to the "Match not found" panel.
+// The page's two polling URLs were pointed at /api/mines-pvp/${matchId}/status
+// and /api/mines-pvp/${matchId}/pick, but those routes never existed — the
+// real match gateway lives at /api/mines-pvp/match/${matchId} (with /pick
+// underneath it). Every poll therefore 404'd on the server, the response
+// body that came back was HTML (not JSON), and the resulting parse error
+// surfaced as "Network error" / "Match not found" instead of the live
+// match — both players looked stuck on the loading screen. The two URL
+// typos are corrected in the `fetchStatus` and `handleCellClick` blocks
+// below. As belt-and-braces we also: (a) unwrap the async params prop
+// with React's `use()` (mirror of the roulette + blackjack match views)
+// so the page never receives `matchId === NaN`; (b) flip setLoading(false)
+// on every early-return path in fetchStatus so a stray guard never pins
+// the page to "Loading match…"; and (c) tighten the isSignedIn check so
+// the brief window before Clerk reports `true`/`false` doesn't dump the
+// user onto the "Match not found" panel.
 export default function MinesPvpMatchPage({
   params,
 }: {
@@ -305,8 +306,22 @@ export default function MinesPvpMatchPage({
     // page mount where `matchId` wasn't a finite number left the user pinned to the
     // "Loading match…" spinner. We now branch + flip `loading=false` so the
     // existing `if (!match)` render path renders the "Match not found" panel.
-    if (!isSignedIn) {
+    // Clerk reports `isSignedIn` only AFTER it loads; before that, the
+    // value is `undefined`, which would have triggered the early return
+    // below and dumped the user onto the "Match not found" panel for the
+    // ~hundreds of ms Clerk takes to decide. We now distinguish "loaded +
+    // signed out" (real sign-out → redirect) from "loaded + signed in" (poll
+    // normally). While Clerk is still deciding we hold `loading=true` so
+    // the spinner stays put.
+    if (isSignedIn === false) {
       setLoading(false);
+      setError("You must be signed in to view this match.");
+      return;
+    }
+    // If isSignedIn is undefined we simply skip the fetch this tick —
+    // it's a Clerk-warming-up window, the polling interval will retry
+    // inside 1.5 s once Clerk reports the actual value.
+    if (isSignedIn !== true) {
       return;
     }
     if (!isValidMatchId) {
@@ -315,7 +330,10 @@ export default function MinesPvpMatchPage({
       return;
     }
     try {
-      const res = await fetch(`/api/mines-pvp/${matchId}/status`, {
+      // BUG-FIX: the route lives at /api/mines-pvp/match/[matchId] (verified
+      // via `src/app/api/mines-pvp/match/[matchId]/route.js`); the old
+      // /api/mines-pvp/${matchId}/status URL 404'd on every poll.
+      const res = await fetch(`/api/mines-pvp/match/${matchId}`, {
         cache: "no-store",
         credentials: "include",
       });
@@ -324,8 +342,19 @@ export default function MinesPvpMatchPage({
         setError(data?.error || "Unable to load match");
         return;
       }
-      setMatch(data.data.match || null);
-      setError(null);
+      // Defensive null-check: API contract says `data.data.match` is the
+      // match row OR null; never undefined. Guard against malformed frames
+      // so we always end up on a defined UI state instead of an unhandled
+      // object.
+      const nextMatch =
+        data?.data?.match && typeof data.data.match === "object"
+          ? data.data.match
+          : null;
+      setMatch(nextMatch);
+      // A successful response always wins over any stale tick error —
+      // never preserve "Network error" across a fresh "match is gone"
+      // confirmation.
+      setError(nextMatch ? null : "Match not found.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
     } finally {
@@ -461,7 +490,9 @@ export default function MinesPvpMatchPage({
       setBusy(true);
       setError(null);
       try {
-        const res = await fetch(`/api/mines-pvp/${matchId}/pick`, {
+        // BUG-FIX: route lives at /api/mines-pvp/match/[matchId]/pick,
+        // not /api/mines-pvp/${matchId}/pick (which 404'd).
+        const res = await fetch(`/api/mines-pvp/match/${matchId}/pick`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
