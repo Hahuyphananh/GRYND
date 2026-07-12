@@ -511,21 +511,27 @@ export default function MinesPvpLobbyPage() {
             )}
           </AnimatePresence>
 
-          <div className="grid md:grid-cols-[1fr_auto_1fr] gap-3 items-end">
-            <div className="space-y-3">
-              {/* Stake picker */}
+          <div className="grid md:grid-cols-[1.1fr_auto_1fr] gap-3 items-end">
+            {/* Wager (stake) + Mine-count pickers side-by-side.
+                Mirrors the roulette lobby's single-picker footprint
+                so the overall card height matches the roulette lobby
+                — the user complained the stacked layout left too much
+                unused vertical space. On mobile (< sm) the two pickers
+                stack vertically; from sm upward they sit side-by-side. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* Wager (stake) picker — host & joiner both pay this */}
               <div>
-                <label className="text-[11px] uppercase tracking-wider text-white/60">
-                  Stake (per player)
+                <label className="text-[10px] uppercase tracking-wider text-white/60 font-semibold">
+                  Wager
                 </label>
-                <div className="mt-1 flex flex-wrap gap-1.5">
+                <div className="mt-1 flex flex-wrap gap-1">
                   {STAKE_PRESETS.map((v) => (
                     <button
                       key={v}
                       onClick={() => setStake(v)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition ${
                         stake === v
-                          ? "bg-cyan-300 text-black border-cyan-300 shadow-[0_0_10px_rgba(0,229,255,0.7)]"
+                          ? "bg-cyan-300 text-black border-cyan-300 shadow-[0_0_8px_rgba(0,229,255,0.7)]"
                           : "bg-[#08142f] text-cyan-200/80 border-cyan-300/30 hover:bg-cyan-300/15"
                       }`}
                     >
@@ -533,32 +539,30 @@ export default function MinesPvpLobbyPage() {
                     </button>
                   ))}
                 </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={balance ?? undefined}
-                    value={stake}
-                    onChange={(e) =>
-                      setStake(Math.max(1, Number(e.target.value) || 0))
-                    }
-                    className="flex-1 rounded-lg bg-[#020617] border border-cyan-300/30 focus:border-cyan-300 outline-none p-2 text-white text-sm"
-                  />
-                </div>
+                <input
+                  type="number"
+                  min={1}
+                  max={balance ?? undefined}
+                  value={stake}
+                  onChange={(e) =>
+                    setStake(Math.max(1, Number(e.target.value) || 0))
+                  }
+                  className="mt-1.5 w-full rounded-md bg-[#020617] border border-cyan-300/30 focus:border-cyan-300 outline-none px-2 py-1.5 text-white text-xs"
+                />
               </div>
-              {/* Mine count picker (host-only at create time) */}
+              {/* Mine-count picker — host-only at create time */}
               <div>
-                <label className="text-[11px] uppercase tracking-wider text-white/60">
-                  Mine count <span className="text-fuchsia-300/80">(host picks)</span>
+                <label className="text-[10px] uppercase tracking-wider text-white/60 font-semibold">
+                  Mines <span className="text-fuchsia-300/70 font-normal normal-case tracking-normal">(host)</span>
                 </label>
-                <div className="mt-1 flex flex-wrap gap-1.5">
+                <div className="mt-1 flex flex-wrap gap-1">
                   {MINES_PRESETS.map((v) => (
                     <button
                       key={v}
                       onClick={() => setMinesCount(v)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition ${
                         minesCount === v
-                          ? "bg-fuchsia-400 text-black border-fuchsia-400 shadow-[0_0_10px_rgba(217,70,239,0.7)]"
+                          ? "bg-fuchsia-400 text-black border-fuchsia-400 shadow-[0_0_8px_rgba(217,70,239,0.7)]"
                           : "bg-[#08142f] text-fuchsia-200/80 border-fuchsia-300/30 hover:bg-fuchsia-300/15"
                       }`}
                     >
@@ -579,11 +583,10 @@ export default function MinesPvpLobbyPage() {
                       ),
                     )
                   }
-                  className="mt-2 w-full rounded-lg bg-[#020617] border border-fuchsia-300/30 focus:border-fuchsia-300 outline-none p-2 text-white text-sm"
+                  className="mt-1.5 w-full rounded-md bg-[#020617] border border-fuchsia-300/30 focus:border-fuchsia-300 outline-none px-2 py-1.5 text-white text-xs"
                 />
-                <p className="text-[10px] text-white/45 mt-1">
-                  Range {MIN_MINES}–{MAX_MINES}. Joiners inherit your
-                  pick — they can&apos;t change it.
+                <p className="text-[9px] text-white/40 mt-1 leading-tight">
+                  Range {MIN_MINES}–{MAX_MINES}. Joiners inherit.
                 </p>
               </div>
             </div>

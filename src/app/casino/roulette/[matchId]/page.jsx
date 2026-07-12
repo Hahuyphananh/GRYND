@@ -322,14 +322,21 @@ export default function RoulettePvpGamePage({ params }) {
   }, [matchEndedBanner]);
   const lastRoundCountRef = useRef(null);
   const bannerTimerRef = useRef(null);
-  // Last server-stamped spin-result index we animated on. Held in a
-  // ref (NOT useState) so updating it inside the spin effect doesn't
-  // re-run the effect with `lastAnimatedIndex` in its dep list — the
-  // update would race with the in-flight spinWheel IIFE, fire its
-  // cleanup, and `cancelled = true` would skip the pending banner
-  // reveal AND leave `spinning` stuck `true` forever. Bug caught at
-  // code review.
-  const lastAnimatedIndexRef = useRef(null);
+  // Last server-stamped spin-result fingerprint we animated on. Held
+  // in a ref (NOT useState) so updating it inside the spin effect
+  // doesn't re-run the effect with `lastAnimatedSpinId` in its dep
+  // list — the update would race with the in-flight spinWheel IIFE,
+  // fire its cleanup, and `cancelled = true` would skip the pending
+  // banner reveal AND leave `spinning` stuck `true` forever. Bug
+  // caught at code review.
+  //
+  // The fingerprint is `${rounds.length}-${lastSpinResultIndex}`
+  // (computed as `spinId` further down). Using the round count + spin
+  // index makes the sentinel unique across every round resolution, so
+  // two consecutive rounds landing on the same wheel pocket still
+  // re-trigger the animation (the bare `lastSpinResultIndex` would
+  // match the previous spin and silently skip the new one).
+  const lastAnimatedSpinIdRef = useRef(null);
   // BUG-FIX ("round banner appears and disappears while wheel is
   // still spinning"): the round-result popup used to fire
   // immediately on `poll detects rounds.length++`, well before
@@ -341,12 +348,13 @@ export default function RoulettePvpGamePage({ params }) {
   // `setRoundResultBanner(...)` after `spinWheel(...)` resolves, so
   // the popup and the wheel settle at the same time.
   const pendingBannerRef = useRef(null);
-  // Last server-stamped spin-result index we saw. Used by the
+  // Last server-stamped spin-result fingerprint we saw. Used by the
   // round-transition-reset effect below to detect "a new round just
-  // began" (server cleared both players' bets but lastSpinResultIndex
-  // is the same as before — i.e., the previous round settled and the
-  // next one is fresh).
-  const lastSeenSpinIndexRef = useRef(null);
+  // began" (server cleared both players' bets but the same spin
+  // index landed — i.e., the previous round settled and the next
+  // one is fresh). Fingerprinted for the same repeat-spin reason as
+  // `lastAnimatedSpinIdRef` above.
+  const lastSeenSpinIdRef = useRef(null);
 
   // ── Polling match status (server-authoritative) ────────────────
   const fetchStatus = useCallback(async () => {
@@ -743,24 +751,38 @@ export default function RoulettePvpGamePage({ params }) {
   );
 
   // When the server reveals a new spin result, kick off the wheel
-  // animation. `lastAnimatedIndexRef` (a ref, not state) guards
+  // animation. `lastAnimatedSpinIdRef` (a ref, not state) guards
   // against re-animating on identical re-renders without re-running
   // this effect and triggering a spurious cleanup mid-animation.
-  // See `lastAnimatedIndexRef` for the full reasoning on why this
+  // See `lastAnimatedSpinIdRef` for the full reasoning on why this
   // value must NOT be React state.
+  //
+  // BUG-FIX ("wheel never re-animates when the same number lands twice
+  // in a row"): The sentinel used to be `lastSpinResultIndex` alone,
+  // but `spinResultIndex` is the position of the winning pocket on
+  // the wheel (0–36) and is NOT unique across rounds — two rounds in
+  // a row can both land on the red-12 pocket. When that happened,
+  // the second resolution's identical `lastSpinResultIndex` matched
+  // the sentinel, the wheel skipped its animation, the round-just-
+  // resolved banner never surfaced, and the staged `bets` reset
+  // effect below silently skipped too. The fix: fingerprint each
+  // spin resolution with `${rounds.length}-${lastSpinResultIndex}`
+  // — `rounds.length` increments by exactly 1 every resolution, so
+  // the fingerprint is globally unique across the match.
+  const spinId =
+    match?.lastSpinResultIndex == null
+      ? null
+      : `${(rounds || []).length}-${match.lastSpinResultIndex}`;
   useEffect(() => {
-    if (
-      match?.lastSpinResultIndex === null ||
-      match?.lastSpinResultIndex === undefined
-    ) {
+    if (spinId === null) {
       return;
     }
-    if (match.lastSpinResultIndex === lastAnimatedIndexRef.current) {
+    if (spinId === lastAnimatedSpinIdRef.current) {
       return;
     }
     setWinningNumber(match.lastSpinResult ?? null);
     setSpinning(true);
-    lastAnimatedIndexRef.current = match.lastSpinResultIndex;
+    lastAnimatedSpinIdRef.current = spinId;
     let cancelled = false;
     (async () => {
       try {
@@ -784,7 +806,7 @@ export default function RoulettePvpGamePage({ params }) {
     return () => {
       cancelled = true;
     };
-  }, [match?.lastSpinResultIndex, match?.lastSpinResult, spinWheel]);
+  }, [spinId, match?.lastSpinResult, spinWheel]);
 
   // Clear wheel highlight after a delay (preserved from solo roulette)
   useEffect(() => {
@@ -798,27 +820,24 @@ export default function RoulettePvpGamePage({ params }) {
   // Previously the locally-staged `bets` state carried the previous
   // round's chips forward into the next round, so the chip selector's
   // "X pts remaining" calculation would silently deduct those stale
-  // chips against the new round's freshly-credited balance. Detect
-  // "new round just begun" (server cleared both players' bets AND a
-  // spin result is present for the new round) and wipe the local
-  // `bets` so the player starts each round with an empty ladder.
-  // The `lastSeenSpinIndexRef` sentinel suppresses re-runs we already
+  // chips against the new round's freshly-credited balance. We now
+  // wipe the local `bets` whenever a fresh `spinId` fingerprint
+  // surfaces — which, because `spinId` includes `rounds.length`,
+  // fires exactly once per round resolution. The
+  // `lastSeenSpinIdRef` sentinel suppresses re-runs we already
   // processed, so this effect is idempotent across re-renders.
   //
-  // Note: `lastSpinResultIndex === 0` is a valid spin (the wheel's
-  // green zero pocket is ROULETTE_NUMBERS[0]), so the predicate MUST
-  // use a null-check (e.g. `tx != null`) rather than `Boolean(tx)`,
-  // which would silently skip the reset on green-zero spins.
+  // We don't need the `!match?.player1Bets && !match?.player2Bets`
+  // guard from the previous revision: those columns are guaranteed
+  // to be null at the moment of `spinId` change because the server
+  // clears them in `resolveRound` (which is the same code path that
+  // advances `rounds.length` and stamps `lastSpinResultIndex`).
   useEffect(() => {
-    const tx = match?.lastSpinResultIndex ?? null;
-    if (tx === lastSeenSpinIndexRef.current) return;
-    lastSeenSpinIndexRef.current = tx;
-    const newRoundBegun =
-      tx != null && !match?.player1Bets && !match?.player2Bets;
-    if (newRoundBegun) {
-      setBets({});
-    }
-  }, [match?.lastSpinResultIndex, match?.player1Bets, match?.player2Bets]);
+    if (spinId === null) return;
+    if (spinId === lastSeenSpinIdRef.current) return;
+    lastSeenSpinIdRef.current = spinId;
+    setBets({});
+  }, [spinId]);
 
   // ── Bet placement (PvP-aware: only allowed when match is bettable
   //    AND you haven't already submitted your bets for this round) ───
@@ -865,11 +884,23 @@ export default function RoulettePvpGamePage({ params }) {
   // false, the real server-balance surfaces in lockstep with the
   // round-result banner so the player sees the points change at the
   // same moment the ball visibly settles in its pocket.
+  //
+  // BUG-FIX ("spin-result lookup returns wrong round for repeats"):
+  // Previously this `useMemo` looked up the round whose
+  // `spinResultIndex` matched `match.lastSpinResultIndex`, but
+  // `spinResultIndex` is the position of the winning number on the
+  // wheel (0–36) and IS NOT unique across rounds — e.g., two rounds
+  // in a row can both land on red-12. The `.find()` returned the
+  // FIRST round with that index, so on any repeat-spin the panel
+  // resurfaced the OLD round's payouts/balance delta instead of the
+  // just-resolved round's. The fix: trust the INSERT order instead
+  // and use the last entry of the history array, which `fetchMatch`
+  // returns ordered by `roundNumber ASC` (so the last entry is the
+  // most recently appended round).
   const latestResolvedRound = useMemo(() => {
-    const idx = match?.lastSpinResultIndex;
-    if (idx === null || idx === undefined) return null;
-    return (rounds || []).find((r) => r.spinResultIndex === idx) ?? null;
-  }, [match?.lastSpinResultIndex, rounds]);
+    if (!rounds || rounds.length === 0) return null;
+    return rounds[rounds.length - 1];
+  }, [rounds]);
 
   const resolvedMyPayout = useMemo(() => {
     if (!latestResolvedRound) return 0;
@@ -1480,16 +1511,17 @@ export default function RoulettePvpGamePage({ params }) {
             )}
 
           {/* Locked-In Bets breakdown panel — shows each player's bet
-              targets and amounts after both have locked in. Reachable
-              via the live `displayMyBets` / `displayOppBets` (which
-              fall back to the just-resolved round's snapshot during
-              the spin so a brand-new submitter can see what the
-              opponent wagered without a polling round-trip). */}
+              targets and amounts. ALWAYS visible during active (non-
+              terminal, non-cancelled, non-waiting) rounds so both
+              players can see each other's "in progress" stack even
+              before anyone has locked in. Falls back to the just-
+              resolved round's snapshot during the spin via
+              `displayMyBets` / `displayOppBets` so a brand-new
+              submitter sees the opponent's wager without waiting
+              for a polling round-trip. */}
           {match.status !== MATCH_STATUS.WAITING &&
             match.status !== MATCH_STATUS.CANCELLED &&
-            match.status !== MATCH_STATUS.FINISHED &&
-            ((displayMyBets && Object.keys(displayMyBets).length > 0) ||
-              (displayOppBets && Object.keys(displayOppBets).length > 0)) && (
+            match.status !== MATCH_STATUS.FINISHED && (
               <LockedInBetsPanel
                 displayMyBets={displayMyBets}
                 displayOppBets={displayOppBets}
