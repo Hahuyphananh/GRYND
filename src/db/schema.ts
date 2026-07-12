@@ -1290,6 +1290,16 @@ export const roulettePvpMatches = pgTable(
     // (draw), +1 to player1, or +1 to player2.
     scorePlayer1: integer("score_player1").notNull().default(0),
     scorePlayer2: integer("score_player2").notNull().default(0),
+    // Live transient state per round (stored on the match row so
+    // intermediate submissions survive across the second player's
+    // /bet call). The server's `submitBets` writes both seats in
+    // place; `resolveRound` clears them at round end. Treat
+    // `IS NOT NULL` as "this player has locked in for the current
+    // round". Stored on the match row (not the round-history row)
+    // because the in-flight round's bets are live state, not
+    // history.
+    player1Bets: jsonb("player1_bets"),
+    player2Bets: jsonb("player2_bets"),
     // Per-round transient state (cleared between rounds). bet_deadline
     // enforces a server-side timer so a disconnected player can be
     // auto-treated as having submitted empty bets.
