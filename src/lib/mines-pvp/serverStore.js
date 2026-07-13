@@ -53,6 +53,7 @@ import {
   RESULT,
   ROUND_PICK_DEADLINE_MS,
   ROUND_TIMER_SECONDS,
+  activePickerForMatch,
   computePayout,
   decideOutcome,
   generateBoard,
@@ -424,46 +425,142 @@ async function advanceFromReady(tx, match) {
 // ── Force-pick on deadline ────────────────────────────────────────────
 //
 // Server-side "AFK nudge": if the current player's pick window has
-// elapsed and they haven't picked, auto-pick a random unrevealed
+// elapsed and they haven't picked, auto-pick a random un-picked
 // cell. The cell MAY be a mine — that's the punishment for going
-// AFK in the middle of a turn (per user spec).
-//
-// Returns the freshly-updated match row (which may have already
-// advanced to the next state if this was player2's AFK auto-pick).
+// AFK in the middle of a turn (per user spec). The auto-pick is
+// appended to `picks` (with `autoPicked: true`) and follows the
+// normal resolution rules: mine hit → picker loses outright;
+// otherwise → advance to the next picker in the "odds" turn order.
+// Returns the freshly-updated match row.
 async function forcePick(tx, match) {
   if (!PICKABLE_STATES.has(match.status)) {
     return match;
   }
-  const isP1Turn = match.status === MATCH_STATUS.P1_TURN;
-  const seat = isP1Turn ? "player1" : "player2";
-  const picks = [match.p1Pick, match.p2Pick].filter(
-    (p) => Number.isInteger(p) && p >= 0 && p < GRID_CELLS,
-  );
-  const cellIndex = pickRandomCell({ excludePicks: picks });
+  // The active picker is whatever the closed-form odds formula
+  // returns given the current picks-array length — NOT whatever
+  // `match.status === p1_turn` says, which only mirrors seat at
+  // pick-time.
+  const pickerId = activePickerForMatch(match);
+  const cellIndex = pickRandomCell({
+    // Exclude every cell already in the per-pick history, not just
+    // the legacy first-of-each-seat scalar (a player may have
+    // already made multiple picks before going AFK).
+    excludePicks: pickHistoryCells(match),
+  });
   const pickIsMine = isMine(match.board, cellIndex);
-
-  // Insert pick into the right per-seat columns.
-  const setValues = {
-    currentTurnUserId: null, // turn consumed (auto-pick)
-    roundDeadline: null,
+  const seat = pickerId === match.player1Id ? "player1" : "player2";
+  const pickedAt = new Date();
+  const newPick = {
+    userId: pickerId,
+    seat,
+    cell: cellIndex,
+    isMine: pickIsMine,
+    autoPicked: true,
+    pickedAt: pickedAt.toISOString(),
   };
-  if (isP1Turn) {
-    setValues.p1Pick = cellIndex;
-    setValues.p1PickIsMine = pickIsMine;
-    setValues.p1PickedAt = new Date();
-    setValues.p1AutoPicked = true;
-  } else {
-    setValues.p2Pick = cellIndex;
-    setValues.p2PickIsMine = pickIsMine;
-    setValues.p2PickedAt = new Date();
-    setValues.p2AutoPicked = true;
+
+  // Apply the pick + (if mine) resolve OR (if safe) advance turn.
+  return await applyPick(tx, match, newPick);
+}
+
+// ── Pure utility: flatten every pick cell across all players ──────────
+// Used by forcePick's `excludePicks` so the AFK auto-pick never
+// re-uses a cell the other player already cleared. Safe to call on
+// legacy rows whose `picks` is NULL — returns an empty array.
+function pickHistoryCells(match) {
+  const picks = Array.isArray(match?.picks) ? match.picks : [];
+  return picks
+    .map((p) => Number(p?.cell))
+    .filter((c) => Number.isInteger(c) && c >= 0 && c < GRID_CELLS);
+}
+
+// ── Apply a (validated) pick to the match ─────────────────────────────-
+//
+// Shared by `pickTile` (user-supplied) and `forcePick` (AFK
+// auto-pick). Encapsulates: append to `picks`, mirror the
+// most-recent pick onto the legacy p{N}_pick columns for
+// backwards-compat history views, and either resolve the match
+// (mine hit) or advance to the next picker (odds formula).
+async function applyPick(tx, match, pick) {
+  const allPicks = Array.isArray(match.picks) ? [...match.picks] : [];
+  allPicks.push(pick);
+
+  const setValues = {
+    picks: allPicks,
+    // Mirror the most-recent-of-each seat onto the legacy scalar
+    // columns. Only the LAST pick from a given seat sticks; this
+    // preserves the schema contract for any legacy viewer that
+    // still reads `p1_pick` / `p2_pick` etc. directly.
+    p1Pick: pickSeatMostRecent(allPicks, "player1", "cell"),
+    p2Pick: pickSeatMostRecent(allPicks, "player2", "cell"),
+    p1PickIsMine: pickSeatMostRecent(allPicks, "player1", "isMine"),
+    p2PickIsMine: pickSeatMostRecent(allPicks, "player2", "isMine"),
+    p1PickedAt: pickSeatMostRecent(allPicks, "player1", "pickedAt"),
+    p2PickedAt: pickSeatMostRecent(allPicks, "player2", "pickedAt"),
+    p1AutoPicked:
+      pickSeatMostRecent(allPicks, "player1", "autoPicked") ?? false,
+    p2AutoPicked:
+      pickSeatMostRecent(allPicks, "player2", "autoPicked") ?? false,
+  };
+
+  if (pick.isMine) {
+    // Mine hit → resolve immediately. The picker of the mine loses
+    // outright per the new odds-turn spec (no draws possible).
+    // Conditional update + resolve are inside the same tx so a
+    // concurrent status poll can't see a half-applied pick.
+    const [updated] = await tx
+      .update(minesPvpMatches)
+      .set(setValues)
+      .where(
+        and(
+          eq(minesPvpMatches.id, match.id),
+          eq(minesPvpMatches.status, match.status),
+        ),
+      )
+      .returning();
+    if (!updated) {
+      // Lost the race to a concurrent safe-pick advance; fall
+      // through and call resolveMatch on the FRESH row, but
+      // EXPLICITLY merge `pick` onto `refreshed.picks` first so the
+      // rounds-row + per-seat scalars don't drop the mine that
+      // ended the match (defensive per code-review S1).
+      const [refreshed] = await tx
+        .select()
+        .from(minesPvpMatches)
+        .where(eq(minesPvpMatches.id, match.id));
+      const merged = refreshed || match;
+      const mergedPicks = Array.isArray(merged.picks)
+        ? [...merged.picks, pick]
+        : [pick];
+      return await resolveMatch(
+        tx,
+        { ...merged, picks: mergedPicks },
+        pick.userId,
+      );
+    }
+    return await resolveMatch(tx, updated, pick.userId);
   }
 
-  // Seat-specific update with conditional status guard so a
-  // concurrent manual pick arriving in the same tx can't lose.
+  // Safe pick → advance to the next picker via the closed-form
+  // odds formula. Set the next deadline + flip `currentTurnUserId`
+  // + keep `status` aligned with the new picker seat for legacy
+  // status listeners that still interpret p1_turn / p2_turn.
+  const fakeMatchAfter = { ...match, picks: allPicks };
+  const nextPickerId = activePickerForMatch(fakeMatchAfter);
+  const nextDeadline = new Date(Date.now() + roundDeadlineMs(match));
+  const nextStatus =
+    nextPickerId === match.player1Id
+      ? MATCH_STATUS.P1_TURN
+      : MATCH_STATUS.P2_TURN;
+
   const [updated] = await tx
     .update(minesPvpMatches)
-    .set(setValues)
+    .set({
+      ...setValues,
+      currentTurnUserId: nextPickerId,
+      roundDeadline: nextDeadline,
+      status: nextStatus,
+    })
     .where(
       and(
         eq(minesPvpMatches.id, match.id),
@@ -472,34 +569,27 @@ async function forcePick(tx, match) {
     )
     .returning();
 
-  const effective = updated || match;
-
-  // If this was player1's AFK auto-pick, advance to p2_turn. If it
-  // was player2's, both picks are now in — resolve the match.
-  // (The status column doesn't change inside the seat-specific
-  // UPDATE above, so we have to discriminate by the *original*
-  // `isP1Turn` flag, not by `effective.status`.)
-  if (isP1Turn) {
-    const nextDeadline = new Date(Date.now() + roundDeadlineMs(effective));
-    const [advanced] = await tx
-      .update(minesPvpMatches)
-      .set({
-        status: MATCH_STATUS.P2_TURN,
-        currentTurnUserId: effective.player2Id,
-        roundDeadline: nextDeadline,
-      })
-      .where(
-        and(
-          eq(minesPvpMatches.id, effective.id),
-          eq(minesPvpMatches.status, MATCH_STATUS.P1_TURN),
-        ),
-      )
-      .returning();
-    return advanced || effective;
+  if (!updated) {
+    const [refreshed] = await tx
+      .select()
+      .from(minesPvpMatches)
+      .where(eq(minesPvpMatches.id, match.id));
+    return { match: refreshed || match, justResolved: false, raced: true };
   }
+  return { match: updated, justResolved: false };
+}
 
-  // Was player2's AFK auto-pick — resolve the match.
-  return await resolveMatch(tx, effective);
+// Pure helper: return the value of `field` from the MOST RECENT
+// entry of `picks` whose `seat` matches `seatLabel`. Returns null
+// if no such entry exists (so callers can stamp null onto legacy
+// timestamp columns when that seat hasn't picked yet).
+function pickSeatMostRecent(picks, seatLabel, field) {
+  for (let i = picks.length - 1; i >= 0; i -= 1) {
+    if (picks[i] && picks[i].seat === seatLabel) {
+      return picks[i][field] ?? null;
+    }
+  }
+  return null;
 }
 
 // ── pickTile (the main action) ────────────────────────────────────────
@@ -543,84 +633,41 @@ export async function pickTile({ userId, matchId, cellIndex }) {
       return { error: "Pick window has expired", status: 400 };
     }
 
-    // Turn enforcement: only the player whose turn it is can pick.
-    if (match.currentTurnUserId !== userId) {
+    // Turn enforcement: the closed-form odds formula decides WHOSE
+    // turn it is right now (FP / SP / SP / FP / ...). The DB row's
+    // `currentTurnUserId` should agree with the formula; if it
+    // doesn't (e.g. a legacy row mid-migration), reject. The caller
+    // must equal whatever the formula says.
+    const expectedPicker = activePickerForMatch(match);
+    if (
+      !expectedPicker ||
+      match.currentTurnUserId !== expectedPicker ||
+      userId !== expectedPicker
+    ) {
       return { error: "It is not your turn", status: 403 };
     }
 
-    // Disallow duplicate picks (manual + future AFK of the other
-    // player could otherwise target the same cell).
-    if (match.p1Pick === idx || match.p2Pick === idx) {
+    // Disallow duplicate picks across the full per-pick history,
+    // not just the legacy first-of-each-seat scalar. Both players
+    // can now make many picks; only ever one pick per cell.
+    const historyCells = pickHistoryCells(match);
+    if (historyCells.includes(idx)) {
       return { error: "Cell already picked", status: 409 };
     }
 
-    const isP1Turn = match.status === MATCH_STATUS.P1_TURN;
     const pickIsMine = isMine(match.board, idx);
-    const seat = isP1Turn ? "player1" : "player2";
-
-    const setValues = {
-      currentTurnUserId: null, // turn consumed
-      // roundDeadline will be re-set to the next pick window below
-      // (or nulled out if the match resolves from this pick).
-      roundDeadline: null,
+    const seat =
+      userId === match.player1Id ? "player1" : "player2";
+    const newPick = {
+      userId,
+      seat,
+      cell: idx,
+      isMine: pickIsMine,
+      autoPicked: false,
+      pickedAt: new Date().toISOString(),
     };
-    if (isP1Turn) {
-      setValues.p1Pick = idx;
-      setValues.p1PickIsMine = pickIsMine;
-      setValues.p1PickedAt = new Date();
-    } else {
-      setValues.p2Pick = idx;
-      setValues.p2PickIsMine = pickIsMine;
-      setValues.p2PickedAt = new Date();
-    }
 
-    // Conditional UPDATE with status guard so a concurrent AFK
-    // auto-pick (from a status poll) can't lose this manual pick.
-    const [updated] = await tx
-      .update(minesPvpMatches)
-      .set(setValues)
-      .where(
-        and(
-          eq(minesPvpMatches.id, match.id),
-          eq(minesPvpMatches.status, match.status),
-        ),
-      )
-      .returning();
-
-    if (!updated) {
-      // Lost the race to a concurrent status poll that triggered
-      // AFK auto-pick. Refetch and return the new state.
-      const [refreshed] = await tx
-        .select()
-        .from(minesPvpMatches)
-        .where(eq(minesPvpMatches.id, match.id));
-      return { match: refreshed, raced: true };
-    }
-
-    // If this was player1's pick, advance to p2_turn. If it was
-    // player2's, both picks are in — resolve the match.
-    if (isP1Turn) {
-      const nextDeadline = new Date(Date.now() + roundDeadlineMs(updated));
-      const [advanced] = await tx
-        .update(minesPvpMatches)
-        .set({
-          status: MATCH_STATUS.P2_TURN,
-          currentTurnUserId: updated.player2Id,
-          roundDeadline: nextDeadline,
-        })
-        .where(
-          and(
-            eq(minesPvpMatches.id, updated.id),
-            eq(minesPvpMatches.status, MATCH_STATUS.P1_TURN),
-          ),
-        )
-        .returning();
-      return { match: advanced || updated, justResolved: false };
-    }
-
-    // player2 just picked — resolve.
-    const resolved = await resolveMatch(tx, updated);
-    return { match: resolved, justResolved: true };
+    return await applyPick(tx, match, newPick);
   });
 }
 
@@ -635,18 +682,19 @@ export async function pickTile({ userId, matchId, cellIndex }) {
 //   P1 mine + P2 safe → P1 loses
 //   P1 safe + P2 mine → P2 loses
 //   P1 safe + P2 safe → DRAW (full refund, no fee)
-async function resolveMatch(tx, match) {
-  // Guard: both picks must be present before we can resolve. This
-  // fires when `pickTile` calls `resolveMatch` after p2 picks, and
-  // when `forcePick` calls it after p2's AFK auto-pick. Defensive in
-  // case a future caller forgets to pre-validate.
-  if (match.p1Pick == null || match.p2Pick == null) {
+async function resolveMatch(tx, match, loserId) {
+  if (!loserId) {
+    // Defensive: shouldn't be called without a loserId. The legacy
+    // two-pick DRAW flow used `match.p1Pick == null || match.p2Pick
+    // == null` as a no-resolve guard; the new odds flow requires
+    // an explicit loserId to know who's the loser.
     return match;
   }
 
   const result = decideOutcome({
-    p1PickIsMine: Boolean(match.p1PickIsMine),
-    p2PickIsMine: Boolean(match.p2PickIsMine),
+    loserId,
+    player1Id: match.player1Id,
+    player2Id: match.player2Id,
   });
 
   const payout = computePayout({
@@ -654,77 +702,63 @@ async function resolveMatch(tx, match) {
     result,
   });
 
+  // Pick the FIRST pick from each seat for the legacy single-pick
+  // columns on `mines_pvp_rounds`. The full chronological history
+  // is mirrored onto the new `picks` jsonb column below — that is
+  // the source of truth for replays.
+  const picks = Array.isArray(match.picks) ? match.picks : [];
+  const firstP1Pick = picks.find((p) => p?.seat === "player1") ?? null;
+  const firstP2Pick = picks.find((p) => p?.seat === "player2") ?? null;
+
   // Persist the per-match history snapshot FIRST so the history
-  // always reflects the final board + outcome.
+  // always reflects the final board + outcome + full pick
+  // chronology.
   await tx.insert(minesPvpRounds).values({
     matchId: match.id,
     roundNumber: 1,
-    p1Pick: match.p1Pick,
-    p2Pick: match.p2Pick,
-    p1PickIsMine: Boolean(match.p1PickIsMine),
-    p2PickIsMine: Boolean(match.p2PickIsMine),
-    p1AutoPicked: Boolean(match.p1AutoPicked),
-    p2AutoPicked: Boolean(match.p2AutoPicked),
+    p1Pick: firstP1Pick ? firstP1Pick.cell : null,
+    p2Pick: firstP2Pick ? firstP2Pick.cell : null,
+    p1PickIsMine: firstP1Pick ? Boolean(firstP1Pick.isMine) : null,
+    p2PickIsMine: firstP2Pick ? Boolean(firstP2Pick.isMine) : null,
+    p1AutoPicked: firstP1Pick ? Boolean(firstP1Pick.autoPicked) : false,
+    p2AutoPicked: firstP2Pick ? Boolean(firstP2Pick.autoPicked) : false,
     boardSnapshot: match.board ?? { size: 5, mines: [] },
+    picks,
     roundWinner: result,
   });
 
-  // Apply balance changes per the payout math.
-  let winnerId = null;
-  if (result === RESULT.PLAYER1) {
-    winnerId = match.player1Id;
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-      .where(eq(users.clerkId, match.player1Id));
-  } else if (result === RESULT.PLAYER2) {
-    winnerId = match.player2Id;
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-      .where(eq(users.clerkId, match.player2Id));
-  } else {
-    // DRAW (both safe) — refund both players in full, no house fee.
-    await tx
-      .update(users)
-      .set({
-        balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-      })
-      .where(eq(users.clerkId, match.player1Id));
-    await tx
-      .update(users)
-      .set({
-        balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-      })
-      .where(eq(users.clerkId, match.player2Id));
-  }
+  // Apply balance changes. Only two outcomes in the new flow
+  // (PLAYER1 or PLAYER2); never a DRAW.
+  const winnerId =
+    result === RESULT.PLAYER1 ? match.player1Id : match.player2Id;
+  await tx
+    .update(users)
+    .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
+    .where(eq(users.clerkId, winnerId));
 
-  // Stamp the match as finished. The `board` column stays on the row
-  // so the post-match reveal screen can render the full mine layout
-  // (the /status route stops scrubbing it once status='finished').
-  const setValues = {
-    status: MATCH_STATUS.FINISHED,
-    currentTurnUserId: null,
-    roundDeadline: null,
-    result,
-    houseFee: payout.houseFee.toFixed(2),
-    prizePaid: payout.prizePaid.toFixed(2),
-    endedAt: new Date(),
-  };
-  if (winnerId) setValues.winnerId = winnerId;
-
+  // Stamp the match as finished. The `board` column stays on the
+  // row so the post-match reveal screen can render the full mine
+  // layout (the /status route stops scrubbing it once
+  // status='finished').
   const [updated] = await tx
     .update(minesPvpMatches)
-    .set(setValues)
+    .set({
+      status: MATCH_STATUS.FINISHED,
+      currentTurnUserId: null,
+      roundDeadline: null,
+      result,
+      winnerId,
+      houseFee: payout.houseFee.toFixed(2),
+      prizePaid: payout.prizePaid.toFixed(2),
+      endedAt: new Date(),
+    })
     .where(eq(minesPvpMatches.id, match.id))
     .returning();
 
   const finalRow = updated || match;
 
   // Best-effort stat side-effects (failures don't roll the match).
-  if (result === RESULT.PLAYER1 || result === RESULT.PLAYER2) {
-    await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
-  }
+  await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
 
   return finalRow;
 }

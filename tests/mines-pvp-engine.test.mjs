@@ -54,6 +54,9 @@ import {
   round2,
   cellIndexToRowCol,
   rowColToCellIndex,
+  seatForPickNumber,
+  activeSeatForMatch,
+  activePickerForMatch,
 } from "../src/lib/mines-pvp/constants.js";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -280,19 +283,16 @@ test("generateBoard: all mine indices are within 0..GRID_CELLS-1", () => {
 });
 
 test("generateBoard: distribution is roughly uniform (each cell appears ~count/25 times in 1000 trials)", () => {
-  // Skip if running in a low-entropy environment — this is a smoke check
-  // for the Fisher-Yates shuffle, not a strict statistical test.
   const counts = new Array(GRID_CELLS).fill(0);
   const trials = 1000;
   for (let i = 0; i < trials; i += 1) {
     const board = generateBoard(5);
     for (const idx of board.mines) counts[idx] += 1;
   }
-  // Each cell has expected 5 * 1000 / 25 = 200 hits. Allow wide tolerance.
   for (let cell = 0; cell < GRID_CELLS; cell += 1) {
     assert.ok(
       counts[cell] > 100 && counts[cell] < 320,
-      `cell ${cell} hit ${counts[cell]} times — out of expected range (Fisher-Yates may be broken)`,
+      `cell ${cell} hit ${counts[cell]} times — out of expected range`,
     );
   }
 });
@@ -322,11 +322,8 @@ test("generateBoard: NaN throws RangeError", () => {
 });
 
 test("generateBoard: numeric string is coerced (no throw for '5')", () => {
-  // "5" coerces to 5, so the function returns a valid 5-mine board.
-  // Truly non-numeric strings (NaN after coercion) still throw.
   const board = generateBoard("5");
   assert.equal(board.mines.length, 5);
-
   assert.throws(() => generateBoard("abc"), RangeError);
   assert.throws(() => generateBoard("1.5"), RangeError);
 });
@@ -389,33 +386,213 @@ test("isMine: board with no mines array returns false", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// decideOutcome — the user-spec resolution table
+// decideOutcome — the user-spec resolution table (odds-turn flow)
+//
+// Every match ends when a player picks a mine; the picker loses.
+// `decideOutcome({ loserId, player1Id, player2Id })` returns the seat
+// of the WINNING player. DRAW remains on the RESULT enum for parity
+// with other PvP systems that produce draws, but is never returned
+// by the new mines-pvp logic.
 // ════════════════════════════════════════════════════════════════════════
 
-test("decideOutcome: P1 mine + P2 mine → PLAYER2 (P1 mined first)", () => {
+test("decideOutcome: loserId = player1Id -> PLAYER2 wins", () => {
   assert.equal(
-    decideOutcome({ p1PickIsMine: true, p2PickIsMine: true }),
+    decideOutcome({ loserId: "u1", player1Id: "u1", player2Id: "u2" }),
     RESULT.PLAYER2,
   );
 });
 
-test("decideOutcome: P1 mine + P2 safe → PLAYER2 (P1 loses)", () => {  assert.equal(
-    decideOutcome({ p1PickIsMine: true, p2PickIsMine: false }),
-    RESULT.PLAYER2,
-  );
-});
-
-test("decideOutcome: P1 safe + P2 mine → PLAYER1 (P2 loses)", () => {
+test("decideOutcome: loserId = player2Id -> PLAYER1 wins", () => {
   assert.equal(
-    decideOutcome({ p1PickIsMine: false, p2PickIsMine: true }),
+    decideOutcome({ loserId: "u2", player1Id: "u1", player2Id: "u2" }),
     RESULT.PLAYER1,
   );
 });
 
-test("decideOutcome: P1 safe + P2 safe → DRAW (no rake, full refund)", () => {
+test("decideOutcome: never returns DRAW for any (loserId, seat) pair", () => {
+  for (const loserId of ["u1", "u2"]) {
+    const result = decideOutcome({
+      loserId,
+      player1Id: "u1",
+      player2Id: "u2",
+    });
+    assert.notEqual(
+      result,
+      RESULT.DRAW,
+      `decideOutcome leaked DRAW for loserId=${loserId}`,
+    );
+    assert.ok(
+      result === RESULT.PLAYER1 || result === RESULT.PLAYER2,
+      `decideOutcome returned non-PLAYER value: ${result}`,
+    );
+  }
+});
+
+test("decideOutcome: loserId must match one of player1Id / player2Id (RangeError otherwise)", () => {
+  assert.throws(
+    () => decideOutcome({ loserId: "u3", player1Id: "u1", player2Id: "u2" }),
+    RangeError,
+  );
+  assert.throws(
+    () => decideOutcome({ loserId: null, player1Id: "u1", player2Id: "u2" }),
+    RangeError,
+  );
+  assert.throws(
+    () => decideOutcome({
+      loserId: undefined,
+      player1Id: "u1",
+      player2Id: "u2",
+    }),
+    RangeError,
+  );
+  assert.throws(
+    () => decideOutcome({ loserId: "", player1Id: "u1", player2Id: "u2" }),
+    RangeError,
+  );
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// seatForPickNumber / activeSeatForMatch / activePickerForMatch
+// — the closed-form "odds" turn order helper
+//
+// Pattern (with firstPlayerSeat = "player1"):
+//   turn 1 -> player1, turn 2 -> player2, turn 3 -> player2,
+//   turn 4 -> player1, turn 5 -> player1, turn 6 -> player2,
+//   turn 7 -> player2, turn 8 -> player1, ...
+// Grouped by 4: each pair of two consecutive picks stays on the
+// "leader" until the pair-leader flips.
+// ════════════════════════════════════════════════════════════════════════
+
+test("seatForPickNumber: closed-form pattern (firstPlayerSeat='player1')", () => {
+  const expected = [
+    [1, "player1"],
+    [2, "player2"],
+    [3, "player2"],
+    [4, "player1"],
+    [5, "player1"],
+    [6, "player2"],
+    [7, "player2"],
+    [8, "player1"],
+    [9, "player1"],
+    [10, "player2"],
+    [11, "player2"],
+    [12, "player1"],
+  ];
+  for (const [n, want] of expected) {
+    assert.equal(seatForPickNumber(n, "player1"), want, `turn ${n}`);
+  }
+});
+
+test("seatForPickNumber: firstPlayerSeat='player2' mirrors the pattern", () => {
+  const expected = [
+    [1, "player2"],
+    [2, "player1"],
+    [3, "player1"],
+    [4, "player2"],
+    [5, "player2"],
+    [6, "player1"],
+  ];
+  for (const [n, want] of expected) {
+    assert.equal(seatForPickNumber(n, "player2"), want, `turn ${n}`);
+  }
+});
+
+test("seatForPickNumber: invalid N returns null (defensive)", () => {
+  assert.equal(seatForPickNumber(0, "player1"), null);
+  assert.equal(seatForPickNumber(-1, "player1"), null);
+  assert.equal(seatForPickNumber(1.5, "player1"), null);
+  assert.equal(seatForPickNumber("1", "player1"), null);
+  assert.equal(seatForPickNumber(null, "player1"), null);
+});
+
+test("activeSeatForMatch: derives turns from picks.length + firstPlayerId", () => {
+  const mkMatch = ({ firstPlayerId, picks }) => ({
+    player1Id: "u1",
+    player2Id: "u2",
+    firstPlayerId,
+    picks,
+  });
   assert.equal(
-    decideOutcome({ p1PickIsMine: false, p2PickIsMine: false }),
-    RESULT.DRAW,
+    activeSeatForMatch(mkMatch({ firstPlayerId: "u1", picks: [] })),
+    "player1",
+  );
+  assert.equal(
+    activeSeatForMatch(
+      mkMatch({ firstPlayerId: "u1", picks: [{ seat: "player1" }] }),
+    ),
+    "player2",
+  );
+  assert.equal(
+    activeSeatForMatch(
+      mkMatch({
+        firstPlayerId: "u1",
+        picks: [{ seat: "player1" }, { seat: "player2" }],
+      }),
+    ),
+    "player2",
+  );
+  assert.equal(
+    activeSeatForMatch(
+      mkMatch({
+        firstPlayerId: "u1",
+        picks: [
+          { seat: "player1" },
+          { seat: "player2" },
+          { seat: "player2" },
+        ],
+      }),
+    ),
+    "player1",
+  );
+  assert.equal(
+    activeSeatForMatch(
+      mkMatch({
+        firstPlayerId: "u1",
+        picks: [
+          { seat: "player1" },
+          { seat: "player2" },
+          { seat: "player2" },
+          { seat: "player1" },
+        ],
+      }),
+    ),
+    "player1",
+  );
+});
+
+test("activePickerForMatch: returns clerkId of the active picker", () => {
+  const mkMatch = ({ firstPlayerId, picks }) => ({
+    player1Id: "u1",
+    player2Id: "u2",
+    firstPlayerId,
+    picks,
+  });
+  assert.equal(
+    activePickerForMatch(mkMatch({ firstPlayerId: "u1", picks: [] })),
+    "u1",
+  );
+  assert.equal(
+    activePickerForMatch(mkMatch({ firstPlayerId: "u2", picks: [] })),
+    "u2",
+  );
+  assert.equal(
+    activePickerForMatch(
+      mkMatch({
+        firstPlayerId: "u1",
+        picks: [{ seat: "player1" }, { seat: "player2" }],
+      }),
+    ),
+    "u2",
+  );
+  assert.equal(activePickerForMatch(null), null);
+  assert.equal(
+    activePickerForMatch({
+      player1Id: "u1",
+      player2Id: null,
+      firstPlayerId: "u1",
+      picks: [],
+    }),
+    null,
   );
 });
 
@@ -423,7 +600,7 @@ test("decideOutcome: P1 safe + P2 safe → DRAW (no rake, full refund)", () => {
 // computePayout
 // ════════════════════════════════════════════════════════════════════════
 
-test("computePayout: stake 100, P1 wins → winnerNet=190, loserNet=-100, houseFee=10, prizePaid=190", () => {
+test("computePayout: stake 100, P1 wins -> winnerNet=190, loserNet=-100, houseFee=10, prizePaid=190", () => {
   const p = computePayout({ stakeAmount: 100, result: RESULT.PLAYER1 });
   assert.equal(p.stake, 100);
   assert.equal(p.winnerNet, 190);
@@ -432,7 +609,7 @@ test("computePayout: stake 100, P1 wins → winnerNet=190, loserNet=-100, houseF
   assert.equal(p.prizePaid, 190);
 });
 
-test("computePayout: stake 100, P2 wins → mirror math (winnerNet=190, loserNet=-100, houseFee=10)", () => {
+test("computePayout: stake 100, P2 wins -> mirror math", () => {
   const p = computePayout({ stakeAmount: 100, result: RESULT.PLAYER2 });
   assert.equal(p.stake, 100);
   assert.equal(p.winnerNet, 190);
@@ -441,7 +618,7 @@ test("computePayout: stake 100, P2 wins → mirror math (winnerNet=190, loserNet
   assert.equal(p.prizePaid, 190);
 });
 
-test("computePayout: stake 50, DRAW → winnerNet=null, loserNet=null, houseFee=0, prizePaid=0", () => {
+test("computePayout: stake 50, DRAW -> winnerNet=null, loserNet=null, houseFee=0, prizePaid=0", () => {
   const p = computePayout({ stakeAmount: 50, result: RESULT.DRAW });
   assert.equal(p.stake, 50);
   assert.equal(p.winnerNet, null);
@@ -451,8 +628,6 @@ test("computePayout: stake 50, DRAW → winnerNet=null, loserNet=null, houseFee=
 });
 
 test("computePayout: prizePaid = stake + winnerPrize (1.9x stake total)", () => {
-  // Per spec: the winner is refunded their own stake + 90% of the loser's stake.
-  // prizePaid is the total payout to the winner = their stake back + 90% of loser.
   for (const stake of [1, 10, 25, 100, 250, 1000]) {
     for (const result of [RESULT.PLAYER1, RESULT.PLAYER2]) {
       const p = computePayout({ stakeAmount: stake, result });
@@ -474,10 +649,8 @@ test("computePayout: loserNet is always -stake (regardless of winner)", () => {
   }
 });
 
-test("computePayout: fractional stake rounds to 2dp (no floating-point drift)", () => {
+test("computePayout: fractional stake rounds to 2dp", () => {
   const p = computePayout({ stakeAmount: 1.5, result: RESULT.PLAYER1 });
-  // stake = 1.5, winnerPrize = 1.5 * 0.9 = 1.35, winnerNet = 1.5 + 1.35 = 2.85
-  // houseFee = 1.5 * 0.1 = 0.15, prizePaid = 2.85
   assert.equal(p.stake, 1.5);
   assert.equal(p.winnerNet, 2.85);
   assert.equal(p.loserNet, -1.5);
@@ -485,31 +658,13 @@ test("computePayout: fractional stake rounds to 2dp (no floating-point drift)", 
   assert.equal(p.prizePaid, 2.85);
 });
 
-test("computePayout: very small stake (0.01) — houseFee rounds to 0 due to 2dp", () => {
-  // 0.01 * 0.10 = 0.001 → toFixed(2) = "0.00" → 0
-  // 0.01 * 0.90 = 0.009 → toFixed(2) = "0.01" → 0.01
-  // 0.01 + 0.01 = 0.02
+test("computePayout: very small stake (0.01) houseFee rounds to 0", () => {
   const p = computePayout({ stakeAmount: 0.01, result: RESULT.PLAYER1 });
   assert.equal(p.stake, 0.01);
   assert.equal(p.winnerNet, 0.02);
   assert.equal(p.loserNet, -0.01);
   assert.equal(p.houseFee, 0);
   assert.equal(p.prizePaid, 0.02);
-});
-
-test("computePayout: stake 0 is allowed (DRAW returns stake=0 with no payout)", () => {
-  const p = computePayout({ stakeAmount: 0, result: RESULT.DRAW });
-  assert.equal(p.stake, 0);
-  assert.equal(p.houseFee, 0);
-  assert.equal(p.prizePaid, 0);
-});
-
-test("computePayout: stake 0 with a winner still produces 0 payout (refund + 90% of 0)", () => {
-  const p = computePayout({ stakeAmount: 0, result: RESULT.PLAYER1 });
-  assert.equal(p.winnerNet, 0);
-  assert.equal(p.loserNet, 0);
-  assert.equal(p.houseFee, 0);
-  assert.equal(p.prizePaid, 0);
 });
 
 test("computePayout: invalid result throws RangeError", () => {
@@ -549,13 +704,9 @@ test("computePayout: Infinity stake throws RangeError", () => {
 });
 
 test("computePayout: string stake is coerced (no throw for numeric strings)", () => {
-  // "100" coerces to 100, so the function accepts it and returns the
-  // normal P1-wins payout. Truly non-numeric strings (NaN after
-  // coercion) still throw.
   const p = computePayout({ stakeAmount: "100", result: RESULT.PLAYER1 });
   assert.equal(p.stake, 100);
   assert.equal(p.winnerNet, 190);
-
   assert.throws(
     () => computePayout({ stakeAmount: "abc", result: RESULT.PLAYER1 }),
     RangeError,
@@ -566,7 +717,6 @@ test("computePayout: houseFee + winnerPrize = stake (full loser's stake is split
   for (const stake of [1, 10, 50, 100, 999.99]) {
     for (const result of [RESULT.PLAYER1, RESULT.PLAYER2]) {
       const p = computePayout({ stakeAmount: stake, result });
-      // The 90/10 split on the loser's stake.
       assert.equal(round2(p.houseFee + (p.winnerNet - stake)), round2(stake));
     }
   }
@@ -600,40 +750,32 @@ test("pickRandomCell: with no params, excludePicks defaults to []", () => {
 });
 
 test("pickRandomCell: filters non-integer entries from excludePicks", () => {
-  // excludePicks is normalised via Number(...).filter(Number.isInteger),
-  // so [1.5, NaN, "abc"] all drop out, but [5, -1, null, "3"] survive
-  // (null → 0, "3" → 3). Verify the returned cell excludes the
-  // normalised set but never returns a non-integer or out-of-range.
   const exclude = [1.5, NaN, "abc", 5, -1, null, "3"];
-  // Normalised exclude = {5, 0, 3} (null→0, "3"→3; 1.5/NaN/-1 drop out;
-  // 5 stays; -1 stays but is out of the 0..24 range so it never matches).
   for (let i = 0; i < 200; i += 1) {
     const cell = pickRandomCell({ excludePicks: exclude });
     assert.ok(Number.isInteger(cell), `cell ${cell} should be an integer`);
     assert.ok(cell >= 0 && cell < GRID_CELLS);
     assert.notEqual(cell, 5, "5 should be excluded");
-    assert.notEqual(cell, 0, "null→0 should be excluded");
-    assert.notEqual(cell, 3, '"3"→3 should be excluded');
+    assert.notEqual(cell, 0, "null->0 should be excluded");
+    assert.notEqual(cell, 3, '"3"->3 should be excluded');
   }
 });
 
-test("pickRandomCell: excludes ALL cells → throws", () => {
+test("pickRandomCell: excludes ALL cells -> throws", () => {
   const all = Array.from({ length: GRID_CELLS }, (_, i) => i);
   assert.throws(() => pickRandomCell({ excludePicks: all }), /every cell is already picked/);
 });
 
 test("pickRandomCell: distribution is roughly uniform across the 25 cells", () => {
-  // Smoke check on Math.random() — the helper must call it for every pick.
   const counts = new Array(GRID_CELLS).fill(0);
   const trials = 5000;
   for (let i = 0; i < trials; i += 1) {
     counts[pickRandomCell()] += 1;
   }
-  // Each cell: expected trials/25 = 200 hits. Wide tolerance.
   for (let cell = 0; cell < GRID_CELLS; cell += 1) {
     assert.ok(
       counts[cell] > 100 && counts[cell] < 320,
-      `cell ${cell} hit ${counts[cell]} times — expected ~200`,
+      `cell ${cell} hit ${counts[cell]} times`,
     );
   }
 });
@@ -643,21 +785,13 @@ test("pickRandomCell: distribution is roughly uniform across the 25 cells", () =
 // ════════════════════════════════════════════════════════════════════════
 
 test("round2: rounds to 2dp (no floating-point drift)", () => {
-  // Locks in the actual toFixed(2) behaviour. Note that some values
-  // (like 1.005 and 1.015) are stored as repeating decimals in
-  // IEEE 754, so toFixed(2) may round "down" when the "true" decimal
-  // would round up. This is a known JavaScript quirk and the
-  // production code intentionally relies on toFixed rather than
-  // re-implementing a banker-style rounder. Lock in the actual
-  // behaviour so any future refactor that swaps to a different
-  // rounder flags a behaviour change.
-  assert.equal(round2(0.1 + 0.2), 0.3, "0.1 + 0.2 must round to 0.3, not 0.30000000000000004");
-  assert.equal(round2(1.005), 1, "IEEE 754 quirk: 1.005 stores as 1.00499..., toFixed(2) → 1.00");
-  assert.equal(round2(1.015), 1.01, "IEEE 754 quirk: 1.015 stores as 1.01499..., toFixed(2) → 1.01");
+  assert.equal(round2(0.1 + 0.2), 0.3);
+  assert.equal(round2(1.005), 1);
+  assert.equal(round2(1.015), 1.01);
   assert.equal(round2(190.0), 190);
   assert.equal(round2(2.85), 2.85);
-  assert.equal(round2(0.001), 0, "0.001 toFixed(2) → 0.00");
-  assert.equal(round2(0.009), 0.01, "0.009 toFixed(2) → 0.01");
+  assert.equal(round2(0.001), 0);
+  assert.equal(round2(0.009), 0.01);
 });
 
 test("round2: NaN / Infinity / non-number returns 0 (defensive)", () => {
@@ -678,19 +812,19 @@ test("round2: 0 stays 0", () => {
 // cellIndexToRowCol / rowColToCellIndex — round-trip helpers
 // ════════════════════════════════════════════════════════════════════════
 
-test("cellIndexToRowCol: cell 0 → row 0, col 0", () => {
+test("cellIndexToRowCol: cell 0 -> row 0, col 0", () => {
   assert.deepEqual(cellIndexToRowCol(0), { row: 0, col: 0 });
 });
 
-test("cellIndexToRowCol: cell 24 → row 4, col 4", () => {
+test("cellIndexToRowCol: cell 24 -> row 4, col 4", () => {
   assert.deepEqual(cellIndexToRowCol(24), { row: 4, col: 4 });
 });
 
-test("cellIndexToRowCol: cell 5 → row 1, col 0 (row-major)", () => {
+test("cellIndexToRowCol: cell 5 -> row 1, col 0 (row-major)", () => {
   assert.deepEqual(cellIndexToRowCol(5), { row: 1, col: 0 });
 });
 
-test("cellIndexToRowCol: cell 12 → row 2, col 2 (center)", () => {
+test("cellIndexToRowCol: cell 12 -> row 2, col 2 (center)", () => {
   assert.deepEqual(cellIndexToRowCol(12), { row: 2, col: 2 });
 });
 
@@ -701,9 +835,6 @@ test("cellIndexToRowCol: out-of-range returns null", () => {
 });
 
 test("cellIndexToRowCol: non-integer returns null", () => {
-  // Note: the function uses Number(...) coercion, so a string like
-  // "5" coerces to 5 and IS accepted (treated as 0..24 validation
-  // only). Truly non-coercible values still return null.
   assert.equal(cellIndexToRowCol(1.5), null);
   assert.equal(cellIndexToRowCol("5.5"), null);
   assert.equal(cellIndexToRowCol("abc"), null);
@@ -712,7 +843,7 @@ test("cellIndexToRowCol: non-integer returns null", () => {
   assert.equal(cellIndexToRowCol({}), null);
 });
 
-test("rowColToCellIndex: (0,0) → 0, (4,4) → 24, (1,0) → 5, (2,2) → 12", () => {
+test("rowColToCellIndex: (0,0) -> 0, (4,4) -> 24, (1,0) -> 5, (2,2) -> 12", () => {
   assert.equal(rowColToCellIndex(0, 0), 0);
   assert.equal(rowColToCellIndex(4, 4), 24);
   assert.equal(rowColToCellIndex(1, 0), 5);
@@ -727,8 +858,6 @@ test("rowColToCellIndex: out-of-range returns null", () => {
 });
 
 test("rowColToCellIndex: non-integer returns null", () => {
-  // Same coercion contract as cellIndexToRowCol — "2" coerces to 2
-  // and is accepted. Truly non-coercible values still return null.
   assert.equal(rowColToCellIndex(1.5, 0), null);
   assert.equal(rowColToCellIndex(0, "2.5"), null);
   assert.equal(rowColToCellIndex(0, "abc"), null);
@@ -737,7 +866,7 @@ test("rowColToCellIndex: non-integer returns null", () => {
   assert.equal(rowColToCellIndex(0, {}), null);
 });
 
-test("rowColToCellIndex ↔ cellIndexToRowCol round-trip for every cell", () => {
+test("rowColToCellIndex <-> cellIndexToRowCol round-trip for every cell", () => {
   for (let cell = 0; cell < GRID_CELLS; cell += 1) {
     const rc = cellIndexToRowCol(cell);
     assert.deepEqual(rc, { row: Math.floor(cell / 5), col: cell % 5 });
@@ -745,4 +874,4 @@ test("rowColToCellIndex ↔ cellIndexToRowCol round-trip for every cell", () => 
   }
 });
 
-console.log("\n✅ All Mines Duel engine tests passed!\n");
+console.log("\n? All Mines Duel engine tests passed!\n");

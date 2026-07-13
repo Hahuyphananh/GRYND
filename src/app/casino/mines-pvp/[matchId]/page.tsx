@@ -193,6 +193,21 @@ function AlertIcon({ className = "" }: { className?: string }) {
 // `scrubMatchForViewer` contract: `board` is null while not yet
 // finished, populated with the real `{ size, mines }` once
 // status='finished').
+//
+// New odds-turn flow: `picks` is the chronologically-ordered
+// JSONB array of every pick made in this match (the source of
+// truth). The legacy `p1Pick` / `p2Pick` scalars still come back
+// for backwards-compat and hold the most-recent pick from each
+// seat.
+type PickEntry = {
+  userId: string | null;
+  seat: "player1" | "player2" | null;
+  cell: number;
+  isMine: boolean;
+  autoPicked: boolean;
+  pickedAt: string | null;
+};
+
 type MatchRow = {
   id: number;
   player1Id: string;
@@ -203,6 +218,13 @@ type MatchRow = {
   board: { size: number; mines: number[] } | null;
   firstPlayerId: string | null;
   currentTurnUserId: string | null;
+  // Chronological pick history (server-advertised; sanitised per
+  // viewer in scrubPickRowsForViewer).
+  picks: PickEntry[];
+  pickCount: number;
+  // Legacy single-pick columns (kept for backwards compat with
+  // /status consumers — mirror the most-recent pick from each
+  // seat).
   p1Pick: number | null;
   p2Pick: number | null;
   p1PickIsMine: boolean | null;
@@ -421,6 +443,42 @@ export default function MinesPvpMatchPage({
   // ── Derived UI state ─────────────────────────────────────────────
   const myUserId = user?.id;
 
+  // Per-seat pick history derived from the chronological `picks`
+  // array. Replaces the old single `p1Pick`/`p2Pick` derived
+  // fields below. The cell helpers + handleCellClick below use
+  // THESE so a player who has picked multiple times still sees
+  // every cleared cell.
+  const myPicks = useMemo(() => {
+    if (!match || !myUserId) return [] as number[];
+    return (match.picks ?? [])
+      .filter((p) => p && p.userId === myUserId)
+      .map((p) => p.cell);
+  }, [match, myUserId]);
+  const opponentPicks = useMemo(() => {
+    if (!match || !myUserId) return [] as number[];
+    return (match.picks ?? [])
+      .filter((p) => p && p.userId !== null && p.userId !== myUserId)
+      .map((p) => p.cell);
+  }, [match, myUserId]);
+  // My most-recent pick (for "you just picked this" UI affordances
+  // + auto-picked flag display inside the result popup).
+  const myLastPick = useMemo(() => {
+    if (!match || !myUserId) return null as PickEntry | null;
+    for (let i = (match.picks ?? []).length - 1; i >= 0; i -= 1) {
+      const p = match.picks[i];
+      if (p && p.userId === myUserId) return p;
+    }
+    return null;
+  }, [match, myUserId]);
+  const opponentLastPick = useMemo(() => {
+    if (!match || !myUserId) return null as PickEntry | null;
+    for (let i = (match.picks ?? []).length - 1; i >= 0; i -= 1) {
+      const p = match.picks[i];
+      if (p && p.userId !== null && p.userId !== myUserId) return p;
+    }
+    return null;
+  }, [match, myUserId]);
+
   // ── Posthog: match-just-resolved ───────────────────────────────
   // Capture `mines_pvp_match_resolved` on the first poll that
   // observes status='finished'. Mirrors roulette-pvp's
@@ -441,11 +499,18 @@ export default function MinesPvpMatchPage({
     if (resolvedFiredRef.current) return;
     resolvedFiredRef.current = true;
 
-    const isDraw = match.result === RESULT.DRAW;
     const iWon = Boolean(
       match.winnerId && myUserId && match.winnerId === myUserId,
     );
-    const winner = isDraw ? "draw" : iWon ? "you" : "opponent";
+    const winner = iWon ? "you" : "opponent";
+    const allPicks = Array.isArray(match.picks) ? match.picks : [];
+    const mineHit = allPicks.find((p) => Boolean(p && p.isMine)) ?? null;
+    const safePickCounts = { player1: 0, player2: 0 };
+    for (const p of allPicks) {
+      if (!p || p.isMine) continue;
+      if (p.seat === "player1") safePickCounts.player1 += 1;
+      else if (p.seat === "player2") safePickCounts.player2 += 1;
+    }
     posthog?.capture("mines_pvp_match_resolved", {
       match_id: matchId,
       winner,
@@ -454,8 +519,12 @@ export default function MinesPvpMatchPage({
       prize_paid: Number(match.prizePaid).toFixed(2),
       house_fee: Number(match.houseFee).toFixed(2),
       mines_count: match.minesCount,
-      p1_pick_is_mine: match.p1PickIsMine,
-      p2_pick_is_mine: match.p2PickIsMine,
+      pick_count: allPicks.length,
+      p1_safe_picks: safePickCounts.player1,
+      p2_safe_picks: safePickCounts.player2,
+      loser_id: mineHit ? mineHit.userId ?? null : null,
+      loser_seat: mineHit ? mineHit.seat ?? null : null,
+      loser_pick_cell: mineHit ? mineHit.cell ?? null : null,
     });
   }, [match, matchId, myUserId, posthog]);
   const isParticipant = useMemo(() => {
@@ -470,16 +539,16 @@ export default function MinesPvpMatchPage({
         ? !isPlayer1
         : false;
   const mySeat = isPlayer1 ? "player1" : "player2";
-  const myPick = isPlayer1 ? match?.p1Pick : match?.p2Pick;
-  const myPickIsMine = isPlayer1 ? match?.p1PickIsMine : match?.p2PickIsMine;
-  const myAutoPicked = isPlayer1 ? match?.p1AutoPicked : match?.p2AutoPicked;
-  const opponentPick = isPlayer1 ? match?.p2Pick : match?.p1Pick;
-  const opponentPickIsMine = isPlayer1
-    ? match?.p2PickIsMine
-    : match?.p1PickIsMine;
-  const opponentAutoPicked = isPlayer1
-    ? match?.p2AutoPicked
-    : match?.p1AutoPicked;
+  // Most-recent-of-each-seat helpers (used by the legacy pick-audit
+  // block inside the result popup). The rest of the UI consumes the
+  // per-cell `picks`-array helpers above so a player who has
+  // picked multiple times still sees every cleared cell.
+  const myPick = myLastPick?.cell ?? null;
+  const myPickIsMine = myLastPick?.isMine ?? null;
+  const myAutoPicked = myLastPick?.autoPicked ?? false;
+  const opponentPick = opponentLastPick?.cell ?? null;
+  const opponentPickIsMine = opponentLastPick?.isMine ?? null;
+  const opponentAutoPicked = opponentLastPick?.autoPicked ?? false;
 
   // ── Action handlers ──────────────────────────────────────────────
   const handleCellClick = useCallback(
@@ -552,11 +621,13 @@ export default function MinesPvpMatchPage({
 
   // ── Cell rendering helpers (reused from solo mines page) ────────
   // Returns { content, style } for a single cell based on the
-  // current match state. Three display modes:
-  //   1. Mid-match (status not 'finished') — show your pick +
-  //      opponent's pick (if any) on top of unrevealed ❓ cells.
+  // current match state. Two display modes in the odds-turn flow:
+  //   1. Mid-match (status not 'finished') — render EVERY cleared
+  //      cell as a 💎, color-coded to its picker (cyan = player1,
+  //      fuchsia = player2). Revealing safe picks is safe because
+  //      the game would have ended if any were a mine.
   //   2. Finished — full board reveal: all mines shown, all safe
-  //      cells shown.
+  //      cells shown, plus per-pick ring highlighting.
   function getCellDisplay(cellIndex: number): {
     content: React.ReactNode;
     revealed: boolean;
@@ -566,27 +637,54 @@ export default function MinesPvpMatchPage({
       return { content: "❓", revealed: false, isMine: false };
     }
     const isFinished = match.status === MATCH_STATUS.FINISHED;
-    // Mid-match reveal: just your + opponent's picks.
-    if (!isFinished) {
-      if (myPick === cellIndex) {
-        return {
-          content: myPickIsMine ? <AnimatedBomb exploded /> : "💎",
-          revealed: true,
-          isMine: Boolean(myPickIsMine),
-        };
+
+    // Build lookup from cell index → the pick entry that holds it.
+    // O(N) but N ≤ 25 so it's cheap; avoids `.find` per tile.
+    const pickByCell = new Map<number, PickEntry>();
+    for (const p of match.picks ?? []) {
+      if (p && typeof p.cell === "number" && Number.isInteger(p.cell)) {
+        pickByCell.set(p.cell, p);
       }
-      if (opponentPick === cellIndex) {
+    }
+
+    // Mid-match: render every revealed cell as a 💎. The board
+    // mines themselves stay hidden (we can't server-trust the
+    // board column mid-match — it's null until finished).
+    if (!isFinished) {
+      const entry = pickByCell.get(cellIndex);
+      if (entry) {
+        // Every in-flight pick is guaranteed safe (a mine would
+        // have ended the match). The seats get their own accent so
+        // a glance at the board shows whose territory is whose.
         return {
-          content: opponentPickIsMine ? <AnimatedBomb exploded /> : "💎",
+          content: "💎",
           revealed: true,
-          isMine: Boolean(opponentPickIsMine),
+          isMine: false,
         };
       }
       return { content: "❓", revealed: false, isMine: false };
     }
-    // Finished: full board reveal. board is non-null here (the
-    // server only scrubs it while the match is in flight).
+
+    // Finished: full board reveal. The board column is now
+    // non-null so we can show every mine (including those that
+    // were not picked).
     const mines = match.board?.mines ?? [];
+    const pickedEntry = pickByCell.get(cellIndex);
+    if (pickedEntry?.isMine) {
+      // A picked mine: the picker lost. Render as bomb.
+      return {
+        content: <AnimatedBomb exploded />,
+        revealed: true,
+        isMine: true,
+      };
+    }
+    if (pickedEntry) {
+      return {
+        content: "💎",
+        revealed: true,
+        isMine: false,
+      };
+    }
     const isMine = mines.includes(cellIndex);
     return {
       content: isMine ? <AnimatedBomb exploded /> : "💎",
@@ -595,35 +693,58 @@ export default function MinesPvpMatchPage({
     };
   }
 
+  // Helper to know which seat a cell belongs to after the match
+  // finishes (or mid-match for accent styling). Returns null on
+  // unrevealed cells.
+  function cellPickSeat(cellIndex: number): "player1" | "player2" | null {
+    if (!match) return null;
+    for (const p of match.picks ?? []) {
+      if (p && p.cell === cellIndex) return p.seat ?? null;
+    }
+    return null;
+  }
+
   function getCellClass(cellIndex: number): string {
     if (!match) {
       return "bg-[#071226] border border-[#00e5ff]/20";
     }
     const isFinished = match.status === MATCH_STATUS.FINISHED;
     const display = getCellDisplay(cellIndex);
-    const isMyCell = myPick === cellIndex;
-    const isOppCell = opponentPick === cellIndex;
+    const seat = cellPickSeat(cellIndex);
+    const isMyCell = seat
+      ? (isPlayer1 && seat === "player1") ||
+        (!isPlayer1 && seat === "player2")
+      : false;
 
     if (display.revealed) {
       if (display.isMine) {
-        // Mine cell — your own mine → red highlight, opponent's
-        // mine → softer so the focus stays on the winner's reveal.
-        const highlight = isMyCell ? "shadow-[0_0_18px_rgba(255,79,216,0.85)]" : "";
+        // The mine that ended the game; always bright red.
+        const highlight = isMyCell
+          ? "shadow-[0_0_18px_rgba(255,79,216,0.95)] ring-2 ring-red-300/80"
+          : "shadow-[0_0_14px_rgba(255,79,216,0.6)]";
         return `bg-[#3b1021] border-2 border-[#ff4fd8] ${highlight}`;
       }
-      // Safe cell — cyan ring on your own pick so you can spot
-      // your own tile at a glance.
+      // Safe revealed cell — seat-tinted accent. Player1 picks
+      // glow cyan, Player2 picks glow fuchsia, regardless of who
+      // the viewer is (so both players can read the board).
       const ring = isMyCell
         ? "ring-2 ring-cyan-300/70 shadow-[0_0_14px_rgba(0,229,255,0.7)]"
-        : "";
+        : seat === "player1"
+          ? "ring-1 ring-cyan-300/30 shadow-[0_0_8px_rgba(0,229,255,0.25)]"
+          : seat === "player2"
+            ? "ring-1 ring-fuchsia-300/30 shadow-[0_0_8px_rgba(255,79,216,0.25)]"
+            : "";
       return `bg-[#09243f] border border-[#00e5ff] ${ring}`;
     }
 
-    // Unrevealed — interactive only on your turn, your unpicked
-    // cell, opponent's cell disabled (would be a duplicate).
-    const isYourTurn = isMyTurn && myPick === null;
+    // Unrevealed — interactive only on your turn + cell not yet
+    // picked by either side. The old `myPick === null` guard is
+    // gone because the new flow lets a player have already picked
+    // several cells and STILL have a turn (FP/SP/SP/FP …).
     const isPlayable =
-      isYourTurn && cellIndex !== opponentPick;
+      isMyTurn &&
+      !myPicks.includes(cellIndex) &&
+      !opponentPicks.includes(cellIndex);
     if (isFinished) {
       return "bg-[#0c1a33] border border-[#1f3a6a]";
     }
@@ -716,36 +837,27 @@ export default function MinesPvpMatchPage({
   // ── Result screen ────────────────────────────────────────────────
   function renderResult() {
     if (!match || match.status !== MATCH_STATUS.FINISHED) return null;
-    const isDraw = match.result === RESULT.DRAW;
-    const iWon = match.winnerId && match.winnerId === myUserId;
+    const iWon =
+      match.winnerId && myUserId && match.winnerId === myUserId;
     const iLost =
-      !isDraw &&
-      match.winnerId &&
-      myUserId &&
-      match.winnerId !== myUserId;
-    const headline = isDraw
-      ? "Draw"
-      : iWon
-        ? "You won!"
-        : iLost
-          ? "You lost"
-          : "Match complete";
+      match.winnerId && myUserId && match.winnerId !== myUserId;
+    const headline = iWon
+      ? "Opponent hit a mine - you take the pot"
+      : iLost
+        ? "You hit a mine"
+        : "Match complete";
 
-    const headlineColor = isDraw
-      ? "text-yellow-300"
-      : iWon
-        ? "text-emerald-300"
-        : iLost
-          ? "text-red-300"
-          : "text-white";
-    const headlineEmoji = isDraw ? "🤝" : iWon ? "🏆" : iLost ? "💣" : "✅";
-    const headlineBg = isDraw
-      ? "from-[#1a1a3a] to-[#0d0d2b] border-yellow-300/40 shadow-[0_0_60px_rgba(255,221,0,0.25)]"
-      : iWon
-        ? "from-[#0d2b1a] to-[#062a16] border-emerald-300/50 shadow-[0_0_60px_rgba(72,209,154,0.35)]"
-        : iLost
-          ? "from-[#3a1a1a] to-[#2b0d0d] border-red-500/40 shadow-[0_0_60px_rgba(239,68,68,0.3)]"
-          : "from-[#0a1a3a] to-[#04102a] border-cyan-300/40";
+    const headlineColor = iWon
+      ? "text-emerald-300"
+      : iLost
+        ? "text-red-300"
+        : "text-white";
+    const headlineEmoji = iWon ? "🏆" : iLost ? "💣" : "✅";
+    const headlineBg = iWon
+      ? "from-[#0d2b1a] to-[#062a16] border-emerald-300/50 shadow-[0_0_60px_rgba(72,209,154,0.35)]"
+      : iLost
+        ? "from-[#3a1a1a] to-[#2b0d0d] border-red-500/40 shadow-[0_0_60px_rgba(239,68,68,0.3)]"
+        : "from-[#0a1a3a] to-[#04102a] border-cyan-300/40";
 
     const stake = Number(match.stakeAmount);
     const houseFee = Number(match.houseFee);
@@ -770,13 +882,11 @@ export default function MinesPvpMatchPage({
             {headline}
           </h2>
           <p className="mt-1 text-sm text-white/70">
-            {isDraw
-              ? "Both picks were safe — full refund, no house fee."
-              : iWon
-                ? `You took home ${prizePaid.toFixed(2)} tokens (your stake + 90% of opponent's).`
-                : iLost
-                  ? `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`
-                  : "Result recorded."}
+            {iWon
+              ? `You took home ${prizePaid.toFixed(2)} tokens (your stake + 90% of opponent's).`
+              : iLost
+                ? `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`
+                : "Result recorded."}
           </p>
 
           {/* Payout breakdown */}
@@ -987,10 +1097,12 @@ export default function MinesPvpMatchPage({
           >
             {Array.from({ length: GRID_CELLS }, (_, i) => i).map((cellIndex) => {
               const display = getCellDisplay(cellIndex);
+              const cellAlreadyPicked =
+                myPicks.includes(cellIndex) ||
+                opponentPicks.includes(cellIndex);
               const isMyTurnClickable =
                 isMyTurn &&
-                myPick === null &&
-                opponentPick !== cellIndex &&
+                !cellAlreadyPicked &&
                 match.status !== MATCH_STATUS.FINISHED;
               return (
                 <button

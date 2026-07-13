@@ -1318,7 +1318,7 @@ export const roulettePvpMatches = pgTable(
     prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
       .notNull()
       .default("0.00"),
-    // ── Persistent match "points" balance ─────────────────────────
+    // ── Persistent match "points" balance
     // Each player starts the match with `starting_points` (default
     // 100) and that balance PERSISTS across rounds — bets debit it,
     // spin payouts credit it. No inter-round reset.
@@ -1777,12 +1777,18 @@ export const minesPvpMatches = pgTable(
     // when status is in {waiting, ready, finished, cancelled}.
     currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
     // 0-24 row-major cell index the player picked. Null until the
-    // player picks (or gets auto-picked at deadline).
+    // player picks (or gets auto-picked at deadline). In the odds-turn
+    // flow each player can have many picks; these scalars hold the
+    // MOST RECENT pick from each seat (kept for legacy replays /
+    // history views) — the authoritative per-pick history lives on
+    // `picks` (see below).
     p1Pick: integer("p1_pick"),
     p2Pick: integer("p2_pick"),
     // Whether the player's pick landed on a mine. Computed at pick
     // time and persisted so post-match replays don't have to walk
-    // `board` to render the result.
+    // `board` to render the result. In the odds-turn flow these
+    // scalars mirror the most-recent pick's isMine flag (each player
+    // can have many picks; full history lives on `picks`).
     p1PickIsMine: boolean("p1_pick_is_mine"),
     p2PickIsMine: boolean("p2_pick_is_mine"),
     // True when the server auto-picked because round_deadline
@@ -1792,6 +1798,18 @@ export const minesPvpMatches = pgTable(
     p2AutoPicked: boolean("p2_auto_picked").notNull().default(false),
     p1PickedAt: timestamp("p1_picked_at"),
     p2PickedAt: timestamp("p2_picked_at"),
+    // ── Odds turn system ────────────────────────────────────────
+    // Chronologically-ordered JSONB array of every pick made in the
+    // match. Each entry shape:
+    //   { userId, seat: "player1"|"player2", cell: <0..24>,
+    //     isMine: boolean, autoPicked: boolean, pickedAt: ISO ts }
+    // Authoritative state — `picks.length` is the turn counter; the
+    // server computes the next picker's seat/turn via the closed-
+    // form "odds" formula in src/lib/mines-pvp/constants.js
+    // (`activePickerForMatch`). Mirrored onto `mines_pvp_rounds.
+    // picks` at match resolution for post-match replays. See
+    // src/db/migrations/0050_mines_pvp_odds_turns.sql.
+    picks: jsonb("picks").notNull().default(sql`'[]'::jsonb`),
     // Pick-window deadline. 20s per spec. The server's
     // `fetchMatchWithAutoResolve` mirrors blackjack-pvp /
     // roulette-pvp: when this timestamp elapses and the active
@@ -1866,6 +1884,13 @@ export const minesPvpRounds = pgTable(
     boardSnapshot: jsonb("board_snapshot")
       .notNull()
       .default(sql`'{"size":5,"mines":[]}'::jsonb`),
+    // Odds-turn history: full chronological pick list from this
+    // match, mirrored at resolution time so post-match replay
+    // views can render every tile-pick (every player's every pick)
+    // without re-walking the live match row. Shape of each entry
+    // matches the `mines_pvp_matches.picks` element shape —
+    // see that column for the contract.
+    picks: jsonb("picks").notNull().default(sql`'[]'::jsonb`),
     // 'player1' | 'player2' | 'draw' | null
     roundWinner: varchar("round_winner", { length: 10 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),

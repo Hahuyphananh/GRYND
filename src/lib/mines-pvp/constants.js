@@ -39,6 +39,91 @@ export const GRID_CELLS = GRID_SIZE * GRID_SIZE; // 25
 export const MIN_MINES = 1;
 export const MAX_MINES = GRID_CELLS - 1; // 24 — never allow 25 (instant loss)
 
+// ── Odds turn-pattern (minutesPvP "rounds continue until mine" flow) ──
+// Per user spec the turn order after the server-randomised `firstPlayer`
+// is taken into account is:
+//
+//   turn 1: firstPlayer      (FP leads)
+//   turn 2: secondPlayer
+//   turn 3: secondPlayer     (SP leads this pair)
+//   turn 4: firstPlayer
+//   turn 5: firstPlayer      (FP leads again — the pair-leader pattern flips)
+//   turn 6: secondPlayer
+//   turn 7: secondPlayer
+//   turn 8: firstPlayer
+//   ...
+//
+// Both players pick in alternation but in pairs of two — the LEAD
+// player of each pair swaps every pair, so the pattern repeats
+// every four turns.
+//
+// Closed form: for turn N (1-indexed),
+//   N % 4 == 1 or N % 4 == 0  →  firstPlayer
+//   N % 4 == 2 or N % 4 == 3  →  secondPlayer
+//
+// Encoded below as `seatForPickNumber` so the server store and the
+// tests can both call it without re-deriving the rule. The pure
+// return shape is the SEAT LABEL ("player1" | "player2"), not the
+// clerkId — the call site maps seat → clerkId via the match row.
+export function seatForPickNumber(pickNumber, firstPlayerSeat) {
+  // Reject non-number inputs up front (`"1"`, `null`, `1.5`, `-1`,
+  // `0` etc. all return null). Without the explicit `typeof` guard,
+  // `Number("1")` coerces to the valid number 1 and the formula
+  // would happily accept a string lookalike. `null` is a special
+  // case: `Number(null) === 0` so the early `n < 1` rule does catch
+  // it, but we keep the typeof guard for clarity.
+  if (
+    typeof pickNumber !== "number" ||
+    !Number.isInteger(pickNumber) ||
+    pickNumber < 1
+  ) {
+    return null;
+  }
+  const mod = ((pickNumber % 4) + 4) % 4; // safe for off-by-one / negative
+  // mod == 1 (first turn) or mod == 0 (4th turn) → firstPlayer
+  if (mod === 1 || mod === 0) return firstPlayerSeat;
+  return firstPlayerSeat === "player1" ? "player2" : "player1";
+}
+
+// Compute the active picker for `match` given its current pick
+// history length. Returns the SEAT LABEL ("player1" | "player2")
+// of whoever's turn it is on the (picks.length + 1)-th turn. The
+// caller converts to clerkId via `seat === player1 ? player1Id :
+// player2Id`. Throws if `firstPlayerId` doesn't match either seat
+// (defensive catch for malformed match rows from a bad migration).
+export function activeSeatForMatch(match) {
+  const picks = Array.isArray(match?.picks) ? match.picks : [];
+  const nextN = picks.length + 1;
+  const isP1First =
+    match?.firstPlayerId && match?.player1Id === match.firstPlayerId;
+  const firstSeat = isP1First ? "player1" : "player2";
+  return seatForPickNumber(nextN, firstSeat);
+}
+
+// clerkId-shaped counterpart of `activeSeatForMatch`. Returns the
+// userId that should be picking next. Margins-of-error safe —
+// mismatched arguments return null instead of throwing so the
+// caller can treat "no active picker" as a stop-condition (e.g.
+// terminal-state fetches).
+export function activePickerForMatch(match) {
+  if (!match) return null;
+  if (!isPickableRowShape(match)) return null;
+  const seat = activeSeatForMatch(match);
+  if (seat === "player1") return match.player1Id;
+  if (seat === "player2") return match.player2Id;
+  return null;
+}
+
+// Tiny defensive shape check — used by callers that want to
+// error-out on a malformed match row rather than crash on `.p1`.
+function isPickableRowShape(match) {
+  return (
+    typeof match.player1Id === "string" &&
+    typeof match.player2Id === "string" &&
+    typeof match.firstPlayerId === "string"
+  );
+}
+
 // ── Per-turn window ───────────────────────────────────────────────────
 // Duration (seconds) of each pick's decision window before the
 // server-authoritative deadline fires and auto-picks a random
@@ -197,23 +282,22 @@ export function isMine(board, cellIndex) {
 }
 
 // ── Outcome resolver ──────────────────────────────────────────────────
-// Given the two players' pick results, decide the match outcome
-// per the user spec table:
+// Given the player who just hit a mine (the loser), decide the match
+// outcome. The odds-turn flow has NO draw case — the match ends the
+// moment a picker hits a mine and that picker is the loser. The
+// resolver is intentionally a PURE mapping — no DB, no state — so
+// the match store can call it from `pickTile` (early-exit on mine
+// hit) and `forcePick` (AFK auto-pick path) without side effects.
 //
-//   P1 mine + P2 mine → PLAYER2 (P1 mined first)
-//   P1 mine + P2 safe → PLAYER2 (P1 loses)
-//   P1 safe + P2 mine → PLAYER1 (P2 loses)
-//   P1 safe + P2 safe → DRAW   (no rake, full refund)
-//
-// The function is intentionally a PURE mapping — no DB, no
-// state — so the match store can call it from both
-// `pickTile` (early-exit when both picks land in the same call)
-// and the AFK auto-pick path.
-export function decideOutcome({ p1PickIsMine, p2PickIsMine }) {
-  if (p1PickIsMine && p2PickIsMine) return RESULT.PLAYER2;
-  if (p1PickIsMine && !p2PickIsMine) return RESULT.PLAYER2;
-  if (!p1PickIsMine && p2PickIsMine) return RESULT.PLAYER1;
-  return RESULT.DRAW;
+// Caller contract: `loserId` MUST be exactly one of `player1Id` /
+// `player2Id`. The function throws on every other input so a future
+// caller can't accidentally produce a DRAW-shape outcome.
+export function decideOutcome({ loserId, player1Id, player2Id }) {
+  if (loserId === player1Id) return RESULT.PLAYER2; // P1 mined → P2 wins
+  if (loserId === player2Id) return RESULT.PLAYER1; // P2 mined → P1 wins
+  throw new RangeError(
+    `decideOutcome: loserId must equal player1Id or player2Id, got ${loserId}`,
+  );
 }
 
 // ── Payout calculator ─────────────────────────────────────────────────
