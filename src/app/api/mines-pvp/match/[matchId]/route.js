@@ -10,21 +10,24 @@
 //      cell for the current player (AFK nudge), then advance the
 //      turn OR resolve the match (if it was player2's auto-pick).
 //
-// CRITICAL — visibility model:
+// CRITICAL — visibility model (odds turn flow):
 //   • During active play (`ready` / `p1_turn` / `p2_turn`):
 //     - the `board` jsonb is HIDDEN (replaced with `null`) so the
 //       client can't peek at mine positions mid-match.
-//     - the VIEWER sees their OWN pick in full (cellIndex +
-//       pickIsMine + pickedAt + autoPicked).
-//     - the OPPONENT'S pick is partially hidden: the cellIndex is
-//       returned (so the UI can render "opponent took this cell")
-//       but `pickIsMine` is `null` until the match finishes — the
-//       viewer can't infer whether the opponent survived their
-//       pick.
-//   • Once `finished`: full reveal — both picks, both pick results,
-//     board, result, prizePaid, houseFee all visible to BOTH seats.
-//     (The viewer-only prize disclosure is also lifted — both
-//     players see the totals so the result screen is symmetric.)
+//     - the `picks` jsonb array is FULLY visible to BOTH seats.
+//       Every pick on the array must be a SAFE pick — if any had
+//       been a mine the match would have ended immediately, so
+//       revealing safe picks (cell indexes only, NOT
+//       isMine/autoPicked which would otherwise leak AFK state)
+//       gives both players faithful board progress without
+//       leaking mine positions.
+//     - the viewer sees their OWN auto-pick flag (true/false) so
+//       they can render their own AFK state; the OPPONENT's
+//       auto-pick flag is scrubbed to false to avoid leaking
+//       whether the opponent is AFK.
+//   • Once `finished`: full reveal — every pick in the array has
+//     its full metadata exposed (cellIndex, isMine, autoPicked,
+//     pickedAt), plus the full board.
 //
 // Mirrors the auth/error/visibility pattern of
 // `src/app/api/blackjack-pvp/match/[matchId]/route.js`.
@@ -41,17 +44,18 @@ function isTerminalStatus(status) {
   return status === MATCH_STATUS.FINISHED || status === MATCH_STATUS.CANCELLED;
 }
 
-// Per-seat scrub helper. Mid-match, the OPPOSITE seat's pick result
-// is hidden from the viewer; the cellIndex itself stays so the
-// board UI can render "opponent took this cell" without
-// disambiguating mine vs safe.
-function scrubPickForViewer(match, viewerUserId) {
+// Per-seat scrub helper for the legacy single-pick columns. Kept
+// for backwards-compat with any client that still reads
+// `p1Pick` / `p2Pick` etc. directly; new clients should consume the
+// `picks` array (returned by `scrubPicksForViewer`) instead. The
+// legacy columns show the MOST RECENT pick from each seat (mirrored
+// server-side) so the rendered cell matches the latest entry in
+// the per-seat slice of `picks`.
+function scrubPickColumnsForViewer(match, viewerUserId) {
   const viewerIsPlayer1 = match.player1Id === viewerUserId;
   const finished = isTerminalStatus(match.status);
 
   return {
-    // Player 1's pick: fully visible to p1 viewer, partially
-    // visible (cellIndex only) to p2 viewer.
     p1Pick: match.p1Pick ?? null,
     p1PickIsMine:
       finished || viewerIsPlayer1 ? match.p1PickIsMine ?? null : null,
@@ -59,8 +63,6 @@ function scrubPickForViewer(match, viewerUserId) {
       finished || viewerIsPlayer1 ? match.p1PickedAt ?? null : null,
     p1AutoPicked:
       finished || viewerIsPlayer1 ? Boolean(match.p1AutoPicked) : false,
-
-    // Player 2's pick: mirror logic.
     p2Pick: match.p2Pick ?? null,
     p2PickIsMine:
       finished || !viewerIsPlayer1 ? match.p2PickIsMine ?? null : null,
@@ -71,10 +73,46 @@ function scrubPickForViewer(match, viewerUserId) {
   };
 }
 
+// Scrub the per-pick `picks` array for the viewer. Mid-game, only
+// safe picks can exist (a mine would have ended the match), so we
+// hardcode `isMine: false` and scrub the OPPONENT's `autoPicked`
+// flag to false so neither side can deduce the other's AFK state.
+function scrubPicksForViewer(picks, viewerUserId, match, finished) {
+  if (!Array.isArray(picks)) return [];
+  const sanitized = [];
+  for (const raw of picks) {
+    if (!raw || typeof raw !== "object") continue;
+    const isViewerPick =
+      typeof raw.userId === "string" && raw.userId === viewerUserId;
+    sanitized.push({
+      userId: raw.userId ?? null,
+      seat: raw.seat ?? null,
+      cell: Number(raw.cell) || 0,
+      // Mid-game scrub: every pick is safe (game would have ended).
+      // Finished: reveal the actual isMine flag (the game-ending
+      // mine is the one whose isMine=true inside this array).
+      isMine:
+        finished || isViewerPick ? Boolean(raw.isMine) : false,
+      pickedAt: typeof raw.pickedAt === "string" ? raw.pickedAt : null,
+      // The viewer's own auto-pick is fine to reveal; the OPPONENT's
+      // is scrubbed to false (AFK should not be visible to a peer).
+      autoPicked:
+        finished || isViewerPick ? Boolean(raw.autoPicked) : false,
+    });
+  }
+  return sanitized;
+}
+
 function normaliseMatchForViewer(match, viewerUserId) {
   if (!match) return null;
   const viewerIsPlayer1 = match.player1Id === viewerUserId;
   const finished = isTerminalStatus(match.status);
+  const picks = scrubPicksForViewer(
+    Array.isArray(match.picks) ? match.picks : [],
+    viewerUserId,
+    match,
+    finished,
+  );
 
   return {
     id: match.id,
@@ -88,12 +126,19 @@ function normaliseMatchForViewer(match, viewerUserId) {
     roundDeadline: match.roundDeadline,
     viewerIsPlayer1,
     isViewerTurn: match.currentTurnUserId === viewerUserId,
-    ...scrubPickForViewer(match, viewerUserId),
+    // New odds-turn fields: the chronological pick history is the
+    // authoritative source. Clients render the board from this
+    // array; the legacy single-pick scalars are mirrored for
+    // backwards-compat only.
+    picks,
+    pickCount: picks.length,
+    ...scrubPickColumnsForViewer(match, viewerUserId),
     // Board: full reveal at finished, hidden mid-match.
     board: finished ? match.board : null,
     // Result + payout. Loser sees zero prize/fees (avoids leaking
-    // the winner's exact payout amount). Draws are symmetric
-    // (both see prizePaid=0, houseFee=0, result='draw').
+    // the winner's exact payout amount). The new odds-turn flow
+    // never produces a DRAW; the field stays on the response for
+    // legacy consumers.
     result: match.result ?? null,
     winnerId: match.winnerId ?? null,
     prizePaid:

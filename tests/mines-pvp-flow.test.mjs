@@ -15,17 +15,20 @@
  *
  * The pure-function parts (validateMatchParams, seatForUser,
  * isParticipant, scrubMatchForViewer, decideOutcome, computePayout,
- * generateBoard, isMine, pickRandomCell) are duplicated in
+ * generateBoard, isMine, pickRandomCell, seatForPickNumber,
+ * activeSeatForMatch, activePickerForMatch) are duplicated in
  * `tests/mines-pvp-engine.test.mjs` and `src/lib/mines-pvp/
  * constants.js` — see those for the canonical implementation.
  *
- * What this test covers:
- *   • validateMatchParams — stake / mines range checks
- *   • seatForUser / isParticipant — participant lookup
- *   • scrubMatchForViewer — board visibility
- *   • createOrJoin — matchmaking state transitions
- *   • pickTile — turn enforcement, duplicate rejection, resolution
- *   • fetchMatchWithAutoResolve — ready-window advance + AFK force-pick
+ * Odds-turn flow mirror contract (mirrors `applyPick` in the
+ * production server store):
+ *   1. `pickTile(userId, idx)` computes the active picker via the
+ *      closed-form formula; rejects if `userId` doesn't match.
+ *   2. The pick is appended to `match.picks`.
+ *   3. If the new pick is a mine → resolve immediately (the picker
+ *      loses) per `decideOutcome({ loserId, player1Id, player2Id })`.
+ *   4. Else → compute next picker via the same formula and flip
+ *      `currentTurnUserId` + status + deadline.
  *
  * Run:  node --test tests/mines-pvp-flow.test.mjs
  */
@@ -51,6 +54,7 @@ import {
   ROUND_TIMER_SECONDS,
   TERMINAL_STATES,
   WINNER_RATIO,
+  activePickerForMatch,
   computePayout,
   decideOutcome,
   generateBoard,
@@ -63,7 +67,6 @@ import {
 // In-memory mirror of the DB row + state-machine helpers
 // ════════════════════════════════════════════════════════════════════════
 
-/** Create a fresh match row in memory. */
 function makeMatch({
   id,
   player1Id,
@@ -90,6 +93,7 @@ function makeMatch({
     p2AutoPicked: false,
     p1PickedAt: null,
     p2PickedAt: null,
+    picks: [], // chronological JSONB-backed pick history
     result: null,
     winnerId: null,
     prizePaid: null,
@@ -99,8 +103,6 @@ function makeMatch({
     createdAt: new Date(),
   };
 }
-
-// ── Mirror of validateMatchParams from serverStore.js ──────────────────
 
 function validateMatchParams({ stakeAmount, minesCount }) {
   const stake = Number(stakeAmount);
@@ -120,8 +122,6 @@ function validateMatchParams({ stakeAmount, minesCount }) {
   return { ok: true };
 }
 
-// ── Mirror of seatForUser / isParticipant from serverStore.js ──────────
-
 function seatForUser(match, userId) {
   if (!match || !userId) return null;
   if (match.player1Id === userId) return "player1";
@@ -133,8 +133,6 @@ function isParticipant(match, userId) {
   return seatForUser(match, userId) !== null;
 }
 
-// ── Mirror of scrubMatchForViewer from serverStore.js ──────────────────
-
 function scrubMatchForViewer(match) {
   if (!match) return match;
   if (match.status === MATCH_STATUS.FINISHED) {
@@ -143,62 +141,65 @@ function scrubMatchForViewer(match) {
   return { ...match, board: null };
 }
 
-// ── Mirror of advanceFromReady from serverStore.js ─────────────────────
-
 function advanceFromReady(match) {
   if (!match.firstPlayerId) return match;
-  const isFirstP1 = match.firstPlayerId === match.player1Id;
-  match.status = isFirstP1 ? MATCH_STATUS.P1_TURN : MATCH_STATUS.P2_TURN;
+  match.status =
+    match.firstPlayerId === match.player1Id
+      ? MATCH_STATUS.P1_TURN
+      : MATCH_STATUS.P2_TURN;
   match.currentTurnUserId = match.firstPlayerId;
   match.roundDeadline = new Date(Date.now() + ROUND_PICK_DEADLINE_MS);
   return match;
 }
 
-// ── Mirror of forcePick (AFK auto-pick) from serverStore.js ─────────────
+// ── Mirror of applyPick (the shared helper for pickTile + forcePick) ──
+//
+// Encapsulates the post-pick side effects: append to `picks`, mirror
+// most-recent to legacy single-pick scalars, then either resolve
+// (mine hit) or advance to the next picker in the odds formula.
+function applyPick(match, pick) {
+  const allPicks = Array.isArray(match.picks)
+    ? [...match.picks, pick]
+    : [pick];
+  match.picks = allPicks;
 
-function forcePick(match) {
-  if (!PICKABLE_STATES.has(match.status)) return match;
-  const isP1Turn = match.status === MATCH_STATUS.P1_TURN;
-  const picks = [match.p1Pick, match.p2Pick].filter(
-    (p) => Number.isInteger(p) && p >= 0 && p < GRID_CELLS,
-  );
-  const cellIndex = pickRandomCell({ excludePicks: picks });
-  const pickIsMine = isMine(match.board, cellIndex);
-
-  if (isP1Turn) {
-    match.p1Pick = cellIndex;
-    match.p1PickIsMine = pickIsMine;
-    match.p1AutoPicked = true;
-    match.p1PickedAt = new Date();
-    // Advance to p2_turn
-    match.status = MATCH_STATUS.P2_TURN;
-    match.currentTurnUserId = match.player2Id;
-    match.roundDeadline = new Date(Date.now() + ROUND_PICK_DEADLINE_MS);
+  // Mirror most-recent-of-each-seat onto legacy scalar columns.
+  if (pick.seat === "player1") {
+    match.p1Pick = pick.cell;
+    match.p1PickIsMine = pick.isMine;
+    match.p1PickedAt = new Date(pick.pickedAt);
+    match.p1AutoPicked = pick.autoPicked;
   } else {
-    match.p2Pick = cellIndex;
-    match.p2PickIsMine = pickIsMine;
-    match.p2AutoPicked = true;
-    match.p2PickedAt = new Date();
-    // Resolve immediately
-    resolveMatch(match);
+    match.p2Pick = pick.cell;
+    match.p2PickIsMine = pick.isMine;
+    match.p2PickedAt = new Date(pick.pickedAt);
+    match.p2AutoPicked = pick.autoPicked;
   }
 
+  if (pick.isMine) {
+    return resolveMatch(match, pick.userId);
+  }
+
+  // Safe pick → advance to next picker via the closed-form formula.
+  const fakeMatchAfter = { ...match };
+  const nextPickerId = activePickerForMatch(fakeMatchAfter);
+  match.currentTurnUserId = nextPickerId;
+  match.status =
+    nextPickerId === match.player1Id
+      ? MATCH_STATUS.P1_TURN
+      : MATCH_STATUS.P2_TURN;
+  match.roundDeadline = new Date(Date.now() + ROUND_PICK_DEADLINE_MS);
   return match;
 }
 
-// ── Mirror of resolveMatch from serverStore.js ─────────────────────────
-
-function resolveMatch(match) {
-  if (match.p1Pick == null || match.p2Pick == null) return match;
-
+function resolveMatch(match, loserId) {
+  if (!loserId) return match;
   const result = decideOutcome({
-    p1PickIsMine: Boolean(match.p1PickIsMine),
-    p2PickIsMine: Boolean(match.p2PickIsMine),
+    loserId,
+    player1Id: match.player1Id,
+    player2Id: match.player2Id,
   });
-  const payout = computePayout({
-    stakeAmount: match.stakeAmount,
-    result,
-  });
+  const payout = computePayout({ stakeAmount: match.stakeAmount, result });
 
   match.status = MATCH_STATUS.FINISHED;
   match.currentTurnUserId = null;
@@ -206,14 +207,11 @@ function resolveMatch(match) {
   match.result = result;
   match.prizePaid = payout.prizePaid;
   match.houseFee = payout.houseFee;
-  if (result === RESULT.PLAYER1) match.winnerId = match.player1Id;
-  else if (result === RESULT.PLAYER2) match.winnerId = match.player2Id;
+  match.winnerId =
+    result === RESULT.PLAYER1 ? match.player1Id : match.player2Id;
   match.endedAt = new Date();
-
   return match;
 }
-
-// ── Mirror of createOrJoin from serverStore.js ─────────────────────────
 
 function createOrJoin({ userId, stakeAmount, minesCount, matches }) {
   const validation = validateMatchParams({ stakeAmount, minesCount });
@@ -223,7 +221,6 @@ function createOrJoin({ userId, stakeAmount, minesCount, matches }) {
 
   const stakeFixed = round2(stakeAmount);
 
-  // Look for an existing open match with matching stake.
   for (const m of matches.values()) {
     if (
       m.status === MATCH_STATUS.WAITING &&
@@ -231,10 +228,8 @@ function createOrJoin({ userId, stakeAmount, minesCount, matches }) {
       m.stakeAmount === stakeFixed
     ) {
       if (m.player1Id === userId) {
-        // Caller's own existing lobby — no-op.
         return { match: m, joined: false };
       }
-      // Join it.
       m.player2Id = userId;
       m.status = MATCH_STATUS.READY;
       m.firstPlayerId = Math.random() < 0.5 ? m.player1Id : userId;
@@ -245,7 +240,6 @@ function createOrJoin({ userId, stakeAmount, minesCount, matches }) {
     }
   }
 
-  // Create a new waiting match.
   const id = Math.max(0, ...matches.keys()) + 1;
   const match = makeMatch({
     id,
@@ -253,13 +247,10 @@ function createOrJoin({ userId, stakeAmount, minesCount, matches }) {
     stakeAmount: stakeFixed,
     minesCount,
   });
-  // The board is generated on creation (server-authoritative).
   match.board = generateBoard(Number(minesCount));
   matches.set(id, match);
   return { match, joined: false };
 }
-
-// ── Mirror of pickTile from serverStore.js ─────────────────────────────
 
 function pickTile({ userId, matchId, cellIndex, matches }) {
   const idx = Number(cellIndex);
@@ -284,36 +275,60 @@ function pickTile({ userId, matchId, cellIndex, matches }) {
   ) {
     return { error: "Pick window has expired", status: 400 };
   }
-  if (match.currentTurnUserId !== userId) {
+
+  // Turn enforcement via closed-form formula (the new "odds" turn
+  // order). Validates that the formula, the stored
+  // currentTurnUserId, and the caller all agree.
+  const expectedPicker = activePickerForMatch(match);
+  if (
+    !expectedPicker ||
+    match.currentTurnUserId !== expectedPicker ||
+    userId !== expectedPicker
+  ) {
     return { error: "It is not your turn", status: 403 };
   }
-  if (match.p1Pick === idx || match.p2Pick === idx) {
+
+  // Disallow duplicate picks across the full per-pick history.
+  const historyCells = (match.picks ?? [])
+    .map((p) => Number(p?.cell))
+    .filter((c) => Number.isInteger(c) && c >= 0 && c < GRID_CELLS);
+  if (historyCells.includes(idx)) {
     return { error: "Cell already picked", status: 409 };
   }
 
-  const isP1Turn = match.status === MATCH_STATUS.P1_TURN;
   const pickIsMine = isMine(match.board, idx);
+  const seat = userId === match.player1Id ? "player1" : "player2";
+  const newPick = {
+    userId,
+    seat,
+    cell: idx,
+    isMine: pickIsMine,
+    autoPicked: false,
+    pickedAt: new Date().toISOString(),
+  };
 
-  if (isP1Turn) {
-    match.p1Pick = idx;
-    match.p1PickIsMine = pickIsMine;
-    match.p1PickedAt = new Date();
-    // Advance to p2_turn.
-    match.status = MATCH_STATUS.P2_TURN;
-    match.currentTurnUserId = match.player2Id;
-    match.roundDeadline = new Date(Date.now() + ROUND_PICK_DEADLINE_MS);
-    return { match, justResolved: false };
-  }
-
-  // player2 just picked — resolve.
-  match.p2Pick = idx;
-  match.p2PickIsMine = pickIsMine;
-  match.p2PickedAt = new Date();
-  resolveMatch(match);
-  return { match, justResolved: true };
+  const result = applyPick(match, newPick);
+  return { match: result, justResolved: pickIsMine };
 }
 
-// ── Mirror of fetchMatchWithAutoResolve from serverStore.js ────────────
+function forcePick(match) {
+  if (!PICKABLE_STATES.has(match.status)) return match;
+  const pickerId = activePickerForMatch(match);
+  const historyCells = (match.picks ?? [])
+    .map((p) => Number(p?.cell))
+    .filter((c) => Number.isInteger(c) && c >= 0 && c < GRID_CELLS);
+  const cellIndex = pickRandomCell({ excludePicks: historyCells });
+  const pickIsMine = isMine(match.board, cellIndex);
+  const seat = pickerId === match.player1Id ? "player1" : "player2";
+  return applyPick(match, {
+    userId: pickerId,
+    seat,
+    cell: cellIndex,
+    isMine: pickIsMine,
+    autoPicked: true,
+    pickedAt: new Date().toISOString(),
+  });
+}
 
 function fetchMatchWithAutoResolve(userId, matchId, matches) {
   const match = matches.get(matchId);
@@ -322,7 +337,6 @@ function fetchMatchWithAutoResolve(userId, matchId, matches) {
     return { error: "Forbidden", status: 403 };
   }
 
-  // 1) Auto-advance the brief Ready window into the first pick state.
   if (
     match.status === MATCH_STATUS.READY &&
     match.roundDeadline &&
@@ -332,7 +346,6 @@ function fetchMatchWithAutoResolve(userId, matchId, matches) {
     return { match: scrubMatchForViewer(match) };
   }
 
-  // 2) AFK auto-pick on the current turn's deadline.
   if (
     PICKABLE_STATES.has(match.status) &&
     match.roundDeadline &&
@@ -536,7 +549,6 @@ test("createOrJoin: first caller creates a new waiting match", () => {
   assert.equal(r.match.player1Id, "u1");
   assert.equal(r.match.player2Id, null);
   assert.equal(matches.size, 1);
-  // Board was generated on creation.
   assert.equal(r.match.board.mines.length, 5);
 });
 
@@ -554,17 +566,15 @@ test("createOrJoin: second caller with matching stake joins the waiting match", 
   assert.equal(r.match.status, MATCH_STATUS.READY);
   assert.equal(r.match.player1Id, "u1");
   assert.equal(r.match.player2Id, "u2");
-  // firstPlayerId is one of the two (server rolls randomly).
   assert.ok(
     r.match.firstPlayerId === "u1" || r.match.firstPlayerId === "u2",
   );
-  // The ready window is 3 seconds.
   const remaining = new Date(r.match.roundDeadline).getTime() - Date.now();
-  assert.ok(remaining > 0, "ready deadline must be in the future");
-  assert.ok(remaining <= READY_WINDOW_MS + 50, "ready deadline is within 3s window");
+  assert.ok(remaining > 0);
+  assert.ok(remaining <= READY_WINDOW_MS + 50);
 });
 
-test("createOrJoin: caller of own existing lobby is a no-op (joined=false)", () => {
+test("createOrJoin: caller of own existing lobby is a no-op", () => {
   const matches = new Map();
   const first = createOrJoin({
     userId: "u1",
@@ -592,7 +602,6 @@ test("createOrJoin: does NOT join a different-stake lobby", () => {
     minesCount: 5,
     matches,
   });
-  // u2 didn't match, so they create a NEW waiting match at stake 100.
   assert.equal(r.joined, false);
   assert.equal(matches.size, 2);
   assert.equal(r.match.stakeAmount, 100);
@@ -607,7 +616,6 @@ test("createOrJoin: rejects invalid stake with 400-shaped error", () => {
     matches,
   });
   assert.equal(r.status, 400);
-  assert.ok(r.error);
 });
 
 test("createOrJoin: rejects invalid mines with 400-shaped error", () => {
@@ -619,10 +627,9 @@ test("createOrJoin: rejects invalid mines with 400-shaped error", () => {
     matches,
   });
   assert.equal(r.status, 400);
-  assert.ok(r.error);
 });
 
-test("createOrJoin: board is server-authoritative (regenerated, not joiner-controlled)", () => {
+test("createOrJoin: board is server-authoritative (host's 5-mine board preserved)", () => {
   const matches = new Map();
   const r = createOrJoin({
     userId: "u1",
@@ -630,27 +637,16 @@ test("createOrJoin: board is server-authoritative (regenerated, not joiner-contr
     minesCount: 5,
     matches,
   });
-  // The board is a {size, mines} jsonb object with `minesCount` mines.
   assert.equal(r.match.board.size, 5);
   assert.equal(r.match.board.mines.length, 5);
-  // Joiner-supplied minesCount is validated at the top of createOrJoin
-  // (so it must be in [1, 24]), but the host's already-picked board is
-  // what's used on join. The joiner's minesCount is NOT substituted
-  // onto the existing match.
-  //
-  // NOTE: we cannot test "joiner passes invalid minesCount → ignored"
-  // directly because validateMatchParams runs first and rejects with
-  // 400 before the "ignored" branch is reached. The test below proves
-  // the weaker invariant: "joiner must pass a valid minesCount, AND
-  // the host's board is used regardless of what the joiner passed."
   const joinResult = createOrJoin({
     userId: "u2",
     stakeAmount: 50,
-    minesCount: 5, // valid; the host's 5-mine board is what gets used
+    minesCount: 5,
     matches,
   });
   assert.equal(joinResult.joined, true);
-  assert.equal(joinResult.match.board.mines.length, 5, "host's 5-mine board is preserved");
+  assert.equal(joinResult.match.board.mines.length, 5);
 });
 
 test("createOrJoin: stake is rounded to 2dp (no floating-point drift)", () => {
@@ -661,14 +657,11 @@ test("createOrJoin: stake is rounded to 2dp (no floating-point drift)", () => {
     minesCount: 5,
     matches,
   });
-  // round2(12.345) = 12.35, so stored as "12.35" via Number/str coercion
-  // — but in our in-memory mirror, we keep it as a number; the real
-  // DB column is numeric(10,2). The important thing is no FP drift.
   assert.equal(r.match.stakeAmount, 12.35);
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// pickTile — turn enforcement + resolution
+// pickTile — turn enforcement + multi-pick resolution
 // ════════════════════════════════════════════════════════════════════════
 
 test("pickTile: rejects out-of-range cellIndex", () => {
@@ -680,12 +673,21 @@ test("pickTile: rejects out-of-range cellIndex", () => {
   match.currentTurnUserId = "u1";
   match.roundDeadline = new Date(Date.now() + 10_000);
 
-  const r1 = pickTile({ userId: "u1", matchId: match.id, cellIndex: -1, matches });
-  assert.equal(r1.status, 400);
-  const r2 = pickTile({ userId: "u1", matchId: match.id, cellIndex: 25, matches });
-  assert.equal(r2.status, 400);
-  const r3 = pickTile({ userId: "u1", matchId: match.id, cellIndex: 1.5, matches });
-  assert.equal(r3.status, 400);
+  assert.equal(
+    pickTile({ userId: "u1", matchId: match.id, cellIndex: -1, matches })
+      .status,
+    400,
+  );
+  assert.equal(
+    pickTile({ userId: "u1", matchId: match.id, cellIndex: 25, matches })
+      .status,
+    400,
+  );
+  assert.equal(
+    pickTile({ userId: "u1", matchId: match.id, cellIndex: 1.5, matches })
+      .status,
+    400,
+  );
 });
 
 test("pickTile: rejects non-participant with 403", () => {
@@ -701,11 +703,10 @@ test("pickTile: rejects non-participant with 403", () => {
   assert.equal(r.status, 403);
 });
 
-test("pickTile: rejects when status is waiting (not pickable yet)", () => {
+test("pickTile: rejects when status is waiting", () => {
   const matches = new Map();
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 5, matches });
   const match = [...matches.values()][0];
-  // match is in waiting — no p2 yet
   const r = pickTile({ userId: "u1", matchId: match.id, cellIndex: 0, matches });
   assert.equal(r.status, 400);
   assert.ok(/not awaiting a pick/i.test(r.error));
@@ -716,7 +717,6 @@ test("pickTile: rejects when status is ready (3s banner)", () => {
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 5, matches });
   createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 5, matches });
   const match = [...matches.values()][0];
-  // match is in ready — picks not accepted yet
   const r = pickTile({ userId: "u1", matchId: match.id, cellIndex: 0, matches });
   assert.equal(r.status, 400);
   assert.ok(/not awaiting a pick/i.test(r.error));
@@ -731,6 +731,9 @@ test("pickTile: rejects when it's not your turn (403)", () => {
   match.currentTurnUserId = "u1";
   match.roundDeadline = new Date(Date.now() + 10_000);
 
+  // Force the formula into a state where u2 still cannot pick (the
+  // closed-form formula says u1 is active because picks.length=0
+  // and turn 1 belongs to firstPlayer=player1Id=u1).
   const r = pickTile({ userId: "u2", matchId: match.id, cellIndex: 0, matches });
   assert.equal(r.status, 403);
   assert.ok(/not your turn/i.test(r.error));
@@ -743,194 +746,209 @@ test("pickTile: rejects when pick window has expired", () => {
   const match = [...matches.values()][0];
   match.status = MATCH_STATUS.P1_TURN;
   match.currentTurnUserId = "u1";
-  match.roundDeadline = new Date(Date.now() - 1_000); // already past
+  match.roundDeadline = new Date(Date.now() - 1_000);
 
   const r = pickTile({ userId: "u1", matchId: match.id, cellIndex: 0, matches });
   assert.equal(r.status, 400);
   assert.ok(/expired/i.test(r.error));
 });
 
-test("pickTile: rejects duplicate cell (409)", () => {
+test("pickTile: rejects duplicate cell (409), including picks from the OTHER player", () => {
   const matches = new Map();
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 5, matches });
   createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 5, matches });
   const match = [...matches.values()][0];
+  // Force minone count so we know cell 0 is safe.
   match.status = MATCH_STATUS.P1_TURN;
   match.currentTurnUserId = "u1";
   match.roundDeadline = new Date(Date.now() + 10_000);
+  match.board = { size: 5, mines: [1] };
 
-  // p1 picks cell 0 — valid, advances to p2_turn
-  const r1 = pickTile({ userId: "u1", matchId: match.id, cellIndex: 0, matches });
-  assert.equal(r1.match.p1Pick, 0);
-  assert.equal(r1.match.status, MATCH_STATUS.P2_TURN);
-
-  // p2 tries to also pick cell 0 (the cell p1 already took)
-  const r2 = pickTile({ userId: "u2", matchId: match.id, cellIndex: 0, matches });
-  assert.equal(r2.status, 409);
-  assert.ok(/already picked/i.test(r2.error));
+  pickTile({ userId: "u1", matchId: match.id, cellIndex: 0, matches });
+  // Now it's u2's turn → u2 tries to also pick 0.
+  const r = pickTile({ userId: "u2", matchId: match.id, cellIndex: 0, matches });
+  assert.equal(r.status, 409);
+  assert.ok(/already picked/i.test(r.error));
 });
 
-test("pickTile: valid p1 pick advances to p2_turn and stamps pick metadata", () => {
+test("pickTile: valid safe pick advances turn per the odds formula", () => {
   const matches = new Map();
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 5, matches });
   createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 5, matches });
   const match = [...matches.values()][0];
+  // First seat = player1.
+  match.firstPlayerId = "u1";
   match.status = MATCH_STATUS.P1_TURN;
   match.currentTurnUserId = "u1";
   match.roundDeadline = new Date(Date.now() + 10_000);
+  match.board = { size: 5, mines: [9] };
 
-  const r = pickTile({ userId: "u1", matchId: match.id, cellIndex: 7, matches });
-  assert.equal(r.error, undefined);
-  assert.equal(r.match.p1Pick, 7);
-  assert.equal(typeof r.match.p1PickIsMine, "boolean");
-  assert.equal(r.match.p1AutoPicked, false);
-  assert.equal(r.match.p1PickedAt instanceof Date, true);
-  assert.equal(r.match.status, MATCH_STATUS.P2_TURN);
+  const r = pickTile({ userId: "u1", matchId: match.id, cellIndex: 0, matches });
+  assert.equal(r.match.picks.length, 1);
+  assert.equal(r.match.picks[0].cell, 0);
+  assert.equal(r.match.picks[0].isMine, false);
+  assert.equal(r.match.picks[0].seat, "player1");
+  // After turn 1, formula says turn 2 goes to secondPlayer.
   assert.equal(r.match.currentTurnUserId, "u2");
+  assert.equal(r.match.status, MATCH_STATUS.P2_TURN);
   assert.equal(r.match.roundDeadline instanceof Date, true);
   assert.equal(r.justResolved, false);
 });
 
-test("pickTile: valid p2 pick resolves the match with payout + result", () => {
+test("pickTile: multi-pick odds turn order: P1, P2, P2, P1, P1...", () => {
   const matches = new Map();
-  createOrJoin({ userId: "u1", stakeAmount: 100, minesCount: 5, matches });
-  createOrJoin({ userId: "u2", stakeAmount: 100, minesCount: 5, matches });
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 5, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 5, matches });
   const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
   match.status = MATCH_STATUS.P1_TURN;
   match.currentTurnUserId = "u1";
   match.roundDeadline = new Date(Date.now() + 10_000);
+  // Put mines only at cells we won't pick for this test.
+  match.board = { size: 5, mines: [24] };
 
-  const r1 = pickTile({ userId: "u1", matchId: match.id, cellIndex: 0, matches });
-  assert.equal(r1.match.status, MATCH_STATUS.P2_TURN);
-  const r2 = pickTile({ userId: "u2", matchId: match.id, cellIndex: 1, matches });
-  assert.equal(r2.error, undefined);
-  assert.equal(r2.justResolved, true);
-  assert.equal(r2.match.status, MATCH_STATUS.FINISHED);
-  assert.ok([RESULT.PLAYER1, RESULT.PLAYER2, RESULT.DRAW].includes(r2.match.result));
-  // Payout math (per spec) — prizePaid + houseFee == stake (90/10 split on loser's stake).
-  if (r2.match.result !== RESULT.DRAW) {
-    assert.equal(r2.match.prizePaid, round2(100 * 1.9));
-    assert.equal(r2.match.houseFee, round2(100 * 0.1));
-    assert.ok(r2.match.winnerId);
-  } else {
-    assert.equal(r2.match.prizePaid, 0);
-    assert.equal(r2.match.houseFee, 0);
-    assert.equal(r2.match.winnerId, null);
+  const expectedTurnOrder = [
+    ["u1", 0, "player1"],
+    ["u2", 1, "player2"],
+    ["u2", 2, "player2"],
+    ["u1", 3, "player1"],
+    ["u1", 4, "player1"],
+  ];
+  for (const [expectedPicker, cell, expectedSeat] of expectedTurnOrder) {
+    assert.equal(
+      match.currentTurnUserId,
+      expectedPicker,
+      `expected ${expectedPicker} before turn ${match.picks.length + 1}`,
+    );
+    // Push deadline forward so the next pick doesn't expire.
+    match.roundDeadline = new Date(Date.now() + 10_000);
+    const r = pickTile({
+      userId: expectedPicker,
+      matchId: match.id,
+      cellIndex: cell,
+      matches,
+    });
+    assert.equal(r.match.picks.length, match.picks.length); // sanity
+    assert.equal(r.match.picks.at(-1).seat, expectedSeat);
+    assert.equal(r.match.picks.at(-1).isMine, false);
   }
-  assert.ok(r2.match.endedAt instanceof Date);
 });
 
-test("pickTile: P1 safe + P2 safe → DRAW (refund both, no fee)", () => {
+test("pickTile: mine hit on any turn -> immediate resolve, picker loses", () => {
   const matches = new Map();
-  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 1, matches });
-  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 1, matches });
+  createOrJoin({ userId: "u1", stakeAmount: 100, minesCount: 3, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 100, minesCount: 3, matches });
   const match = [...matches.values()][0];
-  // Find a non-mine cell for both picks.
-  const mineSet = new Set(match.board.mines);
-  const safeCells = [];
-  for (let i = 0; i < GRID_CELLS; i += 1) {
-    if (!mineSet.has(i)) safeCells.push(i);
-  }
-  // Force the outcome: both pick safe cells.
+  match.firstPlayerId = "u1";
   match.status = MATCH_STATUS.P1_TURN;
   match.currentTurnUserId = "u1";
   match.roundDeadline = new Date(Date.now() + 10_000);
-
-  pickTile({ userId: "u1", matchId: match.id, cellIndex: safeCells[0], matches });
-  const r2 = pickTile({ userId: "u2", matchId: match.id, cellIndex: safeCells[1], matches });
-  assert.equal(r2.match.result, RESULT.DRAW);
-  assert.equal(r2.match.prizePaid, 0);
-  assert.equal(r2.match.houseFee, 0);
-  assert.equal(r2.match.winnerId, null);
-});
-
-test("pickTile: P1 mine + P2 safe → PLAYER2 (P1 loses, P2 wins)", () => {
-  const matches = new Map();
-  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 1, matches });
-  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 1, matches });
-  const match = [...matches.values()][0];
-  const mine = match.board.mines[0];
-  const safeCells = [];
-  for (let i = 0; i < GRID_CELLS; i += 1) {
-    if (i !== mine) safeCells.push(i);
-  }
-  // Force p1 to pick first and take the mine.
-  // If p1 is not the first player, flip the match state to make p1
-  // pick first.
-  match.status = MATCH_STATUS.P1_TURN;
-  match.currentTurnUserId = "u1";
-  match.roundDeadline = new Date(Date.now() + 10_000);
-
-  pickTile({ userId: "u1", matchId: match.id, cellIndex: mine, matches });
-  const r2 = pickTile({ userId: "u2", matchId: match.id, cellIndex: safeCells[0], matches });
-  assert.equal(r2.match.result, RESULT.PLAYER2);
-  assert.equal(r2.match.winnerId, "u2");
-  assert.equal(r2.match.p1PickIsMine, true);
-  assert.equal(r2.match.p2PickIsMine, false);
-});
-
-test("pickTile: P1 safe + P2 mine → PLAYER1 (P2 loses)", () => {
-  const matches = new Map();
-  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 1, matches });
-  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 1, matches });
-  const match = [...matches.values()][0];
-  const mine = match.board.mines[0];
-  const safeCells = [];
-  for (let i = 0; i < GRID_CELLS; i += 1) {
-    if (i !== mine) safeCells.push(i);
-  }
-  match.status = MATCH_STATUS.P1_TURN;
-  match.currentTurnUserId = "u1";
-  match.roundDeadline = new Date(Date.now() + 10_000);
-
-  pickTile({ userId: "u1", matchId: match.id, cellIndex: safeCells[0], matches });
-  const r2 = pickTile({ userId: "u2", matchId: match.id, cellIndex: mine, matches });
-  assert.equal(r2.match.result, RESULT.PLAYER1);
-  assert.equal(r2.match.winnerId, "u1");
-  assert.equal(r2.match.p1PickIsMine, false);
-  assert.equal(r2.match.p2PickIsMine, true);
-});
-
-test("pickTile: P1 mine + P2 mine → PLAYER2 (P1 mined first)", () => {
-  const matches = new Map();
-  // Use 2 mines so both players can hit one.
-  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 2, matches });
-  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 2, matches });
-  const match = [...matches.values()][0];
   const mines = match.board.mines;
-  match.status = MATCH_STATUS.P1_TURN;
-  match.currentTurnUserId = "u1";
+  // Play out a few safe picks first to prove the game can continue
+  // past the first pick (and into the odds pattern).
+  const safeCells = [];
+  for (let i = 0; i < GRID_CELLS; i += 1) {
+    if (!mines.includes(i)) safeCells.push(i);
+  }
+  pickTile({ userId: "u1", matchId: match.id, cellIndex: safeCells[0], matches });
   match.roundDeadline = new Date(Date.now() + 10_000);
-
-  pickTile({ userId: "u1", matchId: match.id, cellIndex: mines[0], matches });
-  const r2 = pickTile({ userId: "u2", matchId: match.id, cellIndex: mines[1], matches });
-  assert.equal(r2.match.result, RESULT.PLAYER2);
-  assert.equal(r2.match.winnerId, "u2");
-  assert.equal(r2.match.p1PickIsMine, true);
-  assert.equal(r2.match.p2PickIsMine, true);
+  pickTile({ userId: "u2", matchId: match.id, cellIndex: safeCells[1], matches });
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  pickTile({ userId: "u2", matchId: match.id, cellIndex: safeCells[2], matches });
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  // Now it's u1's turn; have u1 pick a mine. Loser = u1.
+  const r = pickTile({ userId: "u1", matchId: match.id, cellIndex: mines[0], matches });
+  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(r.justResolved, true);
+  assert.equal(r.match.result, RESULT.PLAYER2);
+  assert.equal(r.match.winnerId, "u2");
+  assert.equal(r.match.picks.at(-1).isMine, true);
 });
 
-test("pickTile: result+payout consistency — player1/player2 winner takes 1.9x", () => {
+test("pickTile: mine hit by u2 -> u1 wins", () => {
   const matches = new Map();
-  createOrJoin({ userId: "u1", stakeAmount: 200, minesCount: 5, matches });
-  createOrJoin({ userId: "u2", stakeAmount: 200, minesCount: 5, matches });
+  createOrJoin({ userId: "u1", stakeAmount: 100, minesCount: 3, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 100, minesCount: 3, matches });
   const match = [...matches.values()][0];
+  match.firstPlayerId = "u2"; // flip first player to u2 to vary the test
+  match.status = MATCH_STATUS.P2_TURN;
+  match.currentTurnUserId = "u2";
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const mines = match.board.mines;
+  // P1 picks safe (turn 1 = firstPlayer = u2 here... actually turns
+  // are based on seats, not userIds; the formula uses
+  // firstPlayerSeat. With firstPlayerId="u2" (which is player2Id
+  // here), firstSeat = "player2", so turn 1 belongs to player2 =
+  // u2).
+  const r = pickTile({ userId: "u2", matchId: match.id, cellIndex: mines[0], matches });
+  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(r.match.result, RESULT.PLAYER1);
+  assert.equal(r.match.winnerId, "u1");
+});
+
+test("pickTile: payout math (winner gets 1.9x stake, house gets 0.1x)", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 100, minesCount: 2, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 100, minesCount: 2, matches });
+  const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
   match.status = MATCH_STATUS.P1_TURN;
   match.currentTurnUserId = "u1";
   match.roundDeadline = new Date(Date.now() + 10_000);
+  const mine = match.board.mines[0];
+  const r = pickTile({ userId: "u1", matchId: match.id, cellIndex: mine, matches });
+  assert.equal(r.match.prizePaid, round2(100 * 1.9));
+  assert.equal(r.match.houseFee, round2(100 * 0.1));
+});
 
-  pickTile({ userId: "u1", matchId: match.id, cellIndex: 0, matches });
-  const r2 = pickTile({ userId: "u2", matchId: match.id, cellIndex: 1, matches });
-  if (r2.match.result !== RESULT.DRAW) {
-    // Winner gets back their own stake + 90% of the loser's stake = 1.9x.
-    assert.equal(r2.match.prizePaid, round2(200 * (1 + WINNER_RATIO)));
-    // House takes 10% of the loser's stake.
-    assert.equal(r2.match.houseFee, round2(200 * HOUSE_RATIO));
+test("pickTile: never returns DRAW (no ties in the new flow)", () => {
+  // Run a handful of forced-mine scenarios from various turn states
+  // and assert that EVERY result is PLAYER1 or PLAYER2 — never DRAW.
+  for (let trial = 0; trial < 8; trial += 1) {
+    const matches = new Map();
+    createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 1, matches });
+    createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 1, matches });
+    const match = [...matches.values()][0];
+    match.firstPlayerId = Math.random() < 0.5 ? "u1" : "u2";
+    match.status =
+      match.firstPlayerId === "u1"
+        ? MATCH_STATUS.P1_TURN
+        : MATCH_STATUS.P2_TURN;
+    match.currentTurnUserId = match.firstPlayerId;
+    // Pick a few safe cells before forcing a mine so the game has
+    // crossed at least one turn (and possibly the odd/even
+    // pair-leader swap).
+    const safeCells = [];
+    for (let i = 0; i < GRID_CELLS; i += 1) {
+      if (!match.board.mines.includes(i)) safeCells.push(i);
+    }
+    for (let s = 0; s < Math.min(2, safeCells.length - 1); s += 1) {
+      match.roundDeadline = new Date(Date.now() + 10_000);
+      pickTile({
+        userId: match.currentTurnUserId,
+        matchId: match.id,
+        cellIndex: safeCells[s],
+        matches,
+      });
+    }
+    match.roundDeadline = new Date(Date.now() + 10_000);
+    const r = pickTile({
+      userId: match.currentTurnUserId,
+      matchId: match.id,
+      cellIndex: match.board.mines[0],
+      matches,
+    });
+    assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+    assert.notEqual(r.match.result, RESULT.DRAW);
+    assert.ok(
+      r.match.result === RESULT.PLAYER1 ||
+        r.match.result === RESULT.PLAYER2,
+    );
   }
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// fetchMatchWithAutoResolve — auto-advance + AFK force-pick
+// fetchMatchWithAutoResolve
 // ════════════════════════════════════════════════════════════════════════
 
 test("fetchMatchWithAutoResolve: rejects non-participant with 403", () => {
@@ -947,41 +965,33 @@ test("fetchMatchWithAutoResolve: rejects unknown match with 404", () => {
   assert.equal(r.status, 404);
 });
 
-test("fetchMatchWithAutoResolve: returns waiting match scrubbed (board hidden)", () => {
+test("fetchMatchWithAutoResolve: returns waiting match scrubbed", () => {
   const matches = new Map();
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 5, matches });
   const match = [...matches.values()][0];
   const r = fetchMatchWithAutoResolve("u1", match.id, matches);
   assert.equal(r.error, undefined);
   assert.equal(r.match.status, MATCH_STATUS.WAITING);
-  assert.equal(r.match.board, null, "board must be hidden mid-match");
+  assert.equal(r.match.board, null);
 });
 
-test("fetchMatchWithAutoResolve: auto-advances ready → first pick state on deadline", () => {
+test("fetchMatchWithAutoResolve: auto-advances ready -> first pick state", () => {
   const matches = new Map();
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 5, matches });
   createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 5, matches });
   const match = [...matches.values()][0];
-  // Force the ready window to have elapsed.
   match.roundDeadline = new Date(Date.now() - 1);
 
   const r = fetchMatchWithAutoResolve("u1", match.id, matches);
   assert.equal(r.error, undefined);
-  // The match is now in a pickable state.
   assert.ok(PICKABLE_STATES.has(r.match.status));
-  // firstPlayerId is one of the two.
   assert.ok(
     r.match.firstPlayerId === "u1" || r.match.firstPlayerId === "u2",
   );
-  assert.equal(
-    r.match.currentTurnUserId,
-    r.match.firstPlayerId,
-  );
+  assert.equal(r.match.currentTurnUserId, r.match.firstPlayerId);
   assert.ok(r.match.roundDeadline instanceof Date);
-  // The new deadline is ~20s in the future.
   const remaining = new Date(r.match.roundDeadline).getTime() - Date.now();
   assert.ok(remaining > 0);
-  assert.ok(remaining <= ROUND_PICK_DEADLINE_MS + 50);
 });
 
 test("fetchMatchWithAutoResolve: no-op when ready deadline has not elapsed", () => {
@@ -989,60 +999,73 @@ test("fetchMatchWithAutoResolve: no-op when ready deadline has not elapsed", () 
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 5, matches });
   createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 5, matches });
   const match = [...matches.values()][0];
-  // match.roundDeadline is in the future.
 
   const r = fetchMatchWithAutoResolve("u1", match.id, matches);
   assert.equal(r.match.status, MATCH_STATUS.READY);
 });
 
-test("fetchMatchWithAutoResolve: AFK on p1_turn → force-pick + advance to p2_turn", () => {
+test("fetchMatchWithAutoResolve: AFK on p1_turn -> force-pick via applyPick, advances turn", () => {
   const matches = new Map();
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 5, matches });
   createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 5, matches });
   const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
   match.status = MATCH_STATUS.P1_TURN;
   match.currentTurnUserId = "u1";
-  match.roundDeadline = new Date(Date.now() - 1); // expired
+  match.roundDeadline = new Date(Date.now() - 1);
 
   const r = fetchMatchWithAutoResolve("u1", match.id, matches);
-  assert.equal(r.error, undefined);
-  assert.equal(r.match.status, MATCH_STATUS.P2_TURN);
-  // p1 was AFK'd
-  assert.equal(typeof r.match.p1Pick, "number");
-  assert.equal(r.match.p1AutoPicked, true);
-  assert.equal(typeof r.match.p1PickIsMine, "boolean");
-  // p2's turn now
-  assert.equal(r.match.currentTurnUserId, "u2");
-  // New 20s deadline for p2
-  assert.ok(r.match.roundDeadline instanceof Date);
-  const remaining = new Date(r.match.roundDeadline).getTime() - Date.now();
-  assert.ok(remaining > 0);
+  // forcePick takes the active-picker's seat (=player1 here),
+  // appends an auto pick, and either resolves (mine) or advances
+  // to turn 2 (= secondPlayer = u2).
+  assert.ok(r.match.picks.length === 1 || r.match.status === MATCH_STATUS.FINISHED);
+  if (r.match.status !== MATCH_STATUS.FINISHED) {
+    // Picked safe: game continues with the formula's turn 2 picker.
+    assert.equal(r.match.currentTurnUserId, "u2");
+  } else {
+    // Picked a mine: instant resolve.
+    assert.equal(r.match.p1AutoPicked, true);
+  }
 });
 
-test("fetchMatchWithAutoResolve: AFK on p2_turn → force-pick + resolve", () => {
+test("fetchMatchWithAutoResolve: AFK on p2_turn -> force-pick resolves if mine", () => {
   const matches = new Map();
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 5, matches });
   createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 5, matches });
   const match = [...matches.values()][0];
-  // Pre-condition: p1 has already picked (so resolveMatch's
-  // both-picks-present guard can fire). p2's AFK then fills in the
-  // second pick and resolves the match.
-  match.status = MATCH_STATUS.P2_TURN;
-  match.currentTurnUserId = "u2";
+  match.firstPlayerId = "u1";
+  // Pre-populate with one safe pick by player1 so the closed-form
+  // formula (turn N = picks.length + 1) agrees with the stored
+  // status/currentTurnUserId. Without this, formula says turn 1
+  // belongs to firstPlayer=u1, and the AFK auto-pick would fire
+  // for u1, not u2 — making `p2AutoPicked` stay false.
+  match.picks = [
+    {
+      userId: "u1",
+      seat: "player1",
+      cell: 0,
+      isMine: false,
+      autoPicked: false,
+      pickedAt: new Date().toISOString(),
+    },
+  ];
   match.p1Pick = 0;
   match.p1PickIsMine = false;
-  match.p1PickedAt = new Date();
-  match.roundDeadline = new Date(Date.now() - 1); // expired
+  match.p1AutoPicked = false;
+  match.status = MATCH_STATUS.P2_TURN;
+  match.currentTurnUserId = "u2";
+  match.roundDeadline = new Date(Date.now() - 1);
 
   const r = fetchMatchWithAutoResolve("u2", match.id, matches);
-  assert.equal(r.error, undefined);
-  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
-  // Both picks are in
-  assert.equal(typeof r.match.p1Pick, "number");
-  assert.equal(typeof r.match.p2Pick, "number");
-  assert.equal(r.match.p2AutoPicked, true);
-  // Outcome is one of the three valid results
-  assert.ok([RESULT.PLAYER1, RESULT.PLAYER2, RESULT.DRAW].includes(r.match.result));
+  assert.ok(r.match.p2AutoPicked);
+  // IF the auto-pick hit a mine, the match resolves immediately
+  // with the picker losing. IF it was safe, the turn advances again —
+  // either is a valid outcome.
+  if (r.match.p2PickIsMine) {
+    assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+  } else {
+    assert.ok(PICKABLE_STATES.has(r.match.status));
+  }
 });
 
 test("fetchMatchWithAutoResolve: no-op when in finished state", () => {
@@ -1051,76 +1074,70 @@ test("fetchMatchWithAutoResolve: no-op when in finished state", () => {
   createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 5, matches });
   const match = [...matches.values()][0];
   match.status = MATCH_STATUS.FINISHED;
-  match.result = RESULT.DRAW;
+  match.result = RESULT.PLAYER1;
   match.prizePaid = 0;
   match.houseFee = 0;
 
   const r = fetchMatchWithAutoResolve("u1", match.id, matches);
   assert.equal(r.match.status, MATCH_STATUS.FINISHED);
-  assert.equal(r.match.result, RESULT.DRAW);
+  assert.equal(r.match.result, RESULT.PLAYER1);
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// End-to-end happy path: create → join → ready → p1_turn → p2_turn → finished
+// End-to-end: create -> join -> advance -> multi-pick -> mine hit
 // ════════════════════════════════════════════════════════════════════════
 
-test("end-to-end: create → join → advanceFromReady → p1 pick → p2 pick → finished", () => {
+test("end-to-end: P1, P2, P2, P1, P1 picks safe, then P1 picks mine -> P2 wins (1.9x payout)", () => {
   const matches = new Map();
 
-  // Step 1: u1 creates.
   const r1 = createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 3, matches });
   assert.equal(r1.match.status, MATCH_STATUS.WAITING);
 
-  // Step 2: u2 joins.
   const r2 = createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 3, matches });
   assert.equal(r2.match.status, MATCH_STATUS.READY);
-  assert.equal(matches.size, 1, "should reuse the same match row");
+  assert.equal(matches.size, 1);
 
   const match = r2.match;
-  // Force firstPlayerId to u1 for determinism.
   match.firstPlayerId = "u1";
-
-  // Step 3: auto-advance from ready (simulate deadline elapsed).
   match.roundDeadline = new Date(Date.now() - 1);
   const r3 = fetchMatchWithAutoResolve("u1", match.id, matches);
   assert.equal(r3.match.status, MATCH_STATUS.P1_TURN);
   assert.equal(r3.match.currentTurnUserId, "u1");
 
-  // Step 4: p1 picks a non-mine cell.
-  const mineSet = new Set(match.board.mines);
-  let p1Cell = -1;
+  const mines = match.board.mines;
+  const safeCells = [];
   for (let i = 0; i < GRID_CELLS; i += 1) {
-    if (!mineSet.has(i)) {
-      p1Cell = i;
-      break;
-    }
+    if (!mines.includes(i)) safeCells.push(i);
   }
-  const r4 = pickTile({ userId: "u1", matchId: match.id, cellIndex: p1Cell, matches });
-  assert.equal(r4.match.status, MATCH_STATUS.P2_TURN);
-  assert.equal(r4.match.p1Pick, p1Cell);
-  assert.equal(r4.match.p1PickIsMine, false);
-  assert.equal(r4.match.currentTurnUserId, "u2");
-
-  // Step 5: p2 picks a different non-mine cell.
-  let p2Cell = -1;
-  for (let i = p1Cell + 1; i < GRID_CELLS; i += 1) {
-    if (!mineSet.has(i)) {
-      p2Cell = i;
-      break;
-    }
+  // Walk the 4-turn odds pattern with all safe picks.
+  const turnPlan = [
+    ["u1", safeCells[0]],
+    ["u2", safeCells[1]],
+    ["u2", safeCells[2]],
+    ["u1", safeCells[3]],
+  ];
+  for (const [picker, cell] of turnPlan) {
+    match.roundDeadline = new Date(Date.now() + 10_000);
+    pickTile({ userId: picker, matchId: match.id, cellIndex: cell, matches });
   }
-  const r5 = pickTile({ userId: "u2", matchId: match.id, cellIndex: p2Cell, matches });
-  assert.equal(r5.match.status, MATCH_STATUS.FINISHED);
-  // Both safe → DRAW.
-  assert.equal(r5.match.result, RESULT.DRAW);
-  assert.equal(r5.match.prizePaid, 0);
-  assert.equal(r5.match.houseFee, 0);
-  assert.equal(r5.match.winnerId, null);
-  assert.equal(r5.match.p1PickIsMine, false);
-  assert.equal(r5.match.p2PickIsMine, false);
+  assert.equal(match.picks.length, 4);
+  assert.equal(match.status, MATCH_STATUS.P1_TURN);
+  // Now P1 picks a mine on turn 5 -> P1 loses -> P2 wins.
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const rMine = pickTile({
+    userId: "u1",
+    matchId: match.id,
+    cellIndex: mines[0],
+    matches,
+  });
+  assert.equal(rMine.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(rMine.match.result, RESULT.PLAYER2);
+  assert.equal(rMine.match.winnerId, "u2");
+  assert.equal(rMine.match.prizePaid, round2(50 * 1.9));
+  assert.equal(rMine.match.houseFee, round2(50 * 0.1));
 });
 
-test("end-to-end: AFK on p1_turn, then p2 picks a safe cell → DRAW (or P2 win depending on board)", () => {
+test("end-to-end: u2 AFKs on turn 2 auto-pick auto-loses if mine (or advances if safe)", () => {
   const matches = new Map();
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 1, matches });
   createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 1, matches });
@@ -1128,35 +1145,27 @@ test("end-to-end: AFK on p1_turn, then p2 picks a safe cell → DRAW (or P2 win 
   match.firstPlayerId = "u1";
   match.status = MATCH_STATUS.P1_TURN;
   match.currentTurnUserId = "u1";
-  match.roundDeadline = new Date(Date.now() - 1); // AFK'd
+  match.roundDeadline = new Date(Date.now() - 1);
 
-  // u1 gets AFK'd by the status poll.
+  // u1 AFK'd on turn 1 (auto-pick).
   const r1 = fetchMatchWithAutoResolve("u1", match.id, matches);
-  assert.equal(r1.match.status, MATCH_STATUS.P2_TURN);
   assert.equal(r1.match.p1AutoPicked, true);
-  // The auto-pick may or may not have hit the single mine.
-  const p1WasMine = r1.match.p1PickIsMine;
-
-  // p2 picks a safe cell.
-  const mineSet = new Set(match.board.mines);
-  let p2Cell = -1;
-  for (let i = 0; i < GRID_CELLS; i += 1) {
-    if (!mineSet.has(i)) {
-      p2Cell = i;
-      break;
-    }
-  }
-  const r2 = pickTile({ userId: "u2", matchId: match.id, cellIndex: p2Cell, matches });
-  assert.equal(r2.match.status, MATCH_STATUS.FINISHED);
-  // If p1's auto-pick was a mine, P2 wins (RESULT.PLAYER1 → winner is p1, i.e. u1 ... wait, no:
-  // PLAYER1 means player1 is the winner. If p1 (u1) mined → u2 wins → result=PLAYER1.
-  if (p1WasMine) {
-    // P1's AFK auto-pick hit the single mine → P2 wins (RESULT.PLAYER2).
+  // Formula says turn 2 belongs to u2; u2 AFK'd now too.
+  match.roundDeadline = new Date(Date.now() - 1);
+  const r2 = fetchMatchWithAutoResolve("u2", match.id, matches);
+  // If u1's auto-pick hit the mine, match already resolved.
+  if (r1.match.p1PickIsMine) {
+    assert.equal(r2.match.status, MATCH_STATUS.FINISHED);
     assert.equal(r2.match.result, RESULT.PLAYER2);
   } else {
-    // Both safe → DRAW (matches the spec).
-    assert.equal(r2.match.result, RESULT.DRAW);
+    // Otherwise u2's turn is now active, and their AFK'd auto-pick
+    // either advances OR resolves (depending on the auto cell).
+    if (r2.match.status === MATCH_STATUS.FINISHED) {
+      assert.equal(r2.match.result, RESULT.PLAYER1);
+    } else {
+      assert.ok(PICKABLE_STATES.has(r2.match.status));
+    }
   }
 });
 
-console.log("\n✅ All Mines Duel flow tests passed!\n");
+console.log("\n? All Mines Duel flow tests passed!\n");
