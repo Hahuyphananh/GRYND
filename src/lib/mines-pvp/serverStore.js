@@ -495,8 +495,14 @@ async function applyPick(tx, match, pick) {
     p2Pick: pickSeatMostRecent(allPicks, "player2", "cell"),
     p1PickIsMine: pickSeatMostRecent(allPicks, "player1", "isMine"),
     p2PickIsMine: pickSeatMostRecent(allPicks, "player2", "isMine"),
-    p1PickedAt: pickSeatMostRecent(allPicks, "player1", "pickedAt"),
-    p2PickedAt: pickSeatMostRecent(allPicks, "player2", "pickedAt"),
+    // The `picks` array stores `pickedAt` as an ISO string for
+    // JSONB portability, but the Drizzle `p{N}_picked_at` columns
+    // are declared `timestamp()` (mode 'date' default) and crash
+    // with `TypeError: value.getTime is not a function` when bound
+    // from a raw string. Coerce back to a Date before .set() so
+    // every mirror-write below stays type-safe.
+    p1PickedAt: pickSeatMostRecentDate(allPicks, "player1"),
+    p2PickedAt: pickSeatMostRecentDate(allPicks, "player2"),
     p1AutoPicked:
       pickSeatMostRecent(allPicks, "player1", "autoPicked") ?? false,
     p2AutoPicked:
@@ -590,6 +596,18 @@ function pickSeatMostRecent(picks, seatLabel, field) {
     }
   }
   return null;
+}
+
+// Date sibling of `pickSeatMostRecent`. Reads the most-recent
+// `pickedAt` ISO string for `seatLabel` and re-hydrates it into a
+// JS `Date` so the result is safe to bind to Drizzle's
+// `timestamp()` columns (`mode: 'date'` is the default and Drizzle
+// calls `.getTime()`/`.toISOString()` on the value — passing a
+// raw string throws a TypeError and 500s the route). Returns null
+// when the seat hasn't picked yet, mirroring the original helper.
+function pickSeatMostRecentDate(picks, seatLabel) {
+  const raw = pickSeatMostRecent(picks, seatLabel, "pickedAt");
+  return raw ? new Date(raw) : null;
 }
 
 // ── pickTile (the main action) ────────────────────────────────────────
