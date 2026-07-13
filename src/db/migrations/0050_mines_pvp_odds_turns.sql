@@ -1,5 +1,5 @@
 -- src/db/migrations/0050_mines_pvp_odds_turns.sql
---
+--a
 -- Adds the `picks` JSONB column on `mines_pvp_matches` (and a matching
 -- column on `mines_pvp_rounds`) to support the new "odds turn" Mines
 -- Duel flow.
