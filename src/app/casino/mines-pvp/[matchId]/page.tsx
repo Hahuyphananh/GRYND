@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -846,7 +846,15 @@ export default function MinesPvpMatchPage({
     );
   }
 
-  // ── Result screen ────────────────────────────────────────────────
+  // ── Result screen (overlay) ───────────────────────────────────────
+  // Prompt fix: previously this rendered inline at the bottom of
+  // the page, BELOW the 5×5 gameboard — now it renders as a fixed
+  // full-screen overlay (mirroring the chess game at
+  // `src/app/casino/chess-game/[gameId]/page.jsx`'s
+  // `showResultPopup`). The board stays visible behind the
+  // backdrop dim, but the win/lose headline + payout breakdown
+  // sit on top of it as a centered modal so the player can't miss
+  // the result. Gameplay logic is intentionally untouched.
   function renderResult() {
     if (!match || match.status !== MATCH_STATUS.FINISHED) return null;
     const iWon =
@@ -876,116 +884,122 @@ export default function MinesPvpMatchPage({
     const prizePaid = Number(match.prizePaid);
 
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-        className={`mt-4 rounded-3xl border-2 bg-gradient-to-b p-6 text-center ${headlineBg}`}
-      >
+      <AnimatePresence>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6">
           <motion.div
-            initial={{ scale: 0, rotate: -25 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.1 }}
-            className="mb-2 text-7xl"
+            key="mines-pvp-result-overlay"
+            initial={{ opacity: 0, scale: 0.6, y: 40 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.6, y: 40 }}
+            transition={{ type: "spring", stiffness: 250, damping: 18 }}
+            className={`relative w-full max-w-md rounded-2xl border-2 bg-gradient-to-b p-6 text-center overflow-hidden ${headlineBg}`}
           >
-            {headlineEmoji}
+            <motion.div
+              initial={{ scale: 0, rotate: -25 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.1 }}
+              className="mb-2 text-7xl"
+            >
+              {headlineEmoji}
+            </motion.div>
+            <h2 className={`mt-3 text-3xl sm:text-4xl font-black uppercase ${headlineColor}`}>
+              {headline}
+            </h2>
+            <p className="mt-1 text-sm text-white/70">
+              {iWon
+                ? `You took home ${prizePaid.toFixed(2)} tokens (your stake + 90% of opponent's).`
+                : iLost
+                  ? `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`
+                  : "Result recorded."}
+            </p>
+
+            {/* Payout breakdown */}
+            <div className="mt-4 grid grid-cols-3 gap-2 text-xs sm:text-sm">
+              <div className="rounded-lg border border-white/10 bg-black/30 p-2">
+                <p className="text-[10px] uppercase tracking-wider text-white/45">Stake</p>
+                <p className="font-bold text-white">{stake.toFixed(2)}</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-black/30 p-2">
+                <p className="text-[10px] uppercase tracking-wider text-white/45">Prize</p>
+                <p className={`font-bold ${prizePaid > 0 ? "text-emerald-300" : "text-white/50"}`}>
+                  {prizePaid.toFixed(2)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-black/30 p-2">
+                <p className="text-[10px] uppercase tracking-wider text-white/45">House</p>
+                <p className={`font-bold ${houseFee > 0 ? "text-fuchsia-300" : "text-white/50"}`}>
+                  {houseFee.toFixed(2)}
+                </p>
+              </div>
+            </div>
+
+            {/* Pick audit */}
+            <div className="mt-4 grid grid-cols-2 gap-2 text-left text-xs">
+              <div className="rounded-lg border border-cyan-300/20 bg-cyan-500/5 p-3">
+                <p className="text-[10px] uppercase tracking-wider text-cyan-200/70">
+                  You picked cell #{myPick ?? "?"}
+                </p>
+                <p className="mt-1 inline-flex items-center gap-1 font-semibold">
+                  {myPickIsMine ? (
+                    <span className="text-red-300 inline-flex items-center gap-1">
+                      <CrossIcon className="w-3.5 h-3.5" /> Mine
+                    </span>
+                  ) : myPick !== null ? (
+                    <span className="text-emerald-300 inline-flex items-center gap-1">
+                      <CheckIcon className="w-3.5 h-3.5" /> Safe
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                  {myAutoPicked && (
+                    <span className="ml-1 rounded bg-yellow-300/20 px-1.5 py-0.5 text-[10px] font-bold text-yellow-200">
+                      AFK auto
+                    </span>
+                  )}
+                </p>
+              </div>
+              <div className="rounded-lg border border-fuchsia-300/20 bg-fuchsia-500/5 p-3">
+                <p className="text-[10px] uppercase tracking-wider text-fuchsia-200/70">
+                  Opponent picked cell #{opponentPick ?? "?"}
+                </p>
+                <p className="mt-1 inline-flex items-center gap-1 font-semibold">
+                  {opponentPickIsMine ? (
+                    <span className="text-red-300 inline-flex items-center gap-1">
+                      <CrossIcon className="w-3.5 h-3.5" /> Mine
+                    </span>
+                  ) : opponentPick !== null ? (
+                    <span className="text-emerald-300 inline-flex items-center gap-1">
+                      <CheckIcon className="w-3.5 h-3.5" /> Safe
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                  {opponentAutoPicked && (
+                    <span className="ml-1 rounded bg-yellow-300/20 px-1.5 py-0.5 text-[10px] font-bold text-yellow-200">
+                      AFK auto
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+              <button
+                onClick={() => router.push("/casino/mines-pvp")}
+                className="px-5 py-2.5 rounded-xl bg-cyan-400 text-[#001933] hover:bg-cyan-300 text-sm font-bold shadow-[0_0_18px_rgba(0,229,255,0.5)] transition"
+              >
+                Back to lobby
+              </button>
+              <button
+                onClick={() => router.push("/casino")}
+                className="px-5 py-2.5 rounded-xl border border-cyan-300/40 bg-transparent text-cyan-200 hover:bg-cyan-300/10 text-sm font-bold transition"
+              >
+                All games
+              </button>
+            </div>
           </motion.div>
-          <h2 className={`mt-3 text-3xl sm:text-4xl font-black uppercase ${headlineColor}`}>
-            {headline}
-          </h2>
-          <p className="mt-1 text-sm text-white/70">
-            {iWon
-              ? `You took home ${prizePaid.toFixed(2)} tokens (your stake + 90% of opponent's).`
-              : iLost
-                ? `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`
-                : "Result recorded."}
-          </p>
-
-          {/* Payout breakdown */}
-          <div className="mt-4 grid grid-cols-3 gap-2 text-xs sm:text-sm">
-            <div className="rounded-lg border border-white/10 bg-black/30 p-2">
-              <p className="text-[10px] uppercase tracking-wider text-white/45">Stake</p>
-              <p className="font-bold text-white">{stake.toFixed(2)}</p>
-            </div>
-            <div className="rounded-lg border border-white/10 bg-black/30 p-2">
-              <p className="text-[10px] uppercase tracking-wider text-white/45">Prize</p>
-              <p className={`font-bold ${prizePaid > 0 ? "text-emerald-300" : "text-white/50"}`}>
-                {prizePaid.toFixed(2)}
-              </p>
-            </div>
-            <div className="rounded-lg border border-white/10 bg-black/30 p-2">
-              <p className="text-[10px] uppercase tracking-wider text-white/45">House</p>
-              <p className={`font-bold ${houseFee > 0 ? "text-fuchsia-300" : "text-white/50"}`}>
-                {houseFee.toFixed(2)}
-              </p>
-            </div>
-          </div>
-
-          {/* Pick audit */}
-          <div className="mt-4 grid grid-cols-2 gap-2 text-left text-xs">
-            <div className="rounded-lg border border-cyan-300/20 bg-cyan-500/5 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-cyan-200/70">
-                You picked cell #{myPick ?? "?"}
-              </p>
-              <p className="mt-1 inline-flex items-center gap-1 font-semibold">
-                {myPickIsMine ? (
-                  <span className="text-red-300 inline-flex items-center gap-1">
-                    <CrossIcon className="w-3.5 h-3.5" /> Mine
-                  </span>
-                ) : myPick !== null ? (
-                  <span className="text-emerald-300 inline-flex items-center gap-1">
-                    <CheckIcon className="w-3.5 h-3.5" /> Safe
-                  </span>
-                ) : (
-                  "—"
-                )}
-                {myAutoPicked && (
-                  <span className="ml-1 rounded bg-yellow-300/20 px-1.5 py-0.5 text-[10px] font-bold text-yellow-200">
-                    AFK auto
-                  </span>
-                )}
-              </p>
-            </div>
-            <div className="rounded-lg border border-fuchsia-300/20 bg-fuchsia-500/5 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-fuchsia-200/70">
-                Opponent picked cell #{opponentPick ?? "?"}
-              </p>
-              <p className="mt-1 inline-flex items-center gap-1 font-semibold">
-                {opponentPickIsMine ? (
-                  <span className="text-red-300 inline-flex items-center gap-1">
-                    <CrossIcon className="w-3.5 h-3.5" /> Mine
-                  </span>
-                ) : opponentPick !== null ? (
-                  <span className="text-emerald-300 inline-flex items-center gap-1">
-                    <CheckIcon className="w-3.5 h-3.5" /> Safe
-                  </span>
-                ) : (
-                  "—"
-                )}
-                {opponentAutoPicked && (
-                  <span className="ml-1 rounded bg-yellow-300/20 px-1.5 py-0.5 text-[10px] font-bold text-yellow-200">
-                    AFK auto
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-            <button
-              onClick={() => router.push("/casino/mines-pvp")}
-              className="px-5 py-2.5 rounded-xl bg-cyan-400 text-[#001933] hover:bg-cyan-300 text-sm font-bold shadow-[0_0_18px_rgba(0,229,255,0.5)] transition"
-            >
-              Back to lobby
-            </button>
-            <button
-              onClick={() => router.push("/casino")}
-              className="px-5 py-2.5 rounded-xl border border-cyan-300/40 bg-transparent text-cyan-200 hover:bg-cyan-300/10 text-sm font-bold transition"
-            >
-              All games
-            </button>
-          </div>
-      </motion.div>
+        </div>
+      </AnimatePresence>
     );
   }
 
@@ -1145,11 +1159,17 @@ export default function MinesPvpMatchPage({
           </div>
         )}
 
-        {/* Post-match result screen */}
-        {renderResult()}
-
         <Footer />
       </div>
+
+      {/* Post-match result screen — rendered as a fixed overlay
+          (mirrors the chess game's `showResultPopup` pattern), so
+          the win/lose panel sits on top of the board instead of
+          below it. The fixed inset-0 backdrop covers the full
+          viewport without needing its own portal; the rendered
+          `motion.div` already short-circuits to `null` for any
+          status other than `MATCH_STATUS.FINISHED`. */}
+      {renderResult()}
     </div>
   );
 }
