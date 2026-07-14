@@ -348,6 +348,27 @@ export default function RoulettePvpGamePage({ params }) {
   // `setRoundResultBanner(...)` after `spinWheel(...)` resolves, so
   // the popup and the wheel settle at the same time.
   const pendingBannerRef = useRef(null);
+  // Mirror `winningNumber` into a ref so `drawWheel` — and therefore
+  // `spinWheel` — can read its current value WITHOUT listing
+  // `winningNumber` in the `useCallback` dependency arrays.
+  // BUG-FIX ("bet panel permanently locked after round 1"):
+  // Previously `winningNumber` was in `drawWheel`'s deps, and
+  // `drawWheel` was in `spinWheel`'s deps. The spin-anim effect's
+  // dep list `[spinId, lastSpinResult, spinWheel]` therefore saw a
+  // fresh `spinWheel` reference the moment the effect itself called
+  // `setWinningNumber(...)` — the effect re-fired, its CLEANUP ran
+  // and set `cancelled = true` on the previous run, and the
+  // 4.5 s `spinWheel` Promise from that first run later resolved
+  // with NO `setSpinning(false)` call (because `cancelled === true`).
+  // Net result: `spinning` was stuck `true` forever, which spends
+  // `myBetsAreLocked` permanently `true`, which locks the bet panel
+  // after round 1 (and every subsequent round) even though the
+  // server already cleared `player1Bets` / `player2Bets` to null.
+  // Decoupling `winningNumber` from `drawWheel`'s identity via a
+  // ref breaks the chain — re-renders triggered by
+  // `setWinningNumber(...)` no longer recreate `drawWheel`,
+  // `spinWheel`, or the effect's cleanup scheduler.
+  const winningNumberRef = useRef(null);
   // Last server-stamped spin-result fingerprint we saw. Used by the
   // round-transition-reset effect below to detect "a new round just
   // began" (server cleared both players' bets but the same spin
@@ -638,9 +659,17 @@ export default function RoulettePvpGamePage({ params }) {
       }
 
       // Highlight winning number on rim (Prompt 2 enhancement: from
-      // the polled `match.lastSpinResult`).
-      if (winningNumber !== null && winningNumber !== undefined) {
-        const idx = ROULETTE_NUMBERS.indexOf(Number(winningNumber));
+      // the polled `match.lastSpinResult`). Read from the ref so
+      // this `useCallback` doesn't have to list `winningNumber` in
+      // its dependency array — see `winningNumberRef` for the full
+      // reasoning on why that coupling would re-fire the spin-anim
+      // effect mid-animation and stick `spinning` at true.
+      const winningNumberForDraw = winningNumberRef.current;
+      if (
+        winningNumberForDraw !== null &&
+        winningNumberForDraw !== undefined
+      ) {
+        const idx = ROULETTE_NUMBERS.indexOf(Number(winningNumberForDraw));
         if (idx >= 0) {
           ctx.save();
           ctx.translate(radius, radius);
@@ -678,8 +707,22 @@ export default function RoulettePvpGamePage({ params }) {
       ctx.fill();
       ctx.restore();
     },
-    [winningNumber],
+    // Empty dep array: drawing reads `winningNumber` via the ref
+    // above. Listing `winningNumber` here would cause a fresh
+    // `drawWheel` reference whenever the winning pocket updates,
+    // which would invalidate `spinWheel` and the spin-anim effect's
+    // dep list — see `winningNumberRef` for the full reasoning.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
+
+  // Single forward-only sync of `winningNumber` into the ref that
+  // `drawWheel` reads. Lives in its own effect (not inline in the
+  // render body) so React's render purity rules stay happy, and so
+  // an unmount-mid-render can't read a stale ref.
+  useEffect(() => {
+    winningNumberRef.current = winningNumber;
+  }, [winningNumber]);
 
   useEffect(() => {
     drawWheel();
@@ -1358,7 +1401,8 @@ export default function RoulettePvpGamePage({ params }) {
                   </div>
                 </div>
                 <div className="mt-2 text-[10px] text-center text-white/50">
-                  First to 2 wins. Sudden death if tied after Round 3.
+                  Always 3 rounds. <b>Round wins</b> shown above are informational<br/>
+                  only — most match points decides the winner.
                 </div>
               </div>
             )}          {/* Persistent match-points panel (Prompt 2) */}
@@ -1883,7 +1927,7 @@ export default function RoulettePvpGamePage({ params }) {
                       <TrophyIcon className="w-4 h-4 text-yellow-400" title="Match" />
                       <span>Match</span>
                     </h3>
-                    <p>Best of 3 rounds. Tied after Round 3 → Sudden Death. 2.5% house fee.</p>
+                    <p>Always 3 rounds — the player with the most match points wins. Ties after Round 3 trigger Sudden Death. 2.5% house fee.</p>
                   </div>
                   <div>
                     <h3 className="text-yellow-400 font-semibold inline-flex items-center gap-1.5">
