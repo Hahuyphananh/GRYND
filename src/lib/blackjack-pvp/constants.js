@@ -20,7 +20,7 @@ const VALUES = [
 // Duration (seconds) of each round's decision window before the
 // server-authoritative deadline fires. Stored on the match row so
 // future admin tooling can tune it without touching code.
-export const ROUND_TIMER_SECONDS = 20;
+export const ROUND_TIMER_SECONDS = 30;
 export const ROUND_DEADLINE_MS = ROUND_TIMER_SECONDS * 1000;
 
 // ── Stake matchmaking constants ───────────────────────────────────────

@@ -42,6 +42,7 @@ import {
   SWAP_LIMIT_PER_ROUND,
   HOLD_LIMIT_PER_ROUND,
   BETWEEN_ROUNDS_SECONDS,
+  ROUND_TIMER_SECONDS,
   TOTAL_ROUNDS,
 } from "../../../../lib/blackjack-pvp/constants";
 import { useTranslation } from "../../../../hooks/useTranslation";
@@ -500,38 +501,34 @@ export default function BlackjackPvpMatchPage({
     ? t("blackjackPvp.seat.opponent", "Adversaire")
     : t("blackjackPvp.seat.opponent", "Adversaire");
 
-  // Action gates (Prompt 9): switched from `myState === "playing"`
-  // string comparisons to `!myStanding` for cleaner semantics. The
-  // standing wire boolean is derived from the server's player{N}_state
-  // enum, so the action-disabled invariant is enforced by the same
-  // server-authoritative rule that gates the engine's recordAction.
+  // Action gates (mirrors serverStore.applyAction):
+  //   * STOOD is the ONLY state that locks the hand permanently.
+  //   * BUSTED seats may still SWAP / HOLD / USE_HELD — those are
+  //     the busted-recovery paths. HIT and STAND stay PLAYING-only
+  //     because they don't make sense once you've already busted.
+  // The server is authoritative: every gate below is also enforced
+  // by recordAction, so a client-side mismatch just disables the
+  // button — it doesn't open up an exploitation path.
+  const handIsInteractive = isMyTurn && myState !== "stood";
   const canSwap =
-    isMyTurn &&
-    !myStanding &&
+    handIsInteractive &&
     myHand.length >= 2 &&
     (myActions.swapsUsed ?? 0) < SWAP_LIMIT_PER_ROUND;
   const canHold =
-    isMyTurn &&
-    !myStanding &&
+    handIsInteractive &&
     myHand.length >= 2 &&
     (myActions.holdsUsed ?? 0) < HOLD_LIMIT_PER_ROUND &&
     !myActions.heldCard;
-  // Per Prompt 7: once a seat leaves `playing` (stood or busted)
-  // no further gameplay actions are allowed — including Use-Held.
-  // The hold-then-stand post-resolution path is intentionally gone: a
-  // player who holds must add or discard BEFORE standing.
   const canUseHeldAdd =
-    isMyTurn &&
-    !myStanding &&
+    handIsInteractive &&
     Boolean(myActions.heldCard) &&
     !myActions.heldResolved;
   const canUseHeldDiscard =
-    isMyTurn &&
-    !myStanding &&
+    handIsInteractive &&
     Boolean(myActions.heldCard) &&
     !myActions.heldResolved;
-  const canHit = isMyTurn && !myStanding && myScore < 21;
-  const canStand = isMyTurn && !myStanding;
+  const canHit = isMyTurn && myState === "playing" && myScore < 21;
+  const canStand = isMyTurn && myState === "playing";
 
   // ── Render: header / status banner / 403 / not-found ──────────────
   const statusLabel = (() => {
@@ -753,34 +750,44 @@ export default function BlackjackPvpMatchPage({
             />
           )}
 
-          {/* Action buttons — only during active round. */}
-          {isMyTurn && myState === "playing" && (
-            <ActionPanel
-              t={t}
-              submitting={submitting}
-              canHit={canHit}
-              canStand={canStand}
-              canSwap={canSwap}
-              canHold={canHold}
-              canUseHeldAdd={canUseHeldAdd}
-              canUseHeldDiscard={canUseHeldDiscard}
-              onHit={() => sendAction("hit")}
-              onStand={() => sendAction("stand")}
-              onSwap={(idx) => sendAction("swap", { swapIndex: idx })}
-              onHold={() => sendAction("hold")}
-              onUseHeldAdd={() =>
-                sendAction("use_held", { subaction: "add" })
-              }
-              onUseHeldDiscard={() =>
-                sendAction("use_held", { subaction: "discard" })
-              }
-            />
+          {/* Action buttons — visible for both PLAYING (full move
+              set) and BUSTED (recovery via Swap / Freeze / Use-Held)
+              seats. Hit and Stand appear but stay disabled on busted
+              seats because they can't un-bust you. */}
+          {handIsInteractive && (
+            <>
+              <RoundTimerDisplay
+                t={t}
+                deadline={match?.roundDeadline ?? null}
+                total={ROUND_TIMER_SECONDS}
+              />
+              <ActionPanel
+                t={t}
+                submitting={submitting}
+                canHit={canHit}
+                canStand={canStand}
+                canSwap={canSwap}
+                canHold={canHold}
+                canUseHeldAdd={canUseHeldAdd}
+                canUseHeldDiscard={canUseHeldDiscard}
+                onHit={() => sendAction("hit")}
+                onStand={() => sendAction("stand")}
+                onSwap={(idx) => sendAction("swap", { swapIndex: idx })}
+                onHold={() => sendAction("hold")}
+                onUseHeldAdd={() =>
+                  sendAction("use_held", { subaction: "add" })
+                }
+                onUseHeldDiscard={() =>
+                  sendAction("use_held", { subaction: "discard" })
+                }
+              />
+            </>
           )}
-          {/* After standing, the hand is locked and the player has
-              NO remaining actions. The "en attente de l'adversaire"
-              hint below mirrors the busted posture identically so
-              the opponent can't tell the two apart without seeing
-              the active cards. */}
+          {/* STOOD lock: the hand is frozen and the round resolves
+              as soon as BOTH seats leave PLAYING. We surface ONE
+              consolidated hint here — the previous build had a
+              second duplicate render that just stacked with this
+              one, which read as visual noise. */}
           {isMyTurn && myState === "stood" && (
             <div className="mt-3 text-center text-xs text-white/55 italic">
               {t(
@@ -789,17 +796,22 @@ export default function BlackjackPvpMatchPage({
               )}
             </div>
           )}
-          {isMyTurn && myState !== "playing" && (
-            <div className="mt-4 text-center text-xs text-white/55">
-              {myState === "busted"
-                ? t(
-                    "blackjackPvp.waitingBusted",
-                    "Vous avez sauté (>21). En attente de l'adversaire…",
-                  )
-                : t(
-                    "blackjackPvp.waitingStood",
-                    "Vous restez. En attente de l'adversaire…",
-                  )}
+          {/* Busted-but-still-active hint — clarifies that the
+              player can still use Swap & Freeze to recover before
+              the round resolves (the panel above stays visible).
+              The two halves are independently translated so fr/es
+              players don't see English glue text. */}
+          {myState === "busted" && handIsInteractive && (
+            <div className="mt-2 text-center text-xs">
+              <span className="text-amber-200 font-bold uppercase tracking-wider">
+                {t("blackjackPvp.bustedPrefix", "Busted!")}
+              </span>{" "}
+              <span className="text-white/75">
+                {t(
+                  "blackjackPvp.bustedRecoverHint",
+                  "— swap or freeze to recover.",
+                )}
+              </span>
             </div>
           )}
           {match?.status === "waiting" && (
@@ -959,6 +971,71 @@ export default function BlackjackPvpMatchPage({
         }
         .animate-shake { animation: shake 0.4s ease-in-out; }
       `}</style>
+    </div>
+  );
+}
+
+// ── Per-round 30-second countdown chip ───────────────────────────────
+// Renders `30s … 0s` over a thin progress bar above the action
+// panel. Local-to-the-viewer state ticks every 500 ms so the bar
+// stays smooth between the 1.5 s server polls. Colour flips from
+// gold → red and the label switches to the urgent variant at ≤5 s,
+// matching the `roundTimerUrgent` translation key.
+function RoundTimerDisplay({
+  t,
+  deadline,
+  total,
+}: {
+  t: TFn;
+  deadline: string | null;
+  total: number;
+}) {
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!deadline) return null;
+  const deadlineMs = new Date(deadline).getTime();
+  if (!Number.isFinite(deadlineMs)) return null;
+
+  const secondsLeft = Math.max(0, Math.ceil((deadlineMs - now) / 1000));
+  const progress = Math.max(
+    0,
+    Math.min(1, secondsLeft / Math.max(1, total)),
+  );
+  // Fold the "expired" state into urgent so the panel keeps pulsing
+  // while we wait for the server's force-advance / round-resolve
+  // sweep. Otherwise the user sees a flat zero that doesn't change
+  // until the next 1.5s poll lands.
+  const urgent = secondsLeft <= 5;
+  const labelKey = urgent
+    ? "blackjackPvp.roundTimerUrgent"
+    : "blackjackPvp.roundTimer";
+  const fallback = urgent ? "{seconds}s — act now" : "{seconds}s";
+  const label = t(labelKey, fallback).replace(
+    "{seconds}",
+    String(secondsLeft),
+  );
+
+  return (
+    <div className="mt-3 mb-1 text-center" aria-live="polite">
+      <div
+        className={`text-3xl sm:text-4xl font-black leading-none transition-colors ${
+          urgent ? "text-red-300 animate-pulse" : "text-[#FFD700]"
+        }`}
+      >
+        {label}
+      </div>
+      <div className="mt-1.5 h-1.5 w-full bg-white/10 rounded-full overflow-hidden shadow-inner">
+        <motion.div
+          initial={false}
+          animate={{ width: `${progress * 100}%` }}
+          transition={{ duration: 0.4, ease: "linear" }}
+          className={`h-full ${urgent ? "bg-red-400" : "bg-[#FFD700]"}`}
+        />
+      </div>
     </div>
   );
 }
