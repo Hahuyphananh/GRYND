@@ -206,9 +206,10 @@ export default function RoulettePvpLobbyPage() {
         </motion.div>
         <p className="text-center text-sm text-white/60 mt-2 mb-7 max-w-2xl mx-auto">
           Pick a stake. We pair you with another player of the <b>exact same</b>{" "}
-          token amount. Three rounds (best of 3) plus sudden-death if needed.
-          Single shared spin per round; higher net payout wins the round. Match
-          points (100 to start) persist round-to-round. 2% house fee.
+          token amount. Always 3 rounds — the player with the most match points
+          wins. Ties after Round 3 trigger sudden death. Single shared spin per
+          round. Match points (100 to start) persist round-to-round. 2.5% house
+          fee.
         </p>
 
         <motion.div
