@@ -554,8 +554,20 @@ export default function MinesPvpMatchPage({
   const handleCellClick = useCallback(
     async (cellIndex: number) => {
       if (!isMyTurn || busy || !match) return;
-      if (myPick !== null) return; // already picked
-      if (opponentPick === cellIndex) return; // duplicate
+      // BUG-FIX ("opponent can't click tiles on their second turn"):
+      // The old single-pick guard was `if (myPick !== null) return;`,
+      // which blocked players who had already made at least one pick
+      // in this match. The odds-turn flow lets the same player pick
+      // multiple times across a single match (e.g. sequence
+      // P1 → P2 → P2 → P1 → P1 in `activePickerForMatch`'s closed
+      // form), so once a player has any prior pick their `myPick`
+      // points at it and the guard fired on every subsequent click
+      // even though the cell was empty. Use the per-cell picks-array
+      // membership checks — same pattern as the disabled-button
+      // `cellAlreadyPicked` predicate in the render block, so the
+      // client UI + server-side dedup (`pickHistoryCells`) agree.
+      if (myPicks.includes(cellIndex)) return; // already picked by me
+      if (opponentPicks.includes(cellIndex)) return; // duplicate (opponent already picked this cell)
       setBusy(true);
       setError(null);
       try {
@@ -594,7 +606,7 @@ export default function MinesPvpMatchPage({
         setBusy(false);
       }
     },
-    [busy, fetchStatus, isMyTurn, match, matchId, myPick, opponentPick, posthog, socket],
+    [busy, fetchStatus, isMyTurn, match, matchId, myPicks, opponentPicks, posthog, socket],
   );
 
   const handleCancel = useCallback(async () => {
