@@ -487,16 +487,14 @@ export async function recordAction({ userId, matchId, action, payload }) {
       return { match: refreshed, raced: true };
     }
 
-    const bothTerminal =
-      updated.player1State !== PLAYER_STATE.PLAYING &&
-      updated.player2State !== PLAYER_STATE.PLAYING;
+    const bothLocked = bothSeatsLocked(updated);
 
     let resolved = updated;
-    if (bothTerminal) {
+    if (bothLocked) {
       resolved = await resolveRound(tx, updated);
     }
 
-    return { match: resolved, justResolved: bothTerminal };
+    return { match: resolved, justResolved: bothLocked };
   });
 }
 
@@ -555,17 +553,15 @@ function applyAction(match, action, seat, fields, payload) {
       }
       return {
         ok: true,
-        setValues: { [fields.state]: PLAYER_STATE.STAND },
+        setValues: { [fields.state]: PLAYER_STATE.STOOD },
       };
     }
 
     case ACTION_TYPE.SWAP: {
-      // Per Prompt 7: standing (or busting) locks the hand and
-      // disables every remaining gameplay action — including Swap.
-      // Even the post-bust revival swap path is now gated to
-      // `playing`-only; revival must happen BEFORE the player
-      // finalises a stand.
-      if (currentState !== PLAYER_STATE.PLAYING) {
+      // BUSTED seats may still SWAP to recover (e.g. replacing a
+      // starting card with a lower value to drop back under 21).
+      // Only STOOD locks the hand permanently.
+      if (currentState === PLAYER_STATE.STOOD) {
         return {
           ok: false,
           error: `Seat already in '${currentState}' — no further action possible`,
@@ -603,7 +599,9 @@ function applyAction(match, action, seat, fields, payload) {
         };
       }
       // Pull a fresh card from the deck and replace the chosen
-      // original starting card in-place.
+      // original starting card in-place. If the swap drops the
+      // score back under 21, the seat transitions back from BUSTED
+      // to PLAYING — so SWAP is also a busted-recovery tool.
       const drawn = drawCards(currentDeck, 1);
       const nextHand = [...currentHand];
       nextHand[choice] = drawn[0];
@@ -622,12 +620,14 @@ function applyAction(match, action, seat, fields, payload) {
     }
 
     case ACTION_TYPE.HOLD: {
-      // Hold is only allowed while the seat is `playing` and after at
-      // least one Hit (hand length >= 2 means original 2 + ≥1 hit).
-      if (currentState !== PLAYER_STATE.PLAYING) {
+      // Hold is the busted-recovery path for "I drew too high a
+      // card". Lifting the last card stashes it and may drop the
+      // seat back to PLAYING if the score is now ≤ 21. PLAYING and
+      // BUSTED are both valid; STOOD locks everything.
+      if (currentState === PLAYER_STATE.STOOD) {
         return {
           ok: false,
-          error: "Hold is only available while your turn is in progress",
+          error: `Seat already in '${currentState}' — no further action possible`,
           status: 409,
         };
       }
@@ -656,32 +656,29 @@ function applyAction(match, action, seat, fields, payload) {
       // Lift the LAST card from the hand and stash it.
       const stored = currentHand[currentHand.length - 1];
       const nextHand = currentHand.slice(0, -1);
+      const newScore = calcHandValue(nextHand);
+      const nextState =
+        newScore > 21 ? PLAYER_STATE.BUSTED : PLAYER_STATE.PLAYING;
       return {
         ok: true,
         setValues: {
           [fields.hand]: nextHand,
           [fields.heldCard]: stored,
           [fields.holdsUsed]: holdsUsed + 1,
-          // State unchanged — player can still Hit, Stand, or Use Held.
-          [fields.state]: PLAYER_STATE.PLAYING,
+          // State MAY transition BUSTED → PLAYING if the lifted card
+          // brings the hand back under 21 (busted-recovery path).
+          [fields.state]: nextState,
         },
       };
     }
 
     case ACTION_TYPE.USE_HELD: {
-      // Resolve a previously held card: either add it back to the
-      // hand OR discard it forever. We allow USE_HELD while STOOD so
-      // the player can finalize a "swap-after-stand" or "hold-and-
-      // stand" choice (e.g. hold at 15, then stand, then later add
-      // the held card for 20). BUSTED seats cannot resolve because
-      // a busted seat is auto-terminal and the round is already
-      // doomed unless the opponent also busts. Swap-after-bust is
-      // the canonical revival path; Hold-after-bust is intentionally
-      // excluded per game spec.
-      // Per Prompt 7: once a seat leaves `playing` (stood or busted)
-      // every remaining gameplay action is blocked — including
-      // Use-Held. The hold-and-stand post-resolution path is closed.
-      if (currentState !== PLAYER_STATE.PLAYING) {
+      // Resolve a previously held card: add it back to the hand or
+      // discard it. STOOD is the only state that locks the hand —
+      // PLAYING and BUSTED may both resolve the held card (a busted
+      // seat can keep its recovery options alive by discarding, or
+      // by adding back a low card to un-bust).
+      if (currentState === PLAYER_STATE.STOOD) {
         return {
           ok: false,
           error: `Seat already in '${currentState}' — no further action possible`,
@@ -743,7 +740,53 @@ function applyAction(match, action, seat, fields, payload) {
   }
 }
 
+// ── Per-seat "can still act" check ────────────────────────────────────────
+// A seat is fully locked (no more round actions possible) iff:
+//   * state === STOOD, OR
+//   * state === BUSTED AND no remaining recovery actions remain
+//     (swap unused, hold unused & hand ≥ 2, hold card unresolved).
+//
+// This replaced the old `state !== "playing"` gate because under
+// the busted-recovery spec a busted seat can still use SWAP /
+// HOLD / USE_HELD — so we can't resolve the round the instant both
+// seats leave PLAYING; we have to wait until they have no remaining
+// moves. Bracket against `BUSTED` rather than a generic fallback
+// so a future fourth state doesn't silently regress to "always
+// actionable" semantics.
+function seatHasRemainingActions(match, seatPrefix) {
+  if (!match) return false;
+  const state = match[`${seatPrefix}State`];
+  if (state === PLAYER_STATE.STOOD) return false;
+  if (state === PLAYER_STATE.PLAYING) return true;
+  if (state !== PLAYER_STATE.BUSTED) return false;
+  const swapsUsed = Number(match[`${seatPrefix}UsedSwap`]) || 0;
+  const holdsUsed = Number(match[`${seatPrefix}UsedFreeze`]) || 0;
+  const heldCard = match[`${seatPrefix}FrozenCard`];
+  const heldResolved = match[`${seatPrefix}HeldResolved`];
+  const handLen = (match[`${seatPrefix}Hand`] || []).length;
+  if (swapsUsed < SWAP_LIMIT_PER_ROUND) return true;
+  if (holdsUsed < HOLD_LIMIT_PER_ROUND && handLen >= 2) return true;
+  if (heldCard && !heldResolved) return true;
+  return false;
+}
+
+function bothSeatsLocked(match) {
+  return (
+    !seatHasRemainingActions(match, "player1") &&
+    !seatHasRemainingActions(match, "player2")
+  );
+}
+
 // ── Force-deadline advance ────────────────────────────────────────────
+// If the round timer elapsed and any seat is still in `playing`,
+// force-mark them `stood` so the round can resolve. After the
+// stand-mark the canonical `bothSeatsLocked` gate fires — so the
+// resolution cases are:
+//   • both force-stood (AFK vs AFK) → both STOOD → resolve
+//   • one was already BUSTED + other force-stands (AFK vs busted)
+//     → bust + stand → resolve IF the busted seat has no recovery
+//     actions left. Otherwise we wait for the busted seat to
+//     swap/freeze/use_held before resolving.
 // If the round timer elapsed and any seat is still in `playing`,
 // force-mark them `stood` so the round can resolve. After the
 // stand-mark the canonical `bothTerminal` gate fires — so the
@@ -754,10 +797,10 @@ function applyAction(match, action, seat, fields, payload) {
 async function forceDeadlineAdvance(tx, match) {
   const setValues = { deck: match.deck ?? [] };
   if (match.player1State === PLAYER_STATE.PLAYING) {
-    setValues.player1State = PLAYER_STATE.STAND;
+    setValues.player1State = PLAYER_STATE.STOOD;
   }
   if (match.player2State === PLAYER_STATE.PLAYING) {
-    setValues.player2State = PLAYER_STATE.STAND;
+    setValues.player2State = PLAYER_STATE.STOOD;
   }
 
   // Only re-bump the round deadline if a stale clock actually
@@ -777,11 +820,7 @@ async function forceDeadlineAdvance(tx, match) {
     .returning();
 
   const effective = updated || match;
-  const bothTerminal =
-    effective.player1State !== PLAYER_STATE.PLAYING &&
-    effective.player2State !== PLAYER_STATE.PLAYING;
-
-  if (!bothTerminal) {
+  if (!bothSeatsLocked(effective)) {
     return effective;
   }
   return await resolveRound(tx, effective);
@@ -928,8 +967,8 @@ async function resolveRound(tx, match) {
       // until `advanceFromBetweenRounds` flips it to round_(X+1).
       player1Hand: match.player1Hand ?? [],
       player2Hand: match.player2Hand ?? [],
-      player1State: match.player1State ?? PLAYER_STATE.STAND,
-      player2State: match.player2State ?? PLAYER_STATE.STAND,
+      player1State: match.player1State ?? PLAYER_STATE.STOOD,
+      player2State: match.player2State ?? PLAYER_STATE.STOOD,
       // Stash the (now-consumed) deck; the next round will rebuild.
       deck: match.deck ?? [],
       // Reset all per-round counters + frozen cards for the next round.
@@ -959,8 +998,8 @@ async function resolveRound(tx, match) {
     roundsWonPlayer1: newScoreP1,
     roundsWonPlayer2: newScoreP2,
     roundDeadline: nextDeadline,
-    player1State: PLAYER_STATE.STAND, // round is over; both seats 'stood' for read consistency
-    player2State: PLAYER_STATE.STAND,
+    player1State: PLAYER_STATE.STOOD, // round is over; both seats 'stood' for read consistency
+    player2State: PLAYER_STATE.STOOD,
     // Reveal both hands on the match row when the match ends so the
     // final-round reveal animation can run on both seats without a
     // second API call.
