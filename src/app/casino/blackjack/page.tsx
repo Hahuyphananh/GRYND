@@ -20,6 +20,13 @@
 // round resolution, payout) lives in
 // `src/lib/blackjack-pvp/serverStore.js` — this page is a thin
 // client.
+// ─────────────────────────────────────────────────────────────────────────
+// i18n note (previous bug):
+// This lobby previously had every string hardcoded in English, so users
+// on a French/Spanish locale saw an English-only page. The fix below
+// wraps every visible string in `t("blackjackPvp.lobby.*", "fallback")`.
+// Keys live in `src/lib/appTextTranslations.js` under en/fr/es.
+// ─────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -29,6 +36,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import { useSocket } from "../../../context/SocketProvider";
+import { useTranslation } from "../../../hooks/useTranslation";
 import {
   BLACKJACK_PVP_LOBBY_ROOM,
   BLACKJACK_PVP_MATCH_UPDATED,
@@ -185,6 +193,12 @@ export default function BlackjackPvpLobbyPage() {
   const router = useRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
+  // `t` returns the localized string for the given key. The 2nd string
+  // argument is treated as interpolation params by the underlying
+  // `appTextTranslations.js` `t()` — non-object args are ignored and
+  // the raw template is returned. None of the lobby strings need
+  // interpolation, so we don't pass any.
+  const { t } = useTranslation();
 
   const [stake, setStake] = useState(50);
   const [availableMatches, setAvailableMatches] = useState<{ id: number; player1Id: string; stakeAmount: number; createdAt: string }[]>([]);
@@ -267,7 +281,7 @@ export default function BlackjackPvpLobbyPage() {
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
-          setError(data?.error || "Unable to start match");
+          setError(data?.error || t("blackjackPvp.lobby.errorStart", "Unable to start match"));
           return;
         }
         socket?.emit("room_event", {
@@ -291,7 +305,7 @@ export default function BlackjackPvpLobbyPage() {
         setBusy(false);
       }
     },
-    [posthog, router, socket],
+    [posthog, router, socket, t],
   );
 
   const joinSpecific = useCallback(
@@ -301,7 +315,7 @@ export default function BlackjackPvpLobbyPage() {
       try {
         const target = availableMatches.find((m) => m.id === matchId);
         if (!target) {
-          setError("Lobby no longer available.");
+          setError(t("blackjackPvp.lobby.errorNotFound", "Lobby no longer available."));
           return;
         }
         const res = await fetch("/api/blackjack-pvp/create-or-join", {
@@ -312,7 +326,7 @@ export default function BlackjackPvpLobbyPage() {
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
-          setError(data?.error || "Unable to join match");
+          setError(data?.error || t("blackjackPvp.lobby.errorJoin", "Unable to join match"));
           return;
         }
         socket?.emit("room_event", {
@@ -332,7 +346,7 @@ export default function BlackjackPvpLobbyPage() {
         setJoiningId(null);
       }
     },
-    [availableMatches, posthog, router, socket],
+    [availableMatches, posthog, router, socket, t],
   );
 
   const cancelMyMatch = useCallback(
@@ -350,7 +364,7 @@ export default function BlackjackPvpLobbyPage() {
         );
         const data = await res.json();
         if (!res.ok || !data.success) {
-          setError(data?.error || "Unable to cancel match");
+          setError(data?.error || t("blackjackPvp.lobby.errorCancel", "Unable to cancel match"));
           return;
         }
         socket?.emit("room_event", {
@@ -364,7 +378,7 @@ export default function BlackjackPvpLobbyPage() {
         setCancellingId(null);
       }
     },
-    [fetchAvailable, socket],
+    [fetchAvailable, socket, t],
   );
 
   // Derived from `myOpenMatch` so it's reactive to the polled lobby list.
@@ -382,15 +396,31 @@ export default function BlackjackPvpLobbyPage() {
         >
           <h1 className="flex items-center justify-center gap-3 text-center text-3xl sm:text-4xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-300 to-yellow-500 drop-shadow-[0_0_18px_rgba(255,255,51,0.55)]">
             <CardIcon className="w-9 h-9 sm:w-10 sm:h-10 text-yellow-300 drop-shadow-[0_0_12px_rgba(255,255,51,0.55)] flex-shrink-0" />
-            <span>Blackjack PvP Lobby</span>
+            <span>{t("blackjackPvp.lobby.title", "Blackjack PvP Lobby")}</span>
           </h1>
         </motion.div>
+        {/* Description is split across 5 keys so the inline <b> spans
+            line up with the changed locale strings. The leading/trailing
+            fragments own the surrounding whitespace. */}
         <p className="text-center text-sm text-white/60 mt-2 mb-7 max-w-2xl mx-auto">
-          Pick a stake. We pair you with another player of the{" "}
-          <b>exact same</b> token amount. Best of 3 rounds: each round
-          you and your opponent play <b>simultaneously</b> with hidden
-          hands. Closest to 21 without busting wins the round. First
-          to 2 round wins takes the pot minus a 2.5% house fee.
+          {t(
+            "blackjackPvp.lobby.descLead",
+            "Pick a stake. We pair you with another player of the",
+          )}{" "}
+          <b>
+            {t("blackjackPvp.lobby.descExactSame", "exact same")}
+          </b>{" "}
+          {t(
+            "blackjackPvp.lobby.descMid",
+            "token amount. Best of 3 rounds: each round, you and your opponent play",
+          )}{" "}
+          <b>
+            {t("blackjackPvp.lobby.descSimultaneously", "simultaneously")}
+          </b>{" "}
+          {t(
+            "blackjackPvp.lobby.descTail",
+            "with hidden hands. Closest to 21 without busting wins the round. First to 2 round wins takes the pot minus a 2.5% house fee.",
+          )}
         </p>
 
         <motion.div
@@ -400,7 +430,7 @@ export default function BlackjackPvpLobbyPage() {
         >
           <div className="text-center mb-5 text-sm">
             <span className="uppercase tracking-widest text-[11px] text-white/55 mr-2">
-              Tokens
+              {t("blackjackPvp.lobby.tokensLabel", "Tokens")}
             </span>
             <span className="font-bold text-yellow-300 text-lg">
               {balance === null
@@ -421,10 +451,13 @@ export default function BlackjackPvpLobbyPage() {
                 exit={{ opacity: 0, y: -6 }}
                 className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-3 py-2 text-sm"
               >
+                {/* "Your open lobby #{id} is waiting for an opponent…"
+                    takes the {id} interpolation token from the i18n key. */}
                 <span className="flex items-center gap-2 text-cyan-200">
                   <LoadingDotsIcon className="w-4 h-4 text-cyan-200 animate-pulse" />
-                  Your open lobby #{myOpenMatchId} is waiting for an
-                  opponent…
+                  {t("blackjackPvp.lobby.waitingMatch", {
+                    id: myOpenMatchId,
+                  })}
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -433,7 +466,7 @@ export default function BlackjackPvpLobbyPage() {
                     }
                     className="px-3 py-1.5 rounded-lg bg-cyan-400 text-[#001933] hover:bg-cyan-300 text-xs font-bold transition"
                   >
-                    Resume
+                    {t("blackjackPvp.lobby.resume", "Resume")}
                   </button>
                   <button
                     onClick={() => cancelMyMatch(myOpenMatchId)}
@@ -441,8 +474,8 @@ export default function BlackjackPvpLobbyPage() {
                     className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-200 hover:bg-red-500/30 text-xs font-bold border border-red-500/30 transition disabled:opacity-50"
                   >
                     {cancellingId === myOpenMatchId
-                      ? "Cancelling…"
-                      : "Cancel"}
+                      ? t("blackjackPvp.lobby.cancelling", "Cancelling…")
+                      : t("blackjackPvp.lobby.cancel", "Cancel")}
                   </button>
                 </div>
               </motion.div>
@@ -452,7 +485,7 @@ export default function BlackjackPvpLobbyPage() {
           <div className="grid md:grid-cols-[1fr_auto_1fr] gap-3 items-end">
             <div>
               <label className="text-[11px] uppercase tracking-wider text-white/60">
-                Stake (per player)
+                {t("blackjackPvp.lobby.stakePerPlayer", "Stake (per player)")}
               </label>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {STAKE_PRESETS.map((v) => (
@@ -492,20 +525,35 @@ export default function BlackjackPvpLobbyPage() {
               {busy ? (
                 <>
                   <LoadingDotsIcon className="w-4 h-4 text-black animate-pulse" />
-                  <span>Finding match…</span>
+                  <span>
+                    {t("blackjackPvp.lobby.findingMatch", "Finding match…")}
+                  </span>
                 </>
               ) : (
                 <>
                   <span>{stake.toLocaleString()}</span>
                   <CoinIcon className="w-5 h-5 text-amber-900" />
-                  <span>· Play</span>
+                  <span>
+                    {" · "}
+                    {t("blackjackPvp.lobby.play", "Play")}
+                  </span>
                 </>
               )}
             </button>
             <div className="text-xs text-white/55 leading-relaxed">
-              We pair you with another player of the <b>exact same</b>{" "}
-              stake. If no one is waiting, your stake is escrowed in a
-              private lobby until someone joins or you cancel.
+              {/* Same lead/exact-same/tail split pattern as the
+                  description above so the bold anchor lines up. */}
+              {t(
+                "blackjackPvp.lobby.escrowLead",
+                "We pair you with another player of the",
+              )}{" "}
+              <b>
+                {t("blackjackPvp.lobby.escrowExactSame", "exact same")}
+              </b>{" "}
+              {t(
+                "blackjackPvp.lobby.escrowTail",
+                "stake. If no one is waiting, your stake is escrowed in a private lobby until someone joins or you cancel.",
+              )}
             </div>
           </div>
 
@@ -521,61 +569,73 @@ export default function BlackjackPvpLobbyPage() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-yellow-300 uppercase tracking-wider flex items-center gap-2">
               <TargetIcon className="w-4 h-4 text-yellow-300" />
-              Open Lobbies
+              {t("blackjackPvp.lobby.openLobbies", "Open Lobbies")}
             </h2>
             <button
               onClick={fetchAvailable}
               className="px-3 py-1.5 rounded-lg bg-yellow-300 text-[#001933] hover:bg-yellow-200 text-xs font-semibold shadow-[0_0_10px_rgba(255,255,51,0.45)] transition inline-flex items-center gap-1.5"
             >
               <RefreshIcon className="w-3.5 h-3.5 text-[#001933]" />
-              Refresh
+              {t("blackjackPvp.lobby.refresh", "Refresh")}
             </button>
           </div>
           {availableMatches.filter((m) => m.id !== myOpenMatchId).length === 0 ? (
             <div className="text-sm text-white/60 flex items-center gap-2">
               <TrophyIcon className="w-4 h-4 text-white/40" />
-              <span>No open lobbies yet. Be the first to make one.</span>
+              <span>
+                {t(
+                  "blackjackPvp.lobby.empty",
+                  "No open lobbies yet. Be the first to make one.",
+                )}
+              </span>
             </div>
           ) : (
             <div className="space-y-2.5">
               {availableMatches
                 .filter((m) => m.id !== myOpenMatchId)
-                .map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between rounded-xl bg-[#08142f]/80 p-3 border border-yellow-300/20 hover:border-yellow-300/40 transition"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold">
-                        Lobby #{m.id}
-                        <span className="ml-2 text-[10px] text-white/40">
-                          host #{m.player1Id?.slice(0, 6) ?? "?"}…
-                        </span>
-                      </p>
-                      <p className="text-xs text-white/60 mt-0.5 flex items-center gap-1">
-                        <span>Stake:</span>
-                        <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
-                          {Number(m.stakeAmount).toLocaleString()}
-                          <CoinIcon className="w-3.5 h-3.5 text-yellow-300" />
-                        </span>
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => joinSpecific(m.id)}
-                      disabled={busy || joiningId === m.id}
-                      className="px-4 py-1.5 rounded-lg bg-yellow-300 text-[#001933] hover:bg-yellow-200 text-sm font-bold disabled:bg-yellow-300/30 disabled:text-white/60 transition inline-flex items-center gap-1.5"
+                .map((m) => {
+                  const hostShort = m.player1Id?.slice(0, 6) ?? "?";
+                  return (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between rounded-xl bg-[#08142f]/80 p-3 border border-yellow-300/20 hover:border-yellow-300/40 transition"
                     >
-                      {joiningId === m.id ? (
-                        <>
-                          <LoadingDotsIcon className="w-3.5 h-3.5 text-[#001933] animate-pulse" />
-                          <span>Joining…</span>
-                        </>
-                      ) : (
-                        "Join"
-                      )}
-                    </button>
-                  </div>
-                ))}
+                      <div>
+                        <p className="text-sm font-semibold">
+                          {t("blackjackPvp.lobby.lobbyId", { id: m.id })}
+                          <span className="ml-2 text-[10px] text-white/40">
+                            {t("blackjackPvp.lobby.hostId", { id: hostShort })}
+                          </span>
+                        </p>
+                        <p className="text-xs text-white/60 mt-0.5 flex items-center gap-1">
+                          <span>
+                            {t("blackjackPvp.lobby.stakeLabel", "Stake:")}
+                          </span>
+                          <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
+                            {Number(m.stakeAmount).toLocaleString()}
+                            <CoinIcon className="w-3.5 h-3.5 text-yellow-300" />
+                          </span>
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => joinSpecific(m.id)}
+                        disabled={busy || joiningId === m.id}
+                        className="px-4 py-1.5 rounded-lg bg-yellow-300 text-[#001933] hover:bg-yellow-200 text-sm font-bold disabled:bg-yellow-300/30 disabled:text-white/60 transition inline-flex items-center gap-1.5"
+                      >
+                        {joiningId === m.id ? (
+                          <>
+                            <LoadingDotsIcon className="w-3.5 h-3.5 text-[#001933] animate-pulse" />
+                            <span>
+                              {t("blackjackPvp.lobby.joining", "Joining…")}
+                            </span>
+                          </>
+                        ) : (
+                          t("blackjackPvp.lobby.join", "Join")
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
             </div>
           )}
         </div>
