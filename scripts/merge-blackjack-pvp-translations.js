@@ -270,28 +270,36 @@ const PAYLOAD = {
   },
 };
 
-// Flatten a (possibly nested) object into an alphabetically sorted
-// array of [dottedKey, value] tuples. Serialises values to stable
-// JSON so surfaces like `"He said \"hi\""` round-trip cleanly.
-function flat(prefix, obj) {
-  const out = [];
-  for (const k of Object.keys(obj).sort()) {
-    const path = prefix ? `${prefix}.${k}` : k;
-    const v = obj[k];
-    if (v !== null && typeof v === "object" && !Array.isArray(v)) {
-      out.push(...flat(path, v));
-    } else {
-      out.push([path, v]);
-    }
-  }
-  return out;
-}
-
-function buildBlockText(payload) {
-  const rows = flat("", payload);
-  return rows
-    .map(([k, v]) => `      "${k}": ${JSON.stringify(v)},`)
-    .join("\n");
+// Serialise a (possibly nested) object into a deterministic JS literal
+// at the given indent. Recurses into plain objects so the output
+// matches the nested-object shape that the rest of
+// `appTextTranslations.js` uses and that `t()`'s dotted-path resolver
+// navigates. Keys that aren't safe identifiers (contain dots, spaces,
+// etc.) are JSON.stringified so they round-trip as a literal-string
+// property name — those are still flat under the affected child.
+function buildBlockText(payload, indent = 6) {
+  const pad = " ".repeat(indent);
+  const innerPad = " ".repeat(indent + 2);
+  return Object.keys(payload)
+    .sort()
+    .map((k) => {
+      const v = payload[k];
+      const keyRepr =
+        /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k) ? k : JSON.stringify(k);
+      if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+        return (
+          innerPad +
+          keyRepr +
+          ": {\n" +
+          buildBlockText(v, indent + 2) +
+          "\n" +
+          innerPad +
+          "}"
+        );
+      }
+      return innerPad + keyRepr + ": " + JSON.stringify(v);
+    })
+    .join(",\n");
 }
 
 // Locates the matching `}` for an opening `{` starting at index
@@ -384,9 +392,10 @@ function main() {
     const localeOpenIdx2 = openerMatch2.index + openerMatch2[1].length;
     const localeBlockStart = localeOpenIdx2 + `  ${locale}: {`.length;
 
-    // PASS 2: insert the fresh block on a new line, with a
-    // trailing newline so the locale's next sibling key sits on its
-    // own line.
+    // PASS 2: insert the fresh block on a new line, hard-coding a
+    // trailing comma after `}` so the next sibling key (e.g. `nav:`)
+    // parses regardless of the consumer being strict (tsc) or
+    // lenient (node ASI).
     const freshBlock = `\n    blackjackPvp: {\n${buildBlockText(PAYLOAD[locale])}\n    },`;
     src =
       src.slice(0, localeBlockStart) +
