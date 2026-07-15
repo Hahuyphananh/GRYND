@@ -310,7 +310,7 @@ export default function BlackjackPvpMatchPage({
         }
         const data = await res.json();
         if (!data?.success) {
-          if (!opts?.silent) setErrorMsg(data?.error || "Match unavailable");
+          if (!opts?.silent) setErrorMsg(data?.error || t("blackjackPvp.errorMatchUnavailable", "Match unavailable"));
           return;
         }
         setErrorMsg(null);
@@ -336,7 +336,7 @@ export default function BlackjackPvpMatchPage({
           round: next.roundNumber,
         });
       } catch (e) {
-        if (!opts?.silent) setErrorMsg("Network error");
+        if (!opts?.silent) setErrorMsg(t("blackjackPvp.errorNetwork", "Network error"));
       }
     },
     [isValidMatchId, matchId, match?.status, myHand.length, posthog, router],
@@ -403,7 +403,7 @@ export default function BlackjackPvpMatchPage({
         );
         const data = await res.json();
         if (!res.ok || !data.success) {
-          setErrorMsg(data?.error || "Action rejected");
+          setErrorMsg(data?.error || t("blackjackPvp.errorActionRejected", "Action rejected"));
           return;
         }
         if (action === "hit" && !data.data.justResolved) {
@@ -416,7 +416,7 @@ export default function BlackjackPvpMatchPage({
           event: BLACKJACK_PVP_MATCH_UPDATED,
         });
       } catch (e) {
-        setErrorMsg("Network error");
+        setErrorMsg(t("blackjackPvp.errorNetwork", "Network error"));
       } finally {
         setSubmitting(false);
       }
@@ -1102,8 +1102,8 @@ function MyHand({
             {busted
               ? `${t("blackjackPvp.bustedPrefix", "Vous avez sauté !")} (${score})`
               : myState === "stood"
-              ? `${t("blackjackPvp.stand", "Rester")} (${score} pts)`
-              : `${score} pts`}
+              ? `${t("blackjackPvp.stand", "Rester")} (${score} ${t("blackjackPvp.ptsUnit", "pts")})`
+              : `${score} ${t("blackjackPvp.ptsUnit", "pts")}`}
           </p>
         )}
       </div>
