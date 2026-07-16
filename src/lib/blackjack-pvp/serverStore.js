@@ -1091,13 +1091,18 @@ async function recordPvPResult(tx, match, winnerId, result) {
 // longer in `BETWEEN_ROUNDS` simply confirms the match row (no
 // UPDATE applied — see WHERE status guard).
 async function advanceFromBetweenRounds(tx, match) {
-  const upcomingRound = (Number(match.roundNumber) || 1) + 1;
-  if (upcomingRound > TOTAL_ROUNDS) {
-    // Shouldn't reach here — `resolveRound` finished the match when
-    // `slot >= TOTAL_ROUNDS` — but guard defensively so the lobby is
-    // never stranded in `between_rounds` without a forward path.
-    return match;
-  }
+  // BUG-FIX (off-by-one): `resolveRound` already advances
+  // `roundNumber` to the upcoming round before flipping status to
+  // `between_rounds` (see `slot + 1` in resolveRound). So by the
+  // time we reach here, `match.roundNumber` IS the upcoming round —
+  // adding another +1 jumped straight from round_1 → round_3,
+  // skipping round_2 entirely. Just use match.roundNumber as-is.
+  // Defensive clamp mirrors `statusForRoundNumber` so a stale/legacy
+  // row (e.g. pre-migration 0042) can't loop forever on round_1.
+  const upcomingRound = Math.max(
+    1,
+    Math.min(TOTAL_ROUNDS, Number(match.roundNumber) || 1),
+  );
 
   // Build ONE fresh shuffled shoe and deal BOTH seats from it. This
   // is what the Best-of-3 spec means by "fresh shuffled deck per

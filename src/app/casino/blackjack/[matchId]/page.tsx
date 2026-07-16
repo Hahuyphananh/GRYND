@@ -442,7 +442,11 @@ export default function BlackjackPvpMatchPage({
   //   We no longer auto-clear `roundResultShownFor` from this hook.
   useEffect(() => {
     if (!match) return;
-    if (match.status === "finished" || match.status === "cancelled") {
+    // Only clear the modal on `cancelled` — on `finished`, the
+    // deciding round's per-round popup should still surface (the
+    // MatchEndModal is rendered separately and gated on
+    // `roundResultShownFor === null` so it won't fight it).
+    if (match.status === "cancelled") {
       setRoundResultShownFor(null);
       return;
     }
@@ -931,9 +935,13 @@ export default function BlackjackPvpMatchPage({
           })()}
       </AnimatePresence>
 
-      {/* Match-end modal — once only */}
+      {/* Match-end modal — surfaces AFTER the deciding round's
+          per-round popup is dismissed (or auto-dismissed) so the
+          two modal layers never overlap. The round result modal
+          stays mounted until either the 5-second auto-dismiss tick
+          or the user clicks Continue/outside. */}
       <AnimatePresence>
-        {match?.status === "finished" && (
+        {match?.status === "finished" && roundResultShownFor === null && (
           <MatchEndModal
             t={t}
             stake={Number(match.stakeAmount)}
@@ -1527,11 +1535,12 @@ function RoundResultModal({
   const oppSubLabel = viewerIsPlayer1 ? player2Label : player1Label;
 
   // ── 5-second auto-dismiss ────────────────────────────────────
-  // One-shot timer (no phase machine) so the popup stays visible
-  // for exactly 5 seconds total, then dismisses — and the user
-  // can click anywhere to dismiss early. Resetting on each mount
-  // of the modal (enforced with `key=round.id` at the call site)
-  // gives the player a clean 5-second window per round.
+  // One-shot timer + ticking countdown so the popup stays visible
+  // for exactly 5 seconds total, then dismisses. The visible
+  // countdown (5 → 0) lives on `secondsLeft` and is what the
+  // Continue button's "(Ns)" label reads from — so the user sees
+  // the timer actively counting down, not a static "5s" string.
+  // The user can still click anywhere to dismiss early.
   //
   // BUG-FIX (timer reset on every poll): the caller passes
   // `onDismiss={() => setRoundResultShownFor(null)}` — an inline
@@ -1542,6 +1551,11 @@ function RoundResultModal({
   // auto-dismiss. We bridge via a ref so the timer is set ONCE
   // on mount and always invokes the latest callback.
   const onDismissRef = useRef(onDismiss);
+  // 5 → 4 → 3 → 2 → 1 → 0 ticking state for the Continue-button
+  // hint. Decoupled from the auto-dismiss timeout via refs so a
+  // parent re-render can't reset the countdown (same React-rules-
+  // of-hooks trick as the timer above).
+  const [secondsLeft, setSecondsLeft] = useState(5);
   useEffect(() => {
     onDismissRef.current = onDismiss;
   }, [onDismiss]);
@@ -1554,6 +1568,13 @@ function RoundResultModal({
     // for each new round, NOT prop changes within the same round.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => {
+    if (secondsLeft <= 0) return;
+    const id = setInterval(() => {
+      setSecondsLeft((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [secondsLeft]);
 
   return (
     <motion.div
@@ -1656,8 +1677,8 @@ function RoundResultModal({
           }`}
         >
           {t("blackjackPvp.continue", "Continuer")}
-          <span className="text-xs opacity-70">
-            ({t("blackjackPvp.autoClose", "5s")})
+          <span className="text-xs opacity-70 tabular-nums" aria-live="polite">
+            ({secondsLeft}s)
           </span>
         </button>
       </motion.div>
@@ -1797,11 +1818,17 @@ function MatchEndModal({
   const draw = result === "draw";
 
   return (
+    // BUG-FIX (modal overlap): paint strictly ABOVE
+    // RoundResultModal (z-[80]) so when the per-round popup's
+    // exit-animation plays while MatchEndModal enters, framer-motion
+    // never composites them at the same stacking layer. Without this
+    // bump, both modals briefly render at z-[80] during the
+    // AnimatePresence transition.
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
     >
       <motion.div
         initial={{ scale: 0.85, y: 30 }}
