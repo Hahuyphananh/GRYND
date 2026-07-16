@@ -119,12 +119,14 @@ export const ACTION_TYPE = Object.freeze({
   SWAP: "swap",
   HOLD: "hold",
   USE_HELD: "use_held",
+  PEEK: "peek",
 });
 
-// Per-round usage caps. Each player has ONE swap and ONE hold per
-// round, regardless of how many hits they take.
+// Per-round usage caps. Each player has ONE swap, ONE hold, and ONE
+// peek per round, regardless of how many hits they take.
 export const SWAP_LIMIT_PER_ROUND = 1;
 export const HOLD_LIMIT_PER_ROUND = 1;
+export const PEEK_LIMIT_PER_ROUND = 1;
 
 // Resolution states for a held card. `null` until the player decides
 // what to do with their stored card (add to hand or discard). After

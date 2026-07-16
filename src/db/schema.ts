@@ -1579,6 +1579,8 @@ export const blackjackPvpMatches = pgTable(
     player2UsedSwap: integer("player2_used_swap").notNull().default(0),
     player1UsedFreeze: integer("player1_used_freeze").notNull().default(0),
     player2UsedFreeze: integer("player2_used_freeze").notNull().default(0),
+    player1UsedPeek: integer("player1_used_peek").notNull().default(0),
+    player2UsedPeek: integer("player2_used_peek").notNull().default(0),
     player1FrozenCard: jsonb("player1_frozen_card").default(sql`NULL`),
     player2FrozenCard: jsonb("player2_frozen_card").default(sql`NULL`),
     player1HeldResolved: varchar("player1_held_resolved", { length: 10 })
@@ -1673,6 +1675,8 @@ export const blackjackPvpRounds = pgTable(
     player2UsedSwap: integer("player2_used_swap").notNull().default(0),
     player1UsedFreeze: integer("player1_used_freeze").notNull().default(0),
     player2UsedFreeze: integer("player2_used_freeze").notNull().default(0),
+    player1UsedPeek: integer("player1_used_peek").notNull().default(0),
+    player2UsedPeek: integer("player2_used_peek").notNull().default(0),
     player1FrozenCard: jsonb("player1_frozen_card").default(sql`NULL`),
     player2FrozenCard: jsonb("player2_frozen_card").default(sql`NULL`),
     player1HeldResolved: varchar("player1_held_resolved", { length: 10 })
