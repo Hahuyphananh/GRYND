@@ -425,15 +425,29 @@ export default function BlackjackPvpMatchPage({
   );
 
   // ── Round-result modal trigger ────────────────────────────────────
+  // BUG-FIX (round-end modal closes itself on every 1.5s poll):
+  //   `fetchStatus` calls `setRounds(data.data.rounds || [])` which
+  //   creates a new array reference on every poll, re-firing this
+  //   effect. With the OLD logic the trailing `setRoundResultShownFor(null)`
+  //   ran unconditionally once the loop found no new unacknowledged
+  //   round — i.e. immediately after the modal had just opened. That
+  //   killed the modal ~1.5s after round-end, before the user could
+  //   see the 6-phase reveal or the 5-second award header, so the
+  //   user perceived the game as "skipping past the round result".
+  //
+  //   The only legitimate dismissal paths are now:
+  //     1. The match finished/cancelled (status flip).
+  //     2. The user pressing the modal's Continue / Skip / backdrop.
+  //     3. The auto-dismiss timer inside RoundResultModal (5s).
+  //   We no longer auto-clear `roundResultShownFor` from this hook.
   useEffect(() => {
-    if (!match || rounds.length === 0) {
-      setRoundResultShownFor(null);
-      return;
-    }
+    if (!match) return;
     if (match.status === "finished" || match.status === "cancelled") {
       setRoundResultShownFor(null);
       return;
     }
+    if (roundResultShownFor !== null) return; // already showing — leave it open
+    if (rounds.length === 0) return;
     for (let i = rounds.length - 1; i >= 0; i--) {
       const n = rounds[i].roundNumber;
       if (!acknowledgedRoundsRef.current.has(n)) {
@@ -442,8 +456,7 @@ export default function BlackjackPvpMatchPage({
         return;
       }
     }
-    setRoundResultShownFor(null);
-  }, [match?.status, rounds, match]);
+  }, [match?.status, rounds, match, roundResultShownFor]);
 
   // Confetti for match-end victory — fire once when status flips to
   // `finished` and the viewer is the winner.
@@ -707,30 +720,6 @@ export default function BlackjackPvpMatchPage({
             />
           )}
 
-          {/* Result text — note `match.result` is 'player1' |
-             'player2' | 'draw' | null; the 'finished' sentinel lives
-             on `match.status`. */}
-          {match?.status === "finished" && (
-            <div
-              className={`text-center text-lg font-bold mt-3 ${
-                match.winner === user?.id
-                  ? "text-amber-300"
-                  : match.result === "draw"
-                  ? "text-yellow-300"
-                  : "text-red-300"
-              }`}
-            >
-              {match.winner === user?.id
-                ? t("blackjackPvp.result.win", "Victoire !")
-                : match.result === "draw"
-                ? t(
-                    "blackjackPvp.result.draw",
-                    "Égalité — votre mise est remboursée.",
-                  )
-                : t("blackjackPvp.result.lose", "Défaite")}
-            </div>
-          )}
-
           {/* Between-rounds transition screen — shows while the
               server is in MATCH_STATUS.BETWEEN_ROUNDS (a 3-second
               buffer between resolved rounds). The active cards are
@@ -914,20 +903,28 @@ export default function BlackjackPvpMatchPage({
         )}
       </div>
 
-      {/* Round-end reveal modal — shows MY hand + abstract result.
-         NEVER reveals opponent cards or score. */}
+      {/* Round-end popup — pops for ~5s after each resolved round to
+         celebrate the round winner (with their seat label + the
+         updated best-of-3 score, e.g. "Joueur 1 wins Round 2 (1-0)").
+         Both hands + both scores are revealed because the round is
+         no longer secret once it has resolved server-side. */}
       <AnimatePresence>
         {roundResultShownFor !== null &&
           (() => {
             const round = rounds.find(
               (r) => r.roundNumber === roundResultShownFor,
             );
-            if (!round) return null;
+            if (!round || !match) return null;
             return (
               <RoundResultModal
+                key={`round-${round.roundNumber}-${round.id}`}
                 t={t}
                 round={round}
                 viewerIsPlayer1={viewerIsPlayer1}
+                mySeatLabel={mySeatLabel}
+                oppSeatLabel={oppSeatLabel}
+                roundsWonPlayer1={Number(match.roundsWonPlayer1) || 0}
+                roundsWonPlayer2={Number(match.roundsWonPlayer2) || 0}
                 onDismiss={() => setRoundResultShownFor(null)}
               />
             );
@@ -1433,25 +1430,83 @@ function RoundResultModal({
   t,
   round,
   viewerIsPlayer1,
+  mySeatLabel,
+  oppSeatLabel,
+  roundsWonPlayer1,
+  roundsWonPlayer2,
   onDismiss,
 }: {
   t: TFn;
   round: RoundRow;
   viewerIsPlayer1: boolean;
+  mySeatLabel: string;
+  oppSeatLabel: string;
+  // Match-level round-win counters AFTER this round has been
+  // resolved (the server increments these in the same transaction
+  // as the round-row insert, so they always reflect the post-round
+  // best-of-3 tally).
+  roundsWonPlayer1: number;
+  roundsWonPlayer2: number;
   onDismiss: () => void;
 }) {
-  const won =
-    (round.roundWinner === "player1" && viewerIsPlayer1) ||
-    (round.roundWinner === "player2" && !viewerIsPlayer1);
-  const lost =
-    (round.roundWinner === "player1" && !viewerIsPlayer1) ||
-    (round.roundWinner === "player2" && viewerIsPlayer1);
+  // ── Resolution outcome ────────────────────────────────────────
+  // `round.roundWinner` is server-truthy 'player1' | 'player2' |
+  // 'draw'. The corresponding seat label resolves to either the
+  // viewer (when viewerIsPlayer1 matches the winner) or the
+  // opponent (when it doesn't).
   const isDraw = round.roundWinner === "draw";
+  const player1Won = round.roundWinner === "player1";
+  const viewerWon =
+    (player1Won && viewerIsPlayer1) ||
+    (round.roundWinner === "player2" && !viewerIsPlayer1);
 
-  // Round-end reveal — both hands fully revealed by the server's
-  // rounds history payload. The orchestration of WHEN each element
-  // becomes visible is a client-only concern handled by the phase
-  // state machine below.
+  // Best-of-3 match perspective: 0..2 for each seat, with the
+  // deciding seat at 2 if this round clinched the match.
+  const myRounds = viewerIsPlayer1 ? roundsWonPlayer1 : roundsWonPlayer2;
+  const oppRounds = viewerIsPlayer1 ? roundsWonPlayer2 : roundsWonPlayer1;
+
+  const player1Label = t("blackjackPvp.seat.player1", "Joueur 1");
+  const player2Label = t("blackjackPvp.seat.player2", "Joueur 2");
+  const winnerSeatLabel = !isDraw
+    ? player1Won
+      ? player1Label
+      : player2Label
+    : "";
+
+  const headerEmoji = isDraw ? "🤝" : viewerWon ? "🏆" : "💀";
+  const headerPrimary = isDraw
+    ? t("blackjackPvp.roundResult.drawTitle", "Manche nulle")
+    : viewerWon
+    ? t(
+        "blackjackPvp.roundResult.winTitle",
+        "{winner} remporte la manche {n}",
+      )
+        .replace("{winner}", winnerSeatLabel)
+        .replace("{n}", String(round.roundNumber))
+    : t(
+        "blackjackPvp.roundResult.loseTitle",
+        "{winner} remporte la manche {n}",
+      )
+        .replace("{winner}", winnerSeatLabel)
+        .replace("{n}", String(round.roundNumber));
+  const headerSecondary = isDraw
+    ? t(
+        "blackjackPvp.roundResult.drawSubtitle",
+        "Aucune manche gagnée — score identique",
+      )
+    : t(
+        "blackjackPvp.roundResult.scoreLine",
+        "Score: {me} {mine} – {theirs} {them}",
+      )
+        .replace("{me}", mySeatLabel)
+        .replace("{mine}", String(myRounds))
+        .replace("{theirs}", oppSeatLabel)
+        .replace("{them}", String(oppRounds));
+
+  // Round-end reveal values from the server snapshot. Both hands +
+  // both scores + both end-states are visible from the moment the
+  // round resolves — the closest-to-21-without-bust rule is already
+  // applied server-side (decideRoundWinner).
   const p1Hand = round.player1Hand;
   const p2Hand = round.player2Hand;
   const p1Score = round.player1Score;
@@ -1459,323 +1514,181 @@ function RoundResultModal({
   const p1Busted = round.player1State === "busted";
   const p2Busted = round.player2State === "busted";
 
-  // ── 6-phase orchestrated reveal ────────────────────────────────
-  //   phase 0 — TEASER  (0–700ms):   "Revealing hands…" pulse; both
-  //                                seats face-down with pulse.
-  //   phase 1 — PLAYER  (700–1500ms): viewer's hand flips face-up,
-  //                                 opponent remains face-down.
-  //   phase 2 — OPPONENT(1500–2300ms): opponent's hand flips face-up.
-  //   phase 3 — SCORES  (2300–3100ms): both totals appear below the
-  //                                 hands + priority rule banner.
-  //   phase 4 — HIGHLIGHT(3100–3900ms): winning seat gets gold
-  //                                 border + crown badge; losing
-  //                                 seat dims. Modal container
-  //                                 border shifts to win/loss tint.
-  //   phase 5 — AWARD   (3900ms+):   full outcome header (emoji +
-  //                                 "Round N awarded to YOU/OPPONENT/
-  //                                 tie") + Continue button +
-  //                                 5-second auto-dismiss.
+  // Re-orient so the viewer always sees their own cards on the LEFT
+  // seat (mirrors the live table layout).
+  const myCards = viewerIsPlayer1 ? p1Hand : p2Hand;
+  const oppCards = viewerIsPlayer1 ? p2Hand : p1Hand;
+  const myFinalScore = viewerIsPlayer1 ? p1Score : p2Score;
+  const oppFinalScore = viewerIsPlayer1 ? p2Score : p1Score;
+  const myBusted = viewerIsPlayer1 ? p1Busted : p2Busted;
+  const oppBusted = viewerIsPlayer1 ? p2Busted : p1Busted;
+  const iWonSeat = !isDraw && viewerWon;
+  const oppWonSeat = !isDraw && !viewerWon;
+  const oppSubLabel = viewerIsPlayer1 ? player2Label : player1Label;
+
+  // ── 5-second auto-dismiss ────────────────────────────────────
+  // One-shot timer (no phase machine) so the popup stays visible
+  // for exactly 5 seconds total, then dismisses — and the user
+  // can click anywhere to dismiss early. Resetting on each mount
+  // of the modal (enforced with `key=round.id` at the call site)
+  // gives the player a clean 5-second window per round.
   //
-  // Both click targets (backdrop + footer button) dismiss
-  // immediately at any phase. The footer button has a different
-  // label across phases so the player can read the intent of their
-  // action without having to deconstruct the animation. The 5-second
-  // auto-dismiss countdown is the safety net for impatient players
-  // who don't tap anything.
-  type Phase = 0 | 1 | 2 | 3 | 4 | 5;
-  const PHASE_TIMES_MS: Array<[Phase, number]> = [
-    [1, 700],
-    [2, 1500],
-    [3, 2300],
-    [4, 3100],
-    [5, 3900],
-  ];
-  const AUTO_DISMISS_SECONDS = 5;
-  const [phase, setPhase] = useState<Phase>(0);
-  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
-
+  // BUG-FIX (timer reset on every poll): the caller passes
+  // `onDismiss={() => setRoundResultShownFor(null)}` — an inline
+  // arrow that gets a new reference on EVERY parent re-render
+  // (every 1.5s status poll). Including it in the useEffect deps
+  // would cause the effect to re-run on every poll, cancelling
+  // and re-scheduling the setTimeout, so the modal would never
+  // auto-dismiss. We bridge via a ref so the timer is set ONCE
+  // on mount and always invokes the latest callback.
+  const onDismissRef = useRef(onDismiss);
   useEffect(() => {
-    const timers = PHASE_TIMES_MS.map(([target, ms]) =>
-      setTimeout(() => setPhase(target), ms),
-    );
-    return () => timers.forEach(clearTimeout);
-  }, []);
-
-  // Auto-dismiss countdown only kicks in once the AWARD header is
-  // visible — i.e. phase 5. Before that, the modal stays until the
-  // player presses Continue / Skip / clicks the backdrop.
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
   useEffect(() => {
-    if (phase !== 5) return;
-    setSecondsLeft(AUTO_DISMISS_SECONDS);
-  }, [phase]);
-
-  useEffect(() => {
-    if (secondsLeft == null) return;
-    if (secondsLeft <= 0) {
-      onDismiss();
-      return;
-    }
-    const id = setTimeout(
-      () => setSecondsLeft((s) => (s == null ? null : s - 1)),
-      1000,
-    );
+    const id = setTimeout(() => {
+      onDismissRef.current?.();
+    }, 5000);
     return () => clearTimeout(id);
-  }, [secondsLeft, onDismiss]);
+    // Mount-only: key=round.id at the call site resets the timer
+    // for each new round, NOT prop changes within the same round.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.25 }}
+      transition={{ duration: 0.2 }}
       className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 px-4 backdrop-blur-sm"
       onClick={onDismiss}
     >
       <motion.div
-        initial={{ scale: 0.85, y: 30 }}
+        initial={{ scale: 0.92, y: 24 }}
         animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.85, y: 30 }}
-        transition={{ type: "spring", stiffness: 300, damping: 18 }}
+        exit={{ scale: 0.92, y: 24 }}
+        transition={{ type: "spring", stiffness: 280, damping: 22 }}
         onClick={(e) => e.stopPropagation()}
-        className={`relative w-full max-w-lg rounded-3xl border-4 p-5 sm:p-7 text-center shadow-2xl transition-colors duration-700 ${
-          phase >= 4
-            ? won
-              ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_50px_rgba(251,191,36,0.35)]"
-              : lost
-              ? "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_40px_rgba(239,68,68,0.25)]"
-              : "border-yellow-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_40px_rgba(250,204,21,0.25)]"
-            : "border-[#FFD700]/35 bg-gradient-to-b from-[#0c1633]/95 to-[#040a1a]/95 shadow-[0_0_30px_rgba(255,215,0,0.12)]"
+        className={`relative w-full max-w-lg rounded-3xl border-4 p-5 sm:p-7 text-center shadow-2xl transition-colors duration-500 ${
+          isDraw
+            ? "border-yellow-400 bg-gradient-to-b from-[#3a3a1a] to-[#1a1a0d] shadow-[0_0_40px_rgba(250,204,21,0.30)]"
+            : iWonSeat
+            ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_50px_rgba(251,191,36,0.35)]"
+            : "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_40px_rgba(239,68,68,0.25)]"
         }`}
       >
-        {/* ── Header — phase < 5 shows the "Revealing hands…"
-               teaser with a sparkle pulse. Phase 5 swaps in the
-               full outcome banner (trophy/skull/handshake + bold
-               "Round N awarded to YOU / OPPONENT / tied" + tight
-               WIN/LOSS/DRAW headline) for the auto-dismiss hold. */}
-        <div className="min-h-[132px] flex flex-col items-center justify-center">
-          <AnimatePresence mode="wait" initial={false}>
-            {phase < 5 ? (
-              <motion.div
-                key="teaser-header"
-                initial={{ opacity: 0, scale: 0.94 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.97 }}
-                transition={{ duration: 0.35 }}
-                className="flex flex-col items-center"
-              >
-                <div className="text-3xl mb-1">✨</div>
-                <h2 className="text-xl sm:text-2xl font-black uppercase text-white/90">
-                  {t(
-                    "blackjackPvp.roundResultHeader",
-                    "Manche {n} — Révelation des mains",
-                  ).replace("{n}", String(round.roundNumber))}
-                </h2>
-                <p className="mt-2 text-sm font-black uppercase tracking-[0.25em] text-[#FFD700] animate-pulse">
-                  {t("blackjackPvp.revealTeaser", "Révélation des mains…")}
-                </p>
-                <p className="mt-1 text-[10px] uppercase tracking-widest text-white/55">
-                  {t(
-                    "blackjackPvp.revealTeaserHint",
-                    "Les deux mains se découvrent simultanément",
-                  )}
-                </p>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="award-header"
-                initial={{ opacity: 0, y: -16, scale: 0.92 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ type: "spring", stiffness: 260, damping: 18 }}
-                className="flex flex-col items-center"
-              >
-                <motion.div
-                  initial={{ scale: 0, rotate: -30 }}
-                  animate={{ scale: 1, rotate: 0 }}
-                  transition={{ delay: 0.15, type: "spring", stiffness: 220 }}
-                  className="mb-2 text-6xl"
-                >
-                  {won ? "🏆" : isDraw ? "🤝" : "💀"}
-                </motion.div>
-                <h2
-                  className={`text-2xl sm:text-3xl font-black uppercase ${
-                    won
-                      ? "text-amber-300"
-                      : isDraw
-                      ? "text-yellow-300"
-                      : "text-red-400"
-                  }`}
-                >
-                  {won
-                    ? t("blackjackPvp.roundWon", "Manche gagnée !")
-                    : isDraw
-                    ? t("blackjackPvp.roundDraw", "Égalité")
-                    : t("blackjackPvp.roundLost", "Manche perdue")}
-                </h2>
-                <p className="mt-1 text-sm text-white/85">
-                  {won
-                    ? t(
-                        "blackjackPvp.awardRoundYou",
-                        "Manche {n} remportée par Vous",
-                      ).replace("{n}", String(round.roundNumber))
-                    : isDraw
-                    ? t(
-                        "blackjackPvp.awardRoundDraw",
-                        "Manche {n} — égalité",
-                      ).replace("{n}", String(round.roundNumber))
-                    : t(
-                        "blackjackPvp.awardRoundOpp",
-                        "Manche {n} remportée par l'Adversaire",
-                      ).replace("{n}", String(round.roundNumber))}
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        {/* ── Header — emoji + winner seat name + score line. */}
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+        >
+          <div className="text-4xl sm:text-5xl mb-1 drop-shadow">
+            {headerEmoji}
+          </div>
+          <h2
+            className={`text-xl sm:text-2xl font-black leading-tight ${
+              isDraw
+                ? "text-yellow-200"
+                : iWonSeat
+                ? "text-amber-300"
+                : "text-red-300"
+            }`}
+          >
+            {headerPrimary}
+          </h2>
+          <p className="mt-1.5 text-sm font-bold text-white/85">
+            {headerSecondary}
+          </p>
+        </motion.div>
 
-        {/* ── Dynamic seats — the per-phase rollout of cards →
-               score → highlight is encoded by the three booleans
-               on each `<RevealedSeat>`. The seat on the LEFT is
-               always the VIEWER; the right is the opponent. */}
-        <div className="mt-5 grid grid-cols-2 gap-3 text-left">
-          <RevealedSeat
-            label={
-              viewerIsPlayer1
-                ? t("blackjackPvp.seat.player1", "Joueur 1")
-                : t("blackjackPvp.seat.player2", "Joueur 2")
-            }
-            hand={viewerIsPlayer1 ? p1Hand : p2Hand}
-            score={viewerIsPlayer1 ? p1Score : p2Score}
-            busted={viewerIsPlayer1 ? p1Busted : p2Busted}
-            didWin={won}
+        {/* ── Both seats — cards fully revealed + scores visible.
+            Side-by-side grid; the winning seat gets the gold border
+            + glow so the contrast reads at a glance. */}
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <RoundResultSeat
+            label={mySeatLabel}
+            subLabel={t("blackjackPvp.you", "vous")}
+            hand={myCards}
+            score={myFinalScore}
+            busted={myBusted}
+            didWin={iWonSeat}
             highlight="self"
-            showCards={phase >= 1}
-            showScore={phase >= 3}
-            showHighlight={phase >= 4}
             t={t}
           />
-          <RevealedSeat
-            label={t("blackjackPvp.seat.opponent", "Adversaire")}
-            hand={viewerIsPlayer1 ? p2Hand : p1Hand}
-            score={viewerIsPlayer1 ? p2Score : p1Score}
-            busted={viewerIsPlayer1 ? p2Busted : p1Busted}
-            didWin={lost}
+          <RoundResultSeat
+            label={oppSeatLabel}
+            subLabel={oppSubLabel}
+            hand={oppCards}
+            score={oppFinalScore}
+            busted={oppBusted}
+            didWin={oppWonSeat}
             highlight="opp"
-            showCards={phase >= 2}
-            showScore={phase >= 3}
-            showHighlight={phase >= 4}
             t={t}
           />
         </div>
 
-        {/* ── Phase 3+: priority rule banner slides in to remind the
-               player WHY this round outcome was decided. */}
-        <AnimatePresence>
-          {phase >= 3 && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 4 }}
-              transition={{ duration: 0.3 }}
-              className="mt-4 rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-left"
-            >
-              <p className="text-[10px] sm:text-xs uppercase tracking-widest text-[#FFD700]/80 font-bold">
-                {t("blackjackPvp.priority.title", "Règle de résolution")}
-              </p>
-              <ol className="mt-1 text-xs text-white/85 space-y-0.5 list-decimal list-inside">
-                <li>
-                  {t(
-                    "blackjackPvp.priority.rule1",
-                    "Score le plus élevé ≤ 21 gagne",
-                  )}
-                </li>
-                <li>
-                  {t(
-                    "blackjackPvp.priority.rule2",
-                    "Sauté (>21) = défaite automatique",
-                  )}
-                </li>
-                <li>
-                  {t(
-                    "blackjackPvp.priority.rule3",
-                    "Score égal = manche nulle",
-                  )}
-                </li>
-              </ol>
-            </motion.div>
+        {/* ── Resolution rule reminder — quickest "closest-to-21
+            without busting" reference so the player understands the
+            outcome. Stays tiny so it doesn't fight the header. */}
+        <p className="mt-4 text-[10px] sm:text-xs text-white/55 leading-relaxed">
+          {t(
+            "blackjackPvp.roundResult.rule",
+            "Le score le plus proche de 21 sans dépasser gagne; au‑delà de 21 = sauté.",
           )}
-        </AnimatePresence>
+        </p>
 
-        {/* ── Footer button — before phase 5 the button reads
-               "Skip reveal" and clicking it jumps to phase 5. After
-               phase 5 it reads "Continue" and clicks dismiss.
-               Auto-dismiss countdown is rendered as a transparent
-               suffix only during phase 5 so the player always knows
-               how long the modal will hold. */}
+        {/* ── Footer button — dismiss immediately. The auto-dismiss
+            timer above provides the 5‑second timeout; this button is
+            for impatient players. */}
         <button
           onClick={(e) => {
             e.stopPropagation();
             onDismiss();
           }}
-          className={`mt-5 inline-flex items-center justify-center gap-2 rounded-xl border-b-4 px-6 py-2.5 text-base font-black transition active:translate-y-[2px] ${
-            phase >= 5
-              ? won
-                ? "border-amber-700 bg-amber-400 text-black"
-                : "border-cyan-700 bg-cyan-400 text-black"
-              : "border-white/15 bg-white/10 text-white/80 hover:bg-white/15"
+          className={`mt-4 inline-flex items-center justify-center gap-2 rounded-xl border-b-4 px-6 py-2.5 text-base font-black transition active:translate-y-[2px] ${
+            isDraw
+              ? "border-yellow-700 bg-yellow-400 text-black hover:bg-yellow-300"
+              : iWonSeat
+              ? "border-amber-700 bg-amber-400 text-black hover:bg-amber-300"
+              : "border-cyan-700 bg-cyan-400 text-black hover:bg-cyan-300"
           }`}
         >
-          {phase >= 5
-            ? t("blackjackPvp.continue", "Continuer")
-            : t("blackjackPvp.skipReveal", "Skip reveal")}
-          {phase >= 5 && secondsLeft != null && (
-            <span className="text-xs opacity-80">({secondsLeft}s)</span>
-          )}
+          {t("blackjackPvp.continue", "Continuer")}
+          <span className="text-xs opacity-70">
+            ({t("blackjackPvp.autoClose", "5s")})
+          </span>
         </button>
       </motion.div>
     </motion.div>
   );
 }
 
-// One seat of the side-by-side round-result display. The 3 booleans
-// (`showCards`, `showScore`, `showHighlight`) are driven by the
-// parent's phase state machine so this component stays purely
-// declarative — it doesn't know WHETHER it's the player's hand vs
-// the opponent's, just whether each visual layer should be visible.
-//
-//   showCards    — when false the seat renders card backs; flipping
-//                  face-up uses the rotateY + stagger delays below.
-//   showScore    — the total line below the cards; reveals in
-//                  spring-bounce fashion so the comparison lands as a
-//                  distinct visual beat after both hands are open.
-//   showHighlight— the gold border + glow + crown badge on the
-//                  winning seat. The losing seat dims slightly so
-//                  the contrast reads at a glance.
-function RevealedSeat({
+// Inline per-seat rendering for the round-end popup. Cards are
+// always face-up here (no animation gating), so the seat stays a
+// thin presentational component — no phase state required.
+function RoundResultSeat({
   label,
+  subLabel,
   hand,
   score,
   busted,
   didWin,
   highlight,
-  showCards,
-  showScore,
-  showHighlight,
   t,
 }: {
   label: string;
+  subLabel: string;
   hand: Card[];
   score: number;
   busted: boolean;
   didWin: boolean;
   highlight: "self" | "opp";
-  showCards: boolean;
-  showScore: boolean;
-  showHighlight: boolean;
   t: TFn;
 }) {
-  // Border / glow palette. While !showHighlight we keep the seat on
-  // the neutral palette so the gold border sweep at phase 4 reads as
-  // a deliberate decision event, not a fixed visual decoration.
+  // The winning seat wears the gold border + glow + crown; the
+  // losing seat dims slightly so the contrast reads at a glance.
   const seatBorder = busted
     ? "border-red-400/70"
     : didWin
@@ -1791,19 +1704,12 @@ function RevealedSeat({
     : "shadow-none";
   return (
     <motion.div
-      className={`relative rounded-2xl border-2 p-2 flex flex-col items-center gap-2 transition-colors duration-500 ${
-        showHighlight
-          ? `${seatBorder} ${seatBg} ${didWin ? seatGlow : "shadow-none"}`
-          : "border-white/10 bg-black/20 shadow-none"
-      } ${!showHighlight && didWin ? "opacity-90" : ""} ${
-        showHighlight && !didWin && !busted ? "opacity-65" : ""
+      className={`relative rounded-2xl border-2 p-2 flex flex-col items-center gap-2 transition-colors duration-500 ${seatBorder} ${seatBg} ${seatGlow} ${
+        didWin ? "" : busted ? "" : "opacity-85"
       }`}
     >
-      {/* Crown badge — only on the winning seat during phase 5
-         (HIGHLIGHT). Spring-bounce entrance so it reads as a
-         decision event rather than a static decoration. */}
       <AnimatePresence>
-        {showHighlight && didWin && (
+        {didWin && (
           <motion.div
             key="crown-badge"
             initial={{ scale: 0, rotate: -30, opacity: 0 }}
@@ -1819,34 +1725,28 @@ function RevealedSeat({
       </AnimatePresence>
 
       <div
-        className={`flex items-center gap-1 text-[10px] sm:text-xs font-bold ${
-          showHighlight && didWin ? "text-amber-200" : "text-white/85"
+        className={`flex flex-col items-center gap-0.5 text-[10px] sm:text-xs font-bold leading-tight ${
+          didWin ? "text-amber-200" : "text-white/85"
         }`}
       >
-        {highlight === "self" ? `★ ${label}` : label}
+        <span>
+          {highlight === "self" ? `★ ${label}` : label}
+        </span>
+        <span className="text-[9px] uppercase tracking-wider text-white/55">
+          {subLabel}
+        </span>
       </div>
 
       <div className="flex justify-center gap-1.5 flex-wrap min-h-[96px]">
         {hand.length === 0 ? (
           <BlackjackCardBack />
-        ) : !showCards ? (
-          hand.map((_, i) => (
-            <motion.div
-              key={`back-${i}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.2 }}
-            >
-              <BlackjackCardBack />
-            </motion.div>
-          ))
         ) : (
           hand.map((c, i) => (
             <motion.div
               key={i}
               initial={{ rotateY: 90, opacity: 0, y: -10 }}
               animate={{ rotateY: 0, opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, delay: 0.15 + i * 0.08 }}
+              transition={{ duration: 0.4, delay: 0.05 + i * 0.07 }}
             >
               <CardFace card={c} small />
             </motion.div>
@@ -1854,41 +1754,19 @@ function RevealedSeat({
         )}
       </div>
 
-      {/* Score line — appears at phase 3 with a brief pulse so the
-         numerical comparison lands AFTER both hands are visible.
-         Score line is always reserved height so swapping in/out
-         doesn't reflow the parent grid. */}
-      <div className="h-6 flex items-center justify-center">
-        <AnimatePresence>
-          {showScore && (
-            <motion.div
-              key="score"
-              initial={{ opacity: 0, scale: 0.7, y: 4 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{
-                type: "spring",
-                stiffness: 320,
-                damping: 16,
-                delay: 0.05,
-              }}
-              className={`text-sm font-black ${
-                busted
-                  ? "text-red-300"
-                  : didWin
-                  ? "text-amber-300"
-                  : "text-white/80"
-              }`}
-            >
-              {busted
-                ? t("blackjackPvp.bustedScore", "Sauté ({score})").replace(
-                    "{score}",
-                    String(score),
-                  )
-                : `${score} ${t("blackjackPvp.ptsUnit", "pts")}`}
-            </motion.div>
-          )}
-        </AnimatePresence>
+      <div className="text-sm font-black">
+        {busted ? (
+          <span className="text-red-300">
+            {t("blackjackPvp.bustedScore", "Sauté ({score})").replace(
+              "{score}",
+              String(score),
+            )}
+          </span>
+        ) : (
+          <span className={didWin ? "text-amber-300" : "text-white/80"}>
+            {score} {t("blackjackPvp.ptsUnit", "pts")}
+          </span>
+        )}
       </div>
     </motion.div>
   );
