@@ -544,7 +544,18 @@ function applyAction(match, action, seat, fields, payload) {
     }
 
     case ACTION_TYPE.STAND: {
-      if (currentState !== PLAYER_STATE.PLAYING) {
+      // BUG-FIX (stand button unclickable after SWAP/FREEZE in
+      // Round 2/3): accept STAND from BUSTED as well as PLAYING so
+      // the player can finalise their turn from any non-stood seat.
+      // A BUSTED hand resolving as STOOD is a no-op outcome-wise —
+      // `BUSTED_SCORE_SENTINEL` already guarantees a busted hand
+      // always loses to any non-busted score, so flipping to STOOD
+      // doesn't change the round's resolution. STOOD is the only
+      // state that genuinely locks the hand permanently.
+      if (
+        currentState !== PLAYER_STATE.PLAYING &&
+        currentState !== PLAYER_STATE.BUSTED
+      ) {
         return {
           ok: false,
           error: `Seat already in '${currentState}' — no further action possible`,
