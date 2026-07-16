@@ -1,6 +1,6 @@
 -- ── Blackjack PvP: add peek usage counters ───────────────────────────
 -- The new "peek" action lets a player preview the top of the shoe
--- (`match.deck[0]`) waithout drawing it once per round. We track the
+-- (`match.deck[0]`) waithout draswing it once per round. We track the
 -- per-round use count on the match row (validated by the server-side
 -- `recordAction`). The mirror column on `blackjack_pvp_rounds`
 -- preserves the per-round peek count on the resolved snapshot so
