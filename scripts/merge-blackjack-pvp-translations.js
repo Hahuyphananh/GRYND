@@ -81,15 +81,27 @@ const PAYLOAD = {
     roundResultHeader: "Round {n} result",
     matchEndHeader: "Match over",
     // Redrawn PvP interface (Prompt 8) — Swap consolidation + Freeze rename.
+    // (Prompt 11) — Click-any-card swap selection replaces the
+    // 1st / 2nd pill. `swap` is still the button label, but
+    // `swapHint` + the new `swapHintPick` / `swapHintRandom` carry
+    // the parent-decided-target semantics.
     swap: "Swap",
-    swapHint: "Replace your {n} starting card",
-    swapTargetLabel: "Swap target",
-    swapCard1st: "1st",
-    swapCard2nd: "2nd",
+    swapHint: "Replace your selected card with a random draw from the shoe",
+    swapHintPick: "Click a card first, then press Swap",
+    swapHintRandom: "Replace card #{n} with a random draw from the shoe",
+    swapPickHint: "Click any card to mark it for swap",
+    swapChosenHint: "Card #{n} marked \u2014 press Swap to draw a random replacement",
+    swapSelectedBadge: "Swap",
     freeze: "Freeze",
     freezeHint: "Stash your most recently drawn card aside for later",
     useHeldAdd: "Use frozen card",
     useHeldDiscard: "Discard frozen",
+    // (Prompt 11) — Peek action. `peek` is the button label,
+    // `peekHint` is its tooltip, `peekOverlayLabel` rides the small
+    // preview-strip chip that surfaces between MyHand and ActionPanel.
+    peek: "Peek",
+    peekHint: "Peek at the top of the shoe \u2014 the next card you\u2019d HIT",
+    peekOverlayLabel: "Next card",
     scoreboard: {
       player: "Player",
       opponent: "Opponent",
@@ -165,15 +177,23 @@ const PAYLOAD = {
     roundResultHeader: "R\u00e9sultat de la manche {n}",
     matchEndHeader: "Match termin\u00e9",
     // Redrawn PvP interface (Prompt 8) — Swap consolidation + Freeze rename.
+    // (Prompt 11) — Click-any-card swap selection replaces the
+    // 1st / 2nd pill. See en block above for rationale.
     swap: "Permuter",
-    swapHint: "Remplacer votre carte de d\u00e9part n\u00b0 {n}",
-    swapTargetLabel: "Carte \u00e0 permuter",
-    swapCard1st: "1\u00e8re",
-    swapCard2nd: "2\u00e8me",
+    swapHint: "Remplacer la carte s\u00e9lectionn\u00e9e par un tirage al\u00e9atoire",
+    swapHintPick: "Cliquez d\u2019abord sur une carte, puis appuyez sur Permuter",
+    swapHintRandom: "Remplacer la carte n\u00b0{n} par un tirage al\u00e9atoire du sabot",
+    swapPickHint: "Cliquez sur une carte pour la marquer pour l\u2019\u00e9change",
+    swapChosenHint: "Carte n\u00b0{n} marqu\u00e9e \u2014 appuyez sur Permuter",
+    swapSelectedBadge: "Permuter",
     freeze: "Geler",
     freezeHint: "Mettre de c\u00f4t\u00e9 votre carte tir\u00e9e pour plus tard",
     useHeldAdd: "Ajouter la carte gel\u00e9e",
     useHeldDiscard: "Jeter la carte gel\u00e9e",
+    // (Prompt 11) — Peek action. See en block above for rationale.
+    peek: "Espionner",
+    peekHint: "Voir le dessus du sabot \u2014 la prochaine carte que vous tireriez",
+    peekOverlayLabel: "Prochaine carte",
     scoreboard: {
       player: "Joueur",
       opponent: "Adversaire",
@@ -244,15 +264,23 @@ const PAYLOAD = {
     roundResultHeader: "Resultado de la ronda {n}",
     matchEndHeader: "Partido terminado",
     // Redrawn PvP interface (Prompt 8) — Swap consolidation + Freeze rename.
+    // (Prompt 11) — Click-any-card swap selection replaces the
+    // 1st / 2nd pill. See en block above for rationale.
     swap: "Cambiar",
-    swapHint: "Reemplazar tu carta inicial n\u00b0 {n}",
-    swapTargetLabel: "Carta a cambiar",
-    swapCard1st: "1.\u00aa",
-    swapCard2nd: "2.\u00aa",
+    swapHint: "Reemplazar la carta seleccionada con un robo aleatorio del zapato",
+    swapHintPick: "Primero haz clic en una carta, luego pulsa Cambiar",
+    swapHintRandom: "Reemplazar la carta n.\u00b0 {n} con un robo aleatorio del zapato",
+    swapPickHint: "Haz clic en cualquier carta para marcarla para el cambio",
+    swapChosenHint: "Carta n.\u00b0 {n} marcada \u2014 pulsa Cambiar para sacar una carta aleatoria",
+    swapSelectedBadge: "Cambiar",
     freeze: "Congelar",
     freezeHint: "Apartar la \u00faltima carta que robaste",
     useHeldAdd: "Usar carta congelada",
     useHeldDiscard: "Descartar carta congelada",
+    // (Prompt 11) — Peek action. See en block above for rationale.
+    peek: "Espiar",
+    peekHint: "Mira la parte superior del zapato \u2014 la pr\u00f3xima carta que robar\u00edas",
+    peekOverlayLabel: "Pr\u00f3xima carta",
     scoreboard: {
       player: "Jugador",
       opponent: "Oponente",

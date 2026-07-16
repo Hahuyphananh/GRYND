@@ -33,6 +33,7 @@ import {
   HOLD_LIMIT_PER_ROUND,
   HOUSE_FEE_PCT,
   MATCH_STATUS,
+  PEEK_LIMIT_PER_ROUND,
   PLAYABLE_STATES,
   PLAYER_STATE,
   READY_WINDOW_MS,
@@ -154,6 +155,7 @@ const SEAT_FIELDS = Object.freeze({
     hand: "player1Hand",
     state: "player1State",
     swapsUsed: "player1UsedSwap",
+    peeksUsed: "player1UsedPeek",
     holdsUsed: "player1UsedFreeze",
     heldCard: "player1FrozenCard",
     heldResolved: "player1HeldResolved",
@@ -162,6 +164,7 @@ const SEAT_FIELDS = Object.freeze({
     hand: "player2Hand",
     state: "player2State",
     swapsUsed: "player2UsedSwap",
+    peeksUsed: "player2UsedPeek",
     holdsUsed: "player2UsedFreeze",
     heldCard: "player2FrozenCard",
     heldResolved: "player2HeldResolved",
@@ -494,7 +497,15 @@ export async function recordAction({ userId, matchId, action, payload }) {
       resolved = await resolveRound(tx, updated);
     }
 
-    return { match: resolved, justResolved: bothLocked };
+    // Surface any per-action `effect` (currently used by PEEK to
+    // return the peeked card to the client) back to the API route
+    // handler. Mandatory to forward `null` so the route can branch
+    // on absence for non-peek actions.
+    return {
+      match: resolved,
+      justResolved: bothLocked,
+      effect: mutation.effect || null,
+    };
   });
 }
 
@@ -595,10 +606,14 @@ function applyAction(match, action, seat, fields, payload) {
         };
       }
       const choice = payload?.swapIndex;
-      if (choice !== 0 && choice !== 1) {
+      if (
+        !Number.isInteger(choice) ||
+        choice < 0 ||
+        choice >= currentHand.length
+      ) {
         return {
           ok: false,
-          error: "Swap requires a valid swapIndex (0 or 1)",
+          error: `Swap requires a valid swapIndex (0..${currentHand.length - 1})`,
           status: 400,
         };
       }
@@ -609,13 +624,17 @@ function applyAction(match, action, seat, fields, payload) {
           status: 409,
         };
       }
-      // Pull a fresh card from the deck and replace the chosen
-      // original starting card in-place. If the swap drops the
-      // score back under 21, the seat transitions back from BUSTED
-      // to PLAYING — so SWAP is also a busted-recovery tool.
-      const drawn = drawCards(currentDeck, 1);
+      // Pull a RANDOM card from the shoe (NOT the top) and replace
+      // the chosen card in-place. The random draw is intentional:
+      // `peek` is the player-facing "see the next card" action, so
+      // it informs the HIT strategy; SWAP stays a lottery so a
+      // peeking player can't pin the swap outcome to the card they
+      // just previewed. The drawn card IS removed from the shoe so
+      // it cannot be drawn twice.
+      const randomIdx = Math.floor(Math.random() * currentDeck.length);
+      const [drawnCard] = currentDeck.splice(randomIdx, 1);
       const nextHand = [...currentHand];
-      nextHand[choice] = drawn[0];
+      nextHand[choice] = drawnCard;
       const newScore = calcHandValue(nextHand);
       const nextState =
         newScore > 21 ? PLAYER_STATE.BUSTED : PLAYER_STATE.PLAYING;
@@ -627,6 +646,46 @@ function applyAction(match, action, seat, fields, payload) {
           [fields.state]: nextState,
           [fields.swapsUsed]: swapsUsed + 1,
         },
+      };
+    }
+
+    case ACTION_TYPE.PEEK: {
+      // Peek is purely informational — costs nothing output-wise and
+      // is available from both PLAYING and BUSTED states so a busted
+      // seat can still preview what's coming at the top of the shoe.
+      // The peeked card is NOT persisted on the match row; it flows
+      // back to the caller via the `effect` channel so a single
+      // action roundtrip can both increment the per-round cap AND
+      // surface the preview to the peeking client.
+      if (currentState === PLAYER_STATE.STOOD) {
+        return {
+          ok: false,
+          error: `Seat already in '${currentState}' — no further action possible`,
+          status: 409,
+        };
+      }
+      const peeksUsed = Number(match[fields.peeksUsed]) || 0;
+      if (peeksUsed >= PEEK_LIMIT_PER_ROUND) {
+        return {
+          ok: false,
+          error: "Peek already used this round",
+          status: 409,
+        };
+      }
+      if (currentDeck.length === 0) {
+        return {
+          ok: false,
+          error: "Shoe is empty — server cannot deal further cards",
+          status: 409,
+        };
+      }
+      const peekedCard = currentDeck[0]; // top of the shoe — previews HIT outcome
+      return {
+        ok: true,
+        setValues: {
+          [fields.peeksUsed]: peeksUsed + 1,
+        },
+        effect: { peekedCard },
       };
     }
 
@@ -895,6 +954,8 @@ async function resolveRound(tx, match) {
     player2UsedSwap: Number(match.player2UsedSwap) || 0,
     player1UsedFreeze: Number(match.player1UsedFreeze) || 0,
     player2UsedFreeze: Number(match.player2UsedFreeze) || 0,
+    player1UsedPeek: Number(match.player1UsedPeek) || 0,
+    player2UsedPeek: Number(match.player2UsedPeek) || 0,
     player1FrozenCard: match.player1FrozenCard ?? null,
     player2FrozenCard: match.player2FrozenCard ?? null,
     player1HeldResolved: match.player1HeldResolved ?? null,
@@ -987,6 +1048,8 @@ async function resolveRound(tx, match) {
       player2UsedSwap: 0,
       player1UsedFreeze: 0,
       player2UsedFreeze: 0,
+      player1UsedPeek: 0,
+      player2UsedPeek: 0,
       player1FrozenCard: null,
       player2FrozenCard: null,
       player1HeldResolved: null,
@@ -1154,6 +1217,8 @@ async function advanceFromBetweenRounds(tx, match) {
       player2UsedSwap: 0,
       player1UsedFreeze: 0,
       player2UsedFreeze: 0,
+      player1UsedPeek: 0,
+      player2UsedPeek: 0,
       player1FrozenCard: null,
       player2FrozenCard: null,
       player1HeldResolved: null,

@@ -41,6 +41,7 @@ import {
   isRedSuit,
   SWAP_LIMIT_PER_ROUND,
   HOLD_LIMIT_PER_ROUND,
+  PEEK_LIMIT_PER_ROUND,
   BETWEEN_ROUNDS_SECONDS,
   ROUND_TIMER_SECONDS,
   TOTAL_ROUNDS,
@@ -57,6 +58,7 @@ type Card = { suit: string; value: string };
 
 type SeatActions = {
   swapsUsed: number;
+  peeksUsed: number;
   holdsUsed: number;
   heldCard: Card | null;
   heldResolved: string | null;
@@ -97,6 +99,12 @@ type MatchState = {
   player2UsedSwap: number;
   player1UsedFreeze: number;
   player2UsedFreeze: number;
+  // Peek counters mirror the freeze/swap collapse pattern: the
+  // viewer sees their own raw count (0 or 1 in this build), and
+  // the opponent's seat is collapsed to a boolean so peeking usage
+  // can't leak through the wire.
+  player1UsedPeek: number;
+  player2UsedPeek: number;
   player1FrozenCard: Card | null;
   player2FrozenCard: Card | null;
   player1HeldResolved: string | null;
@@ -232,6 +240,16 @@ export default function BlackjackPvpMatchPage({
   const [roundResultShownFor, setRoundResultShownFor] = useState<number | null>(
     null,
   );
+  // Lifted swap-target state: clicking a card in MyHand now selects
+  // which card the Swap action will replace (any index, not just the
+  // two starting cards). Lives at the page so the same selection
+  // drives both MyHand's highlight and ActionPanel's enabled state.
+  const [swapTarget, setSwapTarget] = useState<number | null>(null);
+  // Local peek overlay state. The server returns peekedCard in the
+  // action response but does NOT persist it on the match row, so the
+  // client manages visibility itself. Cleared whenever the player
+  // commits to ANY other action (hit/swap/stand/hold/use_held).
+  const [localPeekedCard, setLocalPeekedCard] = useState<Card | null>(null);
   const victoryCelebratedRef = useRef(false);
   // Tracks which round numbers the user has already acknowledged in a
   // round-result modal. Without this, the modal would re-open on every
@@ -270,18 +288,21 @@ export default function BlackjackPvpMatchPage({
     ? viewerIsPlayer1
       ? {
           swapsUsed: match.player1UsedSwap,
+          peeksUsed: match.player1UsedPeek,
           holdsUsed: match.player1UsedFreeze,
           heldCard: match.player1FrozenCard,
           heldResolved: match.player1HeldResolved,
         }
       : {
           swapsUsed: match.player2UsedSwap,
+          peeksUsed: match.player2UsedPeek,
           holdsUsed: match.player2UsedFreeze,
           heldCard: match.player2FrozenCard,
           heldResolved: match.player2HeldResolved,
         }
     : {
         swapsUsed: 0,
+        peeksUsed: 0,
         holdsUsed: 0,
         heldCard: null,
         heldResolved: null,
@@ -378,7 +399,13 @@ export default function BlackjackPvpMatchPage({
   // ── Player actions ────────────────────────────────────────────────
   const sendAction = useCallback(
     async (
-      action: "hit" | "stand" | "swap" | "hold" | "use_held",
+      action:
+        | "hit"
+        | "stand"
+        | "swap"
+        | "hold"
+        | "use_held"
+        | "peek",
       payload?: Record<string, unknown>,
     ) => {
       if (!match) return;
@@ -389,6 +416,15 @@ export default function BlackjackPvpMatchPage({
       )
         return;
       if (submitting) return;
+      // Auto-clear the local peek preview whenever the player commits
+      // to any non-peek action. The peek strip is purely informational
+      // and should disappear the instant the player makes a decision
+      // (per spec: "if the player does an action after that like swap,
+      // stand or hit, remove the div"). Peek itself leaves it intact so
+      // the new preview can render/animate without flicker.
+      if (action !== "peek" && localPeekedCard !== null) {
+        setLocalPeekedCard(null);
+      }
       setSubmitting(true);
       setErrorMsg(null);
       try {
@@ -410,6 +446,18 @@ export default function BlackjackPvpMatchPage({
           playCardDraw();
         }
         if (action === "stand") playCardDraw();
+        // Capture peeked card from action response. The server
+        // returns this in `effect.peekedCard` rather than persisting
+        // it (peek is a preview, not a state mutation).
+        if (action === "peek") {
+          const peekedCard = data?.data?.effect?.peekedCard;
+          if (peekedCard && typeof peekedCard === "object") {
+            setLocalPeekedCard({
+              suit: String(peekedCard.suit ?? "?"),
+              value: String(peekedCard.value ?? "?"),
+            });
+          }
+        }
         await fetchStatus({ silent: true });
         socket?.emit("room_event", {
           roomId: blackjackPvpMatchRoom(matchId),
@@ -421,7 +469,7 @@ export default function BlackjackPvpMatchPage({
         setSubmitting(false);
       }
     },
-    [match, matchId, submitting, socket, fetchStatus],
+    [match, matchId, submitting, socket, fetchStatus, localPeekedCard],
   );
 
   // ── Round-result modal trigger ────────────────────────────────────
@@ -551,6 +599,15 @@ export default function BlackjackPvpMatchPage({
     handIsInteractive &&
     Boolean(myActions.heldCard) &&
     !myActions.heldResolved;
+  // Peek is purely informational: available in PLAYING and BUSTED
+  // states, gated only by the per-round cap. It does NOT consume a
+  // round-ending action — the player still needs to HIT/STAND/SWAP/
+  // HOLD to finalise their turn. The peeked preview itself only
+  // appears in the local UI overlay (auto-cleared on the next
+  // action) so the server doesn't need a card-persisted field.
+  const canPeek =
+    handIsInteractive &&
+    (myActions.peeksUsed ?? 0) < PEEK_LIMIT_PER_ROUND;
   const canHit = isMyTurn && myState === "playing" && myScore < 21;
   // BUG-FIX (stand button unclickable after SWAP/FREEZE in Round
   // 2/3): The previous gate `isMyTurn && myState === "playing"` was
@@ -722,13 +779,20 @@ export default function BlackjackPvpMatchPage({
 
           {/* ▶ BOTTOM SECTION — You
               Face-up cards + my score (with bust / stood states
-              surfaced through the same MyHand component). */}
+              surfaced through the same MyHand component). The
+              `canSwap` + `swapTarget` props wire click-to-select
+              card highlighting into MyHand so the swap target picks
+              up via card click instead of the (now-removed) 1st/2nd
+              pill — swap itself still routes through ActionPanel. */}
           <MyHand
             t={t}
             label={mySeatLabel}
             hand={myHand}
             myState={myState}
             score={myScore}
+            canSwap={canSwap}
+            swapTarget={swapTarget}
+            onSwapTargetChange={setSwapTarget}
           />
 
           {/* Held-card preview (so the player can see what's on hold
@@ -760,6 +824,19 @@ export default function BlackjackPvpMatchPage({
             />
           )}
 
+          {/* Animated Peek strip — sits BETWEEN the player's hand and
+              the action buttons so the player sees the next card on
+              the shoe right where they're deciding. Enter/exit
+              animations are driven by `localPeekedCard` being set or
+              cleared; clearing happens automatically inside
+              `sendAction` whenever the player commits to a non-peek
+              verb (HIT/SWAP/STAND/HOLD/USE_HELD). */}
+          <AnimatePresence>
+            {localPeekedCard && (
+              <PeekOverlay t={t} card={localPeekedCard} />
+            )}
+          </AnimatePresence>
+
           {/* Action buttons — visible for both PLAYING (full move
               set) and BUSTED (recovery via Swap / Freeze / Use-Held)
               seats. Hit and Stand appear but stay disabled on busted
@@ -776,14 +853,17 @@ export default function BlackjackPvpMatchPage({
                 submitting={submitting}
                 canHit={canHit}
                 canStand={canStand}
-                canSwap={canSwap}
+                canSwap={canSwap && swapTarget !== null}
                 canHold={canHold}
+                canPeek={canPeek}
                 canUseHeldAdd={canUseHeldAdd}
                 canUseHeldDiscard={canUseHeldDiscard}
+                swapTarget={swapTarget}
                 onHit={() => sendAction("hit")}
                 onStand={() => sendAction("stand")}
-                onSwap={(idx) => sendAction("swap", { swapIndex: idx })}
+                onSwap={() => swapTarget !== null && sendAction("swap", { swapIndex: swapTarget })}
                 onHold={() => sendAction("hold")}
+                onPeek={() => sendAction("peek")}
                 onUseHeldAdd={() =>
                   sendAction("use_held", { subaction: "add" })
                 }
@@ -1101,12 +1181,21 @@ function MyHand({
   hand,
   myState,
   score,
+  canSwap,
+  swapTarget,
+  onSwapTargetChange,
 }: {
   t: TFn;
   label: string;
   hand: Card[];
   myState: string;
   score: number;
+  // `canSwap` flips the cards into click-targets that highlight and
+  // bounce up when selected. Selection is managed by the parent and
+  // rounded-tripped through ActionPanel's Swap dispatch.
+  canSwap: boolean;
+  swapTarget: number | null;
+  onSwapTargetChange: (idx: number) => void;
 }) {
   const busted = myState === "busted" && hand.length > 0;
   return (
@@ -1133,19 +1222,76 @@ function MyHand({
         {hand.length === 0 ? (
           [0, 1].map((i) => <BlackjackCardBack key={i} />)
         ) : (
-          hand.map((card, i) => (
-            <motion.div
-              key={i}
-              initial={{ y: 60, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.35, delay: i * 0.12 }}
-              className={busted ? "animate-shake" : ""}
-            >
-              <CardFace card={card} />
-            </motion.div>
-          ))
+          hand.map((card, i) => {
+            const isSelected = canSwap && swapTarget === i;
+            return (
+              <motion.button
+                key={i}
+                type="button"
+                disabled={!canSwap}
+                onClick={() => {
+                  if (canSwap) onSwapTargetChange(i);
+                }}
+                initial={{ y: 60, opacity: 0 }}
+                animate={
+                  isSelected
+                    ? { y: -22, opacity: 1, scale: 1.08 }
+                    : { y: 0, opacity: 1, scale: 1 }
+                }
+                whileHover={
+                  canSwap && !isSelected
+                    ? { y: -8, scale: 1.04 }
+                    : undefined
+                }
+                whileTap={canSwap ? { scale: 0.97 } : undefined}
+                transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                aria-label={`Card ${i + 1}: ${card.suit}${card.value}${isSelected ? " (selected for swap)" : ""}`}
+                className={`relative focus:outline-none ${
+                  busted ? "animate-shake" : ""
+                }`}
+                style={{
+                  filter: isSelected
+                    ? "drop-shadow(0 0 14px rgba(168,85,247,0.55))"
+                    : undefined,
+                }}
+              >
+                <CardFace card={card} />
+                {isSelected && (
+                  <motion.span
+                    initial={{ opacity: 0, scale: 0.7, y: -4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    transition={{ type: "spring", stiffness: 420, damping: 22 }}
+                    className="absolute -top-3 -right-3 rounded-full bg-purple-500 text-white text-[10px] font-extrabold px-2 py-0.5 shadow-[0_0_10px_rgba(168,85,247,0.7)] uppercase tracking-widest"
+                  >
+                    {t("blackjackPvp.swapSelectedBadge", "Swap")}
+                  </motion.span>
+                )}
+              </motion.button>
+            );
+          })
         )}
       </div>
+      {/* ── Swap-selection hint row: surfaces "click a card" guidance
+          while the player has an unused swap, and disappears once a
+          card is chosen (ActionPanel's button-enabled state already
+          mirrors this). The hint text is fully localizable via the
+          existing blackjackPvp.* translation bundle. */}
+      {canSwap && swapTarget === null && (
+        <div className="text-center text-xs text-purple-200/80 mt-1 italic">
+          {t(
+            "blackjackPvp.swapPickHint",
+            "Click any card to mark it for swap",
+          )}
+        </div>
+      )}
+      {canSwap && swapTarget !== null && (
+        <div className="text-center text-xs text-purple-200 mt-1 italic">
+          {t(
+            "blackjackPvp.swapChosenHint",
+            "Card #{n} marked — press Swap to draw a random replacement",
+          ).replace("{n}", String(swapTarget + 1))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1183,12 +1329,15 @@ function ActionPanel({
   canStand,
   canSwap,
   canHold,
+  canPeek,
   canUseHeldAdd,
   canUseHeldDiscard,
+  swapTarget,
   onHit,
   onStand,
   onSwap,
   onHold,
+  onPeek,
   onUseHeldAdd,
   onUseHeldDiscard,
 }: {
@@ -1196,68 +1345,47 @@ function ActionPanel({
   submitting: boolean;
   canHit: boolean;
   canStand: boolean;
+  // canSwap is parent-supplied as `canSwap && swapTarget !== null`
+  // so the button naturally stays disabled until the player has
+  // clicked a card in MyHand. This replaces the inline 1st / 2nd
+  // pill that used to live here.
   canSwap: boolean;
   canHold: boolean;
+  canPeek: boolean;
   canUseHeldAdd: boolean;
   canUseHeldDiscard: boolean;
+  swapTarget: number | null;
   onHit: () => void;
   onStand: () => void;
-  onSwap: (idx: 0 | 1) => void;
+  onSwap: () => void;
   onHold: () => void;
+  onPeek: () => void;
   onUseHeldAdd: () => void;
   onUseHeldDiscard: () => void;
 }) {
-  // Hit / Stand / Swap / Freeze — the four core gameplay buttons per
-  // the redesigned layout spec. The consolidated Swap button uses an
-  // inline 1st / 2nd toggle to pick which starting card to replace
-  // (the underlying server action still requires `swapIndex`).
+  // Hit / Stand / Swap / Freeze / Peek — the five core gameplay
+  // buttons per the redesigned layout. The swap-target is now a
+  // lifted parent-owned value driven by card clicks in MyHand, so
+  // there is no local pill here.
   const baseBtn =
     "px-4 py-2.5 rounded-xl font-bold text-sm transition disabled:opacity-40 disabled:cursor-not-allowed border-b-2";
   const busy = submitting ? "…" : null;
 
-  // Local state — only lives inside the panel so the parent page.tsx
-  // signature stays untouched (no callback shape changes). The
-  // natural remount when the ActionPanel unmounts between rounds
-  // (during between_rounds / busted / stood reset) means the pick
-  // deliberately resets to the first card at the start of every new
-  // round — intentional UX, do not lift into parent state.
-  const [swapTarget, setSwapTarget] = useState<0 | 1>(0);
-
   const swapDisabled = !canSwap || submitting;
+  const swapTitle =
+    swapTarget === null
+      ? t(
+          "blackjackPvp.swapHintPick",
+          "Click a card first, then press Swap",
+        )
+      : t(
+          "blackjackPvp.swapHintRandom",
+          "Replace card #{n} with a random draw from the shoe",
+        ).replace("{n}", String(swapTarget + 1));
 
   return (
     <div className="mt-4 space-y-2.5">
-      {/* ── 1st / 2nd toggle pill — selects which starting card the
-        consolidated Swap button will replace. Disabled en masse
-        when canSwap is false so the player can't pre-arm an inert
-        Swap target. */}
-      <div className="flex items-center justify-center gap-2">
-        <span className="text-[10px] uppercase tracking-[0.25em] text-purple-200/85 font-bold">
-          {t("blackjackPvp.swapTargetLabel", "Swap target")}
-        </span>
-        <div className="inline-flex items-center rounded-full border border-purple-400/40 bg-purple-500/10 p-0.5 shadow-[inset_0_0_8px_rgba(168,85,247,0.18)]">
-          {([0, 1] as const).map((idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => setSwapTarget(idx)}
-              disabled={swapDisabled}
-              className={`px-3 py-1 text-xs font-bold rounded-full transition ${
-                swapTarget === idx
-                  ? "bg-purple-400 text-black shadow-[0_0_10px_rgba(168,85,247,0.55)]"
-                  : "text-purple-200 hover:bg-purple-400/25"
-              } disabled:hover:bg-transparent`}
-              aria-pressed={swapTarget === idx}
-            >
-              {idx === 0
-                ? t("blackjackPvp.swapCard1st", "1st")
-                : t("blackjackPvp.swapCard2nd", "2nd")}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Hit / Stand / Swap / Freeze — 4-button row */ }
+      {/* ── Hit / Stand / Swap / Freeze / Peek — 5-button row */ }
       <div className="flex justify-center gap-2 flex-wrap">
         <button
           onClick={onHit}
@@ -1274,12 +1402,9 @@ function ActionPanel({
           {busy ?? t("blackjackPvp.stand", "Stand")}
         </button>
         <button
-          onClick={() => onSwap(swapTarget)}
+          onClick={onSwap}
           disabled={swapDisabled}
-          title={t(
-            "blackjackPvp.swapHint",
-            "Replace your {n} starting card",
-          ).replace("{n}", swapTarget === 0 ? "1st" : "2nd")}
+          title={swapTitle}
           className={`${baseBtn} border-purple-400/45 bg-purple-500/15 text-purple-100 hover:bg-purple-500/25 shadow-[0_0_10px_rgba(168,85,247,0.35)]`}
         >
           {busy ?? t("blackjackPvp.swap", "Swap")}
@@ -1294,6 +1419,17 @@ function ActionPanel({
           className={`${baseBtn} border-sky-300/45 bg-sky-300/10 text-sky-100 hover:bg-sky-300/25 shadow-[0_0_10px_rgba(125,211,252,0.30)]`}
         >
           {busy ?? t("blackjackPvp.freeze", "Freeze")}
+        </button>
+        <button
+          onClick={onPeek}
+          disabled={!canPeek || submitting}
+          title={t(
+            "blackjackPvp.peekHint",
+            "Peek at the top of the shoe — the next card you'd HIT",
+          )}
+          className={`${baseBtn} border-indigo-400/45 bg-indigo-500/15 text-indigo-100 hover:bg-indigo-500/25 shadow-[0_0_10px_rgba(99,102,241,0.35)]`}
+        >
+          {busy ?? t("blackjackPvp.peek", "Peek")}
         </button>
       </div>
 
@@ -1320,6 +1456,51 @@ function ActionPanel({
         </div>
       )}
     </div>
+  );
+}
+
+// ── Peek overlay — animated reveal of the top of the shoe ───────────
+// Renders between MyHand and ActionPanel only when the player holds a
+// freshly-peeked card in client-side state. The flip animation visually
+// distinguishes peek from hit (which uses a falling-card slide) and the
+// AnimatePresence wrapper on the parent handles the exit animation
+// when the next action commits. Card values are never broadcast to
+// anyone other than the peeking client — the server scrubs
+// `match.deck[0]` from any opponent-flavoured payload.
+function PeekOverlay({
+  t,
+  card,
+}: {
+  t: TFn;
+  card: Card;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -12 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="mb-3 flex items-center justify-center"
+      role="status"
+      aria-live="polite"
+    >
+      <div
+        className="rounded-xl border border-indigo-300/45 bg-gradient-to-br from-indigo-500/15 via-indigo-500/10 to-transparent px-4 py-3 flex items-center gap-3 shadow-[0_0_18px_rgba(99,102,241,0.30)]"
+        style={{ perspective: 1000 }}
+      >
+        <span className="text-[10px] sm:text-xs uppercase tracking-[0.25em] text-indigo-200/85 font-extrabold">
+          {t("blackjackPvp.peekOverlayLabel", "Next card")}
+        </span>
+        <motion.div
+          initial={{ rotateY: 180, opacity: 0 }}
+          animate={{ rotateY: 0, opacity: 1 }}
+          exit={{ rotateY: -180, opacity: 0 }}
+          transition={{ duration: 0.55, type: "spring", stiffness: 110, damping: 16 }}
+        >
+          <CardFace card={card} small fade={false} />
+        </motion.div>
+      </div>
+    </motion.div>
   );
 }
 

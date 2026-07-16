@@ -116,17 +116,30 @@ function normaliseMatchForViewer(match, viewerUserId) {
       ? match.player2UsedSwap
       : match.player2UsedSwap > 0
         ? 1
-        : 0,
-    player1UsedFreeze: viewerIsPlayer1
-      ? match.player1UsedFreeze
-      : match.player1UsedFreeze > 0
-        ? 1
-        : 0,
-    player2UsedFreeze: !viewerIsPlayer1
-      ? match.player2UsedFreeze
-      : match.player2UsedFreeze > 0
-        ? 1
-        : 0,
+        : 0,          player1UsedFreeze: viewerIsPlayer1
+            ? match.player1UsedFreeze
+            : match.player1UsedFreeze > 0
+              ? 1
+              : 0,
+          player2UsedFreeze: !viewerIsPlayer1
+            ? match.player2UsedFreeze
+            : match.player2UsedFreeze > 0
+              ? 1
+              : 0,
+          // Peek counters mirror the swap/freeze collapse pattern: the
+          // viewer sees their own raw count, the opponent's seat is
+          // collapsed to a boolean so peeking/counting can never leak
+          // the opponent's information through the wire.
+          player1UsedPeek: viewerIsPlayer1
+            ? match.player1UsedPeek
+            : match.player1UsedPeek > 0
+              ? 1
+              : 0,
+          player2UsedPeek: !viewerIsPlayer1
+            ? match.player2UsedPeek
+            : match.player2UsedPeek > 0
+              ? 1
+              : 0,
     // The viewer sees their own heldCard in full (so they can preview
     // it before deciding add vs discard). The opponent sees a stub.
     player1FrozenCard: viewerIsPlayer1
@@ -193,9 +206,22 @@ export async function POST(req, { params }) {
   const payload =
     body?.payload && typeof body.payload === "object" ? body.payload : {};
   if (action === ACTION_TYPE.SWAP) {
-    if (payload.swapIndex !== 0 && payload.swapIndex !== 1) {
+    // Click-any-card swap replaces the legacy 0|1-only target picker.
+    // We validate "non-negative integer" at the route boundary so a
+    // smugglers can't pass strings/objects; the upper bound (current
+    // hand length − 1) is enforced inside `applyAction` against the
+    // locked match row.
+    const rawIdx = payload.swapIndex;
+    if (
+      typeof rawIdx !== "number" ||
+      !Number.isInteger(rawIdx) ||
+      rawIdx < 0
+    ) {
       return NextResponse.json(
-        { success: false, error: "swap requires payload.swapIndex (0 or 1)" },
+        {
+          success: false,
+          error: "swap requires a non-negative integer payload.swapIndex",
+        },
         { status: 400 },
       );
     }
@@ -230,6 +256,12 @@ export async function POST(req, { params }) {
         justResolved: Boolean(result.justResolved),
         forceAdvanced: Boolean(result.forceAdvanced),
         raced: Boolean(result.raced),
+        // Per-action `effect` is currently only populated by PEEK
+        // (returns `{ peekedCard }` so the client can render the
+        // preview div without an extra GET). For non-peek verbs the
+        // route handler reports `null` so the client can branch on
+        // truthiness rather than `.effect.peekedCard` access.
+        effect: result.effect ?? null,
       },
     });
   } catch (error) {

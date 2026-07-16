@@ -201,6 +201,16 @@ export async function GET(req, { params }) {
             : (match.player2UsedFreeze ?? 0) > 0
               ? 1
               : 0,
+          player1UsedPeek: viewerIsPlayer1
+            ? (match.player1UsedPeek ?? 0)
+            : (match.player1UsedPeek ?? 0) > 0
+              ? 1
+              : 0,
+          player2UsedPeek: !viewerIsPlayer1
+            ? (match.player2UsedPeek ?? 0)
+            : (match.player2UsedPeek ?? 0) > 0
+              ? 1
+              : 0,
           player1FrozenCard: viewerIsPlayer1
             ? match.player1FrozenCard
             : scrubHeldCardInPlace(match.player1FrozenCard),
