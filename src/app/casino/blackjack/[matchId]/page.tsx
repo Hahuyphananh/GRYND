@@ -521,8 +521,15 @@ export default function BlackjackPvpMatchPage({
   // Action gates (mirrors serverStore.applyAction):
   //   * STOOD is the ONLY state that locks the hand permanently.
   //   * BUSTED seats may still SWAP / HOLD / USE_HELD — those are
-  //     the busted-recovery paths. HIT and STAND stay PLAYING-only
-  //     because they don't make sense once you've already busted.
+  //     the busted-recovery paths. HIT stays PLAYING-only because
+  //     drawing another card can never un-bust you, but STAND is
+  //     intentionally CLICKABLE at all times during the player's
+  //     turn — including right after a SWAP/FREEZE that didn't
+  //     recover the score (state still BUSTED) — so the player
+  //     always has a clear way to finalise their turn from any
+  //     non-stood state. The server is the authority: a STAND from
+  //     a BUSTED seat is accepted and just no-ops (the round stays
+  //     BUSTED for resolution since busted hands always lose anyway).
   // The server is authoritative: every gate below is also enforced
   // by recordAction, so a client-side mismatch just disables the
   // button — it doesn't open up an exploitation path.
@@ -545,7 +552,17 @@ export default function BlackjackPvpMatchPage({
     Boolean(myActions.heldCard) &&
     !myActions.heldResolved;
   const canHit = isMyTurn && myState === "playing" && myScore < 21;
-  const canStand = isMyTurn && myState === "playing";
+  // BUG-FIX (stand button unclickable after SWAP/FREEZE in Round
+  // 2/3): The previous gate `isMyTurn && myState === "playing"` was
+  // too restrictive — a SWAP that doesn't recover from BUSTED (the
+  // fresh card still leaves score >21) leaves the server in
+  // `busted`, so the Stand button stayed disabled even though the
+  // round keeps ticking. Allow the button at all times during the
+  // player's turn so they can finalise regardless of state. The
+  // server's `applyAction` STAND gate already permits BUSTED → STOOD
+  // because STOOD is functionally equivalent for a busted hand
+  // (effectiveHandScore sentinel guarantees a busted hand loses).
+  const canStand = handIsInteractive;
 
   // ── Render: header / status banner / 403 / not-found ──────────────
   const statusLabel = (() => {
