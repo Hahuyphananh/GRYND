@@ -48,6 +48,11 @@ type AvailableMatch = {
   player1Id: string;
   stakeAmount: number;
   createdAt: string;
+  // Surface host display name + avatar so the lobby shows real player
+  // heads instead of clerkId truncation. Populated server-side via
+  // enrichMatchesWithUsers in src/lib/plinko-pvp/serverStore.js.
+  hostName?: string;
+  hostProfileImageUrl?: string | null;
 };
 
 // ── Inline SVG icons (kept in-file so this lobby doesn't pull in
@@ -611,10 +616,25 @@ export default function PlinkoPvpLobbyPage() {
                     className="flex items-center justify-between rounded-xl bg-[#08142f]/80 p-3 border border-cyan-300/20 hover:border-cyan-300/40 transition"
                   >
                     <div>
-                      <p className="text-sm font-semibold">
-                        Lobby #{m.id}
-                        <span className="ml-2 text-[10px] text-white/40">
-                          host #{m.player1Id?.slice(0, 6) ?? "?"}…
+                      <p className="text-sm font-semibold inline-flex items-center gap-2">
+                        <span>Lobby #{m.id}</span>
+                        <span className="text-[10px] text-white/60 inline-flex items-center gap-1.5">
+                          {m.hostProfileImageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={m.hostProfileImageUrl}
+                              alt=""
+                              className="w-4 h-4 rounded-full border border-cyan-300/40"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <span className="w-4 h-4 rounded-full bg-cyan-500/20 border border-cyan-300/40 flex items-center justify-center text-[9px] font-black uppercase">
+                              {(m.hostName ?? "?").slice(0, 1)}
+                            </span>
+                          )}
+                          <span>{m.hostName ?? m.player1Id?.slice(0, 6) + "..."}</span>
                         </span>
                       </p>
                       <p className="text-xs text-white/60 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">

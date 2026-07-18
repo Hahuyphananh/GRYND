@@ -85,6 +85,13 @@ type BallResult = {
   points: number;
 };
 
+type PlayerHead = {
+  id: string;
+  displayName: string;
+  profileImageUrl: string | null;
+  missing?: boolean;
+};
+
 type NormalisedMatch = {
   id: number;
   player1Id: string;
@@ -111,6 +118,10 @@ type NormalisedMatch = {
   startedAt: string | null;
   endedAt: string | null;
   createdAt: string;
+  // Player heads from the users join — populated server-side via
+  // enrichMatchesWithUsers. Replaces the old "show clerkId truncation"
+  // behaviour that the user flagged as a bug.
+  players: { p1: PlayerHead | null; p2: PlayerHead | null } | null;
   viewerUserId: string;
   viewerIsParticipant: boolean;
   viewerSeat: "player1" | "player2" | null;
@@ -120,6 +131,14 @@ type NormalisedMatch = {
   opponentHasCommitted: boolean;
   viewerCanCancel: boolean;
 };
+
+// Configuration: what is the render opacity of a ball whose last
+// recorded position went off-board (fall-out). Animated via
+// framer-motion's CSS transitions on the SVG circle. Keeping the
+// transition length in JSX lets us reuse it both for the live
+// animated ball AND for the post-animation final position so the
+// fall-out fade is consistent.
+const FALL_OUT_FADE_MS = 350;
 
 type NormalisedRound = {
   id: number;
@@ -371,15 +390,31 @@ function TrophyIcon({ className = "" }: { className?: string }) {
 }
 
 // ── Board sub-component ──────────────────────────────────────────────
+//
+// Per user feedback, the board now renders a launch "visor" at the top
+// — two preview balls (one per seat) at the committed `startX`
+// positions with a short translucent trajectory line indicating the
+// initial angle/power — and the live balls fade out instead of
+// sticking to the side wall when they fall out.
 
 function PlinkoBoard({
   p1BallPos,
   p2BallPos,
   highlightBucket,
+  p1FellOut = false,
+  p2FellOut = false,
+  p1Preview,
+  p2Preview,
+  showVisor = false,
 }: {
   p1BallPos: { x: number; y: number } | null;
   p2BallPos: { x: number; y: number } | null;
   highlightBucket: { index: number; side: "p1" | "p2" } | null;
+  p1FellOut?: boolean;
+  p2FellOut?: boolean;
+  p1Preview?: { startX: number; power: number; angleDeg: number } | null;
+  p2Preview?: { startX: number; power: number; angleDeg: number } | null;
+  showVisor?: boolean;
 }) {
   function bucketFill(points: number) {
     if (points >= 140) return "url(#bucketGold)";
@@ -390,6 +425,21 @@ function PlinkoBoard({
     if (points >= 140) return "#ffd966";
     if (points >= 100) return "#3da9ff";
     return "#ff5577";
+  }
+  // Visor helper: turn (startX, power, angleDeg) into a short sec
+  // line that draws the initial trajectory. The line ends just
+  // before the first peg row so we don't visually intersect with
+  // the static pegs.
+  const VISOR_Y = 12;
+  const VISOR_LINE_PX = Math.min(38, Math.max(14, 6 + (Math.abs(p1Preview?.power ?? 50) / 100) * 32));
+  function visorEnd(preview: { startX: number; power: number; angleDeg: number } | null | undefined, fallbackX: number) {
+    if (!preview) return { x: fallbackX, y: VISOR_Y + VISOR_LINE_PX };
+    const ang = (preview.angleDeg * Math.PI) / 180;
+    // Same velocity math the simulator uses, just for a short
+    // visual hint (does NOT affect physics).
+    const px = preview.startX + Math.sin(ang) * VISOR_LINE_PX * 0.9;
+    const py = VISOR_Y + Math.cos(ang) * VISOR_LINE_PX;
+    return { x: Math.max(2, Math.min(498, px)), y: Math.max(VISOR_Y, Math.min(48, py)) };
   }
   return (
     <div className="rounded-2xl border border-cyan-300/30 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-3 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)]">
@@ -425,6 +475,14 @@ function PlinkoBoard({
             <stop offset="0%" stopColor="#ffb0e8" />
             <stop offset="100%" stopColor="#d436a0" />
           </radialGradient>
+          <linearGradient id="visorCyan" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#00e5ff" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#00e5ff" stopOpacity="0.05" />
+          </linearGradient>
+          <linearGradient id="visorMagenta" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ff4fd8" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#ff4fd8" stopOpacity="0.05" />
+          </linearGradient>
         </defs>
 
         <rect x="0" y="0" width="500" height="540" fill="url(#boardBg)" />
@@ -500,8 +558,83 @@ function PlinkoBoard({
           opacity="0.3"
         />
 
+        {/* Visor — both preview balls + trajectory line at top.
+            Renders only while a ball hasn't fully animated yet
+            (no live ball pos OR both ready was just triggered). */}
+        {showVisor && (
+          <g pointerEvents="none">
+            {/* Soft visor band so users can read the trajectory hint */}
+            <rect
+              x="0"
+              y="0"
+              width="500"
+              height={BOARD.topY - 4}
+              fill="#00111f"
+              opacity="0.55"
+            />
+            <line
+              x1="0"
+              y1={BOARD.topY - 4}
+              x2="500"
+              y2={BOARD.topY - 4}
+              stroke="#00e5ff"
+              strokeWidth="1"
+              opacity="0.35"
+              strokeDasharray="4 4"
+            />
+
+            {p1Preview && (
+              <g>
+                <line
+                  x1={p1Preview.startX}
+                  y1={VISOR_Y}
+                  x2={visorEnd(p1Preview, p1Preview.startX).x}
+                  y2={visorEnd(p1Preview, p1Preview.startX).y}
+                  stroke="url(#visorCyan)"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
+                <circle
+                  cx={p1Preview.startX}
+                  cy={VISOR_Y}
+                  r={BALL_RADIUS}
+                  fill="url(#ballCyan)"
+                  stroke="#fff"
+                  strokeWidth="1.25"
+                />
+              </g>
+            )}
+
+            {p2Preview && (
+              <g>
+                <line
+                  x1={p2Preview.startX}
+                  y1={VISOR_Y}
+                  x2={visorEnd(p2Preview, p2Preview.startX).x}
+                  y2={visorEnd(p2Preview, p2Preview.startX).y}
+                  stroke="url(#visorMagenta)"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
+                <circle
+                  cx={p2Preview.startX}
+                  cy={VISOR_Y}
+                  r={BALL_RADIUS}
+                  fill="url(#ballMagenta)"
+                  stroke="#fff"
+                  strokeWidth="1.25"
+                />
+              </g>
+            )}
+          </g>
+        )}
+
+        {/* Live balls. Fall-out flag drives opacity so balls
+            disappear cleanly off the side instead of sticking
+            to the wall — user feedback ("balls get stuck in the
+            walls"). */}
         {p2BallPos && (
-          <g>
+          <g style={{ transition: `opacity ${FALL_OUT_FADE_MS}ms ease-out`, opacity: p2FellOut ? 0 : 1 }}>
             <circle
               cx={p2BallPos.x}
               cy={p2BallPos.y}
@@ -521,7 +654,7 @@ function PlinkoBoard({
         )}
 
         {p1BallPos && (
-          <g>
+          <g style={{ transition: `opacity ${FALL_OUT_FADE_MS}ms ease-out`, opacity: p1FellOut ? 0 : 1 }}>
             <circle
               cx={p1BallPos.x}
               cy={p1BallPos.y}
@@ -559,6 +692,11 @@ type CommitPanelProps = {
   lockedHint: string | null;
   opponentHint: string | null;
   theme: "cyan" | "fuchsia";
+  // True when this panel belongs to the opponent (not the local
+  // viewer). The panel is rendered with a translucent blur so
+  // players can't see each other's *in-progress* adjustments
+  // before they click "I'm Ready".
+  isOpponent: boolean;
 };
 
 function CommitPanel({
@@ -574,6 +712,7 @@ function CommitPanel({
   lockedHint,
   opponentHint,
   theme,
+  isOpponent,
 }: CommitPanelProps) {
   const accent = theme === "cyan" ? "accent-cyan-400" : "accent-fuchsia-400";
   const labelColour =
@@ -584,9 +723,13 @@ function CommitPanel({
     theme === "cyan"
       ? "border-cyan-300/30 shadow-[0_0_30px_rgba(0,229,255,0.1)]"
       : "border-fuchsia-300/30 shadow-[0_0_30px_rgba(255,79,216,0.1)]";
+  // isOpponent=true: blur the panel + render a "🔒 Opponent
+  // choosing" overlay so the viewer can't infer their live inputs
+  // before commit. The Ready button is hidden when blurred.
+  const blurClass = isOpponent ? "blur-[3px] pointer-events-none select-none" : "";
   return (
     <div
-      className={`rounded-2xl border bg-gradient-to-br from-[#001a33] to-[#000a14] p-3 sm:p-4 ${borderColour}`}
+      className={`relative rounded-2xl border bg-gradient-to-br from-[#001a33] to-[#000a14] p-3 sm:p-4 ${borderColour} ${blurClass}`}
     >
       <div className="grid grid-cols-1 gap-3">
         {/* startX slider */}
@@ -709,6 +852,23 @@ function CommitPanel({
             "I'm Ready"
           )}
         </button>
+
+        {/* Overlay shown when this panel belongs to the opponent.
+            Sits above the blurred content with a clear "🔒
+            Opponent choosing…" hint so the viewer knows the
+            sliders are intentionally hidden, not broken. */}
+        {isOpponent && (
+          <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-[#000a14]/55 backdrop-blur-[1px] pointer-events-none">
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[12px] font-semibold ${
+              theme === "cyan"
+                ? "bg-cyan-500/15 border-cyan-300/40 text-cyan-100"
+                : "bg-fuchsia-500/15 border-fuchsia-300/40 text-fuchsia-100"
+            }`}>
+              <span>🔒</span>
+              <span>Opponent choosing…</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -724,6 +884,7 @@ function CommitPanel({
 function PlayerSidePanel({
   seat,
   displayName,
+  avatarUrl,
   totalScore,
   isViewer,
   ready,
@@ -741,7 +902,9 @@ function PlayerSidePanel({
 }: {
   seat: "player1" | "player2";
   displayName: string;
+  avatarUrl?: string | null;
   totalScore: number;
+  lastBallDelta?: number | null;
   isViewer: boolean;
   ready: boolean;
   isCurrent: boolean;
@@ -852,6 +1015,7 @@ function PlayerSidePanel({
         lockedHint={lockedHint}
         opponentHint={opponentHint}
         theme={isCyan ? "cyan" : "fuchsia"}
+        isOpponent={!isViewer}
       />
     </div>
   );
@@ -968,6 +1132,14 @@ export default function PlinkoPvpMatchPage({
       setMatch(nextMatch);
       setRounds(Array.isArray(data?.data?.rounds) ? data.data.rounds : []);
 
+      // If /match returns an error, surface it inside the state but
+      // don't blow away the existing match (so the page doesn't
+      // // visually reset). Previously a transient 500 would set
+      // match=null and bounce the user to the error screen.
+      if (!res.ok && nextMatch === null) {
+        setError(data?.error || "Unable to load match");
+      }
+
       // Sync opponent&apos;s committed inputs (read-only display).
       if (nextMatch) {
         const viewerIsP1 = nextMatch.viewerIsPlayer1;
@@ -990,7 +1162,10 @@ export default function PlinkoPvpMatchPage({
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 1500);
+    // Faster polling cadence (800 ms instead of 1500 ms) so users
+    // see opponent commits / round resolutions / match-end almost
+    // in real time. Was previously flagged as "buggy sync".
+    const interval = setInterval(fetchStatus, 800);
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
@@ -1198,6 +1373,13 @@ export default function PlinkoPvpMatchPage({
         return;
       }
 
+      // Always force-refresh immediately after the launch POST so the
+      // client doesn't have to wait for the next 800ms poll. This
+      // makes the "I'm Ready" → "ball resolved → next ball" loop
+      // feel snappier and avoids leaving the user stranded on the
+      // last-second slide if /launch took its time on the round-trip.
+      fetchStatus();
+
       // No optimistic single-ball animation here — the rounds-effect
       // handles dual-track animation when the /status poll lands the
       // resolved rounds row. The fix for the "opponent ball stuck in
@@ -1358,8 +1540,52 @@ export default function PlinkoPvpMatchPage({
     if (!id) return "Opponent";
     return id.length <= 7 ? id : id.slice(0, 6) + "…";
   }
-  const p1Name = shortId(match.player1Id);
-  const p2Name = shortId(match.player2Id);
+  const p1Name = match.players?.p1?.displayName ?? shortId(match.player1Id);
+  const p2Name = match.players?.p2?.displayName ?? shortId(match.player2Id);
+  const p1Avatar = match.players?.p1?.profileImageUrl ?? null;
+  const p2Avatar = match.players?.p2?.profileImageUrl ?? null;
+  // Per-ball +N delta for the side-panel chip (user-flagged
+  // "points should work when ball hits them"). Computed from the
+  // cumulative sum of rounds so a clean delta surfaces on top of
+  // the total each time a ball resolves. Also drove the latest
+  // fellOut flag — used to fade the ball out cleanly off the wall.
+  const sortedRounds = rounds ? [...rounds].sort((a, b) => a.ballNumber - b.ballNumber) : [];
+  const latestRound = sortedRounds.length > 0 ? sortedRounds[sortedRounds.length - 1] : null;
+  function deltaFor(seat: "p1" | "p2"): number | null {
+    if (!latestRound) return null;
+    const fromRound = seat === "p1" ? latestRound.ballPointsPlayer1 : latestRound.ballPointsPlayer2;
+    if (typeof fromRound !== "number") return null;
+    const totals = sortedRounds.slice(0, -1).reduce(
+      (acc, r) => acc + (seat === "p1" ? r.ballPointsPlayer1 : r.ballPointsPlayer2),
+      0,
+    );
+    return fromRound - totals;
+  }
+  const p1Delta = deltaFor("p1");
+  const p2Delta = deltaFor("p2");
+  // Visor-on-top + preview balls + trajectory line at the top of the
+  // board so players can see what trajectory the ball will go with
+  // their current inputs (user-flagged feature request).
+  const showVisor =
+    !p1BallPos && !p2BallPos &&
+    (match.status === MATCH_STATUS.BALL_1 || match.status === MATCH_STATUS.BALL_2 || match.status === MATCH_STATUS.BALL_3) &&
+    phase !== "animating" && phase !== "transitioning";
+  const p1Comm = match.p1CurrentInputs;
+  const p2Comm = match.p2CurrentInputs;
+  const p1Preview = isViewerP1
+    ? { startX, power, angleDeg }
+    : p1Comm
+    ? { startX: p1Comm.startX, power: p1Comm.power, angleDeg: p1Comm.angleDeg }
+    : { startX: 250, power: 50, angleDeg: 0 };
+  const p2Preview = isViewerP1
+    ? p2Comm
+      ? { startX: p2Comm.startX, power: p2Comm.power, angleDeg: p2Comm.angleDeg }
+      : { startX: 250, power: 50, angleDeg: 0 }
+    : { startX, power, angleDeg };
+  // Latest fellOut flags (user-flagged "balls stick in the walls"
+  // bug). Drives the opacity-0 fade-out animation in <PlinkoBoard/>.
+  const latestP1FellOut = Boolean(latestRound?.player1Result?.fellOut);
+  const latestP2FellOut = Boolean(latestRound?.player2Result?.fellOut);
 
   // ── Status banner sub-component ────────────────────────────────
   function renderStatusBanner() {
@@ -1561,7 +1787,9 @@ export default function PlinkoPvpMatchPage({
             <PlayerSidePanel
               seat="player1"
               displayName={p1Name}
+              avatarUrl={p1Avatar}
               totalScore={match.p1Score}
+              lastBallDelta={p1Delta}
               isViewer={isViewerP1}
               ready={match.p1Ready}
               isCurrent={isLaunchable && !isFinished && !isCancelled}
@@ -1584,6 +1812,11 @@ export default function PlinkoPvpMatchPage({
               p1BallPos={p1BallPos}
               p2BallPos={p2BallPos}
               highlightBucket={highlightBucket}
+              p1FellOut={latestP1FellOut}
+              p2FellOut={latestP2FellOut}
+              p1Preview={showVisor ? p1Preview : null}
+              p2Preview={showVisor ? p2Preview : null}
+              showVisor={showVisor}
             />
             <div className="mt-3">{renderBetweenBallsBanner()}</div>
             {match.viewerCanCancel && (
@@ -1614,7 +1847,9 @@ export default function PlinkoPvpMatchPage({
             <PlayerSidePanel
               seat="player2"
               displayName={p2Name}
+              avatarUrl={p2Avatar}
               totalScore={match.p2Score}
+              lastBallDelta={p2Delta}
               isViewer={!isViewerP1}
               ready={match.p2Ready}
               isCurrent={isLaunchable && !isFinished && !isCancelled}

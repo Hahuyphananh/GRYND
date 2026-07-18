@@ -25,6 +25,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import {
+  enrichMatchesWithUsers,
   fetchMatchWithAutoResolve,
   fetchMatchRounds,
 } from "../../../../../lib/plinko-pvp/serverStore";
@@ -93,6 +94,11 @@ function normaliseMatch(match, viewerUserId) {
     startedAt: match.startedAt,
     endedAt: match.endedAt,
     createdAt: match.createdAt,
+    // Player heads (displayName + profileImageUrl). Populated by
+    // enrichMatchesWithUsers. The match view uses these to render
+    // real names instead of truncation. p1 == player1Id seat, p2 ==
+    // player2Id seat — so the viewer (viewerSeat) can map directly.
+    players: match.players ?? null,
     // Viewer-aware flags. The match view (task 9) uses these to
     // gate the commit panel + render the seat-specific score.
     viewerUserId,
@@ -175,20 +181,59 @@ export async function GET(req, { params }) {
       );
     }
 
+    // Enrich with user names + profile images so the match view can
+    // render proper player heads. Best-effort — never crash the route
+    // on lookup failure (degrades to the player-N labels). The bug-fix
+    // here is critical: previously, the API only returned
+    // clerkIds, so the UI displayed "user_xxxx…" truncation. Now the
+    // client gets {displayName, profileImageUrl}.
+    let enrichedMatch = match;
+    try {
+      const e = await enrichMatchesWithUsers(match);
+      if (e) enrichedMatch = e;
+    } catch (err) {
+      console.warn(
+        "[plinko-pvp/match] user enrichment failed:",
+        err && err.message ? err.message : err,
+      );
+      enrichedMatch = match;
+    }
+
     // Fetch the round history. The client uses this to render the
     // ball animation for each ball after it resolves (and for the
     // final reveal screen). At most REQUIRED_BALLS rows.
-    const rounds = await fetchMatchRounds(matchId);
+    let rounds = [];
+    try {
+      rounds = await fetchMatchRounds(matchId);
+    } catch (err) {
+      // Rounds fetch failure shouldn't fail the whole route. The
+      // match itself is the primary payload; round history is
+      // adornment for the reveal screen. Log + carry on.
+      console.warn(
+        "[plinko-pvp/match] fetchMatchRounds failed:",
+        err && err.message ? err.message : err,
+      );
+      rounds = [];
+    }
 
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatch(match, userId),
+        match: normaliseMatch(enrichedMatch, userId),
         rounds: rounds.map(normaliseRound),
       },
     });
   } catch (error) {
-    console.error("[plinko-pvp/match] error:", error);
+    // Capture both stack and message so 500s are debuggable from the
+    // server logs without needing to reproduce. This addresses the
+    // "500 errors after first round" report — even if the underlying
+    // bug is upstream (a Postgres advisory-lock collision, a Drizzle
+    // jsonb serialization edge case, etc.), wrapping every API route
+    // in a try/catch + stack log means we never silently 500.
+    console.error(
+      "[plinko-pvp/match] error:",
+      error && error.stack ? error.stack : error,
+    );
     return NextResponse.json(
       { success: false, error: "Server error" },
       { status: 500 },

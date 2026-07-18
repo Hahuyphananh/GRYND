@@ -41,7 +41,10 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { launchBall } from "../../../../../../lib/plinko-pvp/serverStore";
+import {
+  enrichMatchesWithUsers,
+  launchBall,
+} from "../../../../../../lib/plinko-pvp/serverStore";
 import { broadcastMatchUpdate } from "../../../../../../lib/plinko-pvp/rooms";
 
 function normaliseMatch(match) {
@@ -66,6 +69,11 @@ function normaliseMatch(match) {
     startedAt: match.startedAt,
     endedAt: match.endedAt,
     createdAt: match.createdAt,
+    // Player heads (displayName + profileImageUrl). Populated by
+    // enrichMatchesWithUsers below — the match view uses these to
+    // render real names instead of truncation. Without this the
+    // match view shows "user_xxxx…" after each commit bounce.
+    players: match.players ?? null,
   };
 }
 
@@ -144,6 +152,20 @@ export async function POST(req, { params }) {
       );
     }
 
+    // Enrich with user names + profile images so the match view can
+    // render proper player heads. Best-effort — never crash the route.
+    let enrichedMatch = result.match;
+    try {
+      const e = await enrichMatchesWithUsers(result.match);
+      if (e) enrichedMatch = e;
+    } catch (err) {
+      console.warn(
+        "[plinko-pvp/match/launch] user enrichment failed:",
+        err && err.message ? err.message : err,
+      );
+      enrichedMatch = result.match;
+    }
+
     // Best-effort push to the match room so the opponent sees the
     // commit without waiting for the 1.5s poll. The helper internally
     // handles the no-op case when the realtime-server runs in a
@@ -157,7 +179,7 @@ export async function POST(req, { params }) {
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatch(result.match),
+        match: normaliseMatch(enrichedMatch),
         myResult: normaliseBallResult(result.myResult),
         p1Result: normaliseBallResult(result.p1Result),
         p2Result: normaliseBallResult(result.p2Result),
@@ -166,7 +188,15 @@ export async function POST(req, { params }) {
       },
     });
   } catch (error) {
-    console.error("[plinko-pvp/match/launch] error:", error);
+    // Capture stack so 500s after the first round are debuggable
+    // from server logs. Wrapping the entire launch flow means even
+    // if a downstream bug in resolveBall / forceBallAdvance throws,
+    // we surface the error instead of swallowing it. (Previously
+    // some errors bubbled up as opaque 500s with no log line.)
+    console.error(
+      "[plinko-pvp/match/launch] error:",
+      error && error.stack ? error.stack : error,
+    );
     return NextResponse.json(
       { success: false, error: "Server error" },
       { status: 500 },
