@@ -123,11 +123,17 @@ export async function enrichMatchesWithUsers(matchOrMatches) {
   }
   let rows = [];
   try {
+    // `users` exposes `name` + `profilePicture` (displayName /
+    // profileImageUrl only exist on chatMessages). Output keys stay
+    // aliased so summariseUsers + every consumer reading
+    // players.p1.displayName keeps working unchanged. Bug fix: the
+    // previous query referenced non-existent columns, breaking
+    // match-view names AND surfacing a 500 on the "I'm Ready" POST.
     rows = await db
       .select({
         clerkId: users.clerkId,
-        displayName: users.displayName,
-        profileImageUrl: users.profileImageUrl,
+        displayName: users.name,
+        profileImageUrl: users.profilePicture,
       })
       .from(users)
       .where(inArray(users.clerkId, Array.from(ids)));
