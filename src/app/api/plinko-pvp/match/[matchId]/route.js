@@ -72,12 +72,18 @@ function normaliseMatch(match, viewerUserId) {
     stakeAmount: Number(match.stakeAmount),
     status: match.status,
     currentBall: match.currentBall ?? 1,
+    // Cumulative TOTAL points for each player across the 3 balls.
+    // The match view surfaces this at the top of each player's
+    // name in the side panels so the running sum is always visible.
     p1Score: match.p1Score ?? 0,
     p2Score: match.p2Score ?? 0,
     // Per-ball "ball in flight" indicators. Null after the ball
     // resolves (the rounds row holds the canonical record).
     p1CurrentInputs: match.p1CurrentInputs || null,
     p2CurrentInputs: match.p2CurrentInputs || null,
+    // Per-seat "Ready" booleans. Both must be true for resolve.
+    p1Ready: Boolean(match.p1Ready),
+    p2Ready: Boolean(match.p2Ready),
     roundDeadline: match.roundDeadline,
     roundTimer: match.roundTimerSeconds ?? 20,
     winnerId: match.winnerId ?? null,
@@ -94,8 +100,8 @@ function normaliseMatch(match, viewerUserId) {
     viewerSeat,
     viewerIsPlayer1,
     // True when the match is in a launchable state AND the viewer
-    // hasn't already committed for the current ball. The commit
-    // panel's "Launch" button is enabled iff this is true.
+    // hasn't already committed/ready for the current ball. The
+    // commit panel's "Ready" button is enabled iff this is true.
     viewerCanLaunch:
       LAUNCHABLE_STATES.has(match.status) &&
       Boolean(viewerIsParticipant) &&

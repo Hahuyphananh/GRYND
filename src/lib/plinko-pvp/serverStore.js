@@ -54,7 +54,7 @@ import {
   computePayout,
   round2,
 } from "./constants";
-import { hashSeed, simulateBall } from "./physics";
+import { hashSeed, simulateBall, simulateDualBalls } from "./physics";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -570,9 +570,11 @@ async function resolveBall(tx, match) {
       ...match,
       p1Score: newScoreP1,
       p2Score: newScoreP2,
-      // Wipe per-ball inputs now that the ball is resolved.
+      // Wipe per-ball inputs + ready flags now that the ball is resolved.
       p1CurrentInputs: null,
       p2CurrentInputs: null,
+      p1Ready: false,
+      p2Ready: false,
     });
   }
 
@@ -585,9 +587,12 @@ async function resolveBall(tx, match) {
       currentBall: nextBall,
       p1Score: newScoreP1,
       p2Score: newScoreP2,
-      // Clear per-ball inputs so the next ball's commits start fresh.
+      // Clear per-ball inputs + ready flags so the next ball's commits
+      // start fresh.
       p1CurrentInputs: null,
       p2CurrentInputs: null,
+      p1Ready: false,
+      p2Ready: false,
       roundDeadline: nextDeadline,
     })
     .where(eq(plinkoPvpMatches.id, match.id))
@@ -602,13 +607,14 @@ async function resolveBall(tx, match) {
 // power, angleDeg) and the server:
 //   1. Validates the inputs
 //   2. Generates a deterministic seed via hashSeed
-//   3. Runs the physics simulator and stores the full result on
-//      `p{N}CurrentInputs` (startX/power/angleDeg + autoLaunched +
-//      seed + simulation result including path)
-//   4. If the OTHER player has also already committed for this
-//      ball, the ball resolves (resolveBall) — otherwise we just
-//      return the updated state and the opponent's next /status
-//      poll will pick up the commit.
+//   3. Runs the physics simulator (single-ball) and stores the full
+//      result on `p{N}CurrentInputs` (startX/power/angleDeg +
+//      autoLaunched + seed + simulation result including path)
+//   4. Flips p{N}Ready = true on the same row
+//   5. If BOTH p1Ready AND p2Ready (the new "both-clicked-Ready"
+//      gate), RUNEVERYTHING with simulateDualBalls so the two balls
+//      can knock each other off course, overwrite both p{N}CurrentInputs
+//      with the collision-aware paths, and call resolveBall.
 //
 // One-shot lock-in: once a player has committed for a given ball,
 // resubmitting returns 409. This matches roulette-pvp's anti-cheat
@@ -647,6 +653,7 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
     const seat = seatForUser(match, userId); // "player1" | "player2"
     const seatNumber = seat === "player1" ? 1 : 2;
     const currentInputsCol = seat === "player1" ? "p1CurrentInputs" : "p2CurrentInputs";
+    const readyCol = seat === "player1" ? "p1Ready" : "p2Ready";
 
     // One-shot lock-in: if the player has already committed for this
     // ball, reject. The client UI's "launched" flag is mirrored here
@@ -665,10 +672,13 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
     const ballNumber = Number(match.currentBall) || 1;
     const seed = seedForBall(match.id, ballNumber, seatNumber);
 
-    // Pipe the inputs through the deterministic physics simulator.
-    // The result is cached on the match row so the client can fetch
-    // it after the ball resolves (and the client already has the
-    // result from the response here for its own animation).
+    // Pipe the inputs through the deterministic single-ball
+    // simulator. This gives the caller an immediate view of THEIR
+    // ball animation; if the opponent hasn't readied up yet we
+    // store this pre-computation so /status can surface it too.
+    // When BOTH are ready we'll re-simulate as a pair via
+    // simulateDualBalls and overwrite the single-ball result with
+    // the collision-aware path.
     const result = simulateBall({
       startX: validation.startX,
       power: validation.power,
@@ -676,15 +686,7 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
       seed,
     });
 
-    // Persist the commit. The cached `p{N}CurrentInputs` payload
-    // includes both the raw inputs (for the rounds-row history) and
-    // the simulation summary (for the match view's "ball in flight"
-    // indicator). The full result — including the path — is also
-    // returned in the response so the caller can render their own
-    // ball animation immediately, without waiting for a /status
-    // round-trip. The rounds row is the canonical record of the
-    // ball's full simulation (with path) for the opponent's view
-    // after resolve.
+    // Persist the commit + flip the per-seat ready flag.
     const payload = {
       startX: validation.startX,
       power: validation.power,
@@ -703,7 +705,7 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
 
     const [updated] = await tx
       .update(plinkoPvpMatches)
-      .set({ [currentInputsCol]: payload })
+      .set({ [currentInputsCol]: payload, [readyCol]: true })
       .where(
         and(
           eq(plinkoPvpMatches.id, matchId),
@@ -730,29 +732,92 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
       return { match: refreshed, raced: true };
     }
 
-    // If the OTHER player has already committed, resolve the ball.
-    // Otherwise return the updated state and the opponent's next
-    // /status poll will fire the resolve.
-    const otherCol =
-      currentInputsCol === "p1CurrentInputs"
-        ? "p2CurrentInputs"
-        : "p1CurrentInputs";
-    const bothIn = updated.p1CurrentInputs && updated.p2CurrentInputs;
+    // Both seats are in + both readied up → re-simulate as a pair
+    // so balls can interact, overwrite results on the match row,
+    // then resolve the ball immediately. (When only one seat is
+    // ready we keep the single-ball result and wait for /status.)
+    const bothReady = Boolean(updated.p1Ready && updated.p2Ready);
+    let resolvedRow = updated;
 
-    let resolved = updated;
-    if (bothIn) {
-      resolved = await resolveBall(tx, updated);
+    if (bothReady) {
+      // Re-simulate with collision so both balls reflect each other.
+      const p1Inputs = updated.p1CurrentInputs;
+      const p2Inputs = updated.p2CurrentInputs;
+      const dual = simulateDualBalls(
+        {
+          startX: p1Inputs.startX,
+          power: p1Inputs.power,
+          angleDeg: p1Inputs.angleDeg,
+          seed: p1Inputs.seed,
+        },
+        {
+          startX: p2Inputs.startX,
+          power: p2Inputs.power,
+          angleDeg: p2Inputs.angleDeg,
+          seed: p2Inputs.seed,
+        },
+      );
+
+      // Sanity-check the dual-sim points individually before
+      // overwriting the cached results.
+      assertBallPoints("p1", ballNumber, dual.result1.points || 0);
+      assertBallPoints("p2", ballNumber, dual.result2.points || 0);
+
+      // Overwrite the per-seat cached results with the
+      // collision-aware ones. The single-ball pre-compute from
+      // above is discarded — simulateDualBalls is the canonical
+      // trajectory once both seats are in.
+      const newP1 = {
+        ...p1Inputs,
+        result: {
+          path: dual.result1.path,
+          fellOut: dual.result1.fellOut,
+          finalX: dual.result1.finalX,
+          finalY: dual.result1.finalY,
+          bucketIndex: dual.result1.bucketIndex,
+          points: dual.result1.points,
+        },
+      };
+      const newP2 = {
+        ...p2Inputs,
+        result: {
+          path: dual.result2.path,
+          fellOut: dual.result2.fellOut,
+          finalX: dual.result2.finalX,
+          finalY: dual.result2.finalY,
+          bucketIndex: dual.result2.bucketIndex,
+          points: dual.result2.points,
+        },
+      };
+
+      const [dualSaved] = await tx
+        .update(plinkoPvpMatches)
+        .set({ p1CurrentInputs: newP1, p2CurrentInputs: newP2 })
+        .where(eq(plinkoPvpMatches.id, matchId))
+        .returning();
+
+      resolvedRow = dualSaved || updated;
+      resolvedRow = await resolveBall(tx, resolvedRow);
     }
 
-    // `result` is the caller's own simulation result (with path) so
-    // the client can render the ball animation immediately without
-    // a second API call.
+    // Determine if THIS POST was the one that flipped the round
+    // from "not-yet-resolved" to "resolved". Use the resolved row's
+    // p1CurrentInputs / round_round as the source of truth.
+    const wasJustResolved = bothReady;
     return {
-      match: resolved,
-      p1Result: updated.p1CurrentInputs?.result ?? null,
-      p2Result: updated.p2CurrentInputs?.result ?? null,
-      myResult: result,
-      justResolved: bothIn,
+      match: resolvedRow,
+      p1Result: resolvedRow.p1CurrentInputs?.result ?? null,
+      p2Result: resolvedRow.p2CurrentInputs?.result ?? null,
+      // myResult is the caller's view of their own ball. When both
+      // readied up we serve the collision-aware result for the
+      // caller's seat; otherwise the pre-compute from
+      // simulateBall above (no collision detected yet).
+      myResult: wasJustResolved
+        ? seat === "player1"
+          ? resolvedRow.p1CurrentInputs?.result ?? result
+          : resolvedRow.p2CurrentInputs?.result ?? result
+        : result,
+      justResolved: wasJustResolved,
     };
   });
 }
@@ -798,6 +863,7 @@ async function forceBallAdvance(tx, match) {
         points: result.points,
       },
     };
+    updates.p1Ready = true;
   }
 
   // p2 missing → auto-launch.
@@ -820,6 +886,7 @@ async function forceBallAdvance(tx, match) {
         points: result.points,
       },
     };
+    updates.p2Ready = true;
   }
 
   // Conditional UPDATE: only fire if the row is still in the same
@@ -842,9 +909,68 @@ async function forceBallAdvance(tx, match) {
   const effective = updated || match;
 
   // Both seats are now guaranteed to be in (we just filled any
-  // gaps), so resolve the ball.
+  // gaps). To honour the user spec ("balls should knock each other
+  // out when connecting together") we re-run simulateDualBalls to
+  // recompute both paths with ball-ball collision physics, even if
+  // one or both seats were AFK-launched. This overwrites whatever
+  // single-ball paths were pre-computed (manually or via autoLaunch)
+  // with the collision-aware canonical paths that the rounds row
+  // persists. launchBall already does this on the manual-both-ready
+  // path; we mirror the behaviour here so AFK balls still knock.
   if (effective.p1CurrentInputs && effective.p2CurrentInputs) {
-    return await resolveBall(tx, effective);
+    const p1 = effective.p1CurrentInputs;
+    const p2 = effective.p2CurrentInputs;
+    const dual = simulateDualBalls(
+      {
+        startX: p1.startX,
+        power: p1.power,
+        angleDeg: p1.angleDeg,
+        seed: p1.seed,
+      },
+      {
+        startX: p2.startX,
+        power: p2.power,
+        angleDeg: p2.angleDeg,
+        seed: p2.seed,
+      },
+    );
+    // Sanity-check before persisting (mirrors launchBall).
+    assertBallPoints("p1", ballNumber, dual.result1.points || 0);
+    assertBallPoints("p2", ballNumber, dual.result2.points || 0);
+
+    const dualPayload = {
+      p1CurrentInputs: {
+        ...p1,
+        result: {
+          path: dual.result1.path,
+          fellOut: dual.result1.fellOut,
+          finalX: dual.result1.finalX,
+          finalY: dual.result1.finalY,
+          bucketIndex: dual.result1.bucketIndex,
+          points: dual.result1.points,
+        },
+      },
+      p2CurrentInputs: {
+        ...p2,
+        result: {
+          path: dual.result2.path,
+          fellOut: dual.result2.fellOut,
+          finalX: dual.result2.finalX,
+          finalY: dual.result2.finalY,
+          bucketIndex: dual.result2.bucketIndex,
+          points: dual.result2.points,
+        },
+      },
+    };
+
+    const [dualSaved] = await tx
+      .update(plinkoPvpMatches)
+      .set(dualPayload)
+      .where(eq(plinkoPvpMatches.id, match.id))
+      .returning();
+
+    const withDual = dualSaved || effective;
+    return await resolveBall(tx, withDual);
   }
   return effective;
 }
