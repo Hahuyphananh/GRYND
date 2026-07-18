@@ -2011,6 +2011,15 @@ export const plinkoPvpMatches = pgTable(
     // so the column doubles as a "submitted" boolean.
     p1CurrentInputs: jsonb("p1_current_inputs").default(sql`NULL`),
     p2CurrentInputs: jsonb("p2_current_inputs").default(sql`NULL`),
+    // Per-seat "Ready" booleans. Each player clicks Ready in the
+    // commit panel; when both are true the ball resolves immediately
+    // (server runs `simulateDualBalls` so balls can ball-collide).
+    // Reset to false when the match advances to the next ball. The
+    // AFK auto-launch path also flips both flags true so resolve
+    // fires on the next /status tick — the 20-second timer still
+    // acts as a back-stop for players who never click Ready.
+    p1Ready: boolean("p1_ready").notNull().default(false),
+    p2Ready: boolean("p2_ready").notNull().default(false),
     // Per-ball decision-window deadline. The match-flow constant:
     // `round_deadline` is computed as `now() + round_timer_seconds`
     // whenever a new ball window opens. Surfaced as a column so

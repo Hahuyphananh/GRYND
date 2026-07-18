@@ -37,6 +37,8 @@ import {
   PEG_RADIUS,
   BALL_RADIUS,
   PEG_CENTER_X,
+  BALL_COLLISION_RESTITUTION,
+  BALL_COLLISION_MAX_CORRECTION_PX,
 } from "./constants.js";
 
 // Re-export the public constants so physics.js consumers (e.g. the server
@@ -62,6 +64,8 @@ export {
   PEG_RADIUS,
   BALL_RADIUS,
   PEG_CENTER_X,
+  BALL_COLLISION_RESTITUTION,
+  BALL_COLLISION_MAX_CORRECTION_PX,
 };
 
 // y after which side exits count as fall-out. Internal to the simulator —
@@ -406,4 +410,332 @@ export function hashSeed(input) {
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
   h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
   return (h2 >>> 0) ^ (h1 >>> 0);
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Dual-ball simulator — runs both balls in lockstep, with elastic
+// ball-ball collision so the two balls can knock each other off course.
+// ──────────────────────────────────────────────────────────────────────────
+//
+// Why this exists:
+//   The user explicitly asked for ball-on-ball physics so the two balls
+//   don't "slide past" each other in mid-air. Simulating both balls in
+//   one loop avoids the impossible post-hoc splice (Plinko's peg layout
+//   is dense, so a single mid-air velocity swap changes the whole
+//   downstream trajectory).
+//
+// Physics model simplifications (documented for transparency):
+//   • Equal mass — both balls have BALL_RADIUS so impulse = -(1+e)*vN/2.
+//   • Per-ball PRNG — ball 1 jitter uses seed1, ball 2 jitter uses seed2.
+//     This preserves the determinism contract: same (matchId, ballNumber,
+//     seat) inputs always produce the same path, with or without a partner.
+//   • Position correction is CAPPED per-substep (BALL_COLLISION_MAX_CORRECTION_PX)
+//     so a corner-cascade near a peg cluster can't shove a ball through
+//     the board wall in a single tick.
+//   • Per-ball fall-out is independent: if ball 1 flies off the side,
+//     ball 2 keeps simulating. (The dual-track animation is easier to read
+//     when both balls complete their frames, and the server rounds-row
+//     already records per-ball final positions.)
+//
+// Termination:
+//   • A ball reaching y >= bucketY is finalised using its CURRENT x at
+//     that substep (no extra adjustment).
+//   • A ball that has fallen out of the side gutters freezes (its position
+//     no longer advances and it stops checking peg/ball collisions).
+//   • MAX_FRAMES is the safety cap (matches simulateBall).
+
+/**
+ * Finalise a single dual-ball trajectory so it conforms to the same shape
+ * `simulateBall` returns — used to squish the lockstep output back into
+ * the existing rounds-row payload shape.
+ */
+function finalizeBall({ path, finalX, finalY, bucketIndex, fellOut }, {
+  exitReason,
+}) {
+  // Append / replace last entry with the authoritative landing position.
+  const last = path[path.length - 1];
+  if (
+    last &&
+    Math.abs(last.x - finalX) < 0.01 &&
+    Math.abs(last.y - finalY) < 0.01
+  ) {
+    path[path.length - 1] = { x: finalX, y: finalY };
+  } else {
+    path.push({ x: finalX, y: finalY });
+  }
+  // Full-path dedup to keep the animation payload small.
+  const deduped = [path[0]];
+  for (let i = 1; i < path.length; i++) {
+    const prev = deduped[deduped.length - 1];
+    const curr = path[i];
+    if (
+      Math.abs(prev.x - curr.x) > PATH_DEDUP_TOLERANCE ||
+      Math.abs(prev.y - curr.y) > PATH_DEDUP_TOLERANCE
+    ) {
+      deduped.push(curr);
+    }
+  }
+  path = deduped;
+  path[path.length - 1] = { x: finalX, y: finalY };
+  const points = fellOut
+    ? 0
+    : bucketIndex >= 0
+    ? BUCKETS[bucketIndex].basePoints
+    : 0;
+  return {
+    path,
+    fellOut,
+    finalX,
+    finalY,
+    bucketIndex,
+    points,
+    // extras for tests (mirror simulateBall)
+    exitReason,
+  };
+}
+
+/**
+ * Resolve peg collisions for a single ball against the static peg grid.
+ * Mutates the ball's x/y/vx/vy and pushes onto `path` when a recordable
+ * bounce is detected.
+ */
+function resolvePegCollisions(ball, substepCount, minDist, minDistSq) {
+  for (let i = 0; i < PEGS.length; i++) {
+    const peg = PEGS[i];
+    const dx = ball.x - peg.x;
+    const dy = ball.y - peg.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < minDistSq && distSq > 0.0001) {
+      if (substepCount % PATH_DOWNSAMPLE === 0) {
+        ball.path.push({ x: ball.x, y: ball.y });
+      }
+      const dist = Math.sqrt(distSq);
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const bounced = bounce(ball.vx, ball.vy, nx, ny, ball.rand);
+      ball.vx = bounced.vx;
+      ball.vy = bounced.vy;
+      ball.x = peg.x + nx * minDist;
+      ball.y = peg.y + ny * minDist;
+    }
+  }
+}
+
+/**
+ * Simulate two balls in lockstep with elastic ball-ball collision.
+ * Both balls share the same substep count per frame so they advance
+ * equal wall-clock distance — no drift between the two tracks.
+ *
+ * @param {object} p1 - { startX, power, angleDeg, seed }
+ * @param {object} p2 - { startX, power, angleDeg, seed }
+ * @returns {{
+ *   result1: { path, fellOut, finalX, finalY, bucketIndex, points, exitReason },
+ *   result2: { path, fellOut, finalX, finalY, bucketIndex, points, exitReason },
+ * }}
+ */
+export function simulateDualBalls(p1, p2) {
+  // Validate both inputs identically to simulateBall. Throw early so
+  // server-store bugs surface in dev/test.
+  assertInRange("p1.startX", p1.startX, 0, BOARD.width);
+  assertInRange("p1.power", p1.power, 0, 100);
+  assertInRange("p1.angleDeg", p1.angleDeg, -ANGLE_LIMIT_DEG, ANGLE_LIMIT_DEG);
+  assertInRange("p1.seed", p1.seed, 0, Number.MAX_SAFE_INTEGER);
+  assertInRange("p2.startX", p2.startX, 0, BOARD.width);
+  assertInRange("p2.power", p2.power, 0, 100);
+  assertInRange("p2.angleDeg", p2.angleDeg, -ANGLE_LIMIT_DEG, ANGLE_LIMIT_DEG);
+  assertInRange("p2.seed", p2.seed, 0, Number.MAX_SAFE_INTEGER);
+
+  // Ball state objects — mutated in-place by the substep loop. Mirrors
+  // simulateBall's locals, lifted to object fields for dual readability.
+  const angleRad1 = (p1.angleDeg * Math.PI) / 180;
+  const angleRad2 = (p2.angleDeg * Math.PI) / 180;
+
+  const ball1 = {
+    x: p1.startX,
+    y: BOARD.topY,
+    vx: p1.power * POWER_SCALE * Math.sin(angleRad1),
+    vy: p1.power * POWER_SCALE * Math.cos(angleRad1),
+    rand: mulberry32(p1.seed),
+    active: true,
+    fellOut: false,
+    gatePassed: false,
+    finalX: p1.startX,
+    finalY: BOARD.topY,
+    bucketIndex: -1,
+    path: [{ x: p1.startX, y: BOARD.topY }],
+    substepCount: 0,
+  };
+  const ball2 = {
+    x: p2.startX,
+    y: BOARD.topY,
+    vx: p2.power * POWER_SCALE * Math.sin(angleRad2),
+    vy: p2.power * POWER_SCALE * Math.cos(angleRad2),
+    rand: mulberry32(p2.seed),
+    active: true,
+    fellOut: false,
+    gatePassed: false,
+    finalX: p2.startX,
+    finalY: BOARD.topY,
+    bucketIndex: -1,
+    path: [{ x: p2.startX, y: BOARD.topY }],
+    substepCount: 0,
+  };
+
+  const minDist = BALL_RADIUS + PEG_RADIUS;
+  const minDistSq = minDist * minDist;
+  // Ball-ball collision threshold: when the two centers are within
+  // (2 * BALL_RADIUS) of each other along the contact normal.
+  const ballMinDist = BALL_RADIUS * 2;
+  const ballMinDistSq = ballMinDist * ballMinDist;
+
+  // Outer loop. Both balls terminate when they hit the bucket row
+  // OR fall out, OR we hit MAX_FRAMES. If ball1 lands early ball2
+  // keeps simulating so its own path is recorded (useful when
+  // ball1 falls out and ball2 still gets a 100-pt safe-bucket).
+  for (let f = 0; f < MAX_FRAMES; f++) {
+    const speed1 = ball1.active
+      ? Math.max(Math.abs(ball1.vx), Math.abs(ball1.vy))
+      : 0;
+    const speed2 = ball2.active
+      ? Math.max(Math.abs(ball2.vx), Math.abs(ball2.vy))
+      : 0;
+    const maxSpeed = Math.max(speed1, speed2, 0.001);
+    const substeps = Math.max(1, Math.ceil(maxSpeed / SUBSTEP_MAX_PX));
+    const subGravity = GRAVITY / substeps;
+    const subFriction = Math.pow(FRICTION, 1 / substeps);
+
+    for (let s = 0; s < substeps; s++) {
+      // 1. Integrate both balls. Inactive (fell-out) balls are skipped.
+      if (ball1.active) {
+        ball1.vy += subGravity;
+        ball1.vx *= subFriction;
+        ball1.vy *= subFriction;
+        ball1.x += ball1.vx / substeps;
+        ball1.y += ball1.vy / substeps;
+        ball1.substepCount++;
+      }
+      if (ball2.active) {
+        ball2.vy += subGravity;
+        ball2.vx *= subFriction;
+        ball2.vy *= subFriction;
+        ball2.x += ball2.vx / substeps;
+        ball2.y += ball2.vy / substeps;
+        ball2.substepCount++;
+      }
+
+      // 2. Per-ball fall-out detection (only after the top peg row).
+      if (ball1.active && !ball1.gatePassed && ball1.y > FALL_OUT_GATE_Y) {
+        ball1.gatePassed = true;
+      }
+      if (ball1.active && ball1.gatePassed &&
+          (ball1.x <= 0 || ball1.x >= BOARD.width)) {
+        ball1.fellOut = true;
+        ball1.finalX = ball1.x;
+        ball1.finalY = ball1.y;
+        ball1.active = false;
+      }
+      if (ball2.active && !ball2.gatePassed && ball2.y > FALL_OUT_GATE_Y) {
+        ball2.gatePassed = true;
+      }
+      if (ball2.active && ball2.gatePassed &&
+          (ball2.x <= 0 || ball2.x >= BOARD.width)) {
+        ball2.fellOut = true;
+        ball2.finalX = ball2.x;
+        ball2.finalY = ball2.y;
+        ball2.active = false;
+      }
+
+      // 3. Peg collisions (peg first, ball-on-ball second — order
+      //    matters because the ball-ball impulse depends on a stable
+      //    post-peg position estimate).
+      if (ball1.active) resolvePegCollisions(ball1, ball1.substepCount, minDist, minDistSq);
+      if (ball2.active) resolvePegCollisions(ball2, ball2.substepCount, minDist, minDistSq);
+
+      // 4. Ball-ball elastic collision. Only when BOTH balls are
+      //    active (an already-fell-out ball can't be kicked).
+      if (ball1.active && ball2.active) {
+        const dx = ball2.x - ball1.x;
+        const dy = ball2.y - ball1.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < ballMinDistSq && distSq > 0.0001) {
+          const dist = Math.sqrt(distSq);
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const vrx = ball2.vx - ball1.vx;
+          const vry = ball2.vy - ball1.vy;
+          const vDot = vrx * nx + vry * ny;
+          // Skip if the balls are separating (ny > 0 means moving
+          // apart, no impulse needed — prevents jitter).
+          if (vDot < 0) {
+            const impulse =
+              (-(1 + BALL_COLLISION_RESTITUTION) * vDot) / 2;
+            // Equal-mass elastic: ball1 receives -impulse along n,
+            // ball2 receives +impulse along n.
+            ball1.vx -= impulse * nx;
+            ball1.vy -= impulse * ny;
+            ball2.vx += impulse * nx;
+            ball2.vy += impulse * ny;
+            // Capped position correction so a stacked-collision doesn't
+            // shove a ball 20px in a single substep.
+            const overlap = ballMinDist - dist;
+            const correction = Math.min(
+              overlap / 2,
+              BALL_COLLISION_MAX_CORRECTION_PX,
+            );
+            ball1.x -= nx * correction;
+            ball1.y -= ny * correction;
+            ball2.x += nx * correction;
+            ball2.y += ny * correction;
+          }
+        }
+      }
+
+      // 5. Bucket arrival for either ball — record final spot and
+      //    freeze that ball. The other ball keeps simulating.
+      if (ball1.active && ball1.y >= BOARD.bucketY) {
+        ball1.finalX = ball1.x;
+        ball1.finalY = BOARD.bucketY;
+        ball1.bucketIndex = classifyBucket(ball1.finalX);
+        ball1.active = false;
+      }
+      if (ball2.active && ball2.y >= BOARD.bucketY) {
+        ball2.finalX = ball2.x;
+        ball2.finalY = BOARD.bucketY;
+        ball2.bucketIndex = classifyBucket(ball2.finalX);
+        ball2.active = false;
+      }
+
+      // 6. Record downsampled path entries (post-collision positions
+      //    so the client renders the post-bump motion correctly).
+      if (ball1.active &&
+          ball1.substepCount % PATH_DOWNSAMPLE === 0) {
+        ball1.path.push({ x: ball1.x, y: ball1.y });
+      }
+      if (ball2.active &&
+          ball2.substepCount % PATH_DOWNSAMPLE === 0) {
+        ball2.path.push({ x: ball2.x, y: ball2.y });
+      }
+
+      // Short-circuit: both balls are finalised.
+      if (!ball1.active && !ball2.active) break;
+    }
+    if (!ball1.active && !ball2.active) break;
+  }
+
+  // MAX_FRAMES safety net — classify any ball that didn't terminate
+  // cleanly but is at/under the bucket row.
+  for (const b of [ball1, ball2]) {
+    if (b.bucketIndex === -1 && !b.fellOut) {
+      b.finalX = b.x;
+      b.finalY = b.y;
+      if (b.y >= BOARD.bucketY) {
+        b.bucketIndex = classifyBucket(b.finalX);
+      }
+    }
+  }
+
+  return {
+    result1: finalizeBall(ball1, { exitReason: ball1.fellOut ? "fellOut" : ball1.bucketIndex >= 0 ? "bucket" : "maxFrames" }),
+    result2: finalizeBall(ball2, { exitReason: ball2.fellOut ? "fellOut" : ball2.bucketIndex >= 0 ? "bucket" : "maxFrames" }),
+  };
 }

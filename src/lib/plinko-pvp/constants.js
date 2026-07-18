@@ -80,6 +80,13 @@ export const SUBSTEP_MAX_PX = 5;                          // max motion per subs
 export const PATH_DOWNSAMPLE = 2;                         // record every Nth substep
 export const PATH_DEDUP_TOLERANCE = 1.0;                  // px — drop consecutive points closer than this
 
+// Ball-ball collision for the Dual simulation. Lower than peg restitution
+// because two soft balls knocking each other lose more energy than ball-on-
+// peg. Capped position correction prevents numerical explosions in dense
+// peg clusters.
+export const BALL_COLLISION_RESTITUTION = 0.55;           // energy retention on ball-ball bump
+export const BALL_COLLISION_MAX_CORRECTION_PX = 0.5;      // per-substep position fix cap
+
 // ──────────────────────────────────────────────────────────────────────────
 // Status state machine
 // ──────────────────────────────────────────────────────────────────────────
