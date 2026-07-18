@@ -34,7 +34,7 @@
 // module, since no other page in the codebase animates a
 // physics-simulated trajectory.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -760,13 +760,48 @@ function CommitPanel({
 }
 
 // ── Page component ───────────────────────────────────────────────────
+//
+// BUG-FIX ("both players stuck in loading mode when starting a game"):
+// Next.js 15+/16 makes the dynamic `params` prop a Promise, not a plain
+// object. The original page declared `params: { matchId: string }` and did
+// `Number(params.matchId)`, which silently became `NaN` (Promises don't
+// have a `matchId` accessor). The `fetchStatus` guard then early-returned
+// *before* entering the try block, so the `finally { setLoading(false) }`
+// never fired — both players were permanently pinned to the
+// "Loading match…" spinner. Mirror the fix from
+// src/app/casino/mines-pvp/[matchId]/page.tsx: unwrap `params` with
+// React's `use()`, derive a nullable `matchId` + `isValidMatchId`
+// guard, and tighten the `fetchStatus` early-return paths so every one
+// of them still flips `loading=false` (route the error to the existing
+// "Match not found" / "Invalid match link" panel).
 
 export default function PlinkoPvpMatchPage({
   params,
 }: {
-  params: { matchId: string };
+  params: Promise<{ matchId: string }>;
 }) {
-  const matchId = Number(params.matchId);
+  // Memoize a stable Promise wrapping the raw `params` prop so `use()`
+  // is callable unconditionally on every render (React rules-of-hooks).
+  // `Promise.resolve(p)` flattens when `params` is itself a thenable;
+  // wraps a plain object on older Next.js so the call is safe there too.
+  // The grandparent <Suspense> boundary (Next.js default for dynamic
+  // segments) covers the brief suspend.
+  const paramsPromise = useMemo(
+    () => Promise.resolve(params),
+    [params],
+  );
+  const resolvedParams = use(paramsPromise);
+  const rawMatchId =
+    resolvedParams && typeof resolvedParams === "object"
+      ? resolvedParams.matchId
+      : undefined;
+  const numericMatchId = Number(rawMatchId);
+  // `matchId` is `null` until params resolve and on malformed URLs
+  // (e.g. /casino/plinko/not-a-number). `isValidMatchId` gates every
+  // API call below; the render block also short-circuits to the
+  // "Invalid match link" panel on null.
+  const matchId = Number.isFinite(numericMatchId) ? numericMatchId : null;
+  const isValidMatchId = matchId !== null;
   const { isSignedIn, user } = useUser();
   const router = useRouter();
   const posthog = usePostHog();
@@ -843,7 +878,34 @@ export default function PlinkoPvpMatchPage({
 
   // ── Status fetch ─────────────────────────────────────────────────
   const fetchStatus = useCallback(async () => {
-    if (!isSignedIn || !Number.isFinite(matchId)) return;
+    // BUG-FIX: the original guard was
+    // `if (!isSignedIn || !Number.isFinite(matchId)) return;` — that
+    // early `return` skipped the `finally { setLoading(false) }`, so
+    // any page mount where `isSignedIn` was undefined (Clerk still
+    // warming up) or `matchId` wasn't a finite number left the user
+    // pinned to the "Loading match…" spinner. We now branch + flip
+    // `loading=false` so the existing `if (!match)` render path
+    // renders the "Invalid match link" / "Match not found" panel.
+    // Clerk reports `isSignedIn` only AFTER it loads; before that the
+    // value is `undefined`, which would have triggered the early
+    // return below and dumped the user onto the "Match not found"
+    // panel for the ~hundreds of ms Clerk takes to decide. We now
+    // distinguish "loaded + signed out" (real sign-out → error) from
+    // "loaded + signed in" (poll normally). While Clerk is still
+    // deciding we hold `loading=true` so the spinner stays put.
+    if (isSignedIn === false) {
+      setLoading(false);
+      setError("You must be signed in to view this match.");
+      return;
+    }
+    if (isSignedIn !== true) {
+      return;
+    }
+    if (!isValidMatchId) {
+      setLoading(false);
+      setError("Invalid match link.");
+      return;
+    }
     try {
       const res = await fetch(`/api/plinko-pvp/match/${matchId}`, {
         cache: "no-store",
@@ -854,15 +916,24 @@ export default function PlinkoPvpMatchPage({
         setError(data?.error || "Unable to load match");
         return;
       }
-      setMatch(data.data.match || null);
-      setRounds(data.data.rounds || []);
-      setError(null);
+      // Defensive null-check: API contract says `data.data.match` is
+      // the match row OR null; never undefined. Guard against malformed
+      // frames so we always end up on a defined UI state instead of an
+      // unhandled object.
+      const nextMatch =
+        data?.data?.match && typeof data.data.match === "object"
+          ? data.data.match
+          : null;
+      setMatch(nextMatch);
+      setRounds(Array.isArray(data?.data?.rounds) ? data.data.rounds : []);
+      // A successful response always wins over any stale tick error.
+      setError(nextMatch ? null : "Match not found.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
     } finally {
       setLoading(false);
     }
-  }, [isSignedIn, matchId]);
+  }, [isSignedIn, isValidMatchId, matchId]);
 
   useEffect(() => {
     fetchStatus();
@@ -871,8 +942,12 @@ export default function PlinkoPvpMatchPage({
   }, [fetchStatus]);
 
   // ── Socket subscription ──────────────────────────────────────────
+  // BUG-FIX: don't try to subscribe until params resolved into a real
+  // matchId — `plinkoPvpMatchRoom(null)` would emit junk into the
+  // "plinko-pvp:match:null" room and pollute other clients.
   useEffect(() => {
     if (!socket) return;
+    if (!isValidMatchId) return;
     const refresh = () => fetchStatus();
     const roomId = plinkoPvpMatchRoom(matchId);
     socket.emit("join_room", { roomId });
@@ -881,7 +956,7 @@ export default function PlinkoPvpMatchPage({
       socket.emit("leave_room", { roomId });
       socket.off(PLINKO_PVP_MATCH_UPDATED, refresh);
     };
-  }, [socket, matchId, fetchStatus]);
+  }, [socket, matchId, isValidMatchId, fetchStatus]);
 
   // ── Countdown tick ───────────────────────────────────────────────
   useEffect(() => {
@@ -1063,7 +1138,11 @@ export default function PlinkoPvpMatchPage({
 
   // ── Launch handler ──────────────────────────────────────────────
   const handleLaunch = useCallback(async () => {
-    if (busy || !match) return;
+    // BUG-FIX: also bail out if matchId never resolved — without this
+    // guard the `/api/plinko-pvp/match/${null}/launch` URL would 404
+    // and leave `loading=true` if the user is somehow mid-mount when
+    // params are still resolving.
+    if (busy || !match || !isValidMatchId) return;
     if (!match.viewerCanLaunch) return;
     setBusy(true);
     setError(null);
@@ -1101,7 +1180,7 @@ export default function PlinkoPvpMatchPage({
       });
 
       posthog?.capture("plinko_pvp_ball_launched", {
-        match_id: matchId,
+        match_id: match?.id ?? matchId ?? -1,
         ball_number: match.currentBall,
         seat: match.viewerSeat,
         start_x: Math.round(startX),
@@ -1195,7 +1274,9 @@ export default function PlinkoPvpMatchPage({
 
   // ── Cancel handler ──────────────────────────────────────────────
   const handleCancel = useCallback(async () => {
-    if (cancelling) return;
+    // BUG-FIX: also bail out if matchId never resolved — same reason
+    // as handleLaunch above.
+    if (cancelling || !isValidMatchId) return;
     setCancelling(true);
     setError(null);
     try {
@@ -1209,7 +1290,9 @@ export default function PlinkoPvpMatchPage({
         setError(data?.error || "Cancel failed");
         return;
       }
-      posthog?.capture("plinko_pvp_lobby_cancelled", { match_id: matchId });
+      posthog?.capture("plinko_pvp_lobby_cancelled", {
+        match_id: matchId ?? -1,
+      });
       router.push("/casino/plinko");
     } finally {
       setCancelling(false);
@@ -1239,7 +1322,7 @@ export default function PlinkoPvpMatchPage({
     );
     const winner = isDraw ? "draw" : iWon ? "you" : "opponent";
     posthog?.capture("plinko_pvp_match_resolved", {
-      match_id: matchId,
+      match_id: match?.id ?? matchId ?? -1,
       winner,
       result: match.result,
       stake: match.stakeAmount.toFixed(2),
@@ -1757,7 +1840,7 @@ export default function PlinkoPvpMatchPage({
         >
           <h1 className="flex items-center justify-center gap-3 text-center text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-cyan-300 to-fuchsia-300 drop-shadow-[0_0_18px_rgba(0,229,255,0.55)]">
             <PlinkoIcon className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,229,255,0.65)] flex-shrink-0" />
-            <span>Plinko Duel · Match #{matchId}</span>
+            <span>Plinko Duel · Match #{matchId ?? "?"}</span>
           </h1>
         </motion.div>
 
