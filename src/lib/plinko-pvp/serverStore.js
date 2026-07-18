@@ -29,7 +29,7 @@
 // advances ball_N → ball_(N+1) immediately and the client renders the
 // 3-second "Ball X incoming…" overlay in parallel.
 
-import { eq, and, sql, isNull } from "drizzle-orm";
+import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
 import {
   plinkoPvpMatches,
@@ -57,6 +57,106 @@ import {
 import { hashSeed, simulateBall, simulateDualBalls } from "./physics";
 
 // ── Helpers ───────────────────────────────────────────────────────────
+
+// Build a `players: { p1: {...}, p2: {...} }` envelope from a list of
+// user rows keyed by clerkId. Used by the API routes so the match view
+// can show "Alice vs Bob" instead of "user_abcd1234 vs user_efgh5678".
+//
+// Returns a plain object keyed by `clerkId` → `{ id, displayName,
+// profileImageUrl, ... }`. Falls back to a derived flag (`missing: true`)
+// if the lookup didn't find a row for that id (defensive — should not
+// happen given Clerk auth, but better than a TypeError in the JSON
+// response).
+function summariseUsers(rows) {
+  const out = {};
+  for (const r of rows) {
+    if (!r || !r.clerkId) continue;
+    out[r.clerkId] = {
+      id: r.clerkId,
+      displayName: r.displayName || r.clerkId,
+      profileImageUrl: r.profileImageUrl || null,
+    };
+  }
+  return out;
+}
+
+// Enrich a match (or list of matches) with a `players` field derived
+// from the `users` table. The match row's `player1Id`/`player2Id` are
+// Clerk ids — we look them up and surface displayName + profileImageUrl
+// so the client can render proper player heads instead of truncation.
+//
+// Accepts: one match, or an array of matches, or null/undefined.
+// Returns: the same shape, with `players` attached (omitted when no
+// caller ever passes player1/player2 ids).
+export function attachPlayerNames(matchOrMatches) {
+  if (!matchOrMatches) return matchOrMatches;
+  const list = Array.isArray(matchOrMatches) ? matchOrMatches : [matchOrMatches];
+  if (list.length === 0) return matchOrMatches;
+  const ids = new Set();
+  for (const m of list) {
+    if (!m) continue;
+    if (m.player1Id) ids.add(m.player1Id);
+    if (m.player2Id) ids.add(m.player2Id);
+  }
+  if (ids.size === 0) return matchOrMatches;
+  // Synchronous-looking wrapper around drizzle's async select — we
+  // expose a separate async helper below for the route use site.
+  // This sync helper is only used internally after the lookup.
+  return { __needsLookup: true, ids: Array.from(ids), list, isArray: Array.isArray(matchOrMatches) };
+}
+
+// Async version — does the actual users-table fetch. Routes call this.
+export async function enrichMatchesWithUsers(matchOrMatches) {
+  if (!matchOrMatches) return matchOrMatches;
+  const list = Array.isArray(matchOrMatches) ? matchOrMatches : [matchOrMatches];
+  if (list.length === 0) return matchOrMatches;
+  const ids = new Set();
+  for (const m of list) {
+    if (!m) continue;
+    if (m.player1Id) ids.add(m.player1Id);
+    if (m.player2Id) ids.add(m.player2Id);
+  }
+  if (ids.size === 0) {
+    return Array.isArray(matchOrMatches)
+      ? matchOrMatches
+      : { ...matchOrMatches, players: null };
+  }
+  let rows = [];
+  try {
+    rows = await db
+      .select({
+        clerkId: users.clerkId,
+        displayName: users.displayName,
+        profileImageUrl: users.profileImageUrl,
+      })
+      .from(users)
+      .where(inArray(users.clerkId, Array.from(ids)));
+  } catch (err) {
+    // Fall back to no enrichment on lookup error — never let this
+    // crash the route. We log so this is visible in server logs.
+    console.warn(
+      "[plinko-pvp] enrichMatchesWithUsers: users lookup failed:",
+      err && err.message ? err.message : err,
+    );
+    rows = [];
+  }
+  const summary = summariseUsers(rows);
+
+  const enrichOne = (m) => {
+    if (!m) return m;
+    const p1 = m.player1Id ? summary[m.player1Id] || null : null;
+    const p2 = m.player2Id ? summary[m.player2Id] || null : null;
+    return {
+      ...m,
+      players: {
+        p1: p1 || (m.player1Id ? { id: m.player1Id, displayName: m.player1Id, missing: true } : null),
+        p2: p2 || (m.player2Id ? { id: m.player2Id, displayName: m.player2Id, missing: true } : null),
+      },
+    };
+  };
+
+  return Array.isArray(matchOrMatches) ? list.map(enrichOne) : enrichOne(matchOrMatches);
+}
 
 // Per-row pacing helper: derive the per-ball deadline duration in ms
 // from a match row, falling back to the server-side default if the

@@ -6,19 +6,27 @@
 // GETs return an empty list rather than failing.
 
 import { NextResponse } from "next/server";
-import { listOpenMatches } from "../../../../lib/plinko-pvp/serverStore";
+import {
+  listOpenMatches,
+  enrichMatchesWithUsers,
+} from "../../../../lib/plinko-pvp/serverStore";
 
 export async function GET() {
   try {
     const openMatches = await listOpenMatches({ limit: 30 });
+    const enriched = await enrichMatchesWithUsers(openMatches);
     return NextResponse.json({
       success: true,
       data: {
-        matches: openMatches.map((m) => ({
+        matches: enriched.map((m) => ({
           id: m.id,
           player1Id: m.player1Id,
           stakeAmount: Number(m.stakeAmount),
           createdAt: m.createdAt,
+          // Surface host display name so the lobby can render proper
+          // player heads (e.g. "Host: Alice") instead of truncation.
+          hostName: m.players?.p1?.displayName ?? m.player1Id,
+          hostProfileImageUrl: m.players?.p1?.profileImageUrl ?? null,
         })),
       },
     });

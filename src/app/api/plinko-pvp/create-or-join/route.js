@@ -7,7 +7,7 @@
 //      banner expires via /status auto-advance).
 //   3. Otherwise → create a fresh waiting match (deduct stake).
 //
-// Unlike mines-pvp there's no host-picked game param (minesCount)
+// Unlike mines-pvp there's no host-picked game param (mine count)
 // — the only player input at create time is the stake. The joiner
 // just consumes whatever stake the host picked.
 //
@@ -16,7 +16,10 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { createOrJoin } from "../../../../lib/plinko-pvp/serverStore";
+import {
+  createOrJoin,
+  enrichMatchesWithUsers,
+} from "../../../../lib/plinko-pvp/serverStore";
 import {
   MAX_STAKE,
   MIN_STAKE,
@@ -36,11 +39,7 @@ function normaliseMatch(match) {
     p2Score: match.p2Score ?? 0,
     // p1/p2CurrentInputs are the "ball in flight" indicators. They're
     // cleared after the ball resolves; the client can use them to
-    // render a "waiting for opponent" hint on the commit panel. The
-    // per-viewer derived flags (viewerCanLaunch / viewerHasCommitted /
-    // opponentHasCommitted / viewerCanCancel) are set in the GET
-    // match route's per-viewer normaliser — this create-or-join
-    // response just needs the raw state for the redirect.
+    // render a "waiting for opponent" hint on the commit panel.
     p1CurrentInputs: match.p1CurrentInputs || null,
     p2CurrentInputs: match.p2CurrentInputs || null,
     roundDeadline: match.roundDeadline,
@@ -52,6 +51,10 @@ function normaliseMatch(match) {
     startedAt: match.startedAt,
     endedAt: match.endedAt,
     createdAt: match.createdAt,
+    // Player heads (displayName + profileImageUrl) so the lobby and
+    // match view can render proper names, not truncation. See
+    // serverStore.js `enrichMatchesWithUsers` for the source.
+    players: match.players ?? null,
   };
 }
 
@@ -100,6 +103,21 @@ export async function POST(req) {
 
     const match = result.match;
 
+    // Enrich with user names + profile images so the lobby / match view
+    // can render proper player heads instead of truncation. Never crash
+    // the route on lookup failure — enrichment is best-effort.
+    let enrichedMatch = match;
+    try {
+      const e = await enrichMatchesWithUsers(match);
+      if (e) enrichedMatch = e;
+    } catch (err) {
+      console.warn(
+        "[plinko-pvp/create-or-join] user enrichment failed:",
+        err && err.message ? err.message : err,
+      );
+      enrichedMatch = match;
+    }
+
     // Best-effort push to the match room so the opponent sees the
     // status flip (waiting → ready) without waiting for the next
     // 1.5s poll. The helper internally handles the no-op case when
@@ -119,7 +137,7 @@ export async function POST(req) {
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatch(match),
+        match: normaliseMatch(enrichedMatch),
         joined: Boolean(result.joined),
       },
     });
