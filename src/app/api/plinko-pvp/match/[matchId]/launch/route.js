@@ -146,10 +146,14 @@ export async function POST(req, { params }) {
       angleDeg,
     });
     if (result.error) {
-      return NextResponse.json(
-        { success: false, error: result.error },
-        { status: result.status || 400 },
-      );
+      // Surface optional `code` so the client can render a targeted
+      // migration-needed message instead of a generic toast. The
+      // MIGRATION_INCOMPLETE code is emitted by serverStore.js when
+      // p1_ready / p2_ready columns are missing on the live DB (see
+      // ensurePlinkoReadyColumns).
+      const body = { success: false, error: result.error };
+      if (result.code) body.code = result.code;
+      return NextResponse.json(body, { status: result.status || 400 });
     }
 
     // Enrich with user names + profile images so the match view can

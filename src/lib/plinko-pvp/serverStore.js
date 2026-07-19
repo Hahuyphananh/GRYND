@@ -58,6 +58,76 @@ import { hashSeed, simulateBall, simulateDualBalls } from "./physics";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
+// Schema self-check: probe that plinko_pvp_matches has the
+// `p1_ready` / `p2_ready` columns the launchBall UPDATE references.
+// This exists because migration 0052 was rejected on Neon in an
+// earlier form (a bad partial index — see the comment at the top of
+// `src/db/migrations/0052_plinko_pvp_ready_and_collision.sql`) and
+// may never have been re-applied, so the columns can be missing on
+// the live DB and turn every launchBall call into an opaque 500.
+//
+// Cache semantics — important:
+//   * We only cache `true` for the lifetime of the server instance.
+//   * We DO NOT cache `false` permanently — a transient probe failure
+//     (Neon cold-start race, brief network blip, deploy during
+//     migration) would otherwise wedge every subsequent launchBall
+//     call to 503 for the rest of the Lambda's life, even after the
+//     schema was eventually fixed.
+//   * On `false` we clear the cache so the NEXT call retries the
+//     probe. This is self-healing the moment the migration lands.
+//   * In-flight probes are deduped via the cached promise so a stampede
+//     of N concurrent first-callers runs exactly one SELECT.
+//
+// We SELECT against `id = -1` (no matching row) so the query
+// validates the column references without ever touching the user's
+// actual match rows.
+let readyColumnsCheck = null; // null = unchecked, true = ok, Promise<boolean> = in-flight
+export async function ensurePlinkoReadyColumns() {
+  // Already-known good — short-circuit so the hot path is query-free.
+  if (readyColumnsCheck === true) return true;
+  // A probe is already in flight — share its result.
+  if (
+    readyColumnsCheck !== null &&
+    typeof readyColumnsCheck.then === "function"
+  ) {
+    return await readyColumnsCheck;
+  }
+  // Start a fresh probe. We deliberately do NOT cache `false` so a
+  // single transient failure does not permanently 503 the instance.
+  const probe = (async () => {
+    try {
+      await db
+        .select({
+          p1Ready: plinkoPvpMatches.p1Ready,
+          p2Ready: plinkoPvpMatches.p2Ready,
+        })
+        .from(plinkoPvpMatches)
+        .where(eq(plinkoPvpMatches.id, -1))
+        .limit(1);
+      return true;
+    } catch (err) {
+      console.error(
+        "[plinko-pvp][SCHEMA-DRIFT] plinko_pvp_matches is missing p1_ready and/or p2_ready columns. " +
+          "This is almost always a missing migration. Run migration 0053 " +
+          "(src/db/migrations/0053_plinko_pvp_schema_safety_net.sql) to backfill " +
+          "the columns. The launch API will refuse to write until the schema is up to date.",
+        "Underlying PG error:",
+        err && err.message ? err.message : err,
+      );
+      // Don't poison the cache — the next caller will retry the probe.
+      readyColumnsCheck = null;
+      return false;
+    }
+  })();
+  readyColumnsCheck = probe;
+  const ok = await probe;
+  if (ok) {
+    // Pin `true` so future calls skip the SELECT entirely.
+    readyColumnsCheck = true;
+  }
+  return ok;
+}
+
 // Build a `players: { p1: {...}, p2: {...} }` envelope from a list of
 // user rows keyed by clerkId. Used by the API routes so the match view
 // can show "Alice vs Bob" instead of "user_abcd1234 vs user_efgh5678".
@@ -730,6 +800,21 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
   const validation = validateLaunchInputs({ startX, power, angleDeg });
   if (!validation.ok) {
     return { error: validation.error, status: validation.status };
+  }
+
+  // Schema self-check. If p1_ready / p2_ready are missing from the live
+  // DB (migration 0052 was rejected on Neon in an earlier form and may
+  // never have been re-applied) we short-circuit with a clear 503 so
+  // the route can surface "Run migration 0053" instead of a silent 500.
+  const schemaOk = await ensurePlinkoReadyColumns();
+  if (!schemaOk) {
+    return {
+      error:
+        "Plinko Duel schema is outdated: the p1_ready / p2_ready columns are missing. " +
+        "Run migration 0053 (npm run db:migrate) to backfill the columns, then retry.",
+      status: 503,
+      code: "MIGRATION_INCOMPLETE",
+    };
   }
 
   return await db.transaction(async (tx) => {

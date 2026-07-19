@@ -968,6 +968,12 @@ export default function PlinkoPvpMatchPage({
   const [rounds, setRounds] = useState<NormalisedRound[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Set when the launch API returns `code: "MIGRATION_INCOMPLETE"` —
+  // i.e. p1_ready / p2_ready columns are missing on the live DB.
+  // Renders a targeted banner above the board instead of a generic
+  // toast so the user can fix it themselves (run npm run db:migrate
+  // or apply migration 0053 manually on Neon).
+  const [migrationIncomplete, setMigrationIncomplete] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(0);
 
   // ── Local UI state (viewer&apos;s sliders) ─────────────────────────
@@ -1473,9 +1479,25 @@ export default function PlinkoPvpMatchPage({
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        setError(data?.error || "Ready failed");
+        if (data?.code === "MIGRATION_INCOMPLETE") {
+          // Don't reuse the generic `error` toast — surface a
+          // dedicated banner with the exact remediation so the
+          // player isn't told to "try again" when the real fix
+          // is to run migrations on the backend.
+          setMigrationIncomplete(true);
+          setError(
+            data?.error ||
+              "Plinko Duel schema is outdated. Run npm run db:migrate.",
+          );
+        } else {
+          setMigrationIncomplete(false);
+          setError(data?.error || "Ready failed");
+        }
         return;
       }
+      // Successful launch — clear the migration banner (in case it
+      // was sticky from an earlier session in this match).
+      setMigrationIncomplete(false);
 
       socket?.emit("room_event", {
         roomId: plinkoPvpMatchRoom(matchId),
@@ -1978,6 +2000,25 @@ export default function PlinkoPvpMatchPage({
                 >
                   {cancelling ? "Cancelling…" : "Cancel lobby"}
                 </button>
+              </div>
+            )}
+            {migrationIncomplete && (
+              <div className="mt-3 mx-auto max-w-md rounded-xl border border-amber-400/40 bg-amber-900/30 p-3 text-sm text-amber-100 flex items-start gap-2">
+                <AlertIcon className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-semibold">
+                    Plinko Duel schema is out of date on this server.
+                  </p>
+                  <p className="mt-1 text-amber-200/80">
+                    Run <code className="px-1 rounded bg-black/40 text-amber-100">npm run db:migrate</code>{" "}
+                    (or paste migration{" "}
+                    <code className="px-1 rounded bg-black/40 text-amber-100">0053_plinko_pvp_schema_safety_net.sql</code>{" "}
+                    into the Neon SQL console) to add the{" "}
+                    <code className="px-1 rounded bg-black/40 text-amber-100">p1_ready</code> /{" "}
+                    <code className="px-1 rounded bg-black/40 text-amber-100">p2_ready</code>{" "}
+                    columns, then refresh this page.
+                  </p>
+                </div>
               </div>
             )}
             {error && (
