@@ -29,15 +29,6 @@
 //   ├─ Reveal screen (when status='finished') ────────────────────┤
 //   └─ Footer ─────────────────────────────────────────────────────┘
 //
-// BUG FIX ("opponent's ball stuck in the side when both players
-// launch"): the previous build animated BOTH balls from cached
-// p1Result/p2Result when both seats were in, but partial path data
-// from a half-completed single-ball animate produced stale renders.
-// The new code uses the canonical `rounds` history as the SOLE source
-// of truth for animation: any new ballNumber triggers `startDualTrackAnimation`
-// using the persisted per-ball paths. The launch handler NEVER animates
-// a half-state path anymore — it just sets busy, fires POST, and waits
-// for the rounds row to land.
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -177,80 +168,7 @@ function buildPegs() {
     }
   }
   return pegs;
-}
-const PEGS = buildPegs();
-
-// ── Dual-track ball animator ──────────────────────────────────────────
-
-function animateBall(
-  path: Path,
-  onTick: (point: { x: number; y: number }) => void,
-  onComplete: () => void,
-  durationMs: number = BALL_ANIMATION_MS,
-): () => void {
-  if (!path || path.length === 0) {
-    onComplete();
-    return () => {};
-  }
-  if (path.length === 1) {
-    onTick(path[0]);
-    onComplete();
-    return () => {};
-  }
-  const segStarts: number[] = [0];
-  const cumLens: number[] = [];
-  let totalLen = 0;
-  for (let i = 1; i < path.length; i++) {
-    const dx = path[i].x - path[i - 1].x;
-    const dy = path[i].y - path[i - 1].y;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    totalLen += len;
-    cumLens.push(len);
-    segStarts.push(totalLen);
-  }
-  if (totalLen === 0) {
-    onTick(path[path.length - 1]);
-    onComplete();
-    return () => {};
-  }
-  const startTime = performance.now();
-  let rafId = 0;
-  let cancelled = false;
-  const tick = (now: number) => {
-    if (cancelled) return;
-    const elapsed = now - startTime;
-    const t = Math.min(1, elapsed / durationMs);
-    const targetDist = t * totalLen;
-    let segIdx = 0;
-    for (let i = 0; i < cumLens.length; i++) {
-      if (segStarts[i + 1] >= targetDist) {
-        segIdx = i;
-        break;
-      }
-      segIdx = i;
-    }
-    const segStartDist = segStarts[segIdx];
-    const segLen = cumLens[segIdx];
-    const localT = segLen === 0 ? 0 : (targetDist - segStartDist) / segLen;
-    const p0 = path[segIdx];
-    const p1 = path[segIdx + 1];
-    onTick({
-      x: p0.x + (p1.x - p0.x) * localT,
-      y: p0.y + (p1.y - p0.y) * localT,
-    });
-    if (t < 1) {
-      rafId = requestAnimationFrame(tick);
-    } else {
-      onTick(path[path.length - 1]);
-      onComplete();
-    }
-  };
-  rafId = requestAnimationFrame(tick);
-  return () => {
-    cancelled = true;
-    if (rafId) cancelAnimationFrame(rafId);
-  };
-}
+}const PEGS = buildPegs();
 
 // ── Inline SVG icons ─────────────────────────────────────────────────
 
@@ -1069,13 +987,20 @@ export default function PlinkoPvpMatchPage({
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
-  // Animated ball positions
-  const [p1BallPos, setP1BallPos] = useState<{ x: number; y: number } | null>(
-    null,
-  );
-  const [p2BallPos, setP2BallPos] = useState<{ x: number; y: number } | null>(
-    null,
-  );
+  // Animated ball positions. Stored in a SINGLE shape so the dual-track
+  // animator can update both balls with one setState per frame — React 18
+  // doesn&apos;t reliably batch independent setState calls inside
+  // requestAnimationFrame callbacks, so the previous build could render
+  // the two balls a frame apart. Using a single object guarantees both
+  // positions are committed in the same render.
+  const [ballPositions, setBallPositions] = useState<{
+    p1: { x: number; y: number } | null;
+    p2: { x: number; y: number } | null;
+  }>({ p1: null, p2: null });
+  // Backwards-compatible derivations for every existing consumer
+  // (board render, fellOut fade, between-balls reset, etc.).
+  const p1BallPos = ballPositions.p1;
+  const p2BallPos = ballPositions.p2;
   const [highlightBucket, setHighlightBucket] = useState<{
     index: number;
     side: "p1" | "p2";
@@ -1084,8 +1009,18 @@ export default function PlinkoPvpMatchPage({
   // Track which ball numbers have been animated so we don&apos;t
   // double-animate on subsequent /status polls.
   const animatedBallNumbersRef = useRef<Set<number>>(new Set());
-  const p1AnimCancelRef = useRef<(() => void) | null>(null);
-  const p2AnimCancelRef = useRef<(() => void) | null>(null);
+  // Single shared cancel handle for the dual-track animator. The
+  // previous build kept two separate cancel refs (one per ball) and
+  // started two separate RAF loops with their own startTimes — that
+  // made the two balls drift out of sync. One ref + one RAF + one
+  // shared startTime keeps both balls perfectly aligned.
+  const dualAnimCancelRef = useRef<(() => void) | null>(null);
+  // Tracks the 3-second "Ball X incoming" setTimeout scheduled inside
+  // startDualTrackAnimation (and the 800ms "finished" timer). Without
+  // this, the timer could fire after the component unmounts (causing a
+  // React setState-on-unmounted warning) or race a new dual-track
+  // start that supersedes it.
+  const dualAnimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const phaseRef = useRef(phase);
   const roundsRef = useRef(rounds);
@@ -1221,8 +1156,7 @@ export default function PlinkoPvpMatchPage({
     ) {
       setPhase("idle");
       setHighlightBucket(null);
-      setP1BallPos(null);
-      setP2BallPos(null);
+      setBallPositions({ p1: null, p2: null });
     }
     if (match.status === MATCH_STATUS.FINISHED && phaseRef.current !== "finished") {
       setPhase("finished");
@@ -1259,26 +1193,139 @@ export default function PlinkoPvpMatchPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rounds]);
 
+  // Pre-compute the segment-lengths + cumulative-starts + total length
+  // for a Bézier-style path. Sampling then becomes a log-time lookup
+  // over the same `[0, totalLen]` axis as the animation timer. Used
+  // by `startDualTrackAnimation` so both balls advance at exactly the
+  // same rate against the same `t` value.
+  function precomputePathSampling(path: Path) {
+    const segLens: number[] = [];
+    const cumStarts: number[] = [0];
+    let totalLen = 0;
+    for (let i = 1; i < path.length; i++) {
+      const dx = path[i].x - path[i - 1].x;
+      const dy = path[i].y - path[i - 1].y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      segLens.push(len);
+      totalLen += len;
+      cumStarts.push(totalLen);
+    }
+    return { segLens, cumStarts, totalLen };
+  }
+
+  // Sample an (x, y) point along `path` at progress `t` in [0, 1]. O(n)
+  // is fine here because we precompute the cumulative lengths once and
+  // the path is short (~120 substeps).
+  function samplePath(
+    path: Path,
+    sampling: { segLens: number[]; cumStarts: number[]; totalLen: number },
+    t: number,
+  ): { x: number; y: number } {
+    if (path.length === 0) return { x: 0, y: 0 };
+    if (path.length === 1) return { x: path[0].x, y: path[0].y };
+    if (sampling.totalLen === 0) {
+      const last = path[path.length - 1];
+      return { x: last.x, y: last.y };
+    }
+    const clampedT = Math.max(0, Math.min(1, t));
+    const targetDist = clampedT * sampling.totalLen;
+    let segIdx = 0;
+    for (let i = 0; i < sampling.segLens.length; i++) {
+      if (sampling.cumStarts[i + 1] >= targetDist) {
+        segIdx = i;
+        break;
+      }
+      segIdx = i;
+    }
+    const segStartDist = sampling.cumStarts[segIdx];
+    const segLen = sampling.segLens[segIdx];
+    const localT = segLen === 0 ? 0 : (targetDist - segStartDist) / segLen;
+    const p0 = path[segIdx];
+    const p1 = path[segIdx + 1];
+    return {
+      x: p0.x + (p1.x - p0.x) * localT,
+      y: p0.y + (p1.y - p0.y) * localT,
+    };
+  }
+
   const startDualTrackAnimation = useCallback(
     (p1Result: BallResult, p2Result: BallResult, ballNumber: number) => {
-      if (p1AnimCancelRef.current) p1AnimCancelRef.current();
-      if (p2AnimCancelRef.current) p2AnimCancelRef.current();
-      p1AnimCancelRef.current = null;
-      p2AnimCancelRef.current = null;
+      // Cancel any in-flight dual-track animation first. Single handle
+      // so there's only ever one RAF loop, never two racing ones.
+      if (dualAnimCancelRef.current) {
+        dualAnimCancelRef.current();
+        dualAnimCancelRef.current = null;
+      }
 
-      if (p1Result.path.length > 0) {
-        setP1BallPos({ x: p1Result.path[0].x, y: p1Result.path[0].y });
-      }
-      if (p2Result.path.length > 0) {
-        setP2BallPos({ x: p2Result.path[0].x, y: p2Result.path[0].y });
-      }
+      const p1Path = p1Result.path;
+      const p2Path = p2Result.path;
+      const p1Sampling = precomputePathSampling(p1Path);
+      const p2Sampling = precomputePathSampling(p2Path);
+
+      // Initial positions at t = 0. Single setState updates both balls in
+      // one React render so they&apos;re committed together.
+      const initial: {
+        p1: { x: number; y: number } | null;
+        p2: { x: number; y: number } | null;
+      } = { p1: null, p2: null };
+      if (p1Path.length > 0) initial.p1 = { x: p1Path[0].x, y: p1Path[0].y };
+      if (p2Path.length > 0) initial.p2 = { x: p2Path[0].x, y: p2Path[0].y };
+      setBallPositions(initial);
       setHighlightBucket(null);
       setPhase("animating");
 
-      let p1Done = false;
-      let p2Done = false;
-      const maybeAdvancePhase = () => {
-        if (p1Done && p2Done) {
+      // ONE shared startTime, captured once at the very moment animation
+      // begins. The previous build used two SEPARATE performance.now()
+      // reads inside two SEPARATE animateBall calls — the microsecond
+      // drift compounded over 2.5s and produced visually desynced balls.
+      // With one startTime both balls read the same baseline and tick
+      // against the same `t` per frame, so they fall together.
+      const startTime = performance.now();
+      let cancelled = false;
+      let rafId = 0;
+
+      const tick = (now: number) => {
+        if (cancelled) return;
+        const elapsed = Math.max(0, now - startTime);
+        const t = Math.min(1, elapsed / BALL_ANIMATION_MS);
+
+        // Sample both paths from the SAME `t` value in the same RAF
+        // callback. Update BOTH positions via a single setBallPositions
+        // call so both go through one React render and never get
+        // scheduled a frame apart (the original bug: two independent
+        // setStates inside a RAF can render separately).
+        const next: {
+          p1: { x: number; y: number } | null;
+          p2: { x: number; y: number } | null;
+        } = {
+          p1:
+            p1Path.length > 0 ? samplePath(p1Path, p1Sampling, t) : null,
+          p2:
+            p2Path.length > 0 ? samplePath(p2Path, p2Sampling, t) : null,
+        };
+        setBallPositions(next);
+
+        if (t < 1) {
+          rafId = requestAnimationFrame(tick);
+        } else {
+          // Lock final positions so the ball doesn't overshoot when
+          // rounding errors accumulate over 2.5s of interpolation. Both
+          // balls locked in a single setState call.
+          const finalPose: {
+            p1: { x: number; y: number } | null;
+            p2: { x: number; y: number } | null;
+          } = { p1: null, p2: null };
+          if (p1Path.length > 0) {
+            const lastP1 = p1Path[p1Path.length - 1];
+            finalPose.p1 = { x: lastP1.x, y: lastP1.y };
+          }
+          if (p2Path.length > 0) {
+            const lastP2 = p2Path[p2Path.length - 1];
+            finalPose.p2 = { x: lastP2.x, y: lastP2.y };
+          }
+          setBallPositions(finalPose);
+
+          // Highlight bucket + advance phase
           if (p2Result.bucketIndex >= 0) {
             setHighlightBucket({ index: p2Result.bucketIndex, side: "p2" });
           } else if (p1Result.bucketIndex >= 0) {
@@ -1287,13 +1334,17 @@ export default function PlinkoPvpMatchPage({
             setHighlightBucket(null);
           }
           if (ballNumber >= REQUIRED_BALLS) {
-            setTimeout(() => setPhase("finished"), 800);
+            if (dualAnimTimerRef.current) clearTimeout(dualAnimTimerRef.current);
+            dualAnimTimerRef.current = setTimeout(
+              () => setPhase("finished"),
+              800,
+            );
           } else {
             setPhase("transitioning");
-            setTimeout(() => {
+            if (dualAnimTimerRef.current) clearTimeout(dualAnimTimerRef.current);
+            dualAnimTimerRef.current = setTimeout(() => {
               setPhase("idle");
-              setP1BallPos(null);
-              setP2BallPos(null);
+              setBallPositions({ p1: null, p2: null });
               setHighlightBucket(null);
               fetchStatus();
             }, BETWEEN_BALLS_MS);
@@ -1301,24 +1352,15 @@ export default function PlinkoPvpMatchPage({
         }
       };
 
-      p1AnimCancelRef.current = animateBall(
-        p1Result.path,
-        (p) => setP1BallPos(p),
-        () => {
-          p1AnimCancelRef.current = null;
-          p1Done = true;
-          maybeAdvancePhase();
-        },
-      );
-      p2AnimCancelRef.current = animateBall(
-        p2Result.path,
-        (p) => setP2BallPos(p),
-        () => {
-          p2AnimCancelRef.current = null;
-          p2Done = true;
-          maybeAdvancePhase();
-        },
-      );
+      rafId = requestAnimationFrame(tick);
+      dualAnimCancelRef.current = () => {
+        cancelled = true;
+        if (rafId) cancelAnimationFrame(rafId);
+        if (dualAnimTimerRef.current) {
+          clearTimeout(dualAnimTimerRef.current);
+          dualAnimTimerRef.current = null;
+        }
+      };
     },
     [fetchStatus],
   );
@@ -1333,10 +1375,69 @@ export default function PlinkoPvpMatchPage({
   // round — fireBallAdvance auto-readies the missing seat with
   // auto-tuned inputs.
   const handleReady = useCallback(async () => {
-    if (busy || !match || !isValidMatchId) return;
-    if (!match.viewerCanLaunch) return;
+    if (busy || !isValidMatchId) return;
+    // Lock the button immediately so a double-click during the awaits
+    // below cannot fire a parallel fetchStatus / POST. Doing this BEFORE
+    // the defensive refresh also keeps the user's local `busy` state
+    // consistent with the server flip of p2Ready.
     setBusy(true);
     setError(null);
+    // Read the LATEST match state via matchRef rather than the closure&apos;s
+    // `match`. The closure value can be stale when the user clicks within
+    // ~50ms of an opponent commit (the polling cadence is 800ms so there&apos;s
+    // a real race window where the local cache hasn&apos;t caught up yet).
+    // Falling back to the prop keeps the path stable during the rare
+    // initial-render moment before matchRef has been populated.
+    const liveMatch = matchRef.current ?? match;
+    if (!liveMatch) {
+      setBusy(false);
+      return;
+    }
+
+    // DEFENSIVE: if the local cache thinks I can&apos;t launch yet (e.g. the
+    // opponent&apos;s commit hasn&apos;t propagated through polling), poll once
+    // before bailing so a stale "disabled" state can&apos;t strand the second
+    // player on the ready button. This is the user-reported "only the first
+    // to click ready works" bug: a stale viewerCanLaunch=false would silently
+    // drop the second player&apos;s POST. The refresh is bounded by a 1500ms
+    // timeout so a hung network doesn&apos;t hang busy=true indefinitely.
+    if (!liveMatch.viewerCanLaunch) {
+      let timedOut = false;
+      try {
+        await Promise.race([
+          fetchStatus(),
+          new Promise<void>((resolve) => {
+            setTimeout(() => {
+              timedOut = true;
+              resolve();
+            }, 1500);
+          }),
+        ]);
+      } catch {
+        // best-effort
+      }
+      const refreshed = matchRef.current ?? liveMatch;
+      if (timedOut) {
+        setError("Couldn&apos;t reach the server to confirm your ready status. Try again in a moment.");
+        setBusy(false);
+        return;
+      }
+      if (!refreshed.viewerCanLaunch) {
+        if (refreshed.viewerHasCommitted) {
+          setError("You&apos;ve already locked this ball in.");
+        } else if (refreshed.status === MATCH_STATUS.READY) {
+          setError("Waiting for the ball to start\u2026");
+        } else if (refreshed.status === MATCH_STATUS.FINISHED) {
+          setError("Match finished.");
+        } else if (refreshed.status === MATCH_STATUS.CANCELLED) {
+          setError("Match cancelled.");
+        } else {
+          setError("Ready isn&apos;t available right now. Try again in a moment.");
+        }
+        setBusy(false);
+        return;
+      }
+    }
     try {
       const res = await fetch(`/api/plinko-pvp/match/${matchId}/launch`, {
         method: "POST",
@@ -1430,8 +1531,11 @@ export default function PlinkoPvpMatchPage({
   // ── Cleanup on unmount ─────────────────────────────────────────
   useEffect(() => {
     return () => {
-      if (p1AnimCancelRef.current) p1AnimCancelRef.current();
-      if (p2AnimCancelRef.current) p2AnimCancelRef.current();
+      if (dualAnimCancelRef.current) dualAnimCancelRef.current();
+      if (dualAnimTimerRef.current) {
+        clearTimeout(dualAnimTimerRef.current);
+        dualAnimTimerRef.current = null;
+      }
     };
   }, []);
 
