@@ -1038,17 +1038,25 @@ export default function PlinkoPvpMatchPage({
   const resolvedFiredRef = useRef(false);
 
   // ── Status fetch ─────────────────────────────────────────────────
+  // BUG-FIX: returns the freshly-parsed `match` so callers awaiting
+  // `fetchStatus()` from inside another async handler (notably
+  // `handleReady`'s defensive refresh) don't have to fall back to
+  // the stale `matchRef.current` read — which has NOT been updated
+  // yet because `matchRef.current = match` lives in a `useEffect`
+  // that runs only AFTER the next React commit cycle. Returning
+  // the value directly lets the caller observe the same fresh payload
+  // that `setMatch` is about to commit.
   const fetchStatus = useCallback(async () => {
     if (isSignedIn === false) {
       setLoading(false);
       setError("You must be signed in to view this match.");
-      return;
+      return null;
     }
-    if (isSignedIn !== true) return;
+    if (isSignedIn !== true) return null;
     if (!isValidMatchId) {
       setLoading(false);
       setError("Invalid match link.");
-      return;
+      return null;
     }
     try {
       const res = await fetch(`/api/plinko-pvp/match/${matchId}`, {
@@ -1058,7 +1066,7 @@ export default function PlinkoPvpMatchPage({
       const data = await res.json();
       if (!res.ok || !data.success) {
         setError(data?.error || "Unable to load match");
-        return;
+        return null;
       }
       const nextMatch =
         data?.data?.match && typeof data.data.match === "object"
@@ -1088,8 +1096,10 @@ export default function PlinkoPvpMatchPage({
         }
       }
       setError(nextMatch ? null : "Match not found.");
+      return nextMatch as NormalisedMatch | null;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
+      return null;
     } finally {
       setLoading(false);
     }
@@ -1401,22 +1411,38 @@ export default function PlinkoPvpMatchPage({
     // to click ready works" bug: a stale viewerCanLaunch=false would silently
     // drop the second player&apos;s POST. The refresh is bounded by a 1500ms
     // timeout so a hung network doesn&apos;t hang busy=true indefinitely.
+    //
+    // BUG-FIX: previously this branch read `matchRef.current ?? liveMatch`
+    // AFTER awaiting `fetchStatus()`. That returned STALE data because
+    // `matchRef.current = match` only runs in a `useEffect` AFTER React
+    // commits — so within the same async handler, the ref was still
+    // pointing at the pre-refresh snapshot. The handler would then
+    // bail with "Ready isn&apos;t available right now" silently. The fix is
+    // to use the freshly-fetched match returned by `fetchStatus()` directly;
+    // we keep the original `timedOut` flag so we can still distinguish a
+    // hung-network (timeout wins) from a legitimate null fetch result
+    // (fetch resolves with null but the match cache was already valid).
     if (!liveMatch.viewerCanLaunch) {
       let timedOut = false;
-      try {
-        await Promise.race([
-          fetchStatus(),
-          new Promise<void>((resolve) => {
-            setTimeout(() => {
-              timedOut = true;
-              resolve();
-            }, 1500);
-          }),
-        ]);
-      } catch {
-        // best-effort
-      }
-      const refreshed = matchRef.current ?? liveMatch;
+      const refreshedFromFetch = await Promise.race<
+        NormalisedMatch | null
+      >([
+        fetchStatus(),
+        new Promise<NormalisedMatch | null>((resolve) => {
+          setTimeout(() => {
+            timedOut = true;
+            resolve(null);
+          }, 1500);
+        }),
+      ]);
+      // Prefer the freshest match available: returned-from-fetch
+      // (which set the React state too) > just-updated ref > original
+      // closure snapshot. When the timeout won, `refreshedFromFetch`
+      // is null and we fall back through the chain — and the
+      // `timedOut` branch below surfaces a clear error so the user
+      // isn&apos;t stranded thinking their click did nothing.
+      const refreshed =
+        refreshedFromFetch ?? matchRef.current ?? liveMatch;
       if (timedOut) {
         setError("Couldn&apos;t reach the server to confirm your ready status. Try again in a moment.");
         setBusy(false);
@@ -1538,6 +1564,22 @@ export default function PlinkoPvpMatchPage({
       }
     };
   }, []);
+
+  // ── Busy safety-net ───────────────────────────────────────────
+  // BUG-FIX: `busy` should ONLY be `true` while the launch POST is
+  // actually in-flight (≤ a few seconds). If `setBusy(false)` in the
+  // POST's `finally` block is somehow skipped — e.g. because an
+  // unhandled rejection froze the handler — the Ready button would
+  // stay stuck on "Locking…" forever and the player could never
+  // retry. Set a watchdog that unconditionally clears `busy` after
+  // 8 s. The normal success path resets it well before this fires.
+  useEffect(() => {
+    if (!busy) return;
+    const watchdog = setTimeout(() => {
+      setBusy(false);
+    }, 8000);
+    return () => clearTimeout(watchdog);
+  }, [busy]);
 
   // ── Posthog: match-just-resolved ───────────────────────────────
   useEffect(() => {

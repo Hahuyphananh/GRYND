@@ -758,14 +758,16 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
 
     const seat = seatForUser(match, userId); // "player1" | "player2"
     const seatNumber = seat === "player1" ? 1 : 2;
-    const currentInputsCol = seat === "player1" ? "p1CurrentInputs" : "p2CurrentInputs";
-    const readyCol = seat === "player1" ? "p1Ready" : "p2Ready";
 
     // One-shot lock-in: if the player has already committed for this
     // ball, reject. The client UI's "launched" flag is mirrored here
     // server-side so a malicious client can't rewrite its commit at
     // the last millisecond to scrub the result.
-    if (match[currentInputsCol]) {
+    if (
+      (seat === "player1" && match.p1CurrentInputs) ||
+      (seat === "player2" && match.p2CurrentInputs) ||
+      (!seat && (match.p1CurrentInputs || match.p2CurrentInputs))
+    ) {
       return {
         error: "Already launched for this ball",
         status: 409,
@@ -809,24 +811,44 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
       },
     };
 
-    const [updated] = await tx
-      .update(plinkoPvpMatches)
-      .set({ [currentInputsCol]: payload, [readyCol]: true })
-      .where(
-        and(
-          eq(plinkoPvpMatches.id, matchId),
-          eq(plinkoPvpMatches.status, match.status),
-          // Defense-in-depth: also gate on `currentBall` so a
-          // concurrent forceBallAdvance that advanced to ball_(N+1)
-          // can't lose a stale manual commit at ball_N. The
-          // in-memory `if (match[currentInputsCol])` check after
-          // FOR UPDATE is the primary guard; this clause is
-          // belt-and-suspenders against future schema changes that
-          // let currentBall advance independently of status.
-          eq(plinkoPvpMatches.currentBall, match.currentBall),
-        ),
-      )
-      .returning();
+    // Persist the commit + flip the per-seat ready flag.
+    //
+    // BUG-FIX: an earlier revision used computed-property-name
+    // setters (`{ [currentInputsCol]: payload, [readyCol]: true }`).
+    // JavaScript resolves those to `{ p{N}CurrentInputs: ...,
+    // p{N}Ready: ... }` at object-construction time so Drizzle
+    // resolves the column correctly at runtime — BUT the resulting
+    // object loses TypeScript type narrowing for the jsonb column,
+    // and under jsonb-serialization edge cases (composite connection
+    // retries, drizzle's jsonb type inference) the resulting
+    // parameter binding can send `null` for the jsonb column when
+    // the seed-bearing nested object is briefly replaced. We branch
+    // explicitly on seat so each UPDATE uses statically-typed
+    // column references whose jsonb binding is unambiguous per
+    // Drizzle's type system.
+    const updateWhere = and(
+      eq(plinkoPvpMatches.id, matchId),
+      eq(plinkoPvpMatches.status, match.status),
+      // Defense-in-depth: also gate on `currentBall` so a
+      // concurrent forceBallAdvance that advanced to ball_(N+1)
+      // can't lose a stale manual commit at ball_N. The
+      // in-memory "already committed" check after FOR UPDATE is
+      // the primary guard; this clause is belt-and-suspenders
+      // against future schema changes that let currentBall
+      // advance independently of status.
+      eq(plinkoPvpMatches.currentBall, match.currentBall),
+    );
+    const [updated] = seat === "player2"
+      ? await tx
+          .update(plinkoPvpMatches)
+          .set({ p2CurrentInputs: payload, p2Ready: true })
+          .where(updateWhere)
+          .returning()
+      : await tx
+          .update(plinkoPvpMatches)
+          .set({ p1CurrentInputs: payload, p1Ready: true })
+          .where(updateWhere)
+          .returning();
 
     if (!updated) {
       // Lost a race to a concurrent commit (same player, different
