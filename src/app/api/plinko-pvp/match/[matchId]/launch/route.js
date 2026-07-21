@@ -45,6 +45,7 @@ import {
   enrichMatchesWithUsers,
   launchBall,
 } from "../../../../../../lib/plinko-pvp/serverStore";
+import { pickPositiveInt } from "../../../../../../lib/plinko-pvp/constants";
 import { broadcastMatchUpdate } from "../../../../../../lib/plinko-pvp/rooms";
 
 function normaliseMatch(match) {
@@ -56,12 +57,14 @@ function normaliseMatch(match) {
     stakeAmount: Number(match.stakeAmount),
     status: match.status,
     currentBall: match.currentBall ?? 1,
-    p1Score: match.p1Score ?? 0,
-    p2Score: match.p2Score ?? 0,
+    p1Score: Number(match.p1Score) || 0,
+    p2Score: Number(match.p2Score) || 0,
     p1CurrentInputs: match.p1CurrentInputs || null,
     p2CurrentInputs: match.p2CurrentInputs || null,
     roundDeadline: match.roundDeadline,
-    roundTimer: match.roundTimerSeconds ?? 20,
+    // Strict positive-int guard via shared helper — stays in lockstep
+    // with the other plinko-pvp routes.
+    roundTimer: pickPositiveInt(match.roundTimerSeconds, 20),
     winnerId: match.winnerId ?? null,
     result: match.result ?? null,
     prizePaid: match.prizePaid ? Number(match.prizePaid) : 0,

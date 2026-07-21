@@ -197,12 +197,18 @@ export function simulateBall({ startX, power, angleDeg, seed }) {
   // Defensive validation. The server store should already validate inputs, but
   // a bad value here would silently poison the trajectory. Throw early so the
   // upstream bug is caught in dev/test, not in production rounds.
-  // Seeds are truncated to 32-bit unsigned ints by mulberry32, so we accept
-  // any finite non-negative number and let the truncation happen there.
+  // Seeds are coerced to 32-bit unsigned ints by the `>>> 0` below and by
+  // mulberry32 internally — we accept any int32-bit value and the downstream
+  // PRNG treats equivalent bit patterns identically.
   assertInRange("startX", startX, 0, BOARD.width);
   assertInRange("power", power, 0, 100);
   assertInRange("angleDeg", angleDeg, -ANGLE_LIMIT_DEG, ANGLE_LIMIT_DEG);
-  assertInRange("seed", seed, 0, Number.MAX_SAFE_INTEGER);
+  // Coerce-via-`>>> 0` first so a signed-int hashSeed output (which
+  // the JS XOR can produce despite mulberry32's internal coercion)
+  // lands as a positive 32-bit value BEFORE the range check.
+  // Without this, certain hashes (e.g. "plinko:13:p1:ball1:manual")
+  // can hit the negative half of int32 and 500 the match route.
+  assertInRange("seed", seed >>> 0, 0, Number.MAX_SAFE_INTEGER);
 
   const rand = mulberry32(seed);
   const angleRad = (angleDeg * Math.PI) / 180;
@@ -409,7 +415,15 @@ export function hashSeed(input) {
   }
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
   h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return (h2 >>> 0) ^ (h1 >>> 0);
+  // Final `>>> 0` to coerce the XOR result to an unsigned 32-bit int.
+  // Without this, JS's `^` operator returns a signed 32-bit Number
+  // (range [-2^31, 2^31-1]), which trips the physics assertInRange
+  // (seed must be in [0, MAX_SAFE_INTEGER]) and surfaces as a 500 on
+  // /api/plinko-pvp/match/[matchId] for hashes like "plinko:13:p1:
+  // ball1:manual" that happen to land in the negative half of int32.
+  // Bit pattern is preserved — mulberry32 coerces with `>>> 0`
+  // internally so PRNG sequences are unchanged.
+  return ((h2 >>> 0) ^ (h1 >>> 0)) >>> 0;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -539,11 +553,15 @@ export function simulateDualBalls(p1, p2) {
   assertInRange("p1.startX", p1.startX, 0, BOARD.width);
   assertInRange("p1.power", p1.power, 0, 100);
   assertInRange("p1.angleDeg", p1.angleDeg, -ANGLE_LIMIT_DEG, ANGLE_LIMIT_DEG);
-  assertInRange("p1.seed", p1.seed, 0, Number.MAX_SAFE_INTEGER);
+  // Same defensive `>>> 0` coercion as simulateBall so the dual
+  // simulator can't 500 the match route on int32-negative hashes.
+  assertInRange("p1.seed", p1.seed >>> 0, 0, Number.MAX_SAFE_INTEGER);
   assertInRange("p2.startX", p2.startX, 0, BOARD.width);
   assertInRange("p2.power", p2.power, 0, 100);
   assertInRange("p2.angleDeg", p2.angleDeg, -ANGLE_LIMIT_DEG, ANGLE_LIMIT_DEG);
-  assertInRange("p2.seed", p2.seed, 0, Number.MAX_SAFE_INTEGER);
+  // Same defensive `>>> 0` coercion as simulateBall so the dual
+  // simulator can't 500 the match route on int32-negative hashes.
+  assertInRange("p2.seed", p2.seed >>> 0, 0, Number.MAX_SAFE_INTEGER);
 
   // Ball state objects — mutated in-place by the substep loop. Mirrors
   // simulateBall's locals, lifted to object fields for dual readability.

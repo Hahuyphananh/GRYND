@@ -267,6 +267,36 @@ export function round2(n) {
   return Number(v.toFixed(2));
 }
 
+/**
+ * Coerce an arbitrary DB-shaped value to a positive integer with a
+ * fallback. Used by every plinko-pvp API route's normaliser so the
+ * client gets a strict positive-int for `roundTimer` (and any
+ * analogous "admin-tunable duration" field) regardless of whether
+ * Drizzle/Postgres returns the column as a number, a numeric
+ * string, `null`, `NaN`, or a literal `0`.
+ *
+ *   pickPositiveInt(null, 20)        -> 20
+ *   pickPositiveInt(undefined, 20)   -> 20
+ *   pickPositiveInt("", 20)          -> 20
+ *   pickPositiveInt("abc", 20)       -> 20
+ *   pickPositiveInt("20", 20)        -> 20
+ *   pickPositiveInt(0, 20)           -> 20  (0 collapses to fallback —
+ *                                            "no timer" is rejected so
+ *                                            clients always see a tick)
+ *   pickPositiveInt(15.7, 20)        -> 15  (Math.trunc to true int)
+ *   pickPositiveInt(-3, 20)          -> 20  (negatives rejected)
+ *
+ * Extracted out of three sibling route files so the contract stays in
+ * one place — if we later want to clamp an upper bound, accept `0` as
+ * a "defer to default" sentinel, log non-finite inputs, etc., we
+ * edit this one helper and all three routes pick it up.
+ */
+export function pickPositiveInt(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.trunc(n);
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Payout calculator
 // ──────────────────────────────────────────────────────────────────────────
