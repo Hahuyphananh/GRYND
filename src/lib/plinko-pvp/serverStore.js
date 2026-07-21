@@ -128,63 +128,36 @@ export async function ensurePlinkoReadyColumns() {
   return ok;
 }
 
-// ── Deferred per-seat ready-flag clear ───────────────────────────────
+// ── Orphan-ready sweep (formerly `setTimeout` deferred clear) ─────────
 //
-// After `resolveBall` advances the match to the next ball we
-// briefly leave `p1Ready`/`p2Ready` set to true so the OPPONENT
-// client — whose own polling cadence (800 ms) is much slower than
-// the server's sub-millisecond `bothReady` flip — gets a window
-// during which the match view can render the "Both ready —
-// launching!" badge before ball animation starts.
+// Replacement for the previous `scheduleDeferredReadyClear` helper +
+// `deferredReadyClears` Map + Node `setTimeout` chain. The old design
+// was unsafe in serverless / multi-worker deployments:
 //
-// Implementation notes:
-//   • The clear is fired via Node's setTimeout AFTER the launching
-//     transaction commits. `handle.unref()` keeps the timer from
-//     pinning the process alive (best-effort, fire-and-forget).
-//   • The deferred query is GUARDED with a CASE WHEN ... IS NULL
-//     expression on the per-seat `current_inputs` column so a
-//     late-firing timer (serverless cold-start, deploy during
-//     clear, network blip) NEVER wipes a seat that has already
-//     committed inputs for the next ball. This guard is essential
-//     because in serverless / multi-worker deployments the timer
-//     may fire on a different Lambda instance than the one that
-//     scheduled it and therefore CANNOT be cancelled in-memory
-//     from the next `/launch` POST's process. The DB-side guard
-//     is the only reliable cross-instance correctness mechanism.
-//   • On the FINAL ball we clear the flags inline inside
-//     `resolveMatch` (no deferred clear) so the FINISHED row
-//     shows chips as NOT READY on the very next poll.
-const deferredReadyClears = new Map();
-
-function scheduleDeferredReadyClear(matchId, delayMs = 1500) {
-  const handle = setTimeout(async () => {
-    deferredReadyClears.delete(matchId);
-    try {
-      await db
-        .update(plinkoPvpMatches)
-        .set({
-          // Only flip back to false if that seat has NOT yet
-          // committed inputs for the next ball (current
-          // ball by virtue of resolveBall having cleared them).
-          // If the seat has committed, p{N}_ready stays true
-          // and the chip keeps looking READY through the new
-          // round. SQL-side guarding avoids cross-instance
-          // race conditions where the timer outlives the
-          // launching transaction in a different Lambda.
-          p1Ready: sql`CASE WHEN ${plinkoPvpMatches.p1CurrentInputs} IS NULL THEN false ELSE ${plinkoPvpMatches.p1Ready} END`,
-          p2Ready: sql`CASE WHEN ${plinkoPvpMatches.p2CurrentInputs} IS NULL THEN false ELSE ${plinkoPvpMatches.p2Ready} END`,
-        })
-        .where(eq(plinkoPvpMatches.id, matchId));
-    } catch (err) {
-      console.warn(
-        `[plinko-pvp] deferred ready clear for match ${matchId} failed:`,
-        err && err.message ? err.message : err,
-      );
-    }
-  }, delayMs);
-  if (typeof handle.unref === "function") handle.unref();
-  deferredReadyClears.set(matchId, handle);
-}
+//   • Vercel Lambdas freeze the moment the HTTP response is sent
+//     back to the browser — `setTimeout` callbacks almost never fire.
+//   • The in-memory `deferredReadyClears: Map<matchId, Timer>` cannot
+//     coordinate timers spawned on different Lambda instances.
+//   • The code's own comments acknowledged this and relied on the
+//     SQL guard inside the deferred UPDATE as a partial safety net,
+//     but because the timer never fires in serverless, the SQL guard
+//     never runs and `p{N}_ready` flags would stay stuck at `true`
+//     across rounds.
+//
+// Replacement: the identical CASE-WHEN SQL guard now runs
+// SYNCHRONOUSLY inside `fetchMatchWithAutoResolve`'s per-poll
+// transaction (see the inline orphan-ready sweep there). Self-healing
+// on every 800 ms poll, no timers, identical cross-instance race
+// guarantees because the SQL guard is still present.
+//
+// UX trade-off: the brief "Both ready — launching!" banner
+// (visible only during the 1.5 s grace window in the old design) is
+// sacrificed — clients now see NOT READY / NOT READY for at most one
+// 800 ms poll tick before ball animation starts. The ball still
+// animates correctly; this just means the visual cue that "both
+// players committed, the ball is launching" is gone. Acceptable cost
+// for a system that actually works on the user's Vercel Hobby + Render
+// Free Plan stack.
 
 // Build a `players: { p1: {...}, p2: {...} }` envelope from a list of
 // user rows keyed by clerkId. Used by the API routes so the match view
@@ -828,11 +801,11 @@ async function resolveBall(tx, match) {
     // ⚠️ DELIBERATELY preserve p1Ready/p2Ready=true here so the
     // OPPONENT client's polling cadence has a brief window to
     // surface the "Both ready — launching!" badge before the
-    // deferred clear scheduled by `scheduleDeferredReadyClear`
-    // (fire-and-forget, ~1500 ms) wipes them. The deferred
-    // UPDATE has a SQL guard so it never tampers with a seat
-    // that has already committed for the new ball — see the
-    // helper's comment block for the full rationale.
+    // inline orphan-ready sweep in `fetchMatchWithAutoResolve`
+    // (runs on every poll) clears them. The sweep has a SQL
+    // guard so it never tampers with a seat that has already
+    // committed inputs for the new ball — see
+    // `fetchMatchWithAutoResolve` for the full rationale.
     p1CurrentInputs: null,
     p2CurrentInputs: null,
     roundDeadline: nextDeadline,
@@ -1123,22 +1096,6 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
         : result,
       justResolved: wasJustResolved,
     };
-  }).then((result) => {
-    // Post-commit: schedule a brief deferred clear of the
-    // per-seat ready flags so the OPPONENT client's 800 ms
-    // polling cadence has a brief window to render the "Both
-    // ready — launching!" badge before the flags wipe. Only
-    // schedule on a NON-FINAL ball — the final ball is handled
-    // directly by resolveMatch (clears in setValues) and the
-    // match is over, so there's no point preserving the ready
-    // state. `requiredBalls` is the constant cap and the SQL
-    // guard in scheduleDeferredReadyClear ensures correctness
-    // even if the timer fires on a different serverless instance
-    // than the one that scheduled it (see helper comment block).
-    if (result?.justResolved && (result.match?.currentBall ?? 0) < REQUIRED_BALLS) {
-      scheduleDeferredReadyClear(matchId, 1500);
-    }
-    return result;
   });
 }
 
@@ -1358,9 +1315,9 @@ async function resolveMatch(tx, match) {
     p2CurrentInputs: null,
     // Explicitly clear the per-seat ready flags on the FINAL
     // ball so the FINISHED row lands as `p1Ready=false,
-    // p2Ready=false` immediately on commit. The deferred clear
-    // path is for non-final balls only — see comments on
-    // `resolveBall` and `scheduleDeferredReadyClear`.
+    // p2Ready=false` immediately on commit. The inline orphan-
+    // ready sweep in `fetchMatchWithAutoResolve` is for mid-
+    // match cleanup — see comments there.
     p1Ready: false,
     p2Ready: false,
     roundDeadline: null,
@@ -1447,6 +1404,36 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       return { error: "Forbidden", status: 403 };
     }
 
+    // ── Inline orphan-ready sweep ───────────────────────────────────
+    // Self-healing replacement for the previous server-side setTimeout
+    // deferred clear (see the file-header comment at the top of this
+    // section). Runs on EVERY /status poll inside this same FOR UPDATE
+    // transaction, so any stale `p{N}_ready=true` whose
+    // `p{N}_current_inputs` is null (grace-window leftover from a
+    // previous ball's resolveBall, half-completed timer that died with
+    // the Lambda, or any other source of orphan) is cleared BEFORE we
+    // return state to the polling client.
+    //
+    // The CASE-WHEN guards ensure we NEVER wipe a legitimate READY
+    // flag for a seat that has already committed inputs in the
+    // current round — so when the FIRST committer of a freshly-
+    // advanced ball lands, their `p{N}_ready=true` (set by
+    // `launchBall` immediately before this sweep runs) survives the
+    // sweep if their `p{N}_current_inputs` is non-null.
+    //
+    // `.returning()` gives us the post-sweep row in the same query,
+    // which we use as the post-sweep `match` for the no-auto-advance
+    // return path. The advance paths (`advanceFromReady`,
+    // `forceBallAdvance`) re-read internally so they're unaffected.
+    const [cleanedMatch] = await tx
+      .update(plinkoPvpMatches)
+      .set({
+        p1Ready: sql`CASE WHEN ${plinkoPvpMatches.p1CurrentInputs} IS NOT NULL THEN ${plinkoPvpMatches.p1Ready} ELSE false END`,
+        p2Ready: sql`CASE WHEN ${plinkoPvpMatches.p2CurrentInputs} IS NOT NULL THEN ${plinkoPvpMatches.p2Ready} ELSE false END`,
+      })
+      .where(eq(plinkoPvpMatches.id, matchId))
+      .returning();
+
     // 1) Auto-advance the brief Ready window into ball_1.
     if (
       match.status === MATCH_STATUS.READY &&
@@ -1484,18 +1471,7 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       return { match: resolved, autoResolvedBall: true };
     }
 
-    return { match, autoResolvedBall: false };
-  }).then((result) => {
-    // Post-commit: schedule a brief deferred clear of the
-    // per-seat ready flags so the OPPONENT client's 800 ms polling
-    // cadence has a brief window to render the "Both ready —
-    // launching!" badge before the flags wipe. Mirrors the post-
-    // commit scheduling in launchBall. Only schedule on a NON-
-    // FINAL ball; the final ball is cleared inline by resolveMatch.
-    if (result?.autoResolvedBall && (result.match?.currentBall ?? 0) < REQUIRED_BALLS) {
-      scheduleDeferredReadyClear(matchId, 1500);
-    }
-    return result;
+    return { match: cleanedMatch || match, autoResolvedBall: false };
   });
 }
 
