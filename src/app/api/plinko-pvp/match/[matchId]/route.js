@@ -32,13 +32,8 @@ import {
 import {
   LAUNCHABLE_STATES,
   MATCH_STATUS,
+  pickPositiveInt,
 } from "../../../../../lib/plinko-pvp/constants";
-
-function isTerminalStatus(status) {
-  return (
-    status === MATCH_STATUS.FINISHED || status === MATCH_STATUS.CANCELLED
-  );
-}
 
 // Per-viewer normaliser. Adds derived flags the match view (task 9)
 // needs to gate the commit panel, render the correct seat
@@ -60,12 +55,23 @@ function normaliseMatch(match, viewerUserId) {
     : viewerIsPlayer2
     ? "player2"
     : null;
+  // Spectator-safe assignment. Without the explicit `viewerIsPlayer2`
+  // guard, a non-participant viewer (which fetchMatchWithAutoResolve
+  // 403s today but the route still defends against) would silently
+  // receive player2's inputs as `viewerInputs` and player1's inputs as
+  // `opponentInputs` — a state leak that would surface as a stale "I
+  // committed" hint in the spectator UI and as a mis-bucketed score
+  // tally. Default both to `null` for non-participants.
   const viewerInputs = viewerIsPlayer1
     ? match.p1CurrentInputs
-    : match.p2CurrentInputs;
+    : viewerIsPlayer2
+    ? match.p2CurrentInputs
+    : null;
   const opponentInputs = viewerIsPlayer1
     ? match.p2CurrentInputs
-    : match.p1CurrentInputs;
+    : viewerIsPlayer2
+    ? match.p1CurrentInputs
+    : null;
   return {
     id: match.id,
     player1Id: match.player1Id,
@@ -76,8 +82,8 @@ function normaliseMatch(match, viewerUserId) {
     // Cumulative TOTAL points for each player across the 3 balls.
     // The match view surfaces this at the top of each player's
     // name in the side panels so the running sum is always visible.
-    p1Score: match.p1Score ?? 0,
-    p2Score: match.p2Score ?? 0,
+    p1Score: Number(match.p1Score) || 0,
+    p2Score: Number(match.p2Score) || 0,
     // Per-ball "ball in flight" indicators. Null after the ball
     // resolves (the rounds row holds the canonical record).
     p1CurrentInputs: match.p1CurrentInputs || null,
@@ -86,7 +92,9 @@ function normaliseMatch(match, viewerUserId) {
     p1Ready: Boolean(match.p1Ready),
     p2Ready: Boolean(match.p2Ready),
     roundDeadline: match.roundDeadline,
-    roundTimer: match.roundTimerSeconds ?? 20,
+    // Strict positive-int guard — delegates to a shared helper so
+    // launch + create-or-join routes stay in lockstep.
+    roundTimer: pickPositiveInt(match.roundTimerSeconds, 20),
     winnerId: match.winnerId ?? null,
     result: match.result ?? null,
     prizePaid: match.prizePaid ? Number(match.prizePaid) : 0,
