@@ -856,11 +856,16 @@ function PlayerSidePanel({
     lockedHint = `You're ready — waiting for opponent`;
   } else if (ready && !isViewer) {
     opponentHint = `Opponent ready`;
-  } else if (inputsLocked && !ready) {
-    lockedHint = `Ready`;
   } else if (!isViewer) {
     opponentHint = `Opponent choosing…`;
   }
+  // NOTE: the previous `} else if (inputsLocked && !ready) {`
+  // branch was removed. With the optimistic localReady flag above
+  // the chip and hint can now briefly disagree (chip says READY
+  // from localReady, hint says "Lock "Ready"…" because match.p{N}Ready
+  // is still false before polling lands). That branch painted a
+  // misleading "Ready" hint while the chip showed NOT READY — dead
+  // code in normal flow that contradicted the user-visible state.
 
   return (
     <div
@@ -894,13 +899,20 @@ function PlayerSidePanel({
         </div>
       </div>
 
-      {/* Ready chip */}
-      <div
+      {/* Ready chip — wrapped in motion.div keyed on the boolean so
+          a NOT READY → READY (or vice-versa) flip replays the spring
+          scale-in animation, giving the user punchy feedback when
+          their click registers / the server resolves the ball. */}
+      <motion.div
+        key={ready ? "ready" : "not-ready"}
+        initial={{ scale: 0.82, opacity: 0.55 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 380, damping: 26 }}
         className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-bold tracking-wide ${
           ready
             ? isCyan
-              ? "bg-cyan-500/20 text-cyan-100 border border-cyan-300/40"
-              : "bg-fuchsia-500/20 text-fuchsia-100 border border-fuchsia-300/40"
+              ? "bg-cyan-500/20 text-cyan-100 border border-cyan-300/40 shadow-[0_0_14px_rgba(0,229,255,0.25)]"
+              : "bg-fuchsia-500/20 text-fuchsia-100 border border-fuchsia-300/40 shadow-[0_0_14px_rgba(255,79,216,0.25)]"
             : "bg-white/5 text-white/50 border border-white/10"
         }`}
         aria-live="polite"
@@ -916,7 +928,7 @@ function PlayerSidePanel({
             NOT READY
           </>
         )}
-      </div>
+      </motion.div>
 
       {/* Sliders + Ready button (interactive only for the viewer&apos;s
           own seat and only while waiting on /launchable state). */}
@@ -975,6 +987,27 @@ export default function PlinkoPvpMatchPage({
   // or apply migration 0053 manually on Neon).
   const [migrationIncomplete, setMigrationIncomplete] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(0);
+
+  // Optimistic local "I'm Ready" flag for the viewer.
+  //
+  // Why this exists: the server's `launchBall` runs the entire
+  // commit + bothReady + simulateDualBalls + resolveBall sequence in
+  // ONE transaction. The server briefly holds `p{N}Ready=true` for
+  // perhaps <1ms before `resolveBall` wipes `p{N}Ready=false`
+  // (alongside `p{N}CurrentInputs`) as part of advancing the match
+  // to the next ball. By the time the second player's
+  // `fetchStatus()` lands, only the post-resolve state is visible
+  // — `match.p{N}Ready=false` — so that player's own chip NEVER
+  // visually toggles to READY, even though their POST succeeded and
+  // advanced the round.
+  //
+  // Fix: OR-merge this flag with `match.{viewerSeat}Ready` for the
+  // local viewer's panel + hint so the UI reflects the click
+  // immediately. The flag is reset on a `match.currentBall` change
+  // (new round opens) or terminal status (finished / cancelled) so
+  // it never leaks across rounds. The OPPONENT's chip still uses
+  // raw server state — we don't fake the opponent.
+  const [localReady, setLocalReady] = useState(false);
 
   // ── Local UI state (viewer&apos;s sliders) ─────────────────────────
   const [startX, setStartX] = useState<number>(250);
@@ -1156,6 +1189,32 @@ export default function PlinkoPvpMatchPage({
     const interval = setInterval(tick, 250);
     return () => clearInterval(interval);
   }, [match?.roundDeadline, match?.status]);
+
+  // ── Optimistic ready reset on ball advance / terminal status ─────
+  //
+  // Resets the local "I'm Ready" optimistic flag once the current
+  // round is no longer in flight. Triggers on:
+  //   • `match.currentBall` advancing (server cleared the round's
+  //     ready flags + currentInputs and moved to ball_(N+1))
+  //   • Status moving to FINISHED or CANCELLED (match over)
+  // Picking up only these two deps avoids spurious resets during
+  // inter-poll render flicker. The flag is allowed to remain true
+  // for the entire visible window of a single ball, so the chip
+  // stays on READY from "I'm Ready" click through ball launch and
+  // animation into the transition phase.
+  useEffect(() => {
+    if (!match) return;
+    if (
+      match.status === MATCH_STATUS.FINISHED ||
+      match.status === MATCH_STATUS.CANCELLED
+    ) {
+      setLocalReady(false);
+      return;
+    }
+  }, [match?.status]);
+  useEffect(() => {
+    setLocalReady(false);
+  }, [match?.currentBall]);
 
   // ── Phase reset on status transitions ────────────────────────────
   useEffect(() => {
@@ -1398,6 +1457,17 @@ export default function PlinkoPvpMatchPage({
     // consistent with the server flip of p2Ready.
     setBusy(true);
     setError(null);
+    // Optimistic UI: flip the *local* "I'm Ready" chip immediately
+    // so the click feels responsive. This is the user-visible fix
+    // for the "only the first to click Ready works" bug — without
+    // this, the second player's chip would never toggle because
+    // the server-side launchBall transaction wipes p{N}Ready=false
+    // (via resolveBall) before their own fetchStatus() returns.
+    // The matching reset lives in the effect above (currentBall
+    // change / terminal status). We NEVER clear `localReady`
+    // inside try/catch — a failed launch should leave the chip
+    // alone so a retry still feels like "I clicked it".
+    setLocalReady(true);
     // Read the LATEST match state via matchRef rather than the closure&apos;s
     // `match`. The closure value can be stale when the user clicks within
     // ~50ms of an opponent commit (the polling cadence is 800ms so there&apos;s
@@ -1406,6 +1476,9 @@ export default function PlinkoPvpMatchPage({
     // initial-render moment before matchRef has been populated.
     const liveMatch = matchRef.current ?? match;
     if (!liveMatch) {
+      // Reset optimistic ready — we have no match context, the chip
+      // would otherwise say READY even though we never even tried.
+      setLocalReady(false);
       setBusy(false);
       return;
     }
@@ -1451,6 +1524,9 @@ export default function PlinkoPvpMatchPage({
         refreshedFromFetch ?? matchRef.current ?? liveMatch;
       if (timedOut) {
         setError("Couldn&apos;t reach the server to confirm your ready status. Try again in a moment.");
+        // We never even reached a decision on `viewerCanLaunch`,
+        // so the optimistic chip would be lying. Reset it.
+        setLocalReady(false);
         setBusy(false);
         return;
       }
@@ -1466,6 +1542,10 @@ export default function PlinkoPvpMatchPage({
         } else {
           setError("Ready isn&apos;t available right now. Try again in a moment.");
         }
+        // Defensive refresh said we can&apos;t launch — never made it
+        // to the POST. Reset optimistic ready so the chip doesn&apos;t
+        // lie about a click that never registered on the server.
+        setLocalReady(false);
         setBusy(false);
         return;
       }
@@ -1493,6 +1573,12 @@ export default function PlinkoPvpMatchPage({
           setMigrationIncomplete(false);
           setError(data?.error || "Ready failed");
         }
+        // Server explicitly rejected the click — flip the optimistic
+        // chip back so READY doesn't linger after a permanent failure
+        // (e.g. migration-incomplete, match finished, network error).
+        // Otherwise users will think the click took effect and wonder
+        // why nothing happens.
+        setLocalReady(false);
         return;
       }
       // Successful launch — clear the migration banner (in case it
@@ -1536,6 +1622,10 @@ export default function PlinkoPvpMatchPage({
       // to the canonical rounds row.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ready failed");
+      // Network failure → server never confirmed. Drop the
+      // optimistic chip so the user knows their click didn&apos;t
+      // go through and they can retry.
+      setLocalReady(false);
     } finally {
       setBusy(false);
     }
@@ -1755,6 +1845,22 @@ export default function PlinkoPvpMatchPage({
   const latestP1FellOut = Boolean(latestRound?.player1Result?.fellOut);
   const latestP2FellOut = Boolean(latestRound?.player2Result?.fellOut);
 
+  // Effective "ready" values for the side-panel chips. The local
+  // viewer's own seat uses the optimistic `localReady` OR the
+  // server's `p{N}Ready` so that the second player to click Ready
+  // sees their chip toggle immediately (the server resolves both-
+  // ready state in one transaction — see localReady useEffect for
+  // the matching auto-reset on the next ball). The OPPONENT's
+  // panel always uses raw server state because we have no signal
+  // to fake the opponent with — the polling cadence still surfaces
+  // their commits within ~800ms.
+  const p1PanelReady = isViewerP1
+    ? (localReady || match.p1Ready)
+    : match.p1Ready;
+  const p2PanelReady = !isViewerP1
+    ? (localReady || match.p2Ready)
+    : match.p2Ready;
+
   // ── Status banner sub-component ────────────────────────────────
   function renderStatusBanner() {
     if (isCancelled) {
@@ -1959,7 +2065,7 @@ export default function PlinkoPvpMatchPage({
               totalScore={match.p1Score}
               lastBallDelta={p1Delta}
               isViewer={isViewerP1}
-              ready={match.p1Ready}
+              ready={p1PanelReady}
               isCurrent={isLaunchable && !isFinished && !isCancelled}
               isFinished={isFinished}
               startedX={isViewerP1 ? startX : opponentStartX}
@@ -2038,7 +2144,7 @@ export default function PlinkoPvpMatchPage({
               totalScore={match.p2Score}
               lastBallDelta={p2Delta}
               isViewer={!isViewerP1}
-              ready={match.p2Ready}
+              ready={p2PanelReady}
               isCurrent={isLaunchable && !isFinished && !isCancelled}
               isFinished={isFinished}
               startedX={!isViewerP1 ? startX : opponentStartX}
