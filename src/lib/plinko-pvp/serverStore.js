@@ -962,36 +962,42 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
       // advance independently of status.
       eq(plinkoPvpMatches.currentBall, match.currentBall),
     );
-    // Staleness-clear over the OPPOSITE seat.
+    // NARROWED STALENESS-CLEAR. The previous implementation used
+    // `isStartOfNewBall = !p1CurrentInputs && !p2CurrentInputs`
+    // and force-wrote the OPPOSITE seat's `p{N}Ready=false`
+    // whenever BOTH inputs were null. That over-broad formula
+    // fired during legitimate mid-ball race windows and could
+    // overwrite a freshly-set `p{N}Ready=true` from the OPPOSITE
+    // seat's own commit, producing the user-reported symptom:
+    // "only one person can be ready at a time" (the second
+    // committer's POST atomically clobbered the first committer's
+    // READY chip back to NOT READY instead of letting both be
+    // simultaneously READY).
     //
-    // If BOTH `p{N}_current_inputs` columns are null at the time
-    // of this commit, we are committing for a freshly-resolved
-    // ball — `resolveBall` cleared the previous round's inputs in
-    // the same transaction AND deliberately preserved
-    // `p{N}_ready=true` (so the OPPONENT client's polling cadence
-    // can render the "Both ready — launching!" badge during a
-    // brief grace window before the deferred clear fires).
-    //
-    // That preserved flag for the OPPOSITE seat is now STALE for
-    // the new ball — explicitly clear it on the first commit of
-    // the new round so it doesn't carry over as a phantom READY
-    // chip while the OPPOSITE player hasn't yet committed. Mid-
-    // round (any seat already has a current ball commit) we must
-    // NOT touch the OPPOSITE seat's flag — they're legitimately
-    // still READY for THIS ball and we mustn't strand them on a
-    // "NOT READY" chip just because we changed the round state.
-    const isStartOfNewBall =
-      !match.p1CurrentInputs && !match.p2CurrentInputs;
+    // The fix tightens the staleness-clear to fire ONLY when the
+    // OPPOSITE seat has a phantom preserved `p{N}Ready=true`
+    // leftover from a previous round's resolveBall — i.e.
+    // OPPOSITE's `currentInputs` is null AND their ready flag is
+    // currently true. This is the actual phantom-preserve case
+    // the original clause was trying to fix; in any other
+    // mid-ball case (OPPOSITE has inputs, or OPPOSITE has
+    // inputs=null with ready=false from the orphan-sweep default)
+    // there is no stale flag to clear and the OPPOSITE's
+    // `p{N}Ready` value is left untouched.
+    const oppHasPhantomPreserve =
+      seat === "player2"
+        ? !match.p1CurrentInputs && match.p1Ready === true
+        : !match.p2CurrentInputs && match.p2Ready === true;
     const setValues = seat === "player2"
       ? {
           p2CurrentInputs: payload,
           p2Ready: true,
-          ...(isStartOfNewBall ? { p1Ready: false } : {}),
+          ...(oppHasPhantomPreserve ? { p1Ready: false } : {}),
         }
       : {
           p1CurrentInputs: payload,
           p1Ready: true,
-          ...(isStartOfNewBall ? { p2Ready: false } : {}),
+          ...(oppHasPhantomPreserve ? { p2Ready: false } : {}),
         };
     const [updated] = await tx
       .update(plinkoPvpMatches)
@@ -1013,7 +1019,21 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
     // so balls can interact, overwrite results on the match row,
     // then resolve the ball immediately. (When only one seat is
     // ready we keep the single-ball result and wait for /status.)
-    const bothReady = Boolean(updated.p1Ready && updated.p2Ready);
+    //
+    // Defense-in-depth on top of the narrowed staleness-clear
+    // above: also require both `p{N}CurrentInputs` to be non-null.
+    // This prevents `simulateDualBalls` from ever receiving a null
+    // input even if a phantom preserved `p{N}Ready=true` somehow
+    // slipped through (e.g. via a future caller that bypasses the
+    // staleness-clear path). The resolved-row invariant — when
+    // bothReady is true, `resolveBall` is called with both inputs
+    // populated — is now airtight.
+    const bothReady = Boolean(
+      updated.p1Ready &&
+        updated.p2Ready &&
+        updated.p1CurrentInputs &&
+        updated.p2CurrentInputs,
+    );
     let resolvedRow = updated;
 
     if (bothReady) {
