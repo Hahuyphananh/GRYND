@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
 import { hexDuelGames, users } from "../../../../../db/schema";
@@ -9,22 +9,36 @@ import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters
 const PAYOUT_MULTIPLIER = 1.9;
 
 export async function POST(req: Request) {
+  // Hoisted above the try so the catch block's diagnostics can read
+  // them even when the throw happened during auth or JSON parsing.
+  // Safe fallback values: empty string for clerkId/winner, NaN for
+  // gameId-style numbers, undefined for stats counters.
+  let clerkId: string | null = null;
+  let winner: string | null = null;
+
   try {
-    const { userId: clerkId } = await auth();
+    const { userId } = await auth();
+    clerkId = userId ?? null;
     if (!clerkId) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { winner, player1Moves, player2Moves, player1Territory, player2Territory, durationSeconds, startedAt } =
-      await req.json() as {
-        winner: string;
-        player1Moves?: number;
-        player2Moves?: number;
-        player1Territory?: number;
-        player2Territory?: number;
-        durationSeconds?: number;
-        startedAt?: string;
-      };
+    const body = (await req.json().catch(() => ({}))) as {
+      winner?: unknown;
+      player1Moves?: number;
+      player2Moves?: number;
+      player1Territory?: number;
+      player2Territory?: number;
+      durationSeconds?: number;
+      startedAt?: string;
+    };
+    winner = typeof body.winner === "string" ? body.winner : null;
+    const player1Moves = body.player1Moves;
+    const player2Moves = body.player2Moves;
+    const player1Territory = body.player1Territory;
+    const player2Territory = body.player2Territory;
+    const durationSeconds = body.durationSeconds;
+    const startedAt = body.startedAt;
 
     if (winner !== "player1" && winner !== "player2") {
       return NextResponse.json({ success: false, error: "Invalid winner" }, { status: 400 });
@@ -32,28 +46,38 @@ export async function POST(req: Request) {
 
     // Atomic: find the active multiplayer game and update it
     const result = await db.transaction(async (tx) => {
-      // Find an in-progress multiplayer game where the caller is either player1 or player2
+      // Find an in-progress multiplayer game where the caller is either player1 or player2.
+      // Uses typed or(eq(...), eq(...)) instead of the raw
+      // `sql\`(${...} = ${clerkId} OR ...)\`` template — the raw template
+      // has parameter-binder fragility under `drizzle-orm/neon-serverless`
+      // and was a confirmed source of 500s on the sibling `actions/route.ts`.
       const [game] = await tx
         .select()
         .from(hexDuelGames)
         .where(
           and(
             eq(hexDuelGames.status, "in_progress"),
-            sql`(${hexDuelGames.player1Id} = ${clerkId} OR ${hexDuelGames.player2Id} = ${clerkId})`,
+            or(
+              eq(hexDuelGames.player1Id, clerkId),
+              eq(hexDuelGames.player2Id, clerkId),
+            ),
           ),
         )
         .for("update")
         .limit(1);
 
       if (!game) {
-        // Check if already completed (idempotent)
+        // Check if already completed (idempotent) — typed OR, same rationale as above.
         const [completed] = await tx
           .select()
           .from(hexDuelGames)
           .where(
             and(
               eq(hexDuelGames.status, "completed"),
-              sql`(${hexDuelGames.player1Id} = ${clerkId} OR ${hexDuelGames.player2Id} = ${clerkId})`,
+              or(
+                eq(hexDuelGames.player1Id, clerkId),
+                eq(hexDuelGames.player2Id, clerkId),
+              ),
             ),
           )
           .orderBy(sql`${hexDuelGames.endedAt} DESC`)
@@ -102,7 +126,13 @@ export async function POST(req: Request) {
           .where(eq(users.clerkId, clerkId))
           .returning({ balance: users.balance });
 
-        newBalance = Number(updatedUser?.[0]?.balance ?? 0);
+        // After `const [updatedUser] = await ...returning({...})`,
+        // `updatedUser` is already a SINGLE row object (or undefined).
+        // Earlier code read `updatedUser?.[0]?.balance` which treated the
+        // single row as a 2-D structure, so `.<0>` was always undefined
+        // and `newBalance` silently became 0 on every win/loss response.
+        // The fix below restores the correct single-row field access.
+        newBalance = Number(updatedUser?.balance ?? 0);
       } else {
         const [updatedUser] = await tx
           .update(users)
@@ -113,7 +143,8 @@ export async function POST(req: Request) {
           .where(eq(users.clerkId, clerkId))
           .returning({ balance: users.balance });
 
-        newBalance = Number(updatedUser?.[0]?.balance ?? 0);
+        // See comment above re: `updatedUser?.[0]?.balance` bug.
+        newBalance = Number(updatedUser?.balance ?? 0);
       }
 
       // Update the game record
@@ -174,6 +205,19 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {
+    // Log the underlying error server-side so Vercel function logs
+    // (and Sentry if wired up) actually capture the cause. Without
+    // this, every 500 returned only the generic JSON body and the
+    // real stack trace was lost — making the bug invisible in prod.
+    console.error(
+      "[hex-duel/multiplayer/end] POST failed",
+      {
+        clerkId,
+        winner,
+        err: error?.message,
+        stack: error?.stack,
+      },
+    );
     const status = error?.message === "No active game found" ? 404 : 500;
     return NextResponse.json(
       { success: false, error: error?.message || "Server error" },
