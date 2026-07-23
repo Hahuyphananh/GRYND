@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, ne, or, asc } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
 import { hexDuelActions, hexDuelGames } from "../../../../../db/schema";
@@ -19,14 +19,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, error: "Invalid gameId" }, { status: 400 });
     }
 
-    // Verify caller is a player in this game
+    // Verify caller is a player in this game.
+    // Use Drizzle's typed operators (`or`, `eq`) instead of raw `sql` tagged
+    // templates so the parameter binder doesn't fail with the
+    // `drizzle-orm/neon-serverless` driver. The raw template variant crashed
+    // every poll of this endpoint with a 500 in production (see Sentry),
+    // returning the same error before any Postgres roundtrip.
     const [game] = await db
       .select()
       .from(hexDuelGames)
       .where(
         and(
           eq(hexDuelGames.id, gameId),
-          sql`(${hexDuelGames.player1Id} = ${userId} OR ${hexDuelGames.player2Id} = ${userId})`,
+          or(
+            eq(hexDuelGames.player1Id, userId),
+            eq(hexDuelGames.player2Id, userId),
+          ),
         ),
       )
       .limit(1);
@@ -35,10 +43,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, error: "Game not found" }, { status: 404 });
     }
 
-    // Build conditions dynamically (avoid undefined in and() for drizzle compat)
+    // Build conditions dynamically (avoid undefined in and() for drizzle compat).
+    // Same `ne()` swap as above: raw `sql` template `!= ${userId}` made the
+    // drizzle parameter binder throw a JS-level error before reaching Neon.
     const conditions = [
       eq(hexDuelActions.gameId, gameId),
-      sql`${hexDuelActions.userId} != ${userId}`,
+      ne(hexDuelActions.userId, userId),
     ];
     if (afterId > 0) {
       conditions.push(gt(hexDuelActions.id, afterId));
@@ -48,7 +58,7 @@ export async function GET(req: Request) {
       .select()
       .from(hexDuelActions)
       .where(and(...conditions))
-      .orderBy(sql`${hexDuelActions.id} ASC`)
+      .orderBy(asc(hexDuelActions.id))
       .limit(50);
 
     const maxId = actions.length > 0 ? Math.max(...actions.map((a) => a.id)) : afterId;
