@@ -1500,9 +1500,21 @@ export default function HexDuelPage() {
   // ── Send action via socket in multiplayer mode ──────────────────
   const actionSeqRef = useRef(0);
   const sendMultiplayerAction = useCallback((action: MultiplayerAction) => {
-    if (socket && multiplayerGameId) {
+    if (socket && socket.connected && gameModeRef.current === "multiplayer" && multiplayerGameId) {
       actionSeqRef.current += 1;
       socket.emit("hexDuel:action", { gameId: multiplayerGameId, action: { ...action, __seq: actionSeqRef.current } });
+    } else if (typeof window !== "undefined" && (window as unknown as { __hexDuelDebug?: boolean }).__hexDuelDebug) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[hex-duel] sendMultiplayerAction no-op (socket not ready):",
+        action.type,
+        "connected=",
+        socket?.connected,
+        "gameMode=",
+        gameModeRef.current,
+        "multiplayerGameId=",
+        multiplayerGameId,
+      );
     }
   }, [socket, multiplayerGameId]);
 
@@ -1514,6 +1526,10 @@ export default function HexDuelPage() {
 
   const recordMultiplayerAction = useCallback((action: MultiplayerAction) => {
     if (gameModeRef.current !== "multiplayer" || !multiplayerGameIdRef.current || isSpectator) return;
+    if (typeof window !== "undefined" && (window as unknown as { __hexDuelDebug?: boolean }).__hexDuelDebug) {
+      // eslint-disable-next-line no-console
+      console.log("[hex-duel] POST record:", action.type, action.player);
+    }
     fetch("/api/hex-duel/multiplayer/action", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1525,7 +1541,12 @@ export default function HexDuelPage() {
         targetKey: action.targetKey,
         troopCount: action.troopCount,
       }),
-    }).catch(() => {});
+    }).catch((err) => {
+      if (typeof window !== "undefined" && (window as unknown as { __hexDuelDebug?: boolean }).__hexDuelDebug) {
+        // eslint-disable-next-line no-console
+        console.warn("[hex-duel] POST record FAILED:", action.type, err);
+      }
+    });
   }, []);
 
   // Ref for applyRemoteAction to avoid stale closure issues (kept above as
@@ -1756,7 +1777,19 @@ export default function HexDuelPage() {
       processedSeqRef.current += 1;
       const wireId = action.__seq ?? action.id ?? `local-${processedSeqRef.current}`;
       const sig = `${action.type}:${action.sourceKey ?? ""}:${action.targetKey ?? ""}:${action.troopCount ?? ""}:${wireId}`;
-      if (processedSocketActionsRef.current.has(sig)) return;
+      if (processedSocketActionsRef.current.has(sig)) {
+        // Diagnostic: surface dropped-via-dedup so silent desync bugs
+        // become visible in the browser console. (If you see this fire
+        // repeatedly for the same action, your __seq wireId source is
+        // producing duplicates that the dedup mistreats as the same
+        // action; the engine's idempotency guard would then BISTABLY
+        // bounce endTurn flips.)
+        if (typeof window !== "undefined" && (window as unknown as { __hexDuelDebug?: boolean }).__hexDuelDebug) {
+          // eslint-disable-next-line no-console
+          console.warn("[hex-duel] enqueue dedup-drop:", sig);
+        }
+        return;
+      }
       processedSocketActionsRef.current.add(sig);
       actionQueueRef.current.push(action);
       processQueue();

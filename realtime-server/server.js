@@ -246,10 +246,14 @@ io.on("connection", (socket) => {
     const players = hexDuelRoomPlayers.get(String(gameId));
     if (!players || !players.has(userId)) {
       console.warn(
-        "[hex-duel] rejecting action from non-participant:",
+        "[hex-duel] rejecting action from non-participant: room=",
+        roomId,
+        "userId=",
         userId,
-        "gameId:",
-        gameId,
+        "playerCount=",
+        players ? players.size : 0,
+        "action=",
+        action.type,
       );
       return;
     }
@@ -258,18 +262,7 @@ io.on("connection", (socket) => {
     // they will catch up via action polling. The old room-size check caused
     // actions to be silently dropped during brief reconnect windows.
     const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
-    if (!socketsInRoom || socketsInRoom.size < 2) {
-      // Still relay (non-blocking) — the opponent may reconnect shortly
-      // and the client-side polling will catch any missed actions.
-      console.warn(
-        "[hex-duel] relaying action to room with < 2 sockets:",
-        roomId,
-        "action:",
-        action.type,
-        "sockets:",
-        socketsInRoom?.size ?? 0,
-      );
-    }
+    const roomSize = socketsInRoom?.size ?? 0;
 
     // Track the action with a sequence counter to prevent accidental
     // double-processing from network retries, while still allowing
@@ -281,7 +274,19 @@ io.on("connection", (socket) => {
     const thisSeq = action.__seq ?? Date.now();
     if (!action.__seq) action.__seq = thisSeq;
     // Only dedupe if the exact same sequence arrives (network retry)
-    if (thisSeq === prevSeq) return;
+    if (thisSeq === prevSeq) {
+      console.warn(
+        "[hex-duel] dedup-drop (same seq as previous):",
+        roomId,
+        "userId=",
+        userId,
+        "seq=",
+        thisSeq,
+        "action=",
+        action.type,
+      );
+      return;
+    }
     seqMap.set(seqKey, thisSeq);
 
     // Clean old entries after 5 minutes
@@ -290,7 +295,22 @@ io.on("connection", (socket) => {
       if (now - t > 300000) hexDuelTurnStates.delete(k);
     }
 
-    // Relay action to the other player
+    // Relay action to the other player. Audit trail helps debug cases
+    // where the receiver reports actions never arrived.
+    console.log(
+      "[hex-duel] relay:",
+      roomId,
+      "from=",
+      userId,
+      "type=",
+      action.type,
+      "player=",
+      action.player,
+      "seq=",
+      thisSeq,
+      "roomSize=",
+      roomSize,
+    );
     socket.to(roomId).emit("hexDuel:action", {
       gameId: roomId,
       action,
