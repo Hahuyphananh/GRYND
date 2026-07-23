@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { users } from "../../../../db/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
 import { cacheSet } from "../../../../lib/redis/cache";
 
@@ -76,15 +76,27 @@ export async function POST(req: Request) {
       });
     }
 
-    // Atomic: deduct wager only if balance is sufficient
+    // Atomic: deduct wager only if balance is sufficient.
+    // The raw `sql\`${users.clerkId} = ${clerkId} AND ${users.balance} >= ${wager}\``
+    // template was replaced with typed `and(eq(...), gte(...))` because
+    // multi-column raw sql templates have parameter-binder fragility
+    // under `drizzle-orm/neon-serverless` and were the root cause of
+    // 500s on the sibling `multiplayer/actions/route.ts`.
     const [updatedUser] = await db
       .update(users)
       .set({
+        // Sql templates for SET-clause arithmetic (single column)
+        // are kept \u2014 the binder fragility is specific to multi-column
+        // comparison WHERE clauses, not to arithmetic expressions.
         balance: sql`${users.balance} - ${wager}`,
         totalWagered: sql`${users.totalWagered} + ${wager}`,
       })
       .where(
-        sql`${users.clerkId} = ${clerkId} AND ${users.balance} >= ${wager}`
+        // users.balance is declared as numeric(30, 2) in schema.ts,
+        // which Drizzle types as `string` (precision overflows JS
+        // number safety). gte() therefore refuses a JS number; pass
+        // the wager as a fixed-2 string to match the column's scale.
+        and(eq(users.clerkId, clerkId), gte(users.balance, wager.toFixed(2)))
       )
       .returning({ balance: users.balance });
 

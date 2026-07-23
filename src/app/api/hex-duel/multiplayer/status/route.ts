@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
 import { hexDuelGames, users } from "../../../../../db/schema";
@@ -12,6 +12,9 @@ function statusToTurn(status: string): "player1" | "player2" | null {
 }
 
 export async function GET(req: Request) {
+  // Hoisted above the try so the catch block's diagnostics can read
+  // `gameId` even when the throw happened during URL parsing.
+  let gameId: number = NaN;
   try {
     const { userId } = await auth();
     if (!userId) {
@@ -19,12 +22,16 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const gameId = Number(searchParams.get("gameId"));
+    gameId = Number(searchParams.get("gameId"));
 
     if (!Number.isFinite(gameId) || gameId <= 0) {
       return NextResponse.json({ success: false, error: "Invalid gameId" }, { status: 400 });
     }
 
+    // Uses typed or(eq(...), eq(...)) instead of the raw
+    // `sql\`(${hexDuelGames.player1Id} = ${userId} OR ...)\`` template,
+    // which has parameter-binder fragility under
+    // `drizzle-orm/neon-serverless` (root cause of past 500s).
     const [game] = await db
       .select({
         id: hexDuelGames.id,
@@ -39,7 +46,10 @@ export async function GET(req: Request) {
       .where(
         and(
           eq(hexDuelGames.id, gameId),
-          sql`(${hexDuelGames.player1Id} = ${userId} OR ${hexDuelGames.player2Id} = ${userId})`,
+          or(
+            eq(hexDuelGames.player1Id, userId),
+            eq(hexDuelGames.player2Id, userId),
+          ),
         ),
       )
       .limit(1);
@@ -81,6 +91,17 @@ export async function GET(req: Request) {
       },
     });
   } catch (error: any) {
+    // Log the underlying error server-side so Vercel function logs
+    // (and Sentry if wired up) actually capture the cause.
+    console.error(
+      "[hex-duel/multiplayer/status] GET failed",
+      {
+        url: req.url,
+        gameId,
+        err: error?.message,
+        stack: error?.stack,
+      },
+    );
     return NextResponse.json(
       { success: false, error: error?.message || "Server error" },
       { status: 500 },
@@ -89,13 +110,22 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  // Hoisted above the try so the catch block's diagnostics can read
+  // `gameId` / `turn` even when the throw happened during JSON parsing.
+  let gameId: number = NaN;
+  let turn: string | null = null;
   try {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { gameId, turn } = await req.json() as { gameId: number; turn?: string };
+    const body = (await req.json().catch(() => ({}))) as {
+      gameId?: unknown;
+      turn?: unknown;
+    };
+    gameId = Number(body.gameId);
+    turn = typeof body.turn === "string" ? body.turn : null;
 
     if (!Number.isFinite(gameId) || gameId <= 0) {
       return NextResponse.json({ success: false, error: "Invalid gameId" }, { status: 400 });
@@ -105,13 +135,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Invalid turn value" }, { status: 400 });
     }
 
+    // Uses typed or(eq(...), eq(...)) instead of the raw
+    // `sql\`(${hexDuelGames.player1Id} = ${userId} OR ...)\`` template,
+    // which has parameter-binder fragility under
+    // `drizzle-orm/neon-serverless` (root cause of past 500s).
     const [game] = await db
       .select()
       .from(hexDuelGames)
       .where(
         and(
           eq(hexDuelGames.id, gameId),
-          sql`(${hexDuelGames.player1Id} = ${userId} OR ${hexDuelGames.player2Id} = ${userId})`,
+          or(
+            eq(hexDuelGames.player1Id, userId),
+            eq(hexDuelGames.player2Id, userId),
+          ),
         ),
       )
       .limit(1);
@@ -138,6 +175,17 @@ export async function POST(req: Request) {
       game: { id: gameId, status: newStatus, currentTurn: statusToTurn(newStatus) },
     });
   } catch (error: any) {
+    // Log the underlying error server-side so Vercel function logs
+    // (and Sentry if wired up) actually capture the cause.
+    console.error(
+      "[hex-duel/multiplayer/status] POST failed",
+      {
+        gameId,
+        turn,
+        err: error?.message,
+        stack: error?.stack,
+      },
+    );
     return NextResponse.json(
       { success: false, error: error?.message || "Server error" },
       { status: 500 },
