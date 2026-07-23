@@ -801,6 +801,17 @@ export function useHexDuel() {
     (action: any) => {
       if (state.winner) return;
 
+      // action.player (when set on the wire) tells us unambiguously which
+      // player's turn the action originated from. The receiver's
+      // state.currentTurn should mirror the global game state, but if it
+      // ever drifts (polling-synthetic race, missed socket events), we
+      // must still converge to the sender's intent — not flip back and
+      // forth. Prefer action.player; fall back to the mirror-state value
+      // for backward-compat with synthetic / poll-driven actions.
+      // state.currentTurn is always a DuelPlayer literal, so fromPlayer
+      // is always defined.
+      const fromPlayer: DuelPlayer = action.player ?? state.currentTurn;
+
       switch (action.type) {
         case "attack": {
           if (!action.sourceKey || !action.targetKey || !action.troopCount) return;
@@ -809,14 +820,14 @@ export function useHexDuel() {
             action.sourceKey,
             action.targetKey,
             action.troopCount,
-            state.currentTurn,
+            fromPlayer,
             capitals,
           );
           logAttack(
             action.sourceKey,
             action.targetKey,
             action.troopCount,
-            state.currentTurn,
+            fromPlayer,
             outcome,
           );
           dispatch({
@@ -824,7 +835,7 @@ export function useHexDuel() {
             sourceKey: action.sourceKey,
             targetKey: action.targetKey,
             troopCount: action.troopCount,
-            player: state.currentTurn,
+            player: fromPlayer,
           });
           break;
         }
@@ -834,32 +845,37 @@ export function useHexDuel() {
             action.sourceKey,
             action.targetKey,
             action.troopCount,
-            state.currentTurn,
+            fromPlayer,
           );
           dispatch({
             type: "displace",
             sourceKey: action.sourceKey,
             targetKey: action.targetKey,
             troopCount: action.troopCount,
-            player: state.currentTurn,
+            player: fromPlayer,
           });
           break;
         }
-        case "endTurn": {
+        case "endTurn":
+        case "skipRound": {
+          // Idempotency guard — the reducer's switchTurnCore always flips.
+          // If the receiver has already advanced past this turn (e.g. a
+          // prior dispatch or a polling-driven synthetic endTurn already
+          // flipped us), re-applying would oscillate the turn back to the
+          // sender. Leave state untouched — that would put the action menu
+          // back on the wrong player's screen.
+          if (
+            state.currentTurn !== fromPlayer &&
+            state.currentTurn === otherPlayer(fromPlayer)
+          ) {
+            return;
+          }
           // Sender already grew their own troops locally. We mirror the
           // turn switch only — the reducer's skipTroopGrowth flag
           // prevents double growth on the receiver side.
           dispatch({
             type: "endTurn",
-            player: state.currentTurn,
-            skipTroopGrowth: true,
-          });
-          break;
-        }
-        case "skipRound": {
-          dispatch({
-            type: "endTurn",
-            player: state.currentTurn,
+            player: fromPlayer,
             skipTroopGrowth: true,
           });
           break;
