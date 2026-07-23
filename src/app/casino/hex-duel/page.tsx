@@ -915,6 +915,14 @@ type GameMode = "idle" | "for-fun" | "real" | "multiplayer";
 /** Multiplayer action sent/received via socket */
 interface MultiplayerAction {
   type: 'attack' | 'displace' | 'endTurn' | 'skipRound';
+  /**
+   * The player whose turn the action originated from. The wire includes
+   * this so the receiver can converge to the sender's intent even if the
+   * mirrors have drifted (synthetic / poll-driven catch-ups). When
+   * omitted, the receiver falls back to its own `state.currentTurn`,
+   * which is what mirror-state actions (real-time socket relay) assume.
+   */
+  player?: DuelPlayer;
   sourceKey?: string;
   targetKey?: string;
   troopCount?: number;
@@ -1931,10 +1939,19 @@ export default function HexDuelPage() {
 
   // Wrap endTurn to also send via socket in multiplayer AND update server turn state AND record action
   const handleEndTurn = useCallback(() => {
+    // Defensive guard — in multiplayer, only the active local player can
+    // call endTurn. If `isLocalTurn` is false (e.g. the engine just
+    // desynced and currentTurn != localDuelPlayer), ignore the click so
+    // we don't broadcast an out-of-turn endTurn that would flip the
+    // opponent's display into the wrong state.
+    if (gameMode === "multiplayer" && !isLocalTurn) return;
     const prevTurn = currentTurn;
     endTurn();
     if (gameMode === "multiplayer") {
-      const action: MultiplayerAction = { type: "endTurn" };
+      // The `player` field tells the receiver unambiguously whose turn
+      // ended. Without it the receiver relies on mirror-state which can
+      // drift under load.
+      const action: MultiplayerAction = { type: "endTurn", player: prevTurn };
       sendMultiplayerAction(action);
       recordMultiplayerAction(action);
       // Update server turn state for polling fallback
@@ -1946,7 +1963,7 @@ export default function HexDuelPage() {
         body: JSON.stringify({ gameId: multiplayerGameId, turn: nextTurn }),
       }).catch(() => {});
     }
-  }, [endTurn, gameMode, sendMultiplayerAction, recordMultiplayerAction, multiplayerGameId, currentTurn]);
+  }, [endTurn, gameMode, sendMultiplayerAction, recordMultiplayerAction, multiplayerGameId, currentTurn, isLocalTurn]);
 
   // ── Action-based sync: poll server for opponent actions we might have missed ──
   // Equivalent to dice duel polling /api/dice-duel/get-match every 1.5s.
@@ -2142,13 +2159,24 @@ export default function HexDuelPage() {
   }, [gameMode, multiplayerGameId, opponentReady, isPlayer1]);
 
   const handleSkipRound = useCallback(() => {
+    if (gameMode === "multiplayer" && !isLocalTurn) return;
+    const prevTurn = currentTurn;
     skipRound();
     if (gameMode === "multiplayer") {
-      const action: MultiplayerAction = { type: "skipRound" };
+      const action: MultiplayerAction = { type: "skipRound", player: prevTurn };
       sendMultiplayerAction(action);
       recordMultiplayerAction(action);
+      // Mirror handleEndTurn: keep server turn state in sync so the
+      // polling fallback converges.
+      const nextTurn = prevTurn === "player1" ? "player2" : "player1";
+      fetch(`/api/hex-duel/multiplayer/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameId: multiplayerGameId, turn: nextTurn }),
+      }).catch(() => {});
     }
-  }, [skipRound, gameMode, sendMultiplayerAction, recordMultiplayerAction]);
+  }, [skipRound, gameMode, sendMultiplayerAction, recordMultiplayerAction, multiplayerGameId, currentTurn, isLocalTurn]);
 
   const handleRestart = useCallback(() => {
     resetGame(); setGameMode("idle"); setWager(0); setWagerError(null);
