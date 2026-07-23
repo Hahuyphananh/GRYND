@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
-import { useHexDuel, type DuelPlayer } from "../../../lib/hexDuelEngine";
+import { useHexDuel, otherPlayer, type DuelPlayer } from "../../../lib/hexDuelEngine";
 import { useSocket } from "../../../context/SocketProvider";
 import { decideAIAction, type AIDifficulty, type AIAction, type AIStateSnapshot } from "../../../lib/hexDuelAI";
 import { useHexAudio } from "../../../lib/hexAudio";
@@ -1950,18 +1950,15 @@ export default function HexDuelPage() {
     if (gameMode === "multiplayer") {
       // The `player` field tells the receiver unambiguously whose turn
       // ended. Without it the receiver relies on mirror-state which can
-      // drift under load.
+      // drift under load. The server-status POST is no longer needed
+      // here — the dedicated turn-change useEffect below handles ALL
+      // local-initiated turn transitions (explicit End Turn, Skip Round,
+      // AND the engine's AP=0 attack/displace auto-flip), eliminating a
+      // class of bounces where the sender's polling would otherwise
+      // re-fire a synthetic endTurn from a stale local state.
       const action: MultiplayerAction = { type: "endTurn", player: prevTurn };
       sendMultiplayerAction(action);
       recordMultiplayerAction(action);
-      // Update server turn state for polling fallback
-      const nextTurn = prevTurn === "player1" ? "player2" : "player1";
-      fetch(`/api/hex-duel/multiplayer/status`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ gameId: multiplayerGameId, turn: nextTurn }),
-      }).catch(() => {});
     }
   }, [endTurn, gameMode, sendMultiplayerAction, recordMultiplayerAction, multiplayerGameId, currentTurn, isLocalTurn]);
 
@@ -2013,6 +2010,44 @@ export default function HexDuelPage() {
     };
   }, [gameMode, multiplayerGameId, opponentReady, effectiveWinner, enqueueRemoteAction]);
 
+  // ── Status POST on local turn-change (prevents polling bounce) ───────
+  // Every dispatch that flips currentTurn on this client (explicit
+  // handleEndTurn, handleSkipRound, OR engine's AP=0 attack/displace
+  // auto-flip) needs to immediately POST the new currentTurn to the
+  // server so the polling fallback on both clients doesn't see a
+  // local-ahead/server-stale mismatch. Without this, the client's own
+  // polling cycle would fire a synthetic endTurn that re-flip the
+  // just-ended turn back to the player (the bounce bug). The existing
+  // useEffect already updates a turn-transition tracker (`prevTurnRef`)
+  // — we use a separate ref so this POST is independent of the
+  // turnJustChanged animation timer.
+  const lastPostedTurnRef = useRef<DuelPlayer | null>(null);
+  useEffect(() => {
+    if (gameMode !== "multiplayer" || !multiplayerGameId || isGameOver) return;
+    // First-mount safety: if the ref was never seeded (hot reload, late
+    // mount, deep-link into an in-progress game), initialize it from the
+    // current state so subsequent transitions are detected correctly.
+    if (lastPostedTurnRef.current === null) {
+      lastPostedTurnRef.current = currentTurn;
+      return;
+    }
+    const localClientSlot: DuelPlayer = isPlayer1 ? "player1" : "player2";
+    const prev = lastPostedTurnRef.current;
+    // Only POST when this client was the one that just ended their turn
+    // (i.e. we moved OUT of our slot). A purely mirror-state change
+    // (e.g. socket arrived, applying a remote endTurn) doesn't need a
+    // re-POST — the originating client already posted it.
+    if (prev === localClientSlot && prev !== currentTurn) {
+      fetch(`/api/hex-duel/multiplayer/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameId: multiplayerGameId, turn: currentTurn }),
+      }).catch(() => {});
+    }
+    lastPostedTurnRef.current = currentTurn;
+  }, [gameMode, multiplayerGameId, currentTurn, isGameOver, isPlayer1]);
+
   // ── Turn-status polling: last-resort sync for when socket events are missed ──
   // Periodically checks the server-stored currentTurn and applies a missed
   // opponent endTurn if the server says it's our turn but locally it isn't.
@@ -2049,6 +2084,19 @@ export default function HexDuelPage() {
           return;
         }
 
+        // Bail if local is AHEAD of server — local engine already
+        // pre-emptively flipped (e.g. local handleEndTurn or AP=0
+        // attack/displace auto-flip) and the POST to /status is
+        // in-flight. Server will reconcile shortly. Firing a synthetic
+        // endTurn here is what was BOUNCING the player's UI back to
+        // their own turn immediately after they ended it.
+        // (`otherPlayer` is a private helper in hexDuelEngine, inline
+        // here to avoid a round-trip import.)
+        if (localTurnRef.current === otherPlayer(serverTurn)) {
+          pendingTurnFlipRef.current = false;
+          return;
+        }
+
         // Wait for the action queue to drain — otherwise an in-flight
         // attack could flip the turn back after we do.
         if (actionQueueRef.current.length > 0 || processingRef.current) {
@@ -2063,7 +2111,16 @@ export default function HexDuelPage() {
           localTurnRef.current !== myTurn &&
           !isGameOverRef.current
         ) {
-          enqueueRemoteAction({ type: "endTurn", __seq: -Date.now() });
+          // CRITICAL: include `player: localTurnRef.current` so the
+          // receiver's applyRemoteAction idempotency guard works.
+          // Without it, fromPlayer falls back to state.currentTurn and
+          // if even ONE endTurn has already been mirrored, the reducer
+          // would re-flip back.
+          enqueueRemoteAction({
+            type: "endTurn",
+            player: localTurnRef.current,
+            __seq: -Date.now(),
+          });
         }
         pendingTurnFlipRef.current = true;
       } catch {
@@ -2163,18 +2220,13 @@ export default function HexDuelPage() {
     const prevTurn = currentTurn;
     skipRound();
     if (gameMode === "multiplayer") {
+      // Server turn state is updated by the dedicated turn-change
+      // useEffect (see the ref above the polling useEffect) — no need
+      // to POST here, which also removes a redundant double-POST that
+      // used to race with the polling fallback.
       const action: MultiplayerAction = { type: "skipRound", player: prevTurn };
       sendMultiplayerAction(action);
       recordMultiplayerAction(action);
-      // Mirror handleEndTurn: keep server turn state in sync so the
-      // polling fallback converges.
-      const nextTurn = prevTurn === "player1" ? "player2" : "player1";
-      fetch(`/api/hex-duel/multiplayer/status`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ gameId: multiplayerGameId, turn: nextTurn }),
-      }).catch(() => {});
     }
   }, [skipRound, gameMode, sendMultiplayerAction, recordMultiplayerAction, multiplayerGameId, currentTurn, isLocalTurn]);
 
@@ -2211,7 +2263,14 @@ export default function HexDuelPage() {
 
   // ── Action system: wrapped click, confirm, clear ──────────────────
 
-  const handleTileClickWithActions = useCallback((x: number, y: number) => {
+  const handleTileClickWithActions = useCallback((displayX: number, displayY: number) => {
+    // Translate display coords back to GAME coords when the board is
+    // mirrored for the non-P1 perspective. The rest of the action
+    // pipeline (engine, attack/displace resolution, etc.) still speaks
+    // in game-space coordinates.
+    const SIZE = grid.length;
+    const x = localPlayerIsP1 ? displayX : SIZE - 1 - displayX;
+    const y = localPlayerIsP1 ? displayY : SIZE - 1 - displayY;
     const key = `${x},${y}`;
 
     // No action selected → nothing to do (engine has no old immediate actions)
@@ -2402,14 +2461,43 @@ export default function HexDuelPage() {
   // interactions are unaffected — only the visual owner label is swapped.
   const displayGrid = useMemo(() => {
     if (localPlayerIsP1) return grid;
-    return grid.map((row) =>
-      row.map((tile) => {
-        if (tile.owner === "player1") return { ...tile, owner: "player2" as const };
-        if (tile.owner === "player2") return { ...tile, owner: "player1" as const };
-        return tile;
-      })
-    );
+    // Coordinate-space mirror: for the non-P1 player (whose capital is
+    // at GRID_SIZE-1, GRID_SIZE-1 in the engine's absolute coordinate
+    // space), render the grid rotated 180° so their own capital appears
+    // at the top-left of the board. Owner-swap is no longer needed
+    // because the colors travel with the rotated coordinates.
+    const SIZE = grid.length;
+    const out: typeof grid = Array.from({ length: SIZE }, () => []);
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        out[y][x] = grid[SIZE - 1 - y][SIZE - 1 - x];
+      }
+    }
+    return out;
   }, [grid, localPlayerIsP1]);
+
+  // Translate a key (e.g. "x,y") from GAME coords to DISPLAY coords for
+  // the non-P1 perspective. HexBoard iterates displayGrid and looks up
+  // highlight keys by its own display iteration coords, so the wire of
+  // highlight sets coming from the engine (game-space) must be flipped
+  // before being passed down.
+  const flipKey = useCallback(
+    (k: string): string => {
+      if (localPlayerIsP1) return k;
+      const SIZE = grid.length;
+      const [gx, gy] = k.split(",").map(Number);
+      return `${SIZE - 1 - gx},${SIZE - 1 - gy}`;
+    },
+    [grid.length, localPlayerIsP1],
+  );
+  const flipPoint = useCallback(
+    (p: { x: number; y: number }): { x: number; y: number } => {
+      if (localPlayerIsP1) return p;
+      const SIZE = grid.length;
+      return { x: SIZE - 1 - p.x, y: SIZE - 1 - p.y };
+    },
+    [grid.length, localPlayerIsP1],
+  );
 
   // Stats for local player
   const localMoves = localPlayerIsP1 ? p1MoveCount : p2MoveCount;
@@ -2761,26 +2849,26 @@ export default function HexDuelPage() {
                   opponentColor={opponentColor}
                   localLabel={localLabel}
                   opponentLabel={opponentLabel}
-                  selectedTile={selectedTile}
+                  selectedTile={selectedTile ? flipPoint(selectedTile) : selectedTile}
                   onTileClick={handleTileClickWithActions}
-                  recentlyCaptured={recentlyCaptured}
+                  recentlyCaptured={recentlyCaptured.map(flipKey)}
                   disabled={
   isGameOver || isSpectator ||
-  (aiThinking && currentTurn === "player2") 
+  (aiThinking && currentTurn === "player2")
 }
                   attackHighlightKeys={
   isGameOver || (aiThinking && currentTurn === "player2")
     ? []
     : selectedAction === "attack"
-    ? attackHighlightKeys
+    ? attackHighlightKeys.map(flipKey)
     : selectedAction === "displace"
-    ? displaceHighlightKeys
+    ? displaceHighlightKeys.map(flipKey)
     : []
 }
                   sourceHighlightKeys={
   isGameOver || (aiThinking && currentTurn === "player2")
     ? []
-    : sourceHighlightKeys
+    : sourceHighlightKeys.map(flipKey)
 }
                 />
               </div>
