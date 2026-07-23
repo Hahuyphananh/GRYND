@@ -98,7 +98,7 @@ function areAdjacent(keyA: string, keyB: string): boolean {
 }
 
 /** Get the other player */
-function otherPlayer(p: DuelPlayer): DuelPlayer {
+export function otherPlayer(p: DuelPlayer): DuelPlayer {
   return p === "player1" ? "player2" : "player1";
 }
 
@@ -859,15 +859,21 @@ export function useHexDuel() {
         case "endTurn":
         case "skipRound": {
           // Idempotency guard — the reducer's switchTurnCore always flips.
-          // If the receiver has already advanced past this turn (e.g. a
-          // prior dispatch or a polling-driven synthetic endTurn already
-          // flipped us), re-applying would oscillate the turn back to the
-          // sender. Leave state untouched — that would put the action menu
-          // back on the wrong player's screen.
-          if (
-            state.currentTurn !== fromPlayer &&
-            state.currentTurn === otherPlayer(fromPlayer)
-          ) {
+          // If the receiver has already advanced past fromPlayer's turn
+          // (state.currentTurn is at the OTHER player), the turn-flip has
+          // already been mirrored locally — re-applying would bounce the
+          // turn back. This also catches the polling-driven synthetic
+          // endTurn that arrives AFTER the local engine already auto-
+          // flipped on AP=0: when the synthetic lacks `action.player`,
+          // fromPlayer falls back to state.currentTurn (= whoever we
+          // are now), and this guard correctly identifies us as already
+          // past fromPlayer's intended flip.
+          //
+          // With two DuelPlayer values, the second clause of the
+          // earlier compound (`state.currentTurn !== fromPlayer`) is
+          // implied by `state.currentTurn === otherPlayer(fromPlayer)`
+          // so we can simplify.
+          if (state.currentTurn === otherPlayer(fromPlayer)) {
             return;
           }
           // Sender already grew their own troops locally. We mirror the
