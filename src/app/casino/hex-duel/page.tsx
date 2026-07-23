@@ -1326,6 +1326,15 @@ export default function HexDuelPage() {
     // helper so socket and polling paths produce identical, identity-
     // based dedup signatures and run through the same serialized queue.
     const handleOpponentAction = (data: { action: MultiplayerAction }) => {
+      if (typeof window !== "undefined" && (window as unknown as { __hexDuelDebug?: boolean }).__hexDuelDebug) {
+        // eslint-disable-next-line no-console
+        console.log(
+          "[hex-duel] recv action:",
+          data?.action?.type,
+          "player:",
+          data?.action?.player,
+        );
+      }
       if (data.action) {
         enqueueRemoteAction(data.action);
       }
@@ -2042,6 +2051,47 @@ export default function HexDuelPage() {
       clearInterval(interval);
     };
   }, [gameMode, multiplayerGameId, opponentReady, effectiveWinner, enqueueRemoteAction]);
+
+  // ── SAFETY NET: request forced sync when our turn just began ──────────
+  // The user has reported a persistent bug where P2's screen would
+  // never update after P1 ended their turn, even though P1's own screen
+  // advanced correctly. Investigation traced this to races in the
+  // realtime-server participant-check + enqueue-dedup + the receiver's
+  // own applyRemoteAction short-circuiting on stale state. As a
+  // belt-and-suspenders defense, whenever our local turn just began
+  // (currentTurn flipped to localDuelPlayer), we proactively request a
+  // full state snapshot from the opponent. applySyncSnapshot
+  // overwrites the local engine from scratch — including state.winner,
+  // tileTroops, capturedTiles — closing any divergence the action-mirror
+  // queue might have left open. Throttled to 1.5s so we don't spam.
+  const lastSyncRequestAtRef = useRef(0);
+  const lastSyncedTurnRef = useRef<DuelPlayer | null>(null);
+  useEffect(() => {
+    if (gameMode !== "multiplayer" || !socket || !multiplayerGameId) return;
+    // We are locally active when currentTurn matches our slot
+    // (isPlayer1 ? "player1" : "player2"). Inline the check to avoid a
+    // forward reference to localDuelPlayer which is declared later in
+    // the render scope.
+    const mySlot: DuelPlayer = isPlayer1 ? "player1" : "player2";
+    if (currentTurn !== mySlot) return;
+    if (isGameOver) return;
+    // Only request sync when this specific currentTurn value is NEWLY
+    // ours (not on every render where it happens to match). Prevents
+    // spam when currentTurn == mySlot on initial mount.
+    if (lastSyncedTurnRef.current === currentTurn) return;
+    const now = Date.now();
+    if (now - lastSyncRequestAtRef.current < 1500) return;
+    // Mark synced ONLY after we know we'll actually emit. (Doing this
+    // earlier would let a throttled fire leave the ref poisoned for the
+    // rest of the turn with no successful emit captured.)
+    lastSyncedTurnRef.current = currentTurn;
+    lastSyncRequestAtRef.current = now;
+    if (typeof window !== "undefined" && (window as unknown as { __hexDuelDebug?: boolean }).__hexDuelDebug) {
+      // eslint-disable-next-line no-console
+      console.log("[hex-duel] sync-request (turn-start safety net):", currentTurn);
+    }
+    socket.emit("hexDuel:requestSync", { gameId: multiplayerGameId });
+  }, [gameMode, socket, multiplayerGameId, currentTurn, isPlayer1, isGameOver]);
 
   // ── Status POST on local turn-change (prevents polling bounce) ───────
   // Every dispatch that flips currentTurn on this client (explicit
