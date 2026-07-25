@@ -29,6 +29,13 @@
       "when": 1783252140000,
       "tag": "0048_plinko_pvp",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1785000000000,
+      "tag": "0054_hex_duel_actions_and_sync",
+      "breakpoints": true
     }
   ]
 }

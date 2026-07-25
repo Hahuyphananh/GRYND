@@ -32,6 +32,10 @@ export async function POST(req: Request) {
         result: "pending",
         status: "waiting",
         isAiGame: false,
+        // Migration 0054: server-authoritative turn columns. Leaving
+        // both null while the game is in `waiting` is correct — the
+        // `/multiplayer/join` route sets `current_turn = 'player1'`
+        // and `last_action_seq = 0` the moment player2 joins.
       } as any).returning({ id: hexDuelGames.id });
 
       return { gameId: game.id, newBalance: updatedBalance };

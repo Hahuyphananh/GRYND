@@ -1023,6 +1023,19 @@ export const hexDuelGames = pgTable(
     durationSeconds: integer("duration_seconds").notNull().default(0),
     status: varchar("status", { length: 20 }).notNull().default("completed"),
     isFunMode: boolean("is_fun_mode").notNull().default(false),
+    // Server-authoritative current turn (added in migration 0054).
+    // Nullable so historical / completed rows remain valid. New
+    // multiplayer joins populate this with 'player1' or 'player2'.
+    // The legacy `status` column ('turn_player1' / 'turn_player2' /
+    // 'in_progress') is kept for backwards compatibility with the
+    // existing lobby / spectate filters; `currentTurn` is the new
+    // source of truth for "whose turn is it".
+    currentTurn: varchar("current_turn", { length: 10 }),
+    // Highest `hex_duel_actions.id` that has been written by the
+    // server for this game. Used by the polling endpoint to cheaply
+    // detect missed actions after a reconnect without a COUNT(*),
+    // and by the page.tsx client as a fast cursor.
+    lastActionSeq: integer("last_action_seq"),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -1034,6 +1047,13 @@ export const hexDuelGames = pgTable(
 );
 
 // Hex Duel action log — persisted record of every multiplayer action (like diceTurns)
+//
+// Column widths mirror migration 0054. Widened to `varchar(50)` so
+// future action-type prefixes (e.g. `reinforce_v2`, `pass_p1`,
+// `displace_north`) fit without another migration. The legacy `20`
+// length from `schema.ts` predated the migration table creation and
+// would silently truncate longer values that any future feature might
+// introduce; the migration was the place to widen once for everyone.
 export const hexDuelActions = pgTable(
   "hex_duel_actions",
   {
@@ -1042,9 +1062,9 @@ export const hexDuelActions = pgTable(
       .notNull()
       .references(() => hexDuelGames.id, { onDelete: "cascade" }),
     userId: varchar("user_id", { length: 255 }).notNull(),
-    actionType: varchar("action_type", { length: 20 }).notNull(),
-    sourceKey: varchar("source_key", { length: 20 }),
-    targetKey: varchar("target_key", { length: 20 }),
+    actionType: varchar("action_type", { length: 50 }).notNull(),
+    sourceKey: varchar("source_key", { length: 50 }),
+    targetKey: varchar("target_key", { length: 50 }),
     troopCount: integer("troop_count"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
