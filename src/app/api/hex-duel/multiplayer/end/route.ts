@@ -205,22 +205,61 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {
-    // Log the underlying error server-side so Vercel function logs
-    // (and Sentry if wired up) actually capture the cause. Without
-    // this, every 500 returned only the generic JSON body and the
-    // real stack trace was lost — making the bug invisible in prod.
+    // Capture the real cause on `error.cause` so Vercel function logs
+    // (and Sentry if wired up) finally show the actual failure mode:
+    // Drizzle 0.45.x wraps every DB/network error in a
+    // `DrizzleQueryError` whose `.message` is literally
+    // `"Failed query: <sql>"` and whose real Postgres / network error
+    // sits on `.cause`. Without this, every prior "real errors" log
+    // only showed the useless wrapper.
+    //
+    // We also log Postgres-specific fields (`detail`, `hint`) since
+    // those are the highest-signal fields on real errors once `.cause`
+    // is surfaced.
+    //
+    // NOTE: this route deliberately has NO `withSingleRetryForReadOnly`
+    // helper. The handler body is a `db.transaction(async (tx) => ...)`
+    // containing SELECT FOR UPDATE + UPDATEs (balance payout + game
+    // status flip). Retrying the transaction as a whole would risk
+    // double-payout on flaky Neon transport; retrying just the SELECT
+    // inside the tx would silently rollback + try again with the same
+    // tx handle. So this route catches transport errors and surfaces
+    // them via cause-logging only, while the sibling polled routes
+    // (`actions/`, `status/`, `spectate/`) apply single-retry on their
+    // read-only SELECTs.
     console.error(
       "[hex-duel/multiplayer/end] POST failed",
       {
         clerkId,
         winner,
+        // Wrapper (DrizzleQueryError):
         err: error?.message,
         stack: error?.stack,
+        // Underlying cause (Postgres / Neon transport / Drizzle):
+        causeMessage: error?.cause?.message,
+        causeCode: error?.cause?.code,
+        causeName: error?.cause?.name,
+        causeDetail: error?.cause?.detail,
+        causeHint: error?.cause?.hint,
+        causeStack: error?.cause?.stack,
       },
     );
     const status = error?.message === "No active game found" ? 404 : 500;
+    // The client-facing `error` string is intentionally generic for
+    // 500s. Postgres cause messages can leak schema internals
+    // (table/column names, constraint names), so we keep the diagnostic
+    // at the log layer and send the client a stable, opaque message.
+    // The 404 case preserves its specific message because it is a
+    // deliberate, user-actionable signal ("No active game found"),
+    // not a transport/DB error.
     return NextResponse.json(
-      { success: false, error: error?.message || "Server error" },
+      {
+        success: false,
+        error:
+          status === 404
+            ? error?.message
+            : "Server error",
+      },
       { status },
     );
   }
