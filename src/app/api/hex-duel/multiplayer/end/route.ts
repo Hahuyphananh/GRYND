@@ -147,7 +147,11 @@ export async function POST(req: Request) {
         newBalance = Number(updatedUser?.balance ?? 0);
       }
 
-      // Update the game record
+      // Update the game record. `current_turn` is cleared on completion
+      // (nullable column) so the row's "who plays next" is unambiguously
+      // `null` for historical/completed games; the lobby filter that
+      // keeps them out of spectate lists (`status = completed`) continues
+      // to work as before.
       const endedAt = new Date();
       await tx
         .update(hexDuelGames)
@@ -161,6 +165,7 @@ export async function POST(req: Request) {
           player2Territory: player2Territory ?? game.player2Territory ?? 1,
           durationSeconds: durationSeconds ?? 0,
           status: "completed",
+          currentTurn: null,
           endedAt,
         })
         .where(eq(hexDuelGames.id, game.id));

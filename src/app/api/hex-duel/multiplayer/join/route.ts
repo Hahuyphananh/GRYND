@@ -63,7 +63,21 @@ export async function POST(req: Request) {
       }
 
       const [row] = await tx.update(hexDuelGames)
-        .set({ player2Id: userId, status: "in_progress", startedAt: new Date() })
+        .set({
+          player2Id: userId,
+          status: "in_progress",
+          // Server-authoritative initial turn. Migration 0054 added this
+          // column; player1 always plays first to match the legacy
+          // frontend default and the `/multiplayer/status` GET fallback
+          // (status `in_progress` → currentTurn `player1`).
+          currentTurn: "player1",
+          // Re-initialize the action cursor so an action sequence id > 0
+          // is the polling hint on the first poll. The very first poll
+          // after join returns no rows (afterId 0 → all rows with
+          // id > 0, which is none if none have been played yet).
+          lastActionSeq: 0,
+          startedAt: new Date(),
+        })
         .where(and(eq(hexDuelGames.id, game.id), eq(hexDuelGames.status, "waiting"), isNull(hexDuelGames.player2Id)))
         .returning({ id: hexDuelGames.id });
       if (!row) throw new Error("Game unavailable");

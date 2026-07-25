@@ -4,70 +4,42 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
 import { hexDuelActions, hexDuelGames } from "../../../../../db/schema";
 
-/**
- * Backoff (in ms) between the failed first attempt and the retry on
- * this read-only polling path. Tuned for Neon free-tier auto-suspend:
- * a cold-resuming compute typically takes a few tens of milliseconds
- * before the first query lands, so a no-backoff retry fires on the
- * same cold connection and fails identically. Kept in sync with the
- * sibling polled routes (`actions/`, `spectate/`, `status/`) so
- * tuning one without the others doesn't drift.
- */
-const POLL_RETRY_BACKOFF_MS = 75;
+const ALLOWED_ACTION_TYPES = ["attack", "displace", "endTurn", "skipRound"] as const;
+type AllowedActionType = typeof ALLOWED_ACTION_TYPES[number];
 
 /**
- * Run a read-only SELECT with a single retry on transient failure.
+ * POST /api/hex-duel/multiplayer/action
  *
- * READ-ONLY CONSTRAINT: this helper takes a `() => Promise<T>` —
- * type-system-wise it accepts anything, but it MUST NOT be passed a
- * mutating function (db.insert, db.update, db.delete, calls inside a
- * transaction that mutates). Silent retry on a mutation would create
- * duplicate rows / double-debits. If you need the same pattern for a
- * mutation, write an explicit retry that classifies errors and is
- * named accordingly — do not rename this helper.
+ * Atomic, server-authoritative action write. Replaces the previous
+ * "insert into hex_duel_actions and hope both clients stay in sync"
+ * pattern that caused both clients to drift (each client reconstructed
+ * its own board state by replaying opponent actions only) AND let
+ * either player flip the game status via the companion
+ * `/multiplayer/status` POST.
  *
- * The Vercel → Neon transport (`drizzle-orm/neon-serverless` over a
- * `@neondatabase/serverless` Pool) occasionally throws Drizzle's
- * `DrizzleQueryError` wrapper for what are actually transient infra
- * blips — Neon compute cold-starts, auto-suspend resumes, brief
- * WebSocket reconnects, `statement_timeout` ticks under burst load.
- * Drizzle wraps every DB/network error in `DrizzleQueryError` whose
- * `.message` is the literal `"Failed query: <sql>"` and whose real
- * Postgres / network error sits on `.cause`. Those transient wraps
- * used to surface as 500 to the client.
+ * New flow:
+ *   1. Wrap in a single `db.transaction` so the SELECT-FOR-UPDATE,
+ *      INSERT, and UPDATE either all happen or none do.
+ *   2. Lock the game row (`for("update")`) — blocks a second player
+ *      from racing the same action.
+ *   3. Verify the caller IS the player whose turn it currently is,
+ *      using the server-authoritative `current_turn` column added in
+ *      migration 0054. Reject with 409 if not — eliminates the
+ *      turn-bounce bug from the legacy `status` POST.
+ *   4. INSERT into hex_duel_actions with the action payload.
+ *   5. UPDATE the game row: for `endTurn` (or `skipRound`) flip
+ *      `current_turn` to the other player, otherwise leave it on
+ *      the caller. Always advance `last_action_seq` to the new
+ *      action id so the polling endpoint can cheaply detect missed
+ *      actions after a reconnect.
  *
- * Uses `POLL_RETRY_BACKOFF_MS` between attempts so a cold-resuming
- * Neon compute has time to warm before the second attempt lands.
+ * NOTE: this handler intentionally does NOT silently retry the
+ * transaction on failure — a half-applied insert + update would be
+ * worse than a visible 5xx. The caller can simply re-try by clicking
+ * "end turn" / re-issuing the attack. Real bugs surface fast via the
+ * cause-logging catch at the bottom.
  */
-async function withSingleRetryForReadOnly<T>(
-  fn: () => Promise<T>,
-  opts: { backoffMs?: number } = {},
-): Promise<T> {
-  const backoffMs = opts.backoffMs ?? POLL_RETRY_BACKOFF_MS;
-  try {
-    return await fn();
-  } catch (firstErr: any) {
-    console.warn(
-      "[hex-duel/multiplayer/action] SELECT failed, retrying once",
-      {
-        causeMessage: firstErr?.cause?.message,
-        causeCode: firstErr?.cause?.code,
-        causeName: firstErr?.cause?.name,
-        backoffMs,
-      },
-    );
-    if (backoffMs > 0) {
-      await new Promise((r) => setTimeout(r, backoffMs));
-    }
-    return await fn();
-  }
-}
-
 export async function POST(req: Request) {
-  // Hoisted above the try so the catch block's diagnostics can read
-  // them without re-parsing the request body. Safe fallback values
-  // keep catch diagnostics sensible if the throw happened during
-  // JSON parsing.
   let gameId: number = NaN;
   let actionType: string | null = null;
 
@@ -93,7 +65,7 @@ export async function POST(req: Request) {
 
     if (
       !actionType ||
-      !["attack", "displace", "endTurn", "skipRound"].includes(actionType)
+      !(ALLOWED_ACTION_TYPES as readonly string[]).includes(actionType as string)
     ) {
       return NextResponse.json({ success: false, error: "Invalid actionType" }, { status: 400 });
     }
@@ -105,19 +77,9 @@ export async function POST(req: Request) {
         ? body.troopCount
         : null;
 
-    // Verify caller is a player in this game.
-    // Uses typed `or(eq(...), eq(...))` instead of the raw
-    // `sql\`(${hexDuelGames.player1Id} = ${userId} OR ...)\`` template,
-    // which has parameter-binder fragility under
-    // `drizzle-orm/neon-serverless` and was the root cause of prior
-    // 500s on the sibling `actions/route.ts` (now fixed).
-    //
-    // Wrapped in `withSingleRetryForReadOnly` for Neon cold-start
-    // resilience. The subsequent `db.insert` is NOT wrapped — it's a
-    // mutation and silent retries there would create duplicate
-    // `hex_duel_actions` rows. See below.
-    const [game] = await withSingleRetryForReadOnly(() =>
-      db
+    const result = await db.transaction(async (tx) => {
+      // 1. Lock the game row.
+      const [game] = await tx
         .select()
         .from(hexDuelGames)
         .where(
@@ -129,78 +91,130 @@ export async function POST(req: Request) {
             ),
           ),
         )
-        .limit(1),
-    );
+        .for("update")
+        .limit(1);
 
-    if (!game) {
-      return NextResponse.json({ success: false, error: "Game not found" }, { status: 404 });
-    }
+      if (!game) {
+        throw Object.assign(new Error("Game not found"), { _httpStatus: 404 });
+      }
 
-    // Intentionally NOT wrapped in `withSingleRetryForReadOnly`. This
-    // is a mutation. Silent retries could double-insert duplicate
-    // action rows for the same player move, which would corrupt the
-    // action log on the client and let the same player appear to
-    // move twice. Transport errors here will surface through the
-    // cause-logging catch below — the player can re-issue the
-    // action manually if they want.
-    const [action] = await db
-      .insert(hexDuelActions)
-      .values({
-        gameId,
-        userId,
-        actionType,
-        sourceKey,
-        targetKey,
-        troopCount,
-      })
-      .returning({ id: hexDuelActions.id, createdAt: hexDuelActions.createdAt });
+      // 1b. Reject the write if the game is not in an actionable state.
+      //     - `waiting`: only player1 exists; no player2 yet. Mirrors
+      //       the React-page bug where one player could send attacks
+      //       to an open lobby and clutter the action log for the
+      //       future player2.
+      //     - `completed`: someone already called `/multiplayer/end`.
+      //       A racing POST here must not write another action on top
+      //       of a finished game.
+      // The legacy `in_progress` and the new `turn_player1` /
+      // `turn_player2` strings both pass; the column stays the source
+      // of truth (see step 2 below).
+      if (
+        game.status !== "in_progress" &&
+        !game.status.startsWith("turn_")
+      ) {
+        throw Object.assign(
+          new Error(`Cannot act on game in status '${game.status}'.`),
+          { _httpStatus: 409 },
+        );
+      }
 
-    return NextResponse.json({
-      success: true,
-      action: { id: action.id, createdAt: action.createdAt },
+      // 2. Verify the caller is a real participant AND it is their turn.
+      //    The legacy status-based check (status === 'turn_player1' /
+      //    'turn_player2') is kept as a fallback so a freshly-joined game
+      //    that has not yet been processed by the new column still works,
+      //    but `current_turn` is the source of truth from now on.
+      const callerSlot: "player1" | "player2" | null =
+        game.player1Id === userId
+          ? "player1"
+          : game.player2Id === userId
+            ? "player2"
+            : null;
+      if (!callerSlot) {
+        throw Object.assign(new Error("Game not found"), { _httpStatus: 404 });
+      }
+
+      const statusTurn =
+        game.status === "turn_player1"
+          ? "player1"
+          : game.status === "turn_player2"
+            ? "player2"
+            : null;
+      const effectiveTurn = game.currentTurn ?? statusTurn ?? "player1";
+
+      if (effectiveTurn !== callerSlot) {
+        // Not the caller's turn — surface this as a 409 Conflict so the
+        // client knows the action was rejected WITHOUT having to be the
+        // caller (which would otherwise let either player inject moves).
+        throw Object.assign(
+          new Error(`Not your turn (current turn: ${effectiveTurn})`),
+          { _httpStatus: 409 },
+        );
+      }
+
+      // 3. Insert the action row (server-authoritative record of every
+      //    move; the polling endpoint reads from here).
+      const [action] = await tx
+        .insert(hexDuelActions)
+        .values({
+          gameId,
+          userId,
+          actionType: actionType as AllowedActionType,
+          sourceKey,
+          targetKey,
+          troopCount,
+        })
+        .returning({ id: hexDuelActions.id, createdAt: hexDuelActions.createdAt });
+
+      // 4. Update the game row: `endTurn` / `skipRound` flips the turn;
+      //    intermediate moves (attack / displace) keep the turn on the
+      //    caller so the same player can do multiple actions in a row
+      //    before yielding. `last_action_seq` is always advanced so the
+      //    client polling can cheaply detect missed actions.
+      const flipsTurn =
+        (actionType as AllowedActionType) === "endTurn" ||
+        (actionType as AllowedActionType) === "skipRound";
+      const nextTurn: "player1" | "player2" =
+        callerSlot === "player1" ? "player2" : "player1";
+
+      await tx
+        .update(hexDuelGames)
+        .set({
+          currentTurn: flipsTurn ? nextTurn : callerSlot,
+          lastActionSeq: action.id,
+          // Keep the legacy `status` column in sync so the lobby /
+          // spectate endpoints that filter by status continue to work
+          // without needing to read `current_turn` for filtering.
+          status: flipsTurn ? `turn_${nextTurn}` : `turn_${callerSlot}`,
+        })
+        .where(eq(hexDuelGames.id, gameId));
+
+      return { id: action.id, createdAt: action.createdAt };
     });
+
+    return NextResponse.json({ success: true, action: result });
   } catch (error: any) {
-    // Capture the real cause on `error.cause` so Vercel function logs
-    // (and Sentry if wired up) finally show the actual failure mode:
-    // Drizzle 0.45.x wraps every DB/network error in a
-    // `DrizzleQueryError` whose `.message` is literally
-    // `"Failed query: <sql>"` and whose real Postgres / network error
-    // sits on `.cause`. Without this, every prior "real errors" log
-    // only showed the useless wrapper.
-    //
-    // We also log Postgres-specific fields (`detail`, `hint`) since
-    // those are the highest-signal fields on real errors once `.cause`
-    // is surfaced.
-    //
-    // `gameId` / `actionType` are hoisted above so they are in scope
-    // here even when the failure happened during JSON parsing.
+    const httpStatus: number =
+      typeof error?._httpStatus === "number" ? error._httpStatus : 500;
+
     console.error(
       "[hex-duel/multiplayer/action] POST failed",
       {
         url: req.url,
         gameId,
         actionType,
-        // Wrapper (DrizzleQueryError):
         err: error?.message,
-        stack: error?.stack,
         // Underlying cause (Postgres / Neon transport / Drizzle):
         causeMessage: error?.cause?.message,
         causeCode: error?.cause?.code,
-        causeName: error?.cause?.name,
-        causeDetail: error?.cause?.detail,
         causeHint: error?.cause?.hint,
-        causeStack: error?.cause?.stack,
+        causeDetail: error?.cause?.detail,
+        stack: error?.stack,
       },
     );
-    // The client-facing `error` string is intentionally generic.
-    // Postgres cause messages can leak schema internals, so we keep
-    // the diagnostic at the log layer and send the client a stable,
-    // opaque message. If the client wants to distinguish error modes,
-    // it should look at `success: false` and HTTP 5xx — not at the
-    // text of `error`.
     return NextResponse.json(
-      { success: false, error: "Server error" },
-      { status: 500 },
+      { success: false, error: error?.message || "Server error" },
+      { status: httpStatus },
     );
   }
 }

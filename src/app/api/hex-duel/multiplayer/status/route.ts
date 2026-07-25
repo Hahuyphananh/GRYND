@@ -72,11 +72,139 @@ async function withSingleRetryForReadOnly<T>(
   }
 }
 
-/** Derive currentTurn from the status string */
+/** Derive currentTurn from the status string (legacy fallback only — the
+ *  server-authoritative `current_turn` column added in migration 0054 is
+ *  the source of truth; this helper exists for backfill + old rows). */
 function statusToTurn(status: string): "player1" | "player2" | null {
   if (status === "turn_player1") return "player1";
   if (status === "turn_player2") return "player2";
   return null;
+}
+
+/**
+ * POST /api/hex-duel/multiplayer/status
+ *
+ * Server-authoritative turn/banner refresh. The previous implementation
+ * accepted ANY player to flip the game's `status` to ANY string
+ * (`turn_player1` / `turn_player2` / `in_progress`), which let either
+ * player bounce the turn back to themselves. The new implementation:
+ *
+ *   1. Read-only SELECT (with Neon-cold-start retry). Deliberately
+ *      NOT inside a transaction — this endpoint never mutates.
+ *   2. Treats this endpoint as an idempotent "tell me the current
+ *      state" refresh: the server's stored `current_turn` is the
+ *      source of truth and CANNOT be modified by the client. The
+ *      server returns the current state; if the client wanted the
+ *      turn to flip, they must POST an `endTurn` action via
+ *      `/multiplayer/action`, which is the only place the turn can
+ *      change (and only when it is legitimately the caller's turn).
+ *   3. Optional `turn` body field is accepted for callers that want
+ *      to OPTIMISTICALLY see the banner earlier, but it is only
+ *      echoed when it matches the server's authoritative
+ *      `current_turn`.
+ *
+ * NOTE: previous drafts of this comment claimed "Locks the game row
+ * with FOR UPDATE". That was wrong — this endpoint is read-only and
+ * there is no lock. If a future revision needs transactional
+ * semantics here, extract the SET into a dedicated mutation route.
+ */
+export async function POST(req: Request) {
+  let gameId: number = NaN;
+  let requestedTurn: string | null = null;
+  try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = (await req.json().catch(() => ({}))) as {
+      gameId?: unknown;
+      turn?: unknown;
+    };
+    gameId = Number(body.gameId);
+    requestedTurn = typeof body.turn === "string" ? body.turn : null;
+
+    if (!Number.isFinite(gameId) || gameId <= 0) {
+      return NextResponse.json({ success: false, error: "Invalid gameId" }, { status: 400 });
+    }
+
+    if (requestedTurn && requestedTurn !== "player1" && requestedTurn !== "player2") {
+      return NextResponse.json({ success: false, error: "Invalid turn value" }, { status: 400 });
+    }
+
+    // Read-only path (with retry for Neon cold-start resilience on the
+    // JOIN-row lookup — see the GET path above for the rationale).
+    const [game] = await withSingleRetryForReadOnly(() =>
+      db
+        .select()
+        .from(hexDuelGames)
+        .where(
+          and(
+            eq(hexDuelGames.id, gameId),
+            or(
+              eq(hexDuelGames.player1Id, userId),
+              eq(hexDuelGames.player2Id, userId),
+            ),
+          ),
+        )
+        .limit(1),
+    );
+
+    if (!game) {
+      return NextResponse.json({ success: false, error: "Game not found" }, { status: 404 });
+    }
+
+    // If the client passed a `turn`, EARLY-REJECT any disagreement —
+    // do not mutate the row. The server column is the truth.
+    if (requestedTurn) {
+      const authoritative =
+        game.currentTurn ?? statusToTurn(game.status);
+      if (authoritative && authoritative !== requestedTurn) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Server turn is ${authoritative}, client requested ${requestedTurn}. Turn is server-authoritative and cannot be changed here.`,
+            serverCurrentTurn: authoritative,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      game: {
+        id: gameId,
+        status: game.status,
+        // Authoritative column introduced in migration 0054; falls back
+        // to deriving from `status` so legacy rows still work.
+        currentTurn: game.currentTurn ?? statusToTurn(game.status),
+        // Legacy mirror so old clients (and the lobby's `status` filter)
+        // keep working without a client-side refactor.
+        legacyCurrentTurn: statusToTurn(game.status),
+        lastActionSeq: game.lastActionSeq ?? 0,
+      },
+    });
+  } catch (error: any) {
+    console.error(
+      "[hex-duel/multiplayer/status] POST failed",
+      {
+        url: req.url,
+        gameId,
+        requestedTurn,
+        err: error?.message,
+        causeMessage: error?.cause?.message,
+        causeCode: error?.cause?.code,
+        causeDetail: error?.cause?.detail,
+        causeHint: error?.cause?.hint,
+        stack: error?.stack,
+      },
+    );
+    return NextResponse.json(
+      { success: false, error: "Server error" },
+      { status: 500 },
+    );
+  }
 }
 
 export async function GET(req: Request) {
@@ -119,6 +247,14 @@ export async function GET(req: Request) {
           player2Id: hexDuelGames.player2Id,
           wagerAmount: hexDuelGames.wagerAmount,
           player1Name: users.name,
+          // Migration 0054: include the new server-authoritative columns
+          // in the projection so the response actually carries them.
+          // Before this fix the `?? currentTurn` / `?? 0` fallbacks in
+          // the response always fired because the row's typed shape did
+          // not declare these properties — the client then saw
+          // `lastActionSeq` permanently as `0`.
+          currentTurn: hexDuelGames.currentTurn,
+          lastActionSeq: hexDuelGames.lastActionSeq,
         })
         .from(hexDuelGames)
         .leftJoin(users, eq(users.clerkId, hexDuelGames.player1Id))
@@ -168,7 +304,14 @@ export async function GET(req: Request) {
         bothJoined,
         isReady,
         amHost,
-        currentTurn,
+        // Authoritative column from migration 0054; falls back to the
+        // legacy `status` string so pre-migration rows still render the
+        // correct turn banner on the lobby page.
+        currentTurn: game.currentTurn ?? currentTurn,
+        // Mirror the legacy derived value as `legacyCurrentTurn` so the
+        // client can switch over to the new column at its own pace.
+        legacyCurrentTurn: currentTurn,
+        lastActionSeq: game.lastActionSeq ?? 0,
         player1Id: game.player1Id,
         player2Id: game.player2Id,
         wagerAmount: game.wagerAmount,
@@ -212,124 +355,6 @@ export async function GET(req: Request) {
     // send the client a stable, opaque message. If the client wants
     // to distinguish error modes, it should look at `success: false`
     // and HTTP 5xx — not at the text of `error`.
-    return NextResponse.json(
-      { success: false, error: "Server error" },
-      { status: 500 },
-    );
-  }
-}
-
-export async function POST(req: Request) {
-  // Hoisted above the try so the catch block's diagnostics can read
-  // `gameId` / `turn` even when the throw happened during JSON parsing.
-  let gameId: number = NaN;
-  let turn: string | null = null;
-  try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = (await req.json().catch(() => ({}))) as {
-      gameId?: unknown;
-      turn?: unknown;
-    };
-    gameId = Number(body.gameId);
-    turn = typeof body.turn === "string" ? body.turn : null;
-
-    if (!Number.isFinite(gameId) || gameId <= 0) {
-      return NextResponse.json({ success: false, error: "Invalid gameId" }, { status: 400 });
-    }
-
-    if (turn && turn !== "player1" && turn !== "player2") {
-      return NextResponse.json({ success: false, error: "Invalid turn value" }, { status: 400 });
-    }
-
-    // Uses typed or(eq(...), eq(...)) instead of the raw
-    // `sql\`(${hexDuelGames.player1Id} = ${userId} OR ...)\`` template,
-    // which has parameter-binder fragility under
-    // `drizzle-orm/neon-serverless` (root cause of past 500s).
-    //
-    // Wrapped in `withSingleRetryForReadOnly` for the same Neon
-    // cold-start resilience as the GET path. The subsequent
-    // `db.update` is NOT wrapped — it's a mutation and silent retries
-    // there would double-flip the game status (or be silently
-    // idempotent-as-no-op, masking real transport bugs). See below.
-    const [game] = await withSingleRetryForReadOnly(() =>
-      db
-        .select()
-        .from(hexDuelGames)
-        .where(
-          and(
-            eq(hexDuelGames.id, gameId),
-            or(
-              eq(hexDuelGames.player1Id, userId),
-              eq(hexDuelGames.player2Id, userId),
-            ),
-          ),
-        )
-        .limit(1),
-    );
-
-    if (!game) {
-      return NextResponse.json({ success: false, error: "Game not found" }, { status: 404 });
-    }
-
-    // Accept turn updates from any player in the game (lightweight fallback — no strict enforcement)
-    let newStatus = turn ? `turn_${turn}` : game.status;
-
-    // If game is "in_progress" and no turn set yet, default to player1's turn
-    if (game.status === "in_progress" && !turn) {
-      newStatus = "turn_player1";
-    }
-
-    // Intentionally NOT wrapped in `withSingleRetryForReadOnly`. This
-    // is a mutation (status flip); silent retries could double-apply
-    // newStatus against itself, or — on idempotent same-value sets —
-    // silently mask transport bugs that we want the cause-logging
-    // catch above to surface.
-    await db
-      .update(hexDuelGames)
-      .set({ status: newStatus })
-      .where(eq(hexDuelGames.id, gameId));
-
-    return NextResponse.json({
-      success: true,
-      game: { id: gameId, status: newStatus, currentTurn: statusToTurn(newStatus) },
-    });
-  } catch (error: any) {
-    // Capture the real cause on `error.cause` so Vercel function logs
-    // (and Sentry if wired up) finally show the actual failure mode:
-    // Drizzle 0.45.x wraps every DB/network error in a
-    // `DrizzleQueryError` whose `.message` is literally
-    // `"Failed query: <sql>"` and whose real Postgres / network error
-    // sits on `.cause`. Without this, every prior "real errors" log
-    // only showed the useless wrapper.
-    //
-    // We also log Postgres-specific fields (`detail`, `hint`) since
-    // those are the highest-signal fields on real errors once `.cause`
-    // is surfaced.
-    console.error(
-      "[hex-duel/multiplayer/status] POST failed",
-      {
-        gameId,
-        turn,
-        // Wrapper (DrizzleQueryError):
-        err: error?.message,
-        stack: error?.stack,
-        // Underlying cause (Postgres / Neon transport / Drizzle):
-        causeMessage: error?.cause?.message,
-        causeCode: error?.cause?.code,
-        causeName: error?.cause?.name,
-        causeDetail: error?.cause?.detail,
-        causeHint: error?.cause?.hint,
-        causeStack: error?.cause?.stack,
-      },
-    );
-    // The client-facing `error` string is intentionally generic.
-    // Postgres cause messages can leak schema internals, so we keep
-    // the diagnostic at the log layer and send the client a stable,
-    // opaque message.
     return NextResponse.json(
       { success: false, error: "Server error" },
       { status: 500 },
