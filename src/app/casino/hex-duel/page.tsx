@@ -2838,7 +2838,7 @@ export default function HexDuelPage() {
                   totalTroops={localTotalTroops} maxTroops={maxTroops}
                   clockTime={localClockTime}
                 />
-                {showGame && !isSpectator && (
+                {showGame && !isSpectator && (gameMode !== "multiplayer" || isPlayer1) && (
                   <HexActionPanel
                     currentTurn={currentTurn}
                     currentAP={currentAP}
@@ -2966,6 +2966,41 @@ export default function HexDuelPage() {
                   totalTroops={opponentTotalTroops} maxTroops={maxTroops}
                   clockTime={opponentClockTime}
                 />
+                {showGame && !isSpectator && gameMode === "multiplayer" && !isPlayer1 && (
+                  // Right-side action panel for the red local user
+                  // (`!isPlayer1`). Identical wiring to the LEFT panel —
+                  // real handlers, shared React state, isActive
+                  // mirrors the LEFT panel's logic — so this panel IS
+                  // the red local user's actual action board during
+                  // multiplayer, not decoration. `localColor` /
+                  // `localLabel` already swap to red on a player2 tab,
+                  // so the panel renders in red. Combined with the
+                  // LEFT-panel gate
+                  // `(gameMode !== "multiplayer" || isPlayer1)` above,
+                  // exactly one action board is visible per local
+                  // user: blue local → left, red local → right.
+                  <HexActionPanel
+                    currentTurn={currentTurn}
+                    currentAP={currentAP}
+                    maxAP={maxAP}
+                    selectedUnit={selectedUnit}
+                    validMoves={validMoves}
+                    selectedAction={selectedAction}
+                    onSelectAction={setSelectedAction}
+                    onSelectUnit={handleSelectUnit}
+                    pendingDescription={pendingDescription}
+                    hasPending={hasPending}
+                    onConfirm={handleConfirmAction}
+                    onClearAction={handleClearAction}
+                    isGameOver={isGameOver}
+                    playerLabel={localLabel}
+                    playerColor={localColor}
+                    isActive={isLocalTurn && localIsActive && !aiThinking}
+                    isAITurn={false}
+                    onEndTurn={handleEndTurn}
+                    onSkipRound={handleSkipRound}
+                  />
+                )}
                 {/* Action history log — visible for all game modes */}
                 {showGame && actionLog.length > 0 && (
                   <HexActionLog log={actionLog} compact={true} />

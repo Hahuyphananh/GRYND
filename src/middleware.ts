@@ -116,10 +116,25 @@ function applySecurityHeaders(response: NextResponse) {
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 
   // Keep CSP strict enough for safety but compatible with current UI.
+  //
+  // `'unsafe-eval'` is REQUIRED in development (Node `next dev`):
+  //   - React uses eval() for callstack reconstruction / DevTools
+  //     helpers. Without it, React's red-box and action wiring break.
+  //   - Clerk's @clerk/ui bundle is built with Vite in dev mode and
+  //     uses eval() at module-boundary seams; the dev sign-in/sign-up
+  //     flows silently no-op without it, which is why auth "works in
+  //     production but not localhost" — production bundles are
+  //     pre-compiled and never call eval().
+  // Production keeps eval() blocked for security.
+  const scriptSrc =
+    process.env.NODE_ENV === "development"
+      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https:; "
+      : "script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https:; ";
+
   response.headers.set(
     "Content-Security-Policy",
     "default-src 'self'; " +
-      "script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https:; " +
+      scriptSrc +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.tawk.to https://cdn.jsdelivr.net; " +
       "img-src 'self' data: blob: https:; " +
       "font-src 'self' data: https://fonts.gstatic.com https://*.tawk.to; " +
