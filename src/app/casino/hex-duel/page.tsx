@@ -830,8 +830,13 @@ function StatusBar({
   showEndTurn?: boolean;
   isLocalTurn?: boolean;
 }) {
-  // Determine turn color from perspective — local player's color when it's their turn
-  const turnColor = isLocalTurn ? "#22d3ee" : "#ef4444";
+  // Determine turn color from the ACTIVE player's slot, not from the
+  // local perspective. Previously this was `isLocalTurn ? cyan : red`,
+  // which incorrectly painted a player2 (red) local user's "YOUR TURN"
+  // badge with cyan — the glow / AP pips / status dot all wore the
+  // opponent's color. Using `currentTurn` here keeps the active
+  // player's accent consistent regardless of who's local.
+  const turnColor = currentTurn === "player1" ? "#22d3ee" : "#ef4444";
   const turnLabel = isGameOver ? "" : isLocalTurn ? "YOUR TURN" : "OPPONENT'S TURN";
   const isAITurn = aiEnabled && currentTurn === "player2";
 
@@ -2529,13 +2534,22 @@ export default function HexDuelPage() {
     return (tileTroops[key] ?? 1) - 1; // must leave at least 1
   }, [pendingSource, tileTroops]);
 
-  // ── Perspective-aware mapping: local player always blue, opponent always red ──
-  // Computed here after all dependencies (troop totals, clock) are declared
+  // ── Perspective-aware mapping ────────────────────────────────────────
+  // Computed here after all dependencies (troop totals, clock) are declared.
+  //
+  // Colors are derived from the player's SLOT (player1 = cyan, player2 = red),
+  // not from a hardcoded "local=blue / opponent=red". This is the POV fix:
+  // previously `localColor` was hardcoded to cyan, so a player2 (red) local
+  // user saw themselves styled as blue — the "your turn" badge appeared on a
+  // card painted with the wrong slot color, the action board used cyan
+  // borders, and the HexBoard legend labeled "You" with cyan. Now it
+  // mirrors the actual slot, so the visual perspective reflects the
+  // engine slot the local user occupies.
   const localPlayerIsP1 = gameMode !== "multiplayer" || isPlayer1;
   const localDuelPlayer: DuelPlayer = localPlayerIsP1 ? "player1" : "player2";
   const opponentDuelPlayer: DuelPlayer = localPlayerIsP1 ? "player2" : "player1";
-  const localColor = "#22d3ee";
-  const opponentColor = "#ef4444";
+  const localColor = localDuelPlayer === "player1" ? "#22d3ee" : "#ef4444";
+  const opponentColor = opponentDuelPlayer === "player1" ? "#22d3ee" : "#ef4444";
 
   // ── View-layer perspective swap ──────────────────────────────────────
   // The engine tracks owners absolutely ("player1" at capital 0,0, "player2" at capital 4,4).
