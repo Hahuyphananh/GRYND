@@ -2352,13 +2352,14 @@ export default function HexDuelPage() {
   // ── Action system: wrapped click, confirm, clear ──────────────────
 
   const handleTileClickWithActions = useCallback((displayX: number, displayY: number) => {
-    // Translate display coords back to GAME coords when the board is
-    // mirrored for the non-P1 perspective. The rest of the action
-    // pipeline (engine, attack/displace resolution, etc.) still speaks
-    // in game-space coordinates.
-    const SIZE = grid.length;
-    const x = localPlayerIsP1 ? displayX : SIZE - 1 - displayX;
-    const y = localPlayerIsP1 ? displayY : SIZE - 1 - displayY;
+    // `displayGrid` is no longer mirrored for the P2 viewer (see
+    // `displayGrid` memo below — both players view the board with the
+    // same orientation, blue top-left / red bottom-right). Display
+    // coords ARE game coords here, so no flip is applied. The rest of
+    // the action pipeline (engine, attack/displace resolution, etc.)
+    // continues to speak in game-space coordinates.
+    const x = displayX;
+    const y = displayY;
     const key = `${x},${y}`;
 
     // No action selected → nothing to do (engine has no old immediate actions)
@@ -2556,44 +2557,33 @@ export default function HexDuelPage() {
   // For the board UI we want each player to see their own tiles as their own color
   // (Clash Royale style). Coordinates stay the same on both sides so engine
   // interactions are unaffected — only the visual owner label is swapped.
-  const displayGrid = useMemo(() => {
-    if (localPlayerIsP1) return grid;
-    // Coordinate-space mirror: for the non-P1 player (whose capital is
-    // at GRID_SIZE-1, GRID_SIZE-1 in the engine's absolute coordinate
-    // space), render the grid rotated 180° so their own capital appears
-    // at the top-left of the board. Owner-swap is no longer needed
-    // because the colors travel with the rotated coordinates.
-    const SIZE = grid.length;
-    const out: typeof grid = Array.from({ length: SIZE }, () => []);
-    for (let y = 0; y < SIZE; y++) {
-      for (let x = 0; x < SIZE; x++) {
-        out[y][x] = grid[SIZE - 1 - y][SIZE - 1 - x];
-      }
-    }
-    return out;
-  }, [grid, localPlayerIsP1]);
+  // Render the grid in engine-space for BOTH players. Previously the
+  // P2 viewer got a 180°-rotated grid so their own capital (which
+  // lives at GRID_SIZE-1, GRID_SIZE-1 in the engine) appeared
+  // top-left — but that swapped blue and red positions on the board
+  // for the opponent, contradicting the invariant that player1
+  // (blue) always owns the top-left capital and player2 (red) owns
+  // the bottom-right. Removing the rotation keeps the board
+  // orientation consistent across viewers; the player-card swap
+  // (see the `lg:order-X` classes below) handles the per-POV
+  // "your-color on your-side" feel without moving owned tiles.
+  const displayGrid = grid;
 
   // Translate a key (e.g. "x,y") from GAME coords to DISPLAY coords for
   // the non-P1 perspective. HexBoard iterates displayGrid and looks up
   // highlight keys by its own display iteration coords, so the wire of
   // highlight sets coming from the engine (game-space) must be flipped
-  // before being passed down.
-  const flipKey = useCallback(
-    (k: string): string => {
-      if (localPlayerIsP1) return k;
-      const SIZE = grid.length;
-      const [gx, gy] = k.split(",").map(Number);
-      return `${SIZE - 1 - gx},${SIZE - 1 - gy}`;
-    },
-    [grid.length, localPlayerIsP1],
-  );
+  // before being passed down.  // Identity flip helpers left intentionally. `displayGrid` is no
+  // longer mirrored, so the engine-space keys/coordinates we surface
+  // to the board map 1:1 onto the rendered tiles — no perspective
+  // swap is applied here right now. The helpers are kept in place
+  // (rather than inlined at call sites) so a future per-POV mirror
+  // can be reintroduced by editing only these two functions; all
+  // call sites already route through them.
+  const flipKey = useCallback((k: string): string => k, []);
   const flipPoint = useCallback(
-    (p: { x: number; y: number }): { x: number; y: number } => {
-      if (localPlayerIsP1) return p;
-      const SIZE = grid.length;
-      return { x: SIZE - 1 - p.x, y: SIZE - 1 - p.y };
-    },
-    [grid.length, localPlayerIsP1],
+    (p: { x: number; y: number }): { x: number; y: number } => p,
+    [],
   );
 
   // Stats for local player
@@ -2842,7 +2832,7 @@ export default function HexDuelPage() {
                 2xl:grid-cols-[280px_minmax(0,1fr)_280px]
               "
             >
-              <div className="order-2 lg:order-1 w-full max-w-xs mx-auto lg:mx-0 space-y-3">
+              <div className={`order-2 ${localPlayerIsP1 ? "lg:order-1" : "lg:order-3"} w-full max-w-xs mx-auto lg:mx-0 space-y-3`}>
                 <PlayerCard
                   player={localDuelPlayer} label={localLabel}
                   isActive={localIsActive} isSelected={false}
@@ -2970,7 +2960,7 @@ export default function HexDuelPage() {
                 />
               </div>
               </div>
-              <div className="order-3 w-full max-w-xs mx-auto lg:mx-0 space-y-3">
+              <div className={`order-3 ${localPlayerIsP1 ? "" : "lg:order-1"} w-full max-w-xs mx-auto lg:mx-0 space-y-3`}>
                 <PlayerCard
                   player={opponentDuelPlayer} label={opponentLabel}
                   isActive={opponentIsActive} isSelected={false}
