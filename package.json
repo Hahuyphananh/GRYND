@@ -35,7 +35,7 @@
     "@typescript-eslint/parser": "^8.59.3",
     "@upstash/redis": "^1.38.0",
     "@vercel/postgres": "0.10.0",
-    "axios": "^1.15.2",
+    "axios": "^1.18.0",
     "bcrypt": "^6.0.0",
     "bs58": "^6.0.0",
     "canvas-confetti": "^1.9.4",
