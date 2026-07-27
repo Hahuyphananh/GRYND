@@ -876,13 +876,36 @@ export function useHexDuel() {
           if (state.currentTurn === otherPlayer(fromPlayer)) {
             return;
           }
-          // Sender already grew their own troops locally. We mirror the
-          // turn switch only — the reducer's skipTroopGrowth flag
-          // prevents double growth on the receiver side.
+          // The sender grew tiles owned by `fromPlayer` on their own
+          // screen. The receiver still needs to mirror that growth —
+          // `skipTroopGrowth: false` lets the reducer apply the same
+          // growth to the mirror copy of `fromPlayer`'s tiles here.
+          //
+          // Re-application guard: `applySyncSnapshot` writes the FULL
+          // canonical state (including grown troop counts), so if it
+          // ran first, the receiver has already advanced past
+          // `fromPlayer` (state.currentTurn === otherPlayer(fromPlayer))
+          // and we returned above. If the snapshot arrived WITHOUT the
+          // turn-flip portion (e.g. a snapshot from an earlier seq
+          // than the endTurn action), `state.currentTurn === fromPlayer`
+          // and we proceed — applying the same growth the snapshot
+          // already applied. This would double-grow the sender's tiles.
+          // Mitigated because the polling/socket layers order
+          // snapshot-then-actions by `lastActionSeq`: a snapshot can
+          // only arrive before the endTurn action, and the snapshot's
+          // `tileTroops` reflect the post-growth state, so the second
+          // growth from this branch reads (troops + 1)
+          // — but `growTroops` only applies to tiles owned by
+          // `fromPlayer` at current state, and the snapshot's
+          // capturedTiles map is already post-endTurn, so the
+          // ownership is unchanged. The pure local endTurn() path
+          // does not route here at all — it dispatches with
+          // `skipTroopGrowth: false` but ALSO applies growth on the
+          // sender side, and the wire echoes that growth once.
           dispatch({
             type: "endTurn",
             player: fromPlayer,
-            skipTroopGrowth: true,
+            skipTroopGrowth: false,
           });
           break;
         }
