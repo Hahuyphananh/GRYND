@@ -359,6 +359,17 @@ function PlinkoBoard({
     const py = VISOR_Y + Math.cos(ang) * VISOR_LINE_PX;
     return { x: Math.max(2, Math.min(498, px)), y: Math.max(VISOR_Y, Math.min(48, py)) };
   }
+  // Offset logic: when both preview balls are at the same or
+  // overlapping startX, nudge them apart so they sit side-by-side.
+  // The physics module's simulateDualBalls already handles this
+  // server-side — the visor just mirrors the visual positioning.
+  const overlapOffset =
+    p1Preview && p2Preview &&
+    Math.abs(p1Preview.startX - p2Preview.startX) < BALL_RADIUS * 3
+      ? BALL_RADIUS * 1.8
+      : 0;
+  const p1VisorX = p1Preview ? Math.max(BALL_RADIUS, Math.min(BOARD.width - BALL_RADIUS, p1Preview.startX - overlapOffset)) : 0;
+  const p2VisorX = p2Preview ? Math.max(BALL_RADIUS, Math.min(BOARD.width - BALL_RADIUS, p2Preview.startX + overlapOffset)) : 0;
   return (
     <div className="rounded-2xl border border-cyan-300/30 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-3 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)]">
       <svg
@@ -504,16 +515,16 @@ function PlinkoBoard({
             {p1Preview && (
               <g>
                 <line
-                  x1={p1Preview.startX}
+                  x1={p1VisorX}
                   y1={VISOR_Y}
-                  x2={visorEnd(p1Preview, p1Preview.startX).x}
-                  y2={visorEnd(p1Preview, p1Preview.startX).y}
+                  x2={visorEnd({ ...p1Preview, startX: p1VisorX }, p1VisorX).x}
+                  y2={visorEnd({ ...p1Preview, startX: p1VisorX }, p1VisorX).y}
                   stroke="url(#visorCyan)"
                   strokeWidth="2.5"
                   strokeLinecap="round"
                 />
                 <circle
-                  cx={p1Preview.startX}
+                  cx={p1VisorX}
                   cy={VISOR_Y}
                   r={BALL_RADIUS}
                   fill="url(#ballCyan)"
@@ -526,16 +537,16 @@ function PlinkoBoard({
             {p2Preview && (
               <g>
                 <line
-                  x1={p2Preview.startX}
+                  x1={p2VisorX}
                   y1={VISOR_Y}
-                  x2={visorEnd(p2Preview, p2Preview.startX).x}
-                  y2={visorEnd(p2Preview, p2Preview.startX).y}
+                  x2={visorEnd({ ...p2Preview, startX: p2VisorX }, p2VisorX).x}
+                  y2={visorEnd({ ...p2Preview, startX: p2VisorX }, p2VisorX).y}
                   stroke="url(#visorMagenta)"
                   strokeWidth="2.5"
                   strokeLinecap="round"
                 />
                 <circle
-                  cx={p2Preview.startX}
+                  cx={p2VisorX}
                   cy={VISOR_Y}
                   r={BALL_RADIUS}
                   fill="url(#ballMagenta)"
@@ -592,6 +603,133 @@ function PlinkoBoard({
         )}
       </svg>
     </div>
+  );
+}
+
+// ── Round result popup ──────────────────────────────────────────────
+
+function RoundPopup({
+  p1Points,
+  p2Points,
+  p1FellOut,
+  p2FellOut,
+  ballNumber,
+  p1Name,
+  p2Name,
+  onNextRound,
+  isLastBall = false,
+}: {
+  p1Points: number;
+  p2Points: number;
+  p1FellOut: boolean;
+  p2FellOut: boolean;
+  ballNumber: number;
+  p1Name: string;
+  p2Name: string;
+  onNextRound: () => void;
+  isLastBall?: boolean;
+}) {
+  const [timer, setTimer] = useState(5);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setTimer((t) => {
+        if (t <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          onNextRound();
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [onNextRound]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+    >
+      <div className="rounded-2xl border border-cyan-300/40 bg-gradient-to-br from-[#001a33] via-[#00111f] to-[#000814] p-6 sm:p-8 max-w-md w-full shadow-[0_0_80px_rgba(0,229,255,0.25)]">
+        <h3 className="text-center text-sm uppercase tracking-widest text-cyan-200/70 font-semibold mb-1">
+          Ball {ballNumber} Results
+        </h3>
+
+        <div className="grid grid-cols-2 gap-4 mt-4">
+          {/* P1 result */}
+          <div className="text-center">
+            <p className="text-[11px] uppercase tracking-wider text-cyan-300/70 font-semibold truncate" title={p1Name}>
+              {p1Name}
+            </p>
+            {p1FellOut ? (
+              <div>
+                <p className="text-3xl font-black text-red-400 mt-1">0</p>
+                <p className="text-[10px] text-white/50 mt-1">Fell out</p>
+              </div>
+            ) : (
+              <p className={`text-3xl font-black mt-1 tabular-nums ${p1Points >= p2Points ? "text-cyan-300" : "text-white/60"}`}>
+                +{p1Points}
+              </p>
+            )}
+          </div>
+
+          {/* P2 result */}
+          <div className="text-center">
+            <p className="text-[11px] uppercase tracking-wider text-fuchsia-300/70 font-semibold truncate" title={p2Name}>
+              {p2Name}
+            </p>
+            {p2FellOut ? (
+              <div>
+                <p className="text-3xl font-black text-red-400 mt-1">0</p>
+                <p className="text-[10px] text-white/50 mt-1">Fell out</p>
+              </div>
+            ) : (
+              <p className={`text-3xl font-black mt-1 tabular-nums ${p2Points >= p1Points ? "text-fuchsia-300" : "text-white/60"}`}>
+                +{p2Points}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Both fell out message */}
+        {p1FellOut && p2FellOut && (
+          <p className="text-center text-[12px] text-red-300/80 mt-4">
+            Both balls went out of bounds — better luck next time!
+          </p>
+        )}
+
+        {/* Single fell out message */}
+        {((p1FellOut && !p2FellOut) || (!p1FellOut && p2FellOut)) && (
+          <p className="text-center text-[12px] text-yellow-300/80 mt-4">
+            {p1FellOut ? p1Name : p2Name}&apos;s ball fell out — 0 points!
+          </p>
+        )}
+
+        {/* Outcome callout */}
+        {!p1FellOut && !p2FellOut && p1Points !== p2Points && (
+          <p className="text-center text-sm font-bold text-cyan-300 mt-4">
+            {p1Points > p2Points ? p1Name : p2Name} wins this ball!
+          </p>
+        )}
+        {!p1FellOut && !p2FellOut && p1Points === p2Points && (
+          <p className="text-center text-sm font-bold text-yellow-300 mt-4">
+            It&apos;s a tie!
+          </p>
+        )}
+
+        {/* Next round button with timer */}
+        <button
+          onClick={onNextRound}
+          className="mt-6 w-full px-4 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-400 to-cyan-500 text-[#001933] hover:from-cyan-300 hover:to-cyan-400 transition shadow-[0_0_25px_rgba(0,229,255,0.4)]"
+        >
+          {isLastBall ? "View Final Results" : `Next Round`} ({timer}s)
+        </button>
+      </div>
+    </motion.div>
   );
 }
 
@@ -1026,6 +1164,15 @@ export default function PlinkoPvpMatchPage({
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
+  // ── Round result popup state ─────────────────────────────────────
+  const [roundPopup, setRoundPopup] = useState<{
+    p1Points: number;
+    p2Points: number;
+    p1FellOut: boolean;
+    p2FellOut: boolean;
+    ballNumber: number;
+  } | null>(null);
+
   // Animated ball positions. Stored in a SINGLE shape so the dual-track
   // animator can update both balls with one setState per frame — React 18
   // doesn&apos;t reliably batch independent setState calls inside
@@ -1408,6 +1555,16 @@ export default function PlinkoPvpMatchPage({
           } else {
             setHighlightBucket(null);
           }
+
+          // Show round result popup
+          setRoundPopup({
+            p1Points: p1Result.points,
+            p2Points: p2Result.points,
+            p1FellOut: p1Result.fellOut,
+            p2FellOut: p2Result.fellOut,
+            ballNumber,
+          });
+
           if (ballNumber >= REQUIRED_BALLS) {
             if (dualAnimTimerRef.current) clearTimeout(dualAnimTimerRef.current);
             dualAnimTimerRef.current = setTimeout(
@@ -1416,13 +1573,7 @@ export default function PlinkoPvpMatchPage({
             );
           } else {
             setPhase("transitioning");
-            if (dualAnimTimerRef.current) clearTimeout(dualAnimTimerRef.current);
-            dualAnimTimerRef.current = setTimeout(() => {
-              setPhase("idle");
-              setBallPositions({ p1: null, p2: null });
-              setHighlightBucket(null);
-              fetchStatus();
-            }, BETWEEN_BALLS_MS);
+            // Don't auto-advance — wait for popup "Next Round" click
           }
         }
       };
@@ -1665,6 +1816,16 @@ export default function PlinkoPvpMatchPage({
       setCancelling(false);
     }
   }, [cancelling, matchId, posthog, router]);
+
+  // ── Next round handler (dismisses round popup) ─────────────────
+  const onNextRound = useCallback(() => {
+    setRoundPopup(null);
+    setPhase("idle");
+    setBallPositions({ p1: null, p2: null });
+    setHighlightBucket(null);
+    setBusy(false);
+    fetchStatus();
+  }, [fetchStatus]);
 
   // ── Cleanup on unmount ─────────────────────────────────────────
   useEffect(() => {
@@ -1940,9 +2101,9 @@ export default function PlinkoPvpMatchPage({
 
   // ── Between-rounds banner ─────────────────────────────────────
   function renderBetweenBallsBanner() {
-    if (phase !== "transitioning" && phase !== "finished") return null;
-    const nextBall = match.currentBall + 1;
-    if (phase === "finished") return null;
+    if (phase === "finished" || roundPopup) return null;
+    if (phase !== "transitioning") return null;
+    const nextBall = match?.currentBall ? match.currentBall + 1 : 0;
     if (nextBall > REQUIRED_BALLS) return null;
     return (
       <div className="flex items-center justify-center gap-2 rounded-xl border border-yellow-300/40 bg-yellow-500/10 px-4 py-3 text-yellow-200">
@@ -2161,6 +2322,21 @@ export default function PlinkoPvpMatchPage({
         </div>
 
         {renderReveal()}
+
+        {/* Round result popup */}
+        {roundPopup && (
+          <RoundPopup
+            p1Points={roundPopup.p1Points}
+            p2Points={roundPopup.p2Points}
+            p1FellOut={roundPopup.p1FellOut}
+            p2FellOut={roundPopup.p2FellOut}
+            ballNumber={roundPopup.ballNumber}
+            p1Name={match?.players?.p1?.displayName || "Player 1"}
+            p2Name={match?.players?.p2?.displayName || "Player 2"}
+            onNextRound={onNextRound}
+            isLastBall={roundPopup.ballNumber >= REQUIRED_BALLS}
+          />
+        )}
       </div>
 
       <Footer />
