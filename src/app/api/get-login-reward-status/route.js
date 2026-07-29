@@ -7,7 +7,7 @@ import { userLoginRewards, users } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 import { getStreakTitle, getNextStreakMilestone } from "../../../lib/streakTitles";
 
-const STREAK_RESET_DAYS = 2;
+const STREAK_RESET_DAYS = 1;
 const MAX_DAY = 14;
 
 function toUtcDayKey(value) {
