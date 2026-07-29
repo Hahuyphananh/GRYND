@@ -12,8 +12,7 @@ import { getAllStreakTitles, getStreakTitle, getNextStreakMilestone } from "../.
 
 const LOGIN_REWARD_BASE = 100;
 const MAX_DAY = 14;
-const COOLDOWN_DAYS = 1;
-const STREAK_RESET_DAYS = 2;
+const STREAK_RESET_DAYS = 1;
 
 // Streak milestone bonus rewards (awarded when daily streak hits these thresholds)
 const STREAK_MILESTONE_BONUSES = {
