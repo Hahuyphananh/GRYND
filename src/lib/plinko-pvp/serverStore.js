@@ -1071,7 +1071,16 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
       // the POST response returns null for p1Result / p2Result /
       // myResult because resolveBall nulls both columns as part
       // of advancing to the next ball.
-      const savedResult1 = {
+      //
+      // BUG-FIX: changed from `const savedResult1 = {...}` (which
+      // shadowed the outer `let savedResult1 = null` declared above)
+      // to a plain assignment. The outer `savedResult1` / `savedResult2`
+      // are read by the return statement after resolveBall clears
+      // p{N}CurrentInputs, so they MUST carry the collision-aware
+      // result. Previously both were silently null, making the
+      // /launch response return null for p1Result / p2Result even
+      // when justResolved was true.
+      savedResult1 = {
         path: dual.result1.path,
         fellOut: dual.result1.fellOut,
         finalX: dual.result1.finalX,
@@ -1079,7 +1088,7 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
         bucketIndex: dual.result1.bucketIndex,
         points: dual.result1.points,
       };
-      const savedResult2 = {
+      savedResult2 = {
         path: dual.result2.path,
         fellOut: dual.result2.fellOut,
         finalX: dual.result2.finalX,
