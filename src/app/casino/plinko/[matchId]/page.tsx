@@ -1398,14 +1398,25 @@ export default function PlinkoPvpMatchPage({
   // concurrently. The launch handler never animates alone.
   useEffect(() => {
     if (rounds.length === 0) return;
-    if (phaseRef.current === "animating" || phaseRef.current === "launching") {
+    if (
+      phaseRef.current === "animating" ||
+      phaseRef.current === "launching" ||
+      phaseRef.current === "transitioning" ||
+      phaseRef.current === "finished"
+    ) {
       return;
     }
     const newRounds = rounds.filter(
       (r) => !animatedBallNumbersRef.current.has(r.ballNumber),
     );
     if (newRounds.length === 0) return;
-    const target = newRounds[newRounds.length - 1];
+    // Process the OLDEST unplayed round first (chronological order).
+    // The previous code picked newRounds[newRounds.length - 1] (newest
+    // first), which caused out-of-order animation when multiple rounds
+    // accumulated between poll ticks. Older rounds would then be
+    // animated behind the popup in the "transitioning" phase and
+    // subsequently killed by the user clicking "Next Round".
+    const target = newRounds[0];
     animatedBallNumbersRef.current.add(target.ballNumber);
     startDualTrackAnimation(
       target.player1Result,
@@ -1820,9 +1831,15 @@ export default function PlinkoPvpMatchPage({
   // ── Next round handler (dismisses round popup) ─────────────────
   const onNextRound = useCallback(() => {
     setRoundPopup(null);
-    setPhase("idle");
-    setBallPositions({ p1: null, p2: null });
-    setHighlightBucket(null);
+    // Only reset to idle if we aren't already animating a newer round.
+    // When a round's animation was started during the "transitioning"
+    // phase (popup from a previous round still visible), the user
+    // clicking "Next Round" should not nuke the in-progress animation.
+    if (phaseRef.current !== "animating") {
+      setPhase("idle");
+      setBallPositions({ p1: null, p2: null });
+      setHighlightBucket(null);
+    }
     setBusy(false);
     fetchStatus();
   }, [fetchStatus]);
