@@ -1034,6 +1034,12 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
         updated.p1CurrentInputs &&
         updated.p2CurrentInputs,
     );
+    // Saved dual-sim results — populated when bothReady is true
+    // and resolveBall is called (which clears p{N}CurrentInputs).
+    // Must be declared OUTSIDE the if-block so the return statement
+    // below can read them after resolveBall nulls the DB columns.
+    let savedResult1 = null;
+    let savedResult2 = null;
     let resolvedRow = updated;
 
     if (bothReady) {
@@ -1060,31 +1066,39 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
       assertBallPoints("p1", ballNumber, dual.result1.points || 0);
       assertBallPoints("p2", ballNumber, dual.result2.points || 0);
 
+      // Save the collision-aware results BEFORE resolveBall
+      // clears p1CurrentInputs / p2CurrentInputs. Without this,
+      // the POST response returns null for p1Result / p2Result /
+      // myResult because resolveBall nulls both columns as part
+      // of advancing to the next ball.
+      const savedResult1 = {
+        path: dual.result1.path,
+        fellOut: dual.result1.fellOut,
+        finalX: dual.result1.finalX,
+        finalY: dual.result1.finalY,
+        bucketIndex: dual.result1.bucketIndex,
+        points: dual.result1.points,
+      };
+      const savedResult2 = {
+        path: dual.result2.path,
+        fellOut: dual.result2.fellOut,
+        finalX: dual.result2.finalX,
+        finalY: dual.result2.finalY,
+        bucketIndex: dual.result2.bucketIndex,
+        points: dual.result2.points,
+      };
+
       // Overwrite the per-seat cached results with the
       // collision-aware ones. The single-ball pre-compute from
       // above is discarded — simulateDualBalls is the canonical
       // trajectory once both seats are in.
       const newP1 = {
         ...p1Inputs,
-        result: {
-          path: dual.result1.path,
-          fellOut: dual.result1.fellOut,
-          finalX: dual.result1.finalX,
-          finalY: dual.result1.finalY,
-          bucketIndex: dual.result1.bucketIndex,
-          points: dual.result1.points,
-        },
+        result: savedResult1,
       };
       const newP2 = {
         ...p2Inputs,
-        result: {
-          path: dual.result2.path,
-          fellOut: dual.result2.fellOut,
-          finalX: dual.result2.finalX,
-          finalY: dual.result2.finalY,
-          bucketIndex: dual.result2.bucketIndex,
-          points: dual.result2.points,
-        },
+        result: savedResult2,
       };
 
       const [dualSaved] = await tx
@@ -1103,16 +1117,20 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
     const wasJustResolved = bothReady;
     return {
       match: resolvedRow,
-      p1Result: resolvedRow.p1CurrentInputs?.result ?? null,
-      p2Result: resolvedRow.p2CurrentInputs?.result ?? null,
+      p1Result: wasJustResolved
+        ? savedResult1 ?? resolvedRow.p1CurrentInputs?.result ?? null
+        : resolvedRow.p1CurrentInputs?.result ?? null,
+      p2Result: wasJustResolved
+        ? savedResult2 ?? resolvedRow.p2CurrentInputs?.result ?? null
+        : resolvedRow.p2CurrentInputs?.result ?? null,
       // myResult is the caller's view of their own ball. When both
       // readied up we serve the collision-aware result for the
       // caller's seat; otherwise the pre-compute from
       // simulateBall above (no collision detected yet).
       myResult: wasJustResolved
         ? seat === "player1"
-          ? resolvedRow.p1CurrentInputs?.result ?? result
-          : resolvedRow.p2CurrentInputs?.result ?? result
+          ? savedResult1 ?? resolvedRow.p1CurrentInputs?.result ?? result
+          : savedResult2 ?? resolvedRow.p2CurrentInputs?.result ?? result
         : result,
       justResolved: wasJustResolved,
     };

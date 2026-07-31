@@ -1490,8 +1490,15 @@ export default function PlinkoPvpMatchPage({
         dualAnimCancelRef.current = null;
       }
 
-      const p1Path = p1Result.path;
-      const p2Path = p2Result.path;
+      const p1Path = p1Result?.path?.length ? p1Result.path : [];
+      const p2Path = p2Result?.path?.length ? p2Result.path : [];
+
+      // Defensive: if either ball has an empty path, skip animation
+      // entirely. A single-ball animation is confusing when the user
+      // expects both to fall together. This guards against the
+      // "sometimes only one ball falls" symptom even if the server-side
+      // save-before-resolveBall fix somehow fails.
+      if (p1Path.length === 0 || p2Path.length === 0) return;
       const p1Sampling = precomputePathSampling(p1Path);
       const p2Sampling = precomputePathSampling(p2Path);
 
