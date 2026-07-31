@@ -12,7 +12,7 @@ import Image from "next/image";
 import Img1 from "../images/roulette.png";
 import Img2 from "../images/blackjack.jpg";
 import Img3 from "../images/poker.jpg";
-import Img4 from "../images/plinko.jpg";
+import Img4 from "../images/plinko.svg";
 import HeroBg from "../images/casino-bg.png";
 import SportCard from "../components/sport-card";
 import {

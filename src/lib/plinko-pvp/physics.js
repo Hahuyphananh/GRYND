@@ -244,8 +244,6 @@ export function simulateBall({ startX, power, angleDeg, seed }) {
     // spacing is only 22 px).
     const speed = Math.max(Math.abs(vx), Math.abs(vy));
     const substeps = Math.max(1, Math.ceil(speed / SUBSTEP_MAX_PX));
-    const subVx = vx / substeps;
-    const subVy = vy / substeps;
     // Per-substep gravity + friction. Distributing these across substeps keeps
     // the integrator consistent regardless of substep count.
     const subGravity = GRAVITY / substeps;
@@ -259,9 +257,12 @@ export function simulateBall({ startX, power, angleDeg, seed }) {
       vx *= subFriction;
       vy *= subFriction;
 
-      // 2. Integrate position.
-      x += subVx;
-      y += subVy;
+      // 2. Integrate position using current velocity (not pre-computed
+      //    subVx/subVy) so the position update reflects velocity changes
+      //    from collisions within the same frame. This matches the
+      //    integration scheme used by simulateDualBalls.
+      x += vx / substeps;
+      y += vy / substeps;
 
       // 3. Flip the fall-out gate the first time we clear the top peg row.
       if (!gatePassed && y > FALL_OUT_GATE_Y) gatePassed = true;
@@ -682,8 +683,9 @@ export function simulateDualBalls(p1, p2) {
           const vrx = ball2.vx - ball1.vx;
           const vry = ball2.vy - ball1.vy;
           const vDot = vrx * nx + vry * ny;
-          // Skip if the balls are separating (ny > 0 means moving
-          // apart, no impulse needed — prevents jitter).
+          // Apply velocity impulse only when balls are approaching
+          // (vDot < 0). If they're already separating, skip impulse
+          // to prevent jitter.
           if (vDot < 0) {
             const impulse =
               (-(1 + BALL_COLLISION_RESTITUTION) * vDot) / 2;
@@ -693,18 +695,23 @@ export function simulateDualBalls(p1, p2) {
             ball1.vy -= impulse * ny;
             ball2.vx += impulse * nx;
             ball2.vy += impulse * ny;
-            // Capped position correction so a stacked-collision doesn't
-            // shove a ball 20px in a single substep.
-            const overlap = ballMinDist - dist;
-            const correction = Math.min(
-              overlap / 2,
-              BALL_COLLISION_MAX_CORRECTION_PX,
-            );
-            ball1.x -= nx * correction;
-            ball1.y -= ny * correction;
-            ball2.x += nx * correction;
-            ball2.y += ny * correction;
           }
+          // ALWAYS apply position correction when balls overlap,
+          // even when vDot >= 0 (zero relative velocity or already
+          // separating). Without this, overlapping balls that start
+          // with identical velocities (e.g. both launched straight
+          // down from nearby positions) never get separated and
+          // visually merge into one blob — the user-reported
+          // "sometimes only one ball falls" bug.
+          const overlap = ballMinDist - dist;
+          const correction = Math.min(
+            overlap / 2,
+            BALL_COLLISION_MAX_CORRECTION_PX,
+          );
+          ball1.x -= nx * correction;
+          ball1.y -= ny * correction;
+          ball2.x += nx * correction;
+          ball2.y += ny * correction;
         }
       }
 
