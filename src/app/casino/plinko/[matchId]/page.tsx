@@ -1782,7 +1782,15 @@ export default function PlinkoPvpMatchPage({
       // makes the "I'm Ready" → "ball resolved → next ball" loop
       // feel snappier and avoids leaving the user stranded on the
       // last-second slide if /launch took its time on the round-trip.
-      fetchStatus();
+      //
+      // BUG-FIX: changed to `await fetchStatus()` so the /status
+      // poll completes and `rounds` state is updated BEFORE this
+      // function returns. Previously the fire-and-forget call meant
+      // the animation effect could fire AFTER the next 800ms poll
+      // or not at all, causing balls to never animate during active
+      // rounds and then all animate sequentially after the match
+      // finished.
+      await fetchStatus();
 
       // No optimistic single-ball animation here — the rounds-effect
       // handles dual-track animation when the /status poll lands the
