@@ -70,7 +70,10 @@ export const PEG_CENTER_X = 250;       // grid is symmetric around this x
 
 // Per-frame physics (1 frame = 1/60s of simulated time).
 export const GRAVITY = 0.35;                              // px / frame^2
-export const RESTITUTION = 0.6;                           // bounce energy retention (0..1)
+export const RESTITUTION = 0.2;                           // peg-bounce energy retention (0..1)
+                                                          // Low so the ball cascades down naturally;
+                                                          // pegs gently deflect rather than violently
+                                                          // rebounding the ball upward.
 export const FRICTION = 0.998;                            // velocity damping per substep
 export const JITTER_RAD = (2 * Math.PI) / 180;            // ±2° on each bounce
 export const MAX_FRAMES = 800;                            // safety cap (no infinite loops)
@@ -80,11 +83,11 @@ export const SUBSTEP_MAX_PX = 5;                          // max motion per subs
 export const PATH_DOWNSAMPLE = 2;                         // record every Nth substep
 export const PATH_DEDUP_TOLERANCE = 1.0;                  // px — drop consecutive points closer than this
 
-// Ball-ball collision for the Dual simulation. Lower than peg restitution
-// because two soft balls knocking each other lose more energy than ball-on-
-// peg. Capped position correction prevents numerical explosions in dense
-// peg clusters.
-export const BALL_COLLISION_RESTITUTION = 0.55;           // energy retention on ball-ball bump
+// Ball-ball collision for the Dual simulation. Higher than peg
+// restitution so the two-player interaction (balls knocking each
+// other off course) is the visually exciting skill element, while
+// peg deflections are a gentle cascade.
+export const BALL_COLLISION_RESTITUTION = 0.6;            // energy retention on ball-ball bump
 export const BALL_COLLISION_MAX_CORRECTION_PX = 0.5;      // per-substep position fix cap
 
 // ──────────────────────────────────────────────────────────────────────────

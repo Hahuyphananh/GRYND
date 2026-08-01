@@ -149,16 +149,59 @@ io.on("connection", (socket) => {
     }
   }
 
+  // ── Plinko PvP room-participant tracking ───────────────────────
+  // Mirrors the precision tracking pattern so the plinko:ready
+  // handler below can reject events from non-participant sockets.
+  // Keyed by matchId (numeric).
+  const PLINKO_MATCH_ROOM_PREFIX = "plinko-pvp:match:";
+  if (!global.__plinkoRoomParticipants) {
+    global.__plinkoRoomParticipants = new Map();
+  }
+  const plinkoRoomParticipants = global.__plinkoRoomParticipants;
+
+  function trackPlinkoJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(PLINKO_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(PLINKO_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!plinkoRoomParticipants.has(matchId)) {
+      plinkoRoomParticipants.set(matchId, new Set());
+    }
+    plinkoRoomParticipants.get(matchId).add(userId);
+    console.log("[plinko-pvp] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackPlinkoLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(PLINKO_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(PLINKO_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = plinkoRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) plinkoRoomParticipants.delete(matchId);
+    console.log("[plinko-pvp] participant left: matchId=", matchId, "userId=", userId);
+  }
+  function forgetPlinkoUser(userId) {
+    for (const [mid, set] of plinkoRoomParticipants.entries()) {
+      set.delete(userId);
+      if (set.size === 0) plinkoRoomParticipants.delete(mid);
+    }
+  }
+
   socket.on("join_room", ({ roomId }) => {
     if (!roomId) return;
     socket.join(String(roomId));
     trackPrecisionJoin(String(roomId), socket.data.userId);
+    trackPlinkoJoin(String(roomId), socket.data.userId);
   });
 
   socket.on("leave_room", ({ roomId }) => {
     if (!roomId) return;
     socket.leave(String(roomId));
     trackPrecisionLeave(String(roomId), socket.data.userId);
+    trackPlinkoLeave(String(roomId), socket.data.userId);
   });
 
   socket.on("room_event", ({ roomId, event, payload }) => {
@@ -519,11 +562,69 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ── Plinko PvP: ready ──────────────────────────────────────────
+  // The client emits `plinko:ready` after a successful /launch POST
+  // so the opponent gets an instant "refresh" push instead of
+  // waiting for the 800ms HTTP poll. The handler validates that the
+  // caller is a tracked participant, then broadcasts `lobby:updated`
+  // to the match room (excluding the sender).
+  //
+  // This replaces the previous `room_event` emit pattern (which
+  // still works as a fallback) with a dedicated handler that logs
+  // events for audit/debugging and enforces participation checks.
+  socket.on("plinko:ready", ({ matchId } = {}) => {
+    if (!matchId) return;
+    const matchIdStr = String(matchId);
+    // Belt-and-suspenders: only allow numeric match IDs to prevent
+    // path-traversal-like room constructions from buggy/malicious
+    // clients.
+    if (!/^\d+$/.test(matchIdStr)) {
+      console.warn(
+        "[plinko-pvp] rejecting plinko:ready with non-numeric matchId:",
+        matchIdStr,
+        "userId=",
+        socket.data.userId,
+      );
+      return;
+    }
+    const participants = plinkoRoomParticipants.get(matchIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      console.warn(
+        "[plinko-pvp] rejecting plinko:ready from non-participant: matchId=",
+        matchIdStr,
+        "userId=",
+        socket.data.userId,
+        "participantCount=",
+        participants ? participants.size : 0,
+      );
+      return;
+    }
+    const roomId = `${PLINKO_MATCH_ROOM_PREFIX}${matchIdStr}`;
+    const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+    const roomSize = socketsInRoom?.size ?? 0;
+    console.log(
+      "[plinko-pvp] relay ready: matchId=",
+      matchIdStr,
+      "from=",
+      socket.data.userId,
+      "roomSize=",
+      roomSize,
+    );
+    socket.to(roomId).emit("lobby:updated", {
+      matchId: matchIdStr,
+      userId: socket.data.userId,
+      sentAt: new Date().toISOString(),
+    });
+  });
+
   // ── Keep existing disconnect handler ──
   socket.on("disconnect", () => {
     // For Precision: drop user from all precision match rooms they
     // had joined so the next reconnect starts a clean participant set.
     forgetPrecisionUser(socket.data.userId);
+
+    // For Plinko PvP: drop user from all plinko match rooms
+    forgetPlinkoUser(socket.data.userId);
 
     // For hex duel: emit a dedicated disconnect event so the opponent gets a win
     if (hexDuelGameIds.size > 0) {

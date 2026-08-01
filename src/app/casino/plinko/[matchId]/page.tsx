@@ -41,6 +41,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import {
   PLINKO_PVP_LOBBY_ROOM,
   PLINKO_PVP_MATCH_UPDATED,
+  PLINKO_PVP_READY,
   plinkoPvpMatchRoom,
 } from "../../../../lib/plinko-pvp/rooms";
 import {
@@ -1173,6 +1174,21 @@ export default function PlinkoPvpMatchPage({
     ballNumber: number;
   } | null>(null);
 
+  // Client-side round counter for display purposes. Only advances
+  // when the popup is dismissed (onNextRound), NOT when the server
+  // advances match.currentBall (which happens instantaneously in
+  // resolveBall). This keeps the "Ball X of 3" label and the
+  // between-rounds banner in sync with what the player actually
+  // sees, rather than jumping ahead while the popup is still visible.
+  // Initialised from match.currentBall on first load so refreshes
+  // don't replay the popup.
+  const [displayBall, setDisplayBall] = useState<number>(1);
+  useEffect(() => {
+    if (match) {
+      setDisplayBall(match.currentBall);
+    }
+  }, [match?.id]); // only on match identity change, not every currentBall advance
+
   // Animated ball positions. Stored in a SINGLE shape so the dual-track
   // animator can update both balls with one setState per frame — React 18
   // doesn&apos;t reliably batch independent setState calls inside
@@ -1207,6 +1223,11 @@ export default function PlinkoPvpMatchPage({
   // React setState-on-unmounted warning) or race a new dual-track
   // start that supersedes it.
   const dualAnimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // In-flight guard for fetchStatus — prevents overlapping /match
+  // requests from the 800ms poll, onNextRound, socket events, and
+  // handleReady all firing within the same ~100ms window.
+  const fetchStatusPendingRef = useRef(false);
 
   const phaseRef = useRef(phase);
   const roundsRef = useRef(rounds);
@@ -1244,6 +1265,14 @@ export default function PlinkoPvpMatchPage({
       setError("Invalid match link.");
       return null;
     }
+    // In-flight guard: skip if a fetchStatus call is already pending.
+    // Previously overlapping calls from the 800ms poll + onNextRound +
+    // socket events + handleReady could pile up 3-4 concurrent requests,
+    // triggering "too many requests" on Render free plan. A single
+    // in-flight promise is sufficient — the next scheduled poll
+    // (800ms) will pick up any missed updates.
+    if (fetchStatusPendingRef.current) return null;
+    fetchStatusPendingRef.current = true;
     try {
       const res = await fetch(`/api/plinko-pvp/match/${matchId}`, {
         cache: "no-store",
@@ -1288,6 +1317,7 @@ export default function PlinkoPvpMatchPage({
       return null;
     } finally {
       setLoading(false);
+      fetchStatusPendingRef.current = false;
     }
   }, [isSignedIn, isValidMatchId, matchId]);
 
@@ -1398,9 +1428,14 @@ export default function PlinkoPvpMatchPage({
   // concurrently. The launch handler never animates alone.
   useEffect(() => {
     if (rounds.length === 0) return;
+    // Allow animation to proceed even during "launching" phase
+    // (the second committer's handleReady sets "launching" before
+    // calling fetchStatus which updates rounds — without this the
+    // triggering player never sees their own ball animation).
+    // "animating" / "transitioning" / "finished" still gate to
+    // avoid cancelling an in-progress animation with a new one.
     if (
       phaseRef.current === "animating" ||
-      phaseRef.current === "launching" ||
       phaseRef.current === "transitioning" ||
       phaseRef.current === "finished"
     ) {
@@ -1409,7 +1444,15 @@ export default function PlinkoPvpMatchPage({
     const newRounds = rounds.filter(
       (r) => !animatedBallNumbersRef.current.has(r.ballNumber),
     );
-    if (newRounds.length === 0) return;
+    if (newRounds.length === 0) {
+      // No new rounds to animate — if handleReady set "launching"
+      // but the round hasn't resolved yet (opponent hasn't readied),
+      // clear the phase so the UI returns to idle.
+      if (phaseRef.current === "launching") {
+        setPhase("idle");
+      }
+      return;
+    }
     // Process the OLDEST unplayed round first (chronological order).
     // The previous code picked newRounds[newRounds.length - 1] (newest
     // first), which caused out-of-order animation when multiple rounds
@@ -1493,12 +1536,24 @@ export default function PlinkoPvpMatchPage({
       const p1Path = p1Result?.path?.length ? p1Result.path : [];
       const p2Path = p2Result?.path?.length ? p2Result.path : [];
 
-      // Defensive: if either ball has an empty path, skip animation
-      // entirely. A single-ball animation is confusing when the user
-      // expects both to fall together. This guards against the
-      // "sometimes only one ball falls" symptom even if the server-side
-      // save-before-resolveBall fix somehow fails.
-      if (p1Path.length === 0 || p2Path.length === 0) return;
+      // Only skip animation entirely when BOTH balls have empty
+      // paths. If just one is missing, animate the available ball
+      // so users see at least something instead of both balls
+      // silently disappearing. The missing-path case is logged
+      // so we can diagnose server-side issues.
+      if (p1Path.length === 0 && p2Path.length === 0) return;
+      if (p1Path.length === 0) {
+        console.warn(
+          "[plinko-pvp] p1Result has an empty path — animating p2 only. ballNumber:",
+          ballNumber,
+        );
+      }
+      if (p2Path.length === 0) {
+        console.warn(
+          "[plinko-pvp] p2Result has an empty path — animating p1 only. ballNumber:",
+          ballNumber,
+        );
+      }
       const p1Sampling = precomputePathSampling(p1Path);
       const p2Sampling = precomputePathSampling(p2Path);
 
@@ -1582,6 +1637,14 @@ export default function PlinkoPvpMatchPage({
             p2FellOut: p2Result.fellOut,
             ballNumber,
           });
+          // BUG-FIX: clear balls from the board immediately when
+          // the popup appears, not when the popup is dismissed.
+          // Previously balls stayed at their final positions
+          // until onNextRound fired, which meant Player A and
+          // Player B saw different board states depending on who
+          // dismissed the popup first — causing the user-reported
+          // "balls don't reset to original positions" sync issue.
+          setBallPositions({ p1: null, p2: null });
 
           if (ballNumber >= REQUIRED_BALLS) {
             if (dualAnimTimerRef.current) clearTimeout(dualAnimTimerRef.current);
@@ -1754,10 +1817,12 @@ export default function PlinkoPvpMatchPage({
       // was sticky from an earlier session in this match).
       setMigrationIncomplete(false);
 
-      socket?.emit("room_event", {
-        roomId: plinkoPvpMatchRoom(matchId),
-        event: PLINKO_PVP_MATCH_UPDATED,
-      });
+      // Push a dedicated plinko:ready event through the realtime
+      // server so the opponent's client gets an immediate refresh
+      // (the realtime server validates participation and relays
+      // PLINKO_PVP_MATCH_UPDATED to the match room).
+      // Also broadcast to the lobby room so the lobby list updates.
+      socket?.emit(PLINKO_PVP_READY, { matchId });
       socket?.emit("room_event", {
         roomId: PLINKO_PVP_LOBBY_ROOM,
         event: PLINKO_PVP_MATCH_UPDATED,
@@ -1777,26 +1842,56 @@ export default function PlinkoPvpMatchPage({
         return;
       }
 
+      // When this POST was the commit that filled the last gap and
+      // triggered server-side ball resolution, the response includes
+      // the collision-aware dual-simulation paths. Use them to
+      // animate IMMEDIATELY — don't wait for the 800ms poll or the
+      // rounds-effect. This is the fix for "ball disappears / only
+      // one ball falls": the second committer now sees the animation
+      // instantly, and the opponent picks it up on their next poll.
+      //
+      // We still await fetchStatus() afterwards so the rest of the
+      // state (match, scores, etc.) is fresh for the next round,
+      // but we pre-register the ball number so the rounds-effect
+      // doesn't double-animate.
+      const justResolved = Boolean(data.data.justResolved);
+      if (justResolved) {
+        // Use the pre-click currentBall (the closure captures the
+        // match state at the time the user clicked "I'm Ready").
+        // After the server resolves the ball, the response's
+        // match.currentBall has already been advanced to ball_(N+1)
+        // (or frozen at 3 for the final ball) — using that would
+        // compute the wrong ball number for the final ball.
+        const resolvedBallNumber = match?.currentBall ?? 1;
+        // Pre-register so the pending fetchStatus / rounds-effect
+        // won't try to animate this ball a second time.
+        animatedBallNumbersRef.current.add(resolvedBallNumber);
+        // Use the /launch response paths (collision-aware from
+        // simulateDualBalls) for immediate visual feedback.
+        const p1Res = data.data.p1Result;
+        const p2Res = data.data.p2Result;
+        if (p1Res && p2Res) {
+          startDualTrackAnimation(p1Res, p2Res, resolvedBallNumber);
+        } else if (data.data.myResult) {
+          // Fallback: half-dual animation with the viewer's own
+          // result. Both paths being null when justResolved=true
+          // means the server response shape changed — still animate
+          // what we have so the ball doesn't disappear.
+          const viewerIsP1 = match?.viewerIsPlayer1;
+          startDualTrackAnimation(
+            viewerIsP1 ? data.data.myResult : null,
+            viewerIsP1 ? null : data.data.myResult,
+            resolvedBallNumber,
+          );
+        }
+      }
+
       // Always force-refresh immediately after the launch POST so the
       // client doesn't have to wait for the next 800ms poll. This
       // makes the "I'm Ready" → "ball resolved → next ball" loop
       // feel snappier and avoids leaving the user stranded on the
       // last-second slide if /launch took its time on the round-trip.
-      //
-      // BUG-FIX: changed to `await fetchStatus()` so the /status
-      // poll completes and `rounds` state is updated BEFORE this
-      // function returns. Previously the fire-and-forget call meant
-      // the animation effect could fire AFTER the next 800ms poll
-      // or not at all, causing balls to never animate during active
-      // rounds and then all animate sequentially after the match
-      // finished.
       await fetchStatus();
-
-      // No optimistic single-ball animation here — the rounds-effect
-      // handles dual-track animation when the /status poll lands the
-      // resolved rounds row. The fix for the "opponent ball stuck in
-      // the side" bug is to keep the animation source-of-truth pinned
-      // to the canonical rounds row.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ready failed");
       // Network failure → server never confirmed. Drop the
@@ -1845,6 +1940,12 @@ export default function PlinkoPvpMatchPage({
 
   // ── Next round handler (dismisses round popup) ─────────────────
   const onNextRound = useCallback(() => {
+    // Advance the UI round counter — this is the ONLY place
+    // displayBall increments, so it stays in sync with the
+    // user&apos;s visual timeline (popup dismissed → round advances).
+    // Cap at REQUIRED_BALLS so the final dismissal doesn't
+    // announce a nonexistent ball 4.
+    setDisplayBall((prev) => Math.min(prev + 1, REQUIRED_BALLS));
     setRoundPopup(null);
     // Only reset to idle if we aren't already animating a newer round.
     // When a round's animation was started during the "transitioning"
@@ -1852,6 +1953,8 @@ export default function PlinkoPvpMatchPage({
     // clicking "Next Round" should not nuke the in-progress animation.
     if (phaseRef.current !== "animating") {
       setPhase("idle");
+      // Ball positions already cleared when popup appeared — no
+      // need to clear again, but belt-and-suspenders won't hurt.
       setBallPositions({ p1: null, p2: null });
       setHighlightBucket(null);
     }
@@ -2135,7 +2238,11 @@ export default function PlinkoPvpMatchPage({
   function renderBetweenBallsBanner() {
     if (phase === "finished" || roundPopup) return null;
     if (phase !== "transitioning") return null;
-    const nextBall = match?.currentBall ? match.currentBall + 1 : 0;
+    // Use displayBall (which lags behind server currentBall until
+    // popup is dismissed) to derive the next ball number. When
+    // transitioning after ball 1, displayBall is still 1, so next
+    // is 2. Only show if there IS a next ball.
+    const nextBall = displayBall + 1;
     if (nextBall > REQUIRED_BALLS) return null;
     return (
       <div className="flex items-center justify-center gap-2 rounded-xl border border-yellow-300/40 bg-yellow-500/10 px-4 py-3 text-yellow-200">
@@ -2147,65 +2254,94 @@ export default function PlinkoPvpMatchPage({
     );
   }
 
-  // ── Reveal screen ─────────────────────────────────────────────
-  function renderReveal() {
+  // ── Winner popup (shown when match finishes) ────────────────────
+  function renderWinnerPopup() {
     if (!isFinished) return null;
     const isDraw = match.result === RESULT.TIE;
     const iWon = Boolean(
       match.winnerId && user?.id && match.winnerId === user.id,
     );
+    const p1Name = match?.players?.p1?.displayName || "Player 1";
+    const p2Name = match?.players?.p2?.displayName || "Player 2";
+    const pointDiff = Math.abs((match.p1Score || 0) - (match.p2Score || 0));
+    const winnerName = isDraw
+      ? null
+      : match.result === RESULT.PLAYER1
+        ? p1Name
+        : p2Name;
     return (
       <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="mx-auto mt-6 max-w-2xl rounded-3xl border border-cyan-300/40 bg-gradient-to-br from-[#001a33] via-[#00111f] to-[#000814] p-6 shadow-[0_0_60px_rgba(0,229,255,0.25)]"
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
       >
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-            <TrophyIcon className="w-6 h-6 text-yellow-300" />
-            Match result
-          </h2>
+        <div className="rounded-2xl border border-cyan-300/40 bg-gradient-to-br from-[#001a33] via-[#00111f] to-[#000814] p-6 sm:p-8 max-w-md w-full shadow-[0_0_80px_rgba(0,229,255,0.25)]">
+          <div className="flex items-center justify-center mb-4">
+            <TrophyIcon className="w-10 h-10 text-yellow-300 drop-shadow-[0_0_16px_rgba(255,200,0,0.5)]" />
+          </div>
+          <h3 className="text-center text-sm uppercase tracking-widest text-cyan-200/70 font-semibold mb-1">
+            Match Over
+          </h3>
+
+          {/* Result callout */}
+          <p
+            className={`text-center text-3xl font-black mt-2 ${
+              isDraw
+                ? "text-yellow-300"
+                : iWon
+                  ? "text-emerald-300"
+                  : "text-red-300"
+            }`}
+          >
+            {isDraw ? "It's a Draw!" : iWon ? "You Win!" : "You Lose"}
+          </p>
+
+          {/* Winner detail */}
+          {!isDraw && winnerName && (
+            <p className="text-center text-sm text-white/70 mt-2">
+              <span className="font-bold text-white">{winnerName}</span> won
+              by <span className="font-bold text-white">{pointDiff} point{pointDiff !== 1 ? "s" : ""}</span>
+            </p>
+          )}
+
+          {/* Score summary */}
+          <div className="grid grid-cols-2 gap-4 mt-5">
+            <div className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 p-3 text-center">
+              <p className="text-[10px] uppercase tracking-wider text-cyan-200/70 truncate">{p1Name}</p>
+              <p className="mt-1 text-2xl font-black text-cyan-100 tabular-nums">
+                {match.p1Score} pts
+              </p>
+            </div>
+            <div className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 p-3 text-center">
+              <p className="text-[10px] uppercase tracking-wider text-fuchsia-200/70 truncate">{p2Name}</p>
+              <p className="mt-1 text-2xl font-black text-fuchsia-100 tabular-nums">
+                {match.p2Score} pts
+              </p>
+            </div>
+          </div>
+
+          {/* Prize info */}
+          {!isDraw && (
+            <p className="text-center text-xs text-white/60 mt-4">
+              Prize paid:{" "}
+              <span className="text-white font-bold">
+                ${(match.prizePaid || 0).toFixed(2)}
+              </span>
+            </p>
+          )}
+          {isDraw && (
+            <p className="text-center text-xs text-white/60 mt-4">
+              Both players refunded — no house fee
+            </p>
+          )}
+
+          {/* Back to lobby button */}
           <button
             onClick={() => router.push("/casino/plinko")}
-            className="px-4 py-2 rounded-xl bg-cyan-400 text-[#001933] hover:bg-cyan-300 text-sm font-bold"
+            className="mt-6 w-full px-4 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-400 to-cyan-500 text-[#001933] hover:from-cyan-300 hover:to-cyan-400 transition shadow-[0_0_25px_rgba(0,229,255,0.4)]"
           >
-            Back to lobby
+            Back to Lobby
           </button>
-        </div>
-        <div className="grid grid-cols-3 gap-3 items-stretch">
-          <div className="rounded-2xl border border-cyan-300/40 bg-cyan-500/10 p-3 text-center">
-            <p className="text-[10px] uppercase tracking-wider text-cyan-200/70">
-              {p1Name}
-            </p>
-            <p className="mt-1 text-3xl font-black text-cyan-100 tabular-nums">
-              {match.p1Score}
-            </p>
-            <p className="text-[11px] text-cyan-200/70 mt-1">pts</p>
-          </div>
-          <div className="flex flex-col items-center justify-center text-center px-2">
-            <p className="text-4xl sm:text-5xl font-black">
-              {isDraw ? (
-                <span className="text-yellow-300">DRAW</span>
-              ) : iWon ? (
-                <span className="text-emerald-300">YOU WIN</span>
-              ) : (
-                <span className="text-red-300">YOU LOSE</span>
-              )}
-            </p>
-            <p className="mt-1 text-xs text-white/60">
-              Prize paid: <span className="text-white font-bold">${match.prizePaid.toFixed(2)}</span>
-            </p>
-          </div>
-          <div className="rounded-2xl border border-fuchsia-300/40 bg-fuchsia-500/10 p-3 text-center">
-            <p className="text-[10px] uppercase tracking-wider text-fuchsia-200/70">
-              {p2Name}
-            </p>
-            <p className="mt-1 text-3xl font-black text-fuchsia-100 tabular-nums">
-              {match.p2Score}
-            </p>
-            <p className="text-[11px] text-fuchsia-200/70 mt-1">pts</p>
-          </div>
         </div>
       </motion.div>
     );
@@ -2241,7 +2377,7 @@ export default function PlinkoPvpMatchPage({
           <div className="inline-flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-3 py-1.5 text-xs uppercase tracking-wider text-white/70">
             <span>Ball</span>
             <span className="font-black text-white text-base tabular-nums">
-              {match.currentBall}
+              {displayBall}
               <span className="text-white/40 text-sm">/{REQUIRED_BALLS}</span>
             </span>
           </div>
@@ -2353,7 +2489,7 @@ export default function PlinkoPvpMatchPage({
           </div>
         </div>
 
-        {renderReveal()}
+        {renderWinnerPopup()}
 
         {/* Round result popup */}
         {roundPopup && (
