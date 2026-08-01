@@ -1399,7 +1399,8 @@ export default function PlinkoPvpMatchPage({
     const launchable =
       match.status === MATCH_STATUS.BALL_1 ||
       match.status === MATCH_STATUS.BALL_2 ||
-      match.status === MATCH_STATUS.BALL_3;
+      match.status === MATCH_STATUS.BALL_3 ||
+      match.status === MATCH_STATUS.BALL_4;
     if (
       launchable &&
       phaseRef.current !== "animating" &&
@@ -2080,7 +2081,8 @@ export default function PlinkoPvpMatchPage({
   const isLaunchable =
     match.status === MATCH_STATUS.BALL_1 ||
     match.status === MATCH_STATUS.BALL_2 ||
-    match.status === MATCH_STATUS.BALL_3;
+    match.status === MATCH_STATUS.BALL_3 ||
+    match.status === MATCH_STATUS.BALL_4;
   const urgent = timeLeft > 0 && timeLeft <= 5;
 
   const isViewerP1 = match.viewerIsPlayer1;
@@ -2122,7 +2124,7 @@ export default function PlinkoPvpMatchPage({
   // their current inputs (user-flagged feature request).
   const showVisor =
     !p1BallPos && !p2BallPos &&
-    (match.status === MATCH_STATUS.BALL_1 || match.status === MATCH_STATUS.BALL_2 || match.status === MATCH_STATUS.BALL_3) &&
+    (match.status === MATCH_STATUS.BALL_1 || match.status === MATCH_STATUS.BALL_2 || match.status === MATCH_STATUS.BALL_3 || match.status === MATCH_STATUS.BALL_4) &&
     phase !== "animating" && phase !== "transitioning";
   const p1Comm = match.p1CurrentInputs;
   const p2Comm = match.p2CurrentInputs;
@@ -2331,7 +2333,9 @@ export default function PlinkoPvpMatchPage({
           )}
           {isDraw && (
             <p className="text-center text-xs text-white/60 mt-4">
-              Both players refunded — no house fee
+              {match.houseFee > 0
+                ? `Each player refunded $${(Number(match.stakeAmount) * 0.95).toFixed(2)} (5% house fee)`
+                : "Both players refunded — no house fee"}
             </p>
           )}
 
@@ -2502,7 +2506,11 @@ export default function PlinkoPvpMatchPage({
             p1Name={match?.players?.p1?.displayName || "Player 1"}
             p2Name={match?.players?.p2?.displayName || "Player 2"}
             onNextRound={onNextRound}
-            isLastBall={roundPopup.ballNumber >= REQUIRED_BALLS}
+            isLastBall={
+              roundPopup.ballNumber >= REQUIRED_BALLS + 1 ||
+              (roundPopup.ballNumber >= REQUIRED_BALLS &&
+                match?.p1Score !== match?.p2Score)
+            }
           />
         )}
       </div>

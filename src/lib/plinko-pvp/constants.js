@@ -109,6 +109,7 @@ export const MATCH_STATUS = Object.freeze({
   BALL_1: "ball_1",
   BALL_2: "ball_2",
   BALL_3: "ball_3",
+  BALL_4: "ball_4",
   FINISHED: "finished",
   CANCELLED: "cancelled",
 });
@@ -122,6 +123,7 @@ export const ACTIVE_STATES = new Set([
   MATCH_STATUS.BALL_1,
   MATCH_STATUS.BALL_2,
   MATCH_STATUS.BALL_3,
+  MATCH_STATUS.BALL_4,
 ]);
 
 // States where a `launch` action is accepted. `READY` is intentionally
@@ -132,6 +134,7 @@ export const LAUNCHABLE_STATES = new Set([
   MATCH_STATUS.BALL_1,
   MATCH_STATUS.BALL_2,
   MATCH_STATUS.BALL_3,
+  MATCH_STATUS.BALL_4,
 ]);
 
 // Terminal states. Once a match reaches one of these, no further
@@ -196,6 +199,11 @@ export const MAX_STAKE = 1000000;
 export const HOUSE_FEE_PCT = 0.10;
 export const WINNER_RATIO = 0.90; // 90% of the loser's stake
 export const HOUSE_RATIO = 0.10; // 10% of the loser's stake
+
+// Tiebreaker fee: when the match is still tied after the 4th tiebreaker
+// ball, each player forfeits 5% of their wager to the house and receives
+// the remaining 95% back. Total house fee = 10% of one stake.
+export const TIE_FEE_PCT = 0.05;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Stake-key advisory-lock namespace for `createOrJoin` matchmaking
@@ -327,7 +335,7 @@ export function pickPositiveInt(value, fallback) {
 // The function is intentionally a PURE mapping — no DB, no state — so
 // the match store can call it from both the resolution path and the
 // AFK auto-resolve path.
-export function computePayout({ stakeAmount, p1Score, p2Score }) {
+export function computePayout({ stakeAmount, p1Score, p2Score, tieFeePct = 0 }) {
   const stake = Number(stakeAmount);
   if (!Number.isFinite(stake) || stake < 0) {
     throw new RangeError(
@@ -346,6 +354,24 @@ export function computePayout({ stakeAmount, p1Score, p2Score }) {
   }
 
   if (p1Score === p2Score) {
+    // tieFeePct > 0 means this is a tiebreaker tie: each player
+    // forfeits tieFeePct of their stake to the house, receiving
+    // the remaining (1 − tieFeePct) back.
+    if (tieFeePct > 0) {
+      const feePerPlayer = round2(stake * tieFeePct);
+      const refundPerPlayer = round2(stake - feePerPlayer);
+      const totalHouseFee = round2(feePerPlayer * 2);
+      return {
+        stake: round2(stake),
+        result: RESULT.TIE,
+        winnerId: null,
+        winnerNet: null,
+        loserNet: null,
+        houseFee: totalHouseFee,
+        prizePaid: round2(0),
+        tiebreakerRefund: refundPerPlayer,
+      };
+    }
     return {
       stake: round2(stake),
       result: RESULT.TIE,
