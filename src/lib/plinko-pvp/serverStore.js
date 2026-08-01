@@ -18,8 +18,12 @@
 //   makes the state machine testable in isolation.
 //
 // State machine:
-//   waiting → ready → ball_1 → ball_2 → ball_3 → finished
+//   waiting → ready → ball_1 → ball_2 → ball_3 → (tied → ball_4) → finished
 //   (waiting → cancelled; any non-terminal → cancelled by grace timeout)
+//
+// Tiebreaker: when scores are tied after ball_3, the match advances to a
+// 4th tiebreaker ball. If still tied after ball_4, each player forfeits 5%
+// of their wager (TIE_FEE_PCT) and receives 95% back.
 //
 // Unlike mines-pvp (turn-based: p1_turn → p2_turn) or blackjack-pvp
 // (alternating: round_1 → between_rounds → round_2), Plinko Duel is
@@ -50,6 +54,7 @@ import {
   RESULT,
   ROUND_DEADLINE_MS,
   ROUND_TIMER_SECONDS,
+  TIE_FEE_PCT,
   autoLaunchInputs,
   computePayout,
   round2,
@@ -296,10 +301,12 @@ function hashStakeToInt(stake) {
 // — returns BALL_3 for any out-of-range input so a future schema bump
 // doesn't crash the status machine.
 function statusForBallNumber(ballNumber) {
-  const n = Math.max(1, Math.min(REQUIRED_BALLS, Number(ballNumber) || 1));
+  const maxBalls = REQUIRED_BALLS + 1; // 4 (3 normal + 1 tiebreaker)
+  const n = Math.max(1, Math.min(maxBalls, Number(ballNumber) || 1));
   if (n === 1) return MATCH_STATUS.BALL_1;
   if (n === 2) return MATCH_STATUS.BALL_2;
-  return MATCH_STATUS.BALL_3;
+  if (n === 3) return MATCH_STATUS.BALL_3;
+  return MATCH_STATUS.BALL_4;
 }
 
 // Seat label ("player1" | "player2") for a user in a given match row.
@@ -703,7 +710,8 @@ async function fetchMatchForUpdate(tx, matchId) {
 // missing player(s)).
 async function resolveBall(tx, match) {
   const ballNumber = Number(match.currentBall) || 1;
-  if (ballNumber < 1 || ballNumber > REQUIRED_BALLS) {
+  const MAX_BALLS = REQUIRED_BALLS + 1; // 4 (3 normal + 1 tiebreaker)
+  if (ballNumber < 1 || ballNumber > MAX_BALLS) {
     // Defensive: should never fire (LAUNCHABLE_STATES guards upstream).
     return match;
   }
@@ -772,22 +780,28 @@ async function resolveBall(tx, match) {
   // The 3-second "Ball X incoming" countdown is purely client-side —
   // the server hands them a 20s window immediately and the UI
   // reserves ~3s for the transition overlay.
-  if (ballNumber >= REQUIRED_BALLS) {
-    // Final ball — wipe per-ball inputs and let `resolveMatch`
-    // explicitly clear p1Ready/p2Ready in its setValues so the
-    // FINISHED match row shows chips as NOT READY on the very
-    // next poll. The deferred clear path is intentionally NOT
-    // used for the final ball — the match is over and there is
-    // no point preserving the ready state.
+  // ── Tiebreaker logic ──────────────────────────────────────────────
+  // If scores are tied after the 3 normal balls, advance to a 4th
+  // tiebreaker ball instead of resolving. After ball 4 (REQUIRED_BALLS
+  // + 1), always resolve regardless of score.
+  const isTiedAfterNormalBalls =
+    ballNumber === REQUIRED_BALLS && newScoreP1 === newScoreP2;
+
+  if (ballNumber >= MAX_BALLS || (ballNumber >= REQUIRED_BALLS && !isTiedAfterNormalBalls)) {
+    // Final ball (normal end or after tiebreaker) — wipe per-ball
+    // inputs and let `resolveMatch` explicitly clear p1Ready/p2Ready.
+    const isTiebreaker = ballNumber > REQUIRED_BALLS;
     return await resolveMatch(tx, {
       ...match,
       p1Score: newScoreP1,
       p2Score: newScoreP2,
       p1CurrentInputs: null,
       p2CurrentInputs: null,
+      isTiebreaker,
     });
   }
 
+  // isTiedAfterNormalBalls is true: advance to ball_4 tiebreaker.
   const nextBall = ballNumber + 1;
   const nextDeadline = new Date(Date.now() + roundDeadlineMs(match));
   const [updated] = await tx
@@ -1299,11 +1313,12 @@ async function forceBallAdvance(tx, match) {
   return effective;
 }
 
-// ── resolveMatch (private, ball_3 → finished) ─────────────────────────
+// ── resolveMatch (private, last ball → finished) ───────────────────────
 //
-// End-state: both players' 3 balls are in, the cumulative scores are
-// known, decide the winner per computePayout, credit / refund per the
-// 90/10 split, and stamp the match as `finished`.
+// End-state: both players' balls are in (3 normal balls or 4 with a
+// tiebreaker), the cumulative scores are known, decide the winner per
+// computePayout, credit / refund per the 90/10 split (or 5% each for
+// a tiebreaker tie), and stamp the match as `finished`.
 //
 // Per user spec:
 //   p1Score > p2Score → PLAYER1 wins, gets 1.9× stake back, p2 loses stake
@@ -1312,11 +1327,13 @@ async function forceBallAdvance(tx, match) {
 async function resolveMatch(tx, match) {
   const p1Score = Number(match.p1Score) || 0;
   const p2Score = Number(match.p2Score) || 0;
+  const isTiebreaker = Boolean(match.isTiebreaker);
 
   const payout = computePayout({
     stakeAmount: match.stakeAmount,
     p1Score,
     p2Score,
+    tieFeePct: isTiebreaker ? TIE_FEE_PCT : 0,
   });
 
   // Apply balance changes per the payout math. Ties refund both
@@ -1337,17 +1354,25 @@ async function resolveMatch(tx, match) {
       .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
       .where(eq(users.clerkId, match.player2Id));
   } else {
-    // TIE — refund both players in full, no house fee.
+    // TIE — refund both players. For normal ties (should no longer
+    // occur with the tiebreaker logic) both get full stake back.
+    // For tiebreaker ties (still tied after ball 4), each player
+    // forfeits TIE_FEE_PCT (5%) of their stake and gets 95% back.
+    // `computePayout` exposes `tiebreakerRefund` when tieFeePct > 0.
+    const refundPerPlayer =
+      isTiebreaker && payout.tiebreakerRefund != null
+        ? payout.tiebreakerRefund
+        : Number(match.stakeAmount);
     await tx
       .update(users)
       .set({
-        balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
+        balance: sql`${users.balance} + ${refundPerPlayer}`,
       })
       .where(eq(users.clerkId, match.player1Id));
     await tx
       .update(users)
       .set({
-        balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
+        balance: sql`${users.balance} + ${refundPerPlayer}`,
       })
       .where(eq(users.clerkId, match.player2Id));
   }
@@ -1357,7 +1382,7 @@ async function resolveMatch(tx, match) {
   // `plinko_pvp_matches.result` varchar(20) column.
   const setValues = {
     status: MATCH_STATUS.FINISHED,
-    currentBall: REQUIRED_BALLS, // freeze the round counter at 3
+    currentBall: Number(match.currentBall) || REQUIRED_BALLS, // freeze at the actual last ball played
     p1CurrentInputs: null,
     p2CurrentInputs: null,
     // Explicitly clear the per-seat ready flags on the FINAL
