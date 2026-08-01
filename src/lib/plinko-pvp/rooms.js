@@ -78,6 +78,14 @@ export function plinkoPvpMatchRoom(matchId) {
 export const PLINKO_PVP_MATCH_UPDATED = "lobby:updated";
 
 /**
+ * Socket event name for the dedicated plinko:ready handler in the
+ * realtime-server. The client emits this after a successful /launch
+ * POST so the realtime server can validate participation and relay
+ * `PLINKO_PVP_MATCH_UPDATED` to the opponent instantly.
+ */
+export const PLINKO_PVP_READY = "plinko:ready";
+
+/**
  * Broadcast a `PLINKO_PVP_MATCH_UPDATED` event to every socket
  * currently joined to the per-match room. Safe to call from
  * anywhere — silently no-ops if `globalThis.io` is not reachable
