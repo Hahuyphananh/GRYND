@@ -657,7 +657,7 @@ function RoundPopup({
     >
       <div className="rounded-2xl border border-cyan-300/40 bg-gradient-to-br from-[#001a33] via-[#00111f] to-[#000814] p-6 sm:p-8 max-w-md w-full shadow-[0_0_80px_rgba(0,229,255,0.25)]">
         <h3 className="text-center text-sm uppercase tracking-widest text-cyan-200/70 font-semibold mb-1">
-          Ball {ballNumber} Results
+          Round {ballNumber} Results
         </h3>
 
         <div className="grid grid-cols-2 gap-4 mt-4">
@@ -713,7 +713,7 @@ function RoundPopup({
         {/* Outcome callout */}
         {!p1FellOut && !p2FellOut && p1Points !== p2Points && (
           <p className="text-center text-sm font-bold text-cyan-300 mt-4">
-            {p1Points > p2Points ? p1Name : p2Name} wins this ball!
+            {p1Points > p2Points ? p1Name : p2Name} wins this round!
           </p>
         )}
         {!p1FellOut && !p2FellOut && p1Points === p2Points && (
@@ -1630,22 +1630,29 @@ export default function PlinkoPvpMatchPage({
             setHighlightBucket(null);
           }
 
-          // Show round result popup
-          setRoundPopup({
-            p1Points: p1Result.points,
-            p2Points: p2Result.points,
-            p1FellOut: p1Result.fellOut,
-            p2FellOut: p2Result.fellOut,
-            ballNumber,
-          });
-          // BUG-FIX: clear balls from the board immediately when
-          // the popup appears, not when the popup is dismissed.
-          // Previously balls stayed at their final positions
-          // until onNextRound fired, which meant Player A and
-          // Player B saw different board states depending on who
-          // dismissed the popup first — causing the user-reported
-          // "balls don't reset to original positions" sync issue.
-          setBallPositions({ p1: null, p2: null });
+          // Show the per-ball result popup for NORMAL rounds only.
+          // Overtime (the 4th tiebreaker ball) deliberately skips
+          // this popup — the match-over screen (tie / win / lose
+          // + Back to Lobby) is the only modal the player sees
+          // there, so no intermediate "Ball 4 Results" popup pops
+          // up before/on top of the final result.
+          if (ballNumber <= REQUIRED_BALLS) {
+            setRoundPopup({
+              p1Points: p1Result.points,
+              p2Points: p2Result.points,
+              p1FellOut: p1Result.fellOut,
+              p2FellOut: p2Result.fellOut,
+              ballNumber,
+            });
+            // BUG-FIX: clear balls from the board immediately when
+            // the popup appears, not when the popup is dismissed.
+            // Previously balls stayed at their final positions
+            // until onNextRound fired, which meant Player A and
+            // Player B saw different board states depending on who
+            // dismissed the popup first — causing the user-reported
+            // "balls don't reset to original positions" sync issue.
+            setBallPositions({ p1: null, p2: null });
+          }
 
           if (ballNumber >= REQUIRED_BALLS) {
             if (dualAnimTimerRef.current) clearTimeout(dualAnimTimerRef.current);
@@ -2250,7 +2257,7 @@ export default function PlinkoPvpMatchPage({
       <div className="flex items-center justify-center gap-2 rounded-xl border border-yellow-300/40 bg-yellow-500/10 px-4 py-3 text-yellow-200">
         <LoadingDotsIcon className="w-5 h-5 text-yellow-200 animate-pulse" />
         <span className="font-semibold">
-          Ball {nextBall} incoming…
+          Round {nextBall} incoming…
         </span>
       </div>
     );
@@ -2305,6 +2312,13 @@ export default function PlinkoPvpMatchPage({
               by <span className="font-bold text-white">{pointDiff} point{pointDiff !== 1 ? "s" : ""}</span>
             </p>
           )}
+
+          {/* Round indicator — signals which round the match was decided in */}
+          <p className="text-center text-[11px] uppercase tracking-wider text-cyan-200/60 font-semibold mt-3">
+            {match.currentBall > REQUIRED_BALLS
+              ? `Overtime · Round ${match.currentBall}`
+              : `Decided in Round ${match.currentBall || REQUIRED_BALLS}`}
+          </p>
 
           {/* Score summary */}
           <div className="grid grid-cols-2 gap-4 mt-5">
@@ -2379,7 +2393,7 @@ export default function PlinkoPvpMatchPage({
             the board). */}
         <div className="mt-2 flex justify-center">
           <div className="inline-flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-3 py-1.5 text-xs uppercase tracking-wider text-white/70">
-            <span>Ball</span>
+            <span>Round</span>
             <span className="font-black text-white text-base tabular-nums">
               {displayBall}
               <span className="text-white/40 text-sm">/{REQUIRED_BALLS}</span>
@@ -2507,9 +2521,12 @@ export default function PlinkoPvpMatchPage({
             p2Name={match?.players?.p2?.displayName || "Player 2"}
             onNextRound={onNextRound}
             isLastBall={
-              roundPopup.ballNumber >= REQUIRED_BALLS + 1 ||
-              (roundPopup.ballNumber >= REQUIRED_BALLS &&
-                match?.p1Score !== match?.p2Score)
+              // The popup only ever renders for balls 1-3 (overtime
+              // ball 4 skips it), so "View Final Results" applies
+              // exactly when this was the last normal ball AND the
+              // match is not going to a 4th tiebreaker round.
+              roundPopup.ballNumber >= REQUIRED_BALLS &&
+              match?.p1Score !== match?.p2Score
             }
           />
         )}
