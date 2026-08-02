@@ -90,6 +90,7 @@ export default function MatchPage() {
           odds: parseFloat(event.odds_map[selected]),
           marketType: "h2h",
           lineValue: null,
+          sportKey: event.sport_key || null,
         }),
       });
       const data = await res.json();

@@ -36,6 +36,14 @@ export async function POST(req) {
         ? Number(body.lineValue)
         : null;
 
+    // Sport key (e.g. "basketball_nba") is stored in selection_metadata so the
+    // settle route can fetch scores ONLY for sports the user has pending bets
+    // on — instead of scanning every sport (which exhausted the monthly quota).
+    const sportKey = body.sportKey ? String(body.sportKey).trim() : null;
+    const selectionMetadata = sportKey
+      ? JSON.stringify({ sportKey })
+      : null;
+
     // Basic validation
     if (!eventId || eventId.length < 2) {
       return Response.json({ error: "Invalid eventId" }, { status: 400 });
@@ -71,6 +79,7 @@ export async function POST(req) {
             odds,
             market_type,
             line_value,
+            selection_metadata,
             payout,
             result
           )
@@ -82,6 +91,7 @@ export async function POST(req) {
             ${odds},
             ${marketType},
             ${lineValue},
+            CASE WHEN ${selectionMetadata} IS NOT NULL THEN ${selectionMetadata}::jsonb ELSE '{}'::jsonb END,
             0,
             'pending'
           FROM debited
@@ -227,7 +237,18 @@ export async function POST(req) {
       }
     }
 
-    if (!placeResult.rows?.length) {
+    // `neon()` tagged-template queries return rows directly as an array
+    // (e.g. [{ new_balance: "990.00", bet_id: 12 }]) — NOT a `{ rows: [...] }`
+    // result object like @vercel/postgres. Normalize so the row checks below
+    // work for both shapes. Without this, `.rows` was always undefined on the
+    // array result, so the route took the "0-row" defensive branch even after
+    // a successful CTE (bet placed + balance debited) and returned 500
+    // PLACE_FAILED.
+    const placeRows = Array.isArray(placeResult)
+      ? placeResult
+      : placeResult?.rows ?? [];
+
+    if (!placeRows.length) {
       // 0-row CTE. Two possible causes:
       //   (a) Concurrent deduction by another request dropped the balance
       //       below betAmount between our pre-check and the CTE — surface
@@ -273,7 +294,7 @@ export async function POST(req) {
       );
     }
 
-    const newBalance = Number(placeResult.rows[0].new_balance);
+    const newBalance = Number(placeRows[0].new_balance);
     await applyLeaderboardCounters({
       clerkId: userId,
       game: "sports",

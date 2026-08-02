@@ -115,7 +115,9 @@ const MainComponent = () => {
       setEvents(Array.isArray(data.events) ? data.events : []);
     } catch (err) {
       console.error(err);
-      setError(t("sports.load_events_failed"));
+      // Surface the actual reason (e.g. odds-provider quota exhausted) instead
+      // of a generic message, then fall back to the translated default.
+      setError(err?.message || t("sports.load_events_failed"));
       setEvents([]);
     } finally {
       setLoadingEvents(false);
@@ -145,6 +147,7 @@ const MainComponent = () => {
         odds,
         marketType,
         lineValue: line,
+        sportKey: selectedSport,
       }),
     });
 
