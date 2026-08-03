@@ -9,6 +9,7 @@ import {
 } from "../../../../lib/serverSession";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
+import { randomCrashPoint } from "../../../../lib/games/crash/constants";
 
 export async function POST(req) {
   try {
@@ -71,7 +72,7 @@ export async function POST(req) {
         );
       }
 
-      const crashPoint = Number((Math.random() * 8 + 1.2).toFixed(2));
+      const crashPoint = randomCrashPoint();
 
       // Fire system notification for large crash bets (≥ 1000 tokens)
       if (betAmount >= 1000) {
