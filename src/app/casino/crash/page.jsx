@@ -1,20 +1,17 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import BetPanel from "../../../components/BetPanel";
-import PlayerList from "../../../components/PlayerList";
+import BetStatus from "../../../components/BetStatus";
 import Link from "next/link";
 import NavigationBar from "../../../components/navigation-bar";
 import { usePostHog } from "posthog-js/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { celebrateWin, gameOverModal } from "../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat } from "../../../lib/gameAudio";
-
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 600;
-const GRAPH_PADDING = 40;
-const GROWTH_RATE = 0.33;
-const UI_MULTIPLIER_UPDATE_MS = 80;
-const TRAIL_FADE_ALPHA = 0.12;
+import CrashEngine from "../../../components/games/crash-engine/CrashEngine";
+import CashoutButton from "../../../components/games/crash-engine/CashoutButton";
+import Rocket from "../../../components/games/crash-engine/Rocket";
+import { CRASH_MIN, CRASH_RANGE } from "../../../lib/games/crash/constants";
 
 export default function Page() {
   const posthog = usePostHog();
@@ -37,46 +34,13 @@ export default function Page() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const resultCelebratedRef = useRef(false);
-  const fixedMaxMultiplierRef = useRef(2);
+  const crashEngineRef = useRef(null);
   const [showRules, setShowRules] = useState(false);
 
   // Server-authoritative crash point (received from API)
   const serverCrashPointRef = useRef(0);
 
   const countdownRef = useRef(null);
-  const canvasRef = useRef(null);
-  const rafRef = useRef(null);
-  const betStateRef = useRef({
-    hasBet: false,
-    autoCashout: 0,
-    cashedOut: false,
-  });
-  const animationStateRef = useRef({
-    startTime: 0,
-    currentMultiplier: 1,
-    displayMultiplier: 1,
-    crashPoint: 0,
-    curvePoints: [],
-    crashed: false,
-    crashAt: null,
-    crashCanvasPoint: null,
-    explosionProgress: 0,
-    lastUiUpdateAt: 0,
-  });
-
-  useEffect(() => {
-    betStateRef.current = { hasBet, autoCashout, cashedOut };
-  }, [hasBet, autoCashout, cashedOut]);
-
-  useEffect(() => {
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    drawCanvasFrame(performance.now());
-  }, []);
 
   useEffect(() => {
     if (isCountingDown && countdown > 0) {
@@ -105,35 +69,14 @@ export default function Page() {
   function actuallyStartGame() {
     // Use server-authoritative crash point
     const generatedCrashPoint = serverCrashPointRef.current || 2.0;
-    const startTime = performance.now();
-
-    const maxDisplay = Math.max(Math.max(autoCashout || 2, generatedCrashPoint * 1.2), 2);
-    fixedMaxMultiplierRef.current = maxDisplay;
-
-    setDisplayMultiplier(1.0);
-    setIsCrashed(false);
     setCrashPoint(generatedCrashPoint);
+    setIsCrashed(false);
+    setDisplayMultiplier(1.0);
     setGameRunning(true);
     setCashedOut(false);
     setFinalMultiplier(null);
     setShowCashoutPopup(false);
     setCashoutPopupMultiplier(null);
-
-    animationStateRef.current = {
-      startTime,
-      currentMultiplier: 1,
-      displayMultiplier: 1,
-      crashPoint: generatedCrashPoint,
-      curvePoints: [{ x: GRAPH_PADDING, y: CANVAS_HEIGHT - GRAPH_PADDING }],
-      crashed: false,
-      crashAt: null,
-      crashCanvasPoint: null,
-      explosionProgress: 0,
-      lastUiUpdateAt: 0,
-    };
-
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(animationLoop);
   }
 
   function startGame() {
@@ -146,28 +89,14 @@ export default function Page() {
     setError(null);
   }
 
-  async function crash() {
-    const state = animationStateRef.current;
-    const lossMultiplier = parseFloat(state.currentMultiplier.toFixed(2));
-    const crashCanvasPoint = toCanvasPoint(lossMultiplier);
+  // ── Casino callbacks: CrashEngine → page.jsx casino logic ──────────────
 
+  function handleCrash(lossMultiplier) {
     setIsCrashed(true);
     setGameRunning(false);
     setDisplayMultiplier(lossMultiplier);
     setCrashHistory((prev) => [lossMultiplier, ...prev.slice(0, 10)]);
     setFinalMultiplier(lossMultiplier);
-    setCrashPoint(state.crashPoint);
-
-    animationStateRef.current = {
-      ...state,
-      crashed: true,
-      crashAt: performance.now(),
-      crashCanvasPoint,
-      explosionProgress: 0,
-    };
-
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(drawFrozenCrashFrame);
 
     setRefreshCounter((prev) => prev + 1);
     resetBet();
@@ -175,6 +104,22 @@ export default function Page() {
     playDefeat();
     posthog?.capture("crash_game_ended", { result: "loss", bet_amount: betAmount, multiplier: lossMultiplier });
   }
+
+  function handleCashoutClick(multiplier) {
+    settleCashOut(multiplier);
+  }
+
+  function handleMultiplierUpdate(multiplier, crashed) {
+    setDisplayMultiplier(multiplier);
+    setIsCrashed(crashed);
+
+    // Auto-cashout detection — now handled by the casino layer, not the engine
+    if (!crashed && !cashedOut && autoCashout > 0 && multiplier >= autoCashout) {
+      crashEngineRef.current?.cashout();
+    }
+  }
+
+  // ── Casino betting / settlement (unchanged core logic) ─────────────────
 
   async function placeBet(amount, autoCashoutValue) {
     setBetAmount(amount);
@@ -204,7 +149,7 @@ export default function Page() {
           serverCrashPointRef.current = data.crashPoint;
         } else {
           // Fallback if API doesn't return crashPoint (for backwards compat)
-          serverCrashPointRef.current = Number((Math.random() * 8 + 1.2).toFixed(2));
+          serverCrashPointRef.current = Number((Math.random() * CRASH_RANGE + CRASH_MIN).toFixed(2));
         }
         setRefreshCounter((prev) => prev + 1);
         posthog?.capture("crash_game_started", { bet_amount: amount, auto_cashout: autoCashoutValue });
@@ -222,19 +167,13 @@ export default function Page() {
   }
 
   async function settleCashOut(cashoutMultiplier) {
-    const state = animationStateRef.current;
-    if (state.crashed || betStateRef.current.cashedOut) return;
+    if (cashedOut) return;
 
-    betStateRef.current = { ...betStateRef.current, cashedOut: true };
     setCashedOut(true);
     const winMultiplier = parseFloat(cashoutMultiplier.toFixed(2));
     setFinalMultiplier(winMultiplier);
     setGameRunning(false);
     setDisplayMultiplier(winMultiplier);
-
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    animationStateRef.current = { ...state, crashed: true };
-    drawCanvasFrame(performance.now());
 
     try {
       const res = await fetch("/api/crash/settle", {
@@ -265,203 +204,16 @@ export default function Page() {
       } else {
         setError(data.error || "Cashout failed");
         // Revert state
-        betStateRef.current = { ...betStateRef.current, cashedOut: false };
         setCashedOut(false);
       }
     } catch (err) {
       console.error("Crash win network error:", err);
       setError("Network error during cashout");
-      betStateRef.current = { ...betStateRef.current, cashedOut: false };
       setCashedOut(false);
     }
 
     setRefreshCounter((prev) => prev + 1);
     resetBet();
-  }
-
-  async function cashOut() {
-    if (!gameRunning || isCrashed || cashedOut) return;
-    await settleCashOut(animationStateRef.current.currentMultiplier);
-  }
-
-  function toCanvasPoint(mult) {
-    const maxX = CANVAS_WIDTH - GRAPH_PADDING;
-    const minX = GRAPH_PADDING;
-    const maxY = CANVAS_HEIGHT - GRAPH_PADDING;
-    const minY = GRAPH_PADDING;
-
-    const elapsed = Math.log(Math.max(mult, 1.0001)) / GROWTH_RATE;
-    const MAX_TIME = 8;
-    const progress = Math.min(elapsed / MAX_TIME, 1);
-    const x = minX + progress * (maxX - minX);
-
-    const maxMultiplier = fixedMaxMultiplierRef.current;
-    const normalized = (mult - 1) / (maxMultiplier - 1);
-    const y = maxY - Math.max(0, Math.min(1, normalized)) * (maxY - minY);
-
-    return { x, y };
-  }
-
-  function getCurveColor(mult) {
-    if (mult < 2) return "#22c55e";
-    if (mult < 5) return "#facc15";
-    return "#ef4444";
-  }
-
-  function drawGrid(ctx) {
-    ctx.save();
-    ctx.strokeStyle = "rgba(148, 163, 184, 0.18)";
-    ctx.lineWidth = 1;
-    for (let x = GRAPH_PADDING; x <= CANVAS_WIDTH - GRAPH_PADDING; x += 40) {
-      ctx.beginPath();
-      ctx.moveTo(x, GRAPH_PADDING);
-      ctx.lineTo(x, CANVAS_HEIGHT - GRAPH_PADDING);
-      ctx.stroke();
-    }
-    for (let y = GRAPH_PADDING; y <= CANVAS_HEIGHT - GRAPH_PADDING; y += 40) {
-      ctx.beginPath();
-      ctx.moveTo(GRAPH_PADDING, y);
-      ctx.lineTo(CANVAS_WIDTH - GRAPH_PADDING, y);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function drawSmoothCurve(ctx, points, mult) {
-    if (points.length < 2) return;
-    const gradient = ctx.createLinearGradient(
-      0,
-      CANVAS_HEIGHT,
-      CANVAS_WIDTH,
-      0,
-    );
-    gradient.addColorStop(0, "#22c55e");
-    gradient.addColorStop(0.55, "#facc15");
-    gradient.addColorStop(1, "#ef4444");
-
-    ctx.strokeStyle = gradient;
-    ctx.lineWidth = 4;
-    ctx.shadowColor = getCurveColor(mult);
-    ctx.shadowBlur = 18;
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-
-    for (let i = 1; i < points.length - 1; i += 1) {
-      const xc = (points[i].x + points[i + 1].x) / 2;
-      const yc = (points[i].y + points[i + 1].y) / 2;
-      ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
-    }
-
-    const last = points[points.length - 1];
-    ctx.lineTo(last.x, last.y);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-  }
-
-  function drawCrashExplosion(ctx, point, progress) {
-    if (!point) return;
-    const radius = 20 + progress * 70;
-    const alpha = Math.max(0, 0.75 - progress * 0.75);
-    const explosionGradient = ctx.createRadialGradient(
-      point.x,
-      point.y,
-      0,
-      point.x,
-      point.y,
-      radius,
-    );
-    explosionGradient.addColorStop(0, `rgba(239, 68, 68, ${alpha})`);
-    explosionGradient.addColorStop(0.4, `rgba(239, 68, 68, ${alpha * 0.5})`);
-    explosionGradient.addColorStop(1, "rgba(239, 68, 68, 0)");
-    ctx.fillStyle = explosionGradient;
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function drawCanvasFrame(now) {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const state = animationStateRef.current;
-
-    if (state.curvePoints.length <= 1) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "rgba(2, 6, 23, 1)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      drawGrid(ctx);
-      return;
-    }
-
-    ctx.fillStyle = `rgba(2, 6, 23, ${TRAIL_FADE_ALPHA})`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    drawGrid(ctx);
-    drawSmoothCurve(ctx, state.curvePoints, state.currentMultiplier);
-
-    const last = state.curvePoints[state.curvePoints.length - 1];
-    ctx.fillStyle = getCurveColor(state.currentMultiplier);
-    ctx.shadowColor = getCurveColor(state.currentMultiplier);
-    ctx.shadowBlur = 14;
-    ctx.beginPath();
-    ctx.arc(last.x, last.y, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    if (state.crashed && state.crashCanvasPoint) {
-      const progress = Math.min((now - state.crashAt) / 700, 1);
-      state.explosionProgress = progress;
-      drawCrashExplosion(ctx, state.crashCanvasPoint, progress);
-    }
-  }
-
-  function drawFrozenCrashFrame(now) {
-    drawCanvasFrame(now);
-    const { explosionProgress } = animationStateRef.current;
-    if (explosionProgress < 1) {
-      rafRef.current = requestAnimationFrame(drawFrozenCrashFrame);
-    }
-  }
-
-  function animationLoop(now) {
-    const state = animationStateRef.current;
-    const elapsedSeconds = (now - state.startTime) / 1000;
-    const deterministicMultiplier = Math.exp(GROWTH_RATE * elapsedSeconds);
-    const roundedMultiplier = parseFloat(deterministicMultiplier.toFixed(4));
-    const didCrash = roundedMultiplier >= state.crashPoint;
-
-    state.currentMultiplier = didCrash ? state.crashPoint : roundedMultiplier;
-    state.displayMultiplier = parseFloat(state.currentMultiplier.toFixed(2));
-    const currentPoint = toCanvasPoint(state.currentMultiplier);
-    state.curvePoints.push(currentPoint);
-    if (state.curvePoints.length > 450) {
-      state.curvePoints.shift();
-    }
-
-    if (now - state.lastUiUpdateAt > UI_MULTIPLIER_UPDATE_MS) {
-      state.lastUiUpdateAt = now;
-      setDisplayMultiplier(state.displayMultiplier);
-    }
-
-    drawCanvasFrame(now);
-
-    const liveBetState = betStateRef.current;
-    if (
-      liveBetState.hasBet &&
-      liveBetState.autoCashout <= state.currentMultiplier &&
-      !liveBetState.cashedOut
-    ) {
-      settleCashOut(state.currentMultiplier);
-      return;
-    }
-
-    if (didCrash) {
-      crash();
-      return;
-    }
-
-    rafRef.current = requestAnimationFrame(animationLoop);
   }
 
   return (
@@ -510,7 +262,7 @@ relative overflow-hidden w-full lg:w-1/4 flex flex-col"
           </div>
         </div>
 
-        {/* Center */}
+        {/* Center — Crash Engine */}
         <div
           className="relative bg-[#050d1f]/80 
 border border-[#00e5ff]/40 
@@ -536,38 +288,15 @@ relative overflow-hidden w-full lg:w-2/4 h-[600px] overflow-hidden flex items-ce
             </div>
           )}
 
-          <canvas
-            ref={canvasRef}
-            width={CANVAS_WIDTH}
-            height={CANVAS_HEIGHT}
-            className="absolute bottom-0 left-0 z-0"
+          {/* ── CrashEngine replaces the old canvas + multiplier + Y-axis + explosion ── */}
+          <CrashEngine
+            ref={crashEngineRef}
+            crashPoint={crashPoint}
+            running={gameRunning}
+            onCashout={handleCashoutClick}
+            onCrash={handleCrash}
+            onMultiplierUpdate={handleMultiplierUpdate}
           />
-
-          <div className="absolute right-2 top-0 bottom-0 flex flex-col justify-between z-10 py-6">
-            {(() => {
-              const maxMultiplier = fixedMaxMultiplierRef.current;
-              const steps = 6;
-              return Array.from({ length: steps + 1 }, (_, i) => {
-                const value = 1 + ((maxMultiplier - 1) * (steps - i)) / steps;
-                return (
-                  <div key={i} className="text-sm text-gray-400">
-                    {value.toFixed(2)}x
-                  </div>
-                );
-              });
-            })()}
-          </div>
-
-          {isCrashed && <div className="absolute top-20 text-6xl">💥</div>}
-
-          <div
-            className="text-5xl font-extrabold z-30 mt-12 tracking-wider
-text-transparent bg-clip-text 
-bg-gradient-to-r from-[#00e5ff] via-[#00ffa6] to-[#FFD700]
-drop-shadow-[0_0_20px_rgba(0,229,255,0.8)]"
-          >
-            {isCrashed ? "CRASHED!" : `${displayMultiplier.toFixed(2)}x`}
-          </div>
         </div>
 
         {/* Right Panel */}
@@ -613,18 +342,10 @@ relative overflow-hidden w-full lg:w-1/4 flex flex-col"
               </button>
             )}
             {gameRunning && (
-              <button
-                onClick={cashOut}
-                className="bg-gradient-to-r from-[#00ffa6] to-[#00e5ff]
-text-[#001933]
-border border-[#00ffa6]
-shadow-[0_0_20px_rgba(0,255,166,0.6)]
-hover:shadow-[0_0_35px_rgba(0,255,166,1)]
-hover:scale-105
-transition-all duration-300 text-[#001933] hover:bg-[#49eeff] px-4 py-3 rounded-lg font-bold text-lg w-full shadow-[0_0_14px_rgba(0,229,255,0.4)]"
-              >
-                💰 Cash Out
-              </button>
+              <CashoutButton
+                onCashout={() => crashEngineRef.current?.cashout()}
+                disabled={isCrashed || cashedOut}
+              />
             )}
             <Link
               href="/casino"
@@ -640,7 +361,7 @@ transition-all duration-300 hover:bg-[#ffe14f] text-[#030817] px-4 py-3 rounded-
             </Link>
           </div>
 
-          <PlayerList
+          <BetStatus
             hasBet={hasBet}
             betAmount={betAmount}
             cashedOut={cashedOut}
@@ -660,14 +381,7 @@ transition-all duration-300 hover:bg-[#ffe14f] text-[#030817] px-4 py-3 rounded-
               {...gameOverModal.panel}
               className="relative w-full max-w-sm overflow-hidden rounded-3xl border-4 border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] p-6 text-center shadow-[0_0_60px_rgba(251,191,36,0.4)]"
             >
-              <motion.div
-                initial={{ scale: 0, rotate: -30 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
-                className="mb-2 text-7xl"
-              >
-                🚀
-              </motion.div>
+              <Rocket animate size="text-7xl" />
               <motion.h2
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}

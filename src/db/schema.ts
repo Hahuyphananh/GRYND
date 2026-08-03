@@ -869,6 +869,137 @@ export const farkleActions = pgTable(
   }),
 );
 
+// CRASH ARENA TABLES
+// ==========================================================================
+
+export const crashArenaStatusEnum = pgEnum("crash_arena_status", [
+  "waiting",
+  "active",
+  "closed",
+]);
+
+export const crashArenaTransactionTypeEnum = pgEnum("crash_arena_transaction_type", [
+  "BUY_IN",
+  "WIN",
+  "LEAVE",
+  "RAKE",
+]);
+
+// ── Table (lobby) ──────────────────────────────────────────────────────────
+
+export const crashArenaTables = pgTable(
+  "crash_arena_tables",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 255 }).notNull(),
+    wagerAmount: numeric("wager_amount", { precision: 10, scale: 2 }).notNull(),
+    minimumBuyin: numeric("minimum_buyin", { precision: 10, scale: 2 }).notNull(),
+    maxPlayers: integer("max_players").notNull().default(6),
+    status: crashArenaStatusEnum("status").notNull().default("waiting"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    statusIdx: index("idx_crash_arena_tables_status").on(
+      table.status,
+      table.createdAt,
+    ),
+  }),
+);
+
+// ── Players at a table ─────────────────────────────────────────────────────
+
+export const crashArenaPlayers = pgTable(
+  "crash_arena_players",
+  {
+    id: serial("id").primaryKey(),
+    tableId: integer("table_id")
+      .notNull()
+      .references(() => crashArenaTables.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    balance: numeric("balance", { precision: 14, scale: 2 }).notNull().default("0.00"),
+    status: varchar("status", { length: 20 }).notNull().default("seated"),
+    joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    tablePlayerIdx: index("idx_crash_arena_players_table_user").on(
+      table.tableId,
+      table.userId,
+    ),
+  }),
+);
+
+// ── Rounds ─────────────────────────────────────────────────────────────────
+
+export const crashArenaRounds = pgTable(
+  "crash_arena_rounds",
+  {
+    id: serial("id").primaryKey(),
+    tableId: integer("table_id")
+      .notNull()
+      .references(() => crashArenaTables.id, { onDelete: "cascade" }),
+    seed: varchar("seed", { length: 255 }),
+    seedHash: varchar("seed_hash", { length: 255 }),
+    crashPoint: numeric("crash_point", { precision: 6, scale: 2 }),
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    tableRoundIdx: index("idx_crash_arena_rounds_table").on(
+      table.tableId,
+      table.createdAt,
+    ),
+  }),
+);
+
+// ── Round entries — one per player per round ──────────────────────────────
+
+export const crashArenaEntries = pgTable(
+  "crash_arena_entries",
+  {
+    id: serial("id").primaryKey(),
+    roundId: integer("round_id")
+      .notNull()
+      .references(() => crashArenaRounds.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    cashoutMultiplier: numeric("cashout_multiplier", { precision: 6, scale: 2 }),
+    cashoutTimestamp: timestamp("cashout_timestamp"),
+    result: varchar("result", { length: 20 }).notNull().default("pending"),
+  },
+  (table) => ({
+    roundEntryIdx: index("idx_crash_arena_entries_round_user").on(
+      table.roundId,
+      table.userId,
+    ),
+  }),
+);
+
+// ── Transactions (buy-in, win, leave, rake) ───────────────────────────────
+
+export const crashArenaTransactions = pgTable(
+  "crash_arena_transactions",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tableId: integer("table_id")
+      .notNull()
+      .references(() => crashArenaTables.id, { onDelete: "cascade" }),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    type: crashArenaTransactionTypeEnum("type").notNull(),
+    reason: text("reason"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    userTxIdx: index("idx_crash_arena_tx_user").on(table.userId, table.createdAt),
+    tableTxIdx: index("idx_crash_arena_tx_table").on(table.tableId, table.createdAt),
+  }),
+);
+
 //
 // RELATIONS
 //
@@ -881,6 +1012,9 @@ export const usersRelations = relations(users, ({ many }) => ({
   minesGames: many(minesGames),
   plinkoGames: many(plinkoGames),
   laneRunnerGames: many(laneRunnerGames),
+  crashArenaPlayers: many(crashArenaPlayers),
+  crashArenaEntries: many(crashArenaEntries),
+  crashArenaTransactions: many(crashArenaTransactions),
 }));
 
 export const rouletteGamesRelations = relations(rouletteGames, ({ one }) => ({
@@ -924,6 +1058,55 @@ export const laneRunnerGamesRelations = relations(
 export const plinkoGamesRelations = relations(plinkoGames, ({ one }) => ({
   user: one(users, {
     fields: [plinkoGames.userId],
+    references: [users.id],
+  }),
+}));
+
+// ── Crash Arena relations ──────────────────────────────────────────────────
+
+export const crashArenaTablesRelations = relations(crashArenaTables, ({ many }) => ({
+  players: many(crashArenaPlayers),
+  rounds: many(crashArenaRounds),
+  transactions: many(crashArenaTransactions),
+}));
+
+export const crashArenaPlayersRelations = relations(crashArenaPlayers, ({ one, many }) => ({
+  table: one(crashArenaTables, {
+    fields: [crashArenaPlayers.tableId],
+    references: [crashArenaTables.id],
+  }),
+  user: one(users, {
+    fields: [crashArenaPlayers.userId],
+    references: [users.id],
+  }),
+}));
+
+export const crashArenaRoundsRelations = relations(crashArenaRounds, ({ one, many }) => ({
+  table: one(crashArenaTables, {
+    fields: [crashArenaRounds.tableId],
+    references: [crashArenaTables.id],
+  }),
+  entries: many(crashArenaEntries),
+}));
+
+export const crashArenaEntriesRelations = relations(crashArenaEntries, ({ one }) => ({
+  round: one(crashArenaRounds, {
+    fields: [crashArenaEntries.roundId],
+    references: [crashArenaRounds.id],
+  }),
+  user: one(users, {
+    fields: [crashArenaEntries.userId],
+    references: [users.id],
+  }),
+}));
+
+export const crashArenaTransactionsRelations = relations(crashArenaTransactions, ({ one }) => ({
+  table: one(crashArenaTables, {
+    fields: [crashArenaTransactions.tableId],
+    references: [crashArenaTables.id],
+  }),
+  user: one(users, {
+    fields: [crashArenaTransactions.userId],
     references: [users.id],
   }),
 }));
