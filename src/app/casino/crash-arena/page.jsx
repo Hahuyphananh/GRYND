@@ -69,6 +69,8 @@ export default function CrashArenaPage() {
           tables={tables}
           userBalance={userBalance}
           loading={loading}
+          isSignedIn={isSignedIn}
+          onRefresh={fetchTables}
         />
       </div>
 

@@ -66,6 +66,58 @@ export default function useCrashArenaRound({
         return toggleSitOut(state, action.playerName);
       case "SET_PLAYERS":
         return { ...state, players: action.players };
+      case "SYNC_PLAYERS": {
+        // Merge the server's seated roster into the local player list.
+        // Local round state (cashout/busted/sit-out) is preserved; in the
+        // waiting phase the roster mirrors the server exactly.
+        const serverPlayers = action.serverPlayers || [];
+        const localPlayers = state.players;
+        const inLiveRound = state.phase !== "waiting";
+
+        const serverByName = new Map();
+        for (const sp of serverPlayers) serverByName.set(sp.name, sp);
+
+        const mergedByName = new Map();
+        for (const lp of localPlayers) mergedByName.set(lp.name, lp);
+
+        // NOTE: players are keyed by display name (pre-existing roundSystem
+        // design) — duplicate display names at one table would collapse.
+
+        // Drop local players who are no longer seated (unless mid-round,
+        // where we keep the roster stable so cashouts/busts stay visible).
+        if (!inLiveRound) {
+          for (const name of [...mergedByName.keys()]) {
+            if (!serverByName.has(name)) mergedByName.delete(name);
+          }
+        }
+
+        for (const sp of serverByName.values()) {
+          const lp = mergedByName.get(sp.name);
+          if (lp) {
+            // Preserve local round state; refresh balance for remote players
+            // only ("You"'s balance is tracked locally during rounds).
+            mergedByName.set(sp.name, {
+              ...lp,
+              isYou: lp.isYou || Boolean(sp.isYou),
+              balance: lp.isYou ? lp.balance : Number(sp.balance),
+            });
+          } else {
+            // A player first seen mid-round is seated but was not locked
+            // into the running round — keep them out until the next round.
+            mergedByName.set(sp.name, {
+              name: sp.name,
+              balance: Number(sp.balance),
+              isYou: Boolean(sp.isYou),
+              isSittingOut: false,
+              isPlaying: !inLiveRound,
+              cashoutMultiplier: null,
+              busted: false,
+            });
+          }
+        }
+
+        return { ...state, players: [...mergedByName.values()] };
+      }
       case "BUY_CHIPS":
         return {
           ...state,
@@ -221,6 +273,15 @@ export default function useCrashArenaRound({
     dispatch({ type: "BUY_CHIPS", playerName, amount });
   }, []);
 
+  /**
+   * Sync the server's seated roster into the local player list.
+   * Used after joining from the lobby, on room load, and on periodic refresh
+   * so the room shows every seated player, not just locally-known ones.
+   */
+  const syncPlayers = useCallback((serverPlayers) => {
+    dispatch({ type: "SYNC_PLAYERS", serverPlayers });
+  }, []);
+
   // ── CrashEngine props ────────────────────────────────────────────────
 
   const crashEngineProps = useMemo(() => ({
@@ -239,6 +300,7 @@ export default function useCrashArenaRound({
     goToNextRound,
     togglePlayerSitOut,
     playerCashout: handleCashout,
+    syncPlayers,
     joinTable,
     leaveTable,
     buyChips,

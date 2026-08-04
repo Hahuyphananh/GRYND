@@ -895,11 +895,20 @@ export const crashArenaTables = pgTable(
     wagerAmount: numeric("wager_amount", { precision: 10, scale: 2 }).notNull(),
     minimumBuyin: numeric("minimum_buyin", { precision: 10, scale: 2 }).notNull(),
     maxPlayers: integer("max_players").notNull().default(6),
+    // Creator of the table (null for system-seeded default tables).
+    hostId: integer("host_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     status: crashArenaStatusEnum("status").notNull().default("waiting"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
     statusIdx: index("idx_crash_arena_tables_status").on(
+      table.status,
+      table.createdAt,
+    ),
+    hostIdx: index("idx_crash_arena_tables_host").on(
+      table.hostId,
       table.status,
       table.createdAt,
     ),

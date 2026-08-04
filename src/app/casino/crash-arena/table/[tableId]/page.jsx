@@ -49,6 +49,7 @@ export default function TableRoomPage() {
     startNewRound,
     goToNextRound,
     togglePlayerSitOut,
+    syncPlayers,
     joinTable,
     leaveTable,
     buyChips,
@@ -59,6 +60,48 @@ export default function TableRoomPage() {
     wager: table?.wager || 10,
     roundNumber: 1,
   });
+
+  // Map the server's seated roster to the room's local player format.
+  // The caller's own seat is rendered as "You" so existing room logic works.
+  // userId is kept on the object for future disambiguation (display names
+  // are not guaranteed unique).
+  const mapServerPlayers = useCallback(
+    (tbl) =>
+      (tbl?.players || []).map((p) => ({
+        userId: p.userId,
+        name: p.isYou ? playerName : p.name,
+        balance: p.balance,
+        isYou: p.isYou,
+      })),
+    [playerName],
+  );
+
+  // Show every seated player from the server — covers lobby joins, reloads,
+  // and any players who were already at the table.
+  useEffect(() => {
+    if (!table) return;
+    syncPlayers(mapServerPlayers(table));
+  }, [table, mapServerPlayers, syncPlayers]);
+
+  // Keep the seated roster fresh so players who join/leave show up.
+  // Skips syncing while a join/leave API call is in flight to avoid a
+  // flicker from mid-transaction server state.
+  useEffect(() => {
+    if (!tableId) return;
+    const interval = setInterval(async () => {
+      if (busy) return;
+      try {
+        const res = await fetch("/api/crash-arena/tables", { cache: "no-store" });
+        const data = await res.json();
+        if (!data?.success) return;
+        const found = data.data.find((t) => t.id === tableId);
+        if (found) syncPlayers(mapServerPlayers(found));
+      } catch {
+        // silent — keep the current roster
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [tableId, mapServerPlayers, syncPlayers, busy]);
 
   // ── Player actions ───────────────────────────────────────────────────
 
