@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import {
   crashArenaTables,
@@ -43,10 +42,9 @@ async function ensureDefaultTables() {
  */
 export async function GET() {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+    // Public lobby listing — signed-out visitors can browse the table grid
+    // (consistent with /api/mines-pvp/available). Joining/playing still
+    // requires auth in the join/start-round/settle routes.
 
     // ── Auto-seed default tables ──────────────────────────────────────────
     await ensureDefaultTables();

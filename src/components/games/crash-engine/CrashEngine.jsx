@@ -56,15 +56,24 @@ const CrashEngine = forwardRef(function CrashEngine({
   } = useCrashAnimation({
     crashPoint,
     running,
-    onFrame: useCallback(({ multiplier, crashed }) => {
+    onFrame: useCallback(({ multiplier, currentMultiplier, points, crashed }) => {
       setDisplayMultiplier(multiplier);
       setIsCrashed(crashed);
       if (onMultiplierUpdate) onMultiplierUpdate(multiplier, crashed);
 
+      // Draw the curve from the frame payload — self-contained so we never
+      // reference stateRef before it's destructured from the hook (TDZ guard).
       if (crashGraphRef.current) {
-        crashGraphRef.current.draw(stateRef.current, performance.now());
+        crashGraphRef.current.draw({
+          curvePoints: points,
+          currentMultiplier,
+          crashed,
+          crashCanvasPoint: null,
+          crashAt: null,
+          explosionProgress: 0,
+        }, performance.now());
       }
-    }, [onMultiplierUpdate, stateRef]),
+    }, [onMultiplierUpdate]),
     onCrash: useCallback((lossMultiplier, crashCanvasPoint, animState) => {
       setIsCrashed(true);
       setDisplayMultiplier(lossMultiplier);
@@ -107,13 +116,6 @@ const CrashEngine = forwardRef(function CrashEngine({
     }
   }, []);
 
-  // Expose cashout() via ref
-  useImperativeHandle(ref, () => ({
-    cashout() {
-      handleCashout();
-    },
-  }), [handleCashout]);
-
   // Handle manual cashout
   const handleCashout = useCallback(() => {
     if (!running || isCrashed || hasCashout) return;
@@ -131,6 +133,13 @@ const CrashEngine = forwardRef(function CrashEngine({
     if (onCashout) onCashout(mult);
     if (onMultiplierUpdate) onMultiplierUpdate(mult, true);
   }, [running, isCrashed, hasCashout, getCurrentMultiplier, markCrashed, maxMultiplier, stop, onCashout, onMultiplierUpdate, stateRef]);
+
+  // Expose cashout() via ref
+  useImperativeHandle(ref, () => ({
+    cashout() {
+      handleCashout();
+    },
+  }), [handleCashout]);
 
   // Y-axis labels
   const yAxisLabels = (() => {

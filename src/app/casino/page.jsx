@@ -96,11 +96,11 @@ function MainComponent() {
     },
 
     {
-      name: "Crash",
-      href: "/casino/crash",
+      name: "Crash Arena",
+      href: "/casino/crash-arena",
       leaderboardKey: "crash",
       image: Img6,
-      descriptionKey: "games.crash_desc",
+      descriptionKey: "games.crash_arena_desc",
     },
     {
       name: "Échecs",
