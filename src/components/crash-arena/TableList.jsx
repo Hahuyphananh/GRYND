@@ -1,27 +1,47 @@
 "use client";
 import React from "react";
-import TableCard from "./TableCard";
+import WagerSection from "./WagerSection";
+import { CRASH_WAGERS } from "../../lib/games/crash/constants";
+
+// Re-exported for callers that need the standard wager list.
+export { CRASH_WAGERS };
 
 /**
- * TableList — responsive grid of TableCards.
+ * TableList — one "table amount" section per wager.
+ *
+ * Each section renders its own table-amount card (with a Create Table
+ * button) and an "Available Games" list underneath, so there are exactly
+ * CRASH_WAGERS.length available-game sections, grouped by stake.
  *
  * Props:
- *   tables  — array of table objects
+ *   grouped       — { wager: table[] } — lobby tables grouped by wager
+ *   isSignedIn    — whether the user is authenticated
+ *   creating      — wager currently being created (or null)
+ *   busyTableId   — table id with an in-flight join (or null)
+ *   onCreate      — (wager) => void
+ *   onJoin        — (table) => void
  */
-export default function TableList({ tables = [] }) {
-  if (tables.length === 0) {
-    return (
-      <div className="rounded-2xl border border-[#00e5ff]/20 bg-[#040d24]/40 px-6 py-16 text-center">
-        <p className="text-lg font-semibold text-[#d8fbff] opacity-90">No tables available</p>
-        <p className="mt-2 text-sm text-[#9dd8ff] opacity-80">Check back soon for new tables.</p>
-      </div>
-    );
-  }
-
+export default function TableList({
+  grouped = {},
+  isSignedIn = false,
+  creating = null,
+  busyTableId = null,
+  onCreate,
+  onJoin,
+}) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
-      {tables.map((table) => (
-        <TableCard key={table.id} table={table} />
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
+      {CRASH_WAGERS.map((wager) => (
+        <WagerSection
+          key={wager}
+          wager={wager}
+          tables={grouped[wager] || []}
+          isSignedIn={isSignedIn}
+          creating={creating}
+          busyTableId={busyTableId}
+          onCreate={onCreate}
+          onJoin={onJoin}
+        />
       ))}
     </div>
   );
