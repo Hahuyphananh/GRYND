@@ -2,10 +2,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import NavigationBar from "../../../../components/navigation-bar";
-import ArenaTable from "../../../../components/crash-arena/ArenaTable";
-import CrashEngine from "../../../../components/games/crash-engine/CrashEngine";
-import useCrashArenaRound from "../../../../components/crash-arena/useCrashArenaRound";
+import NavigationBar from "../../../../../components/navigation-bar";
+import ArenaTable from "../../../../../components/crash-arena/ArenaTable";
+import CrashEngine from "../../../../../components/games/crash-engine/CrashEngine";
+import useCrashArenaRound from "../../../../../components/crash-arena/useCrashArenaRound";
 import Link from "next/link";
 
 /**

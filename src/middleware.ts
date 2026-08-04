@@ -30,7 +30,9 @@ const isPublicRoute = createRouteMatcher([
   "/uno/multiplayer(.*)",
   "/casino/plinko(.*)",
   "/casino/mines-pvp(.*)",
+  // /casino/crash still redirects to the PVP Crash Arena, so it stays public
   "/casino/crash",
+  "/casino/crash-arena(.*)",
   "/casino/chess(.*)",
   "/casino/slots(.*)",
   "/casino/coin-flip",
