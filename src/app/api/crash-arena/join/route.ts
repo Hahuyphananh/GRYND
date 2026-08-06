@@ -4,9 +4,10 @@ import {
   users,
   crashArenaTables,
   crashArenaPlayers,
+  crashArenaRounds,
   crashArenaTransactions,
 } from "../../../../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, ne, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import {
   broadcastLobbyUpdate,
@@ -72,22 +73,44 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // ── Check capacity ────────────────────────────────────────────────────
-    const seatedCount = await db
+    // ── Is a round currently running? ─────────────────────────────────────
+    // Late joiners don't jump into a live round — they land on the wait
+    // list and are seated automatically once the round settles.
+    const activeRound = await db
+      .select({ id: crashArenaRounds.id, status: crashArenaRounds.status, createdAt: crashArenaRounds.createdAt })
+      .from(crashArenaRounds)
+      .where(
+        and(
+          eq(crashArenaRounds.tableId, tableId),
+          ne(crashArenaRounds.status, "settled"),
+        ),
+      )
+      .orderBy(sql`${crashArenaRounds.createdAt} DESC`)
+      .limit(1);
+
+    let midRound = false;
+    if (activeRound[0] && activeRound[0].status === "running") {
+      const ageMs = Date.now() - new Date(activeRound[0].createdAt).getTime();
+      // A running round older than 5 minutes is treated as abandoned.
+      midRound = ageMs < 5 * 60 * 1000;
+    }
+
+    // ── Check capacity (seated + waiting share the seats) ────────────────
+    const occupiedCount = await db
       .select({ count: sql<number>`count(*)` })
       .from(crashArenaPlayers)
       .where(
         and(
           eq(crashArenaPlayers.tableId, tableId),
-          eq(crashArenaPlayers.status, "seated"),
+          inArray(crashArenaPlayers.status, ["seated", "waiting"]),
         ),
       );
 
-    if (Number(seatedCount[0]?.count ?? 0) >= table.maxPlayers) {
+    if (Number(occupiedCount[0]?.count ?? 0) >= table.maxPlayers) {
       return NextResponse.json({ success: false, error: "Table is full" }, { status: 400 });
     }
 
-    // ── Check if already seated ───────────────────────────────────────────
+    // ── Check if the caller already has a seat or a wait-list spot ───────
     const existing = await db
       .select()
       .from(crashArenaPlayers)
@@ -95,13 +118,19 @@ export async function POST(req: Request) {
         and(
           eq(crashArenaPlayers.tableId, tableId),
           eq(crashArenaPlayers.userId, user.id),
-          eq(crashArenaPlayers.status, "seated"),
+          inArray(crashArenaPlayers.status, ["seated", "waiting"]),
         ),
       )
       .limit(1);
 
     if (existing.length) {
-      return NextResponse.json({ success: false, error: "Already seated at this table" }, { status: 400 });
+      const alreadyWaiting = existing[0].status === "waiting";
+      return NextResponse.json({
+        success: false,
+        error: alreadyWaiting
+          ? "You're already on the wait list for this table"
+          : "Already seated at this table",
+      }, { status: 400 });
     }
 
     // ── Deduct from wallet (atomic) ───────────────────────────────────────
@@ -117,14 +146,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Insufficient balance" }, { status: 400 });
     }
 
-    // ── Create player row ─────────────────────────────────────────────────
+    // ── Create player row (waiting when a round is mid-flight) ───────────
     const [player] = await db
       .insert(crashArenaPlayers)
       .values({
         tableId,
         userId: user.id,
         balance: buyInAmount.toFixed(2),
-        status: "seated",
+        status: midRound ? "waiting" : "seated",
       })
       .returning();
 
@@ -149,6 +178,7 @@ export async function POST(req: Request) {
         balance: Number(player.balance),
         walletBalance: Number(deducted.balance),
         tableId,
+        status: player.status,
       },
     });
   } catch (err) {

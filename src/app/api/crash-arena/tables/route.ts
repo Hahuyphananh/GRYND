@@ -85,7 +85,7 @@ export async function GET() {
 
     const tableIds = tables.map((t) => t.id);
 
-    // ── Bulk-fetch all seated players for these tables ─────────────────────
+    // ── Bulk-fetch all seated + wait-listed players for these tables ──────
     let allPlayers = [];
     if (tableIds.length > 0) {
       allPlayers = await db
@@ -94,7 +94,7 @@ export async function GET() {
         .where(
           and(
             inArray(crashArenaPlayers.tableId, tableIds),
-            eq(crashArenaPlayers.status, "seated"),
+            inArray(crashArenaPlayers.status, ["seated", "waiting"]),
           ),
         );
     }
@@ -118,7 +118,12 @@ export async function GET() {
     // ── Enrich each table ──────────────────────────────────────────────────
     const enriched = await Promise.all(
       tables.map(async (table) => {
-        const players = allPlayers.filter((p) => p.tableId === table.id);
+        const players = allPlayers.filter(
+          (p) => p.tableId === table.id && p.status === "seated",
+        );
+        const waiting = allPlayers.filter(
+          (p) => p.tableId === table.id && p.status === "waiting",
+        );
 
         // Latest round
         const latestRound = await db
@@ -164,6 +169,9 @@ export async function GET() {
         const mySeat = internalUserId != null
           ? players.find((p) => p.userId === internalUserId)
           : undefined;
+        const myWait = internalUserId != null
+          ? waiting.find((p) => p.userId === internalUserId)
+          : undefined;
 
         return {
           id: table.id,
@@ -184,11 +192,20 @@ export async function GET() {
             status: p.status,
             isYou: internalUserId != null && p.userId === internalUserId,
           })),
+          waitingPlayers: waiting.map((p) => ({
+            userId: p.userId,
+            name: userNameById.get(p.userId) || `Player ${p.userId}`,
+            balance: Number(p.balance),
+            status: p.status,
+            isYou: internalUserId != null && p.userId === internalUserId,
+          })),
           playerCount: players.length,
+          waitingCount: waiting.length,
           pot,
           roundStatus: latestRound[0]?.status ?? null,
           latestRound: latestRoundInfo,
           amISeated: Boolean(mySeat),
+          amIWaiting: Boolean(myWait),
           myBalance: mySeat ? Number(mySeat.balance) : null,
         };
       }),

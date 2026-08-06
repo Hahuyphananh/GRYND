@@ -173,6 +173,19 @@ export async function POST(req: Request) {
       .set({ status: "waiting" })
       .where(eq(crashArenaTables.id, tableId));
 
+    // ── Seat any wait-listed players now that the round is over ──────────
+    // Late joiners who landed on the wait list during the round step onto
+    // the table so they're in for the next round.
+    await db
+      .update(crashArenaPlayers)
+      .set({ status: "seated" })
+      .where(
+        and(
+          eq(crashArenaPlayers.tableId, tableId),
+          eq(crashArenaPlayers.status, "waiting"),
+        ),
+      );
+
     // Best-effort fanout so every player at the table reconciles the
     // finished round (winner, payout, crash point) instantly.
     broadcastTableUpdate(tableId, {

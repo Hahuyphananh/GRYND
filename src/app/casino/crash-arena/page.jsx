@@ -73,35 +73,6 @@ export default function CrashArenaPage() {
           onRefresh={fetchTables}
         />
       </div>
-
-      {/* Rules section */}
-      <div className="mt-6 w-full max-w-7xl bg-[#08142f] rounded-lg border border-[#00e5ff]/30 shadow-[0_0_14px_rgba(0,229,255,0.15)]">
-        <details className="group">
-          <summary className="w-full flex justify-between items-center px-4 py-2 font-bold text-[#FFD700] cursor-pointer list-none">
-            📜 Crash Arena Rules
-            <span className="group-open:hidden">▼</span>
-            <span className="hidden group-open:inline">▲</span>
-          </summary>
-          <div className="px-4 pb-4 text-sm text-gray-300 space-y-2">
-            <p>
-              🚀 Every round, all players watch the multiplier climb. Cash out
-              before it crashes to keep your share of the pot.
-            </p>
-            <p>
-              💥 If you don&apos;t cash out before the crash, you lose your round
-              wager.
-            </p>
-            <p>
-              🏆 The highest cashout wins the pot (minus a 5% platform fee).
-            </p>
-            <p>
-              💰 Minimum buy-in is <strong>5× the round wager</strong>. Buy in
-              once, play multiple rounds. Leave anytime with your remaining
-              balance.
-            </p>
-          </div>
-        </details>
-      </div>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import {
   crashArenaPlayers,
   crashArenaTransactions,
 } from "../../../../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import {
   broadcastLobbyUpdate,
@@ -15,12 +15,14 @@ import {
 /**
  * POST /api/crash-arena/leave
  *
- * Body: { tableId: number }
+ * Body: { tableId: number, permanent?: boolean }
  *
- * 1. Finds the player's seated row at the table.
- * 2. Returns remaining balance to user wallet.
- * 3. Marks player as "left".
- * 4. Creates LEAVE transaction.
+ * Two modes:
+ *   • default (permanent: false) — "Leave" button. The player steps off
+ *     the table and onto the wait list, keeping their table balance so
+ *     they can step back in next round (or fully cash out later).
+ *   • permanent: true — "Back to Lobby". Returns the remaining table
+ *     balance to the user wallet and marks the player "left".
  */
 export async function POST(req: Request) {
   try {
@@ -29,7 +31,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { tableId } = await req.json();
+    const { tableId, permanent = false } = await req.json();
     if (!tableId) {
       return NextResponse.json({ success: false, error: "Invalid request" }, { status: 400 });
     }
@@ -46,7 +48,7 @@ export async function POST(req: Request) {
     }
     const user = userData[0];
 
-    // ── Find seated player row ────────────────────────────────────────────
+    // ── Find player row (seated or waiting) ───────────────────────────────
     const playerData = await db
       .select()
       .from(crashArenaPlayers)
@@ -54,18 +56,39 @@ export async function POST(req: Request) {
         and(
           eq(crashArenaPlayers.tableId, tableId),
           eq(crashArenaPlayers.userId, user.id),
-          eq(crashArenaPlayers.status, "seated"),
+          inArray(crashArenaPlayers.status, ["seated", "waiting"]),
         ),
       )
       .limit(1);
 
     if (!playerData.length) {
-      return NextResponse.json({ success: false, error: "Not seated at this table" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Not at this table" }, { status: 400 });
     }
     const player = playerData[0];
     const returnAmount = Number(player.balance);
 
-    // ── Return balance to wallet ──────────────────────────────────────────
+    if (!permanent) {
+      // ── "Leave" → step off the table onto the wait list (keep balance) ──
+      await db
+        .update(crashArenaPlayers)
+        .set({ status: "waiting" })
+        .where(eq(crashArenaPlayers.id, player.id));
+
+      // Best-effort live fanout so the remaining players + lobby refresh.
+      broadcastTableUpdate(tableId, { left: true, userId: user.id });
+      broadcastLobbyUpdate({ left: true, tableId });
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          returned: 0,
+          status: "waiting",
+          tableId,
+        },
+      });
+    }
+
+    // ── "Back to Lobby" → return balance to wallet ────────────────────────
     if (returnAmount > 0) {
       await db
         .update(users)

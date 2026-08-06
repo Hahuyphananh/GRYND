@@ -1,28 +1,43 @@
 "use client";
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import PlayerList from "./PlayerList";
+import PlayerSidebar from "./PlayerSidebar";
 import PotDisplay from "./PotDisplay";
 import TableBalance from "./TableBalance";
 import RoundTimer from "./RoundTimer";
 import RoundStatus from "./RoundStatus";
 import BuyInModal from "./BuyInModal";
+import RoundResultModal from "./RoundResultModal";
+import CrashArenaRulesModal from "./CrashArenaRulesModal";
 import CashoutButton from "../games/crash-engine/CashoutButton";
 import Link from "next/link";
+
+const ROUND_START_COUNTDOWN = 12; // seconds between rounds / after ready votes
+const READY_VOTES_NEEDED = 2;
 
 /**
  * ArenaTable — full poker-style Crash Arena table room.
  *
  * Driven by roundState from useCrashArenaRound.
  *
+ * Round-start flow:
+ *   • First round (no round played yet): seated players press "Start Round"
+ *     (a ready vote). When 2+ players are ready a countdown begins and the
+ *     round starts automatically — the button only ever starts the timer.
+ *   • Later rounds: no button — the countdown runs automatically and starts
+ *     the next round for everyone at the same time.
+ *
  * Props:
- *   table             — base table info (name, wager, minBuyIn, maxBuyIn, maxPlayers)
- *   roundState        — { phase, pot, crashPoint, roundNumber, players, results }
+ *   table             — base table info (name, wager, minBuyIn, maxBuyIn, maxPlayers, latestRound)
+ *   roundState        — { phase, pot, crashPoint, roundNumber, players, waitingPlayers, results }
  *   crashEngineRef    — ref to CrashEngine for cashout()
- *   onStartRound      — () => void
+ *   readyVotes        — array of user ids who pressed Start Round
+ *   markReady         — () => void
+ *   onStartRound      — () => void (called when the countdown expires)
  *   onNextRound       — () => void
- *   onToggleSitOut    — (playerName) => void
  *   onJoin            — (buyInAmount) => void
- *   onLeave           — () => void
+ *   onLeave           — () => void (→ wait list)
+ *   onExitToLobby     — () => void (permanent leave → lobby)
  *   onBuyChips        — (amount) => void
  *   playerName        — "You"
  *   busy              — whether an API call is in flight
@@ -32,11 +47,13 @@ export default function ArenaTable({
   table,
   roundState,
   crashEngineRef,
+  readyVotes = [],
+  markReady,
   onStartRound,
   onNextRound,
-  onToggleSitOut,
   onJoin,
   onLeave,
+  onExitToLobby,
   onBuyChips,
   playerName = "You",
   busy = false,
@@ -55,25 +72,49 @@ export default function ArenaTable({
     pot = 0,
     roundNumber = 1,
     players = [],
+    waitingPlayers = [],
     results = null,
     crashMultiplier = null,
     crashPoint = null,
   } = roundState;
 
-  // Current player lookup
-  const currentPlayer = players.find((p) => p.name === playerName && p.isYou) || null;
-  const isSeated = !!currentPlayer;
-  const isSittingOut = currentPlayer?.isSittingOut || false;
-  const playerChips = currentPlayer?.balance || 0;
+  // ── Derived state ───────────────────────────────────────────────────
+
+  const you = players.find((p) => p.isYou) || null;
+  const youWaiting = waitingPlayers.find((p) => p.isYou) || null;
+  const isSeated = !!you;
+  const isWaitingPlayer = !!youWaiting;
+  const playerChips = you?.balance || 0;
   const isFull = players.length >= maxPlayers;
-  const youCashedOut = currentPlayer?.cashoutMultiplier != null;
-  const youBusted = currentPlayer?.busted || false;
+  const youCashedOut = you?.cashoutMultiplier != null;
+  const youBusted = you?.busted || false;
 
   const isRunning = phase === "running";
   const isCrashed = phase === "crashed" || phase === "settling";
   const isWaiting = phase === "waiting";
 
+  // First round = round 1 AND the table has never hosted a round.
+  const hasAnyRound = Boolean(table?.latestRound?.id);
+  const isFirstRound = roundNumber === 1 && !hasAnyRound;
+
+  const seatedCount = players.length;
+  const readyCount = readyVotes.length;
+  const youReady = you?.userId != null && readyVotes.includes(you.userId);
+  // Countdown runs once 2+ players are seated and (first round) 2+ are ready.
+  const countdownActive =
+    isWaiting && seatedCount >= 2 && (!isFirstRound || readyCount >= READY_VOTES_NEEDED);
+
+  // ── Local UI state ──────────────────────────────────────────────────
+
   const [showBuyInModal, setShowBuyInModal] = useState(false);
+  const [showRules, setShowRules] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [resultDismissed, setResultDismissed] = useState(false);
+
+  // Reset the results-popup dismissal flag whenever we leave settling.
+  useEffect(() => {
+    if (phase !== "settling") setResultDismissed(false);
+  }, [phase]);
 
   // Map phase to RoundStatus display
   const displayStatus = isRunning ? "flying" : isCrashed ? "crashed" : "waiting";
@@ -81,6 +122,11 @@ export default function ArenaTable({
   const handleTimerExpire = useCallback(() => {
     onStartRound?.();
   }, [onStartRound]);
+
+  const handleNextRound = useCallback(() => {
+    setResultDismissed(true);
+    onNextRound?.();
+  }, [onNextRound]);
 
   // ── Live cashout feed (during running) ───────────────────────────────
 
@@ -91,6 +137,8 @@ export default function ArenaTable({
       .sort((a, b) => (b.cashoutMultiplier || 0) - (a.cashoutMultiplier || 0));
   }, [players, isRunning]);
 
+  const showResultModal = phase === "settling" && results && !resultDismissed && !!you;
+
   return (
     <div className="flex flex-col gap-4 w-full">
       {/* ═══ Top bar: status + timer + pot ═══ */}
@@ -100,12 +148,22 @@ export default function ArenaTable({
           roundNumber={roundNumber}
           crashedAt={crashMultiplier}
         />
-        {isWaiting && (
+        {isWaiting && countdownActive && (
           <RoundTimer
-            seconds={15}
+            label={isFirstRound ? "Starting in" : "Next round in"}
+            seconds={ROUND_START_COUNTDOWN}
             isRunning={true}
             onExpire={handleTimerExpire}
           />
+        )}
+        {isWaiting && !countdownActive && (
+          <div className="px-3 py-1.5 rounded-lg bg-[#9dd8ff]/5 border border-[#9dd8ff]/15 text-xs font-bold text-[#9dd8ff]">
+            {seatedCount < 2
+              ? "⏳ Waiting for another player…"
+              : isFirstRound
+                ? `🎯 ${readyCount}/${READY_VOTES_NEEDED} ready — press Start Round`
+                : "⏳ Waiting…"}
+          </div>
         )}
         {isRunning && (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#00e5ff]/10 border border-[#00e5ff]/20">
@@ -114,16 +172,33 @@ export default function ArenaTable({
           </div>
         )}
         <PotDisplay pot={pot} />
+        {/* Rules popup button — always available during play */}
+        <button
+          onClick={() => setShowRules(true)}
+          className="px-3 py-1.5 rounded-lg text-xs font-bold border border-[#FFD700]/35 bg-[#FFD700]/10 text-[#FFD700] hover:bg-[#FFD700]/20 hover:shadow-[0_0_12px_rgba(255,215,0,0.3)] transition-all"
+        >
+          📜 Rules
+        </button>
+        {/* Players sidebar toggle */}
+        <button
+          onClick={() => setShowSidebar((v) => !v)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+            showSidebar
+              ? "border-[#ff4fd8]/40 bg-[#ff4fd8]/15 text-[#ff4fd8]"
+              : "border-gray-500/30 bg-gray-500/10 text-gray-400 hover:bg-gray-500/20"
+          }`}
+        >
+          👥 Players {showSidebar ? "▸" : "◂"}
+        </button>
       </div>
 
-      {/* ═══ Round results banner (settling phase) ═══ */}
-      {phase === "settling" && results && (
+      {/* ═══ Round results (spectators / wait-listed players see banner) ═══ */}
+      {phase === "settling" && results && !you && (
         <div className="px-4 py-3 rounded-2xl border border-[#FFD700]/30 bg-[#FFD700]/5 text-center animate-in fade-in">
           {results.winner ? (
             <>
               <span className="text-lg font-black text-[#FFD700]">
-                🏆 {results.winner}
-                {results.winner === playerName ? " (You!)" : ""} wins!
+                🏆 {results.winner} wins the pot!
               </span>
               <span className="block text-sm text-[#d8fbff] mt-1">
                 Cashed out at {results.winnerMultiplier?.toFixed(2)}x
@@ -141,16 +216,6 @@ export default function ArenaTable({
                 ${pot.toLocaleString()} added to next round
               </span>
             </>
-          )}
-          {/* All cashouts */}
-          {results.allCashouts?.length > 0 && (
-            <div className="flex flex-wrap gap-2 justify-center mt-2">
-              {results.allCashouts.map((c) => (
-                <span key={c.name} className="text-xs px-2 py-0.5 rounded-full bg-[#00e5ff]/10 text-[#00e5ff] border border-[#00e5ff]/20">
-                  {c.name}: {c.multiplier.toFixed(2)}x
-                </span>
-              ))}
-            </div>
           )}
         </div>
       )}
@@ -178,14 +243,34 @@ export default function ArenaTable({
         <div className="flex items-center gap-2 flex-wrap">
           {isSeated && <TableBalance balance={playerChips} />}
 
+          {/* On the wait list (joined mid-round or clicked Leave) */}
+          {isWaitingPlayer && !isSeated && (
+            <>
+              <span className="px-3 py-1.5 rounded-lg text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-400">
+                ⏳ On wait list — you&apos;ll join after this round
+              </span>
+              <button
+                onClick={onExitToLobby}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
+              >
+                🏠 Back to Lobby
+              </button>
+            </>
+          )}
+
           {/* Not seated */}
-          {!isSeated && !isFull && (
+          {!isSeated && !isWaitingPlayer && !isFull && (
             <button
               onClick={() => setShowBuyInModal(true)}
               className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-[#00e5ff] to-[#007cf0] text-white border border-[#00e5ff] shadow-[0_0_14px_rgba(0,229,255,0.4)] hover:shadow-[0_0_24px_rgba(0,229,255,0.7)] hover:scale-105 transition-all duration-300"
             >
               Join Table
             </button>
+          )}
+          {!isSeated && !isWaitingPlayer && isFull && (
+            <span className="px-3 py-1.5 rounded-lg text-xs font-bold border border-red-500/30 bg-red-500/10 text-red-400">
+              Table Full
+            </span>
           )}
 
           {/* Seated */}
@@ -201,57 +286,36 @@ export default function ArenaTable({
                 </button>
               )}
 
-              {/* Sit out / Play next toggle */}
-              {isWaiting && (
-                isSittingOut ? (
-                  <button
-                    onClick={() => onToggleSitOut?.(playerName)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold border border-[#00e5ff]/30 bg-[#00e5ff]/10 text-[#00e5ff] hover:bg-[#00e5ff]/20 transition-all"
-                  >
-                    Play Next
-                  </button>
+              {/* First round: Start Round = ready vote. Starts the countdown
+                  only — never the rocket directly. */}
+              {isFirstRound && isWaiting && (
+                youReady ? (
+                  <span className="px-3 py-1.5 rounded-lg text-xs font-bold border border-[#00ffa6]/40 bg-[#00ffa6]/15 text-[#00ffa6]">
+                    ✅ Ready ({readyCount}/{READY_VOTES_NEEDED})
+                  </span>
                 ) : (
                   <button
-                    onClick={() => onToggleSitOut?.(playerName)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-all"
+                    onClick={markReady}
+                    disabled={busy || you?.userId == null}
+                    title={you?.userId == null ? "Syncing your seat…" : "Vote to start the countdown"}
+                    className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black border border-[#FFD700] shadow-[0_0_14px_rgba(255,215,0,0.4)] hover:shadow-[0_0_24px_rgba(255,215,0,0.7)] hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:hover:scale-100"
                   >
-                    Sit Out
+                    🚀 Start Round
                   </button>
                 )
               )}
 
-              {/* Start round button */}
-              {isWaiting && (
-                <button
-                  onClick={onStartRound}
-                  disabled={busy}
-                  className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black border border-[#FFD700] shadow-[0_0_14px_rgba(255,215,0,0.4)] hover:shadow-[0_0_24px_rgba(255,215,0,0.7)] hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:hover:scale-100"
-                >
-                  {busy ? "Starting…" : "Start Round"}
-                </button>
-              )}
-
               {/* Cashout button during running */}
-              {isRunning && !youCashedOut && !youBusted && isSeated && !isSittingOut && (
+              {isRunning && !youCashedOut && !youBusted && (
                 <CashoutButton
                   onCashout={() => crashEngineRef?.current?.cashout()}
                 />
               )}
 
-              {/* Next round after settling */}
-              {phase === "settling" && (
-                <button
-                  onClick={onNextRound}
-                  className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-[#00e5ff] to-[#007cf0] text-white border border-[#00e5ff] shadow-[0_0_14px_rgba(0,229,255,0.4)] hover:shadow-[0_0_24px_rgba(0,229,255,0.7)] hover:scale-105 transition-all duration-300"
-                >
-                  Next Round →
-                </button>
-              )}
-
               {/* Cashout status badges */}
               {youCashedOut && !isRunning && (
                 <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#00ffa6]/15 text-[#00ffa6] border border-[#00ffa6]/30">
-                  ✅ {currentPlayer.cashoutMultiplier?.toFixed(2)}x
+                  ✅ {you.cashoutMultiplier?.toFixed(2)}x
                 </span>
               )}
               {youBusted && (
@@ -260,11 +324,11 @@ export default function ArenaTable({
                 </span>
               )}
 
-              {/* Leave */}
+              {/* Leave → steps off onto the wait list (balance kept) */}
               {isWaiting && (
                 <button
                   onClick={onLeave}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-all"
                 >
                   Leave
                 </button>
@@ -322,48 +386,81 @@ export default function ArenaTable({
           )}
         </div>
 
-        {/* Sidebar: live standings during round */}
-        {isRunning && (
-          <div className="w-full lg:w-48 shrink-0 rounded-2xl border border-[#ff4fd8]/20 bg-[#040d24]/60 backdrop-blur-sm p-3 flex flex-col gap-2">
-            <h3 className="text-xs uppercase tracking-wider text-[#ff4fd8]/70 text-center">
-              Live Standings
+        {/* Toggleable poker-style players sidebar */}
+        {showSidebar && (
+          <PlayerSidebar
+            players={players}
+            waitingPlayers={waitingPlayers}
+            phase={phase}
+            onExitToLobby={onExitToLobby}
+          />
+        )}
+      </div>
+
+      {/* ═══ Player list + wait list ═══ */}
+      <div className="flex flex-col lg:flex-row gap-4">
+        <div className="flex-1 px-4 py-3 rounded-2xl border border-[#ff4fd8]/25 bg-[#040d24]/60 backdrop-blur-sm">
+          <h3 className="text-xs uppercase tracking-wider text-[#ff4fd8]/70 mb-3 text-center">
+            Players &bull; {seatedCount}/{maxPlayers}
+          </h3>
+          <PlayerList players={players} maxSeats={maxPlayers} phase={phase} />
+        </div>
+
+        {waitingPlayers.length > 0 && (
+          <div className="w-full lg:w-72 shrink-0 px-4 py-3 rounded-2xl border border-yellow-500/25 bg-[#040d24]/60 backdrop-blur-sm">
+            <h3 className="text-xs uppercase tracking-wider text-yellow-400/70 mb-3 text-center">
+              ⏳ Wait List &bull; {waitingPlayers.length}
             </h3>
-            {players
-              .filter((p) => p.isPlaying && !p.isSittingOut)
-              .map((p) => (
+            <div className="flex flex-col gap-2">
+              {waitingPlayers.map((p) => (
                 <div
-                  key={p.name}
-                  className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-xs transition-all duration-300 ${
-                    p.busted
-                      ? "bg-red-500/10 border border-red-500/20"
-                      : p.cashoutMultiplier != null
-                        ? "bg-[#00ffa6]/10 border border-[#00ffa6]/20"
-                        : "bg-[#00e5ff]/5 border border-[#00e5ff]/10"
-                  }`}
+                  key={p.userId ?? p.name}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-yellow-500/5 border border-yellow-500/20 text-xs"
                 >
-                  <span className={`truncate font-semibold ${
-                    p.busted ? "text-red-400" : p.cashoutMultiplier != null ? "text-[#00ffa6]" : "text-[#d8fbff]"
-                  }`}>
-                    {p.name}{p.isYou ? " (You)" : ""}
+                  <span
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border shrink-0 ${
+                      p.isYou
+                        ? "bg-[#FFD700]/25 border-[#FFD700] text-[#FFD700]"
+                        : "bg-[#020617] border-yellow-500/30 text-yellow-400"
+                    }`}
+                  >
+                    {p.name?.charAt(0)?.toUpperCase() || "?"}
                   </span>
-                  <span className={`font-bold tabular-nums shrink-0 ${
-                    p.busted ? "text-red-400" : p.cashoutMultiplier != null ? "text-[#00ffa6]" : "text-[#9dd8ff]"
-                  }`}>
-                    {p.busted ? "💥" : p.cashoutMultiplier != null ? `${p.cashoutMultiplier.toFixed(2)}x` : "..."}
+                  <span className={`truncate font-semibold flex-1 ${p.isYou ? "text-[#FFD700]" : "text-[#d8fbff]"}`}>
+                    {p.name}
+                    {p.isYou ? " (You)" : ""}
                   </span>
+                  <span className="text-[#00ffa6] font-bold tabular-nums shrink-0">
+                    ${p.balance?.toLocaleString() || 0}
+                  </span>
+                  {p.isYou ? (
+                    <button
+                      onClick={onExitToLobby}
+                      className="px-2 py-1 rounded-md text-[10px] font-bold border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all shrink-0"
+                    >
+                      🏠 Back to Lobby
+                    </button>
+                  ) : (
+                    <span className="text-yellow-400 shrink-0">⏳</span>
+                  )}
                 </div>
               ))}
+            </div>
           </div>
         )}
       </div>
 
-      {/* ═══ Player list ═══ */}
-      <div className="px-4 py-3 rounded-2xl border border-[#ff4fd8]/25 bg-[#040d24]/60 backdrop-blur-sm">
-        <h3 className="text-xs uppercase tracking-wider text-[#ff4fd8]/70 mb-3 text-center">
-          Players &bull; {players.length}/{maxPlayers}
-        </h3>
-        <PlayerList players={players} maxSeats={maxPlayers} phase={phase} />
-      </div>
+      {/* ═══ Round results popup ═══ */}
+      {showResultModal && (
+        <RoundResultModal
+          roundNumber={roundNumber}
+          results={results}
+          you={you}
+          wager={wager}
+          pot={pot}
+          onNextRound={handleNextRound}
+        />
+      )}
 
       {/* ═══ Buy-in modal ═══ */}
       {showBuyInModal && (
@@ -380,6 +477,9 @@ export default function ArenaTable({
           onClose={() => setShowBuyInModal(false)}
         />
       )}
+
+      {/* ═══ Rules popup ═══ */}
+      {showRules && <CrashArenaRulesModal onClose={() => setShowRules(false)} />}
     </div>
   );
 }

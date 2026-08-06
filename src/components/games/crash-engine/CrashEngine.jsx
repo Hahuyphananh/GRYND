@@ -43,16 +43,14 @@ const CrashEngine = forwardRef(function CrashEngine({
   const [displayMultiplier, setDisplayMultiplier] = useState(1.0);
   const [isCrashed, setIsCrashed] = useState(false);
   const [hasCashout, setHasCashout] = useState(false);
+  const [cashoutMultiplier, setCashoutMultiplier] = useState(null);
 
   // Y-axis upper bound: always show at least 20% past crash point
   const maxMultiplier = Math.max(crashPoint * 1.2, 2);
 
   // Animation hook
   const {
-    stateRef,
-    stop,
     getCurrentMultiplier,
-    markCrashed,
   } = useCrashAnimation({
     crashPoint,
     running,
@@ -104,6 +102,7 @@ const CrashEngine = forwardRef(function CrashEngine({
   useEffect(() => {
     if (running) {
       setHasCashout(false);
+      setCashoutMultiplier(null);
       setIsCrashed(false);
       setDisplayMultiplier(1.0);
     }
@@ -116,23 +115,18 @@ const CrashEngine = forwardRef(function CrashEngine({
     }
   }, []);
 
-  // Handle manual cashout
+  // Handle manual cashout.
+  // IMPORTANT: cashing out must NOT stop the animation — the rocket keeps
+  // flying for everyone until the server-authoritative crash point is hit.
+  // The player is simply marked safe at their multiplier while the curve
+  // (and their balance outcome) still resolves at the real crash.
   const handleCashout = useCallback(() => {
     if (!running || isCrashed || hasCashout) return;
     const mult = parseFloat(getCurrentMultiplier().toFixed(2));
     setHasCashout(true);
-    setIsCrashed(true);
-    setDisplayMultiplier(mult);
-    markCrashed(mult, maxMultiplier);
-    stop();
-
-    if (crashGraphRef.current) {
-      crashGraphRef.current.draw(stateRef.current, performance.now());
-    }
-
+    setCashoutMultiplier(mult);
     if (onCashout) onCashout(mult);
-    if (onMultiplierUpdate) onMultiplierUpdate(mult, true);
-  }, [running, isCrashed, hasCashout, getCurrentMultiplier, markCrashed, maxMultiplier, stop, onCashout, onMultiplierUpdate, stateRef]);
+  }, [running, isCrashed, hasCashout, getCurrentMultiplier, onCashout]);
 
   // Expose cashout() via ref
   useImperativeHandle(ref, () => ({
@@ -169,6 +163,13 @@ const CrashEngine = forwardRef(function CrashEngine({
       </div>
 
       <Explosion isCrashed={isCrashed} />
+
+      {/* Cashed-out badge — shown while the rocket is still flying */}
+      {hasCashout && !isCrashed && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 px-4 py-1.5 rounded-full bg-[#00ffa6]/20 border border-[#00ffa6]/50 text-[#00ffa6] font-bold text-sm backdrop-blur-sm">
+          ✅ Cashed out at {cashoutMultiplier?.toFixed(2)}x
+        </div>
+      )}
 
       <CrashMultiplier multiplier={displayMultiplier} isCrashed={isCrashed} />
     </>

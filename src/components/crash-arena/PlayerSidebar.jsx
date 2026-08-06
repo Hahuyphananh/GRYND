@@ -1,0 +1,113 @@
+"use client";
+import React from "react";
+
+/**
+ * PlayerSidebar — poker-style player panel shown beside the game canvas.
+ *
+ * Lists every seated player with a live status treatment (cashed out /
+ * busted / in flight) and, underneath, any wait-listed players. The whole
+ * panel is toggled on/off from the table top bar.
+ *
+ * Props:
+ *   players       — seated players from roundState
+ *   waitingPlayers — wait-listed players from roundState
+ *   phase         — current round phase
+ *   onExitToLobby — () => void — for a wait-listed player to cash out
+ *                   and return to the lobby
+ */
+export default function PlayerSidebar({
+  players = [],
+  waitingPlayers = [],
+  phase = "waiting",
+  onExitToLobby,
+}) {
+  const isLive = phase === "running" || phase === "crashed" || phase === "settling";
+
+  const statusOf = (p) => {
+    if (p.isSittingOut) return { label: "Sitting out", cls: "text-yellow-400", icon: "😴" };
+    if (p.busted) return { label: "Busted", cls: "text-red-400", icon: "💥" };
+    if (p.cashoutMultiplier != null) {
+      return { label: `${p.cashoutMultiplier.toFixed(2)}x`, cls: "text-[#00ffa6]", icon: "✅" };
+    }
+    if (isLive && p.isPlaying) return { label: "In flight…", cls: "text-[#00e5ff]", icon: "🚀" };
+    return { label: "Waiting", cls: "text-[#9dd8ff]/70", icon: "🪑" };
+  };
+
+  return (
+    <div className="w-full lg:w-56 shrink-0 rounded-2xl border border-[#ff4fd8]/25 bg-[#040d24]/60 backdrop-blur-sm p-3 flex flex-col gap-2">
+      <h3 className="text-xs uppercase tracking-wider text-[#ff4fd8]/70 text-center">
+        👥 Players • {players.length}
+      </h3>
+
+      {players.length === 0 && (
+        <p className="text-xs text-[#9dd8ff]/50 text-center py-3">No one at the table yet.</p>
+      )}
+
+      {players.map((p) => {
+        const s = statusOf(p);
+        return (
+          <div
+            key={p.userId ?? p.name}
+            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all duration-300 ${
+              p.busted
+                ? "bg-red-500/10 border border-red-500/20"
+                : p.cashoutMultiplier != null
+                  ? "bg-[#00ffa6]/10 border border-[#00ffa6]/20"
+                  : "bg-[#00e5ff]/5 border border-[#00e5ff]/10"
+            }`}
+          >
+            <span
+              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border shrink-0 ${
+                p.isYou
+                  ? "bg-[#FFD700]/25 border-[#FFD700] text-[#FFD700]"
+                  : "bg-[#020617] border-[#00e5ff]/30 text-[#9dd8ff]"
+              }`}
+            >
+              {p.name?.charAt(0)?.toUpperCase() || "?"}
+            </span>
+            <span className={`truncate font-semibold flex-1 ${p.isYou ? "text-[#FFD700]" : "text-[#d8fbff]"}`}>
+              {p.name}
+              {p.isYou ? " (You)" : ""}
+            </span>
+            <span className={`font-bold tabular-nums shrink-0 ${s.cls}`}>
+              {s.icon} {s.label}
+            </span>
+          </div>
+        );
+      })}
+
+      {/* Wait list */}
+      {waitingPlayers.length > 0 && (
+        <>
+          <div className="mt-2 h-px bg-[#ff4fd8]/20" />
+          <h3 className="text-xs uppercase tracking-wider text-[#ff4fd8]/70 text-center">
+            ⏳ Wait List • {waitingPlayers.length}
+          </h3>
+          {waitingPlayers.map((p) => (
+            <div
+              key={p.userId ?? p.name}
+              className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs bg-yellow-500/5 border border-yellow-500/20"
+            >
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border shrink-0 bg-[#020617] border-yellow-500/30 text-yellow-400">
+                {p.name?.charAt(0)?.toUpperCase() || "?"}
+              </span>
+              <span className={`truncate font-semibold flex-1 ${p.isYou ? "text-[#FFD700]" : "text-[#d8fbff]"}`}>
+                {p.name}
+                {p.isYou ? " (You)" : ""}
+              </span>
+              <span className="text-yellow-400 font-bold shrink-0">⏳</span>
+            </div>
+          ))}
+          {waitingPlayers.some((p) => p.isYou) && (
+            <button
+              onClick={onExitToLobby}
+              className="mt-1 w-full px-3 py-1.5 rounded-lg text-xs font-bold border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
+            >
+              🏠 Back to Lobby
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
