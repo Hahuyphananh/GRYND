@@ -8,8 +8,9 @@ import React, { useEffect, useState } from "react";
  *   seconds    — seconds until next round
  *   isRunning  — whether the countdown is active
  *   onExpire   — called when timer reaches 0
+ *   label      — caption above the countdown (default "Next Round")
  */
-export default function RoundTimer({ seconds = 30, isRunning = false, onExpire }) {
+export default function RoundTimer({ seconds = 30, isRunning = false, onExpire, label = "Next Round" }) {
   const [remaining, setRemaining] = useState(seconds);
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export default function RoundTimer({ seconds = 30, isRunning = false, onExpire }
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="text-xs uppercase tracking-widest text-[#9dd8ff]/70">Next Round</span>
+      <span className="text-xs uppercase tracking-widest text-[#9dd8ff]/70">{label}</span>
       <div
         className={`text-4xl font-black tabular-nums transition-all duration-300
           ${isRunning && isUrgent

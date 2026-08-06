@@ -3,6 +3,7 @@ import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import TableList, { CRASH_WAGERS } from "./TableList";
 import BuyInModal from "./BuyInModal";
+import CrashArenaRulesModal from "./CrashArenaRulesModal";
 import { useSocket } from "../../context/SocketProvider";
 import {
   CRASH_ARENA_LOBBY_ROOM,
@@ -37,6 +38,7 @@ export default function ArenaLobby({
   const [joinTarget, setJoinTarget] = useState(null); // table awaiting buy-in
   const [busyTableId, setBusyTableId] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const [showRules, setShowRules] = useState(false);
 
   // Group lobby tables by wager, always keeping all 6 standard sections.
   const grouped = useMemo(() => {
@@ -153,6 +155,13 @@ export default function ArenaLobby({
         <p className="mt-2 text-sm text-[#9dd8ff] opacity-80">
           Create a table or join an open one — survive the crash, claim the pot.
         </p>
+        {/* Rules popup button */}
+        <button
+          onClick={() => setShowRules(true)}
+          className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold border border-[#FFD700]/40 bg-[#FFD700]/10 text-[#FFD700] hover:bg-[#FFD700]/20 hover:scale-105 transition-all duration-300 shadow-[0_0_14px_rgba(255,215,0,0.15)]"
+        >
+          📜 How to Play
+        </button>
       </div>
 
       {/* Balance bar */}
@@ -197,6 +206,9 @@ export default function ArenaLobby({
           onClose={() => setJoinTarget(null)}
         />
       )}
+
+      {/* Rules popup */}
+      {showRules && <CrashArenaRulesModal onClose={() => setShowRules(false)} />}
     </div>
   );
 }

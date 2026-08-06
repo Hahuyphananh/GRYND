@@ -1,7 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useParams } from "next/navigation";
-import { useUser } from "@clerk/nextjs";
+import { useParams, useRouter } from "next/navigation";
 import NavigationBar from "../../../../../components/navigation-bar";
 import ArenaTable from "../../../../../components/crash-arena/ArenaTable";
 import CrashEngine from "../../../../../components/games/crash-engine/CrashEngine";
@@ -17,9 +16,9 @@ import Link from "next/link";
  */
 export default function TableRoomPage() {
   const params = useParams();
+  const router = useRouter();
   const rawId = typeof params.tableId === "string" ? Number(params.tableId) : NaN;
   const tableId = Number.isFinite(rawId) ? rawId : null;
-  const { isSignedIn } = useUser();
   const playerName = "You";
 
   // ── Fetch table metadata from API ─────────────────────────────────────
@@ -51,13 +50,16 @@ export default function TableRoomPage() {
     roundState,
     crashEngineRef,
     crashEngineProps,
+    readyVotes,
+    markReady,
     startNewRound,
     goToNextRound,
-    togglePlayerSitOut,
     syncPlayers,
+    syncWaitingPlayers,
     syncRoundFromServer,
     joinTable,
     leaveTable,
+    exitTable,
     buyChips,
     busy,
     error: roundError,
@@ -85,8 +87,21 @@ export default function TableRoomPage() {
     [playerName],
   );
 
-  // Single source of truth for refreshing table state: roster + the
-  // latest round (so a round started by another player syncs here).
+  // Wait-listed players (joined mid-round or stepped off via Leave).
+  const mapWaitingPlayers = useCallback(
+    (tbl) =>
+      (tbl?.waitingPlayers || []).map((p) => ({
+        userId: p.userId,
+        name: p.isYou ? playerName : p.name,
+        balance: p.balance,
+        isYou: p.isYou,
+      })),
+    [playerName],
+  );
+
+  // Single source of truth for refreshing table state: roster (seated +
+  // waiting) + the latest round (so a round started by another player
+  // syncs here).
   const refetchTables = useCallback(async () => {
     if (!tableId || busy) return;
     try {
@@ -96,25 +111,27 @@ export default function TableRoomPage() {
       const found = data.data.find((t) => t.id === tableId);
       if (found) {
         syncPlayers(mapServerPlayers(found));
+        syncWaitingPlayers(mapWaitingPlayers(found));
         if (found.latestRound) syncRoundFromServer(found.latestRound);
       }
     } catch {
       // silent — keep the current state
     }
-  }, [tableId, busy, mapServerPlayers, syncPlayers, syncRoundFromServer]);
+  }, [tableId, busy, mapServerPlayers, mapWaitingPlayers, syncPlayers, syncWaitingPlayers, syncRoundFromServer]);
 
   // Expose the latest refetchTables to the hook's socket callback.
   refetchTablesRef.current = refetchTables;
 
-  // Show every seated player from the server — covers lobby joins, reloads,
-  // and any players who were already at the table.
+  // Show every seated + waiting player from the server — covers lobby
+  // joins, reloads, and any players who were already at the table.
   useEffect(() => {
     if (!table) return;
     syncPlayers(mapServerPlayers(table));
+    syncWaitingPlayers(mapWaitingPlayers(table));
     if (table.latestRound) syncRoundFromServer(table.latestRound);
-  }, [table, mapServerPlayers, syncPlayers, syncRoundFromServer]);
+  }, [table, mapServerPlayers, mapWaitingPlayers, syncPlayers, syncWaitingPlayers, syncRoundFromServer]);
 
-  // Keep the seated roster fresh so players who join/leave show up.
+  // Keep the roster fresh so players who join/leave/wait show up.
   // Skips syncing while a join/leave API call is in flight to avoid a
   // flicker from mid-transaction server state.
   useEffect(() => {
@@ -133,9 +150,14 @@ export default function TableRoomPage() {
     buyChips(playerName, amount);
   }, [buyChips, playerName]);
 
-  const handleToggleSitOut = useCallback(() => {
-    togglePlayerSitOut(playerName);
-  }, [togglePlayerSitOut, playerName]);
+  const handleLeave = useCallback(() => {
+    leaveTable();
+  }, [leaveTable]);
+
+  const handleExitToLobby = useCallback(async () => {
+    await exitTable();
+    router.push("/casino/crash-arena");
+  }, [exitTable, router]);
 
   // ── Render ───────────────────────────────────────────────────────────
 
@@ -179,12 +201,14 @@ export default function TableRoomPage() {
           table={table}
           roundState={roundState}
           crashEngineRef={crashEngineRef}
+          readyVotes={readyVotes}
+          markReady={markReady}
           playerName={playerName}
           onStartRound={startNewRound}
           onNextRound={goToNextRound}
-          onToggleSitOut={handleToggleSitOut}
           onJoin={handleJoin}
-          onLeave={leaveTable}
+          onLeave={handleLeave}
+          onExitToLobby={handleExitToLobby}
           onBuyChips={handleBuyChips}
           busy={busy}
         >

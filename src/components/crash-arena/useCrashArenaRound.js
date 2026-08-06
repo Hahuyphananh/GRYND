@@ -1,5 +1,5 @@
 "use client";
-import { useReducer, useCallback, useRef, useMemo, useEffect } from "react";
+import { useReducer, useCallback, useRef, useMemo, useEffect, useState } from "react";
 import {
   createRoundState,
   startRound,
@@ -7,7 +7,6 @@ import {
   crashRound,
   settleRound,
   nextRound,
-  toggleSitOut,
 } from "../../lib/crash-arena/roundSystem";
 import { useSocket } from "../../context/SocketProvider";
 import {
@@ -65,8 +64,15 @@ function applyServerEntries(state, entries = []) {
  *   • After successful API mutations it emits `crashArena:updated` so
  *     the other players at the table reconcile instantly.
  *   • On incoming `lobby:updated` events it reconciles round state
- *     (round start, remote cashouts) and calls `onRoomUpdate` so the
- *     page re-fetches the table roster.
+ *     (round start, remote cashouts, ready votes) and calls
+ *     `onRoomUpdate` so the page re-fetches the table roster.
+ *
+ * Round-start model (all players synced):
+ *   • First round: seated players press "Start Round" (a ready vote).
+ *     When 2+ distinct players are ready the countdown begins, and on
+ *     expiry `startNewRound()` fires — the button itself never triggers
+ *     the rocket directly.
+ *   • Later rounds: no button — the auto-start countdown just runs.
  *
  * Params:
  *   tableId     — database ID of the crash_arena_table
@@ -77,9 +83,10 @@ function applyServerEntries(state, entries = []) {
  *
  * Returns:
  *   roundState, crashEngineRef, crashEngineProps
- *   startNewRound(), goToNextRound(), togglePlayerSitOut(name)
- *   joinTable(amount), leaveTable(), buyChips(name, amount)
- *   syncRoundFromServer(roundInfo) — reconcile server round state
+ *   readyVotes, markReady()
+ *   startNewRound(), goToNextRound()
+ *   joinTable(amount), leaveTable(), exitTable(), buyChips(name, amount)
+ *   syncPlayers(), syncWaitingPlayers(), syncRoundFromServer(roundInfo)
  *   applyRemoteCashout(userId, multiplier)
  *   busy, error
  */
@@ -105,6 +112,9 @@ export default function useCrashArenaRound({
 
   const [busy, setBusy] = useReducer((_, v) => v, false);
   const [error, setError] = useReducer((_, v) => v, null);
+  // User ids of seated players who pressed "Start Round" for the first
+  // round. Shared across clients via socket broadcasts.
+  const [readyVotes, setReadyVotes] = useState([]);
 
   // ── Reducer ──────────────────────────────────────────────────────────
 
@@ -176,8 +186,6 @@ export default function useCrashArenaRound({
       }
       case "NEXT_ROUND":
         return nextRound(state);
-      case "TOGGLE_SIT_OUT":
-        return toggleSitOut(state, action.playerName);
       case "SET_PLAYERS":
         return { ...state, players: action.players };
       case "SYNC_PLAYERS": {
@@ -234,6 +242,8 @@ export default function useCrashArenaRound({
 
         return { ...state, players: [...mergedByName.values()] };
       }
+      case "SYNC_WAITING_PLAYERS":
+        return { ...state, waitingPlayers: action.waitingPlayers || [] };
       case "BUY_CHIPS":
         return {
           ...state,
@@ -246,12 +256,43 @@ export default function useCrashArenaRound({
       default:
         return state;
     }
-  }, { players: [], wager, roundNumber }, () =>
-    createRoundState([], roundNumber),
-  );
+  }, null, () => ({
+    ...createRoundState([], roundNumber),
+    waitingPlayers: [],
+  }));
 
   // Keep a live mirror of roundState for stable callbacks.
   roundStateRef.current = roundState;
+
+  // Prune ready votes that belong to players who are no longer seated.
+  useEffect(() => {
+    const seatedIds = new Set(
+      (roundState.players || [])
+        .map((p) => p.userId)
+        .filter((id) => id != null),
+    );
+    setReadyVotes((prev) => {
+      const kept = prev.filter((id) => seatedIds.has(id));
+      return kept.length === prev.length ? prev : kept;
+    });
+  }, [roundState.players]);
+
+  // ── First-round ready votes ──────────────────────────────────────────
+
+  const markReady = useCallback(() => {
+    const me = (roundStateRef.current?.players || []).find((p) => p.isYou);
+    if (!me?.userId) return;
+    setReadyVotes((prev) =>
+      prev.includes(me.userId) ? prev : [...prev, me.userId],
+    );
+    if (socket) {
+      socket.emit(CRASH_ARENA_READY, {
+        tableId,
+        ready: true,
+        readyUserId: me.userId,
+      });
+    }
+  }, [tableId, socket]);
 
   // ── Crash callbacks ──────────────────────────────────────────────────
 
@@ -306,6 +347,9 @@ export default function useCrashArenaRound({
 
   const startNewRound = useCallback(async () => {
     if (!tableId) return;
+    // Only the first client whose countdown expires should create the
+    // round — once anyone starts it, everyone else syncs via broadcast.
+    if (roundStateRef.current?.phase !== "waiting") return;
     setBusy(true);
     setError(null);
     try {
@@ -317,12 +361,16 @@ export default function useCrashArenaRound({
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        setError(data?.error || "Failed to start round");
+        // A concurrent start (another player's timer) is expected — ignore.
+        if (!/already in progress/i.test(data?.error || "")) {
+          setError(data?.error || "Failed to start round");
+        }
         return;
       }
       const { roundId, crashPoint, seedHash } = data.data;
       currentRoundIdRef.current = roundId;
       lastSyncedRef.current = { id: String(roundId), status: "running" };
+      setReadyVotes([]);
       dispatch({ type: "START_ROUND", crashPoint, seedHash });
       // Broadcast so the other players' CrashEngines start in sync.
       if (socket) {
@@ -344,10 +392,7 @@ export default function useCrashArenaRound({
   const goToNextRound = useCallback(() => {
     dispatch({ type: "NEXT_ROUND" });
     currentRoundIdRef.current = null;
-  }, []);
-
-  const togglePlayerSitOut = useCallback((playerName) => {
-    dispatch({ type: "TOGGLE_SIT_OUT", playerName });
+    setReadyVotes([]);
   }, []);
 
   // ── Round reconciliation (from poll or socket) ──────────────────────
@@ -417,6 +462,14 @@ export default function useCrashArenaRound({
       if (payload?.cashout?.userId) {
         applyRemoteCashout(payload.cashout.userId, payload.cashout.multiplier);
       }
+      // A seated player pressed "Start Round" (first-round ready vote).
+      if (payload?.ready && payload?.readyUserId) {
+        setReadyVotes((prev) =>
+          prev.includes(payload.readyUserId)
+            ? prev
+            : [...prev, payload.readyUserId],
+        );
+      }
       // Anything else (joined/left/crashed/settled) → let the page
       // re-fetch the roster + latest round.
       onRoomUpdateRef.current?.();
@@ -448,45 +501,73 @@ export default function useCrashArenaRound({
         setError(data?.error || "Failed to join table");
         return;
       }
-      // Add/replace "You" in the local player list (roster may already
-      // contain a synced copy of the seat).
-      dispatch({
-        type: "SET_PLAYERS",
-        players: [
-          ...roundState.players.filter((p) => p.name !== "You"),
-          {
-            name: "You",
-            balance: buyIn,
-            isYou: true,
-            isSittingOut: false,
-            isPlaying: true,
-            cashoutMultiplier: null,
-            busted: false,
-          },
-        ],
-      });
+      const me = {
+        name: "You",
+        balance: buyIn,
+        isYou: true,
+        isSittingOut: false,
+        isPlaying: true,
+        cashoutMultiplier: null,
+        busted: false,
+      };
+      if (data.data?.status === "waiting") {
+        // Joined mid-round — land on the wait list until this round ends.
+        dispatch({
+          type: "SYNC_WAITING_PLAYERS",
+          waitingPlayers: [
+            ...(roundState.waitingPlayers || []).filter((p) => !p.isYou),
+            me,
+          ],
+        });
+      } else {
+        // Add/replace "You" in the local player list (roster may already
+        // contain a synced copy of the seat).
+        dispatch({
+          type: "SET_PLAYERS",
+          players: [
+            ...roundState.players.filter((p) => p.name !== "You"),
+            me,
+          ],
+        });
+      }
       if (socket) socket.emit(CRASH_ARENA_READY, { tableId, joined: true });
     } catch (err) {
       setError("Network error joining table");
     } finally {
       setBusy(false);
     }
-  }, [tableId, roundState.players, socket]);
+  }, [tableId, roundState.players, roundState.waitingPlayers, socket]);
 
+  /**
+   * "Leave" — step off the table onto the wait list (balance stays at the
+   * table so the player can come back next round or cash out later).
+   */
   const leaveTable = useCallback(async () => {
     if (!tableId) return;
     setBusy(true);
     setError(null);
     try {
-      await fetch("/api/crash-arena/leave", {
+      const res = await fetch("/api/crash-arena/leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ tableId }),
       });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data?.error || "Failed to leave table");
+        return;
+      }
+      const me = (roundStateRef.current?.players || []).find((p) => p.isYou);
       dispatch({
         type: "SET_PLAYERS",
         players: roundState.players.filter((p) => !p.isYou),
+      });
+      dispatch({
+        type: "SYNC_WAITING_PLAYERS",
+        waitingPlayers: me
+          ? [...(roundState.waitingPlayers || []), { ...me, isSittingOut: false, cashoutMultiplier: null, busted: false }]
+          : roundState.waitingPlayers || [],
       });
       if (socket) socket.emit(CRASH_ARENA_READY, { tableId, left: true });
     } catch (err) {
@@ -494,7 +575,43 @@ export default function useCrashArenaRound({
     } finally {
       setBusy(false);
     }
-  }, [tableId, roundState.players, socket]);
+  }, [tableId, roundState.players, roundState.waitingPlayers, socket]);
+
+  /**
+   * "Back to Lobby" — permanently leave: refund remaining balance to the
+   * wallet and mark the player as left.
+   */
+  const exitTable = useCallback(async () => {
+    if (!tableId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/crash-arena/leave", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tableId, permanent: true }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data?.error || "Failed to leave table");
+        return;
+      }
+      dispatch({
+        type: "SET_PLAYERS",
+        players: roundState.players.filter((p) => !p.isYou),
+      });
+      dispatch({
+        type: "SYNC_WAITING_PLAYERS",
+        waitingPlayers: (roundState.waitingPlayers || []).filter((p) => !p.isYou),
+      });
+      if (socket) socket.emit(CRASH_ARENA_READY, { tableId, left: true });
+    } catch (err) {
+      setError("Network error leaving table");
+    } finally {
+      setBusy(false);
+    }
+  }, [tableId, roundState.players, roundState.waitingPlayers, socket]);
 
   const buyChips = useCallback((playerName, amount) => {
     // TODO: Add API endpoint for buying more chips at table
@@ -508,6 +625,13 @@ export default function useCrashArenaRound({
    */
   const syncPlayers = useCallback((serverPlayers) => {
     dispatch({ type: "SYNC_PLAYERS", serverPlayers });
+  }, []);
+
+  /**
+   * Sync the server's wait-list roster into local state.
+   */
+  const syncWaitingPlayers = useCallback((serverWaiting) => {
+    dispatch({ type: "SYNC_WAITING_PLAYERS", waitingPlayers: serverWaiting });
   }, []);
 
   // ── CrashEngine props ────────────────────────────────────────────────
@@ -524,15 +648,18 @@ export default function useCrashArenaRound({
     roundState,
     crashEngineRef,
     crashEngineProps,
+    readyVotes,
+    markReady,
     startNewRound,
     goToNextRound,
-    togglePlayerSitOut,
     playerCashout: handleCashout,
     syncPlayers,
+    syncWaitingPlayers,
     syncRoundFromServer,
     applyRemoteCashout,
     joinTable,
     leaveTable,
+    exitTable,
     buyChips,
     busy,
     error,
