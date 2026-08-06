@@ -445,7 +445,14 @@ export default function useCrashArenaRound({
     if (!tableId || !socket) return;
     const roomId = crashArenaMatchRoom(tableId);
 
-    socket.emit("join_room", { roomId });
+    // (Re)join the per-table room. The server arms a disconnect grace
+    // timer whenever our socket drops, and only re-joining cancels it —
+    // so we must re-emit join_room on EVERY socket (re)connection,
+    // including Socket.IO auto-reconnects after a network blip.
+    // Otherwise a page refresh / reconnect would quietly release the
+    // seat (and refund the balance) once the grace window expires.
+    const joinRoom = () => socket.emit("join_room", { roomId });
+    joinRoom();
 
     const onUpdate = (payload = {}) => {
       // Another player started a round — start ours with the same
@@ -476,9 +483,11 @@ export default function useCrashArenaRound({
     };
 
     socket.on(CRASH_ARENA_TABLE_UPDATED, onUpdate);
+    socket.on("connect", joinRoom);
 
     return () => {
       socket.off(CRASH_ARENA_TABLE_UPDATED, onUpdate);
+      socket.off("connect", joinRoom);
       socket.emit("leave_room", { roomId });
     };
   }, [tableId, socket, syncRoundFromServer, applyRemoteCashout]);

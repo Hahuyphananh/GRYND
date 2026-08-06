@@ -5,6 +5,7 @@ import NavigationBar from "../../../../../components/navigation-bar";
 import ArenaTable from "../../../../../components/crash-arena/ArenaTable";
 import CrashEngine from "../../../../../components/games/crash-engine/CrashEngine";
 import useCrashArenaRound from "../../../../../components/crash-arena/useCrashArenaRound";
+import { useSocket } from "../../../../../context/SocketProvider";
 import Link from "next/link";
 
 /**
@@ -20,6 +21,32 @@ export default function TableRoomPage() {
   const rawId = typeof params.tableId === "string" ? Number(params.tableId) : NaN;
   const tableId = Number.isFinite(rawId) ? rawId : null;
   const playerName = "You";
+  const { socket } = useSocket();
+
+  // ── Socket connection state (drives the "Reconnecting…" banner) ───
+  // The realtime server holds the player's seat during its disconnect
+  // grace window, so a dropped socket is worth surfacing — especially
+  // to a seated player who could otherwise think they lost their seat.
+  // Lazy-initialize from socket.connected so client-side navigation
+  // (socket already live) doesn't flash the banner for one frame.
+  const [socketConnected, setSocketConnected] = useState(
+    () => Boolean(socket?.connected),
+  );
+  useEffect(() => {
+    if (!socket) {
+      setSocketConnected(false);
+      return;
+    }
+    const onConnect = () => setSocketConnected(true);
+    const onDisconnect = () => setSocketConnected(false);
+    setSocketConnected(socket.connected);
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+    };
+  }, [socket]);
 
   // ── Fetch table metadata from API ─────────────────────────────────────
   const [table, setTable] = useState(null);
@@ -190,6 +217,24 @@ export default function TableRoomPage() {
       <NavigationBar currentPath="/casino" />
 
       <div className="mt-4 w-full max-w-7xl lg:mt-8">
+        {/* Socket reconnecting banner — the realtime server holds the
+            seat during its disconnect grace window, so reassure the
+            player rather than leaving them guessing. */}
+        {socket && !socketConnected && (
+          <div className="mb-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-300">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400" />
+            </span>
+            <span>🔌 Reconnecting…</span>
+            {table?.amISeated && (
+              <span className="font-normal text-amber-200/80">
+                Your seat may be held for a short time — don't close the tab.
+              </span>
+            )}
+          </div>
+        )}
+
         {/* API error banner */}
         {roundError && (
           <div className="mb-3 px-4 py-2 rounded-lg bg-red-900/30 border border-red-400/40 text-red-300 text-sm text-center">

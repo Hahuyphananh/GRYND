@@ -730,20 +730,31 @@ function PlayerCard({
 //  Connection Banner — pulsing red indicator for disconnect/connection loss
 // ══════════════════════════════════════════════════════════════════════════
 
-type ConnectionStatus = "connected" | "opponent_disconnected" | "connection_lost";
+type ConnectionStatus =
+  | "connected"
+  | "opponent_disconnected"
+  | "opponent_reconnecting"
+  | "connection_lost";
 
 function ConnectionBanner({ status, onReconnect }: { status: ConnectionStatus; onReconnect?: () => void }) {
   if (status === "connected") return null;
 
   const isOpponent = status === "opponent_disconnected";
   const isConnectionLost = status === "connection_lost";
+  const isOpponentReconnecting = status === "opponent_reconnecting";
+
+  const bannerStyle = isOpponent
+    ? "bg-red-600/90 text-white shadow-[0_4px_30px_rgba(239,68,68,0.5)]"
+    : isOpponentReconnecting
+      ? "bg-amber-500/95 text-slate-950 shadow-[0_4px_30px_rgba(245,158,11,0.5)]"
+      : "bg-orange-600/90 text-white shadow-[0_4px_30px_rgba(239,68,68,0.5)]";
 
   return (
     <div
       className={`
         fixed top-0 left-0 right-0 z-50 flex items-center justify-center gap-3 px-4 py-3
-        text-sm font-bold uppercase tracking-[0.12em] shadow-[0_4px_30px_rgba(239,68,68,0.5)]
-        ${isOpponent ? "bg-red-600/90 text-white" : "bg-orange-600/90 text-white"}
+        text-sm font-bold uppercase tracking-[0.12em]
+        ${bannerStyle}
       `}
       style={{
         animation: "connectionPulse 1.5s ease-in-out infinite",
@@ -752,6 +763,8 @@ function ConnectionBanner({ status, onReconnect }: { status: ConnectionStatus; o
       <span className="inline-block w-2.5 h-2.5 rounded-full bg-white animate-ping" />
       {isOpponent ? (
         <>⚠️ Opponent disconnected — you win!</>
+      ) : isOpponentReconnecting ? (
+        <>⏳ Opponent disconnected — holding the match, waiting to reconnect…</>
       ) : (
         <>
           ⚠️ Connection lost
@@ -1359,7 +1372,23 @@ export default function HexDuelPage() {
       }
     };
 
-    // Listen for opponent disconnect → show red banner + auto-win
+    // Listen for opponent disconnect grace-window start → amber banner.
+    // The server only auto-wins AFTER the grace timer expires (and emits
+    // hexDuel:opponent:disconnected below); while waiting we show a
+    // non-terminal "reconnecting" banner instead of declaring a win.
+    const handleOpponentReconnecting = () => {
+      if (!isGameOverRef.current) {
+        setConnectionStatus("opponent_reconnecting");
+      }
+    };
+
+    // Listen for opponent rejoin (server cancelled its grace timer) →
+    // dismiss the reconnecting banner and resume the match.
+    const handleOpponentReconnected = () => {
+      setConnectionStatus("connected");
+    };
+
+    // Listen for opponent disconnect (grace window EXPIRED) → show red banner + auto-win
     const handleOpponentDisconnected = () => {
       if (!isGameOverRef.current) {
         setConnectionStatus("opponent_disconnected");
@@ -1427,6 +1456,8 @@ export default function HexDuelPage() {
     socket.on("hexDuel:action", handleOpponentAction);
     socket.on("hexDuel:opponent:ready", handleOpponentReady);
     socket.on("hexDuel:opponent:resigned", handleOpponentResigned);
+    socket.on("hexDuel:opponent:reconnecting", handleOpponentReconnecting);
+    socket.on("hexDuel:opponent:reconnected", handleOpponentReconnected);
     socket.on("hexDuel:opponent:disconnected", handleOpponentDisconnected);
     socket.on("hexDuel:opponent:timeout", handleOpponentTimeout);
     socket.on("hexDuel:requestSync", handleRequestSync);
@@ -1438,6 +1469,8 @@ export default function HexDuelPage() {
       socket.off("hexDuel:action", handleOpponentAction);
       socket.off("hexDuel:opponent:ready", handleOpponentReady);
       socket.off("hexDuel:opponent:resigned", handleOpponentResigned);
+      socket.off("hexDuel:opponent:reconnecting", handleOpponentReconnecting);
+      socket.off("hexDuel:opponent:reconnected", handleOpponentReconnected);
       socket.off("hexDuel:opponent:disconnected", handleOpponentDisconnected);
       socket.off("hexDuel:opponent:timeout", handleOpponentTimeout);
       socket.off("hexDuel:requestSync", handleRequestSync);

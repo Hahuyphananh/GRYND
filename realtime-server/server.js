@@ -95,11 +95,182 @@ io.use(async (socket, next) => {
     });
 
     socket.data.userId = verified.sub;
+    // Keep the raw session token so background jobs (e.g. the Crash
+    // Arena disconnect cleanup) can re-verify the user server-side
+    // without trusting any client-supplied identity.
+    socket.data.clerkToken = token;
     return next();
   } catch (error) {
     return next(new Error("Invalid authentication token"));
   }
 });
+
+// ── Crash Arena disconnect grace timer ────────────────────────────────
+// When a socket belonging to a crash-arena participant drops (tab
+// closed, network blip, page refresh) the player's seat is kept for a
+// short grace window so a quick refresh / socket reconnect does NOT
+// kick them out of the table. If they don't come back within the
+// window, the seat + table balance are released via the Next.js
+// `/api/crash-arena/disconnect-cleanup` route (same net effect as
+// "Back to Lobby"). Re-joining the room (join_room) cancels the timer.
+// Anchored on globalThis so every socket/connection shares one map.
+//
+// The SAME grace-window idea is generalized below for the 1v1 games
+// (hex duel / precision / plinko): a confirmed disconnect resolves the
+// match in the opponent's favor, but only after the grace window, so a
+// quick refresh / reconnect is never a loss. Re-joining cancels the
+// timer; on expiry each game either emits its disconnect event or
+// calls an internal forfeit route.
+const CRASH_ARENA_MATCH_ROOM_PREFIX = "crash-arena:match:";
+if (!global.__crashArenaDisconnectTimers) {
+  global.__crashArenaDisconnectTimers = new Map();
+}
+const crashArenaDisconnectTimers = global.__crashArenaDisconnectTimers;
+
+// Grace period before an absent player's seat is released. Covers a
+// page refresh (a few seconds) AND Socket.IO's auto-reconnect backoff
+// (up to ~40s with the client's 10 attempts / exponential delay).
+const CRASH_ARENA_DISCONNECT_GRACE_MS = 45_000;
+// Deferred cleanups (player cashed out mid-round and could still win
+// the pot) are re-checked on this cadence until the round settles.
+const CRASH_ARENA_DISCONNECT_RETRY_MS = 15_000;
+const CRASH_ARENA_DISCONNECT_MAX_ATTEMPTS = 12; // ~3 min of retries
+
+function crashArenaDisconnectKey(userId, tableId) {
+  return `${userId}:${tableId}`;
+}
+
+function cancelCrashArenaDisconnectTimer(userId, tableId) {
+  const key = crashArenaDisconnectKey(userId, tableId);
+  const handle = crashArenaDisconnectTimers.get(key);
+  if (handle) {
+    clearTimeout(handle.timer);
+    crashArenaDisconnectTimers.delete(key);
+  }
+}
+
+/**
+ * True when another live socket belonging to the same user is still
+ * connected to the given room — i.e. the user has a second tab open.
+ */
+function hasLiveSocketForUser(userId, roomId) {
+  const roomSockets = io.sockets.adapter.rooms.get(roomId);
+  if (!roomSockets || roomSockets.size === 0) return false;
+  for (const sid of roomSockets) {
+    const s = io.sockets.sockets.get(sid);
+    if (s && s.data && s.data.userId === userId) return true;
+  }
+  return false;
+}
+
+function scheduleCrashArenaDisconnectCleanup(userId, clerkToken, tableId, attempt = 0) {
+  const key = crashArenaDisconnectKey(userId, tableId);
+  cancelCrashArenaDisconnectTimer(userId, tableId); // replace any existing timer
+  const delay = attempt === 0 ? CRASH_ARENA_DISCONNECT_GRACE_MS : CRASH_ARENA_DISCONNECT_RETRY_MS;
+  const timer = setTimeout(async () => {
+    crashArenaDisconnectTimers.delete(key);
+
+    // Belt-and-suspenders: if the user's socket came back before this
+    // fired (and re-joining somehow missed the cancel), don't clean up.
+    const roomId = `${CRASH_ARENA_MATCH_ROOM_PREFIX}${tableId}`;
+    if (hasLiveSocketForUser(userId, roomId)) return;
+
+    // NOTE: only reached when the user is genuinely still away.
+
+
+    try {
+      const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+      const res = await fetch(`${baseUrl}/api/crash-arena/disconnect-cleanup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tableId, token: clerkToken }),
+      });
+      const payload = await res.json().catch(() => null);
+      const ok = payload && payload.success === true;
+      if (ok) {
+        // Push an instant refresh so the remaining players + lobby drop
+        // the released seat without waiting for the 5s poll.
+        io.to(roomId).emit("lobby:updated", {
+          tableId,
+          left: true,
+          userId,
+          disconnected: true,
+        });
+        io.to("lobby:crash-arena").emit("lobby:updated", {
+          tableId,
+          left: true,
+          userId,
+          disconnected: true,
+        });
+      }
+      // Re-check when the cleanup was deferred (player has an unresolved
+      // win in a running round — it will settle and pay them first) or
+      // failed transiently (Next.js briefly unreachable / rate limit).
+      // Bounded so a genuinely failing cleanup can't spin forever.
+      const shouldRetry = !ok || (payload && payload.deferred === true);
+      if (shouldRetry && attempt + 1 < CRASH_ARENA_DISCONNECT_MAX_ATTEMPTS) {
+        scheduleCrashArenaDisconnectCleanup(userId, clerkToken, tableId, attempt + 1);
+      }
+    } catch (err) {
+      console.warn(
+        "[crash-arena] disconnect cleanup failed:",
+        err && err.message ? err.message : err,
+      );
+    }
+  }, delay);
+  crashArenaDisconnectTimers.set(key, { timer });
+}
+
+// ── Generic disconnect grace timer (hex duel / precision / plinko) ────
+// Same model as the crash arena timer above, shared by the 1v1 games.
+// `onFire` runs when the grace window elapses without a re-join; if it
+// returns true the timer is re-armed (bounded) — used to retry
+// transiently-failed forfeit API calls.
+if (!global.__disconnectGraceTimers) {
+  global.__disconnectGraceTimers = new Map();
+}
+const disconnectGraceTimers = global.__disconnectGraceTimers;
+
+function cancelDisconnectGraceTimer(key) {
+  const handle = disconnectGraceTimers.get(key);
+  if (handle) {
+    clearTimeout(handle.timer);
+    disconnectGraceTimers.delete(key);
+  }
+}
+
+function scheduleDisconnectGraceTimer(
+  key,
+  onFire,
+  {
+    delay = CRASH_ARENA_DISCONNECT_GRACE_MS,
+    retryDelay = CRASH_ARENA_DISCONNECT_RETRY_MS,
+    maxAttempts = CRASH_ARENA_DISCONNECT_MAX_ATTEMPTS,
+    attempt = 0,
+  } = {},
+) {
+  cancelDisconnectGraceTimer(key); // replace any existing timer
+  const timer = setTimeout(async () => {
+    disconnectGraceTimers.delete(key);
+    try {
+      const wantsRetry = await onFire(attempt);
+      if (wantsRetry && attempt + 1 < maxAttempts) {
+        scheduleDisconnectGraceTimer(key, onFire, {
+          delay: retryDelay,
+          retryDelay,
+          maxAttempts,
+          attempt: attempt + 1,
+        });
+      }
+    } catch (err) {
+      console.warn(
+        "[disconnect-grace] fire failed:",
+        err && err.message ? err.message : err,
+      );
+    }
+  }, delay);
+  disconnectGraceTimers.set(key, { timer });
+}
 
 io.on("connection", (socket) => {
   socket.emit("server:hello", {
@@ -130,6 +301,9 @@ io.on("connection", (socket) => {
       precisionRoomParticipants.set(matchId, new Set());
     }
     precisionRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again — cancel
+    // any pending disconnect forfeit timer for this match.
+    cancelDisconnectGraceTimer(`precision:${matchId}:${userId}`);
   }
   function trackPrecisionLeave(roomId, userId) {
     if (typeof roomId !== "string" || !roomId.startsWith(PRECISION_MATCH_ROOM_PREFIX)) {
@@ -141,12 +315,6 @@ io.on("connection", (socket) => {
     if (!set) return;
     set.delete(userId);
     if (set.size === 0) precisionRoomParticipants.delete(matchId);
-  }
-  function forgetPrecisionUser(userId) {
-    for (const [mid, set] of precisionRoomParticipants.entries()) {
-      set.delete(userId);
-      if (set.size === 0) precisionRoomParticipants.delete(mid);
-    }
   }
 
   // ── Plinko PvP room-participant tracking ───────────────────────
@@ -169,6 +337,9 @@ io.on("connection", (socket) => {
       plinkoRoomParticipants.set(matchId, new Set());
     }
     plinkoRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again — cancel
+    // any pending disconnect forfeit timer for this match.
+    cancelDisconnectGraceTimer(`plinko:${matchId}:${userId}`);
     console.log("[plinko-pvp] participant joined: matchId=", matchId, "userId=", userId);
   }
   function trackPlinkoLeave(roomId, userId) {
@@ -183,18 +354,11 @@ io.on("connection", (socket) => {
     if (set.size === 0) plinkoRoomParticipants.delete(matchId);
     console.log("[plinko-pvp] participant left: matchId=", matchId, "userId=", userId);
   }
-  function forgetPlinkoUser(userId) {
-    for (const [mid, set] of plinkoRoomParticipants.entries()) {
-      set.delete(userId);
-      if (set.size === 0) plinkoRoomParticipants.delete(mid);
-    }
-  }
 
   // ── Crash Arena room-participant tracking ───────────────────────
   // Mirrors the plinko/precision tracking pattern so the
   // `crashArena:updated` handler below can reject events from
   // non-participant sockets. Keyed by tableId (numeric).
-  const CRASH_ARENA_MATCH_ROOM_PREFIX = "crash-arena:match:";
   if (!global.__crashArenaRoomParticipants) {
     global.__crashArenaRoomParticipants = new Map();
   }
@@ -210,6 +374,9 @@ io.on("connection", (socket) => {
       crashArenaRoomParticipants.set(tableId, new Set());
     }
     crashArenaRoomParticipants.get(tableId).add(userId);
+    // A (re)joining socket means the player is present again — cancel
+    // any pending disconnect cleanup so refreshes keep the seat.
+    cancelCrashArenaDisconnectTimer(userId, tableId);
     console.log("[crash-arena] participant joined: tableId=", tableId, "userId=", userId);
   }
   function trackCrashArenaLeave(roomId, userId) {
@@ -224,13 +391,6 @@ io.on("connection", (socket) => {
     if (set.size === 0) crashArenaRoomParticipants.delete(tableId);
     console.log("[crash-arena] participant left: tableId=", tableId, "userId=", userId);
   }
-  function forgetCrashArenaUser(userId) {
-    for (const [tid, set] of crashArenaRoomParticipants.entries()) {
-      set.delete(userId);
-      if (set.size === 0) crashArenaRoomParticipants.delete(tid);
-    }
-  }
-
   socket.on("join_room", ({ roomId }) => {
     if (!roomId) return;
     socket.join(String(roomId));
@@ -417,6 +577,15 @@ io.on("connection", (socket) => {
       hexDuelRoomPlayers.set(String(gameId), new Set());
     }
     hexDuelRoomPlayers.get(String(gameId)).add(socket.data.userId);
+
+    // Re-joining cancels the disconnect grace timer for this game and
+    // tells the opponent they're back (dismisses the "reconnecting"
+    // banner they've been seeing).
+    cancelDisconnectGraceTimer(`hexDuel:${String(gameId)}:${socket.data.userId}`);
+    socket.to(roomId).emit("hexDuel:opponent:reconnected", {
+      gameId: roomId,
+      userId: socket.data.userId,
+    });
 
     checkAndEmitHexDuelReady(gameId, roomId);
   });
@@ -712,32 +881,141 @@ io.on("connection", (socket) => {
 
   // ── Keep existing disconnect handler ──
   socket.on("disconnect", () => {
-    // For Precision: drop user from all precision match rooms they
-    // had joined so the next reconnect starts a clean participant set.
-    forgetPrecisionUser(socket.data.userId);
-
-    // For Plinko PvP: drop user from all plinko match rooms
-    forgetPlinkoUser(socket.data.userId);
-
-    // For Crash Arena: drop user from all crash arena match rooms
-    forgetCrashArenaUser(socket.data.userId);
-
-    // For hex duel: emit a dedicated disconnect event so the opponent gets a win
-    if (hexDuelGameIds.size > 0) {
-      for (const gid of hexDuelGameIds) {
-        const roomId = String(gid);
-        // Clean up module-level tracking
-        const players = hexDuelRoomPlayers.get(String(gid));
-        if (players) {
-          players.delete(socket.data.userId);
-          if (players.size === 0) hexDuelRoomPlayers.delete(String(gid));
+    // For Precision: for each match the user was a participant of, keep
+    // the participant entry when another tab is still connected, else
+    // drop it and arm a disconnect grace timer. When the timer expires
+    // without the user re-joining, the match is forfeited to the
+    // opponent via /api/precision/disconnect-forfeit.
+    const precisionMatchesForUser = [];
+    for (const [mid, set] of precisionRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) precisionMatchesForUser.push(mid);
+    }
+    for (const mid of precisionMatchesForUser) {
+      const roomId = `${PRECISION_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = precisionRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) precisionRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`precision:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/precision/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[precision] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
         }
-        // Check the room still has players
+      });
+    }
+
+    // For Plinko PvP: same pattern — forfeit to the opponent via
+    // /api/plinko-pvp/disconnect-forfeit once the grace timer expires.
+    const plinkoMatchesForUser = [];
+    for (const [mid, set] of plinkoRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) plinkoMatchesForUser.push(mid);
+    }
+    for (const mid of plinkoMatchesForUser) {
+      const roomId = `${PLINKO_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = plinkoRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) plinkoRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`plinko:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/plinko-pvp/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[plinko-pvp] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For Crash Arena: for each table the user was a participant of,
+    // check whether another tab/socket of the same user is still
+    // connected. If one is, keep the user in the participant set (so
+    // the remaining tab keeps broadcasting) and skip the timer. If not,
+    // drop the user from that table's participants and arm a grace
+    // timer — when it expires without the user re-joining (a refresh /
+    // reconnect cancels it), their seat + table balance are released.
+    const crashArenaTablesForUser = [];
+    for (const [tid, set] of crashArenaRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) crashArenaTablesForUser.push(tid);
+    }
+    for (const tid of crashArenaTablesForUser) {
+      const roomId = `${CRASH_ARENA_MATCH_ROOM_PREFIX}${tid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = crashArenaRoomParticipants.get(tid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) crashArenaRoomParticipants.delete(tid);
+      }
+      scheduleCrashArenaDisconnectCleanup(
+        socket.data.userId,
+        socket.data.clerkToken,
+        tid,
+      );
+    }
+
+    // For hex duel: arm a grace timer per game instead of instantly
+    // declaring the opponent win, so a quick refresh / reconnect isn't a
+    // loss. Only games this user actually joined are processed (mirrors
+    // the per-user enumeration used for precision / plinko / crash
+    // arena above — never iterate the global hexDuelGameIds set, which
+    // contains unrelated games and would arm spurious timers). The
+    // opponent is told they're waiting ("reconnecting" banner); if the
+    // player rejoins (hexDuel:join) the timer cancels and the opponent
+    // is told they're back. Only when the grace window expires is the
+    // disconnect event emitted (opponent auto-wins).
+    const hexDuelGamesForUser = [];
+    for (const [gid, set] of hexDuelRoomPlayers.entries()) {
+      if (set.has(socket.data.userId)) hexDuelGamesForUser.push(gid);
+    }
+    for (const gid of hexDuelGamesForUser) {
+      const roomId = String(gid);
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const players = hexDuelRoomPlayers.get(String(gid));
+      if (players) {
+        players.delete(socket.data.userId);
+        if (players.size === 0) hexDuelRoomPlayers.delete(String(gid));
+      }
+      socket.to(roomId).emit("hexDuel:opponent:reconnecting", {
+        gameId: roomId,
+        userId: socket.data.userId,
+      });
+      scheduleDisconnectGraceTimer(`hexDuel:${gid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        // Grace expired — the opponent now wins (client declares it
+        // via the existing end-game flow). Emission is terminal.
         io.to(roomId).emit("hexDuel:opponent:disconnected", {
           gameId: roomId,
           userId: socket.data.userId,
         });
-      }
+        return false;
+      });
     }
 
     for (const roomId of socket.rooms) {

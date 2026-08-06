@@ -256,8 +256,17 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   // ── Realtime rooms ───────────────────────────────────────────────────
   useEffect(() => {
     if (!socket || !matchId) return;
-    joinMatchRoom(socket, matchId);
-    return () => leaveMatchRoom(socket, matchId);
+    // Re-join on EVERY socket (re)connection — Socket.IO doesn't re-join
+    // rooms automatically, and the realtime server's disconnect grace
+    // timer is only cancelled by a re-join. Without this, a refresh or
+    // network blip would forfeit the match once the grace window expires.
+    const join = () => joinMatchRoom(socket, matchId);
+    join();
+    socket.on("connect", join);
+    return () => {
+      socket.off("connect", join);
+      leaveMatchRoom(socket, matchId);
+    };
   }, [socket, matchId]);
 
   // ── Ready-up socket events ─────────────────────────────────────────

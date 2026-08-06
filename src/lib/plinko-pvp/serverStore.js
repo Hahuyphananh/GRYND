@@ -685,6 +685,92 @@ export async function cancelMatch({ userId, matchId }) {
   });
 }
 
+// ── Forfeit on confirmed disconnect ────────────────────────────────────
+// Called by the internal /api/plinko-pvp/disconnect-forfeit route when
+// the realtime server confirms a player has been disconnected past the
+// grace window. An ACTIVE match is resolved as a win for the opponent
+// with the standard 1.9× payout (winner gets their stake back + 90% of
+// the forfeiter's stake, house keeps 10%) — the same money math as a
+// natural `resolveMatch`. A WAITING match (no opponent yet) is simply
+// cancelled and the creator's stake refunded. Idempotent: terminal
+// matches are left untouched (no double-payout).
+export async function forfeitMatch({ loserClerkId, matchId }) {
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+
+    // No opponent yet — cancel + refund the creator (the only
+    // participant in WAITING is player1, i.e. the disconnected player).
+    if (match.status === MATCH_STATUS.WAITING) {
+      if (match.player1Id !== loserClerkId) {
+        return { error: "Only the creator can cancel", status: 403 };
+      }
+      await tx
+        .update(users)
+        .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
+        .where(eq(users.clerkId, loserClerkId));
+      const [updated] = await tx
+        .update(plinkoPvpMatches)
+        .set({ status: MATCH_STATUS.CANCELLED, endedAt: new Date() })
+        .where(eq(plinkoPvpMatches.id, matchId))
+        .returning();
+      return { match: updated, cancelled: true };
+    }
+
+    if (!ACTIVE_STATES.has(match.status)) {
+      // Already finished / cancelled — nothing to do.
+      return { match, alreadyTerminal: true };
+    }
+    if (match.player1Id !== loserClerkId && match.player2Id !== loserClerkId) {
+      return { error: "Caller is not a participant", status: 403 };
+    }
+
+    const loserIsP1 = match.player1Id === loserClerkId;
+    const winnerUserId = loserIsP1 ? match.player2Id : match.player1Id;
+    const payout = computePayout({
+      stakeAmount: match.stakeAmount,
+      // Force a decisive result with the OPPONENT as the winner; the
+      // returned numbers are the standard 1.9× payout math.
+      p1Score: loserIsP1 ? 0 : 1,
+      p2Score: loserIsP1 ? 1 : 0,
+    });
+
+    // Credit the winner: their stake back + 90% of the forfeiter's.
+    await tx
+      .update(users)
+      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
+      .where(eq(users.clerkId, winnerUserId));
+
+    const setValues = {
+      status: MATCH_STATUS.FINISHED,
+      currentBall: Number(match.currentBall) || REQUIRED_BALLS,
+      p1CurrentInputs: null,
+      p2CurrentInputs: null,
+      p1Ready: false,
+      p2Ready: false,
+      roundDeadline: null,
+      result: payout.result,
+      houseFee: round2(payout.houseFee).toFixed(2),
+      prizePaid: round2(payout.prizePaid).toFixed(2),
+      winnerId: winnerUserId,
+      endedAt: new Date(),
+    };
+    const [updated] = await tx
+      .update(plinkoPvpMatches)
+      .set(setValues)
+      .where(eq(plinkoPvpMatches.id, match.id))
+      .returning();
+
+    const finalRow = updated || match;
+    if (payout.result === RESULT.PLAYER1 || payout.result === RESULT.PLAYER2) {
+      await recordPvPResult(tx, finalRow, winnerUserId, payout.result).catch(
+        () => {},
+      );
+    }
+    return { match: finalRow, forfeited: true };
+  });
+}
+
 // ── Match fetch with row lock (for atomic operations) ─────────────────
 
 async function fetchMatchForUpdate(tx, matchId) {
