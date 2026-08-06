@@ -1,5 +1,5 @@
 "use client";
-import { useReducer, useCallback, useRef, useMemo } from "react";
+import { useReducer, useCallback, useRef, useMemo, useEffect } from "react";
 import {
   createRoundState,
   startRound,
@@ -9,38 +9,100 @@ import {
   nextRound,
   toggleSitOut,
 } from "../../lib/crash-arena/roundSystem";
+import { useSocket } from "../../context/SocketProvider";
+import {
+  crashArenaMatchRoom,
+  CRASH_ARENA_TABLE_UPDATED,
+  CRASH_ARENA_READY,
+} from "../../lib/crash-arena/rooms";
+
+/**
+ * Apply server-side round entries onto the local roster. Used when
+ * reconciling a round that finished on the server (another player
+ * settled it) so remote cashouts / busts show up for everyone.
+ * Local state is preserved — a player who already cashed out locally
+ * is never overwritten.
+ */
+function applyServerEntries(state, entries = []) {
+  if (!Array.isArray(entries) || entries.length === 0) return state;
+  let changed = false;
+  const players = state.players.map((p) => {
+    if (p.userId == null) return p;
+    const entry = entries.find((e) => e.userId === p.userId);
+    if (!entry) return p;
+    if (
+      entry.result === "won" &&
+      entry.cashoutMultiplier != null &&
+      p.cashoutMultiplier === null &&
+      !p.busted
+    ) {
+      changed = true;
+      return { ...p, cashoutMultiplier: Number(entry.cashoutMultiplier) };
+    }
+    if (
+      (entry.result === "lost" || entry.result === "pending") &&
+      p.cashoutMultiplier === null &&
+      !p.busted &&
+      p.isPlaying &&
+      !p.isSittingOut
+    ) {
+      changed = true;
+      return { ...p, busted: true };
+    }
+    return p;
+  });
+  return changed ? { ...state, players } : state;
+}
 
 /**
  * useCrashArenaRound — hook managing the Crash Arena round lifecycle.
  *
  * Connects to CrashEngine by providing crashPoint/running and handling
- * cashout/crash callbacks. Calls real backend APIs for all operations.
+ * cashout/crash callbacks. Calls real backend APIs for all operations,
+ * and keeps the table in sync over the realtime socket:
+ *
+ *   • Joins the per-table socket room (`crash-arena:match:${tableId}`).
+ *   • After successful API mutations it emits `crashArena:updated` so
+ *     the other players at the table reconcile instantly.
+ *   • On incoming `lobby:updated` events it reconciles round state
+ *     (round start, remote cashouts) and calls `onRoomUpdate` so the
+ *     page re-fetches the table roster.
  *
  * Params:
- *   tableId    — database ID of the crash_arena_table
- *   wager      — round wager amount
+ *   tableId     — database ID of the crash_arena_table
+ *   wager       — round wager amount
  *   roundNumber — starting round number
+ *   onRoomUpdate — () => void — called when the socket signals a table
+ *                  change so the page can re-fetch the roster.
  *
  * Returns:
- *   roundState       — { phase, pot, crashPoint, players, results, seedHash }
- *   crashEngineRef   — ref to pass to CrashEngine
- *   crashEngineProps  — { crashPoint, running, onCashout, onCrash, onMultiplierUpdate }
- *   startNewRound()  — calls POST /api/crash-arena/start-round
- *   goToNextRound()  — proceed to next round after settling
- *   togglePlayerSitOut(name)
- *   joinTable(amount)  — calls POST /api/crash-arena/join
- *   leaveTable()       — calls POST /api/crash-arena/leave
- *   buyChips(amount)   — (future: add API)
- *   busy              — whether an API call is in flight
- *   error             — last error message
+ *   roundState, crashEngineRef, crashEngineProps
+ *   startNewRound(), goToNextRound(), togglePlayerSitOut(name)
+ *   joinTable(amount), leaveTable(), buyChips(name, amount)
+ *   syncRoundFromServer(roundInfo) — reconcile server round state
+ *   applyRemoteCashout(userId, multiplier)
+ *   busy, error
  */
 export default function useCrashArenaRound({
   tableId,
   wager = 10,
   roundNumber = 1,
+  onRoomUpdate,
 }) {
+  const { socket } = useSocket();
   const crashEngineRef = useRef(null);
   const currentRoundIdRef = useRef(null);
+  // Id + status of the most recent round reconciled from the server
+  // (poll or socket) — guards against re-applying the same round on
+  // every refetch while still allowing a status flip (running → settled)
+  // to re-reconcile.
+  const lastSyncedRef = useRef(null);
+  // Live mirror of roundState so stable callbacks (cashout/crash) can
+  // read the current roster without stale closures.
+  const roundStateRef = useRef(null);
+  const onRoomUpdateRef = useRef(onRoomUpdate);
+  onRoomUpdateRef.current = onRoomUpdate;
+
   const [busy, setBusy] = useReducer((_, v) => v, false);
   const [error, setError] = useReducer((_, v) => v, null);
 
@@ -58,8 +120,60 @@ export default function useCrashArenaRound({
       }
       case "CASHOUT":
         return playerCashout(state, action.playerName, action.multiplier);
+      case "REMOTE_CASHOUT": {
+        // Cashout broadcast from another player at the table.
+        if (state.phase !== "running") return state;
+        const { userId, multiplier } = action;
+        if (userId == null || !Number.isFinite(Number(multiplier))) return state;
+        return {
+          ...state,
+          players: state.players.map((p) =>
+            p.userId === userId && p.cashoutMultiplier === null && !p.busted
+              ? { ...p, cashoutMultiplier: Number(multiplier) }
+              : p,
+          ),
+        };
+      }
       case "CRASH":
         return settleRound(crashRound(state, action.multiplier));
+      case "SYNC_ROUND": {
+        // Reconcile the server's latest round into local state. Covers
+        // the cases where another player started / settled the round and
+        // this client missed the live event (late join, socket drop).
+        const sr = action.round;
+        if (!sr || !sr.id) return state;
+
+        let next = state;
+        const cp = Number(sr.crashPoint);
+        const hasValidCp = Number.isFinite(cp) && cp >= 1;
+        const fallbackCp = hasValidCp ? cp : 2.0;
+
+        if (sr.status === "running" && hasValidCp) {
+          if (next.phase === "waiting") {
+            next = startRound(next, action.wager, cp, sr.seedHash ?? null, null);
+          }
+        }
+
+        if (sr.status === "settled" || sr.status === "crashed") {
+          if (next.phase !== "settling") {
+            if (next.phase === "waiting") {
+              next = startRound(next, action.wager, fallbackCp, sr.seedHash ?? null, null);
+            }
+            if (next.phase === "running") {
+              // Apply server-side cashouts FIRST so players who cashed
+              // out (but whose broadcast this client missed) are not
+              // busted by the crash pass below.
+              next = applyServerEntries(next, sr.entries);
+              next = crashRound(next, fallbackCp);
+            }
+            if (next.phase === "crashed") {
+              next = settleRound(next);
+            }
+          }
+        }
+
+        return next;
+      }
       case "NEXT_ROUND":
         return nextRound(state);
       case "TOGGLE_SIT_OUT":
@@ -99,6 +213,7 @@ export default function useCrashArenaRound({
             mergedByName.set(sp.name, {
               ...lp,
               isYou: lp.isYou || Boolean(sp.isYou),
+              userId: lp.userId ?? sp.userId ?? null,
               balance: lp.isYou ? lp.balance : Number(sp.balance),
             });
           } else {
@@ -106,6 +221,7 @@ export default function useCrashArenaRound({
             // into the running round — keep them out until the next round.
             mergedByName.set(sp.name, {
               name: sp.name,
+              userId: sp.userId ?? null,
               balance: Number(sp.balance),
               isYou: Boolean(sp.isYou),
               isSittingOut: false,
@@ -134,6 +250,9 @@ export default function useCrashArenaRound({
     createRoundState([], roundNumber),
   );
 
+  // Keep a live mirror of roundState for stable callbacks.
+  roundStateRef.current = roundState;
+
   // ── Crash callbacks ──────────────────────────────────────────────────
 
   const handleCashout = useCallback((multiplier) => {
@@ -146,9 +265,19 @@ export default function useCrashArenaRound({
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ roundId, cashoutMultiplier: multiplier }),
-      }).catch((err) => console.warn("[crash-arena] cashout API failed:", err));
+      })
+        .catch((err) => console.warn("[crash-arena] cashout API failed:", err));
     }
-  }, []);
+    // Tell the rest of the table instantly (needs "You"'s internal id
+    // from the synced roster so remote players can match the seat).
+    const me = (roundStateRef.current?.players || []).find((p) => p.isYou);
+    if (me?.userId && socket) {
+      socket.emit(CRASH_ARENA_READY, {
+        tableId,
+        cashout: { userId: me.userId, multiplier },
+      });
+    }
+  }, [tableId, socket]);
 
   const handleCrash = useCallback((multiplier) => {
     dispatch({ type: "CRASH", multiplier });
@@ -160,9 +289,14 @@ export default function useCrashArenaRound({
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ roundId }),
-      }).catch((err) => console.warn("[crash-arena] settle API failed:", err));
+      })
+        .catch((err) => console.warn("[crash-arena] settle API failed:", err));
     }
-  }, []);
+    // Notify the room so everyone reconciles the crash instantly.
+    if (socket) {
+      socket.emit(CRASH_ARENA_READY, { tableId, crashed: true, multiplier });
+    }
+  }, [tableId, socket]);
 
   const handleMultiplierUpdate = useCallback(() => {
     // CrashEngine handles display internally
@@ -188,13 +322,24 @@ export default function useCrashArenaRound({
       }
       const { roundId, crashPoint, seedHash } = data.data;
       currentRoundIdRef.current = roundId;
+      lastSyncedRef.current = { id: String(roundId), status: "running" };
       dispatch({ type: "START_ROUND", crashPoint, seedHash });
+      // Broadcast so the other players' CrashEngines start in sync.
+      if (socket) {
+        socket.emit(CRASH_ARENA_READY, {
+          tableId,
+          roundStarted: true,
+          roundId,
+          crashPoint,
+          seedHash,
+        });
+      }
     } catch (err) {
       setError("Network error starting round");
     } finally {
       setBusy(false);
     }
-  }, [tableId]);
+  }, [tableId, socket]);
 
   const goToNextRound = useCallback(() => {
     dispatch({ type: "NEXT_ROUND" });
@@ -204,6 +349,86 @@ export default function useCrashArenaRound({
   const togglePlayerSitOut = useCallback((playerName) => {
     dispatch({ type: "TOGGLE_SIT_OUT", playerName });
   }, []);
+
+  // ── Round reconciliation (from poll or socket) ──────────────────────
+
+  /**
+   * Reconcile the server's latest round into local round state.
+   * Safe to call on every tables fetch: rounds already processed are
+   * skipped, and finished rounds are only auto-applied when they ended
+   * recently (so a page reload doesn't resurrect stale results).
+   */
+  const syncRoundFromServer = useCallback((roundInfo) => {
+    if (!roundInfo?.id) return;
+    const roundId = String(roundInfo.id);
+    const roundStatus = roundInfo.status;
+
+    // Skip only when this exact round AND status were already
+    // reconciled — a status flip (running → settled) must re-reconcile
+    // so a client that missed the crash (throttled tab, socket blip)
+    // doesn't stay stuck in "running" forever.
+    const last = lastSyncedRef.current;
+    if (last && last.id === roundId && last.status === roundStatus) return;
+
+    const isActive = roundStatus === "running";
+    let recent = true;
+    if (roundInfo.createdAt) {
+      const created = new Date(roundInfo.createdAt).getTime();
+      if (Number.isFinite(created)) {
+        recent = Date.now() - created < 90_000; // 90s window for finished rounds
+      }
+    }
+    if (!isActive && !recent) return;
+
+    lastSyncedRef.current = { id: roundId, status: roundStatus };
+    // A running round is the one cashouts / settle must target.
+    if (isActive) currentRoundIdRef.current = roundId;
+    dispatch({ type: "SYNC_ROUND", round: roundInfo, wager });
+  }, [wager]);
+
+  /**
+   * Apply a cashout broadcast from another player at the table.
+   */
+  const applyRemoteCashout = useCallback((userId, multiplier) => {
+    if (userId == null) return;
+    dispatch({ type: "REMOTE_CASHOUT", userId, multiplier });
+  }, []);
+
+  // ── Realtime room wiring ─────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!tableId || !socket) return;
+    const roomId = crashArenaMatchRoom(tableId);
+
+    socket.emit("join_room", { roomId });
+
+    const onUpdate = (payload = {}) => {
+      // Another player started a round — start ours with the same
+      // server-authoritative crash point immediately.
+      if (payload?.roundStarted && payload?.crashPoint != null) {
+        syncRoundFromServer({
+          id: payload.roundId,
+          status: "running",
+          crashPoint: Number(payload.crashPoint),
+          seedHash: payload.seedHash ?? null,
+        });
+      }
+      // Another player cashed out — show it in the live standings.
+      if (payload?.cashout?.userId) {
+        applyRemoteCashout(payload.cashout.userId, payload.cashout.multiplier);
+      }
+      // Anything else (joined/left/crashed/settled) → let the page
+      // re-fetch the roster + latest round.
+      onRoomUpdateRef.current?.();
+    };
+
+    socket.on(CRASH_ARENA_TABLE_UPDATED, onUpdate);
+
+    return () => {
+      socket.off(CRASH_ARENA_TABLE_UPDATED, onUpdate);
+      socket.emit("leave_room", { roomId });
+    };
+  }, [tableId, socket, syncRoundFromServer, applyRemoteCashout]);
 
   // ── Player management (API calls) ────────────────────────────────────
 
@@ -223,11 +448,12 @@ export default function useCrashArenaRound({
         setError(data?.error || "Failed to join table");
         return;
       }
-      // Add "You" to local player list
+      // Add/replace "You" in the local player list (roster may already
+      // contain a synced copy of the seat).
       dispatch({
         type: "SET_PLAYERS",
         players: [
-          ...roundState.players,
+          ...roundState.players.filter((p) => p.name !== "You"),
           {
             name: "You",
             balance: buyIn,
@@ -239,12 +465,13 @@ export default function useCrashArenaRound({
           },
         ],
       });
+      if (socket) socket.emit(CRASH_ARENA_READY, { tableId, joined: true });
     } catch (err) {
       setError("Network error joining table");
     } finally {
       setBusy(false);
     }
-  }, [tableId, roundState.players]);
+  }, [tableId, roundState.players, socket]);
 
   const leaveTable = useCallback(async () => {
     if (!tableId) return;
@@ -261,12 +488,13 @@ export default function useCrashArenaRound({
         type: "SET_PLAYERS",
         players: roundState.players.filter((p) => !p.isYou),
       });
+      if (socket) socket.emit(CRASH_ARENA_READY, { tableId, left: true });
     } catch (err) {
       setError("Network error leaving table");
     } finally {
       setBusy(false);
     }
-  }, [tableId, roundState.players]);
+  }, [tableId, roundState.players, socket]);
 
   const buyChips = useCallback((playerName, amount) => {
     // TODO: Add API endpoint for buying more chips at table
@@ -301,6 +529,8 @@ export default function useCrashArenaRound({
     togglePlayerSitOut,
     playerCashout: handleCashout,
     syncPlayers,
+    syncRoundFromServer,
+    applyRemoteCashout,
     joinTable,
     leaveTable,
     buyChips,

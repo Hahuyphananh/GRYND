@@ -7,6 +7,7 @@ import {
 } from "../../../../db/schema";
 import { eq, and } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { broadcastTableUpdate } from "../../../../lib/crash-arena/rooms";
 
 /**
  * POST /api/crash-arena/cashout
@@ -99,6 +100,16 @@ export async function POST(req: Request) {
         result: survived ? "won" : "lost",
       })
       .where(eq(crashArenaEntries.id, entry.id));
+
+    // Best-effort fanout so the rest of the table sees this cashout
+    // instantly in the live standings.
+    broadcastTableUpdate(round.tableId, {
+      cashout: {
+        userId: user.id,
+        multiplier: Number(cashoutMultiplier.toFixed(2)),
+      },
+      survived,
+    });
 
     return NextResponse.json({
       success: true,

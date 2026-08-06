@@ -7,6 +7,10 @@ import {
 } from "../../../../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import {
+  broadcastLobbyUpdate,
+  broadcastTableUpdate,
+} from "../../../../lib/crash-arena/rooms";
 
 /**
  * POST /api/crash-arena/leave
@@ -83,6 +87,10 @@ export async function POST(req: Request) {
       type: "LEAVE",
       reason: `Left table with balance`,
     });
+
+    // Best-effort live fanout so the remaining players + lobby refresh.
+    broadcastTableUpdate(tableId, { left: true, userId: user.id });
+    broadcastLobbyUpdate({ left: true, tableId });
 
     // ── Get updated wallet ────────────────────────────────────────────────
     const [updated] = await db

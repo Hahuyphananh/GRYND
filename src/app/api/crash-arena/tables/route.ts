@@ -5,6 +5,7 @@ import {
   crashArenaTables,
   crashArenaPlayers,
   crashArenaRounds,
+  crashArenaEntries,
 } from "../../../../db/schema";
 import { eq, ne, and, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
@@ -12,6 +13,10 @@ import {
   CRASH_WAGERS,
   CRASH_MIN_BUYIN_MULTIPLIER,
 } from "../../../../lib/games/crash/constants";
+import {
+  isMissingCrashArenaColumn,
+  CRASH_ARENA_SCHEMA_HINT,
+} from "../../../../lib/crash-arena/errors";
 
 /** Default tables to seed if none exist. Min buy-in = 5× wager. */
 const DEFAULT_TABLES = CRASH_WAGERS.map((wager) => ({
@@ -123,6 +128,36 @@ export async function GET() {
           .orderBy(sql`${crashArenaRounds.createdAt} DESC`)
           .limit(1);
 
+        // Latest round details — lets table-room clients reconcile the
+        // live round (crash point, seed commitment, per-player entry
+        // results) so every player sees the same running/settled state
+        // even when they weren't the one who started it.
+        let latestRoundInfo = null;
+        if (latestRound[0]) {
+          const roundEntries = await db
+            .select()
+            .from(crashArenaEntries)
+            .where(eq(crashArenaEntries.roundId, latestRound[0].id));
+          latestRoundInfo = {
+            id: latestRound[0].id,
+            status: latestRound[0].status,
+            crashPoint:
+              latestRound[0].crashPoint != null
+                ? Number(latestRound[0].crashPoint)
+                : null,
+            seedHash: latestRound[0].seedHash ?? null,
+            createdAt: latestRound[0].createdAt,
+            entries: roundEntries.map((e) => ({
+              userId: e.userId,
+              result: e.result,
+              cashoutMultiplier:
+                e.cashoutMultiplier != null
+                  ? Number(e.cashoutMultiplier)
+                  : null,
+            })),
+          };
+        }
+
         // Sum of player balances at table
         const pot = players.reduce((sum, p) => sum + Number(p.balance), 0);
 
@@ -152,6 +187,7 @@ export async function GET() {
           playerCount: players.length,
           pot,
           roundStatus: latestRound[0]?.status ?? null,
+          latestRound: latestRoundInfo,
           amISeated: Boolean(mySeat),
           myBalance: mySeat ? Number(mySeat.balance) : null,
         };
@@ -161,6 +197,12 @@ export async function GET() {
     return NextResponse.json({ success: true, data: enriched });
   } catch (err) {
     console.error("[crash-arena:tables]", err);
+    if (isMissingCrashArenaColumn(err)) {
+      return NextResponse.json(
+        { success: false, error: CRASH_ARENA_SCHEMA_HINT },
+        { status: 500 },
+      );
+    }
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }

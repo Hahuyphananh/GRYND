@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import NavigationBar from "../../../../../components/navigation-bar";
@@ -42,6 +42,11 @@ export default function TableRoomPage() {
   }, [tableId]);
 
   // ── Round system hook (API-driven) ────────────────────────────────────
+  // refetchTables is defined below but the hook needs its latest version
+  // for socket-triggered refreshes — route through a ref to avoid the
+  // circular reference (hook → refetchTables → hook functions).
+  const refetchTablesRef = useRef(null);
+
   const {
     roundState,
     crashEngineRef,
@@ -50,6 +55,7 @@ export default function TableRoomPage() {
     goToNextRound,
     togglePlayerSitOut,
     syncPlayers,
+    syncRoundFromServer,
     joinTable,
     leaveTable,
     buyChips,
@@ -59,6 +65,9 @@ export default function TableRoomPage() {
     tableId,
     wager: table?.wager || 10,
     roundNumber: 1,
+    // Socket-triggered table updates re-fetch the roster + latest round
+    // so round state stays in sync across all players at the table.
+    onRoomUpdate: () => refetchTablesRef.current?.(),
   });
 
   // Map the server's seated roster to the room's local player format.
@@ -76,32 +85,43 @@ export default function TableRoomPage() {
     [playerName],
   );
 
+  // Single source of truth for refreshing table state: roster + the
+  // latest round (so a round started by another player syncs here).
+  const refetchTables = useCallback(async () => {
+    if (!tableId || busy) return;
+    try {
+      const res = await fetch("/api/crash-arena/tables", { cache: "no-store" });
+      const data = await res.json();
+      if (!data?.success) return;
+      const found = data.data.find((t) => t.id === tableId);
+      if (found) {
+        syncPlayers(mapServerPlayers(found));
+        if (found.latestRound) syncRoundFromServer(found.latestRound);
+      }
+    } catch {
+      // silent — keep the current state
+    }
+  }, [tableId, busy, mapServerPlayers, syncPlayers, syncRoundFromServer]);
+
+  // Expose the latest refetchTables to the hook's socket callback.
+  refetchTablesRef.current = refetchTables;
+
   // Show every seated player from the server — covers lobby joins, reloads,
   // and any players who were already at the table.
   useEffect(() => {
     if (!table) return;
     syncPlayers(mapServerPlayers(table));
-  }, [table, mapServerPlayers, syncPlayers]);
+    if (table.latestRound) syncRoundFromServer(table.latestRound);
+  }, [table, mapServerPlayers, syncPlayers, syncRoundFromServer]);
 
   // Keep the seated roster fresh so players who join/leave show up.
   // Skips syncing while a join/leave API call is in flight to avoid a
   // flicker from mid-transaction server state.
   useEffect(() => {
     if (!tableId) return;
-    const interval = setInterval(async () => {
-      if (busy) return;
-      try {
-        const res = await fetch("/api/crash-arena/tables", { cache: "no-store" });
-        const data = await res.json();
-        if (!data?.success) return;
-        const found = data.data.find((t) => t.id === tableId);
-        if (found) syncPlayers(mapServerPlayers(found));
-      } catch {
-        // silent — keep the current roster
-      }
-    }, 5000);
+    const interval = setInterval(refetchTables, 5000);
     return () => clearInterval(interval);
-  }, [tableId, mapServerPlayers, syncPlayers, busy]);
+  }, [tableId, refetchTables]);
 
   // ── Player actions ───────────────────────────────────────────────────
 
