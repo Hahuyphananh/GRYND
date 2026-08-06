@@ -190,11 +190,53 @@ io.on("connection", (socket) => {
     }
   }
 
+  // ── Crash Arena room-participant tracking ───────────────────────
+  // Mirrors the plinko/precision tracking pattern so the
+  // `crashArena:updated` handler below can reject events from
+  // non-participant sockets. Keyed by tableId (numeric).
+  const CRASH_ARENA_MATCH_ROOM_PREFIX = "crash-arena:match:";
+  if (!global.__crashArenaRoomParticipants) {
+    global.__crashArenaRoomParticipants = new Map();
+  }
+  const crashArenaRoomParticipants = global.__crashArenaRoomParticipants;
+
+  function trackCrashArenaJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(CRASH_ARENA_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const tableId = roomId.slice(CRASH_ARENA_MATCH_ROOM_PREFIX.length);
+    if (!tableId) return;
+    if (!crashArenaRoomParticipants.has(tableId)) {
+      crashArenaRoomParticipants.set(tableId, new Set());
+    }
+    crashArenaRoomParticipants.get(tableId).add(userId);
+    console.log("[crash-arena] participant joined: tableId=", tableId, "userId=", userId);
+  }
+  function trackCrashArenaLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(CRASH_ARENA_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const tableId = roomId.slice(CRASH_ARENA_MATCH_ROOM_PREFIX.length);
+    if (!tableId) return;
+    const set = crashArenaRoomParticipants.get(tableId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) crashArenaRoomParticipants.delete(tableId);
+    console.log("[crash-arena] participant left: tableId=", tableId, "userId=", userId);
+  }
+  function forgetCrashArenaUser(userId) {
+    for (const [tid, set] of crashArenaRoomParticipants.entries()) {
+      set.delete(userId);
+      if (set.size === 0) crashArenaRoomParticipants.delete(tid);
+    }
+  }
+
   socket.on("join_room", ({ roomId }) => {
     if (!roomId) return;
     socket.join(String(roomId));
     trackPrecisionJoin(String(roomId), socket.data.userId);
     trackPlinkoJoin(String(roomId), socket.data.userId);
+    trackCrashArenaJoin(String(roomId), socket.data.userId);
   });
 
   socket.on("leave_room", ({ roomId }) => {
@@ -202,6 +244,7 @@ io.on("connection", (socket) => {
     socket.leave(String(roomId));
     trackPrecisionLeave(String(roomId), socket.data.userId);
     trackPlinkoLeave(String(roomId), socket.data.userId);
+    trackCrashArenaLeave(String(roomId), socket.data.userId);
   });
 
   socket.on("room_event", ({ roomId, event, payload }) => {
@@ -617,6 +660,56 @@ io.on("connection", (socket) => {
     });
   });
 
+  // ── Crash Arena: table update ─────────────────────────────────
+  // The client emits `crashArena:updated` after a successful API
+  // mutation (start-round, cashout, crash/settle, join, leave) so
+  // the rest of the table gets an instant `lobby:updated` push
+  // instead of waiting for the 5s poll. Mirrors the `plinko:ready`
+  // handler: rejects events from non-participant sockets and from
+  // non-numeric tableIds (belt-and-suspenders against path-style
+  // room constructions).
+  socket.on("crashArena:updated", ({ tableId, ...payload } = {}) => {
+    if (!tableId) return;
+    const tableIdStr = String(tableId);
+    if (!/^\d+$/.test(tableIdStr)) {
+      console.warn(
+        "[crash-arena] rejecting crashArena:updated with non-numeric tableId:",
+        tableIdStr,
+        "userId=",
+        socket.data.userId,
+      );
+      return;
+    }
+    const participants = crashArenaRoomParticipants.get(tableIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      console.warn(
+        "[crash-arena] rejecting crashArena:updated from non-participant: tableId=",
+        tableIdStr,
+        "userId=",
+        socket.data.userId,
+        "participantCount=",
+        participants ? participants.size : 0,
+      );
+      return;
+    }
+    const roomId = `${CRASH_ARENA_MATCH_ROOM_PREFIX}${tableIdStr}`;
+    const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+    console.log(
+      "[crash-arena] relay update: tableId=",
+      tableIdStr,
+      "from=",
+      socket.data.userId,
+      "roomSize=",
+      socketsInRoom ? socketsInRoom.size : 0,
+    );
+    socket.to(roomId).emit("lobby:updated", {
+      tableId: tableIdStr,
+      ...(payload && typeof payload === "object" ? payload : {}),
+      userId: socket.data.userId,
+      sentAt: new Date().toISOString(),
+    });
+  });
+
   // ── Keep existing disconnect handler ──
   socket.on("disconnect", () => {
     // For Precision: drop user from all precision match rooms they
@@ -625,6 +718,9 @@ io.on("connection", (socket) => {
 
     // For Plinko PvP: drop user from all plinko match rooms
     forgetPlinkoUser(socket.data.userId);
+
+    // For Crash Arena: drop user from all crash arena match rooms
+    forgetCrashArenaUser(socket.data.userId);
 
     // For hex duel: emit a dedicated disconnect event so the opponent gets a win
     if (hexDuelGameIds.size > 0) {

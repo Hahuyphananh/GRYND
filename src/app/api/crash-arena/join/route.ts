@@ -8,6 +8,10 @@ import {
 } from "../../../../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import {
+  broadcastLobbyUpdate,
+  broadcastTableUpdate,
+} from "../../../../lib/crash-arena/rooms";
 
 /**
  * POST /api/crash-arena/join
@@ -132,6 +136,11 @@ export async function POST(req: Request) {
       type: "BUY_IN",
       reason: `Joined ${table.name}`,
     });
+
+    // Best-effort live fanout so the table room + lobby refresh
+    // instantly (silently no-ops in separate-process deployments).
+    broadcastTableUpdate(tableId, { joined: true, userId: user.id });
+    broadcastLobbyUpdate({ joined: true, tableId });
 
     return NextResponse.json({
       success: true,

@@ -8,10 +8,11 @@ import {
   crashArenaEntries,
   crashArenaTransactions,
 } from "../../../../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, ne, and, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { generateRoundSeed } from "../../../../lib/games/crash/generateSeed";
 import { generateCrashPoint } from "../../../../lib/games/crash/generateCrashPoint";
+import { broadcastTableUpdate } from "../../../../lib/crash-arena/rooms";
 
 /**
  * POST /api/crash-arena/start-round
@@ -72,6 +73,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "No players at table" }, { status: 400 });
     }
 
+    // ── Guard against concurrent round starts ───────────────────────────
+    // Two players clicking "Start Round" at the same time would otherwise
+    // create two running rounds. Block when a fresh round is already in
+    // flight; a running round older than 5 minutes is treated as abandoned
+    // (e.g. everyone disconnected before settle) so the table can recover.
+    const activeRound = await db
+      .select()
+      .from(crashArenaRounds)
+      .where(
+        and(
+          eq(crashArenaRounds.tableId, tableId),
+          ne(crashArenaRounds.status, "settled"),
+        ),
+      )
+      .orderBy(sql`${crashArenaRounds.createdAt} DESC`)
+      .limit(1);
+
+    if (activeRound[0] && activeRound[0].status === "running") {
+      const ageMs = Date.now() - new Date(activeRound[0].createdAt).getTime();
+      if (ageMs < 5 * 60 * 1000) {
+        return NextResponse.json({
+          success: false,
+          error: "A round is already in progress",
+        }, { status: 400 });
+      }
+    }
+
     const wager = Number(table.wagerAmount);
 
     // ── Deduct wager from each player's table balance ─────────────────────
@@ -130,6 +158,18 @@ export async function POST(req: Request) {
 
     // ── Calculate pot ─────────────────────────────────────────────────────
     const pot = playerDeductions.length * wager;
+
+    // Best-effort fanout so the other players at the table learn the
+    // round id + crash point instantly (client-driven fanout via
+    // crashArena:updated covers the separate-process deployment).
+    broadcastTableUpdate(tableId, {
+      roundStarted: true,
+      roundId: round.id,
+      crashPoint,
+      seedHash,
+      pot,
+      wager,
+    });
 
     return NextResponse.json({
       success: true,

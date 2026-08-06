@@ -9,6 +9,7 @@ import {
 } from "../../../../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { broadcastTableUpdate } from "../../../../lib/crash-arena/rooms";
 
 const PLATFORM_FEE = 0.05; // 5% rake
 
@@ -171,6 +172,17 @@ export async function POST(req: Request) {
       .update(crashArenaTables)
       .set({ status: "waiting" })
       .where(eq(crashArenaTables.id, tableId));
+
+    // Best-effort fanout so every player at the table reconciles the
+    // finished round (winner, payout, crash point) instantly.
+    broadcastTableUpdate(tableId, {
+      settled: true,
+      roundId,
+      pot,
+      rake,
+      winnerPayout,
+      crashPoint: actualCrashPoint,
+    });
 
     return NextResponse.json({
       success: true,

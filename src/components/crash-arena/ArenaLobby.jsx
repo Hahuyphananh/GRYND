@@ -1,8 +1,13 @@
 "use client";
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import TableList, { CRASH_WAGERS } from "./TableList";
 import BuyInModal from "./BuyInModal";
+import { useSocket } from "../../context/SocketProvider";
+import {
+  CRASH_ARENA_LOBBY_ROOM,
+  CRASH_ARENA_TABLE_UPDATED,
+} from "../../lib/crash-arena/rooms";
 
 /**
  * ArenaLobby — the main Crash Arena lobby.
@@ -26,6 +31,7 @@ export default function ArenaLobby({
   onRefresh,
 }) {
   const router = useRouter();
+  const { socket } = useSocket();
 
   const [creatingWager, setCreatingWager] = useState(null);
   const [joinTarget, setJoinTarget] = useState(null); // table awaiting buy-in
@@ -47,6 +53,31 @@ export default function ArenaLobby({
     onRefresh?.();
   }, [onRefresh]);
 
+  // ── Realtime lobby refresh ──────────────────────────────────────────
+  // Join the shared lobby room so table create/join/leave events from
+  // other players refresh this grid instantly (the 5 s poll stays as a
+  // fallback for dropped sockets / separate-process deployments).
+  useEffect(() => {
+    if (!socket) return;
+    const refresh = () => onRefresh?.();
+    socket.emit("join_room", { roomId: CRASH_ARENA_LOBBY_ROOM });
+    socket.on(CRASH_ARENA_TABLE_UPDATED, refresh);
+    return () => {
+      socket.off(CRASH_ARENA_TABLE_UPDATED, refresh);
+      socket.emit("leave_room", { roomId: CRASH_ARENA_LOBBY_ROOM });
+    };
+  }, [socket, onRefresh]);
+
+  // Best-effort fanout to the lobby room after a mutation.
+  const emitLobbyUpdate = useCallback((payload) => {
+    if (!socket) return;
+    socket.emit("room_event", {
+      roomId: CRASH_ARENA_LOBBY_ROOM,
+      event: CRASH_ARENA_TABLE_UPDATED,
+      payload: payload || {},
+    });
+  }, [socket]);
+
   // ── Create a brand-new table with the given wager ───────────────────────
   const handleCreate = useCallback(async (wager) => {
     setActionError(null);
@@ -66,13 +97,14 @@ export default function ArenaLobby({
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Unable to create table");
       }
+      emitLobbyUpdate({ created: true, wager });
       router.push(`/casino/crash-arena/table/${data.data.tableId}`);
     } catch (err) {
       fail(err.message || "Unable to create table");
     } finally {
       setCreatingWager(null);
     }
-  }, [isSignedIn, router, fail]);
+  }, [isSignedIn, router, fail, emitLobbyUpdate]);
 
   // ── Open the buy-in modal for a table from the Available Games list ─────
   const handleJoin = useCallback((table) => {
@@ -103,12 +135,13 @@ export default function ArenaLobby({
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Unable to join table");
       }
+      emitLobbyUpdate({ joined: true, tableId: table.id });
       router.push(`/casino/crash-arena/table/${table.id}`);
     } catch (err) {
       setBusyTableId(null);
       fail(err.message || "Unable to join table");
     }
-  }, [joinTarget, router, fail]);
+  }, [joinTarget, router, fail, emitLobbyUpdate]);
 
   return (
     <div className="relative w-full">

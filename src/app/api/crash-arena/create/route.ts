@@ -11,6 +11,14 @@ import {
   CRASH_WAGERS,
   CRASH_MIN_BUYIN_MULTIPLIER,
 } from "../../../../lib/games/crash/constants";
+import {
+  broadcastLobbyUpdate,
+  broadcastTableUpdate,
+} from "../../../../lib/crash-arena/rooms";
+import {
+  isMissingCrashArenaColumn,
+  CRASH_ARENA_SCHEMA_HINT,
+} from "../../../../lib/crash-arena/errors";
 
 /**
  * POST /api/crash-arena/create
@@ -104,6 +112,12 @@ export async function POST(req: Request) {
       })
       .returning();
 
+    // Best-effort live fanout so lobby clients refresh their grid
+    // instantly. Silently no-ops when the realtime server runs in a
+    // separate process (the 5 s lobby poll covers it).
+    broadcastLobbyUpdate({ created: true, tableId: created.id, wager: wagerNum });
+    broadcastTableUpdate(created.id, { created: true });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -115,6 +129,12 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[crash-arena:create]", err);
+    if (isMissingCrashArenaColumn(err)) {
+      return NextResponse.json(
+        { success: false, error: CRASH_ARENA_SCHEMA_HINT },
+        { status: 500 },
+      );
+    }
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }
