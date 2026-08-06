@@ -1,0 +1,50 @@
+# GoonBet
+> GoonBet is a skill-based multiplayer casino and sports betting platform. Players compete in skill games using virtual tokens — tokens have no real-world monetary value and are not redeemable for cash. GoonBet is 18+ only and promotes responsible play.
+
+GoonBet covers esports and sports betting, plus dozens of arcade and table games playable against the house, AI, or other players in real time. Outcomes are determined primarily by player skill and strategy. The platform uses virtual tokens for all gameplay.
+
+## Casino Games
+- [Casino Hub](https://goonbet.dedyn.io/casino): Browse all casino games
+- [Poker](https://goonbet.dedyn.io/casino/poker): Texas Hold'em against AI or other players
+- [Blackjack](https://goonbet.dedyn.io/casino/blackjack): Classic 21 against the dealer, solo or PvP
+- [Roulette](https://goonbet.dedyn.io/casino/roulette): Classic wheel game, solo or PvP
+- [Slots](https://goonbet.dedyn.io/casino/slots): Themed slot machines with bonus rounds
+- [Plinko](https://goonbet.dedyn.io/casino/plinko): Ball-drop payout game, solo or PvP
+- [Mines](https://goonbet.dedyn.io/casino/mines-pvp): Risk-based tile reveal game, solo or PvP
+- [Crash Arena](https://goonbet.dedyn.io/casino/crash-arena): Multiplayer cash-out racing game
+- [Crash](https://goonbet.dedyn.io/casino/crash): Classic crash multiplier game
+- [Dice Flush](https://goonbet.dedyn.io/casino/dice-flush): Dice-based skill game
+- [Dice Duel](https://goonbet.dedyn.io/casino/dice-duel): Player-vs-player dice game
+- [Coin Flip](https://goonbet.dedyn.io/casino/coin-flip): Fast coin-flip game, solo or PvP
+- [Keno](https://goonbet.dedyn.io/casino/keno): Number-draw payout game
+- [RPS](https://goonbet.dedyn.io/casino/rps): Rock-paper-scissors, solo or PvP
+- [Chess](https://goonbet.dedyn.io/casino/chess): Chess against AI or other players
+- [Connect Four](https://goonbet.dedyn.io/casino/connect-four): Connect Four, solo or PvP
+- [Dots & Boxes](https://goonbet.dedyn.io/casino/dots-and-boxes): Classic dots-and-boxes, solo or PvP
+- [Pool Masters](https://goonbet.dedyn.io/casino/pool-masters): Physics-based pool, solo or PvP
+- [Precision](https://goonbet.dedyn.io/casino/precision): Aim-and-accuracy skill game, solo or PvP
+- [Neon Flush](https://goonbet.dedyn.io/casino/neon-flush): Neon-themed card game
+- [Hex Duel](https://goonbet.dedyn.io/casino/hex-duel): Turn-based board duel, solo or PvP
+- [Uno](https://goonbet.dedyn.io/casino/uno): Uno against AI or online players
+- [Farkle](https://goonbet.dedyn.io/casino/farkle): Classic dice-combination scoring game
+- [Lane Runner](https://goonbet.dedyn.io/casino/lane-runner): Endless runner arcade game
+- [GoonBet Clicker](https://goonbet.dedyn.io/casino/goonbet-clicker): Idle clicker game
+- [Odds](https://goonbet.dedyn.io/casino/odds): Odds-style betting games
+
+## Sports Betting
+- [Sports](https://goonbet.dedyn.io/sport): Odds and bets on esports and sports matches, including live match pages
+
+## Platform
+- [Home](https://goonbet.dedyn.io/): Site overview and featured games
+- [Rankings](https://goonbet.dedyn.io/classement): Leaderboards with weekly resets
+- [Profile](https://goonbet.dedyn.io/profil): Player stats, streaks, and token balance
+- [Sync](https://goonbet.dedyn.io/sync): Account sync and onboarding
+- [Contact](https://goonbet.dedyn.io/contact): Contact form for support
+- Support email: support@goonbet.com
+
+## Optional
+- [Terms & Conditions](https://goonbet.dedyn.io/terms): Rules of use — virtual tokens, 18+, no real-money value
+- [Privacy Policy](https://goonbet.dedyn.io/privacy-policy): Data collection, usage, and protection
+- [Security Policy](https://goonbet.dedyn.io/security-policy): TLS 1.3, encryption, and incident response
+- [Fair Play](https://goonbet.dedyn.io/fair-play): Fairness, anti-cheat, and responsible gaming
+- [Accessibility](https://goonbet.dedyn.io/accessibility): WCAG 2.1 Level AA commitments

@@ -1096,3 +1096,103 @@ a[class*="bg-[#f5ff3b]"] {
 .animate-board-shake {
   animation: boardShake 0.3s ease-out;
 }
+
+/* ── 404 page: slot-machine reels & floating card suits ──
+   NOTE: the reel cells are h-24 (6rem) in src/app/not-found.tsx —
+   keep the 6rem below in sync if the cell size ever changes. */
+@keyframes slotReelSpin {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(var(--reel-cells, 10) * -6rem));
+  }
+}
+
+.slot-reel-spin {
+  animation: slotReelSpin var(--reel-duration, 1.8s)
+    cubic-bezier(0.16, 0.72, 0.28, 1) var(--reel-delay, 0s) forwards;
+  will-change: transform;
+}
+
+@keyframes floatSlow {
+  0%,
+  100% {
+    transform: translateY(0) rotate(var(--float-rot, -4deg));
+  }
+  50% {
+    transform: translateY(-16px) rotate(calc(var(--float-rot, -4deg) * -1));
+  }
+}
+
+.animate-float-slow {
+  animation: floatSlow var(--float-duration, 8s) ease-in-out
+    var(--float-delay, 0s) infinite;
+}
+
+/* Tumbling 3D dice for the 404 page. Each face uses translateZ
+   equal to half the cube size (h-16 = 4rem, so 2rem). */
+@keyframes diceTumble {
+  0% {
+    transform: rotateX(0) rotateY(0) rotateZ(0);
+  }
+  100% {
+    transform: rotateX(1800deg) rotateY(1260deg) rotateZ(540deg);
+  }
+}
+
+.dice-tumble {
+  animation: diceTumble var(--tumble-duration, 3.2s) linear
+    var(--tumble-delay, 0s) infinite;
+  will-change: transform;
+}
+
+.dice-cube {
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+}
+
+.dice-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* ── Skeleton loaders (splash-screen page skeletons) ─────────────────────
+   Neutral shimmer blocks used by src/components/skeletons/PageSkeleton.tsx
+   to mirror each page's layout while it loads. `border-radius` is left to
+   the Tailwind `rounded-*` utilities used in JSX (unlayered CSS would
+   override them), so every block sets its own radius. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  /* Bright enough to read against the splash's dark overlay, but still
+     navy-tinted so it matches the app's card surfaces. */
+  background-color: rgba(21, 48, 102, 0.62);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(0, 229, 255, 0.18) 40%,
+    rgba(245, 255, 59, 0.12) 55%,
+    transparent 75%
+  );
+  animation: skeletonShimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes skeletonShimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+  }
+}

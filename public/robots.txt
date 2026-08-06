@@ -1,0 +1,23 @@
+# GoonBet robots.txt
+# https://goonbet.dedyn.io/robots.txt
+
+User-agent: *
+Allow: /
+
+# Private / authenticated-only areas (require login or are admin-only)
+Disallow: /api/
+Disallow: /admin
+Disallow: /complete-profile
+Disallow: /access-denied
+Disallow: /sync
+
+# Personal user data — never index profiles
+Disallow: /profil
+Disallow: /profile
+
+# Dynamic live sessions / match tables (opaque IDs, not meaningful to index)
+Disallow: /casino/poker/multi/
+Disallow: /casino/crash-arena/table/
+Disallow: /casino/chess/ai
+
+Sitemap: https://goonbet.dedyn.io/sitemap.xml
