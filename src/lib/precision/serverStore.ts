@@ -135,6 +135,39 @@ export function cancelArming(matchId: string): void {
   }
 }
 
+/** Forfeit a match whose player has been confirmed-disconnected (the
+ *  realtime server's disconnect grace timer expired). The opponent is
+ *  declared the winner exactly like a natural match finish: phase →
+ *  "finished", winnerSeat = opponent, arming canceled, pending stops
+ *  cleared, anomaly ledger flushed, finishedAt stamped. No balances
+ *  move — Precision's PvP wagering is not implemented yet (the resign
+ *  route is a scaffold for the same reason), so a forfeit is scored
+ *  like any other finish. Idempotent: already-finished matches are
+ *  returned untouched so the caller's retry loop stops. */
+export function forfeitMatch(
+  matchId: string,
+  loserUserId: string,
+): { ok: boolean; match?: PrecisionState; reason?: string } {
+  const match = precisionMatchStore.get(matchId);
+  if (!match) return { ok: false, reason: "Match not found" };
+  const loser = match.players.find((p) => p.userId === loserUserId);
+  if (!loser) return { ok: false, reason: "Caller is not a participant" };
+  if (match.phase === "finished") {
+    // Already resolved (opponent won naturally, or a prior forfeit) —
+    // treat as a successful no-op so the retry loop stops.
+    return { ok: true, match };
+  }
+  const winnerSeat: PlayerSeat = loser.seat === 1 ? 2 : 1;
+  match.winnerSeat = winnerSeat;
+  match.phase = "finished";
+  cancelArming(matchId);
+  clearPendingStops(matchId);
+  flushLedgerForMatch(matchId);
+  precisionMatchFinishedAt.set(matchId, Date.now());
+  match.version += 1;
+  return { ok: true, match };
+}
+
 /** Generates a server-only cryptographic nonce for a fresh round.
  *  Uses Web Crypto (`globalThis.crypto.randomUUID`) when available
  *  (Node 19+ and modern browsers) — otherwise falls back to a high-

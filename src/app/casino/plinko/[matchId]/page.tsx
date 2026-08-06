@@ -1336,9 +1336,16 @@ export default function PlinkoPvpMatchPage({
     if (!isValidMatchId) return;
     const refresh = () => fetchStatus();
     const roomId = plinkoPvpMatchRoom(matchId);
-    socket.emit("join_room", { roomId });
+    // Re-join on EVERY socket (re)connection — Socket.IO doesn't re-join
+    // rooms automatically, and the realtime server's disconnect grace
+    // timer is only cancelled by a re-join (otherwise a refresh or
+    // network blip would forfeit the match once the grace window expires).
+    const join = () => socket.emit("join_room", { roomId });
+    join();
+    socket.on("connect", join);
     socket.on(PLINKO_PVP_MATCH_UPDATED, refresh);
     return () => {
+      socket.off("connect", join);
       socket.emit("leave_room", { roomId });
       socket.off(PLINKO_PVP_MATCH_UPDATED, refresh);
     };
