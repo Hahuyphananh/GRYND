@@ -221,6 +221,185 @@ function scheduleCrashArenaDisconnectCleanup(userId, clerkToken, tableId, attemp
   crashArenaDisconnectTimers.set(key, { timer });
 }
 
+// ── Crash Arena stale-seat sweep ──────────────────────────────────────
+// Belt-and-suspenders safety net for crash_arena_players rows whose
+// socket vanished without the per-socket disconnect timer catching it
+// (realtime server restart, missed disconnect event, process crash).
+// Every tick it asks Next.js for all seated/waiting rows, compares them
+// against LIVE sockets in each table room, and releases any row whose
+// user has been absent for at least the grace window.
+//
+// Why observe absence across ticks instead of releasing immediately?
+// A page refresh / socket reconnect is a few seconds of absence — the
+// per-socket timer already waits the full 45s grace for exactly that.
+// Tracking "first observed absent" across two 30s ticks gives the same
+// ~45-60s window, so a quick reconnect is never treated as a stale seat.
+// Idempotent: releasing an already-released row is a no-op.
+//
+// NOTE: presence is derived from THIS instance's sockets, so the sweep
+// (like the per-socket timers below) assumes a single realtime-server
+// instance — the same assumption the rest of this file already makes.
+const CRASH_ARENA_SWEEP_INTERVAL_MS = 30_000;
+const CRASH_ARENA_SWEEP_GRACE_MS = 45_000;
+if (!global.__crashArenaSweepAbsence) {
+  global.__crashArenaSweepAbsence = new Map();
+}
+const crashArenaSweepAbsence = global.__crashArenaSweepAbsence;
+
+function crashArenaSweepKey(tableId, userId) {
+  return `${tableId}:${userId}`;
+}
+
+/**
+ * Live-socket presence per crash arena table, derived straight from the
+ * Socket.IO adapter (ground truth — repopulates automatically as clients
+ * reconnect and re-emit join_room, unlike in-memory participant maps).
+ * @returns {Map<string, Set<string>>} tableId (string) → Set of clerkIds
+ */
+function crashArenaSweepPresence() {
+  const present = new Map();
+  const rooms = io.sockets.adapter.rooms;
+  if (!rooms || typeof rooms.entries !== "function") return present;
+  for (const [roomId, socketIds] of rooms.entries()) {
+    if (typeof roomId !== "string" || !roomId.startsWith(CRASH_ARENA_MATCH_ROOM_PREFIX)) {
+      continue;
+    }
+    const tableId = roomId.slice(CRASH_ARENA_MATCH_ROOM_PREFIX.length);
+    for (const sid of socketIds) {
+      const s = io.sockets.sockets.get(sid);
+      if (s && s.data && s.data.userId) {
+        if (!present.has(tableId)) present.set(tableId, new Set());
+        present.get(tableId).add(s.data.userId);
+      }
+    }
+  }
+  return present;
+}
+
+function crashArenaSweepHeaders() {
+  const headers = { "Content-Type": "application/json" };
+  // Optional shared secret — set REALTIME_INTERNAL_SECRET on BOTH the
+  // realtime server and Next.js to lock the sweep down in production.
+  if (process.env.REALTIME_INTERNAL_SECRET) {
+    headers["x-internal-secret"] = process.env.REALTIME_INTERNAL_SECRET;
+  }
+  return headers;
+}
+
+async function runCrashArenaStaleSweep() {
+  try {
+    const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+
+    // 1. Candidate rows currently seated / waiting (tableId + clerkId).
+    const listRes = await fetch(`${baseUrl}/api/crash-arena/sweep-stale`, {
+      method: "POST",
+      headers: crashArenaSweepHeaders(),
+      body: JSON.stringify({ action: "list" }),
+    });
+    const listData = await listRes.json().catch(() => null);
+    if (!listData || listData.success !== true || !Array.isArray(listData.data?.rows)) {
+      return;
+    }
+    const rows = listData.data.rows.filter(
+      (r) => Number.isFinite(Number(r?.tableId)) && typeof r?.userId === "string",
+    );
+    if (rows.length === 0) {
+      crashArenaSweepAbsence.clear();
+      return;
+    }
+
+    // 2. Compare against live sockets; track how long each absent row has
+    //    been gone. Release only rows absent for ≥ the grace window.
+    const present = crashArenaSweepPresence();
+    const now = Date.now();
+    const release = [];
+    const validKeys = new Set();
+
+    for (const row of rows) {
+      const key = crashArenaSweepKey(row.tableId, row.userId);
+      validKeys.add(key);
+      const isPresent = (present.get(String(row.tableId)) || new Set()).has(row.userId);
+      if (isPresent) {
+        crashArenaSweepAbsence.delete(key);
+        continue;
+      }
+      const absentSince = crashArenaSweepAbsence.get(key);
+      if (absentSince != null && now - absentSince >= CRASH_ARENA_SWEEP_GRACE_MS) {
+        release.push({ tableId: Number(row.tableId), userId: row.userId });
+        crashArenaSweepAbsence.delete(key);
+      } else {
+        crashArenaSweepAbsence.set(key, absentSince ?? now);
+      }
+    }
+
+    // Drop absence records for rows that no longer exist (already
+    // released by the per-socket timer or a manual leave).
+    for (const key of crashArenaSweepAbsence.keys()) {
+      if (!validKeys.has(key)) crashArenaSweepAbsence.delete(key);
+    }
+
+    if (release.length === 0) return;
+
+    // 2b. Re-check live presence for the exact release list right before
+    //     sending it — a player could have reconnected (refresh, tab
+    //     re-opened) during the list→release round trip, and kicking them
+    //     the instant they return would defeat the whole grace design.
+    const presentNow = crashArenaSweepPresence();
+    const stillStale = release.filter(
+      (r) => !(presentNow.get(String(r.tableId)) || new Set()).has(r.userId),
+    );
+    if (stillStale.length === 0) return;
+
+    // 3. Ask Next.js to release the confirmed-stale seats.
+    const relRes = await fetch(`${baseUrl}/api/crash-arena/sweep-stale`, {
+      method: "POST",
+      headers: crashArenaSweepHeaders(),
+      body: JSON.stringify({ action: "release", release: stillStale }),
+    });
+    const relData = await relRes.json().catch(() => null);
+    if (!relData || relData.success !== true) {
+      console.warn("[crash-arena] stale sweep release rejected:", relRes.status);
+      return;
+    }
+
+    // 4. Push an instant refresh so live clients + the lobby drop the
+    //    released seats without waiting for the 5s poll.
+    const released = Array.isArray(relData.data?.released) ? relData.data.released : [];
+    for (const r of released) {
+      io.to(`${CRASH_ARENA_MATCH_ROOM_PREFIX}${r.tableId}`).emit("lobby:updated", {
+        tableId: r.tableId,
+        left: true,
+        userId: r.userId,
+        disconnected: true,
+        swept: true,
+      });
+      io.to("lobby:crash-arena").emit("lobby:updated", {
+        tableId: r.tableId,
+        left: true,
+        userId: r.userId,
+        disconnected: true,
+        swept: true,
+      });
+    }
+    if (released.length > 0) {
+      console.log(
+        "[crash-arena] stale sweep released",
+        released.length,
+        "seat(s)",
+        released.map((r) => `${r.tableId}:${r.userId}`).join(","),
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[crash-arena] stale sweep failed:",
+      err && err.message ? err.message : err,
+    );
+  }
+}
+
+// Start the periodic sweep (first tick after one interval).
+setInterval(runCrashArenaStaleSweep, CRASH_ARENA_SWEEP_INTERVAL_MS);
+
 // ── Generic disconnect grace timer (hex duel / precision / plinko) ────
 // Same model as the crash arena timer above, shared by the 1v1 games.
 // `onFire` runs when the grace window elapses without a re-join; if it

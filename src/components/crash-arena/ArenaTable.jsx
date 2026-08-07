@@ -10,7 +10,6 @@ import BuyInModal from "./BuyInModal";
 import RoundResultModal from "./RoundResultModal";
 import CrashArenaRulesModal from "./CrashArenaRulesModal";
 import CashoutButton from "../games/crash-engine/CashoutButton";
-import Link from "next/link";
 
 const ROUND_START_COUNTDOWN = 12; // seconds between rounds / after ready votes
 const READY_VOTES_NEEDED = 2;
@@ -39,6 +38,7 @@ const READY_VOTES_NEEDED = 2;
  *   onLeave           — () => void (→ wait list)
  *   onExitToLobby     — () => void (permanent leave → lobby)
  *   onBuyChips        — (amount) => void
+ *   onReportPlayer    — (player) => void — opens the report modal for an opponent
  *   playerName        — "You"
  *   busy              — whether an API call is in flight
  *   children          — CrashEngine
@@ -55,6 +55,7 @@ export default function ArenaTable({
   onLeave,
   onExitToLobby,
   onBuyChips,
+  onReportPlayer,
   playerName = "You",
   busy = false,
   children,
@@ -140,7 +141,7 @@ export default function ArenaTable({
   const showResultModal = phase === "settling" && results && !resultDismissed && !!you;
 
   return (
-    <div className="flex flex-col gap-4 w-full">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
       {/* ═══ Top bar: status + timer + pot ═══ */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/60 backdrop-blur-sm">
         <RoundStatus
@@ -280,7 +281,7 @@ export default function ArenaTable({
               {isWaiting && (
                 <button
                   onClick={() => setShowBuyInModal(true)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold border border-[#00ffa6]/30 bg-[#00ffa6]/10 text-[#00ffa6] hover:bg-[#00ffa6]/20 transition-all"
+                  className="px-3 py-2 rounded-lg text-xs font-bold border border-[#00ffa6]/30 bg-[#00ffa6]/10 text-[#00ffa6] hover:bg-[#00ffa6]/20 transition-all"
                 >
                   + Buy Chips
                 </button>
@@ -290,7 +291,7 @@ export default function ArenaTable({
                   only — never the rocket directly. */}
               {isFirstRound && isWaiting && (
                 youReady ? (
-                  <span className="px-3 py-1.5 rounded-lg text-xs font-bold border border-[#00ffa6]/40 bg-[#00ffa6]/15 text-[#00ffa6]">
+                  <span className="px-3 py-2 rounded-lg text-xs font-bold border border-[#00ffa6]/40 bg-[#00ffa6]/15 text-[#00ffa6]">
                     ✅ Ready ({readyCount}/{READY_VOTES_NEEDED})
                   </span>
                 ) : (
@@ -314,43 +315,39 @@ export default function ArenaTable({
 
               {/* Cashout status badges */}
               {youCashedOut && !isRunning && (
-                <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#00ffa6]/15 text-[#00ffa6] border border-[#00ffa6]/30">
+                <span className="px-3 py-2 rounded-lg text-xs font-bold bg-[#00ffa6]/15 text-[#00ffa6] border border-[#00ffa6]/30">
                   ✅ {you.cashoutMultiplier?.toFixed(2)}x
                 </span>
               )}
               {youBusted && (
-                <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+                <span className="px-3 py-2 rounded-lg text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/30">
                   💥 Busted
                 </span>
               )}
 
-              {/* Leave → steps off onto the wait list (balance kept) */}
+              {/* Leave → steps off onto the wait list (balance kept). The
+                  wait-list state then exposes the real "Back to Lobby"
+                  (permanent leave + refund) — the ONLY in-page way out that
+                  releases the seat server-side. */}
               {isWaiting && (
                 <button
                   onClick={onLeave}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-all"
+                  className="px-3 py-2 rounded-lg text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-all"
                 >
                   Leave
                 </button>
               )}
             </>
           )}
-
-          <Link
-            href="/casino/crash-arena"
-            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-500/30 text-gray-400 bg-gray-500/10 hover:bg-gray-500/20 transition-all"
-          >
-            ← Lobby
-          </Link>
         </div>
       </div>
 
-      {/* ═══ Game area ═══ */}
-      <div className="flex flex-col lg:flex-row gap-4">
-        {/* Main game canvas — hosts CrashEngine */}
-        <div className="relative flex-1 rounded-2xl border border-[#00e5ff]/30 bg-[#050d1f]/80 backdrop-blur-xl shadow-[0_0_25px_rgba(0,229,255,0.2)] overflow-hidden flex items-center justify-center"
-          style={{ minHeight: 620 }}
-        >
+      {/* ═══ Game area — centered, square-ish 4:3 canvas + side panel ═══ */}
+      <div className="flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
+        {/* Main game canvas — hosts CrashEngine. The 4:3 ratio matches
+            CrashGraph's internal 800×600 coordinate space, so the canvas
+            scales uniformly and stays centered on every screen size. */}
+        <div className="relative mx-auto flex w-full max-w-[720px] aspect-[4/3] items-center justify-center rounded-2xl border border-[#00e5ff]/30 bg-[#050d1f]/80 backdrop-blur-xl shadow-[0_0_25px_rgba(0,229,255,0.2)] overflow-hidden">
           {children || (
             <div className="text-center px-4">
               <p className="text-6xl mb-4">🚀</p>
@@ -392,6 +389,7 @@ export default function ArenaTable({
             players={players}
             waitingPlayers={waitingPlayers}
             phase={phase}
+            maxPlayers={maxPlayers}
             onExitToLobby={onExitToLobby}
           />
         )}
@@ -403,7 +401,7 @@ export default function ArenaTable({
           <h3 className="text-xs uppercase tracking-wider text-[#ff4fd8]/70 mb-3 text-center">
             Players &bull; {seatedCount}/{maxPlayers}
           </h3>
-          <PlayerList players={players} maxSeats={maxPlayers} phase={phase} />
+          <PlayerList players={players} maxSeats={maxPlayers} phase={phase} onReport={onReportPlayer} />
         </div>
 
         {waitingPlayers.length > 0 && (

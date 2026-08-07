@@ -12,6 +12,7 @@ import React from "react";
  *   players       — seated players from roundState
  *   waitingPlayers — wait-listed players from roundState
  *   phase         — current round phase
+ *   maxPlayers    — table seat capacity (defaults to 6)
  *   onExitToLobby — () => void — for a wait-listed player to cash out
  *                   and return to the lobby
  */
@@ -19,6 +20,7 @@ export default function PlayerSidebar({
   players = [],
   waitingPlayers = [],
   phase = "waiting",
+  maxPlayers = 6,
   onExitToLobby,
 }) {
   const isLive = phase === "running" || phase === "crashed" || phase === "settling";
@@ -34,9 +36,12 @@ export default function PlayerSidebar({
   };
 
   return (
-    <div className="w-full lg:w-56 shrink-0 rounded-2xl border border-[#ff4fd8]/25 bg-[#040d24]/60 backdrop-blur-sm p-3 flex flex-col gap-2">
-      <h3 className="text-xs uppercase tracking-wider text-[#ff4fd8]/70 text-center">
-        👥 Players • {players.length}
+    <div className="flex w-full max-h-[70vh] lg:w-60 lg:max-h-[560px] shrink-0 flex-col gap-2 overflow-y-auto rounded-2xl border border-[#ff4fd8]/25 bg-[#040d24]/60 p-3 backdrop-blur-sm">
+      <h3 className="flex items-center justify-center gap-1.5 text-xs uppercase tracking-wider text-[#ff4fd8]/70">
+        👥 Players
+        <span className="rounded-full border border-[#ff4fd8]/30 bg-[#ff4fd8]/10 px-1.5 py-0.5 text-[10px] font-black text-[#ff4fd8]">
+          {players.length}/{maxPlayers}
+        </span>
       </h3>
 
       {players.length === 0 && (

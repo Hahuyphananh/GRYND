@@ -150,12 +150,15 @@ const CrashEngine = forwardRef(function CrashEngine({
 
   return (
     <>
+      {/* Fill the parent 4:3 game container — the internal drawing uses the
+          fixed 800×600 coordinate space and the container matches that
+          aspect ratio, so CSS scaling stays perfectly uniform. */}
       <CrashGraph
         ref={crashGraphRef}
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
         maxMultiplier={maxMultiplier}
-        className="absolute bottom-0 left-0 z-0"
+        className="absolute inset-0 z-0"
       />
 
       <div className="absolute right-2 top-0 bottom-0 flex flex-col justify-between z-10 py-6">

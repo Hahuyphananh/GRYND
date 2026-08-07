@@ -9,8 +9,9 @@ import React from "react";
  *                        cashoutMultiplier?, busted?, isPlaying? }
  *   maxSeats — total seats at the table
  *   phase    — current round phase ("waiting" | "running" | "crashed" | "settling")
+ *   onReport — (player) => void — opens the report modal for a seated opponent
  */
-export default function PlayerList({ players = [], maxSeats = 6, phase = "waiting" }) {
+export default function PlayerList({ players = [], maxSeats = 6, phase = "waiting", onReport }) {
   const seats = Array.from({ length: maxSeats }, (_, i) => players[i] || null);
   const isLive = phase === "running" || phase === "crashed" || phase === "settling";
 
@@ -100,6 +101,20 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
 
             {/* Live round badge (cashout / busted / in-flight) */}
             {liveBadge}
+
+            {/* Report flag — lets a seated player report any opponent at
+                the table. Hidden on the player's own seat and on empty
+                seats; only wired up when the parent passes onReport. */}
+            {player && !player.isYou && onReport && (
+              <button
+                onClick={() => onReport(player)}
+                title={`Report ${player.name || "this player"}`}
+                aria-label={`Report ${player.name || "this player"}`}
+                className="mt-0.5 px-1.5 py-0.5 rounded-md border border-red-500/30 bg-red-500/10 text-[10px] font-bold text-red-400 transition-all hover:bg-red-500/25 hover:shadow-[0_0_8px_rgba(239,68,68,0.35)]"
+              >
+                🚩
+              </button>
+            )}
 
             {/* Legacy status badges (for non-live phases) */}
             {!isLive && player?.status === "cashed_out" && !player.isSittingOut && (

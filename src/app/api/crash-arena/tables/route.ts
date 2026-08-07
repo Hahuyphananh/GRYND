@@ -107,12 +107,18 @@ export async function GET() {
       ...new Set([...allPlayers.map((p) => p.userId), ...hostIds]),
     ];
     let userNameById = new Map();
+    let userClerkIdById = new Map();
     if (userIdsToResolve.length > 0) {
       const userRows = await db
-        .select({ id: users.id, name: users.name })
+        .select({ id: users.id, name: users.name, clerkId: users.clerkId })
         .from(users)
         .where(inArray(users.id, userIdsToResolve));
       userNameById = new Map(userRows.map((u) => [u.id, u.name]));
+      userClerkIdById = new Map(
+        userRows
+          .filter((u) => u.clerkId != null)
+          .map((u) => [u.id, u.clerkId]),
+      );
     }
 
     // ── Enrich each table ──────────────────────────────────────────────────
@@ -187,6 +193,10 @@ export async function GET() {
               : null,
           players: players.map((p) => ({
             userId: p.userId,
+            // clerkId lets clients (e.g. the report modal) address the
+            // player by their Clerk identity — the userId field above is
+            // the internal users.id, which is not a public identity.
+            clerkId: userClerkIdById.get(p.userId) ?? null,
             name: userNameById.get(p.userId) || `Player ${p.userId}`,
             balance: Number(p.balance),
             status: p.status,
@@ -194,6 +204,7 @@ export async function GET() {
           })),
           waitingPlayers: waiting.map((p) => ({
             userId: p.userId,
+            clerkId: userClerkIdById.get(p.userId) ?? null,
             name: userNameById.get(p.userId) || `Player ${p.userId}`,
             balance: Number(p.balance),
             status: p.status,
