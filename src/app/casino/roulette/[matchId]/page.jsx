@@ -39,6 +39,7 @@ import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../../components/navigation-bar";
+import ReportModal from "../../../../components/ReportModal";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
   ROULETTE_NUMBERS,
@@ -301,6 +302,8 @@ export default function RoulettePvpGamePage({ params }) {
   const [timeLeft, setTimeLeft] = useState(null);
   const [roundResultBanner, setRoundResultBanner] = useState(null);
   const [matchEndedBanner, setMatchEndedBanner] = useState(null);
+  // Report modal — flags the human opponent for moderation.
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const canvasRef = useRef(null);
   const betsRef = useRef(bets);
@@ -885,6 +888,11 @@ export default function RoulettePvpGamePage({ params }) {
   // ── Bet placement (PvP-aware: only allowed when match is bettable
   //    AND you haven't already submitted your bets for this round) ───
   const isPlayer1 = match?.player1Id === user?.id;
+  // The opponent is whoever occupies the seat we don't hold. Only
+  // reportable once a real opponent has joined (player2Id set).
+  const opponentClerkId = isPlayer1
+    ? match?.player2Id ?? null
+    : match?.player1Id ?? null;
   const mySubmittedBets = isPlayer1 ? match?.player1Bets : match?.player2Bets;
   const opponentSubmittedBets = isPlayer1
     ? match?.player2Bets
@@ -1368,6 +1376,14 @@ export default function RoulettePvpGamePage({ params }) {
               <span>Pot: {totalPot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               <CoinIcon className="w-3.5 h-3.5 text-cyan-200" title="Tokens" />
             </span>
+            {opponentClerkId && (
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="px-3 py-1 rounded-full border border-red-500/30 bg-red-500/10 text-xs font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)] inline-flex items-center gap-1.5"
+              >
+                🚩 <span>Report opponent</span>
+              </button>
+            )}
           </div>
 
           {/* Score panel (round-win counter) */}
@@ -2104,6 +2120,29 @@ export default function RoulettePvpGamePage({ params }) {
           animation: betChipPop 0.3s ease-out;
         }
       `}</style>
+
+      {/* Report modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentClerkId,
+              gameType: "roulette-pvp",
+              gameId: String(matchId),
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName="Opponent"
+        gameType="Roulette PvP"
+      />
     </div>
   );
 }

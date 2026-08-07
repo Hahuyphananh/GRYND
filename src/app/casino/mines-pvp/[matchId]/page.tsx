@@ -21,6 +21,7 @@ import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
+import ReportModal from "../../../../components/ReportModal";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
   MINES_PVP_LOBBY_ROOM,
@@ -302,6 +303,8 @@ export default function MinesPvpMatchPage({
   const [busy, setBusy] = useState(false); // true while a pick POST is in flight
   const [cancelling, setCancelling] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number>(0);
+  // Report modal — flags the human opponent for moderation.
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // Refs used to anchor the countdown interval + the last-seen
   // deadline timestamp so we don't reset the countdown when the
@@ -532,6 +535,11 @@ export default function MinesPvpMatchPage({
     return match.player1Id === myUserId || match.player2Id === myUserId;
   }, [match, myUserId]);
   const isPlayer1 = match?.player1Id === myUserId;
+  // The opponent is whoever occupies the seat we don't hold. Only
+  // reportable once a real opponent has joined (player2Id set).
+  const opponentClerkId = isPlayer1
+    ? match?.player2Id ?? null
+    : match?.player1Id ?? null;
   const isMyTurn =
     match?.status === MATCH_STATUS.P1_TURN
       ? isPlayer1
@@ -1099,6 +1107,14 @@ export default function MinesPvpMatchPage({
           <span>
             Seat: <span className="text-cyan-200 font-semibold">{mySeat}</span>
           </span>
+          {opponentClerkId && (
+            <button
+              onClick={() => setShowReportModal(true)}
+              className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 text-xs font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+            >
+              🚩 Report opponent
+            </button>
+          )}
         </div>
 
         {/* Turn indicator */}
@@ -1170,6 +1186,29 @@ export default function MinesPvpMatchPage({
           `motion.div` already short-circuits to `null` for any
           status other than `MATCH_STATUS.FINISHED`. */}
       {renderResult()}
+
+      {/* Report modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentClerkId,
+              gameType: "mines-pvp",
+              gameId: String(matchId),
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName="Opponent"
+        gameType="Mines Duel"
+      />
     </div>
   );
 }
