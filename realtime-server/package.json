@@ -15,6 +15,7 @@
     "socket.io": "^4.8.1"
   },
   "overrides": {
-    "body-parser": "^1.20.6"
+    "body-parser": "^1.20.6",
+    "socket.io-parser": "^4.2.7"
   }
 }
