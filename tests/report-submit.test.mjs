@@ -408,13 +408,22 @@ test("ensureTable throwing → 500 Failed to submit report", async () => {
 // ensurePlayerReportsTable (self-healing DDL)
 // ════════════════════════════════════════════════════════════════════════
 
-test("ensurePlayerReportsTable issues the three idempotent DDL statements", async () => {
+test("ensurePlayerReportsTable issues the idempotent DDL statements", async () => {
   const sql = makeFakeSql();
   await ensurePlayerReportsTable(sql);
   assert.ok(sql.calls.some((c) => /CREATE TABLE IF NOT EXISTS player_reports/.test(c.sql)));
+  // The self-heal must also add missing columns to a stale table — this
+  // is what fixes the "column game_type does not exist" 500 when the
+  // player_reports table predates the game_type column.
+  assert.ok(sql.calls.some((c) => /ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS game_type/.test(c.sql)));
+  assert.ok(sql.calls.some((c) => /ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS game_id/.test(c.sql)));
+  assert.ok(sql.calls.some((c) => /ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS created_at/.test(c.sql)));
+  assert.ok(sql.calls.some((c) => /CREATE INDEX IF NOT EXISTS idx_player_reports_status/.test(c.sql)));
+  assert.ok(sql.calls.some((c) => /CREATE INDEX IF NOT EXISTS idx_player_reports_reported/.test(c.sql)));
   assert.ok(sql.calls.some((c) => /ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned/.test(c.sql)));
   assert.ok(sql.calls.some((c) => /CREATE INDEX IF NOT EXISTS idx_users_is_banned/.test(c.sql)));
-  assert.equal(sql.calls.length, 3);
+  // 1 create + 10 column heals + 2 report indexes + 1 users alter + 1 users index
+  assert.equal(sql.calls.length, 15);
 });
 
 console.log("\n? All report-submit tests passed!\n");
