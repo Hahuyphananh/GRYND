@@ -6,6 +6,7 @@ import ArenaTable from "../../../../../components/crash-arena/ArenaTable";
 import CrashEngine from "../../../../../components/games/crash-engine/CrashEngine";
 import useCrashArenaRound from "../../../../../components/crash-arena/useCrashArenaRound";
 import { useSocket } from "../../../../../context/SocketProvider";
+import ReportModal from "../../../../../components/ReportModal";
 import Link from "next/link";
 
 /**
@@ -107,6 +108,8 @@ export default function TableRoomPage() {
     (tbl) =>
       (tbl?.players || []).map((p) => ({
         userId: p.userId,
+        // Clerk identity for reporting (userId is the internal users.id).
+        clerkId: p.clerkId ?? null,
         name: p.isYou ? playerName : p.name,
         balance: p.balance,
         isYou: p.isYou,
@@ -119,6 +122,7 @@ export default function TableRoomPage() {
     (tbl) =>
       (tbl?.waitingPlayers || []).map((p) => ({
         userId: p.userId,
+        clerkId: p.clerkId ?? null,
         name: p.isYou ? playerName : p.name,
         balance: p.balance,
         isYou: p.isYou,
@@ -167,6 +171,18 @@ export default function TableRoomPage() {
     return () => clearInterval(interval);
   }, [tableId, refetchTables]);
 
+  // ── Report an opponent ───────────────────────────────────────────────
+  // The seated roster carries each player's Clerk identity as `clerkId`
+  // (the `userId` field is the internal users.id — never a public
+  // identity), so a seated player can flag any opponent directly from
+  // the seat grid. Players without a resolved clerkId (legacy rows)
+  // simply can't be reported.
+  const [reportTarget, setReportTarget] = useState(null);
+  const handleReportPlayer = useCallback((player) => {
+    if (!player?.clerkId || player.isYou) return;
+    setReportTarget({ userId: player.clerkId, name: player.name || "Player" });
+  }, []);
+
   // ── Player actions ───────────────────────────────────────────────────
 
   const handleJoin = useCallback((buyIn) => {
@@ -182,8 +198,12 @@ export default function TableRoomPage() {
   }, [leaveTable]);
 
   const handleExitToLobby = useCallback(async () => {
-    await exitTable();
-    router.push("/casino/crash-arena");
+    // Only navigate away once the server has actually released the seat
+    // (refund + status "left") — otherwise the lobby would keep showing
+    // the player seated at the table and rejoining would fail with
+    // "Already seated".
+    const ok = await exitTable();
+    if (ok) router.push("/casino/crash-arena");
   }, [exitTable, router]);
 
   // ── Render ───────────────────────────────────────────────────────────
@@ -256,6 +276,7 @@ export default function TableRoomPage() {
           onExitToLobby={handleExitToLobby}
           onBuyChips={handleBuyChips}
           busy={busy}
+          onReportPlayer={handleReportPlayer}
         >
           {/* CrashEngine renders in the game area */}
           <CrashEngine
@@ -268,6 +289,29 @@ export default function TableRoomPage() {
           />
         </ArenaTable>
       </div>
+
+      {/* Report modal — flags a seated opponent for moderation. */}
+      <ReportModal
+        isOpen={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        onSubmit={async (reason, details) => {
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: reportTarget?.userId,
+              gameType: "crash-arena",
+              gameId: tableId ? String(tableId) : undefined,
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={reportTarget?.name || "Player"}
+        gameType="Crash Arena"
+      />
     </div>
   );
 }

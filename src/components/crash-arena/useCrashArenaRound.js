@@ -550,9 +550,11 @@ export default function useCrashArenaRound({
   /**
    * "Leave" — step off the table onto the wait list (balance stays at the
    * table so the player can come back next round or cash out later).
+   *
+   * @returns {Promise<boolean>} true when the server confirmed the leave.
    */
   const leaveTable = useCallback(async () => {
-    if (!tableId) return;
+    if (!tableId) return false;
     setBusy(true);
     setError(null);
     try {
@@ -564,8 +566,11 @@ export default function useCrashArenaRound({
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
+        // Already released (cleanup ran, another tab exited) — nothing to
+        // do, treat it as a confirmed leave so callers can move on.
+        if (/not at this table/i.test(data?.error || "")) return true;
         setError(data?.error || "Failed to leave table");
-        return;
+        return false;
       }
       const me = (roundStateRef.current?.players || []).find((p) => p.isYou);
       dispatch({
@@ -579,8 +584,10 @@ export default function useCrashArenaRound({
           : roundState.waitingPlayers || [],
       });
       if (socket) socket.emit(CRASH_ARENA_READY, { tableId, left: true });
+      return true;
     } catch (err) {
       setError("Network error leaving table");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -588,10 +595,14 @@ export default function useCrashArenaRound({
 
   /**
    * "Back to Lobby" — permanently leave: refund remaining balance to the
-   * wallet and mark the player as left.
+   * wallet and mark the player as left. This is the ONLY in-page path that
+   * releases the seat server-side — plain navigation links would leave the
+   * player registered at the table forever.
+   *
+   * @returns {Promise<boolean>} true when the server confirmed the exit.
    */
   const exitTable = useCallback(async () => {
-    if (!tableId) return;
+    if (!tableId) return false;
     setBusy(true);
     setError(null);
     try {
@@ -603,8 +614,12 @@ export default function useCrashArenaRound({
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
+        // Already released (cleanup ran, another tab exited) — the player
+        // is effectively out of the table, so treat it as a confirmed
+        // permanent leave (otherwise they'd be stranded with no way back).
+        if (/not at this table/i.test(data?.error || "")) return true;
         setError(data?.error || "Failed to leave table");
-        return;
+        return false;
       }
       dispatch({
         type: "SET_PLAYERS",
@@ -615,8 +630,10 @@ export default function useCrashArenaRound({
         waitingPlayers: (roundState.waitingPlayers || []).filter((p) => !p.isYou),
       });
       if (socket) socket.emit(CRASH_ARENA_READY, { tableId, left: true });
+      return true;
     } catch (err) {
       setError("Network error leaving table");
+      return false;
     } finally {
       setBusy(false);
     }

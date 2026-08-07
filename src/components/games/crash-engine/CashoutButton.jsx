@@ -20,14 +20,17 @@ export default function CashoutButton({
     <button
       onClick={onCashout}
       disabled={disabled}
-      className={`bg-gradient-to-r from-[#00ffa6] to-[#00e5ff]
+      className={`inline-flex items-center justify-center gap-1.5
+w-full sm:w-auto
+px-5 py-3 sm:py-2.5
+rounded-xl font-black text-base sm:text-sm
+bg-gradient-to-r from-[#00ffa6] to-[#00e5ff]
 text-[#001933]
 border border-[#00ffa6]
 shadow-[0_0_20px_rgba(0,255,166,0.6)]
 hover:shadow-[0_0_35px_rgba(0,255,166,1)]
 hover:scale-105
-transition-all duration-300 px-4 py-3 rounded-lg font-bold text-lg w-full
-shadow-[0_0_14px_rgba(0,229,255,0.4)]
+transition-all duration-300
 ${disabled ? "opacity-50 cursor-not-allowed" : ""}
 ${className}`}
     >
