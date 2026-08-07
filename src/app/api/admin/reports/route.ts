@@ -18,7 +18,12 @@ export async function GET(req: NextRequest) {
   }
 
   const statusFilter = req.nextUrl.searchParams.get("status") || "";
-  const limit = Math.min(parseInt(req.nextUrl.searchParams.get("limit") || "100", 10), 200);
+  // Guard against a non-numeric limit param — parseInt("abc") is NaN and
+  // Math.min(NaN, 200) stays NaN, which made Postgres throw on `LIMIT NaN`.
+  const rawLimit = parseInt(req.nextUrl.searchParams.get("limit") || "100", 10);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0
+    ? Math.min(rawLimit, 200)
+    : 100;
 
   try {
     const sql = getNeonSql();
