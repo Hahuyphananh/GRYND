@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useSocket } from "../../../../../context/SocketProvider";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
+import ReportModal from "../../../../../components/ReportModal";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import { playTimerUrgent, playTimerExpired } from "../../../../../lib/dotsAndBoxesAudio";
 import { gameOverModal as gameOverModalAnim } from "../../../../../lib/animations";
@@ -37,6 +38,8 @@ export default function DotsAndBoxesGamePage() {
   // API right now" so the buttons can show a spinner state.
   const [showForfeitConfirm, setShowForfeitConfirm] = useState(false);
   const [forfeiting, setForfeiting] = useState(false);
+  // Report modal — flags the human opponent for moderation.
+  const [showReportModal, setShowReportModal] = useState(false);
   // Visual-only countdown. Source of truth is the server's moveDeadlineAt.
   const [now, setNow] = useState<number>(() => Date.now());
 
@@ -395,6 +398,22 @@ const prefersReducedMotion = useReducedMotion();
 
   // ─── Render helpers ─────────────────────────────────────────────────
 
+  // Report target: the opponent is whoever occupies the seat we don't
+  // hold. `hostClerkId`/`guestClerkId` come from the game state, so we
+  // can only report once a guest has actually joined (status != waiting)
+  // and we're not spectating.
+  const opponentClerkId =
+    game?.role === "host" ? game?.guestClerkId : game?.hostClerkId;
+  const opponentName =
+    game?.role === "host"
+      ? game?.guestName || t("games.dots_and_boxes.guest_default")
+      : game?.hostName || t("games.dots_and_boxes.host_default");
+  const canReport =
+    !!opponentClerkId &&
+    !!game &&
+    game.status !== "waiting" &&
+    (game.role === "host" || game.role === "guest");
+
   const timerUrgent = remainingSeconds > 0 && remainingSeconds <= 3;
   const timerExpired =
     game?.status === "in_progress" && remainingMs <= 0;
@@ -671,6 +690,17 @@ const prefersReducedMotion = useReducedMotion();
                 {game?.guestName || t("games.dots_and_boxes.guest_waiting")}
               </span>
             </div>
+
+            {/* Report the opponent — available once a real human guest
+                has joined (hidden while waiting / spectating). */}
+            {canReport && (
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="mb-4 w-full py-2 rounded-lg border border-red-500/30 bg-red-500/10 text-xs font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_12px_rgba(239,68,68,0.3)]"
+              >
+                🚩 Report {opponentName}
+              </button>
+            )}
             <div className="mb-4 flex items-center justify-between gap-2 text-xs">
               <span className="text-white/50">{t("games.dots_and_boxes.bet_field")}</span>
               <span className="font-mono font-semibold text-yellow-300">
@@ -935,6 +965,29 @@ const prefersReducedMotion = useReducedMotion();
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Report modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentClerkId,
+              gameType: "dots-and-boxes",
+              gameId: String(gameId),
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={opponentName}
+        gameType="Dots & Boxes"
+      />
     </motion.div>
   );
 }

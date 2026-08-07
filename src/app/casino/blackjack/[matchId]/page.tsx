@@ -32,6 +32,7 @@ import confetti from "canvas-confetti";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../../components/navigation-bar";
 import BlackjackCardBack from "../../../../components/BlackjackCardBack";
+import ReportModal from "../../../../components/ReportModal";
 import {
   playCardDraw,
   playVictory,
@@ -250,6 +251,8 @@ export default function BlackjackPvpMatchPage({
   // client manages visibility itself. Cleared whenever the player
   // commits to ANY other action (hit/swap/stand/hold/use_held).
   const [localPeekedCard, setLocalPeekedCard] = useState<Card | null>(null);
+  // Report modal — flags the human opponent for moderation.
+  const [showReportModal, setShowReportModal] = useState(false);
   const victoryCelebratedRef = useRef(false);
   // Tracks which round numbers the user has already acknowledged in a
   // round-result modal. Without this, the modal would re-open on every
@@ -260,6 +263,11 @@ export default function BlackjackPvpMatchPage({
 
   // Memo: my hand + opponent hand derived from viewerIsPlayer1.
   const viewerIsPlayer1 = Boolean(match?.viewerIsPlayer1);
+  // The opponent is whoever occupies the seat we don't hold. Only
+  // reportable once a real opponent has joined (player2Id set).
+  const opponentClerkId = viewerIsPlayer1
+    ? match?.player2Id ?? null
+    : match?.player1Id ?? null;
   const myHand = useMemo<Card[]>(() => {
     if (!match) return [];
     return viewerIsPlayer1 ? match.player1Hand : match.player2Hand;
@@ -717,6 +725,14 @@ export default function BlackjackPvpMatchPage({
               Number(match?.stakeAmount ?? 0).toLocaleString(),
             )}
           </span>
+          {opponentClerkId && (
+            <button
+              onClick={() => setShowReportModal(true)}
+              className="px-3 py-1.5 rounded-full border border-red-500/30 bg-red-500/10 text-xs font-extrabold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+            >
+              🚩 Report opponent
+            </button>
+          )}
         </div>
 
         {errorMsg && (
@@ -1073,6 +1089,29 @@ export default function BlackjackPvpMatchPage({
         }
         .animate-shake { animation: shake 0.4s ease-in-out; }
       `}</style>
+
+      {/* Report modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentClerkId,
+              gameType: "blackjack",
+              gameId: String(matchId),
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName="Opponent"
+        gameType="Blackjack PvP"
+      />
     </div>
   );
 }

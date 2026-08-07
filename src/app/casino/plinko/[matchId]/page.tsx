@@ -37,6 +37,7 @@ import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
+import ReportModal from "../../../../components/ReportModal";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
   PLINKO_PVP_LOBBY_ROOM,
@@ -1164,6 +1165,8 @@ export default function PlinkoPvpMatchPage({
   const [phase, setPhase] = useState<Phase>("idle");
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // Report modal — flags the human opponent for moderation.
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // ── Round result popup state ─────────────────────────────────────
   const [roundPopup, setRoundPopup] = useState<{
@@ -2114,6 +2117,13 @@ export default function PlinkoPvpMatchPage({
   const p2Name = match.players?.p2?.displayName ?? shortId(match.player2Id);
   const p1Avatar = match.players?.p1?.profileImageUrl ?? null;
   const p2Avatar = match.players?.p2?.profileImageUrl ?? null;
+  // Report target: the opponent is whoever occupies the seat we don't
+  // hold. Real Clerk id comes from the enriched player head; fall back
+  // to the raw player1Id/player2Id fields.
+  const opponentClerkId = isViewerP1
+    ? (match.players?.p2?.id ?? match.player2Id ?? null)
+    : (match.players?.p1?.id ?? match.player1Id ?? null);
+  const opponentName = isViewerP1 ? p2Name : p1Name;
   // Per-ball +N delta for the side-panel chip (user-flagged
   // "points should work when ball hits them"). Computed from the
   // cumulative sum of rounds so a clean delta surfaces on top of
@@ -2390,6 +2400,14 @@ export default function PlinkoPvpMatchPage({
             <span className="font-mono">${stake.toFixed(2)} stake</span>
             <span className="font-mono">Best-score-of-3</span>
             <span className="font-mono">{viewerSeat === "player1" ? "P1" : "P2"} seat</span>
+            {opponentClerkId && (
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+              >
+                🚩 Report
+              </button>
+            )}
           </div>
         </div>
 
@@ -2538,6 +2556,29 @@ export default function PlinkoPvpMatchPage({
           />
         )}
       </div>
+
+      {/* Report modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentClerkId,
+              gameType: "plinko-pvp",
+              gameId: String(matchId),
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={opponentName || "Opponent"}
+        gameType="Plinko Duel"
+      />
 
       <Footer />
     </div>

@@ -24,6 +24,7 @@ import { AnimatePresence, motion } from "framer-motion";
 
 import NavigationBar from "../../../../../components/navigation-bar";
 import Footer from "../../../../../components/Footer";
+import ReportModal from "../../../../../components/ReportModal";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import PrecisionWaitingRoom from "../../../../../components/precision/PrecisionWaitingRoom";
 import PrecisionReadyRoom from "../../../../../components/precision/PrecisionReadyRoom";
@@ -103,6 +104,8 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   const [opponentReplayRequested, setOpponentReplayRequested] = useState(false);
   const [returnChosen, setReturnChosen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Report modal — flags the human opponent for moderation.
+  const [showReportModal, setShowReportModal] = useState(false);
   // Optimistic + server-confirmed Ready flag for the local player.
   // `selfReadyUserIdRef` is the userId we sent to /api/precision/ready
   // so we can resolve "self" when auth isn't fully wired. A ref (not
@@ -885,6 +888,19 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     [players],
   );
 
+  // Report target: the opponent is whoever occupies the seat we don't
+  // hold. Only show the flag once a real second player has joined —
+  // the scaffold seeds placeholder "host"/"opponent" userIds, which
+  // are not real Clerk ids and must never be reported.
+  const opponentPlayer = players.find((p) => p.seat !== localSeat) ?? null;
+  const opponentClerkId = opponentPlayer?.userId ?? null;
+  const opponentName = opponentPlayer?.name ?? t("games.precision.opponent_label_short");
+  const canReport =
+    !!state &&
+    !!opponentClerkId &&
+    opponentClerkId !== "host" &&
+    opponentClerkId !== "opponent";
+
   const isHost = players[0]?.seat === localSeat;
   const showWaiting = !state || state.phase === "waiting" || state.phase === "starting";
   const showReadyRoom = state?.phase === "ready_up";
@@ -959,6 +975,14 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
             )}
           </div>
           <div className="flex items-center gap-2">
+            {canReport && (
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="rounded border border-red-500/40 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/25"
+              >
+                🚩 Report
+              </button>
+            )}
             <button
               onClick={handleLeave}
               className="rounded bg-[#f5ff3b] px-4 py-2 font-bold text-black"
@@ -1260,6 +1284,29 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
           onDismiss={dismissRoundResult}
         />
       )}
+
+      {/* Report modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentClerkId,
+              gameType: "precision",
+              gameId: matchId,
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={opponentName || "Opponent"}
+        gameType="Precision"
+      />
 
       <Footer />
     </div>
