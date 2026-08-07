@@ -52,6 +52,11 @@ export type SqlLike = (
 export async function ensurePlayerReportsTable(
   sql: SqlLike = getNeonSql(),
 ): Promise<void> {
+  // Fresh create — carries the full column set. This is a no-op when the
+  // table already exists, which is exactly why the per-column ALTERs below
+  // exist: a table created by an older deploy (before `game_type` etc. were
+  // introduced) would otherwise keep missing columns and every dedupe /
+  // insert would fail with "column ... does not exist".
   await sql`
     CREATE TABLE IF NOT EXISTS player_reports (
       id SERIAL PRIMARY KEY,
@@ -67,6 +72,24 @@ export async function ensurePlayerReportsTable(
       resolved_by_clerk_id VARCHAR(255)
     )
   `;
+  // Self-heal stale tables: idempotently add every schema column that
+  // might be missing so the dedupe / INSERT queries (and the admin
+  // reports API) can't hit a "column does not exist" 500. DEFAULTs are
+  // required on NOT NULL columns so Postgres can backfill existing rows.
+  await sql`ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS reporter_clerk_id VARCHAR(255) NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS reported_clerk_id VARCHAR(255) NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS game_type VARCHAR(50) NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS game_id VARCHAR(100)`;
+  await sql`ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS reason VARCHAR(50) NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS details TEXT`;
+  await sql`ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'pending'`;
+  await sql`ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()`;
+  await sql`ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP`;
+  await sql`ALTER TABLE player_reports ADD COLUMN IF NOT EXISTS resolved_by_clerk_id VARCHAR(255)`;
+  // Report lookup indexes (kept in sync with migration 0030).
+  await sql`CREATE INDEX IF NOT EXISTS idx_player_reports_status ON player_reports (status, created_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_player_reports_reported ON player_reports (reported_clerk_id)`;
+  // Ban-flag columns on users (also from migration 0030).
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql`CREATE INDEX IF NOT EXISTS idx_users_is_banned ON users (is_banned)`;
 }
