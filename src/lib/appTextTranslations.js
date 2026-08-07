@@ -45,6 +45,15 @@ export const APP_TEXT_TRANSLATIONS = {
         },
         ptsUnit: "pts",
         ready: "Ready",
+        resign: {
+          body: "You will forfeit your {amount} stake — your opponent wins the match.",
+          button: "Resign & return to lobby",
+          cancel: "Keep playing",
+          confirm: "Resign",
+          error: "Unable to resign",
+          loading: "Resigning…",
+          title: "Resign match?"
+        },
         result: {
           draw: "Draw",
           lose: "You lost",
@@ -87,6 +96,7 @@ export const APP_TEXT_TRANSLATIONS = {
         waitingBusted: "Waiting…",
         waitingStood: "Stood — waiting for opponent"
     },
+    
     
     
     
@@ -1102,6 +1112,15 @@ export const APP_TEXT_TRANSLATIONS = {
         },
         ptsUnit: "pts",
         ready: "Prêt",
+        resign: {
+          body: "Vous perdrez votre mise de {amount} — votre adversaire remporte la partie.",
+          button: "Abandonner et retourner au salon",
+          cancel: "Continuer à jouer",
+          confirm: "Abandonner",
+          error: "Impossible d'abandonner",
+          loading: "Abandon en cours…",
+          title: "Abandonner la partie ?"
+        },
         result: {
           draw: "Égalité",
           lose: "Vous avez perdu",
@@ -1144,6 +1163,7 @@ export const APP_TEXT_TRANSLATIONS = {
         waitingBusted: "En attente…",
         waitingStood: "Resté — en attente de l’adversaire"
     },
+    
     
     
     
@@ -1803,6 +1823,15 @@ export const APP_TEXT_TRANSLATIONS = {
         },
         ptsUnit: "pts",
         ready: "Listo",
+        resign: {
+          body: "Perderás tu apuesta de {amount} — tu oponente gana la partida.",
+          button: "Abandonar y volver al salón",
+          cancel: "Seguir jugando",
+          confirm: "Abandonar",
+          error: "No se pudo abandonar",
+          loading: "Abandonando…",
+          title: "¿Abandonar la partida?"
+        },
         result: {
           draw: "Empatado",
           lose: "Perdiste",
@@ -1845,6 +1874,7 @@ export const APP_TEXT_TRANSLATIONS = {
         waitingBusted: "Esperando…",
         waitingStood: "Plantado — esperando al oponente"
     },
+    
     
     
     

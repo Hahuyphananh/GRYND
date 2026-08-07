@@ -253,6 +253,11 @@ export default function BlackjackPvpMatchPage({
   const [localPeekedCard, setLocalPeekedCard] = useState<Card | null>(null);
   // Report modal — flags the human opponent for moderation.
   const [showReportModal, setShowReportModal] = useState(false);
+  // Resign flow — forfeits the match (opponent wins the pot) and
+  // returns to the lobby. The confirmation modal guards the stake
+  // loss so a stray tap can't throw the match away.
+  const [showResignConfirm, setShowResignConfirm] = useState(false);
+  const [resigning, setResigning] = useState(false);
   const victoryCelebratedRef = useRef(false);
   // Tracks which round numbers the user has already acknowledged in a
   // round-result modal. Without this, the modal would re-open on every
@@ -479,6 +484,53 @@ export default function BlackjackPvpMatchPage({
     },
     [match, matchId, submitting, socket, fetchStatus, localPeekedCard],
   );
+
+  // ── Resign ─────────────────────────────────────────────────────────
+  // Forfeits the match server-side: while waiting the stake is
+  // refunded and the lobby cancelled; once an opponent has joined the
+  // resigner forfeits their stake and the opponent is credited the pot
+  // minus the house fee. Pings the opponent's live page via the match
+  // room, then redirects straight back to the lobby.
+  const handleResign = useCallback(async () => {
+    if (resigning) return;
+    setResigning(true);
+    setShowResignConfirm(false);
+    try {
+      const res = await fetch(
+        `/api/blackjack-pvp/match/${matchId}/resign`,
+        {
+          method: "POST",
+          credentials: "include",
+        },
+      );
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setErrorMsg(
+          data?.error ||
+            t(
+              "blackjackPvp.resign.error",
+              "Impossible d'abandonner",
+            ),
+        );
+        return;
+      }
+      // Notify the opponent's page so they see the win instantly.
+      socket?.emit("room_event", {
+        roomId: blackjackPvpMatchRoom(matchId),
+        event: BLACKJACK_PVP_MATCH_UPDATED,
+      });
+      // Also refresh the lobby list (a waiting lobby was cancelled).
+      socket?.emit("room_event", {
+        roomId: "lobby:blackjack-pvp",
+        event: "lobby:updated",
+      });
+      router.push("/casino/blackjack");
+    } catch (e) {
+      setErrorMsg(t("blackjackPvp.errorNetwork", "Network error"));
+    } finally {
+      setResigning(false);
+    }
+  }, [matchId, resigning, socket, router, t]);
 
   // ── Round-result modal trigger ────────────────────────────────────
   // BUG-FIX (round-end modal closes itself on every 1.5s poll):
@@ -945,6 +997,29 @@ export default function BlackjackPvpMatchPage({
               {t("blackjackPvp.ready", "Manche 1 imminente…")}
             </div>
           )}
+          {/* Resign — available once an opponent has joined (during
+              waiting the owner uses the dedicated Cancel button which
+              refunds the same way). Forfeits the stake; the opponent
+              wins. Hidden once the match reaches a terminal state. */}
+          {match &&
+            match.status !== "waiting" &&
+            match.status !== "finished" &&
+            match.status !== "cancelled" && (
+              <div className="mt-6 border-t border-white/10 pt-4 text-center">
+                <button
+                  onClick={() => setShowResignConfirm(true)}
+                  disabled={resigning}
+                  className="px-5 py-2 rounded-xl border border-red-400/40 bg-red-500/10 text-red-300 text-xs font-bold tracking-wide uppercase transition-all hover:bg-red-500/20 hover:shadow-[0_0_12px_rgba(239,68,68,0.25)] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {resigning
+                    ? t("blackjackPvp.resign.loading", "Abandon en cours…")
+                    : t(
+                        "blackjackPvp.resign.button",
+                        "Abandonner et retourner au salon",
+                      )}
+                </button>
+              </div>
+            )}
         </div>
 
         {/* Round-by-round history footer — abstract win/loss only;
@@ -1074,6 +1149,20 @@ export default function BlackjackPvpMatchPage({
           <CancelledModal
             t={t}
             onBackToLobby={() => router.push("/casino/blackjack")}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Resign confirmation modal — warns the player their stake is
+          forfeited before hitting the resign API. */}
+      <AnimatePresence>
+        {showResignConfirm && match && (
+          <ResignConfirmModal
+            t={t}
+            stake={Number(match.stakeAmount)}
+            busy={resigning}
+            onCancel={() => setShowResignConfirm(false)}
+            onConfirm={handleResign}
           />
         )}
       </AnimatePresence>
@@ -2181,6 +2270,72 @@ function CancelledModal({
         >
           {t("blackjackPvp.lobby.back", "Retour au lobby")}
         </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── Resign confirmation modal ────────────────────────────────────────
+// Guards the stake-forfeiting resign action: the player confirms the
+// amount they're giving up before the resign API is hit.
+function ResignConfirmModal({
+  t,
+  stake,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  t: TFn;
+  stake: number;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+    >
+      <motion.div
+        initial={{ scale: 0.85, y: 30 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.85, y: 30 }}
+        transition={{ type: "spring", stiffness: 300, damping: 18 }}
+        className="relative w-full max-w-md rounded-3xl border-4 border-red-500/60 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] p-6 text-center shadow-2xl"
+      >
+        <div className="mb-2 text-7xl">🏳️</div>
+        <h2 className="mt-2 text-3xl font-black uppercase text-red-400">
+          {t("blackjackPvp.resign.title", "Abandonner la partie ?")}
+        </h2>
+        <p className="mt-3 text-white/80 text-sm">
+          {t(
+            "blackjackPvp.resign.body",
+            "Vous perdrez votre mise de {amount} — votre adversaire remporte la partie.",
+          ).replace(
+            "{amount}",
+            Number(stake || 0).toLocaleString(),
+          )}
+        </p>
+        <div className="mt-6 flex justify-center gap-3">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-xl border-b-4 border-white/20 bg-white/10 px-6 py-2.5 text-sm font-bold text-white transition active:translate-y-[2px] disabled:opacity-40"
+          >
+            {t("blackjackPvp.resign.cancel", "Continuer à jouer")}
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={busy}
+            className="rounded-xl border-b-4 border-red-700 bg-red-500 px-6 py-2.5 text-sm font-black text-white transition active:translate-y-[2px] disabled:opacity-40"
+          >
+            {busy
+              ? t("blackjackPvp.resign.loading", "Abandon en cours…")
+              : t("blackjackPvp.resign.confirm", "Abandonner")}
+          </button>
+        </div>
       </motion.div>
     </motion.div>
   );

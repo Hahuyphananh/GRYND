@@ -413,6 +413,80 @@ export async function cancelMatch({ userId, matchId }) {
   });
 }
 
+// ── Resign (any participant, any non-terminal state) ─────────────────
+// Forfeits the match:
+//   • Waiting lobby with no opponent yet → refund the creator's stake
+//     and cancel the lobby (identical outcome to pressing Cancel).
+//   • Once an opponent has joined (ready / round_N / between_rounds)
+//     → the resigner forfeits their stake and the opponent is credited
+//     the full pot minus the house fee (mirrors creditWinner), with the
+//     match resolved as FINISHED so the opponent's match view surfaces
+//     the normal win modal.
+// Idempotency: guarded by the terminal-status check below (a resign
+// arriving after the match already finished/cancelled is rejected).
+export async function resignMatch({ userId, matchId }) {
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isParticipant(match, userId)) {
+      return { error: "Forbidden", status: 403 };
+    }
+    if (
+      match.status === MATCH_STATUS.FINISHED ||
+      match.status === MATCH_STATUS.CANCELLED
+    ) {
+      return { error: "Match already ended", status: 409 };
+    }
+
+    // Waiting lobby — refund the creator's stake and cancel.
+    if (match.status === MATCH_STATUS.WAITING) {
+      await tx
+        .update(users)
+        .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
+        .where(eq(users.clerkId, userId));
+
+      const [updated] = await tx
+        .update(blackjackPvpMatches)
+        .set({ status: MATCH_STATUS.CANCELLED, endedAt: new Date() })
+        .where(eq(blackjackPvpMatches.id, matchId))
+        .returning();
+
+      return { match: updated, refunded: true };
+    }
+
+    // Active match — the opponent wins the pot minus the house fee.
+    const forfeiterIsP1 = match.player1Id === userId;
+    const winnerSeat = forfeiterIsP1 ? RESULT.PLAYER2 : RESULT.PLAYER1;
+    const credit = await creditWinner(tx, match, winnerSeat);
+
+    const [updated] = await tx
+      .update(blackjackPvpMatches)
+      .set({
+        status: MATCH_STATUS.FINISHED,
+        roundDeadline: null,
+        winner: credit.winnerId,
+        result: winnerSeat,
+        prizePaid: credit.payout.toFixed(2),
+        houseFee: credit.fee.toFixed(2),
+        // Freeze both seats so the match-state route reads them as
+        // non-playing and reveals both hands on the final render.
+        player1State: PLAYER_STATE.STOOD,
+        player2State: PLAYER_STATE.STOOD,
+        endedAt: new Date(),
+      })
+      .where(eq(blackjackPvpMatches.id, matchId))
+      .returning();
+
+    const finalRow = updated || match;
+    // Best-effort stat side-effect — mirrors resolveRound.
+    await recordPvPResult(tx, finalRow, credit.winnerId, winnerSeat).catch(
+      () => {},
+    );
+
+    return { match: finalRow, forfeited: true };
+  });
+}
+
 // ── Match fetch with row lock (for atomic operations) ─────────────────
 async function fetchMatchForUpdate(tx, matchId) {
   const [match] = await tx
