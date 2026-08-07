@@ -14,7 +14,8 @@
     "test:weekly-reset": "node --test tests/weekly-reset.test.mjs",
     "test:bet-history": "node --test tests/get-bet-history.test.mjs",
     "test:leaderboard": "node --test tests/weekly-reset.test.mjs tests/get-bet-history.test.mjs",
-    "test:mines-pvp": "node --test tests/mines-pvp-engine.test.mjs tests/mines-pvp-flow.test.mjs"
+    "test:mines-pvp": "node --test tests/mines-pvp-engine.test.mjs tests/mines-pvp-flow.test.mjs",
+    "test:reports": "node --import tsx --test tests/report-submit.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.3",
