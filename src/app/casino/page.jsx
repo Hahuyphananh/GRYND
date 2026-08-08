@@ -89,7 +89,7 @@ function MainComponent() {
     },
     {
       name: "Poker",
-      href: "/casino/poker",
+      href: "/casino/poker/multi",
       leaderboardKey: "poker",
       image: Img3,
       descriptionKey: "games.poker_desc",

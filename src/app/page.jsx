@@ -777,7 +777,7 @@ tracking-widest uppercase drop-shadow-[0_0_12px_rgba(255,79,216,0.18)]"
               viewport={{ once: true, amount: 0.25 }}
               whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
               transition={{ duration: 0.25 }}
-              href="/casino/poker"
+              href="/casino/poker/multi"
               aria-label="Play Poker"
               className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
             >

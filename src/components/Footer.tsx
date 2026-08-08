@@ -88,7 +88,7 @@ export default function Footer() {
             </h3>
 
             <div className="space-y-2 text-sm">
-              <Link href="/casino/poker" className={linkClass}>
+              <Link href="/casino/poker/multi" className={linkClass}>
                 Poker
               </Link>
 
