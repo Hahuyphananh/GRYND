@@ -74,7 +74,7 @@ const GAME_PAGES: {
   path: string;
   source?: [AnyPgTable, AnyPgColumn];
 }[] = [
-  { path: "/casino/poker", source: [pokerGames, pokerGames.createdAt] },
+  { path: "/casino/poker/multi", source: [pokerGames, pokerGames.createdAt] },
   { path: "/casino/blackjack", source: [blackjackGames, blackjackGames.createdAt] },
   { path: "/casino/roulette", source: [rouletteGames, rouletteGames.createdAt] },
   { path: "/casino/slots", source: [slotGames, slotGames.createdAt] },

@@ -5,7 +5,7 @@ GoonBet covers esports and sports betting, plus dozens of arcade and table games
 
 ## Casino Games
 - [Casino Hub](https://goonbet.dedyn.io/casino): Browse all casino games
-- [Poker](https://goonbet.dedyn.io/casino/poker): Texas Hold'em against AI or other players
+- [Poker](https://goonbet.dedyn.io/casino/poker/multi): Texas Hold'em against AI or other players
 - [Blackjack](https://goonbet.dedyn.io/casino/blackjack): Classic 21 against the dealer, solo or PvP
 - [Roulette](https://goonbet.dedyn.io/casino/roulette): Classic wheel game, solo or PvP
 - [Slots](https://goonbet.dedyn.io/casino/slots): Themed slot machines with bonus rounds

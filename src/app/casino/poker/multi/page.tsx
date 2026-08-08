@@ -1316,7 +1316,7 @@ export default function PokerPage() {
     if (leaveAfterHand) {
       setTimeout(() => {
         leaveCurrentGame(updated.find((p) => p.id === myId)?.stack).finally(() => {
-          window.location.href = "/casino/poker";
+          window.location.href = "/casino/poker/multi";
         });
       }, 2000);
     }
@@ -1581,124 +1581,268 @@ export default function PokerPage() {
   // ==== RENDER ====
   if (!game) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
-          <NavigationBar currentPath="/casino" />
+      <div className="relative min-h-screen overflow-x-clip bg-gradient-to-br from-[#020108] via-[#0a0a1a] to-[#050510] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+        {/* ── Subtle scanlines backdrop ── */}
+        <div
+          className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]"
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,215,0,0.15) 2px, rgba(255,215,0,0.15) 4px)",
+          }}
+        />
 
-        <div className="p-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded shadow-[0_0_24px_rgba(0,229,255,0.2)] w-96 text-center mb-4">
-          <h1
-            className="text-2xl mb-4 font-extrabold text-transparent bg-clip-text 
-  bg-gradient-to-r from-yellow-300 via-amber-400 to-yellow-300 
-  drop-shadow-[0_0_8px_rgba(255,223,0,0.6)] tracking-widest uppercase animate-shimmer-elegant"
+        <NavigationBar currentPath="/casino" />
+
+        <div className="relative z-10 mx-auto max-w-5xl">
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="text-center"
           >
-            ♠ Poker Royale ♠
-          </h1>
-
-          {availablePublicGames > 0 ? (
-            <p className="text-green-400 mb-2">
-              {availablePublicGames} Public Game
-              {availablePublicGames > 1 ? "s" : ""} Available
+            <a
+              href="/casino"
+              className="mb-4 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-[#00e5ff]/70 transition-colors hover:text-[#00e5ff]"
+            >
+              ← Back to Casino
+            </a>
+            <h1 className="text-3xl font-black uppercase tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#ffd700] via-amber-400 to-[#ffd700] drop-shadow-[0_0_18px_rgba(255,215,0,0.55)] sm:text-5xl">
+              ♠ Poker Royale ♠
+            </h1>
+            <p className="mx-auto mt-3 max-w-xl text-sm text-[#b0b0ff]/70 sm:text-base">
+              Create a Texas Hold'em table, invite friends with a code, or jump
+              into a public match against up to 5 other players.
             </p>
-          ) : (
-            <p className="text-gray-400 mb-2">No public games available</p>
-          )}
+          </motion.div>
 
-          {publicGameList.length > 0 && (
-            <div className="mb-3 max-h-48 overflow-y-auto rounded border border-slate-600 p-2 text-left">
-              <p className="text-xs text-slate-300 mb-2">
-                Available Public Tables
+          {/* ── Create table panel ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, delay: 0.05 }}
+            className="mt-8 rounded-2xl border border-[#00e5ff]/20 bg-[#0b224f]/70 p-6 shadow-[0_0_40px_rgba(0,229,255,0.15)] backdrop-blur-xl sm:p-8"
+          >
+            <div className="mb-6 flex flex-col items-center justify-between gap-3 sm:flex-row">
+              <div>
+                <h2 className="text-xl font-bold text-[#FFD700] sm:text-2xl">
+                  Create a Table
+                </h2>
+                <p className="mt-1 max-w-md text-sm text-white/70">
+                  Pick your name, table visibility and AI difficulty, then sit
+                  down at a seat to buy in.
+                </p>
+              </div>
+              <div className="rounded-lg border border-[#00e5ff]/25 bg-[#020617]/60 px-4 py-2 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-white/50">
+                  Balance
+                </p>
+                <p className="text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500">
+                  🪙 {tokenBalance.toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label
+                htmlFor="poker-name"
+                className="mb-2 block text-[11px] uppercase tracking-wider text-white/60"
+              >
+                Display name
+              </label>
+              <input
+                id="poker-name"
+                placeholder="Your display name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full rounded-lg border border-[#00e5ff]/30 bg-[#020617] p-2.5 text-sm text-white outline-none transition focus:border-[#00e5ff] focus:shadow-[0_0_10px_rgba(0,229,255,0.3)]"
+              />
+            </div>
+
+            <div className="mb-6">
+              <p className="mb-2 block text-[11px] uppercase tracking-wider text-white/60">
+                Table visibility
               </p>
-              <div className="space-y-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  onClick={() => setIsPrivate(true)}
+                  className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                    isPrivate
+                      ? "border-[#FFD700] bg-[#FFD700]/15 shadow-[0_0_14px_rgba(255,215,0,0.35)]"
+                      : "border-[#00e5ff]/20 bg-[#08142f] hover:border-[#00e5ff]/40"
+                  }`}
+                >
+                  <span className="text-xl" aria-hidden>🔒</span>
+                  <span>
+                    <span className="block text-sm font-bold text-white">
+                      Private
+                    </span>
+                    <span className="block text-xs text-white/50">
+                      Invite friends with a code
+                    </span>
+                  </span>
+                </button>
+                <button
+                  onClick={() => setIsPrivate(false)}
+                  className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                    !isPrivate
+                      ? "border-[#FFD700] bg-[#FFD700]/15 shadow-[0_0_14px_rgba(255,215,0,0.35)]"
+                      : "border-[#00e5ff]/20 bg-[#08142f] hover:border-[#00e5ff]/40"
+                  }`}
+                >
+                  <span className="text-xl" aria-hidden>🌍</span>
+                  <span>
+                    <span className="block text-sm font-bold text-white">
+                      Public
+                    </span>
+                    <span className="block text-xs text-white/50">
+                      Anyone can join your table
+                    </span>
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <p className="mb-2 block text-[11px] uppercase tracking-wider text-white/60">
+                AI difficulty
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {(
+                  [
+                    { key: "easy", icon: "🐣", label: "Easy", desc: "Beginner bots" },
+                    { key: "medium", icon: "⚖️", label: "Medium", desc: "Balanced play" },
+                    { key: "hard", icon: "🔥", label: "Hard", desc: "Tough opponents" },
+                  ] as const
+                ).map((d) => (
+                  <button
+                    key={d.key}
+                    onClick={() => setAiDifficulty(d.key)}
+                    className={`rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                      aiDifficulty === d.key
+                        ? "border-[#FFD700] bg-[#FFD700]/15 shadow-[0_0_14px_rgba(255,215,0,0.35)]"
+                        : "border-[#00e5ff]/20 bg-[#08142f] hover:border-[#00e5ff]/40"
+                    }`}
+                  >
+                    <span className="block text-sm font-bold text-white">
+                      {d.icon} {d.label}
+                    </span>
+                    <span className="block text-xs text-white/50">{d.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={() => createGame()}
+              className="w-full rounded-xl bg-gradient-to-r from-yellow-200 to-yellow-600 p-3 text-base font-black text-[#030817] shadow-[0_0_18px_rgba(255,215,0,0.5)] transition-all duration-150 hover:scale-[1.01] active:scale-95"
+            >
+              🃏 Create Game
+            </button>
+
+            <div className="relative my-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#00e5ff]/30 to-transparent" />
+              <span className="text-[10px] uppercase tracking-[0.3em] text-white/40">
+                or
+              </span>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#00e5ff]/30 to-transparent" />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                onClick={() => setShowJoinForm(true)}
+                className="flex items-center justify-center gap-2 rounded-xl border border-[#00e5ff]/40 bg-[#00e5ff]/10 p-3 text-sm font-bold text-[#d8fbff] transition-all hover:bg-[#00e5ff]/25 active:scale-95"
+              >
+                🔑 Join with Invite Code
+              </button>
+              <button
+                onClick={
+                  availablePublicGames > 0 ? () => joinPublicGame() : undefined
+                }
+                disabled={availablePublicGames === 0}
+                className={`flex items-center justify-center gap-2 rounded-xl border-2 p-3 text-sm font-bold transition-all active:scale-95 ${
+                  availablePublicGames > 0
+                    ? "border-[#00e5ff]/50 bg-[#00e5ff]/15 text-[#d8fbff] hover:bg-[#00e5ff]/30 shadow-[0_0_14px_rgba(0,229,255,0.25)]"
+                    : "cursor-not-allowed border-gray-600 bg-gray-700 text-gray-400"
+                }`}
+              >
+                {availablePublicGames > 0
+                  ? `🌐 Join a Public Game (${availablePublicGames})`
+                  : "🌐 No Public Games Open"}
+              </button>
+            </div>
+          </motion.div>
+
+          {/* ── Available public tables ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, delay: 0.1 }}
+            className="mt-6 rounded-2xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-5 shadow-[0_0_22px_rgba(0,229,255,0.15)] sm:p-6"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-lg font-bold uppercase tracking-wider text-[#FFD700]">
+                <span aria-hidden>🎮</span>
+                <span>Available Public Tables</span>
+              </h2>
+              <button
+                onClick={fetchPublicGamesCount}
+                className="rounded-lg bg-[#00e5ff] px-3 py-1.5 text-xs font-semibold text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.35)] transition-colors hover:bg-[#49eeff]"
+              >
+                Refresh
+              </button>
+            </div>
+
+            {publicGameList.length === 0 ? (
+              <div className="py-8 text-center">
+                <span className="text-5xl opacity-30">🂠</span>
+                <p className="mt-2 text-sm text-white/60">
+                  No open tables right now. Create one from the options above.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
                 {publicGameList.map((g) => (
                   <div
                     key={g.gameCode}
-                    className="flex items-center justify-between bg-[#08142f] border border-[#00e5ff]/20 rounded px-2 py-1"
+                    className="flex items-center justify-between rounded-xl border border-[#00e5ff]/20 bg-[#08142f]/80 p-3 transition-colors hover:border-[#00e5ff]/40"
                   >
-                    <div className="text-xs">
-                      <p className="font-semibold">
-                        {g.hostName} · {g.gameCode}
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {g.hostName || "Player"} ·{" "}
+                        <span className="font-mono text-[#00e5ff]">
+                          {g.gameCode}
+                        </span>
                       </p>
-                      <p className="text-slate-300">
-                        {g.occupiedSeats}/{g.maxPlayers} players
+                      <p className="text-xs text-white/60">
+                        {g.occupiedSeats}/{g.maxPlayers} players ·{" "}
+                        {g.openSeats > 0 ? (
+                          <span className="text-emerald-300">
+                            {g.openSeats} open seat
+                            {g.openSeats > 1 ? "s" : ""}
+                          </span>
+                        ) : (
+                          <span className="text-amber-300">Table full</span>
+                        )}
                       </p>
                     </div>
                     <button
                       onClick={() => joinPublicGame(g.gameCode)}
                       disabled={joiningGame}
-                      className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-3 py-1 text-xs font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35 active:scale-95 transition shadow-[0_0_10px_rgba(0,229,255,0.25)]"
+                      className="rounded-lg bg-[#00e5ff] px-4 py-1.5 text-sm font-bold text-[#001933] transition-colors hover:bg-[#49eeff] disabled:bg-[#246874] disabled:text-white/60"
                     >
-                      Join
+                      {joiningGame ? "Joining..." : "Join"}
                     </button>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          <input
-            placeholder="Your display name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="mb-2 w-full rounded-lg border border-[#00e5ff]/30 bg-[#001933]/60 px-3 py-2 text-[#d8fbff] placeholder:text-[#7dd3fc]/40 focus:outline-none focus:border-[#00e5ff] focus:shadow-[0_0_10px_rgba(0,229,255,0.4)] transition"
-          />
-
-          <select
-            value={isPrivate ? "true" : "false"}
-            onChange={(e) => setIsPrivate(e.target.value === "true")}
-            className="w-full mb-2 rounded-lg border border-[#00e5ff]/30 bg-[#001933]/60 px-3 py-2 text-[#d8fbff] focus:outline-none focus:border-[#00e5ff] focus:shadow-[0_0_10px_rgba(0,229,255,0.4)] transition"
-          >
-            <option value="true">Private</option>
-            <option value="false">Public</option>
-          </select>
-
-          <select
-            value={aiDifficulty}
-            onChange={(e) => setAiDifficulty(e.target.value as "easy" | "medium" | "hard")}
-            className="w-full mb-2 rounded-lg border border-[#00e5ff]/30 bg-[#001933]/60 px-3 py-2 text-[#d8fbff] focus:outline-none focus:border-[#00e5ff] focus:shadow-[0_0_10px_rgba(0,229,255,0.4)] transition"
-          >
-            <option value="easy">🐣 AI Difficulty: Easy</option>
-            <option value="medium">⚖️ AI Difficulty: Medium</option>
-            <option value="hard">🔥 AI Difficulty: Hard</option>
-          </select>
-
-          <button
-            onClick={() => createGame()}
-            className="w-full rounded-lg border border-[#FFFF33]/70 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/55 active:scale-95 transition mb-2"
-          >
-            Create Game
-          </button>
-
-          <button
-            onClick={() => setShowJoinForm(true)}
-            className="w-full rounded-lg border border-[#00e5ff]/70 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/55 active:scale-95 transition mb-2"
-          >
-            Join Game
-          </button>
-
-          <button
-            onClick={
-              availablePublicGames > 0 ? () => joinPublicGame() : undefined
-            }
-            disabled={availablePublicGames === 0}
-            className={`w-full rounded-lg border px-4 py-2 text-sm font-medium transition active:scale-95 ${
-              availablePublicGames > 0
-                ? "border-[#ff00cc]/70 bg-[#ff00cc]/20 text-[#ffe0fa] hover:bg-[#ff00cc]/55 shadow-[0_0_14px_rgba(255,0,204,0.35)]"
-                : "border-gray-500 bg-gray-700 text-gray-400 cursor-not-allowed"
-            }`}
-          >
-            {availablePublicGames > 0
-              ? "Join Public Game"
-              : "No Public Game Available"}
-          </button>
-
-          <a href="/casino/poker/">
-            <button className="mt-2 w-full rounded-lg border border-red-500/70 bg-red-500/30 px-4 py-2 text-sm font-medium text-red-200 hover:bg-red-500/55 active:scale-95 transition shadow-[0_0_14px_rgba(239,68,68,0.35)]">
-              Retour
-            </button>
-          </a>
+            )}
+          </motion.div>
         </div>
+        <Footer />
       </div>
     );
   }
+
 
   // main UI when game exists
   return (
@@ -1721,7 +1865,8 @@ export default function PokerPage() {
         }}
       />
 
-      <div className="absolute top-4 left-4 z-20">
+      {/* ── Top bar: Return | Title | Sound ── */}
+      <div className="pointer-events-none absolute top-0 left-0 right-0 z-30 flex items-center justify-between gap-3 px-3 pt-3 sm:px-5 sm:pt-4">
         <button
           onClick={async () => {
             if (game?.stage === "showdown" || game?.waiting) {
@@ -1733,7 +1878,7 @@ export default function PokerPage() {
               alert("You can only return to the form after the hand ends!");
             }
           }}
-          className={`px-4 py-2 rounded font-bold transition text-sm ${
+          className={`pointer-events-auto px-4 py-2 rounded-lg font-bold transition text-sm ${
             game?.stage === "showdown" || game?.waiting
               ? "bg-gradient-to-r from-[#ff00cc]/70 to-[#00e5ff]/70 text-black hover:from-[#ff00cc] hover:to-[#00e5ff] shadow-[0_0_15px_rgba(255,0,204,0.4)]"
               : "bg-[#0a0a1a]/80 text-[#b0b0ff]/40 border border-[#b0b0ff]/10 cursor-not-allowed"
@@ -1741,46 +1886,48 @@ export default function PokerPage() {
         >
           ← Return
         </button>
-      </div>
 
-      <h1 className="text-3xl sm:text-5xl mb-4 font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] via-[#00e5ff] to-[#ff00cc] drop-shadow-[0_0_20px_rgba(255,0,204,0.8)] animate-pulse">
-        TEXAS HOLD'EM
-      </h1>
-      {game && game.players.some((p) => !p.isAI && p.id !== myId) && (
+        <h1 className="text-center text-xl font-black uppercase leading-none tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] via-[#00e5ff] to-[#ff00cc] drop-shadow-[0_0_20px_rgba(255,0,204,0.8)] sm:text-3xl">
+          TEXAS HOLD'EM
+        </h1>
+
         <button
-          onClick={() => setShowReportModal(true)}
-          className="mb-3 z-10 px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30 transition"
+          onClick={() => audio.setEnabled(!audio.enabled)}
+          className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-[#00e5ff]/30 bg-[#0a0a1a]/80 text-lg shadow-[0_0_10px_rgba(0,229,255,0.2)] transition hover:bg-[#00e5ff]/20"
+          title={audio.enabled ? "Mute sounds" : "Enable sounds"}
         >
-          🚩 Report Player
+          {audio.enabled ? "🔊" : "🔇"}
         </button>
-      )}
-      
-      {/* ── Sound toggle ── */}
-      <button
-        onClick={() => audio.setEnabled(!audio.enabled)}
-        className="absolute top-4 right-4 z-20 w-10 h-10 rounded-full flex items-center justify-center bg-[#0a0a1a]/80 border border-[#00e5ff]/30 text-lg hover:bg-[#00e5ff]/20 transition shadow-[0_0_10px_rgba(0,229,255,0.2)]"
-        title={audio.enabled ? "Mute sounds" : "Enable sounds"}
-      >
-        {audio.enabled ? "🔊" : "🔇"}
-      </button>
-      <div className="mb-3 flex items-center gap-2 text-sm z-10">
-        <span className="text-[#b0b0ff]/70">Turn timer:</span>
-        <select
-          value={turnTimeLimit}
-          onChange={(e) => setTurnTimeLimit(Number(e.target.value) || 60)}
-          className="bg-[#0a0a1a] border border-[#ff00cc]/30 rounded px-2 py-1 text-[#ff00cc] focus:outline-none focus:border-[#ff00cc]"
-        >
-          <option value={15}>15s</option>
-          <option value={30}>30s</option>
-          <option value={60}>60s</option>
-        </select>
       </div>
 
-      {game?.inviteCode && (
-        <div className="mb-4 text-center flex flex-wrap items-center justify-center gap-3 z-10">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-[#b0b0ff]/70 text-sm">Invite Code:</span>{" "}
-            <span className="bg-gradient-to-r from-[#ff00cc]/30 to-[#00e5ff]/30 border border-[#ff00cc]/40 text-[#00e5ff] px-3 py-1 rounded font-mono tracking-wider shadow-[0_0_12px_rgba(0,229,255,0.25)]">
+      {/* ── Table controls: report / timer / invite / actions ── */}
+      <div className="relative z-10 mt-20 mb-4 flex flex-wrap items-center justify-center gap-2 sm:mt-24">
+        {game && game.players.some((p) => !p.isAI && p.id !== myId) && (
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30 transition"
+          >
+            🚩 Report Player
+          </button>
+        )}
+
+        <div className="flex items-center gap-2 rounded-lg border border-[#ff00cc]/25 bg-[#0a0a1a]/85 px-3 py-1.5 text-xs text-[#b0b0ff]/70 backdrop-blur-sm">
+          <span className="text-[10px] uppercase tracking-wider">Turn timer</span>
+          <select
+            value={turnTimeLimit}
+            onChange={(e) => setTurnTimeLimit(Number(e.target.value) || 60)}
+            className="rounded border border-[#ff00cc]/30 bg-transparent px-1.5 py-0.5 text-[#ff00cc] focus:outline-none focus:border-[#ff00cc]"
+          >
+            <option value={15}>15s</option>
+            <option value={30}>30s</option>
+            <option value={60}>60s</option>
+          </select>
+        </div>
+
+        {game?.inviteCode && (
+          <div className="flex items-center gap-2 rounded-lg border border-[#00e5ff]/25 bg-[#0a0a1a]/85 px-3 py-1.5 backdrop-blur-sm">
+            <span className="text-[10px] uppercase tracking-wider text-[#b0b0ff]/70">Code</span>
+            <span className="font-mono text-sm font-bold tracking-wider text-[#00e5ff]">
               {game.inviteCode}
             </span>
             <button
@@ -1788,82 +1935,78 @@ export default function PokerPage() {
                 navigator.clipboard.writeText(game.inviteCode || "");
                 alert("Invite code copied!");
               }}
-              className="ml-1 bg-[#ff00cc]/20 border border-[#ff00cc]/40 text-[#ff00cc] px-3 py-1 rounded text-sm hover:bg-[#ff00cc]/35 transition shadow-[0_0_10px_rgba(255,0,204,0.3)]"
+              className="rounded border border-[#ff00cc]/40 bg-[#ff00cc]/20 px-2 py-0.5 text-[10px] font-bold text-[#ff00cc] transition hover:bg-[#ff00cc]/35"
             >
               Copy
             </button>
           </div>
+        )}
 
-          {/* START GAME button */}
-          {game?.waiting && isHost && (
-            <button
-              onClick={() => {
-                if (!game) return;
-                if (game.players.length < 2) {
-                  alert(
-                    "You need at least 1 AI to start (player + 1 AI). Add an AI by clicking a seat.",
-                  );
-                  return;
-                }
-                startGame();
-              }}
-              className={`bg-gradient-to-r from-[#ff00cc]/80 to-[#00e5ff]/80 px-5 py-2 rounded font-bold text-black hover:from-[#ff00cc] hover:to-[#00e5ff] transition shadow-[0_0_20px_rgba(255,0,204,0.5)] ${
-                game.players.length < 2 ? "opacity-40 cursor-not-allowed" : ""
-              }`}
-              disabled={game.players.length < 2}
-            >
-              ⚡ Start Game
-            </button>
-          )}
+        {game?.waiting && isHost && (
+          <button
+            onClick={() => {
+              if (!game) return;
+              if (game.players.length < 2) {
+                alert(
+                  "You need at least 1 AI to start (player + 1 AI). Add an AI by clicking a seat.",
+                );
+                return;
+              }
+              startGame();
+            }}
+            className={`bg-gradient-to-r from-[#ff00cc]/80 to-[#00e5ff]/80 px-5 py-2 rounded-lg font-bold text-black transition hover:from-[#ff00cc] hover:to-[#00e5ff] shadow-[0_0_20px_rgba(255,0,204,0.5)] ${
+              game.players.length < 2 ? "opacity-40 cursor-not-allowed" : ""
+            }`}
+            disabled={game.players.length < 2}
+          >
+            ⚡ Start Game
+          </button>
+        )}
 
-          {/* REPLAY HAND button */}
-          {game?.replayVisible && (
-            <button
-              onClick={replayHand}
-              className="bg-gradient-to-r from-[#ff00cc]/60 to-[#ff00cc]/60 border border-[#ff00cc]/50 text-white px-5 py-2 rounded font-bold hover:from-[#ff00cc] hover:to-[#ff00cc] transition shadow-[0_0_15px_rgba(255,0,204,0.4)]"
-            >
-              🔄 Replay Hand
-            </button>
-          )}
+        {game?.replayVisible && (
+          <button
+            onClick={replayHand}
+            className="bg-gradient-to-r from-[#ff00cc]/60 to-[#ff00cc]/60 border border-[#ff00cc]/50 text-white px-5 py-2 rounded-lg font-bold transition hover:from-[#ff00cc] hover:to-[#ff00cc] shadow-[0_0_15px_rgba(255,0,204,0.4)]"
+          >
+            🔄 Replay Hand
+          </button>
+        )}
 
-          {/* CASH OUT button */}
-          {(game?.stage === "showdown" || game?.waiting) && me && me.stack > 0 && (
-            <button
-              onClick={async () => {
-                const cs = me.stack;
-                await leaveCurrentGame(cs);
-                await fetchUserTokens();
-                setGame(null);
-              }}
-              className="bg-gradient-to-r from-[#FFD700]/70 to-[#FFA500]/70 border border-[#FFD700]/50 text-black px-5 py-2 rounded font-bold hover:from-[#FFD700] hover:to-[#FFA500] transition shadow-[0_0_15px_rgba(255,215,0,0.4)]"
-            >
-              💰 Retirer {me.stack} jetons
-            </button>
-          )}
+        {(game?.stage === "showdown" || game?.waiting) && me && me.stack > 0 && (
+          <button
+            onClick={async () => {
+              const cs = me.stack;
+              await leaveCurrentGame(cs);
+              await fetchUserTokens();
+              setGame(null);
+            }}
+            className="bg-gradient-to-r from-[#FFD700]/70 to-[#FFA500]/70 border border-[#FFD700]/50 text-black px-5 py-2 rounded-lg font-bold transition hover:from-[#FFD700] hover:to-[#FFA500] shadow-[0_0_15px_rgba(255,215,0,0.4)]"
+          >
+            💰 Retirer {me.stack} jetons
+          </button>
+        )}
 
-          {/* Leave After Hand checkbox */}
-          {(game?.stage !== "showdown" && !game?.waiting) && (
-            <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={leaveAfterHand}
-                onChange={(e) => setLeaveAfterHand(e.target.checked)}
-                className="w-4 h-4 accent-[#ff00cc] rounded border-[#ff00cc]/40 bg-[#0a0a1a] focus:ring-[#ff00cc] cursor-pointer"
-              />
-              <span className="text-xs text-[#b0b0ff]/70">Quitter après cette main</span>
-            </label>
-          )}
-        </div>
-      )}
+        {game?.stage !== "showdown" && !game?.waiting && (
+          <label className="flex cursor-pointer select-none items-center gap-2 rounded-lg border border-[#ff00cc]/20 bg-[#0a0a1a]/85 px-3 py-1.5 backdrop-blur-sm">
+            <input
+              type="checkbox"
+              checked={leaveAfterHand}
+              onChange={(e) => setLeaveAfterHand(e.target.checked)}
+              className="h-4 w-4 cursor-pointer rounded border-[#ff00cc]/40 bg-[#0a0a1a] accent-[#ff00cc] focus:ring-[#ff00cc]"
+            />
+            <span className="text-xs text-[#b0b0ff]/70">Quitter après cette main</span>
+          </label>
+        )}
+      </div>
 
       {(game.actionLog?.length ?? 0) > 0 && (
-        <div className="mb-3 w-full max-w-xl bg-[#0a0a1a]/90 border border-[#ff00cc]/20 rounded p-2 text-xs z-10 backdrop-blur-sm">
+        <div className="mb-3 w-full max-w-xl rounded-lg bg-[#0a0a1a]/90 border border-[#ff00cc]/20 p-2 text-xs z-10 backdrop-blur-sm">
           <div className="font-bold text-[#ff00cc] mb-1 drop-shadow-[0_0_6px_#ff00cc]">Recent actions</div>
           <div className="space-y-1">
             {game.actionLog!.map((entry, idx) => (
               <div
                 key={`${entry.at}-${idx}`}
-                className="text-[#b0b0ff]/80 truncate"
+                className="truncate text-[#b0b0ff]/80"
               >
                 ▸ {entry.text}
               </div>
@@ -1871,6 +2014,7 @@ export default function PokerPage() {
           </div>
         </div>
       )}
+
 
    {/* ── Scalable table wrapper ── */}
 <div className="relative w-full h-[75vh] flex items-center justify-center overflow-visible">
@@ -1907,7 +2051,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           <div className="absolute w-[300px] h-[120px] rounded-[50%] bg-gradient-to-r from-[#ff00cc]/10 via-[#00e5ff]/10 to-[#ff00cc]/10 blur-3xl" />
 
           {/* Center data ring */}
-          <div className="absolute w-[180px] h-[60px] rounded-[50%] border border-[#00e5ff]/15 shadow-[0_0_40px_rgba(0,229,255,0.15)] animate-pulse" />
+          <div className="absolute w-[180px] h-[60px] rounded-[50%] border border-[#00e5ff]/15 shadow-[0_0_40px_rgba(0,229,255,0.15)]" />
 
           {/* ── Pot display in the center of the table ── */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center">
@@ -2120,12 +2264,12 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                         Folded
                       </span>
                     ) : occupant.stack <= 0 ? (
-                      <span className="px-2 py-[2px] rounded bg-purple-900/80 text-purple-300 border border-purple-500/30 animate-pulse">
+                      <span className="px-2 py-[2px] rounded bg-purple-900/80 text-purple-300 border border-purple-500/30">
                         All-in
                       </span>
                     ) : game?.players?.[game.currentTurn]?.id ===
                       occupant.id ? (
-                      <span className="px-2 py-[2px] rounded bg-[#ff00cc]/80 text-black font-bold animate-pulse shadow-[0_0_15px_rgba(255,0,204,0.9)]">
+                      <span className="px-2 py-[2px] rounded bg-[#ff00cc]/80 text-black font-bold shadow-[0_0_15px_rgba(255,0,204,0.9)]">
                         ⚡ THINKING
                       </span>
                     ) : (
@@ -2576,96 +2720,99 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
       {/* ───────────────────────────── */}
       {/* DESKTOP BOTTOM-CENTER DOCK */}
       {/* ───────────────────────────── */}
-      <div className="hidden lg:flex fixed left-1/2 -translate-x-1/2 bottom-10 z-50 items-center justify-center gap-2.5">
+      <div className="hidden lg:flex fixed left-1/2 -translate-x-1/2 bottom-8 z-50">
+        <div className="flex items-center justify-center gap-2.5 rounded-2xl border border-[#ff00cc]/25 bg-[#050510]/90 px-3 py-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.6),0_0_25px_rgba(255,0,204,0.2)] backdrop-blur-xl">
 
-        {/* Fold — smaller, quieter (destructive but secondary) */}
-        <button
-          onClick={() => performAction("fold")}
-          aria-label="Fold"
-          data-action="fold"
-          className="px-4 py-2.5 rounded-2xl font-bold text-xs
-          bg-red-900/60 border border-red-500/40
-          text-red-200/90
-          hover:bg-red-900/80 hover:border-red-400/60 hover:scale-[1.03]
-          hover:shadow-[0_0_18px_rgba(255,0,0,0.35)]
-          transition-all duration-150 active:scale-95
-          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60"
-        >
-          ❌ Fold
-        </button>
-
-        {/* Check / Call — mid-tier */}
-        {canCheck ? (
+          {/* Fold — smaller, quieter (destructive but secondary) */}
           <button
-            onClick={() => performAction("check")}
-            aria-label="Check"
-            data-action="check"
-            className="px-5 py-3 rounded-2xl font-bold text-sm
-            bg-gradient-to-r from-[#00e5ff]/30 to-cyan-400/20
-            border border-[#00e5ff]/50
-            text-[#00e5ff]
-            hover:scale-[1.04] hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
-            transition-all duration-150 active:scale-95
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            onClick={() => performAction("fold")}
+            aria-label="Fold"
+            data-action="fold"
+            className="px-4 py-2.5 rounded-xl font-bold text-xs
+            bg-red-900/60 border border-red-500/40
+            text-red-200/90
+            hover:bg-red-900/80 hover:border-red-400/60
+            hover:shadow-[0_0_18px_rgba(255,0,0,0.35)]
+            transition-colors active:scale-95
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60"
           >
-            ✓ Check
+            ❌ Fold
           </button>
-        ) : (
-          <button
-            onClick={() => performAction("call")}
-            aria-label={`Call ${toCall}`}
-            data-action="call"
-            className="px-5 py-3 rounded-2xl font-bold text-sm
-            bg-gradient-to-r from-[#00e5ff]/30 to-cyan-400/20
-            border border-[#00e5ff]/50
-            text-[#00e5ff]
-            hover:scale-[1.04] hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
-            transition-all duration-150 active:scale-95
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
-          >
-            📞 Call ${toCall}
-          </button>
-        )}
 
-        {/* Quick Bet — when no bet to call, post-flop */}
-        {canUseBetShortcut && (
-          <button
-            onClick={() => performAction("bet20")}
-            aria-label="Bet 20 tokens"
-            data-action="bet20"
-            className="px-5 py-3 rounded-2xl font-bold text-sm
-            bg-gradient-to-r from-yellow-500/30 to-amber-400/15
-            border border-yellow-400/55
-            text-yellow-200
-            hover:scale-[1.04] hover:shadow-[0_0_25px_rgba(255,215,0,0.5)]
-            transition-all duration-150 active:scale-95
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300/60"
-          >
-            💰 Bet $20
-          </button>
-        )}
+          {/* Check / Call — mid-tier */}
+          {canCheck ? (
+            <button
+              onClick={() => performAction("check")}
+              aria-label="Check"
+              data-action="check"
+              className="px-5 py-3 rounded-xl font-bold text-sm
+              bg-gradient-to-r from-[#00e5ff]/30 to-cyan-400/20
+              border border-[#00e5ff]/50
+              text-[#00e5ff]
+              hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
+              transition-colors active:scale-95
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            >
+              ✓ Check
+            </button>
+          ) : (
+            <button
+              onClick={() => performAction("call")}
+              aria-label={`Call ${toCall}`}
+              data-action="call"
+              className="px-5 py-3 rounded-xl font-bold text-sm
+              bg-gradient-to-r from-[#00e5ff]/30 to-cyan-400/20
+              border border-[#00e5ff]/50
+              text-[#00e5ff]
+              hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
+              transition-colors active:scale-95
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            >
+              📞 Call {toCall}
+            </button>
+          )}
 
-        {/* Raise — PRIMARY action, brightest, rightmost */}
-        <button
-          onClick={() => {
-            const minRaise = Math.max(20, highestBetInRound * 2);
-            setRaiseInputValue(Math.max(raiseAmount, minRaise));
-            setShowRaiseInput(true);
-          }}
-          aria-label="Raise"
-          data-action="raise"
-          className="px-6 py-3.5 rounded-2xl font-black text-base
-          bg-gradient-to-r from-[#ff00cc] via-fuchsia-500 to-pink-500
-          border-2 border-[#ff00cc]/70
-          text-black
-          shadow-[0_0_28px_rgba(255,0,204,0.55),inset_0_0_8px_rgba(255,255,255,0.2)]
-          hover:scale-[1.05] hover:shadow-[0_0_38px_rgba(255,0,204,0.75)]
-          transition-all duration-150 active:scale-95
-          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300/70"
-        >
-          ⬆ Raise
-        </button>
+          {/* Quick Bet — when no bet to call, post-flop */}
+          {canUseBetShortcut && (
+            <button
+              onClick={() => performAction("bet20")}
+              aria-label="Bet 20 tokens"
+              data-action="bet20"
+              className="px-5 py-3 rounded-xl font-bold text-sm
+              bg-gradient-to-r from-yellow-500/30 to-amber-400/15
+              border border-yellow-400/55
+              text-yellow-200
+              hover:shadow-[0_0_25px_rgba(255,215,0,0.5)]
+              transition-colors active:scale-95
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300/60"
+            >
+              💰 Bet $20
+            </button>
+          )}
+
+          {/* Raise — PRIMARY action, brightest, rightmost */}
+          <button
+            onClick={() => {
+              const minRaise = Math.max(20, highestBetInRound * 2);
+              setRaiseInputValue(Math.max(raiseAmount, minRaise));
+              setShowRaiseInput(true);
+            }}
+            aria-label="Raise"
+            data-action="raise"
+            className="px-6 py-3.5 rounded-xl font-black text-base
+            bg-gradient-to-r from-[#ff00cc] via-fuchsia-500 to-pink-500
+            border-2 border-[#ff00cc]/70
+            text-black
+            shadow-[0_0_28px_rgba(255,0,204,0.55),inset_0_0_8px_rgba(255,255,255,0.2)]
+            hover:shadow-[0_0_38px_rgba(255,0,204,0.75)]
+            transition-colors active:scale-95
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300/70"
+          >
+            ⬆ Raise
+          </button>
+        </div>
       </div>
+
 
       {/* ───────────────────────────── */}
       {/* MOBILE ACTION DOCK */}
@@ -2703,7 +2850,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 border border-red-500/40
                 text-red-200
                 font-bold text-sm
-                active:scale-95 transition
+                active:scale-95 transition-colors
               "
             >
               Fold
@@ -2718,7 +2865,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   border border-[#00e5ff]/40
                   text-[#00e5ff]
                   font-bold text-sm
-                  active:scale-95 transition
+                  active:scale-95 transition-colors
                 "
               >
                 Check
@@ -2732,7 +2879,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   border border-[#00e5ff]/40
                   text-[#00e5ff]
                   font-bold text-sm
-                  active:scale-95 transition
+                  active:scale-95 transition-colors
                 "
               >
                 Call
@@ -2751,7 +2898,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 border border-[#ff00cc]/40
                 text-[#ff00cc]
                 font-bold text-sm
-                active:scale-95 transition
+                active:scale-95 transition-colors
               "
             >
               Raise
@@ -2769,7 +2916,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   border border-yellow-400/30
                   text-yellow-200
                   font-semibold text-sm
-                  active:scale-95 transition
+                  active:scale-95 transition-colors
                 "
               >
                 💰 Quick Bet $20
@@ -2784,8 +2931,8 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
 
       {/* Multiplayer Waiting Panel — bottom-left, public-only */}
       {!isPrivate && (
-        <div className="fixed bottom-6 left-6 z-50 pointer-events-auto">
-          <div className="w-64 bg-[#0a0a1a]/95 backdrop-blur-md border border-[#ff00cc]/20 rounded-lg shadow-[0_0_20px_rgba(255,0,204,0.15)] p-3">
+        <div className="fixed bottom-56 left-3 right-3 z-50 pointer-events-auto lg:bottom-6 lg:left-6 lg:right-auto">
+          <div className="w-full lg:w-64 bg-[#0a0a1a]/95 backdrop-blur-md border border-[#ff00cc]/20 rounded-lg shadow-[0_0_20px_rgba(255,0,204,0.15)] p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm font-bold text-[#ff00cc]">Public Queue</div>
               <div className="text-xs text-[#b0b0ff]/60">
