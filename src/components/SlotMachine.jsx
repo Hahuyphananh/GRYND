@@ -74,7 +74,7 @@ function PaylineOverlay({ winningLine, themeConfig }) {
   if (!winningLine || !winningLine.positions || winningLine.positions.length < 3) return null;
   const { positions, line: lineName } = winningLine;    const PAD = 20; // p-5 container padding
     const GAP = 12;
-    const REEL_W = 118; // reel width
+    const REEL_W = 150; // reel width (3x3 skill slots)
     const SYM_H = 110;
   const colors = { top: "#00ffff", middle: "#ff00ff", bottom: "#ffff00", "v-shape": "#ff8c00", "inverted-v": "#00ff88" };
   const color = colors[lineName] || "#ff00ff";
@@ -161,11 +161,9 @@ function GambleModal({ pendingWin, onGamble, onCollect, themeConfig }) {
 
 function PaytableModal({ onClose, themeConfig, symbols, svgMap }) {
   const paylineDiagrams = [
-    { name: "Top Line", rows: [0,0,0,0,0], color: "#00ffff" },
-    { name: "Middle Line", rows: [1,1,1,1,1], color: "#ff00ff" },
-    { name: "Bottom Line", rows: [2,2,2,2,2], color: "#ffff00" },
-    { name: "V-Shape", rows: [0,1,2,1,0], color: "#ff8c00" },
-    { name: "Inverted V", rows: [2,1,0,1,2], color: "#00ff88" },
+    { name: "Top Line", rows: [0,0,0], color: "#00ffff" },
+    { name: "Middle Line", rows: [1,1,1], color: "#ff00ff" },
+    { name: "Bottom Line", rows: [2,2,2], color: "#ffff00" },
   ];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={onClose}>
@@ -177,16 +175,16 @@ function PaytableModal({ onClose, themeConfig, symbols, svgMap }) {
         </div>
         <div className="mb-4">
           <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-2">Paylines</h3>
-          <div className="grid grid-cols-5 gap-1">
+          <div className="grid grid-cols-3 gap-1">
             {paylineDiagrams.map(pl => (
               <div key={pl.name} className="text-center">
                 <svg viewBox="0 0 60 40" className="w-full h-10">
                   {[0,1,2].map(row =>
-                    [0,1,2,3,4].map(col =>
-                      <circle key={`${row}-${col}`} cx={6+col*12} cy={6+row*13} r="2.5" fill="#ffffff20" />
+                    [0,1,2].map(col =>
+                      <circle key={`${row}-${col}`} cx={8+col*22} cy={6+row*13} r="2.5" fill="#ffffff20" />
                     )
                   )}
-                  <path d={`M6,${6+pl.rows[0]*13} L18,${6+pl.rows[1]*13} L30,${6+pl.rows[2]*13} L42,${6+pl.rows[3]*13} L54,${6+pl.rows[4]*13}`}
+                  <path d={`M8,${6+pl.rows[0]*13} L30,${6+pl.rows[1]*13} L52,${6+pl.rows[2]*13}`}
                     stroke={pl.color} strokeWidth="2" fill="none" strokeLinecap="round" />
                 </svg>
                 <p className="text-[10px] text-white/40 mt-0.5">{pl.name}</p>
@@ -200,11 +198,11 @@ function PaytableModal({ onClose, themeConfig, symbols, svgMap }) {
             {symbols.slice(0, 12).map(s => (
               <div key={s} className="flex items-center gap-1.5 bg-white/5 rounded-lg px-2 py-1.5">
                 <SlotSymbol symbol={s} svgMap={svgMap} fallback={symbols[0]} className="w-[22px] h-[22px]" />
-                <span className="text-[10px] text-white/60">3:{themeConfig.rtp>=90?"3×":"2×"} 4:{themeConfig.rtp>=90?"4×":"3×"} 5:{themeConfig.rtp>=90?"6×":"5×"}</span>
+                <span className="text-[10px] text-white/60">3:{themeConfig.rtp>=90?"3×":"2×"}</span>
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-white/30 mt-3">5 of a kind wins the full Progressive Jackpot! 🎉</p>
+          <p className="text-[10px] text-white/30 mt-3">3 in a row wins the full Progressive Jackpot! 🎉</p>
           <p className="text-[10px] text-white/30">RTP: {themeConfig.rtp}%</p>
         </div>
       </div>
@@ -249,10 +247,10 @@ export default function SlotMachine({ theme = "fruit" }) {
   const defaultSymbol = themeConfig.defaultSymbol;
 
   // Core game state
-  const [reels, setReels] = useState(Array.from({ length: 5 }, () => Array(3).fill(defaultSymbol)));
+  const [reels, setReels] = useState(Array.from({ length: 3 }, () => Array(3).fill(defaultSymbol)));
   const [balance, setBalance] = useState(0);
   const [betPerLine, setBetPerLine] = useState(20); // bet per line
-  const lines = 5;
+  const lines = 3;
   const bet = betPerLine * lines; // total bet
   const [lastResult, setLastResult] = useState("");
   const [totalWin, setTotalWin] = useState(0);
@@ -263,8 +261,16 @@ export default function SlotMachine({ theme = "fruit" }) {
   const autoSpinRef = useRef(null);
   const [winningPositions, setWinningPositions] = useState([]);
   const [winningLine, setWinningLine] = useState(null);
-  const [animatingReels, setAnimatingReels] = useState(Array(5).fill(false));
+  const [animatingReels, setAnimatingReels] = useState(Array(3).fill(false));
   const spinLockRef = useRef(false);
+  // ── Skill-stop refs ──────────────────────────────────────────────
+  const pendingResultRef = useRef(null);   // server outcome awaiting the reels to stop
+  const revealedRef = useRef(false);       // guards a single reveal per spin
+  const spinningRef = useRef(false);       // live spinning flag for stop handlers
+  const safetyStopRef = useRef(null);      // auto-stop safety timer
+  const stopAllReelsRef = useRef(null);    // latest stopAllReels for the safety timer
+  const revealSpinResultRef = useRef(null); // latest revealSpinResult (early-stop edge case)
+  const animatingReelsRef = useRef(Array(3).fill(false)); // live reel-stop flags
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [spinHistory, setSpinHistory] = useState([]);
@@ -278,7 +284,7 @@ export default function SlotMachine({ theme = "fruit" }) {
   const [nearMiss, setNearMiss] = useState(false);
   const [winCounterTarget, setWinCounterTarget] = useState(0);
   const [showCoins, setShowCoins] = useState(false);
-  const [reelStopped, setReelStopped] = useState(Array(5).fill(false)); // for bounce animation
+  const [reelStopped, setReelStopped] = useState(Array(3).fill(false)); // for bounce animation
 
   // Tier 2 states
   const [lossStreak, setLossStreak] = useState(0);
@@ -347,6 +353,7 @@ export default function SlotMachine({ theme = "fruit" }) {
   const handleSpin = useCallback(async (isFreeSpin = false) => {
     if (spinLockRef.current) return;
     spinLockRef.current = true;
+    pendingResultRef.current = null; // a stale outcome must never reveal
 
     setError(null);
     setWinningPositions([]);
@@ -355,7 +362,7 @@ export default function SlotMachine({ theme = "fruit" }) {
     setCelebrationTier(null);
     setWinCounterTarget(0);
     setShowCoins(false);
-    setReelStopped(Array(5).fill(false));
+    setReelStopped(Array(3).fill(false));
 
     if (!isFreeSpin && balance < bet) {
       setLastResult("❌ Not enough balance.");
@@ -367,7 +374,7 @@ export default function SlotMachine({ theme = "fruit" }) {
     playSpinSound();
     setLoading(true);
     setSpinning(true);
-    setAnimatingReels(Array(5).fill(true));
+    setAnimatingReels(Array(3).fill(true));
     setFreeSpinActive(isFreeSpin);
 
     try {
@@ -385,140 +392,49 @@ export default function SlotMachine({ theme = "fruit" }) {
         body: JSON.stringify({ betAmount: isFreeSpin ? 0 : bet, payout: winAmount, reels: newReels.flat() }),
       }).catch(() => {});
 
-      const tBase = turboMode ? 200 : 800;
-      const tStagger = turboMode ? 50 : 200;
+      // ── Skill Stop: reels spin until the player stops each one ──
+      // Reels state is set to the server outcome immediately so a
+      // stopped reel "lands" on its final symbols; columns still
+      // animating keep scrolling until manually stopped (or the
+      // safety auto-stop below fires).
+      setReels(newReels);
+      pendingResultRef.current = {
+        reels: newReels,
+        winAmount,
+        newBalance,
+        winningLine: wl,
+        jackpotWon: didWinJackpot,
+        jackpotAmount: wonJackpotAmount,
+        isFreeSpin,
+      };
+      revealedRef.current = false;
 
+      // Safety net: auto-stop any reel the player never stops so the
+      // spin can't hang forever (skill-based, but bounded).
+      if (safetyStopRef.current) clearTimeout(safetyStopRef.current);
       reelTimeoutIds.current = [];
-      [0, 1, 2, 3, 4].forEach((col, i) => {
-        const id = setTimeout(() => {
-          if (!componentMountedRef.current) return;
-          setAnimatingReels(prev => { const n = [...prev]; n[col] = false; return n; });
-          setReelStopped(prev => { const n = [...prev]; n[col] = true; return n; });
-          playReelStop();
-        }, tBase + i * tStagger);
-        reelTimeoutIds.current.push(id);
-      });
+      safetyStopRef.current = setTimeout(() => {
+        if (stopAllReelsRef.current) stopAllReelsRef.current();
+      }, turboMode ? 8000 : 15000);
+      reelTimeoutIds.current.push(safetyStopRef.current);
 
-      const finalId = setTimeout(() => {
-        if (!componentMountedRef.current) return;
-        setReels(newReels);
-        setSpinning(false);
-        spinLockRef.current = false;
-        setLoading(false);
-        setFreeSpinActive(false);
+      // Edge case: the player may have already stopped every reel before
+      // the outcome arrived — reveal immediately in that case.
+      if (animatingReelsRef.current.every(a => !a)) {
+        if (revealSpinResultRef.current) revealSpinResultRef.current();
+      }
 
-        if (winAmount > 0) {
-          setFlashWin(true);
-          setTimeout(() => setFlashWin(false), 800);
-          setWinCounterTarget(winAmount);
-          setShowCoins(true);
-          setTimeout(() => setShowCoins(false), 2500);
-          setCandleFlashing(true);
-          setTimeout(() => setCandleFlashing(false), 3000);
-        }
+      // Reveal is driven by revealSpinResult() once ALL reels are stopped.
 
-        // ── Celebration tiers ──
-        let tierUsed = null;
-        const multiplier = winAmount / (bet || 1);
-        if (didWinJackpot) {
-          tierUsed = "mega";
-          setCelebrationTier("mega");
-          setJackpotCelebration(true);
-          setJackpotWonAmount(wonJackpotAmount || 0);
-          setLastResult(`🎉 JACKPOT! +${(wonJackpotAmount || 0).toLocaleString()} tokens!`);
-          const cid = setTimeout(() => { if (componentMountedRef.current) setJackpotCelebration(false); }, 6000);
-          reelTimeoutIds.current.push(cid);
-        } else if (multiplier >= 50) {
-          tierUsed = "mega";
-          setCelebrationTier("mega");
-          setLastResult(`🌟 MEGA WIN! +${winAmount.toLocaleString()}`);
-        } else if (multiplier >= 5) {
-          tierUsed = "big";
-          setCelebrationTier("big");
-          setLastResult(`🔥 BIG WIN! +${winAmount.toLocaleString()}`);
-        } else if (multiplier >= 2) {
-          tierUsed = "medium";
-          setCelebrationTier("medium");
-          setLastResult(`✨ NICE WIN! +${winAmount.toLocaleString()}`);
-        } else if (winAmount > 0) {
-          tierUsed = "small";
-          setCelebrationTier("small");
-          setLastResult(`✅ +${winAmount.toLocaleString()}`);
-        } else {
-          // Near miss check: 4 of 5
-          if (wl && wl.positions && wl.positions.length === 4) {
-            setNearMiss(true);
-            setTimeout(() => setNearMiss(false), 2500);
-            setLastResult("😱 SO CLOSE!");
-          } else {
-            setLastResult("❌ No match.");
-          }
-        }
-
-        // ── Free spins / loss streak ──
-        if (winAmount > 0) {
-          setLossStreak(0);
-          // Show gamble option
-          setPendingWin(winAmount);
-          setShowGamble(true);
-        } else {
-          setLossStreak(prev => prev + 1);
-        }
-
-        // ── Audio ──
-        if (multiplier >= 5) { playVictory(); playCardDraw(); }
-        else if (winAmount > 0) { playCardDraw(); }
-        else { playDefeat(); }
-
-        if (wl?.positions) {
-          setWinningPositions(wl.positions);
-          setWinningLine(wl);
-        }
-
-        setBalance(newBalance);
-        setTotalWin(prev => prev + winAmount);
-        if (winAmount === 0 && !isFreeSpin) setTotalLoss(prev => prev + bet);
-
-        setSpinHistory(prev => [
-          { reels: newReels, bet: isFreeSpin ? 0 : bet, winAmount, won: winAmount > 0,
-            jackpot: didWinJackpot || winAmount >= bet * 5, ts: Date.now(), freeSpin: isFreeSpin },
-          ...prev,
-        ].slice(0, 20));
-
-        fetchJackpot();          // Set celebration tier ref directly (avoid stale useEffect sync)
-          celebrationTierActual.current = tierUsed;
-
-          posthog?.capture("slots_spin_result", {
-          theme, bet: isFreeSpin ? 0 : bet, win_amount: winAmount, won: winAmount > 0,
-          jackpot: didWinJackpot || winAmount >= bet * 5,
-          jackpot_amount: didWinJackpot ? wonJackpotAmount : 0,
-          celebration_tier: celebrationTierActual.current,
-          free_spin: isFreeSpin,
-        });
-
-        // Auto-spin stop conditions
-        if (autoSpinning) {
-          let shouldStop = false;
-          const s = autoplaySettingsRef.current;
-          if (s.spinsRemaining > 0) {
-            const newRemaining = s.spinsRemaining - 1;
-            setAutoplaySettings(prev => ({ ...prev, spinsRemaining: newRemaining }));
-            if (newRemaining <= 0) shouldStop = true;
-          }
-          if (s.stopOnWin > 0 && winAmount >= s.stopOnWin) shouldStop = true;
-          if (s.stopOnBalance > 0 && newBalance < s.stopOnBalance) shouldStop = true;
-          if (shouldStop) stopAutoSpin();
-        }
-      }, tBase + 5 * tStagger + (turboMode ? 200 : 400));
-      reelTimeoutIds.current.push(finalId);
     } catch (err) {
       if (!componentMountedRef.current) return;
-      setSpinning(false); setAnimatingReels(Array(5).fill(false));
+      if (safetyStopRef.current) { clearTimeout(safetyStopRef.current); safetyStopRef.current = null; }
+      setSpinning(false); setAnimatingReels(Array(3).fill(false));
       spinLockRef.current = false; setLoading(false); setFreeSpinActive(false);
       setLastResult("❌ Error playing slot");
       setError(err.message || "Network error");
     }
-  }, [balance, bet, posthog, theme, fetchJackpot, turboMode, autoSpinning]);
+  }, [balance, bet, theme, turboMode]);
 
   // Ref for celebration tier in PostHog (set directly in timeout to avoid stale reads)
   const celebrationTierActual = useRef(null);
@@ -561,6 +477,173 @@ export default function SlotMachine({ theme = "fruit" }) {
     setAutoSpinning(false);
     if (autoSpinRef.current) { clearInterval(autoSpinRef.current); autoSpinRef.current = null; }
   }, []);
+
+  // ── Skill Stop: reveal the outcome once every reel has been stopped ──
+  const revealSpinResult = useCallback(() => {
+    if (!pendingResultRef.current || revealedRef.current) return;
+    revealedRef.current = true;
+    if (safetyStopRef.current) { clearTimeout(safetyStopRef.current); safetyStopRef.current = null; }
+    if (!componentMountedRef.current) return;
+
+    const {
+      reels: newReels,
+      winAmount,
+      newBalance,
+      winningLine: wl,
+      jackpotWon: didWinJackpot,
+      jackpotAmount: wonJackpotAmount,
+      isFreeSpin,
+    } = pendingResultRef.current;
+
+    setReels(newReels);
+    setSpinning(false);
+    spinningRef.current = false;
+    spinLockRef.current = false;
+    setLoading(false);
+    setFreeSpinActive(false);
+
+    if (winAmount > 0) {
+      setFlashWin(true);
+      setTimeout(() => setFlashWin(false), 800);
+      setWinCounterTarget(winAmount);
+      setShowCoins(true);
+      setTimeout(() => setShowCoins(false), 2500);
+      setCandleFlashing(true);
+      setTimeout(() => setCandleFlashing(false), 3000);
+    }
+
+    // ── Celebration tiers ──
+    let tierUsed = null;
+    const multiplier = winAmount / (bet || 1);
+    if (didWinJackpot) {
+      tierUsed = "mega";
+      setCelebrationTier("mega");
+      setJackpotCelebration(true);
+      setJackpotWonAmount(wonJackpotAmount || 0);
+      setLastResult(`🎉 JACKPOT! +${(wonJackpotAmount || 0).toLocaleString()} tokens!`);
+      const cid = setTimeout(() => { if (componentMountedRef.current) setJackpotCelebration(false); }, 6000);
+      reelTimeoutIds.current.push(cid);
+    } else if (multiplier >= 50) {
+      tierUsed = "mega";
+      setCelebrationTier("mega");
+      setLastResult(`🌟 MEGA WIN! +${winAmount.toLocaleString()}`);
+    } else if (multiplier >= 5) {
+      tierUsed = "big";
+      setCelebrationTier("big");
+      setLastResult(`🔥 BIG WIN! +${winAmount.toLocaleString()}`);
+    } else if (multiplier >= 2) {
+      tierUsed = "medium";
+      setCelebrationTier("medium");
+      setLastResult(`✨ NICE WIN! +${winAmount.toLocaleString()}`);
+    } else if (winAmount > 0) {
+      tierUsed = "small";
+      setCelebrationTier("small");
+      setLastResult(`✅ +${winAmount.toLocaleString()}`);
+    } else {
+      // Near miss: 2 of 3 columns matched
+      if (wl && wl.positions && wl.positions.length === 2) {
+        setNearMiss(true);
+        setTimeout(() => setNearMiss(false), 2500);
+        setLastResult("😱 SO CLOSE!");
+      } else {
+        setLastResult("❌ No match.");
+      }
+    }
+
+    // ── Free spins / loss streak ──
+    if (winAmount > 0) {
+      setLossStreak(0);
+      // Show gamble option
+      setPendingWin(winAmount);
+      setShowGamble(true);
+    } else {
+      setLossStreak(prev => prev + 1);
+    }
+
+    // ── Audio ──
+    if (multiplier >= 5) { playVictory(); playCardDraw(); }
+    else if (winAmount > 0) { playCardDraw(); }
+    else { playDefeat(); }
+
+    if (wl?.positions) {
+      setWinningPositions(wl.positions);
+      setWinningLine(wl);
+    }
+
+    setBalance(newBalance);
+    setTotalWin(prev => prev + winAmount);
+    if (winAmount === 0 && !isFreeSpin) setTotalLoss(prev => prev + bet);
+
+    setSpinHistory(prev => [
+      { reels: newReels, bet: isFreeSpin ? 0 : bet, winAmount, won: winAmount > 0,
+        jackpot: didWinJackpot || winAmount >= bet * 5, ts: Date.now(), freeSpin: isFreeSpin },
+      ...prev,
+    ].slice(0, 20));
+
+    fetchJackpot();          // Set celebration tier ref directly (avoid stale useEffect sync)
+      celebrationTierActual.current = tierUsed;
+
+      posthog?.capture("slots_spin_result", {
+      theme, bet: isFreeSpin ? 0 : bet, win_amount: winAmount, won: winAmount > 0,
+      jackpot: didWinJackpot || winAmount >= bet * 5,
+      jackpot_amount: didWinJackpot ? wonJackpotAmount : 0,
+      celebration_tier: celebrationTierActual.current,
+      free_spin: isFreeSpin,
+    });
+
+    // Auto-spin stop conditions
+    if (autoSpinning) {
+      let shouldStop = false;
+      const s = autoplaySettingsRef.current;
+      if (s.spinsRemaining > 0) {
+        const newRemaining = s.spinsRemaining - 1;
+        setAutoplaySettings(prev => ({ ...prev, spinsRemaining: newRemaining }));
+        if (newRemaining <= 0) shouldStop = true;
+      }
+      if (s.stopOnWin > 0 && winAmount >= s.stopOnWin) shouldStop = true;
+      if (s.stopOnBalance > 0 && newBalance < s.stopOnBalance) shouldStop = true;
+      if (shouldStop) stopAutoSpin();
+    }
+  }, [bet, posthog, theme, fetchJackpot, autoSpinning, stopAutoSpin]);
+
+  // Stop one reel — the player's skill input. Reel freezes on its final
+  // symbols; the outcome reveals once every reel is stopped.
+  const stopReel = useCallback((colIdx) => {
+    if (!spinningRef.current) return;
+    setAnimatingReels(prev => {
+      if (!prev[colIdx]) return prev;
+      const n = [...prev]; n[colIdx] = false; return n;
+    });
+    setReelStopped(prev => {
+      if (prev[colIdx]) return prev;
+      const n = [...prev]; n[colIdx] = true; return n;
+    });
+    playReelStop();
+  }, []);
+
+  // Safety net — auto-stop every reel (used by the safety timer).
+  const stopAllReels = useCallback(() => {
+    if (!spinningRef.current) return;
+    setAnimatingReels(Array(3).fill(false));
+    setReelStopped(Array(3).fill(true));
+  }, []);
+
+  // Keep the safety timer pointed at the latest stopAllReels.
+  useEffect(() => { stopAllReelsRef.current = stopAllReels; });
+
+  // Live mirrors for the spin handlers (reveal + early-stop edge case).
+  useEffect(() => { revealSpinResultRef.current = revealSpinResult; });
+  useEffect(() => { animatingReelsRef.current = animatingReels; }, [animatingReels]);
+
+  // Reveal the outcome once every reel has been stopped.
+  useEffect(() => {
+    if (spinning && pendingResultRef.current && animatingReels.every(a => !a)) {
+      revealSpinResult();
+    }
+  }, [animatingReels, spinning, revealSpinResult]);
+
+  // Live spinning flag for the stop handlers (covers error paths too).
+  useEffect(() => { spinningRef.current = spinning; }, [spinning]);
 
   const handleGambleResult = (newWinAmount) => {
     setShowGamble(false);
@@ -732,10 +815,12 @@ export default function SlotMachine({ theme = "fruit" }) {
                   const displaySymbols = animatingReels[colIdx] ? [...column, ...column, ...column] : column;
                   return (
                     <div key={colIdx}
-                      className="w-[118px] h-[330px] rounded-xl overflow-hidden border border-cyan-400 bg-gradient-to-b from-[#161a2f] to-[#090b15] relative">
+                      onClick={() => spinning && stopReel(colIdx)}
+                      className={`w-[150px] h-[330px] rounded-xl overflow-hidden border border-cyan-400 bg-gradient-to-b from-[#161a2f] to-[#090b15] relative ${spinning ? "cursor-pointer hover:border-pink-400 hover:shadow-[0_0_18px_rgba(255,0,255,0.45)]" : ""}`}>
                       {/* Chrome trim per reel */}
                       <div className="absolute inset-0 rounded-xl border border-white/10 pointer-events-none" />
-                      <div className={`flex flex-col ${animatingReels[colIdx] ? "animate-[scrollReel_0.18s_linear_infinite]" : ""}`}>
+                      <div className="flex flex-col"
+                        style={animatingReels[colIdx] ? { animation: `scrollReel ${turboMode ? "0.12s" : "0.18s"} linear infinite` } : undefined}>
                         {displaySymbols.map((sym, rowIdx) => {
                           const isWinning = winningPositions.some(p => p.col === colIdx && p.row === rowIdx);
                           const justStopped = reelStopped[colIdx] && !animatingReels[colIdx];
@@ -746,7 +831,7 @@ export default function SlotMachine({ theme = "fruit" }) {
                                 ${justStopped ? "animate-reelBounce" : ""}`}>
                               {isWinning && <div className="absolute inset-0 rounded-md border-2 border-white animate-pulse opacity-80" />}
                               <SlotSymbol symbol={sym} svgMap={svgMap} fallback={defaultSymbol}
-                                className={`w-full h-full max-h-[80px] p-2 transition-all duration-300 ${isWinning ? "drop-shadow-[0_0_25px_white]" : ""}`} />
+                                className={`w-full h-full max-h-[90px] p-2 transition-all duration-300 ${isWinning ? "drop-shadow-[0_0_25px_white]" : ""}`} />
                             </div>
                           );
                         })}
@@ -756,10 +841,28 @@ export default function SlotMachine({ theme = "fruit" }) {
                 })}
               </div>
 
+              {/* ── SKILL STOP BUTTONS ── */}
+              {spinning && (
+                <div className="mt-3 flex justify-center gap-3">
+                  {reels.map((_, colIdx) => (
+                    <button key={colIdx}
+                      onClick={() => stopReel(colIdx)}
+                      disabled={!animatingReels[colIdx]}
+                      className={`w-[150px] py-2.5 rounded-lg font-black text-sm tracking-wide transition-all duration-200 ${
+                        animatingReels[colIdx]
+                          ? "bg-pink-500 text-white shadow-[0_0_18px_rgba(255,0,255,0.6)] hover:bg-pink-400 hover:scale-105 animate-pulse cursor-pointer"
+                          : "bg-green-500/15 text-green-300 border border-green-400/40 cursor-default"
+                      }`}>
+                      {animatingReels[colIdx] ? "■ STOP" : "✓ STOPPED"}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* ── BELLY GLASS ── */}
               <div className="mt-3 mx-2 rounded-xl bg-[#0a0d18] border border-white/15 py-2 px-4 text-center">
                 <p className="text-xs text-white/30 uppercase tracking-[0.3em]">{themeConfig.name}</p>
-                <p className="text-[10px] text-white/20">5 Lines • {turboMode ? "Turbo" : "Standard"}</p>
+                <p className="text-[10px] text-white/20">3 Lines • Skill Stop</p>
               </div>
 
               {/* ── LEVER ── */}

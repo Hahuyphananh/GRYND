@@ -60,28 +60,26 @@ export async function POST(req) {
 
     let matchCount = 0;
     if (roll < 3)
-      matchCount = 5; // 3%
+      matchCount = 3; // 3% — full row of 3
     else if (roll < 10)
-      matchCount = 4; // 7%
+      matchCount = 2; // 7%
     else if (roll < 25)
-      matchCount = 3; // 15%
+      matchCount = 1; // 15%
     else matchCount = 0; // 75%
 
     const matchSymbol =
       symbols[Math.floor(Math.random() * symbols.length)];
 
     const paylines = [
-      { name: "top", rows: [0, 0, 0, 0, 0] },
-      { name: "middle", rows: [1, 1, 1, 1, 1] },
-      { name: "bottom", rows: [2, 2, 2, 2, 2] },
-      { name: "v-shape", rows: [0, 1, 2, 1, 0] },
-      { name: "inverted-v", rows: [2, 1, 0, 1, 2] },
+      { name: "top", rows: [0, 0, 0] },
+      { name: "middle", rows: [1, 1, 1] },
+      { name: "bottom", rows: [2, 2, 2] },
     ];
 
     // ---------------------------
     // 🎰 BUILD REELS
     // ---------------------------
-    const reels = Array.from({ length: 5 }, () =>
+    const reels = Array.from({ length: 3 }, () =>
       Array.from(
         { length: 3 },
         () => symbols[Math.floor(Math.random() * symbols.length)],
@@ -135,10 +133,10 @@ export async function POST(req) {
     // ---------------------------
     let winAmount = 0;
 
-    if (matchCount === 5) {
-      winAmount = bet * 6; // base 5x win
+    if (matchCount === 3) {
+      winAmount = bet * 3; // base 3x win (full row)
 
-      // Award progressive jackpot on 5-match
+      // Award progressive jackpot on a full 3-in-a-row match
       try {
         const [jpRow] = await db
           .select({ amount: slotJackpots.amount })
@@ -166,9 +164,9 @@ export async function POST(req) {
       } catch {
         // Jackpot table not available — base win only
       }
-    } else if (matchCount === 4)
-      winAmount = bet * 4;
-    else if (matchCount === 3) winAmount = bet * 3;
+    } else if (matchCount === 2)
+      winAmount = bet * 2;
+    else if (matchCount === 1) winAmount = bet * 1;
 
     await db
       .update(users)
@@ -209,7 +207,7 @@ export async function POST(req) {
         jackpotWon,
         jackpotAmount,
         winningLine:
-          matchCount >= 3
+          matchCount >= 2
             ? {
                 line: chosenPayline.name,
                 symbol: matchSymbol,

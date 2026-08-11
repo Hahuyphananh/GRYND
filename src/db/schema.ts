@@ -2372,3 +2372,153 @@ export const plinkoPvpRoundsRelations = relations(
     }),
   }),
 );
+
+// ── PvP Slots (1v1 skill-based slots) ──────────────────────────────────────
+// Best-of-5 (max 5 spins): one spin per player per round; the player with
+// the higher spin win-amount wins the round (`rounds.round_winner`) and the
+// match is decided by rounds won (`rounds_won_player1/2`, first to 3 wins).
+// If level after 5 spins, the aggregate spin win-amounts (`p1_score` /
+// `p2_score`) break the tie. Mirrors plinko_pvp (match + rounds child table,
+// jsonb inputs/results, round deadline + timer, 90/10 payout) and
+// blackjack_pvp (`rounds_won_*` match-score columns).
+export const slotsPvpStatusEnum = pgEnum("slots_pvp_status", [
+  "waiting",
+  "ready",
+  "spin_1",
+  "spin_2",
+  "spin_3",
+  "spin_4",
+  "spin_5",
+  "finished",
+  "cancelled",
+]);
+
+export const slotsPvpMatches = pgTable(
+  "slots_pvp_matches",
+  {
+    id: serial("id").primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
+    // Host-chosen slot theme at lobby creation (mirrors mines-pvp's
+    // host-picked `mines_count` parameter).
+    theme: varchar("theme", { length: 40 }).notNull().default("fruit"),
+    status: slotsPvpStatusEnum("status").notNull().default("waiting"),
+    // 1 / 2 / 3 / 4 / 5 — which spin the match is collecting inputs for
+    // right now. Stamped at match creation and advanced at each spin
+    // resolution.
+    currentSpin: integer("current_spin").notNull().default(1),
+    // Match score — rounds (spins) won by each player.
+    roundsWonPlayer1: integer("rounds_won_player1").notNull().default(0),
+    roundsWonPlayer2: integer("rounds_won_player2").notNull().default(0),
+    // Aggregate spin win-amounts across all rounds. Compared at match
+    // end to break a rounds-won tie.
+    p1Score: integer("p1_score").notNull().default(0),
+    p2Score: integer("p2_score").notNull().default(0),
+    // Live per-spin commit inputs — server-only state. Treat
+    // `IS NOT NULL` as "this player has submitted their spin for the
+    // current round". Reset to NULL when status advances to the next
+    // spin so the column doubles as a "submitted" boolean.
+    p1CurrentInputs: jsonb("p1_current_inputs").default(sql`NULL`),
+    p2CurrentInputs: jsonb("p2_current_inputs").default(sql`NULL`),
+    // Per-spin decision-window deadline, computed as
+    // `now() + round_timer_seconds` whenever a new spin window opens
+    // (mirrors plinko-pvp / mines-pvp / blackjack-pvp).
+    roundDeadline: timestamp("round_deadline"),
+    roundTimerSeconds: integer("round_timer_seconds").notNull().default(20),
+    // Final match bookkeeping.
+    winnerId: varchar("winner_id", { length: 255 }),
+    result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Lobby listing — `status='waiting'` AND player2_id IS NULL.
+    statusIdx: index("slots_pvp_status_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+    // Per-player history (matches the other PvP convention).
+    player1Idx: index("slots_pvp_player1_idx").on(
+      table.player1Id,
+      table.createdAt,
+    ),
+    player2Idx: index("slots_pvp_player2_idx").on(
+      table.player2Id,
+      table.createdAt,
+    ),
+    // Stake matchmaking — finding a waiting lobby whose stake matches
+    // the joiner's request.
+    stakeIdx: index("slots_pvp_stake_open_idx").on(
+      table.stakeAmount,
+      table.status,
+    ),
+  }),
+);
+
+// One row per spin of a PvP Slots match (up to 5 rows per match).
+// Cascade-deleted with the parent match so history stays tidy.
+export const slotsPvpRounds = pgTable(
+  "slots_pvp_rounds",
+  {
+    id: serial("id").primaryKey(),
+    matchId: integer("match_id")
+      .notNull()
+      .references(() => slotsPvpMatches.id, { onDelete: "cascade" }),
+    // 1 / 2 / 3 / 4 / 5. Composite index on (match_id, spin_number) is
+    // the canonical lookup so per-spin history reads stay O(1).
+    spinNumber: integer("spin_number").notNull(),
+    // Inputs in their pre-resolution form (per-spin bet amount and any
+    // future per-spin player inputs).
+    player1Inputs: jsonb("player1_inputs").notNull().default(sql`'{}'::jsonb`),
+    player2Inputs: jsonb("player2_inputs").notNull().default(sql`'{}'::jsonb`),
+    // Per-spin result snapshots — 3x3 reel grid, win amount, winning
+    // payline. Lets the client replay the spin identically.
+    player1Result: jsonb("player1_result").notNull().default(sql`'{}'::jsonb`),
+    player2Result: jsonb("player2_result").notNull().default(sql`'{}'::jsonb`),
+    // True when the server auto-spun because round_deadline elapsed
+    // before the player committed.
+    player1AutoSpun: boolean("player1_auto_spun").notNull().default(false),
+    player2AutoSpun: boolean("player2_auto_spun").notNull().default(false),
+    // Per-round player scores — the spin win amount each player earned.
+    // Exposed as columns so aggregate-totals queries can sum without
+    // unpacking jsonb.
+    spinPointsPlayer1: integer("spin_points_player1").notNull().default(0),
+    spinPointsPlayer2: integer("spin_points_player2").notNull().default(0),
+    // 'player1' | 'player2' | 'draw' | null — null while the spin is
+    // unresolved. NOTE: match-level `result` is decided by ROUNDS WON,
+    // so a per-round `draw` does NOT mean the whole match is a tie.
+    roundWinner: varchar("round_winner", { length: 10 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    matchSpinIdx: index("slots_pvp_rounds_match_spin_idx").on(
+      table.matchId,
+      table.spinNumber,
+    ),
+  }),
+);
+
+export const slotsPvpMatchesRelations = relations(
+  slotsPvpMatches,
+  ({ many }) => ({
+    rounds: many(slotsPvpRounds),
+  }),
+);
+
+export const slotsPvpRoundsRelations = relations(
+  slotsPvpRounds,
+  ({ one }) => ({
+    match: one(slotsPvpMatches, {
+      fields: [slotsPvpRounds.matchId],
+      references: [slotsPvpMatches.id],
+    }),
+  }),
+);
