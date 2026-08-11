@@ -534,6 +534,45 @@ io.on("connection", (socket) => {
     console.log("[plinko-pvp] participant left: matchId=", matchId, "userId=", userId);
   }
 
+  // ── Slots PvP room-participant tracking ─────────────────────────
+  // Mirrors the plinko/precision tracking pattern so disconnect
+  // handling can forfeit abandoned slots-pvp matches to the opponent
+  // (and a re-joining socket cancels the pending forfeit timer).
+  // Keyed by matchId (numeric).
+  const SLOTS_PVP_MATCH_ROOM_PREFIX = "slots-pvp:match:";
+  if (!global.__slotsPvpRoomParticipants) {
+    global.__slotsPvpRoomParticipants = new Map();
+  }
+  const slotsPvpRoomParticipants = global.__slotsPvpRoomParticipants;
+
+  function trackSlotsPvpJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(SLOTS_PVP_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(SLOTS_PVP_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!slotsPvpRoomParticipants.has(matchId)) {
+      slotsPvpRoomParticipants.set(matchId, new Set());
+    }
+    slotsPvpRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again — cancel
+    // any pending disconnect forfeit timer for this match.
+    cancelDisconnectGraceTimer(`slots:${matchId}:${userId}`);
+    console.log("[slots-pvp] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackSlotsPvpLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(SLOTS_PVP_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(SLOTS_PVP_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = slotsPvpRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) slotsPvpRoomParticipants.delete(matchId);
+    console.log("[slots-pvp] participant left: matchId=", matchId, "userId=", userId);
+  }
+
   // ── Crash Arena room-participant tracking ───────────────────────
   // Mirrors the plinko/precision tracking pattern so the
   // `crashArena:updated` handler below can reject events from
@@ -575,6 +614,7 @@ io.on("connection", (socket) => {
     socket.join(String(roomId));
     trackPrecisionJoin(String(roomId), socket.data.userId);
     trackPlinkoJoin(String(roomId), socket.data.userId);
+    trackSlotsPvpJoin(String(roomId), socket.data.userId);
     trackCrashArenaJoin(String(roomId), socket.data.userId);
   });
 
@@ -583,6 +623,7 @@ io.on("connection", (socket) => {
     socket.leave(String(roomId));
     trackPrecisionLeave(String(roomId), socket.data.userId);
     trackPlinkoLeave(String(roomId), socket.data.userId);
+    trackSlotsPvpLeave(String(roomId), socket.data.userId);
     trackCrashArenaLeave(String(roomId), socket.data.userId);
   });
 
@@ -1126,6 +1167,41 @@ io.on("connection", (socket) => {
         } catch (err) {
           console.warn(
             "[plinko-pvp] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For Slots PvP: same pattern — forfeit to the opponent via
+    // /api/slots-pvp/disconnect-forfeit once the grace timer expires.
+    const slotsPvpMatchesForUser = [];
+    for (const [mid, set] of slotsPvpRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) slotsPvpMatchesForUser.push(mid);
+    }
+    for (const mid of slotsPvpMatchesForUser) {
+      const roomId = `${SLOTS_PVP_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = slotsPvpRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) slotsPvpRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`slots:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/slots-pvp/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[slots-pvp] disconnect forfeit failed:",
             err && err.message ? err.message : err,
           );
           return true; // transient — retry
