@@ -1,124 +1,97 @@
 // src/lib/slots-pvp/engine.js
 //
-// Pure, deterministic round engine for PvP Slots. NO database, NO I/O —
-// every function is a pure mapping so it can be unit-tested, replayed
-// for audit, and shared between the server store and the test runner.
+// Pure, deterministic round engine for PvP Slots ("Fruit Fortune
+// Survival"). NO database, NO I/O — every function is a pure mapping so
+// it can be unit-tested, replayed for audit, and shared between the
+// server store and the test runner.
 //
-// Layering (mirrors plinko-pvp's physics.js being imported by the
-// server store):
-//   * `resolveSpin` — the 3x3 outcome engine: server decides how many
-//     winning lines to guarantee (outcome-first, like the solo
-//     /api/slots/play), builds the board to fit, then `evaluateBoard`
-//     scores whatever actually landed (natural accidental lines on
-//     top of the forced ones are counted too).
-//   * `openSpinState` — generates BOTH players' hidden round state
-//     (final reels + precomputed board score) when a spin round opens.
-//   * `applyReelStop` / `autoStopReels` — the skill-stop state machine.
-//     Manual stops record a per-reel offset (ms since round open) that
-//     feeds the stop-accuracy bonus.
-//   * `scoreBoard` / `buildRoundResult` / `planAdvanceAfterResolve` —
-//     resolve the round into its history-row payload (final score +
-//     round winner) and the next state.
-//   * `viewerRoundScoreSnapshot` — the viewer-visible CURRENT round
-//     score served by the status route: the FULL score once the
-//     viewer's board locks, or the live stop-bonus total while they
-//     are still stopping. Always recomputed from the viewer's OWN
-//     inputs only — the opponent's score never passes through it.
-//   * `decideRoundWinner` / `decideMatchResult` — the FINAL scoring
-//     rules: round winner by higher total score; match winner by most
-//     rounds won, tie-broken by aggregate points.
-//   * Best-of-5: a player who reaches ROUNDS_TO_WIN (3) round wins
-//     ends the match IMMEDIATELY — `planAdvanceAfterResolve` decides
-//     this from the post-round tallies; MAX_ROUNDS (5) is the hard cap.
+// Game rules (per user spec):
+//   * Single survival round on a 3-column sliding window.
+//   * Each player stops columns one at a time. GRACE phase: the first
+//     3 columns are always safe, and you keep stopping columns (no bust
+//     possible) until you form your FIRST 3-in-a-row combo — 3 identical
+//     symbols in a horizontal row or a diagonal (verticals never count).
+//     You have at most GRACE_MAX_STOPS (10) stops to find it; burning
+//     all 10 without a combo = graceFailed (loss).
+//   * SURVIVAL phase: from the first combo onward, every column you stop
+//     must re-form a horizontal/diagonal combo in the visible window or
+//     you BUST. `survived` counts the columns survived after the first
+//     combo; `linesFormed` counts every combo stop (incl. the first).
+//   * The window always shows exactly 3 columns: a new column slides in
+//     from the right and the oldest slides out to the left.
+//   * Round resolution happens only when BOTH players' runs have ended
+//     (no early loss reveal). Winner = higher `survived`, tiebreak
+//     `linesFormed`; BOTH grace-failed → RESULT.GRACE_DRAW.
 //
-// Scoring (per user spec, fully server-authoritative):
-//   * 8 winning lines on the 3x3 board (3 rows + 3 columns + 2
-//     diagonals). A line wins when its 3 cells are the same symbol.
-//   * Symbol tiers are POSITION-BASED: each theme's first 6 symbols
-//     map to Cherry(100) … Diamond(500); the other 14 symbols score 0
-//     (a 3-in-a-row of them is NOT a winning line).
-//   * Line-count multiplier: 1 line x1, 2 x1.25, 3 x1.5, 4 x2, 5+ x3.
-//   * Stop accuracy per reel: Perfect (+100) within 3s, Good (+50)
-//     within 6s, Normal (+0) after / auto-stopped.
-//   * Round score = (sum of winning-line base scores) * line multiplier
-//     + stop bonus. Clients never submit scores — the board is generated
-//     server-side and the score is recomputed from it at resolve.
+// Layering:
+//   * `columnSymbols` — deterministic per-(match, spin, seat, colIndex)
+//     3-symbol column from the theme's 5-symbol sub-pool. The stream is
+//     LAZY: only the column currently sliding in is ever materialised.
+//   * `openSpinState` — generates BOTH players' hidden run state.
+//   * `applyColumnStop` / `autoStopActiveColumn` — the stop state
+//     machine (initial any-order stops, then in-order sliding stops).
+//   * `hasLine` / `winningLinesIn` — the combo checks (3 rows + 2
+//     diagonals).
+//   * `buildRoundResult` / `decideRoundWinner` — resolve the round into
+//     its history-row payload (survival snapshots + round winner).
+//   * `planAdvanceAfterResolve` — with MAX_ROUNDS = 1 the match always
+//     finishes after the single round.
+//   * `viewerRunSnapshot` — the viewer-visible CURRENT run served by the
+//     status route (own board + status), never the opponent's.
 
 import {
+  COLUMN_DEADLINE_MS,
+  GRACE_MAX_STOPS,
+  MAX_COLUMNS_PER_ROUND,
   MAX_ROUNDS,
   MATCH_STATUS,
-  REELS_PER_ROUND,
   RESULT,
   ROUNDS_TO_WIN,
-  ROUND_DEADLINE_MS,
-  SCORING_SYMBOL_COUNT,
-  SYMBOL_SCORES,
+  SLIDING_SYMBOL_COUNT,
   isSpinStatus,
-  lineMultiplierForCount,
   round2,
   spinNumberForStatus,
   statusForSpinNumber,
-  stopAccuracyForOffset,
-  stopBonusForAccuracy,
 } from "./constants.js";
 
 // ──────────────────────────────────────────────────────────────────────
-// Board geometry + the 8 winning lines (3x3)
+// Board geometry + the combo lines (3 rows + 2 diagonals)
 // ──────────────────────────────────────────────────────────────────────
 
 export const GRID_COLS = 3;
 export const GRID_ROWS = 3;
 
-// All 8 possible winning lines on a 3x3 board, as [col, row] cell
-// coordinates (reels is indexed reels[col][row]). A line wins when all
-// 3 of its cells hold the SAME scoring symbol. Kept in the same
-// { name, cells } shape so the client's payline overlay can render any
-// of them (rows, columns, and diagonals).
-export const WINNING_LINES = Object.freeze([
-  // 3 horizontal (rows)
+// All 5 lines that count as a combo on the 3-column window, as
+// [col, row] coordinates. Verticals deliberately do NOT count.
+export const HORIZ_DIAG_LINES = Object.freeze([
   Object.freeze({ name: "top-row", cells: [[0, 0], [1, 0], [2, 0]] }),
   Object.freeze({ name: "middle-row", cells: [[0, 1], [1, 1], [2, 1]] }),
   Object.freeze({ name: "bottom-row", cells: [[0, 2], [1, 2], [2, 2]] }),
-  // 3 vertical (columns)
-  Object.freeze({ name: "left-col", cells: [[0, 0], [0, 1], [0, 2]] }),
-  Object.freeze({ name: "center-col", cells: [[1, 0], [1, 1], [1, 2]] }),
-  Object.freeze({ name: "right-col", cells: [[2, 0], [2, 1], [2, 2]] }),
-  // 2 diagonal
   Object.freeze({ name: "diag-down", cells: [[0, 0], [1, 1], [2, 2]] }),
   Object.freeze({ name: "diag-up", cells: [[2, 0], [1, 1], [0, 2]] }),
 ]);
 
-// ──────────────────────────────────────────────────────────────────────
-// Outcome table (server-authoritative odds)
-// ──────────────────────────────────────────────────────────────────────
-//
-// The server rolls the outcome FIRST (like the solo /api/slots/play),
-// then builds the board to guarantee the rolled number of winning rows.
-// Pure-random 3x3 boards would rarely hit 3-in-a-row across 20 symbols,
-// so forcing keeps symbol scores meaningful and the rounds lively.
-//
-//   roll < 3   → 3 forced rows of one scoring symbol (usually cascades
-//                into all 8 lines — the jackpot roll)
-//   roll < 10  → 2 forced rows
-//   roll < 25  → 1 forced row
-//   else       → nothing forced (natural lines only)
-//
-// The same forced symbol is used for every forced row; accidental
-// natural lines on top are scored normally by `evaluateBoard`.
-export const FORCED_LINE_ODDS = Object.freeze([
-  Object.freeze({ maxRoll: 3, forcedLines: 3 }),
-  Object.freeze({ maxRoll: 10, forcedLines: 2 }),
-  Object.freeze({ maxRoll: 25, forcedLines: 1 }),
-  Object.freeze({ maxRoll: 100, forcedLines: 0 }),
-]);
-
-/** Decide how many rows to force from a roll in [0, 1). */
-export function decideForcedLines(roll01) {
-  const roll = Number.isFinite(roll01) ? roll01 * 100 : 100;
-  for (const row of FORCED_LINE_ODDS) {
-    if (roll < row.maxRoll) return row.forcedLines;
+/** True when the visible window contains any combo (3 rows + 2 diagonals). */
+export function hasLine(window) {
+  if (!Array.isArray(window) || window.length < GRID_COLS) return false;
+  for (const line of HORIZ_DIAG_LINES) {
+    const syms = line.cells.map(([c, r]) => window?.[c]?.[r]);
+    if (syms[0] && syms[0] === syms[1] && syms[1] === syms[2]) return true;
   }
-  return 0;
+  return false;
+}
+
+/** Every combo line present in the window (for the reveal / flash UI). */
+export function winningLinesIn(window) {
+  const out = [];
+  if (!Array.isArray(window)) return out;
+  for (const line of HORIZ_DIAG_LINES) {
+    const syms = line.cells.map(([c, r]) => window?.[c]?.[r]);
+    if (syms[0] && syms[0] === syms[1] && syms[1] === syms[2]) {
+      out.push({ ...line, symbol: syms[0] });
+    }
+  }
+  return out;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -153,121 +126,28 @@ export function mulberry32(seed) {
   };
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Symbol scoring (position-based tiers)
-// ──────────────────────────────────────────────────────────────────────
-
-/** Map a theme's symbol pool to base scores: index 0..5 → Cherry..Diamond.
- *  Symbols at index >= SCORING_SYMBOL_COUNT map to 0 (never win). */
-export function buildScoreMap(symbols) {
-  const map = {};
-  (Array.isArray(symbols) ? symbols : []).forEach((sym, i) => {
-    if (i < SCORING_SYMBOL_COUNT) map[sym] = SYMBOL_SCORES[i];
-  });
-  return map;
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Board builder + evaluator
-// ──────────────────────────────────────────────────────────────────────
-
-/** Build a 3x3 reel grid. When forcedLines > 0, the top `forcedLines`
- *  rows are filled with `forcedSymbol` (a scoring symbol) so those rows
- *  are guaranteed winning lines. Pure + deterministic via `rand`. */
-export function buildReels({ symbols, forcedLines = 0, forcedSymbol = null, rand }) {
-  const pick = () => symbols[Math.floor(rand() * symbols.length)];
-  const reels = Array.from({ length: GRID_COLS }, () =>
-    Array.from({ length: GRID_ROWS }, () => pick()),
-  );
-  if (forcedLines > 0 && forcedSymbol) {
-    for (let row = 0; row < Math.min(forcedLines, GRID_ROWS); row += 1) {
-      for (let col = 0; col < GRID_COLS; col += 1) {
-        reels[col][row] = forcedSymbol;
-      }
-    }
-  }
-  return reels;
-}
-
-/**
- * Score a 3x3 board against all 8 winning lines. Returns the symbol
- * component of the round score:
- *
- *   {
- *     winningLines, // [{ line, symbol, base, cells }] — only scoring symbols
- *     lineCount,    // number of winning lines (drives the multiplier)
- *     multiplier,   // lineMultiplierForCount(lineCount)
- *     baseScore,    // sum of winning-line base scores (pre-multiplier)
- *     symbolScore,  // Math.round(baseScore * multiplier) — integer so it
- *                   //   fits the integer spin_points/p1_score columns
- *   }
- *
- * Deterministic — same reels + symbols always yield the same score.
- * Clients cannot influence it: the board is generated server-side.
- */
-export function evaluateBoard({ reels, symbols }) {
-  const scoreMap = buildScoreMap(symbols);
-  const winningLines = [];
-  for (const line of WINNING_LINES) {
-    const syms = line.cells.map(([c, r]) => reels?.[c]?.[r]);
-    if (syms[0] && syms[0] === syms[1] && syms[1] === syms[2]) {
-      const base = scoreMap[syms[0]] || 0;
-      if (base > 0) {
-        winningLines.push({
-          line: line.name,
-          symbol: syms[0],
-          base,
-          cells: line.cells,
-        });
-      }
-    }
-  }
-  const lineCount = winningLines.length;
-  const multiplier = lineMultiplierForCount(lineCount);
-  const baseScore = winningLines.reduce((sum, w) => sum + w.base, 0);
-  return {
-    winningLines,
-    lineCount,
-    multiplier,
-    baseScore,
-    // Math.round keeps the score an exact integer (base scores are
-    // integers but multipliers 1.25 / 1.5 can produce fractional raw
-    // products like 275 x 1.25 = 343.75). The DB columns for points
-    // are `integer`, so rounding here keeps the persisted value in
-    // lock-step with the jsonb snapshot.
-    symbolScore: Math.round(baseScore * multiplier),
-  };
-}
-
-/**
- * Full spin resolution — outcome-first, then naturally scored:
- *   1. Roll to decide how many winning rows to force.
- *   2. Pick a forced symbol from the 6 scoring tiers.
- *   3. Build the reels (forcing the rows), then evaluate the real board.
- *
- * @param {string[]} symbols theme symbol pool (first 6 = scoring tiers)
- * @param {number} seed deterministic 32-bit seed
- * @returns {{ reels, ...evaluateBoard }} board + symbol score
- */
-export function resolveSpin({ symbols, seed }) {
-  const rand = mulberry32(seed);
-  const forcedLines = decideForcedLines(rand());
-  const scoringPool = (symbols || []).slice(0, SCORING_SYMBOL_COUNT);
-  const forcedSymbol =
-    forcedLines > 0 && scoringPool.length > 0
-      ? scoringPool[Math.floor(rand() * scoringPool.length)]
-      : null;
-  const reels = buildReels({ symbols, forcedLines, forcedSymbol, rand });
-  return { reels, ...evaluateBoard({ reels, symbols }) };
-}
-
-/** Deterministic per-(match, spin, seat) seed. Same inputs → same reels.
- *  The reels are precomputed at round OPEN, so manual and AFK
- *  auto-stopped rounds of the same round share the same hidden reels
- *  (no variant is needed — the outcome never depends on HOW a reel
- *  was stopped, only on the round identity). */
+/** Deterministic per-(match, spin, seat) base seed. */
 export function spinSeed(matchId, spinNumber, seat /* 1 | 2 */) {
   return cyrb53(`slots:${matchId}:p${seat}:spin${spinNumber}`);
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// The lazy column stream
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Deterministic 3-symbol column for (match, spin, seat, colIndex). The
+ * sub-pool is the theme's first SLIDING_SYMBOL_COUNT symbols — every
+ * symbol is equal for combo matching (no value tiers in this mode).
+ * Same inputs → same column, always (audit-replayable).
+ */
+export function columnSymbols({ matchId, spinNumber, seat, colIndex, symbols }) {
+  const pool = (Array.isArray(symbols) ? symbols : []).slice(0, SLIDING_SYMBOL_COUNT);
+  if (pool.length === 0) return ["?", "?", "?"];
+  const rand = mulberry32(
+    cyrb53(`slots:${matchId}:p${seat}:spin${spinNumber}:col${colIndex}`),
+  );
+  return Array.from({ length: GRID_ROWS }, () => pool[Math.floor(rand() * pool.length)]);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -275,82 +155,180 @@ export function spinSeed(matchId, spinNumber, seat /* 1 | 2 */) {
 // ──────────────────────────────────────────────────────────────────────
 //
 // A match object here is a plain JS shape with `status`, `currentSpin`,
-// `roundDeadline` (Date), and `p1CurrentInputs` / `p2CurrentInputs`
-// (the per-player round state below). The server store persists exactly
-// this shape into the `slots_pvp_matches` jsonb columns.
+// and `p1CurrentInputs` / `p2CurrentInputs` (the per-player run state).
+// The server store persists exactly this shape into the
+// `slots_pvp_matches` jsonb columns.
 //
-// Per-player round state (`p{N}CurrentInputs`):
+// Per-player run state (`p{N}CurrentInputs`):
 //   {
-//     seed,            // deterministic seed for this (match, spin, seat)
-//     reels,           // 3x3 final grid (hidden from the opponent)
-//     winningLines, lineCount, multiplier, baseScore, symbolScore, // precomputed
-//     openedAt,        // ms epoch when the round opened (stop timing)
-//     reelsStopped: [],  // reel indices already stopped (0..2)
-//     stopOffsets: {},   // reelIndex → ms since round open (accuracy)
-//     autoStopped: false, // true when the 10s deadline forced the stop
-//     boardLocked: false, // true once all 3 reels are stopped
+//     matchId, spinNumber, seat,       // stream identity
+//     seed, symbols,                   // stream inputs (replay-safe)
+//     stoppedCount,                    // total columns landed
+//     stoppedOrder: [],                // column indices in stop order
+//     firstComboAt,                    // 1-based stop of the FIRST combo (null until found)
+//     survived,                        // columns survived AFTER the first combo
+//     linesFormed,                     // total combo stops (incl. the first)
+//     busted,                          // ended: failed a combo in survival phase
+//     graceFailed,                     // ended: burned all grace stops without a combo
+//     ended,                           // run over (busted || graceFailed || capped)
+//     bustColumn,                      // column index that ended the run (bust only)
+//     anyAutoStopped,                  // true if any column was auto-stopped (AFK)
+//     window: [c0, c1, c2],            // visible 3 columns (3-symbol arrays or null)
+//     columns: [],                     // every landed column in order (replay)
+//     activeIndex,                     // next column waiting to be stopped (null when ended)
+//     activeDeadline,                  // ms epoch the active column auto-stops
+//     openedAt,                        // ms epoch the round opened
 //   }
 
-/** Open a spin round: generate BOTH players' hidden round state with
- *  deterministic seeds and stamp the 10-second deadline. Pure — the
- *  server store persists the returned state.
- *  `openedAt` (ms epoch) defaults to `deadline - ROUND_DEADLINE_MS`. */
-export function openSpinState({ matchId, spinNumber, symbols, deadline, openedAt = null }) {
-  const seed1 = spinSeed(matchId, spinNumber, 1);
-  const seed2 = spinSeed(matchId, spinNumber, 2);
-  const r1 = resolveSpin({ symbols, seed: seed1 });
-  const r2 = resolveSpin({ symbols, seed: seed2 });
-  const openAt =
-    openedAt != null
-      ? new Date(openedAt).getTime()
-      : new Date(deadline).getTime() - ROUND_DEADLINE_MS;
-  const base = {
-    openedAt: openAt,
-    reelsStopped: [],
-    stopOffsets: {},
-    autoStopped: false,
-    boardLocked: false,
-  };
+function openRunForSeat({ matchId, spinNumber, seat, symbols, now }) {
   return {
-    p1CurrentInputs: { ...base, seed: seed1, ...r1 },
-    p2CurrentInputs: { ...base, seed: seed2, ...r2 },
-    deadline,
+    matchId,
+    spinNumber,
+    seat,
+    seed: spinSeed(matchId, spinNumber, seat),
+    symbols: Array.isArray(symbols) ? symbols : [],
+    stoppedCount: 0,
+    stoppedOrder: [],
+    firstComboAt: null,
+    survived: 0,
+    linesFormed: 0,
+    busted: false,
+    graceFailed: false,
+    ended: false,
+    bustColumn: null,
+    anyAutoStopped: false,
+    window: [null, null, null],
+    columns: [],
+    activeIndex: 0,
+    activeDeadline: now + COLUMN_DEADLINE_MS,
+    openedAt: now,
+  };
+}
+
+/** Open the single survival round: BOTH players' hidden run state.
+ *  Pure — the server store persists the returned state. */
+export function openSpinState({ matchId, spinNumber, symbols, now = Date.now() }) {
+  return {
+    p1CurrentInputs: openRunForSeat({
+      matchId,
+      spinNumber,
+      seat: "player1",
+      symbols,
+      now,
+    }),
+    p2CurrentInputs: openRunForSeat({
+      matchId,
+      spinNumber,
+      seat: "player2",
+      symbols,
+      now,
+    }),
   };
 }
 
 /**
- * Apply one manual reel stop for a seat. Returns either
- * `{ ok: false, error, status }` or `{ ok: true, match }` where
- * `match` is a shallow-cloned match with the stop applied.
+ * Land one column onto a run and run the grace / survival logic.
+ * Pure — returns a NEW run object (the caller wraps it back onto the
+ * match). `auto` marks the landing as an AFK auto-stop.
+ */
+function landColumnRun(run, colIndex, now, auto = false) {
+  const col = columnSymbols({
+    matchId: run.matchId,
+    spinNumber: run.spinNumber,
+    seat: run.seat,
+    colIndex,
+    symbols: run.symbols,
+  });
+  const stoppedOrder = [...run.stoppedOrder, colIndex];
+  const stoppedCount = run.stoppedCount + 1;
+
+  // Window: initial columns occupy their own slots; sliding columns
+  // shift the window left (oldest falls out).
+  let window = run.window;
+  if (colIndex < GRID_COLS) {
+    window = window.map((c, i) => (i === colIndex ? col : c));
+  } else {
+    window = [window[1], window[2], col];
+  }
+
+  const next = {
+    ...run,
+    stoppedOrder,
+    stoppedCount,
+    columns: [...run.columns, col],
+    window,
+    anyAutoStopped: run.anyAutoStopped || auto,
+  };
+
+  // Combo / grace / bust logic — only once the window is full.
+  if (stoppedCount >= GRID_COLS) {
+    if (hasLine(window)) {
+      next.linesFormed = next.linesFormed + 1;
+      if (next.firstComboAt === null) {
+        // First combo found → grace ends here; survival count stays 0.
+        next.firstComboAt = stoppedCount;
+      } else {
+        next.survived = next.survived + 1;
+      }
+    } else if (next.firstComboAt === null) {
+      // Still in grace: no bust possible, BUT the grace cap is hard —
+      // burning GRACE_MAX_STOPS without a combo loses immediately.
+      if (stoppedCount >= GRACE_MAX_STOPS) {
+        next.graceFailed = true;
+        next.ended = true;
+      }
+    } else {
+      // Survival phase: stopping a column without a combo = bust.
+      next.busted = true;
+      next.ended = true;
+      next.bustColumn = colIndex;
+    }
+  }
+
+  // Safety cap — an ultra-lucky run can never hang the match.
+  if (!next.ended && stoppedCount >= MAX_COLUMNS_PER_ROUND) {
+    next.ended = true;
+  }
+
+  if (!next.ended) {
+    next.activeIndex = stoppedCount;
+    next.activeDeadline = now + COLUMN_DEADLINE_MS;
+  } else {
+    next.activeIndex = null;
+    next.activeDeadline = null;
+  }
+  return next;
+}
+
+/**
+ * Apply one column stop for a seat. Returns either
+ * `{ ok: false, error, status }` or `{ ok: true, match }`.
  *
  * Rules enforced:
  *   * caller must be a participant seat
  *   * the match must be inside a spin round
  *   * expectedSpin (if provided) must match the live round — rejects
- *     STALE stops from a previous round that arrived after the round
- *     already advanced (mirrors plinko-pvp's current_ball guard)
- *   * reelIndex must be an integer in [0, REELS_PER_ROUND)
- *   * the round deadline must not have passed (never > 10s)
- *   * the reel must not already be stopped (no re-stopping)
- *   * the board must not already be locked
- *
- * Each accepted stop records `stopOffsets[reelIndex] = now - openedAt`
- * (ms since the round opened) — the server-side timing source for the
- * stop-accuracy bonus. Clients cannot fabricate accuracy: the offset is
- * derived from the server's own `now` at request time.
+ *     STALE stops from a round that already advanced
+ *   * the run must not already be ended
+ *   * the active column's deadline must not have passed
+ *   * INITIAL phase (stoppedCount < 3): any of columns 0..2, in any
+ *     order, once each.
+ *   * SLIDING phase: only the active stream column (stoppedCount) may be
+ *     stopped — the newest sliding column is the only one spinning.
  */
-export function applyReelStop(match, seat, reelIndex, now = Date.now(), expectedSpin = null) {
+export function applyColumnStop(
+  match,
+  seat,
+  columnIndex,
+  now = Date.now(),
+  expectedSpin = null,
+) {
   if (seat !== "player1" && seat !== "player2") {
     return { ok: false, error: "Caller is not a participant", status: 403 };
   }
   if (!isSpinStatus(match.status)) {
     return { ok: false, error: "Match is not in a spin round", status: 400 };
   }
-  // Round-identity guard: the caller echoes the spin number it believes
-  // is live (from its last /status poll). If it no longer matches, the
-  // round already advanced (e.g. the opponent's last stop resolved it)
-  // and this stop is stale — it must NOT apply to the next round's
-  // fresh board.
   if (expectedSpin != null && Number(expectedSpin) !== Number(match.currentSpin)) {
     return {
       ok: false,
@@ -358,184 +336,113 @@ export function applyReelStop(match, seat, reelIndex, now = Date.now(), expected
       status: 409,
     };
   }
-  const n = Number(reelIndex);
-  if (!Number.isInteger(n) || n < 0 || n >= REELS_PER_ROUND) {
-    return {
-      ok: false,
-      error: `reelIndex must be an integer in [0, ${REELS_PER_ROUND - 1}]`,
-      status: 400,
-    };
-  }
-  if (match.roundDeadline && new Date(match.roundDeadline).getTime() <= now) {
-    return { ok: false, error: "Round time has expired", status: 400 };
-  }
 
   const inputsKey = seat === "player1" ? "p1CurrentInputs" : "p2CurrentInputs";
-  const state = match[inputsKey];
-  if (!state) {
+  const run = match[inputsKey];
+  if (!run) {
     return { ok: false, error: "Round has not started", status: 400 };
   }
-  if (state.boardLocked) {
-    return { ok: false, error: "Board is already locked", status: 409 };
+  if (run.ended) {
+    return { ok: false, error: "Your run has already ended", status: 409 };
   }
-  const stopped = Array.isArray(state.reelsStopped) ? state.reelsStopped : [];
-  if (stopped.includes(n)) {
-    return { ok: false, error: `Reel ${n + 1} is already stopped`, status: 409 };
+  if (run.activeDeadline && new Date(run.activeDeadline).getTime() <= now) {
+    return { ok: false, error: "Column time has expired", status: 400 };
   }
 
-  const reelsStopped = [...stopped, n].sort((a, b) => a - b);
-  const openedAt =
-    Number(state.openedAt) ||
-    new Date(match.roundDeadline).getTime() - ROUND_DEADLINE_MS;
-  const offsetMs = Math.max(0, now - openedAt);
+  const idx = Number(columnIndex);
+  if (!Number.isInteger(idx) || idx < 0) {
+    return { ok: false, error: "Invalid column index", status: 400 };
+  }
+
+  if (run.stoppedCount < GRID_COLS) {
+    // Initial phase: columns 0..2, any order, once each.
+    if (idx >= GRID_COLS) {
+      return { ok: false, error: `Initial columns are 0..${GRID_COLS - 1}`, status: 400 };
+    }
+    if (run.stoppedOrder.includes(idx)) {
+      return { ok: false, error: `Column ${idx + 1} is already stopped`, status: 409 };
+    }
+  } else {
+    // Sliding phase: only the active column is stoppable.
+    if (idx !== run.stoppedCount) {
+      return { ok: false, error: "Only the active column can be stopped", status: 409 };
+    }
+  }
+
   return {
     ok: true,
     match: {
       ...match,
-      [inputsKey]: {
-        ...state,
-        reelsStopped,
-        stopOffsets: { ...(state.stopOffsets || {}), [n]: offsetMs },
-        boardLocked: reelsStopped.length >= REELS_PER_ROUND,
-      },
+      [inputsKey]: landColumnRun(run, idx, now),
     },
   };
 }
 
-/** Auto-stop every remaining reel for a seat (10s deadline expiry).
- *  Marks the seat `autoStopped` and locks their board. No stop offsets
- *  are recorded for the auto-stopped reels → they score Normal (+0).
- *  Pure. */
-export function autoStopReels(match, seat) {
+/**
+ * Auto-stop the active column(s) for a seat once the per-column
+ * deadline passes (AFK nudge — guarantees a column never spins longer
+ * than COLUMN_TIMER_SECONDS). Initial phase: remaining unstopped
+ * columns are landed in ascending order; sliding phase: just the active
+ * column. An auto-stop can bust the player in the survival phase.
+ * Pure — returns a new match (or the same one when nothing is due).
+ */
+export function autoStopActiveColumn(match, seat, now = Date.now()) {
   const inputsKey = seat === "player1" ? "p1CurrentInputs" : "p2CurrentInputs";
-  const state = match[inputsKey];
-  if (!state || state.boardLocked) return match;
+  const run = match[inputsKey];
+  if (!run || run.ended) return match;
+  if (!run.activeDeadline || new Date(run.activeDeadline).getTime() > now) return match;
+
+  let nextRun = run;
+  if (nextRun.stoppedCount < GRID_COLS) {
+    const remaining = [0, 1, 2].filter((i) => !nextRun.stoppedOrder.includes(i));
+    for (const i of remaining) {
+      nextRun = landColumnRun(nextRun, i, now, true);
+      if (nextRun.ended) break;
+    }
+  } else {
+    nextRun = landColumnRun(nextRun, nextRun.activeIndex, now, true);
+  }
   return {
     ...match,
-    [inputsKey]: {
-      ...state,
-      reelsStopped: [0, 1, 2].slice(0, REELS_PER_ROUND),
-      autoStopped: true,
-      boardLocked: true,
-    },
+    [inputsKey]: nextRun,
   };
 }
 
-/** True when BOTH boards are locked — the round can be resolved. */
+/** True when BOTH runs have ended — the round can be resolved. */
 export function canResolveRound(match) {
   return (
     isSpinStatus(match.status) &&
-    Boolean(match.p1CurrentInputs && match.p1CurrentInputs.boardLocked) &&
-    Boolean(match.p2CurrentInputs && match.p2CurrentInputs.boardLocked)
+    Boolean(match.p1CurrentInputs && match.p1CurrentInputs.ended) &&
+    Boolean(match.p2CurrentInputs && match.p2CurrentInputs.ended)
   );
 }
 
-/**
- * Compute a player's FULL round score from their locked board state:
- * symbol score (8-line evaluation) + stop-accuracy bonus.
- *
- *   {
- *     ...evaluateBoard,     // winningLines / lineCount / multiplier / baseScore / symbolScore
- *     stopBonus,            // sum of per-reel accuracy bonuses
- *     accuracyByReel,       // [{ reel, accuracy, bonus }] — 'perfect'|'good'|'normal'
- *     totalScore,           // symbolScore + stopBonus
- *   }
- *
- * Pure + deterministic: given the same reels + stopOffsets, the score is
- * always identical. Accuracy is scored PER REEL from the recorded stop
- * offsets: a reel with an offset was stopped manually (scored by its
- * timing); a reel WITHOUT one was auto-stopped by the 10s deadline
- * (Normal, +0). The board-level `autoStopped` flag is deliberately NOT
- * used for scoring — a player who manually stopped some reels keeps
- * those accuracy bonuses even if the deadline auto-stopped the rest.
- */
-export function scoreBoard({ reels, symbols, stopOffsets = {} }) {
-  const board = evaluateBoard({ reels, symbols });
-  let stopBonus = 0;
-  const accuracyByReel = [];
-  for (let i = 0; i < REELS_PER_ROUND; i += 1) {
-    const offset = stopOffsets && stopOffsets[i];
-    // `!= null` (not truthy) so an offset of exactly 0ms still counts.
-    const accuracy = offset != null ? stopAccuracyForOffset(offset) : "normal";
-    const bonus = stopBonusForAccuracy(accuracy);
-    accuracyByReel.push({ reel: i, accuracy, bonus });
-    stopBonus += bonus;
-  }
-  return {
-    ...board,
-    stopBonus,
-    accuracyByReel,
-    totalScore: board.symbolScore + stopBonus,
-  };
-}
+// ──────────────────────────────────────────────────────────────────────
+// Round result + winner
+// ──────────────────────────────────────────────────────────────────────
 
 /**
- * Compute the VIEWER-VISIBLE current round score from the viewer's
- * own round inputs (server-authoritative, served by the status route):
- *
- *   • board LOCKED → the full `scoreBoard` snapshot (symbol score +
- *     stop bonuses) — the viewer sees their own final score while
- *     waiting for the opponent.
- *   • board LIVE   → a PARTIAL snapshot: only the stop-accuracy
- *     bonuses earned so far. The symbol score stays hidden until the
- *     board locks, so the reveal keeps its payoff.
- *   • no reels yet (round not opened / finished) → null.
- *
- * The opponent's inputs are never touched — the round result stays
- * hidden until the round actually resolves (see `buildRoundResult`).
- * Pure + deterministic: clients can only ever READ this score, never
- * submit or alter it.
+ * Decide the round winner from the two players' run states.
+ * Both grace-failed → RESULT.GRACE_DRAW. Otherwise higher `survived`
+ * wins; equal survival is broken by `linesFormed`; still tied → draw.
  */
-export function viewerRoundScoreSnapshot({ inputs, symbols }) {
-  if (!inputs || !Array.isArray(inputs.reels)) return null;
-  if (inputs.boardLocked) {
-    const full = scoreBoard({
-      reels: inputs.reels,
-      symbols,
-      stopOffsets: inputs.stopOffsets || {},
-    });
-    return {
-      locked: true,
-      totalScore: full.totalScore,
-      symbolScore: full.symbolScore,
-      stopBonus: full.stopBonus,
-      lineCount: full.lineCount,
-      multiplier: full.multiplier,
-      accuracyByReel: full.accuracyByReel,
-    };
-  }
-  const stopped = Array.isArray(inputs.reelsStopped) ? inputs.reelsStopped : [];
-  const accuracyByReel = stopped.map((i) => {
-    const offset = inputs.stopOffsets && inputs.stopOffsets[i];
-    // `!= null` so an offset of exactly 0ms still counts as a stop.
-    const accuracy = offset != null ? stopAccuracyForOffset(offset) : "normal";
-    return { reel: i, accuracy, bonus: stopBonusForAccuracy(accuracy) };
-  });
-  const stopBonus = accuracyByReel.reduce((sum, a) => sum + a.bonus, 0);
-  return {
-    locked: false,
-    totalScore: stopBonus,
-    symbolScore: 0,
-    stopBonus,
-    lineCount: 0,
-    multiplier: 1,
-    accuracyByReel,
-  };
-}
-
-/** Decide the round winner from the two players' total scores.
- *  Higher score wins; equal scores → 'draw'. */
-export function decideRoundWinner(score1, score2) {
-  const a = Number(score1) || 0;
-  const b = Number(score2) || 0;
-  if (a > b) return RESULT.PLAYER1;
-  if (b > a) return RESULT.PLAYER2;
+export function decideRoundWinner(p1, p2) {
+  const a = p1 || {};
+  const b = p2 || {};
+  if (a.graceFailed && b.graceFailed) return RESULT.GRACE_DRAW;
+  const sa = Number(a.survived) || 0;
+  const sb = Number(b.survived) || 0;
+  if (sa > sb) return RESULT.PLAYER1;
+  if (sb > sa) return RESULT.PLAYER2;
+  const la = Number(a.linesFormed) || 0;
+  const lb = Number(b.linesFormed) || 0;
+  if (la > lb) return RESULT.PLAYER1;
+  if (lb > la) return RESULT.PLAYER2;
   return RESULT.DRAW;
 }
 
-/** Decide the MATCH result after all rounds: most rounds won wins;
- *  tied rounds-won is broken by aggregate points (p1Score/p2Score);
- *  still tied → 'draw'. Pure — the store maps seats to clerkIds. */
+/** Decide the MATCH result from match-level tallies (used by forfeits;
+ *  natural settlements pass the round winner through directly). */
 export function decideMatchResult({
   roundsWonPlayer1 = 0,
   roundsWonPlayer2 = 0,
@@ -553,82 +460,58 @@ export function decideMatchResult({
   return RESULT.DRAW;
 }
 
-/** Build the `slots_pvp_rounds` history-row payload for a resolved
- *  round: both players' full scoring snapshots + round winner. The
- *  server recomputes the score from the locked boards at resolve —
- *  clients never submit scores. */
+/** Build the `slots_pvp_rounds` history-row payload for the resolved
+ *  round: both players' survival snapshots + the round winner. The
+ *  server computes everything from the ended run states — clients never
+ *  submit scores. */
 export function buildRoundResult(match, symbols) {
   const spinNumber = spinNumberForStatus(match.status);
   const p1 = match.p1CurrentInputs || {};
   const p2 = match.p2CurrentInputs || {};
-  const s1 = scoreBoard({
-    reels: p1.reels,
-    symbols,
-    stopOffsets: p1.stopOffsets,
+
+  const snapshotFor = (run) => ({
+    stoppedCount: Number(run.stoppedCount) || 0,
+    stoppedOrder: Array.isArray(run.stoppedOrder) ? run.stoppedOrder : [],
+    firstComboAt: run.firstComboAt ?? null,
+    survived: Number(run.survived) || 0,
+    linesFormed: Number(run.linesFormed) || 0,
+    busted: Boolean(run.busted),
+    graceFailed: Boolean(run.graceFailed),
+    ended: Boolean(run.ended),
+    bustColumn: run.bustColumn ?? null,
+    autoStopped: Boolean(run.anyAutoStopped),
+    window: Array.isArray(run.window) ? run.window : [null, null, null],
+    columns: Array.isArray(run.columns) ? run.columns : [],
+    winningLines: winningLinesIn(run.window),
   });
-  const s2 = scoreBoard({
-    reels: p2.reels,
-    symbols,
-    stopOffsets: p2.stopOffsets,
-  });
+
   return {
     matchId: match.id,
     spinNumber,
     player1Inputs: {
-      reelsStopped: Array.isArray(p1.reelsStopped) ? p1.reelsStopped : [],
-      autoStopped: Boolean(p1.autoStopped),
+      stoppedOrder: Array.isArray(p1.stoppedOrder) ? p1.stoppedOrder : [],
+      autoStopped: Boolean(p1.anyAutoStopped),
     },
     player2Inputs: {
-      reelsStopped: Array.isArray(p2.reelsStopped) ? p2.reelsStopped : [],
-      autoStopped: Boolean(p2.autoStopped),
+      stoppedOrder: Array.isArray(p2.stoppedOrder) ? p2.stoppedOrder : [],
+      autoStopped: Boolean(p2.anyAutoStopped),
     },
-    player1Result: {
-      reels: p1.reels || null,
-      winningLines: s1.winningLines,
-      lineCount: s1.lineCount,
-      multiplier: s1.multiplier,
-      baseScore: s1.baseScore,
-      symbolScore: s1.symbolScore,
-      stopBonus: s1.stopBonus,
-      accuracyByReel: s1.accuracyByReel,
-      totalScore: s1.totalScore,
-    },
-    player2Result: {
-      reels: p2.reels || null,
-      winningLines: s2.winningLines,
-      lineCount: s2.lineCount,
-      multiplier: s2.multiplier,
-      baseScore: s2.baseScore,
-      symbolScore: s2.symbolScore,
-      stopBonus: s2.stopBonus,
-      accuracyByReel: s2.accuracyByReel,
-      totalScore: s2.totalScore,
-    },
-    player1AutoSpun: Boolean(p1.autoStopped),
-    player2AutoSpun: Boolean(p2.autoStopped),
-    spinPointsPlayer1: s1.totalScore,
-    spinPointsPlayer2: s2.totalScore,
-    roundWinner: decideRoundWinner(s1.totalScore, s2.totalScore),
+    player1Result: snapshotFor(p1),
+    player2Result: snapshotFor(p2),
+    player1AutoSpun: Boolean(p1.anyAutoStopped),
+    player2AutoSpun: Boolean(p2.anyAutoStopped),
+    // spin_points_* columns are repurposed as "columns survived".
+    spinPointsPlayer1: Number(p1.survived) || 0,
+    spinPointsPlayer2: Number(p2.survived) || 0,
+    roundWinner: decideRoundWinner(p1, p2),
   };
 }
 
 /**
- * Plan the state AFTER a round resolves. Signals `finished` when:
- *   * the match is NOT in a spin round, OR
- *   * round MAX_ROUNDS just resolved (best-of-5 hard cap), OR
- *   * a player just reached ROUNDS_TO_WIN (3) round wins — per user
- *     spec the match ends IMMEDIATELY, the remaining rounds are not
- *     played.
- * Otherwise returns the next spin round's status / currentSpin /
- * deadline / fresh per-player round state.
- *
- * `tallies` carries the POST-round rounds-won counts ({ roundsWonPlayer1,
- * roundsWonPlayer2, p1Score, p2Score }) computed by the caller (the
- * server store) from the just-resolved round. When omitted (pure
- * callers) it falls back to the match row's own counts — which only
- * reflect already-credited rounds, so an early finish still requires
- * the caller to pass the post-round tally.
- * Pure — the server store persists the plan.
+ * Plan the state AFTER the round resolves. With MAX_ROUNDS = 1 the
+ * single survival round always finishes the match. Kept in the same
+ * shape as the old best-of-5 planner so the server store flow is
+ * unchanged. Pure — the server store persists the plan.
  */
 export function planAdvanceAfterResolve({
   match,
@@ -639,15 +522,8 @@ export function planAdvanceAfterResolve({
   const spinNumber = spinNumberForStatus(match.status);
   if (spinNumber === null) return { finished: true };
 
-  // First-to-ROUNDS_TO_WIN check (per user spec). Falls back to the
-  // match's pre-round counts when the caller didn't pass the post-round
-  // tally — under the normal flow those can't reach ROUNDS_TO_WIN
-  // before the round that would make it so, so the caller MUST pass
-  // `tallies` for the early finish to trigger.
-  const r1 =
-    Number(tallies?.roundsWonPlayer1 ?? match.roundsWonPlayer1) || 0;
-  const r2 =
-    Number(tallies?.roundsWonPlayer2 ?? match.roundsWonPlayer2) || 0;
+  const r1 = Number(tallies?.roundsWonPlayer1 ?? match.roundsWonPlayer1) || 0;
+  const r2 = Number(tallies?.roundsWonPlayer2 ?? match.roundsWonPlayer2) || 0;
   const matchDecided = r1 >= ROUNDS_TO_WIN || r2 >= ROUNDS_TO_WIN;
 
   if (matchDecided || spinNumber >= MAX_ROUNDS) {
@@ -658,21 +534,62 @@ export function planAdvanceAfterResolve({
     };
   }
 
+  // Single-round mode never reaches here — kept for structural parity.
   const nextSpin = spinNumber + 1;
-  const deadline = new Date(now + ROUND_DEADLINE_MS);
   const open = openSpinState({
     matchId: match.id,
     spinNumber: nextSpin,
     symbols,
-    deadline,
-    openedAt: now,
+    now,
   });
   return {
     finished: false,
     status: statusForSpinNumber(nextSpin),
     currentSpin: nextSpin,
-    roundDeadline: deadline,
+    roundDeadline: null,
     p1CurrentInputs: open.p1CurrentInputs,
     p2CurrentInputs: open.p2CurrentInputs,
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Viewer snapshot
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * The VIEWER-VISIBLE current run served by the status route: their own
+ * board + status + countdown. The opponent's run never passes through
+ * here — `scrubMatchForViewer` collapses it server-side.
+ * Pure + deterministic: clients can only ever READ this, never submit.
+ */
+export function viewerRunSnapshot({ inputs, now = Date.now() }) {
+  if (!inputs) return null;
+  const status = inputs.ended
+    ? inputs.busted
+      ? "busted"
+      : inputs.graceFailed
+        ? "grace_failed"
+        : "capped"
+    : inputs.firstComboAt === null
+      ? "grace"
+      : "alive";
+  return {
+    status,
+    ended: Boolean(inputs.ended),
+    busted: Boolean(inputs.busted),
+    graceFailed: Boolean(inputs.graceFailed),
+    survived: Number(inputs.survived) || 0,
+    linesFormed: Number(inputs.linesFormed) || 0,
+    firstComboAt: inputs.firstComboAt ?? null,
+    stoppedCount: Number(inputs.stoppedCount) || 0,
+    graceStopsUsed: Math.min(Number(inputs.stoppedCount) || 0, GRACE_MAX_STOPS),
+    activeIndex: inputs.activeIndex ?? null,
+    activeDeadline: inputs.activeDeadline ?? null,
+    countdownMs: inputs.activeDeadline
+      ? Math.max(0, new Date(inputs.activeDeadline).getTime() - now)
+      : 0,
+    // Own board is always visible; the opponent's is scrubbed server-side.
+    window: Array.isArray(inputs.window) ? inputs.window : null,
+    columns: Array.isArray(inputs.columns) ? inputs.columns : [],
   };
 }

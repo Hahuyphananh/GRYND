@@ -118,15 +118,6 @@ function MainComponent() {
       descriptionKey: "games.slots_desc",
     },
     {
-      name: "Slots Duel",
-      href: "/casino/slots-pvp",
-      leaderboardKey: "slots-pvp",
-      image: Img8,
-      descriptionKey: "games.slots_pvp_desc",
-      nameKey: "games.slots_pvp_name",
-      popular: true,
-    },
-    {
       name: "Coin Flip",
       href: "/casino/coin-flip",
       leaderboardKey: "coin-flip",
@@ -263,7 +254,6 @@ function MainComponent() {
   ]);
 
   const newestOrder = [
-    "slots-pvp",
     "mines-pvp",
     "dots-and-boxes",
     "precision",

@@ -2,24 +2,29 @@
 
 // src/app/casino/slots-pvp/[matchId]/page.jsx
 //
-// MATCH view for the PvP Slots ("Skill Slots") system — mirrors the
-// plinko-pvp match view's structure (status poll + socket room +
-// player side panels + result popups) with a 3×3 skill-stop slot
-// board in the centre.
+// MATCH view for PvP Slots — "Fruit Fortune Survival".
 //
-// How a round plays:
-//   1. The server opens a 10-second spin window for both players
-//      (hidden final reels are generated server-side per player).
-//   2. Each player manually stops Reel 1/2/3 with the STOP buttons.
-//      The server records each stop's timing (stop-accuracy bonus).
-//   3. When BOTH boards are locked — or the 10s deadline passes
-//      (AFK auto-stop) — the server scores both boards, picks the
-//      round winner, and either opens the next round or finishes the
-//      match (first to 3 round wins, best-of-5).
+// How the survival round plays:
+//   1. The server opens ONE survival round. Each player stops columns
+//      on their own 3-column sliding window (hidden column symbols are
+//      generated server-side per player, deterministically).
+//   2. GRACE phase: stop the first 3 columns (any order), then keep
+//      stopping new columns that slide in from the right — you CANNOT
+//      bust until you form your first 3-in-a-row combo (horizontal row
+//      or diagonal). You have at most 10 grace stops to find it.
+//   3. SURVIVAL phase: from the first combo on, every column you stop
+//      must re-form a horizontal/diagonal combo or you're OUT. The
+//      window slides left with every column; the oldest falls off.
+//   4. Each active column has a 10s countdown — AFK columns auto-stop.
+//   5. The round resolves ONLY when BOTH players' runs have ended: no
+//      early loss popup. The winner is whoever survived more columns
+//      (tiebreak: total combos formed). Both grace-fail → tie with a
+//      5%-each rake.
 //
-// Anti-cheat: the opponent's final reels stay hidden while a round is
+// Anti-cheat: the opponent's columns stay hidden while the round is
 // live (the status route scrubs them); the client only sees the
-// opponent's stop progress. All scores are computed server-side.
+// opponent's run status (grace / alive / out + survival count). All
+// combo logic is server-side.
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -35,11 +40,12 @@ import {
   slotsPvpMatchRoom,
 } from "../../../../lib/slots-pvp/rooms";
 import {
+  GRACE_MAX_STOPS,
   MATCH_STATUS,
-  MAX_ROUNDS,
   RESULT,
-  ROUNDS_TO_WIN,
+  ROUND_TIMER_SECONDS,
 } from "../../../../lib/slots-pvp/constants";
+import { SLOT_SYMBOLS, SlotSymbol } from "../../../../lib/slotIcons";
 import { getTheme } from "../../../../lib/slotThemes";
 
 // ── Inline SVG icons ─────────────────────────────────────────────────
@@ -122,22 +128,39 @@ function SparkIcon({ className = "" }) {
   );
 }
 
+// ── Run-status helpers ───────────────────────────────────────────────
+// `run` is a viewerRun snapshot (own full run, or opponent's scrubbed
+// run). During waiting/ready there is no run yet.
+
+function deriveRunStatus(match, run) {
+  if (!match) return "idle";
+  if (match.status === MATCH_STATUS.FINISHED) return "finished";
+  if (match.status === MATCH_STATUS.CANCELLED) return "cancelled";
+  if (match.status === MATCH_STATUS.WAITING) return "waiting";
+  if (match.status === MATCH_STATUS.READY) return "ready";
+  if (!run) return "idle";
+  if (run.ended) {
+    if (run.busted) return "busted";
+    if (run.graceFailed) return "grace_failed";
+    return "capped";
+  }
+  return run.firstComboAt === null ? "grace" : "alive";
+}
+
 // ── Player side panel ────────────────────────────────────────────────
-// Shows the seat name, rounds won (the match score), aggregate points
-// (the rounds-won tie-break) and the current board-lock chip.
+// Shows the seat, survival count (big), combos formed, and a live
+// run-status chip (grace / alive / out).
 
 function PlayerPanel({
   seat,
   displayName,
   avatarUrl,
-  roundsWon,
-  points,
+  survived,
+  lines,
+  runStatus,
+  graceStopsUsed,
   isViewer,
-  stoppedCount,
-  boardLocked,
-  autoStopped,
   isLive,
-  isFinished,
 }) {
   const isCyan = seat === "player1";
   const headerColour = isCyan ? "text-cyan-200" : "text-fuchsia-200";
@@ -147,24 +170,35 @@ function PlayerPanel({
     : "border-fuchsia-300/40 shadow-[0_0_18px_rgba(255,79,216,0.18)]";
 
   let chip = null;
-  if (isFinished) {
-    chip = { label: "MATCH OVER", cls: "bg-white/10 text-white/50 border-white/10" };
-  } else if (boardLocked) {
-    chip = {
-      label: autoStopped ? "AFK LOCKED" : "LOCKED",
-      cls: isCyan
-        ? "bg-cyan-500/20 text-cyan-100 border-cyan-300/40 shadow-[0_0_14px_rgba(0,229,255,0.25)]"
-        : "bg-fuchsia-500/20 text-fuchsia-100 border-fuchsia-300/40 shadow-[0_0_14px_rgba(255,79,216,0.25)]",
-    };
-  } else if (isLive) {
-    chip = {
-      label: `STOPPING ${stoppedCount}/3`,
-      cls: isCyan
-        ? "bg-cyan-500/20 text-cyan-100 border-cyan-300/40"
-        : "bg-fuchsia-500/20 text-fuchsia-100 border-fuchsia-300/40",
-    };
-  } else {
+  const tone = isCyan ? "cyan" : "fuchsia";
+  if (runStatus === "finished" || runStatus === "cancelled") {
+    chip = { label: runStatus === "finished" ? "MATCH OVER" : "CANCELLED", cls: "bg-white/10 text-white/50 border-white/10" };
+  } else if (runStatus === "waiting") {
     chip = { label: "WAITING", cls: "bg-white/5 text-white/50 border-white/10" };
+  } else if (runStatus === "ready") {
+    chip = { label: "GET READY", cls: "bg-amber-500/15 text-amber-200 border-amber-300/40" };
+  } else if (runStatus === "grace") {
+    chip = {
+      label: `FIND COMBO ${Math.min(graceStopsUsed ?? 0, GRACE_MAX_STOPS)}/${GRACE_MAX_STOPS}`,
+      cls: tone === "cyan"
+        ? "bg-amber-500/15 text-amber-200 border-amber-300/40"
+        : "bg-amber-500/15 text-amber-200 border-amber-300/40",
+    };
+  } else if (runStatus === "alive") {
+    chip = {
+      label: "SURVIVING",
+      cls: tone === "cyan"
+        ? "bg-emerald-500/15 text-emerald-200 border-emerald-300/40 shadow-[0_0_14px_rgba(16,185,129,0.25)]"
+        : "bg-emerald-500/15 text-emerald-200 border-emerald-300/40 shadow-[0_0_14px_rgba(16,185,129,0.25)]",
+    };
+  } else if (runStatus === "busted") {
+    chip = { label: "OUT · BUSTED", cls: "bg-red-500/15 text-red-200 border-red-400/40" };
+  } else if (runStatus === "grace_failed") {
+    chip = { label: "OUT · NO COMBO", cls: "bg-red-500/15 text-red-200 border-red-400/40" };
+  } else if (runStatus === "capped") {
+    chip = { label: "OUT · CAP", cls: "bg-white/10 text-white/50 border-white/10" };
+  } else {
+    chip = { label: "…", cls: "bg-white/5 text-white/50 border-white/10" };
   }
 
   return (
@@ -205,12 +239,16 @@ function PlayerPanel({
 
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-xl bg-white/5 border border-white/10 p-2 text-center">
-          <p className="text-[9px] uppercase tracking-wider text-white/50">Rounds won</p>
-          <p className={`text-2xl sm:text-3xl font-black tabular-nums ${scoreColour}`}>{roundsWon}</p>
+          <p className="text-[9px] uppercase tracking-wider text-white/50">Survived</p>
+          <p className={`text-2xl sm:text-3xl font-black tabular-nums ${scoreColour}`}>
+            {survived}
+          </p>
         </div>
         <div className="rounded-xl bg-white/5 border border-white/10 p-2 text-center">
-          <p className="text-[9px] uppercase tracking-wider text-white/50">Points</p>
-          <p className={`text-2xl sm:text-3xl font-black tabular-nums ${scoreColour}`}>{points}</p>
+          <p className="text-[9px] uppercase tracking-wider text-white/50">Combos</p>
+          <p className={`text-2xl sm:text-3xl font-black tabular-nums ${scoreColour}`}>
+            {lines}
+          </p>
         </div>
       </div>
 
@@ -222,12 +260,14 @@ function PlayerPanel({
         className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-bold tracking-wide ${chip.cls}`}
         aria-live="polite"
       >
-        {chip.label === "LOCKED" || chip.label === "AFK LOCKED" ? (
+        {chip.label === "SURVIVING" ? (
           <CheckIcon className="w-3.5 h-3.5" />
-        ) : isLive && !boardLocked ? (
+        ) : isLive && (chip.label === "FIND COMBO" || chip.label === "GET READY") ? (
           <LoadingDotsIcon className="w-3.5 h-3.5 animate-pulse" />
-        ) : (
+        ) : chip.label.startsWith("OUT") || chip.label === "MATCH OVER" || chip.label === "CANCELLED" ? (
           <CrossIcon className="w-3 h-3 opacity-60" />
+        ) : (
+          <span />
         )}
         {chip.label}
       </motion.div>
@@ -235,210 +275,208 @@ function PlayerPanel({
   );
 }
 
-// ── Round result popup ──────────────────────────────────────────────
+// ── Survival board ───────────────────────────────────────────────────
+// The 3-column sliding window. Each landed column shows its final SVG
+// symbols; the active column spins (cosmetic tick) until stopped. In
+// the sliding phase a new column enters from the right and the oldest
+// slides out left (framer-motion layout transitions).
 
-function RoundPopup({
-  spinNumber,
-  p1Name,
-  p2Name,
-  p1Score,
-  p2Score,
-  p1Lines,
-  p2Lines,
-  roundWinner,
-  onNextRound,
+function SurvivalBoard({
+  run,
+  canStop,
+  onStop,
+  rollTick,
+  isLive,
+  themeName,
 }) {
-  const [timer, setTimer] = useState(5);
-  const timerRef = useRef(null);
+  const windowCols = run?.window || [null, null, null];
+  const stoppedCount = run?.stoppedCount ?? 0;
+  const ended = Boolean(run?.ended);
+  const sliding = stoppedCount >= 3;
+  const baseIndex = sliding ? stoppedCount - 3 : 0;
+  const activeIndex = !ended ? (run?.activeIndex ?? null) : null;
 
-  useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setTimer((t) => {
-        if (t <= 1) {
-          if (timerRef.current) clearInterval(timerRef.current);
-          onNextRound();
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [onNextRound]);
+  const spinningCell = (colIndex, onCellStop) => (
+    <div className="flex flex-col gap-1.5 h-full">
+      <div className="flex items-center justify-between px-0.5">
+        <span className="text-[9px] uppercase tracking-widest text-amber-200/80 font-bold">
+          Rolling…
+        </span>
+      </div>
+      <div className="flex-1 rounded-xl border border-white/25 bg-gradient-to-b from-[#08142f] to-[#020617] overflow-hidden">
+        {[0, 1, 2].map((row) => (
+          <div
+            key={row}
+            className={`flex items-center justify-center h-16 sm:h-20 md:h-24 blur-[0.5px] ${
+              row > 0 ? "border-t border-white/10" : ""
+            }`}
+          >
+            <SlotSymbol
+              symbol={SLOT_SYMBOLS[(rollTick + colIndex * 7 + row * 13) % SLOT_SYMBOLS.length]}
+              className="w-9 h-9 sm:w-12 sm:h-12 md:w-14 md:h-14 drop-shadow-[0_0_8px_rgba(255,200,0,0.25)]"
+            />
+          </div>
+        ))}
+      </div>
+      {onCellStop && (
+        <button
+          onClick={onCellStop}
+          disabled={!canStop}
+          className="w-full px-2 py-2 rounded-lg text-xs font-black tracking-widest bg-gradient-to-r from-red-500 to-orange-500 text-white hover:from-red-400 hover:to-orange-400 shadow-[0_0_14px_rgba(255,60,60,0.45)] animate-pulse disabled:opacity-40 disabled:animate-none transition"
+        >
+          STOP
+        </button>
+      )}
+    </div>
+  );
 
-  const p1Won = roundWinner === RESULT.PLAYER1;
-  const p2Won = roundWinner === RESULT.PLAYER2;
+  const lockedCell = (col, colIndex) => (
+    <div className="flex flex-col gap-1.5 h-full">
+      <div className="flex items-center justify-between px-0.5">
+        <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">
+          Col {colIndex + 1}
+        </span>
+        <span className="inline-flex items-center gap-0.5 text-[9px] font-black tracking-widest text-emerald-300">
+          <LockIcon className="w-3 h-3" />
+          LOCKED
+        </span>
+      </div>
+      <div className="flex-1 rounded-xl border border-emerald-400/60 bg-gradient-to-b from-[#08142f] to-[#020617] shadow-[0_0_16px_rgba(16,185,129,0.35)] overflow-hidden">
+        {[0, 1, 2].map((row) => (
+          <div
+            key={row}
+            className={`flex items-center justify-center h-16 sm:h-20 md:h-24 ${
+              row > 0 ? "border-t border-white/10" : ""
+            }`}
+          >
+            <SlotSymbol
+              symbol={col[row]}
+              className="w-9 h-9 sm:w-12 sm:h-12 md:w-14 md:h-14"
+            />
+          </div>
+        ))}
+      </div>
+      <div className="h-9" />
+    </div>
+  );
 
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-    >
-      <div className="rounded-2xl border border-cyan-300/40 bg-gradient-to-br from-[#001a33] via-[#00111f] to-[#000814] p-6 sm:p-8 max-w-md w-full shadow-[0_0_80px_rgba(0,229,255,0.25)]">
-        <h3 className="text-center text-sm uppercase tracking-widest text-cyan-200/70 font-semibold mb-1">
-          Round {spinNumber} Results
-        </h3>
-
-        <div className="grid grid-cols-2 gap-4 mt-4">
-          <div className="text-center">
-            <p className="text-[11px] uppercase tracking-wider text-cyan-300/70 font-semibold truncate" title={p1Name}>
-              {p1Name}
-            </p>
-            <p className={`text-3xl font-black mt-1 tabular-nums ${p1Won ? "text-cyan-300" : "text-white/60"}`}>
-              {p1Score}
-            </p>
-            <p className="text-[10px] text-white/45 mt-1">{p1Lines} line{p1Lines === 1 ? "" : "s"}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-[11px] uppercase tracking-wider text-fuchsia-300/70 font-semibold truncate" title={p2Name}>
-              {p2Name}
-            </p>
-            <p className={`text-3xl font-black mt-1 tabular-nums ${p2Won ? "text-fuchsia-300" : "text-white/60"}`}>
-              {p2Score}
-            </p>
-            <p className="text-[10px] text-white/45 mt-1">{p2Lines} line{p2Lines === 1 ? "" : "s"}</p>
-          </div>
-        </div>
-
-        {p1Won && (
-          <p className="text-center text-sm font-bold text-cyan-300 mt-4">
-            <SparkIcon className="w-4 h-4 inline-block mr-1 text-cyan-300" />
-            {p1Name} wins this round!
-          </p>
-        )}
-        {p2Won && (
-          <p className="text-center text-sm font-bold text-fuchsia-300 mt-4">
-            <SparkIcon className="w-4 h-4 inline-block mr-1 text-fuchsia-300" />
-            {p2Name} wins this round!
-          </p>
-        )}
-        {!p1Won && !p2Won && (
-          <p className="text-center text-sm font-bold text-yellow-300 mt-4">
-            It&apos;s a tie — no round point awarded!
-          </p>
-        )}
-
-        <button
-          onClick={onNextRound}
-          className="mt-6 w-full px-4 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-400 to-cyan-500 text-[#001933] hover:from-cyan-300 hover:to-cyan-400 transition shadow-[0_0_25px_rgba(0,229,255,0.4)]"
-        >
-          Next Round ({timer}s)
-        </button>
+    <div className="rounded-2xl border border-amber-300/30 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-3 sm:p-4 shadow-[0_0_60px_rgba(255,200,0,0.14),inset_0_0_30px_rgba(255,200,0,0.06)]">
+      {/* Belly-glass header */}
+      <div className="flex items-center justify-between mb-2 px-1">
+        <span className="text-[10px] uppercase tracking-widest text-amber-200/70 font-bold">
+          {themeName}
+        </span>
+        <span className="text-[10px] uppercase tracking-widest text-white/40 font-bold">
+          Survival · 3×3
+        </span>
       </div>
-    </motion.div>
+
+      <div className="relative grid grid-cols-3 gap-2 sm:gap-3">
+        <AnimatePresence initial={false}>
+          {[0, 1, 2].map((slot) => {
+            const colIndex = baseIndex + slot;
+            const col = windowCols[slot];
+            const locked = col !== null;
+            const spinning = !locked && isLive && !ended;
+            return (
+              <motion.div
+                key={`w-${colIndex}`}
+                layout
+                initial={{ opacity: 0, x: 42 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -42 }}
+                transition={{ duration: 0.32 }}
+                className="min-w-0"
+              >
+                {locked
+                  ? lockedCell(col, colIndex)
+                  : spinning
+                    ? spinningCell(colIndex, () => onStop(colIndex))
+                    : (
+                      <div className="flex flex-col gap-1.5 h-full">
+                        <div className="flex-1 rounded-xl border border-white/10 bg-[#020617] flex items-center justify-center">
+                          <span className="text-white/15 text-2xl">?</span>
+                        </div>
+                      </div>
+                    )}
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+
+        {/* Entering column — slides in from the right during the sliding phase */}
+        {sliding && activeIndex !== null && isLive && (
+          <motion.div
+            key={`enter-${activeIndex}`}
+            initial={{ x: "112%" }}
+            animate={{ x: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute inset-y-0 right-0 w-[calc((100%-1rem)/3)] sm:w-[calc((100%-1.5rem)/3)] z-10"
+          >
+            {spinningCell(activeIndex, () => onStop(activeIndex))}
+          </motion.div>
+        )}
+      </div>
+
+      {/* Status strip + big STOP (sliding phase) */}
+      <div className="mt-3 space-y-2">
+        {sliding && (
+          <button
+            onClick={() => onStop(activeIndex)}
+            disabled={!canStop || !isLive || ended}
+            className="w-full px-4 py-3 rounded-xl text-sm font-black tracking-widest bg-gradient-to-r from-red-500 to-orange-500 text-white hover:from-red-400 hover:to-orange-400 shadow-[0_0_20px_rgba(255,60,60,0.5)] animate-pulse disabled:opacity-40 disabled:animate-none disabled:cursor-not-allowed transition"
+          >
+            STOP THE COLUMN
+          </button>
+        )}
+
+        <div className="flex items-center justify-center gap-2 text-[11px] text-white/55">
+          {!isLive ? (
+            <span>Waiting for the round to start</span>
+          ) : ended ? (
+            <span className="inline-flex items-center gap-1.5 text-red-200">
+              <CrossIcon className="w-3.5 h-3.5" />
+              You&apos;re out — waiting for the opponent to finish…
+            </span>
+          ) : run?.status === "grace" ? (
+            <span className="inline-flex items-center gap-1.5 text-amber-200">
+              <LoadingDotsIcon className="w-3.5 h-3.5 animate-pulse" />
+              Find your first 3-in-a-row — stops used:{" "}
+              <b>{(run?.graceStopsUsed ?? 0)}/{GRACE_MAX_STOPS}</b>
+            </span>
+          ) : run?.status === "alive" ? (
+            <span className="inline-flex items-center gap-1.5 text-emerald-200">
+              <SparkIcon className="w-3.5 h-3.5" />
+              Streak <b>{run?.survived ?? 0}</b> — keep the combos coming!
+            </span>
+          ) : (
+            <span>Round live</span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ── Winner popup ────────────────────────────────────────────────────
-
-function WinnerPopup({ match, user, onBack, p1Name, p2Name }) {
-  const isDraw = match.result === RESULT.DRAW;
-  const iWon = Boolean(match.winnerId && user?.id && match.winnerId === user.id);
-  const roundsDiff = Math.abs((match.roundsWonPlayer1 || 0) - (match.roundsWonPlayer2 || 0));
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-    >
-      <div className="rounded-2xl border border-cyan-300/40 bg-gradient-to-br from-[#001a33] via-[#00111f] to-[#000814] p-6 sm:p-8 max-w-md w-full shadow-[0_0_80px_rgba(0,229,255,0.25)]">
-        <div className="flex items-center justify-center mb-4">
-          <TrophyIcon className="w-10 h-10 text-yellow-300 drop-shadow-[0_0_16px_rgba(255,200,0,0.5)]" />
-        </div>
-        <h3 className="text-center text-sm uppercase tracking-widest text-cyan-200/70 font-semibold mb-1">
-          Match Over
-        </h3>
-
-        <p
-          className={`text-center text-3xl font-black mt-2 ${
-            isDraw ? "text-yellow-300" : iWon ? "text-emerald-300" : "text-red-300"
-          }`}
-        >
-          {isDraw ? "It's a Draw!" : iWon ? "You Win!" : "You Lose"}
-        </p>
-
-        {!isDraw && (
-          <p className="text-center text-sm text-white/70 mt-2">
-            <span className="font-bold text-white">
-              {iWon ? "You" : match.winnerId === match.player1Id ? p1Name : p2Name}
-            </span>{" "}
-            won{" "}
-            <span className="font-bold text-white">
-              {Math.max(match.roundsWonPlayer1 || 0, match.roundsWonPlayer2 || 0)}
-            </span>
-            {" "}rounds to{" "}
-            <span className="font-bold text-white">
-              {Math.min(match.roundsWonPlayer1 || 0, match.roundsWonPlayer2 || 0)}
-            </span>
-            {roundsDiff === 0 ? "" : ` (by ${roundsDiff} round${roundsDiff === 1 ? "" : "s"})`}
-          </p>
-        )}
-
-        <div className="grid grid-cols-2 gap-4 mt-5">
-          <div className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 p-3 text-center">
-            <p className="text-[10px] uppercase tracking-wider text-cyan-200/70 truncate">{p1Name}</p>
-            <p className="mt-1 text-2xl font-black text-cyan-100 tabular-nums">
-              {match.roundsWonPlayer1 || 0} rounds
-            </p>
-            <p className="text-[10px] text-white/50 mt-0.5 tabular-nums">{match.p1Score || 0} pts</p>
-          </div>
-          <div className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 p-3 text-center">
-            <p className="text-[10px] uppercase tracking-wider text-fuchsia-200/70 truncate">{p2Name}</p>
-            <p className="mt-1 text-2xl font-black text-fuchsia-100 tabular-nums">
-              {match.roundsWonPlayer2 || 0} rounds
-            </p>
-            <p className="text-[10px] text-white/50 mt-0.5 tabular-nums">{match.p2Score || 0} pts</p>
-          </div>
-        </div>
-
-        {!isDraw && (
-          <p className="text-center text-xs text-white/60 mt-4">
-            Prize paid:{" "}
-            <span className="text-white font-bold">{(match.prizePaid || 0).toFixed(2)}</span>
-          </p>
-        )}
-        {isDraw && (
-          <p className="text-center text-xs text-white/60 mt-4">
-            Both players refunded — no house fee
-          </p>
-        )}
-
-        <button
-          onClick={onBack}
-          className="mt-6 w-full px-4 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-400 to-cyan-500 text-[#001933] hover:from-cyan-300 hover:to-cyan-400 transition shadow-[0_0_25px_rgba(0,229,255,0.4)]"
-        >
-          Back to Lobby
-        </button>
-      </div>
-    </motion.div>
-  );
-}
-
-// ── VS scoreboard ───────────────────────────────────────────────────
-// The match-header scoreboard: YOU vs OPPONENT, the current match
-// score (rounds won each), Round X/5, a live countdown ring, per-player
-// round-win dots and the viewer's CURRENT round score (server-computed;
-// the opponent's score never appears here).
+// ── VS scoreboard ────────────────────────────────────────────────────
+// Compact match header: You vs Opponent, live survival counts, the
+// per-column countdown ring and the viewer's run chip.
 
 function ScoreBoard({
   p1Name,
   p2Name,
   p1Avatar,
   p2Avatar,
-  roundsWonP1,
-  roundsWonP2,
-  currentSpin,
-  maxRounds,
-  roundsToWin,
   isViewerP1,
-  timeLeft,
-  roundTimer,
   status,
-  viewerRoundScore,
-  winBySpin,
+  secondsLeft,
+  ringTotal,
+  viewerStatus,
+  opponentStatus,
+  viewerSurvived,
+  opponentSurvived,
 }) {
   const isFinished = status === MATCH_STATUS.FINISHED;
   const isCancelled = status === MATCH_STATUS.CANCELLED;
@@ -446,26 +484,28 @@ function ScoreBoard({
   const isWaiting = status === MATCH_STATUS.WAITING;
   const isSpin = /^spin_\d+$/.test(status || "");
   const countdownLive = (isSpin || isReady) && !isFinished && !isCancelled;
-  const urgent = isSpin && timeLeft > 0 && timeLeft <= 5;
-  const ringTotal = isReady ? 3 : roundTimer || 10;
+  const urgent = isSpin && secondsLeft > 0 && secondsLeft <= 5;
   const progress = countdownLive
-    ? Math.min(1, Math.max(0, timeLeft / ringTotal))
+    ? Math.min(1, Math.max(0, secondsLeft / (ringTotal || 10)))
     : 0;
   const RING_R = 18;
   const RING_CIRC = 2 * Math.PI * RING_R;
 
-  const dotState = (seat, spin) => {
-    const w = winBySpin[spin];
-    if (!w) return "pending";
-    if (w === RESULT.DRAW) return "draw";
-    const mine = seat === "player1" ? RESULT.PLAYER1 : RESULT.PLAYER2;
-    return w === mine ? "won" : "lost";
+  const statusText = (s) => {
+    if (s === "grace") return "finding combo";
+    if (s === "alive") return "surviving";
+    if (s === "busted") return "out";
+    if (s === "grace_failed") return "no combo";
+    if (s === "capped") return "out";
+    if (s === "finished") return "done";
+    return s;
   };
 
-  function Side({ seat, name, avatar, roundsWon }) {
+  function Side({ seat, name, avatar, survived, runStatus }) {
     const cyan = seat === "player1";
     const isYou = cyan ? isViewerP1 : !isViewerP1;
     const numColour = cyan ? "text-cyan-100" : "text-fuchsia-100";
+    const alive = runStatus === "alive" || runStatus === "grace";
     return (
       <div className="flex flex-col items-center text-center min-w-0">
         <span
@@ -497,131 +537,76 @@ function ScoreBoard({
               {(name || "?").slice(0, 1).toUpperCase()}
             </span>
           )}
-          <p
-            className={`text-xs sm:text-sm font-bold truncate ${numColour}`}
-            title={name}
-          >
+          <p className={`text-xs sm:text-sm font-bold truncate ${numColour}`} title={name}>
             {name}
           </p>
         </div>
-        <p
-          className={`text-2xl sm:text-3xl font-black tabular-nums leading-none mt-1 ${numColour}`}
-        >
-          {roundsWon}
+        <p className={`text-2xl sm:text-3xl font-black tabular-nums leading-none mt-1 ${numColour}`}>
+          {survived}
         </p>
-        <div className="flex items-center justify-center gap-1 mt-1.5">
-          {Array.from({ length: maxRounds }, (_, i) => {
-            const spin = i + 1;
-            const state = dotState(seat, spin);
-            const cls =
-              state === "won"
-                ? cyan
-                  ? "bg-cyan-300 shadow-[0_0_6px_rgba(0,229,255,0.9)]"
-                  : "bg-fuchsia-300 shadow-[0_0_6px_rgba(255,79,216,0.9)]"
-                : state === "lost"
-                  ? "bg-red-500/40"
-                  : state === "draw"
-                    ? "bg-yellow-300/70"
-                    : "bg-white/10 border border-white/25";
-            return (
-              <span
-                key={spin}
-                className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${cls}`}
-                title={`Round ${spin}: ${state}`}
-              />
-            );
-          })}
-        </div>
+        <span
+          className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
+            alive
+              ? "bg-emerald-500/15 text-emerald-300 border border-emerald-400/40"
+              : runStatus === "busted" || runStatus === "grace_failed" || runStatus === "capped"
+                ? "bg-red-500/15 text-red-300 border border-red-400/40"
+                : "bg-white/5 text-white/45 border border-white/10"
+          }`}
+        >
+          {alive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+          {statusText(runStatus)}
+        </span>
       </div>
     );
   }
 
-  const rs = viewerRoundScore;
-  let roundScoreChip = null;
-  if (!isFinished && !isCancelled && !isWaiting && !isReady) {
-    if (rs?.locked) {
-      roundScoreChip = (
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold text-emerald-300 tabular-nums">
-          <CheckIcon className="w-3 h-3" />
-          Your round: {rs.totalScore} pts
-          {rs.lineCount > 0
-            ? ` · ${rs.lineCount} line${rs.lineCount === 1 ? "" : "s"} ×${rs.multiplier}`
-            : ""}
-        </span>
-      );
-    } else if (rs && rs.stopBonus > 0) {
-      roundScoreChip = (
-        <span className="inline-flex items-center gap-1 rounded-full border border-sky-400/40 bg-sky-500/15 px-2.5 py-0.5 text-[10px] font-bold text-sky-300 tabular-nums">
-          <SparkIcon className="w-3 h-3" />
-          Bonus +{rs.stopBonus}
-        </span>
-      );
-    } else {
-      roundScoreChip = (
-        <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5 text-[10px] font-semibold text-white/50 tabular-nums">
-          Your round: —
-        </span>
-      );
-    }
-  }
-
   return (
-    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#001a33] via-[#00111f] to-[#000814] px-3 sm:px-6 py-3 sm:py-4 shadow-[0_0_40px_rgba(0,229,255,0.12)]">
+    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#001a33] via-[#00111f] to-[#000814] px-3 sm:px-6 py-3 sm:py-4 shadow-[0_0_40px_rgba(255,200,0,0.1)]">
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-5">
-        <Side seat="player1" name={p1Name} avatar={p1Avatar} roundsWon={roundsWonP1} />
+        <Side seat="player1" name={p1Name} avatar={p1Avatar} survived={viewerIsP1 ? viewerSurvived : opponentSurvived} runStatus={isViewerP1 ? viewerStatus : opponentStatus} />
+        {/* Note: Side's isYou label uses the seat; the survived/status passed
+            above intentionally reflect the VIEWER's seat orientation. */}
 
-        {/* Center: round X/5 + countdown ring + round score */}
         <div className="flex flex-col items-center gap-0.5 min-w-0">
           <span className="text-[9px] sm:text-[10px] uppercase tracking-widest text-white/50 font-bold">
-            Round{" "}
-            <span className="text-white font-black text-sm sm:text-base tabular-nums">
-              {currentSpin}
-            </span>
-            <span className="text-white/40">/{maxRounds}</span>
+            Survival Round
           </span>
           <span className="text-[9px] uppercase tracking-wider text-white/40 font-semibold">
-            First to {roundsToWin}
+            More columns = win
           </span>
 
           <div className="relative w-12 h-12 sm:w-14 sm:h-14 mt-1">
             {countdownLive ? (
               <>
                 <svg viewBox="0 0 48 48" className="w-full h-full -rotate-90">
+                  <circle cx="24" cy="24" r={RING_R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="4" />
                   <circle
                     cx="24"
                     cy="24"
                     r={RING_R}
                     fill="none"
-                    stroke="rgba(255,255,255,0.12)"
-                    strokeWidth="4"
-                  />
-                  <circle
-                    cx="24"
-                    cy="24"
-                    r={RING_R}
-                    fill="none"
-                    stroke={urgent ? "#f87171" : "#22d3ee"}
+                    stroke={urgent ? "#f87171" : "#fbbf24"}
                     strokeWidth="4"
                     strokeLinecap="round"
                     strokeDasharray={RING_CIRC}
                     strokeDashoffset={RING_CIRC * (1 - progress)}
-                    style={{
-                      transition: "stroke-dashoffset 300ms linear, stroke 300ms",
-                    }}
+                    style={{ transition: "stroke-dashoffset 300ms linear, stroke 300ms" }}
                   />
                 </svg>
                 <span
                   className={`absolute inset-0 flex items-center justify-center text-base sm:text-lg font-black tabular-nums ${
-                    urgent ? "text-red-300" : "text-cyan-100"
+                    urgent ? "text-red-300" : "text-amber-100"
                   }`}
                 >
-                  {timeLeft}
+                  {Math.max(0, Math.ceil(secondsLeft))}
                 </span>
               </>
             ) : (
               <span className="absolute inset-0 flex items-center justify-center text-lg">
                 {isFinished ? (
                   <TrophyIcon className="w-7 h-7 text-yellow-300 drop-shadow-[0_0_10px_rgba(255,200,0,0.5)]" />
+                ) : isWaiting ? (
+                  <span className="text-white/30">—</span>
                 ) : (
                   <span className="text-white/30">—</span>
                 )}
@@ -629,162 +614,116 @@ function ScoreBoard({
             )}
           </div>
 
-          <div className="mt-0.5">{roundScoreChip}</div>
+          <span className="text-[9px] uppercase tracking-wider text-white/40 font-semibold">
+            {isReady ? "Get ready…" : isSpin ? "Column timer" : ""}
+          </span>
         </div>
 
-        <Side seat="player2" name={p2Name} avatar={p2Avatar} roundsWon={roundsWonP2} />
+        <Side seat="player2" name={p2Name} avatar={p2Avatar} survived={isViewerP1 ? opponentSurvived : viewerSurvived} runStatus={isViewerP1 ? opponentStatus : viewerStatus} />
       </div>
     </div>
   );
 }
 
-// ── Slot board ──────────────────────────────────────────────────────
-// 3×3 grid. Each column rolls (cosmetic tick) until the player stops
-// it, then freezes on the server-generated final symbols.
+// ── Winner / reveal popup ────────────────────────────────────────────
+// Shown ONLY when both players' runs have ended (the server resolves
+// then) — no early loss popup. Reveals both survival runs + the result.
 
-function SlotBoard({
-  theme,
-  viewerInputs,
-  canStop,
-  onStop,
-  rolling,
-  rollTick,
-  isLive,
-  accuracyByReel,
-}) {
-  const themeObj = getTheme(theme);
-  const symbols = themeObj.symbols;
-  const reels = viewerInputs?.reels || null; // [col][row]
-  const reelsStopped = Array.isArray(viewerInputs?.reelsStopped)
-    ? viewerInputs.reelsStopped
-    : [];
-  const boardLocked = Boolean(viewerInputs?.boardLocked);
+function WinnerPopup({ match, user, onBack, p1Name, p2Name, roundResult }) {
+  const isGraceDraw = match.result === RESULT.GRACE_DRAW;
+  const isDraw = match.result === RESULT.DRAW;
+  const iWon = Boolean(match.winnerId && user?.id && match.winnerId === user.id);
+  const p1 = roundResult?.player1Result || {};
+  const p2 = roundResult?.player2Result || {};
+  const p1Survived = Number(match.p1Score) || 0;
+  const p2Survived = Number(match.p2Score) || 0;
 
-  const stopped = (col) => reelsStopped.includes(col);
-  const accuracyFor = (col) => {
-    if (!Array.isArray(accuracyByReel)) return null;
-    return accuracyByReel.find((a) => a.reel === col) || null;
-  };
+  const title = isGraceDraw
+    ? "Double No-Combo!"
+    : isDraw
+      ? "It's a Draw!"
+      : iWon
+        ? "You Win!"
+        : "You Lose";
+  const titleColour = isDraw || isGraceDraw ? "text-yellow-300" : iWon ? "text-emerald-300" : "text-red-300";
 
   return (
-    <div className="rounded-2xl border border-cyan-300/30 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-3 sm:p-4 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)]">
-      {/* Belly-glass header */}
-      <div className="flex items-center justify-between mb-2 px-1">
-        <span className="text-[10px] uppercase tracking-widest text-cyan-200/70 font-bold">
-          {themeObj.name}
-        </span>
-        <span className="text-[10px] uppercase tracking-widest text-white/40 font-bold">
-          3×3 · Skill Stop
-        </span>
-      </div>
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+    >
+      <div className="rounded-2xl border border-amber-300/40 bg-gradient-to-br from-[#001a33] via-[#00111f] to-[#000814] p-6 sm:p-8 max-w-md w-full shadow-[0_0_80px_rgba(255,200,0,0.22)]">
+        <div className="flex items-center justify-center mb-4">
+          <TrophyIcon className="w-10 h-10 text-yellow-300 drop-shadow-[0_0_16px_rgba(255,200,0,0.5)]" />
+        </div>
+        <h3 className="text-center text-sm uppercase tracking-widest text-amber-200/70 font-semibold mb-1">
+          Match Over
+        </h3>
+        <p className={`text-center text-3xl font-black mt-2 ${titleColour}`}>{title}</p>
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        {[0, 1, 2].map((col) => {
-          const isStopped = stopped(col);
-          const spinning = isLive && !isStopped && !boardLocked;
-          const acc = accuracyFor(col);
-          return (
-            <div key={col} className="flex flex-col gap-1.5">
-              {/* Reel label + lock badge */}
-              <div className="flex items-center justify-between px-0.5">
-                <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">
-                  Reel {col + 1}
-                </span>
-                {isStopped && (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] font-black tracking-widest text-emerald-300">
-                    <LockIcon className="w-3 h-3" />
-                    LOCKED
-                  </span>
-                )}
-              </div>
-
-              {/* Reel column */}
-              <div
-                className={`rounded-xl border bg-gradient-to-b from-[#08142f] to-[#020617] overflow-hidden ${
-                  isStopped
-                    ? "border-emerald-400/60 shadow-[0_0_16px_rgba(16,185,129,0.35)]"
-                    : spinning
-                      ? "border-white/25"
-                      : "border-white/15"
-                }`}
-              >
-                {[0, 1, 2].map((row) => {
-                  const finalSym =
-                    reels && reels[col] ? reels[col][row] : "?";
-                  const shown = spinning
-                    ? symbols[(rollTick + col * 7 + row * 13) % symbols.length]
-                    : finalSym;
-                  return (
-                    <div
-                      key={row}
-                      className={`flex items-center justify-center h-16 sm:h-20 md:h-24 text-3xl sm:text-4xl md:text-5xl select-none ${
-                        spinning ? "blur-[0.5px]" : ""
-                      } ${row > 0 ? "border-t border-white/10" : ""}`}
-                      aria-hidden={spinning}
-                    >
-                      {shown}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* STOP button */}
-              <button
-                onClick={() => onStop(col)}
-                disabled={!canStop || isStopped || boardLocked}
-                className={`w-full px-2 py-2 rounded-lg text-xs font-black tracking-widest transition ${
-                  isStopped
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/50"
-                    : boardLocked
-                      ? "bg-white/5 text-white/30 border border-white/10 cursor-not-allowed"
-                      : canStop
-                        ? "bg-gradient-to-r from-red-500 to-orange-500 text-white hover:from-red-400 hover:to-orange-400 shadow-[0_0_14px_rgba(255,60,60,0.45)] animate-pulse"
-                        : "bg-white/5 text-white/30 border border-white/10 cursor-not-allowed"
-                }`}
-              >
-                {isStopped ? "✓ STOPPED" : "STOP"}
-              </button>
-
-              {/* Accuracy chip (server-computed, once known) */}
-              {isStopped && acc && (
-                <span
-                  className={`text-center text-[9px] font-black tracking-widest uppercase ${
-                    acc.accuracy === "perfect"
-                      ? "text-emerald-300"
-                      : acc.accuracy === "good"
-                        ? "text-sky-300"
-                        : "text-white/40"
-                  }`}
-                >
-                  {acc.accuracy === "perfect"
-                    ? "Perfect +100"
-                    : acc.accuracy === "good"
-                      ? "Good +50"
-                      : "Normal +0"}
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Status strip under the board */}
-      <div className="mt-3 flex items-center justify-center gap-2 text-[11px] text-white/55">
-        {boardLocked ? (
-          <span className="inline-flex items-center gap-1.5 text-emerald-300">
-            <CheckIcon className="w-3.5 h-3.5" />
-            Board locked — waiting for opponent{isLive ? " or the deadline" : ""}…
-          </span>
-        ) : isLive ? (
-          <span className="inline-flex items-center gap-1.5">
-            <LoadingDotsIcon className="w-3.5 h-3.5 animate-pulse" />
-            Stop all 3 reels — fast stops earn accuracy bonuses!
-          </span>
-        ) : (
-          <span>Board ready</span>
+        {!isDraw && !isGraceDraw && (
+          <p className="text-center text-sm text-white/70 mt-2">
+            <span className="font-bold text-white">
+              {iWon ? "You" : match.winnerId === match.player1Id ? p1Name : p2Name}
+            </span>{" "}
+            survived{" "}
+            <span className="font-bold text-white">
+              {Math.max(p1Survived, p2Survived)}
+            </span>{" "}
+            columns to{" "}
+            <span className="font-bold text-white">{Math.min(p1Survived, p2Survived)}</span>
+          </p>
         )}
+
+        <div className="grid grid-cols-2 gap-4 mt-5">
+          <div className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 p-3 text-center">
+            <p className="text-[10px] uppercase tracking-wider text-cyan-200/70 truncate">{p1Name}</p>
+            <p className="mt-1 text-2xl font-black text-cyan-100 tabular-nums">
+              {p1Survived} survived
+            </p>
+            <p className="text-[10px] text-white/50 mt-0.5 tabular-nums">
+              {p1.linesFormed || 0} combos
+              {p1.graceFailed ? " · no combo" : p1.busted ? " · busted" : ""}
+            </p>
+          </div>
+          <div className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 p-3 text-center">
+            <p className="text-[10px] uppercase tracking-wider text-fuchsia-200/70 truncate">{p2Name}</p>
+            <p className="mt-1 text-2xl font-black text-fuchsia-100 tabular-nums">
+              {p2Survived} survived
+            </p>
+            <p className="text-[10px] text-white/50 mt-0.5 tabular-nums">
+              {p2.linesFormed || 0} combos
+              {p2.graceFailed ? " · no combo" : p2.busted ? " · busted" : ""}
+            </p>
+          </div>
+        </div>
+
+        {!isDraw && !isGraceDraw && (
+          <p className="text-center text-xs text-white/60 mt-4">
+            Prize paid:{" "}
+            <span className="text-white font-bold">{(match.prizePaid || 0).toFixed(2)}</span>
+          </p>
+        )}
+        {isGraceDraw && (
+          <p className="text-center text-xs text-yellow-200/80 mt-4">
+            Both players failed to make a combo — each refunded 95% (house keeps 10%).
+          </p>
+        )}
+        {isDraw && !isGraceDraw && (
+          <p className="text-center text-xs text-white/60 mt-4">
+            Equal survival — both players refunded, no house fee.
+          </p>
+        )}
+
+        <button
+          onClick={onBack}
+          className="mt-6 w-full px-4 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-400 to-orange-500 text-[#001933] hover:from-amber-300 hover:to-orange-400 transition shadow-[0_0_25px_rgba(255,200,0,0.4)]"
+        >
+          Back to Lobby
+        </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -810,20 +749,18 @@ export default function SlotsPvpMatchPage({ params }) {
   const [rounds, setRounds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(0);
+  const [readyLeft, setReadyLeft] = useState(0);
+  const [columnLeftMs, setColumnLeftMs] = useState(0);
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [roundPopup, setRoundPopup] = useState(null);
-  // Cosmetic reel-roll ticker (advances while any reel is spinning).
+  // Cosmetic symbol-roll ticker (advances while the viewer can stop).
   const [rollTick, setRollTick] = useState(0);
 
   const fetchStatusPendingRef = useRef(false);
-  const lastRoundsLenRef = useRef(0);
-  const hasInitializedRoundsRef = useRef(false);
   const resolvedFiredRef = useRef(false);
 
-  // ── Status fetch (mirrors plinko-pvp: 800ms poll + in-flight guard) ──
+  // ── Status fetch (800ms poll + in-flight guard) ─────────────────
   const fetchStatus = useCallback(async () => {
     if (isSignedIn === false) {
       setLoading(false);
@@ -857,12 +794,6 @@ export default function SlotsPvpMatchPage({ params }) {
         : [];
       setMatch(nextMatch);
       setRounds(nextRounds);
-      // Seed the round-popup baseline on FIRST load so a mid-match
-      // page refresh never replays popups for already-resolved rounds.
-      if (!hasInitializedRoundsRef.current) {
-        hasInitializedRoundsRef.current = true;
-        lastRoundsLenRef.current = nextRounds.length;
-      }
       setError(nextMatch ? null : "Match not found.");
       return nextMatch;
     } catch (err) {
@@ -880,15 +811,12 @@ export default function SlotsPvpMatchPage({ params }) {
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
-  // ── Socket subscription (per-match room; re-join on reconnect) ────
+  // ── Socket subscription (per-match room; re-join on reconnect) ───
   useEffect(() => {
     if (!socket) return;
     if (!isValidMatchId) return;
     const refresh = () => fetchStatus();
     const roomId = slotsPvpMatchRoom(matchId);
-    // Re-join on EVERY socket (re)connection — Socket.IO doesn't
-    // re-join rooms automatically, and the realtime server's
-    // disconnect grace timer is only cancelled by a re-join.
     const join = () => socket.emit("join_room", { roomId });
     join();
     socket.on("connect", join);
@@ -900,74 +828,60 @@ export default function SlotsPvpMatchPage({ params }) {
     };
   }, [socket, matchId, isValidMatchId, fetchStatus]);
 
-  // ── Countdown tick ───────────────────────────────────────────────
+  // ── Ready-window countdown (3s "get ready" banner) ───────────────
   useEffect(() => {
-    if (!match?.roundDeadline) {
-      setTimeLeft(0);
-      return;
-    }
     if (
-      match.status === MATCH_STATUS.FINISHED ||
-      match.status === MATCH_STATUS.CANCELLED
+      match?.status !== MATCH_STATUS.READY ||
+      !match.roundDeadline
     ) {
-      setTimeLeft(0);
+      setReadyLeft(0);
       return;
     }
     const deadlineMs = new Date(match.roundDeadline).getTime();
     const tick = () => {
       const remaining = Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000));
-      setTimeLeft(remaining);
+      setReadyLeft(remaining);
     };
     tick();
     const interval = setInterval(tick, 250);
     return () => clearInterval(interval);
-  }, [match?.roundDeadline, match?.status]);
+  }, [match?.status, match?.roundDeadline]);
 
-  // ── Reel-roll ticker: animate unstopped reels while a round is live ──
+  // ── Per-column countdown (viewer's active column) ────────────────
   useEffect(() => {
-    if (!match) return;
-    const isSpin = /^spin_\d+$/.test(match.status || "");
-    const viewerInputs = match.viewerIsPlayer1
-      ? match.p1CurrentInputs
-      : match.p2CurrentInputs;
-    const stillRolling =
-      isSpin &&
-      viewerInputs &&
-      !viewerInputs.boardLocked &&
-      (viewerInputs.reelsStopped?.length || 0) < 3;
+    const run = match?.viewerRun;
+    if (
+      !match ||
+      !/^spin_\d+$/.test(match.status || "") ||
+      !run ||
+      run.ended ||
+      !run.activeDeadline
+    ) {
+      setColumnLeftMs(0);
+      return;
+    }
+    const deadlineMs = new Date(run.activeDeadline).getTime();
+    const tick = () => setColumnLeftMs(Math.max(0, deadlineMs - Date.now()));
+    tick();
+    const interval = setInterval(tick, 250);
+    return () => clearInterval(interval);
+  }, [match?.status, match?.viewerRun]);
+
+  // ── Symbol-roll ticker: animate while the viewer can stop ────────
+  useEffect(() => {
+    const isSpin = /^spin_\d+$/.test(match?.status || "");
+    const run = match?.viewerRun;
+    const stillRolling = isSpin && run && !run.ended;
     if (!stillRolling) return;
     const id = setInterval(() => setRollTick((t) => t + 1), 70);
     return () => clearInterval(id);
-  }, [match?.status, match?.p1CurrentInputs, match?.p2CurrentInputs]);
+  }, [match?.status, match?.viewerRun]);
 
-  // ── Round result popup: fires when a NEW round row appears ───────
-  useEffect(() => {
-    if (rounds.length === 0) return;
-    if (rounds.length <= lastRoundsLenRef.current) return;
-    lastRoundsLenRef.current = rounds.length;
-    // The match-finishing round shows the WinnerPopup instead.
-    if (match?.status === MATCH_STATUS.FINISHED) return;
-    const row = rounds[rounds.length - 1];
-    setRoundPopup({
-      spinNumber: row.spinNumber,
-      p1Score: row.spinPointsPlayer1,
-      p2Score: row.spinPointsPlayer2,
-      p1Lines: row.player1Result?.lineCount ?? 0,
-      p2Lines: row.player2Result?.lineCount ?? 0,
-      roundWinner: row.roundWinner,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rounds, match?.status]);
-
-  const onNextRound = useCallback(() => {
-    setRoundPopup(null);
-    fetchStatus();
-  }, [fetchStatus]);
-
-  // ── Stop a reel ──────────────────────────────────────────────────
-  const handleStopReel = useCallback(
-    async (reelIndex) => {
+  // ── Stop a column ────────────────────────────────────────────────
+  const handleStop = useCallback(
+    async (columnIndex) => {
       if (busy || !isValidMatchId) return;
+      if (columnIndex == null) return;
       setBusy(true);
       setError(null);
       try {
@@ -976,7 +890,7 @@ export default function SlotsPvpMatchPage({ params }) {
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            reelIndex,
+            columnIndex,
             currentSpin: match?.currentSpin ?? null,
           }),
         });
@@ -985,13 +899,14 @@ export default function SlotsPvpMatchPage({ params }) {
           // 409 / 400 (already stopped / expired) are expected races —
           // a fresh poll reconciles. Only surface unexpected errors.
           if (res.status !== 409 && res.status !== 400) {
-            setError(data?.error || "Unable to stop reel");
+            setError(data?.error || "Unable to stop column");
           }
           return;
         }
-        posthog?.capture("slots_pvp_reel_stopped", {
+        posthog?.capture("slots_pvp_column_stopped", {
           match_id: matchId,
-          reel: reelIndex,
+          column: columnIndex,
+          run_ended: data?.data?.runEnded === true,
           round_resolved: data?.data?.roundResolved === true,
         });
         fetchStatus();
@@ -1019,20 +934,20 @@ export default function SlotsPvpMatchPage({ params }) {
         return;
       }
       posthog?.capture("slots_pvp_lobby_cancelled", { match_id: matchId });
-      router.push("/casino/slots-pvp");
+      router.push("/casino/slots");
     } finally {
       setCancelling(false);
     }
   }, [cancelling, matchId, posthog, router]);
 
-  // ── Busy safety-net (mirrors plinko-pvp) ─────────────────────────
+  // ── Busy safety-net ──────────────────────────────────────────────
   useEffect(() => {
     if (!busy) return;
     const watchdog = setTimeout(() => setBusy(false), 8000);
     return () => clearTimeout(watchdog);
   }, [busy]);
 
-  // ── Posthog: match-just-resolved ────────────────────────────────
+  // ── Posthog: match-just-resolved ─────────────────────────────────
   useEffect(() => {
     if (!match || match.status !== MATCH_STATUS.FINISHED) {
       if (resolvedFiredRef.current) resolvedFiredRef.current = false;
@@ -1041,8 +956,9 @@ export default function SlotsPvpMatchPage({ params }) {
     if (resolvedFiredRef.current) return;
     resolvedFiredRef.current = true;
     const isDraw = match.result === RESULT.DRAW;
+    const isGraceDraw = match.result === RESULT.GRACE_DRAW;
     const iWon = Boolean(match.winnerId && user?.id && match.winnerId === user.id);
-    const winner = isDraw ? "draw" : iWon ? "you" : "opponent";
+    const winner = isDraw || isGraceDraw ? "draw" : iWon ? "you" : "opponent";
     posthog?.capture("slots_pvp_match_resolved", {
       match_id: match?.id ?? matchId ?? -1,
       winner,
@@ -1050,18 +966,18 @@ export default function SlotsPvpMatchPage({ params }) {
       stake: (match.stakeAmount || 0).toFixed(2),
       prize_paid: (match.prizePaid || 0).toFixed(2),
       house_fee: (match.houseFee || 0).toFixed(2),
-      rounds_won_p1: match.roundsWonPlayer1,
-      rounds_won_p2: match.roundsWonPlayer2,
+      survived_p1: match.p1Score,
+      survived_p2: match.p2Score,
     });
   }, [match, matchId, user?.id, posthog]);
 
-  // ── Loading / error renders ────────────────────────────────────
+  // ── Loading / error renders ──────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
-        <div className="mx-auto mt-12 flex max-w-3xl items-center justify-center gap-3 text-cyan-200">
-          <LoadingDotsIcon className="w-6 h-6 text-cyan-300 animate-pulse" />
+        <div className="mx-auto mt-12 flex max-w-3xl items-center justify-center gap-3 text-amber-200">
+          <LoadingDotsIcon className="w-6 h-6 text-amber-300 animate-pulse" />
           <span>Loading match…</span>
         </div>
       </div>
@@ -1078,8 +994,8 @@ export default function SlotsPvpMatchPage({ params }) {
             <span className="font-semibold">{error || "Match not found."}</span>
           </div>
           <button
-            onClick={() => router.push("/casino/slots-pvp")}
-            className="mt-4 px-4 py-2 rounded-lg bg-cyan-400 text-[#001933] hover:bg-cyan-300 text-sm font-bold"
+            onClick={() => router.push("/casino/slots")}
+            className="mt-4 px-4 py-2 rounded-lg bg-amber-400 text-[#001933] hover:bg-amber-300 text-sm font-bold"
           >
             Back to lobby
           </button>
@@ -1101,8 +1017,8 @@ export default function SlotsPvpMatchPage({ params }) {
             </span>
           </div>
           <button
-            onClick={() => router.push("/casino/slots-pvp")}
-            className="mt-4 px-4 py-2 rounded-lg bg-cyan-400 text-[#001933] hover:bg-cyan-300 text-sm font-bold"
+            onClick={() => router.push("/casino/slots")}
+            className="mt-4 px-4 py-2 rounded-lg bg-amber-400 text-[#001933] hover:bg-amber-300 text-sm font-bold"
           >
             Back to lobby
           </button>
@@ -1118,20 +1034,25 @@ export default function SlotsPvpMatchPage({ params }) {
   const isReady = match.status === MATCH_STATUS.READY;
   const isWaiting = match.status === MATCH_STATUS.WAITING;
   const isSpin = /^spin_\d+$/.test(match.status || "");
-  // Urgency only applies to live ROUND countdowns — the 3s "Get ready"
-  // window must not render red (its timeLeft is always <= 5).
-  const urgent = isSpin && timeLeft > 0 && timeLeft <= 5;
 
   const isViewerP1 = match.viewerIsPlayer1;
   const viewerSeat = isViewerP1 ? "player1" : "player2";
-  const viewerInputs = isViewerP1
-    ? match.p1CurrentInputs
-    : match.p2CurrentInputs;
-  const opponentInputs = isViewerP1
-    ? match.p2CurrentInputs
-    : match.p1CurrentInputs;
+  const viewerRun = match.viewerRun || null;
+  const opponentRun = match.opponentRun || null;
+  const viewerStatus = deriveRunStatus(match, viewerRun);
+  const opponentStatus = deriveRunStatus(match, opponentRun);
+
+  const viewerSurvived = viewerRun?.survived ?? (isFinished ? (isViewerP1 ? match.p1Score : match.p2Score) : 0);
+  const opponentSurvived = opponentRun?.survived ?? (isFinished ? (isViewerP1 ? match.p2Score : match.p1Score) : 0);
+  const viewerLines = viewerRun?.linesFormed ?? 0;
+  const opponentLines = opponentRun?.linesFormed ?? 0;
+  const viewerGraceStops = viewerRun?.graceStopsUsed ?? 0;
+  const opponentGraceStops = opponentRun?.graceStopsUsed ?? 0;
 
   const stake = match.stakeAmount;
+  const roundTimer = match.roundTimer || ROUND_TIMER_SECONDS;
+  const secondsLeft = isReady ? readyLeft : columnLeftMs / 1000;
+  const ringTotal = isReady ? 3 : roundTimer;
 
   function shortId(id) {
     if (!id) return "Opponent";
@@ -1144,22 +1065,8 @@ export default function SlotsPvpMatchPage({ params }) {
   const opponentClerkId = isViewerP1 ? match.player2Id : match.player1Id;
   const opponentName = isViewerP1 ? p2Name : p1Name;
 
-  const viewerStoppedCount = Array.isArray(viewerInputs?.reelsStopped)
-    ? viewerInputs.reelsStopped.length
-    : 0;
-  const opponentStoppedCount = Array.isArray(opponentInputs?.reelsStopped)
-    ? opponentInputs.reelsStopped.length
-    : 0;
-
-  // Server-computed current round score for the VIEWER's own board
-  // (null while waiting / ready / after the match ends).
-  const viewerRoundScore = match.viewerRoundScore || null;
-  const roundTimer = match.roundTimer || 10;
-  // spinNumber → roundWinner map, drives the scoreboard win dots.
-  const winBySpin = {};
-  rounds.forEach((r) => {
-    if (r.spinNumber != null) winBySpin[r.spinNumber] = r.roundWinner;
-  });
+  const themeName = getTheme(match.theme || "fruit").name;
+  const roundResult = rounds && rounds.length > 0 ? rounds[rounds.length - 1] : null;
 
   // ── Status banner ─────────────────────────────────────────────
   function renderStatusBanner() {
@@ -1194,12 +1101,40 @@ export default function SlotsPvpMatchPage({ params }) {
       );
     }
     if (isSpin) {
-      const bothLocked = match.viewerHasLocked && match.opponentHasLocked;
-      if (bothLocked) {
+      const urgent = columnLeftMs > 0 && columnLeftMs <= 5000;
+      if (viewerStatus === "busted" || viewerStatus === "grace_failed" || viewerStatus === "capped") {
         return (
-          <div className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-emerald-400/50 bg-emerald-500/10 px-4 py-3 text-emerald-200 animate-pulse">
+          <div className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-red-400/50 bg-red-900/25 px-4 py-3 text-red-200">
             <span className="font-bold text-base sm:text-lg">
-              Both boards locked — scoring the round!
+              {viewerStatus === "busted"
+                ? "You're out — no combo! Waiting for the opponent…"
+                : viewerStatus === "grace_failed"
+                  ? "No combo in 10 stops — you're out! Waiting for the opponent…"
+                  : "Run capped — waiting for the opponent…"}
+            </span>
+          </div>
+        );
+      }
+      if (opponentStatus === "busted" || opponentStatus === "grace_failed" || opponentStatus === "capped") {
+        return (
+          <div className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 text-emerald-200">
+            <span className="font-bold text-base sm:text-lg">
+              Opponent is out — keep going for the win!
+            </span>
+          </div>
+        );
+      }
+      if (viewerStatus === "grace") {
+        return (
+          <div
+            className={`flex flex-wrap items-center justify-center gap-3 rounded-xl border px-4 py-3 ${
+              urgent
+                ? "border-red-400/60 bg-red-900/30 text-red-200 animate-pulse"
+                : "border-amber-300/40 bg-amber-500/10 text-amber-200"
+            }`}
+          >
+            <span className="font-bold text-base sm:text-lg">
+              Find your first 3-in-a-row combo — stops used: {Math.min(viewerGraceStops, GRACE_MAX_STOPS)}/{GRACE_MAX_STOPS}
             </span>
           </div>
         );
@@ -1209,17 +1144,11 @@ export default function SlotsPvpMatchPage({ params }) {
           className={`flex flex-wrap items-center justify-center gap-3 rounded-xl border px-4 py-3 ${
             urgent
               ? "border-red-400/60 bg-red-900/30 text-red-200 animate-pulse"
-              : "border-cyan-300/40 bg-cyan-500/10 text-cyan-200"
+              : "border-emerald-300/40 bg-emerald-500/10 text-emerald-200"
           }`}
         >
           <span className="font-bold text-base sm:text-lg">
-            {match.viewerCanStop
-              ? "Stop your 3 reels — perfect stops earn +100!"
-              : match.viewerHasLocked
-                ? match.opponentHasLocked
-                  ? "Scoring…"
-                  : "You're locked — waiting for opponent"
-                : "Opponent is stopping their reels…"}
+            Streak {viewerSurvived} — keep the combos coming!
           </span>
         </div>
       );
@@ -1235,9 +1164,9 @@ export default function SlotsPvpMatchPage({ params }) {
         {/* Title + status */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <ReelIcon className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,229,255,0.65)] flex-shrink-0" />
+            <ReelIcon className="w-7 h-7 sm:w-8 sm:h-8 text-amber-300 drop-shadow-[0_0_12px_rgba(255,200,0,0.65)] flex-shrink-0" />
             <h1 className="text-lg sm:text-xl font-black tracking-tight">
-              Slots Duel · Match #{matchId ?? "?"}
+              🍒 Fruit Fortune · Match #{matchId ?? "?"}
             </h1>
           </div>
           <div className="text-[11px] sm:text-xs text-white/60 flex items-center gap-3">
@@ -1252,7 +1181,7 @@ export default function SlotsPvpMatchPage({ params }) {
               {socket?.connected ? "Live" : "Polling"}
             </span>
             <span className="font-mono">{(stake || 0).toFixed(2)} stake</span>
-            <span className="font-mono">Best-of-5</span>
+            <span className="font-mono">Survival round</span>
             <span className="font-mono">
               {viewerSeat === "player1" ? "P1" : "P2"} seat
             </span>
@@ -1269,24 +1198,21 @@ export default function SlotsPvpMatchPage({ params }) {
 
         <div className="mt-3">{renderStatusBanner()}</div>
 
-        {/* VS scoreboard: You vs Opponent, match score, round, countdown */}
+        {/* VS scoreboard: You vs Opponent, survival counts, column timer */}
         <div className="mt-3">
           <ScoreBoard
             p1Name={p1Name}
             p2Name={p2Name}
             p1Avatar={p1Avatar}
             p2Avatar={p2Avatar}
-            roundsWonP1={match.roundsWonPlayer1 || 0}
-            roundsWonP2={match.roundsWonPlayer2 || 0}
-            currentSpin={match.currentSpin ?? 1}
-            maxRounds={MAX_ROUNDS}
-            roundsToWin={ROUNDS_TO_WIN}
             isViewerP1={isViewerP1}
-            timeLeft={timeLeft}
-            roundTimer={roundTimer}
             status={match.status}
-            viewerRoundScore={viewerRoundScore}
-            winBySpin={winBySpin}
+            secondsLeft={secondsLeft}
+            ringTotal={ringTotal}
+            viewerStatus={viewerStatus}
+            opponentStatus={opponentStatus}
+            viewerSurvived={viewerSurvived}
+            opponentSurvived={opponentSurvived}
           />
         </div>
 
@@ -1298,54 +1224,42 @@ export default function SlotsPvpMatchPage({ params }) {
               seat="player1"
               displayName={p1Name}
               avatarUrl={p1Avatar}
-              roundsWon={match.roundsWonPlayer1 || 0}
-              points={match.p1Score || 0}
+              survived={isViewerP1 ? viewerSurvived : opponentSurvived}
+              lines={isViewerP1 ? viewerLines : opponentLines}
+              runStatus={isViewerP1 ? viewerStatus : opponentStatus}
+              graceStopsUsed={isViewerP1 ? viewerGraceStops : opponentGraceStops}
               isViewer={isViewerP1}
-              stoppedCount={isViewerP1 ? viewerStoppedCount : opponentStoppedCount}
-              boardLocked={
-                isViewerP1
-                  ? Boolean(viewerInputs?.boardLocked)
-                  : Boolean(opponentInputs?.boardLocked)
-              }
-              autoStopped={
-                isViewerP1
-                  ? Boolean(viewerInputs?.autoStopped)
-                  : Boolean(opponentInputs?.autoStopped)
-              }
               isLive={isSpin && !isFinished && !isCancelled}
-              isFinished={isFinished}
             />
           </div>
 
-          {/* Center: slot board */}
+          {/* Center: survival board */}
           <div className="order-1 lg:order-2 min-w-0">
-            <SlotBoard
-              theme={match.theme || "fruit"}
-              viewerInputs={viewerInputs}
+            <SurvivalBoard
+              run={viewerRun}
               canStop={Boolean(match.viewerCanStop)}
-              onStop={handleStopReel}
-              rolling={isSpin}
+              onStop={handleStop}
               rollTick={rollTick}
               isLive={isSpin && !isFinished && !isCancelled}
-              accuracyByReel={viewerRoundScore?.accuracyByReel || null}
+              themeName={themeName}
             />
 
-            {/* 10s countdown progress bar */}
+            {/* Per-column countdown bar (viewer's active column) */}
             {(isSpin || isReady) && !isFinished && !isCancelled && (
               <div className="mt-2">
                 <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all duration-300 ${
-                      urgent ? "bg-red-400" : "bg-cyan-400"
+                      secondsLeft <= 5 ? "bg-red-400" : "bg-amber-400"
                     }`}
                     style={{
-                      width: `${Math.min(100, Math.max(0, (timeLeft / (isReady ? 3 : roundTimer)) * 100))}%`,
+                      width: `${Math.min(100, Math.max(0, (secondsLeft / ringTotal) * 100))}%`,
                     }}
                   />
                 </div>
                 <div className="mt-1 flex justify-between text-[9px] uppercase tracking-widest text-white/35 font-bold">
-                  <span>{isReady ? "Get ready…" : "Round timer"}</span>
-                  <span>{timeLeft}s</span>
+                  <span>{isReady ? "Get ready…" : "Column timer"}</span>
+                  <span>{Math.max(0, Math.ceil(secondsLeft))}s</span>
                 </div>
               </div>
             )}
@@ -1354,20 +1268,25 @@ export default function SlotsPvpMatchPage({ params }) {
             <div className="mt-3 flex items-center justify-center gap-2 text-[11px] text-white/55">
               {isSpin && !isFinished && !isCancelled ? (
                 <span className="inline-flex items-center gap-1.5">
-                  {opponentInputs?.boardLocked ? (
-                    <span className="inline-flex items-center gap-1 text-fuchsia-300">
-                      <CheckIcon className="w-3.5 h-3.5" />
-                      Opponent board locked
+                  {opponentStatus === "busted" || opponentStatus === "grace_failed" || opponentStatus === "capped" ? (
+                    <span className="inline-flex items-center gap-1 text-red-300">
+                      <CrossIcon className="w-3.5 h-3.5" />
+                      Opponent is out ({opponentSurvived} survived)
                     </span>
-                  ) : opponentStoppedCount > 0 ? (
-                    <span className="inline-flex items-center gap-1">
+                  ) : opponentStatus === "grace" ? (
+                    <span className="inline-flex items-center gap-1 text-amber-200">
                       <LoadingDotsIcon className="w-3.5 h-3.5 animate-pulse" />
-                      Opponent stopped {opponentStoppedCount}/3 reels
+                      Opponent is finding their first combo…
+                    </span>
+                  ) : opponentStatus === "alive" ? (
+                    <span className="inline-flex items-center gap-1 text-emerald-200">
+                      <SparkIcon className="w-3.5 h-3.5" />
+                      Opponent is surviving — streak {opponentSurvived}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1">
                       <LoadingDotsIcon className="w-3.5 h-3.5 animate-pulse" />
-                      Waiting for opponent to stop…
+                      Waiting for opponent…
                     </span>
                   )}
                 </span>
@@ -1378,22 +1297,12 @@ export default function SlotsPvpMatchPage({ params }) {
             {match.viewerCanCancel && (
               <div className="mt-3 flex justify-center">
                 <button
-                  onClick={() => handleCancel()}
+                  onClick={handleCancel}
                   disabled={cancelling}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold ${
-                    cancelling
-                      ? "bg-white/10 text-white/40 cursor-not-allowed"
-                      : "bg-red-500/20 text-red-200 border border-red-400/40 hover:bg-red-500/30"
-                  }`}
+                  className="px-4 py-2 rounded-lg bg-red-500/15 text-red-200 border border-red-400/40 text-xs font-bold hover:bg-red-500/25 transition disabled:opacity-50"
                 >
                   {cancelling ? "Cancelling…" : "Cancel lobby"}
                 </button>
-              </div>
-            )}
-            {error && (
-              <div className="mt-3 mx-auto max-w-md rounded-xl border border-red-400/40 bg-red-900/30 p-3 text-sm text-red-200 flex items-center gap-2">
-                <AlertIcon className="w-4 h-4 shrink-0 text-red-300" />
-                {error}
               </div>
             )}
           </div>
@@ -1404,53 +1313,27 @@ export default function SlotsPvpMatchPage({ params }) {
               seat="player2"
               displayName={p2Name}
               avatarUrl={p2Avatar}
-              roundsWon={match.roundsWonPlayer2 || 0}
-              points={match.p2Score || 0}
+              survived={isViewerP1 ? opponentSurvived : viewerSurvived}
+              lines={isViewerP1 ? opponentLines : viewerLines}
+              runStatus={isViewerP1 ? opponentStatus : viewerStatus}
+              graceStopsUsed={isViewerP1 ? opponentGraceStops : viewerGraceStops}
               isViewer={!isViewerP1}
-              stoppedCount={!isViewerP1 ? viewerStoppedCount : opponentStoppedCount}
-              boardLocked={
-                !isViewerP1
-                  ? Boolean(viewerInputs?.boardLocked)
-                  : Boolean(opponentInputs?.boardLocked)
-              }
-              autoStopped={
-                !isViewerP1
-                  ? Boolean(viewerInputs?.autoStopped)
-                  : Boolean(opponentInputs?.autoStopped)
-              }
               isLive={isSpin && !isFinished && !isCancelled}
-              isFinished={isFinished}
             />
           </div>
         </div>
 
-        {/* Winner popup */}
+        {/* Winner / reveal popup — only once BOTH players are done */}
         {isFinished && (
           <WinnerPopup
             match={match}
             user={user}
-            onBack={() => router.push("/casino/slots-pvp")}
+            onBack={() => router.push("/casino/slots")}
             p1Name={p1Name}
             p2Name={p2Name}
+            roundResult={roundResult}
           />
         )}
-
-        {/* Round result popup */}
-        <AnimatePresence>
-          {roundPopup && (
-            <RoundPopup
-              spinNumber={roundPopup.spinNumber}
-              p1Name={p1Name}
-              p2Name={p2Name}
-              p1Score={roundPopup.p1Score}
-              p2Score={roundPopup.p2Score}
-              p1Lines={roundPopup.p1Lines}
-              p2Lines={roundPopup.p2Lines}
-              roundWinner={roundPopup.roundWinner}
-              onNextRound={onNextRound}
-            />
-          )}
-        </AnimatePresence>
       </div>
 
       {/* Report modal */}
@@ -1473,7 +1356,7 @@ export default function SlotsPvpMatchPage({ params }) {
           if (!data.success) throw new Error(data.error || "Failed to submit report");
         }}
         reportedPlayerName={opponentName || "Opponent"}
-        gameType="Slots Duel"
+        gameType="Fruit Fortune"
       />
 
       <Footer />

@@ -1,17 +1,19 @@
 // src/app/api/slots-pvp/match/[matchId]/stop-reel/route.js
 //
-// POST — server-authoritative reel stop for PvP Slots. The player
-// sends the reel index they want to lock (plus the spin number they
-// believe is live, for the stale-round guard). The server validates
-// participation / one-shot lock-in / deadline and — when BOTH boards
-// are locked — resolves the round in the same transaction.
+// POST — server-authoritative column stop for PvP Slots ("Fruit Fortune
+// Survival"). The player sends the column index they want to lock (plus
+// the spin number they believe is live, for the stale-round guard). The
+// server validates participation / stop-order / per-column deadline and
+// — when BOTH runs have ended — resolves the round in the same
+// transaction.
 //
-// The client never submits scores: the outcome reels + stop-accuracy
-// offsets are generated and recorded server-side only.
+// The client never submits outcomes: every column's symbols are
+// generated server-side from deterministic seeds, and the grace /
+// survival combo logic is entirely server-authoritative.
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { stopReel } from "../../../../../../lib/slots-pvp/serverStore.js";
+import { stopColumn } from "../../../../../../lib/slots-pvp/serverStore.js";
 import { broadcastMatchUpdate } from "../../../../../../lib/slots-pvp/rooms.js";
 
 export async function POST(req, { params }) {
@@ -39,15 +41,15 @@ export async function POST(req, { params }) {
     body = {};
   }
 
-  const reelIndex = Number(body?.reelIndex);
+  const columnIndex = Number(body?.columnIndex);
   const currentSpin =
     body?.currentSpin != null ? Number(body.currentSpin) : null;
 
   try {
-    const result = await stopReel({
+    const result = await stopColumn({
       userId,
       matchId,
-      reelIndex,
+      columnIndex,
       currentSpin,
     });
 
@@ -63,7 +65,7 @@ export async function POST(req, { params }) {
     broadcastMatchUpdate(matchId, {
       status: result.match.status,
       roundResolved: result.roundResolved === true,
-      boardLocked: result.boardLocked === true,
+      runEnded: result.runEnded === true,
     });
 
     return NextResponse.json({
@@ -72,8 +74,9 @@ export async function POST(req, { params }) {
         matchId,
         status: result.match.status,
         seat: result.seat,
-        reelStopped: result.reelStopped,
-        boardLocked: result.boardLocked === true,
+        columnStopped: result.columnStopped,
+        runEnded: result.runEnded === true,
+        survived: result.survived,
         roundResolved: result.roundResolved === true,
       },
     });
