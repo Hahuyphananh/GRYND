@@ -25,22 +25,25 @@
 //   ready/spin_N → finished (natural resolve, or disconnect forfeit
 //   resolving the match as a win for the opponent)
 //
-// FINAL scoring (server-authoritative, per user spec):
-//   * Each resolved round is scored from the locked 3x3 boards
-//     (8-line evaluation + stop-accuracy bonuses) inside
-//     `buildRoundResult` → `scoreBoard`; the winner is the higher total
-//     score (draw on tie), stored on `slots_pvp_rounds.round_winner`.
-//   * `resolveSpinRound` tallies `rounds_won_*` + aggregate `p1_score` /
-//     `p2_score` onto the match row every round.
-//   * After the round that decides the match — round MAX_ROUNDS, or
-//     earlier when a player reaches ROUNDS_TO_WIN (first-to-3, best-of-
-//     5) — `settleMatch` decides the match result (most rounds won;
-//     aggregate-points tie-break), applies the mines-pvp style 90/10
-//     payout (winner credited stake + 90% of loser's stake, house
-//     keeps 10%), stamps `winner_id` / `result` / `house_fee` /
-//     `prize_paid`, and updates the PvP leaderboard counters.
+// FINAL scoring (server-authoritative, per user spec — "Fruit Fortune
+// Survival"):
+//   * Single survival round: each player stops columns on a 3-column
+//     sliding window. GRACE phase ends at the first horizontal/diagonal
+//     3-in-a-row combo; from then on every stop must re-form a combo or
+//     the player busts. Winner = higher `survived` (columns survived
+//     after the first combo), tiebreak `linesFormed`.
+//   * `buildRoundResult` produces the `slots_pvp_rounds` row with both
+//     survival snapshots; `spin_points_*` stores the survived counts and
+//     `round_winner` the round result (player1|player2|draw|grace_draw).
+//   * Both players grace-fail → RESULT.GRACE_DRAW: each refunded 95% of
+//     their wager (house keeps 5% from each = 10% total).
+//   * `resolveSpinRound` tallies rounds_won_* + aggregate `p1_score` /
+//     `p2_score` (total survived) onto the match row, then
+//     `settleMatch` applies the payout: normal win = mines-pvp style
+//     90/10 (winner credited stake + 90% of loser's stake, house keeps
+//     10%); draw = full refund; grace_draw = 95% each.
 //   * Both stakes are deducted atomically at `createMatch`, so the only
-//     balance movement at the end is the winner credit (or draw refund).
+//     balance movement at the end is the winner credit (or refunds).
 //
 // Centralising this in a tiny module keeps the API routes thin and
 // makes the state machine testable in isolation (the pure transitions
@@ -58,7 +61,6 @@ import {
   MAX_STAKE,
   RESULT,
   ROUNDS_TO_WIN,
-  ROUND_DEADLINE_MS,
   ROUND_TIMER_SECONDS,
   READY_WINDOW_MS,
   SLOTS_PVP_LOCK_NAMESPACE,
@@ -68,8 +70,8 @@ import {
   round2,
 } from "./constants.js";
 import {
-  applyReelStop,
-  autoStopReels,
+  applyColumnStop,
+  autoStopActiveColumn,
   buildRoundResult,
   canResolveRound,
   decideMatchResult,
@@ -109,15 +111,7 @@ export function validateMatchParams({ stakeAmount, theme }) {
   return { ok: true };
 }
 
-// Per-row pacing helper: derive the per-round deadline duration in ms,
-// falling back to the server-side default (mirrors plinko-pvp).
-function roundDeadlineMs(match) {
-  const t = Number(match?.roundTimerSeconds);
-  if (Number.isFinite(t) && t > 0) return t * 1000;
-  return ROUND_DEADLINE_MS;
-}
-
-/** Theme symbol pool for a round (drives reel generation + scoring). */
+/** Theme symbol pool for a round (drives column generation + matching). */
 function themeSymbolsForSpin(match) {
   return getTheme(match.theme || "fruit").symbols;
 }
@@ -505,13 +499,16 @@ export async function createMatch({
 // ── Auto-advance ready → spin_1 ───────────────────────────────────────
 
 async function advanceFromReady(tx, match) {
-  const deadline = new Date(Date.now() + roundDeadlineMs(match));
+  const now = Date.now();
   const symbols = themeSymbolsForSpin(match);
+  // Opens the single survival round: each player's run carries its own
+  // per-column 10s deadline (inside p{N}CurrentInputs), so the match
+  // row's round_deadline is only used for the ready window above.
   const open = openSpinState({
     matchId: match.id,
     spinNumber: 1,
     symbols,
-    deadline,
+    now,
   });
 
   const [updated] = await tx
@@ -519,7 +516,7 @@ async function advanceFromReady(tx, match) {
     .set({
       status: MATCH_STATUS.SPIN_1,
       currentSpin: 1,
-      roundDeadline: deadline,
+      roundDeadline: null,
       startedAt: match.startedAt || new Date(),
       p1CurrentInputs: open.p1CurrentInputs,
       p2CurrentInputs: open.p2CurrentInputs,
@@ -597,7 +594,10 @@ async function resolveSpinRound(tx, match) {
   });
 
   if (plan.finished) {
-    // The deciding round just resolved → finalize (winner + payout).
+    // The single survival round just resolved → finalize (winner +
+    // payout). Pass the round's own winner through so GRACE_DRAW (both
+    // players grace-failed) settles with the 5%-each refund, not the
+    // full-refund plain-draw path.
     const [updated] = await tx
       .update(slotsPvpMatches)
       .set({
@@ -606,7 +606,9 @@ async function resolveSpinRound(tx, match) {
         p1CurrentInputs: null,
         p2CurrentInputs: null,
         ...tallies,
-        ...(await settleMatch(tx, match, tallies)),
+        ...(await settleMatch(tx, match, tallies, {
+          forcedResult: row.roundWinner,
+        })),
         endedAt: plan.endedAt || new Date(),
       })
       .where(eq(slotsPvpMatches.id, match.id))
@@ -633,27 +635,32 @@ async function resolveSpinRound(tx, match) {
 //
 // Pure-compute + balance side-effects for the match end (mirrors
 // mines-pvp resolveMatch / recordPvPResult):
-//   1. decideMatchResult — most rounds won; aggregate-points tie-break.
-//   2. computePayout — 90/10 split of the loser's stake.
-//   3. Credit the winner (or refund both on a draw).
+//   1. result — the round winner when `forcedResult` is passed (single
+//      round), otherwise decideMatchResult (used by forfeits).
+//   2. computePayout — 90/10 split, full-refund draw, or 95%-each
+//      grace_draw.
+//   3. Credit the winner, or refund both (draw / grace_draw).
 //   4. Bump the PvP leaderboard counters (pvpWins / totalWon / …).
 // Returns the settlement fields to stamp onto the match row.
-async function settleMatch(tx, match, tallies) {
-  const result = decideMatchResult(tallies);
+async function settleMatch(tx, match, tallies, { forcedResult = null } = {}) {
+  const result = forcedResult || decideMatchResult(tallies);
   const payout = computePayout({
     stakeAmount: match.stakeAmount,
     result,
   });
 
-  if (result === RESULT.DRAW) {
-    // Refund both stakes (no house fee on a draw).
+  if (result === RESULT.DRAW || result === RESULT.GRACE_DRAW) {
+    // DRAW: both fully refunded (no rake). GRACE_DRAW: both players
+    // grace-failed → each refunded 95% of their wager (house keeps 5%
+    // from each = 10% total, carried in `houseFee`).
+    const refund = payout.refundEach ?? payout.stake;
     await tx
       .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.stake}` })
+      .set({ balance: sql`${users.balance} + ${refund}` })
       .where(eq(users.clerkId, match.player1Id));
     await tx
       .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.stake}` })
+      .set({ balance: sql`${users.balance} + ${refund}` })
       .where(eq(users.clerkId, match.player2Id));
     return {
       winnerId: null,
@@ -724,20 +731,23 @@ async function recordPvPResult(tx, winnerId, loserId, match, settlement, result)
     .where(eq(users.clerkId, loserId));
 }
 
-// ── stopReel (the main skill action) ──────────────────────────────────
+// ── stopColumn (the main skill action) ────────────────────────────────
 //
-// Server-authoritative reel stop. The player POSTs the reel index and
-// the server:
-//   1. Validates participation, spin status, reel index, deadline and
-//      one-shot lock-in (no re-stopping a stopped reel).
-//   2. Records the stop on the player's `p{N}CurrentInputs`.
-//   3. If BOTH boards are now locked → resolves the round immediately
+// Server-authoritative column stop. The player POSTs the column index
+// and the server:
+//   1. Validates participation, spin status, column index, the active
+//      column's 10s deadline, and the stop-order rules (initial phase:
+//      any of columns 0..2, once each; sliding phase: only the active
+//      stream column).
+//   2. Lands the column on the player's `p{N}CurrentInputs` and runs the
+//      grace / survival combo logic.
+//   3. If BOTH runs have now ended → resolves the round immediately
 //      (writes history + advances), otherwise persists the stop.
 //
-// Rejects with 400 once the 10-second deadline has passed — the next
-// /status poll triggers the auto-stop + resolve path instead.
+// Rejects with 400 once the active column's deadline has passed — the
+// next /status poll triggers the auto-stop + resolve path instead.
 
-export async function stopReel({ userId, matchId, reelIndex, currentSpin = null }) {
+export async function stopColumn({ userId, matchId, columnIndex, currentSpin = null }) {
   return await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
     if (!match) return { error: "Match not found", status: 404 };
@@ -747,9 +757,15 @@ export async function stopReel({ userId, matchId, reelIndex, currentSpin = null 
     const seat = seatForUser(match, userId);
 
     // `currentSpin` is the spin number the client believes is live (from
-    // its last /status poll). Passed through so applyReelStop can reject
-    // stale stops from a round that already advanced.
-    const applied = applyReelStop(match, seat, reelIndex, Date.now(), currentSpin);
+    // its last /status poll). Passed through so applyColumnStop can
+    // reject stale stops from a round that already advanced.
+    const applied = applyColumnStop(
+      match,
+      seat,
+      columnIndex,
+      Date.now(),
+      currentSpin,
+    );
     if (!applied.ok) return { error: applied.error, status: applied.status };
 
     const inputsKey = seat === "player1" ? "p1CurrentInputs" : "p2CurrentInputs";
@@ -757,7 +773,7 @@ export async function stopReel({ userId, matchId, reelIndex, currentSpin = null 
     let roundResolved = false;
 
     if (canResolveRound(applied.match)) {
-      // Both boards locked → resolve in the same transaction.
+      // Both runs ended → resolve in the same transaction.
       resultRow = await resolveSpinRound(tx, applied.match);
       roundResolved = true;
     } else {
@@ -775,12 +791,15 @@ export async function stopReel({ userId, matchId, reelIndex, currentSpin = null 
       resultRow = updated || applied.match;
     }
 
-    const myState = resultRow[inputsKey] || {};
+    const myRun = resultRow[inputsKey] || {};
     return {
       match: resultRow,
       seat,
-      reelStopped: applied.match[inputsKey].reelsStopped,
-      boardLocked: Boolean(myState.boardLocked),
+      columnStopped: Array.isArray(myRun.stoppedOrder)
+        ? myRun.stoppedOrder[myRun.stoppedOrder.length - 1]
+        : null,
+      runEnded: Boolean(myRun.ended),
+      survived: Number(myRun.survived) || 0,
       roundResolved,
     };
   });
@@ -788,29 +807,57 @@ export async function stopReel({ userId, matchId, reelIndex, currentSpin = null 
 
 // ── AFK deadline advance ──────────────────────────────────────────────
 //
-// Server-side "10s nudge": if the round deadline has passed and either
-// player hasn't locked their board, auto-stop their remaining reels
-// (marked `autoStopped`), then resolve the round exactly as if both
-// had stopped manually. Called from `fetchMatchWithAutoResolve` on
-// every status poll — guarantees a round NEVER lasts longer than 10
-// seconds (same timer/state-sync approach as plinko-pvp).
+// Server-side "10s nudge": if an active column's per-column deadline
+// has passed, auto-stop it (marked `anyAutoStopped`), then resolve the
+// round exactly as if both players had finished manually. Called from
+// `fetchMatchWithAutoResolve` on every status poll — guarantees a
+// column never spins longer than COLUMN_TIMER_SECONDS and that an AFK
+// player's run still resolves (grace-fail / bust as the landing lands).
 async function forceSpinAdvance(tx, match) {
   if (!isSpinStatus(match.status)) return match;
-  // Missing deadline is treated as already expired (defensive — every
-  // spin open stamps one, but a null value must never let a round hang
-  // past its 10-second guarantee).
-  const deadlineMs = match.roundDeadline
-    ? new Date(match.roundDeadline).getTime()
-    : 0;
-  if (deadlineMs > Date.now()) return match;
+  const now = Date.now();
   let next = match;
-  if (!next.p1CurrentInputs || !next.p1CurrentInputs.boardLocked) {
-    next = autoStopReels(next, "player1");
+
+  const advanceSeat = (seat) => {
+    const inputsKey = seat === "player1" ? "p1CurrentInputs" : "p2CurrentInputs";
+    const run = next[inputsKey];
+    if (
+      run &&
+      !run.ended &&
+      run.activeDeadline &&
+      new Date(run.activeDeadline).getTime() <= now
+    ) {
+      next = autoStopActiveColumn(next, seat, now);
+    }
+  };
+
+  advanceSeat("player1");
+  advanceSeat("player2");
+
+  if (canResolveRound(next)) {
+    return await resolveSpinRound(tx, next);
   }
-  if (!next.p2CurrentInputs || !next.p2CurrentInputs.boardLocked) {
-    next = autoStopReels(next, "player2");
+
+  if (next !== match) {
+    // Some run(s) were auto-advanced but the round isn't over yet.
+    const [updated] = await tx
+      .update(slotsPvpMatches)
+      .set({
+        p1CurrentInputs: next.p1CurrentInputs,
+        p2CurrentInputs: next.p2CurrentInputs,
+      })
+      .where(
+        and(
+          eq(slotsPvpMatches.id, match.id),
+          eq(slotsPvpMatches.status, match.status),
+          eq(slotsPvpMatches.currentSpin, match.currentSpin),
+        ),
+      )
+      .returning();
+    return updated || next;
   }
-  return await resolveSpinRound(tx, next);
+
+  return next;
 }
 
 // ── fetchMatchWithAutoResolve ─────────────────────────────────────────
@@ -846,13 +893,13 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
   });
 }
 
-// ── Scrub the opponent's hidden reels ─────────────────────────────────
+// ── Scrub the opponent's hidden board ─────────────────────────────────
 //
-// While a round is live, each player may only see THEIR OWN reels plus
-// the opponent's stop-progress (which reels they've stopped / whether
-// their board is locked). The opponent's final reels + score stay
-// hidden until the round resolves. Finished matches expose both (the
-// rounds history is the replay source of truth).
+// While the round is live, each player may only see THEIR OWN sliding
+// window plus the opponent's RUN STATUS (in grace / alive / out, how
+// many they've survived). The opponent's columns, window, and combo
+// lines stay hidden until the round resolves. Finished matches expose
+// both (the rounds history is the replay source of truth).
 
 export function scrubMatchForViewer(match, userId) {
   if (!match) return match;
@@ -864,12 +911,20 @@ export function scrubMatchForViewer(match, userId) {
   const opp = visible[oppKey];
 
   if (opp && isSpinStatus(match.status)) {
-    // Reveal only the opponent's stop progress, never their reels /
-    // win amount while the round is unresolved.
+    // Reveal only the opponent's run status — never their columns /
+    // window / active-column symbols.
     visible[oppKey] = {
-      reelsStopped: Array.isArray(opp.reelsStopped) ? opp.reelsStopped : [],
-      autoStopped: Boolean(opp.autoStopped),
-      boardLocked: Boolean(opp.boardLocked),
+      stoppedCount: Number(opp.stoppedCount) || 0,
+      stoppedOrder: Array.isArray(opp.stoppedOrder) ? opp.stoppedOrder : [],
+      firstComboAt: opp.firstComboAt ?? null,
+      survived: Number(opp.survived) || 0,
+      linesFormed: Number(opp.linesFormed) || 0,
+      busted: Boolean(opp.busted),
+      graceFailed: Boolean(opp.graceFailed),
+      ended: Boolean(opp.ended),
+      activeIndex: opp.activeIndex ?? null,
+      activeDeadline: opp.activeDeadline ?? null,
+      openedAt: opp.openedAt ?? null,
     };
   }
   return visible;

@@ -1,20 +1,20 @@
 // src/app/api/slots-pvp/match/[matchId]/route.js
 //
 // GET — fetch current match state with auto-resolve behaviour. The
-// server store handles two auto-advance paths inside
+// server store handles the auto-advance paths inside
 // `fetchMatchWithAutoResolve`:
 //   1. `ready` deadline elapsed → advance to spin_1 (3-second banner).
-//   2. Spin-round deadline elapsed + a board not locked → auto-stop
-//      the remaining reels and resolve the round (never > 10s).
+//   2. An active column's per-column deadline elapsed → auto-stop it
+//      (grace / survival logic applies) and resolve when both runs end.
 //
 // CRITICAL — visibility model (anti-cheat):
-//   • During a live spin round the viewer sees THEIR OWN full inputs
-//     (their 3x3 reels + stop progress) but the OPPONENT's inputs are
-//     scrubbed to `{ reelsStopped, autoStopped, boardLocked }` via
-//     `scrubMatchForViewer` — the opponent's final reels stay hidden
-//     until the round resolves.
+//   • During a live spin round the viewer sees THEIR OWN sliding window
+//     + run status, but the OPPONENT's inputs are scrubbed to run
+//     STATUS ONLY (stoppedCount / survived / ended / …) via
+//     `scrubMatchForViewer` — the opponent's columns stay hidden until
+//     the round resolves.
 //   • Once `finished` or `cancelled`: full reveal — the rounds array
-//     carries both players' final reels + full scoring snapshots.
+//     carries both players' column streams + survival snapshots.
 //     prizePaid / houseFee / result / winnerId are visible to both.
 
 import { NextResponse } from "next/server";
@@ -25,17 +25,16 @@ import {
   fetchMatchRounds,
   scrubMatchForViewer,
 } from "../../../../../lib/slots-pvp/serverStore.js";
-import { viewerRoundScoreSnapshot } from "../../../../../lib/slots-pvp/engine.js";
+import { viewerRunSnapshot } from "../../../../../lib/slots-pvp/engine.js";
 import {
   MATCH_STATUS,
   pickPositiveInt,
   ROUND_TIMER_SECONDS,
 } from "../../../../../lib/slots-pvp/constants.js";
-import { getTheme } from "../../../../../lib/slotThemes.jsx";
 
 // Per-viewer normaliser. Adds derived flags the match view needs to
-// gate the reel STOP buttons, render the correct seat identifier,
-// and show the opponent's live lock progress.
+// gate the STOP controls, render the correct seat identifier, and show
+// the opponent's live run status (never their board).
 function normaliseMatch(match, viewerUserId) {
   if (!match) return null;
   const viewerIsPlayer1 = match.player1Id === viewerUserId;
@@ -59,6 +58,7 @@ function normaliseMatch(match, viewerUserId) {
       ? match.p1CurrentInputs
       : null;
   const isSpin = /^spin_\d+$/.test(match.status || "");
+  const now = Date.now();
   return {
     id: match.id,
     player1Id: match.player1Id,
@@ -67,13 +67,12 @@ function normaliseMatch(match, viewerUserId) {
     theme: match.theme || "fruit",
     status: match.status,
     currentSpin: match.currentSpin ?? 1,
-    // Best-of-5 scoreboard: rounds won by each player + aggregate
-    // points (used as the rounds-won tie-break).
+    // Scoreboard (single round): rounds won + total survived.
     roundsWonPlayer1: Number(match.roundsWonPlayer1) || 0,
     roundsWonPlayer2: Number(match.roundsWonPlayer2) || 0,
     p1Score: Number(match.p1Score) || 0,
     p2Score: Number(match.p2Score) || 0,
-    // Viewer's own full inputs / opponent's scrubbed progress.
+    // Viewer's own full inputs / opponent's scrubbed run status.
     p1CurrentInputs: match.p1CurrentInputs || null,
     p2CurrentInputs: match.p2CurrentInputs || null,
     roundDeadline: match.roundDeadline,
@@ -91,29 +90,21 @@ function normaliseMatch(match, viewerUserId) {
     viewerIsParticipant,
     viewerSeat,
     viewerIsPlayer1,
-    // True when the viewer may still stop a reel this round (spin
-    // status + board not locked). The STOP buttons are enabled iff
-    // this is true.
+    // True when the viewer may still stop the active column this round
+    // (spin status + their run not ended).
     viewerCanStop:
-      isSpin && Boolean(viewerIsParticipant) && !Boolean(viewerInputs?.boardLocked),
-    // True when the viewer's board is locked (all 3 reels stopped).
-    viewerHasLocked: Boolean(viewerInputs?.boardLocked),
-    // True when the OPPONENT's board is locked (round can resolve).
-    opponentHasLocked: Boolean(opponentInputs?.boardLocked),
+      isSpin &&
+      Boolean(viewerIsParticipant) &&
+      Boolean(viewerInputs) &&
+      !Boolean(viewerInputs.ended),
+    // Server-authoritative run snapshots: the viewer's OWN full run
+    // (board + status + countdown) and the OPPONENT's scrubbed status.
+    viewerRun: isSpin ? viewerRunSnapshot({ inputs: viewerInputs, now }) : null,
+    opponentRun: isSpin ? viewerRunSnapshot({ inputs: opponentInputs, now }) : null,
     // True when the viewer is the creator AND the match is still
     // waiting for an opponent. Used to gate the "Cancel" button.
     viewerCanCancel:
       match.status === MATCH_STATUS.WAITING && viewerIsPlayer1,
-    // Server-authoritative CURRENT round score for the VIEWER's own
-    // board (full once it locks, live stop-bonus total before then).
-    // Recomputed on every poll from the viewer's own inputs via the
-    // pure engine — the opponent's score is never revealed here.
-    viewerRoundScore: isSpin
-      ? viewerRoundScoreSnapshot({
-          inputs: viewerInputs,
-          symbols: getTheme(match.theme || "fruit").symbols,
-        })
-      : null,
   };
 }
 
@@ -123,8 +114,8 @@ function normaliseRound(round) {
     spinNumber: round.spinNumber,
     player1Inputs: round.player1Inputs || {},
     player2Inputs: round.player2Inputs || {},
-    // Full scoring snapshots (reels + 8-line breakdown + stop
-    // accuracy + total score) for the reveal / history views.
+    // Full survival snapshots (column stream + grace/bust info) for
+    // the reveal / history views.
     player1Result: round.player1Result || null,
     player2Result: round.player2Result || null,
     player1AutoSpun: Boolean(round.player1AutoSpun),

@@ -1,16 +1,17 @@
 /**
- * PvP Slots ("Skill Slots") — round-engine unit tests.
+ * PvP Slots ("Fruit Fortune Survival") — round-engine unit tests.
  *
  * Pure-function tests for the shared constants + deterministic helpers
  * in `src/lib/slots-pvp/constants.js` and `src/lib/slots-pvp/engine.js`.
- * The spin resolver, the 8-line scorer, the stop-accuracy tiers and the
- * round/match decision rules are the contract every other piece of the
- * match system depends on, so they're tested exhaustively (valid +
+ * The lazy column stream, the grace → survival state machine, the combo
+ * checks (3 horizontal rows + 2 diagonals — verticals never count) and
+ * the round/match decision rules are the contract every other piece of
+ * the match system depends on, so they're tested exhaustively (valid +
  * invalid inputs, boundaries, determinism).
  *
  * The flow-level tests that drive these same functions through a full
- * match (rounds 1..5, deadlines, auto-stop, settlement) live in
- * `tests/slots-pvp-flow.test.mjs`.
+ * match (single survival round, per-column deadlines, auto-stop, delayed
+ * reveal, settlement) live in `tests/slots-pvp-flow.test.mjs`.
  *
  * Run:  node --test tests/slots-pvp-engine.test.mjs
  */
@@ -26,30 +27,24 @@ import {
   ACTIVE_STATES,
   SPIN_STATES,
   TERMINAL_STATES,
-  REELS_PER_ROUND,
   ROUNDS_TO_WIN,
   ROUND_TIMER_SECONDS,
-  ROUND_DEADLINE_MS,
+  COLUMN_TIMER_SECONDS,
+  COLUMN_DEADLINE_MS,
   READY_WINDOW_MS,
   BETWEEN_ROUNDS_MS,
   FINISHED_GRACE_MS,
   HOUSE_FEE_PCT,
   WINNER_RATIO,
   HOUSE_RATIO,
+  GRACE_DRAW_REFUND_PCT,
+  GRACE_DRAW_RAKE_PCT,
   SLOTS_PVP_LOCK_NAMESPACE,
   STAKE_PRESETS,
   RESULT,
-  SYMBOL_SCORES,
-  SCORING_SYMBOL_COUNT,
-  LINE_MULTIPLIERS,
-  lineMultiplierForCount,
-  PERFECT_STOP_BONUS,
-  GOOD_STOP_BONUS,
-  NORMAL_STOP_BONUS,
-  PERFECT_STOP_WINDOW_MS,
-  GOOD_STOP_WINDOW_MS,
-  stopAccuracyForOffset,
-  stopBonusForAccuracy,
+  SLIDING_SYMBOL_COUNT,
+  GRACE_MAX_STOPS,
+  MAX_COLUMNS_PER_ROUND,
   computePayout,
   statusForSpinNumber,
   spinNumberForStatus,
@@ -61,54 +56,51 @@ import {
 import {
   GRID_COLS,
   GRID_ROWS,
-  WINNING_LINES,
-  FORCED_LINE_ODDS,
-  decideForcedLines,
+  HORIZ_DIAG_LINES,
+  hasLine,
+  winningLinesIn,
   cyrb53,
   mulberry32,
-  buildReels,
-  evaluateBoard,
-  resolveSpin,
+  columnSymbols,
   spinSeed,
   openSpinState,
-  applyReelStop,
-  autoStopReels,
+  applyColumnStop,
+  autoStopActiveColumn,
   canResolveRound,
-  scoreBoard,
-  viewerRoundScoreSnapshot,
   decideRoundWinner,
   decideMatchResult,
   buildRoundResult,
   planAdvanceAfterResolve,
+  viewerRunSnapshot,
 } from "../src/lib/slots-pvp/engine.js";
 
 const FRUIT_SYMBOLS = ["🍉","🍌","🍍","🍏","🍓","🥭","🍈","🍇","🍒","🍎","🍊","🍋","🥝","🍐","🍑","🥥","🍅","🍆","🌽","🍠"];
+// The 5-symbol sub-pool the sliding game actually draws from.
+const POOL = FRUIT_SYMBOLS.slice(0, SLIDING_SYMBOL_COUNT);
 
 // ════════════════════════════════════════════════════════════════════
 // Round structure constants
 // ════════════════════════════════════════════════════════════════════
 
-test("a round lasts exactly 10 seconds", () => {
+test("each column has a 10-second countdown (COLUMN_TIMER_SECONDS)", () => {
   assert.equal(ROUND_TIMER_SECONDS, 10);
-  assert.equal(ROUND_DEADLINE_MS, 10 * 1000);
+  assert.equal(COLUMN_TIMER_SECONDS, 10);
+  assert.equal(COLUMN_DEADLINE_MS, 10 * 1000);
 });
 
-test("a match has at most 5 rounds (best-of-5)", () => {
-  assert.equal(MAX_ROUNDS, 5);
-  assert.equal(SPIN_STATES.size, MAX_ROUNDS);
+test("a match is a SINGLE survival round (MAX_ROUNDS = ROUNDS_TO_WIN = 1)", () => {
+  assert.equal(MAX_ROUNDS, 1);
+  assert.equal(ROUNDS_TO_WIN, 1);
+  assert.equal(SPIN_STATES.size, 5); // enum parity — only spin_1 is reachable
 });
 
-test("first to 3 round wins ends the match (ROUNDS_TO_WIN)", () => {
-  assert.equal(ROUNDS_TO_WIN, 3);
-  // Best-of-5 shape: 3 wins decides BEFORE the 5-round cap.
-  assert.ok(ROUNDS_TO_WIN < MAX_ROUNDS);
+test("the sliding game uses a 5-symbol sub-pool + a 10-stop grace cap + a 60-column cap", () => {
+  assert.equal(SLIDING_SYMBOL_COUNT, 5);
+  assert.equal(GRACE_MAX_STOPS, 10);
+  assert.equal(MAX_COLUMNS_PER_ROUND, 60);
 });
 
-test("each player stops exactly 3 reels per round", () => {
-  assert.equal(REELS_PER_ROUND, 3);
-});
-
-test("status enum matches the slots_pvp_status pgEnum (migration 0059)", () => {
+test("status enum still matches the slots_pvp_status pgEnum (migration 0059)", () => {
   assert.deepEqual(Object.values(MATCH_STATUS), [
     "waiting",
     "ready",
@@ -123,76 +115,57 @@ test("status enum matches the slots_pvp_status pgEnum (migration 0059)", () => {
 });
 
 test("state sets partition the status machine correctly", () => {
-  assert.equal(ACTIVE_STATES.size, 6); // ready + 5 spins
-  assert.equal(SPIN_STATES.size, 5);
+  assert.equal(ACTIVE_STATES.size, 6); // ready + 5 spins (enum parity)
+  assert.equal(SPIN_STATES.size, 5); // enum parity; only spin_1 is reachable
   assert.equal(TERMINAL_STATES.size, 2);
   for (const s of SPIN_STATES) assert.ok(ACTIVE_STATES.has(s));
   for (const s of TERMINAL_STATES) assert.ok(!ACTIVE_STATES.has(s));
 });
 
-test("statusForSpinNumber maps 1..5 and clamps out-of-range", () => {
+test("statusForSpinNumber maps 1 → spin_1 and clamps everything else (single round)", () => {
   assert.equal(statusForSpinNumber(1), MATCH_STATUS.SPIN_1);
-  assert.equal(statusForSpinNumber(3), MATCH_STATUS.SPIN_3);
-  assert.equal(statusForSpinNumber(5), MATCH_STATUS.SPIN_5);
   assert.equal(statusForSpinNumber(0), MATCH_STATUS.SPIN_1); // clamps low
-  assert.equal(statusForSpinNumber(99), MATCH_STATUS.SPIN_5); // clamps high
+  assert.equal(statusForSpinNumber(99), MATCH_STATUS.SPIN_1); // clamps high
+  assert.equal(statusForSpinNumber(undefined), MATCH_STATUS.SPIN_1);
 });
 
-test("spinNumberForStatus round-trips and rejects non-spin states", () => {
-  assert.equal(spinNumberForStatus(MATCH_STATUS.SPIN_2), 2);
+test("spinNumberForStatus round-trips spin_1 and rejects every other state", () => {
+  assert.equal(spinNumberForStatus(MATCH_STATUS.SPIN_1), 1);
+  assert.equal(spinNumberForStatus(MATCH_STATUS.SPIN_2), null); // beyond MAX_ROUNDS
   assert.equal(spinNumberForStatus(MATCH_STATUS.READY), null);
   assert.equal(spinNumberForStatus(MATCH_STATUS.FINISHED), null);
-  assert.equal(isSpinStatus(MATCH_STATUS.SPIN_4), true);
+  assert.equal(isSpinStatus(MATCH_STATUS.SPIN_1), true);
+  assert.equal(isSpinStatus(MATCH_STATUS.SPIN_2), false);
   assert.equal(isSpinStatus(MATCH_STATUS.CANCELLED), false);
 });
 
-test("stake + house-fee constants match the mines-pvp 90/10 split", () => {
+test("stake + house-fee constants match the mines-pvp 90/10 split (+ grace-draw rake)", () => {
   assert.equal(MIN_STAKE, 1);
   assert.equal(MAX_STAKE, 1000000);
   assert.ok(STAKE_PRESETS.length > 0);
   assert.equal(HOUSE_FEE_PCT, 0.1);
   assert.equal(WINNER_RATIO, 0.9);
   assert.equal(HOUSE_RATIO, 0.1);
+  assert.equal(GRACE_DRAW_REFUND_PCT, 0.95);
+  assert.equal(GRACE_DRAW_RAKE_PCT, 0.05);
   assert.equal(typeof SLOTS_PVP_LOCK_NAMESPACE, "number");
   assert.ok(SLOTS_PVP_LOCK_NAMESPACE > 0);
-  assert.deepEqual(Object.values(RESULT), ["player1", "player2", "draw"]);
+  assert.deepEqual(Object.values(RESULT), ["player1", "player2", "draw", "grace_draw"]);
 });
 
 // ════════════════════════════════════════════════════════════════════
-// Symbol tiers + line multipliers
+// Board geometry + the 5 combo lines
 // ════════════════════════════════════════════════════════════════════
 
-test("symbol tiers are position-based: first 6 theme symbols score 100..500", () => {
-  assert.equal(SCORING_SYMBOL_COUNT, 6);
-  assert.deepEqual(SYMBOL_SCORES, [100, 125, 150, 200, 300, 500]);
-  // Cherry → Diamond in order: symbols[0] = 100 … symbols[5] = 500.
-  FRUIT_SYMBOLS.slice(0, 6).forEach((sym, i) => {
-    assert.equal(SYMBOL_SCORES[i], [100, 125, 150, 200, 300, 500][i]);
-    // Only the first 6 symbols are scoring tiers; the rest score 0.
-    assert.equal(i < SCORING_SYMBOL_COUNT, true);
-  });
-});
-
-test("line multiplier table matches the user spec", () => {
-  assert.equal(lineMultiplierForCount(1), 1);
-  assert.equal(lineMultiplierForCount(2), 1.25);
-  assert.equal(lineMultiplierForCount(3), 1.5);
-  assert.equal(lineMultiplierForCount(4), 2);
-  assert.equal(lineMultiplierForCount(5), 3);
-  assert.equal(lineMultiplierForCount(8), 3); // 5+ clamps to x3
-  assert.equal(lineMultiplierForCount(0), 1); // no lines → x1 (score 0)
-  assert.equal(LINE_MULTIPLIERS.length, 5);
-});
-
-// ════════════════════════════════════════════════════════════════════
-// Board geometry + 8 winning lines
-// ════════════════════════════════════════════════════════════════════
-
-test("board is 3x3 with exactly 8 winning lines (3 rows + 3 cols + 2 diags)", () => {
+test("board is 3x3 with exactly 5 combo lines (3 rows + 2 diagonals, NO verticals)", () => {
   assert.equal(GRID_COLS, 3);
   assert.equal(GRID_ROWS, 3);
-  assert.equal(WINNING_LINES.length, 8);
-  for (const line of WINNING_LINES) {
+  assert.equal(HORIZ_DIAG_LINES.length, 5);
+  assert.deepEqual(
+    HORIZ_DIAG_LINES.map((l) => l.name).sort(),
+    ["bottom-row", "diag-down", "diag-up", "middle-row", "top-row"],
+  );
+  for (const line of HORIZ_DIAG_LINES) {
     assert.equal(line.cells.length, 3);
     for (const [col, row] of line.cells) {
       assert.ok(col >= 0 && col < 3);
@@ -201,418 +174,548 @@ test("board is 3x3 with exactly 8 winning lines (3 rows + 3 cols + 2 diags)", ()
   }
 });
 
-test("forced-line odds cover [0, 100) with 3/2/1/0 rows", () => {
-  assert.deepEqual(
-    FORCED_LINE_ODDS.map((r) => r.forcedLines),
-    [3, 2, 1, 0],
+test("hasLine detects horizontal rows (window is [col][row])", () => {
+  const A = "🍉", B = "🍌", C = "🍍";
+  // Top row A-A-A.
+  assert.equal(hasLine([[A, B, C], [A, C, B], [A, B, C]]), true);
+  // Middle row B-B-B.
+  assert.equal(hasLine([[C, B, A], [A, B, C], [B, B, A]]), true);
+  // Bottom row C-C-C.
+  assert.equal(hasLine([[A, B, C], [B, A, C], [C, B, C]]), true);
+});
+
+test("hasLine detects both diagonals", () => {
+  const A = "🍉", B = "🍌", C = "🍍";
+  // Diag-down: [0][0] = [1][1] = [2][2] = A.
+  assert.equal(hasLine([[A, B, C], [B, A, C], [C, B, A]]), true);
+  // Diag-up: [2][0] = [1][1] = [0][2] = A.
+  assert.equal(hasLine([[C, B, A], [B, A, C], [A, B, C]]), true);
+});
+
+test("hasLine: vertical columns do NOT count; mixed boards have no line", () => {
+  const A = "🍉", B = "🍌", C = "🍍";
+  // Three uniform-but-different columns = 3 verticals, ZERO combos.
+  assert.equal(hasLine([[A, A, A], [B, B, B], [C, C, C]]), false);
+  // Fully mixed board.
+  assert.equal(hasLine([[A, B, C], [B, C, A], [A, C, B]]), false);
+  // Degenerate inputs.
+  assert.equal(hasLine(null), false);
+  assert.equal(hasLine([]), false);
+  assert.equal(hasLine([[A, B], [B, A], [A, B]]), false);
+});
+
+test("winningLinesIn reports every combo line with its symbol", () => {
+  const A = "🍉", B = "🍌", C = "🍍";
+  const win = winningLinesIn([[A, B, C], [A, C, B], [A, B, C]]); // top row only
+  assert.equal(win.length, 1);
+  assert.equal(win[0].name, "top-row");
+  assert.equal(win[0].symbol, A);
+  // A full 3x3 of one symbol → all 5 lines.
+  const all = winningLinesIn([[A, A, A], [A, A, A], [A, A, A]]);
+  assert.equal(all.length, 5);
+  // No lines → empty.
+  assert.deepEqual(winningLinesIn([[A, B, C], [B, C, A], [A, C, B]]), []);
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Determinism + the lazy column stream
+// ════════════════════════════════════════════════════════════════════
+
+test("columnSymbols is deterministic and draws only from the 5-symbol sub-pool", () => {
+  const a = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const b = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  assert.deepEqual(a, b);
+  assert.equal(a.length, GRID_ROWS);
+  for (const sym of a) assert.ok(POOL.includes(sym));
+  // Symbols beyond the sub-pool are never used.
+  assert.ok(!FRUIT_SYMBOLS.slice(SLIDING_SYMBOL_COUNT).some((s) => a.includes(s)));
+});
+
+test("different columns / seats / spins produce different columns (virtually always)", () => {
+  const base = { matchId: 7, spinNumber: 1, symbols: FRUIT_SYMBOLS };
+  assert.notDeepEqual(
+    columnSymbols({ ...base, seat: "player1", colIndex: 1 }),
+    columnSymbols({ ...base, seat: "player1", colIndex: 2 }),
   );
-  assert.equal(decideForcedLines(0.02), 3); // roll < 3 → 3 rows
-  assert.equal(decideForcedLines(0.05), 2); // roll < 10 → 2 rows
-  assert.equal(decideForcedLines(0.15), 1); // roll < 25 → 1 row
-  assert.equal(decideForcedLines(0.5), 0); // else none
-  assert.equal(decideForcedLines(0.999), 0);
+  assert.notDeepEqual(
+    columnSymbols({ ...base, seat: "player1", colIndex: 3 }),
+    columnSymbols({ ...base, seat: "player2", colIndex: 3 }),
+  );
 });
 
-test("determinism + board shape", () => {
-  const a = resolveSpin({ symbols: FRUIT_SYMBOLS, seed: 12345 });
-  const b = resolveSpin({ symbols: FRUIT_SYMBOLS, seed: 12345 });
-  assert.deepEqual(a.reels, b.reels);
-  assert.equal(a.symbolScore, b.symbolScore);
-  assert.equal(a.lineCount, b.lineCount);
-  assert.equal(a.reels.length, GRID_COLS);
-  for (const col of a.reels) {
-    assert.equal(col.length, GRID_ROWS);
-    for (const sym of col) assert.ok(FRUIT_SYMBOLS.includes(sym));
-  }
-});
-
-test("different seeds → different reels (virtually always)", () => {
-  const a = resolveSpin({ symbols: FRUIT_SYMBOLS, seed: 1 });
-  const b = resolveSpin({ symbols: FRUIT_SYMBOLS, seed: 2 });
-  assert.notDeepEqual(a.reels, b.reels);
+test("columnSymbols with an empty symbol pool degrades gracefully", () => {
+  assert.deepEqual(
+    columnSymbols({ matchId: 1, spinNumber: 1, seat: "player1", colIndex: 0, symbols: [] }),
+    ["?", "?", "?"],
+  );
 });
 
 test("seeded hashing is stable across runs", () => {
   assert.equal(cyrb53("slots:1:p1:spin1", 0), cyrb53("slots:1:p1:spin1", 0));
-  assert.notEqual(spinSeed(1, 1, 1), spinSeed(1, 1, 2));
-  assert.notEqual(spinSeed(1, 1, 1), spinSeed(1, 2, 1));
-  assert.equal(spinSeed(1, 1, 1), spinSeed(1, 1, 1));
+  assert.notEqual(spinSeed(1, 1, "player1"), spinSeed(1, 1, "player2"));
+  assert.notEqual(spinSeed(1, 1, "player1"), spinSeed(1, 2, "player1"));
+  assert.equal(spinSeed(1, 1, "player1"), spinSeed(1, 1, "player1"));
+  assert.equal(mulberry32(123)(), mulberry32(123)());
 });
 
 // ════════════════════════════════════════════════════════════════════
-// 8-line scoring (evaluateBoard)
+// Grace → survival state machine (pure transitions)
 // ════════════════════════════════════════════════════════════════════
 
-// Helper: build a reels grid from a 3x3 matrix written row-first for
-// readability. Internal layout is reels[col][row].
-function grid(rows) {
-  const reels = Array.from({ length: 3 }, () => Array(3).fill(null));
-  rows.forEach((rowSyms, r) => {
-    rowSyms.forEach((sym, c) => {
-      reels[c][r] = sym;
-    });
-  });
-  return reels;
+// ── helpers ──────────────────────────────────────────────────────────
+
+/** Reproduce the engine's visible window from the exported stream:
+ *  initial columns land in their own slots (any order), sliding columns
+ *  push the window left. */
+function windowFromStops(seat, colIndices, { matchId = 7, spinNumber = 1, symbols = FRUIT_SYMBOLS } = {}) {
+  let window = [null, null, null];
+  for (const idx of colIndices) {
+    const col = columnSymbols({ matchId, spinNumber, seat, colIndex: idx, symbols });
+    if (idx < GRID_COLS) window[idx] = col;
+    else window = [window[1], window[2], col];
+  }
+  return window;
 }
 
-test("evaluateBoard detects a horizontal row", () => {
-  const reels = grid([
-    ["🍉", "🍉", "🍉"], // top row: 3 identical scoring symbols
-    ["🍌", "🍍", "🍏"],
-    ["🍓", "🥭", "🍈"],
-  ]);
-  const score = evaluateBoard({ reels, symbols: FRUIT_SYMBOLS });
-  assert.equal(score.lineCount, 1);
-  assert.equal(score.baseScore, 100); // 🍉 = symbols[0] = Cherry tier
-  assert.equal(score.multiplier, 1);
-  assert.equal(score.symbolScore, 100);
-  assert.equal(score.winningLines[0].line, "top-row");
+function makeSpinMatch({ now = Date.now(), overrides = {} } = {}) {
+  const open = openSpinState({ matchId: 7, spinNumber: 1, symbols: FRUIT_SYMBOLS, now });
+  return {
+    id: 7,
+    player1Id: "u1",
+    player2Id: "u2",
+    stakeAmount: "100.00",
+    theme: "fruit",
+    status: MATCH_STATUS.SPIN_1,
+    currentSpin: 1,
+    ...open,
+    ...overrides,
+  };
+}
+
+/** Build a plausible run state that is already mid-grace / mid-survival.
+ *  `priorWindow` is the 3-column window BEFORE the next stop lands; the
+ *  next landed column slides it to [prior[1], prior[2], col]. */
+function craftedRun({
+  priorWindow,
+  stoppedCount,
+  firstComboAt = null,
+  survived = 0,
+  linesFormed = 0,
+  activeDeadline = null,
+  now = Date.now(),
+  seat = "player1",
+}) {
+  const base = openSpinState({ matchId: 7, spinNumber: 1, symbols: FRUIT_SYMBOLS, now })[
+    seat === "player2" ? "p2CurrentInputs" : "p1CurrentInputs"
+  ];
+  return {
+    ...base,
+    window: priorWindow,
+    columns: priorWindow.filter(Boolean),
+    stoppedOrder: Array.from({ length: stoppedCount }, (_, i) => i),
+    stoppedCount,
+    firstComboAt,
+    survived,
+    linesFormed,
+    activeIndex: stoppedCount,
+    activeDeadline: activeDeadline ?? now + COLUMN_DEADLINE_MS,
+  };
+}
+
+/** A fully-ended run (for buildRoundResult payload tests). */
+function endedRun({ stoppedCount, firstComboAt = null, survived = 0, linesFormed = 0, busted = false, graceFailed = false, bustColumn = null, window }) {
+  const base = craftedRun({ priorWindow: window, stoppedCount, firstComboAt, survived, linesFormed });
+  return { ...base, ended: true, busted, graceFailed, bustColumn, activeIndex: null, activeDeadline: null };
+}
+
+const fillCol = (s) => [s, s, s];
+
+/** Two pool symbols NOT present in `col` (pool=5, col=3 cells → always 2 left). */
+function twoOutside(col) {
+  const rest = POOL.filter((s) => !col.includes(s));
+  return [rest[0], rest[1]];
+}
+
+// ── open / validation ────────────────────────────────────────────────
+
+test("openSpinState opens BOTH players' hidden runs with fresh windows + 10s column deadlines", () => {
+  const now = 1_000_000;
+  const m = makeSpinMatch({ now });
+  const p1 = m.p1CurrentInputs;
+  const p2 = m.p2CurrentInputs;
+  assert.deepEqual(p1.window, [null, null, null]);
+  assert.deepEqual(p1.columns, []);
+  assert.equal(p1.stoppedCount, 0);
+  assert.equal(p1.firstComboAt, null);
+  assert.equal(p1.survived, 0);
+  assert.equal(p1.linesFormed, 0);
+  assert.equal(p1.ended, false);
+  assert.equal(p1.activeIndex, 0);
+  assert.equal(p1.activeDeadline, now + COLUMN_DEADLINE_MS);
+  assert.equal(p1.openedAt, now);
+  assert.notEqual(p1.seed, p2.seed);
 });
 
-test("evaluateBoard detects vertical + diagonal lines", () => {
-  // Left column all 🥭 (symbols[5] = Diamond tier = 500). No other
-  // line shares three identical symbols.
-  const reels = grid([
-    ["🥭", "🍉", "🍍"],
-    ["🥭", "🍌", "🍏"],
-    ["🥭", "🍓", "🍈"],
-  ]);
-  const col = evaluateBoard({ reels, symbols: FRUIT_SYMBOLS });
-  assert.equal(col.lineCount, 1);
-  assert.equal(col.winningLines[0].line, "left-col");
-  assert.equal(col.baseScore, 500);
-  assert.equal(col.symbolScore, 500);
-
-  // Main diagonal all 🍍 (symbols[2] = Orange tier = 150).
-  const reels2 = grid([
-    ["🍍", "🍉", "🍌"],
-    ["🍏", "🍍", "🍉"],
-    ["🍓", "🥭", "🍍"],
-  ]);
-  const diag = evaluateBoard({ reels: reels2, symbols: FRUIT_SYMBOLS });
-  assert.equal(diag.lineCount, 1);
-  assert.equal(diag.winningLines[0].line, "diag-down");
-  assert.equal(diag.symbolScore, 150);
-});
-
-test("evaluateBoard: a line of 3 identical NON-scoring symbols is not a win", () => {
-  // 🍈 is symbols[6] — outside the 6 scoring tiers.
-  const reels = grid([
-    ["🍈", "🍈", "🍈"],
-    ["🍉", "🍌", "🍍"],
-    ["🍏", "🍓", "🥭"],
-  ]);
-  const score = evaluateBoard({ reels, symbols: FRUIT_SYMBOLS });
-  assert.equal(score.lineCount, 0);
-  assert.equal(score.baseScore, 0);
-  assert.equal(score.symbolScore, 0);
-  assert.deepEqual(score.winningLines, []);
-});
-
-test("evaluateBoard: multiple lines sum bases then apply the multiplier", () => {
-  // Top row 🍉 (100) + bottom row 🥭 (500) → 2 lines → x1.25.
-  const reels = grid([
-    ["🍉", "🍉", "🍉"],
-    ["🍌", "🍍", "🍏"],
-    ["🥭", "🥭", "🥭"],
-  ]);
-  const score = evaluateBoard({ reels, symbols: FRUIT_SYMBOLS });
-  assert.equal(score.lineCount, 2);
-  assert.equal(score.baseScore, 600); // 100 + 500
-  assert.equal(score.multiplier, 1.25);
-  assert.equal(score.symbolScore, 750); // 600 * 1.25
-});
-
-test("evaluateBoard: 4 lines → x2, 5+ lines → x3", () => {
-  // Plus-shape: top+bottom rows and left+right cols all 🍍 → 4 lines.
-  const reels4 = grid([
-    ["🍍", "🍍", "🍍"],
-    ["🍍", "🍉", "🍍"],
-    ["🍍", "🍍", "🍍"],
-  ]);
-  const s4 = evaluateBoard({ reels: reels4, symbols: FRUIT_SYMBOLS });
-  assert.equal(s4.lineCount, 4);
-  assert.equal(s4.multiplier, 2);
-  assert.equal(s4.baseScore, 4 * 150);
-  assert.equal(s4.symbolScore, 4 * 150 * 2);
-
-  // Entire board one scoring symbol (🍉 = symbols[0] = Cherry tier) →
-  // all 8 lines win → x3.
-  const all = grid([
-    ["🍉", "🍉", "🍉"],
-    ["🍉", "🍉", "🍉"],
-    ["🍉", "🍉", "🍉"],
-  ]);
-  const s8 = evaluateBoard({ reels: all, symbols: FRUIT_SYMBOLS });
-  assert.equal(s8.lineCount, 8);
-  assert.equal(s8.multiplier, 3);
-  assert.equal(s8.baseScore, 8 * 100);
-  assert.equal(s8.symbolScore, 8 * 100 * 3);
-});
-
-test("evaluateBoard is deterministic + pure", () => {
-  const reels = grid([
-    ["🥭", "🥭", "🥭"],
-    ["🍉", "🍉", "🍉"],
-    ["🍍", "🍍", "🍍"],
-  ]);
-  const a = evaluateBoard({ reels, symbols: FRUIT_SYMBOLS });
-  const b = evaluateBoard({ reels, symbols: FRUIT_SYMBOLS });
-  assert.deepEqual(a, b);
-  assert.equal(a.symbolScore, (500 + 100 + 150) * 1.5);
-});
-
-// ════════════════════════════════════════════════════════════════════
-// Stop accuracy
-// ════════════════════════════════════════════════════════════════════
-
-test("stop accuracy windows: <3s perfect, <6s good, else normal", () => {
-  assert.equal(PERFECT_STOP_WINDOW_MS, 3000);
-  assert.equal(GOOD_STOP_WINDOW_MS, 6000);
-  assert.equal(stopAccuracyForOffset(0), "perfect");
-  assert.equal(stopAccuracyForOffset(2999), "perfect");
-  assert.equal(stopAccuracyForOffset(3000), "good");
-  assert.equal(stopAccuracyForOffset(5999), "good");
-  assert.equal(stopAccuracyForOffset(6000), "normal");
-  assert.equal(stopAccuracyForOffset(9999), "normal");
-  assert.equal(stopAccuracyForOffset(-5), "normal"); // defensive
-  assert.equal(stopAccuracyForOffset(undefined), "normal");
-});
-
-test("stop bonuses: perfect +100, good +50, normal +0", () => {
-  assert.equal(PERFECT_STOP_BONUS, 100);
-  assert.equal(GOOD_STOP_BONUS, 50);
-  assert.equal(NORMAL_STOP_BONUS, 0);
-  assert.equal(stopBonusForAccuracy("perfect"), 100);
-  assert.equal(stopBonusForAccuracy("good"), 50);
-  assert.equal(stopBonusForAccuracy("normal"), 0);
-  assert.equal(stopBonusForAccuracy("anything-else"), 0);
-});
-
-test("scoreBoard: total = symbolScore + stopBonus (per-reel accuracy)", () => {
-  const reels = grid([
-    ["🍉", "🍉", "🍉"],
-    ["🍌", "🍍", "🍏"],
-    ["🍓", "🥭", "🍈"],
-  ]);
-  const score = scoreBoard({
-    reels,
-    symbols: FRUIT_SYMBOLS,
-    stopOffsets: { 0: 500, 1: 4000, 2: 8000 }, // perfect, good, normal
+test("applyColumnStop validates participant / status / spin identity / run / index / deadline", () => {
+  const m = makeSpinMatch();
+  assert.deepEqual(applyColumnStop(m, "spectator", 0), {
+    ok: false,
+    error: "Caller is not a participant",
+    status: 403,
   });
-  assert.equal(score.symbolScore, 100);
-  assert.equal(score.stopBonus, 100 + 50 + 0);
-  assert.equal(score.totalScore, 100 + 150);
-  assert.deepEqual(
-    score.accuracyByReel.map((a) => a.accuracy),
-    ["perfect", "good", "normal"],
-  );
-});
-
-test("scoreBoard: manual stops keep accuracy even on a partially auto-stopped board", () => {
-  const reels = grid([
-    ["🍉", "🍉", "🍉"],
-    ["🍌", "🍍", "🍏"],
-    ["🍓", "🥭", "🍈"],
-  ]);
-  // Reels 0+1 were stopped manually (recorded offsets); reel 2 was
-  // auto-stopped at the deadline (NO offset). The manual stops keep
-  // their accuracy — the board-level autoStopped flag must not zero
-  // them out.
-  const score = scoreBoard({
-    reels,
-    symbols: FRUIT_SYMBOLS,
-    stopOffsets: { 0: 500, 1: 4000 }, // perfect + good; reel 2 absent
+  const ready = { ...m, status: MATCH_STATUS.READY };
+  assert.deepEqual(applyColumnStop(ready, "player1", 0), {
+    ok: false,
+    error: "Match is not in a spin round",
+    status: 400,
   });
-  assert.equal(score.stopBonus, 100 + 50);
-  assert.deepEqual(
-    score.accuracyByReel.map((a) => a.accuracy),
-    ["perfect", "good", "normal"],
-  );
-});
-
-test("scoreBoard: empty/absent offsets → all normal (AFK board)", () => {
-  const reels = grid([
-    ["🍉", "🍉", "🍉"],
-    ["🍌", "🍍", "🍏"],
-    ["🍓", "🥭", "🍈"],
-  ]);
-  const score = scoreBoard({ reels, symbols: FRUIT_SYMBOLS });
-  assert.equal(score.stopBonus, 0);
-  assert.equal(score.totalScore, score.symbolScore);
-  // An offset of exactly 0ms still counts as a (perfect) manual stop.
-  const zero = scoreBoard({
-    reels,
-    symbols: FRUIT_SYMBOLS,
-    stopOffsets: { 0: 0, 1: 0, 2: 0 },
+  // Stale round echo.
+  assert.deepEqual(applyColumnStop(m, "player1", 0, Date.now(), 2), {
+    ok: false,
+    error: "Round has already advanced",
+    status: 409,
   });
-  assert.equal(zero.stopBonus, 300);
+  // Round never opened.
+  assert.deepEqual(applyColumnStop({ ...m, p1CurrentInputs: null }, "player1", 0), {
+    ok: false,
+    error: "Round has not started",
+    status: 400,
+  });
+  // Invalid indices.
+  assert.equal(applyColumnStop(m, "player1", -1).ok, false);
+  assert.equal(applyColumnStop(m, "player1", "x").ok, false);
+  assert.equal(applyColumnStop(m, "player1", 3).ok, false); // initial phase: only 0..2
+  // Expired active column.
+  const expired = { ...m, p1CurrentInputs: { ...m.p1CurrentInputs, activeDeadline: Date.now() - 1 } };
+  assert.deepEqual(applyColumnStop(expired, "player1", 0), {
+    ok: false,
+    error: "Column time has expired",
+    status: 400,
+  });
 });
 
-// ════════════════════════════════════════════════════════════════════
-// Viewer-visible current round score (status-route snapshot)
-// ════════════════════════════════════════════════════════════════════
+test("initial columns stop in any order, once each, then the window is full", () => {
+  const now = Date.now();
+  let m = makeSpinMatch({ now });
+  m = applyColumnStop(m, "player1", 2, now).match;
+  m = applyColumnStop(m, "player1", 0, now).match;
+  m = applyColumnStop(m, "player1", 1, now).match;
+  const run = m.p1CurrentInputs;
+  assert.deepEqual(run.stoppedOrder, [2, 0, 1]);
+  assert.equal(run.stoppedCount, 3);
+  assert.deepEqual(run.window, windowFromStops("player1", [2, 0, 1]));
+  assert.equal(run.activeIndex, 3);
+  // Once the window is full, only the active sliding column is stoppable
+  // — a stale stop of a filled initial column is rejected.
+  assert.deepEqual(applyColumnStop(m, "player1", 2), {
+    ok: false,
+    error: "Only the active column can be stopped",
+    status: 409,
+  });
+});
 
-test("viewerRoundScoreSnapshot: locked board → full server score", () => {
-  let m = makeSpinMatch();
+// ── grace / survival rules ───────────────────────────────────────────
+
+test("grace: stops before the first combo are SAFE — no bust possible, and the first combo starts survival at 0", () => {
+  const now = Date.now();
+  let m = makeSpinMatch({ now });
+  // Land the 3 initial columns.
   for (const idx of [0, 1, 2]) {
-    m = applyReelStop(m, "player1", idx, m.p1CurrentInputs.openedAt + 500).match;
+    m = applyColumnStop(m, "player1", idx, now).match;
   }
-  assert.equal(m.p1CurrentInputs.boardLocked, true);
-  const snap = viewerRoundScoreSnapshot({
-    inputs: m.p1CurrentInputs,
-    symbols: FRUIT_SYMBOLS,
-  });
-  assert.equal(snap.locked, true);
-  const full = scoreBoard({
-    reels: m.p1CurrentInputs.reels,
-    symbols: FRUIT_SYMBOLS,
-    stopOffsets: m.p1CurrentInputs.stopOffsets,
-  });
-  assert.equal(snap.totalScore, full.totalScore);
-  assert.equal(snap.symbolScore, full.symbolScore);
-  assert.equal(snap.stopBonus, 300); // three perfect stops (+100 each)
-  assert.equal(snap.lineCount, full.lineCount);
-  assert.equal(snap.multiplier, full.multiplier);
-  assert.equal(snap.accuracyByReel.length, 3);
-  // Deterministic — same inputs, same snapshot.
-  assert.deepEqual(
-    viewerRoundScoreSnapshot({ inputs: m.p1CurrentInputs, symbols: FRUIT_SYMBOLS }),
-    snap,
-  );
+  let run = m.p1CurrentInputs;
+  if (hasLine(run.window)) {
+    assert.equal(run.firstComboAt, 3);
+    assert.equal(run.survived, 0);
+    assert.equal(run.ended, false);
+  } else {
+    assert.equal(run.firstComboAt, null);
+    assert.equal(run.ended, false); // non-combo window during grace is SAFE
+  }
+  // Keep stopping the sliding column until the first combo appears (or
+  // the 10-stop grace cap fires).
+  let guard = 0;
+  while (run.firstComboAt === null && !run.ended && guard < GRACE_MAX_STOPS) {
+    m = applyColumnStop(m, "player1", run.activeIndex, now).match;
+    run = m.p1CurrentInputs;
+    guard += 1;
+  }
+  if (run.ended) {
+    // Only the grace cap can end a grace-phase run — and never with points.
+    assert.equal(run.graceFailed, true);
+    assert.equal(run.firstComboAt, null);
+    assert.equal(run.survived, 0);
+  } else {
+    assert.ok(run.firstComboAt !== null && run.firstComboAt <= GRACE_MAX_STOPS);
+    assert.equal(run.survived, 0); // count starts at the FIRST combo
+    assert.equal(run.ended, false);
+  }
 });
 
-test("viewerRoundScoreSnapshot: live board → stop bonuses only, symbol score hidden", () => {
-  const m = makeSpinMatch();
-  const stopped = applyReelStop(
-    m,
-    "player1",
-    0,
-    m.p1CurrentInputs.openedAt + 500,
-  ).match;
-  const snap = viewerRoundScoreSnapshot({
-    inputs: stopped.p1CurrentInputs,
-    symbols: FRUIT_SYMBOLS,
-  });
-  assert.equal(snap.locked, false);
-  assert.equal(snap.totalScore, 100); // perfect stop on reel 1
-  assert.equal(snap.symbolScore, 0); // still hidden until lock
-  assert.equal(snap.stopBonus, 100);
-  assert.equal(snap.lineCount, 0);
-  assert.deepEqual(snap.accuracyByReel, [
-    { reel: 0, accuracy: "perfect", bonus: 100 },
-  ]);
-  // A later Good stop on reel 3 adds +50.
-  const stopped2 = applyReelStop(
-    stopped,
-    "player1",
-    2,
-    stopped.p1CurrentInputs.openedAt + 4000,
-  ).match;
-  const snap2 = viewerRoundScoreSnapshot({
-    inputs: stopped2.p1CurrentInputs,
-    symbols: FRUIT_SYMBOLS,
-  });
-  assert.equal(snap2.totalScore, 150);
-  assert.deepEqual(
-    snap2.accuracyByReel.map((a) => a.accuracy),
-    ["perfect", "good"],
-  );
+test("the first combo (crafted) ends grace: firstComboAt set, survival count still 0", () => {
+  const now = Date.now();
+  const col3 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [X, Y] = twoOutside(col3);
+  // Prior full window: landing col3 slides it to [p1, p2, col3] whose top
+  // row is col3[0]-col3[0]-col3[0] — EXACTLY one combo line.
+  const prior = [fillCol("🍉"), [col3[0], Y, Y], [col3[0], X, X]];
+  const run0 = craftedRun({ priorWindow: prior, stoppedCount: 3, now });
+  const m0 = { ...makeSpinMatch({ now }), p1CurrentInputs: run0 };
+  const r = applyColumnStop(m0, "player1", 3, now);
+  assert.equal(r.ok, true);
+  const run = r.match.p1CurrentInputs;
+  assert.equal(run.firstComboAt, 4); // the 4th landed column made the combo
+  assert.equal(run.survived, 0);
+  assert.equal(run.linesFormed, 1);
+  assert.equal(run.ended, false);
+  assert.equal(run.activeIndex, 4);
+  assert.deepEqual(run.window, [[col3[0], Y, Y], [col3[0], X, X], col3]);
 });
 
-test("viewerRoundScoreSnapshot: no reels (round not opened / finished) → null", () => {
-  assert.equal(
-    viewerRoundScoreSnapshot({ inputs: null, symbols: FRUIT_SYMBOLS }),
-    null,
-  );
-  assert.equal(
-    viewerRoundScoreSnapshot({ inputs: {}, symbols: FRUIT_SYMBOLS }),
-    null,
-  );
-  const m = makeSpinMatch();
-  assert.equal(
-    viewerRoundScoreSnapshot({
-      inputs: { ...m.p1CurrentInputs, reels: undefined },
-      symbols: FRUIT_SYMBOLS,
-    }),
-    null,
-  );
+test("grace stops are SAFE: a non-combo stop before the cap never busts (crafted)", () => {
+  const now = Date.now();
+  const col5 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 5, symbols: FRUIT_SYMBOLS });
+  const [X] = twoOutside(col5);
+  const prior = [fillCol("🍉"), fillCol(X), fillCol(X)];
+  const run0 = craftedRun({ priorWindow: prior, stoppedCount: 5, now });
+  const m0 = { ...makeSpinMatch({ now }), p1CurrentInputs: run0 };
+  const r = applyColumnStop(m0, "player1", 5, now);
+  assert.equal(r.ok, true);
+  const run = r.match.p1CurrentInputs;
+  assert.equal(run.firstComboAt, null);
+  assert.equal(run.graceFailed, false);
+  assert.equal(run.ended, false);
+  assert.equal(run.activeIndex, 6);
+});
+
+test("grace cap: burning all 10 stops without a combo = graceFailed (crafted)", () => {
+  const now = Date.now();
+  const col9 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 9, symbols: FRUIT_SYMBOLS });
+  const [X] = twoOutside(col9);
+  const prior = [fillCol("🍉"), fillCol(X), fillCol(X)];
+  const run0 = craftedRun({ priorWindow: prior, stoppedCount: 9, now });
+  const m0 = { ...makeSpinMatch({ now }), p1CurrentInputs: run0 };
+  const r = applyColumnStop(m0, "player1", 9, now);
+  assert.equal(r.ok, true);
+  const run = r.match.p1CurrentInputs;
+  assert.equal(run.stoppedCount, 10);
+  assert.equal(run.firstComboAt, null);
+  assert.equal(run.graceFailed, true);
+  assert.equal(run.ended, true);
+  assert.equal(run.survived, 0);
+  assert.equal(run.activeIndex, null);
+});
+
+test("survival: a combo stop ticks survived +1 and keeps the run alive (crafted)", () => {
+  const now = Date.now();
+  const col3 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [X, Y] = twoOutside(col3);
+  const prior = [fillCol("🍉"), [col3[0], Y, Y], [col3[0], X, X]];
+  const run0 = craftedRun({ priorWindow: prior, stoppedCount: 3, firstComboAt: 3, linesFormed: 1, now });
+  const m0 = { ...makeSpinMatch({ now }), p1CurrentInputs: run0 };
+  const r = applyColumnStop(m0, "player1", 3, now);
+  assert.equal(r.ok, true);
+  const run = r.match.p1CurrentInputs;
+  assert.equal(run.firstComboAt, 3);
+  assert.equal(run.survived, 1);
+  assert.equal(run.linesFormed, 2);
+  assert.equal(run.ended, false);
+  assert.equal(run.activeIndex, 4);
+});
+
+test("survival: stopping a column without a combo BUSTS the run (crafted)", () => {
+  const now = Date.now();
+  const col3 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [X] = twoOutside(col3);
+  const prior = [fillCol("🍉"), fillCol(X), fillCol(X)];
+  const run0 = craftedRun({ priorWindow: prior, stoppedCount: 3, firstComboAt: 3, linesFormed: 1, now });
+  const m0 = { ...makeSpinMatch({ now }), p1CurrentInputs: run0 };
+  const r = applyColumnStop(m0, "player1", 3, now);
+  assert.equal(r.ok, true);
+  const run = r.match.p1CurrentInputs;
+  assert.equal(run.busted, true);
+  assert.equal(run.ended, true);
+  assert.equal(run.bustColumn, 3);
+  assert.equal(run.survived, 0);
+  assert.equal(run.activeIndex, null);
+  assert.equal(run.activeDeadline, null);
+  // A run that already ended rejects further stops.
+  const again = applyColumnStop(r.match, "player1", 4);
+  assert.equal(again.ok, false);
+  assert.equal(again.status, 409);
+});
+
+test("sliding phase: only the active column may be stopped", () => {
+  const now = Date.now();
+  const col3 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [X, Y] = twoOutside(col3);
+  const prior = [fillCol("🍉"), [col3[0], Y, Y], [col3[0], X, X]];
+  const run0 = craftedRun({ priorWindow: prior, stoppedCount: 3, firstComboAt: 3, linesFormed: 1, now });
+  const m0 = { ...makeSpinMatch({ now }), p1CurrentInputs: run0 };
+  assert.deepEqual(applyColumnStop(m0, "player1", 5, now), {
+    ok: false,
+    error: "Only the active column can be stopped",
+    status: 409,
+  });
+  assert.equal(applyColumnStop(m0, "player1", 99, now).ok, false);
+});
+
+test("MAX_COLUMNS_PER_ROUND caps an ultra-long run (never hangs the match)", () => {
+  const now = Date.now();
+  const lastIdx = MAX_COLUMNS_PER_ROUND - 1; // 59
+  const col = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: lastIdx, symbols: FRUIT_SYMBOLS });
+  const [X, Y] = twoOutside(col);
+  const prior = [fillCol("🍉"), [col[0], Y, Y], [col[0], X, X]];
+  const run0 = craftedRun({ priorWindow: prior, stoppedCount: lastIdx, firstComboAt: 3, linesFormed: 1, now });
+  const m0 = { ...makeSpinMatch({ now }), p1CurrentInputs: run0 };
+  const r = applyColumnStop(m0, "player1", lastIdx, now);
+  assert.equal(r.ok, true);
+  const run = r.match.p1CurrentInputs;
+  assert.equal(run.stoppedCount, MAX_COLUMNS_PER_ROUND);
+  assert.equal(run.ended, true); // capped even though it was a combo stop
+  assert.equal(run.busted, false);
+  assert.equal(run.graceFailed, false);
+  assert.equal(run.activeIndex, null);
+});
+
+test("the engine's landed windows always match the exported columnSymbols stream (no drift)", () => {
+  const now = Date.now();
+  let m = makeSpinMatch({ now });
+  let guard = 0;
+  while (!m.p1CurrentInputs.ended && guard <= MAX_COLUMNS_PER_ROUND + 2) {
+    const idx = m.p1CurrentInputs.stoppedCount;
+    m = applyColumnStop(m, "player1", idx, now).match;
+    const run = m.p1CurrentInputs;
+    assert.deepEqual(run.window, windowFromStops("player1", run.stoppedOrder));
+    assert.equal(run.stoppedCount, run.stoppedOrder.length);
+    assert.equal(run.activeIndex, run.ended ? null : run.stoppedCount);
+    guard += 1;
+  }
+  // The run MUST end (grace-fail, bust, or the 60-column cap).
+  assert.equal(m.p1CurrentInputs.ended, true);
+});
+
+// ── auto-stop (AFK) ──────────────────────────────────────────────────
+
+test("autoStopActiveColumn lands the remaining initial columns in ascending order (AFK)", () => {
+  const now = Date.now();
+  let m = makeSpinMatch({ now });
+  m = applyColumnStop(m, "player1", 2, now).match;
+  const expired = { ...m, p1CurrentInputs: { ...m.p1CurrentInputs, activeDeadline: now - 1 } };
+  const out = autoStopActiveColumn(expired, "player1", now);
+  const run = out.p1CurrentInputs;
+  assert.deepEqual(run.stoppedOrder, [2, 0, 1]);
+  assert.equal(run.stoppedCount, 3);
+  assert.equal(run.anyAutoStopped, true);
+  assert.deepEqual(run.window, windowFromStops("player1", [2, 0, 1]));
+  // Still in grace (or already at the first combo) — NEVER ended by the initial auto-stop.
+  assert.equal(run.ended, false);
+  assert.equal(run.activeIndex, 3);
+});
+
+test("an AFK auto-stop in the survival phase can BUST the player", () => {
+  const now = Date.now();
+  const col3 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [X] = twoOutside(col3);
+  const prior = [fillCol("🍉"), fillCol(X), fillCol(X)];
+  const run0 = craftedRun({
+    priorWindow: prior,
+    stoppedCount: 3,
+    firstComboAt: 3,
+    linesFormed: 1,
+    activeDeadline: now - 1,
+    now,
+  });
+  const m0 = { ...makeSpinMatch({ now }), p1CurrentInputs: run0 };
+  const out = autoStopActiveColumn(m0, "player1", now);
+  const run = out.p1CurrentInputs;
+  assert.equal(run.busted, true);
+  assert.equal(run.ended, true);
+  assert.equal(run.anyAutoStopped, true);
+});
+
+test("autoStopActiveColumn is a no-op when nothing is due or the run is ended", () => {
+  const now = Date.now();
+  const m = makeSpinMatch({ now });
+  assert.equal(autoStopActiveColumn(m, "player1", now), m); // future deadline → untouched
+  const col3 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [X] = twoOutside(col3);
+  const prior = [fillCol("🍉"), fillCol(X), fillCol(X)];
+  const run0 = craftedRun({
+    priorWindow: prior,
+    stoppedCount: 3,
+    firstComboAt: 3,
+    linesFormed: 1,
+    activeDeadline: now - 1,
+    now,
+  });
+  const mEnded = {
+    ...makeSpinMatch({ now }),
+    p1CurrentInputs: autoStopActiveColumn({ ...makeSpinMatch({ now }), p1CurrentInputs: run0 }, "player1", now).p1CurrentInputs,
+  };
+  assert.equal(mEnded.p1CurrentInputs.ended, true);
+  assert.equal(autoStopActiveColumn(mEnded, "player1", now), mEnded);
+});
+
+// ── delayed reveal ───────────────────────────────────────────────────
+
+test("canResolveRound requires BOTH runs to have ended (no early loss reveal)", () => {
+  const now = Date.now();
+  let m = makeSpinMatch({ now });
+  // p1 busts...
+  const col3 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [X] = twoOutside(col3);
+  const run1 = craftedRun({ priorWindow: [fillCol("🍉"), fillCol(X), fillCol(X)], stoppedCount: 3, firstComboAt: 3, linesFormed: 1, now });
+  m = applyColumnStop({ ...m, p1CurrentInputs: run1 }, "player1", 3, now).match;
+  assert.equal(m.p1CurrentInputs.ended, true);
+  assert.equal(canResolveRound(m), false); // p2 still running
+  assert.equal(m.status, MATCH_STATUS.SPIN_1); // NO early reveal
+  // ...p2 busts too → the round can resolve.
+  const col3p2 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player2", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [Xp2] = twoOutside(col3p2);
+  const run2 = craftedRun({ priorWindow: [fillCol("🍉"), fillCol(Xp2), fillCol(Xp2)], stoppedCount: 3, firstComboAt: 3, linesFormed: 1, now, seat: "player2" });
+  m = applyColumnStop({ ...m, p2CurrentInputs: run2 }, "player2", 3, now).match;
+  assert.equal(m.p2CurrentInputs.ended, true);
+  assert.equal(canResolveRound(m), true);
 });
 
 // ════════════════════════════════════════════════════════════════════
 // Round winner + match result + payout
 // ════════════════════════════════════════════════════════════════════
 
-test("decideRoundWinner: higher total score wins, ties are draws", () => {
-  assert.equal(decideRoundWinner(750, 100), RESULT.PLAYER1);
-  assert.equal(decideRoundWinner(100, 750), RESULT.PLAYER2);
-  assert.equal(decideRoundWinner(750, 750), RESULT.DRAW);
-  assert.equal(decideRoundWinner(0, 0), RESULT.DRAW);
+test("decideRoundWinner: both grace-failed → GRACE_DRAW (regardless of other fields)", () => {
+  assert.equal(decideRoundWinner({ graceFailed: true }, { graceFailed: true }), RESULT.GRACE_DRAW);
+  assert.equal(decideRoundWinner({ graceFailed: true, survived: 5 }, { graceFailed: true, survived: 0 }), RESULT.GRACE_DRAW);
 });
 
-test("decideMatchResult: rounds won decides; aggregate points break ties", () => {
-  // Clear rounds-won lead.
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 3, roundsWonPlayer2: 2, p1Score: 100, p2Score: 900 }),
-    RESULT.PLAYER1,
-  );
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 1, roundsWonPlayer2: 3, p1Score: 900, p2Score: 100 }),
-    RESULT.PLAYER2,
-  );
-  // Rounds-won tie → aggregate points decide.
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 2, roundsWonPlayer2: 2, p1Score: 700, p2Score: 500 }),
-    RESULT.PLAYER1,
-  );
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 2, roundsWonPlayer2: 2, p1Score: 500, p2Score: 700 }),
-    RESULT.PLAYER2,
-  );
-  // Everything tied → draw.
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 2, roundsWonPlayer2: 2, p1Score: 500, p2Score: 500 }),
-    RESULT.DRAW,
-  );
-  // Missing inputs default to 0 (draw).
+test("decideRoundWinner: higher survived wins; linesFormed breaks ties", () => {
+  assert.equal(decideRoundWinner({ survived: 4 }, { survived: 2 }), RESULT.PLAYER1);
+  assert.equal(decideRoundWinner({ survived: 1 }, { survived: 6 }), RESULT.PLAYER2);
+  assert.equal(decideRoundWinner({ survived: 3, linesFormed: 2 }, { survived: 3, linesFormed: 1 }), RESULT.PLAYER1);
+  assert.equal(decideRoundWinner({ survived: 3, linesFormed: 1 }, { survived: 3, linesFormed: 4 }), RESULT.PLAYER2);
+  assert.equal(decideRoundWinner({ survived: 3, linesFormed: 2 }, { survived: 3, linesFormed: 2 }), RESULT.DRAW);
+  assert.equal(decideRoundWinner({}, {}), RESULT.DRAW);
+  // A grace-failed player (0 survived) loses to any survivor.
+  assert.equal(decideRoundWinner({ graceFailed: true, survived: 0 }, { survived: 2 }), RESULT.PLAYER2);
+  assert.equal(decideRoundWinner({ survived: 2 }, { graceFailed: true, survived: 0 }), RESULT.PLAYER1);
+});
+
+test("decideMatchResult: rounds-won decides; aggregate survived breaks ties", () => {
+  assert.equal(decideMatchResult({ roundsWonPlayer1: 1, roundsWonPlayer2: 0, p1Score: 4, p2Score: 9 }), RESULT.PLAYER1);
+  assert.equal(decideMatchResult({ roundsWonPlayer1: 0, roundsWonPlayer2: 1, p1Score: 9, p2Score: 4 }), RESULT.PLAYER2);
+  assert.equal(decideMatchResult({ roundsWonPlayer1: 0, roundsWonPlayer2: 0, p1Score: 4, p2Score: 2 }), RESULT.PLAYER1);
+  assert.equal(decideMatchResult({ roundsWonPlayer1: 0, roundsWonPlayer2: 0, p1Score: 2, p2Score: 4 }), RESULT.PLAYER2);
   assert.equal(decideMatchResult({}), RESULT.DRAW);
+  // Forfeit tally: opponent wins outright.
+  assert.equal(decideMatchResult({ roundsWonPlayer1: 0, roundsWonPlayer2: ROUNDS_TO_WIN, p1Score: 0, p2Score: 0 }), RESULT.PLAYER2);
+  assert.equal(decideMatchResult({ roundsWonPlayer1: ROUNDS_TO_WIN, roundsWonPlayer2: 0, p1Score: 0, p2Score: 0 }), RESULT.PLAYER1);
 });
 
-test("a forced best-of-5 forfeit tally resolves to the opponent (disconnect forfeit)", () => {
-  // The disconnect forfeit forces the OPPONENT's rounds-won to
-  // ROUNDS_TO_WIN and routes through the SAME decideMatchResult +
-  // computePayout as a natural settlement — the winner is picked by
-  // the shared decision rule, never by the client.
-  assert.equal(
-    decideMatchResult({
-      roundsWonPlayer1: 0,
-      roundsWonPlayer2: ROUNDS_TO_WIN,
-      p1Score: 0,
-      p2Score: 0,
-    }),
-    RESULT.PLAYER2,
-  );
-  assert.equal(
-    decideMatchResult({
-      roundsWonPlayer1: ROUNDS_TO_WIN,
-      roundsWonPlayer2: 0,
-      p1Score: 0,
-      p2Score: 0,
-    }),
-    RESULT.PLAYER1,
-  );
-  // The opponent's forfeit win pays the standard 90/10 split.
-  const payout = computePayout({ stakeAmount: 100, result: RESULT.PLAYER2 });
-  assert.equal(payout.winnerNet, 190);
-  assert.equal(payout.houseFee, 10);
-  assert.equal(payout.prizePaid, 190);
-});
-
-test("computePayout: winner gets stake + 90% of loser's stake", () => {
+test("computePayout: normal win → winner gets stake + 90% of loser's stake", () => {
   const payout = computePayout({ stakeAmount: 100, result: RESULT.PLAYER1 });
-  assert.equal(payout.winnerNet, 190); // 100 + 90
+  assert.equal(payout.winnerNet, 190);
   assert.equal(payout.loserNet, -100);
-  assert.equal(payout.houseFee, 10); // 10% of loser's stake
+  assert.equal(payout.houseFee, 10);
   assert.equal(payout.prizePaid, 190);
 });
 
@@ -622,7 +725,19 @@ test("computePayout: draw refunds both, no fee", () => {
   assert.equal(payout.loserNet, null);
   assert.equal(payout.houseFee, 0);
   assert.equal(payout.prizePaid, 0);
-  assert.equal(payout.stake, 100);
+  assert.equal(payout.refundEach, 100);
+});
+
+test("computePayout: grace_draw → 95% refund each, house keeps 5% from each (10% total)", () => {
+  const payout = computePayout({ stakeAmount: 100, result: RESULT.GRACE_DRAW });
+  assert.equal(payout.refundEach, 95);
+  assert.equal(payout.houseFee, 10); // 5 + 5
+  assert.equal(payout.prizePaid, 0);
+  assert.equal(payout.winnerNet, null);
+  // Odd stakes round to 2dp.
+  const odd = computePayout({ stakeAmount: 33.33, result: RESULT.GRACE_DRAW });
+  assert.equal(odd.refundEach, 31.66); // 33.33 * 0.95
+  assert.equal(odd.houseFee, 3.33); // 33.33 * 0.10
 });
 
 test("computePayout validates inputs", () => {
@@ -631,263 +746,152 @@ test("computePayout validates inputs", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
-// Round state machine (pure transitions)
+// Round result + advance
 // ════════════════════════════════════════════════════════════════════
 
-function makeSpinMatch(overrides = {}) {
-  const deadline = new Date(Date.now() + ROUND_DEADLINE_MS);
-  const open = openSpinState({
-    matchId: 7,
-    spinNumber: 1,
-    symbols: FRUIT_SYMBOLS,
-    deadline,
-  });
-  return {
-    id: 7,
-    player1Id: "u1",
-    player2Id: "u2",
-    stakeAmount: "100.00",
-    theme: "fruit",
-    status: MATCH_STATUS.SPIN_1,
-    currentSpin: 1,
-    roundDeadline: deadline,
-    ...open,
-    ...overrides,
-  };
-}
+test("buildRoundResult maps both ended runs to the history payload", () => {
+  const now = Date.now();
+  let m = makeSpinMatch({ now });
+  // p1 busts after making (and missing) their first combo...
+  const col3 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [X] = twoOutside(col3);
+  const run1 = craftedRun({ priorWindow: [fillCol("🍉"), fillCol(X), fillCol(X)], stoppedCount: 3, firstComboAt: 3, linesFormed: 1, now });
+  m = applyColumnStop({ ...m, p1CurrentInputs: run1 }, "player1", 3, now).match;
+  // ...p2 grace-fails on their 10th stop.
+  const col9 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player2", colIndex: 9, symbols: FRUIT_SYMBOLS });
+  const [X9] = twoOutside(col9);
+  const run2 = craftedRun({ priorWindow: [fillCol("🍉"), fillCol(X9), fillCol(X9)], stoppedCount: 9, now, seat: "player2" });
+  m = applyColumnStop({ ...m, p2CurrentInputs: run2 }, "player2", 9, now).match;
 
-test("openSpinState gives both players hidden 3x3 reels + precomputed score", () => {
-  const m = makeSpinMatch();
-  assert.equal(m.p1CurrentInputs.reels.length, 3);
-  assert.equal(m.p2CurrentInputs.reels.length, 3);
-  assert.deepEqual(m.p1CurrentInputs.reelsStopped, []);
-  assert.equal(m.p1CurrentInputs.boardLocked, false);
-  assert.notDeepEqual(m.p1CurrentInputs.reels, m.p2CurrentInputs.reels);
-  // Board score is precomputed at open (server-authoritative).
-  assert.equal(typeof m.p1CurrentInputs.symbolScore, "number");
-  assert.equal(typeof m.p1CurrentInputs.lineCount, "number");
-  // The stamped deadline is the full 10s window measured from stamp time
-  // (a sub-100ms skew is just test-runner scheduling latency).
-  const skew = m.roundDeadline.getTime() - Date.now();
-  assert.ok(skew <= ROUND_DEADLINE_MS && skew > ROUND_DEADLINE_MS - 100, `deadline skew: ${skew}ms`);
-});
-
-test("applyReelStop validates participant / status / index / deadline", () => {
-  const m = makeSpinMatch();
-  assert.deepEqual(applyReelStop(m, "spectator", 0), {
-    ok: false,
-    error: "Caller is not a participant",
-    status: 403,
-  });
-  assert.equal(applyReelStop(m, "player1", -1).ok, false);
-  assert.equal(applyReelStop(m, "player1", 3).ok, false);
-  assert.equal(applyReelStop(m, "player1", "x").ok, false);
-  const ready = { ...m, status: MATCH_STATUS.READY };
-  assert.equal(applyReelStop(ready, "player1", 0).status, 400);
-  const expired = { ...m, roundDeadline: new Date(Date.now() - 1) };
-  assert.deepEqual(applyReelStop(expired, "player1", 0), {
-    ok: false,
-    error: "Round time has expired",
-    status: 400,
-  });
-});
-
-test("applyReelStop records server-side stop offsets (accuracy timing)", () => {
-  const m = makeSpinMatch();
-  const openedAt = m.p1CurrentInputs.openedAt;
-  const r = applyReelStop(m, "player1", 1, openedAt + 500);
-  assert.equal(r.ok, true);
-  assert.equal(r.match.p1CurrentInputs.stopOffsets[1], 500);
-});
-
-test("applyReelStop rejects stale stops that echo a previous round", () => {
-  const m = makeSpinMatch();
-  assert.equal(applyReelStop(m, "player1", 0, Date.now(), 1).ok, true);
-  assert.deepEqual(applyReelStop(m, "player1", 1, Date.now(), 2), {
-    ok: false,
-    error: "Round has already advanced",
-    status: 409,
-  });
-  assert.equal(applyReelStop(m, "player1", 1).ok, true);
-});
-
-test("a stopped reel can never be stopped again", () => {
-  let m = makeSpinMatch();
-  const first = applyReelStop(m, "player1", 1);
-  assert.equal(first.ok, true);
-  m = first.match;
-  assert.deepEqual(m.p1CurrentInputs.reelsStopped, [1]);
-  const second = applyReelStop(m, "player1", 1);
-  assert.deepEqual(second, {
-    ok: false,
-    error: "Reel 2 is already stopped",
-    status: 409,
-  });
-});
-
-test("the board locks exactly on the 3rd stop and rejects further stops", () => {
-  let m = makeSpinMatch();
-  for (const idx of [0, 2, 1]) {
-    const r = applyReelStop(m, "player1", idx);
-    assert.equal(r.ok, true);
-    m = r.match;
-  }
-  assert.deepEqual(m.p1CurrentInputs.reelsStopped, [0, 1, 2]);
-  assert.equal(m.p1CurrentInputs.boardLocked, true);
-  assert.deepEqual(applyReelStop(m, "player1", 0), {
-    ok: false,
-    error: "Board is already locked",
-    status: 409,
-  });
-});
-
-test("autoStopReels fills remaining reels and marks autoStopped", () => {
-  let m = makeSpinMatch();
-  m = applyReelStop(m, "player2", 2).match;
-  m = autoStopReels(m, "player2");
-  assert.deepEqual(m.p2CurrentInputs.reelsStopped, [0, 1, 2]);
-  assert.equal(m.p2CurrentInputs.autoStopped, true);
-  assert.equal(m.p2CurrentInputs.boardLocked, true);
-  assert.equal(m.p1CurrentInputs.boardLocked, false);
-});
-
-test("canResolveRound requires BOTH boards locked", () => {
-  let m = makeSpinMatch();
-  assert.equal(canResolveRound(m), false);
-  m = autoStopReels(m, "player1");
-  assert.equal(canResolveRound(m), false);
-  m = autoStopReels(m, "player2");
-  assert.equal(canResolveRound(m), true);
-});
-
-test("buildRoundResult maps the round to its history payload (scored)", () => {
-  let m = makeSpinMatch();
-  m = applyReelStop(m, "player1", 0).match;
-  m = applyReelStop(m, "player1", 1).match;
-  m = applyReelStop(m, "player1", 2).match;
-  m = autoStopReels(m, "player2");
   const row = buildRoundResult(m, FRUIT_SYMBOLS);
   assert.equal(row.matchId, 7);
   assert.equal(row.spinNumber, 1);
-  assert.deepEqual(row.player1Inputs, { reelsStopped: [0, 1, 2], autoStopped: false });
-  assert.deepEqual(row.player2Inputs, { reelsStopped: [0, 1, 2], autoStopped: true });
-  assert.equal(row.player1AutoSpun, false);
-  assert.equal(row.player2AutoSpun, true);
-  assert.deepEqual(row.player1Result.reels, m.p1CurrentInputs.reels);
-  assert.equal(row.player1Result.symbolScore, m.p1CurrentInputs.symbolScore);
-  assert.equal(typeof row.player1Result.totalScore, "number");
-  assert.equal(typeof row.player2Result.totalScore, "number");
-  assert.equal(row.spinPointsPlayer1, row.player1Result.totalScore);
-  assert.equal(row.spinPointsPlayer2, row.player2Result.totalScore);
-  // Round winner = higher total score (or draw).
-  assert.ok([RESULT.PLAYER1, RESULT.PLAYER2, RESULT.DRAW].includes(row.roundWinner));
-  if (row.player1Result.totalScore > row.player2Result.totalScore) {
-    assert.equal(row.roundWinner, RESULT.PLAYER1);
-  }
-  if (row.player1Result.totalScore === row.player2Result.totalScore) {
-    assert.equal(row.roundWinner, RESULT.DRAW);
-  }
+  // The busting stop (column 3) is recorded in the stopped order.
+  assert.deepEqual(row.player1Inputs, { stoppedOrder: [0, 1, 2, 3], autoStopped: false });
+  assert.equal(row.player1Result.busted, true);
+  assert.equal(row.player1Result.survived, 0);
+  assert.equal(row.player1Result.linesFormed, 1);
+  assert.equal(row.player2Result.graceFailed, true);
+  assert.equal(row.player2Result.survived, 0);
+  assert.equal(row.player2Result.linesFormed, 0);
+  assert.equal(row.spinPointsPlayer1, 0);
+  assert.equal(row.spinPointsPlayer2, 0);
+  // p1 formed a combo, p2 never did → p1 wins despite busting first.
+  assert.equal(row.roundWinner, RESULT.PLAYER1);
+  assert.deepEqual(row.player1Result.winningLines, winningLinesIn(m.p1CurrentInputs.window));
 });
 
-test("planAdvanceAfterResolve opens the next spin with a fresh 10s window", () => {
-  let m = makeSpinMatch();
-  m = autoStopReels(m, "player1");
-  m = autoStopReels(m, "player2");
-  const plan = planAdvanceAfterResolve({
-    match: m,
-    symbols: FRUIT_SYMBOLS,
-    now: Date.now(),
+test("buildRoundResult stores survived counts as spin points + decides the winner", () => {
+  const p1 = endedRun({
+    stoppedCount: 8,
+    firstComboAt: 4,
+    survived: 3,
+    linesFormed: 4,
+    busted: true,
+    bustColumn: 7,
+    window: [fillCol("🍉"), fillCol("🍌"), fillCol("🍍")],
   });
-  assert.equal(plan.finished, false);
-  assert.equal(plan.status, MATCH_STATUS.SPIN_2);
-  assert.equal(plan.currentSpin, 2);
-  const skew = plan.roundDeadline.getTime() - Date.now();
-  assert.ok(skew <= ROUND_DEADLINE_MS && skew > ROUND_DEADLINE_MS - 100, `skew: ${skew}ms`);
-  assert.equal(plan.p1CurrentInputs.boardLocked, false);
-  assert.deepEqual(plan.p1CurrentInputs.reelsStopped, []);
+  const p2 = endedRun({
+    stoppedCount: 9,
+    firstComboAt: 3,
+    survived: 5,
+    linesFormed: 6,
+    busted: true,
+    bustColumn: 8,
+    window: [fillCol("🍏"), fillCol("🍓"), fillCol("🍉")],
+  });
+  const m = { ...makeSpinMatch(), p1CurrentInputs: p1, p2CurrentInputs: p2 };
+  const row = buildRoundResult(m, FRUIT_SYMBOLS);
+  assert.equal(row.spinPointsPlayer1, 3);
+  assert.equal(row.spinPointsPlayer2, 5);
+  assert.equal(row.roundWinner, RESULT.PLAYER2); // higher survived
+  assert.equal(row.player1Result.survived, 3);
+  assert.equal(row.player1Result.busted, true);
+  assert.equal(row.player1Result.bustColumn, 7);
+  assert.equal(row.player2Result.survived, 5);
+  assert.equal(row.player2Result.ended, true);
 });
 
-test("planAdvanceAfterResolve finishes after round 5", () => {
-  const m = { ...makeSpinMatch({ status: MATCH_STATUS.SPIN_5, currentSpin: 5 }) };
+test("planAdvanceAfterResolve ALWAYS finishes after the single survival round", () => {
+  const now = Date.now();
+  const m = makeSpinMatch({ now });
   const plan = planAdvanceAfterResolve({
     match: m,
     symbols: FRUIT_SYMBOLS,
-    now: Date.now(),
+    tallies: { roundsWonPlayer1: 1, roundsWonPlayer2: 0, p1Score: 3, p2Score: 1 },
+    now,
   });
   assert.equal(plan.finished, true);
   assert.equal(plan.status, MATCH_STATUS.FINISHED);
-  assert.ok(plan.endedAt instanceof Date);
+  assert.equal(plan.endedAt.getTime(), now);
+  // Even a fresh unresolved round finishes — MAX_ROUNDS = 1 never opens spin 2.
+  const plan2 = planAdvanceAfterResolve({ match: m, symbols: FRUIT_SYMBOLS, now });
+  assert.equal(plan2.finished, true);
+  assert.equal(plan2.status, MATCH_STATUS.FINISHED);
 });
 
-test("planAdvanceAfterResolve finishes IMMEDIATELY when a player reaches ROUNDS_TO_WIN", () => {
-  const base = makeSpinMatch();
+test("planAdvanceAfterResolve on a non-spin match is a no-op finish", () => {
+  const m = { ...makeSpinMatch(), status: MATCH_STATUS.READY, currentSpin: 1 };
+  const plan = planAdvanceAfterResolve({ match: m, symbols: FRUIT_SYMBOLS, now: Date.now() });
+  assert.deepEqual(plan, { finished: true });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Viewer-visible run snapshot (status route)
+// ════════════════════════════════════════════════════════════════════
+
+test("viewerRunSnapshot reports grace / alive / ended statuses + own window", () => {
   const now = Date.now();
+  const m = makeSpinMatch({ now });
+  // Fresh run → grace, full 10s countdown.
+  const fresh = viewerRunSnapshot({ inputs: m.p1CurrentInputs, now });
+  assert.equal(fresh.status, "grace");
+  assert.equal(fresh.ended, false);
+  assert.equal(fresh.graceStopsUsed, 0);
+  assert.equal(fresh.survived, 0);
+  assert.equal(fresh.firstComboAt, null);
+  assert.deepEqual(fresh.window, [null, null, null]);
+  assert.equal(fresh.countdownMs, COLUMN_DEADLINE_MS);
 
-  // 3-0 after spin 3 → first to 3 → finished, even though spin 4/5
-  // were never played.
-  const m3 = { ...base, status: MATCH_STATUS.SPIN_3, currentSpin: 3 };
-  const plan3 = planAdvanceAfterResolve({
-    match: m3,
-    symbols: FRUIT_SYMBOLS,
-    tallies: { roundsWonPlayer1: 3, roundsWonPlayer2: 0, p1Score: 1, p2Score: 0 },
+  const col3 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [X] = twoOutside(col3);
+  const prior = [fillCol("🍉"), fillCol(X), fillCol(X)];
+
+  // Mid-grace after 5 stops (no combo yet).
+  const grace = viewerRunSnapshot({ inputs: craftedRun({ priorWindow: prior, stoppedCount: 5, activeDeadline: now + 4000, now }), now });
+  assert.equal(grace.status, "grace");
+  assert.equal(grace.graceStopsUsed, 5);
+  assert.equal(grace.countdownMs, 4000);
+
+  // Alive in the survival phase.
+  const alive = viewerRunSnapshot({
+    inputs: craftedRun({ priorWindow: prior, stoppedCount: 5, firstComboAt: 4, survived: 1, linesFormed: 2, activeDeadline: now + 4000, now }),
     now,
   });
-  assert.equal(plan3.finished, true);
-  assert.equal(plan3.status, MATCH_STATUS.FINISHED);
-  assert.equal(plan3.endedAt.getTime(), now);
+  assert.equal(alive.status, "alive");
+  assert.equal(alive.survived, 1);
+  assert.equal(alive.firstComboAt, 4);
 
-  // 3-1 after spin 4 → the 3rd win seals it immediately too.
-  const m4 = { ...base, status: MATCH_STATUS.SPIN_4, currentSpin: 4 };
-  const plan4 = planAdvanceAfterResolve({
-    match: m4,
-    symbols: FRUIT_SYMBOLS,
-    tallies: { roundsWonPlayer1: 3, roundsWonPlayer2: 1, p1Score: 1, p2Score: 1 },
-    now,
-  });
-  assert.equal(plan4.finished, true);
-  assert.equal(plan4.status, MATCH_STATUS.FINISHED);
+  // Busted.
+  const busted = { ...craftedRun({ priorWindow: prior, stoppedCount: 5, firstComboAt: 4, survived: 1, linesFormed: 2, now }), ended: true, busted: true, activeIndex: null, activeDeadline: null };
+  const b = viewerRunSnapshot({ inputs: busted, now });
+  assert.equal(b.status, "busted");
+  assert.equal(b.ended, true);
 
-  // 0-3 after spin 3 → player2 reached 3 first → finished.
-  const m3p2 = { ...base, status: MATCH_STATUS.SPIN_3, currentSpin: 3 };
-  const planP2 = planAdvanceAfterResolve({
-    match: m3p2,
-    symbols: FRUIT_SYMBOLS,
-    tallies: { roundsWonPlayer1: 0, roundsWonPlayer2: 3, p1Score: 0, p2Score: 1 },
-    now,
-  });
-  assert.equal(planP2.finished, true);
-  assert.equal(planP2.status, MATCH_STATUS.FINISHED);
-});
+  // Grace-failed.
+  const gf = { ...craftedRun({ priorWindow: prior, stoppedCount: 10, now }), ended: true, graceFailed: true, activeIndex: null, activeDeadline: null };
+  assert.equal(viewerRunSnapshot({ inputs: gf, now }).status, "grace_failed");
 
-test("planAdvanceAfterResolve does NOT finish on a 2-1 (or lower) lead", () => {
-  const base = makeSpinMatch();
-  const now = Date.now();
-  const m = { ...base, status: MATCH_STATUS.SPIN_3, currentSpin: 3 };
-  const plan = planAdvanceAfterResolve({
-    match: m,
-    symbols: FRUIT_SYMBOLS,
-    tallies: { roundsWonPlayer1: 2, roundsWonPlayer2: 1, p1Score: 1, p2Score: 1 },
-    now,
-  });
-  assert.equal(plan.finished, false);
-  assert.equal(plan.status, MATCH_STATUS.SPIN_4);
-  assert.equal(plan.currentSpin, 4);
-  // A fresh round-4 board is opened with a fresh 10s window.
-  assert.equal(plan.p1CurrentInputs.boardLocked, false);
-  assert.equal(plan.roundDeadline.getTime() - now, ROUND_DEADLINE_MS);
-});
+  // Capped (safety cap).
+  const capped = { ...craftedRun({ priorWindow: prior, stoppedCount: 5, firstComboAt: 4, survived: 1, linesFormed: 2, now }), ended: true, activeIndex: null, activeDeadline: null };
+  assert.equal(viewerRunSnapshot({ inputs: capped, now }).status, "capped");
 
-test("planAdvanceAfterResolve: the MAX_ROUNDS cap still finishes a 2-2 tie", () => {
-  const base = makeSpinMatch();
-  const m = { ...base, status: MATCH_STATUS.SPIN_5, currentSpin: 5 };
-  const plan = planAdvanceAfterResolve({
-    match: m,
-    symbols: FRUIT_SYMBOLS,
-    tallies: { roundsWonPlayer1: 2, roundsWonPlayer2: 2, p1Score: 1, p2Score: 1 },
-    now: Date.now(),
-  });
-  assert.equal(plan.finished, true);
-  assert.equal(plan.status, MATCH_STATUS.FINISHED);
+  // Falsy inputs → null (the store only passes real run states or null).
+  assert.equal(viewerRunSnapshot({ inputs: null, now }), null);
+  assert.equal(viewerRunSnapshot({ inputs: undefined, now }), null);
+
+  // Deterministic.
+  assert.deepEqual(viewerRunSnapshot({ inputs: alive, now }), viewerRunSnapshot({ inputs: alive, now }));
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -907,4 +911,4 @@ test("round2 / pickPositiveInt behave like the other PvP games", () => {
   assert.equal(FINISHED_GRACE_MS, 5000);
 });
 
-console.log("\n? All PvP Slots engine tests passed!\n");
+console.log("\n✅ All PvP Slots (Fruit Fortune Survival) engine tests passed!\n");
