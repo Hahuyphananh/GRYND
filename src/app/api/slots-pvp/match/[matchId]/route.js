@@ -24,6 +24,7 @@ import {
   fetchMatchWithAutoResolve,
   fetchMatchRounds,
   scrubMatchForViewer,
+  isBotMatch,
 } from "../../../../../lib/slots-pvp/serverStore.js";
 import { viewerRunSnapshot } from "../../../../../lib/slots-pvp/engine.js";
 import {
@@ -35,7 +36,7 @@ import {
 // Per-viewer normaliser. Adds derived flags the match view needs to
 // gate the STOP controls, render the correct seat identifier, and show
 // the opponent's live run status (never their board).
-function normaliseMatch(match, viewerUserId) {
+function normaliseMatch(match, viewerUserId, isBot = false) {
   if (!match) return null;
   const viewerIsPlayer1 = match.player1Id === viewerUserId;
   const viewerIsPlayer2 = match.player2Id === viewerUserId;
@@ -105,6 +106,10 @@ function normaliseMatch(match, viewerUserId) {
     // waiting for an opponent. Used to gate the "Cancel" button.
     viewerCanCancel:
       match.status === MATCH_STATUS.WAITING && viewerIsPlayer1,
+    // True when this is a practice match against the developer's test
+    // bot (free play — no tokens wagered). Used to label the match and
+    // hide the Report button.
+    isBot: Boolean(isBot),
   };
 }
 
@@ -181,6 +186,9 @@ export async function GET(req, { params }) {
     // a spin round is live (the viewer's own reels stay visible).
     const scrubbed = scrubMatchForViewer(enrichedMatch, userId);
 
+    // Practice matches are identifiable by the test-account opponent.
+    const isBot = await isBotMatch(scrubbed);
+
     // Fetch the round history (reveal screen + rounds strip).
     let rounds = [];
     try {
@@ -196,7 +204,7 @@ export async function GET(req, { params }) {
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatch(scrubbed, userId),
+        match: normaliseMatch(scrubbed, userId, isBot),
         rounds: rounds.map(normaliseRound),
       },
     });
