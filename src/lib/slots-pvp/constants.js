@@ -117,6 +117,23 @@ export const COLUMN_DEADLINE_MS = COLUMN_TIMER_SECONDS * 1000;
 // (server-authoritative "Get ready" banner).
 export const READY_WINDOW_MS = 3000;
 
+// ──────────────────────────────────────────────────────────────────────
+// Test / practice mode
+// ──────────────────────────────────────────────────────────────────────
+
+// Email domain of the developer's test accounts. Lobbies hosted by these
+// accounts are excluded from REAL matchmaking (the main game never
+// pairs a player against a codetest), and matches created via the
+// "Test vs Bot" button (opponent = one of these accounts) are free
+// play — no stake is escrowed and no payout is credited.
+export const TEST_ACCOUNT_EMAIL_DOMAIN = "codebuff-test.dev";
+
+// How fast the practice bot stops its active column during a test match
+// (driven off the /status poll, like the AFK auto-stop — just much
+// snappier so the bot plays like a real opponent instead of stalling
+// for the full 10s column timer).
+export const BOT_STOP_MS = 1500;
+
 // Client-side transition overlay between round-end and the reveal.
 export const BETWEEN_ROUNDS_MS = 3000;
 

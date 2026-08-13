@@ -296,7 +296,10 @@ function SurvivalBoard({
   const baseIndex = sliding ? stoppedCount - 3 : 0;
   const activeIndex = !ended ? (run?.activeIndex ?? null) : null;
 
-  const spinningCell = (colIndex, onCellStop) => (
+  // Single-cell "rolling" view — NO per-column STOP button. The stop
+  // control is the one big button under the board (see below), so the
+  // grid stays uncluttered and there is exactly one place to click.
+  const spinningCell = (colIndex) => (
     <div className="flex flex-col gap-1.5 h-full">
       <div className="flex items-center justify-between px-0.5">
         <span className="text-[9px] uppercase tracking-widest text-amber-200/80 font-bold">
@@ -318,15 +321,6 @@ function SurvivalBoard({
           </div>
         ))}
       </div>
-      {onCellStop && (
-        <button
-          onClick={onCellStop}
-          disabled={!canStop}
-          className="w-full px-2 py-2 rounded-lg text-xs font-black tracking-widest bg-gradient-to-r from-red-500 to-orange-500 text-white hover:from-red-400 hover:to-orange-400 shadow-[0_0_14px_rgba(255,60,60,0.45)] animate-pulse disabled:opacity-40 disabled:animate-none transition"
-        >
-          STOP
-        </button>
-      )}
     </div>
   );
 
@@ -392,7 +386,7 @@ function SurvivalBoard({
                 {locked
                   ? lockedCell(col, colIndex)
                   : spinning
-                    ? spinningCell(colIndex, () => onStop(colIndex))
+                    ? spinningCell(colIndex)
                     : (
                       <div className="flex flex-col gap-1.5 h-full">
                         <div className="flex-1 rounded-xl border border-white/10 bg-[#020617] flex items-center justify-center">
@@ -415,14 +409,14 @@ function SurvivalBoard({
             transition={{ duration: 0.3 }}
             className="absolute inset-y-0 right-0 w-[calc((100%-1rem)/3)] sm:w-[calc((100%-1.5rem)/3)] z-10"
           >
-            {spinningCell(activeIndex, () => onStop(activeIndex))}
+            {spinningCell(activeIndex)}
           </motion.div>
         )}
       </div>
 
-      {/* Status strip + big STOP (sliding phase) */}
+      {/* Status strip + the single big STOP button (all phases) */}
       <div className="mt-3 space-y-2">
-        {sliding && (
+        {isLive && !ended && (
           <button
             onClick={() => onStop(activeIndex)}
             disabled={!canStop || !isLive || ended}
@@ -699,18 +693,22 @@ function WinnerPopup({ match, user, onBack, p1Name, p2Name, roundResult }) {
           </div>
         </div>
 
-        {!isDraw && !isGraceDraw && (
+        {match.isBot ? (
+          <p className="text-center text-xs text-fuchsia-200/80 mt-4">
+            Practice match — no tokens were wagered.
+          </p>
+        ) : !isDraw && !isGraceDraw ? (
           <p className="text-center text-xs text-white/60 mt-4">
             Prize paid:{" "}
             <span className="text-white font-bold">{(match.prizePaid || 0).toFixed(2)}</span>
           </p>
-        )}
-        {isGraceDraw && (
+        ) : null}
+        {!match.isBot && isGraceDraw && (
           <p className="text-center text-xs text-yellow-200/80 mt-4">
             Both players failed to make a combo — each refunded 95% (house keeps 10%).
           </p>
         )}
-        {isDraw && !isGraceDraw && (
+        {!match.isBot && isDraw && !isGraceDraw && (
           <p className="text-center text-xs text-white/60 mt-4">
             Equal survival — both players refunded, no house fee.
           </p>
@@ -759,6 +757,10 @@ export default function SlotsPvpMatchPage({ params }) {
 
   const fetchStatusPendingRef = useRef(false);
   const resolvedFiredRef = useRef(false);
+  // When the rate limiter trips, pause polling briefly instead of
+  // hammering the endpoint every 800ms (which would keep the board
+  // frozen and make STOP appear broken).
+  const rateLimitCooldownRef = useRef(0);
 
   // ── Status fetch (800ms poll + in-flight guard) ─────────────────
   const fetchStatus = useCallback(async () => {
@@ -774,6 +776,7 @@ export default function SlotsPvpMatchPage({ params }) {
       return null;
     }
     if (fetchStatusPendingRef.current) return null;
+    if (Date.now() < rateLimitCooldownRef.current) return null;
     fetchStatusPendingRef.current = true;
     try {
       const res = await fetch(`/api/slots-pvp/match/${matchId}`, {
@@ -781,6 +784,13 @@ export default function SlotsPvpMatchPage({ params }) {
         credentials: "include",
       });
       const data = await res.json();
+      if (res.status === 429) {
+        // Rate limited — pause polling for a few seconds instead of
+        // spinning against the limit, then resume.
+        rateLimitCooldownRef.current = Date.now() + 3000;
+        setError(data?.error || "You're going too fast — slowing down.");
+        return null;
+      }
       if (!res.ok || !data.success) {
         setError(data?.error || "Unable to load match");
         return null;
@@ -897,10 +907,23 @@ export default function SlotsPvpMatchPage({ params }) {
         const data = await res.json();
         if (!res.ok || !data.success) {
           // 409 / 400 (already stopped / expired) are expected races —
-          // a fresh poll reconciles. Only surface unexpected errors.
+          // the server may have auto-stopped this column at its
+          // deadline, or the round already advanced. Re-poll RIGHT AWAY
+          // so the board re-syncs instantly instead of leaving the STOP
+          // buttons stuck on a stale column (which made stop feel
+          // broken). Only surface genuinely unexpected errors.
+          if (res.status === 429) {
+            rateLimitCooldownRef.current = Date.now() + 3000;
+            setError(
+              data?.error || "You're going too fast — please wait a moment.",
+            );
+            fetchStatus();
+            return;
+          }
           if (res.status !== 409 && res.status !== 400) {
             setError(data?.error || "Unable to stop column");
           }
+          fetchStatus();
           return;
         }
         posthog?.capture("slots_pvp_column_stopped", {
@@ -1182,10 +1205,15 @@ export default function SlotsPvpMatchPage({ params }) {
             </span>
             <span className="font-mono">{(stake || 0).toFixed(2)} stake</span>
             <span className="font-mono">Survival round</span>
+            {match.isBot && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/40 bg-fuchsia-500/10 px-2.5 py-0.5 font-bold text-fuchsia-300">
+                🤖 Practice · vs Bot
+              </span>
+            )}
             <span className="font-mono">
               {viewerSeat === "player1" ? "P1" : "P2"} seat
             </span>
-            {opponentClerkId && (
+            {!match.isBot && opponentClerkId && (
               <button
                 onClick={() => setShowReportModal(true)}
                 className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
@@ -1237,7 +1265,11 @@ export default function SlotsPvpMatchPage({ params }) {
           <div className="order-1 lg:order-2 min-w-0">
             <SurvivalBoard
               run={viewerRun}
-              canStop={Boolean(match.viewerCanStop)}
+              canStop={
+                Boolean(match.viewerCanStop) &&
+                !busy &&
+                columnLeftMs > 0
+              }
               onStop={handleStop}
               rollTick={rollTick}
               isLive={isSpin && !isFinished && !isCancelled}

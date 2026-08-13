@@ -49,7 +49,7 @@
 // makes the state machine testable in isolation (the pure transitions
 // live in `./engine.js` and are shared with the test runner).
 
-import { eq, and, sql, isNull, inArray } from "drizzle-orm";
+import { eq, and, sql, isNull, inArray, notInArray } from "drizzle-orm";
 import { db } from "../../db/client";
 import { slotsPvpMatches, slotsPvpRounds, users } from "../../db/schema";
 import { getTheme, THEME_IDS } from "../slotThemes.jsx";
@@ -65,6 +65,8 @@ import {
   READY_WINDOW_MS,
   SLOTS_PVP_LOCK_NAMESPACE,
   TERMINAL_STATES,
+  BOT_STOP_MS,
+  TEST_ACCOUNT_EMAIL_DOMAIN,
   computePayout,
   isSpinStatus,
   round2,
@@ -120,18 +122,79 @@ function themeSymbolsForSpin(match) {
 
 // Open (waiting) matches for the casino lobby listing. Most recent
 // first; `player2Id IS NULL` is the canonical "open" predicate.
+// Test-account lobbies (the "codetest" bot accounts) are excluded so
+// real players only ever pair with real players.
 export async function listOpenMatches({ limit = 30 } = {}) {
+  const testIds = await fetchTestAccountClerkIds();
+  const where = [
+    eq(slotsPvpMatches.status, MATCH_STATUS.WAITING),
+    isNull(slotsPvpMatches.player2Id),
+  ];
+  if (testIds.length > 0) {
+    where.push(notInArray(slotsPvpMatches.player1Id, testIds));
+  }
   return db
     .select()
     .from(slotsPvpMatches)
-    .where(
-      and(
-        eq(slotsPvpMatches.status, MATCH_STATUS.WAITING),
-        isNull(slotsPvpMatches.player2Id),
-      ),
-    )
+    .where(and(...where))
     .orderBy(sql`${slotsPvpMatches.createdAt} DESC`)
     .limit(limit);
+}
+
+// ── Test-account identification ───────────────────────────────────────
+//
+// The developer's test accounts ("codetest") live on a dedicated email
+// domain. They are used exclusively by the "Test vs Bot" button, so the
+// matchmaker must NEVER pair a real player against them and their
+// matches must never move real tokens. The clerkIds are resolved once
+// and cached (short TTL) — the list only changes when the developer
+// creates another test account, so a stale list for a minute is fine.
+
+let testAccountCache = { ids: null, at: 0 };
+const TEST_ACCOUNT_CACHE_TTL_MS = 60 * 1000;
+
+async function fetchTestAccountClerkIds() {
+  const now = Date.now();
+  if (testAccountCache.ids && now - testAccountCache.at < TEST_ACCOUNT_CACHE_TTL_MS) {
+    return testAccountCache.ids;
+  }
+  let ids = [];
+  try {
+    const rows = await db
+      .select({ clerkId: users.clerkId })
+      .from(users)
+      .where(
+        sql`${users.email} ILIKE ${`%@${TEST_ACCOUNT_EMAIL_DOMAIN}`}`,
+      );
+    ids = rows.map((r) => r.clerkId).filter(Boolean);
+  } catch (err) {
+    console.warn(
+      "[slots-pvp] test-account lookup failed (defaulting to none):",
+      err && err.message ? err.message : err,
+    );
+    ids = [];
+  }
+  testAccountCache = { ids, at: now };
+  return ids;
+}
+
+/** True when the clerkId belongs to one of the developer's test accounts. */
+export async function isTestAccountClerkId(clerkId) {
+  if (!clerkId) return false;
+  const ids = await fetchTestAccountClerkIds();
+  return ids.includes(clerkId);
+}
+
+/** True when a match involves a test account (practice / bot match). */
+export async function isBotMatch(match) {
+  if (!match) return false;
+  if (match.isTest === true) return true;
+  // NOTE: both awaits are required — `||` between two promises would
+  // short-circuit to the first promise and never resolve the second.
+  return (
+    (await isTestAccountClerkId(match.player1Id)) ||
+    (await isTestAccountClerkId(match.player2Id))
+  );
 }
 
 // Stable deterministic hash from numeric stake to a signed 32-bit int.
@@ -245,23 +308,30 @@ export async function createOrJoin({ userId, stakeAmount, theme = "fruit" }) {
 
   const lockKey = hashStakeToInt(stakeAmount);
 
+  // Resolve the developer's test-account clerkIds up front so lobbies
+  // hosted by a codetest are never offered to a real player.
+  const testIds = await fetchTestAccountClerkIds();
+
   return await db.transaction(async (tx) => {
     // Acquire stake-keyed advisory lock; auto-released on commit/rollback.
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(${SLOTS_PVP_LOCK_NAMESPACE}, ${lockKey})`,
     );
 
-    // 1) Look for an existing open match with matching stake.
+    // 1) Look for an existing open match with matching stake (never a
+    //    test-account lobby — those are only joined via the Test button).
+    const openMatchWhere = [
+      eq(slotsPvpMatches.status, MATCH_STATUS.WAITING),
+      isNull(slotsPvpMatches.player2Id),
+      eq(slotsPvpMatches.stakeAmount, Number(stakeAmount).toFixed(2)),
+    ];
+    if (testIds.length > 0) {
+      openMatchWhere.push(notInArray(slotsPvpMatches.player1Id, testIds));
+    }
     const [openMatch] = await tx
       .select()
       .from(slotsPvpMatches)
-      .where(
-        and(
-          eq(slotsPvpMatches.status, MATCH_STATUS.WAITING),
-          isNull(slotsPvpMatches.player2Id),
-          eq(slotsPvpMatches.stakeAmount, Number(stakeAmount).toFixed(2)),
-        ),
-      )
+      .where(and(...openMatchWhere))
       .orderBy(sql`${slotsPvpMatches.createdAt} ASC`)
       .limit(1)
       .for("update");
@@ -496,6 +566,66 @@ export async function createMatch({
   });
 }
 
+// ── Practice (Test vs Bot) match ──────────────────────────────────────
+//
+// Creates a FREE-PLAY match against one of the developer's test accounts
+// (the "codetest" bot). Follows the dice-flush / farkle AI convention:
+// no stake is escrowed from either side and no payout is credited at
+// settlement — the match exists purely to test the game loop. The match
+// skips the waiting lobby and goes straight to the `ready` banner; the
+// bot seat is driven by the poll-time auto-stop (at a snappy
+// BOT_STOP_MS cadence, see advanceFromReady / forceSpinAdvance) until
+// its run ends.
+
+export async function createTestMatch({ userId, stakeAmount, theme = "fruit" }) {
+  const validation = validateMatchParams({ stakeAmount, theme });
+  if (!validation.ok) {
+    return { error: validation.error, status: 400 };
+  }
+  if (!userId) {
+    return { error: "userId is required", status: 400 };
+  }
+
+  // The bot occupies the player2 seat — pick any test account that isn't
+  // the caller (defensive; the caller shouldn't be a test account).
+  const testIds = await fetchTestAccountClerkIds();
+  const botId = testIds.find((id) => id !== userId) || testIds[0];
+  if (!botId) {
+    return { error: "No test bot available", status: 500 };
+  }
+
+  const stake = Number(stakeAmount).toFixed(2);
+  const now = new Date();
+
+  // No balance movement anywhere in this function — free play.
+  const [match] = await db
+    .insert(slotsPvpMatches)
+    .values({
+      player1Id: userId,
+      player2Id: botId,
+      stakeAmount: stake,
+      theme,
+      // Both players present → skip straight to the ready banner
+      // (auto-advances to spin_1 after READY_WINDOW_MS).
+      status: MATCH_STATUS.READY,
+      currentSpin: 1,
+      roundsWonPlayer1: 0,
+      roundsWonPlayer2: 0,
+      p1Score: 0,
+      p2Score: 0,
+      p1CurrentInputs: null,
+      p2CurrentInputs: null,
+      roundDeadline: new Date(now.getTime() + READY_WINDOW_MS),
+      roundTimerSeconds: ROUND_TIMER_SECONDS,
+      houseFee: "0.00",
+      prizePaid: "0.00",
+      startedAt: now,
+    })
+    .returning();
+
+  return { match, test: true };
+}
+
 // ── Auto-advance ready → spin_1 ───────────────────────────────────────
 
 async function advanceFromReady(tx, match) {
@@ -510,6 +640,22 @@ async function advanceFromReady(tx, match) {
     symbols,
     now,
   });
+
+  // Practice matches: the test-bot seat stops its columns on a snappy
+  // BOT_STOP_MS cadence instead of the full 10s column timer, so the
+  // bot plays like a live opponent (driven by the /status polls).
+  let botSeat = null;
+  if (await isBotMatch(match)) {
+    if (await isTestAccountClerkId(match.player2Id)) botSeat = "player2";
+    else if (await isTestAccountClerkId(match.player1Id)) botSeat = "player1";
+  }
+  if (botSeat) {
+    const botKey = botSeat === "player1" ? "p1CurrentInputs" : "p2CurrentInputs";
+    open[botKey] = {
+      ...open[botKey],
+      activeDeadline: now + BOT_STOP_MS,
+    };
+  }
 
   const [updated] = await tx
     .update(slotsPvpMatches)
@@ -648,6 +794,24 @@ async function settleMatch(tx, match, tallies, { forcedResult = null } = {}) {
     stakeAmount: match.stakeAmount,
     result,
   });
+
+  // Practice matches (Test vs Bot) are free play: nothing was escrowed,
+  // so nothing is credited — the winner/result are still stamped so the
+  // reveal UI works, but no balance or leaderboard side-effects run.
+  if (await isBotMatch(match)) {
+    const winnerId =
+      result === RESULT.PLAYER1
+        ? match.player1Id
+        : result === RESULT.PLAYER2
+          ? match.player2Id
+          : null;
+    return {
+      winnerId,
+      result,
+      houseFee: "0.00",
+      prizePaid: "0.00",
+    };
+  }
 
   if (result === RESULT.DRAW || result === RESULT.GRACE_DRAW) {
     // DRAW: both fully refunded (no rake). GRACE_DRAW: both players
@@ -818,6 +982,16 @@ async function forceSpinAdvance(tx, match) {
   const now = Date.now();
   let next = match;
 
+  // Practice matches: the test-bot seat auto-stops on the fast
+  // BOT_STOP_MS cadence (re-stamped after every landing), so the bot
+  // plays a column roughly every 1.5s instead of stalling 10s per
+  // column. The human player keeps the normal 10s timer.
+  let botSeat = null;
+  if (await isBotMatch(match)) {
+    if (await isTestAccountClerkId(match.player2Id)) botSeat = "player2";
+    else if (await isTestAccountClerkId(match.player1Id)) botSeat = "player1";
+  }
+
   const advanceSeat = (seat) => {
     const inputsKey = seat === "player1" ? "p1CurrentInputs" : "p2CurrentInputs";
     const run = next[inputsKey];
@@ -828,6 +1002,12 @@ async function forceSpinAdvance(tx, match) {
       new Date(run.activeDeadline).getTime() <= now
     ) {
       next = autoStopActiveColumn(next, seat, now);
+      if (botSeat === seat && next[inputsKey] && !next[inputsKey].ended) {
+        next[inputsKey] = {
+          ...next[inputsKey],
+          activeDeadline: now + BOT_STOP_MS,
+        };
+      }
     }
   };
 
@@ -960,11 +1140,14 @@ export async function cancelMatch({ userId, matchId }) {
     if (match.player1Id !== userId) {
       return { error: "Only the creator can cancel", status: 403 };
     }
-    // Refund the creator's deducted stake.
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
-      .where(eq(users.clerkId, match.player1Id));
+    // Refund the creator's deducted stake — practice matches escrow
+    // nothing, so there is nothing to refund.
+    if (!(await isBotMatch(match))) {
+      await tx
+        .update(users)
+        .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
+        .where(eq(users.clerkId, match.player1Id));
+    }
 
     const [updated] = await tx
       .update(slotsPvpMatches)
@@ -979,6 +1162,9 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
   return await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
     if (!match) return { error: "Match not found", status: 404 };
+    // Practice matches escrow nothing — every non-settled exit is a
+    // plain no-op on balances (winner/result still stamped for the UI).
+    const isBot = await isBotMatch(match);
 
     // No opponent yet — cancel + refund the creator (the only
     // participant in WAITING is player1, i.e. the disconnected player).
@@ -986,10 +1172,12 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       if (match.player1Id !== loserClerkId) {
         return { error: "Only the creator can cancel", status: 403 };
       }
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
-        .where(eq(users.clerkId, loserClerkId));
+      if (!isBot) {
+        await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
+          .where(eq(users.clerkId, loserClerkId));
+      }
       const [updated] = await tx
         .update(slotsPvpMatches)
         .set({ status: MATCH_STATUS.CANCELLED, endedAt: new Date() })
@@ -1027,28 +1215,36 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       result,
     });
 
-    // Winner gets their stake back + 90% of the forfeiter's stake.
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-      .where(eq(users.clerkId, winnerUserId));
+    // Winner gets their stake back + 90% of the forfeiter's stake —
+    // unless this is a practice match (nothing was escrowed).
+    if (!isBot) {
+      await tx
+        .update(users)
+        .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
+        .where(eq(users.clerkId, winnerUserId));
+    }
 
-    const settlement = {
-      winnerId: winnerUserId,
-      result,
-      houseFee: payout.houseFee.toFixed(2),
-      prizePaid: payout.prizePaid.toFixed(2),
-    };
+    const settlement = isBot
+      ? { winnerId: winnerUserId, result, houseFee: "0.00", prizePaid: "0.00" }
+      : {
+          winnerId: winnerUserId,
+          result,
+          houseFee: payout.houseFee.toFixed(2),
+          prizePaid: payout.prizePaid.toFixed(2),
+        };
 
-    // Best-effort leaderboard side-effects (mirrors settleMatch).
-    await recordPvPResult(
-      tx,
-      winnerUserId,
-      loserClerkId,
-      match,
-      settlement,
-      result,
-    ).catch(() => {});
+    // Best-effort leaderboard side-effects (mirrors settleMatch) —
+    // never run for practice matches.
+    if (!isBot) {
+      await recordPvPResult(
+        tx,
+        winnerUserId,
+        loserClerkId,
+        match,
+        settlement,
+        result,
+      ).catch(() => {});
+    }
 
     const [updated] = await tx
       .update(slotsPvpMatches)

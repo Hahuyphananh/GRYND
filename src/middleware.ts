@@ -89,6 +89,17 @@ const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
     pattern: /^\/api\/system\/notify$/,
     config: { windowMs: 60_000, max: 30 },
   },
+  {
+    // Slots PvP / Plinko PvP match pages poll /status every 800ms
+    // (~75 requests/min) on top of stop / launch actions — well beyond
+    // the generic 60/min per-user cap. The generic cap silently froze
+    // the board mid-round: with the status polls rate-limited, the
+    // client could never reconcile, so every STOP click 409'd against
+    // the stale board ("can't click stop"). These polling-heavy flows
+    // get their own headroom.
+    pattern: /^\/api\/(slots-pvp|plinko-pvp)\//,
+    config: { windowMs: 60_000, max: 300 },
+  },
   { pattern: /^\/api\//, config: { windowMs: 60_000, max: 120 } },
 ];
 
