@@ -563,7 +563,7 @@ function ScoreBoard({
   return (
     <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#001a33] via-[#00111f] to-[#000814] px-3 sm:px-6 py-3 sm:py-4 shadow-[0_0_40px_rgba(255,200,0,0.1)]">
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-5">
-        <Side seat="player1" name={p1Name} avatar={p1Avatar} survived={viewerIsP1 ? viewerSurvived : opponentSurvived} runStatus={isViewerP1 ? viewerStatus : opponentStatus} />
+        <Side seat="player1" name={p1Name} avatar={p1Avatar} survived={isViewerP1 ? viewerSurvived : opponentSurvived} runStatus={isViewerP1 ? viewerStatus : opponentStatus} />
         {/* Note: Side's isYou label uses the seat; the survived/status passed
             above intentionally reflect the VIEWER's seat orientation. */}
 
