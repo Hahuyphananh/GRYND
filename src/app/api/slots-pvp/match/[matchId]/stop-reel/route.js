@@ -44,6 +44,7 @@ export async function POST(req, { params }) {
   const columnIndex = Number(body?.columnIndex);
   const currentSpin =
     body?.currentSpin != null ? Number(body.currentSpin) : null;
+  const jettison = body?.jettison === true;
 
   try {
     const result = await stopColumn({
@@ -51,6 +52,7 @@ export async function POST(req, { params }) {
       matchId,
       columnIndex,
       currentSpin,
+      jettison,
     });
 
     if (result.error) {
@@ -75,6 +77,7 @@ export async function POST(req, { params }) {
         status: result.match.status,
         seat: result.seat,
         columnStopped: result.columnStopped,
+        jettisoned: result.jettisoned === true,
         runEnded: result.runEnded === true,
         survived: result.survived,
         roundResolved: result.roundResolved === true,

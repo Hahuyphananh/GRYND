@@ -31,6 +31,8 @@ import {
   ROUND_TIMER_SECONDS,
   COLUMN_TIMER_SECONDS,
   COLUMN_DEADLINE_MS,
+  COLUMN_STOP_GRACE_MS,
+  MAX_JETTISONS_PER_RUN,
   READY_WINDOW_MS,
   BETWEEN_ROUNDS_MS,
   FINISHED_GRACE_MS,
@@ -66,6 +68,7 @@ import {
   openSpinState,
   applyColumnStop,
   autoStopActiveColumn,
+  jettisonActiveColumn,
   canResolveRound,
   decideRoundWinner,
   decideMatchResult,
@@ -82,10 +85,12 @@ const POOL = FRUIT_SYMBOLS.slice(0, SLIDING_SYMBOL_COUNT);
 // Round structure constants
 // ════════════════════════════════════════════════════════════════════
 
-test("each column has a 10-second countdown (COLUMN_TIMER_SECONDS)", () => {
-  assert.equal(ROUND_TIMER_SECONDS, 10);
-  assert.equal(COLUMN_TIMER_SECONDS, 10);
-  assert.equal(COLUMN_DEADLINE_MS, 10 * 1000);
+test("each column has a 15-second countdown plus a 2.5s stop-grace window (COLUMN_TIMER_SECONDS / COLUMN_STOP_GRACE_MS)", () => {
+  assert.equal(ROUND_TIMER_SECONDS, 15);
+  assert.equal(COLUMN_TIMER_SECONDS, 15);
+  assert.equal(COLUMN_DEADLINE_MS, 15 * 1000);
+  assert.equal(COLUMN_STOP_GRACE_MS, 2500);
+  assert.equal(MAX_JETTISONS_PER_RUN, 1);
 });
 
 test("a match is a SINGLE survival round (MAX_ROUNDS = ROUNDS_TO_WIN = 1)", () => {
@@ -338,7 +343,7 @@ function twoOutside(col) {
 
 // ── open / validation ────────────────────────────────────────────────
 
-test("openSpinState opens BOTH players' hidden runs with fresh windows + 10s column deadlines", () => {
+test("openSpinState opens BOTH players' hidden runs with fresh windows + 15s column deadlines", () => {
   const now = 1_000_000;
   const m = makeSpinMatch({ now });
   const p1 = m.p1CurrentInputs;
@@ -351,6 +356,7 @@ test("openSpinState opens BOTH players' hidden runs with fresh windows + 10s col
   assert.equal(p1.linesFormed, 0);
   assert.equal(p1.ended, false);
   assert.equal(p1.activeIndex, 0);
+  assert.equal(p1.jettisonsUsed, 0);
   assert.equal(p1.activeDeadline, now + COLUMN_DEADLINE_MS);
   assert.equal(p1.openedAt, now);
   assert.notEqual(p1.seed, p2.seed);
@@ -385,13 +391,29 @@ test("applyColumnStop validates participant / status / spin identity / run / ind
   assert.equal(applyColumnStop(m, "player1", -1).ok, false);
   assert.equal(applyColumnStop(m, "player1", "x").ok, false);
   assert.equal(applyColumnStop(m, "player1", 3).ok, false); // initial phase: only 0..2
-  // Expired active column.
-  const expired = { ...m, p1CurrentInputs: { ...m.p1CurrentInputs, activeDeadline: Date.now() - 1 } };
+  // Expired active column — only past the deadline AND the stop-grace
+  // window (a click landing just after the deadline is a lag cushion).
+  const expired = {
+    ...m,
+    p1CurrentInputs: {
+      ...m.p1CurrentInputs,
+      activeDeadline: Date.now() - COLUMN_STOP_GRACE_MS - 1,
+    },
+  };
   assert.deepEqual(applyColumnStop(expired, "player1", 0), {
     ok: false,
     error: "Column time has expired",
     status: 400,
   });
+  // Within the grace window a manual stop is still honoured.
+  const inGrace = {
+    ...m,
+    p1CurrentInputs: {
+      ...m.p1CurrentInputs,
+      activeDeadline: Date.now() - COLUMN_STOP_GRACE_MS + 1000,
+    },
+  };
+  assert.equal(applyColumnStop(inGrace, "player1", 0).ok, true);
 });
 
 test("initial columns stop in any order, once each, then the window is full", () => {
@@ -558,6 +580,99 @@ test("sliding phase: only the active column may be stopped", () => {
     status: 409,
   });
   assert.equal(applyColumnStop(m0, "player1", 99, now).ok, false);
+});
+
+// ── jettison (the skill mechanic) ────────────────────────────────────
+
+test("jettison skips the active column, advances the stream, and refreshes the deadline", () => {
+  const now = Date.now();
+  // Craft the prior window against col4's OWN symbols so landing col4
+  // forms a guaranteed top-row combo (survival phase stays alive).
+  const col4 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 4, symbols: FRUIT_SYMBOLS });
+  const [X4, Y4] = twoOutside(col4);
+  const prior = [fillCol("🍉"), [col4[0], Y4, Y4], [col4[0], X4, X4]];
+  const run0 = craftedRun({ priorWindow: prior, stoppedCount: 3, firstComboAt: 3, linesFormed: 1, now });
+  const m0 = { ...makeSpinMatch({ now }), p1CurrentInputs: run0 };
+
+  const r = jettisonActiveColumn(m0, "player1", now);
+  assert.equal(r.ok, true);
+  const run = r.match.p1CurrentInputs;
+  assert.equal(run.jettisonsUsed, 1);
+  assert.equal(run.activeIndex, 4); // column 3 was skipped; column 4 is next
+  assert.equal(run.stoppedCount, 3); // nothing landed
+  assert.equal(run.activeDeadline, now + COLUMN_DEADLINE_MS); // fresh countdown
+  assert.equal(run.ended, false);
+
+  // The next stop must target the advanced active index (col 4) — the
+  // skipped column 3 can never land and never enters the window.
+  assert.equal(applyColumnStop(r.match, "player1", 3, now).ok, false);
+  assert.equal(applyColumnStop(r.match, "player1", 5, now).ok, false);
+  const s = applyColumnStop(r.match, "player1", 4, now);
+  assert.equal(s.ok, true);
+  assert.equal(s.match.p1CurrentInputs.stoppedCount, 4);
+  assert.equal(s.match.p1CurrentInputs.activeIndex, 5);
+  assert.equal(s.match.p1CurrentInputs.columns.length, 4);
+  assert.equal(s.match.p1CurrentInputs.survived, 1); // the col4 stop combo'd
+  assert.deepEqual(s.match.p1CurrentInputs.window, [prior[1], prior[2], col4]);
+});
+
+test("jettison is sliding-phase only: rejected during the initial 3 columns", () => {
+  const now = Date.now();
+  const m = makeSpinMatch({ now });
+  const r = jettisonActiveColumn(m, "player1", now);
+  assert.equal(r.ok, false);
+  assert.equal(r.status, 400);
+  assert.equal(r.error, "Jettison is only available once the window is full");
+});
+
+test("jettison is budget-limited to MAX_JETTISONS_PER_RUN and validates like a stop", () => {
+  const now = Date.now();
+  const col3 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [X, Y] = twoOutside(col3);
+  const prior = [fillCol("🍉"), [col3[0], Y, Y], [col3[0], X, X]];
+  const run0 = craftedRun({ priorWindow: prior, stoppedCount: 3, firstComboAt: 3, linesFormed: 1, now });
+  let m = { ...makeSpinMatch({ now }), p1CurrentInputs: run0 };
+
+  // First jettison succeeds; the second is rejected (budget spent).
+  m = jettisonActiveColumn(m, "player1", now).match;
+  const second = jettisonActiveColumn(m, "player1", now);
+  assert.equal(second.ok, false);
+  assert.equal(second.status, 409);
+  assert.equal(second.error, "No jettisons left");
+
+  // Spectators / ended runs / non-spin matches / stale rounds rejected.
+  assert.equal(jettisonActiveColumn(m, "spectator", now).ok, false);
+  const ended = { ...m, p1CurrentInputs: { ...m.p1CurrentInputs, ended: true } };
+  assert.equal(jettisonActiveColumn(ended, "player1", now).status, 409);
+  const ready = { ...m, status: MATCH_STATUS.READY };
+  assert.equal(jettisonActiveColumn(ready, "player1", now).ok, false);
+  assert.equal(jettisonActiveColumn(m, "player1", now, 2).status, 409);
+});
+
+test("jettison past the deadline + grace window is rejected (auto-stop takes over)", () => {
+  const now = Date.now();
+  const col3 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [X, Y] = twoOutside(col3);
+  const prior = [fillCol("🍉"), [col3[0], Y, Y], [col3[0], X, X]];
+  const run0 = craftedRun({
+    priorWindow: prior,
+    stoppedCount: 3,
+    firstComboAt: 3,
+    linesFormed: 1,
+    activeDeadline: now - COLUMN_STOP_GRACE_MS - 1,
+    now,
+  });
+  const m0 = { ...makeSpinMatch({ now }), p1CurrentInputs: run0 };
+  assert.equal(jettisonActiveColumn(m0, "player1", now).status, 400);
+  // Within grace, a late jettison is still honoured.
+  const inGrace = {
+    ...m0,
+    p1CurrentInputs: {
+      ...m0.p1CurrentInputs,
+      activeDeadline: now - COLUMN_STOP_GRACE_MS + 1000,
+    },
+  };
+  assert.equal(jettisonActiveColumn(inGrace, "player1", now).ok, true);
 });
 
 test("MAX_COLUMNS_PER_ROUND caps an ultra-long run (never hangs the match)", () => {
@@ -892,6 +1007,55 @@ test("viewerRunSnapshot reports grace / alive / ended statuses + own window", ()
 
   // Deterministic.
   assert.deepEqual(viewerRunSnapshot({ inputs: alive, now }), viewerRunSnapshot({ inputs: alive, now }));
+});
+
+test("viewerRunSnapshot exposes the real preview of the next column + the jettison budget", () => {
+  const now = Date.now();
+  const m = makeSpinMatch({ now });
+
+  // Fresh run: preview = the REAL column 0, full jettison budget.
+  const fresh = viewerRunSnapshot({ inputs: m.p1CurrentInputs, now });
+  assert.equal(fresh.previewIndex, 0);
+  assert.deepEqual(
+    fresh.preview,
+    columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 0, symbols: FRUIT_SYMBOLS }),
+  );
+  assert.equal(fresh.jettisonsUsed, 0);
+  assert.equal(fresh.jettisonsLeft, MAX_JETTISONS_PER_RUN);
+
+  // Mid-sliding run with the jettison spent: preview = the NEXT column.
+  const col3 = columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 3, symbols: FRUIT_SYMBOLS });
+  const [X, Y] = twoOutside(col3);
+  const prior = [fillCol("🍉"), [col3[0], Y, Y], [col3[0], X, X]];
+  const run0 = craftedRun({ priorWindow: prior, stoppedCount: 3, firstComboAt: 3, linesFormed: 1, now });
+  const mm = jettisonActiveColumn({ ...makeSpinMatch({ now }), p1CurrentInputs: run0 }, "player1", now).match;
+  const snap = viewerRunSnapshot({ inputs: mm.p1CurrentInputs, now });
+  assert.equal(snap.previewIndex, 4);
+  assert.deepEqual(
+    snap.preview,
+    columnSymbols({ matchId: 7, spinNumber: 1, seat: "player1", colIndex: 4, symbols: FRUIT_SYMBOLS }),
+  );
+  assert.equal(snap.jettisonsUsed, 1);
+  assert.equal(snap.jettisonsLeft, 0);
+
+  // Ended runs expose no preview.
+  const ended = {
+    ...mm,
+    p1CurrentInputs: {
+      ...mm.p1CurrentInputs,
+      ended: true,
+      activeIndex: null,
+      activeDeadline: null,
+    },
+  };
+  const es = viewerRunSnapshot({ inputs: ended.p1CurrentInputs, now });
+  assert.equal(es.previewIndex, null);
+  assert.equal(es.preview, null);
+
+  // Scrubbed opponent inputs (no symbols stream) never leak a preview.
+  const opp = viewerRunSnapshot({ inputs: { stoppedCount: 3, ended: false, activeIndex: 3 }, now });
+  assert.equal(opp.preview, null);
+  assert.equal(opp.previewIndex, null);
 });
 
 // ════════════════════════════════════════════════════════════════════

@@ -77,6 +77,7 @@ import {
   buildRoundResult,
   canResolveRound,
   decideMatchResult,
+  jettisonActiveColumn,
   openSpinState,
   planAdvanceAfterResolve,
 } from "./engine.js";
@@ -897,21 +898,29 @@ async function recordPvPResult(tx, winnerId, loserId, match, settlement, result)
 
 // ── stopColumn (the main skill action) ────────────────────────────────
 //
-// Server-authoritative column stop. The player POSTs the column index
-// and the server:
+// Server-authoritative column stop / jettison. The player POSTs the
+// column index (or `jettison: true`) and the server:
 //   1. Validates participation, spin status, column index, the active
-//      column's 10s deadline, and the stop-order rules (initial phase:
-//      any of columns 0..2, once each; sliding phase: only the active
-//      stream column).
+//      column's deadline (plus the COLUMN_STOP_GRACE_MS lag cushion),
+//      and the stop-order rules (initial phase: any of columns 0..2,
+//      once each; sliding phase: only the active stream column).
 //   2. Lands the column on the player's `p{N}CurrentInputs` and runs the
-//      grace / survival combo logic.
+//      grace / survival combo logic — or, for a jettison, skips the
+//      active column (advances the stream) without landing anything.
 //   3. If BOTH runs have now ended → resolves the round immediately
-//      (writes history + advances), otherwise persists the stop.
+//      (writes history + advances), otherwise persists the change.
 //
-// Rejects with 400 once the active column's deadline has passed — the
-// next /status poll triggers the auto-stop + resolve path instead.
+// Rejects with 400 once the active column's deadline + grace window has
+// passed — the next /status poll triggers the auto-stop + resolve path
+// instead.
 
-export async function stopColumn({ userId, matchId, columnIndex, currentSpin = null }) {
+export async function stopColumn({
+  userId,
+  matchId,
+  columnIndex,
+  currentSpin = null,
+  jettison = false,
+}) {
   return await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
     if (!match) return { error: "Match not found", status: 404 };
@@ -921,15 +930,11 @@ export async function stopColumn({ userId, matchId, columnIndex, currentSpin = n
     const seat = seatForUser(match, userId);
 
     // `currentSpin` is the spin number the client believes is live (from
-    // its last /status poll). Passed through so applyColumnStop can
-    // reject stale stops from a round that already advanced.
-    const applied = applyColumnStop(
-      match,
-      seat,
-      columnIndex,
-      Date.now(),
-      currentSpin,
-    );
+    // its last /status poll). Passed through so the engine can reject
+    // stale actions from a round that already advanced.
+    const applied = jettison
+      ? jettisonActiveColumn(match, seat, Date.now(), currentSpin)
+      : applyColumnStop(match, seat, columnIndex, Date.now(), currentSpin);
     if (!applied.ok) return { error: applied.error, status: applied.status };
 
     const inputsKey = seat === "player1" ? "p1CurrentInputs" : "p2CurrentInputs";
@@ -937,7 +942,8 @@ export async function stopColumn({ userId, matchId, columnIndex, currentSpin = n
     let roundResolved = false;
 
     if (canResolveRound(applied.match)) {
-      // Both runs ended → resolve in the same transaction.
+      // Both runs ended → resolve in the same transaction. (A jettison
+      // never lands a column, so this only fires for a real stop.)
       resultRow = await resolveSpinRound(tx, applied.match);
       roundResolved = true;
     } else {
@@ -962,6 +968,7 @@ export async function stopColumn({ userId, matchId, columnIndex, currentSpin = n
       columnStopped: Array.isArray(myRun.stoppedOrder)
         ? myRun.stoppedOrder[myRun.stoppedOrder.length - 1]
         : null,
+      jettisoned: jettison === true,
       runEnded: Boolean(myRun.ended),
       survived: Number(myRun.survived) || 0,
       roundResolved,

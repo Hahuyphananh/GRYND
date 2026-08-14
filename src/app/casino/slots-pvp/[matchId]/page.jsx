@@ -6,20 +6,29 @@
 //
 // How the survival round plays:
 //   1. The server opens ONE survival round. Each player stops columns
-//      on their own 3-column sliding window (hidden column symbols are
+//      on their own 3-column sliding window (column symbols are
 //      generated server-side per player, deterministically).
-//   2. GRACE phase: stop the first 3 columns (any order), then keep
-//      stopping new columns that slide in from the right — you CANNOT
-//      bust until you form your first 3-in-a-row combo (horizontal row
-//      or diagonal). You have at most 10 grace stops to find it.
-//   3. SURVIVAL phase: from the first combo on, every column you stop
+//   2. The board shows the NEXT column's REAL symbols (the "peek") —
+//      no cosmetic spinner, because stop-timing never changed the
+//      outcome. The skill is deciding: take the column, or burn your
+//      one JETTISON to skip it and take the following column instead.
+//   3. GRACE phase: you CANNOT bust until you form your first 3-in-a-row
+//      combo (horizontal row or diagonal). You have at most 10 grace
+//      stops to find it.
+//   4. SURVIVAL phase: from the first combo on, every column you stop
 //      must re-form a horizontal/diagonal combo or you're OUT. The
 //      window slides left with every column; the oldest falls off.
-//   4. Each active column has a 10s countdown — AFK columns auto-stop.
-//   5. The round resolves ONLY when BOTH players' runs have ended: no
+//   5. Each active column has a 15s countdown plus a 2.5s stop-grace
+//      window (a click landing just after the deadline still counts) —
+//      lag can never cost you a column. AFK columns auto-stop.
+//   6. The round resolves ONLY when BOTH players' runs have ended: no
 //      early loss popup. The winner is whoever survived more columns
 //      (tiebreak: total combos formed). Both grace-fail → tie with a
 //      5%-each rake.
+//
+// Stops are sent over the existing socket (near-instant, with an HTTP
+// fallback) so the 800ms status poll is only the safety net, not the
+// stop path.
 //
 // Anti-cheat: the opponent's columns stay hidden while the round is
 // live (the status route scrubs them); the client only sees the
@@ -42,10 +51,11 @@ import {
 import {
   GRACE_MAX_STOPS,
   MATCH_STATUS,
+  MAX_JETTISONS_PER_RUN,
   RESULT,
   ROUND_TIMER_SECONDS,
 } from "../../../../lib/slots-pvp/constants";
-import { SLOT_SYMBOLS, SlotSymbol } from "../../../../lib/slotIcons";
+import { SlotSymbol } from "../../../../lib/slotIcons";
 import { getTheme } from "../../../../lib/slotThemes";
 
 // ── Inline SVG icons ─────────────────────────────────────────────────
@@ -124,6 +134,15 @@ function SparkIcon({ className = "" }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
       <path d="M12 2 L14.5 9.5 L22 12 L14.5 14.5 L12 22 L9.5 14.5 L2 12 L9.5 9.5 Z" />
+    </svg>
+  );
+}
+
+function EyeIcon({ className = "" }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M2 12 C4.5 6.5 8.5 4 12 4 C15.5 4 19.5 6.5 22 12 C19.5 17.5 15.5 20 12 20 C8.5 20 4.5 17.5 2 12 Z" />
+      <circle cx="12" cy="12" r="3" />
     </svg>
   );
 }
@@ -285,7 +304,7 @@ function SurvivalBoard({
   run,
   canStop,
   onStop,
-  rollTick,
+  onJettison,
   isLive,
   themeName,
 }) {
@@ -296,31 +315,70 @@ function SurvivalBoard({
   const baseIndex = sliding ? stoppedCount - 3 : 0;
   const activeIndex = !ended ? (run?.activeIndex ?? null) : null;
 
-  // Single-cell "rolling" view — NO per-column STOP button. The stop
-  // control is the one big button under the board (see below), so the
-  // grid stays uncluttered and there is exactly one place to click.
-  const spinningCell = (colIndex) => (
+  // Skill preview: the REAL symbols of the next column to land (the one
+  // STOP / JETTISON act on). The old cosmetic "rolling" animation is
+  // gone — stop-timing never changed the outcome, so the board shows
+  // the truth and the player makes the call: take it or jettison it.
+  const preview = run?.preview ?? null;
+  const previewIndex = run?.previewIndex ?? null;
+  const jettisonsUsed = run?.jettisonsUsed ?? 0;
+  const jettisonsLeft = run?.jettisonsLeft ?? 0;
+  const canJettison =
+    Boolean(canStop) &&
+    !ended &&
+    isLive &&
+    sliding &&
+    activeIndex != null &&
+    jettisonsLeft > 0;
+
+  // Real-preview cell: the next column's ACTUAL symbols (no fake
+  // spinner). Used for the active slot (initial phase) and the entering
+  // column (sliding phase). `preview` always corresponds to the active
+  // column index, so the symbols shown are exactly what will land.
+  const previewCell = (colIndex, entering = false) => (
     <div className="flex flex-col gap-1.5 h-full">
       <div className="flex items-center justify-between px-0.5">
-        <span className="text-[9px] uppercase tracking-widest text-amber-200/80 font-bold">
-          Rolling…
+        <span className="text-[9px] uppercase tracking-widest text-cyan-200/90 font-bold">
+          {entering ? "Incoming" : "Active"}
+        </span>
+        <span className="inline-flex items-center gap-0.5 text-[9px] font-black tracking-widest text-amber-300">
+          <EyeIcon className="w-3 h-3" />
+          PEEK
         </span>
       </div>
-      <div className="flex-1 rounded-xl border border-white/25 bg-gradient-to-b from-[#08142f] to-[#020617] overflow-hidden">
+      <div className="flex-1 rounded-xl border border-amber-300/40 bg-gradient-to-b from-[#08142f] to-[#020617] shadow-[0_0_16px_rgba(255,200,0,0.18)] overflow-hidden">
         {[0, 1, 2].map((row) => (
           <div
             key={row}
-            className={`flex items-center justify-center h-16 sm:h-20 md:h-24 blur-[0.5px] ${
+            className={`flex items-center justify-center h-16 sm:h-20 md:h-24 ${
               row > 0 ? "border-t border-white/10" : ""
             }`}
           >
             <SlotSymbol
-              symbol={SLOT_SYMBOLS[(rollTick + colIndex * 7 + row * 13) % SLOT_SYMBOLS.length]}
-              className="w-9 h-9 sm:w-12 sm:h-12 md:w-14 md:h-14 drop-shadow-[0_0_8px_rgba(255,200,0,0.25)]"
+              symbol={preview?.[row] ?? "?"}
+              className="w-9 h-9 sm:w-12 sm:h-12 md:w-14 md:h-14 drop-shadow-[0_0_8px_rgba(255,200,0,0.3)]"
             />
           </div>
         ))}
       </div>
+      <div className="h-9" />
+    </div>
+  );
+
+  // A column that isn't the active one yet (initial phase only — the
+  // player stops columns in order) shows a dim placeholder instead of a
+  // misleading fake spinner.
+  const pendingCell = (colIndex) => (
+    <div className="flex flex-col gap-1.5 h-full">
+      <div className="flex items-center justify-between px-0.5">
+        <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">
+          Col {colIndex + 1}
+        </span>
+      </div>
+      <div className="flex-1 rounded-xl border border-white/10 bg-[#020617] flex items-center justify-center">
+        <span className="text-white/15 text-3xl">?</span>
+      </div>
+      <div className="h-9" />
     </div>
   );
 
@@ -372,7 +430,8 @@ function SurvivalBoard({
             const colIndex = baseIndex + slot;
             const col = windowCols[slot];
             const locked = col !== null;
-            const spinning = !locked && isLive && !ended;
+            const isActiveSlot =
+              !locked && isLive && !ended && colIndex === previewIndex;
             return (
               <motion.div
                 key={`w-${colIndex}`}
@@ -385,22 +444,17 @@ function SurvivalBoard({
               >
                 {locked
                   ? lockedCell(col, colIndex)
-                  : spinning
-                    ? spinningCell(colIndex)
-                    : (
-                      <div className="flex flex-col gap-1.5 h-full">
-                        <div className="flex-1 rounded-xl border border-white/10 bg-[#020617] flex items-center justify-center">
-                          <span className="text-white/15 text-2xl">?</span>
-                        </div>
-                      </div>
-                    )}
+                  : isActiveSlot
+                    ? previewCell(colIndex)
+                    : pendingCell(colIndex)}
               </motion.div>
             );
           })}
         </AnimatePresence>
 
-        {/* Entering column — slides in from the right during the sliding phase */}
-        {sliding && activeIndex !== null && isLive && (
+        {/* Entering column — slides in from the right during the sliding
+            phase, showing the REAL next column (the peek) */}
+        {sliding && activeIndex !== null && isLive && !ended && (
           <motion.div
             key={`enter-${activeIndex}`}
             initial={{ x: "112%" }}
@@ -409,21 +463,33 @@ function SurvivalBoard({
             transition={{ duration: 0.3 }}
             className="absolute inset-y-0 right-0 w-[calc((100%-1rem)/3)] sm:w-[calc((100%-1.5rem)/3)] z-10"
           >
-            {spinningCell(activeIndex)}
+            {preview ? previewCell(activeIndex, true) : pendingCell(activeIndex)}
           </motion.div>
         )}
       </div>
 
-      {/* Status strip + the single big STOP button (all phases) */}
+      {/* Status strip + the STOP / JETTISON buttons (all phases) */}
       <div className="mt-3 space-y-2">
-        {isLive && !ended && (
-          <button
-            onClick={() => onStop(activeIndex)}
-            disabled={!canStop || !isLive || ended}
-            className="w-full px-4 py-3 rounded-xl text-sm font-black tracking-widest bg-gradient-to-r from-red-500 to-orange-500 text-white hover:from-red-400 hover:to-orange-400 shadow-[0_0_20px_rgba(255,60,60,0.5)] animate-pulse disabled:opacity-40 disabled:animate-none disabled:cursor-not-allowed transition"
-          >
-            STOP THE COLUMN
-          </button>
+        {isLive && !ended && activeIndex != null && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => onStop(activeIndex)}
+              disabled={!canStop || !isLive || ended}
+              className="flex-1 px-4 py-3 rounded-xl text-sm font-black tracking-widest bg-gradient-to-r from-red-500 to-orange-500 text-white hover:from-red-400 hover:to-orange-400 shadow-[0_0_20px_rgba(255,60,60,0.5)] animate-pulse disabled:opacity-40 disabled:animate-none disabled:cursor-not-allowed transition"
+            >
+              STOP THE COLUMN
+            </button>
+            {sliding && (
+              <button
+                onClick={() => onJettison?.(activeIndex)}
+                disabled={!canJettison}
+                title="Skip the incoming column and take the next one instead — once per run."
+                className="px-3 py-3 rounded-xl text-xs font-black tracking-widest bg-amber-500/15 text-amber-200 border border-amber-300/40 hover:bg-amber-500/25 shadow-[0_0_14px_rgba(255,200,0,0.2)] disabled:opacity-35 disabled:cursor-not-allowed transition"
+              >
+                JETTISON {jettisonsUsed}/{MAX_JETTISONS_PER_RUN}
+              </button>
+            )}
+          </div>
         )}
 
         <div className="flex items-center justify-center gap-2 text-[11px] text-white/55">
@@ -449,6 +515,24 @@ function SurvivalBoard({
             <span>Round live</span>
           )}
         </div>
+
+        {/* Jettison hint — the one real decision in the sliding phase */}
+        {isLive && !ended && sliding && (
+          <div className="flex items-center justify-center gap-2 text-[10px] text-white/45">
+            {jettisonsLeft > 0 ? (
+              <span className="inline-flex items-center gap-1">
+                <SparkIcon className="w-3 h-3 text-amber-300/80" />
+                <b className="text-amber-200/80">Jettison {jettisonsLeft}</b>
+                <span>— skip the incoming column if it won&apos;t make a combo</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1">
+                <CrossIcon className="w-3 h-3 opacity-50" />
+                Jettison used — every stop must combo from here
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -752,8 +836,6 @@ export default function SlotsPvpMatchPage({ params }) {
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
-  // Cosmetic symbol-roll ticker (advances while the viewer can stop).
-  const [rollTick, setRollTick] = useState(0);
 
   const fetchStatusPendingRef = useRef(false);
   const resolvedFiredRef = useRef(false);
@@ -877,41 +959,68 @@ export default function SlotsPvpMatchPage({ params }) {
     return () => clearInterval(interval);
   }, [match?.status, match?.viewerRun]);
 
-  // ── Symbol-roll ticker: animate while the viewer can stop ────────
-  useEffect(() => {
-    const isSpin = /^spin_\d+$/.test(match?.status || "");
-    const run = match?.viewerRun;
-    const stillRolling = isSpin && run && !run.ended;
-    if (!stillRolling) return;
-    const id = setInterval(() => setRollTick((t) => t + 1), 70);
-    return () => clearInterval(id);
-  }, [match?.status, match?.viewerRun]);
-
-  // ── Stop a column ────────────────────────────────────────────────
+  // ── Stop / jettison a column ─────────────────────────────────────
+  // Near-instant path: the stop is sent over the existing socket (the
+  // realtime server proxies it to the internal, token-verified route),
+  // so the click locks the column without waiting for the 800ms poll.
+  // Falls back to the direct HTTP route when the socket isn't
+  // connected (first paint / mobile suspend).
   const handleStop = useCallback(
-    async (columnIndex) => {
+    async (columnIndex, jettison = false) => {
       if (busy || !isValidMatchId) return;
       if (columnIndex == null) return;
       setBusy(true);
       setError(null);
       try {
+        const payload = {
+          matchId,
+          columnIndex,
+          currentSpin: match?.currentSpin ?? null,
+          jettison: !!jettison,
+        };
+
+        if (socket?.connected) {
+          const ack = await new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(null), 4000);
+            socket.emit("slots:stop", payload, (reply) => {
+              clearTimeout(timer);
+              resolve(reply);
+            });
+          });
+          if (ack && ack.success === true) {
+            posthog?.capture("slots_pvp_column_stopped", {
+              match_id: matchId,
+              column: columnIndex,
+              jettison: !!jettison,
+              transport: "socket",
+              run_ended: ack.runEnded === true,
+              round_resolved: ack.roundResolved === true,
+            });
+            fetchStatus();
+            return;
+          }
+          // 409 / 400 (already stopped / expired) are expected races —
+          // the server may have auto-stopped this column at its
+          // deadline, or the round already advanced. Re-poll RIGHT AWAY
+          // so the board re-syncs instantly. Only surface genuinely
+          // unexpected errors.
+          if (!ack) {
+            setError("Stop timed out — re-syncing…");
+          } else if (ack.status !== 409 && ack.status !== 400) {
+            setError(ack.error || "Unable to stop column");
+          }
+          fetchStatus();
+          return;
+        }
+
         const res = await fetch(`/api/slots-pvp/match/${matchId}/stop-reel`, {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            columnIndex,
-            currentSpin: match?.currentSpin ?? null,
-          }),
+          body: JSON.stringify(payload),
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
-          // 409 / 400 (already stopped / expired) are expected races —
-          // the server may have auto-stopped this column at its
-          // deadline, or the round already advanced. Re-poll RIGHT AWAY
-          // so the board re-syncs instantly instead of leaving the STOP
-          // buttons stuck on a stale column (which made stop feel
-          // broken). Only surface genuinely unexpected errors.
           if (res.status === 429) {
             rateLimitCooldownRef.current = Date.now() + 3000;
             setError(
@@ -929,6 +1038,8 @@ export default function SlotsPvpMatchPage({ params }) {
         posthog?.capture("slots_pvp_column_stopped", {
           match_id: matchId,
           column: columnIndex,
+          jettison: !!jettison,
+          transport: "http",
           run_ended: data?.data?.runEnded === true,
           round_resolved: data?.data?.roundResolved === true,
         });
@@ -937,7 +1048,7 @@ export default function SlotsPvpMatchPage({ params }) {
         setBusy(false);
       }
     },
-    [busy, isValidMatchId, matchId, match?.currentSpin, posthog, fetchStatus],
+    [busy, isValidMatchId, matchId, match?.currentSpin, socket, posthog, fetchStatus],
   );
 
   // ── Cancel handler (host-only while waiting) ─────────────────────
@@ -1265,13 +1376,9 @@ export default function SlotsPvpMatchPage({ params }) {
           <div className="order-1 lg:order-2 min-w-0">
             <SurvivalBoard
               run={viewerRun}
-              canStop={
-                Boolean(match.viewerCanStop) &&
-                !busy &&
-                columnLeftMs > 0
-              }
+              canStop={Boolean(match.viewerCanStop) && !busy}
               onStop={handleStop}
-              rollTick={rollTick}
+              onJettison={(idx) => handleStop(idx, true)}
               isLive={isSpin && !isFinished && !isCancelled}
               themeName={themeName}
             />
