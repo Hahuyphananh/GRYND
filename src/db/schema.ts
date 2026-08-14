@@ -303,17 +303,6 @@ export const crashGames = pgTable("crash_games", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const slotGames = pgTable("slot_games", {
-  id: serial("id").primaryKey(),
-  userId: varchar("user_id", { length: 255 }).notNull(),
-  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-  payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
-  result: varchar("result", { length: 10 }).default("pending").notNull(), // won / lost / draw
-  reels: varchar("reels", { length: 255 }).notNull(), // serialized emojis or symbols
-  status: varchar("status", { length: 20 }).default("completed").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
 export const pokerGames = pgTable("poker_games", {
   id: serial("id").primaryKey(),
   // Legacy single-player stats columns kept for rankings compatibility
@@ -610,46 +599,6 @@ export const poolPlayerStats = pgTable("pool_player_stats", {
   currentStreak: integer("current_streak").default(0),
   bestStreak: integer("best_streak").default(0),
 });
-
-export const coinFlipStatusEnum = pgEnum("coin_flip_status", [
-  "active",
-  "matched",
-  "finished",
-  "cancelled",
-]);
-
-export const coinFlipGames = pgTable(
-  "coin_flip_games",
-  {
-    id: serial("id").primaryKey(),
-    player1Id: varchar("player1_id", { length: 255 }).notNull(),
-    player2Id: varchar("player2_id", { length: 255 }),
-    betAmount: numeric("bet_amount", {
-      precision: 10,
-      scale: 2,
-    }).notNull(),
-    player1Choice: varchar("player1_choice", { length: 10 }),
-    player2Choice: varchar("player2_choice", { length: 10 }),
-    choiceDeadline: timestamp("choice_deadline"),
-    outcome: varchar("outcome", { length: 10 }),
-    winnerId: varchar("winner_id", { length: 255 }),
-    result: varchar("result", { length: 10 }).default("pending").notNull(),
-    status: coinFlipStatusEnum("status").default("active").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    // ── Best-of-N (default best-of-3) support ──────────────────────
-    // First player to reach `target_wins` round wins ends the match.
-    // Per-round outcome / choices are reset between rounds (the
-    // per-round state is still on the row, not a child table) so the
-    // status route can stay single-row focused. See status/route.js.
-    targetWins: integer("target_wins").default(2).notNull(),
-    scorePlayer1: integer("score_player1").default(0).notNull(),
-    scorePlayer2: integer("score_player2").default(0).notNull(),
-  },
-  (table) => ({
-    openGamesIdx: index("coin_flip_open_games_idx").on(table.player2Id),
-    statusIdx: index("coin_flip_status_idx").on(table.status),
-  }),
-);
 
 export const unoGames = pgTable("uno_games", {
   id: serial("id").primaryKey(),
@@ -1427,21 +1376,6 @@ export const oddsGames = pgTable(
     player1Idx: index("idx_odds_games_player1").on(table.player1Id),
   }),
 );
-
-// PROGRESSIVE SLOT JACKPOT — one row per theme
-// Grows with every spin (2% contribution). Resets to seed after a 5-match win.
-export const slotJackpots = pgTable("slot_jackpots", {
-  theme: varchar("theme", { length: 30 }).primaryKey(),
-  amount: numeric("amount", { precision: 14, scale: 2 }).notNull().default("1000.00"),
-  seedAmount: numeric("seed_amount", { precision: 14, scale: 2 }).notNull().default("1000.00"),
-  contributionRate: numeric("contribution_rate", { precision: 5, scale: 4 }).notNull().default("0.0200"),
-  totalContributed: numeric("total_contributed", { precision: 14, scale: 2 }).notNull().default("0.00"),
-  timesWon: integer("times_won").notNull().default(0),
-  lastWonBy: varchar("last_won_by", { length: 255 }),
-  lastWonAmount: numeric("last_won_amount", { precision: 14, scale: 2 }),
-  lastWonAt: timestamp("last_won_at"),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
 
 // CLICKER GAME TABLE (GoonBet Clicker history)
 export const clickerGames = pgTable(
@@ -2373,59 +2307,63 @@ export const plinkoPvpRoundsRelations = relations(
   }),
 );
 
-// ── PvP Slots (1v1 skill-based slots) ──────────────────────────────────────
-// Best-of-5 (max 5 spins): one spin per player per round; the player with
-// the higher spin win-amount wins the round (`rounds.round_winner`) and the
-// match is decided by rounds won (`rounds_won_player1/2`, first to 3 wins).
-// If level after 5 spins, the aggregate spin win-amounts (`p1_score` /
-// `p2_score`) break the tie. Mirrors plinko_pvp (match + rounds child table,
-// jsonb inputs/results, round deadline + timer, 90/10 payout) and
-// blackjack_pvp (`rounds_won_*` match-score columns).
-export const slotsPvpStatusEnum = pgEnum("slots_pvp_status", [
+// ── KENO PvP ("Keno Catch Duel") ─────────────────────────────────────
+// 1v1 skill keno: both players face the SAME shared 10-ball draw each
+// round and race to catch the balls on the server-declared release
+// schedule — perfect-timed catches score bonus points. Best of 5
+// rounds, first to 3 round wins takes the match; aggregate round
+// scores break the tie. Payout is the standard 90/10 split.
+//
+// Match flow: waiting → ready → round_1 … round_5 → finished
+// (waiting/ready/round_N → cancelled). Mirrors slots_pvp (match +
+// rounds child table, jsonb draws/catches, round deadline + timer).
+export const kenoPvpStatusEnum = pgEnum("keno_pvp_status", [
   "waiting",
   "ready",
-  "spin_1",
-  "spin_2",
-  "spin_3",
-  "spin_4",
-  "spin_5",
+  "round_1",
+  "round_2",
+  "round_3",
+  "round_4",
+  "round_5",
   "finished",
   "cancelled",
 ]);
 
-export const slotsPvpMatches = pgTable(
-  "slots_pvp_matches",
+export const kenoPvpMatches = pgTable(
+  "keno_pvp_matches",
   {
     id: serial("id").primaryKey(),
     player1Id: varchar("player1_id", { length: 255 }).notNull(),
     player2Id: varchar("player2_id", { length: 255 }),
     stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
-    // Host-chosen slot theme at lobby creation (mirrors mines-pvp's
-    // host-picked `mines_count` parameter).
-    theme: varchar("theme", { length: 40 }).notNull().default("fruit"),
-    status: slotsPvpStatusEnum("status").notNull().default("waiting"),
-    // 1 / 2 / 3 / 4 / 5 — which spin the match is collecting inputs for
-    // right now. Stamped at match creation and advanced at each spin
-    // resolution.
-    currentSpin: integer("current_spin").notNull().default(1),
-    // Match score — rounds (spins) won by each player.
+    status: kenoPvpStatusEnum("status").notNull().default("waiting"),
+    // 1 / 2 / 3 / 4 / 5 — which round the match is collecting catches
+    // for right now. Stamped at match creation and advanced at each
+    // round resolution.
+    currentRound: integer("current_round").notNull().default(1),
+    // Match score — rounds won by each player (first to 3 wins).
     roundsWonPlayer1: integer("rounds_won_player1").notNull().default(0),
     roundsWonPlayer2: integer("rounds_won_player2").notNull().default(0),
-    // Aggregate spin win-amounts across all rounds. Compared at match
-    // end to break a rounds-won tie.
+    // Aggregate round scores across all rounds. Compared at match end
+    // to break a rounds-won tie.
     p1Score: integer("p1_score").notNull().default(0),
     p2Score: integer("p2_score").notNull().default(0),
-    // Live per-spin commit inputs — server-only state. Treat
-    // `IS NOT NULL` as "this player has submitted their spin for the
-    // current round". Reset to NULL when status advances to the next
-    // spin so the column doubles as a "submitted" boolean.
-    p1CurrentInputs: jsonb("p1_current_inputs").default(sql`NULL`),
-    p2CurrentInputs: jsonb("p2_current_inputs").default(sql`NULL`),
-    // Per-spin decision-window deadline, computed as
-    // `now() + round_timer_seconds` whenever a new spin window opens
-    // (mirrors plinko-pvp / mines-pvp / blackjack-pvp).
+    // The CURRENT round's shared draw — array of 10 unique ball numbers
+    // (1..KENO_POOL_SIZE). Server-generated when the round opens; ball
+    // release timing is derived from `round_deadline` + the shared
+    // constants (see src/lib/keno-pvp/constants.js), so both players
+    // see the identical stream.
+    currentDraw: jsonb("current_draw").default(sql`NULL`),
+    // Per-round catch commits — array of { number, quality, caughtAt }
+    // for the CURRENT round. Server-authoritative; one catch per ball
+    // per player. Reset when the next round opens.
+    p1Catches: jsonb("p1_catches").default(sql`NULL`),
+    p2Catches: jsonb("p2_catches").default(sql`NULL`),
+    // Per-round decision-window deadline = round open time +
+    // ROUND_DURATION_MS (the 10-ball release schedule plus the final
+    // ball's expiry). Mirrors slots-pvp's round_deadline semantics.
     roundDeadline: timestamp("round_deadline"),
-    roundTimerSeconds: integer("round_timer_seconds").notNull().default(20),
+    roundTimerSeconds: integer("round_timer_seconds").notNull().default(15),
     // Final match bookkeeping.
     winnerId: varchar("winner_id", { length: 255 }),
     result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
@@ -2440,85 +2378,72 @@ export const slotsPvpMatches = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    // Lobby listing — `status='waiting'` AND player2_id IS NULL.
-    statusIdx: index("slots_pvp_status_idx").on(
-      table.status,
-      table.createdAt,
-    ),
-    // Per-player history (matches the other PvP convention).
-    player1Idx: index("slots_pvp_player1_idx").on(
+    statusIdx: index("keno_pvp_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("keno_pvp_player1_idx").on(
       table.player1Id,
       table.createdAt,
     ),
-    player2Idx: index("slots_pvp_player2_idx").on(
+    player2Idx: index("keno_pvp_player2_idx").on(
       table.player2Id,
       table.createdAt,
     ),
-    // Stake matchmaking — finding a waiting lobby whose stake matches
-    // the joiner's request.
-    stakeIdx: index("slots_pvp_stake_open_idx").on(
+    stakeIdx: index("keno_pvp_stake_open_idx").on(
       table.stakeAmount,
       table.status,
     ),
   }),
 );
 
-// One row per spin of a PvP Slots match (up to 5 rows per match).
+// One row per round of a Keno PvP match (up to 5 rows per match).
 // Cascade-deleted with the parent match so history stays tidy.
-export const slotsPvpRounds = pgTable(
-  "slots_pvp_rounds",
+export const kenoPvpRounds = pgTable(
+  "keno_pvp_rounds",
   {
     id: serial("id").primaryKey(),
     matchId: integer("match_id")
       .notNull()
-      .references(() => slotsPvpMatches.id, { onDelete: "cascade" }),
-    // 1 / 2 / 3 / 4 / 5. Composite index on (match_id, spin_number) is
-    // the canonical lookup so per-spin history reads stay O(1).
-    spinNumber: integer("spin_number").notNull(),
-    // Inputs in their pre-resolution form (per-spin bet amount and any
-    // future per-spin player inputs).
-    player1Inputs: jsonb("player1_inputs").notNull().default(sql`'{}'::jsonb`),
-    player2Inputs: jsonb("player2_inputs").notNull().default(sql`'{}'::jsonb`),
-    // Per-spin result snapshots — 3x3 reel grid, win amount, winning
-    // payline. Lets the client replay the spin identically.
-    player1Result: jsonb("player1_result").notNull().default(sql`'{}'::jsonb`),
-    player2Result: jsonb("player2_result").notNull().default(sql`'{}'::jsonb`),
-    // True when the server auto-spun because round_deadline elapsed
-    // before the player committed.
-    player1AutoSpun: boolean("player1_auto_spun").notNull().default(false),
-    player2AutoSpun: boolean("player2_auto_spun").notNull().default(false),
-    // Per-round player scores — the spin win amount each player earned.
-    // Exposed as columns so aggregate-totals queries can sum without
-    // unpacking jsonb.
-    spinPointsPlayer1: integer("spin_points_player1").notNull().default(0),
-    spinPointsPlayer2: integer("spin_points_player2").notNull().default(0),
-    // 'player1' | 'player2' | 'draw' | null — null while the spin is
+      .references(() => kenoPvpMatches.id, { onDelete: "cascade" }),
+    // 1 / 2 / 3 / 4 / 5. Composite index on (match_id, round_number) is
+    // the canonical lookup so per-round history reads stay O(1).
+    roundNumber: integer("round_number").notNull(),
+    // The shared draw for this round (server-generated, both players
+    // see the identical stream).
+    sharedDraw: jsonb("shared_draw").notNull().default(sql`'[]'::jsonb`),
+    // Per-player catch snapshots — { number, quality, caughtAt } per
+    // caught ball. Lets the client replay the round identically.
+    player1Catches: jsonb("player1_catches").notNull().default(sql`'[]'::jsonb`),
+    player2Catches: jsonb("player2_catches").notNull().default(sql`'[]'::jsonb`),
+    // Per-round scores — exposed as columns so aggregate-totals
+    // queries can sum without unpacking jsonb.
+    player1Score: integer("player1_score").notNull().default(0),
+    player2Score: integer("player2_score").notNull().default(0),
+    // 'player1' | 'player2' | 'draw' | null — null while the round is
     // unresolved. NOTE: match-level `result` is decided by ROUNDS WON,
     // so a per-round `draw` does NOT mean the whole match is a tie.
     roundWinner: varchar("round_winner", { length: 10 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    matchSpinIdx: index("slots_pvp_rounds_match_spin_idx").on(
+    matchRoundIdx: index("keno_pvp_rounds_match_round_idx").on(
       table.matchId,
-      table.spinNumber,
+      table.roundNumber,
     ),
   }),
 );
 
-export const slotsPvpMatchesRelations = relations(
-  slotsPvpMatches,
+export const kenoPvpMatchesRelations = relations(
+  kenoPvpMatches,
   ({ many }) => ({
-    rounds: many(slotsPvpRounds),
+    rounds: many(kenoPvpRounds),
   }),
 );
 
-export const slotsPvpRoundsRelations = relations(
-  slotsPvpRounds,
+export const kenoPvpRoundsRelations = relations(
+  kenoPvpRounds,
   ({ one }) => ({
-    match: one(slotsPvpMatches, {
-      fields: [slotsPvpRounds.matchId],
-      references: [slotsPvpMatches.id],
+    match: one(kenoPvpMatches, {
+      fields: [kenoPvpRounds.matchId],
+      references: [kenoPvpMatches.id],
     }),
   }),
 );

@@ -537,10 +537,14 @@ export function generateSolvableBoard(minesCount, { attempts = 100 } = {}) {
 // Server-only check: returns true if `cellIndex` is a mine on
 // `board`. `cellIndex` is a 0..GRID_CELLS-1 row-major index.
 // Returns false for unknown cells (defence-in-depth so a
-// tampered request can never trigger a crash).
+// tampered request can never trigger a crash). Non-numeric inputs
+// (e.g. a string "5" from a tampered request) are rejected outright
+// rather than coerced — callers upstream (pickTile / flagTile /
+// forcePick) always pass a validated number.
 export function isMine(board, cellIndex) {
   if (!board || !Array.isArray(board.mines)) return false;
-  const idx = Number(cellIndex);
+  if (typeof cellIndex !== "number") return false;
+  const idx = cellIndex;
   if (!Number.isInteger(idx) || idx < 0 || idx >= GRID_CELLS) return false;
   return board.mines.includes(idx);
 }
