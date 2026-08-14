@@ -6,6 +6,15 @@
 // on the same 5×5 board; server-randomized turn order; each player
 // gets 20 s to pick one cell; match resolves after both picks.
 //
+// Skill mechanic (minesweeper-style): a safe pick reveals ONE number
+// on the clicked tile — how many tiles away the NEAREST mine is
+// (1 = touching a mine) — stamped server-side from the hidden board,
+// so the client can never compute it mid-match. The number is PRIVATE:
+// each player only sees the numbers on the tiles they picked, so the
+// shared board never hands the opponent free clues. Skill = building
+// your own picture of where the mines are while denying the opponent
+// theirs.
+//
 // Visual design reuses the solo-mines page's 5×5 gameboard
 // (cyan safe / magenta mine palette, bomb animation, ❓ for
 // unrevealed) and STIPS the left + right sidebars (no bet input,
@@ -205,8 +214,19 @@ type PickEntry = {
   seat: "player1" | "player2" | null;
   cell: number;
   isMine: boolean;
+  // Proximity hint for safe picks — distance to the NEAREST mine in
+  // tiles (1 = touching a mine), stamped server-side from the hidden
+  // board. PRIVATE: the /status route strips it from the opponent's
+  // picks, so a viewer only ever sees numbers on their own tiles.
+  // null on mines and legacy picks.
+  hint?: number | null;
   autoPicked: boolean;
   pickedAt: string | null;
+  // Flag discriminator: true when this entry ended the match via the
+  // "call a mine" move (flagTile). Terminal by definition, so it only
+  // ever appears in the finished reveal. `isMine` then tells whether
+  // the flag was CORRECT (cell really was a mine) or WRONG.
+  flag?: boolean;
 };
 
 type MatchRow = {
@@ -216,6 +236,14 @@ type MatchRow = {
   stakeAmount: string;
   status: string;
   minesCount: number;
+  // Server-computed: how many safe (non-mine) tiles are still
+  // unrevealed. The client can't derive this mid-match (the
+  // opponent's `isMine` flags are scrubbed), so /status stamps it
+  // from the board + pick history. As it approaches 0, only mines
+  // are left unrevealed — whoever must pick next loses by logic
+  // (the zugzwang endgame), which is what this counter makes
+  // legible.
+  safeTilesRemaining: number;
   board: { size: number; mines: number[] } | null;
   firstPlayerId: string | null;
   currentTurnUserId: string | null;
@@ -305,6 +333,10 @@ export default function MinesPvpMatchPage({
   const [timeLeft, setTimeLeft] = useState<number>(0);
   // Report modal — flags the human opponent for moderation.
   const [showReportModal, setShowReportModal] = useState(false);
+  // Flag mode: when ON, clicking a tile submits a "call a mine" flag
+  // instead of a pick. Only meaningful on your turn (the handler
+  // guards `isMyTurn` anyway); auto-resets when the turn passes.
+  const [flagMode, setFlagMode] = useState(false);
 
   // Refs used to anchor the countdown interval + the last-seen
   // deadline timestamp so we don't reset the countdown when the
@@ -507,10 +539,20 @@ export default function MinesPvpMatchPage({
     );
     const winner = iWon ? "you" : "opponent";
     const allPicks = Array.isArray(match.picks) ? match.picks : [];
-    const mineHit = allPicks.find((p) => Boolean(p && p.isMine)) ?? null;
+    // The deciding entry is the LAST one in the chronology: a picked
+    // mine, or the flag that ended the match. The loser is whoever
+    // winnerId is NOT — deriving it from the winner (rather than from
+    // the mine-hit entry) stays correct for flags, where the mine-hit
+    // entry belongs to the WINNER.
+    const lastEntry = allPicks[allPicks.length - 1] ?? null;
+    const loserId = match.winnerId
+      ? match.winnerId === match.player1Id
+        ? match.player2Id
+        : match.player1Id
+      : null;
     const safePickCounts = { player1: 0, player2: 0 };
     for (const p of allPicks) {
-      if (!p || p.isMine) continue;
+      if (!p || p.isMine || p.flag) continue;
       if (p.seat === "player1") safePickCounts.player1 += 1;
       else if (p.seat === "player2") safePickCounts.player2 += 1;
     }
@@ -525,9 +567,10 @@ export default function MinesPvpMatchPage({
       pick_count: allPicks.length,
       p1_safe_picks: safePickCounts.player1,
       p2_safe_picks: safePickCounts.player2,
-      loser_id: mineHit ? mineHit.userId ?? null : null,
-      loser_seat: mineHit ? mineHit.seat ?? null : null,
-      loser_pick_cell: mineHit ? mineHit.cell ?? null : null,
+      ended_by: lastEntry?.flag ? "flag" : lastEntry?.isMine ? "mine" : null,
+      loser_id: loserId,
+      loser_seat: lastEntry ? lastEntry.seat ?? null : null,
+      loser_pick_cell: lastEntry ? lastEntry.cell ?? null : null,
     });
   }, [match, matchId, myUserId, posthog]);
   const isParticipant = useMemo(() => {
@@ -558,6 +601,12 @@ export default function MinesPvpMatchPage({
   const opponentPickIsMine = opponentLastPick?.isMine ?? null;
   const opponentAutoPicked = opponentLastPick?.autoPicked ?? false;
 
+  // Auto-exit flag mode the moment it's no longer your turn, so a
+  // stale toggle can't turn a later pick into an accidental flag.
+  useEffect(() => {
+    if (!isMyTurn) setFlagMode(false);
+  }, [isMyTurn]);
+
   // ── Action handlers ──────────────────────────────────────────────
   const handleCellClick = useCallback(
     async (cellIndex: number) => {
@@ -579,17 +628,22 @@ export default function MinesPvpMatchPage({
       setBusy(true);
       setError(null);
       try {
-        // BUG-FIX: route lives at /api/mines-pvp/match/[matchId]/pick,
-        // not /api/mines-pvp/${matchId}/pick (which 404'd).
-        const res = await fetch(`/api/mines-pvp/match/${matchId}/pick`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ cellIndex }),
-        });
+        // Flag mode submits to the /flag route ("call a mine"); normal
+        // mode to /pick. The server re-validates turn + state either way.
+        const res = await fetch(
+          flagMode
+            ? `/api/mines-pvp/match/${matchId}/flag`
+            : `/api/mines-pvp/match/${matchId}/pick`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ cellIndex }),
+          },
+        );
         const data = await res.json();
         if (!res.ok || !data.success) {
-          setError(data?.error || "Pick failed");
+          setError(data?.error || (flagMode ? "Flag failed" : "Pick failed"));
           return;
         }
         // Fanout the broadcast to BOTH the per-match room (so the
@@ -604,7 +658,7 @@ export default function MinesPvpMatchPage({
           roomId: MINES_PVP_LOBBY_ROOM,
           event: MINES_PVP_MATCH_UPDATED,
         });
-        posthog?.capture("mines_pvp_pick", {
+        posthog?.capture(flagMode ? "mines_pvp_flag" : "mines_pvp_pick", {
           match_id: matchId,
           cell_index: cellIndex,
           auto: false,
@@ -614,7 +668,7 @@ export default function MinesPvpMatchPage({
         setBusy(false);
       }
     },
-    [busy, fetchStatus, isMyTurn, match, matchId, myPicks, opponentPicks, posthog, socket],
+    [busy, fetchStatus, flagMode, isMyTurn, match, matchId, myPicks, opponentPicks, posthog, socket],
   );
 
   const handleCancel = useCallback(async () => {
@@ -638,6 +692,39 @@ export default function MinesPvpMatchPage({
       setCancelling(false);
     }
   }, [cancelling, matchId, posthog, router]);
+
+  // ── Minesweeper hint badge (the skill mechanic) ─────────────────
+  // Distance semantics: 1 = right next to a mine (HOT), higher = safer.
+  // The number is PRIVATE — each player only sees the numbers on the
+  // tiles they picked themselves, so the opponent's picks give away
+  // nothing.
+  function hintBadgeClass(hint: number): string {
+    if (hint <= 1) return "bg-red-500/20 text-red-200 border-red-400/50";
+    if (hint === 2) return "bg-orange-500/20 text-orange-200 border-orange-300/40";
+    if (hint === 3) return "bg-amber-500/20 text-amber-200 border-amber-300/40";
+    if (hint === 4) return "bg-emerald-500/20 text-emerald-200 border-emerald-300/40";
+    return "bg-cyan-500/20 text-cyan-200 border-cyan-300/40";
+  }
+
+  /** The 💎 + hint-number badge shown on the viewer's own SAFE picks. */
+  function safeCellContent(entry: PickEntry | undefined) {
+    const hint =
+      entry && typeof entry.hint === "number" ? entry.hint : null;
+    return (
+      <span className="relative inline-flex items-center justify-center">
+        <span>💎</span>
+        {hint !== null && (
+          <span
+            className={`absolute -top-2.5 -right-2.5 flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-black tabular-nums ${hintBadgeClass(
+              hint,
+            )}`}
+          >
+            {hint}
+          </span>
+        )}
+      </span>
+    );
+  }
 
   // ── Cell rendering helpers (reused from solo mines page) ────────
   // Returns { content, style } for a single cell based on the
@@ -675,10 +762,26 @@ export default function MinesPvpMatchPage({
       if (entry) {
         // Every in-flight pick is guaranteed safe (a mine would
         // have ended the match). The seats get their own accent so
-        // a glance at the board shows whose territory is whose.
+        // a glance at the board shows whose territory is whose —
+        // and the minesweeper number shows how many mines touch
+        // this cell (the deduction surface).
         return {
-          content: "💎",
+          content: safeCellContent(entry),
           revealed: true,
+          isMine: false,
+        };
+      }
+      // Flag mode: an unrevealed playable cell shows a ⚑ instead of
+      // a ❓ so a click here declares a mine rather than picking it.
+      const isFlagTarget =
+        flagMode &&
+        isMyTurn &&
+        !myPicks.includes(cellIndex) &&
+        !opponentPicks.includes(cellIndex);
+      if (isFlagTarget) {
+        return {
+          content: <span className="text-red-300 drop-shadow-[0_0_6px_rgba(248,113,113,0.6)]">⚑</span>,
+          revealed: false,
           isMine: false,
         };
       }
@@ -700,7 +803,7 @@ export default function MinesPvpMatchPage({
     }
     if (pickedEntry) {
       return {
-        content: "💎",
+        content: safeCellContent(pickedEntry),
         revealed: true,
         isMine: false,
       };
@@ -769,7 +872,11 @@ export default function MinesPvpMatchPage({
       return "bg-[#0c1a33] border border-[#1f3a6a]";
     }
     if (isPlayable) {
-      return "bg-[#071226] border border-[#00e5ff]/20 hover:border-[#00e5ff]/70 hover:shadow-[0_0_16px_rgba(0,229,255,0.35)]";
+      // Flag mode tints playable cells red so the player can see at
+      // a glance that clicking means "declare a mine".
+      return flagMode
+        ? "bg-[#2a0d1e] border border-red-400/60 hover:border-red-300 hover:shadow-[0_0_16px_rgba(248,113,113,0.45)]"
+        : "bg-[#071226] border border-[#00e5ff]/20 hover:border-[#00e5ff]/70 hover:shadow-[0_0_16px_rgba(0,229,255,0.35)]";
     }
     return "bg-[#071226] border border-[#00e5ff]/15 opacity-60";
   }
@@ -869,18 +976,46 @@ export default function MinesPvpMatchPage({
       match.winnerId && myUserId && match.winnerId === myUserId;
     const iLost =
       match.winnerId && myUserId && match.winnerId !== myUserId;
-    const headline = iWon
-      ? "Opponent hit a mine - you take the pot"
-      : iLost
-        ? "You hit a mine"
-        : "Match complete";
+    // The deciding entry: the last pick in the chronology — either the
+    // mine that was picked, or the flag that ended the match.
+    const allResultPicks = Array.isArray(match.picks) ? match.picks : [];
+    const lastEntry = allResultPicks[allResultPicks.length - 1] ?? null;
+    const flagEntry = lastEntry?.flag ? lastEntry : null;
+    const iFlagged = Boolean(
+      flagEntry && myUserId && flagEntry.userId === myUserId,
+    );
+    const headline = flagEntry
+      ? iFlagged
+        ? flagEntry.isMine
+          ? "Correct flag — you called the mine"
+          : "Wrong flag — the tile was safe"
+        : flagEntry.isMine
+          ? "Opponent called your mine"
+          : "Opponent's flag missed"
+      : iWon
+        ? "Opponent hit a mine - you take the pot"
+        : iLost
+          ? "You hit a mine"
+          : "Match complete";
 
     const headlineColor = iWon
       ? "text-emerald-300"
       : iLost
         ? "text-red-300"
         : "text-white";
-    const headlineEmoji = iWon ? "🏆" : iLost ? "💣" : "✅";
+    const headlineEmoji = flagEntry
+      ? iFlagged
+        ? flagEntry.isMine
+          ? "🏆"
+          : "💥"
+        : flagEntry.isMine
+          ? "💣"
+          : "🏆"
+      : iWon
+        ? "🏆"
+        : iLost
+          ? "💣"
+          : "✅";
     const headlineBg = iWon
       ? "from-[#0d2b1a] to-[#062a16] border-emerald-300/50 shadow-[0_0_60px_rgba(72,209,154,0.35)]"
       : iLost
@@ -945,16 +1080,18 @@ export default function MinesPvpMatchPage({
             <div className="mt-4 grid grid-cols-2 gap-2 text-left text-xs">
               <div className="rounded-lg border border-cyan-300/20 bg-cyan-500/5 p-3">
                 <p className="text-[10px] uppercase tracking-wider text-cyan-200/70">
-                  You picked cell #{myPick ?? "?"}
+                  You {myLastPick?.flag ? "flagged" : "picked"} cell #{myPick ?? "?"}
                 </p>
                 <p className="mt-1 inline-flex items-center gap-1 font-semibold">
                   {myPickIsMine ? (
                     <span className="text-red-300 inline-flex items-center gap-1">
-                      <CrossIcon className="w-3.5 h-3.5" /> Mine
+                      <CrossIcon className="w-3.5 h-3.5" />{" "}
+                      {myLastPick?.flag ? "Mine — correct" : "Mine"}
                     </span>
                   ) : myPick !== null ? (
                     <span className="text-emerald-300 inline-flex items-center gap-1">
-                      <CheckIcon className="w-3.5 h-3.5" /> Safe
+                      <CheckIcon className="w-3.5 h-3.5" />{" "}
+                      {myLastPick?.flag ? "Safe — wrong" : "Safe"}
                     </span>
                   ) : (
                     "—"
@@ -968,16 +1105,18 @@ export default function MinesPvpMatchPage({
               </div>
               <div className="rounded-lg border border-fuchsia-300/20 bg-fuchsia-500/5 p-3">
                 <p className="text-[10px] uppercase tracking-wider text-fuchsia-200/70">
-                  Opponent picked cell #{opponentPick ?? "?"}
+                  Opponent {opponentLastPick?.flag ? "flagged" : "picked"} cell #{opponentPick ?? "?"}
                 </p>
                 <p className="mt-1 inline-flex items-center gap-1 font-semibold">
                   {opponentPickIsMine ? (
                     <span className="text-red-300 inline-flex items-center gap-1">
-                      <CrossIcon className="w-3.5 h-3.5" /> Mine
+                      <CrossIcon className="w-3.5 h-3.5" />{" "}
+                      {opponentLastPick?.flag ? "Mine — correct" : "Mine"}
                     </span>
                   ) : opponentPick !== null ? (
                     <span className="text-emerald-300 inline-flex items-center gap-1">
-                      <CheckIcon className="w-3.5 h-3.5" /> Safe
+                      <CheckIcon className="w-3.5 h-3.5" />{" "}
+                      {opponentLastPick?.flag ? "Safe — wrong" : "Safe"}
                     </span>
                   ) : (
                     "—"
@@ -1104,6 +1243,33 @@ export default function MinesPvpMatchPage({
               <MineIcon className="w-3.5 h-3.5 text-fuchsia-300" />
             </span>
           </span>
+          {/* Safe-tiles counter — makes the zugzwang endgame legible.
+              Server-stamped (the client can't count the opponent's
+              scrubbed safe reveals). Color-coded so the "only mines
+              left" moment is unmissable: emerald while comfortable,
+              amber when it's tight, red + pulse when the next forced
+              mine is one pick away. */}
+          <span
+            title="Safe (non-mine) tiles still unrevealed. When it hits 0, only mines are left — whoever must pick next loses by logic (zugzwang)."
+            className={`inline-flex items-center gap-1 ${
+              match.safeTilesRemaining <= 2
+                ? "animate-pulse"
+                : ""
+            }`}
+          >
+            <span>💎 Safe left:</span>
+            <span
+              className={`font-bold inline-flex items-center gap-1 ${
+                match.safeTilesRemaining <= 2
+                  ? "text-red-300"
+                  : match.safeTilesRemaining <= 4
+                    ? "text-amber-300"
+                    : "text-emerald-300"
+              }`}
+            >
+              {match.safeTilesRemaining}
+            </span>
+          </span>
           <span>
             Seat: <span className="text-cyan-200 font-semibold">{mySeat}</span>
           </span>
@@ -1119,6 +1285,45 @@ export default function MinesPvpMatchPage({
 
         {/* Turn indicator */}
         <div className="mt-4">{renderTurnIndicator()}</div>
+
+        {/* Flag-mode toggle — only on your turn, only mid-match.
+            In flag mode, clicking a tile submits a "call a mine"
+            flag instead of a pick: correct = opponent loses,
+            wrong = you lose. Auto-resets when the turn passes. */}
+        {isMyTurn &&
+          match.status !== MATCH_STATUS.FINISHED &&
+          match.status !== MATCH_STATUS.CANCELLED && (
+            <div className="mt-3 flex flex-col items-center gap-1.5">
+              <div className="inline-flex rounded-xl border border-cyan-300/30 bg-[#08142f]/80 p-1 text-xs font-bold">
+                <button
+                  onClick={() => setFlagMode(false)}
+                  className={`px-3 py-1.5 rounded-lg transition ${
+                    !flagMode
+                      ? "bg-cyan-300 text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.45)]"
+                      : "text-cyan-200/70 hover:text-cyan-100"
+                  }`}
+                >
+                  💎 Pick a tile
+                </button>
+                <button
+                  onClick={() => setFlagMode(true)}
+                  className={`px-3 py-1.5 rounded-lg transition ${
+                    flagMode
+                      ? "bg-red-400 text-[#2a0d1e] shadow-[0_0_10px_rgba(248,113,113,0.45)]"
+                      : "text-red-300/70 hover:text-red-200"
+                  }`}
+                >
+                  ⚑ Flag a mine
+                </button>
+              </div>
+              {flagMode && (
+                <p className="text-[10px] uppercase tracking-widest text-red-300/80 font-bold">
+                  Click a tile you believe is a mine — correct = opponent
+                  loses · wrong = you lose
+                </p>
+              )}
+            </div>
+          )}
 
         {/* Error banner */}
         {error && (
@@ -1161,6 +1366,11 @@ export default function MinesPvpMatchPage({
             })}
           </div>
         </div>
+
+        {/* Minesweeper hint legend — the skill mechanic */}
+        <p className="mt-3 text-center text-[10px] uppercase tracking-widest text-white/35 font-bold">
+          💎 number = tiles to the nearest mine (1 = right next to it) · only you see your own
+        </p>
 
         {/* Host-only cancel button while still in waiting */}
         {canCancel && (

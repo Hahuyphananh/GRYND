@@ -45,9 +45,20 @@ import {
   // Result + pick constants
   RESULT,
   PICK_KIND,
+  // No-guess board machinery
+  SENSIBLE_FIRST_PICKS,
+  CENTER_FIRST_PICK,
+  CENTER_BLOCK,
+  CENTER_BLOCK_SET,
+  chebyshevDistance,
+  relocateMine,
+  ejectMinesFromCenter,
+  simulateSolvability,
+  generateSolvableBoard,
   // Pure helpers under test
   generateBoard,
   isMine,
+  nearestMineDistance,
   decideOutcome,
   computePayout,
   pickRandomCell,
@@ -383,6 +394,242 @@ test("isMine: null board returns false", () => {
 test("isMine: board with no mines array returns false", () => {
   assert.equal(isMine({}, 5), false);
   assert.equal(isMine({ mines: "not-an-array" }, 5), false);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// nearestMineDistance — the private minesweeper-style hint
+// ════════════════════════════════════════════════════════════════════════
+
+test("nearestMineDistance: touching a mine (any of the 8 cells) is distance 1", () => {
+  // Center cell 12 (row 2, col 2) with mines at 6 (diag), 13 (right),
+  // 17 (below) — all adjacent.
+  assert.equal(nearestMineDistance({ size: 5, mines: [6, 13, 17] }, 12), 1);
+  // A mine ON the cell itself is distance 0 (only reachable
+  // post-match — safe picks always return >= 1).
+  assert.equal(nearestMineDistance({ size: 5, mines: [12] }, 12), 0);
+});
+
+test("nearestMineDistance: reports the CLOSEST mine (Chebyshev tiles)", () => {
+  // Mines at 0 (0,0) and 18 (3,3). Cell 12 (2,2): cheb to 0 = 2,
+  // cheb to 18 = 1 -> 1.
+  assert.equal(nearestMineDistance({ size: 5, mines: [0, 18] }, 12), 1);
+  // Single mine at 0 (0,0). Cell 24 (4,4) is 4 tiles away.
+  assert.equal(nearestMineDistance({ size: 5, mines: [0] }, 24), 4);
+  // Mines [0,1,2] (top row). Cell 7 (1,2): nearest = 1 (touches 1/2).
+  assert.equal(nearestMineDistance({ size: 5, mines: [0, 1, 2] }, 7), 1);
+  // Same board, cell 12 (2,2): nearest = 2 tiles below the top row.
+  assert.equal(nearestMineDistance({ size: 5, mines: [0, 1, 2] }, 12), 2);
+  // Cell 0 is the mine itself -> 0.
+  assert.equal(nearestMineDistance({ size: 5, mines: [0, 1, 2] }, 0), 0);
+});
+
+test("nearestMineDistance: defensive inputs return null", () => {
+  assert.equal(nearestMineDistance(null, 0), null);
+  assert.equal(nearestMineDistance({}, 0), null);
+  assert.equal(nearestMineDistance({ mines: "not-an-array" }, 0), null);
+  assert.equal(nearestMineDistance({ mines: [] }, 0), null);
+  assert.equal(nearestMineDistance({ mines: [0] }, -1), null);
+  assert.equal(nearestMineDistance({ mines: [0] }, 99), null);
+  assert.equal(nearestMineDistance({ mines: [0] }, 1.5), null);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// No-guess board machinery — constants, mercy, solver, generator
+// ════════════════════════════════════════════════════════════════════════
+
+test("SENSIBLE_FIRST_PICKS = center + the four corners", () => {
+  assert.deepEqual(SENSIBLE_FIRST_PICKS, [12, 0, 4, 20, 24]);
+});
+
+test("CENTER_FIRST_PICK is the center cell (row 2, col 2)", () => {
+  assert.equal(CENTER_FIRST_PICK, 12);
+  assert.deepEqual(cellIndexToRowCol(CENTER_FIRST_PICK), { row: 2, col: 2 });
+});
+
+test("CENTER_BLOCK is the 3x3 block around the center (9 cells)", () => {
+  assert.equal(CENTER_BLOCK.length, 9);
+  assert.deepEqual(
+    [...CENTER_BLOCK].sort((a, b) => a - b),
+    [6, 7, 8, 11, 12, 13, 16, 17, 18],
+  );
+  assert.equal(CENTER_BLOCK_SET.size, 9);
+  assert.equal(CENTER_BLOCK_SET.has(12), true);
+  assert.equal(CENTER_BLOCK_SET.has(0), false);
+  assert.equal(CENTER_BLOCK_SET.has(24), false);
+});
+
+test("chebyshevDistance: king-move distance between cells", () => {
+  // Same cell -> 0
+  assert.equal(chebyshevDistance(12, 12), 0);
+  // Orthogonal neighbour -> 1
+  assert.equal(chebyshevDistance(7, 12), 1);
+  // Diagonal neighbour -> 1
+  assert.equal(chebyshevDistance(6, 12), 1);
+  // Corner (0,0) to center (2,2) -> 2
+  assert.equal(chebyshevDistance(0, 12), 2);
+  // (0,0) to (4,4) -> 4
+  assert.equal(chebyshevDistance(0, 24), 4);
+  // Defensive
+  assert.equal(chebyshevDistance(-1, 12), null);
+  assert.equal(chebyshevDistance(25, 12), null);
+  assert.equal(chebyshevDistance(1.5, 12), null);
+});
+
+test("relocateMine: moves the mine off a cell, preserving the mine count", () => {
+  for (let i = 0; i < 200; i += 1) {
+    const board = generateBoard(5);
+    const target = board.mines[0];
+    const moved = relocateMine(board, target);
+    assert.equal(moved.mines.length, 5, "mine count preserved");
+    assert.equal(moved.mines.includes(target), false, `mine ${target} should be gone`);
+    assert.equal(isMine(moved, target), false);
+    // Every remaining mine must be a valid unique cell.
+    const seen = new Set();
+    for (const m of moved.mines) {
+      assert.ok(Number.isInteger(m) && m >= 0 && m < GRID_CELLS);
+      assert.equal(seen.has(m), false, `duplicate mine ${m}`);
+      seen.add(m);
+    }
+  }
+});
+
+test("relocateMine: no-op on a safe cell / malformed input", () => {
+  const board = { size: 5, mines: [0, 5] };
+  // No-op returns the same board reference (never mutates, never copies).
+  assert.equal(relocateMine(board, 12), board);
+  assert.equal(relocateMine(board, -1), board);
+  assert.deepEqual(board.mines, [0, 5], "input untouched");
+  // Malformed inputs pass through untouched.
+  assert.equal(relocateMine(null, 0), null);
+  assert.equal(relocateMine({ mines: "x" }, 0).mines, "x");
+});
+
+test("ejectMinesFromCenter: removes every mine from the 3x3 center block", () => {
+  for (let i = 0; i < 300; i += 1) {
+    const board = ejectMinesFromCenter(generateBoard(5));
+    assert.equal(board.mines.length, 5);
+    for (const m of board.mines) {
+      assert.equal(
+        CENTER_BLOCK_SET.has(m),
+        false,
+        `mine ${m} should not sit in the center block`,
+      );
+    }
+  }
+});
+
+test("ejectMinesFromCenter: works from the densest legal mine counts (up to 16)", () => {
+  for (let i = 0; i < 50; i += 1) {
+    const board = ejectMinesFromCenter(generateBoard(16));
+    assert.equal(board.mines.length, 16);
+    for (const m of board.mines) {
+      assert.equal(CENTER_BLOCK_SET.has(m), false);
+    }
+  }
+});
+
+test("ejectMinesFromCenter: best-effort beyond 16 mines (center block must hold some)", () => {
+  const board = ejectMinesFromCenter(generateBoard(20));
+  assert.equal(board.mines.length, 20);
+  const seen = new Set();
+  for (const m of board.mines) {
+    assert.equal(seen.has(m), false);
+    seen.add(m);
+  }
+});
+
+test("simulateSolvability: a single corner mine is fully solvable from the center", () => {
+  // Mine at corner 0. Center hint = 2 -> 3x3 block revealed -> cascade.
+  const r = simulateSolvability({ size: 5, mines: [0] }, 12);
+  assert.equal(r.guessFree, true);
+  assert.equal(r.safeRemaining, 0);
+  assert.equal(r.revealedCount, 24); // every safe cell (all but the mine)
+});
+
+test("simulateSolvability: a hint-1 opening (mine adjacent to the pick) is stuck", () => {
+  // Mine at 7 sits directly above the center -> center hint = 1 -> the
+  // hint proves nothing safe -> any continuation is a guess.
+  const r = simulateSolvability({ size: 5, mines: [7] }, 12);
+  assert.equal(r.guessFree, false);
+  assert.ok(r.safeRemaining > 0);
+});
+
+test("simulateSolvability: a mid-game stall strands safe cells (distance hints are weak there)", () => {
+  // Mines at 2 (0,2) and 10 (2,0): the center cascade deduces 20 of the
+  // 23 safe cells, then hits a wall of hint-1 frontier reveals and can
+  // prove nothing about the last 3 safe cells -> forced guess.
+  const r = simulateSolvability({ size: 5, mines: [2, 10] }, 12);
+  assert.equal(r.guessFree, false);
+  assert.equal(r.safeRemaining, 3);
+});
+
+test("simulateSolvability: deterministic for the same board + opening", () => {
+  const board = { size: 5, mines: [0, 2, 14, 22] };
+  const a = simulateSolvability(board, 12);
+  const b = simulateSolvability(board, 12);
+  assert.deepEqual(a, b);
+});
+
+test("simulateSolvability: defensive inputs", () => {
+  assert.equal(simulateSolvability(null, 12).guessFree, false);
+  assert.equal(simulateSolvability({ mines: "x" }, 12).guessFree, false);
+  assert.equal(simulateSolvability({ size: 5, mines: [0] }, -1).guessFree, false);
+  assert.equal(simulateSolvability({ size: 5, mines: [0] }, 99).guessFree, false);
+});
+
+test("generateSolvableBoard: every returned board is valid (count, unique, sorted)", () => {
+  for (const m of [1, 2, 3, 5, 8, 12]) {
+    for (let i = 0; i < 20; i += 1) {
+      const board = generateSolvableBoard(m);
+      assert.equal(board.size, 5);
+      assert.equal(board.mines.length, m, `m=${m} mine count`);
+      const seen = new Set();
+      for (let j = 0; j < board.mines.length; j += 1) {
+        assert.equal(seen.has(board.mines[j]), false, `duplicate mine ${board.mines[j]}`);
+        seen.add(board.mines[j]);
+        assert.ok(board.mines[j] >= 0 && board.mines[j] < GRID_CELLS);
+        if (j > 0) {
+          assert.ok(board.mines[j] > board.mines[j - 1], "mines sorted ascending");
+        }
+      }
+    }
+  }
+});
+
+test("generateSolvableBoard: center block is always mine-free", () => {
+  for (const m of [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 16]) {
+    for (let i = 0; i < 30; i += 1) {
+      const board = generateSolvableBoard(m);
+      for (const idx of board.mines) {
+        assert.equal(
+          CENTER_BLOCK_SET.has(idx),
+          false,
+          `m=${m}: mine ${idx} inside center block`,
+        );
+      }
+    }
+  }
+});
+
+test("generateSolvableBoard: low mine counts are always fully solvable from the center", () => {
+  // Measured acceptance: ~100% at m<=3, ~90% at m=4, ~72% at m=5.
+  // Assert the hard floor we ship on: m<=3 boards must virtually
+  // always pass (allow a tiny epsilon for randomness at 3).
+  const trials = 60;
+  let passed = 0;
+  for (let i = 0; i < trials; i += 1) {
+    const board = generateSolvableBoard(3);
+    if (simulateSolvability(board, CENTER_FIRST_PICK).guessFree) passed += 1;
+  }
+  assert.ok(passed >= trials - 1, `expected ~100% pass at 3 mines, got ${passed}/${trials}`);
+});
+
+test("generateSolvableBoard: throws on invalid mine counts (mirrors generateBoard)", () => {
+  assert.throws(() => generateSolvableBoard(0), RangeError);
+  assert.throws(() => generateSolvableBoard(25), RangeError);
+  assert.throws(() => generateSolvableBoard(-1), RangeError);
+  assert.throws(() => generateSolvableBoard(1.5), RangeError);
+  assert.throws(() => generateSolvableBoard(NaN), RangeError);
 });
 
 // ════════════════════════════════════════════════════════════════════════
