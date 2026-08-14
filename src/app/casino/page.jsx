@@ -10,8 +10,6 @@ import Img3 from "../../images/poker.jpg";
 import Img4 from "../../images/plinko.svg";
 import Img6 from "../../images/crash.svg";
 import Img7 from "../../images/chess.svg";
-import Img8 from "../../images/slots.jpg";
-import Img9 from "../../images/coin-flip.jpg";
 import Img10 from "../../images/keno.svg";
 import Img11 from "../../images/uno.svg";
 import Img12 from "../../images/rps.svg";
@@ -109,20 +107,6 @@ function MainComponent() {
       image: Img7,
       descriptionKey: "games.chess_desc",
       nameKey: "games.chess_name",
-    },
-    {
-      name: "Slots",
-      href: "/casino/slots",
-      leaderboardKey: "slots",
-      image: Img8,
-      descriptionKey: "games.slots_desc",
-    },
-    {
-      name: "Coin Flip",
-      href: "/casino/coin-flip",
-      leaderboardKey: "coin-flip",
-      image: Img9,
-      descriptionKey: "games.coin_flip_desc",
     },
     {
       name: "Keno",
@@ -269,8 +253,6 @@ function MainComponent() {
     "rps",
     "neon-flush",
     "keno",
-    "coin-flip",
-    "slots",
     "chess",
     "crash",
     "poker",

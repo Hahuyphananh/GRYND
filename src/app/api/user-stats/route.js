@@ -19,9 +19,8 @@ import {
   sportsBets,
   unoGames,
   chessGames,
-  slotGames,
-  coinFlipGames,
   keno_games,
+  kenoPvpMatches,
   diceMatches,
   connectFourGames,
   laneRunnerGames,
@@ -93,8 +92,7 @@ export async function GET() {
       uno,
       chess,
       sports,
-      slots,
-      coinflipRows,
+      kenoPvpRows,
       kenoRows,
       diceRows,
       connectFourRows,
@@ -125,15 +123,14 @@ export async function GET() {
           ),
       ),
       safeQuery("sports", () => db.select().from(sportsBets).where(eq(sportsBets.userId, uid))),
-      safeQuery("slots", () => db.select().from(slotGames).where(eq(slotGames.userId, userId))),
-      safeQuery("coinflip", () =>
+      safeQuery("keno-pvp", () =>
         db
           .select()
-          .from(coinFlipGames)
+          .from(kenoPvpMatches)
           .where(
             or(
-              eq(coinFlipGames.player1Id, clerkId),
-              eq(coinFlipGames.player2Id, clerkId),
+              eq(kenoPvpMatches.player1Id, clerkId),
+              eq(kenoPvpMatches.player2Id, clerkId),
             ),
           ),
       ),
@@ -276,6 +273,25 @@ export async function GET() {
 
         return {
           type: "Dice Duel",
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      })
+      .filter(Boolean);
+
+    // 🎱 Keno Duel (PvP) — finished matches only; winner determined by
+    // the match's winnerId (a draw refunds both, so no winner column).
+    const kenoPvpNormalized = kenoPvpRows
+      .map((game) => {
+        if (game.status !== "finished") return null;
+        if (!game.winnerId) return null; // draw
+        const amount = Number(game.stakeAmount || 0);
+        const payout = Number(game.prizePaid || 0);
+        const result = game.winnerId === clerkId ? "won" : "lost";
+        return {
+          type: "Keno Duel",
           amount,
           payout,
           result,
@@ -428,8 +444,7 @@ export async function GET() {
       ...normalize(uno, "UNO"),
       ...normalize(chess, "Chess"),
       ...normalize(sports, "Sports"),
-      ...normalize(slots, "Slots"),
-      ...normalize(coinflipRows, "Coinflip"),
+      ...kenoPvpNormalized,
       ...normalize(kenoRows, "Keno"),
       ...diceNormalized,
       ...connectFourNormalized,

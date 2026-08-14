@@ -1,0 +1,459 @@
+/**
+ * PvP Keno ("Keno Catch Duel") — engine unit tests.
+ *
+ * Pure-function tests for the shared constants + deterministic helpers
+ * in `src/lib/keno-pvp/constants.js` and `src/lib/keno-pvp/engine.js`.
+ * The shared-draw generation, the ball release schedule, the catch
+ * quality grading (perfect / good / late / miss), the keno-multiplier
+ * round scoring and the round/match decision rules are the contract
+ * every other piece of the match system depends on, so they're tested
+ * exhaustively (valid + invalid inputs, boundaries, determinism).
+ *
+ * The engine imports the keno multiplier table from
+ * `src/lib/kenoMultipliers.ts` (TypeScript), so this suite runs with
+ * the tsx loader, mirroring `test:reports`.
+ *
+ * Run:  node --import tsx --test tests/keno-pvp-engine.test.mjs
+ */
+
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  MATCH_STATUS,
+  ACTIVE_STATES,
+  ROUND_STATES,
+  TERMINAL_STATES,
+  MAX_ROUNDS,
+  ROUNDS_TO_WIN,
+  BALL_COUNT,
+  BALL_INTERVAL_MS,
+  BALL_TTL_MS,
+  CATCH_GRACE_MS,
+  GOOD_WINDOW_MS,
+  IDEAL_CATCH_MS,
+  KENO_POOL_SIZE,
+  PERFECT_BONUS,
+  PERFECT_WINDOW_MS,
+  ROUND_MS,
+  ROUND_TIMER_SECONDS,
+  READY_WINDOW_MS,
+  FINISHED_GRACE_MS,
+  HOUSE_FEE_PCT,
+  WINNER_RATIO,
+  HOUSE_RATIO,
+  STAKE_PRESETS,
+  MIN_STAKE,
+  MAX_STAKE,
+  KENO_PVP_LOCK_NAMESPACE,
+  RESULT,
+  computePayout,
+  round2,
+  pickPositiveInt,
+  statusForRoundNumber,
+  roundNumberForStatus,
+  isRoundStatus,
+} from "../src/lib/keno-pvp/constants.js";
+
+import {
+  CATCH_QUALITY,
+  ballSchedule,
+  botCatchesForElapsed,
+  catchValue,
+  computeRoundStats,
+  decideMatchResult,
+  decideRoundWinner,
+  generateDraw,
+  gradeCatch,
+} from "../src/lib/keno-pvp/engine.js";
+
+// ════════════════════════════════════════════════════════════════════
+// Constants
+// ════════════════════════════════════════════════════════════════════
+
+test("status enum matches the keno_pvp_status pgEnum (migration 0061)", () => {
+  assert.deepEqual(Object.values(MATCH_STATUS), [
+    "waiting",
+    "ready",
+    "round_1",
+    "round_2",
+    "round_3",
+    "round_4",
+    "round_5",
+    "finished",
+    "cancelled",
+  ]);
+});
+
+test("state sets partition the status machine correctly", () => {
+  assert.equal(ACTIVE_STATES.size, 6); // ready + 5 rounds
+  assert.equal(ROUND_STATES.size, 5);
+  assert.equal(TERMINAL_STATES.size, 2);
+  for (const s of ROUND_STATES) assert.ok(ACTIVE_STATES.has(s));
+  for (const s of TERMINAL_STATES) assert.ok(!ACTIVE_STATES.has(s));
+});
+
+test("a match is best-of-5 with 3 round-wins needed", () => {
+  assert.equal(MAX_ROUNDS, 5);
+  assert.equal(ROUNDS_TO_WIN, 3);
+});
+
+test("statusForRoundNumber maps 1..5 → round_N and clamps out-of-range", () => {
+  assert.equal(statusForRoundNumber(1), MATCH_STATUS.ROUND_1);
+  assert.equal(statusForRoundNumber(3), MATCH_STATUS.ROUND_3);
+  assert.equal(statusForRoundNumber(5), MATCH_STATUS.ROUND_5);
+  assert.equal(statusForRoundNumber(0), MATCH_STATUS.ROUND_1); // clamps low
+  assert.equal(statusForRoundNumber(99), MATCH_STATUS.ROUND_5); // clamps high
+  assert.equal(statusForRoundNumber(undefined), MATCH_STATUS.ROUND_1);
+});
+
+test("roundNumberForStatus round-trips round_N and rejects other states", () => {
+  assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_1), 1);
+  assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_4), 4);
+  assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_5), 5);
+  assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_6), null); // beyond MAX_ROUNDS
+  assert.equal(roundNumberForStatus(MATCH_STATUS.READY), null);
+  assert.equal(roundNumberForStatus(MATCH_STATUS.FINISHED), null);
+  assert.equal(isRoundStatus(MATCH_STATUS.ROUND_2), true);
+  assert.equal(isRoundStatus(MATCH_STATUS.READY), false);
+  assert.equal(isRoundStatus(MATCH_STATUS.CANCELLED), false);
+});
+
+test("stake + house-fee constants match the standard 90/10 split", () => {
+  assert.equal(MIN_STAKE, 1);
+  assert.equal(MAX_STAKE, 1000000);
+  assert.ok(STAKE_PRESETS.length > 0);
+  assert.equal(HOUSE_FEE_PCT, 0.1);
+  assert.equal(WINNER_RATIO, 0.9);
+  assert.equal(HOUSE_RATIO, 0.1);
+  assert.equal(typeof KENO_PVP_LOCK_NAMESPACE, "number");
+  assert.ok(KENO_PVP_LOCK_NAMESPACE > 0);
+  assert.deepEqual(Object.values(RESULT), ["player1", "player2", "draw"]);
+});
+
+test("round timing: 10 balls spaced 1.4s apart + 1.5s final expiry ≈ 14.1s round", () => {
+  assert.equal(BALL_COUNT, 10);
+  assert.equal(KENO_POOL_SIZE, 40);
+  // The LAST ball expires exactly at the round deadline.
+  assert.equal(ROUND_MS, BALL_TTL_MS + (BALL_COUNT - 1) * BALL_INTERVAL_MS);
+  assert.equal(ROUND_MS, 14100);
+  assert.equal(ROUND_TIMER_SECONDS, 15); // ceil(ROUND_MS / 1000)
+  assert.equal(IDEAL_CATCH_MS, 500);
+  assert.equal(PERFECT_WINDOW_MS, 220);
+  assert.equal(GOOD_WINDOW_MS, 550);
+  assert.equal(BALL_TTL_MS, 1500);
+  assert.equal(CATCH_GRACE_MS, 400);
+  assert.equal(PERFECT_BONUS, 5);
+  assert.equal(READY_WINDOW_MS, 3000);
+  assert.equal(FINISHED_GRACE_MS, 5000);
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Draw generation
+// ════════════════════════════════════════════════════════════════════
+
+test("generateDraw returns 10 unique numbers in 1..40", () => {
+  for (let i = 0; i < 20; i += 1) {
+    const draw = generateDraw();
+    assert.equal(draw.length, BALL_COUNT);
+    assert.equal(new Set(draw).size, BALL_COUNT);
+    for (const n of draw) {
+      assert.ok(Number.isInteger(n) && n >= 1 && n <= KENO_POOL_SIZE);
+    }
+  }
+});
+
+test("generateDraw is random (not a fixed sequence)", () => {
+  const draws = new Set();
+  for (let i = 0; i < 10; i += 1) {
+    draws.add(generateDraw().join(","));
+  }
+  assert.ok(draws.size > 1, "expected more than one distinct draw");
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Ball release schedule
+// ════════════════════════════════════════════════════════════════════
+
+test("ballSchedule derives identical, evenly-spaced windows from the round deadline", () => {
+  const deadline = 10_000_000;
+  const draw = [5, 12, 27, 3, 40, 9, 18, 33, 21, 7];
+  const schedule = ballSchedule(deadline, draw);
+  assert.equal(schedule.length, BALL_COUNT);
+  for (let i = 0; i < schedule.length; i += 1) {
+    const ball = schedule[i];
+    assert.equal(ball.index, i);
+    assert.equal(ball.number, draw[i]);
+    assert.equal(ball.releaseMs, deadline - ROUND_MS + i * BALL_INTERVAL_MS);
+    assert.equal(ball.idealMs, ball.releaseMs + IDEAL_CATCH_MS);
+    assert.equal(ball.expiresMs, ball.releaseMs + BALL_TTL_MS);
+    assert.equal(ball.acceptedUntilMs, ball.expiresMs + CATCH_GRACE_MS);
+  }
+  // The final ball's window ends exactly at the round deadline + grace.
+  const last = schedule[schedule.length - 1];
+  assert.equal(last.acceptedUntilMs, deadline + CATCH_GRACE_MS);
+});
+
+test("ballSchedule handles malformed input defensively", () => {
+  assert.deepEqual(ballSchedule(10_000_000, null), []);
+  assert.deepEqual(ballSchedule(10_000_000, []), []);
+  assert.deepEqual(ballSchedule(NaN, [1, 2]), []);
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Catch-quality grading
+// ════════════════════════════════════════════════════════════════════
+
+function makeBall(deadline, draw, index) {
+  return ballSchedule(deadline, draw)[index];
+}
+
+test("gradeCatch: perfect window is symmetric around the ideal instant", () => {
+  const deadline = 10_000_000;
+  const ball = makeBall(deadline, [7, 8, 9, 10, 11, 12, 13, 14, 15, 16], 0);
+  assert.equal(gradeCatch(ball.idealMs, ball), CATCH_QUALITY.PERFECT);
+  assert.equal(gradeCatch(ball.idealMs - PERFECT_WINDOW_MS, ball), CATCH_QUALITY.PERFECT);
+  assert.equal(gradeCatch(ball.idealMs + PERFECT_WINDOW_MS, ball), CATCH_QUALITY.PERFECT);
+  // Just outside the perfect window → good.
+  assert.equal(gradeCatch(ball.idealMs - PERFECT_WINDOW_MS - 1, ball), CATCH_QUALITY.GOOD);
+  assert.equal(gradeCatch(ball.idealMs + PERFECT_WINDOW_MS + 1, ball), CATCH_QUALITY.GOOD);
+});
+
+test("gradeCatch: good window boundaries + late falls back", () => {
+  const deadline = 10_000_000;
+  const ball = makeBall(deadline, [7, 8, 9, 10, 11, 12, 13, 14, 15, 16], 0);
+  assert.equal(gradeCatch(ball.idealMs + GOOD_WINDOW_MS, ball), CATCH_QUALITY.GOOD);
+  assert.equal(gradeCatch(ball.idealMs + GOOD_WINDOW_MS + 1, ball), CATCH_QUALITY.LATE);
+  // Late but still inside the expiry + grace window.
+  assert.equal(gradeCatch(ball.expiresMs, ball), CATCH_QUALITY.LATE);
+  assert.equal(gradeCatch(ball.acceptedUntilMs, ball), CATCH_QUALITY.LATE);
+});
+
+test("gradeCatch: too early / expired return null (uncatchable)", () => {
+  const deadline = 10_000_000;
+  const ball = makeBall(deadline, [7, 8, 9, 10, 11, 12, 13, 14, 15, 16], 0);
+  assert.equal(gradeCatch(ball.releaseMs - 1, ball), null); // before release
+  assert.equal(gradeCatch(ball.acceptedUntilMs + 1, ball), null); // past grace
+  assert.equal(gradeCatch(NaN, ball), null);
+  assert.equal(gradeCatch(123, null), null);
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Round scoring (keno multiplier + perfect bonus)
+// ════════════════════════════════════════════════════════════════════
+
+test("computeRoundStats uses the keno multiplier table for the number caught", () => {
+  assert.deepEqual(computeRoundStats([]), { caught: 0, perfects: 0, score: 0 });
+  // 1 catch → multiplier[1][1] = 3.
+  assert.deepEqual(computeRoundStats([{ number: 5, quality: "good" }]), {
+    caught: 1,
+    perfects: 0,
+    score: 3,
+  });
+  // 5 catches → multiplier[5][5] = 50.
+  const five = [1, 2, 3, 4, 5].map((number) => ({ number, quality: "late" }));
+  assert.deepEqual(computeRoundStats(five), { caught: 5, perfects: 0, score: 50 });
+  // 10 catches → multiplier[10][10] = 5000.
+  const ten = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((number) => ({ number, quality: "good" }));
+  assert.deepEqual(computeRoundStats(ten), { caught: 10, perfects: 0, score: 5000 });
+});
+
+test("computeRoundStats adds the perfect bonus per perfect catch", () => {
+  const catches = [
+    { number: 1, quality: "perfect" },
+    { number: 2, quality: "perfect" },
+    { number: 3, quality: "good" },
+  ];
+  // multiplier[3][3] = 10 + 2 * PERFECT_BONUS.
+  assert.deepEqual(computeRoundStats(catches), {
+    caught: 3,
+    perfects: 2,
+    score: 10 + 2 * PERFECT_BONUS,
+  });
+});
+
+test("catchValue: only perfect catches carry the bonus", () => {
+  assert.equal(catchValue("perfect"), PERFECT_BONUS);
+  assert.equal(catchValue("good"), 0);
+  assert.equal(catchValue("late"), 0);
+  assert.equal(catchValue("bogus"), 0);
+});
+
+test("computeRoundStats ignores malformed entries", () => {
+  assert.deepEqual(computeRoundStats(null), { caught: 0, perfects: 0, score: 0 });
+  assert.deepEqual(computeRoundStats([null, { number: 1, quality: "good" }]), {
+    caught: 1,
+    perfects: 0,
+    score: 3,
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Round winner
+// ════════════════════════════════════════════════════════════════════
+
+test("decideRoundWinner: higher score wins", () => {
+  const p1 = [1, 2, 3].map((number) => ({ number, quality: "good" })); // 10 pts
+  const p2 = [1, 2].map((number) => ({ number, quality: "good" })); // 6 pts
+  assert.equal(decideRoundWinner(p1, p2), RESULT.PLAYER1);
+  assert.equal(decideRoundWinner(p2, p1), RESULT.PLAYER2);
+});
+
+test("decideRoundWinner: perfects break exact score ties; full ties draw", () => {
+  // Score tie (20 = 20): p2's 2 perfects beat p1's 0.
+  const p1 = [1, 2, 3, 4].map((number) => ({ number, quality: "good" })); // mult[4][4] = 20, 0 perfects
+  const p2 = [
+    { number: 5, quality: "perfect" },
+    { number: 6, quality: "perfect" },
+    { number: 7, quality: "good" },
+  ]; // mult[3][3] = 10 + 10 = 20, 2 perfects
+  assert.equal(decideRoundWinner(p1, p2), RESULT.PLAYER2);
+  // Same score, same perfects, same catches → draw.
+  const a = [{ number: 1, quality: "perfect" }]; // 8
+  const b = [{ number: 2, quality: "perfect" }]; // 8
+  assert.equal(decideRoundWinner(a, b), RESULT.DRAW);
+  // Nothing caught on either side → draw.
+  assert.equal(decideRoundWinner([], []), RESULT.DRAW);
+  assert.equal(decideRoundWinner(null, null), RESULT.DRAW);
+});
+
+test("decideRoundWinner: perfects break exact score ties", () => {
+  // 3 good catches = multiplier[3][3] = 10.
+  const p1 = [
+    { number: 1, quality: "good" },
+    { number: 2, quality: "good" },
+    { number: 3, quality: "good" },
+  ]; // 10, 0 perfects
+  // 2 catches with 1 perfect = multiplier[2][2]=6 + 5 = 11 → not a tie.
+  const p2 = [
+    { number: 4, quality: "perfect" },
+    { number: 5, quality: "good" },
+  ]; // 6 + 5 = 11
+  assert.equal(decideRoundWinner(p1, p2), RESULT.PLAYER2);
+  // Exact tie: 1 perfect (8) vs 1 perfect (8) → caught equal → draw.
+  const x = [{ number: 1, quality: "perfect" }];
+  const y = [{ number: 2, quality: "perfect" }];
+  assert.equal(decideRoundWinner(x, y), RESULT.DRAW);
+  // Score tie resolved by perfects: 2 perfects+0 good (3+10=13... )
+  const a = [
+    { number: 1, quality: "perfect" },
+    { number: 2, quality: "perfect" },
+  ]; // multiplier[2][2]=6 + 10 = 16, 2 perfects
+  const b = [{ number: 3, quality: "perfect" }]; // 3 + 5 = 8 → loses on score
+  assert.equal(decideRoundWinner(a, b), RESULT.PLAYER1);
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Match result
+// ════════════════════════════════════════════════════════════════════
+
+test("decideMatchResult: first to ROUNDS_TO_WIN round wins takes the match", () => {
+  assert.equal(
+    decideMatchResult({ roundsWonPlayer1: 3, roundsWonPlayer2: 1, p1Score: 10, p2Score: 500 }),
+    RESULT.PLAYER1,
+  );
+  assert.equal(
+    decideMatchResult({ roundsWonPlayer1: 2, roundsWonPlayer2: 3, p1Score: 900, p2Score: 10 }),
+    RESULT.PLAYER2,
+  );
+});
+
+test("decideMatchResult: level after 5 rounds → aggregate score decides; equal → draw", () => {
+  assert.equal(
+    decideMatchResult({ roundsWonPlayer1: 2, roundsWonPlayer2: 2, p1Score: 100, p2Score: 90 }),
+    RESULT.PLAYER1,
+  );
+  assert.equal(
+    decideMatchResult({ roundsWonPlayer1: 2, roundsWonPlayer2: 2, p1Score: 80, p2Score: 90 }),
+    RESULT.PLAYER2,
+  );
+  assert.equal(
+    decideMatchResult({ roundsWonPlayer1: 2, roundsWonPlayer2: 2, p1Score: 80, p2Score: 80 }),
+    RESULT.DRAW,
+  );
+  assert.equal(decideMatchResult({}), RESULT.DRAW);
+});
+
+test("decideMatchResult: forfeit tally forces the opponent to win", () => {
+  assert.equal(
+    decideMatchResult({ roundsWonPlayer1: 0, roundsWonPlayer2: ROUNDS_TO_WIN, p1Score: 0, p2Score: 0 }),
+    RESULT.PLAYER2,
+  );
+  assert.equal(
+    decideMatchResult({ roundsWonPlayer1: ROUNDS_TO_WIN, roundsWonPlayer2: 0, p1Score: 0, p2Score: 0 }),
+    RESULT.PLAYER1,
+  );
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Payout
+// ════════════════════════════════════════════════════════════════════
+
+test("computePayout: normal win → winner gets stake + 90% of loser's stake", () => {
+  const payout = computePayout({ stakeAmount: 100, result: RESULT.PLAYER1 });
+  assert.equal(payout.winnerNet, 190);
+  assert.equal(payout.loserNet, -100);
+  assert.equal(payout.houseFee, 10);
+  assert.equal(payout.prizePaid, 190);
+  assert.equal(payout.refundEach, null);
+});
+
+test("computePayout: draw refunds both, no fee", () => {
+  const payout = computePayout({ stakeAmount: 100, result: RESULT.DRAW });
+  assert.equal(payout.winnerNet, null);
+  assert.equal(payout.loserNet, null);
+  assert.equal(payout.houseFee, 0);
+  assert.equal(payout.prizePaid, 0);
+  assert.equal(payout.refundEach, 100);
+});
+
+test("computePayout validates inputs", () => {
+  assert.throws(() => computePayout({ stakeAmount: -1, result: RESULT.PLAYER1 }), RangeError);
+  assert.throws(() => computePayout({ stakeAmount: 100, result: "bogus" }), RangeError);
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Practice bot
+// ════════════════════════════════════════════════════════════════════
+
+test("botCatchesForElapsed only catches released balls, never re-catches, never in the future", () => {
+  const deadline = 10_000_000;
+  const draw = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const schedule = ballSchedule(deadline, draw);
+
+  // No time elapsed → nothing catchable.
+  assert.deepEqual(botCatchesForElapsed(schedule, 0, []), []);
+
+  // Elapsed covers the first 5 ideal instants → catches only those
+  // balls, each caughtAt <= elapsed.
+  const elapsed = schedule[4].idealMs + 100;
+  const catches = botCatchesForElapsed(schedule, elapsed, []);
+  for (const c of catches) {
+    assert.ok(schedule.find((b) => b.number === c.number).idealMs <= elapsed);
+    assert.ok(new Date(c.caughtAt).getTime() <= elapsed);
+    assert.ok(["perfect", "good", "late"].includes(c.quality));
+  }
+
+  // alreadyCaught excludes those numbers.
+  const caughtNumbers = catches.map((c) => c.number);
+  const again = botCatchesForElapsed(schedule, elapsed, caughtNumbers);
+  for (const c of again) {
+    assert.ok(!caughtNumbers.includes(c.number));
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Misc helpers
+// ════════════════════════════════════════════════════════════════════
+
+test("round2 / pickPositiveInt behave like the other PvP games", () => {
+  assert.equal(round2(0.1 + 0.2), 0.3);
+  assert.equal(round2("12.345"), 12.35);
+  assert.equal(round2(null), 0);
+  assert.equal(pickPositiveInt(null, 10), 10);
+  assert.equal(pickPositiveInt(0, 10), 10);
+  assert.equal(pickPositiveInt("20", 10), 20);
+  assert.equal(pickPositiveInt(15.9, 10), 15);
+});
+
+console.log("\n✅ All Keno Catch Duel engine tests passed!\n");

@@ -254,11 +254,7 @@ export const APP_TEXT_TRANSLATIONS = {
       poker_desc: "Play against AI or other players",
       crash_arena_desc: "Join a table, survive the crash, claim the pot.",
       chess_desc: "Play strategic matches against other players",
-      slots_desc: "1v1 Fruit Fortune duels — best-of-5 skill rounds on the classic fruit machine. Stop your reels, outscore your rival, take the pot.",
-      slots_pvp_name: "Slots Duel",
-      slots_pvp_desc: "Best-of-5 skill rounds on a shared 3×3 board. Stop your 3 reels in 10 seconds for accuracy bonuses — first to 3 round wins takes 1.9×, house takes 0.1×.",
-      coin_flip_desc: "Flip for luck in a coin toss!",
-      keno_desc: "Pick your lucky numbers and win big!",
+      keno_desc: "1v1 Keno Catch Duel — both players chase the same 10-ball draw and time their taps in the perfect window. Best-of-5, out-catch your rival, take the pot.",
       uno_desc: "Challenge AI in this fast strategic game.",
       rps_desc: "Bet your tokens in this fast strategic game.",
       dice_duel_desc: "Turn-based 1v1 dice combat. Outroll your rival and claim the pot!",
@@ -843,10 +839,6 @@ export const APP_TEXT_TRANSLATIONS = {
         fetch_balance_error: "Failed to fetch balance",
       },
       // ── Slots page chrome ─────────────────────────────
-      slots: {
-        lobby_title: "🎰 SLOT MACHINE LOBBY 🎰",
-        play_button: "PLAY",
-      },
       // ── Poker page chrome ─────────────────────────────
       poker: {
         title: "♠ Poker Royale ♠",
@@ -967,10 +959,6 @@ export const APP_TEXT_TRANSLATIONS = {
         create_error: "Unable to create game",
         join_error: "Unable to join game",
         ai_create_error: "Failed to create AI game",
-      },
-      // ── Coin Flip chrome ──────────────────────────────
-      coinflip: {
-        page_label: "Coin Flip",
       },
       hex_duel_name: "HEX DUEL",
       hex_duel_desc:
@@ -1324,11 +1312,7 @@ export const APP_TEXT_TRANSLATIONS = {
       poker_desc: "Affrontez l'IA ou d'autres joueurs",
       crash_arena_desc: "Rejoignez une table, survivez au crash, empochez la cagnotte.",
       chess_desc: "Affrontez d'autres joueurs dans un match d'échecs",
-      slots_desc: "Duels 1v1 sur Fruit Fortune — manches de compétence au meilleur des 5 sur la machine à fruits classique. Arrêtez vos rouleaux, dépassez votre rival, empochez le pot.",
-      slots_pvp_name: "Slots Duel",
-      slots_pvp_desc: "Manches de compétence au meilleur des 5 sur un plateau 3×3 partagé. Arrêtez vos 3 rouleaux en 10 secondes pour des bonus de précision — le premier à 3 manches gagnées remporte 1,9×, la maison prélève 0,1×.",
-      coin_flip_desc: "Faites tourner votre chance avec un pile ou face !",
-      keno_desc: "Choisissez des numéros gagnants et gagnez gros !",
+      keno_desc: "Duel 1v1 Keno Catch — les deux joueurs poursuivent le même tirage de 10 boules et calent leur appui dans la fenêtre parfaite. Meilleur des 5, attrapez plus que votre rival et empochez le pot.",
       uno_desc: "Défie l’IA dans ce jeu rapide et stratégique.",
       rps_desc: "Parie tes jetons dans ce jeu rapide et stratégique.",
       dice_duel_desc:
@@ -2037,11 +2021,7 @@ export const APP_TEXT_TRANSLATIONS = {
       poker_desc: "Juega contra la IA u otros jugadores",
       crash_arena_desc: "Únete a una mesa, sobrevive al crash y llévate el bote.",
       chess_desc: "Juega partidas estratégicas contra otros jugadores",
-      slots_desc: "Duelos 1 contra 1 de Fruit Fortune: rondas de habilidad al mejor de 5 en la clásica máquina de frutas. Detén tus rodillos, supera a tu rival y llévate el premio.",
-      slots_pvp_name: "Slots Duel",
-      slots_pvp_desc: "Rondas de habilidad al mejor de 5 en un tablero 3×3 compartido. Detén tus 3 rodillos en 10 segundos para bonos de precisión — el primero en ganar 3 rondas se lleva 1,9×, la casa se queda 0,1×.",
-      coin_flip_desc: "¡Prueba tu suerte con cara o cruz!",
-      keno_desc: "¡Elige tus números y gana en grande!",
+      keno_desc: "Duelo 1v1 de Keno Catch: ambos jugadores persiguen el mismo sorteo de 10 bolas y aciertan el momento perfecto. Mejor de 5, atrapa más que tu rival y llévate el premio.",
       uno_desc: "Desafía a la IA en este juego rápido y estratégico.",
       rps_desc: "Apuesta tus fichas en este juego rápido y estratégico.",
       dice_duel_desc: "Duelo 1v1 por turnos con dados. Supera a tu rival y gana el bote.",

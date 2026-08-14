@@ -79,37 +79,6 @@ const TRACKED_GAMES = [
     `,
   },
   {
-    key: "coinFlip",
-    label: "Coin Flip",
-    selectSql: `
-      SELECT
-        'coinFlip'::text AS game_key,
-        'Coin Flip'::text AS game_label,
-        u1.id AS user_id,
-        COALESCE(cfg.bet_amount::numeric, 0) AS amount_lost,
-        CASE WHEN cfg.winner_id = cfg.player1_id THEN COALESCE(cfg.bet_amount::numeric, 0) * 2 ELSE 0 END AS amount_won,
-        CASE WHEN cfg.winner_id = cfg.player1_id THEN 1 ELSE 0 END AS games_won,
-        CASE WHEN cfg.winner_id IS NOT NULL AND cfg.winner_id <> cfg.player1_id THEN 1 ELSE 0 END AS games_lost
-      FROM coin_flip_games cfg
-      JOIN users u1 ON u1.clerk_id = cfg.player1_id
-      WHERE cfg.status = 'finished'
-
-      UNION ALL
-
-      SELECT
-        'coinFlip'::text AS game_key,
-        'Coin Flip'::text AS game_label,
-        u2.id AS user_id,
-        COALESCE(cfg.bet_amount::numeric, 0) AS amount_lost,
-        CASE WHEN cfg.winner_id = cfg.player2_id THEN COALESCE(cfg.bet_amount::numeric, 0) * 2 ELSE 0 END AS amount_won,
-        CASE WHEN cfg.winner_id = cfg.player2_id THEN 1 ELSE 0 END AS games_won,
-        CASE WHEN cfg.winner_id IS NOT NULL AND cfg.winner_id <> cfg.player2_id THEN 1 ELSE 0 END AS games_lost
-      FROM coin_flip_games cfg
-      JOIN users u2 ON u2.clerk_id = cfg.player2_id
-      WHERE cfg.status = 'finished' AND cfg.player2_id IS NOT NULL
-    `,
-  },
-  {
     key: "chess",
     label: "Chess",
     selectSql: `
@@ -186,22 +155,6 @@ const TRACKED_GAMES = [
         CASE WHEN COALESCE(pg.payout::numeric, 0) > COALESCE(pg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_won,
         CASE WHEN COALESCE(pg.payout::numeric, 0) < COALESCE(pg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_lost
       FROM poker_games pg
-    `,
-  },
-  {
-    key: "slots",
-    label: "Slots",
-    selectSql: `
-      SELECT
-        'slots'::text AS game_key,
-        'Slots'::text AS game_label,
-        u.id AS user_id,
-        COALESCE(sg.bet_amount::numeric, 0) AS amount_lost,
-        COALESCE(sg.payout::numeric, 0) AS amount_won,
-        CASE WHEN COALESCE(sg.payout::numeric, 0) > COALESCE(sg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_won,
-        CASE WHEN COALESCE(sg.payout::numeric, 0) < COALESCE(sg.bet_amount::numeric, 0) THEN 1 ELSE 0 END AS games_lost
-      FROM slot_games sg
-      JOIN users u ON u.clerk_id = sg.user_id
     `,
   },
   {

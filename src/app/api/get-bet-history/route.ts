@@ -13,9 +13,8 @@ import {
   sportsBets,
   unoGames,
   chessGames,
-  slotGames,
-  coinFlipGames,
   keno_games,
+  kenoPvpMatches,
   diceMatches,
   poolMatches,
   connectFourGames,
@@ -63,8 +62,7 @@ export async function GET() {
       uno,
       chess,
       sports,
-      slots,
-      coinflipRows,
+      kenoPvpRows,
       kenoRows,
       diceRows,
       poolRows,
@@ -95,14 +93,13 @@ export async function GET() {
           ),
         ),
       db.select().from(sportsBets).where(eq(sportsBets.userId, uid)),
-      db.select().from(slotGames).where(eq(slotGames.userId, userId)),
       db
         .select()
-        .from(coinFlipGames)
+        .from(kenoPvpMatches)
         .where(
           or(
-            eq(coinFlipGames.player1Id, clerkId),
-            eq(coinFlipGames.player2Id, clerkId),
+            eq(kenoPvpMatches.player1Id, clerkId),
+            eq(kenoPvpMatches.player2Id, clerkId),
           ),
         ),
       db.select().from(keno_games).where(eq(keno_games.user_id, uid)),
@@ -255,29 +252,6 @@ export async function GET() {
         tokenDiff,
       };
     };
-
-    const coinflipFormatted = coinflipRows.map((bet) => {
-      // Only finished matches contribute a Win/Loss — in-flight
-      // matches (status='active' / 'matched' / 'cancelled') and even
-      // mid-match rounds (where the server briefly stamps the round
-      // winner onto `winnerId` between rounds of a best-of-N match)
-      // are deliberately excluded so the bet history never shows a
-      // misleading win/loss for an unfinished game.
-      if (bet.status !== "finished") {
-        return null;
-      }
-      const amount = Number(bet.betAmount ?? 0);
-      const result = bet.winnerId === clerkId ? "won" : "lost";
-      const payout = result === "won" ? Number((amount * 1.98).toFixed(2)) : 0;
-      return {
-        type: "💰 Coinflip",
-        date: bet.createdAt || new Date().toISOString(),
-        amount,
-        payout,
-        result,
-        tokenDiff: result === "won" ? payout - amount : -amount,
-      };
-    }).filter(Boolean);
 
     const kenoFormatted = kenoRows.map((row) => {
       const amount = Number(row.bet_amount ?? 0);
@@ -525,6 +499,37 @@ export async function GET() {
       })
       .filter(Boolean);
 
+    // Keno Duel PvP matches — winner's payout is `stake * 1.9` and a
+    // loser's is 0; a draw refunds both stakes (payout = stake,
+    // tokenDiff = 0). Mirrors the minesPvpFormatted shape.
+    const kenoPvpFormatted = kenoPvpRows
+      .map((g) => {
+        if (g.status !== "finished") return null;
+        const amount = Number(g.stakeAmount ?? 0);
+        const payout = Number(g.prizePaid ?? 0);
+        const isDraw = g.result === "draw" || !g.winnerId;
+        const outcome = isDraw
+          ? "draw"
+          : g.winnerId === clerkId
+            ? "won"
+            : "lost";
+        const tokenDiff =
+          outcome === "won"
+            ? payout - amount
+            : outcome === "lost"
+              ? -amount
+              : 0;
+        return {
+          type: "🎱 Keno Duel",
+          date: g.endedAt || g.createdAt || new Date().toISOString(),
+          amount,
+          payout,
+          result: outcome,
+          tokenDiff,
+        };
+      })
+      .filter(Boolean);
+
     const allBets = [
       ...roulette.map((b) => formatBet("🎡 Roulette", b)),
       ...blackjack.map((b) => formatBet("🃏 Blackjack", b)),
@@ -535,8 +540,7 @@ export async function GET() {
       ...uno.map((b) => formatBet("🎴 UNO", b)),
       ...chess.map((b) => formatBet("♟️ Chess", b)),
       ...sports.map((b) => formatBet("🏈 Sports Bet", b)),
-      ...slots.map((b) => formatBet("🎰 Slots", b)),
-      ...coinflipFormatted,
+      ...kenoPvpFormatted,
       ...kenoFormatted,
       ...diceFormatted,
       ...poolFormatted,

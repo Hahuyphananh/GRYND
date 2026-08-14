@@ -534,43 +534,42 @@ io.on("connection", (socket) => {
     console.log("[plinko-pvp] participant left: matchId=", matchId, "userId=", userId);
   }
 
-  // ── Slots PvP room-participant tracking ─────────────────────────
-  // Mirrors the plinko/precision tracking pattern so disconnect
-  // handling can forfeit abandoned slots-pvp matches to the opponent
-  // (and a re-joining socket cancels the pending forfeit timer).
-  // Keyed by matchId (numeric).
-  const SLOTS_PVP_MATCH_ROOM_PREFIX = "slots-pvp:match:";
-  if (!global.__slotsPvpRoomParticipants) {
-    global.__slotsPvpRoomParticipants = new Map();
+  // ── Keno PvP room-participant tracking ──────────────────────────
+  // Same pattern as slots-pvp so disconnect handling can forfeit
+  // abandoned keno-pvp matches to the opponent (and a re-joining
+  // socket cancels the pending forfeit timer). Keyed by matchId.
+  const KENO_PVP_MATCH_ROOM_PREFIX = "keno-pvp:match:";
+  if (!global.__kenoPvpRoomParticipants) {
+    global.__kenoPvpRoomParticipants = new Map();
   }
-  const slotsPvpRoomParticipants = global.__slotsPvpRoomParticipants;
+  const kenoPvpRoomParticipants = global.__kenoPvpRoomParticipants;
 
-  function trackSlotsPvpJoin(roomId, userId) {
-    if (typeof roomId !== "string" || !roomId.startsWith(SLOTS_PVP_MATCH_ROOM_PREFIX)) {
+  function trackKenoPvpJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(KENO_PVP_MATCH_ROOM_PREFIX)) {
       return;
     }
-    const matchId = roomId.slice(SLOTS_PVP_MATCH_ROOM_PREFIX.length);
+    const matchId = roomId.slice(KENO_PVP_MATCH_ROOM_PREFIX.length);
     if (!matchId) return;
-    if (!slotsPvpRoomParticipants.has(matchId)) {
-      slotsPvpRoomParticipants.set(matchId, new Set());
+    if (!kenoPvpRoomParticipants.has(matchId)) {
+      kenoPvpRoomParticipants.set(matchId, new Set());
     }
-    slotsPvpRoomParticipants.get(matchId).add(userId);
+    kenoPvpRoomParticipants.get(matchId).add(userId);
     // A (re)joining socket means the player is present again — cancel
     // any pending disconnect forfeit timer for this match.
-    cancelDisconnectGraceTimer(`slots:${matchId}:${userId}`);
-    console.log("[slots-pvp] participant joined: matchId=", matchId, "userId=", userId);
+    cancelDisconnectGraceTimer(`keno:${matchId}:${userId}`);
+    console.log("[keno-pvp] participant joined: matchId=", matchId, "userId=", userId);
   }
-  function trackSlotsPvpLeave(roomId, userId) {
-    if (typeof roomId !== "string" || !roomId.startsWith(SLOTS_PVP_MATCH_ROOM_PREFIX)) {
+  function trackKenoPvpLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(KENO_PVP_MATCH_ROOM_PREFIX)) {
       return;
     }
-    const matchId = roomId.slice(SLOTS_PVP_MATCH_ROOM_PREFIX.length);
+    const matchId = roomId.slice(KENO_PVP_MATCH_ROOM_PREFIX.length);
     if (!matchId) return;
-    const set = slotsPvpRoomParticipants.get(matchId);
+    const set = kenoPvpRoomParticipants.get(matchId);
     if (!set) return;
     set.delete(userId);
-    if (set.size === 0) slotsPvpRoomParticipants.delete(matchId);
-    console.log("[slots-pvp] participant left: matchId=", matchId, "userId=", userId);
+    if (set.size === 0) kenoPvpRoomParticipants.delete(matchId);
+    console.log("[keno-pvp] participant left: matchId=", matchId, "userId=", userId);
   }
 
   // ── Crash Arena room-participant tracking ───────────────────────
@@ -614,7 +613,7 @@ io.on("connection", (socket) => {
     socket.join(String(roomId));
     trackPrecisionJoin(String(roomId), socket.data.userId);
     trackPlinkoJoin(String(roomId), socket.data.userId);
-    trackSlotsPvpJoin(String(roomId), socket.data.userId);
+    trackKenoPvpJoin(String(roomId), socket.data.userId);
     trackCrashArenaJoin(String(roomId), socket.data.userId);
   });
 
@@ -623,7 +622,7 @@ io.on("connection", (socket) => {
     socket.leave(String(roomId));
     trackPrecisionLeave(String(roomId), socket.data.userId);
     trackPlinkoLeave(String(roomId), socket.data.userId);
-    trackSlotsPvpLeave(String(roomId), socket.data.userId);
+    trackKenoPvpLeave(String(roomId), socket.data.userId);
     trackCrashArenaLeave(String(roomId), socket.data.userId);
   });
 
@@ -994,98 +993,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Slots PvP: stop / jettison ────────────────────────────────
-  // The client emits `slots:stop` exactly once per column action (or
-  // once with `jettison: true` to SKIP the incoming column — the skill
-  // mechanic) when the user presses STOP / JETTISON. The realtime
-  // server validates that the calling socket is a tracked participant
-  // of the match room, then HTTP-proxies to Next.js's internal
-  // `/api/slots-pvp/internal/stop` route — which re-verifies the Clerk
-  // session token and runs the SAME `stopColumn` the public /stop-reel
-  // route uses. The realtime server never touches game state itself
-  // (matching the precision:stop pattern). The ACK fires exactly once
-  // with `{ success, error?, status? }`; on success the match room gets
-  // a `lobby:updated` push so both boards re-sync instantly instead of
-  // waiting for the 800ms poll.
-  socket.on("slots:stop", async ({ matchId, columnIndex, currentSpin, jettison } = {}, ack) => {
-    const matchIdStr = String(matchId || "");
-    if (!/^\d+$/.test(matchIdStr)) {
-      if (typeof ack === "function") ack({ success: false, error: "Invalid matchId." });
-      return;
-    }
-    if (!Number.isInteger(Number(columnIndex)) || Number(columnIndex) < 0) {
-      if (typeof ack === "function") ack({ success: false, error: "Invalid columnIndex." });
-      return;
-    }
-    // Participation check — reject submissions from sockets that didn't
-    // actually join the requested match room (mirrors precision:stop).
-    const participants = slotsPvpRoomParticipants.get(matchIdStr);
-    if (!participants || !participants.has(socket.data.userId)) {
-      if (typeof ack === "function") {
-        ack({ success: false, error: "Caller is not a participant in this match." });
-      }
-      return;
-    }
-    try {
-      const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
-      // ── AbortController timeout on the Next.js proxy ──────────
-      // Without this a hung Next.js would leave the client's STOP /
-      // JETTISON buttons permanently busy (same pattern as precision).
-      const forwardController = new AbortController();
-      const forwardTimeout = setTimeout(() => forwardController.abort(), 4000);
-      const res = await fetch(`${baseUrl}/api/slots-pvp/internal/stop`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: socket.data.clerkToken,
-          matchId: Number(matchIdStr),
-          columnIndex: Number(columnIndex),
-          currentSpin: currentSpin != null ? Number(currentSpin) : null,
-          jettison: jettison === true,
-        }),
-        signal: forwardController.signal,
-      });
-      clearTimeout(forwardTimeout);
-      const payload = await res.json().catch(() => null);
-      if (!payload || !payload.success) {
-        if (typeof ack === "function") {
-          ack({
-            success: false,
-            error: (payload && payload.error) || "Server rejected the stop.",
-            status: res.status,
-          });
-        }
-        return;
-      }
-      if (typeof ack === "function") {
-        ack({
-          success: true,
-          jettisoned: payload.data?.jettisoned === true,
-          runEnded: payload.data?.runEnded === true,
-          roundResolved: payload.data?.roundResolved === true,
-        });
-      }
-      // Push an instant refresh to the whole match room (including the
-      // sender) — the internal route's own broadcast may no-op in
-      // separate-process deploys, and this emit is the reliable path
-      // since we own the rooms here.
-      io.to(`${SLOTS_PVP_MATCH_ROOM_PREFIX}${matchIdStr}`).emit("lobby:updated", {
-        matchId: matchIdStr,
-        sentAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      if (typeof ack === "function") {
-        const isAbort = err && (err.name === "AbortError" || /aborted/i.test(String(err.message)));
-        ack({
-          success: false,
-          error: isAbort
-            ? "Stop timed out before the server confirmed. Please try again."
-            : ((err && err.message) || "Realtime proxy unreachable."),
-        });
-      }
-    }
-  });
-
   // ── Plinko PvP: ready ──────────────────────────────────────────
   // The client emits `plinko:ready` after a successful /launch POST
   // so the opponent gets an instant "refresh" push instead of
@@ -1266,25 +1173,25 @@ io.on("connection", (socket) => {
       });
     }
 
-    // For Slots PvP: same pattern — forfeit to the opponent via
-    // /api/slots-pvp/disconnect-forfeit once the grace timer expires.
-    const slotsPvpMatchesForUser = [];
-    for (const [mid, set] of slotsPvpRoomParticipants.entries()) {
-      if (set.has(socket.data.userId)) slotsPvpMatchesForUser.push(mid);
+    // For Keno PvP: same pattern — forfeit to the opponent via
+    // /api/keno-pvp/disconnect-forfeit once the grace timer expires.
+    const kenoPvpMatchesForUser = [];
+    for (const [mid, set] of kenoPvpRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) kenoPvpMatchesForUser.push(mid);
     }
-    for (const mid of slotsPvpMatchesForUser) {
-      const roomId = `${SLOTS_PVP_MATCH_ROOM_PREFIX}${mid}`;
+    for (const mid of kenoPvpMatchesForUser) {
+      const roomId = `${KENO_PVP_MATCH_ROOM_PREFIX}${mid}`;
       if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
-      const set = slotsPvpRoomParticipants.get(mid);
+      const set = kenoPvpRoomParticipants.get(mid);
       if (set) {
         set.delete(socket.data.userId);
-        if (set.size === 0) slotsPvpRoomParticipants.delete(mid);
+        if (set.size === 0) kenoPvpRoomParticipants.delete(mid);
       }
-      scheduleDisconnectGraceTimer(`slots:${mid}:${socket.data.userId}`, async () => {
+      scheduleDisconnectGraceTimer(`keno:${mid}:${socket.data.userId}`, async () => {
         if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
         try {
           const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
-          const res = await fetch(`${baseUrl}/api/slots-pvp/disconnect-forfeit`, {
+          const res = await fetch(`${baseUrl}/api/keno-pvp/disconnect-forfeit`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
@@ -1293,7 +1200,7 @@ io.on("connection", (socket) => {
           return !(payload && payload.success === true);
         } catch (err) {
           console.warn(
-            "[slots-pvp] disconnect forfeit failed:",
+            "[keno-pvp] disconnect forfeit failed:",
             err && err.message ? err.message : err,
           );
           return true; // transient — retry

@@ -31,9 +31,8 @@ export async function GET() {
           COALESCE((SELECT COUNT(*) FROM plinko_games    WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM rps_games       WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM keno_games      WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
-          COALESCE((SELECT COUNT(*) FROM slot_games      WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
+          COALESCE((SELECT COUNT(*) FROM keno_pvp_matches WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM uno_games       WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
-          COALESCE((SELECT COUNT(*) FROM coin_flip_games WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM chess_games     WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM connect_four_games WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM lane_runner_games  WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
