@@ -994,6 +994,98 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ── Slots PvP: stop / jettison ────────────────────────────────
+  // The client emits `slots:stop` exactly once per column action (or
+  // once with `jettison: true` to SKIP the incoming column — the skill
+  // mechanic) when the user presses STOP / JETTISON. The realtime
+  // server validates that the calling socket is a tracked participant
+  // of the match room, then HTTP-proxies to Next.js's internal
+  // `/api/slots-pvp/internal/stop` route — which re-verifies the Clerk
+  // session token and runs the SAME `stopColumn` the public /stop-reel
+  // route uses. The realtime server never touches game state itself
+  // (matching the precision:stop pattern). The ACK fires exactly once
+  // with `{ success, error?, status? }`; on success the match room gets
+  // a `lobby:updated` push so both boards re-sync instantly instead of
+  // waiting for the 800ms poll.
+  socket.on("slots:stop", async ({ matchId, columnIndex, currentSpin, jettison } = {}, ack) => {
+    const matchIdStr = String(matchId || "");
+    if (!/^\d+$/.test(matchIdStr)) {
+      if (typeof ack === "function") ack({ success: false, error: "Invalid matchId." });
+      return;
+    }
+    if (!Number.isInteger(Number(columnIndex)) || Number(columnIndex) < 0) {
+      if (typeof ack === "function") ack({ success: false, error: "Invalid columnIndex." });
+      return;
+    }
+    // Participation check — reject submissions from sockets that didn't
+    // actually join the requested match room (mirrors precision:stop).
+    const participants = slotsPvpRoomParticipants.get(matchIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      if (typeof ack === "function") {
+        ack({ success: false, error: "Caller is not a participant in this match." });
+      }
+      return;
+    }
+    try {
+      const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+      // ── AbortController timeout on the Next.js proxy ──────────
+      // Without this a hung Next.js would leave the client's STOP /
+      // JETTISON buttons permanently busy (same pattern as precision).
+      const forwardController = new AbortController();
+      const forwardTimeout = setTimeout(() => forwardController.abort(), 4000);
+      const res = await fetch(`${baseUrl}/api/slots-pvp/internal/stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: socket.data.clerkToken,
+          matchId: Number(matchIdStr),
+          columnIndex: Number(columnIndex),
+          currentSpin: currentSpin != null ? Number(currentSpin) : null,
+          jettison: jettison === true,
+        }),
+        signal: forwardController.signal,
+      });
+      clearTimeout(forwardTimeout);
+      const payload = await res.json().catch(() => null);
+      if (!payload || !payload.success) {
+        if (typeof ack === "function") {
+          ack({
+            success: false,
+            error: (payload && payload.error) || "Server rejected the stop.",
+            status: res.status,
+          });
+        }
+        return;
+      }
+      if (typeof ack === "function") {
+        ack({
+          success: true,
+          jettisoned: payload.data?.jettisoned === true,
+          runEnded: payload.data?.runEnded === true,
+          roundResolved: payload.data?.roundResolved === true,
+        });
+      }
+      // Push an instant refresh to the whole match room (including the
+      // sender) — the internal route's own broadcast may no-op in
+      // separate-process deploys, and this emit is the reliable path
+      // since we own the rooms here.
+      io.to(`${SLOTS_PVP_MATCH_ROOM_PREFIX}${matchIdStr}`).emit("lobby:updated", {
+        matchId: matchIdStr,
+        sentAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      if (typeof ack === "function") {
+        const isAbort = err && (err.name === "AbortError" || /aborted/i.test(String(err.message)));
+        ack({
+          success: false,
+          error: isAbort
+            ? "Stop timed out before the server confirmed. Please try again."
+            : ((err && err.message) || "Realtime proxy unreachable."),
+        });
+      }
+    }
+  });
+
   // ── Plinko PvP: ready ──────────────────────────────────────────
   // The client emits `plinko:ready` after a successful /launch POST
   // so the opponent gets an instant "refresh" push instead of

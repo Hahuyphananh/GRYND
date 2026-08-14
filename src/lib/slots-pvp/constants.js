@@ -108,10 +108,29 @@ export const MAX_COLUMNS_PER_ROUND = 60;
 
 // Per-column countdown: each active column must be stopped within this
 // many seconds or the server auto-stops it. Stored on the match row as
-// `round_timer_seconds` (same column as before, new meaning).
-export const ROUND_TIMER_SECONDS = 10;
+// `round_timer_seconds` (same column as before, new meaning). 15s (was
+// 10s) + the stop-grace window below give laggy players real room to
+// click — a column can never be lost to a slow network.
+export const ROUND_TIMER_SECONDS = 15;
 export const COLUMN_TIMER_SECONDS = ROUND_TIMER_SECONDS;
 export const COLUMN_DEADLINE_MS = COLUMN_TIMER_SECONDS * 1000;
+
+// Lag cushion: a MANUAL stop / jettison arriving up to this long AFTER
+// the active column's deadline is still honoured (stamped as a manual
+// stop, not an AFK auto-stop). Without this, a click that lands a
+// second late is rejected with 400 and the column falls to the
+// auto-stop path — which in the initial phase lands ALL remaining
+// columns and can feel like the game stole the player's agency. The
+// landed column is identical either way in the sliding phase, but the
+// grace keeps the click (and the jettison decision) meaningful.
+export const COLUMN_STOP_GRACE_MS = 2500;
+
+// Skill mechanic: each run may jettison ONE incoming column — skip it
+// and take the NEXT column in the stream instead. Only available once
+// the 3-column window is full (sliding phase). This is the single
+// real decision in the game: read the incoming column and decide
+// whether to take it or burn the jettison.
+export const MAX_JETTISONS_PER_RUN = 1;
 
 // Auto-advance window between player2 joining and spin_1 starting
 // (server-authoritative "Get ready" banner).

@@ -41,8 +41,10 @@
 
 import {
   COLUMN_DEADLINE_MS,
+  COLUMN_STOP_GRACE_MS,
   GRACE_MAX_STOPS,
   MAX_COLUMNS_PER_ROUND,
+  MAX_JETTISONS_PER_RUN,
   MAX_ROUNDS,
   MATCH_STATUS,
   RESULT,
@@ -173,12 +175,21 @@ export function columnSymbols({ matchId, spinNumber, seat, colIndex, symbols }) 
 //     ended,                           // run over (busted || graceFailed || capped)
 //     bustColumn,                      // column index that ended the run (bust only)
 //     anyAutoStopped,                  // true if any column was auto-stopped (AFK)
+//     jettisonsUsed,                   // how many incoming columns were skipped (≤ MAX_JETTISONS_PER_RUN)
 //     window: [c0, c1, c2],            // visible 3 columns (3-symbol arrays or null)
 //     columns: [],                     // every landed column in order (replay)
-//     activeIndex,                     // next column waiting to be stopped (null when ended)
+//     activeIndex,                     // next column index to land (skips advance it)
 //     activeDeadline,                  // ms epoch the active column auto-stops
 //     openedAt,                        // ms epoch the round opened
 //   }
+//
+// `activeIndex` is the authoritative "next column to land" pointer:
+//   * initial phase: it starts at 0 and follows the in-order consumption
+//     (the client stops columns 0,1,2 in order; the server tolerates any
+//     order during grace, where activeIndex is only cosmetic).
+//   * sliding phase: normally activeIndex === stoppedCount; a JETTISON
+//     skips one column, so activeIndex becomes stoppedCount + 1 and the
+//     skipped column never lands.
 
 function openRunForSeat({ matchId, spinNumber, seat, symbols, now }) {
   return {
@@ -197,6 +208,7 @@ function openRunForSeat({ matchId, spinNumber, seat, symbols, now }) {
     ended: false,
     bustColumn: null,
     anyAutoStopped: false,
+    jettisonsUsed: 0,
     window: [null, null, null],
     columns: [],
     activeIndex: 0,
@@ -291,7 +303,12 @@ function landColumnRun(run, colIndex, now, auto = false) {
   }
 
   if (!next.ended) {
-    next.activeIndex = stoppedCount;
+    // Next column to land: every landed column consumes exactly one
+    // stream index, and every jettison skips exactly one — so the next
+    // index is stoppedCount + jettisonsUsed (jettison is sliding-phase
+    // only, so this is identical to the old `activeIndex = stoppedCount`
+    // everywhere else).
+    next.activeIndex = next.stoppedCount + (next.jettisonsUsed || 0);
     next.activeDeadline = now + COLUMN_DEADLINE_MS;
   } else {
     next.activeIndex = null;
@@ -345,7 +362,14 @@ export function applyColumnStop(
   if (run.ended) {
     return { ok: false, error: "Your run has already ended", status: 409 };
   }
-  if (run.activeDeadline && new Date(run.activeDeadline).getTime() <= now) {
+  // Lag cushion: a manual stop arriving up to COLUMN_STOP_GRACE_MS
+  // AFTER the deadline is still honoured. Only genuinely-stale stops
+  // (deadline + grace passed) are rejected — those fall to the
+  // auto-stop path on the next /status poll.
+  if (
+    run.activeDeadline &&
+    new Date(run.activeDeadline).getTime() + COLUMN_STOP_GRACE_MS <= now
+  ) {
     return { ok: false, error: "Column time has expired", status: 400 };
   }
 
@@ -363,8 +387,9 @@ export function applyColumnStop(
       return { ok: false, error: `Column ${idx + 1} is already stopped`, status: 409 };
     }
   } else {
-    // Sliding phase: only the active column is stoppable.
-    if (idx !== run.stoppedCount) {
+    // Sliding phase: only the active column is stoppable (activeIndex
+    // may have been advanced by a jettison).
+    if (idx !== run.activeIndex) {
       return { ok: false, error: "Only the active column can be stopped", status: 409 };
     }
   }
@@ -374,6 +399,89 @@ export function applyColumnStop(
     match: {
       ...match,
       [inputsKey]: landColumnRun(run, idx, now),
+    },
+  };
+}
+
+/**
+ * Jettison the ACTIVE column for a seat: skip it and take the NEXT
+ * column in the stream instead. This is the skill mechanic — the
+ * player can see the incoming column (the preview) and decide whether
+ * to take it or burn one of their MAX_JETTISONS_PER_RUN skips. The
+ * skipped column never lands and never appears in the window; the
+ * active column advances by one index and gets a fresh countdown.
+ *
+ * Rules enforced (mirrors applyColumnStop):
+ *   * caller must be a participant seat
+ *   * the match must be inside a spin round
+ *   * expectedSpin (if provided) must match the live round
+ *   * the run must not already be ended
+ *   * only the SLIDING phase (window full) — jettisoning an initial
+ *     column would leave holes in the 3-column window
+ *   * the active column's deadline (plus grace) must not have passed
+ *   * the jettison budget must not be spent
+ *
+ * Pure — returns `{ ok: false, error, status }` or `{ ok: true, match }`.
+ * A jettison never lands a column, so it can never end the run.
+ */
+export function jettisonActiveColumn(
+  match,
+  seat,
+  now = Date.now(),
+  expectedSpin = null,
+) {
+  if (seat !== "player1" && seat !== "player2") {
+    return { ok: false, error: "Caller is not a participant", status: 403 };
+  }
+  if (!isSpinStatus(match.status)) {
+    return { ok: false, error: "Match is not in a spin round", status: 400 };
+  }
+  if (expectedSpin != null && Number(expectedSpin) !== Number(match.currentSpin)) {
+    return {
+      ok: false,
+      error: "Round has already advanced",
+      status: 409,
+    };
+  }
+
+  const inputsKey = seat === "player1" ? "p1CurrentInputs" : "p2CurrentInputs";
+  const run = match[inputsKey];
+  if (!run) {
+    return { ok: false, error: "Round has not started", status: 400 };
+  }
+  if (run.ended) {
+    return { ok: false, error: "Your run has already ended", status: 409 };
+  }
+  if (run.stoppedCount < GRID_COLS) {
+    return {
+      ok: false,
+      error: "Jettison is only available once the window is full",
+      status: 400,
+    };
+  }
+  if (
+    run.activeDeadline &&
+    new Date(run.activeDeadline).getTime() + COLUMN_STOP_GRACE_MS <= now
+  ) {
+    return { ok: false, error: "Column time has expired", status: 400 };
+  }
+  if ((Number(run.jettisonsUsed) || 0) >= MAX_JETTISONS_PER_RUN) {
+    return { ok: false, error: "No jettisons left", status: 409 };
+  }
+
+  const jettisonsUsed = (Number(run.jettisonsUsed) || 0) + 1;
+  return {
+    ok: true,
+    match: {
+      ...match,
+      [inputsKey]: {
+        ...run,
+        jettisonsUsed,
+        // Skip the active column: the next landable index is one further
+        // into the stream (stoppedCount + jettisonsUsed).
+        activeIndex: run.stoppedCount + jettisonsUsed,
+        activeDeadline: now + COLUMN_DEADLINE_MS,
+      },
     },
   };
 }
@@ -573,6 +681,34 @@ export function viewerRunSnapshot({ inputs, now = Date.now() }) {
     : inputs.firstComboAt === null
       ? "grace"
       : "alive";
+
+  const jettisonsUsed = Number(inputs.jettisonsUsed) || 0;
+  const jettisonsLeft = Math.max(0, MAX_JETTISONS_PER_RUN - jettisonsUsed);
+
+  // Skill preview: the REAL symbols of the next column to land (the one
+  // the STOP/JETTISON buttons act on). Computed from the viewer's OWN
+  // deterministic stream — the opponent's scrubbed inputs carry no
+  // `symbols`, so their snapshot never leaks a preview.
+  let previewIndex = null;
+  let preview = null;
+  if (!inputs.ended && inputs.activeIndex != null) {
+    const ownStream =
+      Array.isArray(inputs.symbols) &&
+      inputs.symbols.length > 0 &&
+      inputs.matchId != null &&
+      inputs.seat != null;
+    if (ownStream) {
+      previewIndex = inputs.activeIndex;
+      preview = columnSymbols({
+        matchId: inputs.matchId,
+        spinNumber: inputs.spinNumber,
+        seat: inputs.seat,
+        colIndex: inputs.activeIndex,
+        symbols: inputs.symbols,
+      });
+    }
+  }
+
   return {
     status,
     ended: Boolean(inputs.ended),
@@ -588,6 +724,10 @@ export function viewerRunSnapshot({ inputs, now = Date.now() }) {
     countdownMs: inputs.activeDeadline
       ? Math.max(0, new Date(inputs.activeDeadline).getTime() - now)
       : 0,
+    jettisonsUsed,
+    jettisonsLeft,
+    previewIndex,
+    preview,
     // Own board is always visible; the opponent's is scrubbed server-side.
     window: Array.isArray(inputs.window) ? inputs.window : null,
     columns: Array.isArray(inputs.columns) ? inputs.columns : [],

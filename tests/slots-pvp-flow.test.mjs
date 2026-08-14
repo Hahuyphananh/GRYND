@@ -30,6 +30,7 @@ import {
   ROUNDS_TO_WIN,
   COLUMN_DEADLINE_MS,
   COLUMN_TIMER_SECONDS,
+  COLUMN_STOP_GRACE_MS,
   ROUND_TIMER_SECONDS,
   GRACE_MAX_STOPS,
   computePayout,
@@ -314,23 +315,41 @@ test("both players grace-fail → GRACE_DRAW: 95% refund each, 10% total rake", 
 // The 10-second per-column guarantee
 // ════════════════════════════════════════════════════════════════════
 
-test("each column gets a 10-second window stamped at round open", () => {
+test("each column gets a 15-second window stamped at round open", () => {
   const now = Date.now();
   const m = makeFreshMatch(1, now);
   assert.equal(m.p1CurrentInputs.activeDeadline - now, COLUMN_DEADLINE_MS);
   assert.equal(m.p2CurrentInputs.activeDeadline - now, COLUMN_DEADLINE_MS);
-  assert.equal(COLUMN_TIMER_SECONDS, 10);
-  assert.equal(ROUND_TIMER_SECONDS, 10);
+  assert.equal(COLUMN_TIMER_SECONDS, 15);
+  assert.equal(ROUND_TIMER_SECONDS, 15);
 });
 
-test("stops are rejected once the active column's deadline passes", () => {
+test("stops are rejected only after the deadline AND the stop-grace window pass", () => {
   const now = Date.now();
   let match = makeFreshMatch(1, now);
   const rounds = [];
-  match = { ...match, p1CurrentInputs: { ...match.p1CurrentInputs, activeDeadline: now - 1 } };
-  const r = stopColumn(match, "player1", 0, rounds, { now });
-  assert.equal(r.ok, false);
-  assert.equal(r.status, 400);
+  // Inside the grace window: a manual stop still lands (lag cushion).
+  match = {
+    ...match,
+    p1CurrentInputs: {
+      ...match.p1CurrentInputs,
+      activeDeadline: now - COLUMN_STOP_GRACE_MS + 1000,
+    },
+  };
+  const inGrace = stopColumn(match, "player1", 0, rounds, { now });
+  assert.equal(inGrace.ok, true);
+  // Past deadline + grace: rejected → the next poll auto-stops instead.
+  match = makeFreshMatch(1, now);
+  match = {
+    ...match,
+    p1CurrentInputs: {
+      ...match.p1CurrentInputs,
+      activeDeadline: now - COLUMN_STOP_GRACE_MS - 1,
+    },
+  };
+  const expired = stopColumn(match, "player1", 0, rounds, { now });
+  assert.equal(expired.ok, false);
+  assert.equal(expired.status, 400);
 });
 
 test("AFK: repeated polls auto-stop both runs and resolve the match", () => {

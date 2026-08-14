@@ -90,6 +90,15 @@ const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
     config: { windowMs: 60_000, max: 30 },
   },
   {
+    // Internal socket-proxy endpoint: the realtime server proxies EVERY
+    // player's column stop / jettison through this route from a SINGLE
+    // server IP, so it must not share (and exhaust) the per-IP budget
+    // that the per-player /status polls use. The route itself re-verifies
+    // the Clerk session token, so generous headroom is safe.
+    pattern: /^\/api\/slots-pvp\/internal\//,
+    config: { windowMs: 60_000, max: 600 },
+  },
+  {
     // Slots PvP / Plinko PvP match pages poll /status every 800ms
     // (~75 requests/min) on top of stop / launch actions — well beyond
     // the generic 60/min per-user cap. The generic cap silently froze
