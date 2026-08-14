@@ -58,8 +58,11 @@ import {
   computePayout,
   decideOutcome,
   generateBoard,
+  generateSolvableBoard,
   isMine,
+  nearestMineDistance,
   pickRandomCell,
+  relocateMine,
   round2,
 } from "../src/lib/mines-pvp/constants.js";
 
@@ -247,7 +250,9 @@ function createOrJoin({ userId, stakeAmount, minesCount, matches }) {
     stakeAmount: stakeFixed,
     minesCount,
   });
-  match.board = generateBoard(Number(minesCount));
+  // Mirrors production createWaitingMatch: no-guess generator keeps the
+  // 3x3 center block mine-free + verifies the center opening is solvable.
+  match.board = generateSolvableBoard(Number(minesCount));
   matches.set(id, match);
   return { match, joined: false };
 }
@@ -296,6 +301,15 @@ function pickTile({ userId, matchId, cellIndex, matches }) {
     return { error: "Cell already picked", status: 409 };
   }
 
+  // First-pick mercy (mirrors production pickTile): the game's very
+  // first pick is always safe — relocate the mine off the cell and
+  // keep the relocated board on the match.
+  let mercyUsed = false;
+  if (match.picks.length === 0 && isMine(match.board, idx)) {
+    match.board = relocateMine(match.board, idx);
+    mercyUsed = true;
+  }
+
   const pickIsMine = isMine(match.board, idx);
   const seat = userId === match.player1Id ? "player1" : "player2";
   const newPick = {
@@ -303,12 +317,101 @@ function pickTile({ userId, matchId, cellIndex, matches }) {
     seat,
     cell: idx,
     isMine: pickIsMine,
+    // Mirrors production pickTile: safe picks carry the proximity
+    // hint (distance to nearest mine); mines get null.
+    hint: pickIsMine ? null : nearestMineDistance(match.board, idx),
+    mercy: mercyUsed,
     autoPicked: false,
     pickedAt: new Date().toISOString(),
   };
 
   const result = applyPick(match, newPick);
   return { match: result, justResolved: pickIsMine };
+}
+
+// ── Mirror of flagTile (the "call a mine" skill move) ────────────────
+//
+// Same validation chain as pickTile, but the outcome is ALWAYS
+// terminal: correct flag (tile is a mine) → the OPPONENT loses;
+// wrong flag (tile is safe) → the FLAGGER loses. No first-pick
+// mercy for flags (a flag is a deliberate claim, not the
+// definitionally-guessy opening pick). The flag entry lands in the
+// chronological `picks` array with `flag: true` and resolves via
+// resolveMatch.
+function flagTile({ userId, matchId, cellIndex, matches }) {
+  const idx = Number(cellIndex);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= GRID_CELLS) {
+    return {
+      error: `cellIndex must be an integer in [0, ${GRID_CELLS - 1}]`,
+      status: 400,
+    };
+  }
+
+  const match = matches.get(matchId);
+  if (!match) return { error: "Match not found", status: 404 };
+  if (!isParticipant(match, userId)) {
+    return { error: "Forbidden", status: 403 };
+  }
+  if (!PICKABLE_STATES.has(match.status)) {
+    return { error: "Match is not awaiting a pick", status: 400 };
+  }
+  if (
+    match.roundDeadline &&
+    new Date(match.roundDeadline).getTime() <= Date.now()
+  ) {
+    return { error: "Pick window has expired", status: 400 };
+  }
+  const expectedPicker = activePickerForMatch(match);
+  if (
+    !expectedPicker ||
+    match.currentTurnUserId !== expectedPicker ||
+    userId !== expectedPicker
+  ) {
+    return { error: "It is not your turn", status: 403 };
+  }
+  const historyCells = (match.picks ?? [])
+    .map((p) => Number(p?.cell))
+    .filter((c) => Number.isInteger(c) && c >= 0 && c < GRID_CELLS);
+  if (historyCells.includes(idx)) {
+    return { error: "Cell already picked", status: 409 };
+  }
+
+  const flagIsMine = isMine(match.board, idx);
+  const seat = userId === match.player1Id ? "player1" : "player2";
+  const flagEntry = {
+    userId,
+    seat,
+    cell: idx,
+    isMine: flagIsMine,
+    hint: null,
+    flag: true,
+    mercy: false,
+    autoPicked: false,
+    pickedAt: new Date().toISOString(),
+  };
+
+  // Correct flag → opponent loses; wrong flag → flagger loses.
+  const loserId = flagIsMine
+    ? userId === match.player1Id
+      ? match.player2Id
+      : match.player1Id
+    : userId;
+
+  match.picks = [...(match.picks ?? []), flagEntry];
+  if (seat === "player1") {
+    match.p1Pick = idx;
+    match.p1PickIsMine = flagIsMine;
+    match.p1PickedAt = new Date(flagEntry.pickedAt);
+    match.p1AutoPicked = false;
+  } else {
+    match.p2Pick = idx;
+    match.p2PickIsMine = flagIsMine;
+    match.p2PickedAt = new Date(flagEntry.pickedAt);
+    match.p2AutoPicked = false;
+  }
+
+  resolveMatch(match, loserId);
+  return { match, justResolved: true };
 }
 
 function forcePick(match) {
@@ -318,6 +421,13 @@ function forcePick(match) {
     .map((p) => Number(p?.cell))
     .filter((c) => Number.isInteger(c) && c >= 0 && c < GRID_CELLS);
   const cellIndex = pickRandomCell({ excludePicks: historyCells });
+  // First-pick mercy on the AFK path too (mirrors production forcePick):
+  // the game's opening is never a trap, even for an AFK'd first turn.
+  let mercyUsed = false;
+  if (match.picks.length === 0 && isMine(match.board, cellIndex)) {
+    match.board = relocateMine(match.board, cellIndex);
+    mercyUsed = true;
+  }
   const pickIsMine = isMine(match.board, cellIndex);
   const seat = pickerId === match.player1Id ? "player1" : "player2";
   return applyPick(match, {
@@ -325,6 +435,9 @@ function forcePick(match) {
     seat,
     cell: cellIndex,
     isMine: pickIsMine,
+    // Mirrors production forcePick (hint stamped on safe picks only).
+    hint: pickIsMine ? null : nearestMineDistance(match.board, cellIndex),
+    mercy: mercyUsed,
     autoPicked: true,
     pickedAt: new Date().toISOString(),
   });
@@ -758,6 +871,8 @@ test("pickTile: rejects duplicate cell (409), including picks from the OTHER pla
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 5, matches });
   createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 5, matches });
   const match = [...matches.values()][0];
+  // Fix the turn order deterministically (createOrJoin randomises it).
+  match.firstPlayerId = "u1";
   // Force minone count so we know cell 0 is safe.
   match.status = MATCH_STATUS.P1_TURN;
   match.currentTurnUserId = "u1";
@@ -875,15 +990,20 @@ test("pickTile: mine hit by u2 -> u1 wins", () => {
   match.currentTurnUserId = "u2";
   match.roundDeadline = new Date(Date.now() + 10_000);
   const mines = match.board.mines;
-  // P1 picks safe (turn 1 = firstPlayer = u2 here... actually turns
-  // are based on seats, not userIds; the formula uses
-  // firstPlayerSeat. With firstPlayerId="u2" (which is player2Id
-  // here), firstSeat = "player2", so turn 1 belongs to player2 =
-  // u2).
-  const r = pickTile({ userId: "u2", matchId: match.id, cellIndex: mines[0], matches });
+  const safeCells = [];
+  for (let i = 0; i < GRID_CELLS; i += 1) {
+    if (!mines.includes(i)) safeCells.push(i);
+  }
+  // Turn 1 = player2 (u2). u2 picks SAFE first because the game's very
+  // first pick is guaranteed safe by mercy — the mine pick below must
+  // not be the opening pick.
+  pickTile({ userId: "u2", matchId: match.id, cellIndex: safeCells[0], matches });
+  // Turn 2 = player1 (u1). u1 picks a mine -> u1 loses -> u2 wins.
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const r = pickTile({ userId: "u1", matchId: match.id, cellIndex: mines[0], matches });
   assert.equal(r.match.status, MATCH_STATUS.FINISHED);
-  assert.equal(r.match.result, RESULT.PLAYER1);
-  assert.equal(r.match.winnerId, "u1");
+  assert.equal(r.match.result, RESULT.PLAYER2);
+  assert.equal(r.match.winnerId, "u2");
 });
 
 test("pickTile: payout math (winner gets 1.9x stake, house gets 0.1x)", () => {
@@ -896,9 +1016,248 @@ test("pickTile: payout math (winner gets 1.9x stake, house gets 0.1x)", () => {
   match.currentTurnUserId = "u1";
   match.roundDeadline = new Date(Date.now() + 10_000);
   const mine = match.board.mines[0];
-  const r = pickTile({ userId: "u1", matchId: match.id, cellIndex: mine, matches });
+  const safeCells = [];
+  for (let i = 0; i < GRID_CELLS; i += 1) {
+    if (!match.board.mines.includes(i)) safeCells.push(i);
+  }
+  // u1 takes a safe pick first — the game's opening pick is guaranteed
+  // safe by mercy, so the mine pick below must not be pick #1.
+  pickTile({ userId: "u1", matchId: match.id, cellIndex: safeCells[0], matches });
+  // Turn 2 = u2 picks the mine -> u2 loses -> u1 wins the 1.9x payout.
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const r = pickTile({ userId: "u2", matchId: match.id, cellIndex: mine, matches });
+  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(r.match.result, RESULT.PLAYER1);
   assert.equal(r.match.prizePaid, round2(100 * 1.9));
   assert.equal(r.match.houseFee, round2(100 * 0.1));
+});
+
+test("pickTile: safe picks carry the distance hint; mine picks carry null", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 3, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 3, matches });
+  const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
+  match.status = MATCH_STATUS.P1_TURN;
+  match.currentTurnUserId = "u1";
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  // Fixed board so the expected hints are deterministic.
+  match.board = { size: 5, mines: [0, 1, 2] };
+
+  // Cell 7 (row 1, col 2): touches mines 1 and 2 -> distance 1.
+  const safe = pickTile({
+    userId: "u1",
+    matchId: match.id,
+    cellIndex: 7,
+    matches,
+  });
+  assert.equal(safe.match.picks[0].isMine, false);
+  assert.equal(safe.match.picks[0].hint, 1);
+
+  // Turn 2 belongs to player2 (u2): picking a MINE (cell 0) resolves
+  // with u2 losing, and the mine pick carries hint null.
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const mine = pickTile({
+    userId: "u2",
+    matchId: match.id,
+    cellIndex: 0,
+    matches,
+  });
+  assert.equal(mine.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(mine.match.result, RESULT.PLAYER1);
+  const minePick = mine.match.picks.at(-1);
+  assert.equal(minePick.isMine, true);
+  assert.equal(minePick.hint, null);
+});
+
+test("pickTile: first-pick mercy — the game's opening pick is never a mine", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 1, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 1, matches });
+  const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
+  match.status = MATCH_STATUS.P1_TURN;
+  match.currentTurnUserId = "u1";
+  match.roundDeadline = new Date(Date.now() + 10_000);
+
+  // Deliberately first-pick the known mine cell.
+  const mineCell = match.board.mines[0];
+  const r = pickTile({ userId: "u1", matchId: match.id, cellIndex: mineCell, matches });
+  // The mine was relocated off the cell: the pick is safe, flagged with
+  // mercy, and the match continues instead of resolving.
+  assert.equal(r.match.picks[0].isMine, false);
+  assert.equal(r.match.picks[0].mercy, true);
+  assert.equal(r.match.status, MATCH_STATUS.P2_TURN);
+  assert.equal(r.match.board.mines.includes(mineCell), false, "mine relocated off the picked cell");
+  assert.equal(r.match.board.mines.length, 1, "mine count preserved");
+  // The hint is computed against the RELOCATED board, so it's a real
+  // distance (>= 1) — never the 0 a mine-on-cell would produce.
+  assert.ok(r.match.picks[0].hint >= 1);
+});
+
+test("pickTile: mercy applies ONLY to the first pick (later mine picks still resolve)", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 2, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 2, matches });
+  const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
+  match.status = MATCH_STATUS.P1_TURN;
+  match.currentTurnUserId = "u1";
+  match.roundDeadline = new Date(Date.now() + 10_000);
+
+  const mineCell = match.board.mines[0];
+  const safeCells = [];
+  for (let i = 0; i < GRID_CELLS; i += 1) {
+    if (!match.board.mines.includes(i)) safeCells.push(i);
+  }
+  // Safe opening pick (no mercy needed).
+  const first = pickTile({ userId: "u1", matchId: match.id, cellIndex: safeCells[0], matches });
+  assert.equal(first.match.picks[0].mercy, false);
+  // Second pick hits the mine -> resolves immediately (mercy is spent).
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const second = pickTile({ userId: "u2", matchId: match.id, cellIndex: mineCell, matches });
+  assert.equal(second.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(second.match.picks.at(-1).isMine, true);
+  assert.equal(second.match.picks.at(-1).mercy, false);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// flagTile — the "call a mine" skill move
+// ════════════════════════════════════════════════════════════════════════
+
+test("flagTile: CORRECT flag (tile is a mine) -> opponent loses, flagger wins", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 100, minesCount: 3, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 100, minesCount: 3, matches });
+  const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
+  match.status = MATCH_STATUS.P1_TURN;
+  match.currentTurnUserId = "u1";
+  match.roundDeadline = new Date(Date.now() + 10_000);
+
+  const mineCell = match.board.mines[0];
+  const r = flagTile({ userId: "u1", matchId: match.id, cellIndex: mineCell, matches });
+  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(r.match.result, RESULT.PLAYER1);
+  assert.equal(r.match.winnerId, "u1");
+  const entry = r.match.picks.at(-1);
+  assert.equal(entry.flag, true);
+  assert.equal(entry.isMine, true);
+  assert.equal(r.match.prizePaid, round2(100 * 1.9));
+  assert.equal(r.match.houseFee, round2(100 * 0.1));
+});
+
+test("flagTile: WRONG flag (tile is safe) -> flagger loses, and NO first-pick mercy for flags", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 1, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 1, matches });
+  const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
+  match.status = MATCH_STATUS.P1_TURN;
+  match.currentTurnUserId = "u1";
+  match.roundDeadline = new Date(Date.now() + 10_000);
+
+  // u1's FIRST action is a flag on a known-SAFE cell. Mercy protects
+  // the opening PICK (a definitional guess) — a flag is a deliberate
+  // claim, so a wrong first-turn flag loses outright.
+  const safeCell = match.board.mines[0] === 0 ? 1 : 0;
+  assert.equal(isMine(match.board, safeCell), false);
+  const r = flagTile({ userId: "u1", matchId: match.id, cellIndex: safeCell, matches });
+  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(r.match.result, RESULT.PLAYER2);
+  assert.equal(r.match.winnerId, "u2");
+  const entry = r.match.picks.at(-1);
+  assert.equal(entry.flag, true);
+  assert.equal(entry.isMine, false);
+  assert.equal(entry.mercy, false);
+});
+
+test("flagTile: rejects when it's not your turn (403)", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 3, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 3, matches });
+  const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
+  match.status = MATCH_STATUS.P1_TURN;
+  match.currentTurnUserId = "u1";
+  match.roundDeadline = new Date(Date.now() + 10_000);
+
+  const r = flagTile({ userId: "u2", matchId: match.id, cellIndex: 0, matches });
+  assert.equal(r.status, 403);
+  assert.ok(/not your turn/i.test(r.error));
+});
+
+test("flagTile: rejects flagging an already-picked cell (409)", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 3, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 3, matches });
+  const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
+  match.status = MATCH_STATUS.P1_TURN;
+  match.currentTurnUserId = "u1";
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  // u1 picks cell 0 safely; the turn passes to u2, who tries to flag
+  // the same (now revealed) cell.
+  pickTile({ userId: "u1", matchId: match.id, cellIndex: 0, matches });
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const r = flagTile({ userId: "u2", matchId: match.id, cellIndex: 0, matches });
+  assert.equal(r.status, 409);
+  assert.ok(/already picked/i.test(r.error));
+});
+
+test("flagTile: rejects when the pick window has expired", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 3, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 3, matches });
+  const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
+  match.status = MATCH_STATUS.P1_TURN;
+  match.currentTurnUserId = "u1";
+  match.roundDeadline = new Date(Date.now() - 1_000);
+
+  const r = flagTile({ userId: "u1", matchId: match.id, cellIndex: 0, matches });
+  assert.equal(r.status, 400);
+  assert.ok(/expired/i.test(r.error));
+});
+
+test("flagTile: rejects non-participant with 403", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 3, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 3, matches });
+  const match = [...matches.values()][0];
+  match.status = MATCH_STATUS.P1_TURN;
+  match.currentTurnUserId = "u1";
+  match.roundDeadline = new Date(Date.now() + 10_000);
+
+  const r = flagTile({ userId: "u3", matchId: match.id, cellIndex: 0, matches });
+  assert.equal(r.status, 403);
+});
+
+test("end-to-end: P1 picks safe, then P2 correctly flags a mine -> P2 wins", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 3, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 3, matches });
+  const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
+  match.status = MATCH_STATUS.P1_TURN;
+  match.currentTurnUserId = "u1";
+  match.roundDeadline = new Date(Date.now() + 10_000);
+
+  const mines = match.board.mines;
+  const safeCells = [];
+  for (let i = 0; i < GRID_CELLS; i += 1) {
+    if (!mines.includes(i)) safeCells.push(i);
+  }
+  // Turn 1: u1 picks a safe tile.
+  pickTile({ userId: "u1", matchId: match.id, cellIndex: safeCells[0], matches });
+  // Turn 2: u2 flags a mine -> correct -> u2 wins.
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const r = flagTile({ userId: "u2", matchId: match.id, cellIndex: mines[0], matches });
+  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(r.match.result, RESULT.PLAYER2);
+  assert.equal(r.match.winnerId, "u2");
+  assert.equal(r.match.picks.at(-1).flag, true);
+  assert.equal(r.match.picks.length, 2, "one safe pick + one flag entry");
 });
 
 test("pickTile: never returns DRAW (no ties in the new flow)", () => {
@@ -1026,6 +1385,27 @@ test("fetchMatchWithAutoResolve: AFK on p1_turn -> force-pick via applyPick, adv
     // Picked a mine: instant resolve.
     assert.equal(r.match.p1AutoPicked, true);
   }
+});
+
+test("fetchMatchWithAutoResolve: AFK on the FIRST turn can never auto-lose to a mine (mercy)", () => {
+  const matches = new Map();
+  // 24-mine board: a random auto-pick hits a mine with ~96% probability.
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 24, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 24, matches });
+  const match = [...matches.values()][0];
+  match.firstPlayerId = "u1";
+  match.status = MATCH_STATUS.P1_TURN;
+  match.currentTurnUserId = "u1";
+  match.roundDeadline = new Date(Date.now() - 1);
+
+  const r = fetchMatchWithAutoResolve("u1", match.id, matches);
+  // Whatever cell the auto-pick drew, the game's opening pick is safe.
+  assert.equal(r.match.picks[0].isMine, false);
+  assert.equal(typeof r.match.picks[0].mercy, "boolean");
+  assert.equal(r.match.status, MATCH_STATUS.P2_TURN);
+  // If mercy fired, the stored board really did lose that mine.
+  const stored = [...matches.values()][0];
+  assert.equal(stored.board.mines.includes(r.match.picks[0].cell), false);
 });
 
 test("fetchMatchWithAutoResolve: AFK on p2_turn -> force-pick resolves if mine", () => {

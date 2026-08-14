@@ -21,6 +21,10 @@
 //       isMine/autoPicked which would otherwise leak AFK state)
 //       gives both players faithful board progress without
 //       leaking mine positions.
+//     - the proximity `hint` on each pick is PRIVATE: only the
+//       viewer's OWN picks carry their number mid-match, so the
+//       opponent's picks give away no clues (each player builds
+//       their own picture of the board).
 //     - the viewer sees their OWN auto-pick flag (true/false) so
 //       they can render their own AFK state; the OPPONENT's
 //       auto-pick flag is scrubbed to false to avoid leaking
@@ -38,7 +42,10 @@ import {
   fetchMatchWithAutoResolve,
   fetchMatchRounds,
 } from "../../../../../lib/mines-pvp/serverStore";
-import { MATCH_STATUS } from "../../../../../lib/mines-pvp/constants";
+import {
+  GRID_CELLS,
+  MATCH_STATUS,
+} from "../../../../../lib/mines-pvp/constants";
 
 function isTerminalStatus(status) {
   return status === MATCH_STATUS.FINISHED || status === MATCH_STATUS.CANCELLED;
@@ -93,11 +100,27 @@ function scrubPicksForViewer(picks, viewerUserId, match, finished) {
       // mine is the one whose isMine=true inside this array).
       isMine:
         finished || isViewerPick ? Boolean(raw.isMine) : false,
+      // Proximity hint (distance to the nearest mine, 1+ for safe
+      // picks). PRIVATE: only the picker's own picks carry it
+      // mid-match (the opponent's are stripped so they can't scrape
+      // free clues off the shared board); the post-match reveal
+      // shows everything.
+      hint:
+        finished || isViewerPick
+          ? raw.hint != null
+            ? Number(raw.hint)
+            : null
+          : null,
       pickedAt: typeof raw.pickedAt === "string" ? raw.pickedAt : null,
       // The viewer's own auto-pick is fine to reveal; the OPPONENT's
       // is scrubbed to false (AFK should not be visible to a peer).
       autoPicked:
         finished || isViewerPick ? Boolean(raw.autoPicked) : false,
+      // Flag discriminator: true when this entry ended the match via
+      // the "call a mine" move. A flag is terminal, so it can only
+      // ever appear in the finished reveal — pass it through so the
+      // client can render flag-specific result copy.
+      flag: Boolean(raw.flag),
     });
   }
   return sanitized;
@@ -114,12 +137,27 @@ function normaliseMatchForViewer(match, viewerUserId) {
     finished,
   );
 
+  // Safe-tiles counter — the zugzwang legibility stat. The client
+  // CANNOT derive this mid-match (the opponent's picks have their
+  // `isMine` scrubbed, so a viewer can't count safe reveals they
+  // didn't make), so the server stamps it from the board + raw pick
+  // history: total safe cells (25 − mines) minus every safe pick so
+  // far (mine picks never count — and mid-match there are none yet,
+  // because a mine would have ended the game). As it approaches 0,
+  // only mines are left unrevealed: whoever's turn it is next loses
+  // by logic — the zugzwang endgame.
+  const safeTilesTotal = GRID_CELLS - Number(match.minesCount);
+  const safePicksMade = (Array.isArray(match.picks) ? match.picks : []).filter(
+    (p) => p && !Boolean(p.isMine),
+  ).length;
+
   return {
     id: match.id,
     player1Id: match.player1Id,
     player2Id: match.player2Id,
     stakeAmount: Number(match.stakeAmount),
     minesCount: match.minesCount,
+    safeTilesRemaining: Math.max(0, safeTilesTotal - safePicksMade),
     status: match.status,
     firstPlayerId: match.firstPlayerId,
     currentTurnUserId: match.currentTurnUserId,

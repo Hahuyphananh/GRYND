@@ -56,9 +56,11 @@ import {
   activePickerForMatch,
   computePayout,
   decideOutcome,
-  generateBoard,
+  generateSolvableBoard,
   isMine,
+  nearestMineDistance,
   pickRandomCell,
+  relocateMine,
 } from "./constants";
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -233,8 +235,13 @@ async function createWaitingMatch(tx, userId, stakeAmount, minesCount) {
       status: MATCH_STATUS.WAITING,
       // BOARD IS GENERATED HERE so the host's pick is locked in
       // before any joiner arrives. The board is stored server-only;
-      // /status scrubs it until the match finishes.
-      board: generateBoard(Number(minesCount)),
+      // /status scrubs it until the match finishes. Uses the
+      // no-guess generator: the 3×3 center block stays mine-free and
+      // the board is verified to be fully solvable by deduction from
+      // the center opening (falling back to the least-guessy board if
+      // none qualifies), so matches are decided by deduction and
+      // zugzwang rather than coin flips.
+      board: generateSolvableBoard(Number(minesCount)),
       roundTimerSeconds: ROUND_TIMER_SECONDS,
       startedAt: null,
     })
@@ -447,7 +454,22 @@ async function forcePick(tx, match) {
     // already made multiple picks before going AFK).
     excludePicks: pickHistoryCells(match),
   });
-  const pickIsMine = isMine(match.board, cellIndex);
+
+  // First-pick mercy applies to the AFK auto-pick on turn 1 as well:
+  // the opening is definitionally a guess, so it must never be a trap.
+  // Relocates the mine and persists the new board in this tx.
+  let board = match.board;
+  let mercyUsed = false;
+  if (match.picks.length === 0 && isMine(board, cellIndex)) {
+    board = relocateMine(board, cellIndex);
+    mercyUsed = true;
+    await tx
+      .update(minesPvpMatches)
+      .set({ board })
+      .where(eq(minesPvpMatches.id, match.id));
+  }
+
+  const pickIsMine = isMine(board, cellIndex);
   const seat = pickerId === match.player1Id ? "player1" : "player2";
   const pickedAt = new Date();
   const newPick = {
@@ -455,12 +477,18 @@ async function forcePick(tx, match) {
     seat,
     cell: cellIndex,
     isMine: pickIsMine,
+    // Proximity hint for SAFE picks (null on a mine): how many tiles
+    // away the nearest mine is, computed server-side from the board.
+    // The /status route strips it from the OPPONENT's view — each
+    // player only ever sees their own numbers.
+    hint: pickIsMine ? null : nearestMineDistance(board, cellIndex),
+    mercy: mercyUsed,
     autoPicked: true,
     pickedAt: pickedAt.toISOString(),
   };
 
   // Apply the pick + (if mine) resolve OR (if safe) advance turn.
-  return await applyPick(tx, match, newPick);
+  return await applyPick(tx, { ...match, board }, newPick);
 }
 
 // ── Pure utility: flatten every pick cell across all players ──────────
@@ -481,6 +509,31 @@ function pickHistoryCells(match) {
 // most-recent pick onto the legacy p{N}_pick columns for
 // backwards-compat history views, and either resolve the match
 // (mine hit) or advance to the next picker (odds formula).
+
+// Shared by `applyPick` (pickTile / forcePick) and `flagTile`: compute
+// the legacy scalar mirrors (most-recent-of-each-seat) for a new
+// chronological `picks` array. `picks` stores `pickedAt` as an ISO
+// string for JSONB portability, but the Drizzle `p{N}_picked_at`
+// columns are declared `timestamp()` (mode 'date' default) and crash
+// with `TypeError: value.getTime is not a function` when bound from a
+// raw string — so `pickSeatMostRecentDate` re-hydrates to a Date
+// before .set(). Flag entries flow through the same mirrors (their
+// `isMine` = whether the flagged cell really held a mine).
+function mirrorPickSetValues(allPicks) {
+  return {
+    p1Pick: pickSeatMostRecent(allPicks, "player1", "cell"),
+    p2Pick: pickSeatMostRecent(allPicks, "player2", "cell"),
+    p1PickIsMine: pickSeatMostRecent(allPicks, "player1", "isMine"),
+    p2PickIsMine: pickSeatMostRecent(allPicks, "player2", "isMine"),
+    p1PickedAt: pickSeatMostRecentDate(allPicks, "player1"),
+    p2PickedAt: pickSeatMostRecentDate(allPicks, "player2"),
+    p1AutoPicked:
+      pickSeatMostRecent(allPicks, "player1", "autoPicked") ?? false,
+    p2AutoPicked:
+      pickSeatMostRecent(allPicks, "player2", "autoPicked") ?? false,
+  };
+}
+
 async function applyPick(tx, match, pick) {
   const allPicks = Array.isArray(match.picks) ? [...match.picks] : [];
   allPicks.push(pick);
@@ -491,22 +544,7 @@ async function applyPick(tx, match, pick) {
     // columns. Only the LAST pick from a given seat sticks; this
     // preserves the schema contract for any legacy viewer that
     // still reads `p1_pick` / `p2_pick` etc. directly.
-    p1Pick: pickSeatMostRecent(allPicks, "player1", "cell"),
-    p2Pick: pickSeatMostRecent(allPicks, "player2", "cell"),
-    p1PickIsMine: pickSeatMostRecent(allPicks, "player1", "isMine"),
-    p2PickIsMine: pickSeatMostRecent(allPicks, "player2", "isMine"),
-    // The `picks` array stores `pickedAt` as an ISO string for
-    // JSONB portability, but the Drizzle `p{N}_picked_at` columns
-    // are declared `timestamp()` (mode 'date' default) and crash
-    // with `TypeError: value.getTime is not a function` when bound
-    // from a raw string. Coerce back to a Date before .set() so
-    // every mirror-write below stays type-safe.
-    p1PickedAt: pickSeatMostRecentDate(allPicks, "player1"),
-    p2PickedAt: pickSeatMostRecentDate(allPicks, "player2"),
-    p1AutoPicked:
-      pickSeatMostRecent(allPicks, "player1", "autoPicked") ?? false,
-    p2AutoPicked:
-      pickSeatMostRecent(allPicks, "player2", "autoPicked") ?? false,
+    ...mirrorPickSetValues(allPicks),
   };
 
   if (pick.isMine) {
@@ -673,7 +711,25 @@ export async function pickTile({ userId, matchId, cellIndex }) {
       return { error: "Cell already picked", status: 409 };
     }
 
-    const pickIsMine = isMine(match.board, idx);
+    // First-pick mercy: the game's very first pick is always safe.
+    // Before any cell is revealed there is zero information, so the
+    // opening is definitionally a guess — this makes it a safe guess
+    // (the same convention real guess-free minesweeper uses). If the
+    // first pick lands on a mine, relocate that mine off the cell and
+    // persist the new board in the same transaction (the board is
+    // server-hidden mid-match, so nothing leaks to either client).
+    let board = match.board;
+    let mercyUsed = false;
+    if (match.picks.length === 0 && isMine(board, idx)) {
+      board = relocateMine(board, idx);
+      mercyUsed = true;
+      await tx
+        .update(minesPvpMatches)
+        .set({ board })
+        .where(eq(minesPvpMatches.id, match.id));
+    }
+
+    const pickIsMine = isMine(board, idx);
     const seat =
       userId === match.player1Id ? "player1" : "player2";
     const newPick = {
@@ -681,11 +737,162 @@ export async function pickTile({ userId, matchId, cellIndex }) {
       seat,
       cell: idx,
       isMine: pickIsMine,
+      // Proximity hint for SAFE picks (null on a mine): distance to the
+      // nearest mine. Stripped from the opponent's view by /status.
+      hint: pickIsMine ? null : nearestMineDistance(board, idx),
+      mercy: mercyUsed,
       autoPicked: false,
       pickedAt: new Date().toISOString(),
     };
 
-    return await applyPick(tx, match, newPick);
+    return await applyPick(tx, { ...match, board }, newPick);
+  });
+}
+
+// ── flagTile (the "call a mine" skill move) ───────────────────────────
+//
+// On your turn you may FLAG a tile instead of picking it: declare
+// "this tile is a mine". Terminal either way:
+//   • CORRECT (the tile really is a mine) → the OPPONENT loses (you
+//     deduced it, you take the pot).
+//   • WRONG (the tile is safe) → YOU lose (your read was bad).
+//
+// Skill notes (per user spec):
+//   * No first-pick mercy for flags — mercy protects the opening
+//     PICK because it is definitionally a guess; a flag is a
+//     deliberate claim, so a wrong first-turn flag loses outright.
+//   * Self-balancing by mine count: a random flag wins with
+//     probability mines/25, so flagging blind is terrible at low
+//     mine counts and only becomes worth it when you have actually
+//     DEDUCED a cell must be a mine (or accepted the high-mine
+//     gamble). The private distance hints are the deduction surface.
+//   * A flag ends the match immediately, so it never leaks mid-match
+//     state — the flag entry only ever exists in the finished
+//     reveal (same scrub path as picks).
+//
+// Validation mirrors pickTile: participant, pickable state, turn
+// enforcement (closed-form odds formula), deadline freshness, and
+// cell-not-already-picked. The flag is recorded in the chronological
+// `picks` array with `flag: true` (the legacy scalar mirrors follow
+// the shared mirrorPickSetValues path), then the match resolves
+// terminally via resolveMatch.
+export async function flagTile({ userId, matchId, cellIndex }) {
+  // Defense-in-depth input validation (the API route also validates).
+  const idx = Number(cellIndex);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= GRID_CELLS) {
+    return {
+      error: `cellIndex must be an integer in [0, ${GRID_CELLS - 1}]`,
+      status: 400,
+    };
+  }
+
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isParticipant(match, userId)) {
+      return { error: "Forbidden", status: 403 };
+    }
+    if (!PICKABLE_STATES.has(match.status)) {
+      return { error: "Match is not awaiting a pick", status: 400 };
+    }
+
+    // Stale-deadline guard: same contract as pickTile — a flag after
+    // the window is rejected; the next /status poll triggers the AFK
+    // auto-pick instead.
+    if (
+      match.roundDeadline &&
+      new Date(match.roundDeadline).getTime() <= Date.now()
+    ) {
+      return { error: "Pick window has expired", status: 400 };
+    }
+
+    // Turn enforcement via the closed-form odds formula (same as
+    // pickTile): the caller must be whoever the formula says is up.
+    const expectedPicker = activePickerForMatch(match);
+    if (
+      !expectedPicker ||
+      match.currentTurnUserId !== expectedPicker ||
+      userId !== expectedPicker
+    ) {
+      return { error: "It is not your turn", status: 403 };
+    }
+
+    // Cannot flag a cell either side has already revealed.
+    const historyCells = pickHistoryCells(match);
+    if (historyCells.includes(idx)) {
+      return { error: "Cell already picked", status: 409 };
+    }
+
+    const flagIsMine = isMine(match.board, idx);
+    const seat = userId === match.player1Id ? "player1" : "player2";
+    const flagEntry = {
+      userId,
+      seat,
+      cell: idx,
+      isMine: flagIsMine,
+      // No hint on a flag: the number would be meaningless on a cell
+      // the flagger believes is a mine (and a wrong flag is a loss
+      // anyway — the game is over).
+      hint: null,
+      // Discriminator: this entry is a flag, not a pick. The client
+      // renders flag-specific copy for the result screen.
+      flag: true,
+      mercy: false,
+      autoPicked: false,
+      pickedAt: new Date().toISOString(),
+    };
+
+    // The loser depends on the flag's correctness:
+    //   correct (isMine)  → the flagger WINS, opponent loses
+    //   wrong (safe)      → the flagger LOSES
+    const loserId = flagIsMine
+      ? userId === match.player1Id
+        ? match.player2Id
+        : match.player1Id
+      : userId;
+
+    // Append the flag + mirror legacy scalars, then resolve terminally
+    // inside the same tx (same race pattern as applyPick's mine path).
+    const allPicks = Array.isArray(match.picks)
+      ? [...match.picks, flagEntry]
+      : [flagEntry];
+    const setValues = {
+      picks: allPicks,
+      ...mirrorPickSetValues(allPicks),
+    };
+
+    const [updated] = await tx
+      .update(minesPvpMatches)
+      .set(setValues)
+      .where(
+        and(
+          eq(minesPvpMatches.id, match.id),
+          eq(minesPvpMatches.status, match.status),
+        ),
+      )
+      .returning();
+
+    if (!updated) {
+      // Lost the race to a concurrent safe-pick advance; resolve on the
+      // FRESH row with the flag entry merged onto its picks so the
+      // rounds row + result never drop the deciding flag.
+      const [refreshed] = await tx
+        .select()
+        .from(minesPvpMatches)
+        .where(eq(minesPvpMatches.id, match.id));
+      const merged = refreshed || match;
+      const mergedPicks = Array.isArray(merged.picks)
+        ? [...merged.picks, flagEntry]
+        : [flagEntry];
+      return await resolveMatch(
+        tx,
+        { ...merged, picks: mergedPicks },
+        loserId,
+      );
+    }
+
+    return await resolveMatch(tx, updated, loserId);
   });
 }
 
