@@ -3,7 +3,11 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../../db/client";
 import { oddsGames, users } from "../../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { processOddsPick } from "../../../../../lib/odds";
+import {
+  submitAIPick,
+  submitAIPrediction,
+  viewForPlayer,
+} from "../../../../../lib/odds";
 import type { InteractiveOddsState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 
@@ -15,7 +19,10 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const gameId = Number(body.gameId);
-    const playerNumber = Number(body.playerNumber);
+    const playerNumber =
+      body.playerNumber == null ? undefined : Number(body.playerNumber);
+    const prediction =
+      body.prediction == null ? undefined : Number(body.prediction);
 
     if (!Number.isFinite(gameId) || gameId <= 0) {
       return NextResponse.json({ error: "Invalid game ID" }, { status: 400 });
@@ -42,22 +49,64 @@ export async function POST(req: Request) {
       const state = game.gameState as InteractiveOddsState;
       if (!state || state.gameOver) throw new Error("Game is already over");
 
-      // Validate player number (checked before processing, not recoverable inside tx)
-      if (!Number.isFinite(playerNumber) || !Number.isInteger(playerNumber)) {
-        throw Object.assign(new Error("Number must be a whole number"), { status: 400 });
+      const invalid = (v: number | undefined) =>
+        v === undefined || !Number.isFinite(v) || !Number.isInteger(v);
+
+      // ── Phase 1: lock in the player's number ──
+      if (state.phase === "pick") {
+        if (prediction !== undefined)
+          throw Object.assign(
+            new Error("Lock in your number before predicting"),
+            { status: 400 },
+          );
+        if (invalid(playerNumber))
+          throw Object.assign(new Error("Number must be a whole number"), { status: 400 });
+        if (playerNumber! < 1 || playerNumber! > state.currentMax)
+          throw Object.assign(
+            new Error(`Number must be between 1 and ${state.currentMax}`),
+            { status: 400 },
+          );
+
+        // The AI locks in its own hidden number immediately; only the
+        // sanitized view (AI's number nulled) goes back to the client.
+        const { updatedState } = submitAIPick(state, playerNumber!);
+        await tx
+          .update(oddsGames)
+          .set({ gameState: updatedState })
+          .where(eq(oddsGames.id, gameId));
+
+        return {
+          round: null,
+          updatedState: viewForPlayer(updatedState, true),
+          gameStatus: "playing" as const,
+          player1Won: false,
+          payout: 0,
+        };
       }
-      if (playerNumber < 1 || playerNumber > state.currentMax) {
+
+      // ── Phase 2: player predicts the AI's number ──
+      if (playerNumber !== undefined)
         throw Object.assign(
-          new Error(`Number must be between 1 and ${state.currentMax}`),
+          new Error("Your number is locked in — submit a prediction"),
           { status: 400 },
         );
-      }
+      if (invalid(prediction))
+        throw Object.assign(new Error("Prediction must be a whole number"), { status: 400 });
+      if (prediction! < 1 || prediction! > state.currentMax)
+        throw Object.assign(
+          new Error(`Prediction must be between 1 and ${state.currentMax}`),
+          { status: 400 },
+        );
 
-      const pickResult = processOddsPick(state, playerNumber);
+      const { round, updatedState: resolved } = submitAIPrediction(
+        state,
+        prediction!,
+      );
       const payout = game.wager * 2;
 
-      if (pickResult.updatedState.gameOver) {
-        const player1Won = pickResult.updatedState.winner === "player1";
+      if (resolved.gameOver) {
+        const player1Won = resolved.winner === "player1";
+        const drew = resolved.winner === null;
 
         // AI games are free play — never credit payout on win, even if the
         // persisted `game.wager` is non-zero. This endpoint is only reached
@@ -78,16 +127,17 @@ export async function POST(req: Request) {
           .update(oddsGames)
           .set({
             status: "finished",
-            winner: pickResult.updatedState.winner,
-            result: player1Won ? "won" : "lost",
+            winner: resolved.winner,
+            result: player1Won ? "won" : drew ? "draw" : "lost",
             payout: recordedPayout,
-            gameState: pickResult.updatedState,
+            gameState: resolved,
             endedAt: new Date(),
           })
           .where(eq(oddsGames.id, gameId));
 
         return {
-          pickResult,
+          round,
+          updatedState: viewForPlayer(resolved, true),
           gameStatus: "finished" as const,
           player1Won,
           payout: recordedPayout,
@@ -98,11 +148,12 @@ export async function POST(req: Request) {
       // Game continues — just update the gameState
       await tx
         .update(oddsGames)
-        .set({ gameState: pickResult.updatedState })
+        .set({ gameState: resolved })
         .where(eq(oddsGames.id, gameId));
 
       return {
-        pickResult,
+        round,
+        updatedState: viewForPlayer(resolved, true),
         gameStatus: "playing" as const,
         player1Won: false,
         payout: 0,
@@ -122,15 +173,11 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       data: {
-        round: result.pickResult.round,
-        playerNumber: result.pickResult.playerNumber,
-        aiNumber: result.pickResult.aiNumber,
-        matched: result.pickResult.matched,
-        isReverse: result.pickResult.isReverse,
-        halved: result.pickResult.halved,
-        updatedState: result.pickResult.updatedState,
+        round: result.round,
+        playerNumber,
+        updatedState: result.updatedState,
         gameStatus: result.gameStatus,
-        winner: result.pickResult.updatedState.winner,
+        winner: result.updatedState.winner,
         payout: result.payout,
       },
     });

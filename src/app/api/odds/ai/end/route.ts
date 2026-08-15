@@ -4,7 +4,10 @@ import { db } from "../../../../../db/client";
 import { oddsGames, users } from "../../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
-import type { InteractiveOddsState } from "../../../../../lib/odds";
+import {
+  initInteractiveOddsGame,
+  type InteractiveOddsState,
+} from "../../../../../lib/odds";
 
 export async function POST(req: Request) {
   try {
@@ -71,15 +74,7 @@ export async function POST(req: Request) {
 
       const finalState: InteractiveOddsState = state
         ? { ...state, winner, gameOver: true }
-        : {
-            currentMax: 100,
-            currentStarter: "player1" as const,
-            phase: "first_attempt" as const,
-            rounds: [],
-            winner,
-            firstStarter: "player1" as const,
-            gameOver: true,
-          };
+        : { ...initInteractiveOddsGame(), winner, gameOver: true };
 
       await tx
         .update(oddsGames)

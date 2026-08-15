@@ -3,7 +3,12 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../../db/client";
 import { oddsGames, users } from "../../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { processPvPOddsRound } from "../../../../../lib/odds";
+import {
+  resolvePvPRound,
+  submitPick,
+  submitPrediction,
+  viewForPlayer,
+} from "../../../../../lib/odds";
 import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 
@@ -25,7 +30,10 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const gameId = Number(body.gameId);
-    const playerNumber = Number(body.playerNumber);
+    const playerNumber =
+      body.playerNumber == null ? undefined : Number(body.playerNumber);
+    const prediction =
+      body.prediction == null ? undefined : Number(body.prediction);
 
     if (!Number.isFinite(gameId) || gameId <= 0) {
       return NextResponse.json({ error: "Invalid game ID" }, { status: 400 });
@@ -51,34 +59,31 @@ export async function POST(req: Request) {
       const state = game.gameState as PvPInteractiveOddsState;
       if (!state || state.gameOver) throw new Error("Game is already over");
 
-      // Validate
-      if (
-        !Number.isFinite(playerNumber) ||
-        !Number.isInteger(playerNumber)
-      ) {
-        throw Object.assign(
-          new Error("Number must be a whole number"),
-          { status: 400 },
-        );
-      }
-      if (playerNumber < 1 || playerNumber > state.currentMax) {
-        throw Object.assign(
-          new Error(`Number must be between 1 and ${state.currentMax}`),
-          { status: 400 },
-        );
-      }
-
-      // ── Timeout check: auto-forfeit inactive opponent ──
+      // ── Timeout check: auto-forfeit an opponent who finished their
+      // part of the phase long ago and went away ──
       const now = Date.now();
       const roundAge = state.roundStartedAt ? now - state.roundStartedAt : 0;
-      const oppHasPicked = isPlayer1 ? state.player2Pick !== null : state.player1Pick !== null;
+      const oppDone =
+        state.phase === "predict"
+          ? isPlayer1
+            ? state.player2Prediction !== null
+            : state.player1Prediction !== null
+          : isPlayer1
+            ? state.player2Pick !== null
+            : state.player1Pick !== null;
 
-      // Opponent picked long ago and I'm only picking now → auto-forfeit them
-      if (roundAge > TIMEOUT_MS && oppHasPicked) {
+      if (roundAge > TIMEOUT_MS && oppDone) {
         const forfeiterId = isPlayer1 ? game.player2Id : game.player1Id;
         const winnerId = userId;
         const payout = game.wager * 2;
         const winner: "player1" | "player2" = isPlayer1 ? "player1" : "player2";
+        // Persist the game-over state so the opponent's polls/socket
+        // refetches reflect the match ending (not just the submitter).
+        const forfeitedState: PvPInteractiveOddsState = {
+          ...state,
+          gameOver: true,
+          winner,
+        };
 
         await tx
           .update(users)
@@ -92,6 +97,7 @@ export async function POST(req: Request) {
             winner,
             result: winner === "player1" ? "player1_won" : "player2_won",
             payout,
+            gameState: forfeitedState,
             endedAt: new Date(),
           })
           .where(eq(oddsGames.id, gameId));
@@ -111,46 +117,60 @@ export async function POST(req: Request) {
           isPvpWin: false,
         }).catch(() => {});
 
-        const forfeitedState: PvPInteractiveOddsState = {
-          ...state,
-          gameOver: true,
-          winner,
-        };
-
         return {
           resolved: true,
-          gameState: forfeitedState,
+          phase: forfeitedState.phase,
+          gameState: viewForPlayer(forfeitedState, isPlayer1),
           round: null,
           payout,
           winner,
         };
       }
 
-      // Prevent double-picking
-      if (isPlayer1 && state.player1Pick !== null)
+      // Prevent double-submitting — once locked in, it cannot change.
+      const myDone =
+        state.phase === "predict"
+          ? isPlayer1
+            ? state.player1Prediction !== null
+            : state.player2Prediction !== null
+          : isPlayer1
+            ? state.player1Pick !== null
+            : state.player2Pick !== null;
+      if (myDone)
         throw Object.assign(
-          new Error("You already picked for this round"),
-          { status: 400 },
-        );
-      if (isPlayer2 && state.player2Pick !== null)
-        throw Object.assign(
-          new Error("You already picked for this round"),
+          new Error("You already submitted for this round"),
           { status: 400 },
         );
 
-      // Store the pick
-      const updatedState: PvPInteractiveOddsState = {
-        ...state,
-        player1Pick: isPlayer1 ? playerNumber : state.player1Pick,
-        player2Pick: isPlayer2 ? playerNumber : state.player2Pick,
-      };
+      const invalid = (v: number | undefined) =>
+        v === undefined || !Number.isFinite(v) || !Number.isInteger(v);
 
-      // Check if both players have picked
-      if (
-        updatedState.player1Pick === null ||
-        updatedState.player2Pick === null
-      ) {
-        // Waiting for opponent — just save and return
+      // ── Phase 1: lock in your own number ──
+      if (state.phase === "pick") {
+        if (prediction !== undefined)
+          throw Object.assign(
+            new Error("Lock in your number before predicting"),
+            { status: 400 },
+          );
+        if (invalid(playerNumber))
+          throw Object.assign(
+            new Error("Number must be a whole number"),
+            { status: 400 },
+          );
+        if (playerNumber! < 1 || playerNumber! > state.currentMax)
+          throw Object.assign(
+            new Error(`Number must be between 1 and ${state.currentMax}`),
+            { status: 400 },
+          );
+
+        const { updatedState } = submitPick(
+          state,
+          isPlayer1 ? "player1" : "player2",
+          playerNumber!,
+        );
+
+        // Save regardless — the opponent's number stays hidden (null)
+        // until they submit theirs too.
         await tx
           .update(oddsGames)
           .set({ gameState: updatedState })
@@ -158,62 +178,129 @@ export async function POST(req: Request) {
 
         return {
           resolved: false,
-          gameState: updatedState,
+          phase: updatedState.phase,
+          gameState: viewForPlayer(updatedState, isPlayer1),
           round: null,
           payout: 0,
           winner: null,
         };
       }
 
-      // Both picks in — resolve the round
-      const pickResult = processPvPOddsRound(updatedState);
+      // ── Phase 2: predict the opponent's number ──
+      if (playerNumber !== undefined)
+        throw Object.assign(
+          new Error("Your number is locked in — submit a prediction"),
+          { status: 400 },
+        );
+      if (invalid(prediction))
+        throw Object.assign(
+          new Error("Prediction must be a whole number"),
+          { status: 400 },
+        );
+      if (prediction! < 1 || prediction! > state.currentMax)
+        throw Object.assign(
+          new Error(`Prediction must be between 1 and ${state.currentMax}`),
+          { status: 400 },
+        );
+
+      const { updatedState: afterPred, phaseComplete } = submitPrediction(
+        state,
+        isPlayer1 ? "player1" : "player2",
+        prediction!,
+      );
+
+      if (!phaseComplete) {
+        // Both predictions in → round advances only then; otherwise the
+        // opponent's prediction stays hidden and we just save.
+        await tx
+          .update(oddsGames)
+          .set({ gameState: afterPred })
+          .where(eq(oddsGames.id, gameId));
+
+        return {
+          resolved: false,
+          phase: afterPred.phase,
+          gameState: viewForPlayer(afterPred, isPlayer1),
+          round: null,
+          payout: 0,
+          winner: null,
+        };
+      }
+
+      // Both predictions in — resolve the round (accuracy scoring)
+      const pickResult = resolvePvPRound(afterPred);
       const payout = game.wager * 2;
 
       if (pickResult.updatedState.gameOver) {
-        const winner = pickResult.updatedState.winner!;
+        const winner = pickResult.updatedState.winner; // null = draw
         const player1Won = winner === "player1";
         const winnerId = player1Won ? game.player1Id : game.player2Id;
 
-        // Pay winner
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${payout}` })
-          .where(eq(users.clerkId, winnerId));
+        if (winner) {
+          // Winner-take-all — the winner gets the full pot.
+          await tx
+            .update(users)
+            .set({ balance: sql`${users.balance} + ${payout}` })
+            .where(eq(users.clerkId, winnerId));
 
-        await tx
-          .update(oddsGames)
-          .set({
-            status: "finished",
-            winner: winner,
-            result: player1Won ? "player1_won" : "player2_won",
+          await tx
+            .update(oddsGames)
+            .set({
+              status: "finished",
+              winner,
+              result: player1Won ? "player1_won" : "player2_won",
+              payout,
+              gameState: pickResult.updatedState,
+              endedAt: new Date(),
+            })
+            .where(eq(oddsGames.id, gameId));
+
+          // Apply leaderboard counters (fire-and-forget)
+          const loserId = player1Won ? game.player2Id : game.player1Id;
+          applyLeaderboardCounters({
+            clerkId: winnerId!,
+            game: "odds",
+            betAmount: game.wager,
             payout,
-            gameState: pickResult.updatedState,
-            endedAt: new Date(),
-          })
-          .where(eq(oddsGames.id, gameId));
+            isPvpWin: true,
+          }).catch(() => {});
+          applyLeaderboardCounters({
+            clerkId: loserId!,
+            game: "odds",
+            betAmount: game.wager,
+            payout: 0,
+            isPvpWin: false,
+          }).catch(() => {});
+        } else {
+          // Exact tie after all rounds — refund BOTH stakes, no winner.
+          await tx
+            .update(users)
+            .set({ balance: sql`${users.balance} + ${game.wager}` })
+            .where(eq(users.clerkId, game.player1Id));
+          await tx
+            .update(users)
+            .set({ balance: sql`${users.balance} + ${game.wager}` })
+            .where(eq(users.clerkId, game.player2Id));
 
-        // Apply leaderboard counters (fire-and-forget)
-        const loserId = player1Won ? game.player2Id : game.player1Id;
-        applyLeaderboardCounters({
-          clerkId: winnerId!,
-          game: "odds",
-          betAmount: game.wager,
-          payout,
-          isPvpWin: true,
-        }).catch(() => {});
-        applyLeaderboardCounters({
-          clerkId: loserId!,
-          game: "odds",
-          betAmount: game.wager,
-          payout: 0,
-          isPvpWin: false,
-        }).catch(() => {});
+          await tx
+            .update(oddsGames)
+            .set({
+              status: "finished",
+              winner: null,
+              result: "draw",
+              payout: 0,
+              gameState: pickResult.updatedState,
+              endedAt: new Date(),
+            })
+            .where(eq(oddsGames.id, gameId));
+        }
 
         return {
           resolved: true,
-          gameState: pickResult.updatedState,
+          phase: pickResult.updatedState.phase,
+          gameState: viewForPlayer(pickResult.updatedState, isPlayer1),
           round: pickResult.round,
-          payout,
+          payout: winner ? payout : 0,
           winner,
         };
       }
@@ -226,7 +313,8 @@ export async function POST(req: Request) {
 
       return {
         resolved: true,
-        gameState: pickResult.updatedState,
+        phase: pickResult.updatedState.phase,
+        gameState: viewForPlayer(pickResult.updatedState, isPlayer1),
         round: pickResult.round,
         payout: 0,
         winner: null,
@@ -237,6 +325,7 @@ export async function POST(req: Request) {
       success: true,
       data: {
         resolved: result.resolved,
+        phase: result.phase,
         round: result.round,
         gameState: result.gameState,
         winner: result.winner,

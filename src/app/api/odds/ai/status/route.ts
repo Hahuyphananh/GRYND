@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { viewForPlayer } from "../../../../../lib/odds";
 import type { InteractiveOddsState } from "../../../../../lib/odds";
 
 export async function GET() {
@@ -41,13 +42,15 @@ export async function GET() {
 
     const state = game.gameState as InteractiveOddsState;
 
+    // The player is always player1 in AI mode — hide the AI's
+    // current-round number until the reveal.
     return NextResponse.json({
       success: true,
       data: {
         active: true,
         gameId: game.id,
         wager: game.wager,
-        gameState: state,
+        gameState: state ? viewForPlayer(state, true) : state,
         rounds: state?.rounds ?? [],
         gameOver: state?.gameOver ?? false,
         winner: state?.winner ?? null,

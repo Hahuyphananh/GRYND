@@ -35,7 +35,8 @@ export async function POST(req: Request) {
             eq(oddsGames.status, "waiting"),
             isNull(oddsGames.player2Id),
           )
-        );
+        )
+        .for("update");
 
       if (!game) throw new Error("Game not found or already joined");
       if (game.player1Id === userId) throw new Error("Cannot join your own game");

@@ -34,7 +34,8 @@ export async function POST(req: Request) {
             eq(oddsGames.player1Id, userId),
             eq(oddsGames.status, "waiting"),
           )
-        );
+        )
+        .for("update");
 
       if (!game) throw new Error("Game not found or not cancellable");
 
