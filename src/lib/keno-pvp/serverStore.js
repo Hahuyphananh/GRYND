@@ -8,10 +8,11 @@
 // be authoritative on the server:
 //   * matchmaking lock (stake-keyed) prevents lobby-race duplicates
 //   * both stakes escrowed at create/join so settlement is balance-neutral
-//   * the shared draw + release schedule are server-generated and
-//     derived from the server-set round deadline (identical for both)
+//   * the shared draw + glow schedule are server-generated and derived
+//     from the server-set round deadline (identical for both)
 //   * catches are graded against the server clock (anti-cheat — a
-//     client can never self-report a "perfect" catch)
+//     client can never self-report a catch; the tap must land inside
+//     the tile's 0.5s glow window + a small hidden network grace)
 //   * 3-second ready banner auto-advance
 //   * round deadlines auto-resolve (scores computed, winner stamped,
 //     next round opened) — the game progresses even if both players
@@ -30,7 +31,6 @@ import { sendSystemNotificationEmail } from "../emails/system";
 import {
   ACTIVE_STATES,
   BALL_COUNT,
-  CATCH_GRACE_MS,
   KENO_PVP_LOCK_NAMESPACE,
   MATCH_STATUS,
   MAX_ROUNDS,
@@ -1005,4 +1005,4 @@ export async function fetchMatch(matchId) {
 // Re-exports so routes/tests use one rounding helper + one source of
 // truth for the best-of-5 shape.
 export { round2 };
-export { BALL_COUNT, CATCH_GRACE_MS, MAX_ROUNDS, ROUNDS_TO_WIN };
+export { BALL_COUNT, MAX_ROUNDS, ROUNDS_TO_WIN };

@@ -195,6 +195,10 @@ export async function GET(req, { params }) {
     return NextResponse.json({
       success: true,
       data: {
+        // Server clock so the client can sync its glow stream to the
+        // authoritative grading clock — devices whose clock drifts
+        // otherwise see tiles light up at the wrong moment.
+        serverTime: Date.now(),
         match: normaliseMatch(scrubbed, userId, isBot),
         rounds: rounds.map(normaliseRound),
       },
