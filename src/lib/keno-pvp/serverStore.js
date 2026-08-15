@@ -12,12 +12,12 @@
 //     from the server-set round deadline (identical for both)
 //   * catches are graded against the server clock (anti-cheat — a
 //     client can never self-report a catch; the tap must land inside
-//     the tile's 0.5s glow window + a small hidden network grace)
+//     the tile's 1s glow window + a small hidden network grace)
 //   * 3-second ready banner auto-advance
 //   * round deadlines auto-resolve (scores computed, winner stamped,
 //     next round opened) — the game progresses even if both players
 //     go AFK
-//   * end-state resolution per the best-of-5 rulebook
+//   * end-state resolution per the first-to-10-points rulebook
 //   * 90/10 payout split (winner 1.9× stake, house keeps 0.1×)
 //
 // State machine:
@@ -36,19 +36,17 @@ import {
   MAX_ROUNDS,
   MAX_STAKE,
   MIN_STAKE,
+  POINTS_TO_WIN,
   READY_WINDOW_MS,
   RESULT,
-  ROUNDS_TO_WIN,
   ROUND_MS,
   ROUND_STATES,
   ROUND_TIMER_SECONDS,
-  TEST_ACCOUNT_EMAIL_DOMAIN,
   computePayout,
   round2,
 } from "./constants";
 import {
   ballSchedule,
-  botCatchesForElapsed,
   computeRoundStats,
   decideMatchResult,
   decideRoundWinner,
@@ -106,51 +104,6 @@ export async function listOpenMatches({ limit = 30 } = {}) {
     )
     .orderBy(sql`${kenoPvpMatches.createdAt} DESC`)
     .limit(limit);
-}
-
-// ── Test-account helpers (practice / bot matches) ─────────────────────
-
-let testAccountCache = { ids: null, at: 0 };
-const TEST_ACCOUNT_CACHE_TTL_MS = 60 * 1000;
-
-async function fetchTestAccountClerkIds() {
-  const now = Date.now();
-  if (
-    testAccountCache.ids &&
-    now - testAccountCache.at < TEST_ACCOUNT_CACHE_TTL_MS
-  ) {
-    return testAccountCache.ids;
-  }
-  let ids = [];
-  try {
-    const rows = await db
-      .select({ clerkId: users.clerkId })
-      .from(users)
-      .where(sql`${users.email} ILIKE ${`%@${TEST_ACCOUNT_EMAIL_DOMAIN}`}`);
-    ids = rows.map((r) => r.clerkId).filter(Boolean);
-  } catch (err) {
-    console.warn(
-      "[keno-pvp] test-account lookup failed (defaulting to none):",
-      err && err.message ? err.message : err,
-    );
-    ids = [];
-  }
-  testAccountCache = { ids, at: now };
-  return ids;
-}
-
-export async function isTestAccountClerkId(clerkId) {
-  if (!clerkId) return false;
-  const ids = await fetchTestAccountClerkIds();
-  return ids.includes(clerkId);
-}
-
-export async function isBotMatch(match) {
-  if (!match) return false;
-  return (
-    (await isTestAccountClerkId(match.player1Id)) ||
-    (await isTestAccountClerkId(match.player2Id))
-  );
 }
 
 // ── User enrichment ───────────────────────────────────────────────────
@@ -410,14 +363,12 @@ export async function cancelMatch({ userId, matchId }) {
       return { error: "Only the creator can cancel", status: 403 };
     }
 
-    if (!(await isBotMatch(match))) {
-      await tx
-        .update(users)
-        .set({
-          balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-        })
-        .where(eq(users.clerkId, match.player1Id));
-    }
+    await tx
+      .update(users)
+      .set({
+        balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
+      })
+      .where(eq(users.clerkId, match.player1Id));
 
     const [updated] = await tx
       .update(kenoPvpMatches)
@@ -473,8 +424,8 @@ function statusForRoundNumber(n) {
 //
 // Scores both players' catches, stamps the round winner onto a
 // keno_pvp_rounds history row, accumulates match scores, and either
-// opens the next round or settles the match (ROUNDS_TO_WIN reached, or
-// round MAX_ROUNDS just completed).
+// opens the next round or settles the match (a player reached
+// POINTS_TO_WIN, or round MAX_ROUNDS just completed).
 async function resolveRound(tx, match) {
   const p1Catches = Array.isArray(match.p1Catches) ? match.p1Catches : [];
   const p2Catches = Array.isArray(match.p2Catches) ? match.p2Catches : [];
@@ -519,8 +470,8 @@ async function resolveRound(tx, match) {
   const next = updated || match;
 
   const matchOver =
-    roundsWonPlayer1 >= ROUNDS_TO_WIN ||
-    roundsWonPlayer2 >= ROUNDS_TO_WIN ||
+    p1Score >= POINTS_TO_WIN ||
+    p2Score >= POINTS_TO_WIN ||
     (Number(next.currentRound) || 1) >= MAX_ROUNDS;
 
   if (matchOver) {
@@ -532,49 +483,43 @@ async function resolveRound(tx, match) {
 
 // ── Settle the match ──────────────────────────────────────────────────
 //
-// Decide the match result (best-of-5 rulebook), apply the 90/10 payout
-// (or full refund on a DRAW), stamp the row finished and bump the
-// leaderboard side-effects. Never credits anything for practice
-// (bot) matches — nothing was escrowed.
+// Decide the match result (first-to-10-points rulebook), apply the
+// 90/10 payout (or full refund on a DRAW), stamp the row finished and
+// bump the leaderboard side-effects.
 async function settleMatch(tx, match) {
   const result = decideMatchResult(match);
   const payout = computePayout({
     stakeAmount: match.stakeAmount,
     result,
   });
-  const isBot = await isBotMatch(match);
 
   let winnerId = null;
   if (result === RESULT.PLAYER1) winnerId = match.player1Id;
   else if (result === RESULT.PLAYER2) winnerId = match.player2Id;
 
-  if (!isBot) {
-    if (result === RESULT.DRAW) {
-      // Full refund — both players get their stake back, no rake.
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
-        .where(eq(users.clerkId, match.player1Id));
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
-        .where(eq(users.clerkId, match.player2Id));
-    } else {
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-        .where(eq(users.clerkId, winnerId));
-    }
+  if (result === RESULT.DRAW) {
+    // Full refund — both players get their stake back, no rake.
+    await tx
+      .update(users)
+      .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
+      .where(eq(users.clerkId, match.player1Id));
+    await tx
+      .update(users)
+      .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
+      .where(eq(users.clerkId, match.player2Id));
+  } else {
+    await tx
+      .update(users)
+      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
+      .where(eq(users.clerkId, winnerId));
   }
 
-  const settlement = isBot
-    ? { winnerId, result, houseFee: "0.00", prizePaid: "0.00" }
-    : {
-        winnerId,
-        result,
-        houseFee: payout.houseFee.toFixed(2),
-        prizePaid: payout.prizePaid.toFixed(2),
-      };
+  const settlement = {
+    winnerId,
+    result,
+    houseFee: payout.houseFee.toFixed(2),
+    prizePaid: payout.prizePaid.toFixed(2),
+  };
 
   const [updated] = await tx
     .update(kenoPvpMatches)
@@ -592,9 +537,7 @@ async function settleMatch(tx, match) {
 
   const finalRow = updated || match;
 
-  if (!isBot) {
-    await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
-  }
+  await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
 
   return finalRow;
 }
@@ -732,13 +675,11 @@ export async function catchBall({ userId, matchId, ball }) {
 
 // ── Status fetch with auto-resolve ────────────────────────────────────
 //
-// Three auto-advance paths, driven by the client polling (the single
+// Two auto-advance paths, driven by the client polling (the single
 // source of forward progress):
 //   1. `ready` deadline elapsed → open round 1.
 //   2. `round_N` deadline elapsed → resolve the round (score both
 //      sides, stamp the winner, open the next round or settle).
-//   3. Practice matches → the bot catches released balls progressively
-//      (random quality), so the human gets a live-feeling opponent.
 export async function fetchMatchWithAutoResolve(userId, matchId) {
   const result = await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
@@ -765,46 +706,6 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       new Date(current.roundDeadline).getTime() <= Date.now()
     ) {
       current = await resolveRound(tx, current);
-    }
-
-    // 3) Practice bot: progressively catch released balls mid-round.
-    if (
-      ROUND_STATES.has(current.status) &&
-      (await isBotMatch(current))
-    ) {
-      const deadline = new Date(current.roundDeadline).getTime();
-      const roundOpen = deadline - ROUND_MS;
-      const elapsed = Math.max(0, Date.now() - roundOpen);
-      const schedule = ballSchedule(deadline, current.currentDraw || []);
-      const botSeat = (await isTestAccountClerkId(current.player1Id))
-        ? "player1"
-        : "player2";
-      const catchesKey = botSeat === "player1" ? "p1Catches" : "p2Catches";
-      const already = Array.isArray(current[catchesKey])
-        ? current[catchesKey].map((c) => Number(c.number))
-        : [];
-      const botCatches = botCatchesForElapsed(schedule, elapsed, already);
-      if (botCatches.length > 0) {
-        const nextCatches = [
-          ...(Array.isArray(current[catchesKey]) ? current[catchesKey] : []),
-          ...botCatches,
-        ];
-        const [botUpdated] = await tx
-          .update(kenoPvpMatches)
-          .set(
-            botSeat === "player1"
-              ? { p1Catches: nextCatches }
-              : { p2Catches: nextCatches },
-          )
-          .where(
-            and(
-              eq(kenoPvpMatches.id, current.id),
-              eq(kenoPvpMatches.status, current.status),
-            ),
-          )
-          .returning();
-        if (botUpdated) current = botUpdated;
-      }
     }
 
     return { match: current };
@@ -846,80 +747,24 @@ export async function fetchMatchRounds(matchId) {
     .orderBy(sql`${kenoPvpRounds.roundNumber} ASC`);
 }
 
-// ── Practice (Test vs Bot) match ──────────────────────────────────────
-//
-// FREE-PLAY match against one of the developer's test accounts: no
-// stake is escrowed and no payout is credited — the match exists purely
-// to test the game loop. Skips the lobby and starts at the ready
-// banner; the bot seat is driven by the poll-time botCatchesForElapsed
-// path in fetchMatchWithAutoResolve.
-
-export async function createTestMatch({ userId, stakeAmount }) {
-  const validation = validateMatchParams({ stakeAmount });
-  if (!validation.ok) {
-    return { error: validation.error, status: 400 };
-  }
-  if (!userId) {
-    return { error: "userId is required", status: 400 };
-  }
-
-  const testIds = await fetchTestAccountClerkIds();
-  const botId = testIds.find((id) => id !== userId) || testIds[0];
-  if (!botId) {
-    return { error: "No test bot available", status: 500 };
-  }
-
-  const stake = Number(stakeAmount).toFixed(2);
-  const now = new Date();
-
-  // No balance movement anywhere in this function — free play.
-  const [match] = await db
-    .insert(kenoPvpMatches)
-    .values({
-      player1Id: userId,
-      player2Id: botId,
-      stakeAmount: stake,
-      status: MATCH_STATUS.READY,
-      currentRound: 1,
-      roundsWonPlayer1: 0,
-      roundsWonPlayer2: 0,
-      p1Score: 0,
-      p2Score: 0,
-      currentDraw: null,
-      p1Catches: null,
-      p2Catches: null,
-      roundDeadline: new Date(now.getTime() + READY_WINDOW_MS),
-      roundTimerSeconds: ROUND_TIMER_SECONDS,
-      houseFee: "0.00",
-      prizePaid: "0.00",
-      startedAt: now,
-    })
-    .returning();
-
-  return { match, test: true };
-}
-
 // ── Cancel / forfeit on disconnect ────────────────────────────────────
 
 export async function forfeitMatch({ loserClerkId, matchId }) {
   return await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
     if (!match) return { error: "Match not found", status: 404 };
-    const isBot = await isBotMatch(match);
 
     // No opponent yet — cancel + refund the creator.
     if (match.status === MATCH_STATUS.WAITING) {
       if (match.player1Id !== loserClerkId) {
         return { error: "Only the creator can cancel", status: 403 };
       }
-      if (!isBot) {
-        await tx
-          .update(users)
-          .set({
-            balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-          })
-          .where(eq(users.clerkId, loserClerkId));
-      }
+      await tx
+        .update(users)
+        .set({
+          balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
+        })
+        .where(eq(users.clerkId, loserClerkId));
       const [updated] = await tx
         .update(kenoPvpMatches)
         .set({ status: MATCH_STATUS.CANCELLED, endedAt: new Date() })
@@ -939,14 +784,14 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
     const loserIsP1 = match.player1Id === loserClerkId;
     const winnerUserId = loserIsP1 ? match.player2Id : match.player1Id;
 
-    // The OPPONENT wins the best-of-5 match outright. Their rounds-won
-    // is forced to ROUNDS_TO_WIN so decideMatchResult picks them; then
-    // the standard 90/10 payout applies.
+    // The OPPONENT wins the match outright. Their cumulative score is
+    // forced to POINTS_TO_WIN so decideMatchResult picks them; then the
+    // standard 90/10 payout applies.
     const tallies = {
-      roundsWonPlayer1: loserIsP1 ? 0 : ROUNDS_TO_WIN,
-      roundsWonPlayer2: loserIsP1 ? ROUNDS_TO_WIN : 0,
-      p1Score: Number(match.p1Score) || 0,
-      p2Score: Number(match.p2Score) || 0,
+      roundsWonPlayer1: loserIsP1 ? 0 : 1,
+      roundsWonPlayer2: loserIsP1 ? 1 : 0,
+      p1Score: loserIsP1 ? 0 : POINTS_TO_WIN,
+      p2Score: loserIsP1 ? POINTS_TO_WIN : 0,
     };
     const result = decideMatchResult(tallies);
     const payout = computePayout({
@@ -954,25 +799,17 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       result,
     });
 
-    if (!isBot) {
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-        .where(eq(users.clerkId, winnerUserId));
-    }
+    await tx
+      .update(users)
+      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
+      .where(eq(users.clerkId, winnerUserId));
 
-    const settlement = isBot
-      ? { winnerId: winnerUserId, result, houseFee: "0.00", prizePaid: "0.00" }
-      : {
-          winnerId: winnerUserId,
-          result,
-          houseFee: payout.houseFee.toFixed(2),
-          prizePaid: payout.prizePaid.toFixed(2),
-        };
-
-    if (!isBot) {
-      await recordPvPResult(tx, match, winnerUserId, result).catch(() => {});
-    }
+    const settlement = {
+      winnerId: winnerUserId,
+      result,
+      houseFee: payout.houseFee.toFixed(2),
+      prizePaid: payout.prizePaid.toFixed(2),
+    };
 
     const [updated] = await tx
       .update(kenoPvpMatches)
@@ -988,7 +825,14 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       })
       .where(eq(kenoPvpMatches.id, matchId))
       .returning();
-    return { match: updated || match, forfeited: true };
+
+    const finalRow = updated || match;
+
+    // Record AFTER the row update so the stat side-effect sees the
+    // freshly stamped prizePaid (mirrors settleMatch).
+    await recordPvPResult(tx, finalRow, winnerUserId, result).catch(() => {});
+
+    return { match: finalRow, forfeited: true };
   });
 }
 
@@ -1003,6 +847,6 @@ export async function fetchMatch(matchId) {
 }
 
 // Re-exports so routes/tests use one rounding helper + one source of
-// truth for the best-of-5 shape.
+// truth for the first-to-10-points shape.
 export { round2 };
-export { BALL_COUNT, MAX_ROUNDS, ROUNDS_TO_WIN };
+export { BALL_COUNT, MAX_ROUNDS, POINTS_TO_WIN };

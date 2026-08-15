@@ -5,9 +5,9 @@
 // Live 1v1 Keno Catch Duel match view. Both players face the SAME
 // shared 10-tile draw; tiles glow one at a time on a server-declared
 // schedule and you tap the glowing tile on the 1–40 board to catch it
-// before its 0.5s glow fades. Green = caught, red = tapped too late
-// (no points). Best of 5 rounds, first to 3 round wins takes the pot
-// (90/10 split).
+// before its 1s glow fades. Green = caught, red = tapped too late
+// (no points). First to 10 cumulative points takes the pot (90/10
+// split).
 //
 // The client animates the glow stream from the match's roundDeadline
 // + the shared timing constants; the SERVER grades every catch with
@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { motion, AnimatePresence } from "framer-motion";
+import confetti from "canvas-confetti";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -29,6 +30,7 @@ import {
   BALL_COUNT,
   GLOW_MS,
   KENO_POOL_SIZE,
+  POINTS_TO_WIN,
 } from "../../../../lib/keno-pvp/constants";
 import { ballSchedule, computeRoundStats } from "../../../../lib/keno-pvp/engine";
 import { KENO_MULTIPLIER_TABLE } from "../../../../lib/kenoMultipliers";
@@ -57,12 +59,66 @@ export default function KenoPvpMatchPage({ params }) {
   const [missedTiles, setMissedTiles] = useState(new Set()); // tiles tapped after the glow faded
   const [showRules, setShowRules] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // Which side just crossed the POINTS_TO_WIN line → scoreboard bar
+  // flashes the victory. "you" | "opp" | null.
+  const [flashWinner, setFlashWinner] = useState(null);
+  // Result modal is delayed briefly so the flash + final board are
+  // visible before the overlay covers the screen.
+  const [showResult, setShowResult] = useState(false);
 
   const myCatchesRef = useRef([]);
   const lastStatusRef = useRef(null);
   const bannerTimerRef = useRef(null);
   const lastRoundRef = useRef(null);
   const audioCtxRef = useRef(null);
+  const flashTimerRef = useRef(null);
+  const resultTimerRef = useRef(null);
+  const confettiFiredRef = useRef(false);
+
+  // Flash the scoreboard bar when a player crosses the 10-point line.
+  const triggerVictoryFlash = useCallback((who) => {
+    setFlashWinner(who);
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setFlashWinner(null), 2000);
+  }, []);
+
+  // Short confetti burst when YOU cross the 10-point line. Fires once
+  // per match (guard ref); visible because the result modal is held
+  // back ~1.2s. Best-effort — never breaks the game if confetti fails.
+  const triggerWinConfetti = useCallback(() => {
+    if (confettiFiredRef.current) return;
+    confettiFiredRef.current = true;
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.55 },
+        colors: ["#00e5ff", "#00ffa6", "#FFD700", "#FFFFFF"],
+        disableForReducedMotion: true,
+      });
+      setTimeout(
+        () =>
+          confetti({
+            particleCount: 40,
+            spread: 100,
+            origin: { y: 0.45 },
+            colors: ["#00ffa6", "#FFFFFF"],
+            disableForReducedMotion: true,
+          }),
+        250,
+      );
+    } catch {
+      // Best-effort — ignore.
+    }
+  }, []);
+
+  // Clean up the victory-flash / result-modal timers on unmount.
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+    };
+  }, []);
 
   // Clear per-round miss state whenever a new round starts.
   useEffect(() => {
@@ -108,20 +164,24 @@ export default function KenoPvpMatchPage({ params }) {
         setError(json.error || "Failed to load match");
         return;
       }
+      const resolvedRounds = json.data.rounds || [];
       setMatch(json.data.match);
-      setRounds(json.data.rounds || []);
+      setRounds(resolvedRounds);
       myCatchesRef.current = json.data.match.myCatches || [];
 
       const m = json.data.match;
       const prev = lastStatusRef.current;
       // Detect a just-resolved round so we can flash a winner banner.
+      // NOTE: must search the FRESH `resolvedRounds` (the just-fetched
+      // history) — the state variable `rounds` is still the previous
+      // poll's value and would miss the newly stamped round.
       if (
         prev &&
         /^round_\d+$/.test(prev.status) &&
         /^round_\d+$/.test(m.status) &&
         Number(m.currentRound) > Number(prev.currentRound)
       ) {
-        const prevRound = rounds.find((r) => r.roundNumber === Number(prev.currentRound));
+        const prevRound = resolvedRounds.find((r) => r.roundNumber === Number(prev.currentRound));
         if (prevRound) {
           const youWon = prevRound.roundWinner
             ? prevRound.roundWinner === (m.viewerIsPlayer1 ? "player1" : "player2")
@@ -131,11 +191,39 @@ export default function KenoPvpMatchPage({ params }) {
           bannerTimerRef.current = setTimeout(() => setRoundBanner(null), 2600);
         }
       }
+
+      // Victory flash: when a player's cumulative score first crosses
+      // POINTS_TO_WIN, pulse their side of the scoreboard race bar.
+      // (Only fires for a real points win — a cap-tie draw or a
+      // low-score finish flashes nothing.)
+      if (prev && (m.result === "player1" || m.result === "player2")) {
+        const winnerSeat = m.result;
+        const prevWinnerScore =
+          winnerSeat === "player1" ? Number(prev.p1Score) || 0 : Number(prev.p2Score) || 0;
+        const newWinnerScore =
+          winnerSeat === "player1" ? Number(m.p1Score) || 0 : Number(m.p2Score) || 0;
+        if (newWinnerScore >= POINTS_TO_WIN && prevWinnerScore < POINTS_TO_WIN) {
+          const winnerIsYou =
+            winnerSeat === (m.viewerIsPlayer1 ? "player1" : "player2");
+          triggerVictoryFlash(winnerIsYou ? "you" : "opp");
+          if (winnerIsYou) triggerWinConfetti();
+        }
+      }
+
+      // Hold the result modal back ~1.2s so the player sees the final
+      // board + the victory flash before the overlay appears.
+      if (m.status === "finished" && prev?.status !== "finished") {
+        if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+        resultTimerRef.current = setTimeout(() => setShowResult(true), 1200);
+      } else if (m.status !== "finished") {
+        if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+        setShowResult(false);
+      }
       lastStatusRef.current = m;
     } catch {
       // Silent — poll retries.
     }
-  }, [matchId, router, rounds]);
+  }, [matchId, router, triggerVictoryFlash, triggerWinConfetti]);
 
   useEffect(() => {
     if (!matchId) return;
@@ -235,7 +323,7 @@ export default function KenoPvpMatchPage({ params }) {
     return ballSchedule(new Date(match.roundDeadline).getTime(), match.currentDraw || []);
   }, [isRound, match?.roundDeadline, match?.currentDraw]);
 
-  // The tile currently GLOWING (inside its visible 0.5s window) —
+  // The tile currently GLOWING (inside its visible 1s window) —
   // bright cyan with the shrinking ring.
   const activeTile = useMemo(() => {
     if (!isRound) return null;
@@ -409,6 +497,7 @@ export default function KenoPvpMatchPage({ params }) {
 
   const p1Name = match.players?.p1?.displayName || match.player1Id?.slice(0, 6) || "P1";
   const p2Name = match.players?.p2?.displayName || match.player2Id?.slice(0, 6) || "P2";
+  const oppName = me === "player1" ? p2Name : p1Name;
 
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
@@ -432,20 +521,44 @@ export default function KenoPvpMatchPage({ params }) {
               </button>
             </div>
             <p className="text-xs text-white/50 mt-1">
-              Best of 5 · first to 3 round wins · stake {match.stakeAmount.toLocaleString()} 🪙
-              {match.isBot ? " · 🤖 Test vs Bot (free play)" : ""}
+              First to {POINTS_TO_WIN} points · stake {match.stakeAmount.toLocaleString()} 🪙
             </p>
           </div>
-          <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 px-4 py-2 text-sm shadow-[0_0_14px_rgba(0,229,255,0.15)]">
+          <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 px-4 py-2 text-sm shadow-[0_0_14px_rgba(0,229,255,0.15)] min-w-[210px]">
             <div className="flex items-center gap-3">
-              <span className="font-bold text-[#00ffa6]">{me === "player1" ? "You" : p1Name} {myWins}</span>
+              <span className="font-bold text-[#00ffa6]">{me === "player1" ? "You" : p1Name} {myPts}</span>
               <span className="text-white/40">–</span>
-              <span className="font-bold text-[#FFD700]">{oppWins} {me === "player2" ? "You" : p2Name}</span>
+              <span className="font-bold text-[#FFD700]">{oppPts} {me === "player2" ? "You" : p2Name}</span>
             </div>
-            <div className="flex items-center justify-center gap-3 mt-1 text-[11px] text-white/50">
-              <span>{myPts} pts</span>
+            {/* Race to the finish: each player fills toward the centre
+                10-point line (myPts / POINTS_TO_WIN from the left,
+                opponent's from the right). */}
+            <div
+              className="relative mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10"
+              title={`You ${myPts}/${POINTS_TO_WIN} · ${oppName} ${oppPts}/${POINTS_TO_WIN}`}
+            >
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-[#00ffa6] transition-all duration-500"
+                style={{
+                  width: `${Math.min(50, (myPts / POINTS_TO_WIN) * 50)}%`,
+                  // Victory flash when YOU cross the 10-point line.
+                  animation: flashWinner === "you" ? "kenoGlowGreen 0.8s ease-in-out 2" : undefined,
+                }}
+              />
+              <div
+                className="absolute inset-y-0 right-0 rounded-full bg-[#FFD700] transition-all duration-500"
+                style={{
+                  width: `${Math.min(50, (oppPts / POINTS_TO_WIN) * 50)}%`,
+                  // Victory flash when the OPPONENT crosses the line.
+                  animation: flashWinner === "opp" ? "kenoGlowGold 0.8s ease-in-out 2" : undefined,
+                }}
+              />
+              <div className="absolute inset-y-0 left-1/2 w-px bg-white/40" />
+            </div>
+            <div className="mt-1 flex items-center justify-center gap-2 text-[11px] text-white/50">
+              <span>{myWins}–{oppWins} round wins</span>
               <span>·</span>
-              <span>{oppPts} pts</span>
+              <span>first to {POINTS_TO_WIN} pts</span>
             </div>
           </div>
         </div>
@@ -517,7 +630,7 @@ export default function KenoPvpMatchPage({ params }) {
               {/* Round status line */}
               <div className="mb-4 flex items-center justify-between text-xs text-white/60">
                 <span className="font-bold text-[#FFD700] uppercase tracking-wider">
-                  Round {match.currentRound}/5
+                  Round {match.currentRound} · first to {POINTS_TO_WIN} pts
                 </span>
                 <span>{roundTimeLeft}s left</span>
               </div>
@@ -720,7 +833,7 @@ export default function KenoPvpMatchPage({ params }) {
         )}
 
         {/* ── FINISHED ────────────────────────────────────────────── */}
-        {isFinished && (
+        {isFinished && showResult && (
           <ResultModal
             match={match}
             rounds={rounds}
@@ -814,14 +927,14 @@ function RulesModal({ onClose }) {
             <span className="font-semibold text-white">same draw</span>.
           </li>
           <li>
-            A tile <span className="font-semibold text-[#00e5ff]">glows for 0.5s</span> (watch the ring
+            A tile <span className="font-semibold text-[#00e5ff]">glows for 1s</span> (watch the ring
             shrink). Tap it while it's lit → <span className="font-semibold text-[#00ffa6]">caught (green)</span>.
           </li>
           <li>
             Tap after the glow fades → <span className="font-semibold text-red-400">miss (red)</span> — no
             points.
           </li>
-          <li>Catching is binary: you're in the 0.5s window or you're not.</li>
+          <li>Catching is binary: you're in the 1s window or you're not.</li>
           <li>🔊 A soft tick sounds the moment each tile lights up.</li>
         </ul>
 
@@ -845,11 +958,12 @@ function RulesModal({ onClose }) {
         <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-[#00ffa6]">🏆 Winning the match</h3>
         <ul className="space-y-1.5 text-xs text-white/70">
           <li>
-            Best of 5 rounds — <span className="font-semibold text-white">first to 3 round wins</span>{" "}
-            takes the pot.
+            <span className="font-semibold text-white">First to {POINTS_TO_WIN} points</span> takes the
+            pot — your round scores accumulate until someone crosses the line.
           </li>
           <li>Higher round score wins the round; an exact tie is a draw (no round win).</li>
-          <li>Rounds level after 5? Total points decide. Still level → full refund, no rake.</li>
+          <li>Both cross {POINTS_TO_WIN} in the same round? The higher total wins. Exact tie → full
+            refund, no rake.</li>
           <li>Winner takes their stake + 90% of the loser's stake (house keeps 10%).</li>
         </ul>
       </motion.div>
@@ -866,7 +980,6 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
   const drew = result === "draw";
 
   const net = useMemo(() => {
-    if (match.isBot) return 0;
     if (drew) return 0;
     return iWon ? Number(match.prizePaid) - Number(match.stakeAmount) : -Number(match.stakeAmount);
   }, [match, iWon, drew]);
@@ -884,14 +997,11 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
             {drew ? "MATCH DRAW" : iWon ? "YOU WON!" : `${winnerName} WON`}
           </h2>
           <p className="text-sm text-white/60 mt-1">
-            {myWins} – {oppWins} round wins · {myPts} – {oppPts} pts
+            {myPts} – {oppPts} pts · {myWins} – {oppWins} round wins
           </p>
-          {!match.isBot && (
-            <p className={`mt-2 text-xl font-black ${drew ? "text-white/60" : iWon ? "text-[#00ffa6]" : "text-red-400"}`}>
-              {drew ? "Stake refunded" : `${iWon ? "+" : "−"}${Math.abs(net).toLocaleString()} 🪙`}
-            </p>
-          )}
-          {match.isBot && <p className="mt-1 text-xs text-white/40">Practice match — no tokens wagered</p>}
+          <p className={`mt-2 text-xl font-black ${drew ? "text-white/60" : iWon ? "text-[#00ffa6]" : "text-red-400"}`}>
+            {drew ? "Stake refunded" : `${iWon ? "+" : "−"}${Math.abs(net).toLocaleString()} 🪙`}
+          </p>
         </div>
 
         {/* Rounds reveal */}

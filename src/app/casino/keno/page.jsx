@@ -249,34 +249,6 @@ export default function KenoLobbyPage() {
     [availableMatches, posthog, router, socket],
   );
 
-  const startTest = useCallback(
-    async () => {
-      setBusy(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/keno-pvp/create-test", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ stakeAmount: stake }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          setError(data?.error || "Unable to start practice match");
-          return;
-        }
-        posthog?.capture("keno_pvp_practice_started", {
-          stake,
-          match_id: data?.data?.match?.id,
-        });
-        router.push(`/casino/keno-pvp/${data.data.match.id}`);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [stake, posthog, router],
-  );
-
   const cancelMyMatch = useCallback(
     async (matchId) => {
       setCancellingId(matchId);
@@ -308,7 +280,6 @@ export default function KenoLobbyPage() {
   const myOpenMatchId = myOpenMatch?.id ?? null;
   const stakeValid = stake > 0 && (balance === null || balance >= stake);
   const canCreate = isSignedIn && !busy && stakeValid && myOpenMatchId === null;
-  const canTest = isSignedIn && !busy && stake > 0;
 
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
@@ -324,12 +295,12 @@ export default function KenoLobbyPage() {
         </motion.div>
         <p className="text-center text-sm text-white/60 mt-2 mb-7 max-w-2xl mx-auto">
           1v1 <b>Keno Catch Duel</b>. Both players face the <b>same</b>{" "}
-          10-ball draw — catch each ball as it drops, and time your tap
-          in the <b>perfect window</b> for <b>+5 bonus</b>. Catching more
-          compounds (the classic keno multiplier table: 5 balls = 50 pts,
-          10 balls = 5000 pts). <b>Best of 5 rounds</b>; first to{" "}
-          <b>3 round wins</b> takes <b>1.9× their stake</b>, house takes
-          0.1×. Miss the window and the ball is gone.
+          10-ball draw — catch each ball as it drops (each tile glows for
+          <b>1 second</b>, so timing matters but isn't brutal). Catching
+          more compounds (the classic keno multiplier table: 5 balls =
+          50 pts, 10 balls = 5000 pts). <b>First to 10 points</b> takes
+          the pot <b>1.9× their stake</b>, house takes 0.1×. Miss the
+          window and the ball is gone.
         </p>
 
         <motion.div
@@ -425,24 +396,6 @@ export default function KenoLobbyPage() {
                     <span>{stake.toLocaleString()}</span>
                     <CoinIcon className="w-5 h-5 text-cyan-900" />
                     <span>· Play</span>
-                  </>
-                )}
-              </button>
-              <button
-                onClick={startTest}
-                disabled={!canTest}
-                className="px-3 py-2 rounded-xl text-xs font-bold text-fuchsia-200 bg-fuchsia-500/10 border border-fuchsia-400/40 hover:bg-fuchsia-500/25 active:scale-95 transition disabled:opacity-50 disabled:hover:scale-100 inline-flex items-center justify-center gap-1.5"
-                title="Start a free practice match against the test bot — no tokens are wagered"
-              >
-                {busy ? (
-                  <>
-                    <LoadingDotsIcon className="w-3.5 h-3.5 text-fuchsia-200 animate-pulse" />
-                    <span>Starting…</span>
-                  </>
-                ) : (
-                  <>
-                    <span aria-hidden>🤖</span>
-                    <span>Test vs Bot</span>
                   </>
                 )}
               </button>

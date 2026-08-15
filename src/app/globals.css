@@ -761,6 +761,35 @@ a[class*="bg-[#f5ff3b]"] {
   animation: unoPlaySlide 0.42s ease-in forwards;
 }
 
+/* Keno Catch Duel — victory flash on the scoreboard race bar when a
+   player crosses the POINTS_TO_WIN line. Brightens + glows the
+   winning side's fill; color matches the seat (green = you,
+   gold = opponent). Applied inline via `animation:` style from the
+   match page. */
+@keyframes kenoGlowGreen {
+  0%,
+  100% {
+    filter: brightness(1);
+    box-shadow: 0 0 2px rgba(0, 255, 166, 0.35);
+  }
+  50% {
+    filter: brightness(1.6);
+    box-shadow: 0 0 16px rgba(0, 255, 166, 1);
+  }
+}
+
+@keyframes kenoGlowGold {
+  0%,
+  100% {
+    filter: brightness(1);
+    box-shadow: 0 0 2px rgba(255, 215, 0, 0.35);
+  }
+  50% {
+    filter: brightness(1.6);
+    box-shadow: 0 0 16px rgba(255, 215, 0, 1);
+  }
+}
+
 @keyframes pageFadeSlideIn {
   from {
     opacity: 0;
