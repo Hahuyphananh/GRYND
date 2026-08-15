@@ -25,7 +25,6 @@ import {
   fetchMatchWithAutoResolve,
   fetchMatchRounds,
   scrubMatchForViewer,
-  isBotMatch,
 } from "../../../../../lib/keno-pvp/serverStore";
 import {
   MATCH_STATUS,
@@ -36,7 +35,7 @@ import {
 // Per-viewer normaliser. Adds derived flags the match view needs to
 // gate the catch controls, render the correct seat identifier, and
 // show the opponent's live catch count (never their ticket).
-function normaliseMatch(match, viewerUserId, isBot = false) {
+function normaliseMatch(match, viewerUserId) {
   if (!match) return null;
   const viewerIsPlayer1 = match.player1Id === viewerUserId;
   const viewerIsPlayer2 = match.player2Id === viewerUserId;
@@ -100,9 +99,6 @@ function normaliseMatch(match, viewerUserId, isBot = false) {
     // waiting for an opponent. Used to gate the "Cancel" button.
     viewerCanCancel:
       match.status === MATCH_STATUS.WAITING && viewerIsPlayer1,
-    // True when this is a practice match against the developer's test
-    // bot (free play — no tokens wagered).
-    isBot: Boolean(isBot),
   };
 }
 
@@ -178,8 +174,6 @@ export async function GET(req, { params }) {
     // is live (the viewer's own ticket stays visible).
     const scrubbed = scrubMatchForViewer(enrichedMatch, userId);
 
-    const isBot = await isBotMatch(scrubbed);
-
     // Fetch the round history (reveal screen + rounds strip).
     let rounds = [];
     try {
@@ -199,7 +193,7 @@ export async function GET(req, { params }) {
         // authoritative grading clock — devices whose clock drifts
         // otherwise see tiles light up at the wrong moment.
         serverTime: Date.now(),
-        match: normaliseMatch(scrubbed, userId, isBot),
+        match: normaliseMatch(scrubbed, userId),
         rounds: rounds.map(normaliseRound),
       },
     });

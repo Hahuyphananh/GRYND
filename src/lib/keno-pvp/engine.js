@@ -7,24 +7,24 @@
 // the server's grading always agree.
 //
 // The skill model: both players face the SAME 10-tile draw. Tiles
-// light up one at a time and each GLOWS for GLOW_MS (0.5s) — tap the
+// light up one at a time and each GLOWS for GLOW_MS (1s) — tap the
 // glowing tile while it's lit to catch it. A tap after the glow fades
 // is a miss (no points, tile turns red). Catching is binary: in the
 // window or not.
 // Round score = keno multiplier for the number caught (catching more
 // compounds: 5 tiles = 50, 10 tiles = 5000). No timing bonus — the
 // goal is to click the most tiles.
+// Match result = first to POINTS_TO_WIN cumulative points.
 
 import {
   BALL_COUNT,
   BALL_INTERVAL_MS,
-  BOT_CATCH_CHANCE,
   CATCH_GRACE_MS,
   GLOW_MS,
   KENO_POOL_SIZE,
   MAX_ROUNDS,
+  POINTS_TO_WIN,
   RESULT,
-  ROUNDS_TO_WIN,
   ROUND_MS,
 } from "./constants";
 import { getKenoMultiplier } from "../kenoMultipliers";
@@ -51,7 +51,7 @@ export function generateDraw() {
 //   acceptedUntilMs = expiresMs + CATCH_GRACE_MS     (hidden network
 //                      cushion — a tap sent while glowing still lands)
 // The client drives its glow/ring visuals off expiresMs so the ring
-// always empties at the visible 0.5s mark; the server grades against
+// always empties at the visible 1s mark; the server grades against
 // acceptedUntilMs so slow connections don't turn well-timed taps into
 // false misses.
 // Both clients derive the SAME schedule from the same deadline, so the
@@ -81,7 +81,7 @@ export function ballSchedule(roundDeadlineMs, draw) {
 // ── Catch grading (binary) ───────────────────────────────────────────
 //
 // Quality vocabulary stored in the catches jsonb. Grading is binary
-// now — a tile is either caught inside its 0.5s glow window or missed.
+// now — a tile is either caught inside its 1s glow window or missed.
 // Successful catches are stored as 'good'; 'perfect'/'late' remain in
 // the enum only so old resolved-round history keeps its shape.
 
@@ -94,7 +94,7 @@ export const CATCH_QUALITY = Object.freeze({
 /**
  * Grade a catch attempt at `caughtAtMs` for the given tile window.
  * Returns CATCH_QUALITY.GOOD when the tap landed inside the catch
- * window [releaseMs, acceptedUntilMs] (the 0.5s glow plus the hidden
+ * window [releaseMs, acceptedUntilMs] (the 1s glow plus the hidden
  * network grace), else null (too early / long past the glow).
  */
 export function gradeCatch(caughtAtMs, ball) {
@@ -150,16 +150,17 @@ export function decideRoundWinner(p1Catches, p2Catches) {
 // ── Match result ─────────────────────────────────────────────────────
 
 /**
- * Decide the MATCH result from the round-win tallies:
- *   * Either side reached ROUNDS_TO_WIN → they win the match.
- *   * 5 rounds level → higher aggregate round score wins.
- *   * Still level → DRAW (full refund, no rake).
+ * Decide the MATCH result from the cumulative round scores.
+ *
+ * The caller (serverStore.resolveRound) ends the match as soon as a
+ * player's aggregate score reaches POINTS_TO_WIN; this function only
+ * decides WHO wins the ended match:
+ *   * Higher cumulative score wins.
+ *   * Exact tie → DRAW (full refund, no rake).
+ * `roundsWonPlayer1/2` are accepted for call-shape compatibility but
+ * no longer influence the decision (round wins are display-only now).
  */
 export function decideMatchResult({ roundsWonPlayer1, roundsWonPlayer2, p1Score, p2Score }) {
-  const r1 = Number(roundsWonPlayer1) || 0;
-  const r2 = Number(roundsWonPlayer2) || 0;
-  if (r1 >= ROUNDS_TO_WIN) return RESULT.PLAYER1;
-  if (r2 >= ROUNDS_TO_WIN) return RESULT.PLAYER2;
   const s1 = Number(p1Score) || 0;
   const s2 = Number(p2Score) || 0;
   if (s1 > s2) return RESULT.PLAYER1;
@@ -167,43 +168,7 @@ export function decideMatchResult({ roundsWonPlayer1, roundsWonPlayer2, p1Score,
   return RESULT.DRAW;
 }
 
-// ── Practice bot ─────────────────────────────────────────────────────
-
-/**
- * Generate the practice bot's catches for the tiles that have already
- * started glowing (elapsed = now - roundOpen). Each tile is caught
- * with BOT_CATCH_CHANCE; the catch is backdated to a random instant
- * inside the tile's 0.5s glow window (clamped to `elapsedMs` so the
- * bot never appears to catch in the future). Glow windows are only
- * 0.5s while the bot is driven off ~800ms status polls, so backdating
- * is what keeps the practice match playable — the bot "reacted" inside
- * the window like a human would.
- *
- * Returns an array of catch entries shaped like a real player's
- * ({ number, quality, caughtAt }), EXCLUDING tiles the bot already
- * caught (pass those in `alreadyCaught` as the set of numbers it has).
- */
-export function botCatchesForElapsed(schedule, elapsedMs, alreadyCaught = []) {
-  const caughtSet = new Set(alreadyCaught);
-  const out = [];
-  for (const ball of schedule) {
-    if (caughtSet.has(ball.number)) continue;
-    if (elapsedMs < ball.releaseMs) continue; // tile not glowing yet
-    if (Math.random() >= BOT_CATCH_CHANCE) continue; // bot drops it
-    const caughtAtMs = Math.min(
-      ball.releaseMs + Math.random() * GLOW_MS,
-      elapsedMs,
-    );
-    out.push({
-      number: ball.number,
-      quality: CATCH_QUALITY.GOOD,
-      caughtAt: new Date(caughtAtMs).toISOString(),
-    });
-  }
-  return out;
-}
-
 // Re-export the multiplier table lookup so routes/tests use the same
 // source of truth as the solo-kneo scoring.
 export { getKenoMultiplier };
-export { MAX_ROUNDS, ROUNDS_TO_WIN };
+export { MAX_ROUNDS, POINTS_TO_WIN };

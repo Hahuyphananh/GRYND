@@ -2310,9 +2310,9 @@ export const plinkoPvpRoundsRelations = relations(
 // ── KENO PvP ("Keno Catch Duel") ─────────────────────────────────────
 // 1v1 skill keno: both players face the SAME shared 10-ball draw each
 // round and race to catch the balls on the server-declared release
-// schedule — perfect-timed catches score bonus points. Best of 5
-// rounds, first to 3 round wins takes the match; aggregate round
-// scores break the tie. Payout is the standard 90/10 split.
+// schedule. First to 10 cumulative points takes the match; the higher
+// total wins (tie → full refund) after the 5-round hard cap. Payout
+// is the standard 90/10 split.
 //
 // Match flow: waiting → ready → round_1 … round_5 → finished
 // (waiting/ready/round_N → cancelled). Mirrors slots_pvp (match +
