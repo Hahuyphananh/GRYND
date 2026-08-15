@@ -15,18 +15,19 @@
 //     server-side when the round opens and its release schedule is
 //     derived from the round deadline, so both clients render the
 //     identical ball stream.
-//   * Skill loop: balls are released one at a time (BALL_INTERVAL_MS
-//     apart). Each player taps a ball to catch it; the server grades
-//     the tap against the ball's IDEAL catch instant (IDEAL_CATCH_MS
-//     after release): inside PERFECT_WINDOW_MS → "perfect", inside
-//     GOOD_WINDOW_MS → "good", anytime before the ball expires
-//     (BALL_TTL_MS after release, plus a CATCH_GRACE_MS lag cushion)
-//     → "late". Miss the window and the ball is gone.
+//   * Skill loop: the round is a shared GLOW-STREAM. Tiles light up
+//     one at a time (BALL_INTERVAL_MS apart) and stay GLOWING for
+//     GLOW_MS (0.5s). Tap the glowing tile while it's lit → catch it.
+//     Tap it after the glow fades → nothing gained and the tile turns
+//     red. Catching is binary — you're in the window or you're not;
+//     there are no timing-quality tiers anymore. A small hidden
+//     CATCH_GRACE_MS cushion absorbs network latency so taps that were
+//     sent while the tile was visibly glowing still land (invisible to
+//     players — the ring and glow end at GLOW_MS).
 //   * Round score = the classic keno multiplier for the number caught
 //     (KENO_MULTIPLIER_TABLE — catching 5 is worth 50, catching 10 is
-//     worth 5000, so every extra catch compounds) PLUS a flat
-//     PERFECT_BONUS per perfect-timed catch. Catching more dominates,
-//     timing refines.
+//     worth 5000, so every extra catch compounds). Catching more
+//     dominates — the goal is to click the most tiles.
 //   * A catch can never be submitted for a ball that isn't in the
 //     current draw, and each player catches each ball at most once.
 //
@@ -87,46 +88,43 @@ export const MAX_ROUNDS = 5;
 export const ROUNDS_TO_WIN = 3;
 
 // ──────────────────────────────────────────────────────────────────────
-// The shared-draw catch loop
+// The shared-draw glow loop
 // ──────────────────────────────────────────────────────────────────────
 
 // Keno board + draw constants (mirror src/lib/kenoMultipliers.ts).
 export const KENO_POOL_SIZE = 40;
 
-// Balls drawn per round — the shared stream both players catch.
+// Tiles drawn per round — the shared glow-stream both players catch.
 export const BALL_COUNT = 10;
 
-// How long after a ball appears the perfect-timed tap lands.
-export const IDEAL_CATCH_MS = 500;
+// How long a tile GLOWS (stays catchable) after it lights up. The
+// player must tap the tile while it's glowing — a tap after the glow
+// fades is a miss (tile turns red, no points).
+export const GLOW_MS = 500;
 
-// |tapTime - idealTime| inside this window → "perfect" (+bonus).
-export const PERFECT_WINDOW_MS = 220;
+// Network cushion: a tap arriving up to this long AFTER a tile's glow
+// faded is still honoured as a catch. The player tapped while the tile
+// was visibly glowing — the request just took a moment to reach the
+// server (mobile RTT + the client's 100ms render tick can eat the tail
+// of a 0.5s window; without this, well-timed taps become false misses
+// on slow connections). INVISIBLE to players: the ring/glow still end
+// at GLOW_MS, the server grades with its own clock (no client
+// timestamps, so it can't be exploited), and the round deadline still
+// sits on the last tile's glow end (that final cushion is clipped by
+// round resolution, mirroring the pre-glow design).
+export const CATCH_GRACE_MS = 200;
 
-// |tapTime - idealTime| inside this window → "good".
-export const GOOD_WINDOW_MS = 550;
-
-// A ball stays catchable this long after release (then it's gone).
-export const BALL_TTL_MS = 1500;
-
-// Lag cushion: a tap arriving up to this long AFTER a ball's expiry is
-// still honoured as a "late" catch (mirrors slots-pvp's stop grace).
-export const CATCH_GRACE_MS = 400;
-
-// Time between ball releases.
+// Time between tile glows.
 export const BALL_INTERVAL_MS = 1400;
 
-// Total round duration = release schedule + the final ball's expiry:
-// the last ball (index BALL_COUNT-1) releases at
-// `deadline - BALL_TTL_MS`, so it expires EXACTLY at the round
+// Total round duration = release schedule + the final tile's glow:
+// the last tile (index BALL_COUNT-1) lights up at
+// `deadline - GLOW_MS`, so it stops glowing EXACTLY at the round
 // deadline and the round resolves the moment the stream ends.
-export const ROUND_MS = BALL_TTL_MS + (BALL_COUNT - 1) * BALL_INTERVAL_MS; // 14100ms
+export const ROUND_MS = GLOW_MS + (BALL_COUNT - 1) * BALL_INTERVAL_MS; // 13100ms
 
 // Stored as `round_timer_seconds` on the match row (ceil of ROUND_MS).
-export const ROUND_TIMER_SECONDS = Math.ceil(ROUND_MS / 1000); // 15
-
-// Skill bonus: +points per perfect-timed catch, added on top of the
-// keno multiplier for the number caught.
-export const PERFECT_BONUS = 5;
+export const ROUND_TIMER_SECONDS = Math.ceil(ROUND_MS / 1000); // 14
 
 // Auto-advance window between player2 joining and round_1 starting
 // (server-authoritative "Get ready" banner).

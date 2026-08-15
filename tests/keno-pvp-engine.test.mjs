@@ -3,8 +3,8 @@
  *
  * Pure-function tests for the shared constants + deterministic helpers
  * in `src/lib/keno-pvp/constants.js` and `src/lib/keno-pvp/engine.js`.
- * The shared-draw generation, the ball release schedule, the catch
- * quality grading (perfect / good / late / miss), the keno-multiplier
+ * The shared-draw generation, the tile glow schedule, the binary
+ * catch grading (in the 0.5s glow window or not), the keno-multiplier
  * round scoring and the round/match decision rules are the contract
  * every other piece of the match system depends on, so they're tested
  * exhaustively (valid + invalid inputs, boundaries, determinism).
@@ -28,13 +28,9 @@ import {
   ROUNDS_TO_WIN,
   BALL_COUNT,
   BALL_INTERVAL_MS,
-  BALL_TTL_MS,
   CATCH_GRACE_MS,
-  GOOD_WINDOW_MS,
-  IDEAL_CATCH_MS,
+  GLOW_MS,
   KENO_POOL_SIZE,
-  PERFECT_BONUS,
-  PERFECT_WINDOW_MS,
   ROUND_MS,
   ROUND_TIMER_SECONDS,
   READY_WINDOW_MS,
@@ -59,7 +55,6 @@ import {
   CATCH_QUALITY,
   ballSchedule,
   botCatchesForElapsed,
-  catchValue,
   computeRoundStats,
   decideMatchResult,
   decideRoundWinner,
@@ -131,19 +126,16 @@ test("stake + house-fee constants match the standard 90/10 split", () => {
   assert.deepEqual(Object.values(RESULT), ["player1", "player2", "draw"]);
 });
 
-test("round timing: 10 balls spaced 1.4s apart + 1.5s final expiry ≈ 14.1s round", () => {
+test("round timing: 10 tiles each glowing 0.5s, spaced 1.4s apart, ≈ 13.1s round", () => {
   assert.equal(BALL_COUNT, 10);
   assert.equal(KENO_POOL_SIZE, 40);
-  // The LAST ball expires exactly at the round deadline.
-  assert.equal(ROUND_MS, BALL_TTL_MS + (BALL_COUNT - 1) * BALL_INTERVAL_MS);
-  assert.equal(ROUND_MS, 14100);
-  assert.equal(ROUND_TIMER_SECONDS, 15); // ceil(ROUND_MS / 1000)
-  assert.equal(IDEAL_CATCH_MS, 500);
-  assert.equal(PERFECT_WINDOW_MS, 220);
-  assert.equal(GOOD_WINDOW_MS, 550);
-  assert.equal(BALL_TTL_MS, 1500);
-  assert.equal(CATCH_GRACE_MS, 400);
-  assert.equal(PERFECT_BONUS, 5);
+  // The LAST tile stops glowing exactly at the round deadline.
+  assert.equal(ROUND_MS, GLOW_MS + (BALL_COUNT - 1) * BALL_INTERVAL_MS);
+  assert.equal(ROUND_MS, 13100);
+  assert.equal(ROUND_TIMER_SECONDS, 14); // ceil(ROUND_MS / 1000)
+  assert.equal(GLOW_MS, 500); // the visible 0.5s catch window
+  assert.equal(CATCH_GRACE_MS, 200); // hidden network cushion
+  assert.equal(BALL_INTERVAL_MS, 1400);
   assert.equal(READY_WINDOW_MS, 3000);
   assert.equal(FINISHED_GRACE_MS, 5000);
 });
@@ -175,7 +167,7 @@ test("generateDraw is random (not a fixed sequence)", () => {
 // Ball release schedule
 // ════════════════════════════════════════════════════════════════════
 
-test("ballSchedule derives identical, evenly-spaced windows from the round deadline", () => {
+test("ballSchedule derives identical, evenly-spaced 0.5s glow windows from the round deadline", () => {
   const deadline = 10_000_000;
   const draw = [5, 12, 27, 3, 40, 9, 18, 33, 21, 7];
   const schedule = ballSchedule(deadline, draw);
@@ -185,12 +177,15 @@ test("ballSchedule derives identical, evenly-spaced windows from the round deadl
     assert.equal(ball.index, i);
     assert.equal(ball.number, draw[i]);
     assert.equal(ball.releaseMs, deadline - ROUND_MS + i * BALL_INTERVAL_MS);
-    assert.equal(ball.idealMs, ball.releaseMs + IDEAL_CATCH_MS);
-    assert.equal(ball.expiresMs, ball.releaseMs + BALL_TTL_MS);
+    // Visible glow is exactly 0.5s; the catch window extends a hidden
+    // network grace beyond it.
+    assert.equal(ball.expiresMs, ball.releaseMs + GLOW_MS);
     assert.equal(ball.acceptedUntilMs, ball.expiresMs + CATCH_GRACE_MS);
   }
-  // The final ball's window ends exactly at the round deadline + grace.
+  // The final tile's VISIBLE glow ends exactly at the round deadline;
+  // its hidden grace tail is clipped by round resolution.
   const last = schedule[schedule.length - 1];
+  assert.equal(last.expiresMs, deadline);
   assert.equal(last.acceptedUntilMs, deadline + CATCH_GRACE_MS);
 });
 
@@ -208,32 +203,21 @@ function makeBall(deadline, draw, index) {
   return ballSchedule(deadline, draw)[index];
 }
 
-test("gradeCatch: perfect window is symmetric around the ideal instant", () => {
+test("gradeCatch: 0.5s glow + hidden network grace is catchable (binary)", () => {
   const deadline = 10_000_000;
   const ball = makeBall(deadline, [7, 8, 9, 10, 11, 12, 13, 14, 15, 16], 0);
-  assert.equal(gradeCatch(ball.idealMs, ball), CATCH_QUALITY.PERFECT);
-  assert.equal(gradeCatch(ball.idealMs - PERFECT_WINDOW_MS, ball), CATCH_QUALITY.PERFECT);
-  assert.equal(gradeCatch(ball.idealMs + PERFECT_WINDOW_MS, ball), CATCH_QUALITY.PERFECT);
-  // Just outside the perfect window → good.
-  assert.equal(gradeCatch(ball.idealMs - PERFECT_WINDOW_MS - 1, ball), CATCH_QUALITY.GOOD);
-  assert.equal(gradeCatch(ball.idealMs + PERFECT_WINDOW_MS + 1, ball), CATCH_QUALITY.GOOD);
-});
-
-test("gradeCatch: good window boundaries + late falls back", () => {
-  const deadline = 10_000_000;
-  const ball = makeBall(deadline, [7, 8, 9, 10, 11, 12, 13, 14, 15, 16], 0);
-  assert.equal(gradeCatch(ball.idealMs + GOOD_WINDOW_MS, ball), CATCH_QUALITY.GOOD);
-  assert.equal(gradeCatch(ball.idealMs + GOOD_WINDOW_MS + 1, ball), CATCH_QUALITY.LATE);
-  // Late but still inside the expiry + grace window.
-  assert.equal(gradeCatch(ball.expiresMs, ball), CATCH_QUALITY.LATE);
-  assert.equal(gradeCatch(ball.acceptedUntilMs, ball), CATCH_QUALITY.LATE);
-});
-
-test("gradeCatch: too early / expired return null (uncatchable)", () => {
-  const deadline = 10_000_000;
-  const ball = makeBall(deadline, [7, 8, 9, 10, 11, 12, 13, 14, 15, 16], 0);
-  assert.equal(gradeCatch(ball.releaseMs - 1, ball), null); // before release
-  assert.equal(gradeCatch(ball.acceptedUntilMs + 1, ball), null); // past grace
+  // Inside the glow window → caught.
+  assert.equal(gradeCatch(ball.releaseMs, ball), CATCH_QUALITY.GOOD);
+  assert.equal(gradeCatch(ball.releaseMs + GLOW_MS / 2, ball), CATCH_QUALITY.GOOD);
+  assert.equal(gradeCatch(ball.expiresMs, ball), CATCH_QUALITY.GOOD);
+  // Inside the hidden network grace (tapped while glowing, arrived a
+  // beat late) → still caught.
+  assert.equal(gradeCatch(ball.expiresMs + CATCH_GRACE_MS, ball), CATCH_QUALITY.GOOD);
+  // Before the tile lights up → not catchable.
+  assert.equal(gradeCatch(ball.releaseMs - 1, ball), null);
+  // Past the grace tail → miss, not a catch.
+  assert.equal(gradeCatch(ball.acceptedUntilMs + 1, ball), null);
+  // Malformed inputs → not catchable.
   assert.equal(gradeCatch(NaN, ball), null);
   assert.equal(gradeCatch(123, null), null);
 });
@@ -251,32 +235,26 @@ test("computeRoundStats uses the keno multiplier table for the number caught", (
     score: 3,
   });
   // 5 catches → multiplier[5][5] = 50.
-  const five = [1, 2, 3, 4, 5].map((number) => ({ number, quality: "late" }));
+  const five = [1, 2, 3, 4, 5].map((number) => ({ number, quality: "good" }));
   assert.deepEqual(computeRoundStats(five), { caught: 5, perfects: 0, score: 50 });
   // 10 catches → multiplier[10][10] = 5000.
   const ten = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((number) => ({ number, quality: "good" }));
   assert.deepEqual(computeRoundStats(ten), { caught: 10, perfects: 0, score: 5000 });
 });
 
-test("computeRoundStats adds the perfect bonus per perfect catch", () => {
+test("computeRoundStats: no timing bonus — quality never affects the score", () => {
+  // Even "perfect"-shaped history entries score the plain multiplier.
   const catches = [
     { number: 1, quality: "perfect" },
     { number: 2, quality: "perfect" },
     { number: 3, quality: "good" },
   ];
-  // multiplier[3][3] = 10 + 2 * PERFECT_BONUS.
+  // multiplier[3][3] = 10, perfects pinned at 0.
   assert.deepEqual(computeRoundStats(catches), {
     caught: 3,
-    perfects: 2,
-    score: 10 + 2 * PERFECT_BONUS,
+    perfects: 0,
+    score: 10,
   });
-});
-
-test("catchValue: only perfect catches carry the bonus", () => {
-  assert.equal(catchValue("perfect"), PERFECT_BONUS);
-  assert.equal(catchValue("good"), 0);
-  assert.equal(catchValue("late"), 0);
-  assert.equal(catchValue("bogus"), 0);
 });
 
 test("computeRoundStats ignores malformed entries", () => {
@@ -299,48 +277,18 @@ test("decideRoundWinner: higher score wins", () => {
   assert.equal(decideRoundWinner(p2, p1), RESULT.PLAYER2);
 });
 
-test("decideRoundWinner: perfects break exact score ties; full ties draw", () => {
-  // Score tie (20 = 20): p2's 2 perfects beat p1's 0.
-  const p1 = [1, 2, 3, 4].map((number) => ({ number, quality: "good" })); // mult[4][4] = 20, 0 perfects
-  const p2 = [
-    { number: 5, quality: "perfect" },
-    { number: 6, quality: "perfect" },
-    { number: 7, quality: "good" },
-  ]; // mult[3][3] = 10 + 10 = 20, 2 perfects
-  assert.equal(decideRoundWinner(p1, p2), RESULT.PLAYER2);
-  // Same score, same perfects, same catches → draw.
-  const a = [{ number: 1, quality: "perfect" }]; // 8
-  const b = [{ number: 2, quality: "perfect" }]; // 8
+test("decideRoundWinner: exact score ties draw (score is monotonic in catches)", () => {
+  // Same catch count → same multiplier → draw.
+  const a = [{ number: 1, quality: "good" }]; // 3
+  const b = [{ number: 2, quality: "good" }]; // 3
   assert.equal(decideRoundWinner(a, b), RESULT.DRAW);
   // Nothing caught on either side → draw.
   assert.equal(decideRoundWinner([], []), RESULT.DRAW);
   assert.equal(decideRoundWinner(null, null), RESULT.DRAW);
-});
-
-test("decideRoundWinner: perfects break exact score ties", () => {
-  // 3 good catches = multiplier[3][3] = 10.
-  const p1 = [
-    { number: 1, quality: "good" },
-    { number: 2, quality: "good" },
-    { number: 3, quality: "good" },
-  ]; // 10, 0 perfects
-  // 2 catches with 1 perfect = multiplier[2][2]=6 + 5 = 11 → not a tie.
-  const p2 = [
-    { number: 4, quality: "perfect" },
-    { number: 5, quality: "good" },
-  ]; // 6 + 5 = 11
-  assert.equal(decideRoundWinner(p1, p2), RESULT.PLAYER2);
-  // Exact tie: 1 perfect (8) vs 1 perfect (8) → caught equal → draw.
-  const x = [{ number: 1, quality: "perfect" }];
-  const y = [{ number: 2, quality: "perfect" }];
+  // Equal counts with different numbers → still draw.
+  const x = [1, 2, 3].map((number) => ({ number, quality: "good" })); // 10
+  const y = [7, 8, 9].map((number) => ({ number, quality: "good" })); // 10
   assert.equal(decideRoundWinner(x, y), RESULT.DRAW);
-  // Score tie resolved by perfects: 2 perfects+0 good (3+10=13... )
-  const a = [
-    { number: 1, quality: "perfect" },
-    { number: 2, quality: "perfect" },
-  ]; // multiplier[2][2]=6 + 10 = 16, 2 perfects
-  const b = [{ number: 3, quality: "perfect" }]; // 3 + 5 = 8 → loses on score
-  assert.equal(decideRoundWinner(a, b), RESULT.PLAYER1);
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -416,7 +364,7 @@ test("computePayout validates inputs", () => {
 // Practice bot
 // ════════════════════════════════════════════════════════════════════
 
-test("botCatchesForElapsed only catches released balls, never re-catches, never in the future", () => {
+test("botCatchesForElapsed only catches released tiles, inside the glow window, never in the future", () => {
   const deadline = 10_000_000;
   const draw = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   const schedule = ballSchedule(deadline, draw);
@@ -424,14 +372,24 @@ test("botCatchesForElapsed only catches released balls, never re-catches, never 
   // No time elapsed → nothing catchable.
   assert.deepEqual(botCatchesForElapsed(schedule, 0, []), []);
 
-  // Elapsed covers the first 5 ideal instants → catches only those
-  // balls, each caughtAt <= elapsed.
-  const elapsed = schedule[4].idealMs + 100;
+  // Elapsed covers the first 5 glow windows → the bot can only have
+  // caught those tiles, each caughtAt inside [release, release+GLOW].
+  const elapsed = schedule[4].expiresMs + 100;
   const catches = botCatchesForElapsed(schedule, elapsed, []);
   for (const c of catches) {
-    assert.ok(schedule.find((b) => b.number === c.number).idealMs <= elapsed);
-    assert.ok(new Date(c.caughtAt).getTime() <= elapsed);
-    assert.ok(["perfect", "good", "late"].includes(c.quality));
+    const ball = schedule.find((b) => b.number === c.number);
+    assert.ok(ball.releaseMs <= elapsed);
+    const at = new Date(c.caughtAt).getTime();
+    assert.ok(at >= ball.releaseMs && at <= ball.releaseMs + GLOW_MS);
+    assert.ok(at <= elapsed);
+    assert.equal(c.quality, "good");
+  }
+
+  // Mid-window: a catch is backdated but never past `elapsed`.
+  const midElapsed = schedule[0].releaseMs + GLOW_MS / 2;
+  const midCatches = botCatchesForElapsed(schedule, midElapsed, []);
+  for (const c of midCatches) {
+    assert.ok(new Date(c.caughtAt).getTime() <= midElapsed);
   }
 
   // alreadyCaught excludes those numbers.

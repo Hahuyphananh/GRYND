@@ -6,29 +6,23 @@
 // timing helpers (ballSchedule / gradeCatch) so its animations and
 // the server's grading always agree.
 //
-// The skill model: both players face the SAME 10-ball draw. A ball is
-// catchable for a short window after release and the server grades the
-// tap against the ball's ideal catch instant:
-//   perfect — inside PERFECT_WINDOW_MS of the ideal instant (+bonus)
-//   good    — inside GOOD_WINDOW_MS of the ideal instant
-//   late    — any time before the ball expires (+ a lag grace window)
-//   miss    — the window passed without a catch
+// The skill model: both players face the SAME 10-tile draw. Tiles
+// light up one at a time and each GLOWS for GLOW_MS (0.5s) — tap the
+// glowing tile while it's lit to catch it. A tap after the glow fades
+// is a miss (no points, tile turns red). Catching is binary: in the
+// window or not.
 // Round score = keno multiplier for the number caught (catching more
-// compounds: 5 balls = 50, 10 balls = 5000) + PERFECT_BONUS per
-// perfect catch. Catching more dominates, timing refines.
+// compounds: 5 tiles = 50, 10 tiles = 5000). No timing bonus — the
+// goal is to click the most tiles.
 
 import {
   BALL_COUNT,
   BALL_INTERVAL_MS,
-  BALL_TTL_MS,
   BOT_CATCH_CHANCE,
   CATCH_GRACE_MS,
-  GOOD_WINDOW_MS,
-  IDEAL_CATCH_MS,
+  GLOW_MS,
   KENO_POOL_SIZE,
   MAX_ROUNDS,
-  PERFECT_BONUS,
-  PERFECT_WINDOW_MS,
   RESULT,
   ROUNDS_TO_WIN,
   ROUND_MS,
@@ -48,18 +42,24 @@ export function generateDraw() {
   return all.slice(0, BALL_COUNT);
 }
 
-// ── Ball release schedule ────────────────────────────────────────────
+// ── Tile glow schedule ───────────────────────────────────────────────
 //
 // The round deadline (match.round_deadline) is set when the round
-// opens and equals openTime + ROUND_MS. Ball i (0-based) is released
-// at `deadline - ROUND_MS + i * BALL_INTERVAL_MS`, its ideal catch
-// instant is IDEAL_CATCH_MS later, and it expires BALL_TTL_MS after
-// release. Both clients derive the SAME schedule from the same
-// deadline, so the stream is identical for both players.
+// opens and equals openTime + ROUND_MS. Tile i (0-based) lights up at
+// `deadline - ROUND_MS + i * BALL_INTERVAL_MS` and GLOWS for GLOW_MS:
+//   expiresMs       = releaseMs + GLOW_MS            (the visible window)
+//   acceptedUntilMs = expiresMs + CATCH_GRACE_MS     (hidden network
+//                      cushion — a tap sent while glowing still lands)
+// The client drives its glow/ring visuals off expiresMs so the ring
+// always empties at the visible 0.5s mark; the server grades against
+// acceptedUntilMs so slow connections don't turn well-timed taps into
+// false misses.
+// Both clients derive the SAME schedule from the same deadline, so the
+// glow-stream is identical for both players.
 
 /**
- * Compute the release schedule for a round given its deadline (ms).
- * Returns an array of { index, number, releaseMs, idealMs, expiresMs,
+ * Compute the glow schedule for a round given its deadline (ms).
+ * Returns an array of { index, number, releaseMs, expiresMs,
  * acceptedUntilMs }.
  */
 export function ballSchedule(roundDeadlineMs, draw) {
@@ -72,21 +72,18 @@ export function ballSchedule(roundDeadlineMs, draw) {
       index: i,
       number: Number(number),
       releaseMs,
-      idealMs: releaseMs + IDEAL_CATCH_MS,
-      expiresMs: releaseMs + BALL_TTL_MS,
-      acceptedUntilMs: releaseMs + BALL_TTL_MS + CATCH_GRACE_MS,
+      expiresMs: releaseMs + GLOW_MS,
+      acceptedUntilMs: releaseMs + GLOW_MS + CATCH_GRACE_MS,
     };
   });
 }
 
-// ── Catch-quality grading ────────────────────────────────────────────
+// ── Catch grading (binary) ───────────────────────────────────────────
 //
-// Quality tiers (also the vocabulary stored in the catches jsonb):
-//   'perfect' — |now - ideal| <= PERFECT_WINDOW_MS
-//   'good'    — |now - ideal| <= GOOD_WINDOW_MS
-//   'late'    — now in [release, acceptedUntil] (missed the sweet spot)
-//   null      — too early (before release) or expired (past
-//               acceptedUntilMs)
+// Quality vocabulary stored in the catches jsonb. Grading is binary
+// now — a tile is either caught inside its 0.5s glow window or missed.
+// Successful catches are stored as 'good'; 'perfect'/'late' remain in
+// the enum only so old resolved-round history keeps its shape.
 
 export const CATCH_QUALITY = Object.freeze({
   PERFECT: "perfect",
@@ -95,36 +92,29 @@ export const CATCH_QUALITY = Object.freeze({
 });
 
 /**
- * Grade a catch attempt at `caughtAtMs` for the given ball window.
- * Returns one of CATCH_QUALITY values, or null when the ball is not
- * catchable at that instant (too early / expired).
+ * Grade a catch attempt at `caughtAtMs` for the given tile window.
+ * Returns CATCH_QUALITY.GOOD when the tap landed inside the catch
+ * window [releaseMs, acceptedUntilMs] (the 0.5s glow plus the hidden
+ * network grace), else null (too early / long past the glow).
  */
 export function gradeCatch(caughtAtMs, ball) {
   const at = Number(caughtAtMs);
   if (!Number.isFinite(at)) return null;
   if (!ball || !Number.isFinite(ball.releaseMs)) return null;
   if (at < ball.releaseMs || at > ball.acceptedUntilMs) return null;
-  const diff = Math.abs(at - ball.idealMs);
-  if (diff <= PERFECT_WINDOW_MS) return CATCH_QUALITY.PERFECT;
-  if (diff <= GOOD_WINDOW_MS) return CATCH_QUALITY.GOOD;
-  return CATCH_QUALITY.LATE;
+  return CATCH_QUALITY.GOOD;
 }
 
 // ── Round scoring ────────────────────────────────────────────────────
-
-/** Value of a single catch by quality (perfect adds the timing bonus). */
-export function catchValue(quality) {
-  if (quality === CATCH_QUALITY.PERFECT) return PERFECT_BONUS;
-  return 0;
-}
 
 /**
  * Compute a player's round stats from their catches array (each entry
  * { number, quality, caughtAt }):
  *   { caught, perfects, score }
- * score = getKenoMultiplier(caught, caught) + PERFECT_BONUS * perfects.
- * The keno multiplier for "all N caught" is the classic house table
- * (1→3, 5→50, 10→5000) — catching more compounds exponentially.
+ * score = getKenoMultiplier(caught, caught) — the classic house table
+ * (1→3, 5→50, 10→5000). Catching more compounds exponentially, so the
+ * dominant strategy is to catch as many tiles as possible. There is no
+ * timing bonus anymore (perfects is kept at 0 for shape compatibility).
  */
 export function computeRoundStats(catches) {
   const list = Array.isArray(catches) ? catches : [];
@@ -134,32 +124,26 @@ export function computeRoundStats(catches) {
     (c) => c && Number.isInteger(Number(c.number)) && typeof c.quality === "string",
   );
   const caught = valid.length;
-  const perfects = valid.filter(
-    (c) => c.quality === CATCH_QUALITY.PERFECT,
-  ).length;
   const multiplier = caught > 0 ? getKenoMultiplier(caught, caught) || 0 : 0;
   return {
     caught,
-    perfects,
-    score: multiplier + PERFECT_BONUS * perfects,
+    perfects: 0,
+    score: multiplier,
   };
 }
 
 /**
  * Decide who wins a round given both players' catches.
- * Highest score wins; score tie → more perfect catches; still tied →
- * more caught balls; otherwise the round is a DRAW (no round-win for
- * either side).
+ * Highest score wins; an exact score tie is a DRAW (no round-win for
+ * either side). The keno multiplier is strictly increasing in the
+ * number caught, so a score tie implies an equal catch count — no
+ * further tiebreaks exist.
  */
 export function decideRoundWinner(p1Catches, p2Catches) {
   const p1 = computeRoundStats(p1Catches);
   const p2 = computeRoundStats(p2Catches);
   if (p1.score > p2.score) return RESULT.PLAYER1;
   if (p2.score > p1.score) return RESULT.PLAYER2;
-  if (p1.perfects > p2.perfects) return RESULT.PLAYER1;
-  if (p2.perfects > p1.perfects) return RESULT.PLAYER2;
-  if (p1.caught > p2.caught) return RESULT.PLAYER1;
-  if (p2.caught > p1.caught) return RESULT.PLAYER2;
   return RESULT.DRAW;
 }
 
@@ -186,43 +170,34 @@ export function decideMatchResult({ roundsWonPlayer1, roundsWonPlayer2, p1Score,
 // ── Practice bot ─────────────────────────────────────────────────────
 
 /**
- * Generate the practice bot's catches for the balls that have already
- * passed their ideal instant (elapsed = now - roundOpen). Each ball is
- * caught with BOT_CATCH_CHANCE at a random quality (weighted toward
- * good/late so the bot feels human). Returns an array of catch entries
- * shaped like a real player's catches ({ number, quality, caughtAt }),
- * EXCLUDING balls the bot already caught (pass those in `alreadyCaught`
- * as the set of numbers it has).
+ * Generate the practice bot's catches for the tiles that have already
+ * started glowing (elapsed = now - roundOpen). Each tile is caught
+ * with BOT_CATCH_CHANCE; the catch is backdated to a random instant
+ * inside the tile's 0.5s glow window (clamped to `elapsedMs` so the
+ * bot never appears to catch in the future). Glow windows are only
+ * 0.5s while the bot is driven off ~800ms status polls, so backdating
+ * is what keeps the practice match playable — the bot "reacted" inside
+ * the window like a human would.
+ *
+ * Returns an array of catch entries shaped like a real player's
+ * ({ number, quality, caughtAt }), EXCLUDING tiles the bot already
+ * caught (pass those in `alreadyCaught` as the set of numbers it has).
  */
 export function botCatchesForElapsed(schedule, elapsedMs, alreadyCaught = []) {
   const caughtSet = new Set(alreadyCaught);
   const out = [];
   for (const ball of schedule) {
     if (caughtSet.has(ball.number)) continue;
-    if (elapsedMs < ball.idealMs) continue; // ball not catchable yet
+    if (elapsedMs < ball.releaseMs) continue; // tile not glowing yet
     if (Math.random() >= BOT_CATCH_CHANCE) continue; // bot drops it
-    const roll = Math.random();
-    let quality;
-    let caughtAtMs;
-    if (roll < 0.3) {
-      quality = CATCH_QUALITY.PERFECT;
-      caughtAtMs = ball.idealMs + (Math.random() * 2 - 1) * PERFECT_WINDOW_MS * 0.8;
-    } else if (roll < 0.75) {
-      quality = CATCH_QUALITY.GOOD;
-      caughtAtMs = ball.idealMs + (Math.random() * 2 - 1) * GOOD_WINDOW_MS * 0.8;
-    } else {
-      quality = CATCH_QUALITY.LATE;
-      caughtAtMs =
-        ball.idealMs +
-        GOOD_WINDOW_MS +
-        Math.random() *
-          Math.max(0, ball.expiresMs - ball.idealMs - GOOD_WINDOW_MS);
-    }
-    // Never let the bot appear to catch a ball in the future.
+    const caughtAtMs = Math.min(
+      ball.releaseMs + Math.random() * GLOW_MS,
+      elapsedMs,
+    );
     out.push({
       number: ball.number,
-      quality,
-      caughtAt: new Date(Math.min(caughtAtMs, elapsedMs)).toISOString(),
+      quality: CATCH_QUALITY.GOOD,
+      caughtAt: new Date(caughtAtMs).toISOString(),
     });
   }
   return out;
