@@ -7,7 +7,7 @@
 // the server's grading always agree.
 //
 // The skill model: both players face the SAME 10-tile draw. Tiles
-// light up one at a time and each GLOWS for GLOW_MS (1s) — tap the
+// light up one at a time and each GLOWS for GLOW_MS (0.8s) — tap the
 // glowing tile while it's lit to catch it. A tap after the glow fades
 // is a miss (no points, tile turns red). Catching is binary: in the
 // window or not.
@@ -81,7 +81,7 @@ export function ballSchedule(roundDeadlineMs, draw) {
 // ── Catch grading (binary) ───────────────────────────────────────────
 //
 // Quality vocabulary stored in the catches jsonb. Grading is binary
-// now — a tile is either caught inside its 1s glow window or missed.
+// now — a tile is either caught inside its 0.8s glow window or missed.
 // Successful catches are stored as 'good'; 'perfect'/'late' remain in
 // the enum only so old resolved-round history keeps its shape.
 
@@ -94,7 +94,7 @@ export const CATCH_QUALITY = Object.freeze({
 /**
  * Grade a catch attempt at `caughtAtMs` for the given tile window.
  * Returns CATCH_QUALITY.GOOD when the tap landed inside the catch
- * window [releaseMs, acceptedUntilMs] (the 1s glow plus the hidden
+ * window [releaseMs, acceptedUntilMs] (the 0.8s glow plus the hidden
  * network grace), else null (too early / long past the glow).
  */
 export function gradeCatch(caughtAtMs, ball) {

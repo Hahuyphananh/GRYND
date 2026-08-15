@@ -10,9 +10,13 @@
 //   * First to POINTS_TO_WIN (10) cumulative points takes the pot —
 //     the match ends as soon as a player's aggregate round score
 //     reaches 10. Both players cross 10 in the same round? The higher
-//     total wins; an exact tie is a DRAW (full refund, no rake). A
-//     hard cap of MAX_ROUNDS (5) rounds guarantees every match ends
-//     even if nobody reaches 10 (higher total wins, tie → DRAW).
+//     total wins; an exact tie is a DRAW (full refund, no rake).
+//   * Match clock: rounds keep running up to MAX_ROUNDS (16, ≈ 3
+//     minutes). If nobody reaches POINTS_TO_WIN by then, the match
+//     enters a 30s OVERTIME countdown and the player with the most
+//     tiles (highest cumulative score) wins when it ends. An
+//     overtime tie is a DRAW that refunds each player 95% of their
+//     stake (5% rake per side — 10% total).
 //   * Every round BOTH players face the SAME shared draw: 10 unique
 //     balls drawn from the 1-40 keno pool. The draw is generated
 //     server-side when the round opens and its release schedule is
@@ -20,7 +24,7 @@
 //     identical ball stream.
 //   * Skill loop: the round is a shared GLOW-STREAM. Tiles light up
 //     one at a time (BALL_INTERVAL_MS apart) and stay GLOWING for
-//     GLOW_MS (1s). Tap the glowing tile while it's lit → catch it.
+//     GLOW_MS (0.8s). Tap the glowing tile while it's lit → catch it.
 //     Tap it after the glow fades → nothing gained and the tile turns
 //     red. Catching is binary — you're in the window or you're not;
 //     there are no timing-quality tiers anymore. A small hidden
@@ -35,13 +39,13 @@
 //     current draw, and each player catches each ball at most once.
 //
 // Status state machine (values match the `keno_pvp_status` pgEnum in
-// src/db/schema.ts / migration 0061 — do not change one without the
-// other):
-//   waiting → ready → round_1 → round_2 → round_3 → round_4 → round_5 → finished
+// src/db/schema.ts / migrations 0061 + 0064 — do not change one
+// without the other):
+//   waiting → ready → round_1 … round_16 → overtime → finished
 //   waiting → cancelled (creator cancel, or disconnect forfeit before
 //   the opponent joins)
-//   ready/round_N → finished (natural resolve, or disconnect forfeit
-//   resolving the match as a win for the opponent)
+//   ready/round_N/overtime → finished (natural resolve, or disconnect
+//   forfeit resolving the match as a win for the opponent)
 
 export const MATCH_STATUS = Object.freeze({
   WAITING: "waiting",
@@ -51,11 +55,27 @@ export const MATCH_STATUS = Object.freeze({
   ROUND_3: "round_3",
   ROUND_4: "round_4",
   ROUND_5: "round_5",
+  ROUND_6: "round_6",
+  ROUND_7: "round_7",
+  ROUND_8: "round_8",
+  ROUND_9: "round_9",
+  ROUND_10: "round_10",
+  ROUND_11: "round_11",
+  ROUND_12: "round_12",
+  ROUND_13: "round_13",
+  ROUND_14: "round_14",
+  ROUND_15: "round_15",
+  ROUND_16: "round_16",
+  // 30-second countdown after the 3-minute match clock expires with
+  // nobody at POINTS_TO_WIN; most tiles wins when it ends.
+  OVERTIME: "overtime",
   FINISHED: "finished",
   CANCELLED: "cancelled",
 });
 
 // States where the match is still in progress (not yet terminal).
+// Includes OVERTIME so a disconnect during the countdown still
+// resolves as a forfeit win for the opponent.
 export const ACTIVE_STATES = new Set([
   MATCH_STATUS.READY,
   MATCH_STATUS.ROUND_1,
@@ -63,15 +83,39 @@ export const ACTIVE_STATES = new Set([
   MATCH_STATUS.ROUND_3,
   MATCH_STATUS.ROUND_4,
   MATCH_STATUS.ROUND_5,
+  MATCH_STATUS.ROUND_6,
+  MATCH_STATUS.ROUND_7,
+  MATCH_STATUS.ROUND_8,
+  MATCH_STATUS.ROUND_9,
+  MATCH_STATUS.ROUND_10,
+  MATCH_STATUS.ROUND_11,
+  MATCH_STATUS.ROUND_12,
+  MATCH_STATUS.ROUND_13,
+  MATCH_STATUS.ROUND_14,
+  MATCH_STATUS.ROUND_15,
+  MATCH_STATUS.ROUND_16,
+  MATCH_STATUS.OVERTIME,
 ]);
 
-// States where ball-catching is allowed (a round is live).
+// States where ball-catching is allowed (a round is live). Overtime is
+// a pure countdown — no new balls are released, so it is NOT a round.
 export const ROUND_STATES = new Set([
   MATCH_STATUS.ROUND_1,
   MATCH_STATUS.ROUND_2,
   MATCH_STATUS.ROUND_3,
   MATCH_STATUS.ROUND_4,
   MATCH_STATUS.ROUND_5,
+  MATCH_STATUS.ROUND_6,
+  MATCH_STATUS.ROUND_7,
+  MATCH_STATUS.ROUND_8,
+  MATCH_STATUS.ROUND_9,
+  MATCH_STATUS.ROUND_10,
+  MATCH_STATUS.ROUND_11,
+  MATCH_STATUS.ROUND_12,
+  MATCH_STATUS.ROUND_13,
+  MATCH_STATUS.ROUND_14,
+  MATCH_STATUS.ROUND_15,
+  MATCH_STATUS.ROUND_16,
 ]);
 
 // Terminal states — no further transitions allowed.
@@ -89,10 +133,14 @@ export const TERMINAL_STATES = new Set([
 // caught, so a single 3-catch round (10 pts) can clinch it.
 export const POINTS_TO_WIN = 10;
 
-// Hard cap on rounds per match (matches the round_1…round_5 status
-// enum in the DB). If neither player reaches POINTS_TO_WIN by then,
-// the higher cumulative score wins; an exact tie is a full refund.
-export const MAX_ROUNDS = 5;
+// Hard cap on rounds per match (matches the round_1…round_16 status
+// enum in the DB). 16 rounds × ~11.6s ≈ 3 minutes — the round race is
+// allowed to run PAST the 3-minute match clock (MATCH_TIME_LIMIT_MS)
+// so the overtime rule below can actually fire; whichever boundary
+// comes first ends the match. If neither player reaches POINTS_TO_WIN
+// by the clock, the match enters a 30s overtime and the higher
+// cumulative score wins (tie → fee-refund draw).
+export const MAX_ROUNDS = 16;
 
 // ──────────────────────────────────────────────────────────────────────
 // The shared-draw glow loop
@@ -106,34 +154,58 @@ export const BALL_COUNT = 10;
 
 // How long a tile GLOWS (stays catchable) after it lights up. The
 // player must tap the tile while it's glowing — a tap after the glow
-// fades is a miss (tile turns red, no points). 1s gives players a
-// fair reaction window (the previous 0.5s was too punishing on
-// mobile).
-export const GLOW_MS = 1000;
+// fades is a miss (tile turns red, no points). 800ms keeps the
+// reaction window tight enough to be a real skill test on both
+// desktop and mobile.
+export const GLOW_MS = 800;
 
 // Network cushion: a tap arriving up to this long AFTER a tile's glow
 // faded is still honoured as a catch. The player tapped while the tile
 // was visibly glowing — the request just took a moment to reach the
 // server (mobile RTT + the client's 100ms render tick can eat the tail
-// of the 1s window; without this, well-timed taps become false misses
+// of the 0.8s window; without this, well-timed taps become false misses
 // on slow connections). INVISIBLE to players: the ring/glow still end
 // at GLOW_MS, the server grades with its own clock (no client
 // timestamps, so it can't be exploited), and the round deadline still
 // sits on the last tile's glow end (that final cushion is clipped by
 // round resolution, mirroring the pre-glow design).
-export const CATCH_GRACE_MS = 200;
+export const CATCH_GRACE_MS = 150;
 
 // Time between tile glows.
-export const BALL_INTERVAL_MS = 1400;
+export const BALL_INTERVAL_MS = 1200;
 
 // Total round duration = release schedule + the final tile's glow:
 // the last tile (index BALL_COUNT-1) lights up at
 // `deadline - GLOW_MS`, so it stops glowing EXACTLY at the round
 // deadline and the round resolves the moment the stream ends.
-export const ROUND_MS = GLOW_MS + (BALL_COUNT - 1) * BALL_INTERVAL_MS; // 13600ms
+export const ROUND_MS = GLOW_MS + (BALL_COUNT - 1) * BALL_INTERVAL_MS; // 11600ms
 
 // Stored as `round_timer_seconds` on the match row (ceil of ROUND_MS).
-export const ROUND_TIMER_SECONDS = Math.ceil(ROUND_MS / 1000); // 14
+export const ROUND_TIMER_SECONDS = Math.ceil(ROUND_MS / 1000); // 12
+
+// ──────────────────────────────────────────────────────────────────────
+// Match clock + overtime
+// ──────────────────────────────────────────────────────────────────────
+
+// The match-level time budget, measured from `started_at` (when the
+// opponent joins). Rounds play normally while the clock runs; at the
+// next round boundary AFTER this expires, if nobody has reached
+// POINTS_TO_WIN, the match enters the 30-second overtime countdown
+// instead of opening another round. "Around 3 minutes" — the clock
+// is checked on round resolution, so the actual trigger lands within
+// one round (~12s) of the 3-minute mark.
+export const MATCH_TIME_LIMIT_MS = 3 * 60 * 1000; // 180s
+
+// Overtime countdown duration. During overtime no new balls release;
+// when the countdown hits 0 the match settles and the player with the
+// most tiles (highest cumulative score) wins.
+export const OVERTIME_MS = 30 * 1000; // 30s
+
+// Rake applied to an OVERTIME TIE only: each player is refunded 95%
+// of their stake (5% taken from each side — 10% of the pot total,
+// matching the standard house take). Normal (non-overtime) draws stay
+// a full refund with no rake.
+export const OVERTIME_DRAW_FEE_PCT = 0.05;
 
 // Auto-advance window between player2 joining and round_1 starting
 // (server-authoritative "Get ready" banner).
@@ -209,9 +281,14 @@ export function isRoundStatus(status) {
 // Rules:
 //   PLAYER1 / PLAYER2: winner gets stake + 90% of loser's stake
 //                      (winnerNet = 1.9x stake); loser loses their stake.
-//   DRAW:              both fully refunded (refundEach = stake), no rake.
+//   DRAW:              both fully refunded (refundEach = stake), no
+//                      rake — UNLESS `drawFeePct` is passed (overtime
+//                      ties): each player keeps (1 - drawFeePct) of
+//                      their stake and the house takes 2 × that fee
+//                      (e.g. 5% per side → 10% of the pot total,
+//                      matching the standard house take).
 
-export function computePayout({ stakeAmount, result }) {
+export function computePayout({ stakeAmount, result, drawFeePct = 0 }) {
   const stake = Number(stakeAmount);
   if (!Number.isFinite(stake) || stake < 0) {
     throw new RangeError(
@@ -223,14 +300,21 @@ export function computePayout({ stakeAmount, result }) {
       `computePayout: result must be player1|player2|draw, got ${result}`,
     );
   }
+  const feeRate = Number(drawFeePct);
+  if (!Number.isFinite(feeRate) || feeRate < 0 || feeRate > 1) {
+    throw new RangeError(
+      `computePayout: drawFeePct must be in [0, 1], got ${drawFeePct}`,
+    );
+  }
   if (result === RESULT.DRAW) {
+    const fee = round2(stake * feeRate);
     return {
       stake: round2(stake),
       winnerNet: null,
       loserNet: null,
-      houseFee: round2(0),
+      houseFee: round2(fee * 2),
       prizePaid: round2(0),
-      refundEach: round2(stake),
+      refundEach: round2(stake - fee),
     };
   }
   const winnerPrize = round2(stake * WINNER_RATIO); // 90% of loser's stake

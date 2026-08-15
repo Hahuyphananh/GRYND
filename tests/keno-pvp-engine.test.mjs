@@ -35,6 +35,9 @@ import {
   ROUND_TIMER_SECONDS,
   READY_WINDOW_MS,
   FINISHED_GRACE_MS,
+  MATCH_TIME_LIMIT_MS,
+  OVERTIME_MS,
+  OVERTIME_DRAW_FEE_PCT,
   HOUSE_FEE_PCT,
   WINNER_RATIO,
   HOUSE_RATIO,
@@ -65,7 +68,7 @@ import {
 // Constants
 // ════════════════════════════════════════════════════════════════════
 
-test("status enum matches the keno_pvp_status pgEnum (migration 0061)", () => {
+test("status enum matches the keno_pvp_status pgEnum (migrations 0061 + 0064)", () => {
   assert.deepEqual(Object.values(MATCH_STATUS), [
     "waiting",
     "ready",
@@ -74,30 +77,49 @@ test("status enum matches the keno_pvp_status pgEnum (migration 0061)", () => {
     "round_3",
     "round_4",
     "round_5",
+    "round_6",
+    "round_7",
+    "round_8",
+    "round_9",
+    "round_10",
+    "round_11",
+    "round_12",
+    "round_13",
+    "round_14",
+    "round_15",
+    "round_16",
+    "overtime",
     "finished",
     "cancelled",
   ]);
 });
 
 test("state sets partition the status machine correctly", () => {
-  assert.equal(ACTIVE_STATES.size, 6); // ready + 5 rounds
-  assert.equal(ROUND_STATES.size, 5);
+  assert.equal(ACTIVE_STATES.size, 18); // ready + 16 rounds + overtime
+  assert.equal(ROUND_STATES.size, 16); // overtime is NOT a catch round
   assert.equal(TERMINAL_STATES.size, 2);
   for (const s of ROUND_STATES) assert.ok(ACTIVE_STATES.has(s));
   for (const s of TERMINAL_STATES) assert.ok(!ACTIVE_STATES.has(s));
+  assert.ok(ACTIVE_STATES.has(MATCH_STATUS.OVERTIME));
+  assert.ok(!ROUND_STATES.has(MATCH_STATUS.OVERTIME));
 });
 
-test("a match is first-to-10-points with a 5-round hard cap", () => {
+test("a match is first-to-10-points with a 16-round cap feeding a 3-minute clock + overtime", () => {
   assert.equal(POINTS_TO_WIN, 10);
-  assert.equal(MAX_ROUNDS, 5);
+  assert.equal(MAX_ROUNDS, 16);
+  assert.equal(MATCH_TIME_LIMIT_MS, 3 * 60 * 1000);
+  assert.equal(OVERTIME_MS, 30 * 1000);
+  assert.equal(OVERTIME_DRAW_FEE_PCT, 0.05);
 });
 
-test("statusForRoundNumber maps 1..5 → round_N and clamps out-of-range", () => {
+test("statusForRoundNumber maps 1..16 → round_N and clamps out-of-range", () => {
   assert.equal(statusForRoundNumber(1), MATCH_STATUS.ROUND_1);
   assert.equal(statusForRoundNumber(3), MATCH_STATUS.ROUND_3);
   assert.equal(statusForRoundNumber(5), MATCH_STATUS.ROUND_5);
+  assert.equal(statusForRoundNumber(10), MATCH_STATUS.ROUND_10);
+  assert.equal(statusForRoundNumber(16), MATCH_STATUS.ROUND_16);
   assert.equal(statusForRoundNumber(0), MATCH_STATUS.ROUND_1); // clamps low
-  assert.equal(statusForRoundNumber(99), MATCH_STATUS.ROUND_5); // clamps high
+  assert.equal(statusForRoundNumber(99), MATCH_STATUS.ROUND_16); // clamps high
   assert.equal(statusForRoundNumber(undefined), MATCH_STATUS.ROUND_1);
 });
 
@@ -105,10 +127,14 @@ test("roundNumberForStatus round-trips round_N and rejects other states", () => 
   assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_1), 1);
   assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_4), 4);
   assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_5), 5);
-  assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_6), null); // beyond MAX_ROUNDS
+  assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_6), 6);
+  assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_16), 16);
+  assert.equal(roundNumberForStatus(MATCH_STATUS.OVERTIME), null);
   assert.equal(roundNumberForStatus(MATCH_STATUS.READY), null);
   assert.equal(roundNumberForStatus(MATCH_STATUS.FINISHED), null);
   assert.equal(isRoundStatus(MATCH_STATUS.ROUND_2), true);
+  assert.equal(isRoundStatus(MATCH_STATUS.ROUND_16), true);
+  assert.equal(isRoundStatus(MATCH_STATUS.OVERTIME), false);
   assert.equal(isRoundStatus(MATCH_STATUS.READY), false);
   assert.equal(isRoundStatus(MATCH_STATUS.CANCELLED), false);
 });
@@ -125,16 +151,16 @@ test("stake + house-fee constants match the standard 90/10 split", () => {
   assert.deepEqual(Object.values(RESULT), ["player1", "player2", "draw"]);
 });
 
-test("round timing: 10 tiles each glowing 1s, spaced 1.4s apart, ≈ 13.6s round", () => {
+test("round timing: 10 tiles each glowing 0.8s, spaced 1.2s apart, ≈ 11.6s round", () => {
   assert.equal(BALL_COUNT, 10);
   assert.equal(KENO_POOL_SIZE, 40);
   // The LAST tile stops glowing exactly at the round deadline.
   assert.equal(ROUND_MS, GLOW_MS + (BALL_COUNT - 1) * BALL_INTERVAL_MS);
-  assert.equal(ROUND_MS, 13600);
-  assert.equal(ROUND_TIMER_SECONDS, 14); // ceil(ROUND_MS / 1000)
-  assert.equal(GLOW_MS, 1000); // the visible 1s catch window
-  assert.equal(CATCH_GRACE_MS, 200); // hidden network cushion
-  assert.equal(BALL_INTERVAL_MS, 1400);
+  assert.equal(ROUND_MS, 11600);
+  assert.equal(ROUND_TIMER_SECONDS, 12); // ceil(ROUND_MS / 1000)
+  assert.equal(GLOW_MS, 800); // the visible 0.8s catch window
+  assert.equal(CATCH_GRACE_MS, 150); // hidden network cushion
+  assert.equal(BALL_INTERVAL_MS, 1200);
   assert.equal(READY_WINDOW_MS, 3000);
   assert.equal(FINISHED_GRACE_MS, 5000);
 });
@@ -371,9 +397,34 @@ test("computePayout: draw refunds both, no fee", () => {
   assert.equal(payout.refundEach, 100);
 });
 
+test("computePayout: overtime tie refunds 95% each (5% rake per side, 10% total)", () => {
+  const payout = computePayout({
+    stakeAmount: 100,
+    result: RESULT.DRAW,
+    drawFeePct: OVERTIME_DRAW_FEE_PCT,
+  });
+  assert.equal(payout.winnerNet, null);
+  assert.equal(payout.loserNet, null);
+  assert.equal(payout.houseFee, 10); // 5% of each stake → 10% of the pot
+  assert.equal(payout.prizePaid, 0);
+  assert.equal(payout.refundEach, 95);
+  // Decimal stakes round to 2dp.
+  const odd = computePayout({ stakeAmount: 40, result: RESULT.DRAW, drawFeePct: 0.05 });
+  assert.equal(odd.refundEach, 38);
+  assert.equal(odd.houseFee, 4);
+});
+
 test("computePayout validates inputs", () => {
   assert.throws(() => computePayout({ stakeAmount: -1, result: RESULT.PLAYER1 }), RangeError);
   assert.throws(() => computePayout({ stakeAmount: 100, result: "bogus" }), RangeError);
+  assert.throws(
+    () => computePayout({ stakeAmount: 100, result: RESULT.DRAW, drawFeePct: 1.5 }),
+    RangeError,
+  );
+  assert.throws(
+    () => computePayout({ stakeAmount: 100, result: RESULT.DRAW, drawFeePct: -0.1 }),
+    RangeError,
+  );
 });
 
 // ════════════════════════════════════════════════════════════════════
