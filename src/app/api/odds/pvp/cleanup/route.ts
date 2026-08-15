@@ -32,20 +32,29 @@ export async function POST(req: Request) {
       const roundAge = state.roundStartedAt ? now - state.roundStartedAt : 0;
       if (roundAge <= TIMEOUT_MS) continue;
 
-      // Game has been inactive too long — determine who to forfeit
-      const p1Picked = state.player1Pick !== null;
-      const p2Picked = state.player2Pick !== null;
+      // Game has been inactive too long — determine who to forfeit.
+      // Phase-aware: in "pick" a player must lock in their number, in
+      // "predict" they must submit their prediction.
+      const p1Done =
+        state.phase === "predict"
+          ? state.player1Prediction !== null
+          : state.player1Pick !== null;
+      const p2Done =
+        state.phase === "predict"
+          ? state.player2Prediction !== null
+          : state.player2Pick !== null;
 
-      // Only forfeit when exactly one player hasn't picked (the inactive one)
-      if (p1Picked && !p2Picked) {
+      // Only forfeit when exactly one player hasn't completed their part
+      // of the current phase (the inactive one)
+      if (p1Done && !p2Done) {
         // Player 2 timed out
         await forfeitPlayer(game.id, game.player2Id!, game.player1Id, game.wager, "player1");
         forfeited++;
-      } else if (!p1Picked && p2Picked) {
+      } else if (!p1Done && p2Done) {
         // Player 1 timed out
         await forfeitPlayer(game.id, game.player1Id, game.player2Id!, game.wager, "player2");
         forfeited++;
-      } else if (!p1Picked && !p2Picked) {
+      } else if (!p1Done && !p2Done) {
         // Both inactive — game abandoned. Cancel it (refund both).
         // Only trigger if the game has been idle for more than 2x timeout
         if (roundAge > TIMEOUT_MS * 2) {
@@ -53,7 +62,7 @@ export async function POST(req: Request) {
           forfeited++;
         }
       }
-      // If both picked (should have been resolved), skip
+      // If both done (should have been resolved), skip
     }
 
     return NextResponse.json({
@@ -93,6 +102,11 @@ async function forfeitPlayer(
       .set({ balance: sql`${users.balance} + ${payout}` })
       .where(eq(users.clerkId, winnerId));
 
+    // Persist the game-over state so polls/refetches reflect the end.
+    const forfeitedState = game.gameState
+      ? { ...(game.gameState as any), gameOver: true, winner }
+      : undefined;
+
     // Mark game as finished (forfeit)
     await tx
       .update(oddsGames)
@@ -101,6 +115,7 @@ async function forfeitPlayer(
         winner,
         result: winner === "player1" ? "player1_won" : "player2_won",
         payout,
+        ...(forfeitedState ? { gameState: forfeitedState } : {}),
         endedAt: new Date(),
       })
       .where(eq(oddsGames.id, gameId));
@@ -148,6 +163,11 @@ async function cancelAbandonedGame(
       .set({ balance: sql`${users.balance} + ${wager}` })
       .where(eq(users.clerkId, player2Id));
 
+    // Persist the game-over state so polls/refetches reflect the end.
+    const cancelledState = game.gameState
+      ? { ...(game.gameState as any), gameOver: true, winner: null }
+      : undefined;
+
     // Mark game as cancelled
     await tx
       .update(oddsGames)
@@ -156,6 +176,7 @@ async function cancelAbandonedGame(
         winner: null,
         result: "cancelled",
         payout: 0,
+        ...(cancelledState ? { gameState: cancelledState } : {}),
         endedAt: new Date(),
       })
       .where(eq(oddsGames.id, gameId));

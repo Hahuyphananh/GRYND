@@ -99,10 +99,6 @@ function playNoise(duration: number, volume = 0.06) {
 export interface OddsAudioAPI {
   /** Number submitted / picked */
   playPick: () => void;
-  /** MATCH! — challenger loses */
-  playMatch: () => void;
-  /** REVERSE! — roles swap */
-  playReverse: () => void;
   /** Range halved */
   playHalve: () => void;
   /** Game won */
@@ -127,20 +123,6 @@ export function useOddsAudio(): OddsAudioAPI {
     if (!enabledRef.current) return;
     playTone(660, 0.08, "triangle", 0.07);
     setTimeout(() => playTone(880, 0.06, "triangle", 0.05), 40);
-  }, []);
-
-  const playMatch = useCallback(() => {
-    if (!enabledRef.current) return;
-    playNoise(0.12, 0.1);
-    playSweep(400, 80, 0.3, 0.12);
-    setTimeout(() => playTone(110, 0.4, "square", 0.08), 150);
-  }, []);
-
-  const playReverse = useCallback(() => {
-    if (!enabledRef.current) return;
-    playSweep(300, 800, 0.25, 0.09);
-    setTimeout(() => playChime(600, 0.2, 0.07), 120);
-    setTimeout(() => playChime(800, 0.15, 0.06), 220);
   }, []);
 
   const playHalve = useCallback(() => {
@@ -189,8 +171,6 @@ export function useOddsAudio(): OddsAudioAPI {
 
   return {
     playPick,
-    playMatch,
-    playReverse,
     playHalve,
     playVictory,
     playDefeat,

@@ -55,6 +55,12 @@ export async function POST(req: Request) {
         .set({ balance: sql`${users.balance} + ${payout}` })
         .where(eq(users.clerkId, winnerId!));
 
+      // Persist the game-over state so the opponent's polls/socket
+      // refetches reflect the match ending (not just the forfeiter).
+      const forfeitedState = game.gameState
+        ? { ...(game.gameState as any), gameOver: true, winner }
+        : undefined;
+
       // Mark game as finished (forfeit)
       await tx
         .update(oddsGames)
@@ -63,6 +69,7 @@ export async function POST(req: Request) {
           winner,
           result: forfeiterIsP1 ? "player2_won" : "player1_won",
           payout,
+          ...(forfeitedState ? { gameState: forfeitedState } : {}),
           endedAt: new Date(),
         })
         .where(eq(oddsGames.id, gameId));

@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
 import { eq, and, or, desc } from "drizzle-orm";
+import { viewForPlayer } from "../../../../../lib/odds";
 import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 
 export async function GET() {
@@ -43,11 +44,15 @@ export async function GET() {
     const opponentId = isPlayer1 ? game.player2Id : game.player1Id;
     const state = game.gameState as PvPInteractiveOddsState | null;
 
+    // Phase-aware: has the user already submitted their part of the
+    // current phase (number in "pick", prediction in "predict")?
     const userHasPendingPick =
       state &&
       !state.gameOver &&
-      ((isPlayer1 && state.player1Pick !== null && state.player2Pick === null) ||
-        (!isPlayer1 && state.player2Pick !== null && state.player1Pick === null));
+      ((state.phase === "predict" &&
+        (isPlayer1 ? state.player1Prediction !== null : state.player2Prediction !== null)) ||
+        (state.phase === "pick" &&
+          (isPlayer1 ? state.player1Pick !== null : state.player2Pick !== null)));
 
     return NextResponse.json({
       success: true,
@@ -57,7 +62,7 @@ export async function GET() {
         wager: game.wager,
         isPlayer1,
         opponentId,
-        gameState: state,
+        gameState: state ? viewForPlayer(state, isPlayer1) : null,
         rounds: state?.rounds ?? [],
         gameOver: state?.gameOver ?? false,
         winner: state?.winner ?? null,
