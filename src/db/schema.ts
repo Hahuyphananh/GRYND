@@ -2314,9 +2314,11 @@ export const plinkoPvpRoundsRelations = relations(
 // total wins (tie → full refund) after the 5-round hard cap. Payout
 // is the standard 90/10 split.
 //
-// Match flow: waiting → ready → round_1 … round_5 → finished
-// (waiting/ready/round_N → cancelled). Mirrors slots_pvp (match +
-// rounds child table, jsonb draws/catches, round deadline + timer).
+// Match flow: waiting → ready → round_1 … round_16 → overtime →
+// finished (waiting/ready/round_N/overtime → cancelled). After the
+// 3-minute match clock, a 30s overtime settles by most tiles (tie →
+// 95% refund each). Mirrors slots_pvp (match + rounds child table,
+// jsonb draws/catches, round deadline + timer).
 export const kenoPvpStatusEnum = pgEnum("keno_pvp_status", [
   "waiting",
   "ready",
@@ -2325,6 +2327,18 @@ export const kenoPvpStatusEnum = pgEnum("keno_pvp_status", [
   "round_3",
   "round_4",
   "round_5",
+  "round_6",
+  "round_7",
+  "round_8",
+  "round_9",
+  "round_10",
+  "round_11",
+  "round_12",
+  "round_13",
+  "round_14",
+  "round_15",
+  "round_16",
+  "overtime",
   "finished",
   "cancelled",
 ]);

@@ -5,7 +5,7 @@
 // Live 1v1 Keno Catch Duel match view. Both players face the SAME
 // shared 10-tile draw; tiles glow one at a time on a server-declared
 // schedule and you tap the glowing tile on the 1–40 board to catch it
-// before its 1s glow fades. Green = caught, red = tapped too late
+// before its 0.8s glow fades. Green = caught, red = tapped too late
 // (no points). First to 10 cumulative points takes the pot (90/10
 // split).
 //
@@ -313,6 +313,9 @@ export default function KenoPvpMatchPage({ params }) {
   const isRound = match && /^round_\d+$/.test(match.status || "");
   const isWaiting = match?.status === "waiting";
   const isReady = match?.status === "ready";
+  // 30-second countdown after the 3-minute match clock expires with
+  // nobody at POINTS_TO_WIN — most tiles wins when it hits zero.
+  const isOvertime = match?.status === "overtime";
   const isFinished = match?.status === "finished";
   const isCancelled = match?.status === "cancelled";
 
@@ -323,7 +326,7 @@ export default function KenoPvpMatchPage({ params }) {
     return ballSchedule(new Date(match.roundDeadline).getTime(), match.currentDraw || []);
   }, [isRound, match?.roundDeadline, match?.currentDraw]);
 
-  // The tile currently GLOWING (inside its visible 1s window) —
+  // The tile currently GLOWING (inside its visible 0.8s window) —
   // bright cyan with the shrinking ring.
   const activeTile = useMemo(() => {
     if (!isRound) return null;
@@ -832,6 +835,24 @@ export default function KenoPvpMatchPage({ params }) {
           </div>
         )}
 
+        {/* ── OVERTIME ───────────────────────────────────────────── */}
+        {isOvertime && (
+          <div className="rounded-2xl border border-red-400/50 bg-[#1a0505]/85 p-8 text-center shadow-[0_0_30px_rgba(255,70,70,0.25)]">
+            <p className="text-4xl mb-2 animate-pulse">⏱️</p>
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-wide text-red-300">
+              OVERTIME
+            </h2>
+            <p className="mt-2 text-sm text-white/70">
+              Nobody reached {POINTS_TO_WIN} pts in time — when the clock hits zero, the player
+              with the most tiles wins.
+            </p>
+            <p className="mt-4 text-6xl font-black text-white tabular-nums">{roundTimeLeft}s</p>
+            <p className="mt-1 text-xs text-white/50">
+              Most tiles (points) wins · overtime tie = 95% refund each (5% rake)
+            </p>
+          </div>
+        )}
+
         {/* ── FINISHED ────────────────────────────────────────────── */}
         {isFinished && showResult && (
           <ResultModal
@@ -927,14 +948,15 @@ function RulesModal({ onClose }) {
             <span className="font-semibold text-white">same draw</span>.
           </li>
           <li>
-            A tile <span className="font-semibold text-[#00e5ff]">glows for 1s</span> (watch the ring
-            shrink). Tap it while it's lit → <span className="font-semibold text-[#00ffa6]">caught (green)</span>.
+            A tile <span className="font-semibold text-[#00e5ff]">glows for {GLOW_MS / 1000}s</span>{" "}
+            (watch the ring shrink). Tap it while it's lit →{" "}
+            <span className="font-semibold text-[#00ffa6]">caught (green)</span>.
           </li>
           <li>
             Tap after the glow fades → <span className="font-semibold text-red-400">miss (red)</span> — no
             points.
           </li>
-          <li>Catching is binary: you're in the 1s window or you're not.</li>
+          <li>Catching is binary: you're in the 0.8s window or you're not.</li>
           <li>🔊 A soft tick sounds the moment each tile lights up.</li>
         </ul>
 
@@ -964,6 +986,13 @@ function RulesModal({ onClose }) {
           <li>Higher round score wins the round; an exact tie is a draw (no round win).</li>
           <li>Both cross {POINTS_TO_WIN} in the same round? The higher total wins. Exact tie → full
             refund, no rake.</li>
+          <li>
+            ⏱️ <span className="font-semibold text-white">3-minute match clock</span> — if nobody reaches{" "}
+            {POINTS_TO_WIN} pts in ~3 minutes, a 30-second OVERTIME countdown starts; the player
+            with the most tiles wins when it ends.
+          </li>
+          <li>🤝 An overtime tie is a draw: both players are refunded 95% of their stake (5% rake
+            each).</li>
           <li>Winner takes their stake + 90% of the loser's stake (house keeps 10%).</li>
         </ul>
       </motion.div>
@@ -979,10 +1008,15 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
   const iWon = result === me;
   const drew = result === "draw";
 
+  // Normal draws refund in full (houseFee = 0 → net 0). An OVERTIME
+  // tie takes 5% of each stake (10% total, stored in houseFee) — each
+  // player's net is −(houseFee / 2).
   const net = useMemo(() => {
-    if (drew) return 0;
+    if (drew) return -(Number(match.houseFee) || 0) / 2;
     return iWon ? Number(match.prizePaid) - Number(match.stakeAmount) : -Number(match.stakeAmount);
   }, [match, iWon, drew]);
+
+  const tieFee = drew ? Number(match.houseFee) || 0 : 0;
 
   const winnerName = result === "player1" ? p1Name : p2Name;
 
@@ -999,8 +1033,17 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
           <p className="text-sm text-white/60 mt-1">
             {myPts} – {oppPts} pts · {myWins} – {oppWins} round wins
           </p>
-          <p className={`mt-2 text-xl font-black ${drew ? "text-white/60" : iWon ? "text-[#00ffa6]" : "text-red-400"}`}>
-            {drew ? "Stake refunded" : `${iWon ? "+" : "−"}${Math.abs(net).toLocaleString()} 🪙`}
+          {tieFee > 0 && (
+            <p className="mt-1 text-xs text-amber-300/90">
+              Overtime ended tied — no winner, 5% rake per player
+            </p>
+          )}
+          <p className={`mt-2 text-xl font-black ${drew ? (tieFee > 0 ? "text-amber-300" : "text-white/60") : iWon ? "text-[#00ffa6]" : "text-red-400"}`}>
+            {drew
+              ? tieFee > 0
+                ? `Tie — 95% refunded (${net < 0 ? "−" : "+"}${Math.abs(net).toLocaleString()} 🪙)`
+                : "Stake refunded"
+              : `${iWon ? "+" : "−"}${Math.abs(net).toLocaleString()} 🪙`}
           </p>
         </div>
 

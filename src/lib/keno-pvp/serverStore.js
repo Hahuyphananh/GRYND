@@ -12,17 +12,22 @@
 //     from the server-set round deadline (identical for both)
 //   * catches are graded against the server clock (anti-cheat — a
 //     client can never self-report a catch; the tap must land inside
-//     the tile's 1s glow window + a small hidden network grace)
+//     the tile's 0.8s glow window + a small hidden network grace)
 //   * 3-second ready banner auto-advance
 //   * round deadlines auto-resolve (scores computed, winner stamped,
 //     next round opened) — the game progresses even if both players
 //     go AFK
 //   * end-state resolution per the first-to-10-points rulebook
+//   * 3-minute match clock: at the next round boundary after it
+//     expires (nobody at POINTS_TO_WIN), the match enters a 30-second
+//     OVERTIME countdown; when it ends the player with the most tiles
+//     (highest cumulative score) wins — an overtime tie refunds each
+//     player 95% of their stake (5% rake per side)
 //   * 90/10 payout split (winner 1.9× stake, house keeps 0.1×)
 //
 // State machine:
-//   waiting → ready → round_1 … round_5 → finished
-//   (waiting/ready/round_N → cancelled)
+//   waiting → ready → round_1 … round_16 → overtime → finished
+//   (waiting/ready/round_N/overtime → cancelled)
 
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
@@ -33,9 +38,12 @@ import {
   BALL_COUNT,
   KENO_PVP_LOCK_NAMESPACE,
   MATCH_STATUS,
+  MATCH_TIME_LIMIT_MS,
   MAX_ROUNDS,
   MAX_STAKE,
   MIN_STAKE,
+  OVERTIME_DRAW_FEE_PCT,
+  OVERTIME_MS,
   POINTS_TO_WIN,
   READY_WINDOW_MS,
   RESULT,
@@ -424,8 +432,10 @@ function statusForRoundNumber(n) {
 //
 // Scores both players' catches, stamps the round winner onto a
 // keno_pvp_rounds history row, accumulates match scores, and either
-// opens the next round or settles the match (a player reached
-// POINTS_TO_WIN, or round MAX_ROUNDS just completed).
+// opens the next round, enters the 30s overtime countdown (3-minute
+// match clock expired with nobody at POINTS_TO_WIN), or settles the
+// match (a player reached POINTS_TO_WIN, or round MAX_ROUNDS just
+// completed as a backstop).
 async function resolveRound(tx, match) {
   const p1Catches = Array.isArray(match.p1Catches) ? match.p1Catches : [];
   const p2Catches = Array.isArray(match.p2Catches) ? match.p2Catches : [];
@@ -478,19 +488,57 @@ async function resolveRound(tx, match) {
     return await settleMatch(tx, next);
   }
 
+  // Match clock: once the 3-minute budget (measured from `startedAt`,
+  // when the opponent joined) is spent with nobody at POINTS_TO_WIN,
+  // don't open another round — enter the 30-second overtime countdown
+  // instead. `startedAt` is always set by the time a round is live
+  // (set on join); the guard keeps matches without one on the round
+  // cap path.
+  const startedMs = next.startedAt ? new Date(next.startedAt).getTime() : 0;
+  if (startedMs > 0 && Date.now() >= startedMs + MATCH_TIME_LIMIT_MS) {
+    return await enterOvertime(tx, next);
+  }
+
   return await startRound(tx, next, (Number(next.currentRound) || 1) + 1);
+}
+
+// Enter the 30-second overtime countdown. No new draw is generated —
+// catching is closed (overtime is not a ROUND_STATE) and the countdown
+// deadline is stamped onto `round_deadline` so both clients render the
+// same timer from the match row. `fetchMatchWithAutoResolve` settles
+// by most tiles when it expires.
+async function enterOvertime(tx, match) {
+  const deadline = new Date(Date.now() + OVERTIME_MS);
+  const [updated] = await tx
+    .update(kenoPvpMatches)
+    .set({
+      status: MATCH_STATUS.OVERTIME,
+      roundDeadline: deadline,
+      currentDraw: null,
+      p1Catches: [],
+      p2Catches: [],
+    })
+    .where(eq(kenoPvpMatches.id, match.id))
+    .returning();
+  return updated || match;
 }
 
 // ── Settle the match ──────────────────────────────────────────────────
 //
-// Decide the match result (first-to-10-points rulebook), apply the
-// 90/10 payout (or full refund on a DRAW), stamp the row finished and
-// bump the leaderboard side-effects.
-async function settleMatch(tx, match) {
+// Decide the match result (first-to-10-points rulebook; for an
+// overtime settle that means "most tiles wins" — cumulative score is
+// monotonic in tiles caught), apply the 90/10 payout (or a refund on
+// a DRAW), stamp the row finished and bump the leaderboard
+// side-effects. `{ overtime: true }` makes an overtime DRAW refund
+// each player 95% of their stake (5% rake per side → 10% total);
+// normal draws stay a full refund.
+async function settleMatch(tx, match, options = {}) {
+  const overtime = Boolean(options && options.overtime);
   const result = decideMatchResult(match);
   const payout = computePayout({
     stakeAmount: match.stakeAmount,
     result,
+    drawFeePct: overtime && result === RESULT.DRAW ? OVERTIME_DRAW_FEE_PCT : 0,
   });
 
   let winnerId = null;
@@ -498,7 +546,8 @@ async function settleMatch(tx, match) {
   else if (result === RESULT.PLAYER2) winnerId = match.player2Id;
 
   if (result === RESULT.DRAW) {
-    // Full refund — both players get their stake back, no rake.
+    // Refund both players — full stake for a normal draw, 95% (5%
+    // rake per side) for an overtime tie, per computePayout.
     await tx
       .update(users)
       .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
@@ -706,6 +755,16 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       new Date(current.roundDeadline).getTime() <= Date.now()
     ) {
       current = await resolveRound(tx, current);
+    }
+
+    // 3) Overtime countdown elapsed → settle by most tiles (an
+    //    overtime tie is a DRAW refunding 95% per player).
+    if (
+      current.status === MATCH_STATUS.OVERTIME &&
+      current.roundDeadline &&
+      new Date(current.roundDeadline).getTime() <= Date.now()
+    ) {
+      current = await settleMatch(tx, current, { overtime: true });
     }
 
     return { match: current };
