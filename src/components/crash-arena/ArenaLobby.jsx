@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { IconBook, IconRocket } from "@tabler/icons-react";
 import TableList, { CRASH_WAGERS } from "./TableList";
 import BuyInModal from "./BuyInModal";
 import CrashArenaRulesModal from "./CrashArenaRulesModal";
@@ -150,7 +151,7 @@ export default function ArenaLobby({
       {/* Header */}
       <div className="mb-6 text-center">
         <h1 className="text-3xl font-extrabold tracking-tight text-[#f5ff3b] sm:text-4xl">
-          🚀 Crash Arena
+          <IconRocket size={30} className="mb-1.5 mr-2 inline" /> Crash Arena
         </h1>
         <p className="mt-2 text-sm text-[#9dd8ff] opacity-80">
           Create a table or join an open one — survive the crash, claim the pot.
@@ -160,7 +161,7 @@ export default function ArenaLobby({
           onClick={() => setShowRules(true)}
           className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold border border-[#FFD700]/40 bg-[#FFD700]/10 text-[#FFD700] hover:bg-[#FFD700]/20 hover:scale-105 transition-all duration-300 shadow-[0_0_14px_rgba(255,215,0,0.15)]"
         >
-          📜 How to Play
+          <IconBook size={15} /> How to Play
         </button>
       </div>
 

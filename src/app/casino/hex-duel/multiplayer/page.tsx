@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import NavigationBar from "../../../../components/navigation-bar";
 import { CHIP_VALUES } from "../../../../lib/rouletteConfig";
+import { IconEye } from "@tabler/icons-react";
 
 export default function HexDuelMultiplayerPage() {
   const { isSignedIn } = useUser();
@@ -290,7 +291,7 @@ export default function HexDuelMultiplayerPage() {
                 </span>
                 {spectatorCounts[g.id] > 0 && (
                   <span className="text-[10px] text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded-full">
-                    👁 {spectatorCounts[g.id]}
+                    <span className="inline-flex items-center gap-1"><IconEye size={12} /> {spectatorCounts[g.id]}</span>
                   </span>
                 )}
               </div>

@@ -27,7 +27,7 @@ export async function POST(req) {
       return new Response("User not found", { status: 404 });
     }
 
-    // 🔍 Find the game
+    //  Find the game
     const [game] = await db.select().from(unoGames).where(eq(unoGames.id, gameId)).limit(1);
 
     if (!game) {
@@ -43,7 +43,7 @@ export async function POST(req) {
 
       if (!lockedGame) return;
 
-      // 🧠 Determine game type
+      //  Determine game type
       const isAiGame = !lockedGame.player2Id;
       const isWaiting = lockedGame.status === "waiting";
       const isActive = lockedGame.status === "active";
@@ -52,7 +52,7 @@ export async function POST(req) {
       const pot = Number(lockedGame.pot || betAmount * 2);
 
       // =========================
-      // ⏳ WAITING GAME → REFUND
+      //  WAITING GAME → REFUND
       // =========================
       if (isWaiting) {
         await tx
@@ -74,7 +74,7 @@ export async function POST(req) {
       }
 
       // =========================
-      // 🤖 AI GAME → AI WINS
+      //  AI GAME → AI WINS
       // =========================
       if (isAiGame && isActive) {
         await tx
@@ -91,7 +91,7 @@ export async function POST(req) {
       }
 
       // =========================
-      // 🌐 ONLINE GAME → OPPONENT WINS
+      //  ONLINE GAME → OPPONENT WINS
       // =========================
       if (!isAiGame && isActive) {
         const opponentId =
@@ -102,7 +102,7 @@ export async function POST(req) {
         const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
         const payout = Number((pot - houseFee).toFixed(2));
 
-        // 💰 Pay opponent
+        //  Pay opponent
         await tx
           .update(users)
           .set({
@@ -110,7 +110,7 @@ export async function POST(req) {
           })
           .where(eq(users.id, opponentId));
 
-        // 🏁 End game
+        //  End game
         await tx
           .update(unoGames)
           .set({

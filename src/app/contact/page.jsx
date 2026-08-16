@@ -4,6 +4,15 @@ import { useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
+import {
+  IconMail,
+  IconClock,
+  IconLock,
+  IconCircleCheck,
+  IconInfoCircle,
+  IconAlertTriangle,
+  IconX,
+} from "@tabler/icons-react";
 
 const isValidEmail = (email) => email.includes("@") && email.includes(".") && email.indexOf("@") > 0 && email.lastIndexOf(".") > email.indexOf("@") + 1;
 
@@ -122,21 +131,21 @@ export default function ContactPage() {
               </h3>
               <ul className="space-y-4 text-sm text-[#c9f7ff]/80">
                 <li className="flex items-start gap-3">
-                  <span className="text-[#f5ff3b] text-lg mt-0.5">✉</span>
+                  <IconMail size={18} className="text-[#f5ff3b] mt-0.5" />
                   <div>
                     <p className="font-medium text-white">Email</p>
                     <p className="text-[#c9f7ff]/60">contact@goonbet.dedyn.io</p>
                   </div>
                 </li>
                 <li className="flex items-start gap-3">
-                  <span className="text-[#f5ff3b] text-lg mt-0.5">⏱</span>
+                  <IconClock size={18} className="text-[#f5ff3b] mt-0.5" />
                   <div>
                     <p className="font-medium text-white">Response Time</p>
                     <p className="text-[#c9f7ff]/60">Within 24 hours</p>
                   </div>
                 </li>
                 <li className="flex items-start gap-3">
-                  <span className="text-[#f5ff3b] text-lg mt-0.5">🔒</span>
+                  <IconLock size={18} className="text-[#f5ff3b] mt-0.5" />
                   <div>
                     <p className="font-medium text-white">Secure</p>
                     <p className="text-[#c9f7ff]/60">
@@ -187,7 +196,7 @@ export default function ContactPage() {
                   exit={{ opacity: 0 }}
                   className="bg-white/5 border border-emerald-500/30 rounded-xl p-10 text-center"
                 >
-                  <div className="text-5xl mb-4">✅</div>
+                  <div className="mb-4 flex justify-center"><IconCircleCheck size={48} className="text-emerald-400" /></div>
                   <h2 className="text-2xl font-bold text-white mb-2">
                     Message Sent!
                   </h2>
@@ -284,7 +293,7 @@ export default function ContactPage() {
                       }`}
                     >
                       <span className="inline-block mr-2">
-                        {errorSeverity === "info" ? "ℹ️" : errorSeverity === "warning" ? "⚠️" : "❌"}
+                        {errorSeverity === "info" ? <IconInfoCircle size={14} /> : errorSeverity === "warning" ? <IconAlertTriangle size={14} /> : <IconX size={14} />}
                       </span>
                       {errorMsg}
                     </div>

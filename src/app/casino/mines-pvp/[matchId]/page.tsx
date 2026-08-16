@@ -16,7 +16,7 @@
 // theirs.
 //
 // Visual design reuses the solo-mines page's 5×5 gameboard
-// (cyan safe / magenta mine palette, bomb animation, ❓ for
+// (cyan safe / magenta mine palette, bomb animation,  for
 // unrevealed) and STIPS the left + right sidebars (no bet input,
 // no autoplay, no multiplier readout — those don't apply in the
 // PvP variant). The page replaces the sidebars with a PvP-specific
@@ -38,6 +38,15 @@ import {
   minesPvpMatchRoom,
 } from "../../../../lib/mines-pvp/rooms";
 import {
+  IconBomb,
+  IconSparkles,
+  IconDiamondFilled,
+  IconQuestionMark,
+  IconFlag,
+  IconTrophy,
+  IconCheck,
+} from "@tabler/icons-react";
+import {
   MATCH_STATUS,
   RESULT,
   GRID_CELLS,
@@ -52,10 +61,10 @@ function AnimatedBomb({ exploded = false }: { exploded?: boolean }) {
         ${exploded ? "animate-bomb-explode" : "animate-bomb-fuse"}
       `}
     >
-      💣
+      <IconBomb size={32} className="text-red-400" />
       {!exploded && (
-        <span className="absolute -top-2 -right-2 text-orange-400 animate-ping">
-          ✨
+        <span className="absolute -top-2 -right-2 animate-ping">
+          <IconSparkles size={14} className="text-orange-400" />
         </span>
       )}
     </span>
@@ -706,13 +715,13 @@ export default function MinesPvpMatchPage({
     return "bg-cyan-500/20 text-cyan-200 border-cyan-300/40";
   }
 
-  /** The 💎 + hint-number badge shown on the viewer's own SAFE picks. */
+  /** The  + hint-number badge shown on the viewer's own SAFE picks. */
   function safeCellContent(entry: PickEntry | undefined) {
     const hint =
       entry && typeof entry.hint === "number" ? entry.hint : null;
     return (
       <span className="relative inline-flex items-center justify-center">
-        <span>💎</span>
+        <IconDiamondFilled size={22} className="text-cyan-300" />
         {hint !== null && (
           <span
             className={`absolute -top-2.5 -right-2.5 flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-black tabular-nums ${hintBadgeClass(
@@ -730,7 +739,7 @@ export default function MinesPvpMatchPage({
   // Returns { content, style } for a single cell based on the
   // current match state. Two display modes in the odds-turn flow:
   //   1. Mid-match (status not 'finished') — render EVERY cleared
-  //      cell as a 💎, color-coded to its picker (cyan = player1,
+  //      cell as a , color-coded to its picker (cyan = player1,
   //      fuchsia = player2). Revealing safe picks is safe because
   //      the game would have ended if any were a mine.
   //   2. Finished — full board reveal: all mines shown, all safe
@@ -741,7 +750,7 @@ export default function MinesPvpMatchPage({
     isMine: boolean;
   } {
     if (!match) {
-      return { content: "❓", revealed: false, isMine: false };
+      return { content: <IconQuestionMark size={22} className="text-white/30" />, revealed: false, isMine: false };
     }
     const isFinished = match.status === MATCH_STATUS.FINISHED;
 
@@ -754,7 +763,7 @@ export default function MinesPvpMatchPage({
       }
     }
 
-    // Mid-match: render every revealed cell as a 💎. The board
+    // Mid-match: render every revealed cell as a . The board
     // mines themselves stay hidden (we can't server-trust the
     // board column mid-match — it's null until finished).
     if (!isFinished) {
@@ -771,8 +780,8 @@ export default function MinesPvpMatchPage({
           isMine: false,
         };
       }
-      // Flag mode: an unrevealed playable cell shows a ⚑ instead of
-      // a ❓ so a click here declares a mine rather than picking it.
+      // Flag mode: an unrevealed playable cell shows a  instead of
+      // a  so a click here declares a mine rather than picking it.
       const isFlagTarget =
         flagMode &&
         isMyTurn &&
@@ -780,12 +789,12 @@ export default function MinesPvpMatchPage({
         !opponentPicks.includes(cellIndex);
       if (isFlagTarget) {
         return {
-          content: <span className="text-red-300 drop-shadow-[0_0_6px_rgba(248,113,113,0.6)]">⚑</span>,
+          content: <IconFlag size={22} className="text-red-300 drop-shadow-[0_0_6px_rgba(248,113,113,0.6)]" />,
           revealed: false,
           isMine: false,
         };
       }
-      return { content: "❓", revealed: false, isMine: false };
+      return { content: <IconQuestionMark size={22} className="text-white/30" />, revealed: false, isMine: false };
     }
 
     // Finished: full board reveal. The board column is now
@@ -810,7 +819,7 @@ export default function MinesPvpMatchPage({
     }
     const isMine = mines.includes(cellIndex);
     return {
-      content: isMine ? <AnimatedBomb exploded /> : "💎",
+      content: isMine ? <AnimatedBomb exploded /> : <IconDiamondFilled size={22} className="text-cyan-300" />,
       revealed: true,
       isMine,
     };
@@ -1006,16 +1015,16 @@ export default function MinesPvpMatchPage({
     const headlineEmoji = flagEntry
       ? iFlagged
         ? flagEntry.isMine
-          ? "🏆"
-          : "💥"
+          ? <IconTrophy size={64} className="text-emerald-300" />
+          : <IconBomb size={64} className="text-red-400" />
         : flagEntry.isMine
-          ? "💣"
-          : "🏆"
+          ? <IconBomb size={64} className="text-red-400" />
+          : <IconTrophy size={64} className="text-emerald-300" />
       : iWon
-        ? "🏆"
+        ? <IconTrophy size={64} className="text-emerald-300" />
         : iLost
-          ? "💣"
-          : "✅";
+          ? <IconBomb size={64} className="text-red-400" />
+          : <IconCheck size={64} className="text-cyan-300" />;
     const headlineBg = iWon
       ? "from-[#0d2b1a] to-[#062a16] border-emerald-300/50 shadow-[0_0_60px_rgba(72,209,154,0.35)]"
       : iLost
@@ -1257,7 +1266,7 @@ export default function MinesPvpMatchPage({
                 : ""
             }`}
           >
-            <span>💎 Safe left:</span>
+            <span className="inline-flex items-center gap-1"><IconDiamondFilled size={14} className="text-cyan-300" /> Safe left:</span>
             <span
               className={`font-bold inline-flex items-center gap-1 ${
                 match.safeTilesRemaining <= 2
@@ -1278,7 +1287,7 @@ export default function MinesPvpMatchPage({
               onClick={() => setShowReportModal(true)}
               className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 text-xs font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
             >
-              🚩 Report opponent
+              <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report opponent</span>
             </button>
           )}
         </div>
@@ -1303,7 +1312,7 @@ export default function MinesPvpMatchPage({
                       : "text-cyan-200/70 hover:text-cyan-100"
                   }`}
                 >
-                  💎 Pick a tile
+                  <span className="inline-flex items-center gap-1"><IconDiamondFilled size={14} className="text-cyan-300" /> Pick a tile</span>
                 </button>
                 <button
                   onClick={() => setFlagMode(true)}
@@ -1313,7 +1322,7 @@ export default function MinesPvpMatchPage({
                       : "text-red-300/70 hover:text-red-200"
                   }`}
                 >
-                  ⚑ Flag a mine
+                  <span className="inline-flex items-center gap-1"><IconFlag size={14} className="text-red-300" /> Flag a mine</span>
                 </button>
               </div>
               {flagMode && (
@@ -1369,7 +1378,7 @@ export default function MinesPvpMatchPage({
 
         {/* Minesweeper hint legend — the skill mechanic */}
         <p className="mt-3 text-center text-[10px] uppercase tracking-widest text-white/35 font-bold">
-          💎 number = tiles to the nearest mine (1 = right next to it) · only you see your own
+          <span className="inline-flex items-center gap-1"><IconDiamondFilled size={12} className="text-cyan-300" /> number = tiles to the nearest mine (1 = right next to it) · only you see your own</span>
         </p>
 
         {/* Host-only cancel button while still in waiting */}

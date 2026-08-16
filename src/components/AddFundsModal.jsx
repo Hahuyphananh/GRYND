@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useAuth } from "@clerk/nextjs";
+import { IconLock } from "@tabler/icons-react";
 import { modalMotion, withReducedMotion, hoverScale } from "../lib/animations";
 import {
   UIPro17ModalBackdrop,
@@ -162,7 +163,8 @@ export default function AddFundsModal({ isOpen, onClose, onSuccess }) {
                 </div>
               </form>
 
-              <div className="mt-4 rounded border border-yellow-200 bg-yellow-50 p-3">
+              <div className="mt-4 flex items-start gap-2 rounded border border-yellow-200 bg-yellow-50 p-3">
+                <IconLock size={14} className="mt-0.5 shrink-0 text-yellow-800" />
                 <p className="text-xs text-yellow-800">
                   {t("ui.secure_transaction")}
                 </p>

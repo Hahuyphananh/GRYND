@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../context/SocketProvider";
+import { IconCoin, IconConfetti, IconFlame, IconMessageCircle, IconX } from "@tabler/icons-react";
 
 const MINIMUM_BIG_WIN = 1000000; // 1 million tokens maximum
 
@@ -324,7 +325,7 @@ export default function ChatWidget() {
         className="relative h-14 w-14 touch-manipulation rounded-full bg-gradient-to-br from-cyan-400 via-fuchsia-500 to-purple-600 text-xl text-black shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(217,70,239,0.7)] active:scale-95 animate-neonButton sm:h-16 sm:w-16 sm:text-2xl"
         aria-label="Toggle chat"
       >
-        💬
+        <IconMessageCircle size={26} />
         {/* pulsing ring */}
         <span className="absolute inset-0 rounded-full border border-cyan-300/40 animate-ping" />
       </button>
@@ -355,7 +356,7 @@ export default function ChatWidget() {
                     : "text-yellow-300/70 hover:bg-yellow-500/10 hover:text-yellow-200"
                 }`}
               >
-                🎉 Big Wins
+                <IconConfetti size={14} className="mb-0.5 mr-1 inline" /> Big Wins
               </button>
               <button
                 type="button"
@@ -387,7 +388,7 @@ export default function ChatWidget() {
                 aria-label="Close chat"
                 title="Close chat"
               >
-                ✕
+                <IconX size={16} />
               </button>
             </div>
           </div>
@@ -434,7 +435,7 @@ export default function ChatWidget() {
                           ) : null}
                           {msg.streakTitle ? (
                             <span className="rounded-full border border-amber-400/60 bg-amber-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-200 shadow-[0_0_10px_rgba(251,191,36,0.35)]">
-                              🔥 {msg.streakTitle}
+                              <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {msg.streakTitle}
                             </span>
                           ) : null}
                         </span>
@@ -478,7 +479,7 @@ export default function ChatWidget() {
                     onChange={(e) => setMessage(e.target.value)}
                     rows={3}
                     maxLength={500}
-                    placeholder="Say something... Emojis 😀 and formatting **bold** *italic* `code`"
+                    placeholder="Say something... Emojis and formatting **bold** *italic* `code`"
                     className="w-full resize-none rounded border border-cyan-400/20 bg-black/60 p-2 text-sm text-cyan-50 outline-none focus:border-fuchsia-400 focus:shadow-[0_0_12px_rgba(217,70,239,0.4)]"
                   />
                   <button
@@ -508,7 +509,7 @@ export default function ChatWidget() {
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="text-xl">🎉</span>
+                          <IconConfetti size={20} className="text-yellow-300" />
                           <span className="font-bold text-yellow-300 text-sm">{win.username}</span>
                         </div>
                         <span className="text-[10px] text-slate-400">
@@ -523,7 +524,10 @@ export default function ChatWidget() {
                         </div>
                         <div className="text-right">
                           <div className="text-lg font-bold text-yellow-400">
-                            +{formatNumber(win.winAmount)} 🪙
+                            <span className="inline-flex items-center gap-1">
+                              +{formatNumber(win.winAmount)}
+                              <IconCoin size={16} className="text-yellow-400" />
+                            </span>
                           </div>
                           <div className="text-[10px] text-yellow-300/60">
                             {parseFloat(win.multiplier).toFixed(2)}x multiplier
@@ -535,7 +539,7 @@ export default function ChatWidget() {
                 )}
               </div>
               <p className="mb-2 text-[11px] text-yellow-400/60">
-                🎉 Big Wins feed shows wins of {formatNumber(MINIMUM_BIG_WIN)}+ tokens.
+                <IconConfetti size={14} className="mb-0.5 mr-1 inline" /> Big Wins feed shows wins of {formatNumber(MINIMUM_BIG_WIN)}+ tokens.
               </p>
               <button
                 type="button"

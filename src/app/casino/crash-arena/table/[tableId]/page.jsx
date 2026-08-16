@@ -7,6 +7,7 @@ import CrashEngine from "../../../../../components/games/crash-engine/CrashEngin
 import useCrashArenaRound from "../../../../../components/crash-arena/useCrashArenaRound";
 import { useSocket } from "../../../../../context/SocketProvider";
 import ReportModal from "../../../../../components/ReportModal";
+import { IconPlug } from "@tabler/icons-react";
 import Link from "next/link";
 
 /**
@@ -246,7 +247,7 @@ export default function TableRoomPage() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400" />
             </span>
-            <span>🔌 Reconnecting…</span>
+            <span className="inline-flex items-center gap-1.5"><IconPlug size={14} /> Reconnecting…</span>
             {table?.amISeated && (
               <span className="font-normal text-amber-200/80">
                 Your seat may be held for a short time — don't close the tab.

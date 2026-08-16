@@ -39,7 +39,7 @@ export async function GET() {
       where: eq(userLoginRewards.userId, dbUser.id),
     });
 
-    // ⭐ Create row if missing
+    //  Create row if missing
     if (!rewardData) {
       await db.insert(userLoginRewards).values({
         userId: dbUser.id,
@@ -53,7 +53,7 @@ export async function GET() {
       };
     }
 
-    // ✅ Reset streak if missed
+    //  Reset streak if missed
     if (rewardData.lastClaimedDate) {
       const now = new Date();
       const lastClaim = new Date(rewardData.lastClaimedDate);

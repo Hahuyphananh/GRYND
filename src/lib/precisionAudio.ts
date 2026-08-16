@@ -7,15 +7,15 @@
 // AudioContext — no external dependencies, no file loading.
 //
 // Each rank tier gets a distinct sound played via `playRankSound(diffMs)`:
-//   🌟 PERFECT    — sparkling high chime cascade
-//   💎 LEGENDARY  — majestic ascending fifths
-//   🔥 MASTERFUL  — bold punchy stabs
-//   ⭐ EXCELLENT  — bright upbeat melody
-//   ✅ GREAT      — solid pleasant chord
-//   👍 GOOD       — neutral clear tone
-//   🎯 FAIR       — simple low tone
-//   ⚠️ CLOSE      — warning-like two-tone
-//   ❌ MISS       — low buzz
+//    PERFECT    — sparkling high chime cascade
+//    LEGENDARY  — majestic ascending fifths
+//    MASTERFUL  — bold punchy stabs
+//    EXCELLENT  — bright upbeat melody
+//    GREAT      — solid pleasant chord
+//    GOOD       — neutral clear tone
+//    FAIR       — simple low tone
+//    CLOSE      — warning-like two-tone
+//    MISS       — low buzz
 //
 // Also exports individual functions for each rank so callers can trigger
 // specific sounds without recomputing the rank from diffMs.
@@ -75,7 +75,7 @@ function playChime(
 
 // ── Rank-specific sounds ───────────────────────────────────────────────
 
-/** 🌟 PERFECT (0 ms) — sparkling high chime cascade */
+/**  PERFECT (0 ms) — sparkling high chime cascade */
 export function playRankPerfect() {
   const notes = [1048, 1318, 1568, 2093];
   notes.forEach((f, i) => {
@@ -85,7 +85,7 @@ export function playRankPerfect() {
   playTone(262, 0.5, "sine", 0.05, 0);
 }
 
-/** 💎 LEGENDARY (1–3 ms) — majestic ascending fifths */
+/**  LEGENDARY (1–3 ms) — majestic ascending fifths */
 export function playRankLegendary() {
   const notes = [523, 784, 1048];
   notes.forEach((f, i) => {
@@ -94,7 +94,7 @@ export function playRankLegendary() {
   playTone(262, 0.4, "triangle", 0.04, 0);
 }
 
-/** 🔥 MASTERFUL (4–8 ms) — bold punchy stabs */
+/**  MASTERFUL (4–8 ms) — bold punchy stabs */
 export function playRankMasterful() {
   playTone(660, 0.12, "square", 0.07, 0);
   setTimeout(() => {
@@ -104,37 +104,37 @@ export function playRankMasterful() {
   playTone(330, 0.2, "triangle", 0.04, 0);
 }
 
-/** ⭐ EXCELLENT (9–15 ms) — bright upbeat melody */
+/**  EXCELLENT (9–15 ms) — bright upbeat melody */
 export function playRankExcellent() {
   playChime(660, 0.2, 0.07, 0);
   setTimeout(() => playChime(880, 0.18, 0.06), 100);
   playTone(330, 0.25, "sine", 0.04, 0);
 }
 
-/** ✅ GREAT (16–25 ms) — solid pleasant chord */
+/**  GREAT (16–25 ms) — solid pleasant chord */
 export function playRankGreat() {
   playChime(523, 0.22, 0.06, 0);
   playTone(262, 0.25, "sine", 0.04, 0);
 }
 
-/** 👍 GOOD (26–40 ms) — neutral clear tone */
+/**  GOOD (26–40 ms) — neutral clear tone */
 export function playRankGood() {
   playTone(440, 0.18, "sine", 0.06, 0);
   playTone(554, 0.14, "sine", 0.04, 40);
 }
 
-/** 🎯 FAIR (41–60 ms) — simple low tone */
+/**  FAIR (41–60 ms) — simple low tone */
 export function playRankFair() {
   playTone(330, 0.16, "triangle", 0.06, 0);
 }
 
-/** ⚠️ CLOSE (61–100 ms) — warning-like two-tone */
+/**  CLOSE (61–100 ms) — warning-like two-tone */
 export function playRankClose() {
   playTone(300, 0.15, "square", 0.04, 0);
   setTimeout(() => playTone(280, 0.15, "square", 0.04), 100);
 }
 
-/** ❌ MISS (100+ ms) — low buzz */
+/**  MISS (100+ ms) — low buzz */
 export function playRankMiss() {
   playTone(150, 0.25, "sawtooth", 0.04, 0);
   playTone(200, 0.2, "sawtooth", 0.03, 0.05);

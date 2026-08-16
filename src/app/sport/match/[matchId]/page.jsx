@@ -2,6 +2,7 @@
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
+import { IconCircleFilled } from "@tabler/icons-react";
 
 export default function MatchPage() {
   const { matchId } = useParams();
@@ -98,12 +99,12 @@ export default function MatchPage() {
 
       setUserTokens(data.newBalance);
       setMessage(
-        `✅ Pari placé sur ${selected} à ${event.odds_map[selected]}x`,
+        `Pari placé sur ${selected} à ${event.odds_map[selected]}x`,
       );
       setSelected(null);
       setBetAmount("");
     } catch (err) {
-      setMessage(`❌ ${err.message}`);
+      setMessage(`${err.message}`);
     }
   };
 
@@ -154,7 +155,7 @@ export default function MatchPage() {
           <div className="mt-2">
             {event.live_score ? (
               <p className="text-lg text-white">
-                🔴 Score: {event.team_a} {event.live_score.team_a_score} —{" "}
+                <span className="inline-flex items-center gap-1.5"><IconCircleFilled size={10} className="text-red-500" /> Score: {event.team_a} {event.live_score.team_a_score} —{" "}</span>
                 {event.live_score.team_b_score} {event.team_b} (
                 {event.live_score.status})
               </p>

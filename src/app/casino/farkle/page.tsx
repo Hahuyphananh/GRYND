@@ -16,6 +16,34 @@ import {
   isFarkle,
   getScoringIndices,
 } from "../../../../game-engine/farkleEngine";
+import {
+  IconChartBar,
+  IconNotebook,
+  IconDice,
+  IconCoins,
+  IconUsers,
+  IconRobot,
+  IconRefresh,
+  IconDeviceGamepad2,
+  IconClipboardList,
+  IconPin,
+  IconLock,
+  IconX,
+  IconCheck,
+  IconAlertTriangle,
+  IconBomb,
+  IconBuildingBank,
+  IconSparkles,
+  IconSkull,
+  IconTrophy,
+  IconFlame,
+  IconFlag,
+  IconSwords,
+  IconHourglass,
+  IconDiamondFilled,
+  IconStarFilled,
+  IconBolt,
+} from "@tabler/icons-react";
 
 /* ─── Types ─── */
 type LobbyRoom = { id: string; wager: number; pot: number; status: string; createdAt: string };
@@ -159,7 +187,7 @@ function ScoreSheetPanel() {
         className="flex w-full items-center justify-between px-4 py-2.5 text-sm font-bold text-amber-300 transition-colors hover:bg-white/5"
       >
         <span className="flex items-center gap-2">
-          <span>📊</span>
+          <IconChartBar size={18} className="text-amber-300" />
           <span>{t("games.farkle.score_sheet")}</span>
         </span>
         <motion.svg
@@ -238,7 +266,7 @@ function GameLogPanel({
         className="flex w-full items-center justify-between px-4 py-2.5 text-sm font-bold text-amber-300 transition-colors hover:bg-white/5"
       >
         <span className="flex items-center gap-2">
-          <span>📜</span>
+          <IconNotebook size={18} className="text-amber-300" />
           <span>{t("games.farkle.game_log")}</span>
           <span className="rounded-full bg-amber-900/60 px-2 py-0.5 text-xs text-amber-400">
             {history.length}
@@ -959,7 +987,7 @@ export default function FarklePage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-2 text-center text-4xl font-black text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]"
         >
-          🎲 {t("games.farkle.title")}
+          <span className="inline-flex items-center gap-2"><IconDice size={32} /> {t("games.farkle.title")}</span>
         </motion.h1>
 
         {/* ═══ LOBBY ═══ */}
@@ -970,7 +998,7 @@ export default function FarklePage() {
             className="rounded-2xl border border-amber-700/60 bg-black/40 p-6"
           >
             <div className="mb-4 text-center text-lg font-bold text-yellow-300">
-              💰 {t("games.balance")}: {balance.toFixed(2)} tokens
+              <span className="inline-flex items-center gap-1.5"><IconCoins size={18} /> {t("games.balance")}: {balance.toFixed(2)} tokens</span>
             </div>
 
             {/* Mode toggle: PvP vs AI */}
@@ -983,7 +1011,7 @@ export default function FarklePage() {
                     : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-cyan-600/50"
                 }`}
               >
-                👥 {t("games.farkle.create_pvp") /* PvP */}
+                <span className="inline-flex items-center gap-2"><IconUsers size={16} /> {t("games.farkle.create_pvp") /* PvP */}</span>
               </button>
               <button
                 onClick={() => setMode("ai")}
@@ -993,7 +1021,7 @@ export default function FarklePage() {
                     : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50"
                 }`}
               >
-                🤖 {t("games.farkle.play_vs_ai") /* vs AI */}
+                <span className="inline-flex items-center gap-2"><IconRobot size={16} /> {t("games.farkle.play_vs_ai") /* vs AI */}</span>
               </button>
             </div>
 
@@ -1018,13 +1046,13 @@ export default function FarklePage() {
                     disabled={loading}
                     className="flex-1 rounded-2xl border-b-4 border-cyan-700 bg-cyan-500 px-6 py-3.5 text-lg font-black text-black shadow-[0_0_25px_rgba(34,211,238,0.4)] transition active:translate-y-[2px] disabled:opacity-50"
                   >
-                    {loading ? t("games.farkle.starting") : `${t("games.farkle.create_pvp")} 🎲`}
+                    <span className="inline-flex items-center gap-2">{loading ? t("games.farkle.starting") : <>{t("games.farkle.create_pvp")} <IconDice size={18} /></>}</span>
                   </button>
                   <button
                     onClick={fetchGames}
                     className="rounded-2xl border-b-4 border-gray-600 bg-gray-700 px-4 py-3.5 text-lg font-black text-white shadow-[0_0_15px_rgba(255,255,255,0.1)] transition active:translate-y-[2px]"
                   >
-                    🔄
+                    <IconRefresh size={18} />
                   </button>
                 </div>
               </>
@@ -1032,7 +1060,7 @@ export default function FarklePage() {
               <>
                 {/* Free Play badge */}
                 <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-center">
-                  <p className="text-xs font-bold uppercase tracking-widest text-amber-300">🎮 Free Play</p>
+                  <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-amber-300"><IconDeviceGamepad2 size={14} /> Free Play</p>
                   <p className="mt-1 text-[10px] text-amber-200/70">No tokens are wagered. Playing vs AI is free.</p>
                 </div>
 
@@ -1052,7 +1080,7 @@ export default function FarklePage() {
                             : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50"
                         }`}
                       >
-                        {d === "easy" ? `🟢 ${t("games.farkle.difficulty_easy")}` : d === "medium" ? `🟡 ${t("games.farkle.difficulty_medium")}` : `🔴 ${t("games.farkle.difficulty_hard")}`}
+                        <span className="inline-flex items-center gap-1.5">{d === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : d === "medium" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}{d === "easy" ? t("games.farkle.difficulty_easy") : d === "medium" ? t("games.farkle.difficulty_medium") : t("games.farkle.difficulty_hard")}</span>
                       </button>
                     ))}
                   </div>
@@ -1070,7 +1098,7 @@ export default function FarklePage() {
                     disabled={loading}
                     className="w-full rounded-2xl border-b-4 border-amber-700 bg-amber-500 px-6 py-3.5 text-lg font-black text-black shadow-[0_0_25px_rgba(251,191,36,0.4)] transition active:translate-y-[2px] disabled:opacity-50"
                   >
-                    {loading ? t("games.farkle.starting") : `${t("games.farkle.play_vs_ai")} 🤖`}
+                    <span className="inline-flex items-center gap-2">{loading ? t("games.farkle.starting") : <>{t("games.farkle.play_vs_ai")} <IconRobot size={18} /></>}</span>
                   </button>
                 </div>
               </>
@@ -1078,7 +1106,7 @@ export default function FarklePage() {
 
             {/* Rules Summary */}
             <div className="mb-5 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs text-amber-200/80">
-              <p className="font-bold text-amber-300 mb-1">📋 {t("games.farkle.rules_title")}</p>
+              <p className="mb-1 flex items-center gap-1.5 font-bold text-amber-300"><IconClipboardList size={14} /> {t("games.farkle.rules_title")}</p>
               <ul className="list-inside list-disc space-y-0.5">
                 <li>{t("games.farkle.rules_line1")}</li>
                 <li>{t("games.farkle.rules_line2")}</li>
@@ -1090,7 +1118,7 @@ export default function FarklePage() {
 
             {/* Available Games */}
             <div>
-              <h3 className="mb-3 text-lg font-bold text-cyan-300">🎮 {t("games.available_games")}</h3>
+              <h3 className="mb-3 flex items-center gap-2 text-lg font-bold text-cyan-300"><IconDeviceGamepad2 size={20} /> {t("games.available_games")}</h3>
               {availableGames.length === 0 ? (
                 <p className="text-center text-sm text-gray-500 py-8">{t("games.no_open_games")} {t("games.farkle.create_one")}</p>
               ) : (
@@ -1148,14 +1176,14 @@ export default function FarklePage() {
                       animate={{ rotate: 360 }}
                       transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                     >
-                      🤖
+                      <IconRobot size={16} />
                     </motion.span>
                     {t("games.farkle.ai_thinking")}
                   </span>
                 )}
                 {isPvp && (
                   <span className="rounded-full bg-purple-800/50 px-2 py-1 text-xs text-purple-300">
-                    ⚔️ {t("games.farkle.pvp_label")}
+                    <span className="inline-flex items-center gap-1"><IconSwords size={14} /> {t("games.farkle.pvp_label")}</span>
                   </span>
                 )}
               </div>
@@ -1166,7 +1194,7 @@ export default function FarklePage() {
                   onClick={() => setShowReportModal(true)}
                   className="relative z-20 rounded-lg bg-red-500/20 border border-red-500/40 px-3 py-1 text-xs font-bold text-red-300 hover:bg-red-500/30 transition"
                 >
-                  🚩 Report
+                  <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report</span>
                 </button>
               )}
               <button
@@ -1191,7 +1219,7 @@ export default function FarklePage() {
                   transition={{ duration: 1.5, repeat: Infinity }}
                   className="text-lg font-bold text-fuchsia-300"
                 >
-                  ⏳ {t("games.farkle.waiting_opponent")}
+                  <span className="inline-flex items-center gap-2"><IconHourglass size={18} /> {t("games.farkle.waiting_opponent")}</span>
                 </motion.div>
                 <p className="mt-1 text-xs text-fuchsia-400/70">
                   {t("games.farkle.share_waiting")}
@@ -1204,7 +1232,7 @@ export default function FarklePage() {
             <div className="mb-4 overflow-hidden rounded-2xl border-4 border-amber-500 bg-gradient-to-b from-[#1a1a2e] to-[#16213e] shadow-[0_0_30px_rgba(251,191,36,0.3)]">
               {/* Title Bar */}
               <div className="bg-amber-900/60 px-4 py-2 text-center text-sm font-black text-amber-300">
-                🏆 {t("games.farkle.race_to").replace("{score}", WINNING_SCORE.toLocaleString())}
+                <span className="inline-flex items-center gap-1.5"><IconTrophy size={16} /> {t("games.farkle.race_to").replace("{score}", WINNING_SCORE.toLocaleString())}</span>
               </div>
 
               {/* Player Scores */}
@@ -1280,7 +1308,7 @@ export default function FarklePage() {
                     </motion.span>
                     {game.hasHotDice && (
                       <span className="ml-2 rounded-full bg-orange-600/60 px-2 py-0.5 text-xs font-bold text-orange-200">
-                        🔥 {t("games.farkle.hot_dice")}
+                        <span className="inline-flex items-center gap-1"><IconFlame size={12} /> {t("games.farkle.hot_dice")}</span>
                       </span>
                     )}
                   </span>
@@ -1339,7 +1367,7 @@ export default function FarklePage() {
                   <div className="rounded-2xl border-2 border-green-500/60 bg-green-950/30 p-3 shadow-[0_0_15px_rgba(34,197,94,0.2)]">
                     <div className="mb-2 flex items-center justify-between">
                       <span className="text-xs font-bold uppercase text-green-300">
-                        📌 {t("games.farkle.selected_dice")}
+                        <span className="inline-flex items-center gap-1"><IconPin size={14} /> {t("games.farkle.selected_dice")}</span>
                       </span>
                       {selectedIndices.length > 0 && (
                         <button
@@ -1354,7 +1382,7 @@ export default function FarklePage() {
                     {scoredDiceHistory.length > 0 && (
                       <div className="mb-3 border-b border-green-700/30 pb-2">
                         <div className="mb-1.5 text-[10px] font-semibold uppercase text-amber-400/80">
-                          🔒 {t("games.farkle.scored_label")}
+                          <span className="inline-flex items-center gap-1"><IconLock size={12} /> {t("games.farkle.scored_label")}</span>
                         </div>
                         <div className="flex flex-wrap justify-center gap-1.5">
                           {scoredDiceHistory.flat().map((val, i) => (
@@ -1380,7 +1408,7 @@ export default function FarklePage() {
                     {selectedIndices.length > 0 && scoredDiceHistory.length > 0 && (
                       <div className="mb-2 border-t border-amber-700/30 pt-2">
                         <div className="mb-1.5 text-[10px] font-semibold uppercase text-green-400/80">
-                          📋 {t("games.farkle.current_label")}
+                          <span className="inline-flex items-center gap-1"><IconClipboardList size={12} /> {t("games.farkle.current_label")}</span>
                         </div>
                       </div>
                     )}
@@ -1402,8 +1430,8 @@ export default function FarklePage() {
                               selected={true}
                               index={idx}
                             />
-                            <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow">
-                              ✕
+                            <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white shadow">
+                              <IconX size={12} />
                             </div>
                           </motion.button>
                         ))}
@@ -1462,7 +1490,7 @@ export default function FarklePage() {
                     {/* Show message when all dice have been selected */}
                     {game.dice.length > 0 && game.dice.every((_, i) => selectedIndices.includes(i)) && (
                       <p className="w-full text-center text-xs text-green-400 mt-2">
-                        ✅ {t("games.farkle.all_selected")}
+                        <span className="inline-flex items-center gap-1"><IconCheck size={14} /> {t("games.farkle.all_selected")}</span>
                       </p>
                     )}
                   </div>
@@ -1475,7 +1503,7 @@ export default function FarklePage() {
                       className="mt-3 rounded-lg border border-cyan-600/50 bg-cyan-900/20 p-3 text-center"
                     >
                       <p className="text-sm font-bold text-cyan-400">
-                        🎲 {t("games.farkle.roll_start")}
+                        <span className="inline-flex items-center gap-1.5"><IconDice size={16} /> {t("games.farkle.roll_start")}</span>
                       </p>
                     </motion.div>
                   )}
@@ -1488,7 +1516,7 @@ export default function FarklePage() {
                       className="mt-3 rounded-lg border border-red-600/50 bg-red-900/20 p-3 text-center"
                     >
                       <p className="text-sm font-bold text-red-400">
-                        ⚠️ {t("games.farkle.no_scoring")}
+                        <span className="inline-flex items-center gap-1.5"><IconAlertTriangle size={16} /> {t("games.farkle.no_scoring")}</span>
                       </p>
                     </motion.div>
                   )}
@@ -1504,7 +1532,7 @@ export default function FarklePage() {
                         animate={{ opacity: 1, scale: 1 }}
                         className="mt-2 text-center font-bold text-red-400"
                       >
-                        💥 {t("games.farkle.farkle_warning")}
+                        <span className="inline-flex items-center gap-1.5"><IconBomb size={16} /> {t("games.farkle.farkle_warning")}</span>
                       </motion.div>
                     )}
                 </div>
@@ -1550,7 +1578,7 @@ export default function FarklePage() {
                     onClick={rollDice}
                     className="relative z-10 rounded-xl border-b-4 border-cyan-700 bg-cyan-500 px-6 py-3 font-black text-black shadow-[0_0_15px_rgba(34,211,238,0.4)] transition disabled:opacity-30 disabled:cursor-not-allowed"
                   >
-                    🎲 {diceUnknown ? t("games.farkle.roll_dice") : isAllScoringSelected ? t("games.farkle.hot_dice_roll_all") : game.hasHotDice ? t("games.farkle.roll_all_dice") : `${t("games.farkle.reroll_dice")} ${game.dice.length} Dice`}
+                    <span className="inline-flex items-center gap-2"><IconDice size={18} /> {diceUnknown ? t("games.farkle.roll_dice") : isAllScoringSelected ? t("games.farkle.hot_dice_roll_all") : game.hasHotDice ? t("games.farkle.roll_all_dice") : `${t("games.farkle.reroll_dice")} ${game.dice.length} Dice`}</span>
                     {selectedIndices.length > 0 && (
                       <span className="ml-1 text-xs opacity-80">
                         {t("games.farkle.score_preview").replace("{pts}", String(selectedScore))}
@@ -1603,7 +1631,7 @@ export default function FarklePage() {
                         : "border-gray-700 bg-gray-600 shadow-none"
                     }`}
                   >
-                    🏦 {banking ? "..." : `${t("games.farkle.bank_score")} +${game.turnScore + effectiveScore}`}
+                    <span className="inline-flex items-center gap-2"><IconBuildingBank size={18} /> {banking ? "..." : `${t("games.farkle.bank_score")} +${game.turnScore + effectiveScore}`}</span>
                   </motion.button>
                 </div>
               </div>
@@ -1665,7 +1693,7 @@ export default function FarklePage() {
                   transition={{ duration: 0.8, ease: "easeOut" }}
                   className="pointer-events-none fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 text-6xl"
                 >
-                  ✨🎲✨
+                  <span className="inline-flex items-center gap-2"><IconSparkles size={40} /><IconDice size={48} /><IconSparkles size={40} /></span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1712,7 +1740,7 @@ export default function FarklePage() {
                         ease: "easeOut",
                       }}
                     >
-                      {["🪙", "💰", "✨", "💎", "⭐", "🪙", "💰", "✨"][i % 8]}
+                      {[<IconCoins key="a" size={28} className="text-yellow-400" />, <IconCoins key="b" size={28} className="text-amber-300" />, <IconSparkles key="c" size={28} className="text-yellow-200" />, <IconDiamondFilled key="d" size={24} className="text-cyan-300" />, <IconStarFilled key="e" size={28} className="text-yellow-300" />, <IconCoins key="f" size={28} className="text-yellow-400" />, <IconCoins key="g" size={28} className="text-amber-300" />, <IconSparkles key="h" size={28} className="text-yellow-200" />][i % 8]}
                     </motion.div>
                   ))}
                 </motion.div>
@@ -1759,7 +1787,7 @@ export default function FarklePage() {
                         ease: "easeOut",
                       }}
                     >
-                      {["🔥", "🎲", "🔥", "✨", "🔥", "💥", "🔥", "⚡"][i % 8]}
+                      {[<IconFlame key="a" size={32} className="text-orange-400" />, <IconDice key="b" size={32} className="text-amber-200" />, <IconFlame key="c" size={32} className="text-orange-400" />, <IconSparkles key="d" size={32} className="text-amber-200" />, <IconFlame key="e" size={32} className="text-orange-400" />, <IconBomb key="f" size={32} className="text-red-400" />, <IconFlame key="g" size={32} className="text-orange-400" />, <IconBolt key="h" size={32} className="text-cyan-300" />][i % 8]}
                     </motion.div>
                   ))}
                 </motion.div>
@@ -1793,7 +1821,7 @@ export default function FarklePage() {
                       transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
                       className="mb-2 text-7xl"
                     >
-                      {gameOverType === "win" ? "🏆" : "💀"}
+                      {gameOverType === "win" ? <IconTrophy size={64} className="text-amber-400" /> : <IconSkull size={64} className="text-red-400" />}
                     </motion.div>
 
                     <motion.div
@@ -1858,14 +1886,13 @@ export default function FarklePage() {
                     >
                       {gameOverType === "win" ? (
                         <div className="flex justify-center gap-1">
-                          {["✨", "🌟", "✨", "🌟", "✨"].map((s, i) => (
+                          {[0, 1, 2, 3, 4].map((i) => (
                             <motion.span
                               key={i}
-                              className="text-xl"
                               animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }}
                               transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.12 }}
                             >
-                              {s}
+                              <IconSparkles size={20} className="text-amber-300" />
                             </motion.span>
                           ))}
                         </div>

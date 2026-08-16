@@ -13,6 +13,13 @@ import useGamePresence from "../../../../hooks/useGamePresence";
 import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardPlace, playTurnSwitch, playVictory } from "../../../../lib/gameAudio";
 import ReportModal from "../../../../components/ReportModal";
+import {
+  IconTrophy,
+  IconSkull,
+  IconRobot,
+  IconUser,
+  IconFlag,
+} from "@tabler/icons-react";
 
 const UNO_MULTI_SEAT_POSITIONS = [
   { left: "50%", top: "15%" },
@@ -739,7 +746,7 @@ export default function UnoMultiplayerPage() {
                 transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
                 className="mb-2 text-6xl"
               >
-                {endPopup.result === "win" ? "🏆" : "💀"}
+                {endPopup.result === "win" ? <IconTrophy size={56} className="text-amber-400" /> : <IconSkull size={56} className="text-red-400" />}
               </motion.div>
               <p className="text-xs font-black uppercase tracking-[0.45em] text-cyan-200">
                 Neon Flush Table Result
@@ -974,7 +981,7 @@ export default function UnoMultiplayerPage() {
                           <div
                             className={`w-28 h-12 rounded-xl border flex items-center justify-center text-xs font-semibold ${occupant.id === unoMultiMyId ? "bg-yellow-300 text-black border-yellow-100" : "bg-[#08142f] border-[#00e5ff]/35"}`}
                           >
-                            {occupant.type === "ai" ? "🤖" : "👤"} {occupant.name}
+                            <span className="inline-flex items-center gap-1">{occupant.type === "ai" ? <IconRobot size={14} /> : <IconUser size={14} />} {occupant.name}</span>
                           </div>
                         ) : (
                           <button
@@ -1099,7 +1106,7 @@ export default function UnoMultiplayerPage() {
               onClick={() => setShowReportModal(true)}
               className="fixed top-24 right-28 z-50 px-4 py-2 bg-red-500/20 border border-red-500/40 rounded-lg text-xs font-bold text-red-300 hover:bg-red-500/30"
             >
-              🚩 Report
+              <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report</span>
             </button>
           )}
           <button
@@ -1150,7 +1157,7 @@ export default function UnoMultiplayerPage() {
                     className={`w-32 rounded-xl border px-2 py-2 text-center ${unoMultiTurnPlayerId === player.id ? "border-yellow-300 bg-yellow-300/25 shadow-[0_0_20px_rgba(253,224,71,0.7)]" : "bg-[#08142f] border-[#00e5ff]/35 text-white"}`}
                   >
                     <p className="text-xs font-bold truncate">
-                      {player.type === "ai" ? "🤖" : "👤"} {player.name}
+                      <span className="inline-flex items-center gap-1">{player.type === "ai" ? <IconRobot size={14} /> : <IconUser size={14} />} {player.name}</span>
                     </p>
                     <p className="text-[11px] opacity-80">{hand?.count ?? 0} cards</p>
                   </div>
@@ -1183,7 +1190,7 @@ export default function UnoMultiplayerPage() {
             {isPlayerTurn
               ? "Your turn"
               : isAiThinking
-                ? `🤖 ${currentPlayer?.name} is thinking...`
+                ? <span className="inline-flex items-center gap-1"><IconRobot size={14} /> {currentPlayer?.name} is thinking...</span>
                 : "Waiting for player..."}
           </div>
 

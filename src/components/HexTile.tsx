@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback } from "react";
+import { IconStar } from "@tabler/icons-react";
 
 export type TileOwner = "neutral" | "player1" | "player2";
 
@@ -229,7 +230,7 @@ export default function HexTile({
             className="font-black tracking-[0.12em] text-yellow-400 leading-none mb-0.5"
             style={{ fontSize: "clamp(5px, 1vw, 9px)" }}
           >
-            ★ CAP
+            <IconStar size={10} className="inline text-yellow-400" /> CAP
           </span>
         )}
         <span

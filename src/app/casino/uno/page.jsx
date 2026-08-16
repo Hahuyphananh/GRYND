@@ -12,6 +12,19 @@ import { useSocket } from "../../../context/SocketProvider";
 import useGamePresence from "../../../hooks/useGamePresence";
 import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim, fireConfetti } from "../../../lib/animations";
 import { playCardPlace, playCardDraw, playTurnSwitch, playVictory, playDefeat } from "../../../lib/gameAudio";
+import {
+  IconRobot,
+  IconGlobe,
+  IconDeviceGamepad2,
+  IconRefresh,
+  IconTrophy,
+  IconSkull,
+  IconSparkles,
+  IconPalette,
+  IconArrowLeft,
+  IconArrowRight,
+  IconX,
+} from "@tabler/icons-react";
 
 export default function UnoGamePage() {
   const router = useRouter();
@@ -371,8 +384,8 @@ export default function UnoGamePage() {
           setIsPlayerTurn(isMyTurn);
           setMessage(
             isMyTurn
-              ? "✅ Partie trouvée ! Tu commences."
-              : "✅ Partie trouvée ! L'adversaire commence."
+              ? "Partie trouvée ! Tu commences."
+              : "Partie trouvée ! L'adversaire commence."
           );
           posthog?.capture("neon_flush_game_started", {
             mode: "online",
@@ -402,7 +415,7 @@ export default function UnoGamePage() {
         if (waitingPollRef.current) clearInterval(waitingPollRef.current);
         waitingPollRef.current = null;
         setWaitingGameId(null);
-        setMessage("✅ Partie annulée.");
+        setMessage("Partie annulée.");
         if (data.newBalance) setTokens({ balance: data.newBalance });
         fetchAvailableGames();
         socket?.emit("room_event", {
@@ -440,12 +453,11 @@ export default function UnoGamePage() {
         setTopCard(data.data.topCard);
         setTurnHistory([data.data.topCard]);
         const isMyTurn = data.data.turn === (data.data.role || "player2");
-        setIsPlayerTurn(isMyTurn);
-        setMessage(
-          isMyTurn
-            ? "✅ Partie en ligne trouvée ! Tu commences."
-            : "✅ Partie en ligne trouvée ! L'adversaire commence."
-        );
+        setIsPlayerTurn(isMyTurn);          setMessage(
+            isMyTurn
+              ? "Partie en ligne trouvée ! Tu commences."
+              : "Partie en ligne trouvée ! L'adversaire commence."
+          );
         setTokens({ balance: data.data.newBalance });
         posthog?.capture("neon_flush_game_started", { mode: "online", bet_amount: betAmount, game_id: data.data.id });
         fetchAvailableGames();
@@ -485,12 +497,11 @@ export default function UnoGamePage() {
         setTopCard(data.data.topCard);
         setTurnHistory([data.data.topCard]);
         const isMyTurn = data.data.turn === (data.data.role || "player2");
-        setIsPlayerTurn(isMyTurn);
-        setMessage(
-          isMyTurn
-            ? "✅ Partie en ligne trouvée ! Tu commences."
-            : "✅ Partie en ligne trouvée ! L'adversaire commence."
-        );
+        setIsPlayerTurn(isMyTurn);          setMessage(
+            isMyTurn
+              ? "Partie en ligne trouvée ! Tu commences."
+              : "Partie en ligne trouvée ! L'adversaire commence."
+          );
         setTokens({ balance: data.data.newBalance });
         posthog?.capture("neon_flush_game_started", { mode: "online", bet_amount: betAmount, game_id: data.data.id });
         fetchAvailableGames();
@@ -520,7 +531,7 @@ export default function UnoGamePage() {
       });
       const data = await res.json();
       if (data.success && data.waiting) {
-        setMessage("⏳ En attente d'un autre joueur...");
+        setMessage("En attente d'un autre joueur...");
         setGameMode("online");
         setWaitingGameId(data.gameId);
         if (data.newBalance) setTokens({ balance: data.newBalance });
@@ -587,10 +598,9 @@ export default function UnoGamePage() {
       if (!res.ok) {
         alert(data.error || "Impossible d'abandonner");
         return;
-      }
-      setMessage(
-        gameMode === "online" ? "😢 Tu as abandonné la partie." : "😢 Tu as abandonné contre l'IA."
-      );
+      }          setMessage(
+            gameMode === "online" ? "Tu as abandonné la partie." : "Tu as abandonné contre l'IA."
+          );
       setIsPlayerTurn(false);
       if (data.newBalance) setTokens({ balance: data.newBalance });
       openEndPopup("loss", "resigned");
@@ -683,7 +693,7 @@ export default function UnoGamePage() {
                 transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
                 className="mb-2 text-7xl"
               >
-                {endPopup.result === "win" ? "🏆" : "💀"}
+                {endPopup.result === "win" ? <IconTrophy size={64} className="text-amber-400" /> : <IconSkull size={64} className="text-red-400" />}
               </motion.div>
               <motion.h2
                 initial={{ y: 20, opacity: 0 }}
@@ -718,14 +728,13 @@ export default function UnoGamePage() {
                   transition={{ delay: 1.0 }}
                   className="mt-3 flex justify-center gap-1"
                 >
-                  {["✨", "🌟", "✨", "🌟", "✨"].map((s, i) => (
+                  {[0, 1, 2, 3, 4].map((i) => (
                     <motion.span
                       key={i}
-                      className="text-xl"
                       animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }}
                       transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.12 }}
                     >
-                      {s}
+                      <IconSparkles size={20} className="text-amber-300" />
                     </motion.span>
                   ))}
                 </motion.div>
@@ -840,7 +849,7 @@ export default function UnoGamePage() {
                 : "bg-[#f5ff3b]/10 border border-[#f5ff3b]/30 text-[#f5ff3b]"
             }`}
           >
-            🤖 vs IA
+            <span className="inline-flex items-center gap-1.5"><IconRobot size={16} /> vs IA</span>
           </button>
           <button
             onClick={() => setLobbyMode("online")}
@@ -850,13 +859,13 @@ export default function UnoGamePage() {
                 : "bg-[#00e5ff]/10 border border-[#00e5ff]/30 text-[#00e5ff]"
             }`}
           >
-            🌐 1v1 en ligne
+            <span className="inline-flex items-center gap-1.5"><IconGlobe size={16} /> 1v1 en ligne</span>
           </button>
         </div>
 
         {lobbyMode === "ai" ? (
           <div className="mb-6 rounded-lg border-2 border-dashed border-[#f5ff3b]/40 bg-[#f5ff3b]/10 p-3 text-center w-full max-w-xs">
-            <p className="text-xs font-bold uppercase tracking-widest text-[#f5ff3b]">🎮 Free Play</p>
+            <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-[#f5ff3b]"><IconDeviceGamepad2 size={14} /> Free Play</p>
             <p className="mt-1 text-[10px] text-[#f5ff3b]/80">No tokens are wagered. Playing vs AI is free.</p>
           </div>
         ) : (
@@ -912,7 +921,7 @@ export default function UnoGamePage() {
                 disabled={isLoadingAvailableGames}
                 className="bg-[#00e5ff] text-[#001933] px-3 py-1 rounded-md text-sm font-semibold"
               >
-                {isLoadingAvailableGames ? "..." : "🔄 Refresh"}
+                {isLoadingAvailableGames ? "..." : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> Refresh</span>}
               </button>
             </div>
             {isLoadingAvailableGames ? (
@@ -987,7 +996,7 @@ export default function UnoGamePage() {
               transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
               className="inline-block ml-1"
             >
-              🤖
+              <IconRobot size={16} />
             </motion.span>
           )}</>)}
           </div>
@@ -1002,7 +1011,7 @@ export default function UnoGamePage() {
           {showColorPicker && (
             <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
               <div className="bg-white p-8 rounded-2xl shadow-xl text-black flex flex-col items-center gap-6">
-                <h2 className="text-xl font-bold mb-2">Choisis une couleur 🎨</h2>
+                <h2 className="mb-2 flex items-center gap-2 text-xl font-bold">Choisis une couleur <IconPalette size={20} /></h2>
                 <div className="grid grid-cols-2 gap-4">
                   {[
                     { color: "red", label: "Magenta" },
@@ -1041,7 +1050,7 @@ export default function UnoGamePage() {
               disabled={turnHistory.length <= 1 || historyIndex === 0}
               className="text-3xl font-bold text-yellow-300 disabled:opacity-30"
             >
-              ⬅️
+              <IconArrowLeft size={28} />
             </button>
             <div className="flex flex-col items-center">
               Carte actuelle :
@@ -1064,7 +1073,7 @@ export default function UnoGamePage() {
               disabled={historyIndex === null}
               className="text-3xl font-bold text-yellow-300 disabled:opacity-30"
             >
-              ➡️
+              <IconArrowRight size={28} />
             </button>
           </div>
 
@@ -1094,7 +1103,7 @@ export default function UnoGamePage() {
                 disabled={isResigning}
                 className="mt-3 px-6 py-2 rounded-full font-bold text-white bg-red-600 hover:bg-red-500"
               >
-                {isResigning ? "Abandon..." : "❌ Abandonner"}
+                {isResigning ? "Abandon..." : <span className="inline-flex items-center gap-1.5"><IconX size={16} /> Abandonner</span>}
               </button>
             )}
             <button

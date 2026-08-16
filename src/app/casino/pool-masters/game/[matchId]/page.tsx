@@ -14,6 +14,13 @@ import { Ball, PlayerTurn, ShotLifecycle, ShotMeta, Team } from "../../../../../
 import { useUser } from "@clerk/nextjs";
 import ReportModal from "../../../../../components/ReportModal";
 import { celebrateWin, gameOverModal } from "../../../../../lib/animations";
+import {
+  IconFlag,
+  IconTrophy,
+  IconMoodSad,
+  IconNotebook,
+  IconTarget,
+} from "@tabler/icons-react";
 
 type PoolLivePayload = {
   userId?: string;
@@ -270,7 +277,7 @@ export default function Page() {
   const gameOverMessage = winner
     ? {
         won: winner === owner,
-        message: winner === owner ? "You Win! 🏆" : `${oppName} Wins!`,
+        message: winner === owner ? "You Win!" : `${oppName} Wins!`,
       }
     : null;
 
@@ -555,7 +562,7 @@ export default function Page() {
         ...prev,
         {
           id: notificationIdRef.current++,
-          message: res.winner === owner ? "You win! 🏆" : `${oppName} wins!`,
+          message: res.winner === owner ? "You win!" : `${oppName} wins!`,
           type: "win" as const,
         },
       ]);
@@ -1281,7 +1288,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
                   disabled={resigning}
                   className="rounded-lg border border-red-500/40 bg-red-900/30 px-5 py-1.5 text-sm font-semibold text-red-300 transition-all hover:bg-red-900/50 hover:text-red-200"
                 >
-                  {resigning ? "Resigning..." : "🏳️ Resign"}
+                  {resigning ? "Resigning..." : <span className="inline-flex items-center gap-1.5"><IconFlag size={14} /> Resign</span>}
                 </button>
               ) : (
                 <div className="flex items-center gap-2">
@@ -1307,7 +1314,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
                 onClick={() => setShowReportModal(true)}
                 className="text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
               >
-                🚩 Report Player
+                <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report Player</span>
               </button>
             )}
           </div>
@@ -1346,7 +1353,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
                   transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
                   className="text-6xl"
                 >
-                  {gameOverMessage.won ? "🏆" : "😞"}
+                  {gameOverMessage.won ? <IconTrophy size={56} className="text-amber-400" /> : <IconMoodSad size={56} className="text-red-400" />}
                 </motion.div>
 
                 {/* Title */}
@@ -1408,7 +1415,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
             onClick={() => setShowHistory((p) => !p)}
             className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/70 transition-colors hover:bg-white/10"
           >
-            <span>📋 Shot History ({shotHistory.length})</span>
+            <span className="inline-flex items-center gap-1.5"><IconNotebook size={14} /> Shot History ({shotHistory.length})</span>
             <span className="text-xs">{showHistory ? "▲ Hide" : "▼ Show"}</span>
           </button>
           {showHistory && (
@@ -1425,7 +1432,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
                     const foulStr = entry.foul
                       ? ` — FOUL${entry.foulMessage ? `: ${entry.foulMessage.replace(/^Foul: /, "")}` : ""}` + (entry.ballInHand ? ", ball in hand" : "")
                       : "";
-                    const winStr = entry.winner ? " 🏆" : "";
+                    const winStr = entry.winner ? " WIN" : "";
                     return (
                       <div
                         key={i}
@@ -1577,7 +1584,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
             <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-gradient-to-b from-black/60 via-transparent to-black/60 pointer-events-none">
               <div className="absolute top-6 left-1/2 -translate-x-1/2 animate-pulse rounded-full border border-yellow-400/40 bg-yellow-500/10 px-6 py-2 backdrop-blur-md">
                 <span className="text-sm font-bold text-yellow-300 drop-shadow-lg">
-                  🎯 {oppName} is aiming...
+                  <span className="inline-flex items-center gap-1.5"><IconTarget size={14} /> {oppName} is aiming...</span>
                 </span>
               </div>
               {/* Crosshair corners */}

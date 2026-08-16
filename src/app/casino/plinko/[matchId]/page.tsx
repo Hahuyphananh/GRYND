@@ -38,6 +38,7 @@ import { motion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
+import { IconLock, IconFlag } from "@tabler/icons-react";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
   PLINKO_PVP_LOBBY_ROOM,
@@ -781,7 +782,7 @@ function CommitPanel({
     theme === "cyan"
       ? "border-cyan-300/30 shadow-[0_0_30px_rgba(0,229,255,0.1)]"
       : "border-fuchsia-300/30 shadow-[0_0_30px_rgba(255,79,216,0.1)]";
-  // isOpponent=true: blur the panel + render a "🔒 Opponent
+  // isOpponent=true: blur the panel + render a " Opponent
   // choosing" overlay so the viewer can't infer their live inputs
   // before commit. The Ready button is hidden when blurred.
   const blurClass = isOpponent ? "blur-[3px] pointer-events-none select-none" : "";
@@ -912,8 +913,8 @@ function CommitPanel({
         </button>
 
         {/* Overlay shown when this panel belongs to the opponent.
-            Sits above the blurred content with a clear "🔒
-            Opponent choosing…" hint so the viewer knows the
+            Sits above the blurred content with a clear
+            "Opponent choosing…" hint so the viewer knows the
             sliders are intentionally hidden, not broken. */}
         {isOpponent && (
           <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-[#000a14]/55 backdrop-blur-[1px] pointer-events-none">
@@ -922,7 +923,7 @@ function CommitPanel({
                 ? "bg-cyan-500/15 border-cyan-300/40 text-cyan-100"
                 : "bg-fuchsia-500/15 border-fuchsia-300/40 text-fuchsia-100"
             }`}>
-              <span>🔒</span>
+              <IconLock size={14} />
               <span>Opponent choosing…</span>
             </div>
           </div>
@@ -2405,7 +2406,7 @@ export default function PlinkoPvpMatchPage({
                 onClick={() => setShowReportModal(true)}
                 className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
               >
-                🚩 Report
+                <IconFlag size={12} /> Report
               </button>
             )}
           </div>

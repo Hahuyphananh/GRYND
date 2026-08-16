@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { IconBomb, IconCircleCheck, IconConfetti, IconTarget, IconTrophy } from "@tabler/icons-react";
 
 /**
  * RoundResultModal — shown when a round ends. Displays the player's own
@@ -71,14 +72,15 @@ export default function RoundResultModal({
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#FFD700] to-transparent" />
 
         <h2 className="text-2xl font-black text-[#f5ff3b] text-center">
-          🎯 Round {roundNumber} Results
+          <IconTarget size={24} className="mb-1 mr-2 inline" /> Round {roundNumber} Results
         </h2>
 
         {/* ── Winner banner ─────────────────────────────────────────── */}
         {winner ? (
           <div className="mt-4 rounded-2xl border border-[#FFD700]/40 bg-[#FFD700]/10 p-4 text-center">
-            <p className="text-sm text-[#9dd8ff]">
-              🏆 <span className="font-black text-[#FFD700]">{winner}{youWon ? " (You!)" : ""}</span>{" "}
+            <p className="inline-flex items-center gap-1.5 text-sm text-[#9dd8ff]">
+              <IconTrophy size={16} className="text-[#FFD700]" />
+              <span className="font-black text-[#FFD700]">{winner}{youWon ? " (You!)" : ""}</span>{" "}
               wins the pot
             </p>
             <p className="text-xs text-[#9dd8ff]/80 mt-1">
@@ -95,7 +97,9 @@ export default function RoundResultModal({
           </div>
         ) : (
           <div className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-center">
-            <p className="text-2xl font-black text-red-400">💥 No winners!</p>
+            <p className="inline-flex items-center justify-center gap-2 text-2xl font-black text-red-400">
+              <IconBomb size={24} /> No winners!
+            </p>
             <p className="text-sm text-[#9dd8ff] mt-1">
               Everyone busted — ${carryOver.toLocaleString()} carries over to the next round.
             </p>
@@ -109,7 +113,7 @@ export default function RoundResultModal({
             {youCashedOut ? (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-[#d8fbff] font-bold">
-                  ✅ Cashed out at <span className="text-[#00ffa6]">{youCashout.toFixed(2)}x</span>
+                  <IconCircleCheck size={16} className="mr-1 inline text-[#00ffa6]" /> Cashed out at <span className="text-[#00ffa6]">{youCashout.toFixed(2)}x</span>
                 </span>
                 <span className={`text-lg font-black ${youWon ? "text-[#00ffa6]" : "text-red-400"}`}>
                   {youWon ? `+$${net.toLocaleString()} net` : `−$${wager.toLocaleString()}`}
@@ -117,7 +121,9 @@ export default function RoundResultModal({
               </div>
             ) : youBusted ? (
               <div className="flex items-center justify-between">
-                <span className="text-sm text-[#d8fbff] font-bold">💥 You busted</span>
+                <span className="inline-flex items-center gap-1.5 text-sm text-[#d8fbff] font-bold">
+                  <IconBomb size={15} className="text-red-400" /> You busted
+                </span>
                 <span className="text-lg font-black text-red-400">−${wager.toLocaleString()}</span>
               </div>
             ) : (
@@ -126,7 +132,7 @@ export default function RoundResultModal({
             {youWon && (
               <p className="text-xs text-[#00ffa6]/80 mt-2">
                 Pot ${(payout + fee).toLocaleString()} minus your ${wager.toLocaleString()} wager ={" "}
-                <strong>+${net.toLocaleString()}</strong> profit 🎉
+                <strong>+${net.toLocaleString()}</strong> profit <IconConfetti size={14} className="mb-0.5 ml-0.5 inline text-[#00ffa6]" />
               </p>
             )}
             {!youWon && youCashedOut && (

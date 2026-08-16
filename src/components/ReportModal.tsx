@@ -1,6 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import {
+  IconCircleCheck,
+  IconEdit,
+  IconIdBadge,
+  IconMoodAngry,
+  IconPhoto,
+  IconRobot,
+} from "@tabler/icons-react";
 
 export type ReportReason =
   | "toxic_player"
@@ -17,36 +25,36 @@ interface ReportModalProps {
   gameType: string;
 }
 
-const REASONS: { value: ReportReason; label: string; description: string; icon: string }[] = [
+const REASONS: { value: ReportReason; label: string; description: string; icon: ReactNode }[] = [
   {
     value: "toxic_player",
     label: "Toxic Player",
     description: "Harassment, abusive chat, or unsportsmanlike behavior",
-    icon: "😡",
+    icon: <IconMoodAngry size={22} />,
   },
   {
     value: "hacker",
     label: "Hacker / Cheater",
     description: "Suspicious gameplay, exploits, or unfair advantages",
-    icon: "🤖",
+    icon: <IconRobot size={22} />,
   },
   {
     value: "inappropriate_name",
     label: "Inappropriate Name",
     description: "Offensive, hateful, or inappropriate username",
-    icon: "📛",
+    icon: <IconIdBadge size={22} />,
   },
   {
     value: "inappropriate_picture",
     label: "Inappropriate Picture",
     description: "Offensive, explicit, or inappropriate profile picture",
-    icon: "🖼️",
+    icon: <IconPhoto size={22} />,
   },
   {
     value: "other",
     label: "Other",
     description: "Any other issue — please provide details",
-    icon: "📝",
+    icon: <IconEdit size={22} />,
   },
 ];
 
@@ -128,7 +136,7 @@ export default function ReportModal({
           /* ── Success state ── */
           <div className="text-center py-4">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20">
-              <span className="text-3xl">✅</span>
+              <IconCircleCheck size={30} className="text-emerald-400" />
             </div>
             <h2 className="text-xl font-bold text-emerald-400 mb-2">Report Submitted</h2>
             <p className="text-sm text-slate-400 mb-6">

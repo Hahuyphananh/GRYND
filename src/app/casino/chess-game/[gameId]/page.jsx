@@ -10,6 +10,12 @@ import ReportModal from "../../../../components/ReportModal";
 import { celebrateWin, turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat } from "../../../../lib/gameAudio";
 import { usePostHog } from "posthog-js/react";
+import {
+  IconAlertTriangle,
+  IconBolt,
+  IconHeartHandshake,
+  IconFlag,
+} from "@tabler/icons-react";
 
 const Chessboard = dynamic(
   async () => {
@@ -715,7 +721,7 @@ export default function ChessGamePage() {
             exit={{ opacity: 0, y: -30 }}
             className="fixed left-1/2 top-24 z-40 -translate-x-1/2 rounded-xl border-2 border-red-500 bg-red-900/80 px-6 py-2 shadow-[0_0_24px_rgba(255,0,0,0.4)]"
           >
-            <span className="text-lg font-bold text-red-300 tracking-wider">⚠ CHECK!</span>
+            <span className="inline-flex items-center gap-2 text-lg font-bold text-red-300 tracking-wider"><IconAlertTriangle size={20} /> CHECK!</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -853,7 +859,7 @@ export default function ChessGamePage() {
                 {premove && !isSpectator && (
                   <span className="ml-2 inline-flex items-center gap-1 text-blue-400 text-sm">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                    ⚡ Pre-move queued
+                    <IconBolt size={12} /> Pre-move queued
                   </span>
                 )}
               </div>
@@ -925,7 +931,7 @@ export default function ChessGamePage() {
                     disabled={gameData?.status !== "in_progress" || drawOfferReceived}
                     className="mt-3 w-full bg-yellow-600 hover:bg-yellow-500 py-2 rounded-xl font-bold transition disabled:opacity-40 text-sm"
                   >
-                    🤝 Offer Draw
+                    <span className="inline-flex items-center gap-2"><IconHeartHandshake size={16} /> Offer Draw</span>
                   </button>
                 )}
 
@@ -982,7 +988,7 @@ export default function ChessGamePage() {
                 onClick={() => setShowReportModal(true)}
                 className="mt-2 w-full text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
               >
-                🚩 Report Player
+                <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report Player</span>
               </button>
             )}
 

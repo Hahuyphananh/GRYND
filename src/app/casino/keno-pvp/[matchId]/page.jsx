@@ -34,6 +34,20 @@ import {
 } from "../../../../lib/keno-pvp/constants";
 import { ballSchedule, computeRoundStats } from "../../../../lib/keno-pvp/engine";
 import { KENO_MULTIPLIER_TABLE } from "../../../../lib/kenoMultipliers";
+import {
+  IconCoins,
+  IconHeartHandshake,
+  IconTrophy,
+  IconSkull,
+  IconCircleX,
+  IconNotebook,
+  IconX,
+  IconTarget,
+  IconVolume,
+  IconRefresh,
+  IconClock,
+} from "@tabler/icons-react";
+import { PoolBallIcon } from "../../../../components/icons/CustomIcons";
 
 // Flash feedback shown after a tap on the board: green for a catch
 // inside the glow window, red for a tap that landed too late.
@@ -512,7 +526,7 @@ export default function KenoPvpMatchPage({ params }) {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#00ffa6]">
-                🎱 Keno Catch Duel
+                <span className="inline-flex items-center gap-2"><PoolBallIcon size={28} className="text-[#00e5ff]" /> Keno Catch Duel</span>
               </h1>
               <button
                 onClick={() => setShowRules(true)}
@@ -524,7 +538,7 @@ export default function KenoPvpMatchPage({ params }) {
               </button>
             </div>
             <p className="text-xs text-white/50 mt-1">
-              First to {POINTS_TO_WIN} points · stake {match.stakeAmount.toLocaleString()} 🪙
+              First to {POINTS_TO_WIN} points · stake {match.stakeAmount.toLocaleString()} <IconCoins size={12} className="inline" />
             </p>
           </div>
           <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 px-4 py-2 text-sm shadow-[0_0_14px_rgba(0,229,255,0.15)] min-w-[210px]">
@@ -579,7 +593,7 @@ export default function KenoPvpMatchPage({ params }) {
               {roundBanner.winnerIsYou === null
                 ? "draw — no round win."
                 : roundBanner.winnerIsYou
-                  ? "you won it! 🎉"
+                  ? "you won it!"
                   : "opponent won it."}
             </motion.div>
           )}
@@ -599,10 +613,10 @@ export default function KenoPvpMatchPage({ params }) {
         {/* ── WAITING ─────────────────────────────────────────────── */}
         {isWaiting && (
           <div className="rounded-2xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-10 text-center">
-            <p className="text-4xl mb-3 animate-pulse">🎱</p>
+            <p className="mb-3 animate-pulse"><PoolBallIcon size={40} className="text-[#00e5ff]" /></p>
             <h2 className="text-xl font-bold mb-2">Waiting for an opponent…</h2>
             <p className="text-sm text-white/60 mb-6">
-              Your {match.stakeAmount.toLocaleString()} 🪙 stake is escrowed. Someone with the same
+              Your {match.stakeAmount.toLocaleString()} <IconCoins size={12} className="inline" /> stake is escrowed. Someone with the same
               stake will join shortly — or you can cancel.
             </p>
             {match.viewerCanCancel && (
@@ -619,7 +633,7 @@ export default function KenoPvpMatchPage({ params }) {
         {/* ── READY ───────────────────────────────────────────────── */}
         {isReady && (
           <div className="rounded-2xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-10 text-center">
-            <h2 className="text-2xl font-bold mb-2">Match found! 🤝</h2>
+            <h2 className="mb-2 flex items-center justify-center gap-2 text-2xl font-bold">Match found! <IconHeartHandshake size={24} /></h2>
             <p className="text-sm text-white/60">
               {p1Name} vs {p2Name} — round 1 starts in a moment. Tap each tile while it glows!
             </p>
@@ -685,7 +699,7 @@ export default function KenoPvpMatchPage({ params }) {
             <div className="rounded-2xl border border-[#00e5ff]/35 bg-[#050d1f]/70 p-4 sm:p-5">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-[#7cefff]">
-                  🎱 Keno Board 1–{KENO_POOL_SIZE}
+                  <span className="inline-flex items-center gap-1.5"><PoolBallIcon size={16} className="text-[#00e5ff]" /> Keno Board 1–{KENO_POOL_SIZE}</span>
                 </h3>
                 <span className="text-xs text-white/50">
                   {drawnNumbers.size} / {BALL_COUNT} drawn
@@ -838,7 +852,7 @@ export default function KenoPvpMatchPage({ params }) {
         {/* ── OVERTIME ───────────────────────────────────────────── */}
         {isOvertime && (
           <div className="rounded-2xl border border-red-400/50 bg-[#1a0505]/85 p-8 text-center shadow-[0_0_30px_rgba(255,70,70,0.25)]">
-            <p className="text-4xl mb-2 animate-pulse">⏱️</p>
+            <p className="mb-2 animate-pulse"><IconClock size={40} className="text-red-400" /></p>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-wide text-red-300">
               OVERTIME
             </h2>
@@ -872,7 +886,7 @@ export default function KenoPvpMatchPage({ params }) {
         {/* ── CANCELLED ───────────────────────────────────────────── */}
         {isCancelled && (
           <div className="rounded-2xl border border-red-400/30 bg-[#0b224f]/85 p-10 text-center">
-            <p className="text-3xl mb-3">🚫</p>
+            <p className="mb-3"><IconCircleX size={36} className="text-red-400" /></p>
             <h2 className="text-xl font-bold mb-2">Match cancelled</h2>
             <p className="text-sm text-white/60 mb-6">Your stake was refunded.</p>
             <button
@@ -930,17 +944,17 @@ function RulesModal({ onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-extrabold text-[#7cefff]">📖 How to play</h2>
+          <h2 className="flex items-center gap-2 text-xl font-extrabold text-[#7cefff]"><IconNotebook size={20} /> How to play</h2>
           <button
             onClick={onClose}
             className="h-8 w-8 rounded-lg border border-white/15 text-white/60 transition hover:border-white/40 hover:text-white"
             aria-label="Close rules"
           >
-            ✕
+            <IconX size={16} />
           </button>
         </div>
 
-        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-[#00ffa6]">🎯 Catch the glowing tile</h3>
+        <h3 className="mb-2 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-[#00ffa6]"><IconTarget size={15} /> Catch the glowing tile</h3>
         <ul className="mb-5 space-y-1.5 text-xs text-white/70">
           <li>
             Each round, <span className="font-semibold text-white">10 tiles</span> from the 1–40 board
@@ -957,10 +971,10 @@ function RulesModal({ onClose }) {
             points.
           </li>
           <li>Catching is binary: you're in the 0.8s window or you're not.</li>
-          <li>🔊 A soft tick sounds the moment each tile lights up.</li>
+          <li className="flex items-center gap-1"><IconVolume size={12} /> A soft tick sounds the moment each tile lights up.</li>
         </ul>
 
-        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-[#00ffa6]">🪙 Points — keno multiplier</h3>
+        <h3 className="mb-2 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-[#00ffa6]"><IconCoins size={15} /> Points — keno multiplier</h3>
         <div className="mb-2 grid grid-cols-5 gap-1.5">
           {POINTS_TABLE.map(([caught, pts]) => (
             <div
@@ -977,7 +991,7 @@ function RulesModal({ onClose }) {
           the last tiles are worth the most.
         </p>
 
-        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-[#00ffa6]">🏆 Winning the match</h3>
+        <h3 className="mb-2 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-[#00ffa6]"><IconTrophy size={15} /> Winning the match</h3>
         <ul className="space-y-1.5 text-xs text-white/70">
           <li>
             <span className="font-semibold text-white">First to {POINTS_TO_WIN} points</span> takes the
@@ -987,12 +1001,12 @@ function RulesModal({ onClose }) {
           <li>Both cross {POINTS_TO_WIN} in the same round? The higher total wins. Exact tie → full
             refund, no rake.</li>
           <li>
-            ⏱️ <span className="font-semibold text-white">3-minute match clock</span> — if nobody reaches{" "}
+            <IconClock size={12} className="inline" /> <span className="font-semibold text-white">3-minute match clock</span> — if nobody reaches{" "}
             {POINTS_TO_WIN} pts in ~3 minutes, a 30-second OVERTIME countdown starts; the player
             with the most tiles wins when it ends.
           </li>
-          <li>🤝 An overtime tie is a draw: both players are refunded 95% of their stake (5% rake
-            each).</li>
+          <li className="flex items-start gap-1"><IconHeartHandshake size={12} className="mt-0.5 shrink-0" /> <span>An overtime tie is a draw: both players are refunded 95% of their stake (5% rake
+            each).</span></li>
           <li>Winner takes their stake + 90% of the loser's stake (house keeps 10%).</li>
         </ul>
       </motion.div>
@@ -1024,7 +1038,7 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
       <div className="w-full max-w-lg rounded-2xl border border-[#00e5ff]/40 bg-[#050d1f]/95 p-6 shadow-[0_0_40px_rgba(0,229,255,0.25)] max-h-[92vh] overflow-y-auto">
         <div className="text-center mb-4">
-          <p className="text-5xl mb-2">{drew ? "🤝" : iWon ? "🏆" : "💀"}</p>
+          <p className="mb-2 flex justify-center">{drew ? <IconHeartHandshake size={48} className="text-white/70" /> : iWon ? <IconTrophy size={48} className="text-[#00ffa6]" /> : <IconSkull size={48} className="text-red-400" />}</p>
           <h2 className={`text-2xl sm:text-3xl font-extrabold ${
             drew ? "text-white/70" : iWon ? "text-[#00ffa6]" : "text-red-400"
           }`}>
@@ -1041,9 +1055,9 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
           <p className={`mt-2 text-xl font-black ${drew ? (tieFee > 0 ? "text-amber-300" : "text-white/60") : iWon ? "text-[#00ffa6]" : "text-red-400"}`}>
             {drew
               ? tieFee > 0
-                ? `Tie — 95% refunded (${net < 0 ? "−" : "+"}${Math.abs(net).toLocaleString()} 🪙)`
+                ? <span className="inline-flex items-center gap-1">Tie — 95% refunded ({net < 0 ? "−" : "+"}{Math.abs(net).toLocaleString()} <IconCoins size={14} />)</span>
                 : "Stake refunded"
-              : `${iWon ? "+" : "−"}${Math.abs(net).toLocaleString()} 🪙`}
+              : <span className="inline-flex items-center gap-1">{iWon ? "+" : "−"}{Math.abs(net).toLocaleString()} <IconCoins size={14} /></span>}
           </p>
         </div>
 
@@ -1100,7 +1114,7 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
             onClick={() => router.push("/casino/keno")}
             className="flex-1 rounded-lg bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933] py-3 font-bold hover:shadow-[0_0_20px_rgba(0,255,166,0.6)] transition"
           >
-            🔄 New Match
+            <span className="inline-flex items-center gap-1.5"><IconRefresh size={16} /> New Match</span>
           </button>
         </div>
       </div>

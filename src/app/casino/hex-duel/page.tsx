@@ -15,6 +15,26 @@ import HexActionPanel, { type ActionType } from "../../../components/HexActionPa
 import HexActionLog from "../../../components/HexActionLog";
 import NavigationBar from "../../../components/navigation-bar";
 import ReportModal from "../../../components/ReportModal";
+import {
+  IconDeviceGamepad2,
+  IconGlobe,
+  IconCoins,
+  IconAlertTriangle,
+  IconSkull,
+  IconCrown,
+  IconTarget,
+  IconTrophy,
+  IconRobot,
+  IconBolt,
+  IconMoodSad,
+  IconNotebook,
+  IconVolume,
+  IconVolumeOff,
+  IconFlag,
+  IconClock,
+  IconHourglass,
+  IconStar,
+} from "@tabler/icons-react";
 
 const ATTACK_COST = 1;
 const DISPLACE_COST = 1;
@@ -244,7 +264,7 @@ function WagerModal({
           </div>
         )}        {!playForFun && (queueMode === "ai" ? (
           <div className="mb-4 rounded-lg border border-cyan-400/40 bg-cyan-500/15 p-3 text-center">
-            <p className="text-[10px] text-cyan-300 uppercase tracking-widest font-bold mb-1">🎮 Free Play</p>
+            <p className="mb-1 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-cyan-300"><IconDeviceGamepad2 size={13} /> Free Play</p>
             <p className="text-[10px] text-cyan-100/70">No tokens are wagered. Playing vs AI is free.</p>
           </div>
         ) : (
@@ -310,11 +330,15 @@ function WagerModal({
               <span className="inline-block w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
               Processing...
             </span>
-          ) : queueMode === "multiplayer"
-            ? (playForFun ? "🌐 Create Multiplayer (Fun)" : `🌐 Wager ${wager} Tokens (Multiplayer)`)
-            : queueMode === "ai"
-              ? "🎮 Free Play vs AI"
-              : (playForFun ? "🎮 Play for Fun" : `💰 Wager ${wager} Tokens vs AI`)}
+          ) : (
+            <span className="inline-flex items-center gap-2">
+              {queueMode === "multiplayer"
+                ? <><IconGlobe size={16} /> {playForFun ? "Create Multiplayer (Fun)" : `Wager ${wager} Tokens (Multiplayer)`}</>
+                : queueMode === "ai"
+                  ? <><IconDeviceGamepad2 size={16} /> Free Play vs AI</>
+                  : <>{playForFun ? <><IconDeviceGamepad2 size={16} /> Play for Fun</> : <><IconCoins size={16} /> Wager {wager} Tokens vs AI</>}</>}
+            </span>
+          )}
         </button>
 
         <p className="mt-3 text-center text-[9px] text-slate-600">
@@ -347,7 +371,7 @@ function ResignConfirmation({
         style={{ animation: "victoryPopIn 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards" }}
       >
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 border border-red-500/20">
-          <span className="text-3xl">⚠️</span>
+          <IconAlertTriangle size={28} className="text-red-400" />
         </div>
         <h2 className="mb-2 text-xl font-black text-red-400">Resign?</h2>
         <p className="mb-1 text-sm text-slate-400">
@@ -412,7 +436,7 @@ function LoseModal({
             boxShadow: `0 0 30px ${winnerColor}44`,
           }}
         >
-          <span className="text-4xl" style={{ filter: `drop-shadow(0 0 8px ${winnerColor}66)` }}>💀</span>
+          <IconSkull size={36} className="text-red-400" style={{ filter: `drop-shadow(0 0 8px ${winnerColor}66)` }} />
         </div>
 
         <h2 className="mb-1 text-2xl font-black tracking-wider uppercase" style={{ color: winnerColor }}>
@@ -531,13 +555,12 @@ function VictoryModal({
             ["--glow-color" as any]: `${winnerColor}44`,
           }}
         >
-          <span className="text-4xl" style={{ filter: `drop-shadow(0 0 8px ${winnerColor}88)` }}>👑</span>
+          <IconCrown size={36} className="text-yellow-400" style={{ filter: `drop-shadow(0 0 8px ${winnerColor}88)` }} />
         </div>
 
         <h2 className="mb-1 text-2xl font-black tracking-wider uppercase" style={{ color: winnerColor }}>
           {winnerLabel} Wins!
-        </h2>
-        <p className="mb-4 text-sm text-slate-400">Enemy capital conquered! 🎯</p>
+        </h2>          <p className="mb-4 flex items-center justify-center gap-1.5 text-sm text-slate-400">Enemy capital conquered! <IconTarget size={14} /></p>
 
         {/* Stats grid */}
         <div className="mb-4 grid grid-cols-2 gap-3 rounded-lg bg-white/[0.04] p-4">
@@ -672,11 +695,11 @@ function PlayerCard({
               isClockCritical ? "text-red-400 animate-pulse" : isClockUrgent ? "text-yellow-300" : "text-slate-400"
             }`}
           >
-            ⏱ {clockDisplay}
+            <IconClock size={13} className="inline" /> {clockDisplay}
           </span>
           {isWinner && (
             <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-yellow-400/30 text-yellow-200 border border-yellow-400/60 animate-pulse">
-              🏆 WINNER
+              <span className="inline-flex items-center gap-1"><IconTrophy size={12} /> WINNER</span>
             </span>
           )}
           {!isWinner && isActive && (
@@ -691,7 +714,7 @@ function PlayerCard({
       {isAI && (
         <div className="mb-3 -mt-1">
           <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40">
-            🤖 AI
+            <span className="inline-flex items-center gap-1"><IconRobot size={12} /> AI</span>
           </span>
         </div>
       )}
@@ -762,12 +785,12 @@ function ConnectionBanner({ status, onReconnect }: { status: ConnectionStatus; o
     >
       <span className="inline-block w-2.5 h-2.5 rounded-full bg-white animate-ping" />
       {isOpponent ? (
-        <>⚠️ Opponent disconnected — you win!</>
+        <><IconAlertTriangle size={16} /> Opponent disconnected — you win!</>
       ) : isOpponentReconnecting ? (
-        <>⏳ Opponent disconnected — holding the match, waiting to reconnect…</>
+        <><IconHourglass size={16} /> Opponent disconnected — holding the match, waiting to reconnect…</>
       ) : (
         <>
-          ⚠️ Connection lost
+          <IconAlertTriangle size={16} /> Connection lost
           {onReconnect && (
             <button
               onClick={onReconnect}
@@ -890,7 +913,7 @@ function StatusBar({
       {isGameOver && (
         <div className="flex items-center justify-center gap-2">
           <span className="text-sm font-bold uppercase tracking-[0.25em] text-yellow-400 animate-pulse">
-            🏆 GAME OVER 🏆
+            <span className="inline-flex items-center gap-2"><IconTrophy size={16} /> GAME OVER <IconTrophy size={16} /></span>
           </span>
         </div>
       )}
@@ -917,7 +940,7 @@ function StatusBar({
               : "border border-white/15 text-slate-400 hover:text-white hover:border-white/30 hover:bg-white/5"
           }`}
         >
-          {currentAP < ATTACK_COST ? "⚡ End Turn" : "End Turn"}
+          {currentAP < ATTACK_COST ? <span className="inline-flex items-center gap-1"><IconBolt size={14} /> End Turn</span> : "End Turn"}
         </button>
       )}
     </div>
@@ -2682,7 +2705,7 @@ export default function HexDuelPage() {
                 <>
                   <div className="mb-6">
                     <span className="inline-block w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center">
-                      <span className="text-3xl">😞</span>
+                      <IconMoodSad size={28} className="text-red-400" />
                     </span>
                   </div>
                   <h2 className="text-xl font-black text-red-400 mb-2">
@@ -2770,7 +2793,7 @@ export default function HexDuelPage() {
               </div>
             )}
             {showGame && gameMode === "for-fun" && (
-              <p className="mt-2 text-[10px] text-purple-400/70 font-medium">🎮 Play-for-Fun mode — no real tokens</p>
+              <p className="mt-2 flex items-center justify-center gap-1.5 text-[10px] font-medium text-purple-400/70"><IconDeviceGamepad2 size={12} /> Play-for-Fun mode — no real tokens</p>
             )}
 
             {/* History link */}
@@ -2779,7 +2802,7 @@ export default function HexDuelPage() {
                 onClick={() => router.push("/casino/hex-duel/history")}
                 className="mt-3 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[11px] font-medium border border-white/10 text-slate-400 hover:text-white hover:border-white/20 hover:bg-white/5 transition-all duration-200"
               >
-                📋 Match History
+                <span className="inline-flex items-center gap-1.5"><IconNotebook size={14} /> Match History</span>
               </button>
             )}
           </div>
@@ -2799,7 +2822,7 @@ export default function HexDuelPage() {
                     : "border-white/15 text-slate-400 hover:text-white hover:border-white/30 hover:bg-white/5"
                 }`}
               >
-                {aiEnabled ? "🤖 AI: ON" : "🤖 VS AI"}
+                <span className="inline-flex items-center gap-1.5">{aiEnabled ? <><IconRobot size={14} /> AI: ON</> : <><IconRobot size={14} /> VS AI</>}</span>
               </button>
 
               {aiEnabled && (
@@ -2820,7 +2843,7 @@ export default function HexDuelPage() {
               )}
 
               {aiEnabled && aiAction && aiThinking && (
-                <span className="text-[10px] text-purple-400/70 animate-pulse">🤖 AI analyzing...</span>
+                <span className="inline-flex items-center gap-1 text-[10px] text-purple-400/70 animate-pulse"><IconRobot size={12} /> AI analyzing...</span>
               )}
 
                       {/* Sound toggle */}
@@ -2831,7 +2854,7 @@ export default function HexDuelPage() {
                 }`}
                 title={audio.enabled ? "Mute sounds" : "Unmute sounds"}
               >
-                {audio.enabled ? "🔊" : "🔇"}
+                {audio.enabled ? <IconVolume size={16} /> : <IconVolumeOff size={16} />}
               </button>
 
 
@@ -3056,7 +3079,7 @@ export default function HexDuelPage() {
                   onClick={() => setShowReportModal(true)}
                   className="ml-4 text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
                 >
-                  🚩 Report Player
+                  <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report Player</span>
                 </button>
               )}
             </div>
@@ -3066,7 +3089,7 @@ export default function HexDuelPage() {
           <div className="mt-8 rounded-xl border border-white/[0.04] bg-[#050a18] p-4 text-center">
             <p className="text-[10px] text-slate-600 uppercase tracking-[0.25em] mb-2">▦ How to Play — Territory Conquest</p>
             <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-500">
-              <span className="flex items-center gap-1"><span className="text-cyan-400">1.</span> Start with 5 troops on your ★ capital</span>
+              <span className="flex items-center gap-1"><span className="text-cyan-400">1.</span> Start with 5 troops on your <IconStar size={10} className="inline text-yellow-400" /> capital</span>
               <span className="text-slate-700">→</span>
               <span className="flex items-center gap-1"><span className="text-yellow-400">2.</span> Select Attack (1 AP) to conquer adjacent enemy tiles</span>
               <span className="text-slate-700">→</span>
@@ -3076,7 +3099,7 @@ export default function HexDuelPage() {
               <span className="text-slate-700">→</span>
               <span className="flex items-center gap-1"><span className="text-purple-400">5.</span> Each end-turn: +1 troop on all tiles, +1 AP (max 3)</span>
               <span className="text-slate-700">→</span>
-              <span className="flex items-center gap-1"><span className="text-red-400">6.</span> Conquer the enemy&apos;s ★ capital to win!</span>
+              <span className="flex items-center gap-1"><span className="text-red-400">6.</span> Conquer the enemy&apos;s <IconStar size={10} className="inline text-yellow-400" /> capital to win!</span>
             </div>
           </div>
         </div>

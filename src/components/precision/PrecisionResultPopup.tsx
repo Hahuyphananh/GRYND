@@ -8,6 +8,7 @@
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { IconHeartHandshake, IconSkull, IconTrophy } from "@tabler/icons-react";
 import { gameOverModal } from "../../lib/animations";
 import { RESULT_POPUP_REPLAY_WINDOW_MS } from "../../lib/precision/constants";
 import { endReasonToLabel, formatTokens, getReplaySecondsLeft } from "../../lib/precision/utils";
@@ -77,7 +78,7 @@ function PrecisionResultPopupImpl({
           glow: "shadow-[0_0_45px_rgba(250,204,21,0.4)]",
           heading: "text-yellow-300",
           bg: "bg-gradient-to-b from-[#0a2a1a] to-[#031a0a]",
-          icon: "🏆",
+          icon: <IconTrophy size={56} />,
           word: t("games.precision.victory"),
         }
       : popup?.result === "draw"
@@ -86,7 +87,7 @@ function PrecisionResultPopupImpl({
             glow: "shadow-[0_0_45px_rgba(34,211,238,0.35)]",
             heading: "text-cyan-200",
             bg: "bg-gradient-to-b from-[#0a1f2a] to-[#031622]",
-            icon: "🤝",
+            icon: <IconHeartHandshake size={56} />,
             word: t("games.precision.draw"),
           }
         : {
@@ -94,7 +95,7 @@ function PrecisionResultPopupImpl({
             glow: "shadow-[0_0_45px_rgba(217,70,239,0.3)]",
             heading: "text-fuchsia-300",
             bg: "bg-gradient-to-b from-[#2a0a1f] to-[#160322]",
-            icon: "💀",
+            icon: <IconSkull size={56} />,
             word: t("games.precision.defeat"),
           };
 

@@ -40,7 +40,7 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    console.error("❌ Failed to load wins leaderboard:", error);
+    console.error(" Failed to load wins leaderboard:", error);
     return Response.json(
       {
         items: [],

@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import { IconTarget } from "@tabler/icons-react";
 import { useTranslation } from "../../../hooks/useTranslation";
 import {
   createLobby,
@@ -194,7 +195,7 @@ export default function PrecisionLobbyPage() {
               onClick={handleTestClick}
               className="mt-2 block w-full rounded border border-fuchsia-400/60 bg-fuchsia-500/10 py-2 text-center font-bold text-fuchsia-200 transition hover:bg-fuchsia-500/20"
             >
-              🎯 {t("games.precision.test_solo_label")} ({t("games.precision.no_wager_label").toLowerCase()})
+              <span className="inline-flex items-center gap-2"><IconTarget size={16} /> {t("games.precision.test_solo_label")} ({t("games.precision.no_wager_label").toLowerCase()})</span>
             </Link>
             {error && (
               <p className="mt-3 rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">

@@ -16,7 +16,6 @@ import Img12 from "../../images/rps.svg";
 import Img13 from "../../images/dice.svg";
 import Img14 from "../../images/connect-4.svg";
 import Img15 from "../../images/towers.png";
-import Img16 from "../../images/clicker.svg";
 import Img17 from "../../images/pool.svg";
 import Img18 from "../../images/hex-duel.svg";
 import Img21 from "../../images/odds.svg";
@@ -146,18 +145,11 @@ function MainComponent() {
     },
 
     {
-      name: "Lane Runner",
+      name: "Lane Rush Duel",
       href: "/casino/lane-runner",
       leaderboardKey: "lane-runner",
       image: Img15,
       descriptionKey: "games.lane_runner_desc",
-    },
-    {
-      name: "Clicker",
-      href: "/casino/goonbet-clicker",
-      leaderboardKey: "goonbet-clicker",
-      image: Img16,
-      descriptionKey: "games.goonbet_clicker_desc",
     },
     {
       name: "Pool Masters",
@@ -246,7 +238,6 @@ function MainComponent() {
     "hex-duel",
     "pool-masters",
     "odds",
-    "goonbet-clicker",
     "lane-runner",
     "connect-four",
     "dice-duel",

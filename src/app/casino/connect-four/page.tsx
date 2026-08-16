@@ -8,6 +8,7 @@ import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import { IconRobot, IconDeviceGamepad2 } from "@tabler/icons-react";
 
 export default function ConnectFourLobbyPage() {
   const { isSignedIn, user } = useUser();
@@ -247,7 +248,7 @@ shadow-[0_0_22px_rgba(168,85,247,0.45)]
 border border-purple-300/30
 flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
           >
-            <span aria-hidden className="text-base">🤖</span>
+            <IconRobot size={18} aria-hidden />
             <span className="tracking-wide">Play vs AI — Free, no wager</span>
             <span aria-hidden className="text-base group-hover:translate-x-0.5 transition-transform">→</span>
           </button>
@@ -256,7 +257,7 @@ flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-
         <div className="mt-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-2xl p-5 shadow-[0_0_22px_rgba(0,229,255,0.15)]">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-[#FFD700] flex items-center gap-2 uppercase tracking-wider">
-              <span aria-hidden>🎮</span>
+              <IconDeviceGamepad2 size={18} aria-hidden />
               <span>Available Games</span>
             </h2>
             <button

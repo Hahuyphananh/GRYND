@@ -44,7 +44,6 @@ const isPublicRoute = createRouteMatcher([
   "/casino/dots-and-boxes(.*)",
   "/casino/lane-runner(.*)",
   "/profile(.*)",
-  "/casino/goonbet-clicker(.*)",
   "/casino/pool-masters(.*)",
   "/casino/hex-duel(.*)",
   "/casino/dice-flush(.*)",

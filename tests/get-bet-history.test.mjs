@@ -167,7 +167,7 @@ const DIRECT_TABLES = [
   "hexDuelGames",
   "oddsGames",
   "pokerGames",
-  "clickerGames",
+  "laneRushDuelMatches",
 ];
 
 for (const table of DIRECT_TABLES) {

@@ -5,7 +5,7 @@ import { getHighestTitle } from "../../../lib/titles";
 import { cacheOrFetch } from "../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../lib/redis/keys";
 
-// 👇 ADD THESE (from your history route)
+//  ADD THESE (from your history route)
 import { db } from "../../../db";
 import { eq, or, and, sql as drizzleSql } from "drizzle-orm";
 import {
@@ -21,6 +21,7 @@ import {
   chessGames,
   keno_games,
   kenoPvpMatches,
+  laneRushDuelMatches,
   diceMatches,
   connectFourGames,
   laneRunnerGames,
@@ -31,7 +32,6 @@ import {
   farklePlayers,
   diceFlushRooms,
   diceFlushPlayers,
-  clickerGames,
 } from "../../../db/schema";
 
 export async function GET() {
@@ -48,10 +48,10 @@ export async function GET() {
   }
 
   try {
-    // ✅ Get DB connections inside try so failures don't 500 outside the catch
+    //  Get DB connections inside try so failures don't 500 outside the catch
     const sql = getNeonSql();
 
-    // ✅ Get DB user
+    //  Get DB user
     const dbUser = await db.query.users.findFirst({
       where: eq(users.clerkId, userId),
     });
@@ -72,7 +72,7 @@ export async function GET() {
     // Cache the heavy stat computation. Side-effect writes happen only on miss.
     const stats = await cacheOrFetch(cacheKey, CacheTTL.userStats, async () => {
 
-    // ✅ Fetch all bets – each query wrapped so one failure doesn't tank the request
+    //  Fetch all bets – each query wrapped so one failure doesn't tank the request
     const safeQuery = async (label, fn) => {
       try {
         return await fn();
@@ -102,7 +102,7 @@ export async function GET() {
       pokerRows,
       farkleRows,
       diceFlushRows,
-      clickerRows,
+      laneRushDuelRows,
     ] = await Promise.all([
       safeQuery("roulette", () => db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid))),
       safeQuery("blackjack", () => db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid))),
@@ -157,9 +157,20 @@ export async function GET() {
             ),
           ),
       ),
-      // 🏃 Lane Runner (solo, integer userId)
+      //  Lane Runner (solo, integer userId)
       safeQuery("lane-runner", () => db.select().from(laneRunnerGames).where(eq(laneRunnerGames.userId, uid))),
-      // ⬡ Hex Duel (PvP + AI, clerkId-based, skip fun mode)
+      safeQuery("lane-rush-duel", () =>
+        db
+          .select()
+          .from(laneRushDuelMatches)
+          .where(
+            or(
+              eq(laneRushDuelMatches.player1Id, clerkId),
+              eq(laneRushDuelMatches.player2Id, clerkId),
+            ),
+          ),
+      ),
+      //  Hex Duel (PvP + AI, clerkId-based, skip fun mode)
       safeQuery("hex-duel", () =>
         db
           .select()
@@ -174,7 +185,7 @@ export async function GET() {
             ),
           ),
       ),
-      // 🎯 Odds (PvP + AI, clerkId-based)
+      //  Odds (PvP + AI, clerkId-based)
       safeQuery("odds", () =>
         db
           .select()
@@ -186,7 +197,7 @@ export async function GET() {
             ),
           ),
       ),
-      // 🃏 Poker (multiplayer, jsonb players array)
+      //  Poker (multiplayer, jsonb players array)
       // Guard against legacy rows where `players` is null or a non-array
       // jsonb value; jsonb_array_elements on a non-array would throw
       // "cannot extract elements from a scalar/object" and 500 the route.
@@ -208,7 +219,7 @@ export async function GET() {
             )`,
           ),
       ),
-      // 🎲 Farkle (join players → rooms)
+      //  Farkle (join players → rooms)
       safeQuery("farkle", () =>
         db
           .select()
@@ -216,7 +227,7 @@ export async function GET() {
           .innerJoin(farkleRooms, eq(farklePlayers.roomId, farkleRooms.id))
           .where(eq(farklePlayers.userId, clerkId)),
       ),
-      // 🎲 Dice Flush (join players → rooms)
+      //  Dice Flush (join players → rooms)
       safeQuery("dice-flush", () =>
         db
           .select()
@@ -224,11 +235,9 @@ export async function GET() {
           .innerJoin(diceFlushRooms, eq(diceFlushPlayers.roomId, diceFlushRooms.id))
           .where(eq(diceFlushPlayers.userId, clerkId)),
       ),
-      // 🖱️ GoonBet Clicker (solo, clerkId-based)
-      safeQuery("clicker", () => db.select().from(clickerGames).where(eq(clickerGames.userId, clerkId))),
     ]);
 
-    // ✅ SIMPLE formatter (light version)
+    //  SIMPLE formatter (light version)
     const normalize = (bets, type) =>
       bets.map((b) => {
         const amount = Number(b.betAmount || b.bet_amount || b.amount || 0);
@@ -243,7 +252,7 @@ export async function GET() {
 
     const connectFourNormalized = connectFourRows
       .map((game) => {
-        if (!game.winnerClerkId) return null; // ✅ ignore unfinished games
+        if (!game.winnerClerkId) return null; // ignore unfinished games
 
         const amount = Number(game.betAmount ?? 0);
         const payout = Number(game.payout ?? 0);
@@ -258,7 +267,7 @@ export async function GET() {
           tokenDiff: result === "won" ? payout - amount : -amount,
         };
       })
-      .filter(Boolean); // ✅ removes nulls);
+      .filter(Boolean); // removes nulls);
 
     const diceNormalized = diceRows
       .map((game) => {
@@ -281,7 +290,7 @@ export async function GET() {
       })
       .filter(Boolean);
 
-    // 🎱 Keno Duel (PvP) — finished matches only; winner determined by
+    //  Keno Duel (PvP) — finished matches only; winner determined by
     // the match's winnerId (a draw refunds both, so no winner column).
     const kenoPvpNormalized = kenoPvpRows
       .map((game) => {
@@ -300,13 +309,33 @@ export async function GET() {
       })
       .filter(Boolean);
 
-    // 🏃 Lane Runner — solo game, filter completed only
+    //  Lane Runner — solo game, filter completed only
     const laneRunnerNormalized = normalize(
       laneRunnerRows.filter((g) => g.status === "completed"),
       "Lane Runner",
     );
 
-    // ⬡ Hex Duel — determine win/loss from winner field
+    //  Lane Rush Duel (PvP) — finished matches only; winner
+    //  determined by the match's winnerId (a draw refunds both).
+    const laneRushDuelNormalized = laneRushDuelRows
+      .map((game) => {
+        if (game.status !== "finished") return null;
+        if (game.player2Id === "AI_BOT") return null; // practice
+        if (!game.winnerId) return null; // draw
+        const amount = Number(game.stakeAmount || 0);
+        const payout = Number(game.prizePaid || 0);
+        const result = game.winnerId === clerkId ? "won" : "lost";
+        return {
+          type: "Lane Rush Duel",
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : -amount,
+        };
+      })
+      .filter(Boolean);
+
+    //  Hex Duel — determine win/loss from winner field
     const hexDuelNormalized = hexDuelRows
       .filter((g) => g.status !== "in_progress")
       .map((g) => {
@@ -326,7 +355,7 @@ export async function GET() {
         };
       });
 
-    // 🎯 Odds — determine win/loss from winner field
+    //  Odds — determine win/loss from winner field
     const oddsNormalized = oddsRows
       .filter((g) => g.status === "finished" || g.status === "forfeit")
       .map((g) => {
@@ -346,7 +375,7 @@ export async function GET() {
         };
       });
 
-    // 🃏 Poker — determine result from winnings jsonb
+    //  Poker — determine result from winnings jsonb
     const pokerNormalized = pokerRows
       .filter((g) => g.status === "finished")
       .map((g) => {
@@ -368,7 +397,7 @@ export async function GET() {
         };
       });
 
-    // 🎲 Farkle — joined rows, extract winner from gameState
+    //  Farkle — joined rows, extract winner from gameState
     const farkleNormalized = farkleRows
       .filter((row) => row.farkle_rooms?.status === "finished")
       .map((row) => {
@@ -394,7 +423,7 @@ export async function GET() {
         };
       });
 
-    // 🎲 Dice Flush — joined rows, extract winner from gameState
+    //  Dice Flush — joined rows, extract winner from gameState
     const diceFlushNormalized = diceFlushRows
       .filter((row) => row.dice_flush_rooms?.status === "finished")
       .map((row) => {
@@ -420,20 +449,6 @@ export async function GET() {
         };
       });
 
-    // 🖱️ Clicker — solo game, busted = loss
-    const clickerNormalized = clickerRows.map((g) => {
-      const amount = Number(g.betAmount ?? 0);
-      const payout = Number(g.payout ?? 0);
-      const result = g.busted ? "lost" : payout > amount ? "won" : "lost";
-      return {
-        type: "Clicker",
-        amount,
-        payout,
-        result,
-        tokenDiff: result === "won" ? payout - amount : -amount,
-      };
-    });
-
     const allBets = [
       ...normalize(roulette, "Roulette"),
       ...normalize(blackjack, "Blackjack"),
@@ -448,16 +463,16 @@ export async function GET() {
       ...normalize(kenoRows, "Keno"),
       ...diceNormalized,
       ...connectFourNormalized,
+      ...laneRushDuelNormalized,
       ...laneRunnerNormalized,
       ...hexDuelNormalized,
       ...oddsNormalized,
       ...pokerNormalized,
       ...farkleNormalized,
       ...diceFlushNormalized,
-      ...clickerNormalized,
     ];
 
-    // ✅ COMPUTE STATS
+    //  COMPUTE STATS
     const totalBets = allBets.length;
     const wins = allBets.filter((b) => b.result === "won").length;
     const losses = allBets.filter((b) => b.result === "lost").length;
@@ -497,7 +512,7 @@ export async function GET() {
       console.error("[user-stats] Failed to update user_stats:", writeErr);
     }
 
-    // ✅ Get user meta (level, referrals)
+    //  Get user meta (level, referrals)
     let row = null;
     try {
       const rows = await sql`

@@ -4,6 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../../components/navigation-bar";
+import {
+  IconNotebook,
+  IconDeviceGamepad2,
+  IconCoins,
+  IconTrophy,
+  IconSkull,
+  IconRobot,
+  IconUser,
+} from "@tabler/icons-react";
 
 interface HexDuelGameRecord {
   id: number;
@@ -150,7 +159,7 @@ export default function HexDuelHistoryPage() {
         {/* Empty state */}
         {!loading && games.length === 0 && !error && (
           <div className="text-center py-16 rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-sm">
-            <p className="text-5xl mb-3">📋</p>
+            <p className="mb-3 flex justify-center"><IconNotebook size={48} className="text-cyan-400/60" /></p>
             <p className="text-lg font-bold text-slate-300">No games played yet</p>
             <p className="text-sm text-slate-500 mt-1">Play a game of Hex Duel and your history will appear here</p>
             <button
@@ -201,7 +210,7 @@ export default function HexDuelHistoryPage() {
                                 ? "bg-purple-500/15 text-purple-300 border border-purple-500/30"
                                 : "bg-yellow-500/10 text-yellow-400 border border-yellow-500/30"
                             }`}>
-                              {isFun ? "🎮 Fun" : "💰 Real"}
+                              <span className="inline-flex items-center gap-1">{isFun ? <><IconDeviceGamepad2 size={12} /> Fun</> : <><IconCoins size={12} /> Real</>}</span>
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right text-xs text-slate-400 font-mono">
@@ -213,7 +222,7 @@ export default function HexDuelHistoryPage() {
                                 ? "bg-green-500/15 text-green-300 border border-green-500/30"
                                 : "bg-red-500/10 text-red-300 border border-red-500/30"
                             }`}>
-                              {isWin ? "🏆 Win" : "💀 Loss"}
+                              <span className="inline-flex items-center gap-1">{isWin ? <><IconTrophy size={12} /> Win</> : <><IconSkull size={12} /> Loss</>}</span>
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right text-xs font-mono">
@@ -238,12 +247,12 @@ export default function HexDuelHistoryPage() {
                           <td className="px-4 py-3 text-center">
                             {game.isAiGame ? (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30 capitalize">
-                                🤖 {game.opponentDisplayName || `AI (${game.aiDifficulty || "medium"})`}
+                                <span className="inline-flex items-center gap-1"><IconRobot size={12} /> {game.opponentDisplayName || `AI (${game.aiDifficulty || "medium"})`}</span>
                               </span>
                             ) : game.opponentDisplayName ? (
-                              <span className="text-[11px] text-slate-300">👤 {game.opponentDisplayName}</span>
+                              <span className="inline-flex items-center gap-1 text-[11px] text-slate-300"><IconUser size={12} /> {game.opponentDisplayName}</span>
                             ) : (
-                              <span className="text-[10px] text-slate-500">👤 Human</span>
+                              <span className="inline-flex items-center gap-1 text-[10px] text-slate-500"><IconUser size={12} /> Human</span>
                             )}
                           </td>
                         </tr>

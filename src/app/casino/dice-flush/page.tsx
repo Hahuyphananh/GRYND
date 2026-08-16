@@ -10,6 +10,22 @@ import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
+import {
+  IconNotebook,
+  IconDice,
+  IconPin,
+  IconClipboardList,
+  IconFlag,
+  IconUsers,
+  IconRobot,
+  IconDeviceGamepad2,
+  IconBolt,
+  IconCheck,
+  IconHourglass,
+  IconSparkles,
+  IconTrophy,
+  IconSkull,
+} from "@tabler/icons-react";
 
 
 type LobbyRoom = { id: string; wager: number; status: string };
@@ -194,7 +210,7 @@ function MoveHistoryPanel({ history, you, opponent }: { history: any[]; you: any
         className="flex w-full items-center justify-between px-4 py-2.5 text-sm font-bold text-[#00e5ff] transition-colors hover:bg-white/5"
       >
         <span className="flex items-center gap-2">
-          <span>📜</span>
+          <IconNotebook size={18} className="text-[#00e5ff]" />
           <span>Move History</span>
           <span className="rounded-full bg-[#00e5ff]/10 px-2 py-0.5 text-xs text-[#00e5ff]">{latestCount}</span>
         </span>
@@ -255,11 +271,11 @@ function MoveHistoryPanel({ history, you, opponent }: { history: any[]; you: any
                         a.action === "choose_category" ? "bg-[#00e5ff]/20 text-[#00e5ff]" :
                         "bg-gray-800 text-gray-400"
                       }`}>
-                        {a.action === "roll" ? "🎲 Roll" :
-                         a.action === "hold_dice" ? "📌 Hold" :
-                         a.action === "choose_category" ? "📋 Score" :
-                         a.action === "game_start" ? "🏁 Start" :
-                         a.action === "resign" ? "🚩 Resign" :
+                        {a.action === "roll" ? <span className="inline-flex items-center gap-1"><IconDice size={12} /> Roll</span> :
+                         a.action === "hold_dice" ? <span className="inline-flex items-center gap-1"><IconPin size={12} /> Hold</span> :
+                         a.action === "choose_category" ? <span className="inline-flex items-center gap-1"><IconClipboardList size={12} /> Score</span> :
+                         a.action === "game_start" ? <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Start</span> :
+                         a.action === "resign" ? <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Resign</span> :
                          a.action || a.action}
                       </span>
 
@@ -609,13 +625,13 @@ export default function DiceFlushPage() {
             onClick={() => setMode("pvp")}
             className={`rounded-lg px-4 py-2 font-bold transition ${mode === "pvp" ? "bg-[#00e5ff] text-black shadow-[0_0_12px_rgba(0,229,255,0.35)]" : "bg-[#00e5ff]/10 border border-[#00e5ff]/30 text-[#00e5ff]"}`}
           >
-            👥 PvP
+            <span className="inline-flex items-center gap-1.5"><IconUsers size={16} /> PvP</span>
           </button>
           <button
             onClick={() => setMode("ai")}
             className={`rounded-lg px-4 py-2 font-bold transition ${mode === "ai" ? "bg-[#f5ff3b] text-black shadow-[0_0_12px_rgba(245,255,59,0.4)]" : "bg-[#f5ff3b]/10 border border-[#f5ff3b]/30 text-[#f5ff3b]"}`}
           >
-            🤖 vs AI
+            <span className="inline-flex items-center gap-1.5"><IconRobot size={16} /> vs AI</span>
           </button>
         </div>
         {mode === "pvp" ? (
@@ -628,7 +644,7 @@ export default function DiceFlushPage() {
         ) : (
           <>
             <div className="rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 p-3 text-center">
-              <p className="text-xs font-bold uppercase tracking-widest text-[#f5ff3b]">🎮 Free Play</p>
+              <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-[#f5ff3b]"><IconDeviceGamepad2 size={14} /> Free Play</p>
               <p className="text-[10px] text-[#f5ff3b]/70 mt-1">No tokens are wagered. Playing vs AI is free.</p>
             </div>
             <button onClick={playAI} className="mt-3 w-full rounded-lg bg-[#f5ff3b] px-4 py-2 font-bold text-black hover:bg-[#f5ff3b]/80 transition">Play vs AI</button>
@@ -646,11 +662,11 @@ export default function DiceFlushPage() {
             <span className="text-xs text-gray-400">Rolls {game.rollsThisTurn}/3</span>
           </div>
           <div className="flex items-center gap-2">
-            {opponent && !opponent.isAI && (<button onClick={() => setShowReportModal(true)} className="rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-1 text-xs font-bold text-red-400 hover:bg-red-500/20 transition">🚩 Report</button>)}
+            {opponent && !opponent.isAI && (<button onClick={() => setShowReportModal(true)} className="rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-1 text-xs font-bold text-red-400 hover:bg-red-500/20 transition"><span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report</span></button>)}
             <button onClick={resign} className="rounded-lg bg-red-600/80 px-3 py-1 text-xs font-bold text-white hover:bg-red-600 transition">Resign</button>
           </div>
         </div>
-        {waitingForOpponent && <div className="mb-4 rounded-lg border border-[#f5ff3b]/30 bg-[#f5ff3b]/5 p-2 text-sm text-[#f5ff3b]">⏳ Waiting for opponent to join. You cannot roll yet.</div>}
+        {waitingForOpponent && <div className="mb-4 flex items-center gap-1.5 rounded-lg border border-[#f5ff3b]/30 bg-[#f5ff3b]/5 p-2 text-sm text-[#f5ff3b]"><IconHourglass size={14} /> Waiting for opponent to join. You cannot roll yet.</div>}
 
         {/* ═══════ DICE FLUSH SCORECARD ═══════ */}
 <div className="mb-5 overflow-hidden rounded-[24px] border-2 border-[#00e5ff]/20 bg-gradient-to-b from-[#030817] to-[#0a1628] shadow-[0_0_40px_rgba(0,229,255,0.15)]">
@@ -715,9 +731,8 @@ export default function DiceFlushPage() {
 
   {/* ─── LAST MOVE SUMMARY ─── */}
   {(lastMoves.player || lastMoves.ai) && (
-    <div className="border-b border-[#00e5ff]/10 bg-[#020812]/50 px-4 py-2">
-      <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white/50">
-        <span>⚡</span> Last Move
+    <div className="border-b border-[#00e5ff]/10 bg-[#020812]/50 px-4 py-2">        <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white/50">
+        <IconBolt size={12} /> Last Move
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
         {lastMoves.player && (
@@ -794,7 +809,7 @@ export default function DiceFlushPage() {
           className="text-[#f5ff3b]"
         >
           {sectionTotals(you?.userId).upper >= 63
-            ? `+${sectionTotals(you?.userId).bonus} ✓`
+            ? <span className="inline-flex items-center gap-1">+{sectionTotals(you?.userId).bonus} <IconCheck size={14} /></span>
             : `${sectionTotals(you?.userId).upper} / 63`}
         </motion.div>
         <motion.div
@@ -804,7 +819,7 @@ export default function DiceFlushPage() {
           className="text-[#f87171]/80"
         >
           {sectionTotals(opponent?.userId).upper >= 63
-            ? `+${sectionTotals(opponent?.userId).bonus} ✓`
+            ? <span className="inline-flex items-center gap-1">+{sectionTotals(opponent?.userId).bonus} <IconCheck size={14} /></span>
             : `${sectionTotals(opponent?.userId).upper} / 63`}
         </motion.div>
       </div>
@@ -883,7 +898,7 @@ export default function DiceFlushPage() {
       >
         {aiCategoryHighlight ? (
           <span className="flex items-center gap-2">
-            <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>📋</motion.span>
+            <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}><IconClipboardList size={16} /></motion.span>
             Scoring...
           </span>
         ) : (
@@ -896,7 +911,7 @@ export default function DiceFlushPage() {
     <div className="mt-3 text-center text-xs font-bold">
       {aiAnimating ? (
         <span className="flex items-center justify-center gap-2 text-[#fbbf24]">
-          <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>🤖</motion.span>
+          <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}><IconRobot size={16} /></motion.span>
           AI thinking...
         </span>
       ) : isYourTurn ? (
@@ -1018,7 +1033,7 @@ export default function DiceFlushPage() {
               transition={{ duration: 0.8, ease: "easeOut" }}
               className="pointer-events-none fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 text-6xl"
             >
-              ✨🎲✨
+              <span className="inline-flex items-center gap-2"><IconSparkles size={40} /><IconDice size={48} /><IconSparkles size={40} /></span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1052,7 +1067,7 @@ export default function DiceFlushPage() {
                   transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
                   className="mb-2 text-7xl"
                 >
-                  {gameOverType === "win" ? "🏆" : "💀"}
+                  {gameOverType === "win" ? <IconTrophy size={64} className="text-amber-400" /> : <IconSkull size={64} className="text-red-400" />}
                 </motion.div>
 
                 {/* Result text */}
@@ -1118,14 +1133,13 @@ export default function DiceFlushPage() {
                 >
                   {gameOverType === "win" ? (
                     <div className="flex justify-center gap-1">
-                      {["✨","🌟","✨","🌟","✨"].map((s, i) => (
+                      {[0, 1, 2, 3, 4].map((i) => (
                         <motion.span
                           key={i}
-                          className="text-xl"
                           animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }}
                           transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.12 }}
                         >
-                          {s}
+                          <IconSparkles size={20} className="text-amber-300" />
                         </motion.span>
                       ))}
                     </div>

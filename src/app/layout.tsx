@@ -45,7 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Skip to main content
         </a>
 
-        {/* 👇 SPLASH SCREEN MUST GO HERE */}
+        {/* SPLASH SCREEN MUST GO HERE */}
         <SplashScreen />
 
         <Providers>

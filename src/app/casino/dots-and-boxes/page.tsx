@@ -9,6 +9,7 @@ import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { IconRuler } from "@tabler/icons-react";
 
 export default function DotsAndBoxesLobbyPage() {
   const { isSignedIn, user } = useUser();
@@ -216,7 +217,7 @@ shadow-[0_0_18px_rgba(251,191,36,0.6)] disabled:opacity-50 disabled:hover:scale-
         <div className="mt-6 bg-[#0b224f]/85 border border-[#f59e0b]/30 rounded-2xl p-5 shadow-[0_0_22px_rgba(245,158,11,0.15)]">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-[#FFD700] flex items-center gap-2 uppercase tracking-wider">
-              <span aria-hidden>📐</span>
+              <IconRuler size={16} aria-hidden />
               <span>{t("games.dots_and_boxes.open_challenges_title")}</span>
             </h2>
             <button

@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { IconBolt } from "@tabler/icons-react";
 import { CHIP_VALUES } from "../lib/rouletteConfig";
 
 export default function BetPanel({
@@ -65,7 +66,7 @@ export default function BetPanel({
           className="text-2xl font-extrabold tracking-wider text-transparent bg-clip-text 
                      bg-gradient-to-r from-[#00e5ff] to-[#00ffa6]"
         >
-          ⚡ PLACE BET
+          <IconBolt size={22} className="mb-1 mr-2 inline" /> PLACE BET
         </h2>
 
         <div

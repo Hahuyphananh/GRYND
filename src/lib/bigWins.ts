@@ -61,7 +61,7 @@ export async function recordBigWinIfNeeded(record: BigWinRecord): Promise<boolea
       )
     `;
 
-    console.log(`🎉 Big Win recorded: ${record.username} won ${record.winAmount.toLocaleString()} tokens on ${record.game}`);
+    console.log(` Big Win recorded: ${record.username} won ${record.winAmount.toLocaleString()} tokens on ${record.game}`);
 
     // Invalidate big-wins feed cache (event-driven invalidation)
     invalidateBigWins().catch(() => {});

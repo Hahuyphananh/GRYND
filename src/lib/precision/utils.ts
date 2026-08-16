@@ -94,7 +94,6 @@ export function makeInitialEndPopupState(
 
 export interface PrecisionRank {
   label: string;
-  emoji: string;
   color: string;    // Tailwind text color class
   bg: string;        // Tailwind bg color class
   border: string;    // Tailwind border color class
@@ -104,39 +103,39 @@ export interface PrecisionRank {
 export const PRECISION_RANK_ENTRIES: { maxDiffMs: number; rank: PrecisionRank }[] = [
   {
     maxDiffMs: 0,
-    rank: { label: "PERFECT", emoji: "🌟", color: "text-yellow-300", bg: "bg-yellow-400/15", border: "border-yellow-400/50" },
+    rank: { label: "PERFECT", color: "text-yellow-300", bg: "bg-yellow-400/15", border: "border-yellow-400/50" },
   },
   {
     maxDiffMs: 3,
-    rank: { label: "LEGENDARY", emoji: "💎", color: "text-purple-300", bg: "bg-purple-500/15", border: "border-purple-400/50" },
+    rank: { label: "LEGENDARY", color: "text-purple-300", bg: "bg-purple-500/15", border: "border-purple-400/50" },
   },
   {
     maxDiffMs: 8,
-    rank: { label: "MASTERFUL", emoji: "🔥", color: "text-red-300", bg: "bg-red-500/15", border: "border-red-400/50" },
+    rank: { label: "MASTERFUL", color: "text-red-300", bg: "bg-red-500/15", border: "border-red-400/50" },
   },
   {
     maxDiffMs: 15,
-    rank: { label: "EXCELLENT", emoji: "⭐", color: "text-yellow-400", bg: "bg-yellow-500/15", border: "border-yellow-400/40" },
+    rank: { label: "EXCELLENT", color: "text-yellow-400", bg: "bg-yellow-500/15", border: "border-yellow-400/40" },
   },
   {
     maxDiffMs: 25,
-    rank: { label: "GREAT", emoji: "✅", color: "text-green-300", bg: "bg-green-500/15", border: "border-green-400/50" },
+    rank: { label: "GREAT", color: "text-green-300", bg: "bg-green-500/15", border: "border-green-400/50" },
   },
   {
     maxDiffMs: 40,
-    rank: { label: "GOOD", emoji: "👍", color: "text-blue-300", bg: "bg-blue-500/15", border: "border-blue-400/50" },
+    rank: { label: "GOOD", color: "text-blue-300", bg: "bg-blue-500/15", border: "border-blue-400/50" },
   },
   {
     maxDiffMs: 60,
-    rank: { label: "FAIR", emoji: "🎯", color: "text-cyan-300", bg: "bg-cyan-500/15", border: "border-cyan-400/50" },
+    rank: { label: "FAIR", color: "text-cyan-300", bg: "bg-cyan-500/15", border: "border-cyan-400/50" },
   },
   {
     maxDiffMs: 100,
-    rank: { label: "CLOSE", emoji: "⚠️", color: "text-orange-300", bg: "bg-orange-500/15", border: "border-orange-400/50" },
+    rank: { label: "CLOSE", color: "text-orange-300", bg: "bg-orange-500/15", border: "border-orange-400/50" },
   },
   {
     maxDiffMs: Infinity,
-    rank: { label: "MISS", emoji: "❌", color: "text-gray-400", bg: "bg-gray-500/15", border: "border-gray-400/40" },
+    rank: { label: "MISS", color: "text-gray-400", bg: "bg-gray-500/15", border: "border-gray-400/40" },
   },
 ];
 

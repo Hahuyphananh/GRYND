@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { IconCheck, IconClock, IconRefresh, IconPlayerSkipForward, IconSwords, IconX } from "@tabler/icons-react";
 import type { DuelPlayer } from "../lib/hexDuelEngine";
 
 export type ActionType = "attack" | "displace" | "move" | "push" | "reinforce" | null;
@@ -53,7 +54,7 @@ export default function HexActionPanel({
       id: "attack" as const,
       label: "Attack",
       cost: 1,
-      icon: "⚔",
+      icon: <IconSwords size={18} />,
       description: "Send troops from an adjacent tile to conquer an enemy tile",
       enabled: canAttack,
       disabledReason: !canAttack ? "Not enough AP" : null,
@@ -168,7 +169,7 @@ export default function HexActionPanel({
         >
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[10px] text-slate-400 uppercase tracking-wider">
-              ⏳ Pending
+              <IconClock size={12} className="mb-0.5 mr-1 inline" /> Pending
             </span>
             <span className="text-[10px] font-mono text-slate-300 truncate">
               {pendingDescription}
@@ -184,13 +185,13 @@ export default function HexActionPanel({
                 boxShadow: `0 0 14px ${playerColor}44`,
               }}
             >
-              ✓ Confirm
+              <IconCheck size={14} className="mb-0.5 mr-1 inline" /> Confirm
             </button>
             <button
               onClick={onClearAction}
               className="rounded-lg px-3 py-2 text-[10px] text-slate-500 border border-white/10 hover:text-slate-300 hover:border-white/20 transition-all"
             >
-              ✕
+              <IconX size={14} />
             </button>
           </div>
         </div>
@@ -206,7 +207,7 @@ export default function HexActionPanel({
             hover:shadow-[0_0_12px_rgba(250,204,21,0.2)]
             active:scale-[0.97]"
         >
-          ⟳ End Turn
+          <IconRefresh size={14} className="mb-0.5 mr-1 inline" /> End Turn
         </button>
         <button
           onClick={onSkipRound}
@@ -215,7 +216,7 @@ export default function HexActionPanel({
             hover:bg-white/[0.06] hover:border-white/20 hover:text-slate-300
             active:scale-[0.97]"
         >
-          ⏭ Skip Round (+1 AP next turn)
+          <span className="inline-flex items-center gap-1"><IconPlayerSkipForward size={14} /> Skip Round (+1 AP next turn)</span>
         </button>
       </div>
     </div>

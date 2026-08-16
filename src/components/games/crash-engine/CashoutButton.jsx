@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { IconCash } from "@tabler/icons-react";
 
 /**
  * CashoutButton — the "Cash Out" button with glow and hover effects.
@@ -8,13 +9,13 @@ import React from "react";
  *   onCashout  — callback when button is clicked
  *   disabled   — whether the button is disabled
  *   className  — forwarded to button
- *   label      — button text (default: "💰 Cash Out")
+ *   label      — button text (default: "Cash Out")
  */
 export default function CashoutButton({
   onCashout,
   disabled = false,
   className = "",
-  label = "💰 Cash Out",
+  label = "Cash Out",
 }) {
   return (
     <button
@@ -34,6 +35,7 @@ transition-all duration-300
 ${disabled ? "opacity-50 cursor-not-allowed" : ""}
 ${className}`}
     >
+      <IconCash size={16} />
       {label}
     </button>
   );

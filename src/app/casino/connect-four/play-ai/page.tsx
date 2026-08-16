@@ -14,6 +14,11 @@ import {
 } from "../../../../lib/connectFour";
 import NavigationBar from "../../../../components/navigation-bar";
 import { celebrateWin } from "../../../../lib/animations";
+import {
+  IconTrophy,
+  IconBomb,
+  IconHeartHandshake,
+} from "@tabler/icons-react";
 
 const HUMAN_PLAYER = 1 as const;
 const AI_PLAYER = 2 as const;
@@ -476,9 +481,9 @@ export default function ConnectFourVsAiPage() {
             className="mt-4 rounded-xl border border-white/10 bg-[#0b224f]/70 p-4 text-center"
           >
             <p className="text-sm font-semibold mb-1">
-              {status === "won" && "🏆 Great play — congratulations!"}
-              {status === "lost" && "💥 The AI got you this round."}
-              {status === "draw" && "🤝 Board is full — it's a draw."}
+              {status === "won" && <span className="inline-flex items-center gap-1.5"><IconTrophy size={16} className="text-amber-400" /> Great play — congratulations!</span>}
+              {status === "lost" && <span className="inline-flex items-center gap-1.5"><IconBomb size={16} className="text-red-400" /> The AI got you this round.</span>}
+              {status === "draw" && <span className="inline-flex items-center gap-1.5"><IconHeartHandshake size={16} className="text-yellow-300" /> Board is full — it's a draw.</span>}
             </p>
             <p className="text-xs text-white/60">
               Hit <span className="font-semibold text-white">New Game</span> to

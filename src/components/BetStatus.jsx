@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { IconCash, IconCircleCheck, IconDeviceGamepad } from "@tabler/icons-react";
 
 export default function BetStatus({
   hasBet,
@@ -22,7 +23,7 @@ export default function BetStatus({
           className="text-2xl font-extrabold tracking-wider text-transparent bg-clip-text 
                      bg-gradient-to-r from-[#ff4fd8] to-[#00e5ff] drop-shadow-[0_0_10px_rgba(255,79,216,0.6)]"
         >
-          🎮 MY BET
+          <IconDeviceGamepad size={24} className="mb-1 mr-2 inline" /> MY BET
         </h2>
 
         {!hasBet ? (
@@ -37,7 +38,9 @@ export default function BetStatus({
                           border border-[#00e5ff]/30 bg-[#020617] 
                           shadow-[0_0_10px_rgba(0,229,255,0.15)]"
             >
-              <span className="text-gray-300">💵 Bet Amount</span>
+              <span className="inline-flex items-center gap-1.5 text-gray-300">
+                <IconCash size={16} className="text-[#00e5ff]" /> Bet Amount
+              </span>
               <span className="text-[#00e5ff] font-bold">${betAmount}</span>
             </div>
 
@@ -54,7 +57,7 @@ export default function BetStatus({
                   className="text-green-400 font-bold 
                                drop-shadow-[0_0_10px_rgba(0,255,120,0.6)]"
                 >
-                  ✅ {multiplier.toFixed(2)}x
+                  <IconCircleCheck size={16} className="mb-0.5 mr-1 inline" /> {multiplier.toFixed(2)}x
                 </span>
               ) : (
                 <span

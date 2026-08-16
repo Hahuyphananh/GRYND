@@ -91,7 +91,7 @@ export async function POST(req: Request) {
         try {
           await client.users.updateUser(clerkId, { password: rawPassword });
         } catch (err) {
-          console.warn("⚠️ Clerk password update failed:", err);
+          console.warn(" Clerk password update failed:", err);
           rawPassword = crypto.randomBytes(32).toString("hex");
         }
       }
@@ -131,7 +131,7 @@ export async function POST(req: Request) {
       { status: 201 },
     );
   } catch (error) {
-    console.error("❌ Error in /api/sync-user:", error);
+    console.error(" Error in /api/sync-user:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

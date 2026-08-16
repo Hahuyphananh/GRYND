@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { IconBomb, IconRocket } from "@tabler/icons-react";
 
 /**
  * RoundStatus — displays the current round state banner.
@@ -12,8 +13,8 @@ import React from "react";
 const STATUS_CONFIG = {
   waiting:   { label: "Waiting for players...", color: "text-[#9dd8ff]",   bg: "bg-[#9dd8ff]/10", border: "border-[#9dd8ff]/25" },
   starting:  { label: "Round starting!",         color: "text-[#FFD700]",  bg: "bg-[#FFD700]/10",  border: "border-[#FFD700]/30", pulse: true },
-  flying:    { label: "In flight 🚀",            color: "text-[#00ffa6]",  bg: "bg-[#00ffa6]/10",  border: "border-[#00ffa6]/30", pulse: true },
-  crashed:   { label: "💥 CRASHED!",             color: "text-red-400",    bg: "bg-red-500/10",     border: "border-red-500/30" },
+  flying:    { label: "In flight",              icon: <IconRocket size={14} className="inline" />, color: "text-[#00ffa6]", bg: "bg-[#00ffa6]/10", border: "border-[#00ffa6]/30", pulse: true },
+  crashed:   { label: "CRASHED!",               icon: <IconBomb size={14} className="inline" />,  color: "text-red-400",   bg: "bg-red-500/10",      border: "border-red-500/30" },
   finished:  { label: "Round over",              color: "text-[#9dd8ff]",  bg: "bg-[#9dd8ff]/10",  border: "border-[#9dd8ff]/25" },
 };
 
@@ -31,7 +32,8 @@ export default function RoundStatus({ status = "waiting", roundNumber = 1, crash
 
       {/* Status text */}
       <div className="flex flex-col">
-        <span className={`text-sm font-bold ${config.color} ${config.pulse ? "animate-pulse" : ""}`}>
+        <span className={`inline-flex items-center gap-1.5 text-sm font-bold ${config.color} ${config.pulse ? "animate-pulse" : ""}`}>
+          {config.icon}
           {config.label}
         </span>
         {status === "crashed" && crashedAt !== null && (

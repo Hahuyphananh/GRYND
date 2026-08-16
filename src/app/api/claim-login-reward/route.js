@@ -73,7 +73,7 @@ export async function POST(req) {
       where: eq(userLoginRewards.userId, uid),
     });
 
-    // ⭐ First login
+    //  First login
     if (!rewardData) {
       await db.insert(userLoginRewards).values({
         userId: uid,
@@ -97,7 +97,7 @@ export async function POST(req) {
         (nowDayKey - lastDayKey) / (1000 * 60 * 60 * 24),
       );
 
-      // ✅ RESET streak if missed too long
+      //  RESET streak if missed too long
       if (elapsedDays > STREAK_RESET_DAYS) {
         await db
           .update(userLoginRewards)
@@ -109,7 +109,7 @@ export async function POST(req) {
         rewardData.currentDay = 1;
       }
 
-      // ✅ Cooldown check
+      //  Cooldown check
       if (elapsedDays === 0) {
         return NextResponse.json(
           {
@@ -121,7 +121,7 @@ export async function POST(req) {
       }
     }
 
-    // ⭐ Calculate reward AFTER reset logic
+    //  Calculate reward AFTER reset logic
     const reward = LOGIN_REWARD_BASE * 2 ** (rewardData.currentDay - 1);
 
     await db

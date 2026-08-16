@@ -17,7 +17,7 @@
 //   • Persistent match "points" balance (Prompt 2 semantics):
 //     `playerOnePoints`/`playerTwoPoints` drift round-to-round based on
 //     (payout − total_bet); never reset between rounds.
-//   • Opponent bet-status indicator ("✓" / "…") + deadline countdown.
+//   • Opponent bet-status indicator ("" / "…") + deadline countdown.
 //   • "Lock in bets" submission instead of solo "Spin".
 //   • Cancel & refund (creator, only in `waiting` state).
 //   • Round-just-resolved banner + match-finished confetti + claim banner.
@@ -73,6 +73,7 @@ import {
   TargetIcon,
   AlertIcon,
 } from "../../../../components/roulette-pvp/RouletteIcons";
+import { IconFlag } from "@tabler/icons-react";
 
 const POLL_INTERVAL_MS = 1500;
 
@@ -930,7 +931,7 @@ export default function RoulettePvpGamePage({ params }) {
   // The masking below freezes the displayed values at the post-lock
   // balance for the duration of `spinning`, and reads the locked-in
   // bets from the round's history row (`rounds[].player{N}Bets`) so
-  // the "✓" check-marks, chip badges, and the new reveal panel stay
+  // the "" check-marks, chip badges, and the new reveal panel stay
   // visible through the animation. The moment `spinning` flips to
   // false, the real server-balance surfaces in lockstep with the
   // round-result banner so the player sees the points change at the
@@ -986,7 +987,7 @@ export default function RoulettePvpGamePage({ params }) {
   // accepts a zero-wager lock-in), so the truthy check is
   // `mySubmittedBets != null` rather than `Object.keys(...).length
   // > 0` — a player who locks in with zero chips is still "locked
-  // in" and the round-bet-status pill should show green ✓ instead
+  // in" and the round-bet-status pill should show green  instead
   // of the spinner used while a player hasn't submitted at all.
   const displayMyBets = useMemo(() => {
     if (mySubmittedBets != null) {
@@ -1381,7 +1382,7 @@ export default function RoulettePvpGamePage({ params }) {
                 onClick={() => setShowReportModal(true)}
                 className="px-3 py-1 rounded-full border border-red-500/30 bg-red-500/10 text-xs font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)] inline-flex items-center gap-1.5"
               >
-                🚩 <span>Report opponent</span>
+                <IconFlag size={12} /> <span>Report opponent</span>
               </button>
             )}
           </div>

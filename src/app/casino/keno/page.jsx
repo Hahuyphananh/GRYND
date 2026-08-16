@@ -290,7 +290,7 @@ export default function KenoLobbyPage() {
           <h1 className="flex items-center justify-center gap-3 text-center text-3xl sm:text-4xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] via-[#4ef0ff] to-[#00ffa6] drop-shadow-[0_0_18px_rgba(0,229,255,0.5)]">
             <BallIcon className="w-9 h-9 sm:w-10 sm:h-10 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,229,255,0.65)] flex-shrink-0" />
             <span>Keno Lobby</span>
-            <span className="text-2xl sm:text-3xl" aria-hidden>🎱</span>
+
           </h1>
         </motion.div>
         <p className="text-center text-sm text-white/60 mt-2 mb-7 max-w-2xl mx-auto">
@@ -457,7 +457,7 @@ export default function KenoLobbyPage() {
                             {Number(m.stakeAmount).toLocaleString()}
                             <CoinIcon className="w-3.5 h-3.5 text-cyan-300" />
                           </span>
-                          <span className="ml-2 text-[10px] text-white/40">🎱 Catch Duel</span>
+                          <span className="ml-2 text-[10px] text-white/40">Catch Duel</span>
                         </p>
                       </div>
                       <button

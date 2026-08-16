@@ -4,14 +4,20 @@ import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import { useEffect, useState } from "react";
 import { useSocket } from "../../../context/SocketProvider";
+import {
+  IconChess,
+  IconRobot,
+  IconPalette,
+  IconClock,
+} from "@tabler/icons-react";
 const TABLES = [1, 5, 10, 20, 50, 100];
 
 const AI_DIFFICULTY_LEVELS = [
-  { level: 1, label: "🎓 Beginner", desc: "Easy opponent" },
-  { level: 2, label: "🟢 Casual", desc: "Relaxed play" },
-  { level: 3, label: "🟡 Intermediate", desc: "Moderate challenge" },
-  { level: 4, label: "🟠 Advanced", desc: "Strong opponent" },
-  { level: 5, label: "🔴 Expert", desc: "Very tough" },
+  { level: 1, label: "Beginner", desc: "Easy opponent" },
+  { level: 2, label: "Casual", desc: "Relaxed play" },
+  { level: 3, label: "Intermediate", desc: "Moderate challenge" },
+  { level: 4, label: "Advanced", desc: "Strong opponent" },
+  { level: 5, label: "Expert", desc: "Very tough" },
 ];
 const TIMER_OPTIONS = [
   { id: "1min", label: "1 Min", time: 60 },
@@ -97,8 +103,7 @@ export default function ChessLobby() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tableAmount: selectedTable,
-          timerMode: selectedTimer,
-          timeLimit: selectedTimerObj?.time, // 👈 IMPORTANT FIX
+          timerMode: selectedTimer,            timeLimit: selectedTimerObj?.time, // IMPORTANT FIX
         }),
       });
       const data = await res.json();
@@ -205,7 +210,7 @@ export default function ChessLobby() {
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-center text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
       <h1 className="mb-4 mt-4 text-3xl font-bold text-[#FFD700] drop-shadow-[0_0_12px_rgba(255,215,0,0.55)] sm:text-4xl">
-        ♟️ Chess Arena — Challenge Players
+        <span className="inline-flex items-center gap-2"><IconChess size={28} /> Chess Arena — Challenge Players</span>
       </h1>
 
       <div className="max-w-4xl mx-auto bg-[#0b224f]/85 p-6 rounded-xl border border-[#00e5ff]/30 mb-8 shadow-[0_0_24px_rgba(0,229,255,0.18)]">
@@ -289,7 +294,7 @@ export default function ChessLobby() {
             onClick={() => setShowBetPopup(true)}
             className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-8 py-3 rounded-lg text-lg font-bold hover:from-purple-500 hover:to-indigo-500 shadow-[0_0_16px_rgba(139,92,246,0.45)] transition-colors"
           >
-            🤖 Play vs AI
+            <span className="inline-flex items-center gap-2"><IconRobot size={18} /> Play vs AI</span>
           </button>
         </div>
       </div>
@@ -307,7 +312,7 @@ export default function ChessLobby() {
 
         {availableGames.length === 0 ? (
           <div className="text-center py-8">
-            <span className="text-5xl opacity-30">♟️</span>
+            <IconChess size={48} className="opacity-30" />
             <p className="text-white/60 mt-2">
               No open games right now. Create one from the options above.
             </p>
@@ -358,12 +363,12 @@ export default function ChessLobby() {
             </p>
 
             {/* Color selection */}
-            <h3 className="text-sm font-semibold text-white/70 mb-2">🎨 Play as:</h3>
+            <h3 className="mb-2 flex items-center justify-center gap-1.5 text-sm font-semibold text-white/70"><IconPalette size={16} /> Play as:</h3>
             <div className="flex gap-2 justify-center mb-4">
               {[
                 { key: "white", label: "♔ White", desc: "Move first" },
                 { key: "black", label: "♚ Black", desc: "AI moves first" },
-                { key: "random", label: "🎲 Random", desc: "Surprise me" },
+                { key: "random", label: "Random", desc: "Surprise me" },
               ].map((opt) => (
                 <button
                   key={opt.key}
@@ -381,7 +386,7 @@ export default function ChessLobby() {
             </div>
 
             {/* Timer selection */}
-            <h3 className="text-sm font-semibold text-white/70 mb-2">⏱ Timer:</h3>
+            <h3 className="mb-2 flex items-center justify-center gap-1.5 text-sm font-semibold text-white/70"><IconClock size={16} /> Timer:</h3>
             <div className="flex flex-wrap gap-2 justify-center mb-4">
               {TIMER_OPTIONS.map((t) => (
                 <button

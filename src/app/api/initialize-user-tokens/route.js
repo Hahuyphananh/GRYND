@@ -62,7 +62,7 @@ export async function POST(request) {
       },
     );
   } catch (error) {
-    console.error("❌ Error initializing user tokens:", error);
+    console.error(" Error initializing user tokens:", error);
 
     return new Response(
       JSON.stringify({

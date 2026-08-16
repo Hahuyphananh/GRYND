@@ -270,8 +270,8 @@ export default function ProfilePage() {
     setFriendsStatus("");
     const normalized = String(searchValue || "").trim();
 
-    console.log("🟦 FRONT INPUT:", searchValue);
-    console.log("🟦 FRONT NORMALIZED:", normalized);
+    console.log(" FRONT INPUT:", searchValue);
+    console.log(" FRONT NORMALIZED:", normalized);
 
     console.log("FRONTEND SEARCH INPUT:", `"${searchValue}"`);
     console.log("FRONTEND NORMALIZED:", `"${normalized}"`);
@@ -291,7 +291,7 @@ export default function ProfilePage() {
       });
       const data = await response.json();
 
-      console.log("🔥 FRIEND SEARCH FULL RESPONSE:", data);
+      console.log(" FRIEND SEARCH FULL RESPONSE:", data);
       if (!response.ok || !data.success) {
         setFriendSearchResults([]);
         return;
@@ -787,7 +787,7 @@ export default function ProfilePage() {
         password: "",
       }));
       setEditStatus("Profile updated successfully.");
-      window.dispatchEvent(new Event("profileUpdated")); // ✅ ADD THIS
+      window.dispatchEvent(new Event("profileUpdated")); // ADD THIS
     } catch (err) {
       console.error("[EDIT_PROFILE_ERROR]", err);
       setEditStatus(err.message || "Could not save changes.");

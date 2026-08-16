@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
+import { IconFlag } from "@tabler/icons-react";
 import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
 
 type PublicUser = {
@@ -145,7 +146,7 @@ export default function PublicProfilePage() {
               onClick={() => setShowReportModal(true)}
               className="px-4 py-2 rounded-lg border border-red-500/40 bg-red-900/30 text-sm font-semibold text-red-300 hover:bg-red-900/50 transition"
             >
-              🚩 Report Player
+              <span className="inline-flex items-center gap-1"><IconFlag size={14} /> Report Player</span>
             </button>
           )}
         </div>

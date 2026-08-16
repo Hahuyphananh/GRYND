@@ -8,6 +8,13 @@ import { getDropRow } from "../../../../../lib/connectFour";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import ReportModal from "../../../../../components/ReportModal";
 import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../../lib/animations";
+import {
+  IconTarget,
+  IconEye,
+  IconFlag,
+  IconTrophy,
+  IconBomb,
+} from "@tabler/icons-react";
 
 const DEFAULT_MOVE_LIMIT_SECONDS = 60;
 const REPLAY_WINDOW_SECONDS = 20;
@@ -614,7 +621,7 @@ export default function ConnectFourGamePage() {
             className={`casino-surface p-4 rounded-2xl ${canPlay ? "turn-active-glow" : ""}`}
           >
             <h2 className="text-base font-bold text-yellow-300 mb-3 flex items-center gap-2 uppercase tracking-wider">
-              <span aria-hidden>🎯</span>
+              <IconTarget size={16} aria-hidden />
               <span>Match Details</span>
             </h2>
 
@@ -629,7 +636,7 @@ export default function ConnectFourGamePage() {
 
             {!isSpectator && spectatorCount > 0 && (
               <div className="mb-3 flex items-center gap-1.5 text-xs text-cyan-300">
-                <span aria-hidden>👀</span>
+                <IconEye size={14} aria-hidden />
                 <span>
                   {spectatorCount} spectator{spectatorCount > 1 ? "s" : ""}
                 </span>
@@ -698,7 +705,7 @@ export default function ConnectFourGamePage() {
                     onClick={() => setShowReportModal(true)}
                     className="mt-2 w-full text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
                   >
-                    🚩 Report Player
+                    <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report Player</span>
                   </button>
                 )}
               </>
@@ -736,7 +743,7 @@ export default function ConnectFourGamePage() {
                 transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.25 }}
                 className="mb-2 text-6xl text-center"
               >
-                {playerWon ? "🏆" : "💥"}
+                {playerWon ? <IconTrophy size={56} className="text-yellow-400" /> : <IconBomb size={56} className="text-red-400" />}
               </motion.div>
               <motion.h3
                 initial={{ y: 10, opacity: 0 }}
@@ -744,7 +751,7 @@ export default function ConnectFourGamePage() {
                 transition={{ delay: 0.4, duration: 0.3 }}
                 className={`text-2xl font-extrabold mb-2 text-center ${playerWon ? "text-yellow-300" : "text-red-300"}`}
               >
-                {playerWon ? "🏆 You Won!" : "💥 You Lost"}
+                {playerWon ? <span className="inline-flex items-center gap-2"><IconTrophy size={24} /> You Won!</span> : <span className="inline-flex items-center gap-2"><IconBomb size={24} /> You Lost</span>}
               </motion.h3>
               <motion.p
                 initial={{ y: 10, opacity: 0 }}

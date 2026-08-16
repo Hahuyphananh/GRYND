@@ -49,7 +49,7 @@ export async function POST(request) {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("❌ Error initializing user tokens:", err);
+    console.error(" Error initializing user tokens:", err);
 
     return new Response(
       JSON.stringify({

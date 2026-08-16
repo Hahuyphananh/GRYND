@@ -55,6 +55,12 @@ import {
   getReplaySecondsLeft,
   makeInitialEndPopupState,
 } from "../../../../../lib/precision/utils";
+import { PrecisionRankIcon } from "../../../../../components/precision/PrecisionRankIcon";
+import {
+  IconFlag,
+  IconClock,
+  IconTarget,
+} from "@tabler/icons-react";
 import { playRankSound } from "../../../../../lib/precisionAudio";
 import { fadeUp } from "../../../../../lib/animations";
 import type {
@@ -980,7 +986,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                 onClick={() => setShowReportModal(true)}
                 className="rounded border border-red-500/40 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/25"
               >
-                🚩 Report
+                <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report</span>
               </button>
             )}
             <button
@@ -1061,7 +1067,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                   compositor thread (transform + opacity only) so it
                   doesn't bust the rAF/memoization optimizations set up
                   in the previous pass. Combined with the existing
-                  `animate-pulse` ⏱ emoji, the arming phase feels like
+                  `animate-pulse` timer glyph, the arming phase feels like
                   a soft heartbeat instead of a static panel. */}
               <motion.div
                 animate={{
@@ -1082,7 +1088,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                   lastRoundWinnerSeat={lastRoundWinnerSeat}
                 />
                 <div className="flex flex-col items-center justify-center rounded-2xl border border-yellow-400/40 bg-[#1a120a]/80 p-8 text-center sm:p-10">
-                  <p className="animate-pulse text-5xl">⏱</p>
+                  <p className="animate-pulse"><IconClock size={44} className="text-yellow-400" /></p>
                   <h2 className="mt-4 text-2xl font-black text-yellow-300 sm:text-3xl">
                     {t("games.precision.round_get_ready", { round: currentRound })}
                   </h2>
@@ -1126,7 +1132,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                 />
 
                 <div className="rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-5 text-center sm:p-8">
-                  <p className="text-5xl">🎯</p>
+                  <p><IconTarget size={44} className="text-fuchsia-400" /></p>
                   <h2 className="mt-4 text-2xl font-black text-fuchsia-300">
                     {t("games.precision.round_label", { round: currentRound })}
                   </h2>
@@ -1163,7 +1169,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                       earn if they stopped at the current timer value. */}
                   {previewRank && (
                     <p className={`mt-3 text-lg font-bold ${previewRank.color}`}>
-                      {previewRank.emoji} {previewRank.label}{" "}
+                      <PrecisionRankIcon label={previewRank.label} size={16} className="mr-1 inline" /> {previewRank.label}{" "}
                       <span className="text-sm font-normal text-cyan-100/70">
                         ({t("games.precision.ms_off_format", { ms: Math.abs(Math.round(timerMs - (state.targetMs ?? 0))).toLocaleString() })})
                       </span>

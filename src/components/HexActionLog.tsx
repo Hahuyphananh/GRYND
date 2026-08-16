@@ -1,6 +1,16 @@
 "use client";
 
-import { useMemo, useRef, useEffect } from "react";
+import { useMemo, useRef, useEffect, type ReactNode } from "react";
+import {
+  IconArrowRight,
+  IconArrowsLeftRight,
+  IconClock,
+  IconHexagon,
+  IconRefresh,
+  IconShield,
+  IconSwords,
+  IconTrendingUp,
+} from "@tabler/icons-react";
 import type { ActionLogEntry } from "../lib/hexDuelEngine";
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -9,15 +19,15 @@ import type { ActionLogEntry } from "../lib/hexDuelEngine";
 
 const TYPE_META: Record<
   ActionLogEntry["type"],
-  { icon: string; label: string; color: string }
+  { icon: ReactNode; label: string; color: string }
 > = {
-  move:       { icon: "⬡",  label: "Move",       color: "#22d3ee" },
-  push:       { icon: "⇶",  label: "Push",       color: "#f472b6" },
-  reinforce:  { icon: "🛡", label: "Reinforce",  color: "#34d399" },
-  endTurn:    { icon: "⟳",  label: "End Turn",   color: "#facc15" },
-  attack:     { icon: "⚔",  label: "Attack",     color: "#f97316" },
-  displace:   { icon: "⇄",  label: "Displace",   color: "#22c55e" },
-  troopGrowth:{ icon: "↑",  label: "Troop Growth", color: "#a855f7" },
+  move:       { icon: <IconHexagon size={12} />, label: "Move", color: "#22d3ee" },
+  push:       { icon: <IconArrowRight size={12} />, label: "Push", color: "#f472b6" },
+  reinforce:  { icon: <IconShield size={12} />, label: "Reinforce", color: "#34d399" },
+  endTurn:    { icon: <IconRefresh size={12} />, label: "End Turn", color: "#facc15" },
+  attack:     { icon: <IconSwords size={12} />, label: "Attack", color: "#f97316" },
+  displace:   { icon: <IconArrowsLeftRight size={12} />, label: "Displace", color: "#22c55e" },
+  troopGrowth:{ icon: <IconTrendingUp size={12} />, label: "Troop Growth", color: "#a855f7" },
 };
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -133,7 +143,7 @@ export default function HexActionLog({
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
         <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
-          ⏱ Action Log
+          <IconClock size={12} className="mb-0.5 mr-1 inline" /> Action Log
         </span>
         <span className="text-[10px] text-slate-600 tabular-nums">
           {log.length} action{log.length !== 1 ? "s" : ""} · {turnCount} turn{turnCount !== 1 ? "s" : ""}

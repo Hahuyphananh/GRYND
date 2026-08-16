@@ -116,7 +116,7 @@ function calculatePlinkoResult(riskLevel) {
   const slotWidth = 500 / multipliers.length;
 
   // -----------------------------
-  // 🎯 STEP 1: BINOMIAL SLOT PICK
+  //  STEP 1: BINOMIAL SLOT PICK
   // -----------------------------
   let rightMoves = 0;
   for (let i = 0; i < rows; i++) {
@@ -128,7 +128,7 @@ function calculatePlinkoResult(riskLevel) {
   const multiplier = multipliers[slotIndex];
 
   // -----------------------------
-  // 🎢 STEP 2: GENERATE MATCHING PATH
+  //  STEP 2: GENERATE MATCHING PATH
   // -----------------------------
   const path = [];
   let x = 250;

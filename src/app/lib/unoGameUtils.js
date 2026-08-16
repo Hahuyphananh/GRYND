@@ -33,13 +33,13 @@ function generateUnoDeck() {
   return deck;
 }
 
-// ✅ Create a new game
+//  Create a new game
 export async function createUnoGame(userId, betAmount) {
   const deck = generateUnoDeck();
   const playerHand = deck.splice(0, 7);
   const aiHand = deck.splice(0, 7);
   const topCard = deck.shift();
-  const discardPile = [topCard]; // ⭐ THIS is what prevents the top card from disappearing
+  const discardPile = [topCard]; // THIS is what prevents the top card from disappearing
 
   const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!user) throw new Error("User not found");
@@ -61,8 +61,8 @@ export async function createUnoGame(userId, betAmount) {
         playerHand: JSON.stringify(playerHand),
         aiHand: JSON.stringify(aiHand),
 
-        discardPile: JSON.stringify(discardPile), // ⭐ ADD THIS
-        currentColor: topCard.color, // ⭐ ADD THIS
+        discardPile: JSON.stringify(discardPile), // ADD THIS
+        currentColor: topCard.color, // ADD THIS
 
         topCard: JSON.stringify(topCard), // optional but fine
         isPlayerTurn: true,
@@ -73,7 +73,7 @@ export async function createUnoGame(userId, betAmount) {
   return { gameId: inserted.id, newBalance, playerHand, aiHand, topCard };
 }
 
-// ✅ Get an existing game by ID
+//  Get an existing game by ID
 export async function getUnoGameById(gameId) {
   const game = await db.query.unoGames.findFirst({
     where: eq(unoGames.id, gameId),
@@ -93,7 +93,7 @@ export function drawUnoCard(deck) {
   return { card, deck: newDeck };
 }
 
-// ✅ Update game state in DB
+//  Update game state in DB
 export async function updateUnoGameState(gameId, updatedGame) {
   await db
     .update(unoGames)
