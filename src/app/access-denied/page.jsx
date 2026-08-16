@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
+import { IconCircleX } from "@tabler/icons-react";
 
 const SignOutButton = dynamic(
   () => import("@clerk/nextjs").then((mod) => mod.SignOutButton),
@@ -13,7 +14,7 @@ export default function AccessDeniedPage() {
     <div className="relative min-h-screen bg-[#003366] flex items-center justify-center px-4">
       <InteractiveCasinoBg variant="subtle" />
       <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
-        <div className="text-6xl mb-4">🚫</div>
+        <div className="mb-4 flex justify-center"><IconCircleX size={56} className="text-red-500" /></div>
         <h1 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h1>
         <p className="text-gray-700 mb-6">
           You must be at least 18 years old to access this casino platform. This

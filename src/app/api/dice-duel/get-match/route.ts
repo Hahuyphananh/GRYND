@@ -20,7 +20,7 @@ export async function GET(req: Request) {
 
   if (!match) return NextResponse.json({ ok: false }, { status: 404 });
 
-  // 👇 FETCH USERS
+  //  FETCH USERS
   const [player1] = await db
     .select()
     .from(users)
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
     match: {
       ...match,
 
-      // 👇 ADD NAMES HERE
+      //  ADD NAMES HERE
       player1Name: player1?.name || "Player 1",
       player2Name: player2?.name || "Player 2",
     },

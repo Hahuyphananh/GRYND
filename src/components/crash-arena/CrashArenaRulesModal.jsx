@@ -1,6 +1,20 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import {
+  IconArmchair,
+  IconBolt,
+  IconBomb,
+  IconBook,
+  IconClock,
+  IconDeviceGamepad,
+  IconMoneybag,
+  IconMoodSilence,
+  IconRefresh,
+  IconRocket,
+  IconTrophy,
+  IconX,
+} from "@tabler/icons-react";
 
 /**
  * CrashArenaRulesModal — overlay popup explaining the Crash Arena PvP rules
@@ -17,7 +31,7 @@ import { motion } from "framer-motion";
 
 const RULES = [
   {
-    icon: "🪑",
+    icon: <IconArmchair size={24} />,
     title: "Take a seat",
     body: (
       <>
@@ -28,7 +42,7 @@ const RULES = [
     ),
   },
   {
-    icon: "💰",
+    icon: <IconMoneybag size={24} />,
     title: "Everyone antes up",
     body: (
       <>
@@ -39,7 +53,7 @@ const RULES = [
     ),
   },
   {
-    icon: "🚀",
+    icon: <IconRocket size={24} />,
     title: "Watch it fly",
     body: (
       <>
@@ -51,7 +65,7 @@ const RULES = [
     ),
   },
   {
-    icon: "⏱️",
+    icon: <IconClock size={24} />,
     title: "Cash out — or bust",
     body: (
       <>
@@ -63,7 +77,7 @@ const RULES = [
     ),
   },
   {
-    icon: "🏆",
+    icon: <IconTrophy size={24} />,
     title: "Winner takes all",
     body: (
       <>
@@ -75,7 +89,7 @@ const RULES = [
     ),
   },
   {
-    icon: "🔄",
+    icon: <IconRefresh size={24} />,
     title: "No winners? Pot carries over",
     body: (
       <>
@@ -86,7 +100,7 @@ const RULES = [
     ),
   },
   {
-    icon: "😴",
+    icon: <IconMoodSilence size={24} />,
     title: "Sit out or leave anytime",
     body: (
       <>
@@ -102,7 +116,7 @@ const RULES = [
 
 const EXAMPLE_STEPS = [
   {
-    icon: "🪑",
+    icon: <IconArmchair size={22} />,
     tag: "Setup",
     title: "4 players take a seat",
     body: (
@@ -113,7 +127,7 @@ const EXAMPLE_STEPS = [
     ),
   },
   {
-    icon: "💰",
+    icon: <IconMoneybag size={22} />,
     tag: "Ante",
     title: "Everyone stakes $10",
     body: (
@@ -124,7 +138,7 @@ const EXAMPLE_STEPS = [
     ),
   },
   {
-    icon: "🚀",
+    icon: <IconRocket size={22} />,
     tag: "1.50x",
     title: "Dave cashes out",
     body: (
@@ -135,7 +149,7 @@ const EXAMPLE_STEPS = [
     ),
   },
   {
-    icon: "🚀",
+    icon: <IconRocket size={22} />,
     tag: "2.10x",
     title: "Alice cashes out",
     body: (
@@ -146,7 +160,8 @@ const EXAMPLE_STEPS = [
     ),
   },
   {
-    icon: "💥",
+    icon: <IconBomb size={22} />,
+    crash: true,
     tag: "3.20x",
     title: "CRASH!",
     body: (
@@ -157,7 +172,7 @@ const EXAMPLE_STEPS = [
     ),
   },
   {
-    icon: "🏆",
+    icon: <IconTrophy size={22} />,
     tag: "Settle",
     title: "Alice wins the pot",
     body: (
@@ -224,9 +239,11 @@ export default function CrashArenaRulesModal({ onClose }) {
             aria-label="Close rules"
             className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full border border-gray-500/30 text-gray-400 hover:text-white hover:bg-gray-500/15 transition-all"
           >
-            ✕
+            <IconX size={16} />
           </button>
-          <h2 className="text-2xl font-black text-[#f5ff3b]">🚀 Crash Arena</h2>
+          <h2 className="text-2xl font-black text-[#f5ff3b]">
+            <IconRocket size={24} className="mb-1 mr-2 inline" /> Crash Arena
+          </h2>
           <p className="text-sm text-[#9dd8ff] mt-1">
             How the PvP rocket race works — every rule, plus a full example round.
           </p>
@@ -234,8 +251,8 @@ export default function CrashArenaRulesModal({ onClose }) {
           {/* Tab switcher */}
           <div className="mt-4 flex gap-2">
             {[
-              { id: "rules", label: "📜 The Rules" },
-              { id: "example", label: "🎮 Example Round" },
+              { id: "rules", label: "The Rules", icon: <IconBook size={16} /> },
+              { id: "example", label: "Example Round", icon: <IconDeviceGamepad size={16} /> },
             ].map((t) => (
               <button
                 key={t.id}
@@ -246,7 +263,10 @@ export default function CrashArenaRulesModal({ onClose }) {
                     : "bg-[#08142f] text-[#FFD700]/70 border-[#FFD700]/25 hover:bg-[#FFD700]/15 hover:text-[#FFD700]"
                 }`}
               >
-                {t.label}
+                <span className="inline-flex items-center gap-1.5">
+                  {t.icon}
+                  {t.label}
+                </span>
               </button>
             ))}
           </div>
@@ -264,7 +284,7 @@ export default function CrashArenaRulesModal({ onClose }) {
                   transition={{ delay: i * 0.05, duration: 0.25 }}
                   className="flex gap-3 rounded-2xl border border-[#00e5ff]/20 bg-[#050d1f]/70 p-4 hover:border-[#00e5ff]/40 hover:bg-[#08142f]/70 transition-all duration-200"
                 >
-                  <span className="text-2xl shrink-0 leading-none">{rule.icon}</span>
+                  <span className="shrink-0 leading-none text-[#00e5ff]">{rule.icon}</span>
                   <div>
                     <h3 className="font-bold text-[#d8fbff]">
                       <span className="text-[#00e5ff]/60 mr-1.5">{i + 1}.</span>
@@ -278,7 +298,7 @@ export default function CrashArenaRulesModal({ onClose }) {
               {/* Quick recap */}
               <div className="mt-2 rounded-2xl border border-[#ff4fd8]/25 bg-[#ff4fd8]/5 p-4">
                 <h3 className="text-xs uppercase tracking-wider text-[#ff4fd8]/80 font-bold mb-2">
-                  ⚡ Quick recap
+                  <IconBolt size={14} className="mb-0.5 mr-1 inline" /> Quick recap
                 </h3>
                 <ul className="text-sm text-gray-300 space-y-1.5 list-disc list-inside">
                   <li>Cash out before the crash to survive.</li>
@@ -293,7 +313,7 @@ export default function CrashArenaRulesModal({ onClose }) {
               {/* Round summary header */}
               <div className="rounded-2xl border border-[#FFD700]/30 bg-[#FFD700]/5 p-4 text-center">
                 <h3 className="text-sm font-black text-[#FFD700]">
-                  🎮 Example Round — $10 Table, 4 Players
+                  <IconDeviceGamepad size={18} className="mb-1 mr-1.5 inline" /> Example Round — $10 Table, 4 Players
                 </h3>
                 <p className="text-xs text-[#9dd8ff] mt-1">
                   Follow one full round from seats to settlement.
@@ -314,16 +334,16 @@ export default function CrashArenaRulesModal({ onClose }) {
                     >
                       <span
                         className={`absolute -left-5 top-1 w-[19px] h-[19px] rounded-full border-2 flex items-center justify-center text-[9px] ${
-                          step.icon === "💥"
+                          step.crash
                             ? "bg-red-500/30 border-red-400"
-                            : step.icon === "🏆"
+                            : step.tag === "Settle"
                               ? "bg-[#FFD700]/30 border-[#FFD700]"
                               : "bg-[#00e5ff]/20 border-[#00e5ff]"
                         }`}
                       />
                       <div className="rounded-2xl border border-[#00e5ff]/20 bg-[#050d1f]/70 p-4 hover:border-[#00e5ff]/40 transition-all duration-200">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xl leading-none">{step.icon}</span>
+                          <span className="leading-none text-[#00e5ff]">{step.icon}</span>
                           <span className="text-xs font-black px-2 py-0.5 rounded-full bg-[#00e5ff]/15 text-[#00e5ff] border border-[#00e5ff]/25">
                             {step.tag}
                           </span>
@@ -339,7 +359,7 @@ export default function CrashArenaRulesModal({ onClose }) {
               {/* Final settlement box */}
               <div className="rounded-2xl border-2 border-[#FFD700]/40 bg-gradient-to-b from-[#0a1a2e] to-[#040d24] p-4 shadow-[0_0_20px_rgba(255,215,0,0.15)]">
                 <h3 className="text-sm font-black text-[#f5ff3b] text-center mb-3">
-                  🏆 The Payout
+                  <IconTrophy size={18} className="mb-1 mr-1.5 inline" /> The Payout
                 </h3>
                 <div className="space-y-2">
                   {EXAMPLE_RESULT.map((row) => (
@@ -367,7 +387,7 @@ export default function CrashArenaRulesModal({ onClose }) {
             onClick={onClose}
             className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-[#00e5ff] to-[#007cf0] text-white border border-[#00e5ff] shadow-[0_0_20px_rgba(0,229,255,0.4)] hover:shadow-[0_0_35px_rgba(0,229,255,0.7)] hover:scale-[1.02] transition-all duration-300"
           >
-            Got it — let&apos;s play 🚀
+            Got it — let&apos;s play <IconRocket size={16} className="mb-0.5 ml-1 inline" />
           </button>
         </div>
       </motion.div>

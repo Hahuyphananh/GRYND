@@ -5,6 +5,22 @@ import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../components/navigation-bar";
 import { useSocket } from "../../../context/SocketProvider";
 import ReportModal from "../../../components/ReportModal";
+import {
+  IconHandGrab,
+  IconHandStop,
+  IconScissors,
+  IconQuestionMark,
+  IconTrophy,
+  IconSkull,
+  IconBook,
+  IconNumber,
+  IconSwords,
+  IconFlame,
+  IconCoins,
+  IconRobot,
+  IconAlertTriangle,
+  IconFlag,
+} from "@tabler/icons-react";
 
 
 const PVP_CHOICES = ["rock", "paper", "scissors"];
@@ -118,11 +134,11 @@ export default function RPSGame() {
           setPvpMessage("Choice locked. Waiting for opponent choice...");
         } else if (game.status === "finished") {
           if (game.winner === "you") {
-            setPvpMessage("🎉 You won the PvP match!");
+            setPvpMessage("You won the PvP match!");
           } else if (game.winner === "opponent") {
-            setPvpMessage("😢 You lost the PvP match.");
+            setPvpMessage("You lost the PvP match.");
           } else {
-            setPvpMessage("🤝 It's a tie.");
+            setPvpMessage("It's a tie.");
           }
           if (typeof game.newBalance === "number") {
             setTokens(game.newBalance);
@@ -607,55 +623,55 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
                 onClick={() => setShowRpsRules(!showRpsRules)}
                 className="w-full text-left font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] flex justify-between items-center"
               >
-                📜 Game Rules
+                <span className="inline-flex items-center gap-2"><IconBook size={18} /> Game Rules</span>
                 <span>{showRpsRules ? "▲" : "▼"}</span>
               </button>
 
               {showRpsRules && (
                 <div className="mt-3 text-sm text-gray-200 space-y-3 leading-relaxed">
-                  <p>
-                    ✊ <strong>Objective:</strong> Beat the AI by choosing Rock, Paper, or Scissors.
+                  <p className="flex items-start gap-2">
+                    <IconHandGrab size={18} className="mt-0.5 shrink-0" /> <span><strong>Objective:</strong> Beat the AI by choosing Rock, Paper, or Scissors.</span>
                   </p>
 
-                  <p>
-                    🔢 <strong>How to Play:</strong>
-                    <br />• Select your move (✊ Rock, ✋ Paper, ✌️ Scissors) • Choose your bet
-                    amount • Click <strong>“Place Bet”</strong> to play
+                  <p className="flex items-start gap-2">
+                    <IconNumber size={18} className="mt-0.5 shrink-0" /> <span><strong>How to Play:</strong>
+                    <br />• Select your move (Rock, Paper, Scissors) • Choose your bet
+                    amount • Click <strong>“Place Bet”</strong> to play</span>
                   </p>
 
-                  <p>
-                    ⚔️ <strong>Rules:</strong>
-                    <br />• Rock beats Scissors • Scissors beats Paper • Paper beats Rock
+                  <p className="flex items-start gap-2">
+                    <IconSwords size={18} className="mt-0.5 shrink-0" /> <span><strong>Rules:</strong>
+                    <br />• Rock beats Scissors • Scissors beats Paper • Paper beats Rock</span>
                   </p>
 
-                  <p>
-                    🏆 <strong>Results:</strong>
+                  <p className="flex items-start gap-2">
+                    <IconTrophy size={18} className="mt-0.5 shrink-0" /> <span><strong>Results:</strong>
                     <br />• Win → You earn a payout based on your bet and streak • Lose → You lose
-                    your bet • Tie → Your bet is returned
+                    your bet • Tie → Your bet is returned</span>
                   </p>
 
-                  <p>
-                    🔥 <strong>Win Streak:</strong>
+                  <p className="flex items-start gap-2">
+                    <IconFlame size={18} className="mt-0.5 shrink-0" /> <span><strong>Win Streak:</strong>
                     <br />• Winning multiple times in a row increases your multiplier • Higher
-                    streak = higher rewards
+                    streak = higher rewards</span>
                   </p>
 
-                  <p>
-                    💰 <strong>Multiplier(pve):</strong>
+                  <p className="flex items-start gap-2">
+                    <IconCoins size={18} className="mt-0.5 shrink-0" /> <span><strong>Multiplier(pve):</strong>
                     <br />• Your winnings increase with your streak • Lose or tie → multiplier
-                    resets to 1.0
+                    resets to 1.0</span>
                   </p>
 
-                  <p>
-                    🤖 <strong>Auto Bet:</strong>
+                  <p className="flex items-start gap-2">
+                    <IconRobot size={18} className="mt-0.5 shrink-0" /> <span><strong>Auto Bet:</strong>
                     <br />• Automatically plays for you • Can run for a set number of rounds or
-                    infinitely • Stops on invalid settings or when you disable it
+                    infinitely • Stops on invalid settings or when you disable it</span>
                   </p>
 
-                  <p>
-                    ⚠️ <strong>Important:</strong>
+                  <p className="flex items-start gap-2">
+                    <IconAlertTriangle size={18} className="mt-0.5 shrink-0" /> <span><strong>Important:</strong>
                     <br />• You must have enough tokens to bet • You must select a move before
-                    betting • The game is based on chance
+                    betting • The game is based on chance</span>
                   </p>
                 </div>
               )}
@@ -753,7 +769,7 @@ shadow-[0_0_20px_rgba(0,229,255,0.2)]
 w-24 h-32 sm:w-32 sm:h-44
 flex items-center justify-center rounded-xl text-5xl sm:text-6xl"
               >
-                {getEmoji(playerChoice)}
+                {getChoiceIcon(playerChoice)}
               </motion.div>
 
               <motion.div
@@ -773,7 +789,7 @@ shadow-[0_0_20px_rgba(0,229,255,0.2)]
 w-24 h-32 sm:w-32 sm:h-44
 flex items-center justify-center rounded-xl text-5xl sm:text-6xl"
               >
-                {getEmoji(aiChoice)}
+                {getChoiceIcon(aiChoice)}
               </motion.div>
             </div>
 
@@ -794,9 +810,9 @@ flex items-center justify-center rounded-xl text-5xl sm:text-6xl"
   }
 `}
                 >
-                  {result === "win" && "🏆 "}
+                  {result === "win" && <IconTrophy size={24} className="inline" />}{" "}
                   {result.toUpperCase()}
-                  {result === "lose" && " 💀"}
+                  {result === "lose" && <span> <IconSkull size={20} className="inline" /></span>}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -848,11 +864,11 @@ flex items-center justify-center rounded-xl text-5xl sm:text-6xl"
 w-24 h-28 sm:w-28 sm:h-36
 flex items-center justify-center rounded-xl text-4xl sm:text-5xl"
               >
-                {getEmoji(pvpMyChoice)}
+                {getChoiceIcon(pvpMyChoice)}
               </div>
               <div className="text-2xl sm:text-3xl font-bold text-[#7cefff]">VS</div>
               <div className="bg-[#0b224f] border border-[#00e5ff] w-24 h-28 sm:w-28 sm:h-36 flex items-center justify-center rounded-xl text-4xl sm:text-5xl">
-                {pvpStatus === "finished" ? getEmoji(pvpOpponentChoice) : "❔"}
+                {pvpStatus === "finished" ? getChoiceIcon(pvpOpponentChoice) : <IconQuestionMark size={36} className="text-[#7cefff]" />}
               </div>
             </div>
 
@@ -863,7 +879,7 @@ flex items-center justify-center rounded-xl text-4xl sm:text-5xl"
                 onClick={() => setShowReportModal(true)}
                 className="mt-2 text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
               >
-                🚩 Report Player
+                <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report Player</span>
               </button>
             )}
 
@@ -957,15 +973,15 @@ flex items-center justify-center rounded-xl text-4xl sm:text-5xl"
   );
 }
 
-function getEmoji(choice: string | null) {
+function getChoiceIcon(choice: string | null) {
   switch (choice) {
     case "rock":
-      return "✊";
+      return <IconHandGrab size={44} className="text-[#a855f7]" />;
     case "paper":
-      return "✋";
+      return <IconHandStop size={44} className="text-[#00e5ff]" />;
     case "scissors":
-      return "✌️";
+      return <IconScissors size={44} className="text-[#ff4fd8]" />;
     default:
-      return "❔";
+      return <IconQuestionMark size={44} className="text-[#7cefff]" />;
   }
 }

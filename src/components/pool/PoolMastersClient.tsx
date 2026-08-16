@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import NavigationBar from "../../components/navigation-bar";
 import { usePostHog } from "posthog-js/react";
 import { useEffect } from "react";
+import { PoolBallIcon } from "../icons/CustomIcons";
 
 export default function PoolMastersClient() {
   const router = useRouter();
@@ -14,8 +15,8 @@ export default function PoolMastersClient() {
   return (
     <div className="mx-auto max-w-5xl rounded-2xl border border-cyan-400/40 bg-black/30 p-6 shadow-[0_0_30px_rgba(34,211,238,.25)]">
       <NavigationBar currentPath="/casino" />
-      <h2 className="mt-3 text-4xl font-black text-fuchsia-300">
-        🎱 Pool Masters
+      <h2 className="mt-3 flex items-center justify-center gap-3 text-4xl font-black text-fuchsia-300">
+        <PoolBallIcon size={32} className="text-cyan-300" /> Pool Masters
       </h2>
       <p className="mt-2 text-cyan-100">
         Play multiplayer or challenge the AI in a full pool-table experience.

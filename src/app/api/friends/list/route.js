@@ -14,7 +14,7 @@ export async function GET() {
       );
     }
 
-    // 👤 Get current user (Neon returns array)
+    //  Get current user (Neon returns array)
     const current = await sql`
       SELECT id
       FROM users
@@ -31,7 +31,7 @@ export async function GET() {
 
     const meId = Number(current[0].id);
 
-    // 👥 Get friends — include streak info and title info
+    //  Get friends — include streak info and title info
     const friends = await sql`
       SELECT 
         u.id, 

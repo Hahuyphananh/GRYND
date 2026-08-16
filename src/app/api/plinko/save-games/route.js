@@ -23,7 +23,7 @@ export async function POST(req) {
       );
     }
 
-    // 🧮 Determine result correctly
+    //  Determine result correctly
     const numericBet = Number(totalBet);
     const numericPayout = Number(totalPayout);
 
@@ -31,7 +31,7 @@ export async function POST(req) {
     if (numericPayout > numericBet) result = "won";
     else if (numericPayout === numericBet) result = "draw"; // optional
 
-    // 💾 Save one combined game
+    //  Save one combined game
     await db.insert(plinkoGames).values({
       userId: userId,
       betAmount: numericBet,

@@ -9,7 +9,7 @@ export type UnoGameState = {
   playerHand: UnoCard[];
   aiHand: UnoCard[];
   turn: "player" | "ai";
-  currentColor: string; // ⭐ THE RULE COLOR
+  currentColor: string; // THE RULE COLOR
 };
 
 /**
@@ -154,7 +154,7 @@ export function applyUnoCard(game, card, currentPlayer, chosenColor = null) {
 
   let playedCard = { ...card };
 
-  // ✅ Wilds must have a chosen color
+  //  Wilds must have a chosen color
   const normalizedValue = card.value.toLowerCase();
 
   if (

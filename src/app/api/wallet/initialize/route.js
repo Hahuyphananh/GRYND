@@ -54,7 +54,7 @@ export async function POST(request) {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("❌ Error creating wallet with bonus:", err);
+    console.error(" Error creating wallet with bonus:", err);
     return new Response(
       JSON.stringify({
         success: false,

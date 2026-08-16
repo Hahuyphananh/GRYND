@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const l = lobby[0];
   const isHost = l.hostUserId === userId;
 
-  // ❌ block host from "joining" their own lobby
+  //  block host from "joining" their own lobby
   if (isHost) {
     return NextResponse.json(
       { ok: false, message: "Host cannot join own lobby" },

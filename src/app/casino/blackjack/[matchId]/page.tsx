@@ -39,6 +39,17 @@ import {
   playDefeat,
 } from "../../../../lib/gameAudio";
 import {
+  IconFlag,
+  IconHeartHandshake,
+  IconTrophy,
+  IconSkull,
+  IconCrown,
+  IconStarFilled,
+  IconX,
+  IconPlayerSkipForward,
+  IconCards,
+} from "@tabler/icons-react";
+import {
   isRedSuit,
   SWAP_LIMIT_PER_ROUND,
   HOLD_LIMIT_PER_ROUND,
@@ -769,7 +780,7 @@ export default function BlackjackPvpMatchPage({
         {/* Header */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl sm:text-3xl font-bold text-[#FFD700] drop-shadow-[0_0_10px_rgba(255,215,0,0.4)]">
-            {t("blackjackPvp.title", "🃏 Blackjack PvP")}
+            <span className="inline-flex items-center gap-2"><IconCards size={26} className="text-[#FFD700]" /> {t("blackjackPvp.title", "Blackjack PvP")}</span>
           </h1>
           <span className="px-4 py-1.5 bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#fffec7] rounded-full font-extrabold text-sm shadow-[0_0_10px_rgba(255,215,0,0.3)]">
             {t("blackjackPvp.stake", "Mise : {amount}").replace(
@@ -782,7 +793,7 @@ export default function BlackjackPvpMatchPage({
               onClick={() => setShowReportModal(true)}
               className="px-3 py-1.5 rounded-full border border-red-500/30 bg-red-500/10 text-xs font-extrabold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
             >
-              🚩 Report opponent
+              <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report opponent</span>
             </button>
           )}
         </div>
@@ -1807,7 +1818,7 @@ function RoundResultModal({
       : player2Label
     : "";
 
-  const headerEmoji = isDraw ? "🤝" : viewerWon ? "🏆" : "💀";
+  const headerEmoji = isDraw ? <IconHeartHandshake size={56} className="text-yellow-300" /> : viewerWon ? <IconTrophy size={56} className="text-amber-400" /> : <IconSkull size={56} className="text-red-400" />;
   const headerPrimary = isDraw
     ? t("blackjackPvp.roundResult.drawTitle", "Manche nulle")
     : viewerWon
@@ -2066,7 +2077,7 @@ function RoundResultSeat({
             className="absolute -top-3 -right-2 text-2xl drop-shadow-md pointer-events-none"
             aria-hidden
           >
-            👑
+            <IconCrown size={24} className="text-yellow-400" />
           </motion.div>
         )}
       </AnimatePresence>
@@ -2077,7 +2088,7 @@ function RoundResultSeat({
         }`}
       >
         <span>
-          {highlight === "self" ? `★ ${label}` : label}
+          {highlight === "self" ? <span className="inline-flex items-center gap-0.5"><IconStarFilled size={10} className="text-yellow-400" /> {label}</span> : label}
         </span>
         <span className="text-[9px] uppercase tracking-wider text-white/55">
           {subLabel}
@@ -2175,7 +2186,7 @@ function MatchEndModal({
           transition={{ delay: 0.2 }}
           className="mb-2 text-7xl"
         >
-          {won ? "🏆" : draw ? "🤝" : "💀"}
+          {won ? <IconTrophy size={64} className="text-amber-400" /> : draw ? <IconHeartHandshake size={64} className="text-yellow-300" /> : <IconSkull size={64} className="text-red-400" />}
         </motion.div>
         <h2
           className={`mt-2 text-3xl font-black uppercase ${
@@ -2254,7 +2265,7 @@ function CancelledModal({
         animate={{ scale: 1, y: 0 }}
         className="relative w-full max-w-md rounded-3xl border-4 border-white/30 bg-gradient-to-b from-[#1a1a3a] to-[#0d0d2b] p-6 text-center shadow-2xl"
       >
-        <div className="mb-2 text-7xl">❌</div>
+        <div className="mb-2 flex justify-center"><IconX size={64} className="text-red-400" /></div>
         <h2 className="mt-2 text-3xl font-black uppercase text-white">
           {t("blackjackPvp.status.cancelled", "Partie annulée")}
         </h2>
@@ -2305,7 +2316,7 @@ function ResignConfirmModal({
         transition={{ type: "spring", stiffness: 300, damping: 18 }}
         className="relative w-full max-w-md rounded-3xl border-4 border-red-500/60 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] p-6 text-center shadow-2xl"
       >
-        <div className="mb-2 text-7xl">🏳️</div>
+        <div className="mb-2 flex justify-center"><IconFlag size={64} className="text-red-400" /></div>
         <h2 className="mt-2 text-3xl font-black uppercase text-red-400">
           {t("blackjackPvp.resign.title", "Abandonner la partie ?")}
         </h2>
@@ -2424,7 +2435,7 @@ function BetweenRoundsScreen({
       transition={{ duration: 0.35 }}
       className="text-center mt-3 mb-2 rounded-2xl border-2 border-[#FFD700]/35 bg-gradient-to-b from-[#0b132b]/80 to-[#050a17]/80 px-5 py-7 shadow-[0_0_30px_rgba(255,215,0,0.18)]"
     >
-      <div className="text-3xl mb-2">⏭️</div>
+      <div className="mb-2 flex justify-center"><IconPlayerSkipForward size={28} className="text-[#FFD700]" /></div>
       <h3 className="text-xl sm:text-2xl font-black uppercase text-[#FFD700] tracking-widest">
         {t("blackjackPvp.betweenRounds.title", "Manche suivante imminente")}
       </h3>

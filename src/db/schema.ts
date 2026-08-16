@@ -317,7 +317,7 @@ export const pokerGames = pgTable("poker_games", {
   maxPlayers: integer("max_players").notNull().default(6),
   isPrivate: boolean("is_private").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  // ✅ NEW: Players array (max 6 seats)
+  //  NEW: Players array (max 6 seats)
   /**
    * Structure:
    * [
@@ -425,7 +425,7 @@ export const plinkoGames = pgTable("plinko_games", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id", { length: 255 }).notNull(),
   betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-  resultMultiplier: varchar("result_multiplier", { length: 255 }).notNull(), // 👈 changed from numeric to varchar
+  resultMultiplier: varchar("result_multiplier", { length: 255 }).notNull(), // changed from numeric to varchar
   payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
   result: varchar("result", { length: 10 }).default("pending").notNull(),
   status: varchar("status", { length: 20 }).default("active").notNull(),
@@ -444,7 +444,7 @@ export const chessGames = pgTable("chess_games", {
   result: varchar("result", { length: 20 }), // win, loss, draw
   payout: numeric("payout", { precision: 10, scale: 2 }),
   status: text("status").notNull().default("waiting"),
-  isAiGame: boolean("is_ai_game").default(false).notNull(), // ✅ new column
+  isAiGame: boolean("is_ai_game").default(false).notNull(), // new column
   startedAt: timestamp("started_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -609,11 +609,11 @@ export const unoGames = pgTable("uno_games", {
   result: text("result").notNull(), // 'win' | 'lose' | 'draw' | 'pending'
   payout: text("payout").notNull(), // string format of number
 
-  // ✅ existing AI game fields
+  //  existing AI game fields
   playerHand: json("player_hand").default("[]").notNull(),
   aiHand: json("ai_hand").default("[]").notNull(),
 
-  // ✅ new online multiplayer fields
+  //  new online multiplayer fields
   player1Hand: json("player1_hand").default("[]").notNull(),
   player2Hand: json("player2_hand").default("[]").notNull(),
 
@@ -1377,22 +1377,95 @@ export const oddsGames = pgTable(
   }),
 );
 
-// CLICKER GAME TABLE (GoonBet Clicker history)
-export const clickerGames = pgTable(
-  "clicker_games",
+// LANE RUNNER PvP MATCHES — "Lane Rush Duel"
+// Server-authoritative two-player race up independent provably-fair
+// towers. Each player climbs their own 8-lane tower (1 hidden bad
+// tile per lane, lane width by difficulty). Alternate turns picking
+// a tile in YOUR current lane; safe advances, bad busts. HOLD
+// freezes your lane (flag-to-win) and forces the opponent to climb
+// past it or bust. 20s pick clock, AFK auto-pick (may bust).
+// Status flow: waiting → ready → p1_turn → p2_turn → … → finished
+export const laneRunnerPvpStatusEnum = pgEnum("lane_runner_pvp_status", [
+  "waiting",
+  "ready",
+  "p1_turn",
+  "p2_turn",
+  "finished",
+  "cancelled",
+]);
+
+export const laneRunnerPvpMatches = pgTable(
+  "lane_runner_pvp_matches",
   {
     id: serial("id").primaryKey(),
-    userId: varchar("user_id", { length: 255 }).notNull(),
-    betAmount: integer("bet_amount").notNull(),
-    payout: integer("payout").notNull(),
-    multiplier: numeric("multiplier", { precision: 10, scale: 4 }).notNull(),
-    busted: boolean("busted").notNull().default(false),
-    clicks: integer("clicks").notNull().default(0),
-    durationMs: integer("duration_ms").notNull().default(0),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
+      .notNull(),
+    status: laneRunnerPvpStatusEnum("status").notNull().default("waiting"),
+    // Host-picked difficulty at lobby creation (easy/medium/hard).
+    // Determines lane width for BOTH towers (4/3/2 tiles) and the
+    // per-lane multipliers.
+    difficulty: varchar("difficulty", { length: 20 }).notNull(),
+    // Server-only towers — one per seat. Shape per tower:
+    //   { "lanes": [ { "badTile": 2, "safeTiles": [0,1,3] }, … ] }
+    // plus the provably-fair seed bookkeeping. Scrubbed from /status
+    // responses until the match finishes.
+    p1Tower: jsonb("p1_tower")
+      .notNull()
+      .default(sql`'{"lanes":[]}'::jsonb`),
+    p2Tower: jsonb("p2_tower")
+      .notNull()
+      .default(sql`'{"lanes":[]}'::jsonb`),
+    // Server-decided at match creation (when player2 joins).
+    firstPlayerId: varchar("first_player_id", { length: 255 }),
+    currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
+    // Each player's current lane index (0-7). Advances on safe pick.
+    p1Lane: integer("p1_lane").notNull().default(0),
+    p2Lane: integer("p2_lane").notNull().default(0),
+    // True once the player chooses HOLD — their lane is frozen and
+    // the opponent must climb past it or bust.
+    p1Held: boolean("p1_held").notNull().default(false),
+    p2Held: boolean("p2_held").notNull().default(false),
+    p1Busted: boolean("p1_busted").notNull().default(false),
+    p2Busted: boolean("p2_busted").notNull().default(false),
+    // Chronological JSONB array of every action. Entry shape:
+    //   { userId, seat, action: "pick"|"hold", lane, tileIndex|null,
+    //     badTile|null, isBust, autoPicked, at: ISO ts }
+    actions: jsonb("actions").notNull().default(sql`'[]'::jsonb`),
+    roundDeadline: timestamp("round_deadline"),
+    roundTimerSeconds: integer("round_timer_seconds")
+      .notNull()
+      .default(20),
+    winnerId: varchar("winner_id", { length: 255 }),
+    result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    userIdIdx: index("idx_clicker_games_user_id").on(table.userId, table.createdAt),
+    statusIdx: index("lane_runner_pvp_status_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+    player1Idx: index("lane_runner_pvp_player1_idx").on(
+      table.player1Id,
+      table.createdAt,
+    ),
+    player2Idx: index("lane_runner_pvp_player2_idx").on(
+      table.player2Id,
+      table.createdAt,
+    ),
+    stakeIdx: index("lane_runner_pvp_stake_open_idx").on(
+      table.stakeAmount,
+      table.status,
+    ),
   }),
 );
 
@@ -1899,6 +1972,15 @@ export const minesPvpStatusEnum = pgEnum("mines_pvp_status", [
   "cancelled",
 ]);
 
+export const laneRushDuelStatusEnum = pgEnum("lane_rush_duel_status", [
+  "waiting",
+  "ready",
+  "p1_turn",
+  "p2_turn",
+  "finished",
+  "cancelled",
+]);
+
 export const minesPvpMatches = pgTable(
   "mines_pvp_matches",
   {
@@ -2070,6 +2152,123 @@ export const minesPvpRoundsRelations = relations(
       fields: [minesPvpRounds.matchId],
       references: [minesPvpMatches.id],
     }),
+  }),
+);
+
+// LANE RUSH DUEL — server-authoritative two-player "Lane Rush Duel".
+// Each player races their OWN provably-fair tower (same difficulty),
+// alternating turns. On your turn you pick one tile in your current
+// lane (safe → advance, bad → bust and lose) or you HOLD (bank your
+// current lane as your final score — the flag-to-win chicken move).
+//
+// Match flow:
+//   waiting → ready → p1_turn / p2_turn → finished
+//   (waiting/ready/active → cancelled for AFK cancels)
+//
+// Resolution:
+//   * Bust (picked the bad tile)          → other player wins
+//   * Completed all 8 lanes               → completer wins
+//   * Both players held                   → higher lane wins; equal → DRAW
+//
+// Payout (90/10 split, mirrors mines-pvp / roulette-pvp):
+//   Winner: own stake back + 90% of loser's stake (1.9× net)
+//   Loser:   loses entire stake
+//   House:   10% rake on loser's stake only
+//   Draw:    both refunded, no rake
+//
+// Provably fair: each player's tower (the bad tile per lane) is
+// derived via SHA-256 from a SHARED server seed + that player's own
+// client seed + the match id as nonce. The server seed hash is
+// shown pre-match and the seed revealed post-match.
+export const laneRushDuelMatches = pgTable(
+  "lane_rush_duel_matches",
+  {
+    id: serial("id").primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
+      .notNull(),
+    status: laneRushDuelStatusEnum("status").notNull().default("waiting"),
+    // Host-chosen difficulty at lobby creation; the joiner consumes
+    // whatever the host picked (mirrors mines-pvp minesCount).
+    difficulty: varchar("difficulty", { length: 20 }).notNull().default("easy"),
+    // Tiles per lane = width of the tower at this difficulty.
+    tilesPerLane: integer("tiles_per_lane").notNull().default(4),
+    // Server-decided at match creation (when player2 joins). Either
+    // equals `player1Id` or `player2Id`. Null until both players
+    // have joined.
+    firstPlayerId: varchar("first_player_id", { length: 255 }),
+    // clerkId of the player currently being asked to pick. Null
+    // when status is in {waiting, ready, finished, cancelled}.
+    currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
+    // ── Provably-fair seeds ─────────────────────────────────────
+    // Shared server seed (revealed post-match), per-player client
+    // seeds, and the match id as nonce. Each player's tower (bad
+    // tile per lane) is re-derivable from these — persisted so
+    // post-match reveals can show the full layout without
+    // re-derivation.
+    serverSeed: varchar("server_seed", { length: 128 }).notNull(),
+    serverSeedHash: varchar("server_seed_hash", { length: 64 }).notNull(),
+    p1ClientSeed: varchar("p1_client_seed", { length: 128 }).notNull(),
+    p2ClientSeed: varchar("p2_client_seed", { length: 128 }),
+    // Bad tile per lane for each player (server-only mid-match).
+    p1Tower: jsonb("p1_tower").notNull().default(sql`'[]'::jsonb`),
+    p2Tower: jsonb("p2_tower").notNull().default(sql`'[]'::jsonb`),
+    // Current lane (0..8) + hold flag per seat. lane === 8 means
+    // the tower is complete (auto-banked at the top).
+    p1Lane: integer("p1_lane").notNull().default(0),
+    p2Lane: integer("p2_lane").notNull().default(0),
+    p1Held: boolean("p1_held").notNull().default(false),
+    p2Held: boolean("p2_held").notNull().default(false),
+    // Final score in POINTS per seat (sum of safe-pick points),
+    // stamped at resolution so history doesn't re-walk `actions`.
+    p1Points: integer("p1_points").notNull().default(0),
+    p2Points: integer("p2_points").notNull().default(0),
+    // True when the server auto-picked because round_deadline
+    // elapsed before the player acted (persisted for history).
+    p1AutoPicked: boolean("p1_auto_picked").notNull().default(false),
+    p2AutoPicked: boolean("p2_auto_picked").notNull().default(false),
+    // Chronological action history: [{ userId, seat, action:
+    // "pick"|"hold", tile, safe, lane, multiplier, autoPicked, at }]
+    actions: jsonb("actions").notNull().default(sql`'[]'::jsonb`),
+    // Pick-window deadline (20s per turn).
+    roundDeadline: timestamp("round_deadline"),
+    roundTimerSeconds: integer("round_timer_seconds")
+      .notNull()
+      .default(20),
+    // Final match bookkeeping.
+    winnerId: varchar("winner_id", { length: 255 }),
+    result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Lobby listing — `status='waiting'` AND player2_id IS NULL.
+    statusIdx: index("lane_rush_duel_status_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+    player1Idx: index("lane_rush_duel_player1_idx").on(
+      table.player1Id,
+      table.createdAt,
+    ),
+    player2Idx: index("lane_rush_duel_player2_idx").on(
+      table.player2Id,
+      table.createdAt,
+    ),
+    // Stake matchmaking — finding a waiting lobby whose stake
+    // matches the joiner's request.
+    stakeIdx: index("lane_rush_duel_stake_open_idx").on(
+      table.stakeAmount,
+      table.status,
+    ),
   }),
 );
 

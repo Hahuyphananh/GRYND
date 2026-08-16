@@ -123,7 +123,7 @@ export async function POST(request) {
         .where(eq(unoGames.id, game.id));
     }
 
-    // ✅ FORCE WINNER DETECTION (CRITICAL FIX)
+    //  FORCE WINNER DETECTION (CRITICAL FIX)
     let updatedGame = game;
 
     if (game.status !== "finished") {

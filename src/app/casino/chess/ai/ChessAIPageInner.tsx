@@ -10,6 +10,17 @@ import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../..
 import { playCardDraw, playVictory, playDefeat, playTick } from "../../../../lib/gameAudio";
 import { useChessClock } from "../../../../lib/useChessClock";
 import { usePostHog } from "posthog-js/react";
+import {
+  IconAlertTriangle,
+  IconTrophy,
+  IconHeartHandshake,
+  IconSkull,
+  IconSparkles,
+  IconRobot,
+  IconBulb,
+  IconVolume,
+  IconVolumeOff,
+} from "@tabler/icons-react";
 
 function formatClock(seconds: number) {
   const safe = Math.max(0, Math.floor(seconds));
@@ -903,7 +914,7 @@ export default function ChessAIPageInner() {
             exit={{ opacity: 0, y: -30 }}
             className="fixed left-1/2 top-24 z-40 -translate-x-1/2 rounded-xl border-2 border-red-500 bg-red-900/80 px-6 py-2 shadow-[0_0_24px_rgba(255,0,0,0.4)]"
           >
-            <span className="text-lg font-bold text-red-300 tracking-wider">⚠ CHECK!</span>
+            <span className="inline-flex items-center gap-2 text-lg font-bold text-red-300 tracking-wider"><IconAlertTriangle size={20} /> CHECK!</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -932,7 +943,7 @@ export default function ChessAIPageInner() {
                 transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
                 className="mb-2 text-7xl"
               >
-                {gameResult === "win" ? "🏆" : gameResult === "draw" ? "🤝" : "💀"}
+                {gameResult === "win" ? <IconTrophy size={64} className="text-amber-400" /> : gameResult === "draw" ? <IconHeartHandshake size={64} className="text-yellow-300" /> : <IconSkull size={64} className="text-red-400" />}
               </motion.div>
               <motion.h2
                 initial={{ y: 20, opacity: 0 }}
@@ -951,14 +962,13 @@ export default function ChessAIPageInner() {
                   transition={{ delay: 1.0 }}
                   className="mt-3 flex justify-center gap-1"
                 >
-                  {["✨", "🌟", "✨", "🌟", "✨"].map((s, i) => (
+                  {[0, 1, 2, 3, 4].map((i) => (
                     <motion.span
                       key={i}
-                      className="text-xl"
                       animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }}
                       transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.12 }}
                     >
-                      {s}
+                      <IconSparkles size={20} className="text-amber-300" />
                     </motion.span>
                   ))}
                 </motion.div>
@@ -1023,7 +1033,7 @@ export default function ChessAIPageInner() {
                         transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                         className="inline-block"
                       >
-                        🤖
+                        <IconRobot size={18} />
                       </motion.span>
                       Thinking...
                     </span>
@@ -1177,7 +1187,7 @@ export default function ChessAIPageInner() {
               disabled={gameOver || !isPlayerTurnNow || moveIndex >= 0}
               className="mt-2 w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded-xl font-bold transition disabled:opacity-40 text-sm"
             >
-              💡 Show Best Move
+              <span className="inline-flex items-center gap-2"><IconBulb size={16} /> Show Best Move</span>
             </button>
 
             {/* Sound toggle */}
@@ -1185,7 +1195,7 @@ export default function ChessAIPageInner() {
               onClick={() => setTickMuted((m) => !m)}
               className="mt-3 w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition text-sm"
             >
-              {tickMuted ? "🔇 Tick sounds muted" : "🔊 Tick sounds on"}
+              <span className="inline-flex items-center gap-2">{tickMuted ? <><IconVolumeOff size={16} /> Tick sounds muted</> : <><IconVolume size={16} /> Tick sounds on</>}</span>
             </button>
 
             {/* Auto-hint toggle */}
@@ -1193,7 +1203,7 @@ export default function ChessAIPageInner() {
               onClick={() => setAutoHint((a) => !a)}
               className="mt-2 w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition text-sm"
             >
-              {autoHint ? "💡 Auto-hint: ON" : "💡 Auto-hint: OFF"}
+              <span className="inline-flex items-center gap-2"><IconBulb size={16} /> Auto-hint: {autoHint ? "ON" : "OFF"}</span>
             </button>
 
             {/* Difficulty level */}
@@ -1204,11 +1214,11 @@ export default function ChessAIPageInner() {
                 onChange={(e) => setAiLevel(Number(e.target.value))}
                 className="w-full px-3 py-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 text-white text-sm"
               >
-                <option value={1}>🎓 Beginner</option>
-                <option value={2}>🟢 Casual</option>
-                <option value={3}>🟡 Intermediate</option>
-                <option value={4}>🟠 Advanced</option>
-                <option value={5}>🔴 Expert</option>
+                <option value={1}>Beginner</option>
+                <option value={2}>Casual</option>
+                <option value={3}>Intermediate</option>
+                <option value={4}>Advanced</option>
+                <option value={5}>Expert</option>
               </select>
             </div>
 

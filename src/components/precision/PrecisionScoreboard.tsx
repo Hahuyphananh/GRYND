@@ -16,6 +16,7 @@ import { motion } from "framer-motion";
 import { TARGET_WINS, MAX_ROUNDS } from "../../lib/precision/constants";
 import { scorePop } from "../../lib/animations";
 import { diffToRank } from "../../lib/precision/utils";
+import { PrecisionRankIcon } from "./PrecisionRankIcon";
 import type { PlayerSeat, PrecisionPlayer, PrecisionScore } from "../../lib/precision/types";
 import { useTranslation } from "../../hooks/useTranslation";
 
@@ -63,7 +64,9 @@ function RankBadge({
       className={`mt-2 flex items-center gap-1.5 rounded-lg border ${rank.bg} ${rank.border} px-2 py-1`}
       data-testid={`precision-scoreboard-rank-${seat}`}
     >
-      <span className="text-sm">{rank.emoji}</span>
+      <span className="text-sm">
+        <PrecisionRankIcon label={rank.label} />
+      </span>
       <span className={`text-[10px] font-black uppercase ${rank.color}`}>
         {rank.label}
       </span>

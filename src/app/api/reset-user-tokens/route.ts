@@ -30,7 +30,7 @@ export async function POST() {
       { status: 200 },
     );
   } catch (error) {
-    console.error("❌ RESET TOKEN ERROR:", error);
+    console.error(" RESET TOKEN ERROR:", error);
     return NextResponse.json(
       {
         error: "Internal server error",

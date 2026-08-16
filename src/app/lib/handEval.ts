@@ -21,7 +21,7 @@ export function evaluateHand(
   playerCards: Card[] = [],
   community: Card[] = [],
 ): string {
-  // 🔒 Defensive guard (prevents "not iterable" crash)
+  //  Defensive guard (prevents "not iterable" crash)
   if (!Array.isArray(playerCards) || !Array.isArray(community)) {
     return "";
   }

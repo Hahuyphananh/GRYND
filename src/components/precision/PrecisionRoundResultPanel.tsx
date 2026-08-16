@@ -29,7 +29,9 @@ import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { gameOverModal } from "../../lib/animations";
+import { IconHeartHandshake, IconMedal2, IconTrophy } from "@tabler/icons-react";
 import { diffToRank } from "../../lib/precision/utils";
+import { PrecisionRankIcon } from "./PrecisionRankIcon";
 import type { PlayerSeat } from "../../lib/precision/types";
 import { useTranslation } from "../../hooks/useTranslation";
 
@@ -154,7 +156,9 @@ const PlayerRow = React.memo(function PlayerRow({
               data-testid={`precision-round-result-rank-${seat}`}
               className={`mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${rank.bg} ${rank.border}`}
             >
-              <span>{rank.emoji}</span>
+              <span>
+                <PrecisionRankIcon label={rank.label} size={11} />
+              </span>
               <span className={rank.color}>{rank.label}</span>
             </span>
           );
@@ -243,7 +247,7 @@ function PrecisionRoundResultPanelImpl({
         bg: "bg-gradient-to-b from-[#0a2a1a] to-[#031a0a]",
         heading: "text-yellow-200",
         word: t("games.precision.tie_replaying"),
-        icon: "🤝",
+        icon: <IconHeartHandshake size={44} />,
         subtitle: t("games.precision.tie_explainer"),
       }
     : roundWinnerSeat === localSeat
@@ -253,7 +257,7 @@ function PrecisionRoundResultPanelImpl({
           bg: "bg-gradient-to-b from-[#0a2a1a] to-[#031a0a]",
           heading: "text-yellow-200",
           word: t("games.precision.you_win_round"),
-          icon: "🏆",
+          icon: <IconTrophy size={44} />,
           subtitle: t("games.precision.seat_closer", { seat: roundWinnerSeat }),
         }
       : {
@@ -262,7 +266,7 @@ function PrecisionRoundResultPanelImpl({
           bg: "bg-gradient-to-b from-[#2a0a1f] to-[#160322]",
           heading: "text-fuchsia-200",
           word: t("games.precision.round_won_by_player", { name: roundWinnerSeat === 1 ? seat1Name : seat2Name }),
-          icon: "🥈",
+          icon: <IconMedal2 size={44} />,
           subtitle: t("games.precision.seat_closer", { seat: roundWinnerSeat }),
         };
 

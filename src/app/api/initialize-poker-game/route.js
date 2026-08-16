@@ -48,14 +48,14 @@ export async function POST(request) {
     const body = await request.json();
     const nPlayers = Math.max(3, Math.min(body.nPlayers || 3, 9)); // clamp 3–9
 
-    // 👇 NEW: read buyIn (default 100) and clamp
+    //  NEW: read buyIn (default 100) and clamp
     const buyInRaw = Number(body.buyIn ?? 100);
     const buyIn = Math.max(
       20,
       Math.min(Number.isFinite(buyInRaw) ? buyInRaw : 100, 2000),
     );
 
-    // ✅ Check user balance
+    //  Check user balance
     const { rows: userRows } = await sql`
       SELECT balance, username FROM users WHERE clerk_id = ${userId}
     `;
@@ -68,12 +68,12 @@ export async function POST(request) {
       });
     }
 
-    // ✅ Deduct buy-in immediately
+    //  Deduct buy-in immediately
     await sql`UPDATE users SET balance = balance - ${buyIn} WHERE clerk_id = ${userId}`;
 
     const deck = generateShuffledDeck();
 
-    // ✅ Deal players
+    //  Deal players
     const players = [];
     for (let i = 0; i < nPlayers; i++) {
       const isUser = i === 0;
@@ -82,14 +82,14 @@ export async function POST(request) {
         id: isUser ? userId : null, // AI = null
         seat: i,
         hand,
-        stack: isUser ? buyIn : 500, // 👈 user uses chosen buy-in, AI has 500
+        stack: isUser ? buyIn : 500, // user uses chosen buy-in, AI has 500
         currentBet: 0,
         isAI: !isUser,
         lastAction: null,
       });
     }
 
-    // ✅ Apply blinds
+    //  Apply blinds
     const smallBlind = 1;
     const bigBlind = 2;
     const dealerPos = 0;
@@ -106,7 +106,7 @@ export async function POST(request) {
     const pot = smallBlind + bigBlind;
     const nextPos = (bbPos + 1) % nPlayers;
 
-    // ✅ Insert game into poker_games
+    //  Insert game into poker_games
     const { rows: gameRows } = await sql`
       INSERT INTO poker_games (
         user_id,
@@ -140,7 +140,7 @@ export async function POST(request) {
     `;
     const gameId = gameRows[0].id;
 
-    // ✅ Insert all players into poker_player_positions
+    //  Insert all players into poker_player_positions
     for (const p of players) {
       await sql`
     INSERT INTO poker_player_positions (
@@ -164,7 +164,7 @@ export async function POST(request) {
   SELECT balance FROM users WHERE clerk_id = ${userId}
 `;
 
-    // ✅ Response (include names + stack to match your UI)
+    //  Response (include names + stack to match your UI)
     return new Response(
       JSON.stringify({
         gameId,
@@ -174,12 +174,12 @@ export async function POST(request) {
         minBet: bigBlind,
         currentPosition: nextPos,
         dealerPos,
-        balance: parseFloat(updatedUser[0].balance), // 👈 send updated bankroll
+        balance: parseFloat(updatedUser[0].balance), // send updated bankroll
       }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (err) {
-    console.error("❌ Error starting poker game:", err);
+    console.error(" Error starting poker game:", err);
     return new Response(JSON.stringify({ error: "Server error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

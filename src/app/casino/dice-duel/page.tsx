@@ -4,6 +4,11 @@ import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import {
+  IconUsers,
+  IconRobot,
+  IconDeviceGamepad2,
+} from "@tabler/icons-react";
 
 export default function DiceDuelLobbyPage() {
   const [lobbies, setLobbies] = useState<any[]>([]);
@@ -107,13 +112,13 @@ export default function DiceDuelLobbyPage() {
                 onClick={() => setMode("pvp")}
                 className={`min-h-11 rounded px-3 py-2 text-sm sm:text-base font-bold transition ${mode === "pvp" ? "bg-cyan-500 text-black shadow-[0_0_12px_rgba(34,211,238,0.35)]" : "bg-slate-800 text-slate-200 border border-white/10"}`}
               >
-                👥 PvP
+                <span className="inline-flex items-center gap-1.5"><IconUsers size={16} /> PvP</span>
               </button>
               <button
                 onClick={() => setMode("ai")}
                 className={`min-h-11 rounded px-3 py-2 text-sm sm:text-base font-bold transition ${mode === "ai" ? "bg-pink-500 text-white shadow-[0_0_12px_rgba(236,72,153,0.45)]" : "bg-slate-800 text-slate-200 border border-white/10"}`}
               >
-                🤖 vs AI
+                <span className="inline-flex items-center gap-1.5"><IconRobot size={16} /> vs AI</span>
               </button>
             </div>
             {mode === "pvp" ? (
@@ -140,7 +145,7 @@ export default function DiceDuelLobbyPage() {
             ) : (
               <>
                 <div className="mt-4 rounded-lg border border-pink-400/40 bg-pink-500/15 p-3 text-center">
-                  <p className="text-xs font-bold uppercase tracking-widest text-pink-200">🎮 Free Play</p>
+                  <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-pink-200"><IconDeviceGamepad2 size={14} /> Free Play</p>
                   <p className="text-[10px] text-pink-300/80 mt-1">No tokens are wagered. Playing vs AI is free.</p>
                 </div>
                 <button

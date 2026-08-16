@@ -4,6 +4,15 @@ import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
 import ReportModal from "../../../../../components/ReportModal";
+import {
+  IconFlag,
+  IconSquareRounded,
+  IconFlame,
+  IconShield,
+  IconBomb,
+  IconConfetti,
+  IconSkull,
+} from "@tabler/icons-react";
 
 
 const ACTIONS = [
@@ -135,7 +144,7 @@ export default function DiceDuelMatchPage() {
     );
   }, [match, viewerId]);
 
-  // 🧠 Map hp1/hp2 to viewer vs enemy based on who the viewer is
+  //  Map hp1/hp2 to viewer vs enemy based on who the viewer is
   const viewerIsPlayer1 = match?.player1Id === viewerId;
   const viewerHP = viewerIsPlayer1 ? match?.hp1 : match?.hp2;
   const enemyHP = viewerIsPlayer1 ? match?.hp2 : match?.hp1;
@@ -193,7 +202,7 @@ export default function DiceDuelMatchPage() {
     triggerEffect(actionType);
     const data = await res.json();
 
-    // 🎯 PLAYER FLOATING FEEDBACK
+    //  PLAYER FLOATING FEEDBACK
     const damage = data?.turnResult?.damage ?? data?.damageDealt ?? 0;
     const selfDamage = data?.turnResult?.selfDamage ?? 0;
     const heal = data?.turnResult?.heal ?? 0;
@@ -304,7 +313,7 @@ export default function DiceDuelMatchPage() {
               onClick={() => setShowReportModal(true)}
               className="text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
             >
-              🚩 Report
+              <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report</span>
             </button>
           </div>
         </div>
@@ -422,8 +431,8 @@ export default function DiceDuelMatchPage() {
             </div>
 
             <div className="pt-2 border-t border-slate-700">
-              <h4 className="text-white font-semibold">
-                🟦 Safe Roll (1 dice)
+              <h4 className="flex items-center gap-1.5 text-white font-semibold">
+                <IconSquareRounded size={16} className="text-sky-400" /> Safe Roll (1 dice)
               </h4>
               <ul className="ml-5 list-disc">
                 <li>1–2 → 0 damage</li>
@@ -433,8 +442,8 @@ export default function DiceDuelMatchPage() {
             </div>
 
             <div className="pt-2 border-t border-slate-700">
-              <h4 className="text-white font-semibold">
-                🔥 Power Roll (2 dices)
+              <h4 className="flex items-center gap-1.5 text-white font-semibold">
+                <IconFlame size={16} className="text-orange-400" /> Power Roll (2 dices)
               </h4>
               <ul className="ml-5 list-disc">
                 <li>2–4 → take 3 damage</li>
@@ -445,7 +454,7 @@ export default function DiceDuelMatchPage() {
             </div>
 
             <div className="pt-2 border-t border-slate-700">
-              <h4 className="text-white font-semibold">🛡 Shield (1 dice)</h4>
+              <h4 className="flex items-center gap-1.5 text-white font-semibold"><IconShield size={16} className="text-emerald-400" /> Shield (1 dice)</h4>
               <ul className="ml-5 list-disc">
                 <li>1–3 → heal 2 HP</li>
                 <li>4–6 → heal 3 HP</li>
@@ -453,8 +462,8 @@ export default function DiceDuelMatchPage() {
             </div>
 
             <div className="pt-2 border-t border-slate-700">
-              <h4 className="text-white font-semibold">
-                💥 Double Down (2 dices)
+              <h4 className="flex items-center gap-1.5 text-white font-semibold">
+                <IconBomb size={16} className="text-red-400" /> Double Down (2 dices)
               </h4>
               <ul className="ml-5 list-disc">
                 <li>2–7 → take 5 self damage</li>
@@ -525,7 +534,7 @@ export default function DiceDuelMatchPage() {
             } bg-[#0b0b1a]`}
           >
             <h1 className="text-4xl font-black mb-4">
-              {endPopup === "win" ? "YOU WIN 🎉" : "YOU LOST 💀"}
+              {endPopup === "win" ? <span className="inline-flex items-center gap-2"><IconConfetti size={32} className="text-green-400" /> YOU WIN</span> : <span className="inline-flex items-center gap-2"><IconSkull size={32} className="text-red-400" /> YOU LOST</span>}
             </h1>
 
             <p className="text-slate-300 mb-6">

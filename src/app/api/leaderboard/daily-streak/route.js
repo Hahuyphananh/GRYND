@@ -66,7 +66,7 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    console.error("❌ Failed to load daily streak leaderboard:", error);
+    console.error(" Failed to load daily streak leaderboard:", error);
     return NextResponse.json(
       {
         items: [],

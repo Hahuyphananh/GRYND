@@ -155,7 +155,7 @@ export async function POST(request) {
       unlockedSpecialTitles,
     });
   } catch (error) {
-    console.error("❌ Failed to update user stats:", error);
+    console.error(" Failed to update user stats:", error);
     return new Response(
       JSON.stringify({
         success: false,

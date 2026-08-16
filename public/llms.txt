@@ -27,8 +27,7 @@ GoonBet covers esports and sports betting, plus dozens of arcade and table games
 - [Hex Duel](https://goonbet.dedyn.io/casino/hex-duel): Turn-based board duel, solo or PvP
 - [Uno](https://goonbet.dedyn.io/casino/uno): Uno against AI or online players
 - [Farkle](https://goonbet.dedyn.io/casino/farkle): Classic dice-combination scoring game
-- [Lane Runner](https://goonbet.dedyn.io/casino/lane-runner): Endless runner arcade game
-- [GoonBet Clicker](https://goonbet.dedyn.io/casino/goonbet-clicker): Idle clicker game
+- [Lane Rush Duel](https://goonbet.dedyn.io/casino/lane-runner): PvP tower-climb duel — pick safe tiles to climb, hold to bank your score
 - [Odds](https://goonbet.dedyn.io/casino/odds): Odds-style betting games
 
 ## Sports Betting

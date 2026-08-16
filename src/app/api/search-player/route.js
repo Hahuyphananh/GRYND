@@ -39,7 +39,7 @@ export async function POST(request) {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("❌ Error searching player:", err);
+    console.error(" Error searching player:", err);
     return new Response(JSON.stringify({ error: "Erreur serveur" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

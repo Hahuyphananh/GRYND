@@ -898,7 +898,7 @@ async function resolveBall(tx, match) {
       p1Score: newScoreP1,
       p2Score: newScoreP2,    // Clear per-ball inputs so the next ball's commits start fresh.
     //
-    // ⚠️ DELIBERATELY preserve p1Ready/p2Ready=true here so the
+    //  DELIBERATELY preserve p1Ready/p2Ready=true here so the
     // OPPONENT client's polling cadence has a brief window to
     // surface the "Both ready — launching!" badge before the
     // inline orphan-ready sweep in `fetchMatchWithAutoResolve`

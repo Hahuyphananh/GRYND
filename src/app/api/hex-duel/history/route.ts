@@ -129,7 +129,7 @@ export async function GET(req: Request) {
       },
     });
   } catch (error) {
-    console.error("❌ Hex Duel history error:", error);
+    console.error(" Hex Duel history error:", error);
     return NextResponse.json(
       {
         success: false,

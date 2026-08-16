@@ -140,17 +140,16 @@ function advanceIndex(state, steps = 1) {
 function applyCardEffect(state, playerId, playedCard, chosenColor) {
   const value = norm(playedCard.value);
 
-  // ✅ Inject chosen color INTO the card for UI
+  //  Inject chosen color INTO the card for UI
   let finalCard = { ...playedCard };
 
-  if (value === "wild" || value === "wild draw four") {
-    finalCard.color = norm(chosenColor); // 🔥 THIS FIXES DISPLAY
+  if (value === "wild" || value === "wild draw four") {      finalCard.color = norm(chosenColor); // THIS FIXES DISPLAY
   }
 
-  // ✅ Push ONLY ONCE
+  //  Push ONLY ONCE
   state.discardPile.push(finalCard);
 
-  // ✅ Update rule color
+  //  Update rule color
   state.currentColor =
     value === "wild" || value === "wild draw four"
       ? norm(chosenColor)

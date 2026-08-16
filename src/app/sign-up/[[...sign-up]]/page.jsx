@@ -14,13 +14,13 @@ export default function Page() {
             colorPrimary: "#00fff7",
             colorBackground: "#050b1e",
 
-            // ✅ FIX: main text should be bright white, not neon
+            //  FIX: main text should be bright white, not neon
             colorForeground: "#f5f9ff",
 
             // inputs
             colorInput: "#071a33",
 
-            // ❗ FIX: input text was neon cyan (bad contrast on dark UI)
+            //  FIX: input text was neon cyan (bad contrast on dark UI)
             colorInputForeground: "#f5f9ff",
 
             borderRadius: "0.5rem",
@@ -31,7 +31,7 @@ export default function Page() {
 
             headerTitle: "text-[#00fff7] tracking-widest uppercase font-bold",
 
-            // ✅ FIX: make subtitle readable
+            //  FIX: make subtitle readable
             headerSubtitle: "text-white/80",
 
             socialButtonsBlockButton:
@@ -40,7 +40,7 @@ export default function Page() {
             formButtonPrimary:
               "bg-[#00fff7] text-black font-bold hover:shadow-[0_0_20px_#00fff7] transition-all",
 
-            formFieldLabel: "text-white/80", // 👈 IMPORTANT FIX
+            formFieldLabel: "text-white/80", // IMPORTANT FIX
 
             formFieldInput:
               "bg-[#071a33] text-white border border-[#00fff7]/30 focus:border-[#00fff7] focus:shadow-[0_0_10px_#00fff7]",

@@ -31,13 +31,13 @@ export async function POST(request) {
       return parsed.response;
     }
 
-    // 🧠 DEBUG 1
+    //  DEBUG 1
     const rawInput = parsed.data.name;
 
     const normalized = removeAccents(
       String(rawInput)
         .toLowerCase()
-        .replace(/\s+/g, "") // 🔥 important
+        .replace(/\s+/g, "") // important
         .trim(),
     );
 
@@ -51,7 +51,7 @@ export async function POST(request) {
       currentUserId = current[0].id;
     }
 
-    // 🧠 DEBUG 3
+    //  DEBUG 3
     const queryString = normalized;
 
     const found = await sql`
@@ -78,7 +78,7 @@ export async function POST(request) {
       };
     });
 
-    // 🚀 EVERYTHING DEBUGGED HERE
+    //  EVERYTHING DEBUGGED HERE
     return Response.json({
       success: true,
       users: usersWithStreak,

@@ -1,5 +1,6 @@
 "use client";
 import React, { useRef, useEffect, useCallback, useState, useImperativeHandle, forwardRef } from "react";
+import { IconCircleCheck } from "@tabler/icons-react";
 import CrashGraph, { CANVAS_WIDTH, CANVAS_HEIGHT } from "./CrashGraph";
 import CrashMultiplier from "./CrashMultiplier";
 import Explosion from "./Explosion";
@@ -170,7 +171,7 @@ const CrashEngine = forwardRef(function CrashEngine({
       {/* Cashed-out badge — shown while the rocket is still flying */}
       {hasCashout && !isCrashed && (
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 px-4 py-1.5 rounded-full bg-[#00ffa6]/20 border border-[#00ffa6]/50 text-[#00ffa6] font-bold text-sm backdrop-blur-sm">
-          ✅ Cashed out at {cashoutMultiplier?.toFixed(2)}x
+          <IconCircleCheck size={16} className="mr-1.5" /> Cashed out at {cashoutMultiplier?.toFixed(2)}x
         </div>
       )}
 

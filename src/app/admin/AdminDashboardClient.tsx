@@ -4,6 +4,16 @@ import { useState, useEffect, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import AdminBadge from "../../components/AdminBadge";
+import {
+  IconChartBar,
+  IconUsers,
+  IconClipboardList,
+  IconFlag,
+  IconSearch,
+  IconCoins,
+  IconX,
+  IconRefresh,
+} from "@tabler/icons-react";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -656,7 +666,7 @@ export default function AdminDashboardClient({
                 : "text-gray-400 hover:text-gray-200")
             }
           >
-            {tab === "cache" ? "📊 Cache" : tab === "users" ? "👥 Users" : tab === "audit" ? "📋 Audit Logs" : "🚩 Reports"}
+            <span className="inline-flex items-center gap-1.5">{tab === "cache" ? <><IconChartBar size={14} /> Cache</> : tab === "users" ? <><IconUsers size={14} /> Users</> : tab === "audit" ? <><IconClipboardList size={14} /> Audit Logs</> : <><IconFlag size={14} /> Reports</>}</span>
           </button>
         ))}
       </div>
@@ -740,7 +750,7 @@ export default function AdminDashboardClient({
                 disabled={userSearchLoading}
                 className="px-4 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
               >
-                {userSearchLoading ? "Loading..." : "🔍 Load Admin Team"}
+                {userSearchLoading ? "Loading..." : <span className="inline-flex items-center gap-1.5"><IconSearch size={14} /> Load Admin Team</span>}
               </button>
             </div>
             <div className="flex gap-3">
@@ -828,7 +838,7 @@ export default function AdminDashboardClient({
                               }}
                               className="px-3 py-1 rounded-lg text-[10px] font-medium bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors"
                             >
-                              💰 Reset Tokens
+                              <span className="inline-flex items-center gap-1"><IconCoins size={12} /> Reset Tokens</span>
                             </button>
                           </div>
                         </td>
@@ -844,7 +854,7 @@ export default function AdminDashboardClient({
               <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-medium text-amber-300">
-                    💰 Reset tokens for{" "}
+                    <span className="inline-flex items-center gap-1"><IconCoins size={14} /> Reset tokens for{" "}</span>
                     <span className="text-white">{tokenResetTarget.name}</span>
                     <span className="ml-2 text-xs text-gray-500 font-mono">
                       ({tokenResetTarget.clerkId})
@@ -857,7 +867,7 @@ export default function AdminDashboardClient({
                     }}
                     className="text-xs text-gray-500 hover:text-gray-300"
                   >
-                    ✕ Cancel
+                    <span className="inline-flex items-center gap-1"><IconX size={12} /> Cancel</span>
                   </button>
                 </div>
                 <div className="flex gap-3">
@@ -912,7 +922,7 @@ export default function AdminDashboardClient({
               disabled={reportsLoading}
               className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
             >
-              {reportsLoading ? "Loading..." : "🔄 Refresh"}
+              {reportsLoading ? "Loading..." : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> Refresh</span>}
             </button>
           </div>
 
@@ -1039,7 +1049,7 @@ export default function AdminDashboardClient({
               disabled={auditLogLoading}
               className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
             >
-              {auditLogLoading ? "Loading..." : "🔄 Refresh"}
+              {auditLogLoading ? "Loading..." : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> Refresh</span>}
             </button>
           </div>
 

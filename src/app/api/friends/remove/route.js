@@ -22,7 +22,7 @@ export async function POST(request) {
 
     const friendId = Number(parsed.data.friendId);
 
-    // 🔍 Get current user
+    //  Get current user
     const meRes = await sql`
       SELECT id
       FROM users
@@ -46,7 +46,7 @@ export async function POST(request) {
       );
     }
 
-    // 🗑️ Delete BOTH directions
+    //  Delete BOTH directions
     await sql`
       DELETE FROM friend_relations
       WHERE (user_id = ${meId} AND friend_id = ${friendId})

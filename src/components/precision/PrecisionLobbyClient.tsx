@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import NavigationBar from "../navigation-bar";
 import { usePostHog } from "posthog-js/react";
 import { useEffect } from "react";
+import { IconTarget } from "@tabler/icons-react";
 import { useTranslation } from "../../hooks/useTranslation";
 
 export default function PrecisionLobbyClient() {
@@ -23,7 +24,10 @@ export default function PrecisionLobbyClient() {
   return (
     <div className="mx-auto max-w-5xl rounded-2xl border border-cyan-400/40 bg-black/30 p-6 shadow-[0_0_30px_rgba(34,211,238,.25)]">
       <NavigationBar currentPath="/casino" />
-      <h2 className="mt-3 text-4xl font-black text-fuchsia-300">{t("games.precision.lobby_title")}</h2>
+      <h2 className="mt-3 flex items-center gap-3 text-4xl font-black text-fuchsia-300">
+        <IconTarget size={34} className="text-fuchsia-300" />
+        {t("games.precision.lobby_title")}
+      </h2>
       <p className="mt-2 text-cyan-100">
         {t("games.precision.lobby_subtitle")}
       </p>

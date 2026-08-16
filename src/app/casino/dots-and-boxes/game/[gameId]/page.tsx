@@ -10,6 +10,15 @@ import ReportModal from "../../../../../components/ReportModal";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import { playTimerUrgent, playTimerExpired } from "../../../../../lib/dotsAndBoxesAudio";
 import { gameOverModal as gameOverModalAnim } from "../../../../../lib/animations";
+import {
+  IconAlertTriangle,
+  IconRuler,
+  IconFlag,
+  IconDoorExit,
+  IconTrophy,
+  IconHeartHandshake,
+  IconBomb,
+} from "@tabler/icons-react";
 
 // ─── Module-level empty defaults (shared reference across renders) ─
 // Mutable types so passing into the board component (typed
@@ -540,7 +549,7 @@ const prefersReducedMotion = useReducedMotion();
                       seconds: remainingSeconds,
                     })}
                   </span>
-                  {/* One-shot urgency badge: a small ⚠ that scales in
+                  {/* One-shot urgency badge: a small warning glyph that scales in
                       next to the seconds counter when remainingSeconds
                       first drops into the (0, 3] window on the local
                       player's turn. Re-mounted per deadline (via key)
@@ -559,7 +568,7 @@ const prefersReducedMotion = useReducedMotion();
                       className="inline-flex items-center justify-center text-amber-300 leading-none"
                       style={{ fontSize: "0.95em" }}
                     >
-                      ⚠
+                      <IconAlertTriangle size={14} />
                     </motion.span>
                   )}
                 </span>
@@ -595,7 +604,7 @@ const prefersReducedMotion = useReducedMotion();
           {/* ─── Sidebar ───────────────────────────────────────────── */}
           <div className="casino-surface p-4 rounded-2xl border-[#f59e0b]/20">
             <h2 className="text-base font-bold text-amber-300 mb-3 flex items-center gap-2 uppercase tracking-wider">
-              <span aria-hidden>📐</span>
+              <IconRuler size={16} aria-hidden />
               <span>{t("games.dots_and_boxes.match_details_title")}</span>
             </h2>
 
@@ -698,7 +707,7 @@ const prefersReducedMotion = useReducedMotion();
                 onClick={() => setShowReportModal(true)}
                 className="mb-4 w-full py-2 rounded-lg border border-red-500/30 bg-red-500/10 text-xs font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_12px_rgba(239,68,68,0.3)]"
               >
-                🚩 Report {opponentName}
+                <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report {opponentName}</span>
               </button>
             )}
             <div className="mb-4 flex items-center justify-between gap-2 text-xs">
@@ -808,7 +817,7 @@ const prefersReducedMotion = useReducedMotion();
               aria-describedby="dnf-forfeit-body"
               className="bg-[#031a37] border border-red-500/40 rounded-2xl p-6 max-w-sm w-full text-center shadow-[0_0_36px_rgba(239,68,68,0.35)]"
             >
-              <div className="text-5xl mb-3" aria-hidden>🚩</div>
+              <div className="mb-3" aria-hidden><IconFlag size={44} className="text-red-400" /></div>
               <h3 id="dnf-forfeit-title" className="text-xl font-extrabold text-red-300 mb-2">
                 {game?.status === "in_progress"
                   ? t("games.dots_and_boxes.forfeit_confirm_title")
@@ -890,7 +899,7 @@ const prefersReducedMotion = useReducedMotion();
                 className="mb-2 text-6xl"
                 aria-hidden
               >
-                {isCancelled ? "🚪" : playerWon ? "🏆" : isDraw ? "🤝" : "💥"}
+                {isCancelled ? <IconDoorExit size={52} className="text-amber-300" /> : playerWon ? <IconTrophy size={52} className="text-amber-400" /> : isDraw ? <IconHeartHandshake size={52} className="text-yellow-300" /> : <IconBomb size={52} className="text-red-400" />}
               </motion.div>
               <motion.h3
                 id="dnf-result-title"

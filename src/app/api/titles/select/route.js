@@ -45,7 +45,7 @@ export async function POST(request) {
       );
     }
 
-    // ✅ UNEQUIP TITLE
+    //  UNEQUIP TITLE
     if (!title) {
       await db
         .update(users)

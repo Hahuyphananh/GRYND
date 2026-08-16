@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { IconCoin } from "@tabler/icons-react";
 
 /**
  * TableBalance — shows a player's chip balance at the table.
@@ -18,7 +19,7 @@ export default function TableBalance({ balance = 0, label = "Your Chips" }) {
         </span>
       </div>
       <div className="w-8 h-8 rounded-full bg-[#FFD700]/20 border border-[#FFD700]/40 flex items-center justify-center text-[#FFD700] text-sm">
-        🪙
+        <IconCoin size={18} />
       </div>
     </div>
   );

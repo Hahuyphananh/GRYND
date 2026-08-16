@@ -1,5 +1,15 @@
 "use client";
 import React from "react";
+import {
+  IconArmchair,
+  IconBomb,
+  IconCircleCheck,
+  IconClock,
+  IconHome,
+  IconMoodSilence,
+  IconRocket,
+  IconUsers,
+} from "@tabler/icons-react";
 
 /**
  * PlayerSidebar — poker-style player panel shown beside the game canvas.
@@ -26,19 +36,19 @@ export default function PlayerSidebar({
   const isLive = phase === "running" || phase === "crashed" || phase === "settling";
 
   const statusOf = (p) => {
-    if (p.isSittingOut) return { label: "Sitting out", cls: "text-yellow-400", icon: "😴" };
-    if (p.busted) return { label: "Busted", cls: "text-red-400", icon: "💥" };
+    if (p.isSittingOut) return { label: "Sitting out", cls: "text-yellow-400", icon: <IconMoodSilence size={13} className="inline" /> };
+    if (p.busted) return { label: "Busted", cls: "text-red-400", icon: <IconBomb size={13} className="inline" /> };
     if (p.cashoutMultiplier != null) {
-      return { label: `${p.cashoutMultiplier.toFixed(2)}x`, cls: "text-[#00ffa6]", icon: "✅" };
+      return { label: `${p.cashoutMultiplier.toFixed(2)}x`, cls: "text-[#00ffa6]", icon: <IconCircleCheck size={13} className="inline" /> };
     }
-    if (isLive && p.isPlaying) return { label: "In flight…", cls: "text-[#00e5ff]", icon: "🚀" };
-    return { label: "Waiting", cls: "text-[#9dd8ff]/70", icon: "🪑" };
+    if (isLive && p.isPlaying) return { label: "In flight…", cls: "text-[#00e5ff]", icon: <IconRocket size={13} className="inline" /> };
+    return { label: "Waiting", cls: "text-[#9dd8ff]/70", icon: <IconArmchair size={13} className="inline" /> };
   };
 
   return (
     <div className="flex w-full max-h-[70vh] lg:w-60 lg:max-h-[560px] shrink-0 flex-col gap-2 overflow-y-auto rounded-2xl border border-[#ff4fd8]/25 bg-[#040d24]/60 p-3 backdrop-blur-sm">
       <h3 className="flex items-center justify-center gap-1.5 text-xs uppercase tracking-wider text-[#ff4fd8]/70">
-        👥 Players
+        <IconUsers size={14} className="mr-1" /> Players
         <span className="rounded-full border border-[#ff4fd8]/30 bg-[#ff4fd8]/10 px-1.5 py-0.5 text-[10px] font-black text-[#ff4fd8]">
           {players.length}/{maxPlayers}
         </span>
@@ -86,7 +96,7 @@ export default function PlayerSidebar({
         <>
           <div className="mt-2 h-px bg-[#ff4fd8]/20" />
           <h3 className="text-xs uppercase tracking-wider text-[#ff4fd8]/70 text-center">
-            ⏳ Wait List • {waitingPlayers.length}
+            <IconClock size={13} className="mb-0.5 mr-1.5 inline" /> Wait List • {waitingPlayers.length}
           </h3>
           {waitingPlayers.map((p) => (
             <div
@@ -100,7 +110,7 @@ export default function PlayerSidebar({
                 {p.name}
                 {p.isYou ? " (You)" : ""}
               </span>
-              <span className="text-yellow-400 font-bold shrink-0">⏳</span>
+              <IconClock size={14} className="shrink-0 text-yellow-400" />
             </div>
           ))}
           {waitingPlayers.some((p) => p.isYou) && (
@@ -108,7 +118,7 @@ export default function PlayerSidebar({
               onClick={onExitToLobby}
               className="mt-1 w-full px-3 py-1.5 rounded-lg text-xs font-bold border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
             >
-              🏠 Back to Lobby
+              <IconHome size={14} className="mr-1.5" /> Back to Lobby
             </button>
           )}
         </>

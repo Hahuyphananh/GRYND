@@ -15,11 +15,11 @@ type SocketContextValue = {
 const SocketContext = createContext<SocketContextValue>({ socket: null });
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const { getToken, isSignedIn, isLoaded } = useAuth(); // ✅ added isLoaded
+  const { getToken, isSignedIn, isLoaded } = useAuth(); // added isLoaded
   const [socket, setSocket] = useState<RealtimeSocket | null>(null);
 
   useEffect(() => {
-    if (!isLoaded) return; // ✅ wait for Clerk hydration
+    if (!isLoaded) return; // wait for Clerk hydration
 
     let isMounted = true;
 

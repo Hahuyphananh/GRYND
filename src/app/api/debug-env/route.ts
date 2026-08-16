@@ -64,7 +64,7 @@ function safeHost(connectionString: string | undefined): string | null {
  * Postgres/Neon error message in the JSON response.
  *
  * Why this exists: the user hits /api/sync-user on the /sync page
- * and sees "🔴 Sync failed: 500" somewhere in the dev log they don't
+ * and sees " Sync failed: 500" somewhere in the dev log they don't
  * know to check. The earlier diagnostic endpoint only exposed
  * `Boolean(process.env.DATABASE_URL)` which lies in the failure
  * mode Neon password has been rotated since they last refreshed

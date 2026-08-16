@@ -26,8 +26,8 @@ import {
   farklePlayers,
   diceFlushRooms,
   diceFlushPlayers,
-  clickerGames,
   minesPvpMatches,
+  laneRushDuelMatches,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 
@@ -73,8 +73,8 @@ export async function GET() {
       pokerRows,
       farkleRows,
       diceFlushRows,
-      clickerRows,
       minesPvpRows,
+      laneRushDuelRows,
     ] = await Promise.all([
       db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)),
       db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid)),
@@ -130,9 +130,9 @@ export async function GET() {
             eq(connectFourGames.guestClerkId, clerkId),
           ),
         ),
-      // 🏃 Lane Runner (solo game with integer userId)
+      //  Lane Runner (solo game with integer userId)
       db.select().from(laneRunnerGames).where(eq(laneRunnerGames.userId, uid)),
-      // ⬡ Hex Duel (PvP + AI, clerkId-based, skip fun mode)
+      //  Hex Duel (PvP + AI, clerkId-based, skip fun mode)
       db
         .select()
         .from(hexDuelGames)
@@ -145,7 +145,7 @@ export async function GET() {
             eq(hexDuelGames.isFunMode, false),
           ),
         ),
-      // 🎯 Odds (PvP + AI, clerkId-based)
+      //  Odds (PvP + AI, clerkId-based)
       db
         .select()
         .from(oddsGames)
@@ -155,7 +155,7 @@ export async function GET() {
             eq(oddsGames.player2Id, clerkId),
           ),
         ),
-      // 🃏 Poker (multiplayer, jsonb players array)
+      //  Poker (multiplayer, jsonb players array)
       // Guard against legacy rows where `players` is null or a non-array
       // jsonb value; jsonb_array_elements on a non-array would throw
       // "cannot extract elements from a scalar/object" and 500 the route.
@@ -179,21 +179,19 @@ export async function GET() {
             where elem->>'clerkId' = ${clerkId}
           )`,
         ),
-      // 🎲 Farkle (join players → rooms)
+      //  Farkle (join players → rooms)
       db
         .select()
         .from(farklePlayers)
         .innerJoin(farkleRooms, eq(farklePlayers.roomId, farkleRooms.id))
         .where(eq(farklePlayers.userId, clerkId)),
-      // 🎲 Dice Flush (join players → rooms)
+      //  Dice Flush (join players → rooms)
       db
         .select()
         .from(diceFlushPlayers)
         .innerJoin(diceFlushRooms, eq(diceFlushPlayers.roomId, diceFlushRooms.id))
         .where(eq(diceFlushPlayers.userId, clerkId)),
-      // 🖱️ GoonBet Clicker (solo game, clerkId-based)
-      db.select().from(clickerGames).where(eq(clickerGames.userId, clerkId)),
-      // 💣 Mines Duel (PvP, clerkId-based, best-of-1 — only finished
+      //  Mines Duel (PvP, clerkId-based, best-of-1 — only finished
       // matches contribute a win/loss; cancelled / in-flight matches
       // are excluded so the history never shows a misleading entry).
       db
@@ -203,6 +201,17 @@ export async function GET() {
           or(
             eq(minesPvpMatches.player1Id, clerkId),
             eq(minesPvpMatches.player2Id, clerkId),
+          ),
+        ),
+      //  Lane Rush Duel (PvP tower race — same shape as Mines Duel:
+      // finished-only, winnerId-based outcome, draw refunds).
+      db
+        .select()
+        .from(laneRushDuelMatches)
+        .where(
+          or(
+            eq(laneRushDuelMatches.player1Id, clerkId),
+            eq(laneRushDuelMatches.player2Id, clerkId),
           ),
         ),
     ]);
@@ -258,7 +267,7 @@ export async function GET() {
       const payout = Number(row.payout ?? 0);
       const result = payout > 0 ? "won" : "lost";
       return {
-        type: "🎯 Keno",
+        type: "Keno",
         date: row.created_at || new Date().toISOString(),
         amount,
         payout,
@@ -274,7 +283,7 @@ export async function GET() {
         const payout = Number(game.prizePaid ?? 0);
         const result = game.winnerId === clerkId ? "won" : "lost";
         return {
-          type: "🎲 Dice Duel",
+          type: "Dice Duel",
           date: game.endedAt || game.createdAt || new Date().toISOString(),
           amount,
           payout,
@@ -291,7 +300,7 @@ export async function GET() {
         const payout = Number(game.payout ?? 0);
         const result = game.winnerClerkId === clerkId ? "won" : "lost";
         return {
-          type: "🔴 Connect Four",
+          type: "Connect Four",
           date: game.endedAt || game.createdAt || new Date().toISOString(),
           amount,
           payout,
@@ -308,7 +317,7 @@ export async function GET() {
         const payout = Number(game.prizePaid ?? 0);
         const result = game.winnerId === clerkId ? "won" : "lost";
         return {
-          type: "🎱 Pool Masters",
+          type: "Pool Masters",
           date: game.endedAt || game.createdAt || new Date().toISOString(),
           amount,
           payout,
@@ -318,17 +327,17 @@ export async function GET() {
       })
       .filter(Boolean);
 
-    // 🏃 Lane Runner — solo game with standard bet/payout/result
+    //  Lane Runner — solo game with standard bet/payout/result
     const laneRunnerFormatted = laneRunnerRows
       .filter((g) => g.status === "completed")
-      .map((g) => formatBet("🏃 Lane Runner", {
+      .map((g) => formatBet("Lane Runner", {
         betAmount: g.betAmount,
         payout: g.payout,
         result: g.result,
         createdAt: g.createdAt,
       }));
 
-    // ⬡ Hex Duel — determine win/loss from winner field
+    //  Hex Duel — determine win/loss from winner field
     const hexDuelFormatted = hexDuelRows
       .filter((g) => g.status !== "in_progress")
       .map((g) => {
@@ -340,7 +349,7 @@ export async function GET() {
           (!isPlayer1 && g.winner === "player2");
         const result = won ? "won" : "lost";
         return {
-          type: g.isAiGame ? "⬡ Hex Duel vs AI" : "⬡ Hex Duel",
+          type: g.isAiGame ? "Hex Duel vs AI" : "Hex Duel",
           date: g.endedAt || g.createdAt || new Date().toISOString(),
           amount,
           payout,
@@ -349,7 +358,7 @@ export async function GET() {
         };
       });
 
-    // 🎯 Odds — determine win/loss from winner field
+    //  Odds — determine win/loss from winner field
     const oddsFormatted = oddsRows
       .filter((g) => g.status === "finished" || g.status === "forfeit")
       .map((g) => {
@@ -361,7 +370,7 @@ export async function GET() {
           (!isPlayer1 && g.winner === "player2");
         const result = won ? "won" : "lost";
         return {
-          type: g.isAi ? "🎯 Odds vs AI" : "🎯 Odds",
+          type: g.isAi ? "Odds vs AI" : "Odds",
           date: g.endedAt || g.createdAt || new Date().toISOString(),
           amount,
           payout,
@@ -370,7 +379,7 @@ export async function GET() {
         };
       });
 
-    // 🃏 Poker — determine result from winnings jsonb or winner text
+    //  Poker — determine result from winnings jsonb or winner text
     const pokerFormatted = pokerRows
       .filter((g) => g.status === "finished")
       .map((g) => {
@@ -384,7 +393,7 @@ export async function GET() {
         const payout = Number(winnings?.payout || g.payout || 0);
         const result = payout > amount ? "won" : "lost";
         return {
-          type: "🃏 Poker",
+          type: "Poker",
           date: g.createdAt || new Date().toISOString(),
           amount,
           payout,
@@ -393,7 +402,7 @@ export async function GET() {
         };
       });
 
-    // 🎲 Farkle — joined rows: farkle_players + farkle_rooms
+    //  Farkle — joined rows: farkle_players + farkle_rooms
     const farkleFormatted = farkleRows
       .filter((row) => row.farkle_rooms?.status === "finished")
       .map((row) => {
@@ -411,7 +420,7 @@ export async function GET() {
           : "completed";
         const payout = result === "won" ? Number(room.pot ?? amount * 2) : 0;
         return {
-          type: "🎲 Farkle",
+          type: "Farkle",
           date: room.createdAt || new Date().toISOString(),
           amount,
           payout,
@@ -420,7 +429,7 @@ export async function GET() {
         };
       });
 
-    // 🎲 Dice Flush — joined rows: dice_flush_players + dice_flush_rooms
+    //  Dice Flush — joined rows: dice_flush_players + dice_flush_rooms
     const diceFlushFormatted = diceFlushRows
       .filter((row) => row.dice_flush_rooms?.status === "finished")
       .map((row) => {
@@ -438,7 +447,7 @@ export async function GET() {
           : "completed";
         const payout = result === "won" ? Number(room.pot ?? amount * 2) : 0;
         return {
-          type: "🎲 Dice Flush",
+          type: "Dice Flush",
           date: room.createdAt || new Date().toISOString(),
           amount,
           payout,
@@ -447,22 +456,7 @@ export async function GET() {
         };
       });
 
-    // 🖱️ GoonBet Clicker — solo game with bet/payout/multiplier/busted
-    const clickerFormatted = clickerRows.map((g) => {
-      const amount = Number(g.betAmount ?? 0);
-      const payout = Number(g.payout ?? 0);
-      const result = g.busted ? "lost" : payout > amount ? "won" : "lost";
-      return {
-        type: "🖱️ Clicker",
-        date: g.createdAt || new Date().toISOString(),
-        amount,
-        payout,
-        result,
-        tokenDiff: result === "won" ? payout - amount : -amount,
-      };
-    });
-
-    // 💣 Mines Duel — only finished matches count. Maps the
+    //  Mines Duel — only finished matches count. Maps the
     // server-side `result` enum ('player1' | 'player2' | 'draw')
     // plus `winner_id` (null on draw) to a UI-friendly
     // won/lost/draw string. The 90/10 split means a winner's
@@ -489,7 +483,41 @@ export async function GET() {
               ? -amount
               : 0;
         return {
-          type: "💣 Mines Duel",
+          type: "Mines Duel",
+          date: g.endedAt || g.createdAt || new Date().toISOString(),
+          amount,
+          payout,
+          result: outcome,
+          tokenDiff,
+        };
+      })
+      .filter(Boolean);
+
+    // Lane Rush Duel PvP matches — same shape as Mines Duel: the
+    // winner's payout is `stake * 1.9`, a loser's is 0, and a draw
+    // refunds both stakes (payout = stake, tokenDiff = 0).
+    const laneRushDuelFormatted = laneRushDuelRows
+      .map((g) => {
+        // Test vs Bot practice matches are zero-stake — skip them so
+        // history only shows real-money games.
+        if (g.status !== "finished") return null;
+        if (g.player2Id === "AI_BOT") return null;
+        const amount = Number(g.stakeAmount ?? 0);
+        const payout = Number(g.prizePaid ?? 0);
+        const isDraw = g.result === "draw" || !g.winnerId;
+        const outcome = isDraw
+          ? "draw"
+          : g.winnerId === clerkId
+            ? "won"
+            : "lost";
+        const tokenDiff =
+          outcome === "won"
+            ? payout - amount
+            : outcome === "lost"
+              ? -amount
+              : 0;
+        return {
+          type: "Lane Rush Duel",
           date: g.endedAt || g.createdAt || new Date().toISOString(),
           amount,
           payout,
@@ -520,7 +548,7 @@ export async function GET() {
               ? -amount
               : 0;
         return {
-          type: "🎱 Keno Duel",
+          type: "Keno Duel",
           date: g.endedAt || g.createdAt || new Date().toISOString(),
           amount,
           payout,
@@ -531,15 +559,15 @@ export async function GET() {
       .filter(Boolean);
 
     const allBets = [
-      ...roulette.map((b) => formatBet("🎡 Roulette", b)),
-      ...blackjack.map((b) => formatBet("🃏 Blackjack", b)),
-      ...mines.map((b) => formatBet("💣 Mines", b)),
-      ...plinko.map((b) => formatBet("🟢 Plinko", b)),
-      ...crash.map((b) => formatBet("🚀 Crash", b)),
-      ...rps.map((b) => formatBet("✊ Rock Paper Scissors", b)),
-      ...uno.map((b) => formatBet("🎴 UNO", b)),
-      ...chess.map((b) => formatBet("♟️ Chess", b)),
-      ...sports.map((b) => formatBet("🏈 Sports Bet", b)),
+    ...roulette.map((b) => formatBet("Roulette", b)),
+    ...blackjack.map((b) => formatBet("Blackjack", b)),
+    ...mines.map((b) => formatBet("Mines", b)),
+    ...plinko.map((b) => formatBet("Plinko", b)),
+    ...crash.map((b) => formatBet("Crash", b)),
+    ...rps.map((b) => formatBet("Rock Paper Scissors", b)),
+    ...uno.map((b) => formatBet("UNO", b)),
+    ...chess.map((b) => formatBet("Chess", b)),
+    ...sports.map((b) => formatBet("Sports Bet", b)),
       ...kenoPvpFormatted,
       ...kenoFormatted,
       ...diceFormatted,
@@ -551,11 +579,11 @@ export async function GET() {
       ...pokerFormatted,
       ...farkleFormatted,
       ...diceFlushFormatted,
-      ...clickerFormatted,
       ...minesPvpFormatted,
+      ...laneRushDuelFormatted,
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // ⚠ Cumulative stats (totalWagered, weeklyWagered, currentStreak, etc.)
+    //  Cumulative stats (totalWagered, weeklyWagered, currentStreak, etc.)
     // are maintained by applyLeaderboardCounters (leaderboardCounters.js)
     // which is called by every game settlement endpoint. Recalculating them
     // here from a subset of game history tables causes stats to DECREASE

@@ -273,7 +273,7 @@ const MainComponent = () => {
                               </p>
                             </div>
 
-                            {/* 🔥 NEW BUTTON */}
+                            {/*  NEW BUTTON */}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();

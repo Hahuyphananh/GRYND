@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
       const payout = Number(row.payout ?? 0);
       const result = payout > 0 ? "won" : "lost";
       return {
-        type: "🎯 Keno", date: row.created_at || new Date().toISOString(),
+        type: "Keno", date: row.created_at || new Date().toISOString(),
         amount, payout, result, tokenDiff: payout - amount,
       };
     });
@@ -162,7 +162,7 @@ export async function GET(req: NextRequest) {
         const isDraw = game.result === "draw" || !game.winnerId;
         const result = isDraw ? "draw" : game.winnerId === clerkId ? "won" : "lost";
         return {
-          type: "🎱 Keno Duel",
+          type: "Keno Duel",
           date: game.endedAt || game.createdAt || new Date().toISOString(),
           amount,
           payout,
@@ -178,7 +178,7 @@ export async function GET(req: NextRequest) {
         const payout = Number(game.prizePaid ?? 0);
         const result = game.winnerId === clerkId ? "won" : "lost";
         return {
-          type: "🎲 Dice Duel", date: game.endedAt || game.createdAt || new Date().toISOString(),
+          type: "Dice Duel", date: game.endedAt || game.createdAt || new Date().toISOString(),
           amount, payout, result, tokenDiff: result === "won" ? payout - amount : -amount,
         };
       });
@@ -190,7 +190,7 @@ export async function GET(req: NextRequest) {
         const payout = Number(game.prizePaid ?? 0);
         const result = game.winnerId === clerkId ? "won" : "lost";
         return {
-          type: "🎱 Pool Masters", date: game.endedAt || game.createdAt || new Date().toISOString(),
+          type: "Pool Masters", date: game.endedAt || game.createdAt || new Date().toISOString(),
           amount, payout, result, tokenDiff: result === "won" ? payout - amount : -amount,
         };
       });
@@ -202,21 +202,21 @@ export async function GET(req: NextRequest) {
         const payout = Number(game.payout ?? 0);
         const result = game.winnerClerkId === clerkId ? "won" : "lost";
         return {
-          type: "🔴 Connect Four", date: game.endedAt || game.createdAt || new Date().toISOString(),
+          type: "Connect Four", date: game.endedAt || game.createdAt || new Date().toISOString(),
           amount, payout, result, tokenDiff: result === "won" ? payout - amount : -amount,
         };
       });
 
     const allBets = [
-      ...roulette.map((b: any) => formatBet("🎡 Roulette", b)),
-      ...blackjack.map((b: any) => formatBet("🃏 Blackjack", b)),
-      ...mines.map((b: any) => formatBet("💣 Mines", b)),
-      ...plinko.map((b: any) => formatBet("🟢 Plinko", b)),
-      ...crash.map((b: any) => formatBet("🚀 Crash", b)),
-      ...rps.map((b: any) => formatBet("✊ Rock Paper Scissors", b)),
-      ...uno.map((b: any) => formatBet("🎴 UNO", b)),
-      ...chess.map((b: any) => formatBet("♟️ Chess", b)),
-      ...sports.map((b: any) => formatBet("🏈 Sports Bet", b)),
+  ...roulette.map((b: any) => formatBet("Roulette", b)),
+  ...blackjack.map((b: any) => formatBet("Blackjack", b)),
+  ...mines.map((b: any) => formatBet("Mines", b)),
+  ...plinko.map((b: any) => formatBet("Plinko", b)),
+  ...crash.map((b: any) => formatBet("Crash", b)),
+  ...rps.map((b: any) => formatBet("Rock Paper Scissors", b)),
+  ...uno.map((b: any) => formatBet("UNO", b)),
+  ...chess.map((b: any) => formatBet("Chess", b)),
+  ...sports.map((b: any) => formatBet("Sports Bet", b)),
       ...kenoPvpFormatted,
       ...kenoFormatted,
       ...diceFormatted,

@@ -66,7 +66,7 @@ export default function GameBoard({ gameId, movesLeft, setMovesLeft }) {
       if (moved && movesLeft > 0) {
         addRandomTile(newBoard);
         setBoard(newBoard);
-        setMovesLeft((prev) => prev - 1); // 🔹 Update parent state
+        setMovesLeft((prev) => prev - 1); // Update parent state
       }
     };
 

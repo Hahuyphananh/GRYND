@@ -6,7 +6,7 @@
  * the seed after the round (reveal), so players can verify the crash
  * point was not manipulated.
  *
- * Pattern follows laneRunner.js / goonbet-clicker-db.ts conventions.
+ * Pattern follows laneRunner.js conventions.
  */
 import crypto from "node:crypto";
 

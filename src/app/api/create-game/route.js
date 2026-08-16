@@ -75,7 +75,7 @@ export async function POST(request) {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("❌ Chess matchmaking error:", err);
+    console.error(" Chess matchmaking error:", err);
 
     return new Response(JSON.stringify({ error: "Server error" }), {
       status: 500,

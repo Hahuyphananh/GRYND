@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 import { getAuth } from "@clerk/nextjs/server";
-import { db } from "../../../../db/client";
-import { users, rpsGames } from "../../../../db/schema"; // ✅ import rpsGames
+import { db } from "../../../../db/client";  import { users, rpsGames } from "../../../../db/schema"; // import rpsGames
 import { eq, sql } from "drizzle-orm";
 
 // Random AI choice
@@ -61,20 +60,20 @@ export async function POST(req) {
     let balanceDelta = 0;
 
     if (result === "win") {
-      // 💰 ONLY 90% PROFIT (NOT INCLUDING BET)
+      //  ONLY 90% PROFIT (NOT INCLUDING BET)
       payout = betAmount * 0.9;
       balanceDelta = payout;
     } else if (result === "lose") {
       balanceDelta = -betAmount;
     }
-    // ✅ Update balance atomically
+    //  Update balance atomically
     const [updated] = await db
       .update(users)
       .set({ balance: sql`${users.balance} + ${balanceDelta}` })
       .where(eq(users.id, user.id))
       .returning({ balance: users.balance });
 
-    // ✅ Insert into rps_games table
+    //  Insert into rps_games table
     await db.insert(rpsGames).values({
       userId: userId,
       betAmount,
@@ -109,10 +108,10 @@ export async function POST(req) {
       multiplier: FIXED_MULTIPLIER.toFixed(2),
       message:
         result === "win"
-          ? "🎉 You won!"
+          ? "You won!"
           : result === "lose"
-            ? "😢 You lost."
-            : "🤝 It's a tie.",
+            ? "You lost."
+            : "It's a tie.",
     });
   } catch (err) {
     console.error("RPS API Error:", err);

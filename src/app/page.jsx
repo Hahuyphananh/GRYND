@@ -297,7 +297,7 @@ function MainComponent() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({}), // 👈 REQUIRED
+        body: JSON.stringify({}), // REQUIRED
         credentials: "include",
       });
       const data = await res.json();
@@ -524,7 +524,7 @@ function MainComponent() {
         },
         {
           threshold: 0.1,
-          rootMargin: "0px 0px -50px 0px", // 👈 triggers earlier
+          rootMargin: "0px 0px -50px 0px", // triggers earlier
         },
       );
 

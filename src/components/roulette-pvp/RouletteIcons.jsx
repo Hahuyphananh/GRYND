@@ -59,7 +59,7 @@ const SvgBase = ({
 
 /**
  * Casino roulette wheel with alternating red/black/green segments and
- * a gold pointer at top. Replaces the 🎰 emoji used in headers.
+ * a gold pointer at top. Replaces the slot-machine emoji used in headers.
  */
 export function RouletteWheelIcon({ className = "", title }) {
   return (
@@ -90,7 +90,7 @@ export function RouletteWheelIcon({ className = "", title }) {
 
 /**
  * Stacked-coin token, gold gradient on the rim, soft bevel on the face.
- * Replaces 🪙 across stake / payout / balance labels. Pure SVG — no
+ * Replaces the coin emoji across stake / payout / balance labels. Pure SVG — no
  * external assets required.
  */
 export function CoinIcon({ className = "", title, size = 24 }) {
@@ -140,7 +140,7 @@ export function CoinIcon({ className = "", title, size = 24 }) {
 
 /**
  * Crosshair / target. Used for the Open Lobbies header and the Lock-in
- * bets CTA. Replaces 🎯.
+ * bets CTA. Replaces the target emoji.
  */
 export function TargetIcon({ className = "", title }) {
   return (
@@ -158,7 +158,7 @@ export function TargetIcon({ className = "", title }) {
 
 /**
  * Circular-arrow refresh button. Animated spin via className="animate-spin"
- * if desired. Replaces 🔄.
+ * if desired. Replaces the refresh emoji.
  */
 export function RefreshIcon({ className = "", title }) {
   return (
@@ -172,7 +172,7 @@ export function RefreshIcon({ className = "", title }) {
 }
 
 /**
- * Lightning bolt (cyan accent-friendly). Replaces ⚡ in the
+ * Lightning bolt (cyan accent-friendly). Replaces the bolt emoji in the
  * "Match starting…" banner.
  */
 export function BoltIcon({ className = "", title }) {
@@ -188,7 +188,7 @@ export function BoltIcon({ className = "", title }) {
 }
 
 /**
- * Stopwatch / clock face. Replaces 🕒 in the "Waiting for opponent…"
+ * Stopwatch / clock face. Replaces the clock emoji in the "Waiting for opponent…"
  * panel.
  */
 export function ClockIcon({ className = "", title }) {
@@ -201,7 +201,7 @@ export function ClockIcon({ className = "", title }) {
 }
 
 /**
- * Trophy with handles. Gold gradient on the cup. Replaces 🎉 on match win.
+ * Trophy with handles. Gold gradient on the cup. Replaces the trophy emoji on match win.
  */
 export function TrophyIcon({ className = "", title, size = 24 }) {
   return (
@@ -271,7 +271,7 @@ export function TrophyIcon({ className = "", title, size = 24 }) {
 }
 
 /**
- * Skull silhouette. Used on match loss / elimination rays. Replaces 💀.
+ * Skull silhouette. Used on match loss / elimination rays. Replaces the skull emoji.
  * Two-tone: outer round-shape + black eye sockets + small jaw cutout
  * so the head reads clearly even at small sizes.
  */
@@ -307,7 +307,7 @@ export function SkullIcon({ className = "", title }) {
 
 /**
  * Two arms meeting in the middle with clasping hands. Used on mutual
- * elimination / draw. Replaces 🤝.
+ * elimination / draw. Replaces the handshake emoji.
  */
 export function HandshakeIcon({ className = "", title }) {
   return (
@@ -328,7 +328,7 @@ export function HandshakeIcon({ className = "", title }) {
 }
 
 /**
- * Open book. Replaces 📖 in the rules toggle button.
+ * Open book. Replaces the book emoji in the rules toggle button.
  */
 export function BookIcon({ className = "", title }) {
   return (
@@ -342,7 +342,7 @@ export function BookIcon({ className = "", title }) {
 }
 
 /**
- * Checkmark. Replaces ✓ in the bet-locked / submitted indicators.
+ * Checkmark. Replaces the checkmark glyph in the bet-locked / submitted indicators.
  * Pairs with the green "submitted" pill.
  */
 export function CheckIcon({ className = "", title }) {

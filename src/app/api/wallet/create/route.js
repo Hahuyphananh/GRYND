@@ -40,7 +40,7 @@ export async function POST(request) {
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("❌ Failed to create wallet:", error);
+    console.error(" Failed to create wallet:", error);
     return new Response(
       JSON.stringify({
         error: "Erreur serveur lors de la création du portefeuille",

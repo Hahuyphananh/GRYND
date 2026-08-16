@@ -13,6 +13,7 @@ import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animation
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
+import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconMail, IconMenu, IconSettings, IconX } from "@tabler/icons-react";
 
 const NAV_TRANSLATION_KEYS = {
   "/": "nav.home",
@@ -297,7 +298,7 @@ function NavigationBar({ currentPath }) {
                   href="/contact"
                   className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/contact" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                 >
-                  ✉️ Contact
+                  <IconMail size={15} className="mb-0.5 mr-1 inline" /> Contact
                 </Link>
               </motion.div>
               {isAdmin && isSignedIn && (
@@ -312,7 +313,7 @@ function NavigationBar({ currentPath }) {
                     href="/admin"
                     className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff8c42] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/admin" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#ff8c42] hover:text-[#ffb347]"}`}
                   >
-                    ⚙️ Admin
+                    <IconSettings size={15} className="mb-0.5 mr-1 inline" /> Admin
                   </Link>
                 </motion.div>
               )}
@@ -324,7 +325,7 @@ function NavigationBar({ currentPath }) {
                   onClick={install}
                   className="hidden sm:inline-flex items-center rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-xs font-medium text-[#f5ff3b] hover:bg-[#f5ff3b]/20"
                 >
-                  📲 Install App
+                  <IconDeviceMobile size={16} className="mr-1" /> Install App
                 </button>
               )}
               <div className="relative">
@@ -340,9 +341,21 @@ function NavigationBar({ currentPath }) {
                   aria-label={`Select language, currently ${language === "en" ? "English" : language === "fr" ? "French" : "Spanish"}`}
                   className="cursor-pointer rounded-lg border border-[#00e5ff]/50 bg-[#091737] px-2 py-1 text-xs text-[#c9f7ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] sm:text-sm"
                 >
-                  {language === "en" && "EN 🇺🇸 🌐"}
-                  {language === "fr" && "FR 🇫🇷 🌐"}
-                  {language === "es" && "ES 🇪🇸 🌐"}
+                  {language === "en" && (
+                    <span className="inline-flex items-center gap-1">
+                      EN <IconGlobe size={14} />
+                    </span>
+                  )}
+                  {language === "fr" && (
+                    <span className="inline-flex items-center gap-1">
+                      FR <IconGlobe size={14} />
+                    </span>
+                  )}
+                  {language === "es" && (
+                    <span className="inline-flex items-center gap-1">
+                      ES <IconGlobe size={14} />
+                    </span>
+                  )}
                 </button>
 
                 {(langOpen || langClosing) && (
@@ -351,9 +364,9 @@ function NavigationBar({ currentPath }) {
                   >
                     <div role="menu" className="overflow-hidden rounded-lg border border-[#00e5ff]/50 bg-[#091737] shadow-lg">
                       {[
-                        { value: "en", label: "EN 🇺🇸 🌐" },
-                        { value: "fr", label: "FR 🇫🇷 🌐" },
-                        { value: "es", label: "ES 🇪🇸 🌐" },
+                        { value: "en", label: "EN" },
+                        { value: "fr", label: "FR" },
+                        { value: "es", label: "ES" },
                       ].map((lang) => (
                         <button
                           key={lang.value}
@@ -407,7 +420,7 @@ function NavigationBar({ currentPath }) {
                         </span>
                         {profile?.streakTitle && (
                           <span className="text-[10px] text-amber-400">
-                            🔥 {profile.streakTitle}
+                            <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {profile.streakTitle}
                           </span>
                         )}
                         <span className="text-[10px] text-[#7dd3fc]">
@@ -436,7 +449,7 @@ function NavigationBar({ currentPath }) {
                     className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] lg:hidden"
                     aria-label="Toggle menu"
                   >
-                    ☰
+                    <IconMenu size={20} />
                   </button>
                   <SignOutButton>
                     <UIPro02NavItem className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35">
@@ -451,7 +464,7 @@ function NavigationBar({ currentPath }) {
                     className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] md:hidden"
                     aria-label="Toggle menu"
                   >
-                    ☰
+                    <IconMenu size={20} />
                   </button>
                   <UIPro02NavItem
                     href="/sign-up"
@@ -476,7 +489,7 @@ function NavigationBar({ currentPath }) {
             <div className="absolute left-0 top-0 h-full w-72 bg-[#08142f] border-r border-[#00e5ff]/30 p-4 space-y-4">
               {/* CLOSE */}
               <button onClick={() => setMobileMenuOpen(false)} className="text-[#f5ff3b] text-sm">
-                ✕ Close
+                <IconX size={16} className="mb-0.5 mr-1 inline" /> Close
               </button>
 
               {/* PROFILE */}
@@ -491,7 +504,9 @@ function NavigationBar({ currentPath }) {
                     <div className="text-[#c9f7ff] text-sm flex items-center gap-1.5">{profile?.name || "User"}{isAdmin && <AdminBadge />}</div>
                     <div className="text-xs text-[#f5ff3b]">{profile?.selectedTitle}</div>
                     {profile?.streakTitle && (
-                      <div className="text-xs text-amber-400">🔥 {profile.streakTitle}</div>
+                      <div className="text-xs text-amber-400">
+                        <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {profile.streakTitle}
+                      </div>
                     )}
                   </div>
                 </Link>
@@ -500,7 +515,7 @@ function NavigationBar({ currentPath }) {
               {/* TOKENS */}
               {isSignedIn && (
                 <div className="rounded-lg border border-[#00e5ff]/30 bg-[#091737] p-3 text-sm text-[#67f9ff]">
-                  💰 Tokens: {balance !== null ? Number(balance).toFixed(2) : "Loading..."}
+                  <IconCoins size={16} className="mb-0.5 mr-1 inline" /> Tokens: {balance !== null ? Number(balance).toFixed(2) : "Loading..."}
                 </div>
               )}
 
@@ -521,7 +536,7 @@ function NavigationBar({ currentPath }) {
                     onClick={() => setMobileMenuOpen(false)}
                     className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
                   >
-                    ✉️ Contact
+                    <IconMail size={15} className="mb-0.5 mr-1 inline" /> Contact
                   </Link>
                 {isAdmin && isSignedIn && (
                 <Link
@@ -529,7 +544,7 @@ function NavigationBar({ currentPath }) {
                   onClick={() => setMobileMenuOpen(false)}
                   className="block rounded-lg bg-[#091737] px-3 py-2 text-[#ff8c42]"
                 >
-                  ⚙️ Admin
+                  <IconSettings size={15} className="mb-0.5 mr-1 inline" /> Admin
                 </Link>
               )}
             </div>
@@ -559,7 +574,7 @@ function NavigationBar({ currentPath }) {
                   onClick={install}
                   className="w-full rounded-lg bg-[#f5ff3b]/10 px-3 py-2 text-[#f5ff3b]"
                 >
-                  📲 Install App
+                  <IconDeviceMobile size={16} className="mr-1" /> Install App
                 </button>
               )}
             </div>

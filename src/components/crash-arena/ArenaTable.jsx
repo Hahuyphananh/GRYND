@@ -1,5 +1,17 @@
 "use client";
 import React, { useState, useCallback, useMemo, useEffect } from "react";
+import {
+  IconBomb,
+  IconBook,
+  IconChevronLeft,
+  IconChevronRight,
+  IconCircleCheck,
+  IconClock,
+  IconHome,
+  IconRocket,
+  IconTrophy,
+  IconUsers,
+} from "@tabler/icons-react";
 import PlayerList from "./PlayerList";
 import PlayerSidebar from "./PlayerSidebar";
 import PotDisplay from "./PotDisplay";
@@ -160,10 +172,10 @@ export default function ArenaTable({
         {isWaiting && !countdownActive && (
           <div className="px-3 py-1.5 rounded-lg bg-[#9dd8ff]/5 border border-[#9dd8ff]/15 text-xs font-bold text-[#9dd8ff]">
             {seatedCount < 2
-              ? "⏳ Waiting for another player…"
+              ? "Waiting for another player…"
               : isFirstRound
-                ? `🎯 ${readyCount}/${READY_VOTES_NEEDED} ready — press Start Round`
-                : "⏳ Waiting…"}
+                ? `${readyCount}/${READY_VOTES_NEEDED} ready — press Start Round`
+                : "Waiting…"}
           </div>
         )}
         {isRunning && (
@@ -178,7 +190,7 @@ export default function ArenaTable({
           onClick={() => setShowRules(true)}
           className="px-3 py-1.5 rounded-lg text-xs font-bold border border-[#FFD700]/35 bg-[#FFD700]/10 text-[#FFD700] hover:bg-[#FFD700]/20 hover:shadow-[0_0_12px_rgba(255,215,0,0.3)] transition-all"
         >
-          📜 Rules
+          <IconBook size={14} className="mr-1.5" /> Rules
         </button>
         {/* Players sidebar toggle */}
         <button
@@ -189,7 +201,8 @@ export default function ArenaTable({
               : "border-gray-500/30 bg-gray-500/10 text-gray-400 hover:bg-gray-500/20"
           }`}
         >
-          👥 Players {showSidebar ? "▸" : "◂"}
+          <IconUsers size={14} className="mr-1.5" /> Players{" "}
+          {showSidebar ? <IconChevronRight size={14} /> : <IconChevronLeft size={14} />}
         </button>
       </div>
 
@@ -198,8 +211,8 @@ export default function ArenaTable({
         <div className="px-4 py-3 rounded-2xl border border-[#FFD700]/30 bg-[#FFD700]/5 text-center animate-in fade-in">
           {results.winner ? (
             <>
-              <span className="text-lg font-black text-[#FFD700]">
-                🏆 {results.winner} wins the pot!
+              <span className="inline-flex items-center gap-2 text-lg font-black text-[#FFD700]">
+                <IconTrophy size={20} /> {results.winner} wins the pot!
               </span>
               <span className="block text-sm text-[#d8fbff] mt-1">
                 Cashed out at {results.winnerMultiplier?.toFixed(2)}x
@@ -210,8 +223,8 @@ export default function ArenaTable({
             </>
           ) : (
             <>
-              <span className="text-lg font-black text-red-400">
-                💥 No winners! Pot carries over.
+              <span className="inline-flex items-center gap-2 text-lg font-black text-red-400">
+                <IconBomb size={20} /> No winners! Pot carries over.
               </span>
               <span className="block text-sm text-[#9dd8ff] mt-1">
                 ${pot.toLocaleString()} added to next round
@@ -247,14 +260,14 @@ export default function ArenaTable({
           {/* On the wait list (joined mid-round or clicked Leave) */}
           {isWaitingPlayer && !isSeated && (
             <>
-              <span className="px-3 py-1.5 rounded-lg text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-400">
-                ⏳ On wait list — you&apos;ll join after this round
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-400">
+                <IconClock size={13} /> On wait list — you&apos;ll join after this round
               </span>
               <button
                 onClick={onExitToLobby}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
               >
-                🏠 Back to Lobby
+                <IconHome size={14} className="mr-1.5" /> Back to Lobby
               </button>
             </>
           )}
@@ -291,8 +304,8 @@ export default function ArenaTable({
                   only — never the rocket directly. */}
               {isFirstRound && isWaiting && (
                 youReady ? (
-                  <span className="px-3 py-2 rounded-lg text-xs font-bold border border-[#00ffa6]/40 bg-[#00ffa6]/15 text-[#00ffa6]">
-                    ✅ Ready ({readyCount}/{READY_VOTES_NEEDED})
+                  <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border border-[#00ffa6]/40 bg-[#00ffa6]/15 text-[#00ffa6]">
+                    <IconCircleCheck size={14} /> Ready ({readyCount}/{READY_VOTES_NEEDED})
                   </span>
                 ) : (
                   <button
@@ -301,7 +314,7 @@ export default function ArenaTable({
                     title={you?.userId == null ? "Syncing your seat…" : "Vote to start the countdown"}
                     className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black border border-[#FFD700] shadow-[0_0_14px_rgba(255,215,0,0.4)] hover:shadow-[0_0_24px_rgba(255,215,0,0.7)] hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:hover:scale-100"
                   >
-                    🚀 Start Round
+                    <IconRocket size={16} className="mr-1.5" /> Start Round
                   </button>
                 )
               )}
@@ -315,13 +328,13 @@ export default function ArenaTable({
 
               {/* Cashout status badges */}
               {youCashedOut && !isRunning && (
-                <span className="px-3 py-2 rounded-lg text-xs font-bold bg-[#00ffa6]/15 text-[#00ffa6] border border-[#00ffa6]/30">
-                  ✅ {you.cashoutMultiplier?.toFixed(2)}x
+                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-[#00ffa6]/15 text-[#00ffa6] border border-[#00ffa6]/30">
+                  <IconCircleCheck size={14} /> {you.cashoutMultiplier?.toFixed(2)}x
                 </span>
               )}
               {youBusted && (
-                <span className="px-3 py-2 rounded-lg text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/30">
-                  💥 Busted
+                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+                  <IconBomb size={14} /> Busted
                 </span>
               )}
 
@@ -350,7 +363,7 @@ export default function ArenaTable({
         <div className="relative mx-auto flex w-full max-w-[720px] aspect-[4/3] items-center justify-center rounded-2xl border border-[#00e5ff]/30 bg-[#050d1f]/80 backdrop-blur-xl shadow-[0_0_25px_rgba(0,229,255,0.2)] overflow-hidden">
           {children || (
             <div className="text-center px-4">
-              <p className="text-6xl mb-4">🚀</p>
+              <IconRocket size={56} className="mb-4 text-[#00e5ff]" />
               <p className="text-lg font-bold text-[#d8fbff]">
                 {isRunning
                   ? "In flight!"
@@ -376,7 +389,7 @@ export default function ArenaTable({
                       : "bg-[#00ffa6]/20 text-[#00ffa6] border border-[#00ffa6]/30"
                   }`}
                 >
-                  {p.name}{p.isYou ? " (You)" : ""}: {p.busted ? "💥 Busted" : `${p.cashoutMultiplier?.toFixed(2)}x`}
+                  {p.name}{p.isYou ? " (You)" : ""}: {p.busted ? "Busted" : `${p.cashoutMultiplier?.toFixed(2)}x`}
                 </div>
               ))}
             </div>
@@ -407,7 +420,7 @@ export default function ArenaTable({
         {waitingPlayers.length > 0 && (
           <div className="w-full lg:w-72 shrink-0 px-4 py-3 rounded-2xl border border-yellow-500/25 bg-[#040d24]/60 backdrop-blur-sm">
             <h3 className="text-xs uppercase tracking-wider text-yellow-400/70 mb-3 text-center">
-              ⏳ Wait List &bull; {waitingPlayers.length}
+              <IconClock size={13} className="mb-0.5 mr-1.5 inline" /> Wait List &bull; {waitingPlayers.length}
             </h3>
             <div className="flex flex-col gap-2">
               {waitingPlayers.map((p) => (
@@ -436,10 +449,10 @@ export default function ArenaTable({
                       onClick={onExitToLobby}
                       className="px-2 py-1 rounded-md text-[10px] font-bold border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all shrink-0"
                     >
-                      🏠 Back to Lobby
+                      <IconHome size={13} className="mr-1.5" /> Back to Lobby
                     </button>
                   ) : (
-                    <span className="text-yellow-400 shrink-0">⏳</span>
+                    <IconClock size={14} className="shrink-0 text-yellow-400" />
                   )}
                 </div>
               ))}

@@ -9,6 +9,23 @@ import { useSocket } from "../../../context/SocketProvider";
 import { celebrateWin } from "../../../lib/animations";
 import { useOddsAudio } from "../../../lib/oddsAudio";
 import {
+  IconDice,
+  IconCoins,
+  IconDeviceGamepad2,
+  IconTarget,
+  IconCrystalBall,
+  IconVolume,
+  IconVolumeOff,
+  IconFlag,
+  IconHourglass,
+  IconTrophy,
+  IconMoodAngry,
+  IconHeartHandshake,
+  IconMoodSad,
+  IconClock,
+  IconAlarm,
+} from "@tabler/icons-react";
+import {
   TOTAL_ROUNDS,
   type InteractiveOddsState as InteractiveOddsStateType,
   type OddsPlayerView,
@@ -45,7 +62,7 @@ export default function OddsPage() {
       <NavigationBar currentPath="/casino" />
       <div className="mt-6 w-full max-w-2xl rounded-xl border border-yellow-400/30 bg-[#0b224f]/85 p-4 text-white shadow-[0_0_24px_rgba(250,204,21,0.15)] sm:mt-10 sm:p-6">
         <h1 className="mb-2 text-center text-2xl font-extrabold tracking-wide text-yellow-400 sm:text-3xl">
-          🎲 Odds Game
+          <span className="inline-flex items-center gap-2"><IconDice size={28} /> Odds Game</span>
         </h1>
         <p className="mb-6 text-center text-sm text-white/60">
           Pick your number and predict your opponent's — closest predictions win. Range halves each round.
@@ -408,7 +425,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       {!resuming && !gameId && (
         <>
           <div className="mb-4 rounded-lg border-2 border-dashed border-yellow-400/40 bg-yellow-500/10 p-3 text-center">
-            <p className="text-xs font-bold uppercase tracking-widest text-yellow-300">🎮 Free Play</p>
+            <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-yellow-300"><IconDeviceGamepad2 size={14} /> Free Play</p>
             <p className="mt-1 text-[10px] text-yellow-100/80">No tokens are wagered. Playing vs AI is free.</p>
           </div>
           <button
@@ -416,19 +433,18 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             disabled={loading}
             className="w-full p-3 rounded font-bold text-lg bg-gradient-to-r from-yellow-500 to-amber-500 text-black hover:scale-105 transition shadow-[0_0_18px_rgba(250,204,21,0.5)]"
           >
-            {loading ? "Starting..." : "🎲 Play vs AI"}
+            {loading ? "Starting..." : <span className="inline-flex items-center gap-2"><IconDice size={18} /> Play vs AI</span>}
           </button>
           {error && <p className="mt-3 text-center text-red-400">{error}</p>}
         </>
       )}
 
       {gameId && interactiveState && !gameOver && interactiveState.phase === "pick" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm rounded-2xl border-2 border-yellow-400/40 bg-[#0a1a3a]/95 p-6 text-center shadow-[0_0_60px_rgba(250,204,21,0.25)]">
-            <p className="text-3xl mb-1">🎯</p>
+        <div className="mb-4 rounded-2xl border-2 border-yellow-400/40 bg-[#0a1a3a]/95 p-6 text-center shadow-[0_0_60px_rgba(250,204,21,0.25)]">
+            <p className="text-3xl mb-1"><IconTarget size={36} className="text-yellow-400" /></p>
             <h2 className="text-xl font-extrabold text-yellow-400">Pick Your Number</h2>
             <p className="text-xs text-white/40 mt-1">
-              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wager} 🪙
+              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wager} <IconCoins size={12} className="inline" />
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
               Choose a number from <span className="text-yellow-400 font-bold">1–{range}</span> — it stays
@@ -452,14 +468,14 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                     : "border-white/10 text-white/60"
                 }`}
               >
-                ⏱ {timeLeft}s
+                <IconClock size={18} className="inline" /> {timeLeft}s
               </div>
             </div>
 
             {/* Time's up indicator */}
             {timeUp && isSubmitting && (
               <p className="text-center text-sm text-amber-400 animate-pulse mb-3">
-                ⏰ Time's up! Locking in automatically...
+                <span className="inline-flex items-center gap-1"><IconAlarm size={14} /> Time's up! Locking in automatically...</span>
               </p>
             )}
 
@@ -496,7 +512,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                 }`}
                 title={audio.enabled ? "Sounds on" : "Sounds off"}
               >
-                {audio.enabled ? "🔊" : "🔇"}
+                {audio.enabled ? <IconVolume size={16} /> : <IconVolumeOff size={16} />}
               </button>
               <label className="flex cursor-pointer select-none items-center gap-2">
                 <div
@@ -524,17 +540,15 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             {error && (
               <p className="mt-3 text-center text-sm text-red-400">{error}</p>
             )}
-          </div>
         </div>
       )}
 
       {gameId && interactiveState && !gameOver && interactiveState.phase === "predict" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm rounded-2xl border-2 border-yellow-400/40 bg-[#0a1a3a]/95 p-6 text-center shadow-[0_0_60px_rgba(250,204,21,0.25)]">
-            <p className="text-3xl mb-1">🔮</p>
+        <div className="mb-4 rounded-2xl border-2 border-yellow-400/40 bg-[#0a1a3a]/95 p-6 text-center shadow-[0_0_60px_rgba(250,204,21,0.25)]">
+            <p className="text-3xl mb-1"><IconCrystalBall size={36} className="text-fuchsia-400" /></p>
             <h2 className="text-xl font-extrabold text-yellow-400">Predict Your Opponent</h2>
             <p className="text-xs text-white/40 mt-1">
-              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wager} 🪙
+              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wager} <IconCoins size={12} className="inline" />
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
               Which number do you think they chose? Pick from{" "}
@@ -559,14 +573,14 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                     : "border-white/10 text-white/60"
                 }`}
               >
-                ⏱ {timeLeft}s
+                <IconClock size={18} className="inline" /> {timeLeft}s
               </div>
             </div>
 
             {/* Time's up indicator */}
             {timeUp && isSubmitting && (
               <p className="text-center text-sm text-amber-400 animate-pulse mb-3">
-                ⏰ Time's up! Locking in automatically...
+                <span className="inline-flex items-center gap-1"><IconAlarm size={14} /> Time's up! Locking in automatically...</span>
               </p>
             )}
 
@@ -603,7 +617,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                 }`}
                 title={audio.enabled ? "Sounds on" : "Sounds off"}
               >
-                {audio.enabled ? "🔊" : "🔇"}
+                {audio.enabled ? <IconVolume size={16} /> : <IconVolumeOff size={16} />}
               </button>
               <label className="flex cursor-pointer select-none items-center gap-2">
                 <div
@@ -625,7 +639,6 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             {error && (
               <p className="mt-3 text-center text-sm text-red-400">{error}</p>
             )}
-          </div>
         </div>
       )}
 
@@ -1326,7 +1339,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             disabled={loading}
             className="w-full p-3 rounded font-bold text-lg bg-gradient-to-r from-yellow-500 to-amber-500 text-black hover:scale-105 transition shadow-[0_0_18px_rgba(250,204,21,0.5)] mb-6"
           >
-            {loading ? "Creating..." : "🎲 Create PvP Game"}
+            {loading ? "Creating..." : <span className="inline-flex items-center gap-2"><IconDice size={18} /> Create PvP Game</span>}
           </button>
 
           <h2 className="text-lg font-bold mb-3">Available Games</h2>
@@ -1348,7 +1361,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                       {game.player1Name}
                     </p>
                     <p className="text-sm text-white/50">
-                      Wager: {game.wager} 🪙
+                      Wager: {game.wager} <IconCoins size={12} className="inline" />
                     </p>
                   </div>
                   <button
@@ -1375,13 +1388,13 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             transition={{ repeat: Infinity, duration: 2 }}
             className="text-4xl mb-4"
           >
-            🎲
+            <IconDice size={36} className="text-yellow-400" />
           </motion.div>
           <p className="text-lg font-bold text-yellow-300">
             {message || "Waiting for opponent..."}
           </p>
           <p className="text-sm text-white/40 mt-2">
-            Wager: {wagerLocked} 🪙
+            Wager: {wagerLocked} <IconCoins size={12} className="inline" />
           </p>
           <button
             onClick={cancelGame}
@@ -1392,14 +1405,13 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         </div>
       )}
 
-      {/* PLAYING: Pick Your Number modal */}
+      {/* PLAYING: Pick Your Number card (inline so the game board stays visible) */}
       {showPickUI && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm rounded-2xl border-2 border-yellow-400/40 bg-[#0a1a3a]/95 p-6 text-center shadow-[0_0_60px_rgba(250,204,21,0.25)]">
-            <p className="text-3xl mb-1">🎯</p>
+        <div className="mb-4 rounded-2xl border-2 border-yellow-400/40 bg-[#0a1a3a]/95 p-6 text-center shadow-[0_0_60px_rgba(250,204,21,0.25)]">
+            <p className="text-3xl mb-1"><IconTarget size={36} className="text-yellow-400" /></p>
             <h2 className="text-xl font-extrabold text-yellow-400">Pick Your Number</h2>
             <p className="text-xs text-white/40 mt-1">
-              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wagerLocked ?? wager} 🪙
+              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wagerLocked ?? wager} <IconCoins size={12} className="inline" />
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
               Choose a number from <span className="text-yellow-400 font-bold">1–{range}</span> — it stays
@@ -1423,14 +1435,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                     : "border-white/10 text-white/60"
                 }`}
               >
-                ⏱ {timeLeft}s
+                <IconClock size={18} className="inline" /> {timeLeft}s
               </div>
             </div>
 
             {/* Time's up indicator */}
             {timeUp && isSubmitting && (
               <p className="text-center text-sm text-amber-400 animate-pulse mb-3">
-                ⏰ Time's up! Locking in automatically...
+                <span className="inline-flex items-center gap-1"><IconAlarm size={14} /> Time's up! Locking in automatically...</span>
               </p>
             )}
 
@@ -1471,14 +1483,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                 }`}
                 title={audio.enabled ? "Sounds on" : "Sounds off"}
               >
-                {audio.enabled ? "🔊" : "🔇"}
+                {audio.enabled ? <IconVolume size={16} /> : <IconVolumeOff size={16} />}
               </button>
               <button
                 onClick={() => setShowForfeitConfirm(true)}
                 className="rounded-full border border-red-400/30 px-3 py-1 text-sm text-red-400/70 hover:bg-red-500/10 hover:text-red-300 transition"
                 title="Forfeit game"
               >
-                🏳️ Forfeit
+                <span className="inline-flex items-center gap-1"><IconFlag size={14} /> Forfeit</span>
               </button>
             </div>
 
@@ -1506,18 +1518,16 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                 </div>
               </div>
             )}
-          </div>
         </div>
       )}
 
-      {/* PREDICT OPPONENT modal */}
+      {/* PREDICT OPPONENT card (inline so the game board stays visible) */}
       {showPredictUI && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm rounded-2xl border-2 border-yellow-400/40 bg-[#0a1a3a]/95 p-6 text-center shadow-[0_0_60px_rgba(250,204,21,0.25)]">
-            <p className="text-3xl mb-1">🔮</p>
+        <div className="mb-4 rounded-2xl border-2 border-yellow-400/40 bg-[#0a1a3a]/95 p-6 text-center shadow-[0_0_60px_rgba(250,204,21,0.25)]">
+            <p className="text-3xl mb-1"><IconCrystalBall size={36} className="text-fuchsia-400" /></p>
             <h2 className="text-xl font-extrabold text-yellow-400">Predict Your Opponent</h2>
             <p className="text-xs text-white/40 mt-1">
-              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wagerLocked ?? wager} 🪙
+              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wagerLocked ?? wager} <IconCoins size={12} className="inline" />
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
               Which number do you think they chose? Pick from{" "}
@@ -1542,14 +1552,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                     : "border-white/10 text-white/60"
                 }`}
               >
-                ⏱ {timeLeft}s
+                <IconClock size={18} className="inline" /> {timeLeft}s
               </div>
             </div>
 
             {/* Time's up indicator */}
             {timeUp && isSubmitting && (
               <p className="text-center text-sm text-amber-400 animate-pulse mb-3">
-                ⏰ Time's up! Locking in automatically...
+                <span className="inline-flex items-center gap-1"><IconAlarm size={14} /> Time's up! Locking in automatically...</span>
               </p>
             )}
 
@@ -1590,14 +1600,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                 }`}
                 title={audio.enabled ? "Sounds on" : "Sounds off"}
               >
-                {audio.enabled ? "🔊" : "🔇"}
+                {audio.enabled ? <IconVolume size={16} /> : <IconVolumeOff size={16} />}
               </button>
               <button
                 onClick={() => setShowForfeitConfirm(true)}
                 className="rounded-full border border-red-400/30 px-3 py-1 text-sm text-red-400/70 hover:bg-red-500/10 hover:text-red-300 transition"
                 title="Forfeit game"
               >
-                🏳️ Forfeit
+                <span className="inline-flex items-center gap-1"><IconFlag size={14} /> Forfeit</span>
               </button>
             </div>
 
@@ -1625,44 +1635,34 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                 </div>
               </div>
             )}
-          </div>
         </div>
       )}
 
-      {/* WAITING FOR OPPONENT after own pick */}
+      {/* WAITING FOR OPPONENT — the pick/predict card hides once you've
+          locked in; a compact banner shows while the opponent catches up */}
       {interactiveState && !gameOver && waitingForOpponent && (
-        <div className="text-center py-8">
-          <motion.div
-            animate={{ scale: [1, 1.05, 1] }}
-            transition={{ repeat: Infinity, duration: 1.5 }}
-            className="text-4xl mb-4"
-          >
-            ⏳
-          </motion.div>
-          <p className="text-lg font-bold text-yellow-300">
+        <div className="mb-4 rounded-xl border border-yellow-400/20 bg-[#0a1a3a]/70 p-4 text-center">
+          <p className="text-base font-bold text-yellow-300">
+            <IconHourglass size={16} className="inline" />{" "}
             {interactiveState.phase === "predict"
               ? "Waiting for opponent to predict..."
               : "Waiting for opponent to pick..."}
           </p>
-          {interactiveState && (
-            <p className="text-xs text-white/40 mt-1">
-              Round {interactiveState.currentRound} of {interactiveState.totalRounds}
-            </p>
-          )}
-          <p className="text-sm text-white/40 mt-2">
+          <p className="mt-1 text-xs text-white/40">
+            Round {interactiveState.currentRound} of {interactiveState.totalRounds} ·{" "}
             {interactiveState.phase === "predict"
-              ? "Your prediction is locked in — waiting for your opponent to predict."
-              : "Your number is locked in — waiting for your opponent to pick."}
+              ? "Your prediction is locked in"
+              : "Your number is locked in"}
           </p>
 
           {/* Forfeit from waiting state */}
-          <div className="mt-4 flex flex-col items-center gap-2">
+          <div className="mt-3 flex justify-center">
             {!showForfeitConfirm ? (
               <button
                 onClick={() => setShowForfeitConfirm(true)}
                 className="rounded-full border border-red-400/30 px-3 py-1 text-sm text-red-400/70 hover:bg-red-500/10 hover:text-red-300 transition"
               >
-                🏳️ Forfeit
+                <span className="inline-flex items-center gap-1"><IconFlag size={14} /> Forfeit</span>
               </button>
             ) : (
               <div className="rounded-lg border border-red-400/30 bg-red-900/10 p-3 text-center">
@@ -1717,7 +1717,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             onClick={() => setShowReportModal(true)}
             className="px-4 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30"
           >
-            🚩 Report
+            <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report</span>
           </button>
         </div>
       )}
@@ -1828,18 +1828,30 @@ function OddsGameDisplay({
   const myPts = isPlayer1 ? gameState.p1Score : gameState.p2Score;
   const oppPts = isPlayer1 ? gameState.p2Score : gameState.p1Score;
 
-  // Brief post-reveal points breakdown — auto-dismisses a few seconds
-  // after each new round is revealed.
+  // Round result popup — shown after every revealed round so both
+  // players see who won the prediction and the points earned. Has a
+  // "Next Round" button that auto-advances after 5 seconds.
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [countdown, setCountdown] = useState(5);
   const prevRevealedRef = useRef(revealedRounds);
   useEffect(() => {
     const increased = revealedRounds > prevRevealedRef.current;
     prevRevealedRef.current = revealedRounds;
     if (!increased) return;
     setShowBreakdown(true);
-    const t = setTimeout(() => setShowBreakdown(false), 5000);
-    return () => clearTimeout(t);
+    setCountdown(5);
   }, [revealedRounds]);
+
+  // Countdown → auto-dismiss (auto "Next Round") after 5s.
+  useEffect(() => {
+    if (!showBreakdown) return;
+    if (countdown <= 0) {
+      setShowBreakdown(false);
+      return;
+    }
+    const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [showBreakdown, countdown]);
 
   const userPoss = userLabel === "You" ? "Your" : `${userLabel}'s`;
   const oppPoss =
@@ -1904,55 +1916,102 @@ function OddsGameDisplay({
         oppLabel={oppLabel}
       />
 
-      {/* Brief post-reveal points breakdown */}
+      {/* Round result popup — who won the prediction + points earned.
+          "Next Round" advances immediately; otherwise auto-advances after 5s. */}
       <AnimatePresence>
         {showBreakdown && breakdown && (
           <motion.div
-            initial={{ opacity: 0, y: -8, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.98 }}
-            transition={{ duration: 0.3 }}
-            className="rounded-xl border border-yellow-400/30 bg-[#0a1a3a] p-4 shadow-[0_0_24px_rgba(250,204,21,0.15)]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           >
-            <p className="mb-3 text-center text-[10px] font-bold uppercase tracking-widest text-yellow-300/70">
-              Round {revealedRounds} — Round Score
-            </p>
-            <div className="space-y-2 text-sm">
-              <div className="rounded-lg border border-yellow-400/20 bg-white/5 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-white/50">{userPoss} prediction:</span>
-                  <span className="font-bold text-white">{breakdown.myPred}</span>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 30 }}
+              transition={{ type: "spring", stiffness: 260, damping: 22, delay: 0.1 }}
+              className="w-full max-w-sm rounded-2xl border-2 border-yellow-400/40 bg-[#0a1a3a]/95 p-6 text-center shadow-[0_0_60px_rgba(250,204,21,0.3)]"
+            >
+              <p className="text-[10px] font-bold uppercase tracking-widest text-yellow-300/70">
+                Round {revealedRounds} Result
+              </p>
+              <motion.p
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 300, damping: 15, delay: 0.2 }}
+                className="text-5xl mt-3"
+              >
+                {breakdown.myPts > breakdown.oppPts
+                  ? <IconTarget size={48} className="text-yellow-400" />
+                  : breakdown.oppPts > breakdown.myPts
+                    ? <IconMoodAngry size={48} className="text-white/80" />
+                    : <IconHeartHandshake size={48} className="text-white/70" />}
+              </motion.p>
+              <h3
+                className={`mt-2 text-2xl font-black ${
+                  breakdown.myPts > breakdown.oppPts
+                    ? "text-yellow-400"
+                    : breakdown.oppPts > breakdown.myPts
+                      ? "text-white/80"
+                      : "text-white/70"
+                }`}
+              >
+                {breakdown.myPts > breakdown.oppPts
+                  ? "You read them best!"
+                  : breakdown.oppPts > breakdown.myPts
+                    ? `${oppLabel} read you best`
+                    : "It's a tie!"}
+              </h3>
+              <p className="mt-1 text-xs text-white/40">
+                Range was 1–{latestRound?.max} · {userLabel} +{breakdown.myPts} ·{" "}
+                {oppLabel} +{breakdown.oppPts}
+              </p>
+
+              <div className="mt-4 space-y-2 text-sm">
+                <div className="rounded-lg border border-yellow-400/20 bg-white/5 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/50">{userPoss} prediction:</span>
+                    <span className="font-bold text-white">{breakdown.myPred}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/50">Actual {oppLabel} number:</span>
+                    <span className="font-bold text-white">{breakdown.oppActual}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/50">Difference:</span>
+                    <span className="font-bold text-white">{breakdown.myDiff}</span>
+                  </div>
+                  <p className="mt-1 text-right font-black text-yellow-400">+{breakdown.myPts} pts</p>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/50">Actual {oppLabel} number:</span>
-                  <span className="font-bold text-white">{breakdown.oppActual}</span>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/50">{oppPoss} prediction:</span>
+                    <span className="font-bold text-white">{breakdown.oppPred}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/50">Actual {userPoss.toLowerCase()} number:</span>
+                    <span className="font-bold text-white">{breakdown.myActual}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/50">Difference:</span>
+                    <span className="font-bold text-white">{breakdown.oppDiff}</span>
+                  </div>
+                  <p className="mt-1 text-right font-black text-white/70">+{breakdown.oppPts} pts</p>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/50">Difference:</span>
-                  <span className="font-bold text-white">{breakdown.myDiff}</span>
-                </div>
-                <p className="mt-1 text-right font-black text-yellow-400">
-                  +{breakdown.myPts}
-                </p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-white/50">{oppPoss} prediction:</span>
-                  <span className="font-bold text-white">{breakdown.oppPred}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/50">Actual {userPoss.toLowerCase()} number:</span>
-                  <span className="font-bold text-white">{breakdown.myActual}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/50">Difference:</span>
-                  <span className="font-bold text-white">{breakdown.oppDiff}</span>
-                </div>
-                <p className="mt-1 text-right font-black text-white/70">
-                  +{breakdown.oppPts}
-                </p>
-              </div>
-            </div>
+
+              <button
+                onClick={() => setShowBreakdown(false)}
+                className="mt-5 w-full rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 px-6 py-3 font-bold text-black shadow-lg transition-all hover:scale-105 hover:shadow-[0_0_20px_rgba(250,204,21,0.5)]"
+              >
+                {gameOver ? "See Final Results" : "Next Round"}
+                {countdown > 0 && (
+                  <span className="ml-2 text-sm opacity-70">({countdown}s)</span>
+                )}
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -2080,9 +2139,9 @@ function OddsGameDisplay({
         })}
       </div>
 
-      {/* Game over popup */}
+      {/* Game over popup — waits for the final round's result popup to dismiss */}
       <AnimatePresence>
-        {gameOver && (
+        {gameOver && !showBreakdown && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -2107,7 +2166,7 @@ function OddsGameDisplay({
                 animate={userWon ? { scale: [1, 1.2, 1] } : {}}
                 transition={{ duration: 0.5, delay: 0.3 }}
               >
-                <p className="text-6xl mb-3">{userWon ? "🏆" : userDrew ? "🤝" : "😞"}</p>
+                <p className="mb-3 flex justify-center">{userWon ? <IconTrophy size={56} className="text-yellow-400" /> : userDrew ? <IconHeartHandshake size={56} className="text-white/80" /> : <IconMoodSad size={56} className="text-red-400" />}</p>
               </motion.div>
               <motion.p
                 initial={{ opacity: 0, y: 10 }}
@@ -2128,8 +2187,8 @@ function OddsGameDisplay({
                 {userDrew
                   ? "Stakes refunded — you tied."
                   : userWon
-                    ? `Payout: ${payout} 🪙`
-                    : `${oppLabel} wins the pot of ${payout} 🪙`}
+                    ? <><span className="inline-flex items-center gap-1">Payout: {payout} <IconCoins size={14} /></span></>
+                    : <><span className="inline-flex items-center gap-1">{oppLabel} wins the pot of {payout} <IconCoins size={14} /></span></>}
               </motion.p>
               <motion.p
                 initial={{ opacity: 0 }}

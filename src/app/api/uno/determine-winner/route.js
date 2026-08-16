@@ -166,8 +166,8 @@ export async function POST(req) {
         result: didRequesterWin ? "win" : "lose",
         newBalance: updatedRequester,
         message: didRequesterWin
-          ? `🎉 You won! Payout after tax: ${payout}`
-          : "😢 Opponent won. You lost your bet.",
+    ? `You won! Payout after tax: ${payout}`
+    : "Opponent won. You lost your bet.",
       });
     }
 
@@ -241,8 +241,8 @@ export async function POST(req) {
       newBalance: parseFloat(requester.balance),
       message:
         result === "win"
-          ? "🎉 You won!"
-          : "😢 The AI won. Better luck next time!",
+    ? "You won!"
+    : "The AI won. Better luck next time!",
     });
   } catch (error) {
     console.error("Error determining UNO winner:", error);

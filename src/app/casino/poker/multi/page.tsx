@@ -12,6 +12,29 @@ import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
 import confetti from "canvas-confetti";
+import {
+  IconCoins,
+  IconLock,
+  IconGlobe,
+  IconEgg,
+  IconScale,
+  IconFlame,
+  IconCards,
+  IconKey,
+  IconDeviceGamepad2,
+  IconDeviceMobileRotated,
+  IconVolume,
+  IconVolumeOff,
+  IconFlag,
+  IconBolt,
+  IconRefresh,
+  IconCrown,
+  IconRobot,
+  IconArrowUp,
+  IconX,
+  IconCheck,
+  IconPhone,
+} from "@tabler/icons-react";
 
 type Player = {
   id: string;
@@ -81,7 +104,7 @@ function nextActive(start: number, players: Player[]): number {
   let i = start % players.length;
   let safety = 0;
 
-  console.log("➡️ nextActive called", {
+  console.log("nextActive called", {
     start,
     resolvedIndex: i,
     resolvedPlayer: players[i]?.name,
@@ -623,7 +646,7 @@ export default function PokerPage() {
       hasFolded: false,
       lastAction: "",
       currentBet: 0,
-      hasActed: false, // ✅
+      hasActed: false,
     }));
 
     // Setup blinds
@@ -647,7 +670,7 @@ export default function PokerPage() {
       "pre-flop",
     );
 
-    console.log("🟢 GAME START TURN CHECK", {
+    console.log("GAME START TURN CHECK", {
       stage: "pre-flop",
       dealerIndex: game.dealerIndex,
       firstActorIndex,
@@ -752,7 +775,7 @@ export default function PokerPage() {
       setInviteCode(codeToUse);
       await fetchGameState(codeToUse);
 
-      // ✅ set balance for THIS user only
+      // set balance for THIS user only
       const me = players.find((p) => p.id === clerkId);
       if (me) setTableStack(me.stack);
     } catch (err) {
@@ -1128,13 +1151,13 @@ export default function PokerPage() {
     const highestBet = Math.max(...players.map((p) => p.currentBet));
     const actionSummary = `${current.name}: ${current.lastAction || action}`;
 
-    // 🛑 If only one player remains → instant win
+    // If only one player remains → instant win
     if (activePlayers.length === 1) {
       checkForWinner(players, potNew);
       return;
     }
 
-    // 🛑 If everyone has matched the bet → end betting round
+    // If everyone has matched the bet → end betting round
     const bettingComplete = activePlayers.every(
       (p) => p.hasActed && p.currentBet === highestBet,
     );
@@ -1154,7 +1177,7 @@ export default function PokerPage() {
       return;
     }
 
-    // ▶️ Otherwise → advance to next ACTIVE player
+    // Otherwise → advance to next ACTIVE player
     const nextTurn = nextActiveFrom(currentIndex, players);
 
     setGame((g) => {
@@ -1206,7 +1229,7 @@ export default function PokerPage() {
     const playersReset = game.players.map((p) => ({
       ...p,
       currentBet: 0,
-      hasActed: false, // ✅
+      hasActed: false,
     }));
 
     let nextStage: Game["stage"] = game.stage;
@@ -1237,7 +1260,7 @@ export default function PokerPage() {
     const nextDealer = (game.dealerIndex + 1) % game.players.length;
     const firstToAct = findFirstActorIndex(playersReset, nextDealer, nextStage);
 
-    console.log("🟡 STAGE ADVANCE TURN CHECK", {
+    console.log("STAGE ADVANCE TURN CHECK", {
       stage: nextStage,
       dealerIndex: nextDealer,
       firstActorIndex: firstToAct,
@@ -1536,7 +1559,7 @@ export default function PokerPage() {
         <h1 className="text-3xl font-bold mb-2">Poker Spectate</h1>
         <p className="text-sm text-slate-300 mb-4">Live POV overlay</p>
         <div className="mb-4 rounded border border-yellow-500/30 bg-black/30 px-4 py-2">
-          💰 POT: {game.pot}
+          <span className="inline-flex items-center gap-1.5"><IconCoins size={16} className="text-yellow-400" /> POT: {game.pot}</span>
         </div>
         <div className="mb-4 flex gap-2">
           {(game.community || []).map((c: Card, i: number) => (
@@ -1637,7 +1660,7 @@ export default function PokerPage() {
                   Balance
                 </p>
                 <p className="text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500">
-                  🪙 {tokenBalance.toLocaleString()}
+                  <span className="inline-flex items-center gap-1.5"><IconCoins size={18} className="text-yellow-300" /> {tokenBalance.toLocaleString()}</span>
                 </p>
               </div>
             </div>
@@ -1671,7 +1694,7 @@ export default function PokerPage() {
                       : "border-[#00e5ff]/20 bg-[#08142f] hover:border-[#00e5ff]/40"
                   }`}
                 >
-                  <span className="text-xl" aria-hidden>🔒</span>
+                  <IconLock size={22} className="text-[#00e5ff]" aria-hidden />
                   <span>
                     <span className="block text-sm font-bold text-white">
                       Private
@@ -1689,7 +1712,7 @@ export default function PokerPage() {
                       : "border-[#00e5ff]/20 bg-[#08142f] hover:border-[#00e5ff]/40"
                   }`}
                 >
-                  <span className="text-xl" aria-hidden>🌍</span>
+                  <IconGlobe size={22} className="text-[#00e5ff]" aria-hidden />
                   <span>
                     <span className="block text-sm font-bold text-white">
                       Public
@@ -1709,9 +1732,9 @@ export default function PokerPage() {
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {(
                   [
-                    { key: "easy", icon: "🐣", label: "Easy", desc: "Beginner bots" },
-                    { key: "medium", icon: "⚖️", label: "Medium", desc: "Balanced play" },
-                    { key: "hard", icon: "🔥", label: "Hard", desc: "Tough opponents" },
+                    { key: "easy", icon: <IconEgg size={18} className="text-green-400" />, label: "Easy", desc: "Beginner bots" },
+                    { key: "medium", icon: <IconScale size={18} className="text-amber-300" />, label: "Medium", desc: "Balanced play" },
+                    { key: "hard", icon: <IconFlame size={18} className="text-red-400" />, label: "Hard", desc: "Tough opponents" },
                   ] as const
                 ).map((d) => (
                   <button
@@ -1736,7 +1759,7 @@ export default function PokerPage() {
               onClick={() => createGame()}
               className="w-full rounded-xl bg-gradient-to-r from-yellow-200 to-yellow-600 p-3 text-base font-black text-[#030817] shadow-[0_0_18px_rgba(255,215,0,0.5)] transition-all duration-150 hover:scale-[1.01] active:scale-95"
             >
-              🃏 Create Game
+              <span className="inline-flex items-center gap-2"><IconCards size={18} /> Create Game</span>
             </button>
 
             <div className="relative my-5 flex items-center gap-3">
@@ -1752,7 +1775,7 @@ export default function PokerPage() {
                 onClick={() => setShowJoinForm(true)}
                 className="flex items-center justify-center gap-2 rounded-xl border border-[#00e5ff]/40 bg-[#00e5ff]/10 p-3 text-sm font-bold text-[#d8fbff] transition-all hover:bg-[#00e5ff]/25 active:scale-95"
               >
-                🔑 Join with Invite Code
+                <span className="inline-flex items-center gap-2"><IconKey size={16} /> Join with Invite Code</span>
               </button>
               <button
                 onClick={
@@ -1765,9 +1788,12 @@ export default function PokerPage() {
                     : "cursor-not-allowed border-gray-600 bg-gray-700 text-gray-400"
                 }`}
               >
-                {availablePublicGames > 0
-                  ? `🌐 Join a Public Game (${availablePublicGames})`
-                  : "🌐 No Public Games Open"}
+                <span className="inline-flex items-center gap-2">
+                  <IconGlobe size={16} />
+                  {availablePublicGames > 0
+                    ? `Join a Public Game (${availablePublicGames})`
+                    : "No Public Games Open"}
+                </span>
               </button>
             </div>
           </motion.div>
@@ -1781,7 +1807,7 @@ export default function PokerPage() {
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-lg font-bold uppercase tracking-wider text-[#FFD700]">
-                <span aria-hidden>🎮</span>
+                <IconDeviceGamepad2 size={20} className="text-[#FFD700]" aria-hidden />
                 <span>Available Public Tables</span>
               </h2>
               <button
@@ -1794,7 +1820,7 @@ export default function PokerPage() {
 
             {publicGameList.length === 0 ? (
               <div className="py-8 text-center">
-                <span className="text-5xl opacity-30">🂠</span>
+                <IconCards size={48} className="opacity-30" />
                 <p className="mt-2 text-sm text-white/60">
                   No open tables right now. Create one from the options above.
                 </p>
@@ -1850,7 +1876,7 @@ export default function PokerPage() {
       {/* ── Portrait-mode overlay (mobile only) ── */}
       {isPortrait && (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md">
-          <div className="text-6xl mb-6 animate-spin" style={{ animationDuration: "4s" }}>📱</div>
+          <div className="mb-6 animate-spin" style={{ animationDuration: "4s" }}><IconDeviceMobileRotated size={60} /></div>
           <p className="text-2xl font-bold text-[#00e5ff] drop-shadow-[0_0_12px_#00e5ff] mb-2">
             Tournez votre téléphone
           </p>
@@ -1896,7 +1922,7 @@ export default function PokerPage() {
           className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-[#00e5ff]/30 bg-[#0a0a1a]/80 text-lg shadow-[0_0_10px_rgba(0,229,255,0.2)] transition hover:bg-[#00e5ff]/20"
           title={audio.enabled ? "Mute sounds" : "Enable sounds"}
         >
-          {audio.enabled ? "🔊" : "🔇"}
+          {audio.enabled ? <IconVolume size={20} /> : <IconVolumeOff size={20} />}
         </button>
       </div>
 
@@ -1907,7 +1933,7 @@ export default function PokerPage() {
             onClick={() => setShowReportModal(true)}
             className="px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30 transition"
           >
-            🚩 Report Player
+            <span className="inline-flex items-center gap-1.5"><IconFlag size={14} /> Report Player</span>
           </button>
         )}
 
@@ -1959,7 +1985,7 @@ export default function PokerPage() {
             }`}
             disabled={game.players.length < 2}
           >
-            ⚡ Start Game
+            <span className="inline-flex items-center gap-1.5"><IconBolt size={16} /> Start Game</span>
           </button>
         )}
 
@@ -1968,7 +1994,7 @@ export default function PokerPage() {
             onClick={replayHand}
             className="bg-gradient-to-r from-[#ff00cc]/60 to-[#ff00cc]/60 border border-[#ff00cc]/50 text-white px-5 py-2 rounded-lg font-bold transition hover:from-[#ff00cc] hover:to-[#ff00cc] shadow-[0_0_15px_rgba(255,0,204,0.4)]"
           >
-            🔄 Replay Hand
+            <span className="inline-flex items-center gap-1.5"><IconRefresh size={16} /> Replay Hand</span>
           </button>
         )}
 
@@ -1982,7 +2008,7 @@ export default function PokerPage() {
             }}
             className="bg-gradient-to-r from-[#FFD700]/70 to-[#FFA500]/70 border border-[#FFD700]/50 text-black px-5 py-2 rounded-lg font-bold transition hover:from-[#FFD700] hover:to-[#FFA500] shadow-[0_0_15px_rgba(255,215,0,0.4)]"
           >
-            💰 Retirer {me.stack} jetons
+            <span className="inline-flex items-center gap-1.5"><IconCoins size={16} /> Retirer {me.stack} jetons</span>
           </button>
         )}
 
@@ -2135,7 +2161,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 transition={{ duration: 1.5, repeat: Infinity, repeatType: "reverse" }}
                 className="text-4xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-400 to-yellow-300 drop-shadow-[0_0_30px_rgba(255,215,0,0.8)]"
               >
-                👑 WINNER!
+                <span className="inline-flex items-center gap-2"><IconCrown size={40} /> WINNER!</span>
               </motion.div>
             </motion.div>
           )}
@@ -2203,7 +2229,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
     `}
                 >
                   <div className="flex justify-between w-full px-1 items-center gap-1">
-                    <span className="truncate text-[#ffffff]/90">{occupant.name}{occupant.isAI && <> <span title={`AI Difficulty: ${(occupant.difficulty || aiDifficulty).charAt(0).toUpperCase() + (occupant.difficulty || aiDifficulty).slice(1)}`}>{(occupant.difficulty || aiDifficulty) === "easy" ? "🟢" : (occupant.difficulty || aiDifficulty) === "medium" ? "🟡" : "🔴"}</span></>}</span>
+                    <span className="truncate text-[#ffffff]/90">{occupant.name}{occupant.isAI && <> <span title={`AI Difficulty: ${(occupant.difficulty || aiDifficulty).charAt(0).toUpperCase() + (occupant.difficulty || aiDifficulty).slice(1)}`}>{(occupant.difficulty || aiDifficulty) === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : (occupant.difficulty || aiDifficulty) === "medium" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}</span></>}</span>
                     <span className="text-xs text-[#00e5ff] drop-shadow-[0_0_4px_#00e5ff]">${occupant.stack}</span>
                   </div>
 
@@ -2270,7 +2296,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                     ) : game?.players?.[game.currentTurn]?.id ===
                       occupant.id ? (
                       <span className="px-2 py-[2px] rounded bg-[#ff00cc]/80 text-black font-bold shadow-[0_0_15px_rgba(255,0,204,0.9)]">
-                        ⚡ THINKING
+                        <span className="inline-flex items-center gap-1"><IconBolt size={12} /> THINKING</span>
                       </span>
                     ) : (
                       <span className="px-2 py-[2px] rounded bg-[#0a0a1a]/80 text-[#b0b0ff]/70 border border-[#00e5ff]/20">
@@ -2290,7 +2316,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   {isPlayer && isMyTurn && (
                     <div className="mt-2 w-full text-center">
                       <div className="bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] text-black px-3 py-1 rounded-t-lg font-bold shadow-lg text-[11px]">
-                        ⚡ Your Turn ({turnTimer}s)
+                        <span className="inline-flex items-center gap-1"><IconBolt size={12} /> Your Turn ({turnTimer}s)</span>
                       </div>
                       <div className="h-2 bg-[#0a0a1a] rounded-b-lg overflow-hidden border border-[#ff00cc]/20">
                         <div
@@ -2313,9 +2339,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               )}
             </div>
           );
-        })}
-
-        {/* 💰 Chips / CHECK displayed relative to table */}
+        })}          {/* Chips / CHECK displayed relative to table */}
         {game?.players.map((p) => {
           if (!p || p.seatIndex == null) return null;
 
@@ -2358,7 +2382,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 color: showChips ? "#fff" : "#000",
               }}
             >
-              {showChips ? p.currentBet : "✓"}
+              {showChips ? p.currentBet : <IconCheck size={12} className="inline" />}
             </motion.div>
           );
         })}
@@ -2405,9 +2429,9 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   onChange={(e) => setAiDifficultyInput(e.target.value as "easy" | "medium" | "hard")}
                   className="w-full p-2 rounded text-black mb-2"
                 >
-                  <option value="easy">🟢 Easy</option>
-                  <option value="medium">🟡 Medium</option>
-                  <option value="hard">🔴 Hard</option>
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
                 </select>
 
                 <label className="block text-sm mb-1">AI Stack</label>
@@ -2452,7 +2476,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             className="relative z-[110] pointer-events-auto w-[360px] bg-[#0a0a1a]/95 backdrop-blur-xl border-2 border-[#ff00cc]/40 rounded-2xl p-5 shadow-[0_0_40px_rgba(255,0,204,0.3)]"
           >
             <h2 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] mb-1 text-center">
-              💰 Achat de jetons
+              <span className="inline-flex items-center gap-1.5"><IconCoins size={18} /> Achat de jetons</span>
             </h2>
             <p className="text-[10px] text-[#b0b0ff]/50 text-center mb-4 uppercase tracking-widest">
               Seat {selectedSeat} — Définissez votre mise initiale
@@ -2515,7 +2539,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 onClick={() => setBuyInAmount(tokenBalance)}
                 className="px-3 py-2 rounded-xl text-xs font-bold border border-yellow-400/40 bg-yellow-400/10 text-yellow-300 hover:bg-yellow-400/25 hover:border-yellow-400/60 active:scale-95 transition-all shadow-[0_0_10px_rgba(255,215,0,0.15)]"
               >
-                🔥 Tout miser
+                <span className="inline-flex items-center gap-1.5"><IconFlame size={14} /> Tout miser</span>
               </button>
             </div>
 
@@ -2547,7 +2571,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="bg-black/70 backdrop-blur-md border border-yellow-500/60 shadow-[0_0_15px_rgba(255,215,0,0.3)] p-6 rounded-xl w-80 shadow-xl">
             <h2 className="text-xl font-bold mb-4 text-center text-yellow-400">
-              🤖 AI Player Info
+              <span className="inline-flex items-center gap-1.5"><IconRobot size={20} /> AI Player Info</span>
             </h2>
 
             <div className="space-y-2 text-sm">
@@ -2619,7 +2643,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             className="relative z-[150] pointer-events-auto w-[340px] bg-[#0a0a1a]/95 backdrop-blur-xl border-2 border-[#ff00cc]/40 rounded-2xl p-5 shadow-[0_0_40px_rgba(255,0,204,0.3)]"
           >
             <h2 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] mb-1 text-center">
-              ⬆ Raise Amount
+              <span className="inline-flex items-center gap-1.5"><IconArrowUp size={18} /> Raise Amount</span>
             </h2>
             <p className="text-[10px] text-[#b0b0ff]/50 text-center mb-4 uppercase tracking-widest">
               Set your raise — min {(() => { const h = Math.max(...(game?.players ?? []).map(p => p.currentBet || 0)); return Math.max(20, h * 2); })()}
@@ -2669,7 +2693,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 onClick={() => setRaiseFraction("allIn")}
                 className="px-3 py-2 rounded-xl text-xs font-bold border border-yellow-400/40 bg-yellow-400/10 text-yellow-300 hover:bg-yellow-400/25 hover:border-yellow-400/60 active:scale-95 transition-all shadow-[0_0_10px_rgba(255,215,0,0.15)]"
               >
-                🔥 Tapis
+                <span className="inline-flex items-center gap-1.5"><IconFlame size={14} /> Tapis</span>
               </button>
             </div>
 
@@ -2736,7 +2760,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             transition-colors active:scale-95
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60"
           >
-            ❌ Fold
+            <span className="inline-flex items-center gap-1.5"><IconX size={14} /> Fold</span>
           </button>
 
           {/* Check / Call — mid-tier */}
@@ -2753,7 +2777,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               transition-colors active:scale-95
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
             >
-              ✓ Check
+              <span className="inline-flex items-center gap-1.5"><IconCheck size={14} /> Check</span>
             </button>
           ) : (
             <button
@@ -2768,7 +2792,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               transition-colors active:scale-95
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
             >
-              📞 Call {toCall}
+              <span className="inline-flex items-center gap-1.5"><IconPhone size={14} /> Call {toCall}</span>
             </button>
           )}
 
@@ -2786,7 +2810,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               transition-colors active:scale-95
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300/60"
             >
-              💰 Bet $20
+              <span className="inline-flex items-center gap-1.5"><IconCoins size={14} /> Bet $20</span>
             </button>
           )}
 
@@ -2808,7 +2832,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             transition-colors active:scale-95
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300/70"
           >
-            ⬆ Raise
+            <span className="inline-flex items-center gap-1.5"><IconArrowUp size={16} /> Raise</span>
           </button>
         </div>
       </div>
@@ -2919,7 +2943,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   active:scale-95 transition-colors
                 "
               >
-                💰 Quick Bet $20
+                <span className="inline-flex items-center gap-1.5"><IconCoins size={14} /> Quick Bet $20</span>
               </button>
             </div>
           )}

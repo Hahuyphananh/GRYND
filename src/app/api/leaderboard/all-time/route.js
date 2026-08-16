@@ -43,7 +43,7 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    console.error("❌ Failed to load all-time leaderboard:", error);
+    console.error(" Failed to load all-time leaderboard:", error);
     return Response.json(
       {
         items: [],

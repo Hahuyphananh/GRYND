@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { IconStar } from "@tabler/icons-react";
 import HexTile, { type HexTileData } from "./HexTile";
 import HexParticles from "./HexParticles";
 
@@ -258,7 +259,7 @@ export default function HexBoard({
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-sm bg-yellow-500/60 shadow-[0_0_6px_rgba(250,204,21,0.3)]" />
-          ★ Capital
+          <IconStar size={12} className="text-yellow-500" /> Capital
         </span>
       </div>
     </div>

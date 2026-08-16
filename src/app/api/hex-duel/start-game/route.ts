@@ -115,7 +115,7 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
-    console.error("❌ Hex Duel start-game error:", error);
+    console.error(" Hex Duel start-game error:", error);
     return NextResponse.json(
       {
         success: false,

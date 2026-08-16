@@ -197,8 +197,7 @@ async function createWaitingGame({ user, clerkId, betAmount }) {
   return new Response(
     JSON.stringify({
       success: true,
-      waiting: true,
-      message: "⏳ Waiting for another player to join...",
+      waiting: true,        message: "Waiting for another player to join...",
       gameId: inserted.id,
       newBalance: (balance - betAmount).toFixed(2),
       role: "player1",

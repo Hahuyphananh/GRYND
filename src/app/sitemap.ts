@@ -6,7 +6,6 @@ import {
   bigWins,
   blackjackGames,
   chessGames,
-  clickerGames,
   connectFourGames,
   crashArenaRounds,
   crashGames,
@@ -97,7 +96,6 @@ const GAME_PAGES: {
   { path: "/casino/uno", source: [unoGames, unoGames.createdAt] },
   { path: "/casino/farkle", source: [farkleRooms, farkleRooms.createdAt] },
   { path: "/casino/lane-runner", source: [laneRunnerGames, laneRunnerGames.createdAt] },
-  { path: "/casino/goonbet-clicker", source: [clickerGames, clickerGames.createdAt] },
   { path: "/casino/odds", source: [oddsGames, oddsGames.createdAt] },
 ];
 

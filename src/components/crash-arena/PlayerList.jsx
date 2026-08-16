@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { IconBomb, IconCircleCheck, IconFlag } from "@tabler/icons-react";
 
 /**
  * PlayerList — shows seated players at an arena table with live round status.
@@ -34,13 +35,13 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
           if (player.cashoutMultiplier != null && !player.busted) {
             liveBadge = (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#00ffa6]/15 text-[#00ffa6] border border-[#00ffa6]/30 font-bold">
-                ✅ {player.cashoutMultiplier.toFixed(2)}x
+                <IconCircleCheck size={12} className="mr-1 inline" /> {player.cashoutMultiplier.toFixed(2)}x
               </span>
             );
           } else if (player.busted) {
             liveBadge = (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30 font-bold">
-                💥 Busted
+                <IconBomb size={12} className="mr-1 inline" /> Busted
               </span>
             );
           } else if (player.isPlaying) {
@@ -112,7 +113,7 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
                 aria-label={`Report ${player.name || "this player"}`}
                 className="mt-0.5 px-1.5 py-0.5 rounded-md border border-red-500/30 bg-red-500/10 text-[10px] font-bold text-red-400 transition-all hover:bg-red-500/25 hover:shadow-[0_0_8px_rgba(239,68,68,0.35)]"
               >
-                🚩
+                <IconFlag size={13} />
               </button>
             )}
 
@@ -124,7 +125,7 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
             )}
             {!isLive && player?.status === "crashed" && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">
-                💥 CRASHED
+                <IconBomb size={12} className="mr-1 inline" /> CRASHED
               </span>
             )}
           </div>

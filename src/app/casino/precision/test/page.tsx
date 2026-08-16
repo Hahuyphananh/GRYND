@@ -28,7 +28,7 @@
 // indicator, oversized STOP button) intentionally mirrors the match
 // page so the demo feels like a real round.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -50,7 +50,9 @@ import {
   RANK_LABELS,
   type PrecisionRank,
 } from "../../../../lib/precision/utils";
+import { IconTarget, IconClock } from "@tabler/icons-react";
 import { playRankSound } from "../../../../lib/precisionAudio";
+import { PrecisionRankIcon } from "../../../../components/precision/PrecisionRankIcon";
 
 // ── Per-round telemetry. ──────────────────────────────────────────
 // `diffMs = |elapsedMs - targetMs|` is the PRIMARY scoring input.
@@ -81,7 +83,6 @@ const PB_KEY = "precision:solo:personalBest";
 
 interface PersonalBest {
   label: string;
-  emoji: string;
   color: string;
   bestDiffMs: number;
 }
@@ -348,7 +349,6 @@ useEffect(() => {
   if (isBetterRank(sessionLabel, currentLabel)) {
     const newPb: PersonalBest = {
       label: summary.bestRank.label,
-      emoji: summary.bestRank.emoji,
       color: summary.bestRank.color,
       bestDiffMs: summary.bestDiff,
     };
@@ -470,7 +470,7 @@ function IdleStartScreen({ onStart, personalBest, t }: { onStart: () => void; pe
   return (
     <div className="mt-6 grid gap-5 lg:grid-cols-3">
       <div className="lg:col-span-2 rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-6 sm:p-10">
-        <p className="text-5xl">🎯</p>
+        <IconTarget size={48} className="mx-auto text-fuchsia-300" />
         <h2 className="mt-3 text-2xl font-black text-fuchsia-300 sm:text-3xl">
           {t("games.precision.sharpen_title")}
         </h2>
@@ -484,39 +484,39 @@ function IdleStartScreen({ onStart, personalBest, t }: { onStart: () => void; pe
         <ul className="mt-5 space-y-2 text-sm text-cyan-100/90">
           <li>
             <span className="mr-2 inline-block w-2 h-2 rounded-full bg-yellow-400" />
-            <span className="font-bold text-yellow-300">🌟 PERFECT</span> · 0&nbsp;ms
+            <span className="inline-flex items-center gap-1 font-bold text-yellow-300"><PrecisionRankIcon label="PERFECT" size={13} /> PERFECT</span> · 0&nbsp;ms
           </li>
           <li>
             <span className="mr-2 inline-block w-2 h-2 rounded-full bg-purple-400" />
-            <span className="font-bold text-purple-300">💎 LEGENDARY</span> · 1–3&nbsp;ms
+            <span className="inline-flex items-center gap-1 font-bold text-purple-300"><PrecisionRankIcon label="LEGENDARY" size={13} /> LEGENDARY</span> · 1–3&nbsp;ms
           </li>
           <li>
             <span className="mr-2 inline-block w-2 h-2 rounded-full bg-red-400" />
-            <span className="font-bold text-red-300">🔥 MASTERFUL</span> · 4–8&nbsp;ms
+            <span className="inline-flex items-center gap-1 font-bold text-red-300"><PrecisionRankIcon label="MASTERFUL" size={13} /> MASTERFUL</span> · 4–8&nbsp;ms
           </li>
           <li>
             <span className="mr-2 inline-block w-2 h-2 rounded-full bg-yellow-500" />
-            <span className="font-bold text-yellow-400">⭐ EXCELLENT</span> · 9–15&nbsp;ms
+            <span className="inline-flex items-center gap-1 font-bold text-yellow-400"><PrecisionRankIcon label="EXCELLENT" size={13} /> EXCELLENT</span> · 9–15&nbsp;ms
           </li>
           <li>
             <span className="mr-2 inline-block w-2 h-2 rounded-full bg-green-400" />
-            <span className="font-bold text-green-300">✅ GREAT</span> · 16–25&nbsp;ms
+            <span className="inline-flex items-center gap-1 font-bold text-green-300"><PrecisionRankIcon label="GREAT" size={13} /> GREAT</span> · 16–25&nbsp;ms
           </li>
           <li>
             <span className="mr-2 inline-block w-2 h-2 rounded-full bg-blue-400" />
-            <span className="font-bold text-blue-300">👍 GOOD</span> · 26–40&nbsp;ms
+            <span className="inline-flex items-center gap-1 font-bold text-blue-300"><PrecisionRankIcon label="GOOD" size={13} /> GOOD</span> · 26–40&nbsp;ms
           </li>
           <li>
             <span className="mr-2 inline-block w-2 h-2 rounded-full bg-cyan-400" />
-            <span className="font-bold text-cyan-300">🎯 FAIR</span> · 41–60&nbsp;ms
+            <span className="inline-flex items-center gap-1 font-bold text-cyan-300"><PrecisionRankIcon label="FAIR" size={13} /> FAIR</span> · 41–60&nbsp;ms
           </li>
           <li>
             <span className="mr-2 inline-block w-2 h-2 rounded-full bg-orange-400" />
-            <span className="font-bold text-orange-300">⚠️ CLOSE</span> · 61–100&nbsp;ms
+            <span className="inline-flex items-center gap-1 font-bold text-orange-300"><PrecisionRankIcon label="CLOSE" size={13} /> CLOSE</span> · 61–100&nbsp;ms
           </li>
           <li>
             <span className="mr-2 inline-block w-2 h-2 rounded-full bg-gray-400" />
-            <span className="font-bold text-gray-400">❌ MISS</span> · &gt;100&nbsp;ms
+            <span className="inline-flex items-center gap-1 font-bold text-gray-400"><PrecisionRankIcon label="MISS" size={13} /> MISS</span> · &gt;100&nbsp;ms
           </li>
         </ul>
         <button
@@ -543,7 +543,7 @@ function IdleStartScreen({ onStart, personalBest, t }: { onStart: () => void; pe
               {t("games.precision.personal_best_title")}
             </p>
             <p className={`mt-1 text-lg font-black ${personalBest.color}`}>
-              {personalBest.emoji} {personalBest.label}
+              <PrecisionRankIcon label={personalBest.label} size={18} className="mr-1.5 inline" /> {personalBest.label}
             </p>
             <p className="mt-0.5 text-xs text-cyan-100/80">
               {t("games.precision.ms_off_format", { ms: Math.round(personalBest.bestDiffMs).toLocaleString() })}
@@ -565,7 +565,7 @@ function ArmingPanel({ currentRound, t }: { currentRound: number; t: (key: strin
       transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
       className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-yellow-400/40 bg-[#1a120a]/80 p-8 text-center sm:p-12"
     >
-      <p className="animate-pulse text-6xl">⏱</p>
+      <p className="animate-pulse"><IconClock size={52} className="text-yellow-400" /></p>
       <h2 className="mt-4 text-2xl font-black text-yellow-300 sm:text-3xl">
         {t("games.precision.round_get_ready", { round: currentRound })}
       </h2>
@@ -597,7 +597,7 @@ function ActivePanel({
   const previewRank = diffToRank(previewDiff);
   return (
     <div className="mt-6 rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-5 text-center sm:p-10">
-      <p className="text-5xl">🎯</p>
+      <IconTarget size={48} className="mx-auto text-fuchsia-300" />
       <h2 className="mt-4 text-2xl font-black text-fuchsia-300 sm:text-3xl">
         {t("games.precision.round_label", { round: currentRound })}
       </h2>
@@ -626,8 +626,8 @@ function ActivePanel({
       </p>
 
       {/* ── Live rank preview ─────────────────────────────── */}
-      <p className={`mt-3 text-lg font-bold ${previewRank.color}`}>
-        {previewRank.emoji} {previewRank.label}{" "}
+      <p className={`mt-3 inline-flex items-center gap-1.5 text-lg font-bold ${previewRank.color}`}>
+        <PrecisionRankIcon label={previewRank.label} size={16} /> {previewRank.label}{" "}
         <span className="text-sm font-normal text-cyan-100/70">
           ({t("games.precision.ms_off_format", { ms: previewDiff.toLocaleString() })})
         </span>
@@ -671,14 +671,22 @@ function RoundDonePanel({
       <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">
         {t("games.precision.test_round_result_title", { round })}
       </p>
-      <p className={`mt-2 text-3xl font-black ${rank.color} sm:text-4xl`}>
-        {rank.emoji} {rank.label}
+      <p className={`mt-2 inline-flex items-center gap-1.5 text-3xl font-black ${rank.color} sm:text-4xl`}>
+        <PrecisionRankIcon label={rank.label} size={24} /> {rank.label}
       </p>
       <div className="mt-5 grid gap-3 sm:grid-cols-4 sm:gap-5">
         <Stat label={t("games.precision.target_label")} value={`${targetMs.toLocaleString()} ${t("games.precision.ms_suffix")}`} accent="text-yellow-300" />
         <Stat label={t("games.precision.test_your_stop")} value={`${Math.round(elapsedMs).toLocaleString()} ${t("games.precision.ms_suffix")}`} accent="text-cyan-300" />
         <Stat label={t("games.precision.test_difference")} value={`${Math.round(diffMs).toLocaleString()} ${t("games.precision.ms_suffix")}`} accent={rank.color} />
-        <Stat label={t("games.precision.test_rank")} value={`${rank.emoji} ${rank.label}`} accent={rank.color} />
+        <Stat
+          label={t("games.precision.test_rank")}
+          value={
+            <span className="inline-flex items-center gap-1">
+              <PrecisionRankIcon label={rank.label} size={16} /> {rank.label}
+            </span>
+          }
+          accent={rank.color}
+        />
       </div>
       <p className="mt-5 text-sm text-cyan-100/90">
         {isLastRound
@@ -695,7 +703,7 @@ function Stat({
   accent,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   accent: string;
 }) {
   return (
@@ -749,7 +757,7 @@ function FinishedSummaryPanel({
         <h2 className="mt-2 text-3xl font-black text-fuchsia-300">
           {headline}
           <span className={`ml-3 text-base font-bold ${bestRank.color}`}>
-            {t("games.precision.best_rank_prefix", { emoji: bestRank.emoji, label: bestRank.label })}
+            {t("games.precision.best_rank_prefix", { label: bestRank.label })}
           </span>
         </h2>
 
@@ -757,7 +765,15 @@ function FinishedSummaryPanel({
           <Stat label={t("games.precision.stat_avg_difference")} value={`${Math.round(summary.avgDiff)} ${t("games.precision.ms_suffix")}`} accent="text-cyan-300" />
           <Stat label={t("games.precision.stat_best_difference")} value={`${Math.round(summary.bestDiff)} ${t("games.precision.ms_suffix")}`} accent={bestRank.color} />
           <Stat label={t("games.precision.stat_worst_difference")} value={`${Math.round(summary.worstDiff)} ${t("games.precision.ms_suffix")}`} accent="text-red-300" />
-          <Stat label={t("games.precision.stat_best_rank")} value={`${bestRank.emoji} ${bestRank.label}`} accent={bestRank.color} />
+          <Stat
+            label={t("games.precision.stat_best_rank")}
+            value={
+              <span className="inline-flex items-center gap-1">
+                <PrecisionRankIcon label={bestRank.label} size={16} /> {bestRank.label}
+              </span>
+            }
+            accent={bestRank.color}
+          />
         </div>
 
         {personalBest && (
@@ -765,8 +781,8 @@ function FinishedSummaryPanel({
             <span className="text-[10px] uppercase tracking-[0.3em] text-yellow-300/80">
               {t("games.precision.all_time_best")}
             </span>
-            <span className={`ml-3 text-sm font-black ${personalBest.color}`}>
-              {personalBest.emoji} {personalBest.label}
+            <span className={`ml-3 inline-flex items-center gap-1 text-sm font-black ${personalBest.color}`}>
+              <PrecisionRankIcon label={personalBest.label} size={14} /> {personalBest.label}
             </span>
             <span className="ml-2 text-xs text-cyan-100/70">
               ({t("games.precision.ms_off_format", { ms: Math.round(personalBest.bestDiffMs).toLocaleString() })})
@@ -806,8 +822,8 @@ function FinishedSummaryPanel({
                 <p className="mt-1 font-mono text-[10px] text-cyan-100/70">
                   {t("games.precision.stop_inline", { stop: Math.round(s.elapsedMs).toLocaleString() })}
                 </p>
-                <p className={`mt-1 text-[10px] font-bold ${rank.color}`}>
-                  {rank.emoji} {rank.label}
+                <p className={`mt-1 inline-flex items-center gap-1 text-[10px] font-bold ${rank.color}`}>
+                  <PrecisionRankIcon label={rank.label} size={11} /> {rank.label}
                 </p>
               </div>
             );
@@ -860,7 +876,6 @@ function RankBars({
   const segments = PRECISION_RANK_ENTRIES.map((entry) => ({
     v: rankCounts[entry.rank.label] ?? 0,
     label: entry.rank.label,
-    emoji: entry.rank.emoji,
     bg: entry.rank.bg,
     textColor: entry.rank.color,
   }));
@@ -882,7 +897,9 @@ function RankBars({
         {stack.map((s) => (
           <span key={s.label} className="flex items-center gap-1">
             <span className={`inline-block h-2.5 w-2.5 rounded-sm ${s.bg}`} />
-            <span className={`font-bold ${s.textColor}`}>{s.emoji} {s.label}</span>{" "}
+            <span className={`inline-flex items-center gap-1 font-bold ${s.textColor}`}>
+              <PrecisionRankIcon label={s.label} size={11} /> {s.label}
+            </span>{" "}
             <span className="text-cyan-300/80">× {s.v}</span>
           </span>
         ))}
