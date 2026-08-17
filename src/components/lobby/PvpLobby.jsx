@@ -22,7 +22,7 @@
 // chrome is the only thing shared, which is exactly the point — every
 // game lobby now looks like the same casino.
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import NavigationBar from "../navigation-bar";
@@ -262,9 +262,18 @@ export function PvpLobby({
 }) {
   const [showRules, setShowRules] = useState(false);
   const firstVisit = useFirstVisitRules(rulesKey);
+  // Pages pass `rules` as an inline object, so its identity changes on
+  // every render (lobby polling, socket events, …). Without a guard the
+  // auto-open effect below re-fires on every re-render and re-opens the
+  // modal after the player already dismissed it — only open it once per
+  // mount.
+  const autoOpenedRef = useRef(false);
 
   useEffect(() => {
-    if (firstVisit && rules) setShowRules(true);
+    if (firstVisit && rules && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      setShowRules(true);
+    }
   }, [firstVisit, rules]);
 
   const stakeInputMax = balance === null ? undefined : balance;

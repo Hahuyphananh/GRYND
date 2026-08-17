@@ -74,10 +74,6 @@ interface RowProps {
   delay: number;
 }
 
-// Hook called at module scope so PlayerRow (defined above as a sibling
-// component) shares the same `t` reference instead of needing its own.
-const { t } = useTranslation();
-
 const PlayerRow = React.memo(function PlayerRow({
   seat,
   name,
@@ -88,6 +84,11 @@ const PlayerRow = React.memo(function PlayerRow({
   isTiedRounding,
   delay,
 }: RowProps) {
+  // `t` is resolved INSIDE the component (never at module scope — a
+  // hook call at module scope crashes the page on import with "Invalid
+  // hook call" / "Cannot read properties of null (reading
+  // 'useContext')").
+  const { t } = useTranslation();
   // Per-seat palette — seat 1 is fuchsia-magenta, seat 2 is cyan-blue,
   // matches the existing PrecisionScoreboard's colour coding so the
   // user's eye can track "my seat" between panels quickly.

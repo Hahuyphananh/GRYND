@@ -42,10 +42,6 @@ interface PrecisionScoreboardProps {
 
 const RING_LAST_WINNER = "ring-2 ring-emerald-300/60";
 
-// Hook called at module scope so sub-components (SeatDots, RankBadge) defined
-// below share the same `t` reference rather than each needing their own.
-const { t } = useTranslation();
-
 // ── Rank badge (inline sub-component) ──────────────────────────────
 // Renders the rank emoji + label + elapsed + diff for a single seat.
 // Used below each seat card when last-round stop data is available.
@@ -82,9 +78,10 @@ interface SeatDotsProps {
   wins: number;
   filledColor: string;
   emptyColor: string;
+  t: (key: string, params?: Record<string, string | number>) => string;
 }
 
-function SeatDots({ seat, wins, filledColor, emptyColor }: SeatDotsProps) {
+function SeatDots({ seat, wins, filledColor, emptyColor, t }: SeatDotsProps) {
   return (
     <div className="flex items-center gap-2">
       <span className="text-[10px] font-bold uppercase tracking-widest text-slate-300">
@@ -125,6 +122,11 @@ function PrecisionScoreboardImpl({
   awaitingOpponentStop = false,
   lastRoundStops,
 }: PrecisionScoreboardProps) {
+  // `t` is resolved INSIDE the component (never at module scope — a
+  // hook call at module scope crashes the page on import with "Invalid
+  // hook call" / "Cannot read properties of null (reading
+  // 'useContext')"). Passed down to SeatDots as a prop.
+  const { t } = useTranslation();
   const seat1Player = players.find((p) => p.seat === 1);
   const seat2Player = players.find((p) => p.seat === 2);
 
@@ -199,6 +201,7 @@ function PrecisionScoreboardImpl({
               wins={score.seat1}
               filledColor="bg-fuchsia-400 border-fuchsia-200"
               emptyColor="border-fuchsia-700/60 bg-fuchsia-950/30"
+              t={t}
             />
           </div>
           {lastRoundStops && (
@@ -240,6 +243,7 @@ function PrecisionScoreboardImpl({
               wins={score.seat2}
               filledColor="bg-cyan-300 border-cyan-100"
               emptyColor="border-cyan-700/60 bg-cyan-950/30"
+              t={t}
             />
           </div>
           {lastRoundStops && (
