@@ -33,8 +33,10 @@ import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
+import { IconBook } from "@tabler/icons-react";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import { useSocket } from "../../../context/SocketProvider";
 import { useTranslation } from "../../../hooks/useTranslation";
 import {
@@ -207,6 +209,11 @@ export default function BlackjackPvpLobbyPage() {
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showRules, setShowRules] = useState(false);
+  const firstVisitRules = useFirstVisitRules("blackjack");
+  useEffect(() => {
+    if (firstVisitRules) setShowRules(true);
+  }, [firstVisitRules]);
 
   const fetchAvailable = useCallback(async () => {
     try {
@@ -399,6 +406,53 @@ export default function BlackjackPvpLobbyPage() {
             <span>{t("blackjackPvp.lobby.title", "Blackjack PvP Lobby")}</span>
           </h1>
         </motion.div>
+        {/* How to Play — rules modal at the top of the lobby */}
+        <div className="mb-6 text-center">
+          <button
+            onClick={() => setShowRules(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 transition-all duration-300 hover:bg-amber-500/20 hover:scale-105 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
+          >
+            <IconBook size={15} /> How to Play
+          </button>
+        </div>
+        {showRules && (
+          <RulesModal
+            title="How to Play"
+            sections={[
+              {
+                heading: "Best of 3 rounds",
+                body: (
+                  <>
+                    You and your opponent play <b>simultaneously</b> with
+                    hidden hands each round. Closest to 21 without
+                    busting wins the round.
+                  </>
+                ),
+              },
+              {
+                heading: "First to 2 round wins",
+                body: (
+                  <>
+                    First to <b>2 round wins</b> takes the pot, minus a
+                    2.5% house fee. Ties are replayed.
+                  </>
+                ),
+              },
+              {
+                heading: "Pairing",
+                body: (
+                  <>
+                    You&apos;re paired with another player of the{" "}
+                    <b>exact same</b> stake. If no one is waiting, your
+                    stake is escrowed in a private lobby until someone
+                    joins or you cancel.
+                  </>
+                ),
+              },
+            ]}
+            onClose={() => setShowRules(false)}
+          />
+        )}
         {/* Description is split across 5 keys so the inline <b> spans
             line up with the changed locale strings. The leading/trailing
             fragments own the surrounding whitespace. */}

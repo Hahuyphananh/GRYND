@@ -2,8 +2,9 @@
 
 // ── Lobby page for the Precision PvP casino game ─────────────────────────
 //
-// Mirrors the architecture of /casino/pool-masters:
-//   * Top-level wager picker + PvP / AI create buttons
+// Mirrors the architecture of the other casino PvP lobbies:
+//   * Top-level wager picker + PvP create button (shared PvpLobbyPage
+//     chrome — blackjack layout, farkle palette)
 //   * Live list of open lobbies (polled every 3s)
 //   * On "Create PvP", redirect to /casino/precision/game/[lobbyId] which
 //     then renders the waiting room while the host waits for an opponent.
@@ -11,16 +12,14 @@
 //     solo reaction-time sandbox that runs entirely client-side (no wager,
 //     no opponent, no server interaction). See that page's header comment
 //     for the rationale.
-//
-// The multi-step flow (lobby → match page) keeps the matchmaking state on
-// the server and avoids duplicating it client-side.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
-import NavigationBar from "../../../components/navigation-bar";
-import Footer from "../../../components/Footer";
+import { useUser } from "@clerk/nextjs";
+import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconTarget } from "@tabler/icons-react";
 import { useTranslation } from "../../../hooks/useTranslation";
 import {
@@ -42,11 +41,28 @@ export default function PrecisionLobbyPage() {
   const posthog = usePostHog();
   const { socket } = useSocket();
   const { t } = useTranslation();
+  const { isSignedIn, user } = useUser();
   const [lobbies, setLobbies] = useState<PrecisionLobby[]>([]);
   const [wager, setWager] = useState<number>(DEFAULT_WAGER);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [balance, setBalance] = useState<number | null>(null);
+
+  const fetchBalance = useCallback(async () => {
+    if (!isSignedIn || !user) return;
+    try {
+      const res = await fetch("/api/get-user-tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data?.success) setBalance(Number(data.data.balance));
+    } catch {
+      // silent
+    }
+  }, [isSignedIn, user]);
 
   // Subscribe to lobby-list updates pushed by other clients via the
   // realtime server. Mirrors the Uno `lobby:uno` room pattern.
@@ -92,9 +108,13 @@ export default function PrecisionLobbyPage() {
   // realtime nudge.
   useEffect(() => {
     void reload();
-    const id = setInterval(reload, LOBBY_LIST_POLL_INTERVAL_MS);
+    fetchBalance();
+    const id = setInterval(() => {
+      void reload();
+      fetchBalance();
+    }, LOBBY_LIST_POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, []);
+  }, [fetchBalance]);
 
   const handleCreatePvP = async () => {
     setCreating(true);
@@ -132,11 +152,11 @@ export default function PrecisionLobbyPage() {
     posthog?.capture("precision_test_clicked", { source: "lobby" });
   };
 
-  const handleJoin = async (lobbyId: string) => {
-    setJoining(lobbyId);
+  const handleJoin = async (lobby: PrecisionLobby) => {
+    setJoining(String(lobby.id));
     setError(null);
     try {
-      const res = await joinLobby(lobbyId);
+      const res = await joinLobby(String(lobby.id));
       if (!res.success || !res.matchId) {
         setError(res.error ?? t("games.precision.join_failed"));
         return;
@@ -152,90 +172,102 @@ export default function PrecisionLobbyPage() {
   };
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#06120f] to-[#050816] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
-      <NavigationBar currentPath="/casino" />
-
-      <div className="mx-auto mt-4 max-w-6xl rounded-2xl border border-cyan-500/40 bg-black/30 p-4 sm:mt-8 sm:p-5">
-        <h1 className="text-2xl font-black text-fuchsia-300 sm:text-3xl md:text-4xl">
-          {t("games.precision.lobby_page_title")}
-        </h1>
-        <p className="mt-2 text-sm text-cyan-100/90">
-          {t("games.precision.lobby_page_subtitle")}
-          {/* Test Mode intro hint, contextualised via precision.ready_explainer */}
-          {" "}{t("games.precision.ready_explainer", { ready: t("games.precision.test_solo_label") })}
-        </p>
-
-        <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          <div className="rounded-xl border border-fuchsia-500/40 bg-black/30 p-4">
-            <h2 className="text-xl font-bold">{t("games.precision.create_game_section")}</h2>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {DEFAULT_WAGER_OPTIONS.map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setWager(v)}
-                  className={`min-h-11 rounded px-3 py-2 ${
-                    wager === v ? "bg-fuchsia-600" : "bg-slate-800"
-                  }`}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
-            <button
-              data-testid="precision-create-pvp-button"
-              onClick={handleCreatePvP}
-              disabled={creating}
-              className="mt-4 w-full rounded bg-cyan-400 py-2 font-bold text-black disabled:opacity-50"
-            >
-              {creating ? t("games.precision.creating") : t("games.precision.create_pvp_game")}
-            </button>
-            <Link
-              href="/casino/precision/test"
-              data-testid="precision-test-link"
-              onClick={handleTestClick}
-              className="mt-2 block w-full rounded border border-fuchsia-400/60 bg-fuchsia-500/10 py-2 text-center font-bold text-fuchsia-200 transition hover:bg-fuchsia-500/20"
-            >
-              <span className="inline-flex items-center gap-2"><IconTarget size={16} /> {t("games.precision.test_solo_label")} ({t("games.precision.no_wager_label").toLowerCase()})</span>
-            </Link>
-            {error && (
-              <p className="mt-3 rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-                {error}
-              </p>
-            )}
-          </div>
-
-          <div className="rounded-xl border border-cyan-500/40 bg-black/30 p-4 lg:col-span-2">
-            <h2 className="text-xl font-bold">{t("games.precision.available_games")}</h2>
-            <div className="mt-3 space-y-3">
-              {lobbies.length === 0 && (
-                <p className="text-slate-300">{t("games.precision.no_open_lobbies")}</p>
-              )}
-              {lobbies.map((l) => (
-                <div
-                  key={l.id}
-                  className="flex flex-col gap-2 rounded border border-slate-700 p-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div>
-                    <p>{t("games.precision.wager_label")} {l.wager}</p>
-                    <p className="text-xs text-slate-400">
-                      PvP · {t("games.precision.waiting_for_player")}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleJoin(l.id)}
-                    disabled={joining === l.id}
-                    className="min-h-11 rounded bg-fuchsia-600 px-3 py-2 disabled:opacity-50"
-                  >
-                    {joining === l.id ? t("games.precision.joining") : t("games.precision.join_game")}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <Footer />
-    </div>
+    <PvpLobbyPage
+      title={t("games.precision.lobby_page_title")}
+      subtitle={
+        <>
+          {t("games.precision.lobby_page_subtitle")}{" "}
+          {t("games.precision.ready_explainer", {
+            ready: t("games.precision.test_solo_label"),
+          })}
+        </>
+      }
+      icon={<IconTarget className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
+      rulesKey="precision"
+      rules={{
+        title: "How to Play",
+        sections: [
+          {
+            heading: "Stop on target",
+            body: (
+              <>
+                A target time is shown — stop the running timer as close
+                to it as you can. The smaller the miss, the better your
+                score.
+              </>
+            ),
+          },
+          {
+            heading: "1v1 duel",
+            body: (
+              <>
+                Face another player at the same wager; the more precise
+                stop wins the match and the pot (minus the house fee).
+              </>
+            ),
+          },
+          {
+            heading: "Practice free",
+            body: (
+              <>
+                Use {t("games.precision.test_solo_label")} to practice
+                with no wager before betting real tokens.
+              </>
+            ),
+          },
+        ],
+      }}
+      balance={balance}
+      stake={wager}
+      onStakeChange={setWager}
+      stakeOptions={DEFAULT_WAGER_OPTIONS}
+      busy={creating}
+      onPlay={handleCreatePvP}
+      playLabel={t("games.precision.create_pvp_game")}
+      playBusyLabel={t("games.precision.creating")}
+      extraActions={
+        <Link
+          href="/casino/precision/test"
+          data-testid="precision-test-link"
+          onClick={handleTestClick}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/10 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20"
+        >
+          <IconTarget size={16} />
+          {t("games.precision.test_solo_label")} (
+          {t("games.precision.no_wager_label").toLowerCase()})
+        </Link>
+      }
+      escrowNote={t(
+        "games.precision.escrow_note",
+        "We pair you with another player of the exact same wager. If no one is waiting, your wager is escrowed in a private lobby until someone joins or you cancel.",
+      )}
+      lobbies={lobbies}
+      lobbyEmptyText={t("games.precision.no_open_lobbies")}
+      lobbyKey={(l) => l.id}
+      lobbyTitle={(l) => (
+        <>
+          Lobby <span className="font-mono">#{l.id}</span>
+        </>
+      )}
+      lobbyMeta={(l) => (
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>
+            {t("games.precision.wager_label")}:{" "}
+            <span className="inline-flex items-center gap-1 font-semibold text-yellow-300">
+              {Number(l.wager).toLocaleString()}
+              <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
+            </span>
+          </span>
+          <span className="text-white/40">
+            PvP · {t("games.precision.waiting_for_player")}
+          </span>
+        </span>
+      )}
+      onJoin={handleJoin}
+      joinBusyId={joining}
+      joinLabel={t("games.precision.join_game")}
+      onRefresh={reload}
+      error={error}
+    />
   );
 }

@@ -10,6 +10,7 @@ import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
+import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import {
   IconNotebook,
   IconDice,
@@ -25,6 +26,7 @@ import {
   IconSparkles,
   IconTrophy,
   IconSkull,
+  IconBook,
 } from "@tabler/icons-react";
 
 
@@ -325,6 +327,11 @@ export default function DiceFlushPage() {
   const [wager, setWager] = useState(100); const [balance, setBalance] = useState(0); const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"pvp" | "ai">("pvp");
   const [joiningId, setJoiningId] = useState<string | null>(null); const [availableGames, setAvailableGames] = useState<LobbyRoom[]>([]);
+  const [showRules, setShowRules] = useState(false);
+  const firstVisitRules = useFirstVisitRules("dice-flush");
+  useEffect(() => {
+    if (firstVisitRules) setShowRules(true);
+  }, [firstVisitRules]);
   const [roomId, setRoomId] = useState<string | null>(null); const [game, setGame] = useState<GameState | null>(null);
   const posthog = usePostHog();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null); const [rolling, setRolling] = useState(false);
@@ -617,6 +624,53 @@ export default function DiceFlushPage() {
         </motion.h1>
         <p className="mt-1 text-sm text-[#00e5ff]/60">Roll. Hold. Score. Dominate.</p>
       </motion.div>
+
+      {/* How to Play — rules modal at the top of the lobby */}
+      <div className="mb-5 text-center">
+        <button
+          onClick={() => setShowRules(true)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 transition-all duration-300 hover:bg-amber-500/20 hover:scale-105 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
+        >
+          <IconBook size={15} /> How to Play
+        </button>
+      </div>
+      {showRules && (
+        <RulesModal
+          title="How to Play"
+          sections={[
+            {
+              heading: "Roll & hold",
+              body: (
+                <>
+                  Roll 5 dice with up to 3 rolls per turn — hold the dice
+                  you want to keep between rolls.
+                </>
+              ),
+            },
+            {
+              heading: "Fill your scorecard",
+              body: (
+                <>
+                  Each turn must be scored into an unused category:
+                  three/four-of-a-kind, full house, straights, flush,
+                  chance, and more.
+                </>
+              ),
+            },
+            {
+              heading: "Win the match",
+              body: (
+                <>
+                  After both players fill their scorecards, the higher
+                  total wins the pot (minus the house fee). Play vs AI
+                  free to practice.
+                </>
+              ),
+            },
+          ]}
+          onClose={() => setShowRules(false)}
+        />
+      )}
 
       {!roomId && <div className="rounded-2xl border border-[#00e5ff]/30 bg-[#040d24]/80 p-4 backdrop-blur">
         <div className="mb-3 font-bold text-[#f5ff3b]">Balance: {balance.toFixed(2)} tokens</div>

@@ -150,25 +150,25 @@ export default function ArenaLobby({
     <div className="relative w-full">
       {/* Header */}
       <div className="mb-6 text-center">
-        <h1 className="text-3xl font-extrabold tracking-tight text-[#f5ff3b] sm:text-4xl">
+        <h1 className="text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)] sm:text-4xl">
           <IconRocket size={30} className="mb-1.5 mr-2 inline" /> Crash Arena
         </h1>
-        <p className="mt-2 text-sm text-[#9dd8ff] opacity-80">
+        <p className="mt-2 text-sm text-white/60">
           Create a table or join an open one — survive the crash, claim the pot.
         </p>
         {/* Rules popup button */}
         <button
           onClick={() => setShowRules(true)}
-          className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold border border-[#FFD700]/40 bg-[#FFD700]/10 text-[#FFD700] hover:bg-[#FFD700]/20 hover:scale-105 transition-all duration-300 shadow-[0_0_14px_rgba(255,215,0,0.15)]"
+          className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:scale-105 transition-all duration-300 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
         >
           <IconBook size={15} /> How to Play
         </button>
       </div>
 
       {/* Balance bar */}
-      <div className="mb-6 flex items-center justify-center gap-3 px-4 py-3 rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/60 backdrop-blur-sm max-w-sm mx-auto">
-        <span className="text-[#9dd8ff]/60 text-sm">Your Balance</span>
-        <span className="text-xl font-black text-[#00e5ff] drop-shadow-[0_0_10px_rgba(0,229,255,0.5)]">
+      <div className="mb-6 flex items-center justify-center gap-3 px-4 py-3 rounded-2xl border border-amber-700/60 bg-black/40 backdrop-blur-sm max-w-sm mx-auto">
+        <span className="text-white/55 text-sm">Your Balance</span>
+        <span className="text-xl font-black text-yellow-300 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]">
           {loading && userBalance === null
             ? "..."
             : `$${(userBalance ?? 0).toLocaleString()}`}
@@ -185,7 +185,7 @@ export default function ArenaLobby({
       {/* Table amount sections */}
       {loading && tables.length === 0 ? (
         <div className="flex items-center justify-center py-16">
-          <span className="inline-block w-10 h-10 border-3 border-[#00e5ff] border-t-transparent rounded-full animate-spin" />
+          <span className="inline-block w-10 h-10 border-3 border-amber-400 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
         <TableList

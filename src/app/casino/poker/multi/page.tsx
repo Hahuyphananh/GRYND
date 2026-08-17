@@ -11,6 +11,7 @@ import { usePokerAudio } from "../../../lib/pokerAudio";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
+import { RulesModal, useFirstVisitRules } from "../../../../components/lobby/PvpLobby";
 import confetti from "canvas-confetti";
 import {
   IconCoins,
@@ -21,6 +22,7 @@ import {
   IconFlame,
   IconCards,
   IconKey,
+  IconBook,
   IconDeviceGamepad2,
   IconDeviceMobileRotated,
   IconVolume,
@@ -159,6 +161,11 @@ export default function PokerPage() {
   const [joiningGame, setJoiningGame] = useState(false);
   const [isPrivate, setIsPrivate] = useState(true);
   const [leaveAfterHand, setLeaveAfterHand] = useState(false);
+  const [showRules, setShowRules] = useState(false);
+  const firstVisitRules = useFirstVisitRules("poker");
+  useEffect(() => {
+    if (firstVisitRules) setShowRules(true);
+  }, [firstVisitRules]);
   const [isProcessingTurn, setIsProcessingTurn] = useState(false);
   const [turnTimer, setTurnTimer] = useState(60);
   const [isMyTurn, setIsMyTurn] = useState(false);
@@ -1507,29 +1514,29 @@ export default function PokerPage() {
 
   if (showJoinForm) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-start bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
+      <div className="min-h-screen flex flex-col items-center justify-start bg-gradient-to-b from-[#0a0118] to-[#061b3d] text-white">
         <div className="absolute top-4 left-4">
           <button
             onClick={() => setShowJoinForm(false)}
-            className="bg-[#FFD700] hover:bg-[#ffe14f] text-[#030817] px-4 py-2 rounded font-bold transition shadow-[0_0_14px_rgba(255,215,0,0.45)]"
+            className="bg-amber-400 hover:bg-amber-300 text-black px-4 py-2 rounded font-bold transition shadow-[0_0_14px_rgba(251,191,36,0.45)]"
           >
             ← Back
           </button>
         </div>
 
-        <div className="p-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded shadow-[0_0_24px_rgba(0,229,255,0.2)] w-96 text-center">
+        <div className="p-6 bg-black/40 border border-amber-700/60 rounded shadow-[0_0_24px_rgba(251,191,36,0.15)] w-96 text-center">
           <h1 className="text-2xl mb-4">Join a Private Game</h1>
 
           <input
             placeholder="Enter Invite Code"
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value)}
-            className="w-full rounded-lg border border-[#00e5ff]/30 bg-[#001933]/60 px-3 py-2 text-[#d8fbff] placeholder:text-[#7dd3fc]/40 focus:outline-none focus:border-[#00e5ff] focus:shadow-[0_0_10px_rgba(0,229,255,0.4)] transition mb-2"
+            className="w-full rounded-lg border border-amber-600/50 bg-[#020617] px-3 py-2 text-white placeholder:text-white/30 focus:outline-none focus:border-amber-400 focus:shadow-[0_0_10px_rgba(251,191,36,0.3)] transition mb-2"
           />
 
           <button
             onClick={() => joinGame()}
-            className="mb-2 w-full rounded-lg border border-[#00e5ff]/70 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/55 active:scale-95 transition shadow-[0_0_12px_rgba(0,229,255,0.3)]"
+            className="mb-2 w-full rounded-lg border border-cyan-500/70 bg-cyan-500/20 px-4 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-500/55 active:scale-95 transition shadow-[0_0_12px_rgba(34,211,238,0.3)]"
           >
             Join Game
           </button>
@@ -1548,14 +1555,14 @@ export default function PokerPage() {
   if (isSpectator) {
     if (!game) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] text-white">
           Loading poker match...
         </div>
       );
     }
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#001933] to-[#000d1a] text-white p-6">
+      <div className="min-h-screen bg-gradient-to-b from-[#0a0118] to-[#061b3d] text-white p-6">
         <h1 className="text-3xl font-bold mb-2">Poker Spectate</h1>
         <p className="text-sm text-slate-300 mb-4">Live POV overlay</p>
         <div className="mb-4 rounded border border-yellow-500/30 bg-black/30 px-4 py-2">
@@ -1604,7 +1611,7 @@ export default function PokerPage() {
   // ==== RENDER ====
   if (!game) {
     return (
-      <div className="relative min-h-screen overflow-x-clip bg-gradient-to-br from-[#020108] via-[#0a0a1a] to-[#050510] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="relative min-h-screen overflow-x-clip bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         {/* ── Subtle scanlines backdrop ── */}
         <div
           className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]"
@@ -1625,17 +1632,64 @@ export default function PokerPage() {
           >
             <a
               href="/casino"
-              className="mb-4 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-[#00e5ff]/70 transition-colors hover:text-[#00e5ff]"
+              className="mb-4 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-cyan-200/70 transition-colors hover:text-amber-300"
             >
               ← Back to Casino
             </a>
             <h1 className="text-3xl font-black uppercase tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#ffd700] via-amber-400 to-[#ffd700] drop-shadow-[0_0_18px_rgba(255,215,0,0.55)] sm:text-5xl">
               ♠ Poker Royale ♠
             </h1>
-            <p className="mx-auto mt-3 max-w-xl text-sm text-[#b0b0ff]/70 sm:text-base">
+            <p className="mx-auto mt-3 max-w-xl text-sm text-white/60 sm:text-base">
               Create a Texas Hold'em table, invite friends with a code, or jump
               into a public match against up to 5 other players.
             </p>
+
+            {/* How to Play — rules modal at the top of the lobby */}
+            <div className="mt-5 text-center">
+              <button
+                onClick={() => setShowRules(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 transition-all duration-300 hover:bg-amber-500/20 hover:scale-105 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
+              >
+                <IconBook size={15} /> How to Play
+              </button>
+            </div>
+            {showRules && (
+              <RulesModal
+                title="How to Play"
+                sections={[
+                  {
+                    heading: "Texas Hold'em",
+                    body: (
+                      <>
+                        Each player gets two hole cards and shares five
+                        community cards dealt across the flop, turn, and
+                        river. Make the best 5-card hand to win the pot.
+                      </>
+                    ),
+                  },
+                  {
+                    heading: "Blinds & betting",
+                    body: (
+                      <>
+                        Small and big blinds rotate around the table each
+                        hand — check, call, raise, or fold on your turn.
+                      </>
+                    ),
+                  },
+                  {
+                    heading: "Tables",
+                    body: (
+                      <>
+                        Create a private table and share your invite code,
+                        or join a public game from the queue — up to 6
+                        players per table.
+                      </>
+                    ),
+                  },
+                ]}
+                onClose={() => setShowRules(false)}
+              />
+            )}
           </motion.div>
 
           {/* ── Create table panel ── */}
@@ -1643,11 +1697,11 @@ export default function PokerPage() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.05 }}
-            className="mt-8 rounded-2xl border border-[#00e5ff]/20 bg-[#0b224f]/70 p-6 shadow-[0_0_40px_rgba(0,229,255,0.15)] backdrop-blur-xl sm:p-8"
+            className="mt-8 rounded-2xl border border-amber-700/60 bg-black/40 p-6 shadow-[0_0_40px_rgba(251,191,36,0.12)] backdrop-blur-xl sm:p-8"
           >
             <div className="mb-6 flex flex-col items-center justify-between gap-3 sm:flex-row">
               <div>
-                <h2 className="text-xl font-bold text-[#FFD700] sm:text-2xl">
+                <h2 className="text-xl font-bold text-amber-300 sm:text-2xl">
                   Create a Table
                 </h2>
                 <p className="mt-1 max-w-md text-sm text-white/70">
@@ -1655,7 +1709,7 @@ export default function PokerPage() {
                   down at a seat to buy in.
                 </p>
               </div>
-              <div className="rounded-lg border border-[#00e5ff]/25 bg-[#020617]/60 px-4 py-2 text-center">
+              <div className="rounded-lg border border-amber-700/50 bg-[#020617]/80 px-4 py-2 text-center">
                 <p className="text-[10px] uppercase tracking-wider text-white/50">
                   Balance
                 </p>
@@ -1677,7 +1731,7 @@ export default function PokerPage() {
                 placeholder="Your display name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-lg border border-[#00e5ff]/30 bg-[#020617] p-2.5 text-sm text-white outline-none transition focus:border-[#00e5ff] focus:shadow-[0_0_10px_rgba(0,229,255,0.3)]"
+                className="w-full rounded-lg border border-amber-600/50 bg-[#020617] p-2.5 text-sm text-white outline-none transition focus:border-amber-400 focus:shadow-[0_0_10px_rgba(251,191,36,0.25)]"
               />
             </div>
 
@@ -1690,11 +1744,11 @@ export default function PokerPage() {
                   onClick={() => setIsPrivate(true)}
                   className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
                     isPrivate
-                      ? "border-[#FFD700] bg-[#FFD700]/15 shadow-[0_0_14px_rgba(255,215,0,0.35)]"
-                      : "border-[#00e5ff]/20 bg-[#08142f] hover:border-[#00e5ff]/40"
+                      ? "border-amber-400 bg-amber-500/15 shadow-[0_0_14px_rgba(251,191,36,0.3)]"
+                      : "border-cyan-700/40 bg-slate-900/80 hover:border-cyan-500/50"
                   }`}
                 >
-                  <IconLock size={22} className="text-[#00e5ff]" aria-hidden />
+                  <IconLock size={22} className="text-cyan-300" aria-hidden />
                   <span>
                     <span className="block text-sm font-bold text-white">
                       Private
@@ -1708,11 +1762,11 @@ export default function PokerPage() {
                   onClick={() => setIsPrivate(false)}
                   className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
                     !isPrivate
-                      ? "border-[#FFD700] bg-[#FFD700]/15 shadow-[0_0_14px_rgba(255,215,0,0.35)]"
-                      : "border-[#00e5ff]/20 bg-[#08142f] hover:border-[#00e5ff]/40"
+                      ? "border-amber-400 bg-amber-500/15 shadow-[0_0_14px_rgba(251,191,36,0.3)]"
+                      : "border-cyan-700/40 bg-slate-900/80 hover:border-cyan-500/50"
                   }`}
                 >
-                  <IconGlobe size={22} className="text-[#00e5ff]" aria-hidden />
+                  <IconGlobe size={22} className="text-cyan-300" aria-hidden />
                   <span>
                     <span className="block text-sm font-bold text-white">
                       Public
@@ -1742,8 +1796,8 @@ export default function PokerPage() {
                     onClick={() => setAiDifficulty(d.key)}
                     className={`rounded-xl border-2 px-4 py-3 text-left transition-all ${
                       aiDifficulty === d.key
-                        ? "border-[#FFD700] bg-[#FFD700]/15 shadow-[0_0_14px_rgba(255,215,0,0.35)]"
-                        : "border-[#00e5ff]/20 bg-[#08142f] hover:border-[#00e5ff]/40"
+                        ? "border-amber-400 bg-amber-500/15 shadow-[0_0_14px_rgba(251,191,36,0.3)]"
+                        : "border-cyan-700/40 bg-slate-900/80 hover:border-cyan-500/50"
                     }`}
                   >
                     <span className="block text-sm font-bold text-white">
@@ -1757,23 +1811,23 @@ export default function PokerPage() {
 
             <button
               onClick={() => createGame()}
-              className="w-full rounded-xl bg-gradient-to-r from-yellow-200 to-yellow-600 p-3 text-base font-black text-[#030817] shadow-[0_0_18px_rgba(255,215,0,0.5)] transition-all duration-150 hover:scale-[1.01] active:scale-95"
+              className="w-full rounded-xl bg-amber-500 border-b-4 border-amber-700 p-3 text-base font-black text-black shadow-[0_0_18px_rgba(251,191,36,0.4)] transition-all duration-150 hover:brightness-110 hover:scale-[1.01] active:scale-95"
             >
               <span className="inline-flex items-center gap-2"><IconCards size={18} /> Create Game</span>
             </button>
 
             <div className="relative my-5 flex items-center gap-3">
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#00e5ff]/30 to-transparent" />
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
               <span className="text-[10px] uppercase tracking-[0.3em] text-white/40">
                 or
               </span>
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#00e5ff]/30 to-transparent" />
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <button
                 onClick={() => setShowJoinForm(true)}
-                className="flex items-center justify-center gap-2 rounded-xl border border-[#00e5ff]/40 bg-[#00e5ff]/10 p-3 text-sm font-bold text-[#d8fbff] transition-all hover:bg-[#00e5ff]/25 active:scale-95"
+                className="flex items-center justify-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/10 p-3 text-sm font-bold text-cyan-100 transition-all hover:bg-cyan-500/25 active:scale-95"
               >
                 <span className="inline-flex items-center gap-2"><IconKey size={16} /> Join with Invite Code</span>
               </button>
@@ -1784,7 +1838,7 @@ export default function PokerPage() {
                 disabled={availablePublicGames === 0}
                 className={`flex items-center justify-center gap-2 rounded-xl border-2 p-3 text-sm font-bold transition-all active:scale-95 ${
                   availablePublicGames > 0
-                    ? "border-[#00e5ff]/50 bg-[#00e5ff]/15 text-[#d8fbff] hover:bg-[#00e5ff]/30 shadow-[0_0_14px_rgba(0,229,255,0.25)]"
+                    ? "border-cyan-500/50 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/30 shadow-[0_0_14px_rgba(34,211,238,0.25)]"
                     : "cursor-not-allowed border-gray-600 bg-gray-700 text-gray-400"
                 }`}
               >
@@ -1803,16 +1857,16 @@ export default function PokerPage() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.1 }}
-            className="mt-6 rounded-2xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-5 shadow-[0_0_22px_rgba(0,229,255,0.15)] sm:p-6"
+            className="mt-6 rounded-2xl border border-amber-700/60 bg-black/40 p-5 shadow-[0_0_22px_rgba(251,191,36,0.1)] sm:p-6"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-lg font-bold uppercase tracking-wider text-[#FFD700]">
-                <IconDeviceGamepad2 size={20} className="text-[#FFD700]" aria-hidden />
+              <h2 className="flex items-center gap-2 text-lg font-bold uppercase tracking-wider text-cyan-300">
+                <IconDeviceGamepad2 size={20} className="text-cyan-300" aria-hidden />
                 <span>Available Public Tables</span>
               </h2>
               <button
                 onClick={fetchPublicGamesCount}
-                className="rounded-lg bg-[#00e5ff] px-3 py-1.5 text-xs font-semibold text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.35)] transition-colors hover:bg-[#49eeff]"
+                className="rounded-lg bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-black shadow-[0_0_10px_rgba(34,211,238,0.35)] transition-colors hover:bg-cyan-400"
               >
                 Refresh
               </button>
@@ -1830,12 +1884,12 @@ export default function PokerPage() {
                 {publicGameList.map((g) => (
                   <div
                     key={g.gameCode}
-                    className="flex items-center justify-between rounded-xl border border-[#00e5ff]/20 bg-[#08142f]/80 p-3 transition-colors hover:border-[#00e5ff]/40"
+                    className="flex items-center justify-between rounded-xl border border-cyan-700/30 bg-slate-900/80 p-3 transition-colors hover:border-cyan-500/50"
                   >
                     <div>
                       <p className="text-sm font-semibold">
                         {g.hostName || "Player"} ·{" "}
-                        <span className="font-mono text-[#00e5ff]">
+                        <span className="font-mono text-cyan-300">
                           {g.gameCode}
                         </span>
                       </p>
@@ -1854,7 +1908,7 @@ export default function PokerPage() {
                     <button
                       onClick={() => joinPublicGame(g.gameCode)}
                       disabled={joiningGame}
-                      className="rounded-lg bg-[#00e5ff] px-4 py-1.5 text-sm font-bold text-[#001933] transition-colors hover:bg-[#49eeff] disabled:bg-[#246874] disabled:text-white/60"
+                      className="rounded-lg bg-cyan-500 px-4 py-1.5 text-sm font-bold text-black transition-colors hover:bg-cyan-400 disabled:bg-cyan-500/30 disabled:text-white/60"
                     >
                       {joiningGame ? "Joining..." : "Join"}
                     </button>
@@ -1872,7 +1926,7 @@ export default function PokerPage() {
 
   // main UI when game exists
   return (
-    <div className="min-h-screen pb-36 lg:pb-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#020108] via-[#0a0a1a] to-[#050510] text-white overflow-hidden relative">
+    <div className="min-h-screen pb-36 lg:pb-0 flex flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] text-white overflow-hidden relative">
       {/* ── Portrait-mode overlay (mobile only) ── */}
       {isPortrait && (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md">
@@ -2396,7 +2450,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             onClick={() => setSeatModalOpen(false)}
           />
 
-          <div className="relative bg-slate-800 p-6 rounded-xl w-[340px] z-[100] pointer-events-auto">
+          <div className="relative border border-amber-700/60 bg-[#12042a] p-6 rounded-xl w-[340px] z-[100] pointer-events-auto">
             <h2 className="text-xl font-bold mb-2">Seat {selectedSeat}</h2>
 
             <p className="text-sm text-gray-300 mb-4">
@@ -2406,7 +2460,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             {/* HUMAN OPTION */}
             <button
               onClick={openBuyInPopup}
-              className="w-full bg-yellow-500 text-black px-4 py-2 rounded font-bold mb-3 hover:bg-yellow-400"
+              className="w-full bg-amber-400 text-black px-4 py-2 rounded font-bold mb-3 hover:bg-amber-300"
             >
               Sit as Human
             </button>
@@ -2473,25 +2527,25 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            className="relative z-[110] pointer-events-auto w-[360px] bg-[#0a0a1a]/95 backdrop-blur-xl border-2 border-[#ff00cc]/40 rounded-2xl p-5 shadow-[0_0_40px_rgba(255,0,204,0.3)]"
+            className="relative z-[110] pointer-events-auto w-[360px] bg-[#12042a]/95 backdrop-blur-xl border-2 border-amber-700/60 rounded-2xl p-5 shadow-[0_0_40px_rgba(251,191,36,0.2)]"
           >
-            <h2 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] mb-1 text-center">
+            <h2 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500 mb-1 text-center">
               <span className="inline-flex items-center gap-1.5"><IconCoins size={18} /> Achat de jetons</span>
             </h2>
-            <p className="text-[10px] text-[#b0b0ff]/50 text-center mb-4 uppercase tracking-widest">
+            <p className="text-[10px] text-white/50 text-center mb-4 uppercase tracking-widest">
               Seat {selectedSeat} — Définissez votre mise initiale
             </p>
 
             {/* Balance display */}
-            <div className="mb-3 flex items-center justify-between bg-[#0d0020]/60 px-4 py-2 rounded-xl border border-[#ff00cc]/20">
-              <span className="text-[#b0b0ff]/60 text-sm">Solde disponible</span>
-              <span className="text-[#FFD700] font-black text-lg">{tokenBalance.toLocaleString()} jetons</span>
+            <div className="mb-3 flex items-center justify-between bg-black/40 px-4 py-2 rounded-xl border border-amber-700/40">
+              <span className="text-white/60 text-sm">Solde disponible</span>
+              <span className="text-amber-300 font-black text-lg">{tokenBalance.toLocaleString()} jetons</span>
             </div>
 
             {/* Buy-in input */}
             <div className="mb-3">
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#ff00cc] font-bold text-lg">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-300 font-bold text-lg">$</span>
                 <input
                   type="number"
                   value={buyInAmount}
@@ -2501,11 +2555,11 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   min={0}
                   max={tokenBalance}
                   autoFocus
-                  className="w-full pl-8 pr-4 py-3 rounded-xl bg-[#0d0020]/80 border-2 border-[#ff00cc]/50 text-[#FFD700] text-2xl font-black text-center placeholder:text-[#ff00cc]/30 focus:outline-none focus:border-[#ff00cc] focus:shadow-[0_0_20px_rgba(255,0,204,0.4)] transition-all"
+                  className="w-full pl-8 pr-4 py-3 rounded-xl bg-black/50 border-2 border-amber-600/50 text-amber-300 text-2xl font-black text-center placeholder:text-amber-300/30 focus:outline-none focus:border-amber-400 focus:shadow-[0_0_20px_rgba(251,191,36,0.3)] transition-all"
                   placeholder="Mise"
                 />
               </div>
-              <div className="text-[10px] text-[#b0b0ff]/40 text-center mt-1">
+              <div className="text-[10px] text-white/40 text-center mt-1">
                 Minimum 10 jetons
               </div>
             </div>
@@ -2519,8 +2573,8 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                     onClick={() => setBuyInAmount(v)}
                     className={`px-2 py-1.5 rounded-xl text-xs font-bold border transition-all active:scale-95 ${
                       buyInAmount === v
-                        ? "bg-[#ff00cc]/30 border-[#ff00cc] text-[#ff00cc] shadow-[0_0_10px_rgba(255,0,204,0.3)]"
-                        : "bg-[#0d0020]/60 border-[#ff00cc]/20 text-[#b0b0ff]/60 hover:border-[#ff00cc]/50 hover:text-[#ff00cc]"
+                        ? "bg-amber-500/30 border-amber-400 text-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.3)]"
+                        : "bg-black/40 border-amber-700/30 text-white/60 hover:border-amber-500/50 hover:text-amber-300"
                     }`}
                   >{v}</button>
                 ) : null
@@ -2531,13 +2585,13 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             <div className="grid grid-cols-2 gap-2 mb-4">
               <button
                 onClick={() => setBuyInAmount(Math.max(10, Math.floor(tokenBalance / 2)))}
-                className="px-3 py-2 rounded-xl text-xs font-bold border border-[#00e5ff]/30 bg-[#00e5ff]/10 text-[#00e5ff] hover:bg-[#00e5ff]/25 hover:border-[#00e5ff]/60 active:scale-95 transition-all"
+                className="px-3 py-2 rounded-xl text-xs font-bold border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/25 hover:border-cyan-500/60 active:scale-95 transition-all"
               >
                 ½ Solde
               </button>
               <button
                 onClick={() => setBuyInAmount(tokenBalance)}
-                className="px-3 py-2 rounded-xl text-xs font-bold border border-yellow-400/40 bg-yellow-400/10 text-yellow-300 hover:bg-yellow-400/25 hover:border-yellow-400/60 active:scale-95 transition-all shadow-[0_0_10px_rgba(255,215,0,0.15)]"
+                className="px-3 py-2 rounded-xl text-xs font-bold border border-amber-400/40 bg-amber-400/10 text-amber-300 hover:bg-amber-400/25 hover:border-amber-400/60 active:scale-95 transition-all shadow-[0_0_10px_rgba(251,191,36,0.15)]"
               >
                 <span className="inline-flex items-center gap-1.5"><IconFlame size={14} /> Tout miser</span>
               </button>
@@ -2556,7 +2610,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 disabled={buyInAmount < 10 || buyInAmount > tokenBalance}
                 className={`flex-1 px-4 py-3 rounded-xl font-bold text-sm transition-all active:scale-95 ${
                   buyInAmount >= 10 && buyInAmount <= tokenBalance
-                    ? "bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] text-black hover:from-[#ff00cc]/90 hover:to-[#00e5ff]/90 shadow-[0_0_20px_rgba(255,0,204,0.5)]"
+                    ? "bg-amber-500 border-b-4 border-amber-700 text-black hover:brightness-110 shadow-[0_0_20px_rgba(251,191,36,0.4)]"
                     : "bg-gray-700 text-gray-400 cursor-not-allowed"
                 }`}
               >
@@ -2956,10 +3010,10 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
       {/* Multiplayer Waiting Panel — bottom-left, public-only */}
       {!isPrivate && (
         <div className="fixed bottom-56 left-3 right-3 z-50 pointer-events-auto lg:bottom-6 lg:left-6 lg:right-auto">
-          <div className="w-full lg:w-64 bg-[#0a0a1a]/95 backdrop-blur-md border border-[#ff00cc]/20 rounded-lg shadow-[0_0_20px_rgba(255,0,204,0.15)] p-3">
+          <div className="w-full lg:w-64 bg-black/60 backdrop-blur-md border border-amber-700/40 rounded-lg shadow-[0_0_20px_rgba(251,191,36,0.12)] p-3">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-bold text-[#ff00cc]">Public Queue</div>
-              <div className="text-xs text-[#b0b0ff]/60">
+              <div className="text-sm font-bold text-amber-300">Public Queue</div>
+              <div className="text-xs text-white/60">
                 {waitingPlayers.length} waiting
               </div>
             </div>
@@ -2972,7 +3026,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 6 }}
-                    className="flex items-center justify-between bg-[#0d0020]/60 px-2 py-1 rounded border border-[#ff00cc]/10"
+                    className="flex items-center justify-between bg-black/40 px-2 py-1 rounded border border-amber-700/20"
                   >
                     <div className="truncate text-sm">
                       {p.name || "Anonymous"}
@@ -2989,13 +3043,13 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               <button
                 onClick={() => joinPublicGame()}
                 disabled={joiningGame}
-                className={`flex-1 text-sm px-3 py-2 rounded font-bold transition ${joiningGame ? "bg-gray-600 cursor-not-allowed" : "bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] text-black hover:from-[#ff00cc]/80 hover:to-[#00e5ff]/80 shadow-[0_0_15px_rgba(255,0,204,0.4)]"}`}
+                className={`flex-1 text-sm px-3 py-2 rounded font-bold transition ${joiningGame ? "bg-gray-600 cursor-not-allowed" : "bg-amber-500 border-b-4 border-amber-700 text-black hover:brightness-110 shadow-[0_0_15px_rgba(251,191,36,0.35)]"}`}
               >
                 Join Public
               </button>
               <button
                 onClick={() => fetchWaitingPlayers()}
-                className="px-3 py-2 rounded text-sm bg-[#0a0a1a] border border-[#00e5ff]/20 text-[#00e5ff]/70 hover:bg-[#00e5ff]/10"
+                className="px-3 py-2 rounded text-sm bg-black/40 border border-cyan-500/30 text-cyan-200/80 hover:bg-cyan-500/10"
               >
                 Refresh
               </button>

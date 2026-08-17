@@ -19,28 +19,23 @@
 // Server-side canonical logic (match state machine, stake escrow,
 // round resolution) lives in src/lib/roulette-pvp/serverStore.js —
 // this page is a thin client.
+//
+// The page chrome (balance strip → stake picker + Play → escrow
+// note → Open Lobbies list) is the shared PvpLobby component in the
+// blackjack layout / farkle color scheme.
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
-import { motion } from "framer-motion";
-import NavigationBar from "../../../components/navigation-bar";
-import Footer from "../../../components/Footer";
+import PvpLobbyPage, { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { useSocket } from "../../../context/SocketProvider";
 import {
   ROULETTE_PVP_LOBBY_ROOM,
   ROULETTE_PVP_MATCH_UPDATED,
   roulettePvpMatchRoom,
 } from "../../../lib/roulette-pvp/rooms";
-import {
-  RouletteWheelIcon,
-  CoinIcon,
-  TargetIcon,
-  RefreshIcon,
-  LoadingDotsIcon,
-  StackCoinIcon,
-} from "../../../components/roulette-pvp/RouletteIcons";
+import { RouletteWheelIcon } from "../../../components/roulette-pvp/RouletteIcons";
 
 const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
 
@@ -187,194 +182,88 @@ export default function RoulettePvpLobbyPage() {
   };
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
-      <NavigationBar currentPath="/casino" />
-
-      <div className="mx-auto mt-4 max-w-5xl sm:mt-8">
-        <motion.div
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-        >
-          <h1 className="flex items-center justify-center gap-3 text-center text-3xl sm:text-4xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-300 to-yellow-500 drop-shadow-[0_0_18px_rgba(255,255,51,0.55)]">
-            <RouletteWheelIcon
-              className="w-9 h-9 sm:w-10 sm:h-10 text-yellow-300 drop-shadow-[0_0_12px_rgba(255,255,51,0.55)] flex-shrink-0"
-              title="Roulette wheel"
-            />
-            <span>Roulette PvP Lobby</span>
-          </h1>
-        </motion.div>
-        <p className="text-center text-sm text-white/60 mt-2 mb-7 max-w-2xl mx-auto">
-          Pick a stake. We pair you with another player of the <b>exact same</b>{" "}
-          token amount. Always 3 rounds — the player with the most match points
-          wins. Ties after Round 3 trigger sudden death. Single shared spin per
-          round. Match points (100 to start) persist round-to-round. 2.5% house
-          fee.
-        </p>
-
-        <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-[#0b224f]/70 backdrop-blur-xl border border-yellow-400/30 shadow-[0_0_30px_rgba(255,255,51,0.18)] rounded-2xl p-6"
-        >
-          <div className="text-center mb-5 text-sm">
-            <span className="uppercase tracking-widest text-[11px] text-white/55 mr-2">
-              Tokens
-            </span>
-            <span className="font-bold text-yellow-300 text-lg">
-              {balance === null
-                ? "…"
-                : balance.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-            </span>
-          </div>
-
-          <div className="grid md:grid-cols-[1fr_auto_1fr] gap-3 items-end">
-            <div>
-              <label className="text-[11px] uppercase tracking-wider text-white/60">
-                Stake (per player)
-              </label>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {STAKE_PRESETS.map((v) => (
-                  <button
-                    key={v}
-                    onClick={() => setStake(v)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
-                      stake === v
-                        ? "bg-yellow-300 text-black border-yellow-300 shadow-[0_0_10px_rgba(255,255,51,0.7)]"
-                        : "bg-[#08142f] text-yellow-200/80 border-yellow-300/30 hover:bg-yellow-300/15"
-                    }`}
-                  >
-                    {v.toLocaleString()}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  max={balance ?? undefined}
-                  value={stake}
-                  onChange={(e) =>
-                    setStake(Math.max(1, Number(e.target.value) || 0))
-                  }
-                  className="flex-1 rounded-lg bg-[#020617] border border-yellow-300/30 focus:border-yellow-300 outline-none p-2 text-white text-sm"
-                />
-              </div>
-            </div>
-            <button
-              onClick={() => createOrJoin(stake)}
-              disabled={busy || !isSignedIn || (balance ?? 0) < stake}
-              className="p-3 rounded-xl text-base font-extrabold text-black bg-gradient-to-r from-yellow-300 to-amber-500 hover:scale-105 active:scale-95 transition shadow-[0_0_22px_rgba(255,255,51,0.55)] disabled:opacity-50 disabled:hover:scale-100 inline-flex items-center gap-2"
-            >
-              {busy ? (
-                <>
-                  <LoadingDotsIcon
-                    className="w-4 h-4 text-black animate-pulse"
-                    title="Loading"
-                  />
-                  <span>Finding match…</span>
-                </>
-              ) : (
-                <>
-                  <span>{stake.toLocaleString()}</span>
-                  <CoinIcon
-                    className="w-5 h-5 text-amber-900"
-                    title="Tokens"
-                  />
-                  <span>· Play</span>
-                </>
-              )}
-            </button>
-            <div className="text-xs text-white/55 leading-relaxed">
-              We pair you with another player of the <b>exact same</b> stake.
-              If no one is waiting, your stake is escrowed in a private lobby
-              until someone joins or you cancel.
-            </div>
-          </div>
-
-          {error && (
-            <div className="mt-4 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-2 text-sm text-red-200">
-              {error}
-            </div>
-          )}
-        </motion.div>
-
-        <div className="mt-6 bg-[#0b224f]/85 border border-yellow-300/30 rounded-2xl p-5 shadow-[0_0_22px_rgba(255,255,51,0.16)]">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-yellow-300 uppercase tracking-wider flex items-center gap-2">
-              <TargetIcon
-                className="w-4 h-4 text-yellow-300"
-                title="Open lobbies"
-              />
-              Open Lobbies
-            </h2>
-            <button
-              onClick={fetchAvailable}
-              className="px-3 py-1.5 rounded-lg bg-yellow-300 text-[#001933] hover:bg-yellow-200 text-xs font-semibold shadow-[0_0_10px_rgba(255,255,51,0.45)] transition inline-flex items-center gap-1.5"
-            >
-              <RefreshIcon
-                className="w-3.5 h-3.5 text-[#001933]"
-                title="Refresh"
-              />
-              Refresh
-            </button>
-          </div>
-          {availableMatches.length === 0 ? (
-            <p className="text-sm text-white/60">
-              No open lobbies yet. Be the first to make one.
-            </p>
-          ) : (
-            <div className="space-y-2.5">
-              {availableMatches.map((m) => (
-                <div
-                  key={m.id}
-                  className="flex items-center justify-between rounded-xl bg-[#08142f]/80 p-3 border border-yellow-300/20 hover:border-yellow-300/40 transition"
-                >
-                  <div>
-                    <p className="text-sm font-semibold">
-                      Lobby #{m.id}
-                      <span className="ml-2 text-[10px] text-white/40">
-                        host #{m.player1Id?.slice(0, 6) ?? "?"}…
-                      </span>
-                    </p>
-                    <p className="text-xs text-white/60 mt-0.5 flex items-center gap-1">
-                      <span>Stake:</span>
-                      <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
-                        {Number(m.stakeAmount).toLocaleString()}
-                        <CoinIcon
-                          className="w-3.5 h-3.5 text-yellow-300"
-                          title="Tokens"
-                        />
-                      </span>
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => joinSpecific(m.id)}
-                    disabled={busy || joiningId === m.id}
-                    className="px-4 py-1.5 rounded-lg bg-yellow-300 text-[#001933] hover:bg-yellow-200 text-sm font-bold disabled:bg-yellow-300/30 disabled:text-white/60 transition inline-flex items-center gap-1.5"
-                  >
-                    {joiningId === m.id ? (
-                      <>
-                        <StackCoinIcon
-                          className="w-3.5 h-3.5 text-[#001933] animate-pulse"
-                          title="Joining"
-                        />
-                        <span>Joining…</span>
-                      </>
-                    ) : (
-                      "Join"
-                    )}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <Footer />
-      </div>
-    </div>
+    <PvpLobbyPage
+      title="Roulette PvP Lobby"
+      subtitle={
+        <>
+          Pick a stake. We pair you with another player of the <b>exact
+          same</b> token amount. Always 3 rounds — the player with the
+          most match points wins. Ties after Round 3 trigger sudden
+          death. Single shared spin per round. Match points (100 to
+          start) persist round-to-round. 2.5% house fee.
+        </>
+      }
+      icon={
+        <RouletteWheelIcon
+          className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10"
+          title="Roulette wheel"
+        />
+      }
+      rulesKey="roulette"
+      rules={{
+        title: "How to Play",
+        sections: [
+          {
+            heading: "Match format",
+            body: (
+              <>
+                Always <b>3 rounds</b> — the player with the most match
+                points wins. Ties after Round 3 trigger sudden death.
+              </>
+            ),
+          },
+          {
+            heading: "Shared spin",
+            body: (
+              <>
+                A <b>single shared spin</b> per round. Match points (100
+                to start) persist round-to-round.
+              </>
+            ),
+          },
+          {
+            heading: "House fee",
+            body: <>2.5% house fee on the pot.</>,
+          },
+        ],
+      }}
+      balance={balance}
+      stake={stake}
+      onStakeChange={setStake}
+      stakeOptions={STAKE_PRESETS}
+      busy={busy}
+      onPlay={() => createOrJoin(stake)}
+      canPlay={isSignedIn && (balance === null || balance >= stake) && !busy}
+      escrowNote={
+        <>
+          We pair you with another player of the <b>exact same</b> stake.
+          If no one is waiting, your stake is escrowed in a private lobby
+          until someone joins or you cancel.
+        </>
+      }
+      error={error}
+      lobbies={availableMatches}
+      lobbyEmptyText="No open lobbies yet. Be the first to make one."
+      lobbyTitle={(m) => (
+        <>
+          Lobby #{m.id}
+          <span className="ml-2 text-[10px] text-white/40">
+            host #{m.player1Id?.slice(0, 6) ?? "?"}…
+          </span>
+        </>
+      )}
+      lobbyMeta={(m) => (
+        <span className="inline-flex items-center gap-1">
+          <span>Stake:</span>
+          <span className="inline-flex items-center gap-1 font-semibold text-yellow-300">
+            {Number(m.stakeAmount).toLocaleString()}
+            <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
+          </span>
+        </span>
+      )}
+      onJoin={(l) => joinSpecific(l.id)}
+      joinBusyId={joiningId}
+      onRefresh={fetchAvailable}
+    />
   );
 }

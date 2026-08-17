@@ -21,7 +21,7 @@
 //     server seed + each player's own client seed; the full layout
 //     is revealed post-match so the memory rule is verifiable.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -499,7 +499,27 @@ export default function LaneRushDuelMatchPage({ params }) {
   const { user } = useUser();
   const { socket } = useSocket();
 
-  const [matchId] = useState(() => Number(params?.matchId));
+  // ── Dynamic-route params arrive async (Promise) on Next.js 15+/16. ──
+  // BUG-FIX ("multiplayer flow never loads"): the previous code read
+  // `params?.matchId` synchronously — on Next.js 16 `params` is a
+  // Promise, so `matchId` was always `NaN`, every /status poll and
+  // socket join silently no-oped, and the match view stayed pinned on
+  // the loading screen for BOTH players (host waiting, joiner waiting,
+  // ready banner, turns — the whole flow). Mirror the blackjack /
+  // mines match views: unwrap the Promise with React's `use()`, keep
+  // `matchId` as `null` until it resolves, and guard every consumer
+  // against the invalid-id window.
+  const paramsPromise = useMemo(
+    () => Promise.resolve(params),
+    [params],
+  );
+  const resolvedParams = use(paramsPromise);
+  const rawMatchId =
+    resolvedParams && typeof resolvedParams === "object"
+      ? resolvedParams.matchId
+      : undefined;
+  const numericMatchId = Number(rawMatchId);
+  const matchId = Number.isFinite(numericMatchId) ? numericMatchId : null;
 
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -514,7 +534,12 @@ export default function LaneRushDuelMatchPage({ params }) {
 
   // ── Status polling (1.5s) + socket live updates ──────────────────
   const fetchStatus = useCallback(async () => {
-    if (!matchId) return;
+    if (!matchId) {
+      // Invalid/undecided matchId — never pin the page on "Loading…".
+      // The `!loading && !match` branch renders the not-found panel.
+      setLoading(false);
+      return;
+    }
     try {
       const res = await fetch(`/api/lane-rush-duel/match/${matchId}`, {
         cache: "no-store",
@@ -540,7 +565,7 @@ export default function LaneRushDuelMatchPage({ params }) {
   }, [fetchStatus]);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !matchId) return;
     socket.emit("join_room", { roomId: laneRushDuelMatchRoom(matchId) });
     const refresh = () => fetchStatus();
     socket.on(LANE_RUSH_DUEL_MATCH_UPDATED, refresh);

@@ -15,14 +15,16 @@
 //        • escrow stake on success
 //        • provably-fair towers generated at match creation
 //   4. Redirect to /casino/lane-runner/[matchId]
+//
+// The page chrome (balance strip → stake picker + Play → escrow
+// note → Open Lobbies list) is the shared PvpLobby component in the
+// blackjack layout / farkle color scheme.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
-import { motion, AnimatePresence } from "framer-motion";
-import NavigationBar from "../../../components/navigation-bar";
-import Footer from "../../../components/Footer";
+import PvpLobbyPage, { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { useSocket } from "../../../context/SocketProvider";
 import {
   LANE_RUSH_DUEL_LOBBY_ROOM,
@@ -32,37 +34,9 @@ import {
 import {
   DIFFICULTIES,
   DIFFICULTY_POINT_MULT,
-  MAX_LANES,
   STAKE_PRESETS,
 } from "../../../lib/lane-rush-duel/constants";
-import {
-  IconTrophy,
-  IconShieldCheck,
-  IconRefresh,
-  IconAlertTriangle,
-  IconRobot,
-  IconNotebook,
-} from "@tabler/icons-react";
-
-function CoinIcon({ className = "" }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <ellipse cx="12" cy="6" rx="8" ry="2.5" />
-      <path d="M4 6 V18 a8 2.5 0 0 0 16 0 V6" />
-      <ellipse cx="12" cy="18" rx="8" ry="2.5" />
-    </svg>
-  );
-}
+import { IconShieldCheck } from "@tabler/icons-react";
 
 function TowerIcon({ className = "" }) {
   return (
@@ -83,41 +57,6 @@ function TowerIcon({ className = "" }) {
       <path d="M8 21 H16" />
       <path d="M8 9 H16" />
       <path d="M7.5 15 H16.5" />
-    </svg>
-  );
-}
-
-function FlagIcon({ className = "" }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <path d="M5 21 V4" />
-      <path d="M5 4 H19 L16 7.5 L19 11 H5" />
-    </svg>
-  );
-}
-
-function LoadingDotsIcon({ className = "" }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      aria-hidden
-    >
-      <circle cx="6" cy="12" r="2" />
-      <circle cx="12" cy="12" r="2" />
-      <circle cx="18" cy="12" r="2" />
     </svg>
   );
 }
@@ -368,21 +307,10 @@ export default function LaneRushDuelLobbyPage() {
     isSignedIn && !busy && difficultyValid && stakeValid && myOpenMatchId === null;
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
-      <NavigationBar currentPath="/casino" />
-
-      <div className="mx-auto mt-4 max-w-5xl sm:mt-8">
-        <motion.div
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-        >
-          <h1 className="flex items-center justify-center gap-3 text-center text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-cyan-300 to-fuchsia-300 drop-shadow-[0_0_18px_rgba(0,229,255,0.55)] sm:text-4xl">
-            <TowerIcon className="h-9 w-9 flex-shrink-0 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,229,255,0.65)] sm:h-10 sm:w-10" />
-            <span>Lane Rush Duel</span>
-          </h1>
-        </motion.div>
-        <p className="mx-auto mb-7 mt-2 max-w-2xl text-center text-sm text-white/60">
+    <PvpLobbyPage
+      title="Lane Rush Duel"
+      subtitle={
+        <>
           You and your opponent each race your <b>own tower</b> — same
           difficulty, same provably-fair seed. On your turn pick a tile
           in your current lane (<b className="text-emerald-300">safe</b>{" "}
@@ -391,291 +319,189 @@ export default function LaneRushDuelLobbyPage() {
           force your opponent to climb past them. The{" "}
           <b>higher banked tower</b> takes the pot — 1.9× your stake,
           house takes 0.1×.
-        </p>
-
-        <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-cyan-300/30 bg-[#0b224f]/70 p-6 shadow-[0_0_30px_rgba(0,229,255,0.18)] backdrop-blur-xl"
-        >
-          <div className="mb-5 text-center text-sm">
-            <span className="mr-2 text-[11px] uppercase tracking-widest text-white/55">
-              Tokens
+        </>
+      }
+      icon={
+        <TowerIcon className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />
+      }
+      rulesKey="lane-runner"
+      rules={{
+        title: "How to Play",
+        sections: [
+          {
+            heading: "Race your own tower",
+            body: (
+              <>
+                You and your opponent each race your <b>own tower</b> —
+                same difficulty, same provably-fair seed.
+              </>
+            ),
+          },
+          {
+            heading: "Climb or hold",
+            body: (
+              <>
+                On your turn pick a tile in your current lane —{" "}
+                <b className="text-emerald-300">safe</b> earns points,{" "}
+                <b className="text-rose-300">bad</b> busts you — or{" "}
+                <b className="text-amber-300">HOLD</b> to bank your points
+                and force your opponent to climb past them.
+              </>
+            ),
+          },
+          {
+            heading: "Win the pot",
+            body: (
+              <>
+                The <b>higher banked tower</b> takes the pot — 1.9× your
+                stake, house takes 0.1×.
+              </>
+            ),
+          },
+          {
+            heading: "Provably fair",
+            body: (
+              <>
+                Every lane hides one bad tile. Towers derive from one
+                shared server seed (hash shown before the match) + each
+                player&apos;s own client seed, revealed after.
+              </>
+            ),
+          },
+        ],
+      }}
+      balance={balance}
+      stake={stake}
+      onStakeChange={setStake}
+      stakeOptions={STAKE_PRESETS}
+      busy={busy}
+      onPlay={() => {
+        posthog?.capture("lane_rush_duel_create_clicked", {
+          stake,
+          difficulty,
+        });
+        createOrJoin(stake, difficulty);
+      }}
+      canPlay={canCreate}
+      vsAi={{
+        label: "Test vs Bot",
+        badge: "Free",
+        disabled: !isSignedIn,
+        busy,
+        onClick: () => {
+          posthog?.capture("lane_rush_duel_vs_bot_clicked", {
+            difficulty,
+          });
+          createBotMatch(difficulty);
+        },
+      }}
+      escrowNote={
+        <>
+          We pair you with another player of the <b>exact same</b> stake.
+          If no one is waiting, your stake is escrowed in a private lobby
+          with your chosen difficulty until someone joins or you cancel.
+        </>
+      }
+      error={error}
+      lobbies={availableMatches}
+      lobbyEmptyText="No open lobbies yet. Be the first to make one."
+      lobbyTitle={(m) => (
+        <>
+          Lobby #{m.id}
+          <span className="ml-2 text-[10px] text-white/40">
+            host #{m.player1Id?.slice(0, 6) ?? "?"}…
+          </span>
+        </>
+      )}
+      lobbyMeta={(m) => (
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>
+            Stake:{" "}
+            <span className="inline-flex items-center gap-1 font-semibold text-yellow-300">
+              {Number(m.stakeAmount).toLocaleString()}
+              <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
             </span>
-            <span className="text-lg font-bold text-yellow-300">
-              {balance === null
-                ? "…"
-                : balance.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
+          </span>
+          <span>
+            Difficulty:{" "}
+            <span className="font-semibold text-cyan-300">
+              {DIFFICULTIES[m.difficulty]?.label || m.difficulty}
             </span>
-          </div>
-
-          {/* Your own open match notification */}
-          <AnimatePresence>
-            {myOpenMatchId !== null && (
-              <motion.div
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-3 py-2 text-sm"
-              >
-                <span className="flex items-center gap-2 text-cyan-200">
-                  <LoadingDotsIcon className="h-4 w-4 animate-pulse text-cyan-200" />
-                  Your open lobby #{myOpenMatchId} is waiting for an
-                  opponent…
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => router.push(`/casino/lane-runner/${myOpenMatchId}`)}
-                    className="rounded-lg bg-cyan-400 px-3 py-1.5 text-xs font-bold text-[#001933] transition hover:bg-cyan-300"
-                  >
-                    Resume
-                  </button>
-                  <button
-                    onClick={() => cancelMyMatch(myOpenMatchId)}
-                    disabled={cancellingId === myOpenMatchId}
-                    className="rounded-lg border border-red-500/30 bg-red-500/20 px-3 py-1.5 text-xs font-bold text-red-200 transition hover:bg-red-500/30 disabled:opacity-50"
-                  >
-                    {cancellingId === myOpenMatchId ? "Cancelling…" : "Cancel"}
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="grid items-end gap-3 md:grid-cols-[1.1fr_auto_1fr]">
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              {/* Wager (stake) picker */}
-              <div>
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
-                  Wager
-                </label>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {STAKE_PRESETS.map((v) => (
-                    <button
-                      key={v}
-                      onClick={() => setStake(v)}
-                      className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${
-                        stake === v
-                          ? "border-cyan-300 bg-cyan-300 text-black shadow-[0_0_8px_rgba(0,229,255,0.7)]"
-                          : "border-cyan-300/30 bg-[#08142f] text-cyan-200/80 hover:bg-cyan-300/15"
-                      }`}
-                    >
-                      {v.toLocaleString()}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="number"
-                  min={1}
-                  max={balance ?? undefined}
-                  value={stake}
-                  onChange={(e) =>
-                    setStake(Math.max(1, Number(e.target.value) || 0))
-                  }
-                  className="mt-1.5 w-full rounded-md border border-cyan-300/30 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-300"
-                />
-              </div>
-              {/* Difficulty picker — host-only at create time */}
-              <div>
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
-                  Difficulty{" "}
-                  <span className="font-normal normal-case tracking-normal text-fuchsia-300/70">
-                    (host)
-                  </span>
-                </label>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {Object.entries(DIFFICULTIES).map(([key, config]) => (
-                    <button
-                      key={key}
-                      onClick={() => setDifficulty(key)}
-                      className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${
-                        difficulty === key
-                          ? "border-fuchsia-400 bg-fuchsia-400 text-black shadow-[0_0_8px_rgba(217,70,239,0.7)]"
-                          : "border-fuchsia-300/30 bg-[#08142f] text-fuchsia-200/80 hover:bg-fuchsia-300/15"
-                      }`}
-                    >
-                      {config.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-1 text-[9px] leading-tight text-white/40">
-                  {DIFFICULTIES[difficulty]?.width} tiles per lane · full
-                  climb ={" "}
-                  {(
-                    2400 *
-                    (DIFFICULTY_POINT_MULT[difficulty] ?? 1)
-                  ).toLocaleString()}{" "}
-                  pts. Joiners inherit.
-                </p>
-              </div>
+          </span>
+        </span>
+      )}
+      onJoin={(l) => {
+        posthog?.capture("lane_rush_duel_join_clicked", {
+          match_id: l.id,
+          stake: l.stakeAmount,
+          difficulty: l.difficulty,
+        });
+        joinSpecific(l.id);
+      }}
+      joinBusyId={joiningId}
+      onRefresh={fetchAvailable}
+      historyHref="/casino/lane-runner/history"
+      myOpenId={myOpenMatchId}
+      onResume={(id) => router.push(`/casino/lane-runner/${id}`)}
+      onCancel={(id) => cancelMyMatch(id)}
+      cancelling={cancellingId === myOpenMatchId}
+      children={
+        <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+          {/* Difficulty picker — host-only at create time */}
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
+              Difficulty{" "}
+              <span className="font-normal normal-case tracking-normal text-cyan-300/70">
+                (host)
+              </span>
+            </label>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {Object.entries(DIFFICULTIES).map(([key, config]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setDifficulty(key)}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${
+                    difficulty === key
+                      ? "border-cyan-400 bg-cyan-500/20 text-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.5)]"
+                      : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-cyan-600/50 hover:text-cyan-200"
+                  }`}
+                >
+                  {config.label}
+                </button>
+              ))}
             </div>
-
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => {
-                  posthog?.capture("lane_rush_duel_create_clicked", {
-                    stake,
-                    difficulty,
-                  });
-                  createOrJoin(stake, difficulty);
-                }}
-                disabled={!canCreate}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-300 to-fuchsia-400 p-3 text-base font-extrabold text-black shadow-[0_0_22px_rgba(0,229,255,0.55)] transition hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
-              >
-                {busy ? (
-                  <>
-                    <LoadingDotsIcon className="h-4 w-4 animate-pulse text-black" />
-                    <span>Finding match…</span>
-                  </>
-                ) : (
-                  <>
-                    <span>{stake.toLocaleString()}</span>
-                    <CoinIcon className="h-5 w-5 text-cyan-900" />
-                    <span>· Play</span>
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  posthog?.capture("lane_rush_duel_vs_bot_clicked", {
-                    difficulty,
-                  });
-                  createBotMatch(difficulty);
-                }}
-                disabled={!isSignedIn || busy}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300/40 bg-emerald-500/15 p-2.5 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/25 hover:brightness-110 disabled:opacity-50"
-              >
-                <IconRobot size={17} className="text-emerald-300" />
-                {busy ? "Starting…" : "Test vs Bot"}
-                <span className="rounded-full bg-emerald-400/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-300">
-                  Free
-                </span>
-              </button>
-            </div>
-
-            <div className="text-xs leading-relaxed text-white/55">
-              We pair you with another player of the{" "}
-              <b>exact same</b> stake. If no one is waiting, your stake
-              is escrowed in a private lobby with your chosen difficulty
-              until someone joins or you cancel.
-            </div>
-          </div>
-
-          {/* Skill mechanic explainer */}
-          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-emerald-300/25 bg-emerald-500/10 px-3 py-2.5 text-[11px] leading-relaxed text-emerald-100/85">
-            <IconShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-300" />
-            <p>
-              <span className="font-bold text-emerald-200">Skill duel.</span>{" "}
-              Every lane hides one bad tile — each lane you pick your{" "}
-              <b>odds</b> (Safe / Balanced / Risky paths), choose when to
-              risk another climb or bank your points, and track the{" "}
-              bad-tile pattern to call it for a win. Once you HOLD, your
-              opponent must climb past you or bust trying. Towers are{" "}
-              <b>provably fair</b>: both derive from one shared server
-              seed (hash shown before the match) + each player's own
-              client seed, revealed after.
+            <p className="mt-1 text-[9px] leading-tight text-white/40">
+              {DIFFICULTIES[difficulty]?.width} tiles per lane · full
+              climb ={" "}
+              {(
+                2400 *
+                (DIFFICULTY_POINT_MULT[difficulty] ?? 1)
+              ).toLocaleString()}{" "}
+              pts. Joiners inherit.
             </p>
           </div>
-
-          {error && (
-            <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-2 text-sm text-red-200">
-              <IconAlertTriangle className="h-4 w-4 text-red-300" />
-              <span>{error}</span>
-            </div>
-          )}
-        </motion.div>
-
-        <div className="mt-6 rounded-2xl border border-cyan-300/30 bg-[#0b224f]/85 p-5 shadow-[0_0_22px_rgba(0,229,255,0.16)]">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-lg font-bold uppercase tracking-wider text-cyan-200">
-              <IconTrophy className="h-4 w-4 text-cyan-200" />
-              Open Lobbies
-            </h2>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => router.push("/casino/lane-runner/history")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-300/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
-              >
-                <IconNotebook className="h-3.5 w-3.5 text-cyan-200" />
-                History
-              </button>
-              <button
-                onClick={fetchAvailable}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-300 px-3 py-1.5 text-xs font-semibold text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.45)] transition hover:bg-cyan-200"
-              >
-                <IconRefresh className="h-3.5 w-3.5 text-[#001933]" />
-                Refresh
-              </button>
-            </div>
-          </div>
-          {availableMatches.filter((m) => m.id !== myOpenMatchId).length === 0 ? (
-            <div className="flex items-center gap-2 text-sm text-white/60">
-              <FlagIcon className="h-4 w-4 text-white/40" />
-              <span>No open lobbies yet. Be the first to make one.</span>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {availableMatches
-                .filter((m) => m.id !== myOpenMatchId)
-                .map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between rounded-xl border border-cyan-300/20 bg-[#08142f]/80 p-3 transition hover:border-cyan-300/40"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold">
-                        Lobby #{m.id}
-                        <span className="ml-2 text-[10px] text-white/40">
-                          host #{m.player1Id?.slice(0, 6) ?? "?"}…
-                        </span>
-                      </p>
-                      <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/60">
-                        <span className="inline-flex items-center gap-1">
-                          <span>Stake:</span>
-                          <span className="inline-flex items-center gap-1 font-semibold text-yellow-300">
-                            {Number(m.stakeAmount).toLocaleString()}
-                            <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
-                          </span>
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <span>Difficulty:</span>
-                          <span className="font-semibold text-fuchsia-300">
-                            {DIFFICULTIES[m.difficulty]?.label || m.difficulty}
-                          </span>
-                        </span>
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        posthog?.capture("lane_rush_duel_join_clicked", {
-                          match_id: m.id,
-                          stake: m.stakeAmount,
-                          difficulty: m.difficulty,
-                        });
-                        joinSpecific(m.id);
-                      }}
-                      disabled={busy || joiningId === m.id}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-300 px-4 py-1.5 text-sm font-bold text-[#001933] transition hover:bg-cyan-200 disabled:bg-cyan-300/30 disabled:text-white/60"
-                    >
-                      {joiningId === m.id ? (
-                        <>
-                          <LoadingDotsIcon className="h-3.5 w-3.5 animate-pulse text-[#001933]" />
-                          <span>Joining…</span>
-                        </>
-                      ) : (
-                        "Join"
-                      )}
-                    </button>
-                  </div>
-                ))}
-            </div>
-          )}
         </div>
-        <Footer />
-      </div>
-    </div>
+      }
+      after={
+        /* Skill mechanic explainer */
+        <div className="mt-6 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs leading-relaxed text-amber-200/80">
+          <p className="mb-1 flex items-start gap-1.5 font-bold text-amber-300">
+            <IconShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-300" />
+            Skill duel.
+          </p>
+          <p>
+            Every lane hides one bad tile — each lane you pick your{" "}
+            <b>odds</b> (Safe / Balanced / Risky paths), choose when to
+            risk another climb or bank your points, and track the{" "}
+            bad-tile pattern to call it for a win. Once you HOLD, your
+            opponent must climb past you or bust trying. Towers are{" "}
+            <b>provably fair</b>: both derive from one shared server
+            seed (hash shown before the match) + each player's own
+            client seed, revealed after.
+          </p>
+        </div>
+      }
+    />
   );
 }

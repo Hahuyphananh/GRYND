@@ -141,18 +141,25 @@ export async function listOpenMatches({ limit = 30 } = {}) {
 // `difficulty` is REQUIRED at create time and IGNORED at join time —
 // the joiner consumes whatever difficulty the host picked.
 export async function createOrJoin({ userId, stakeAmount, difficulty, vsBot }) {
-  const validation = validateMatchParams({ stakeAmount, difficulty });
-  if (!validation.ok) {
-    return { error: validation.error, status: 400 };
-  }
-
   // Test vs Bot practice match — no escrow, no matchmaking. The bot
   // is joined immediately inside the same transaction, so the player
-  // goes straight to the ready banner.
+  // goes straight to the ready banner. Stake validation is SKIPPED
+  // here (stake is 0 by definition) — only the difficulty is checked,
+  // otherwise a zero stake trips `validateMatchParams` and the free
+  // practice button errors out with "Stake must be a number in [...]".
   if (vsBot) {
+    const diff = String(difficulty || "").toLowerCase();
+    if (!DIFFICULTIES[diff]) {
+      return { error: "Invalid difficulty", status: 400 };
+    }
     return await db.transaction(async (tx) => {
       return await createBotMatch(tx, userId, difficulty);
     });
+  }
+
+  const validation = validateMatchParams({ stakeAmount, difficulty });
+  if (!validation.ok) {
+    return { error: validation.error, status: 400 };
   }
 
   const lockKey = hashStakeToInt(stakeAmount);

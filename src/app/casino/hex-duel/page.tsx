@@ -15,6 +15,7 @@ import HexActionPanel, { type ActionType } from "../../../components/HexActionPa
 import HexActionLog from "../../../components/HexActionLog";
 import NavigationBar from "../../../components/navigation-bar";
 import ReportModal from "../../../components/ReportModal";
+import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import {
   IconDeviceGamepad2,
   IconGlobe,
@@ -28,6 +29,7 @@ import {
   IconBolt,
   IconMoodSad,
   IconNotebook,
+  IconBook,
   IconVolume,
   IconVolumeOff,
   IconFlag,
@@ -196,6 +198,11 @@ function WagerModal({
   const [wager, setWager] = useState(50);
   const [playForFun, setPlayForFun] = useState(false);
   const [queueMode, setQueueMode] = useState<"ai" | "multiplayer">("ai");
+  const [showRules, setShowRules] = useState(false);
+  const firstVisitRules = useFirstVisitRules("hex-duel");
+  useEffect(() => {
+    if (firstVisitRules) setShowRules(true);
+  }, [firstVisitRules]);
   const canAfford = wager > 0 && wager <= balance;
 
   return (
@@ -218,7 +225,51 @@ function WagerModal({
         <h2 className="text-center text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-fuchsia-400 mb-1">
           HEX DUEL
         </h2>
-        <p className="text-center text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-4">Place Your Wager</p>
+        <p className="text-center text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-3">Place Your Wager</p>
+
+        {/* How to Play — rules modal at the top of the lobby */}
+        <div className="mb-4 text-center">
+          <button
+            onClick={() => setShowRules(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 transition-all duration-300 hover:bg-amber-500/20 hover:scale-105 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
+          >
+            <IconBook size={15} /> How to Play
+          </button>
+        </div>
+        {showRules && (
+          <RulesModal
+            title="How to Play — Territory Conquest"
+            sections={[
+              {
+                heading: "Set up",
+                body: <>Start with 5 troops on your <span className="text-yellow-300">★ capital</span>.</>,
+              },
+              {
+                heading: "Attack",
+                body: (
+                  <>
+                    Select Attack (1 AP) to conquer adjacent enemy tiles —
+                    you need <b>1 more troop</b> than the defender to
+                    conquer.
+                  </>
+                ),
+              },
+              {
+                heading: "Displace",
+                body: <>Use Displace (1 AP) to move troops between your tiles.</>,
+              },
+              {
+                heading: "End turn",
+                body: <>Each end-turn: +1 troop on all tiles and +1 AP (max 3).</>,
+              },
+              {
+                heading: "Win condition",
+                body: <>Conquer the enemy&apos;s <span className="text-yellow-300">★ capital</span> to win!</>,
+              },
+            ]}
+            onClose={() => setShowRules(false)}
+          />
+        )}
 
         <div className="mb-4 grid grid-cols-2 gap-2">
           <button onClick={() => setQueueMode("ai")} className={`rounded-lg py-2 text-[11px] font-semibold transition ${queueMode === "ai" ? "border border-white/20 bg-white/[0.1] text-white" : "border border-white/15 bg-white/[0.02] text-slate-200 hover:bg-white/[0.06]"}`}>Play vs AI</button>

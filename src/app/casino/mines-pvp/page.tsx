@@ -20,14 +20,16 @@
 // chosen mine count so the joiner knows what they're signing up
 // for. Joiners can't override the mine count — that decision is
 // the host's alone.
+//
+// The page chrome (balance strip → stake picker + Play → escrow
+// note → Open Lobbies list) is the shared PvpLobby component in the
+// blackjack layout / farkle color scheme.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
-import { motion, AnimatePresence } from "framer-motion";
-import NavigationBar from "../../../components/navigation-bar";
-import Footer from "../../../components/Footer";
+import PvpLobbyPage, { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { useSocket } from "../../../context/SocketProvider";
 import {
   MINES_PVP_LOBBY_ROOM,
@@ -81,105 +83,6 @@ function MineIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function CoinIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <ellipse cx="12" cy="6" rx="8" ry="2.5" />
-      <path d="M4 6 V18 a8 2.5 0 0 0 16 0 V6" />
-      <ellipse cx="12" cy="18" rx="8" ry="2.5" />
-    </svg>
-  );
-}
-
-function TargetIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="9" />
-      <circle cx="12" cy="12" r="5" />
-      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function RefreshIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <path d="M21 12a9 9 0 0 0-15.5-6.3L3 8" />
-      <path d="M3 3v5h5" />
-      <path d="M3 12a9 9 0 0 0 15.5 6.3L21 16" />
-      <path d="M21 21v-5h-5" />
-    </svg>
-  );
-}
-
-function TrophyIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <path d="M7 4 H17 V10 a5 5 0 0 1 -10 0 Z" />
-      <path d="M7 5 H4 a2 2 0 0 0 -2 2 v2 a4 4 0 0 0 4 4" />
-      <path d="M17 5 H20 a2 2 0 0 1 2 2 v2 a4 4 0 0 1 -4 4" />
-      <line x1="12" y1="15" x2="12" y2="19" />
-      <rect x="8" y="19" width="8" height="2.5" rx="0.5" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function LoadingDotsIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      aria-hidden
-    >
-      <circle cx="6" cy="12" r="2" />
-      <circle cx="12" cy="12" r="2" />
-      <circle cx="18" cy="12" r="2" />
-    </svg>
-  );
-}
-
 function ShieldCheckIcon({ className = "" }: { className?: string }) {
   return (
     <svg
@@ -196,26 +99,6 @@ function ShieldCheckIcon({ className = "" }: { className?: string }) {
       {/* Shield with a check — the no-guess guarantee badge */}
       <path d="M12 2 L20 5 V11 a8 8 0 0 1 -8 8 a8 8 0 0 1 -8 -8 V5 Z" />
       <path d="M8.5 12 l2.5 2.5 l4.5 -4.5" />
-    </svg>
-  );
-}
-
-function AlertIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <path d="M12 3 L22 20 H2 Z" />
-      <line x1="12" y1="10" x2="12" y2="15" />
-      <circle cx="12" cy="17.5" r="0.8" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -475,307 +358,199 @@ export default function MinesPvpLobbyPage() {
           "3×3 never contains a mine, so the opening is never a trap.";
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
-      <NavigationBar currentPath="/casino" />
-
-      <div className="mx-auto mt-4 max-w-5xl sm:mt-8">
-        <motion.div
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-        >
-          <h1 className="flex items-center justify-center gap-3 text-center text-3xl sm:text-4xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-cyan-300 to-fuchsia-300 drop-shadow-[0_0_18px_rgba(0,229,255,0.55)]">
-            <MineIcon className="w-9 h-9 sm:w-10 sm:h-10 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,229,255,0.65)] flex-shrink-0" />
-            <span>Mines Duel Lobby</span>
-          </h1>
-        </motion.div>
-        <p className="text-center text-sm text-white/60 mt-2 mb-7 max-w-2xl mx-auto">
+    <PvpLobbyPage
+      title="Mines Duel Lobby"
+      subtitle={
+        <>
           You and your opponent share the <b>same 5×5 board</b>. The host
           picks the mine count; the server rolls the layout. Every
-          layout is generated for <b className="text-emerald-300">pure-deduction
-          play</b> — the center 3×3 is always mine-free, your first pick
-          can never hit a mine, and the board is solver-verified so the
-          center opening is fully solvable by deduction. Each player
-          gets <b>20 seconds</b> to click one tile — mine means you
-          lose, safe means you keep your stake in play. Both picks in
-          → winner takes 1.9× their stake, house takes 0.1×.
-        </p>
-
-        <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-[#0b224f]/70 backdrop-blur-xl border border-cyan-300/30 shadow-[0_0_30px_rgba(0,229,255,0.18)] rounded-2xl p-6"
-        >
-          <div className="text-center mb-5 text-sm">
-            <span className="uppercase tracking-widest text-[11px] text-white/55 mr-2">
-              Tokens
+          layout is generated for <b className="text-emerald-300">
+          pure-deduction play</b> — the center 3×3 is always mine-free,
+          your first pick can never hit a mine, and the board is
+          solver-verified so the center opening is fully solvable by
+          deduction. Each player gets <b>20 seconds</b> to click one tile
+          — mine means you lose, safe means you keep your stake in play.
+          Both picks in → winner takes 1.9× their stake, house takes 0.1×.
+        </>
+      }
+      icon={
+        <MineIcon className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />
+      }
+      rulesKey="mines-pvp"
+      rules={{
+        title: "How to Play",
+        sections: [
+          {
+            heading: "Same board, host picks mines",
+            body: (
+              <>
+                You and your opponent share the <b>same 5×5 board</b>.
+                The host picks the mine count; the server rolls the
+                layout.
+              </>
+            ),
+          },
+          {
+            heading: "No-guess boards",
+            body: (
+              <>
+                The center 3×3 is always mine-free, your first pick is
+                always safe, and layouts are solver-verified for
+                pure-deduction play.
+              </>
+            ),
+          },
+          {
+            heading: "Take turns clicking",
+            body: (
+              <>
+                Each player gets <b>20 seconds</b> to click one tile — a
+                mine means you lose, safe means your stake stays in play.
+                The game ends in zugzwang: whoever must pick when only
+                mines remain loses.
+              </>
+            ),
+          },
+          {
+            heading: "Payout",
+            body: (
+              <>
+                Both picks in → winner takes <b>1.9× their stake</b>,
+                house takes 0.1×.
+              </>
+            ),
+          },
+        ],
+      }}
+      balance={balance}
+      stake={stake}
+      onStakeChange={setStake}
+      stakeOptions={STAKE_PRESETS}
+      busy={busy}
+      onPlay={() => {
+        posthog?.capture("mines_pvp_lobby_create_clicked", {
+          stake,
+          mines: minesCount,
+        });
+        createOrJoin(stake, minesCount);
+      }}
+      canPlay={canCreate}
+      escrowNote={
+        <>
+          We pair you with another player of the <b>exact same</b> stake.
+          If no one is waiting, your stake is escrowed in a private lobby
+          with your chosen mine count until someone joins or you cancel.
+        </>
+      }
+      error={error}
+      lobbies={availableMatches}
+      lobbyEmptyText="No open lobbies yet. Be the first to make one."
+      lobbyTitle={(m) => (
+        <>
+          Lobby #{m.id}
+          <span className="ml-2 text-[10px] text-white/40">
+            host #{m.player1Id?.slice(0, 6) ?? "?"}…
+          </span>
+        </>
+      )}
+      lobbyMeta={(m) => (
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>
+            Stake:{" "}
+            <span className="inline-flex items-center gap-1 font-semibold text-yellow-300">
+              {Number(m.stakeAmount).toLocaleString()}
+              <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
             </span>
-            <span className="font-bold text-yellow-300 text-lg">
-              {balance === null
-                ? "…"
-                : balance.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
+          </span>
+          <span>
+            Mines:{" "}
+            <span className="inline-flex items-center gap-1 font-semibold text-cyan-300">
+              {m.minesCount}
+              <MineIcon className="h-3.5 w-3.5 text-cyan-300" />
             </span>
-          </div>
-
-          {/* Your own open match notification */}
-          <AnimatePresence>
-            {myOpenMatchId !== null && (
-              <motion.div
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-3 py-2 text-sm"
+          </span>
+        </span>
+      )}
+      onJoin={(l) => {
+        posthog?.capture("mines_pvp_lobby_join_clicked", {
+          match_id: l.id,
+          stake: l.stakeAmount,
+          mines: l.minesCount,
+        });
+        joinSpecific(l.id);
+      }}
+      joinBusyId={joiningId}
+      onRefresh={fetchAvailable}
+      myOpenId={myOpenMatchId}
+      onResume={(id) => router.push(`/casino/mines-pvp/${id}`)}
+      onCancel={(id) => cancelMyMatch(id)}
+      cancelling={cancellingId === myOpenMatchId}
+      children={
+        <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+          {/* Mine-count picker — host-only at create time */}
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
+              Mines{" "}
+              <span className="font-normal normal-case tracking-normal text-cyan-300/70">
+                (host)
+              </span>
+              <span
+                title="Every board is generated for pure-deduction play: the center 3×3 is mine-free, your first pick is always safe, and the layout is solver-verified."
+                className="ml-1.5 inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold normal-case tracking-wider text-emerald-300"
               >
-                <span className="flex items-center gap-2 text-cyan-200">
-                  <LoadingDotsIcon className="w-4 h-4 text-cyan-200 animate-pulse" />
-                  Your open lobby #{myOpenMatchId} is waiting for an
-                  opponent…
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() =>
-                      router.push(`/casino/mines-pvp/${myOpenMatchId}`)
-                    }
-                    className="px-3 py-1.5 rounded-lg bg-cyan-400 text-[#001933] hover:bg-cyan-300 text-xs font-bold transition"
-                  >
-                    Resume
-                  </button>
-                  <button
-                    onClick={() => cancelMyMatch(myOpenMatchId)}
-                    disabled={cancellingId === myOpenMatchId}
-                    className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-200 hover:bg-red-500/30 text-xs font-bold border border-red-500/30 transition disabled:opacity-50"
-                  >
-                    {cancellingId === myOpenMatchId
-                      ? "Cancelling…"
-                      : "Cancel"}
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="grid md:grid-cols-[1.1fr_auto_1fr] gap-3 items-end">
-            {/* Wager (stake) + Mine-count pickers side-by-side.
-                Mirrors the roulette lobby's single-picker footprint
-                so the overall card height matches the roulette lobby
-                — the user complained the stacked layout left too much
-                unused vertical space. On mobile (< sm) the two pickers
-                stack vertically; from sm upward they sit side-by-side. */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {/* Wager (stake) picker — host & joiner both pay this */}
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-white/60 font-semibold">
-                  Wager
-                </label>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {STAKE_PRESETS.map((v) => (
-                    <button
-                      key={v}
-                      onClick={() => setStake(v)}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition ${
-                        stake === v
-                          ? "bg-cyan-300 text-black border-cyan-300 shadow-[0_0_8px_rgba(0,229,255,0.7)]"
-                          : "bg-[#08142f] text-cyan-200/80 border-cyan-300/30 hover:bg-cyan-300/15"
-                      }`}
-                    >
-                      {v.toLocaleString()}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="number"
-                  min={1}
-                  max={balance ?? undefined}
-                  value={stake}
-                  onChange={(e) =>
-                    setStake(Math.max(1, Number(e.target.value) || 0))
-                  }
-                  className="mt-1.5 w-full rounded-md bg-[#020617] border border-cyan-300/30 focus:border-cyan-300 outline-none px-2 py-1.5 text-white text-xs"
-                />
-              </div>
-              {/* Mine-count picker — host-only at create time */}
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-white/60 font-semibold">
-                  Mines <span className="text-fuchsia-300/70 font-normal normal-case tracking-normal">(host)</span>
-                  <span
-                    title="Every board is generated for pure-deduction play: the center 3×3 is mine-free, your first pick is always safe, and the layout is solver-verified."
-                    className="ml-1.5 inline-flex items-center gap-1 rounded-full border border-emerald-300/40 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold normal-case tracking-wider text-emerald-300"
-                  >
-                    <ShieldCheckIcon className="w-2.5 h-2.5" />
-                    No-guess
-                  </span>
-                </label>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {MINES_PRESETS.map((v) => (
-                    <button
-                      key={v}
-                      onClick={() => setMinesCount(v)}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition ${
-                        minesCount === v
-                          ? "bg-fuchsia-400 text-black border-fuchsia-400 shadow-[0_0_8px_rgba(217,70,239,0.7)]"
-                          : "bg-[#08142f] text-fuchsia-200/80 border-fuchsia-300/30 hover:bg-fuchsia-300/15"
-                      }`}
-                    >
-                      {v}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="number"
-                  min={MIN_MINES}
-                  max={MAX_MINES}
-                  value={minesCount}
-                  onChange={(e) =>
-                    setMinesCount(
-                      Math.max(
-                        MIN_MINES,
-                        Math.min(MAX_MINES, Number(e.target.value) || 0),
-                      ),
-                    )
-                  }
-                  className="mt-1.5 w-full rounded-md bg-[#020617] border border-fuchsia-300/30 focus:border-fuchsia-300 outline-none px-2 py-1.5 text-white text-xs"
-                />
-                <p className="text-[9px] text-white/40 mt-1 leading-tight">
-                  Range {MIN_MINES}–{MAX_MINES}. Joiners inherit.
-                </p>
-              </div>
+                <ShieldCheckIcon className="h-2.5 w-2.5" />
+                No-guess
+              </span>
+            </label>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {MINES_PRESETS.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setMinesCount(v)}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${
+                    minesCount === v
+                      ? "border-cyan-400 bg-cyan-500/20 text-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.5)]"
+                      : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-cyan-600/50 hover:text-cyan-200"
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
             </div>
-
-            <button
-              onClick={() => {
-                posthog?.capture("mines_pvp_lobby_create_clicked", {
-                  stake,
-                  mines: minesCount,
-                });
-                createOrJoin(stake, minesCount);
-              }}
-              disabled={!canCreate}
-              className="p-3 rounded-xl text-base font-extrabold text-black bg-gradient-to-r from-cyan-300 to-fuchsia-400 hover:scale-105 active:scale-95 transition shadow-[0_0_22px_rgba(0,229,255,0.55)] disabled:opacity-50 disabled:hover:scale-100 inline-flex items-center gap-2"
-            >
-              {busy ? (
-                <>
-                  <LoadingDotsIcon className="w-4 h-4 text-black animate-pulse" />
-                  <span>Finding match…</span>
-                </>
-              ) : (
-                <>
-                  <span>{stake.toLocaleString()}</span>
-                  <CoinIcon className="w-5 h-5 text-cyan-900" />
-                  <span>· Play</span>
-                </>
-              )}
-            </button>
-
-            <div className="text-xs text-white/55 leading-relaxed">
-              We pair you with another player of the <b>exact same</b>{" "}
-              stake. If no one is waiting, your stake is escrowed in a
-              private lobby with your chosen mine count until someone
-              joins or you cancel.
-            </div>
-          </div>
-
-          {/* No-guess guarantee — the always-on rules (safe center +
-              first-pick mercy) plus the per-mine-count solvability
-              story, kept honest for high-mine-count games. */}
-          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-emerald-300/25 bg-emerald-500/10 px-3 py-2.5 text-[11px] leading-relaxed text-emerald-100/85">
-            <ShieldCheckIcon className="w-4 h-4 text-emerald-300 mt-0.5 flex-shrink-0" />
-            <p>
-              <span className="font-bold text-emerald-200">No-guess boards.</span>{" "}
-              {noGuessDetail}
+            <input
+              type="number"
+              min={MIN_MINES}
+              max={MAX_MINES}
+              value={minesCount}
+              onChange={(e) =>
+                setMinesCount(
+                  Math.max(
+                    MIN_MINES,
+                    Math.min(MAX_MINES, Number(e.target.value) || 0),
+                  ),
+                )
+              }
+              className="mt-1.5 w-full rounded-md border border-cyan-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
+            />
+            <p className="mt-1 text-[9px] leading-tight text-white/40">
+              Range {MIN_MINES}–{MAX_MINES}. Joiners inherit.
             </p>
           </div>
-
-          {error && (
-            <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-2 text-sm text-red-200">
-              <AlertIcon className="w-4 h-4 text-red-300" />
-              <span>{error}</span>
-            </div>
-          )}
-        </motion.div>
-
-        <div className="mt-6 bg-[#0b224f]/85 border border-cyan-300/30 rounded-2xl p-5 shadow-[0_0_22px_rgba(0,229,255,0.16)]">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-cyan-200 uppercase tracking-wider flex items-center gap-2">
-              <TargetIcon className="w-4 h-4 text-cyan-200" />
-              Open Lobbies
-            </h2>
-            <button
-              onClick={fetchAvailable}
-              className="px-3 py-1.5 rounded-lg bg-cyan-300 text-[#001933] hover:bg-cyan-200 text-xs font-semibold shadow-[0_0_10px_rgba(0,229,255,0.45)] transition inline-flex items-center gap-1.5"
-            >
-              <RefreshIcon className="w-3.5 h-3.5 text-[#001933]" />
-              Refresh
-            </button>
-          </div>
-          {availableMatches.filter((m) => m.id !== myOpenMatchId).length === 0 ? (
-            <div className="text-sm text-white/60 flex items-center gap-2">
-              <TrophyIcon className="w-4 h-4 text-white/40" />
-              <span>No open lobbies yet. Be the first to make one.</span>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {availableMatches
-                .filter((m) => m.id !== myOpenMatchId)
-                .map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between rounded-xl bg-[#08142f]/80 p-3 border border-cyan-300/20 hover:border-cyan-300/40 transition"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold">
-                        Lobby #{m.id}
-                        <span className="ml-2 text-[10px] text-white/40">
-                          host #{m.player1Id?.slice(0, 6) ?? "?"}…
-                        </span>
-                      </p>
-                      <p className="text-xs text-white/60 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span className="inline-flex items-center gap-1">
-                          <span>Stake:</span>
-                          <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
-                            {Number(m.stakeAmount).toLocaleString()}
-                            <CoinIcon className="w-3.5 h-3.5 text-yellow-300" />
-                          </span>
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <span>Mines:</span>
-                          <span className="text-fuchsia-300 font-semibold inline-flex items-center gap-1">
-                            {m.minesCount}
-                            <MineIcon className="w-3.5 h-3.5 text-fuchsia-300" />
-                          </span>
-                        </span>
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        posthog?.capture("mines_pvp_lobby_join_clicked", {
-                          match_id: m.id,
-                          stake: m.stakeAmount,
-                          mines: m.minesCount,
-                        });
-                        joinSpecific(m.id);
-                      }}
-                      disabled={busy || joiningId === m.id}
-                      className="px-4 py-1.5 rounded-lg bg-cyan-300 text-[#001933] hover:bg-cyan-200 text-sm font-bold disabled:bg-cyan-300/30 disabled:text-white/60 transition inline-flex items-center gap-1.5"
-                    >
-                      {joiningId === m.id ? (
-                        <>
-                          <LoadingDotsIcon className="w-3.5 h-3.5 text-[#001933] animate-pulse" />
-                          <span>Joining…</span>
-                        </>
-                      ) : (
-                        "Join"
-                      )}
-                    </button>
-                  </div>
-                ))}
-            </div>
-          )}
         </div>
-        <Footer />
-      </div>
-    </div>
+      }
+      after={
+        /* No-guess guarantee — the always-on rules (safe center +
+            first-pick mercy) plus the per-mine-count solvability
+            story, kept honest for high-mine-count games. */
+        <div className="mt-6 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs leading-relaxed text-amber-200/80">
+          <p className="mb-1 flex items-center gap-1.5 font-bold text-amber-300">
+            <ShieldCheckIcon className="h-4 w-4 text-emerald-300" />
+            No-guess boards.
+          </p>
+          <p>{noGuessDetail}</p>
+        </div>
+      }
+    />
   );
 }
