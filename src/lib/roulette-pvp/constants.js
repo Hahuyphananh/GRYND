@@ -16,7 +16,8 @@
 import {
   ROULETTE_NUMBERS,
   RED_NUMBERS,
-} from "../rouletteConfig";
+  BLACK_NUMBERS,
+} from "../rouletteConfig.js";
 
 // ── Match "points" balance (persistent across rounds) ───────────────────
 // Both players start the match with exactly STARTING_POINTS credits.
@@ -41,6 +42,89 @@ export const HOUSE_FEE_PCT = 0.025;
 // close to the player's balance.
 export const MAX_SINGLE_BET = 10000;
 export const MAX_TOTAL_BET = 1000000;
+
+// ── Skill layer: elimination market + opponent call ────────────────────
+// Paying players can remove a single number from the shared wheel for
+// the current round (visible to both players immediately). The spin is
+// then drawn from the LIVE pool — removed numbers can never come up,
+// so every removal raises the hit probability of everything that
+// remains (payouts stay at standard roulette odds). The cost comes out
+// of the player's persistent match-point balance, so it competes
+// directly with the wagering budget.
+export const ELIMINATION_COST = 10;
+// Hard cap on how many numbers a player may remove per round (points
+// budget usually binds first; this keeps the board from being gutted).
+export const MAX_ELIMINATIONS_PER_ROUND = 6;
+// The wheel never shrinks below this many live numbers (server-side
+// guard, applied AFTER a removal would land).
+export const MIN_LIVE_NUMBERS = 5;
+// Points transferred from the opponent when your "call their bet"
+// guess is correct.
+export const CALL_BONUS = 15;
+
+// Server-driven elimination rounds: each round past round 1, a revealed
+// set of numbers is dead before betting opens. Round 2 kills 13–24;
+// round 3 kills 13–36 (pool 0–12). Sudden death returns to the full
+// wheel so the do-or-die rounds stay clean.
+const DOZEN_1_12 = Array.from({ length: 12 }, (_, i) => i + 1);
+const DOZEN_13_24 = Array.from({ length: 12 }, (_, i) => i + 13);
+const DOZEN_25_36 = Array.from({ length: 12 }, (_, i) => i + 25);
+const EVEN_NUMBERS = Array.from({ length: 18 }, (_, i) => (i + 1) * 2);
+const ODD_NUMBERS = Array.from({ length: 18 }, (_, i) => (i + 1) * 2 - 1);
+const HALF_1_18 = Array.from({ length: 18 }, (_, i) => i + 1);
+const HALF_19_36 = Array.from({ length: 18 }, (_, i) => i + 19);
+
+export function serverEliminatedNumbers(roundNumber, suddenDeath) {
+  if (suddenDeath) return [];
+  if (roundNumber >= 3) return [...DOZEN_13_24, ...DOZEN_25_36];
+  if (roundNumber === 2) return [...DOZEN_13_24];
+  return [];
+}
+
+// Map a bet key to its member wheel numbers (null = not a valid key).
+export function betKeyNumbers(key) {
+  const n = Number(key);
+  if (Number.isInteger(n) && n >= 0 && n <= 36) return [n];
+  switch (key) {
+    case "red":
+      return RED_NUMBERS;
+    case "black":
+      return BLACK_NUMBERS;
+    case "green":
+      return [0];
+    case "even":
+      return EVEN_NUMBERS;
+    case "odd":
+      return ODD_NUMBERS;
+    case "1-12":
+      return DOZEN_1_12;
+    case "13-24":
+      return DOZEN_13_24;
+    case "25-36":
+      return DOZEN_25_36;
+    case "1-18":
+      return HALF_1_18;
+    case "19-36":
+      return HALF_19_36;
+    default:
+      return null;
+  }
+}
+
+// A bet key is dead when every member number has been eliminated (e.g.
+// the "13-24" dozen once 13–24 are off the wheel). `eliminated` is a
+// Set of STRING number keys (jsonb object keys are strings).
+export function isBetKeyLive(key, eliminated) {
+  const nums = betKeyNumbers(key);
+  if (!nums || nums.length === 0) return false;
+  return nums.some((n) => !eliminated.has(String(n)));
+}
+
+export function isValidCallKey(key, eliminated) {
+  if (key === null || key === undefined || key === "") return false;
+  const k = String(key);
+  return betKeyNumbers(k) !== null && isBetKeyLive(k, eliminated);
+}
 
 // ── Timing ─────────────────────────────────────────────────────────────
 // Duration (in seconds) of each round's betting window. Stored on the
@@ -133,14 +217,64 @@ export function calculatePayout(bets, spinResult) {
 }
 
 // ── Spin result generation (server-authoritative) ─────────────────────
-export function generateSpin() {
-  // Spin-result index is the position of the winning number in
-  // ROULETTE_NUMBERS. The frontend already knows the wheel layout, so
-  // returning both the index AND the number lets the client animate to
-  // the right segment without re-deriving the mapping.
-  const spinResultIndex = Math.floor(Math.random() * ROULETTE_NUMBERS.length);
-  const spinResult = ROULETTE_NUMBERS[spinResultIndex];
+// `pool` is the list of live numbers the spin is drawn from. The
+// returned index is the position of the winning number in the FULL
+// wheel layout (ROULETTE_NUMBERS) so the frontend can animate to the
+// right segment without re-deriving the mapping.
+export function generateSpinFromPool(pool) {
+  const live = pool && pool.length > 0 ? pool : ROULETTE_NUMBERS;
+  const spinResult = live[Math.floor(Math.random() * live.length)];
+  const spinResultIndex = ROULETTE_NUMBERS.indexOf(spinResult);
   return { spinResultIndex, spinResult };
+}
+
+export function generateSpin() {
+  return generateSpinFromPool(ROULETTE_NUMBERS);
+}
+
+// The bet key(s) carrying the largest single amount (ties all count).
+// Empty/zero bets → empty array.
+export function biggestWagerKeys(bets) {
+  if (!bets || typeof bets !== "object") return [];
+  let best = 0;
+  const keys = [];
+  for (const [k, v] of Object.entries(bets)) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) {
+      if (n > best) {
+        best = n;
+        keys.length = 0;
+        keys.push(k);
+      } else if (n === best) {
+        keys.push(k);
+      }
+    }
+  }
+  return keys;
+}
+
+// Score each player's "call their bet" guess against the opponent's
+// actual biggest-wager keys. A correct call yields CALL_BONUS, but the
+// transfer is only applied if the payer has the points (resolveRound
+// floors it against the payer's balance).
+export function resolveCalls(calls, player1Bets, player2Bets) {
+  const out = {
+    player1: { correct: false, transfer: 0 },
+    player2: { correct: false, transfer: 0 },
+  };
+  const p1 = calls && calls.player1 ? String(calls.player1) : null;
+  const p2 = calls && calls.player2 ? String(calls.player2) : null;
+  const p2Keys = biggestWagerKeys(player2Bets);
+  const p1Keys = biggestWagerKeys(player1Bets);
+  if (p1 && p2Keys.includes(p1)) {
+    out.player1.correct = true;
+    out.player1.transfer = CALL_BONUS;
+  }
+  if (p2 && p1Keys.includes(p2)) {
+    out.player2.correct = true;
+    out.player2.transfer = CALL_BONUS;
+  }
+  return out;
 }
 
 // ── Per-round resolution helpers ──────────────────────────────────────

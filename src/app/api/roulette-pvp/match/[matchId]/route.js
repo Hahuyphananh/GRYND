@@ -14,8 +14,9 @@ import {
   fetchMatchRounds,
 } from "../../../../../lib/roulette-pvp/serverStore";
 
-function normaliseMatch(match) {
+function normaliseMatch(match, viewerId) {
   if (!match) return null;
+  const isPlayer1 = viewerId && match.player1Id === viewerId;
   return {
     id: match.id,
     player1Id: match.player1Id,
@@ -54,6 +55,15 @@ function normaliseMatch(match) {
     createdAt: match.createdAt,
     player1Bets: match.player1Bets || null,
     player2Bets: match.player2Bets || null,
+    // ── Skill layer ────────────────────────────────────────────────
+    serverEliminated: Array.isArray(match.serverEliminated)
+      ? match.serverEliminated
+      : [],
+    eliminations: match.eliminations || {},
+    // Per-viewer call info: only your own call is revealed live (the
+    // opponent's is a private guess until the round resolves).
+    myCall: isPlayer1 ? match.calls?.player1 || null : match.calls?.player2 || null,
+    opponentCallMade: Boolean(isPlayer1 ? match.calls?.player2 : match.calls?.player1),
   };
 }
 
@@ -95,7 +105,7 @@ export async function GET(req, { params }) {
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatch(match),
+        match: normaliseMatch(match, userId),
         rounds: rounds.map((r) => ({
           id: r.id,
           roundNumber: r.roundNumber,
@@ -111,6 +121,12 @@ export async function GET(req, { params }) {
           player1Net: Number(r.player1Net),
           player2Net: Number(r.player2Net),
           roundWinner: r.roundWinner, // 'player1' | 'player2' | null (draw)
+          serverEliminated: Array.isArray(r.serverEliminated)
+            ? r.serverEliminated
+            : [],
+          eliminations: r.eliminations || {},
+          calls: r.calls || {},
+          callResults: r.callResults || {},
           createdAt: r.createdAt,
         })),
       },

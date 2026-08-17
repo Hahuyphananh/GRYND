@@ -1519,6 +1519,19 @@ export const roulettePvpMatches = pgTable(
     // history.
     player1Bets: jsonb("player1_bets"),
     player2Bets: jsonb("player2_bets"),
+    // ── Skill layer (elimination market + opponent call) ──────────
+    // Numbers the server killed for the CURRENT round before betting
+    // opened (round 2: 13–24, round 3: 13–36; [] for round 1 and
+    // sudden death). Cleared/re-set each round transition.
+    serverEliminated: jsonb("server_eliminated"),
+    // Player-bought removals for the CURRENT round: { "17": "player1" }
+    // (number key → remover side). Shared and visible to both players
+    // immediately; cleared at round end.
+    eliminations: jsonb("eliminations"),
+    // Current round's "call their bet" guesses: { player1: "red",
+    // player2: null }. Each player's call is stored when they lock in
+    // their bets; resolved (and cleared) when the round resolves.
+    calls: jsonb("calls"),
     // Per-round transient state (cleared between rounds). bet_deadline
     // enforces a server-side timer so a disconnected player can be
     // auto-treated as having submitted empty bets.
@@ -1645,6 +1658,11 @@ export const roulettePvpRounds = pgTable(
     // Round winner — null when the round ended in a draw (identical
     // net result for both players).
     roundWinner: varchar("round_winner", { length: 10 }), // 'player1' | 'player2' | null
+    // ── Skill-layer snapshots (what this round looked like) ────────
+    serverEliminated: jsonb("server_eliminated"),
+    eliminations: jsonb("eliminations"),
+    calls: jsonb("calls"),
+    callResults: jsonb("call_results"), // { player1: {correct, transfer}, ... }
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
