@@ -178,15 +178,31 @@ export function useFirstVisitRules(rulesKey) {
 
   useEffect(() => {
     if (!rulesKey) return;
+    let cancelled = false;
+    const key = `casino-rules-seen:${rulesKey}`;
     try {
-      const key = `casino-rules-seen:${rulesKey}`;
-      if (!localStorage.getItem(key)) {
-        localStorage.setItem(key, "1");
-        setIsFirstVisit(true);
-      }
+      if (localStorage.getItem(key)) return; // already seen — never auto-open
     } catch {
       // localStorage unavailable (private mode) — skip auto-open
+      return;
     }
+    // Defer the auto-open until the page's route transition has settled
+    // (client-side navs briefly remount the page and animate a 250ms
+    // fade). Mounting the rules modal mid-transition makes framer-motion
+    // treat the whole page as exiting, leaving it stuck at opacity 0 over
+    // the page background. Only mark the game as "seen" once the modal
+    // actually opens, so a remount can't consume the first-visit flag.
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      try {
+        localStorage.setItem(key, "1");
+      } catch {}
+      setIsFirstVisit(true);
+    }, 750);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [rulesKey]);
 
   return isFirstVisit;
