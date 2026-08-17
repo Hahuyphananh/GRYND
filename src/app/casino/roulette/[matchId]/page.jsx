@@ -51,6 +51,10 @@ import {
   MATCH_STATUS,
   STARTING_POINTS,
   sumBetAmounts,
+  ELIMINATION_COST,
+  MAX_ELIMINATIONS_PER_ROUND,
+  CALL_BONUS,
+  isBetKeyLive,
 } from "../../../../lib/roulette-pvp/constants";
 import {
   ROULETTE_PVP_LOBBY_ROOM,
@@ -106,6 +110,21 @@ const BETTABLE = new Set([
   MATCH_STATUS.ROUND_3,
   MATCH_STATUS.SUDDEN_DEATH,
 ]);
+
+// Named bet keys offered by the "call their bet" picker (single numbers
+// are added separately, live ones only).
+const CALL_NAMED_KEYS = [
+  "red",
+  "black",
+  "green",
+  "even",
+  "odd",
+  "1-12",
+  "13-24",
+  "25-36",
+  "1-18",
+  "19-36",
+];
 
 // ─── Canvas constants (preserved verbatim from solo roulette) ──────────
 const CANVAS_SIZE = 420;
@@ -293,6 +312,14 @@ export default function RoulettePvpGamePage({ params }) {
   const [showRules, setShowRules] = useState(false);
   const [winningNumber, setWinningNumber] = useState(null);
   const [newChipKeys, setNewChipKeys] = useState([]);
+  // ── Skill layer ────────────────────────────────────────────────
+  // Elimination market: toggle that turns number taps into 10-pt
+  // removals instead of bets.
+  const [eliminateMode, setEliminateMode] = useState(false);
+  const [eliminating, setEliminating] = useState(false);
+  // "Call their bet": optional guess at the opponent's biggest wager,
+  // submitted with the lock-in. Restored from the server on reload.
+  const [myCall, setMyCall] = useState(null);
 
   // ── PvP overlays (replaces solo `stats` / `autoBet` / hot-numbers strip) ──
   const [match, setMatch] = useState(null);
@@ -884,6 +911,9 @@ export default function RoulettePvpGamePage({ params }) {
     if (spinId === lastSeenSpinIdRef.current) return;
     lastSeenSpinIdRef.current = spinId;
     setBets({});
+    // New round → clear last round's call and exit eliminate mode.
+    setMyCall(null);
+    setEliminateMode(false);
   }, [spinId]);
 
   // ── Bet placement (PvP-aware: only allowed when match is bettable
@@ -913,6 +943,78 @@ export default function RoulettePvpGamePage({ params }) {
   const oppMatchPoints = Number(
     isPlayer1 ? match?.playerTwoPoints : match?.playerOnePoints,
   );
+
+  // ── Skill layer: live pool, elimination budget, call options ──
+  const mySide = isPlayer1 ? "player1" : "player2";
+  const serverEliminated = match?.serverEliminated || [];
+  const eliminations = match?.eliminations || {};
+  // Dead number keys (strings): server eliminations + player removals.
+  const eliminatedSet = useMemo(() => {
+    const s = new Set(serverEliminated.map(String));
+    for (const k of Object.keys(eliminations)) s.add(k);
+    return s;
+  }, [serverEliminated, eliminations]);
+  const eliminatedKey = useMemo(
+    () => [...eliminatedSet].sort().join(","),
+    [eliminatedSet],
+  );
+  const myRemovalsUsed = Object.values(eliminations).filter(
+    (v) => v === mySide,
+  ).length;
+  const eliminationsLeft = Math.max(
+    0,
+    Math.min(
+      MAX_ELIMINATIONS_PER_ROUND - myRemovalsUsed,
+      Math.floor(myMatchPoints / ELIMINATION_COST),
+    ),
+  );
+  const canEliminate =
+    !myBetsAreLocked &&
+    BETTABLE.has(match?.status) &&
+    myRemovalsUsed < MAX_ELIMINATIONS_PER_ROUND &&
+    Number.isFinite(myMatchPoints) &&
+    myMatchPoints >= ELIMINATION_COST;
+  // Numbers still on the wheel, 0–36 order, for the call picker.
+  const liveCallNumbers = Array.from({ length: 37 }, (_, i) => i).filter(
+    (n) => !eliminatedSet.has(String(n)),
+  );
+  const isNumberEliminated = (num) => eliminatedSet.has(String(num));
+
+  // ── Skill layer effects ────────────────────────────────────────
+  // Restore my submitted call on reload/poll (server returns it
+  // per-viewer). Only truthy server values are applied — a null from
+  // the server (call not submitted yet) must NOT wipe the selection
+  // the player is still making.
+  useEffect(() => {
+    if (match?.myCall) setMyCall(match.myCall);
+  }, [match?.myCall]);
+
+  // When a number (or whole group) goes dead mid-round — the opponent
+  // paid to eliminate it — drop any staged bet that would now be
+  // invalid, and tell the player why.
+  useEffect(() => {
+    if (myBetsAreLocked) return;
+    const prev = betsRef.current;
+    if (!prev || Object.keys(prev).length === 0) return;
+    let changed = false;
+    const next = {};
+    for (const [k, v] of Object.entries(prev)) {
+      if (!(Number(v) > 0)) continue;
+      const isSingle =
+        /^\d+$/.test(k) && Number(k) >= 0 && Number(k) <= 36;
+      if (isSingle ? eliminatedSet.has(k) : !isBetKeyLive(k, eliminatedSet)) {
+        changed = true;
+        continue;
+      }
+      next[k] = v;
+    }
+    if (changed) {
+      setBets(next);
+      setError(
+        "A number you bet on was eliminated from the wheel — removed that bet.",
+      );
+    }
+  }, [eliminatedKey, myBetsAreLocked]);
 
   // ── Spin-animation display masking ───────────────────────────────
   // The server is authoritative. `submitBets` runs `resolveRound`
@@ -1110,6 +1212,39 @@ export default function RoulettePvpGamePage({ params }) {
     );
   };
 
+  // ── Skill layer: pay ELIMINATION_COST points to remove a number ──
+  const handleEliminate = async (num) => {
+    if (!canEliminate || eliminating) return;
+    if (eliminatedSet.has(String(num))) return;
+    setEliminating(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/roulette-pvp/match/${matchId}/eliminate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ number: num }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setError(data?.error || "Unable to eliminate that number");
+        return;
+      }
+      socket?.emit("room_event", {
+        roomId: roulettePvpMatchRoom(matchId),
+        event: ROULETTE_PVP_MATCH_UPDATED,
+      });
+      await fetchStatus();
+    } catch {
+      setError("Network error while eliminating");
+    } finally {
+      setEliminating(false);
+    }
+  };
+
   const resetBets = () => {
     if (myBetsAreLocked) return;
     setBets({});
@@ -1140,7 +1275,7 @@ export default function RoulettePvpGamePage({ params }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ bets: currentBets }),
+          body: JSON.stringify({ bets: currentBets, call: myCall || undefined }),
         },
       );
       const data = await res.json();
@@ -1219,23 +1354,46 @@ export default function RoulettePvpGamePage({ params }) {
           {/* Zero row */}
           <div className="flex justify-center mb-1">
             <button
-              onClick={() => placeBet(0)}
-              disabled={myBetsAreLocked}
+              onClick={() =>
+                eliminateMode && canEliminate && !isNumberEliminated(0)
+                  ? handleEliminate(0)
+                  : placeBet(0)
+              }
+              disabled={
+                myBetsAreLocked ||
+                isNumberEliminated(0) ||
+                (eliminateMode && !canEliminate)
+              }
               className={`relative w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-md border border-[#FFFF33]/30 text-sm font-bold transition-all duration-150
-                bg-[#0d5e2e] text-white shadow-[0_0_12px_rgba(13,94,46,0.5)]
+                ${
+                  isNumberEliminated(0)
+                    ? "bg-[#0b0f1e] border-red-500/40 text-red-400/50 cursor-not-allowed"
+                    : eliminateMode
+                      ? "bg-[#7f1d1d] border-red-500/70 text-red-100 hover:bg-red-700 hover:scale-105 shadow-[0_0_12px_rgba(255,0,0,0.4)]"
+                      : "bg-[#0d5e2e] text-white shadow-[0_0_12px_rgba(13,94,46,0.5)]"
+                }
                 ${
                   myBetsAreLocked
                     ? "opacity-70 cursor-not-allowed"
-                    : "hover:scale-105 hover:brightness-110 active:scale-95"
+                    : !isNumberEliminated(0) && !eliminateMode
+                      ? "hover:scale-105 hover:brightness-110 active:scale-95"
+                      : ""
                 }
                 ${winningNumber === 0 ? "ring-3 ring-[#FFFF33] animate-pulse shadow-[0_0_25px_rgba(255,255,51,0.8)]" : ""}
               `}
             >
-              0
-              {displayBets[0] && (
+              {isNumberEliminated(0) ? (
+                <span className="text-red-500 font-black">✕</span>
+              ) : (
+                "0"
+              )}
+              {!isNumberEliminated(0) && displayBets[0] && (
                 <span className={`absolute -top-2 -right-2 bg-[#FFFF33]/90 text-black text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded-full shadow-[0_0_8px_rgba(255,255,51,0.5)] ${newChipKeys.some((k) => k.startsWith("0-")) ? "animate-bet-chip" : ""}`}>
                   {displayBets[0]}
                 </span>
+              )}
+              {isNumberEliminated(0) && (
+                <span className="absolute -top-1.5 -right-1.5 text-[9px] font-black text-red-500">✕</span>
               )}
             </button>
           </div>
@@ -1245,31 +1403,47 @@ export default function RoulettePvpGamePage({ params }) {
               {row.map((num) => {
                 const red = isRedNum(num);
                 const isWinner = winningNumber === num;
+                const dead = isNumberEliminated(num);
 
                 return (
                   <button
                     key={num}
-                    onClick={() => placeBet(num)}
-                    disabled={myBetsAreLocked}
+                    onClick={() =>
+                      eliminateMode && canEliminate && !dead
+                        ? handleEliminate(num)
+                        : placeBet(num)
+                    }
+                    disabled={
+                      myBetsAreLocked || dead || (eliminateMode && !canEliminate)
+                    }
                     className={`relative w-full aspect-square flex items-center justify-center rounded-md border text-[11px] sm:text-sm font-medium transition-all duration-150
                       ${
-                        red
-                          ? "bg-[#c0392b] border-red-400/40 text-white shadow-[0_0_10px_rgba(192,57,43,0.4)]"
-                          : "bg-[#1a1a2e] border-[#FFFF33]/30 text-[#FFFF33] shadow-[0_0_8px_rgba(255,255,51,0.15)]"
+                        dead
+                          ? "bg-[#0b0f1e] border-red-500/40 text-red-400/50 cursor-not-allowed"
+                          : eliminateMode
+                            ? "bg-[#7f1d1d] border-red-500/70 text-red-100 hover:bg-red-700 hover:scale-105 shadow-[0_0_12px_rgba(255,0,0,0.4)]"
+                            : red
+                              ? "bg-[#c0392b] border-red-400/40 text-white shadow-[0_0_10px_rgba(192,57,43,0.4)]"
+                              : "bg-[#1a1a2e] border-[#FFFF33]/30 text-[#FFFF33] shadow-[0_0_8px_rgba(255,255,51,0.15)]"
                       }
                       ${
                         myBetsAreLocked
                           ? "opacity-70 cursor-not-allowed"
-                          : "hover:scale-105 hover:brightness-110 active:scale-95"
+                          : !dead && !eliminateMode
+                            ? "hover:scale-105 hover:brightness-110 active:scale-95"
+                            : ""
                       }
                       ${isWinner ? "ring-3 ring-[#FFFF33] animate-pulse shadow-[0_0_25px_rgba(255,255,51,0.8)] z-10" : ""}
                     `}
                   >
-                    {num}
-                    {displayBets[num] && (
+                    {dead ? <span className="text-red-500 font-black">✕</span> : num}
+                    {!dead && displayBets[num] && (
                       <span className={`absolute -top-2 -right-2 bg-[#FFFF33]/90 text-black text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded-full shadow-[0_0_8px_rgba(255,255,51,0.5)] ${newChipKeys.some((k) => k.startsWith(`${num}-`)) ? "animate-bet-chip" : ""}`}>
                         {displayBets[num]}
                       </span>
+                    )}
+                    {dead && (
+                      <span className="absolute -top-1.5 -right-1.5 text-[9px] font-black text-red-500">✕</span>
                     )}
                   </button>
                 );
@@ -1640,12 +1814,79 @@ export default function RoulettePvpGamePage({ params }) {
                   ALL
                 </button>
               </div>
+
+              {/* Skill layer: elimination market toggle */}
+              <div className="mt-2 flex items-center justify-between gap-2 border-t border-white/10 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEliminateMode(!eliminateMode)}
+                  disabled={!canEliminate || eliminating}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold border transition-all duration-150 ${
+                    eliminateMode
+                      ? "bg-red-600 border-red-400 text-white shadow-[0_0_14px_rgba(255,0,0,0.5)]"
+                      : "border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+                  } disabled:opacity-40 disabled:cursor-not-allowed`}
+                >
+                  <SkullIcon className="w-4 h-4" title="Eliminate" />
+                  {eliminateMode
+                    ? "Eliminate mode ON — tap a number"
+                    : `Eliminate (−${ELIMINATION_COST} pts)`}
+                </button>
+                <span className="text-[10px] text-white/50">
+                  {eliminationsLeft} left · {myRemovalsUsed}/
+                  {MAX_ELIMINATIONS_PER_ROUND} used
+                </span>
+              </div>
+              {eliminateMode && (
+                <p className="mt-1.5 text-[10px] text-red-300/80 text-center">
+                  Tap any live number to remove it from the shared wheel — visible
+                  to both players. Removed numbers can never be spun or bet on.
+                </p>
+              )}
             </div>
           )}
 
           {/* Lock-in-bets + reset (replaces solo Spin + Reset) */}
           {!myBetsAreLocked && BETTABLE.has(match.status) && (
             <div className="flex flex-col gap-2 w-full">
+              {/* Skill layer: call their bet — optional guess at the
+                  opponent's biggest wager, submitted with the lock-in. */}
+              <div className="flex flex-col gap-1.5 w-full rounded-lg border border-purple-400/20 bg-[#001933] p-2.5">
+                <label
+                  htmlFor="roulette-call"
+                  className="text-[10px] uppercase tracking-widest text-white/55 inline-flex items-center gap-1"
+                >
+                  <TargetIcon
+                    className="w-3 h-3 text-purple-200"
+                    title="Call their bet"
+                  />
+                  Call their bet
+                </label>
+                <select
+                  id="roulette-call"
+                  value={myCall || ""}
+                  onChange={(e) => setMyCall(e.target.value || null)}
+                  className="w-full rounded bg-[#0a1a3a] border border-purple-400/30 focus:border-purple-400 focus:ring-1 focus:ring-purple-400 px-2 py-1.5 text-white text-sm"
+                >
+                  <option value="">No call</option>
+                  {CALL_NAMED_KEYS.filter((k) =>
+                    isBetKeyLive(k, eliminatedSet),
+                  ).map((k) => (
+                    <option key={k} value={k}>
+                      {k}
+                    </option>
+                  ))}
+                  {liveCallNumbers.map((n) => (
+                    <option key={n} value={String(n)}>
+                      Number {n}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-white/45">
+                  Guess the opponent&apos;s biggest wager. Correct → steal{" "}
+                  {CALL_BONUS} pts. Both can win it in the same round.
+                </p>
+              </div>
               <button
                 onClick={submitBets}
                 disabled={submitting || spinning || myTotalBet <= 0 || myTotalBet > myMatchPoints + 0.0001}
@@ -1691,6 +1932,11 @@ export default function RoulettePvpGamePage({ params }) {
             match.status !== MATCH_STATUS.WAITING && (
               <div className="w-full rounded-xl border border-green-400/30 bg-green-500/10 px-3 py-2 text-center text-sm font-semibold text-green-200">
                 Bets locked. Waiting for opponent…
+                {myCall && (
+                  <span className="ml-2 text-xs font-bold text-purple-200">
+                    Your call: {myCall}
+                  </span>
+                )}
               </div>
             )}
 
@@ -1705,6 +1951,14 @@ export default function RoulettePvpGamePage({ params }) {
                   const meIsP1 = isPlayer1;
                   const isYouWinner = r.roundWinner === (meIsP1 ? "player1" : "player2");
                   const isDraw = !r.roundWinner;
+                  // Skill layer: your call + result for this round.
+                  const myCallKey =
+                    r.calls && (meIsP1 ? r.calls.player1 : r.calls.player2);
+                  const myCallRes = r.callResults
+                    ? meIsP1
+                      ? r.callResults.player1
+                      : r.callResults.player2
+                    : null;
                   return (
                     <div
                       key={r.id}
@@ -1719,6 +1973,25 @@ export default function RoulettePvpGamePage({ params }) {
                       >
                         {r.spinResult}
                       </span>
+                      {myCallKey && (
+                        <span
+                          className={`text-[10px] font-bold ${
+                            myCallRes?.correct
+                              ? "text-green-300"
+                              : "text-red-400"
+                          }`}
+                          title={`Your call: ${myCallKey} · ${
+                            myCallRes?.correct
+                              ? `correct +${myCallRes.transfer ?? 0}`
+                              : "missed"
+                          }`}
+                        >
+                          call {myCallKey}{" "}
+                          {myCallRes?.correct
+                            ? `✓ +${myCallRes.transfer ?? 0}`
+                            : "✗"}
+                        </span>
+                      )}
                       <span
                         className={
                           isDraw
@@ -2066,25 +2339,28 @@ export default function RoulettePvpGamePage({ params }) {
               { key: "green", label: "Green" },
             ].map(({ key, label }) => {
               const displayBets = myBetsAreLocked ? mySubmittedBets || {} : bets;
+              const deadKey = !isBetKeyLive(key, eliminatedSet);
               return (
                 <button
                   key={key}
                   onClick={() => placeBet(key)}
-                  disabled={myBetsAreLocked}
+                  disabled={myBetsAreLocked || deadKey}
                   className={`relative px-2.5 py-1.5 rounded border border-[#FFFF33]/30 text-xs sm:text-sm font-bold capitalize transition-all duration-150 ${
-                    key === "red"
-                      ? "bg-[#c0392b] text-white"
-                      : key === "black"
-                        ? "bg-[#1a1a2e] text-[#FFFF33]"
-                        : key === "green"
-                          ? "bg-[#0d5e2e] text-white"
-                          : "bg-[#102542] text-white"
+                    deadKey
+                      ? "bg-[#0b0f1e] text-red-400/50 border-red-500/40 line-through cursor-not-allowed"
+                      : key === "red"
+                        ? "bg-[#c0392b] text-white"
+                        : key === "black"
+                          ? "bg-[#1a1a2e] text-[#FFFF33]"
+                          : key === "green"
+                            ? "bg-[#0d5e2e] text-white"
+                            : "bg-[#102542] text-white"
                   } ${
                     displayBets[key]
                       ? "ring-2 ring-[#FFFF33] shadow-[0_0_15px_rgba(255,255,51,0.5)]"
                       : ""
                   } ${
-                    myBetsAreLocked
+                    myBetsAreLocked || deadKey
                       ? "opacity-70 cursor-not-allowed"
                       : "hover:scale-105 hover:brightness-110 active:scale-95"
                   }`}

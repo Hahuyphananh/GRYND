@@ -24,20 +24,29 @@ import {
   users,
 } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
+import { ROULETTE_NUMBERS } from "../rouletteConfig";
 import {
   ACTIVE_STATES,
   BETTABLE_STATES,
+  CALL_BONUS,
+  ELIMINATION_COST,
   HOUSE_FEE_PCT,
   MATCH_STATUS,
+  MAX_ELIMINATIONS_PER_ROUND,
   MAX_SINGLE_BET,
   MAX_TOTAL_BET,
+  MIN_LIVE_NUMBERS,
   READY_WINDOW_MS,
   ROUND_BET_DEADLINE_MS,
   ROUND_TIMER_SECONDS,
   STARTING_POINTS,
   calculatePayout,
-  generateSpin,
+  generateSpinFromPool,
+  isBetKeyLive,
+  isValidCallKey,
+  resolveCalls,
   resolveRoundSide,
+  serverEliminatedNumbers,
   sumBetAmounts,
 } from "./constants";
 
@@ -305,6 +314,8 @@ async function advanceFromReady(tx, match) {
       roundDeadline: deadline,
       player1Bets: null,
       player2Bets: null,
+      // Skill layer: round 1 never eliminates (revealed empty set).
+      serverEliminated: [],
     })
     .where(
       and(
@@ -380,6 +391,149 @@ export function isParticipant(match, userId) {
   return match && (match.player1Id === userId || match.player2Id === userId);
 }
 
+// ── Skill-layer helpers (elimination market + live pool) ───────────────
+// Numbers the server killed for the current round. Non-array / null rows
+// (pre-migration or round 1) are treated as an empty set.
+function serverEliminatedFor(match) {
+  return Array.isArray(match?.serverEliminated)
+    ? match.serverEliminated.map((n) => String(n))
+    : [];
+}
+
+// Player-bought removals for the current round: { "17": "player1" }.
+function eliminationsFor(match) {
+  return match?.eliminations && typeof match.eliminations === "object"
+    ? match.eliminations
+    : {};
+}
+
+// The full set of dead number keys (strings) for the current round.
+export function deadKeysFor(match) {
+  const dead = new Set(serverEliminatedFor(match));
+  for (const k of Object.keys(eliminationsFor(match))) dead.add(k);
+  return dead;
+}
+
+// The numbers the current round's spin can land on (full wheel minus
+// server eliminations minus player-bought removals).
+export function livePoolNumbers(match) {
+  const dead = deadKeysFor(match);
+  return ROULETTE_NUMBERS.filter((n) => !dead.has(String(n)));
+}
+
+// ── Elimination market (pay points to remove a number) ────────────────
+export async function buyElimination({ userId, matchId, number }) {
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isParticipant(match, userId)) {
+      return { error: "Forbidden", status: 403 };
+    }
+    if (!BETTABLE_STATES.has(match.status)) {
+      return { error: "Match is not in an active round", status: 400 };
+    }
+    if (
+      match.roundDeadline &&
+      new Date(match.roundDeadline).getTime() <= Date.now()
+    ) {
+      return { error: "Betting window has expired", status: 400 };
+    }
+    const isPlayer1 = match.player1Id === userId;
+    // Board freezes once this player locks in — no removing after commit.
+    if (isPlayer1 ? match.player1Bets : match.player2Bets) {
+      return {
+        error: "Bets already locked for this round",
+        status: 409,
+      };
+    }
+    const num = Number(number);
+    if (
+      !Number.isInteger(num) ||
+      num < 0 ||
+      num > 36 ||
+      !ROULETTE_NUMBERS.includes(num)
+    ) {
+      return { error: "Invalid number", status: 400 };
+    }
+    const key = String(num);
+    const elims = eliminationsFor(match);
+    if (key in elims) {
+      return { error: "Number already eliminated", status: 409 };
+    }
+    if (serverEliminatedFor(match).includes(key)) {
+      return {
+        error: "Number is already off the wheel this round",
+        status: 409,
+      };
+    }
+    const mySide = isPlayer1 ? "player1" : "player2";
+    // Anti-griefing: if the OPPONENT already locked a straight-up bet on
+    // this exact number, removing it would torch a committed wager with
+    // no counterplay. Reject — removing numbers they might bet on is the
+    // strategy; removing numbers they HAVE bet on is a scam.
+    const oppBets = isPlayer1 ? match.player2Bets : match.player1Bets;
+    if (
+      oppBets &&
+      typeof oppBets === "object" &&
+      Number(oppBets[key]) > 0
+    ) {
+      return {
+        error: "Opponent has already locked a bet on that number",
+        status: 409,
+      };
+    }
+    const myCount = Object.values(elims).filter((v) => v === mySide).length;
+    if (myCount >= MAX_ELIMINATIONS_PER_ROUND) {
+      return {
+        error: `Maximum ${MAX_ELIMINATIONS_PER_ROUND} eliminations reached this round`,
+        status: 400,
+      };
+    }
+    const points = Number(
+      isPlayer1 ? match.playerOnePoints : match.playerTwoPoints,
+    );
+    if (!Number.isFinite(points) || points < ELIMINATION_COST) {
+      return {
+        error: `You need at least ${ELIMINATION_COST} points to eliminate a number`,
+        status: 400,
+      };
+    }
+    const poolSize = ROULETTE_NUMBERS.length - deadKeysFor(match).size;
+    if (poolSize - 1 < MIN_LIVE_NUMBERS) {
+      return {
+        error: `The wheel can't go below ${MIN_LIVE_NUMBERS} live numbers`,
+        status: 400,
+      };
+    }
+
+    const newPoints = (points - ELIMINATION_COST).toFixed(2);
+    const [updated] = await tx
+      .update(roulettePvpMatches)
+      .set({
+        eliminations: { ...elims, [key]: mySide },
+        ...(isPlayer1
+          ? { playerOnePoints: newPoints }
+          : { playerTwoPoints: newPoints }),
+      })
+      .where(
+        and(
+          eq(roulettePvpMatches.id, matchId),
+          // Status guard: reject a stale POST that lands after the round
+          // advanced (e.g. AFK auto-resolve) — mirrors submitBets.
+          eq(roulettePvpMatches.status, match.status),
+        ),
+      )
+      .returning();
+    if (!updated) {
+      return {
+        error: "Round state changed during eliminate — please refresh",
+        status: 409,
+      };
+    }
+    return { match: updated };
+  });
+}
+
 // Validate the player's staged bets against their CURRENT match
 // points balance (not a fixed per-round budget). The persistent
 // balance means the cap drifts round-to-round based on prior
@@ -387,7 +541,7 @@ export function isParticipant(match, userId) {
 // `MAX_SINGLE_BET` / `MAX_TOTAL_BET` (from constants) are also enforced
 // here as defence-in-depth against absurd client payloads (NaN /
 // Infinity / negative numbers / runaway floats).
-export function validateBets(bets, playerPoints) {
+export function validateBets(bets, playerPoints, deadKeys) {
   if (!bets || typeof bets !== "object") {
     return { ok: false, error: "Bets must be a JSON object" };
   }
@@ -395,6 +549,28 @@ export function validateBets(bets, playerPoints) {
   const cap = Number(playerPoints);
   if (!Number.isFinite(cap) || cap < 0) {
     return { ok: false, error: "Invalid match-current points balance" };
+  }
+  // Skill layer: no betting on dead numbers. A single-number key on an
+  // eliminated number is rejected outright; a group key (red/dozen/…)
+  // whose every member number is dead is rejected too (it could only
+  // ever lose).
+  if (deadKeys && deadKeys.size > 0) {
+    for (const k of Object.keys(bets)) {
+      const isSingleNumber =
+        /^\d+$/.test(k) && Number(k) >= 0 && Number(k) <= 36;
+      if (isSingleNumber && deadKeys.has(k)) {
+        return {
+          ok: false,
+          error: `Number ${k} has been eliminated from the wheel`,
+        };
+      }
+      if (!isSingleNumber && !isBetKeyLive(k, deadKeys)) {
+        return {
+          ok: false,
+          error: `${k} is fully eliminated this round`,
+        };
+      }
+    }
   }
   if (total > MAX_TOTAL_BET + 0.0001) {
     return {
@@ -431,7 +607,7 @@ export function validateBets(bets, playerPoints) {
 // Validate-bets cap is the player's CURRENT match balance (not a
 // fixed per-round budget). Points persist, so this drifts round-to-
 // round based on prior wins/losses.
-export async function submitBets({ userId, matchId, bets }) {
+export async function submitBets({ userId, matchId, bets, call }) {
   return await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
 
@@ -477,10 +653,25 @@ export async function submitBets({ userId, matchId, bets }) {
       };
     }
 
+    // Skill layer: validate the optional "call their bet" guess before
+    // storing anything. The call must be a real bet key with at least
+    // one live number (guessing an eliminated number is nonsense).
+    let callKey = null;
+    if (call !== undefined && call !== null && call !== "") {
+      const c = String(call);
+      if (!isValidCallKey(c, deadKeysFor(match))) {
+        return {
+          error: "Call must be a valid bet target that's still on the wheel",
+          status: 400,
+        };
+      }
+      callKey = c;
+    }
+
     const currentPoints = Number(
       isPlayer1 ? match.playerOnePoints : match.playerTwoPoints,
     );
-    const validation = validateBets(bets, currentPoints);
+    const validation = validateBets(bets, currentPoints, deadKeysFor(match));
     if (!validation.ok) {
       return { error: validation.error, status: 400 };
     }
@@ -502,9 +693,22 @@ export async function submitBets({ userId, matchId, bets }) {
     // accordingly to only ADD payouts (no double-deduction).
     const totalLocked = sumBetAmounts(bets);
     const newPoints = (currentPoints - totalLocked).toFixed(2);
+    const prevCalls = match.calls && typeof match.calls === "object" ? match.calls : {};
     const updates = isPlayer1
-      ? { player1Bets: bets, playerOnePoints: newPoints }
-      : { player2Bets: bets, playerTwoPoints: newPoints };
+      ? {
+          player1Bets: bets,
+          playerOnePoints: newPoints,
+          ...(callKey
+            ? { calls: { ...prevCalls, player1: callKey } }
+            : {}),
+        }
+      : {
+          player2Bets: bets,
+          playerTwoPoints: newPoints,
+          ...(callKey
+            ? { calls: { ...prevCalls, player2: callKey } }
+            : {}),
+        };
     // Guard the UPDATE on the row's current status AND the lock-in
     // state we just verified in-memory: WITHOUT this, a stale POST
     // landing AFTER an AFK auto-resolve (or a parallel resolve
@@ -596,7 +800,13 @@ export async function resolveRound(tx, match) {
   const slot = match.currentRound;
   const isSuddenDeath =
     match.status === MATCH_STATUS.SUDDEN_DEATH || slot >= 4;
-  const { spinResultIndex, spinResult } = generateSpin();
+  // Skill layer: the spin is drawn from the LIVE pool — the full wheel
+  // minus this round's server eliminations and player-bought removals.
+  // Removed numbers can never come up, so eliminations genuinely shift
+  // the odds on everything that remains.
+  const { spinResultIndex, spinResult } = generateSpinFromPool(
+    livePoolNumbers(match),
+  );
   const p1 = resolveRoundSide(match.player1Bets || {}, spinResult);
   const p2 = resolveRoundSide(match.player2Bets || {}, spinResult);
 
@@ -604,6 +814,15 @@ export async function resolveRound(tx, match) {
   if (p1.net > p2.net) roundWinner = "player1";
   else if (p2.net > p1.net) roundWinner = "player2";
   // else: identical net → DRAW → roundWinner stays null
+
+  // Skill layer: resolve each player's "call their bet" guess against
+  // the opponent's actual biggest-wager keys. Both can be correct in
+  // the same round (net transfers cancel).
+  const callResult = resolveCalls(
+    match.calls || {},
+    match.player1Bets || {},
+    match.player2Bets || {},
+  );
 
   // Round-win score is only meaningful in regular rounds 1–3, not in
   // sudden death (the first non-draw sudden-death round ends the
@@ -616,7 +835,8 @@ export async function resolveRound(tx, match) {
     else if (roundWinner === "player2") newScoreP2 += 1;
   }
 
-  // Insert round-history row
+  // Insert round-history row (incl. skill-layer snapshot: what was dead
+  // this round, who removed what, and the call results).
   await tx.insert(roulettePvpRounds).values({
     matchId: match.id,
     roundNumber: slot,
@@ -632,6 +852,10 @@ export async function resolveRound(tx, match) {
     player1Net: p1.net.toFixed(2),
     player2Net: p2.net.toFixed(2),
     roundWinner,
+    serverEliminated: match.serverEliminated || [],
+    eliminations: match.eliminations || {},
+    calls: match.calls || {},
+    callResults: callResult,
   });
 
   // Persist match-currency balances. The balance carries between
@@ -645,8 +869,21 @@ export async function resolveRound(tx, match) {
   // player when they AFK'd through the auto-resolve path.
   // The match-level `sudden_death` flag mirrors `is_sudden_death`
   // for fast queries without walking rounds.
-  const newP1Points = Number(match.playerOnePoints) + p1.payout;
-  const newP2Points = Number(match.playerTwoPoints) + p2.payout;
+  let newP1Points = Number(match.playerOnePoints) + p1.payout;
+  let newP2Points = Number(match.playerTwoPoints) + p2.payout;
+
+  // Skill layer: apply call transfers (floored at the payer's balance —
+  // a bankrupt payer only hands over what they actually hold).
+  if (callResult.player1.correct) {
+    const paid = Math.min(CALL_BONUS, Math.max(0, newP2Points));
+    newP1Points += paid;
+    newP2Points -= paid;
+  }
+  if (callResult.player2.correct) {
+    const paid = Math.min(CALL_BONUS, Math.max(0, newP1Points));
+    newP2Points += paid;
+    newP1Points -= paid;
+  }
 
   // Decide next match status
   const nextDeadlineMs = roundDeadlineMs(match);
@@ -657,6 +894,10 @@ export async function resolveRound(tx, match) {
   let prizePaid = "0.00";
   let houseFee = "0.00";
   let result = null;
+  // Skill layer: numbers the server kills for the NEXT round (revealed
+  // before betting opens). Defaults to the full wheel; mid-game
+  // advancement sets the round-2/3 eliminations below.
+  let nextServerEliminated = null;
 
   // PROMPT 7 — Automatic elimination rule. This branch OVERRIDES
   // normal round progression: if either player's persistent
@@ -745,9 +986,11 @@ export async function resolveRound(tx, match) {
     } else {
       // Tied points → play another sudden death round. The slot
       // counter advances (R4 → R5 → R6…) but status stays
-      // SUDDEN_DEATH and the betting flow is unchanged.
+      // SUDDEN_DEATH and the betting flow is unchanged. Sudden death
+      // returns to the full wheel (no server eliminations).
       nextStatus = MATCH_STATUS.SUDDEN_DEATH;
       nextDeadline = new Date(Date.now() + nextDeadlineMs);
+      nextServerEliminated = [];
     }
   } else if (slot >= 3) {
     // PROMPT 8 — End-of-Round-3 winner is determined by comparing
@@ -784,11 +1027,18 @@ export async function resolveRound(tx, match) {
       // Tied points after 3 rounds → sudden death.
       nextStatus = MATCH_STATUS.SUDDEN_DEATH;
       nextDeadline = new Date(Date.now() + nextDeadlineMs);
+      nextServerEliminated = [];
     }
   } else {
-    // Mid-game (round 1 or 2). Advance to the next regular round.
+    // Mid-game (round 1 or 2). Advance to the next regular round with
+    // the next round's server eliminations already in place so both
+    // players see the revealed dead set before betting opens.
     nextStatus = statusForRoundNumber(nextRound);
     nextDeadline = new Date(Date.now() + nextDeadlineMs);
+    nextServerEliminated = serverEliminatedNumbers(
+      nextRound,
+      nextStatus === MATCH_STATUS.SUDDEN_DEATH,
+    );
   }
 
   const setValues = {
@@ -798,6 +1048,12 @@ export async function resolveRound(tx, match) {
     scorePlayer2: newScoreP2,
     player1Bets: null,
     player2Bets: null,
+    // Skill layer: reset the per-round elimination market + calls, and
+    // reveal the next round's server eliminations (null for rounds that
+    // don't eliminate / terminal states).
+    eliminations: null,
+    calls: null,
+    serverEliminated: nextServerEliminated,
     roundDeadline: nextDeadline,
     lastSpinResultIndex: spinResultIndex,
     lastSpinResult: spinResult,

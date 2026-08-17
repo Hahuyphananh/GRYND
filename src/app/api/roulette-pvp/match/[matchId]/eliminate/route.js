@@ -1,17 +1,15 @@
-// src/app/api/roulette-pvp/match/[matchId]/bet/route.js
+// src/app/api/roulette-pvp/match/[matchId]/eliminate/route.js
 //
-// POST — submit (or replace) the calling player's bets for the current
-// round. Server validates total ≤ caller's CURRENT match "points"
-// balance (persistent across rounds, never reset).
-//
-// If both players end up with non-null bets after this call, the server
-// resolves the round automatically (see serverStore.resolveRound) and
-// returns the post-resolution state. Otherwise the response simply
-// reflects the stored bets and `justResolved: false`.
+// POST — pay ELIMINATION_COST match points to remove a single number
+// from the shared wheel for the current round. Removals are visible to
+// both players immediately (the board dims the dead pocket) and the
+// spin is drawn from the LIVE pool only — removed numbers can never
+// come up or be bet on. Capped per player per round, and the wheel
+// never shrinks below MIN_LIVE_NUMBERS.
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { submitBets } from "../../../../../../lib/roulette-pvp/serverStore";
+import { buyElimination } from "../../../../../../lib/roulette-pvp/serverStore";
 
 function normaliseMatch(match, viewerId) {
   if (!match) return null;
@@ -32,16 +30,9 @@ function normaliseMatch(match, viewerId) {
     result: match.result,
     prizePaid: match.prizePaid ? Number(match.prizePaid) : 0,
     houseFee: match.houseFee ? Number(match.houseFee) : 0,
-    // ── Prompt 2: persistent match "points" balance ───────────────
-    startingPoints: match.startingPoints
-      ? Number(match.startingPoints)
-      : 100,
-    playerOnePoints: match.playerOnePoints
-      ? Number(match.playerOnePoints)
-      : 0,
-    playerTwoPoints: match.playerTwoPoints
-      ? Number(match.playerTwoPoints)
-      : 0,
+    startingPoints: match.startingPoints ? Number(match.startingPoints) : 100,
+    playerOnePoints: match.playerOnePoints ? Number(match.playerOnePoints) : 0,
+    playerTwoPoints: match.playerTwoPoints ? Number(match.playerTwoPoints) : 0,
     roundTimer: match.roundTimerSeconds ?? 25,
     suddenDeath: Boolean(match.suddenDeath),
     startedAt: match.startedAt,
@@ -70,10 +61,6 @@ export async function POST(req, { params }) {
     );
   }
 
-  // Next.js 15+/16: API route `params` is a Promise — must await before
-  // reading properties. Accessing it synchronously yields `undefined`,
-  // which `Number(undefined)` coerces to `NaN`, which the finite-check
-  // below rejects with "Invalid matchId" — masking the real match.
   const resolvedParams = (await params) || {};
   const matchId = Number(resolvedParams?.matchId);
   if (!Number.isFinite(matchId)) {
@@ -93,36 +80,28 @@ export async function POST(req, { params }) {
     );
   }
 
-  const bets = body?.bets;
-  if (!bets || typeof bets !== "object") {
+  const number = body?.number;
+  if (!Number.isFinite(Number(number))) {
     return NextResponse.json(
-      { success: false, error: "Bets must be a JSON object" },
+      { success: false, error: "A valid number is required" },
       { status: 400 },
     );
   }
 
-  // Skill layer: optional "call their bet" guess submitted with the
-  // lock-in (string bet key, or absent/empty for no call).
-  const call = body?.call ?? null;
-
   try {
-    const result = await submitBets({ userId, matchId, bets, call });
+    const result = await buyElimination({ userId, matchId, number });
     if (result.error) {
       return NextResponse.json(
         { success: false, error: result.error },
         { status: result.status || 400 },
       );
     }
-
     return NextResponse.json({
       success: true,
-      data: {
-        match: normaliseMatch(result.match, userId),
-        justResolved: Boolean(result.justResolved),
-      },
+      data: { match: normaliseMatch(result.match, userId) },
     });
   } catch (error) {
-    console.error("[roulette-pvp/match/bet] error:", error);
+    console.error("[roulette-pvp/match/eliminate] error:", error);
     return NextResponse.json(
       { success: false, error: "Server error" },
       { status: 500 },
