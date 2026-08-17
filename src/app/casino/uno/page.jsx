@@ -8,6 +8,7 @@ import UnoCard from "../../../components/UnoCard";
 import UnoBack from "../../../components/UnoBack";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import { useSocket } from "../../../context/SocketProvider";
 import useGamePresence from "../../../hooks/useGamePresence";
 import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim, fireConfetti } from "../../../lib/animations";
@@ -47,6 +48,11 @@ export default function UnoGamePage() {
   const [turnHistory, setTurnHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(null);
   const [showGameModeModal, setShowGameModeModal] = useState(false);
+  const [showRules, setShowRules] = useState(false);
+  const firstVisitRules = useFirstVisitRules("uno");
+  useEffect(() => {
+    if (firstVisitRules) setShowRules(true);
+  }, [firstVisitRules]);
   const [availableGames, setAvailableGames] = useState([]);
   const [isLoadingAvailableGames, setIsLoadingAvailableGames] = useState(false);
   const [waitingGameId, setWaitingGameId] = useState(null);
@@ -669,7 +675,7 @@ export default function UnoGamePage() {
   const displayedCard = historyIndex === null ? topCard : turnHistory[historyIndex];
 
   return (
-    <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
+    <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
       <AnimatePresence>
         {endPopup && (
@@ -835,9 +841,57 @@ export default function UnoGamePage() {
 
       {tokens && <p className="text-yellow-300 mb-4 text-lg">Tokens : {tokens.balance}</p>}
 
+      {/* How to Play — rules modal at the top of the lobby */}
+      <div className="mb-5 text-center">
+        <button
+          onClick={() => setShowRules(true)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 transition-all duration-300 hover:bg-amber-500/20 hover:scale-105 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
+        >
+          <IconPalette size={15} /> How to Play
+        </button>
+      </div>
+      {showRules && (
+        <RulesModal
+          title="How to Play"
+          sections={[
+            {
+              heading: "Match the top card",
+              body: (
+                <>
+                  Play a card matching the top card&apos;s color or number
+                  (or a Wild / action card) — first to empty their hand
+                  wins the round.
+                </>
+              ),
+            },
+            {
+              heading: "Action cards",
+              body: (
+                <>
+                  Skip, Reverse and Draw Two cards disrupt your
+                  opponent&apos;s turn; Wild and Wild Draw Four change the
+                  color.
+                </>
+              ),
+            },
+            {
+              heading: "Modes",
+              body: (
+                <>
+                  Play vs AI for free (no tokens wagered), or go 1v1
+                  online for a wagered match — winner takes the pot minus
+                  the house fee.
+                </>
+              ),
+            },
+          ]}
+          onClose={() => setShowRules(false)}
+        />
+      )}
+
       {!game ? (
-        <div className="casino-surface flex w-full max-w-4xl flex-col items-center justify-center rounded-[1.5rem] border-2 border-[#00e5ff]/35 bg-[#0b224f]/85 p-4 text-center shadow-[0_0_28px_rgba(0,229,255,0.2)] sm:aspect-[2/1] sm:rounded-[2rem] sm:p-8">
-        <h2 className="text-2xl font-bold mb-6 text-white">Prépare ta partie</h2>
+        <div className="casino-surface flex w-full max-w-4xl flex-col items-center justify-center rounded-[1.5rem] border border-amber-700/60 bg-black/40 p-4 text-center shadow-[0_0_28px_rgba(251,191,36,0.12)] sm:aspect-[2/1] sm:rounded-[2rem] sm:p-8">
+        <h2 className="text-2xl font-bold mb-6 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.4)]">Prépare ta partie</h2>
 
         {/* Mode toggle: free-play AI vs wagered 1v1 online */}
         <div className="mb-4 grid grid-cols-2 gap-2 w-full max-w-xs">
@@ -845,8 +899,8 @@ export default function UnoGamePage() {
             onClick={() => setLobbyMode("ai")}
             className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
               lobbyMode === "ai"
-                ? "bg-[#f5ff3b] text-black shadow-[0_0_12px_rgba(245,255,59,0.4)]"
-                : "bg-[#f5ff3b]/10 border border-[#f5ff3b]/30 text-[#f5ff3b]"
+                ? "border-b-4 border-amber-700 bg-amber-500 text-black shadow-[0_0_12px_rgba(251,191,36,0.4)]"
+                : "border border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50 hover:text-amber-200"
             }`}
           >
             <span className="inline-flex items-center gap-1.5"><IconRobot size={16} /> vs IA</span>
@@ -855,8 +909,8 @@ export default function UnoGamePage() {
             onClick={() => setLobbyMode("online")}
             className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
               lobbyMode === "online"
-                ? "bg-[#00e5ff] text-black shadow-[0_0_12px_rgba(0,229,255,0.35)]"
-                : "bg-[#00e5ff]/10 border border-[#00e5ff]/30 text-[#00e5ff]"
+                ? "border-b-4 border-cyan-700 bg-cyan-500 text-black shadow-[0_0_12px_rgba(34,211,238,0.35)]"
+                : "border border-gray-600 bg-gray-800/50 text-gray-400 hover:border-cyan-600/50 hover:text-cyan-200"
             }`}
           >
             <span className="inline-flex items-center gap-1.5"><IconGlobe size={16} /> 1v1 en ligne</span>
@@ -864,18 +918,18 @@ export default function UnoGamePage() {
         </div>
 
         {lobbyMode === "ai" ? (
-          <div className="mb-6 rounded-lg border-2 border-dashed border-[#f5ff3b]/40 bg-[#f5ff3b]/10 p-3 text-center w-full max-w-xs">
-            <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-[#f5ff3b]"><IconDeviceGamepad2 size={14} /> Free Play</p>
-            <p className="mt-1 text-[10px] text-[#f5ff3b]/80">No tokens are wagered. Playing vs AI is free.</p>
+          <div className="mb-6 rounded-lg border-2 border-dashed border-amber-400/40 bg-amber-500/10 p-3 text-center w-full max-w-xs">
+            <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-amber-300"><IconDeviceGamepad2 size={14} /> Free Play</p>
+            <p className="mt-1 text-[10px] text-amber-200/70">No tokens are wagered. Playing vs AI is free.</p>
           </div>
         ) : (
           <label className="mb-6 text-lg font-semibold flex flex-col items-center">
-            <span className="mb-2">Mise :</span>
+            <span className="mb-2 text-amber-200">Mise :</span>
             <input
               type="number"
               value={betAmount}
               onChange={(e) => setBetAmount(Number(e.target.value))}
-              className="bg-[#08142f] border border-[#00e5ff]/40 text-white px-3 py-1 rounded text-center w-32"
+              className="bg-[#020617] border border-amber-600/50 text-white px-3 py-1 rounded text-center w-32 focus:border-amber-400 outline-none"
               min={1}
               max={1000}
             />
@@ -885,14 +939,14 @@ export default function UnoGamePage() {
           <button
             onClick={() => setShowGameModeModal(true)}
             disabled={loading || !!waitingGameId}
-            className="px-8 py-3 rounded-full font-bold text-[#031026] bg-[#f5ff3b] hover:bg-[#edf734]"
+            className="border-b-4 border-amber-700 px-8 py-3 rounded-xl font-bold text-black bg-amber-500 hover:bg-amber-400 shadow-[0_0_18px_rgba(251,191,36,0.35)] active:translate-y-[2px] transition"
           >
             {loading ? "Chargement..." : "Commencer une partie"}
           </button>
           <button
             onClick={joinOnlineGame}
             disabled={loading || !!waitingGameId}
-            className="mt-4 px-8 py-3 rounded-full font-bold text-[#001933] bg-[#00e5ff] hover:bg-[#49eeff]"
+            className="border-b-4 border-cyan-700 mt-4 px-8 py-3 rounded-xl font-bold text-black bg-cyan-500 hover:bg-cyan-400 shadow-[0_0_18px_rgba(34,211,238,0.35)] active:translate-y-[2px] transition"
           >
             {loading ? "Recherche..." : "Rejoindre une partie"}
           </button>
@@ -913,13 +967,13 @@ export default function UnoGamePage() {
             </button>
           )}
 
-          <div className="mt-6 w-full max-w-md bg-[#08142f] rounded-2xl p-4 border border-[#00e5ff]/30">
+          <div className="mt-6 w-full max-w-md rounded-2xl p-4 border border-cyan-700/30 bg-slate-900/80">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-bold">Parties en ligne disponibles</h3>
+              <h3 className="text-lg font-bold text-cyan-300">Parties en ligne disponibles</h3>
               <button
                 onClick={fetchAvailableGames}
                 disabled={isLoadingAvailableGames}
-                className="bg-[#00e5ff] text-[#001933] px-3 py-1 rounded-md text-sm font-semibold"
+                className="bg-cyan-500 text-black px-3 py-1 rounded-md text-sm font-semibold hover:bg-cyan-400 transition"
               >
                 {isLoadingAvailableGames ? "..." : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> Refresh</span>}
               </button>
@@ -933,15 +987,15 @@ export default function UnoGamePage() {
                 {availableGames.slice(0, 6).map((onlineGame) => (
                   <li
                     key={onlineGame.id}
-                    className="flex justify-between items-center bg-[#0d335f]/80 border border-[#00e5ff]/20 rounded-lg px-3 py-2"
+                    className="flex justify-between items-center bg-black/30 border border-cyan-700/30 hover:border-cyan-500/50 rounded-lg px-3 py-2 transition"
                   >
                     <span>
-                      {onlineGame.hostName} • Mise: {onlineGame.betAmount}
+                      {onlineGame.hostName} • Mise: <span className="text-yellow-300 font-semibold">{onlineGame.betAmount}</span>
                     </span>
                     <button
                       onClick={() => joinSpecificOnlineGame(onlineGame.id)}
                       disabled={!onlineGame.canAfford || loading || !!waitingGameId}
-                      className={`px-3 py-1 rounded-md font-semibold ${onlineGame.canAfford && !waitingGameId ? "bg-[#00e5ff] text-[#001933]" : "bg-gray-600 text-gray-200 cursor-not-allowed"}`}
+                      className={`px-3 py-1 rounded-md font-semibold ${onlineGame.canAfford && !waitingGameId ? "bg-cyan-500 text-black hover:bg-cyan-400" : "bg-gray-600 text-gray-200 cursor-not-allowed"}`}
                     >
                       {onlineGame.canAfford ? "Rejoindre" : "Solde insuffisant"}
                     </button>
@@ -963,14 +1017,14 @@ export default function UnoGamePage() {
                       setShowGameModeModal(false);
                       initializeGame();
                     }}
-                    className="px-4 py-2 rounded-lg font-bold bg-[#00e5ff] text-[#001933]"
+                    className="border-b-4 border-amber-700 px-4 py-2 rounded-lg font-bold bg-amber-500 text-black hover:bg-amber-400 transition"
                   >
                     Jouer contre l'IA
                   </button>
                   <button
                     onClick={createOnlineGame}
                     disabled={!!waitingGameId}
-                    className="px-4 py-2 rounded-lg font-bold bg-[#00e5ff] text-[#001933]"
+                    className="border-b-4 border-cyan-700 px-4 py-2 rounded-lg font-bold bg-cyan-500 text-black hover:bg-cyan-400 transition"
                   >
                     Créer une partie 1v1
                   </button>

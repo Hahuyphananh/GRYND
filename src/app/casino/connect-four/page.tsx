@@ -1,14 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
-import NavigationBar from "../../../components/navigation-bar";
-import Footer from "../../../components/Footer";
-import { IconRobot, IconDeviceGamepad2 } from "@tabler/icons-react";
+import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import { CoinIcon } from "../../../components/lobby/PvpLobby";
+import { IconRobot, IconGridDots } from "@tabler/icons-react";
+
+const BET_OPTIONS = [10, 25, 50, 100, 250];
+const TIMER_OPTIONS = [
+  { value: 10, label: "10 seconds" },
+  { value: 30, label: "30 seconds" },
+  { value: 60, label: "60 seconds" },
+  { value: 120, label: "120 seconds" },
+];
 
 export default function ConnectFourLobbyPage() {
   const { isSignedIn, user } = useUser();
@@ -22,6 +29,7 @@ export default function ConnectFourLobbyPage() {
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   const [joiningId, setJoiningId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchBalance = async () => {
     if (!user) return;
@@ -35,16 +43,25 @@ export default function ConnectFourLobbyPage() {
   };
 
   const fetchGames = async () => {
-    const res = await fetch("/api/connect-four/available-games", {
-      cache: "no-store",
-    });
-    const data = await res.json();
-    if (data.success) setAvailableGames(data.games || []);
+    try {
+      const res = await fetch("/api/connect-four/available-games", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (data.success) setAvailableGames(data.games || []);
+    } catch {
+      // silent
+    }
   };
 
   useEffect(() => {
     if (isSignedIn && user) fetchBalance();
     fetchGames();
+    const id = setInterval(() => {
+      if (isSignedIn && user) fetchBalance();
+      fetchGames();
+    }, 3000);
+    return () => clearInterval(id);
   }, [isSignedIn, user]);
 
   useEffect(() => {
@@ -63,11 +80,12 @@ export default function ConnectFourLobbyPage() {
 
   const createGame = async () => {
     if (betAmount <= 0 || betAmount > balance) {
-      alert("Invalid bet amount");
+      setError("Invalid bet amount");
       return;
     }
 
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/connect-four/create-game", {
         method: "POST",
@@ -77,7 +95,7 @@ export default function ConnectFourLobbyPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || "Unable to create game");
+        setError(data.error || "Unable to create game");
         return;
       }
 
@@ -94,7 +112,7 @@ export default function ConnectFourLobbyPage() {
 
   const playVsAi = () => {
     if (!isSignedIn) {
-      alert("Please sign in to play vs AI.");
+      setError("Please sign in to play vs AI.");
       return;
     }
     posthog?.capture("connect_four_game_started", { mode: "ai" });
@@ -103,6 +121,7 @@ export default function ConnectFourLobbyPage() {
 
   const joinGame = async (gameId?: number) => {
     setLoading(true);
+    setError(null);
     if (gameId) setJoiningId(gameId);
 
     try {
@@ -114,7 +133,7 @@ export default function ConnectFourLobbyPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        alert(data.error || "Unable to join game");
+        setError(data.error || "Unable to join game");
         return;
       }
 
@@ -131,174 +150,110 @@ export default function ConnectFourLobbyPage() {
   };
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
-      <NavigationBar currentPath="/casino" />
-      <div className="mx-auto mt-4 max-w-4xl sm:mt-8">
-        <motion.div
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
+    <PvpLobbyPage
+      title="Connect Four"
+      subtitle="Create, join, and wager in live multiplayer Connect Four games. Or play the AI for free."
+      icon={<IconGridDots className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
+      rulesKey="connect-four"
+      rules={{
+        title: "How to Play",
+        sections: [
+          {
+            heading: "Drop discs",
+            body: (
+              <>
+                Take turns dropping a disc into a 7×6 grid — it falls to
+                the lowest free slot in the column you pick.
+              </>
+            ),
+          },
+          {
+            heading: "Connect four",
+            body: (
+              <>
+                Be the first to line up <b>four discs</b> horizontally,
+                vertically, or diagonally to win the match.
+              </>
+            ),
+          },
+          {
+            heading: "Wager",
+            body: (
+              <>
+                Both players wager the same amount; the winner takes the
+                pot minus the house fee. Play vs AI free to practice.
+              </>
+            ),
+          },
+        ],
+      }}
+      balance={balance}
+      stake={betAmount}
+      onStakeChange={setBetAmount}
+      stakeOptions={BET_OPTIONS}
+      busy={loading}
+      onPlay={createGame}
+      playLabel="Create Game"
+      playBusyLabel="Creating…"
+      vsAi={{
+        label: "Play vs AI — Free, no wager",
+        badge: "Free",
+        disabled: !isSignedIn,
+        busy: loading,
+        onClick: playVsAi,
+      }}
+      escrowNote="We pair you with another player of the exact same bet. If no one is waiting, your bet is escrowed in a private game until someone joins or you cancel."
+      extraActions={
+        <button
+          type="button"
+          onClick={() => joinGame()}
+          disabled={loading}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 py-2 text-sm font-bold text-amber-200 transition hover:bg-amber-500/20 disabled:opacity-50"
         >
-          <h1
-            className="text-3xl sm:text-4xl font-extrabold text-center mb-2
-  text-transparent bg-clip-text
-  bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500
-  drop-shadow-[0_0_18px_rgba(0,229,255,0.6)] tracking-wide"
-          >
-            CONNECT FOUR
-          </h1>
-        </motion.div>
-        <p className="text-center text-sm text-white/60 mb-7 max-w-xl mx-auto">
-          Create, join, and wager in live multiplayer Connect Four games. Or
-          play the AI for free.
-        </p>
-
-        <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-[#0b224f]/70 backdrop-blur-xl 
-border border-[#00e5ff]/20 
-shadow-[0_0_40px_rgba(0,229,255,0.15)] rounded-2xl p-6 shadow-[0_0_28px_rgba(0,229,255,0.2)]"
-        >
-          <div className="text-center mb-4 text-sm">
-            <span className="uppercase tracking-wider text-[11px] text-white/50 mr-2">
-              Balance
-            </span>
-            <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500 text-base">
-              {balance.toFixed(2)}
-            </span>{" "}
-            <span className="text-white/50">tokens</span>
-          </div>
-
-          <div className="grid md:grid-cols-4 gap-3 items-end">
-            <div className="md:col-span-1">
-              <label className="text-[11px] uppercase tracking-wider text-white/60">
-                Bet amount
-              </label>
-              <input
-                type="number"
-                value={betAmount}
-                min={1}
-                max={balance}
-                onChange={(e) => setBetAmount(Number(e.target.value))}
-                className="w-full mt-1 p-2.5 rounded-lg text-sm
-bg-[#020617] border border-[#00e5ff]/30
-focus:border-[#00e5ff] focus:ring-0
-outline-none text-white"
-              />
-            </div>
-            <div className="md:col-span-1">
-              <label className="text-[11px] uppercase tracking-wider text-white/60">
-                Turn timer
-              </label>
-              <select
-                value={timerSeconds}
-                onChange={(e) => setTimerSeconds(Number(e.target.value))}
-                className="w-full mt-1 p-2.5 rounded-lg text-sm
-bg-[#020617] border border-[#00e5ff]/30
-focus:border-[#00e5ff] focus:ring-0
-outline-none text-white"
-              >
-                <option value={10}>10 seconds</option>
-                <option value={30}>30 seconds</option>
-                <option value={60}>60 seconds</option>
-                <option value={120}>120 seconds</option>
-              </select>
-            </div>
-            <button
-              onClick={createGame}
-              disabled={loading}
-              className="p-2.5 rounded-xl text-sm font-bold text-black
-bg-gradient-to-r from-yellow-200 to-yellow-600
-hover:scale-105 active:scale-95
-transition-all duration-150
-shadow-[0_0_18px_rgba(255,215,0,0.6)] disabled:opacity-50 disabled:hover:scale-100"
+          {loading ? "Joining…" : "Quick Join"}
+        </button>
+      }
+      children={
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
+              Turn timer
+            </label>
+            <select
+              value={timerSeconds}
+              onChange={(e) => setTimerSeconds(Number(e.target.value))}
+              className="mt-1 w-full rounded-md border border-amber-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-amber-400"
             >
-              {loading ? "Creating..." : "Create Game"}
-            </button>
-            <button
-              onClick={() => joinGame()}
-              disabled={loading}
-              className="p-2.5 rounded-xl text-sm font-bold text-[#001933]
-bg-gradient-to-r from-cyan-400 to-blue-500
-hover:scale-105 active:scale-95
-transition-all duration-150
-shadow-[0_0_18px_rgba(0,229,255,0.6)] disabled:opacity-50 disabled:hover:scale-100"
-            >
-              {loading ? "Joining..." : "Quick Join"}
-            </button>
-          </div>
-
-          <div className="relative my-5 flex items-center gap-3">
-            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[#00e5ff]/30 to-transparent" />
-            <span className="text-[10px] uppercase tracking-[0.3em] text-white/40">
-              or
-            </span>
-            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[#00e5ff]/30 to-transparent" />
-          </div>
-
-          <button
-            onClick={playVsAi}
-            disabled={loading}
-            className="group w-full p-3 rounded-xl text-sm font-bold text-white
-bg-gradient-to-r from-fuchsia-500 via-purple-500 to-indigo-500
-hover:scale-[1.02] active:scale-95
-transition-all duration-200
-shadow-[0_0_22px_rgba(168,85,247,0.45)]
-border border-purple-300/30
-flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
-          >
-            <IconRobot size={18} aria-hidden />
-            <span className="tracking-wide">Play vs AI — Free, no wager</span>
-            <span aria-hidden className="text-base group-hover:translate-x-0.5 transition-transform">→</span>
-          </button>
-        </motion.div>
-
-        <div className="mt-6 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-2xl p-5 shadow-[0_0_22px_rgba(0,229,255,0.15)]">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-[#FFD700] flex items-center gap-2 uppercase tracking-wider">
-              <IconDeviceGamepad2 size={18} aria-hidden />
-              <span>Available Games</span>
-            </h2>
-            <button
-              onClick={fetchGames}
-              className="px-3 py-1.5 rounded-lg bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] text-xs font-semibold shadow-[0_0_10px_rgba(0,229,255,0.35)] transition-colors"
-            >
-              Refresh
-            </button>
-          </div>
-
-          {availableGames.length === 0 ? (
-            <p className="text-sm text-white/60">No open games right now.</p>
-          ) : (
-            <div className="space-y-2.5">
-              {availableGames.map((game) => (
-                <div
-                  key={game.id}
-                  className="flex items-center justify-between rounded-xl bg-[#08142f]/80 p-3 border border-[#00e5ff]/20 hover:border-[#00e5ff]/40 transition-colors"
-                >
-                  <div>
-                    <p className="text-sm font-semibold">Game #{game.id}</p>
-                    <p className="text-xs text-white/60">
-                      Host: {game.hostName || "Player"} · Bet:{" "}
-                      <span className="text-yellow-300">{Number(game.betAmount).toFixed(2)}</span> · Timer:{" "}
-                      {Number(game.timerSeconds || 60)}s
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => joinGame(game.id)}
-                    disabled={loading || joiningId === game.id}
-                    className="px-4 py-1.5 rounded-lg bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] text-sm font-bold disabled:bg-[#246874] disabled:text-white/60 transition-colors"
-                  >
-                    {joiningId === game.id ? "Joining..." : "Join"}
-                  </button>
-                </div>
+              {TIMER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
-            </div>
-          )}
+            </select>
+          </div>
         </div>
-      </div>
-      <Footer />
-    </div>
+      }
+      lobbies={availableGames}
+      lobbyEmptyText="No open games right now."
+      lobbyKey={(l) => l.id}
+      lobbyTitle={(l) => <>Game #{l.id}</>}
+      lobbyMeta={(l) => (
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>Host: {l.hostName || "Player"}</span>
+          <span>
+            Bet:{" "}
+            <span className="inline-flex items-center gap-1 font-semibold text-yellow-300">
+              {Number(l.betAmount).toFixed(2)}
+              <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
+            </span>
+          </span>
+          <span>Timer: {Number(l.timerSeconds || 60)}s</span>
+        </span>
+      )}
+      onJoin={(l) => joinGame(l.id)}
+      joinBusyId={joiningId}
+      onRefresh={fetchGames}
+      error={error}
+    />
   );
 }

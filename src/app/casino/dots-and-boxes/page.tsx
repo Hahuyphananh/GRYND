@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
-import NavigationBar from "../../../components/navigation-bar";
-import Footer from "../../../components/Footer";
-import { useTranslation } from "../../../hooks/useTranslation";
+import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconRuler } from "@tabler/icons-react";
+import { useTranslation } from "../../../hooks/useTranslation";
+
+const BET_OPTIONS = [10, 25, 50, 100, 250];
 
 export default function DotsAndBoxesLobbyPage() {
   const { isSignedIn, user } = useUser();
@@ -23,6 +24,7 @@ export default function DotsAndBoxesLobbyPage() {
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   const [joiningId, setJoiningId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchBalance = async () => {
     if (!user) return;
@@ -36,16 +38,25 @@ export default function DotsAndBoxesLobbyPage() {
   };
 
   const fetchGames = async () => {
-    const res = await fetch("/api/dots-and-boxes/available-games", {
-      cache: "no-store",
-    });
-    const data = await res.json();
-    if (data.success) setAvailableGames(data.games || []);
+    try {
+      const res = await fetch("/api/dots-and-boxes/available-games", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (data.success) setAvailableGames(data.games || []);
+    } catch {
+      // silent
+    }
   };
 
   useEffect(() => {
     if (isSignedIn && user) fetchBalance();
     fetchGames();
+    const id = setInterval(() => {
+      if (isSignedIn && user) fetchBalance();
+      fetchGames();
+    }, 3000);
+    return () => clearInterval(id);
   }, [isSignedIn, user]);
 
   useEffect(() => {
@@ -64,11 +75,12 @@ export default function DotsAndBoxesLobbyPage() {
 
   const createGame = async () => {
     if (betAmount <= 0 || betAmount > balance) {
-      alert(t("games.dots_and_boxes.invalid_bet_alert"));
+      setError(t("games.dots_and_boxes.invalid_bet_alert"));
       return;
     }
 
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/dots-and-boxes/create-game", {
         method: "POST",
@@ -78,7 +90,7 @@ export default function DotsAndBoxesLobbyPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || t("games.dots_and_boxes.unable_to_create_alert"));
+        setError(data.error || t("games.dots_and_boxes.unable_to_create_alert"));
         return;
       }
 
@@ -99,6 +111,7 @@ export default function DotsAndBoxesLobbyPage() {
 
   const joinGame = async (gameId?: number) => {
     setLoading(true);
+    setError(null);
     if (gameId) setJoiningId(gameId);
 
     try {
@@ -110,7 +123,7 @@ export default function DotsAndBoxesLobbyPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        alert(data.error || t("games.dots_and_boxes.unable_to_join_alert"));
+        setError(data.error || t("games.dots_and_boxes.unable_to_join_alert"));
         return;
       }
 
@@ -130,138 +143,86 @@ export default function DotsAndBoxesLobbyPage() {
   };
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
-      <NavigationBar currentPath="/casino" />
-      <div className="mx-auto mt-4 max-w-4xl sm:mt-8">
-        <motion.div
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
+    <PvpLobbyPage
+      title={t("games.dots_and_boxes_name")}
+      subtitle={t("games.dots_and_boxes.lobby_subtitle")}
+      icon={<IconRuler className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
+      rulesKey="dots-and-boxes"
+      rules={{
+        title: "How to Play",
+        sections: [
+          {
+            heading: "Classic pencil-and-paper game",
+            body: (
+              <>
+                Take turns drawing lines between adjacent dots on the
+                grid.
+              </>
+            ),
+          },
+          {
+            heading: "Complete a box",
+            body: (
+              <>
+                Complete the fourth side of a box to score a point and
+                earn <b>another turn</b>.
+              </>
+            ),
+          },
+          {
+            heading: "Win condition",
+            body: (
+              <>
+                When every line is drawn, the player with the most
+                completed boxes wins the match and the pot (minus the
+                house fee).
+              </>
+            ),
+          },
+        ],
+      }}
+      balance={balance}
+      stake={betAmount}
+      onStakeChange={setBetAmount}
+      stakeOptions={BET_OPTIONS}
+      busy={loading}
+      onPlay={createGame}
+      playLabel={t("games.dots_and_boxes.create_button")}
+      playBusyLabel={t("games.dots_and_boxes.creating")}
+      escrowNote={t("games.dots_and_boxes.lobby_tagline")}
+      extraActions={
+        <button
+          type="button"
+          onClick={() => joinGame()}
+          disabled={loading}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 py-2 text-sm font-bold text-amber-200 transition hover:bg-amber-500/20 disabled:opacity-50"
         >
-          <h1
-            className="text-3xl sm:text-4xl font-extrabold text-center mb-2
-  text-transparent bg-clip-text
-  bg-gradient-to-r from-orange-400 via-amber-400 to-yellow-500
-  drop-shadow-[0_0_18px_rgba(251,191,36,0.6)] tracking-wide"
-          >
-            {t("games.dots_and_boxes_name")}
-          </h1>
-        </motion.div>
-        <p className="text-center text-sm text-white/60 mb-7 max-w-xl mx-auto">
-          {t("games.dots_and_boxes.lobby_subtitle")}
-        </p>
-
-        <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-[#0b224f]/70 backdrop-blur-xl 
-border border-[#f59e0b]/20 
-shadow-[0_0_40px_rgba(245,158,11,0.15)] rounded-2xl p-6 shadow-[0_0_28px_rgba(245,158,11,0.2)]"
-        >
-          <div className="text-center mb-4 text-sm">
-            <span className="uppercase tracking-wider text-[11px] text-white/50 mr-2">
-              {t("games.dots_and_boxes.balance_label")}
+          {loading ? t("games.dots_and_boxes.joining") : t("games.dots_and_boxes.quick_join_button")}
+        </button>
+      }
+      lobbies={availableGames}
+      lobbyEmptyText={t("games.dots_and_boxes.no_open_games")}
+      lobbyKey={(l) => l.id}
+      lobbyTitle={(l) => t("games.dots_and_boxes.game_row_label", { gameId: l.id })}
+      lobbyMeta={(l) => (
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>
+            {t("games.dots_and_boxes.host_field")}: {l.hostName || t("games.dots_and_boxes.host_fallback")}
+          </span>
+          <span>
+            {t("games.dots_and_boxes.bet_field")}:{" "}
+            <span className="inline-flex items-center gap-1 font-semibold text-yellow-300">
+              {Number(l.betAmount).toFixed(2)}
+              <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
             </span>
-            <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500 text-base">
-              {balance.toFixed(2)}
-            </span>{" "}
-            <span className="text-white/50">{t("games.dots_and_boxes.tokens_suffix")}</span>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-3 items-end">
-            <div className="md:col-span-1">
-              <label className="text-[11px] uppercase tracking-wider text-white/60">
-                {t("games.dots_and_boxes.bet_input_label")}
-              </label>
-              <input
-                type="number"
-                value={betAmount}
-                min={1}
-                max={balance}
-                onChange={(e) => setBetAmount(Number(e.target.value))}
-                className="w-full mt-1 p-2.5 rounded-lg text-sm
-bg-[#020617] border border-[#f59e0b]/30
-focus:border-[#f59e0b] focus:ring-0
-outline-none text-white"
-              />
-            </div>
-            <button
-              onClick={createGame}
-              disabled={loading}
-              className="p-2.5 rounded-xl text-sm font-bold text-black
-bg-gradient-to-r from-amber-200 to-amber-600
-hover:scale-105 active:scale-95
-transition-all duration-150
-shadow-[0_0_18px_rgba(251,191,36,0.6)] disabled:opacity-50 disabled:hover:scale-100"
-            >
-              {loading ? t("games.dots_and_boxes.creating") : t("games.dots_and_boxes.create_button")}
-            </button>
-            <button
-              onClick={() => joinGame()}
-              disabled={loading}
-              className="p-2.5 rounded-xl text-sm font-bold text-[#001933]
-bg-gradient-to-r from-orange-400 to-amber-500
-hover:scale-105 active:scale-95
-transition-all duration-150
-shadow-[0_0_18px_rgba(251,191,36,0.6)] disabled:opacity-50 disabled:hover:scale-100"
-            >
-              {loading ? t("games.dots_and_boxes.joining") : t("games.dots_and_boxes.quick_join_button")}
-            </button>
-          </div>
-
-          <p className="mt-4 text-center text-xs text-white/40">
-            {t("games.dots_and_boxes.lobby_tagline")}
-          </p>
-        </motion.div>
-
-        <div className="mt-6 bg-[#0b224f]/85 border border-[#f59e0b]/30 rounded-2xl p-5 shadow-[0_0_22px_rgba(245,158,11,0.15)]">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-[#FFD700] flex items-center gap-2 uppercase tracking-wider">
-              <IconRuler size={16} aria-hidden />
-              <span>{t("games.dots_and_boxes.open_challenges_title")}</span>
-            </h2>
-            <button
-              onClick={fetchGames}
-              className="px-3 py-1.5 rounded-lg bg-[#f59e0b] text-[#001933] hover:bg-[#fbbf24] text-xs font-semibold shadow-[0_0_10px_rgba(245,158,11,0.35)] transition-colors"
-            >
-              {t("games.dots_and_boxes.refresh_button")}
-            </button>
-          </div>
-
-          {availableGames.length === 0 ? (
-            <p className="text-sm text-white/60">{t("games.dots_and_boxes.no_open_games")}</p>
-          ) : (
-            <div className="space-y-2.5">
-              {availableGames.map((game) => (
-                <div
-                  key={game.id}
-                  className="flex items-center justify-between rounded-xl bg-[#08142f]/80 p-3 border border-[#f59e0b]/20 hover:border-[#f59e0b]/40 transition-colors"
-                >
-                  <div>
-                    <p className="text-sm font-semibold">
-                      {t("games.dots_and_boxes.game_row_label", { gameId: game.id })}
-                    </p>
-                    <p className="text-xs text-white/60">
-                      {t("games.dots_and_boxes.host_field")}: {game.hostName || t("games.dots_and_boxes.host_fallback")} · {t("games.dots_and_boxes.bet_field")}:{" "}
-                      <span className="text-yellow-300">
-                        {Number(game.betAmount).toFixed(2)}
-                      </span>
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => joinGame(game.id)}
-                    disabled={loading || joiningId === game.id}
-                    className="px-4 py-1.5 rounded-lg bg-[#f59e0b] text-[#001933] hover:bg-[#fbbf24] text-sm font-bold disabled:bg-[#7c5a16] disabled:text-white/60 transition-colors"
-                  >
-                    {joiningId === game.id ? t("games.dots_and_boxes.joining") : t("games.dots_and_boxes.join_button")}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      <Footer />
-    </div>
+          </span>
+        </span>
+      )}
+      onJoin={(l) => joinGame(l.id)}
+      joinBusyId={joiningId}
+      joinLabel={t("games.dots_and_boxes.join_button")}
+      onRefresh={fetchGames}
+      error={error}
+    />
   );
 }

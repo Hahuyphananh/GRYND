@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
+import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import ReportModal from "../../../components/ReportModal";
 import { useSocket } from "../../../context/SocketProvider";
 import { celebrateWin } from "../../../lib/animations";
@@ -51,29 +52,87 @@ type PvPInteractiveState = PvPInteractiveOddsState;
 
 export default function OddsPage() {
   const [mode, setMode] = useState<"ai" | "pvp">("pvp");
+  const [showRules, setShowRules] = useState(false);
+  const firstVisitRules = useFirstVisitRules("odds");
+  useEffect(() => {
+    if (firstVisitRules) setShowRules(true);
+  }, [firstVisitRules]);
   const audio = useOddsAudio();
 
   return (
     <div
-      className="relative flex min-h-screen flex-col items-center justify-start overflow-x-clip px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
-      style={{ backgroundImage: "linear-gradient(135deg, #020617 0%, #020617 40%, #0f172a 100%)" }}
+      className="relative flex min-h-screen flex-col items-center justify-start overflow-x-clip bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(250,204,21,0.12),transparent_70%)] pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.08),transparent_70%)] pointer-events-none" />
       <NavigationBar currentPath="/casino" />
-      <div className="mt-6 w-full max-w-2xl rounded-xl border border-yellow-400/30 bg-[#0b224f]/85 p-4 text-white shadow-[0_0_24px_rgba(250,204,21,0.15)] sm:mt-10 sm:p-6">
-        <h1 className="mb-2 text-center text-2xl font-extrabold tracking-wide text-yellow-400 sm:text-3xl">
+      <div className="mt-6 w-full max-w-2xl rounded-2xl border border-amber-700/60 bg-black/40 p-4 text-white shadow-[0_0_24px_rgba(251,191,36,0.12)] sm:mt-10 sm:p-6">
+        <h1 className="mb-2 text-center text-2xl font-extrabold tracking-wide text-amber-400 sm:text-3xl drop-shadow-[0_0_15px_rgba(251,191,36,0.4)]">
           <span className="inline-flex items-center gap-2"><IconDice size={28} /> Odds Game</span>
         </h1>
-        <p className="mb-6 text-center text-sm text-white/60">
+        <p className="mb-4 text-center text-sm text-white/60">
           Pick your number and predict your opponent's — closest predictions win. Range halves each round.
         </p>
+
+        {/* How to Play — rules modal at the top of the lobby */}
+        <div className="mb-5 text-center">
+          <button
+            onClick={() => setShowRules(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 transition-all duration-300 hover:bg-amber-500/20 hover:scale-105 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
+          >
+            <IconCrystalBall size={15} /> How to Play
+          </button>
+        </div>
+        {showRules && (
+          <RulesModal
+            title="How to Play"
+            sections={[
+              {
+                heading: "Two-phase prediction duel",
+                body: (
+                  <>
+                    Each round you <b>pick a hidden number</b>, then{" "}
+                    <b>predict your opponent&apos;s number</b>.
+                  </>
+                ),
+              },
+              {
+                heading: "Band scoring",
+                body: (
+                  <>
+                    The closer your predictions, the more points you
+                    score — hitting the exact band pays the most.
+                  </>
+                ),
+              },
+              {
+                heading: "Shrinking range",
+                body: (
+                  <>
+                    The number range <b>halves each round</b> over 6
+                    rounds — later rounds are higher-stakes.
+                  </>
+                ),
+              },
+              {
+                heading: "Win the match",
+                body: (
+                  <>
+                    The player with the most points after all rounds
+                    takes the pot (minus the house fee).
+                  </>
+                ),
+              },
+            ]}
+            onClose={() => setShowRules(false)}
+          />
+        )}
 
         <div className="mb-6 grid grid-cols-2 gap-2 sm:flex sm:justify-center sm:space-x-4 sm:gap-0">
           <button
             className={`px-4 py-2 rounded font-semibold ${
               mode === "pvp"
-                ? "bg-gradient-to-r from-yellow-500 to-amber-500 text-black shadow-[0_0_14px_rgba(250,204,21,0.5)]"
-                : "bg-[#0d335f] hover:bg-[#144a85]"
+                ? "border-b-4 border-amber-700 bg-amber-500 text-black shadow-[0_0_14px_rgba(251,191,36,0.5)]"
+                : "border border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50 hover:text-amber-200"
             }`}
             onClick={() => setMode("pvp")}
           >
@@ -82,8 +141,8 @@ export default function OddsPage() {
           <button
             className={`px-4 py-2 rounded font-semibold ${
               mode === "ai"
-                ? "bg-gradient-to-r from-yellow-500 to-amber-500 text-black shadow-[0_0_14px_rgba(250,204,21,0.5)]"
-                : "bg-[#0d335f] hover:bg-[#144a85]"
+                ? "border-b-4 border-amber-700 bg-amber-500 text-black shadow-[0_0_14px_rgba(251,191,36,0.5)]"
+                : "border border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50 hover:text-amber-200"
             }`}
             onClick={() => setMode("ai")}
           >
@@ -424,14 +483,14 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 
       {!resuming && !gameId && (
         <>
-          <div className="mb-4 rounded-lg border-2 border-dashed border-yellow-400/40 bg-yellow-500/10 p-3 text-center">
-            <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-yellow-300"><IconDeviceGamepad2 size={14} /> Free Play</p>
-            <p className="mt-1 text-[10px] text-yellow-100/80">No tokens are wagered. Playing vs AI is free.</p>
+          <div className="mb-4 rounded-lg border-2 border-dashed border-amber-400/40 bg-amber-500/10 p-3 text-center">
+            <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-amber-300"><IconDeviceGamepad2 size={14} /> Free Play</p>
+            <p className="mt-1 text-[10px] text-amber-200/70">No tokens are wagered. Playing vs AI is free.</p>
           </div>
           <button
             onClick={startGame}
             disabled={loading}
-            className="w-full p-3 rounded font-bold text-lg bg-gradient-to-r from-yellow-500 to-amber-500 text-black hover:scale-105 transition shadow-[0_0_18px_rgba(250,204,21,0.5)]"
+            className="w-full rounded-xl border-b-4 border-amber-700 bg-amber-500 p-3 font-bold text-lg text-black shadow-[0_0_18px_rgba(251,191,36,0.4)] hover:brightness-110 transition active:translate-y-[2px] disabled:opacity-50"
           >
             {loading ? "Starting..." : <span className="inline-flex items-center gap-2"><IconDice size={18} /> Play vs AI</span>}
           </button>
@@ -1323,26 +1382,41 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       {/* LOBBY: no game yet */}
       {!resuming && !gameId && !interactiveState && (
         <>
-          <label className="block mb-1 text-sm font-semibold" htmlFor="odds-pvp-wager">
-            Wager Amount
-          </label>
-          <input
-            id="odds-pvp-wager"
-            type="number"
-            className="w-full bg-[#08142f] border border-yellow-400/30 p-2 rounded mb-4 text-white"
-            value={wager}
-            onChange={(e) => setWager(Number(e.target.value))}
-            min={1}
-          />
+          <div className="mb-4 text-center text-sm">
+            <span className="uppercase tracking-widest text-[11px] text-white/55 mr-2">Wager</span>
+            <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+              {[10, 25, 50, 100, 250, 500].map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setWager(v)}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${
+                    wager === v
+                      ? "border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
+                      : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50 hover:text-amber-200"
+                  }`}
+                >
+                  {v.toLocaleString()}
+                </button>
+              ))}
+            </div>
+            <input
+              id="odds-pvp-wager"
+              type="number"
+              className="mt-2 w-full rounded-md border border-amber-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-amber-400"
+              value={wager}
+              onChange={(e) => setWager(Number(e.target.value))}
+              min={1}
+            />
+          </div>
           <button
             onClick={createGame}
             disabled={loading}
-            className="w-full p-3 rounded font-bold text-lg bg-gradient-to-r from-yellow-500 to-amber-500 text-black hover:scale-105 transition shadow-[0_0_18px_rgba(250,204,21,0.5)] mb-6"
+            className="w-full rounded-xl border-b-4 border-amber-700 bg-amber-500 p-3 font-bold text-lg text-black shadow-[0_0_18px_rgba(251,191,36,0.4)] hover:brightness-110 transition active:translate-y-[2px] disabled:opacity-50 mb-6"
           >
             {loading ? "Creating..." : <span className="inline-flex items-center gap-2"><IconDice size={18} /> Create PvP Game</span>}
           </button>
 
-          <h2 className="text-lg font-bold mb-3">Available Games</h2>
+          <h2 className="text-lg font-bold mb-3 text-cyan-300">Available Games</h2>
           {games.filter((g) => g.player1Id !== userId).length === 0 && (
             <p className="text-center text-white/40 italic">
               No games available. Create one!
@@ -1354,20 +1428,20 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
               .map((game) => (
                 <div
                   key={game.id}
-                  className="bg-gray-900 border border-yellow-400/20 rounded-lg p-4 flex justify-between items-center"
+                  className="rounded-xl border border-cyan-700/30 bg-slate-900/80 p-4 flex justify-between items-center hover:border-cyan-500/50 transition"
                 >
                   <div>
                     <p className="font-bold text-white">
                       {game.player1Name}
                     </p>
                     <p className="text-sm text-white/50">
-                      Wager: {game.wager} <IconCoins size={12} className="inline" />
+                      Wager: <span className="text-yellow-300 font-semibold">{game.wager}</span> <IconCoins size={12} className="inline" />
                     </p>
                   </div>
                   <button
                     onClick={() => joinGame(game.id)}
                     disabled={loading}
-                    className="px-4 py-2 rounded-lg font-bold bg-gradient-to-r from-emerald-400 to-green-500 text-black shadow-[0_0_12px_rgba(16,185,129,0.5)]"
+                    className="px-4 py-2 rounded-lg font-bold bg-cyan-500 text-black hover:bg-cyan-400 disabled:opacity-50 transition"
                   >
                     Join
                   </button>

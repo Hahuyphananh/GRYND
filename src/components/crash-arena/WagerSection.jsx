@@ -35,26 +35,26 @@ export default function WagerSection({
   const isCreating = creating === wager;
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border border-[#00e5ff]/35 bg-[#040d24] transition-all duration-300 hover:border-[#00e5ff]/60 hover:shadow-[0_0_30px_rgba(0,229,255,0.25)]">
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-amber-700/60 bg-black/40 transition-all duration-300 hover:border-amber-500/60 hover:shadow-[0_0_30px_rgba(251,191,36,0.2)]">
       {/* ═══ Table amount card ═══ */}
       <div className="relative p-5 flex flex-col gap-3">
         {/* Top accent line */}
-        <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent opacity-70" />
+        <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent opacity-70" />
 
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-xs uppercase tracking-widest text-[#9dd8ff] opacity-70">
+            <span className="text-xs uppercase tracking-widest text-cyan-100/60">
               Round Wager
             </span>
-            <div className="text-2xl font-black text-[#FFD700] drop-shadow-[0_0_8px_rgba(255,215,0,0.4)]">
+            <div className="text-2xl font-black text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]">
               ${wager}
             </div>
           </div>
           <span
             className={`px-3 py-1 rounded-full text-xs font-bold border
               ${openCount > 0
-                ? "bg-[#00e5ff]/15 text-[#00e5ff] border-[#00e5ff]/40"
+                ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/40"
                 : "bg-gray-500/15 text-gray-400 border-gray-500/30"}`}
           >
             {tables.length === 0 ? "NO GAMES" : openCount > 0 ? `${openCount} OPEN` : "FULL"}
@@ -62,17 +62,17 @@ export default function WagerSection({
         </div>
 
         {/* Table name */}
-        <div className="text-sm font-bold text-[#d8fbff]">${wager} Crash Arena</div>
+        <div className="text-sm font-bold text-white/90">${wager} Crash Arena</div>
 
         {/* Stats row */}
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div className="flex flex-col">
-            <span className="text-[#9dd8ff]/60 text-xs">Min Buy-in</span>
-            <span className="text-[#d8fbff] font-semibold">${minBuyIn}</span>
+            <span className="text-cyan-100/50 text-xs">Min Buy-in</span>
+            <span className="text-white/90 font-semibold">${minBuyIn}</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-[#9dd8ff]/60 text-xs">Seated</span>
-            <span className="text-[#d8fbff] font-semibold">
+            <span className="text-cyan-100/50 text-xs">Seated</span>
+            <span className="text-white/90 font-semibold">
               {tables.length === 0
                 ? "—"
                 : `${totalPlayers}/${maxPlayers * tables.length}`}
@@ -85,8 +85,8 @@ export default function WagerSection({
           onClick={() => onCreate?.(wager)}
           disabled={isCreating}
           className={`mt-1 w-full py-2.5 rounded-xl font-bold text-sm text-center transition-all duration-300
-            bg-gradient-to-r from-[#00e5ff]/20 to-[#007cf0]/20 text-[#00e5ff] border border-[#00e5ff]/30
-            hover:from-[#00e5ff]/35 hover:to-[#007cf0]/35 hover:scale-[1.02] hover:shadow-[0_0_20px_rgba(0,229,255,0.4)]
+            bg-amber-500 text-black border-b-4 border-amber-700
+            hover:brightness-110 hover:scale-[1.02] hover:shadow-[0_0_20px_rgba(251,191,36,0.4)]
             disabled:opacity-60 disabled:hover:scale-100`}
         >
           {isCreating ? "Creating…" : "＋ Create Table"}
@@ -94,22 +94,22 @@ export default function WagerSection({
       </div>
 
       {/* ═══ Available Games section ═══ */}
-      <div className="border-t border-[#00e5ff]/20 bg-[#020a1c]/60 p-4 flex flex-col gap-2 flex-1">
+      <div className="border-t border-amber-700/40 bg-black/30 p-4 flex flex-col gap-2 flex-1">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-[#9dd8ff]">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-cyan-300">
             Available Games
           </h3>
-          <span className="text-xs text-[#9dd8ff]/50">
+          <span className="text-xs text-cyan-100/50">
             {tables.length} table{tables.length === 1 ? "" : "s"}
           </span>
         </div>
 
         {tables.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[#00e5ff]/20 bg-[#040d24]/40 px-3 py-4 text-center">
-            <p className="text-sm text-[#9dd8ff]/70">
+          <div className="rounded-xl border border-dashed border-amber-700/40 bg-black/30 px-3 py-4 text-center">
+            <p className="text-sm text-white/60">
               No open games right now.
             </p>
-            <p className="text-xs text-[#9dd8ff]/40 mt-1">
+            <p className="text-xs text-white/40 mt-1">
               Be the first — create a ${wager} table above!
             </p>
           </div>
@@ -125,15 +125,15 @@ export default function WagerSection({
                   className={`flex items-center justify-between gap-2 rounded-xl border p-2.5 transition-colors
                     ${isFull
                       ? "border-gray-500/20 bg-[#0a0a14]/60 opacity-75"
-                      : "border-[#00e5ff]/20 bg-[#08142f]/80 hover:border-[#00e5ff]/45"}`}
+                      : "border-cyan-700/30 bg-slate-900/80 hover:border-cyan-500/50"}`}
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-bold text-[#d8fbff] truncate">
+                      <span className="text-sm font-bold text-white/90 truncate">
                         Table #{t.id}
                       </span>
                       {isLive && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#00ffa6]/15 text-[#00ffa6] border border-[#00ffa6]/40 animate-pulse">
+                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 animate-pulse">
                           LIVE
                         </span>
                       )}
@@ -143,7 +143,7 @@ export default function WagerSection({
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-[#9dd8ff]/70 truncate">
+                    <p className="text-xs text-cyan-100/60 truncate">
                       {t.hostName ? `Host: ${t.hostName} · ` : ""}
                       Pot ${(t.pot || 0).toLocaleString()} ·{" "}
                       {t.playerCount}/{t.maxPlayers} players
@@ -155,7 +155,7 @@ export default function WagerSection({
                     className={`shrink-0 px-4 py-1.5 rounded-lg text-sm font-bold transition-all duration-200
                       ${isFull
                         ? "bg-gray-700/30 text-gray-500 cursor-not-allowed"
-                        : "bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] hover:shadow-[0_0_12px_rgba(0,229,255,0.5)] disabled:bg-[#246874] disabled:cursor-wait"}`}
+                        : "bg-cyan-500 text-black hover:bg-cyan-400 hover:shadow-[0_0_12px_rgba(34,211,238,0.5)] disabled:bg-cyan-500/30 disabled:cursor-wait"}`}
                   >
                     {isBusy ? "Joining…" : isFull ? "Full" : "Join"}
                   </button>
@@ -166,7 +166,7 @@ export default function WagerSection({
         )}
 
         {!isSignedIn && (
-          <p className="text-[11px] text-[#FFD700]/70 mt-auto text-center">
+          <p className="text-[11px] text-amber-200/70 mt-auto text-center">
             Sign in to create or join a table.
           </p>
         )}

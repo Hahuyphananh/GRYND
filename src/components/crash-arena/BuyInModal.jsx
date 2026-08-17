@@ -33,22 +33,22 @@ export default function BuyInModal({ table, onBuyIn, onClose, maxBalance }) {
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.9, opacity: 0, y: 20 }}
         transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        className="relative w-full max-w-sm overflow-hidden rounded-3xl border-2 border-[#FFD700]/40 bg-gradient-to-b from-[#0a1a2e] to-[#040d24] p-6 shadow-[0_0_60px_rgba(255,215,0,0.2)]"
+        className="relative w-full max-w-sm overflow-hidden rounded-3xl border-2 border-amber-700/60 bg-gradient-to-b from-[#12042a] to-[#0a0118] p-6 shadow-[0_0_60px_rgba(251,191,36,0.2)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top glow line */}
-        <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#FFD700] to-transparent" />
+        <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent" />
 
-        <h2 className="text-2xl font-black text-[#FFD700] text-center mb-1">Buy In</h2>
-        <p className="text-sm text-[#9dd8ff] text-center mb-5">
+        <h2 className="text-2xl font-black text-amber-300 text-center mb-1">Buy In</h2>
+        <p className="text-sm text-white/60 text-center mb-5">
           ${wager} table • Min buy-in: ${minBuyIn}
         </p>
 
         {/* Amount input */}
         <div className="mb-4">
-          <label className="text-xs text-[#9dd8ff]/70 uppercase tracking-wider">Buy-in Amount</label>
-          <div className="flex items-center mt-1 bg-[#020617] border border-[#00e5ff]/30 rounded-xl overflow-hidden focus-within:border-[#00e5ff] focus-within:shadow-[0_0_15px_rgba(0,229,255,0.4)] transition-all">
-            <span className="pl-4 text-[#FFD700] font-bold text-lg">$</span>
+          <label className="text-xs text-white/55 uppercase tracking-wider">Buy-in Amount</label>
+          <div className="flex items-center mt-1 bg-[#020617] border border-amber-600/50 rounded-xl overflow-hidden focus-within:border-amber-400 focus-within:shadow-[0_0_15px_rgba(251,191,36,0.35)] transition-all">
+            <span className="pl-4 text-amber-300 font-bold text-lg">$</span>
             <input
               type="number"
               value={amount}
@@ -68,8 +68,8 @@ export default function BuyInModal({ table, onBuyIn, onClose, maxBalance }) {
               onClick={() => setAmount(val)}
               className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all duration-150
                 ${amount === val
-                  ? "bg-[#FFD700] text-black border-[#FFD700] shadow-[0_0_10px_rgba(255,215,0,0.5)]"
-                  : "bg-[#08142f] text-[#FFD700]/80 border-[#FFD700]/25 hover:bg-[#FFD700]/15 hover:border-[#FFD700]/50"
+                  ? "bg-amber-400 text-black border-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.5)]"
+                  : "bg-slate-900/80 text-amber-200/80 border-amber-600/30 hover:bg-amber-500/15 hover:border-amber-500/50"
                 }`}
             >
               ${val.toLocaleString()}
@@ -87,7 +87,7 @@ export default function BuyInModal({ table, onBuyIn, onClose, maxBalance }) {
           </button>
           <button
             onClick={() => onBuyIn(amount)}
-            className="flex-1 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black border border-[#FFD700] shadow-[0_0_20px_rgba(255,215,0,0.5)] hover:shadow-[0_0_35px_rgba(255,215,0,0.8)] hover:scale-105 transition-all duration-300"
+            className="flex-1 py-3 rounded-xl font-bold text-sm bg-amber-500 text-black border-b-4 border-amber-700 shadow-[0_0_20px_rgba(251,191,36,0.5)] hover:shadow-[0_0_35px_rgba(251,191,36,0.7)] hover:scale-105 transition-all duration-300"
           >
             Buy In • ${amount.toLocaleString()}
           </button>

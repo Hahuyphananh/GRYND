@@ -2,6 +2,7 @@
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import { useEffect, useState } from "react";
 import { useSocket } from "../../../context/SocketProvider";
 import {
@@ -9,6 +10,7 @@ import {
   IconRobot,
   IconPalette,
   IconClock,
+  IconBook,
 } from "@tabler/icons-react";
 const TABLES = [1, 5, 10, 20, 50, 100];
 
@@ -44,6 +46,11 @@ export default function ChessLobby() {
   const [selectedTimer, setSelectedTimer] = useState("");
   const [error, setError] = useState(null);
   const [aiGameLoading, setAiGameLoading] = useState(false);
+  const [showRules, setShowRules] = useState(false);
+  const firstVisitRules = useFirstVisitRules("chess");
+  useEffect(() => {
+    if (firstVisitRules) setShowRules(true);
+  }, [firstVisitRules]);
 
   // Auto-clear errors after 5 seconds
   useEffect(() => {
@@ -212,6 +219,51 @@ export default function ChessLobby() {
       <h1 className="mb-4 mt-4 text-3xl font-bold text-[#FFD700] drop-shadow-[0_0_12px_rgba(255,215,0,0.55)] sm:text-4xl">
         <span className="inline-flex items-center gap-2"><IconChess size={28} /> Chess Arena — Challenge Players</span>
       </h1>
+
+      {/* How to Play — rules modal at the top of the lobby */}
+      <div className="mb-6 text-center">
+        <button
+          onClick={() => setShowRules(true)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 transition-all duration-300 hover:bg-amber-500/20 hover:scale-105 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
+        >
+          <IconBook size={15} /> How to Play
+        </button>
+      </div>
+      {showRules && (
+        <RulesModal
+          title="How to Play"
+          sections={[
+            {
+              heading: "Checkmate to win",
+              body: (
+                <>
+                  Standard chess rules — checkmate your opponent&apos;s
+                  king to win the match.
+                </>
+              ),
+            },
+            {
+              heading: "Stake & timer",
+              body: (
+                <>
+                  Pick a stake and a move timer before creating your
+                  game. The winner takes the pot minus a 10% house fee.
+                </>
+              ),
+            },
+            {
+              heading: "Play vs AI",
+              body: (
+                <>
+                  Practice against the bot at five difficulty levels
+                  (Beginner → Expert) with your choice of timer.
+                </>
+              ),
+            },
+          ]}
+          onClose={() => setShowRules(false)}
+        />
+      )}
 
       <div className="max-w-4xl mx-auto bg-[#0b224f]/85 p-6 rounded-xl border border-[#00e5ff]/30 mb-8 shadow-[0_0_24px_rgba(0,229,255,0.18)]">
         <h2 className="text-2xl font-bold text-[#FFD700] mb-4">

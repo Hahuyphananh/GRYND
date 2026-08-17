@@ -1,19 +1,29 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import NavigationBar from "../../../components/navigation-bar";
-import Footer from "../../../components/Footer";
+import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import { CoinIcon } from "../../../components/lobby/PvpLobby";
+import { IconTarget } from "@tabler/icons-react";
+
+const WAGER_OPTIONS = [10, 25, 50, 100];
 
 export default function PoolLobbyPage() {
   const router = useRouter();
   const [lobbies, setLobbies] = useState<any[]>([]);
   const [wager, setWager] = useState(10);
+  const [loading, setLoading] = useState(false);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [createdLobbyId, setCreatedLobbyId] = useState<string | null>(null);
 
   const load = async () => {
-    const res = await fetch("/api/pool/lobbies", { cache: "no-store" });
-    const data = await res.json();
-    setLobbies(data.lobbies || []);
+    try {
+      const res = await fetch("/api/pool/lobbies", { cache: "no-store" });
+      const data = await res.json();
+      setLobbies(data.lobbies || []);
+    } catch {
+      // silent — poll retries next tick
+    }
   };
 
   useEffect(() => {
@@ -29,117 +39,157 @@ export default function PoolLobbyPage() {
       });
       const data = await res.json();
       const match = data?.match;
-      if (
-        match?.status === "active" &&
-        match?.id &&
-        match.id !== createdLobbyId
-      ) {
+      if (match?.status === "active" && match?.id && match.id !== createdLobbyId) {
         router.push(`/casino/pool-masters/game/${match.id}`);
       }
     }, 1200);
 
     return () => clearInterval(id);
   }, [createdLobbyId, router]);
+
   const createLobby = async () => {
-    const res = await fetch("/api/pool/create-lobby", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wager }),
-    });
-    const data = await res.json();
-    if (data.lobbyId) {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/pool/create-lobby", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wager }),
+      });
+      const data = await res.json();
+      if (!data.lobbyId) {
+        setError(data.error || "Unable to create lobby");
+        return;
+      }
       setCreatedLobbyId(data.lobbyId);
       router.push(`/casino/pool-masters/game/${data.lobbyId}`);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const joinLobby = async (lobbyId: string) => {
-    const res = await fetch("/api/pool/join-lobby", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lobbyId }),
-    });
-    const data = await res.json();
-    if (data.matchId) router.push(`/casino/pool-masters/game/${data.matchId}`);
+  const joinLobby = async (lobby: any) => {
+    setJoiningId(lobby.id);
+    setError(null);
+    try {
+      const res = await fetch("/api/pool/join-lobby", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lobbyId: lobby.id }),
+      });
+      const data = await res.json();
+      if (!data.matchId) {
+        setError(data.error || "Unable to join lobby");
+        return;
+      }
+      router.push(`/casino/pool-masters/game/${data.matchId}`);
+    } finally {
+      setJoiningId(null);
+    }
   };
 
   const createAI = async () => {
-    const res = await fetch("/api/pool/create-ai-match", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wager }),
-    });
-    const data = await res.json();
-    if (data.matchId)
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/pool/create-ai-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wager }),
+      });
+      const data = await res.json();
+      if (!data.matchId) {
+        setError(data.error || "Unable to start AI match");
+        return;
+      }
       router.push(
         `/casino/pool-masters/game/${data.matchId}?ai=1&turn=${data.firstTurnSeat ?? 1}`,
       );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#06120f] to-[#050816] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
-      <NavigationBar currentPath="/casino" />
-      <div className="mx-auto mt-4 max-w-6xl rounded-2xl border border-cyan-500/40 bg-black/30 p-4 sm:mt-8 sm:p-5">
-        <h1 className="text-2xl font-black text-fuchsia-300 sm:text-3xl md:text-4xl">
-          Pool Masters Lobby
-        </h1>
-        <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          <div className="rounded-xl border border-fuchsia-500/40 bg-black/30 p-4">
-            <h2 className="text-xl font-bold">Create game</h2>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {[10, 25, 50, 100].map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setWager(v)}
-                  className={`min-h-11 rounded px-3 py-2 ${wager === v ? "bg-fuchsia-600" : "bg-slate-800"}`}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={createLobby}
-              className="mt-4 w-full rounded bg-cyan-400 py-2 font-bold text-black"
-            >
-              Create PvP Game
-            </button>
-            <button
-              onClick={createAI}
-              className="mt-2 w-full rounded bg-pink-500 py-2 font-bold text-black"
-            >
-              Create AI Game
-            </button>
-          </div>
-          <div className="rounded-xl border border-cyan-500/40 bg-black/30 p-4 lg:col-span-2">
-            <h2 className="text-xl font-bold">Available Games</h2>
-            <div className="mt-3 space-y-3">
-              {lobbies.length === 0 && (
-                <p className="text-slate-300">No open lobbies.</p>
-              )}
-              {lobbies.map((l) => (
-                <div
-                  key={l.id}
-                  className="flex flex-col gap-2 rounded border border-slate-700 p-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div>
-                    <p>Wager: {l.wager}</p>
-                    <p className="text-xs text-slate-400">
-                      Mode: {l.gameMode} • Waiting for player
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => joinLobby(l.id)}
-                    className="min-h-11 rounded bg-fuchsia-600 px-3 py-2"
-                  >
-                    Join
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-      <Footer />
-    </div>
+    <PvpLobbyPage
+      title="Pool Masters Lobby"
+      subtitle="Create or join a wagered 1v1 pool match — or play the AI for free."
+      icon={<IconTarget className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
+      rulesKey="pool-masters"
+      rules={{
+        title: "How to Play",
+        sections: [
+          {
+            heading: "1v1 8-ball pool",
+            body: (
+              <>
+                Compete head-to-head over a wagered game of 8-ball pool.
+                Take turns shooting — pocket your group of balls, then the
+                8-ball to win the match.
+              </>
+            ),
+          },
+          {
+            heading: "Wager & pot",
+            body: (
+              <>
+                Both players wager the same amount. The winner takes the
+                pot minus the house fee.
+              </>
+            ),
+          },
+          {
+            heading: "Practice free",
+            body: (
+              <>
+                Play vs AI at no cost to learn the game before wagering
+                real tokens.
+              </>
+            ),
+          },
+        ],
+      }}
+      balance={null}
+      stake={wager}
+      onStakeChange={setWager}
+      stakeOptions={WAGER_OPTIONS}
+      busy={loading}
+      onPlay={createLobby}
+      playLabel="Create PvP Game"
+      playBusyLabel="Creating lobby…"
+      vsAi={{
+        label: "Play vs AI",
+        badge: "Free",
+        disabled: false,
+        busy: loading,
+        onClick: createAI,
+      }}
+      escrowNote="We pair you with another player of the exact same wager. If no one is waiting, your wager is escrowed in a private lobby until someone joins or you cancel."
+      lobbies={lobbies}
+      lobbyEmptyText="No open lobbies yet. Be the first to make one."
+      lobbyKey={(l) => l.id}
+      lobbyTitle={(l) => (
+        <>
+          Lobby <span className="font-mono">{String(l.id).slice(-12)}</span>
+        </>
+      )}
+      lobbyMeta={(l) => (
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>
+            Wager:{" "}
+            <span className="inline-flex items-center gap-1 font-semibold text-yellow-300">
+              {Number(l.wager).toLocaleString()}
+              <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
+            </span>
+          </span>
+          <span className="capitalize">Mode: {l.gameMode}</span>
+          <span className="text-white/40">Waiting for player</span>
+        </span>
+      )}
+      onJoin={joinLobby}
+      joinBusyId={joiningId}
+      onRefresh={load}
+      error={error}
+    />
   );
 }

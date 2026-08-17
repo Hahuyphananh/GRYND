@@ -11,6 +11,7 @@ import { useTranslation } from "../../../hooks/useTranslation";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
+import PvpLobby from "../../../components/lobby/PvpLobby";
 import {
   calculateScore,
   isFarkle,
@@ -23,7 +24,6 @@ import {
   IconCoins,
   IconUsers,
   IconRobot,
-  IconRefresh,
   IconDeviceGamepad2,
   IconClipboardList,
   IconPin,
@@ -990,165 +990,145 @@ export default function FarklePage() {
           <span className="inline-flex items-center gap-2"><IconDice size={32} /> {t("games.farkle.title")}</span>
         </motion.h1>
 
-        {/* ═══ LOBBY ═══ */}
+        {/* ═══ LOBBY ═══ — shared PvpLobby chrome (blackjack layout,
+            farkle palette). Title stays on the page header above. */}
         {!roomId && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border border-amber-700/60 bg-black/40 p-6"
-          >
-            <div className="mb-4 text-center text-lg font-bold text-yellow-300">
-              <span className="inline-flex items-center gap-1.5"><IconCoins size={18} /> {t("games.balance")}: {balance.toFixed(2)} tokens</span>
-            </div>
-
-            {/* Mode toggle: PvP vs AI */}
-            <div className="mb-4 grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setMode("pvp")}
-                className={`rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
-                  mode === "pvp"
-                    ? "border-cyan-400 bg-cyan-500/20 text-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.3)]"
-                    : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-cyan-600/50"
-                }`}
-              >
-                <span className="inline-flex items-center gap-2"><IconUsers size={16} /> {t("games.farkle.create_pvp") /* PvP */}</span>
-              </button>
-              <button
-                onClick={() => setMode("ai")}
-                className={`rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
-                  mode === "ai"
-                    ? "border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
-                    : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50"
-                }`}
-              >
-                <span className="inline-flex items-center gap-2"><IconRobot size={16} /> {t("games.farkle.play_vs_ai") /* vs AI */}</span>
-              </button>
-            </div>
-
-            {mode === "pvp" ? (
-              <>
-                {/* Wager Input (PvP only) */}
-                <div className="mb-4">
-                  <label className="mb-1 block text-sm font-semibold text-amber-200">{t("games.farkle.wager")}</label>
-                  <input
-                    type="number"
-                    value={wager}
-                    onChange={(e) => setWager(Number(e.target.value || 0))}
-                    className="w-full rounded-xl border border-amber-600/50 bg-slate-900 px-4 py-3 text-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    min={1}
-                  />
-                </div>
-
-                {/* Action Button (PvP only) */}
-                <div className="mb-6 flex gap-3">
-                  <button
-                    onClick={createGame}
-                    disabled={loading}
-                    className="flex-1 rounded-2xl border-b-4 border-cyan-700 bg-cyan-500 px-6 py-3.5 text-lg font-black text-black shadow-[0_0_25px_rgba(34,211,238,0.4)] transition active:translate-y-[2px] disabled:opacity-50"
-                  >
-                    <span className="inline-flex items-center gap-2">{loading ? t("games.farkle.starting") : <>{t("games.farkle.create_pvp")} <IconDice size={18} /></>}</span>
-                  </button>
-                  <button
-                    onClick={fetchGames}
-                    className="rounded-2xl border-b-4 border-gray-600 bg-gray-700 px-4 py-3.5 text-lg font-black text-white shadow-[0_0_15px_rgba(255,255,255,0.1)] transition active:translate-y-[2px]"
-                  >
-                    <IconRefresh size={18} />
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* Free Play badge */}
-                <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-center">
-                  <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-amber-300"><IconDeviceGamepad2 size={14} /> Free Play</p>
-                  <p className="mt-1 text-[10px] text-amber-200/70">No tokens are wagered. Playing vs AI is free.</p>
-                </div>
-
-                {/* AI Difficulty Selector */}
-                <div className="mb-4">
-                  <label className="mb-2 block text-sm font-semibold text-amber-200">
-                    {t("games.farkle.ai_difficulty")}
-                  </label>
-                  <div className="flex gap-2">
-                    {(["easy", "medium", "hard"] as const).map((d) => (
-                      <button
-                        key={d}
-                        onClick={() => setDifficulty(d)}
-                        className={`flex-1 rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
-                          difficulty === d
-                            ? "border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
-                            : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50"
-                        }`}
-                      >
-                        <span className="inline-flex items-center gap-1.5">{d === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : d === "medium" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}{d === "easy" ? t("games.farkle.difficulty_easy") : d === "medium" ? t("games.farkle.difficulty_medium") : t("games.farkle.difficulty_hard")}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="mt-1 text-xs text-gray-400">
-                    {difficulty === "easy" && t("games.farkle.ai_desc_easy")}
-                    {difficulty === "medium" && t("games.farkle.ai_desc_medium")}
-                    {difficulty === "hard" && t("games.farkle.ai_desc_hard")}
-                  </p>
-                </div>
-
-                {/* Action Button (AI only) */}
-                <div className="mb-6">
-                  <button
-                    onClick={playAI}
-                    disabled={loading}
-                    className="w-full rounded-2xl border-b-4 border-amber-700 bg-amber-500 px-6 py-3.5 text-lg font-black text-black shadow-[0_0_25px_rgba(251,191,36,0.4)] transition active:translate-y-[2px] disabled:opacity-50"
-                  >
-                    <span className="inline-flex items-center gap-2">{loading ? t("games.farkle.starting") : <>{t("games.farkle.play_vs_ai")} <IconRobot size={18} /></>}</span>
-                  </button>
-                </div>
-              </>
+          <PvpLobby
+            title={null}
+            rulesKey="farkle"
+            rules={{
+              title: t("games.farkle.rules_title"),
+              sections: [
+                {
+                  heading: "How to play",
+                  body: (
+                    <ul className="list-inside list-disc space-y-1">
+                      <li>{t("games.farkle.rules_line1")}</li>
+                      <li>{t("games.farkle.rules_line2")}</li>
+                      <li>{t("games.farkle.rules_line3")}</li>
+                      <li>{t("games.farkle.rules_line4")}</li>
+                      <li>
+                        {t("games.farkle.rules_line5", {
+                          score: WINNING_SCORE.toLocaleString(),
+                        })}
+                      </li>
+                    </ul>
+                  ),
+                },
+              ],
+            }}
+            balance={balance}
+            stake={wager}
+            onStakeChange={(v) => setWager(Number(v || 0))}
+            stakeOptions={[10, 25, 50, 100, 250, 500]}
+            busy={loading}
+            onPlay={mode === "ai" ? playAI : createGame}
+            playLabel={
+              mode === "ai"
+                ? t("games.farkle.play_vs_ai")
+                : t("games.farkle.create_pvp")
+            }
+            playBusyLabel={t("games.farkle.starting")}
+            escrowNote={
+              mode === "ai"
+                ? "No tokens are wagered. Playing vs AI is free."
+                : "We pair you with another player of the exact same wager. If no one is waiting, your wager is escrowed in a private room until someone joins or you cancel."
+            }
+            lobbies={availableGames}
+            lobbyEmptyText={`${t("games.no_open_games")} ${t("games.farkle.create_one")}`}
+            lobbyKey={(l) => l.id}
+            lobbyTitle={(l) => <span className="font-mono">{String(l.id).slice(-12)}</span>}
+            lobbyMeta={(l) => (
+              <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="inline-flex items-center gap-1 font-semibold text-yellow-300">
+                  {Number(l.wager).toLocaleString()} tokens
+                </span>
+                {Number(l.pot) > 0 && (
+                  <span>Pot: {Number(l.pot).toLocaleString()}</span>
+                )}
+              </span>
             )}
-
-            {/* Rules Summary */}
-            <div className="mb-5 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs text-amber-200/80">
-              <p className="mb-1 flex items-center gap-1.5 font-bold text-amber-300"><IconClipboardList size={14} /> {t("games.farkle.rules_title")}</p>
-              <ul className="list-inside list-disc space-y-0.5">
-                <li>{t("games.farkle.rules_line1")}</li>
-                <li>{t("games.farkle.rules_line2")}</li>
-                <li>{t("games.farkle.rules_line3")}</li>
-                <li>{t("games.farkle.rules_line4")}</li>
-                <li>{t("games.farkle.rules_line5").replace("{score}", WINNING_SCORE.toLocaleString())}</li>
-              </ul>
-            </div>
-
-            {/* Available Games */}
-            <div>
-              <h3 className="mb-3 flex items-center gap-2 text-lg font-bold text-cyan-300"><IconDeviceGamepad2 size={20} /> {t("games.available_games")}</h3>
-              {availableGames.length === 0 ? (
-                <p className="text-center text-sm text-gray-500 py-8">{t("games.no_open_games")} {t("games.farkle.create_one")}</p>
-              ) : (
-                <div className="space-y-2">
-                  {availableGames.map((l) => (
-                    <div
-                      key={l.id}
-                      className="flex items-center justify-between rounded-xl bg-slate-900/80 p-3 border border-cyan-700/30"
-                    >
-                      <div>
-                        <span className="text-sm text-gray-400 font-mono">
-                          {l.id.slice(-12)}
-                        </span>
-                        <span className="ml-3 text-sm font-bold text-amber-300">
-                          {l.wager} tokens
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => joinGame(l.id)}
-                        disabled={loading}
-                        className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-bold text-black hover:bg-cyan-400 disabled:opacity-50"
-                      >
-                        {joiningId === l.id ? t("games.farkle.joining") : t("games.join")}
-                      </button>
-                    </div>
-                  ))}
+            onJoin={(l) => joinGame(l.id)}
+            joinBusyId={joiningId}
+            onRefresh={fetchGames}
+            children={
+              <>
+                {/* Mode toggle: PvP vs AI */}
+                <div className="mb-4 mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setMode("pvp")}
+                    className={`rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
+                      mode === "pvp"
+                        ? "border-cyan-400 bg-cyan-500/20 text-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.3)]"
+                        : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-cyan-600/50"
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-2"><IconUsers size={16} /> {t("games.farkle.create_pvp") /* PvP */}</span>
+                  </button>
+                  <button
+                    onClick={() => setMode("ai")}
+                    className={`rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
+                      mode === "ai"
+                        ? "border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
+                        : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50"
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-2"><IconRobot size={16} /> {t("games.farkle.play_vs_ai") /* vs AI */}</span>
+                  </button>
                 </div>
-              )}
-            </div>
-          </motion.div>
+
+                {mode === "ai" && (
+                  <>
+                    {/* Free Play badge */}
+                    <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-center">
+                      <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-amber-300"><IconDeviceGamepad2 size={14} /> Free Play</p>
+                      <p className="mt-1 text-[10px] text-amber-200/70">No tokens are wagered. Playing vs AI is free.</p>
+                    </div>
+
+                    {/* AI Difficulty Selector */}
+                    <div className="mb-4">
+                      <label className="mb-2 block text-sm font-semibold text-amber-200">
+                        {t("games.farkle.ai_difficulty")}
+                      </label>
+                      <div className="flex gap-2">
+                        {(["easy", "medium", "hard"] as const).map((d) => (
+                          <button
+                            key={d}
+                            onClick={() => setDifficulty(d)}
+                            className={`flex-1 rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
+                              difficulty === d
+                                ? "border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
+                                : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50"
+                            }`}
+                          >
+                            <span className="inline-flex items-center gap-1.5">{d === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : d === "medium" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}{d === "easy" ? t("games.farkle.difficulty_easy") : d === "medium" ? t("games.farkle.difficulty_medium") : t("games.farkle.difficulty_hard")}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-400">
+                        {difficulty === "easy" && t("games.farkle.ai_desc_easy")}
+                        {difficulty === "medium" && t("games.farkle.ai_desc_medium")}
+                        {difficulty === "hard" && t("games.farkle.ai_desc_hard")}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </>
+            }
+            after={
+              /* Rules Summary */
+              <div className="mt-6 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs text-amber-200/80">
+                <p className="mb-1 flex items-center gap-1.5 font-bold text-amber-300"><IconClipboardList size={14} /> {t("games.farkle.rules_title")}</p>
+                <ul className="list-inside list-disc space-y-0.5">
+                  <li>{t("games.farkle.rules_line1")}</li>
+                  <li>{t("games.farkle.rules_line2")}</li>
+                  <li>{t("games.farkle.rules_line3")}</li>
+                  <li>{t("games.farkle.rules_line4")}</li>
+                  <li>{t("games.farkle.rules_line5").replace("{score}", WINNING_SCORE.toLocaleString())}</li>
+                </ul>
+              </div>
+            }
+          />
         )}
 
         {/* ═══ GAME BOARD ═══ */}

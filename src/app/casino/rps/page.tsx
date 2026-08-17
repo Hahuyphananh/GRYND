@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../components/navigation-bar";
+import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import { useSocket } from "../../../context/SocketProvider";
 import ReportModal from "../../../components/ReportModal";
 import {
@@ -35,6 +36,11 @@ export default function RPSGame() {
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showRpsRules, setShowRpsRules] = useState(false);
+  const [showRules, setShowRules] = useState(false);
+  const firstVisitRules = useFirstVisitRules("rps");
+  useEffect(() => {
+    if (firstVisitRules) setShowRules(true);
+  }, [firstVisitRules]);
 
   const [winStreak, setWinStreak] = useState(0);
   const [multiplier, setMultiplier] = useState(1.0);
@@ -449,27 +455,75 @@ export default function RPSGame() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col overflow-x-hidden bg-gradient-to-br from-[#001933] to-[#000d1a] pb-28 pt-16 text-white md:flex-row md:pb-8">
+    <div className="flex min-h-screen flex-col overflow-x-hidden bg-gradient-to-b from-[#0a0118] to-[#061b3d] pb-28 pt-16 text-white md:flex-row md:pb-8">
       <NavigationBar currentPath="/casino" />
 
       <div
         className="w-[95%] sm:w-full max-w-[420px] md:max-w-[380px] 
-bg-[#050d1f]/80 backdrop-blur-xl border border-[#a855f7]/40
-shadow-[0_0_25px_rgba(168,85,247,0.25),inset_0_0_25px_rgba(168,85,247,0.08)]
+bg-black/40 backdrop-blur-xl border border-amber-700/60
+shadow-[0_0_25px_rgba(251,191,36,0.12),inset_0_0_25px_rgba(251,191,36,0.05)]
 rounded-2xl p-4 sm:p-6 flex flex-col gap-5
-shadow-[0_0_24px_rgba(0,229,255,0.18)]
 mx-auto md:mx-0 mb-6 md:mb-0"
       >
         <h1
           className="text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text 
-bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-center mt-16 sm:mt-20 leading-tight"
+bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)] text-center mt-16 sm:mt-20 leading-tight"
         >
           Rock Paper Scissors
         </h1>
 
+        {/* How to Play — rules modal at the top of the lobby */}
+        <div className="text-center">
+          <button
+            onClick={() => setShowRules(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 transition-all duration-300 hover:bg-amber-500/20 hover:scale-105 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
+          >
+            <IconBook size={15} /> How to Play
+          </button>
+        </div>
+        {showRules && (
+          <RulesModal
+            title="How to Play"
+            sections={[
+              {
+                heading: "Objective",
+                body: <>Beat your opponent by choosing Rock, Paper, or Scissors.</>,
+              },
+              {
+                heading: "Matchups",
+                body: (
+                  <>
+                    Rock beats Scissors · Scissors beats Paper · Paper
+                    beats Rock.
+                  </>
+                ),
+              },
+              {
+                heading: "Results",
+                body: (
+                  <>
+                    Win → payout based on your bet and streak · Lose →
+                    you lose your bet · Tie → your bet is returned.
+                  </>
+                ),
+              },
+              {
+                heading: "Win streak",
+                body: (
+                  <>
+                    Winning multiple rounds in a row raises your
+                    multiplier — higher streak, higher rewards.
+                  </>
+                ),
+              },
+            ]}
+            onClose={() => setShowRules(false)}
+          />
+        )}
+
         <p
-          className="text-lg text-[#00e5ff] font-semibold 
-              drop-shadow-[0_0_10px_rgba(0,229,255,0.8)] text-center md:text-left"
+          className="text-lg text-yellow-300 font-semibold 
+              drop-shadow-[0_0_10px_rgba(251,191,36,0.6)] text-center md:text-left"
         >
           Your Tokens: {tokens}
         </p>
@@ -480,8 +534,8 @@ bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-center mt-16 sm:mt-20 leading-
             className={`px-5 py-2 rounded-xl font-bold transition-all duration-300
     ${
       mode === "pve"
-        ? "bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-white shadow-[0_0_20px_#a855f7]"
-        : "bg-[#1a2333] text-gray-400 border border-gray-600 hover:bg-[#2a3446]"
+        ? "border-b-4 border-amber-700 bg-amber-500 text-black shadow-[0_0_20px_rgba(251,191,36,0.4)]"
+        : "bg-gray-800/50 text-gray-400 border border-gray-600 hover:border-amber-600/50 hover:text-amber-200"
     }
   `}
           >
@@ -493,8 +547,8 @@ bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-center mt-16 sm:mt-20 leading-
             className={`px-5 py-2 rounded-xl font-bold transition-all duration-300
     ${
       mode === "pvp"
-        ? "bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-white shadow-[0_0_20px_#a855f7]"
-        : "bg-[#1a2333] text-gray-400 border border-gray-600 hover:bg-[#2a3446]"
+        ? "border-b-4 border-cyan-700 bg-cyan-500 text-black shadow-[0_0_20px_rgba(34,211,238,0.4)]"
+        : "bg-gray-800/50 text-gray-400 border border-gray-600 hover:border-cyan-600/50 hover:text-cyan-200"
     }
   `}
           >
@@ -505,8 +559,8 @@ bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-center mt-16 sm:mt-20 leading-
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <label
             htmlFor="rps-bet-amount"
-            className="text-lg text-[#00e5ff] font-semibold 
-              drop-shadow-[0_0_10px_rgba(0,229,255,0.8)] text-center md:text-left"
+            className="text-lg text-yellow-300 font-semibold 
+              drop-shadow-[0_0_10px_rgba(251,191,36,0.6)] text-center md:text-left"
           >
             Bet:
           </label>
@@ -517,8 +571,8 @@ bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-center mt-16 sm:mt-20 leading-
             max={tokens}
             value={betAmount}
             onChange={(e) => setBetAmount(Number(e.target.value))}
-            className="bg-[#020617] border border-[#00e5ff]/30 
-focus:border-[#00e5ff] focus:shadow-[0_0_15px_rgba(0,229,255,0.6)]
+            className="bg-[#020617] border border-amber-600/50 
+focus:border-amber-400 focus:shadow-[0_0_15px_rgba(251,191,36,0.5)]
 rounded-xl px-3 py-2 text-white outline-none text-center w-24"
           />
         </div>
@@ -528,11 +582,11 @@ rounded-xl px-3 py-2 text-white outline-none text-center w-24"
             <button
               onClick={placeBet}
               disabled={loading}
-              className={`py-3 rounded-xl font-bold text-lg transition-all duration-300
+              className={`py-3 rounded-xl font-bold text-lg transition-all duration-300 border-b-4
   ${
     loading
-      ? "bg-[#1a2333] text-gray-400 border border-gray-600"
-      : "bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933] border border-[#00e5ff] shadow-[0_0_20px_rgba(0,229,255,0.6)] hover:shadow-[0_0_35px_rgba(0,255,166,1)] hover:scale-105"
+      ? "bg-gray-800/50 text-gray-400 border border-gray-600"
+      : "border-amber-700 bg-amber-500 text-black shadow-[0_0_20px_rgba(251,191,36,0.5)] hover:brightness-110 hover:scale-105 active:translate-y-[2px]"
   }
 `}
             >
@@ -540,8 +594,8 @@ rounded-xl px-3 py-2 text-white outline-none text-center w-24"
             </button>
 
             <div
-              className="mt-4 bg-[#020617]/80 backdrop-blur-xl border border-[#00e5ff]/40 
-rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border border-[#00e5ff]/40 shadow-[0_0_16px_rgba(0,229,255,0.14)]"
+              className="mt-4 bg-black/30 backdrop-blur-xl border border-amber-700/50 
+rounded-xl p-4 shadow-[0_0_16px_rgba(251,191,36,0.12)]"
             >
               <label className="flex items-center gap-2 font-semibold mb-2" htmlFor="rps-autobet-checkbox">
                 <input
@@ -577,7 +631,7 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
                         mode: e.target.value as "finite" | "infinite",
                       }))
                     }
-                    className="w-full rounded border border-[#00e5ff]/40 bg-[#102542] px-2 py-1 text-center text-white"
+                    className="w-full rounded border border-amber-600/50 bg-[#020617] px-2 py-1 text-center text-white"
                   >
                     <option value="finite">Finite</option>
                     <option value="infinite">Infinite</option>
@@ -597,7 +651,7 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
                             spinsLeft: Number(e.target.value),
                           }))
                         }
-                        className="w-full mt-2 rounded border border-[#00e5ff]/40 bg-[#102542] px-2 py-1 text-center text-white"
+                        className="w-full mt-2 rounded border border-amber-600/50 bg-[#020617] px-2 py-1 text-center text-white"
                       />
                     </>
                   )}
@@ -618,10 +672,10 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
               )}
             </div>
             {/* RPS Game Rules */}
-            <div className="mt-4 bg-[#08142f] p-4 rounded-lg border border-[#00e5ff]/40 shadow-[0_0_16px_rgba(0,229,255,0.14)]">
+            <div className="mt-4 bg-black/30 p-4 rounded-lg border border-amber-700/50 shadow-[0_0_16px_rgba(251,191,36,0.12)]">
               <button
                 onClick={() => setShowRpsRules(!showRpsRules)}
-                className="w-full text-left font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] flex justify-between items-center"
+                className="w-full text-left font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 flex justify-between items-center"
               >
                 <span className="inline-flex items-center gap-2"><IconBook size={18} /> Game Rules</span>
                 <span>{showRpsRules ? "▲" : "▼"}</span>
@@ -685,11 +739,10 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
               <button
                 onClick={createPvpGame}
                 disabled={pvpActionLoading}
-                className="px-4 py-2 rounded-xl font-bold transition-all duration-300
-           bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933]
-           border border-[#00e5ff]
-           shadow-[0_0_20px_rgba(0,229,255,0.6)]
-           hover:shadow-[0_0_35px_rgba(0,255,166,1)] hover:scale-105"
+                className="px-4 py-2 rounded-xl font-bold transition-all duration-300 border-b-4 border-amber-700
+           bg-amber-500 text-black
+           shadow-[0_0_20px_rgba(251,191,36,0.5)]
+           hover:brightness-110 hover:scale-105 active:translate-y-[2px]"
               >
                 Create Game
               </button>
@@ -705,13 +758,13 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
               </button>
             )}
 
-            <div className="bg-[#08142f] p-4 rounded-lg border border-[#00e5ff]">
+            <div className="bg-slate-900/80 p-4 rounded-lg border border-cyan-700/30">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-[#a8f4ff]">Available Games</h3>
+                <h3 className="font-bold text-cyan-300">Available Games</h3>
                 <button
                   onClick={fetchAvailablePvpGames}
                   disabled={isLoadingPvpGames}
-                  className="bg-[#00e5ff] text-[#001933] hover:bg-[#49eeff] px-3 py-1 rounded text-sm font-semibold disabled:opacity-50"
+                  className="bg-cyan-500 text-black hover:bg-cyan-400 px-3 py-1 rounded text-sm font-semibold disabled:opacity-50 transition"
                 >
                   {isLoadingPvpGames ? "Refreshing..." : "Refresh"}
                 </button>
@@ -723,20 +776,18 @@ rounded-xl p-4 shadow-[0_0_20px_rgba(0,229,255,0.2)] p-4 rounded-lg border borde
                   {pvpGames.map((game) => (
                     <li
                       key={game.id}
-                      className="bg-[#0d335f] rounded p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                      className="bg-black/30 border border-cyan-700/30 rounded p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-cyan-500/50 transition"
                     >
                       <div className="text-sm">
                         <p className="font-semibold">Host: {game.player1Name || "Unknown"}</p>
-                        <p>Bet: {game.betAmount}</p>
+                        <p>Bet: <span className="text-yellow-300 font-semibold">{game.betAmount}</span></p>
                       </div>
                       <button
                         onClick={() => joinPvpGame(game.id)}
                         disabled={pvpActionLoading || Boolean(pvpGameId)}
                         className="w-full sm:w-auto px-4 py-2 rounded-xl font-bold transition-all duration-300
-           bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933]
-           border border-[#00e5ff]
-           shadow-[0_0_20px_rgba(0,229,255,0.6)]
-           hover:shadow-[0_0_35px_rgba(0,255,166,1)] hover:scale-105"
+           bg-cyan-500 text-black
+           hover:bg-cyan-400 hover:scale-105 disabled:opacity-50"
                       >
                         Join
                       </button>
