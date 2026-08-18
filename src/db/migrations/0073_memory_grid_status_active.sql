@@ -1,0 +1,23 @@
+-- ── Memory Grid: add the missing 'active' status value ─────────────
+-- The memory_grid_status enum predates the simultaneous-play state
+-- machine in some environments: it was originally created with
+-- turn-based values (waiting, ready, p1_turn, p2_turn, finished,
+-- cancelled) and NO 'active'. The current game sets status='active'
+-- the moment the ready window elapses (round 1's memorize phase
+-- opens) and for every subsequent round, so any such environment
+-- threw
+--   invalid input value for enum memory_grid_status: "active"
+-- and /api/memory-grid/match/[matchId] returned 500 on every poll,
+-- making matches unplayable once the ready banner expired.
+--
+-- 0071's `CREATE TYPE ... IF NOT EXISTS` guard is exactly why the
+-- stale enum survived: the type already existed, so the (correct)
+-- new definition was never applied. This migration repairs existing
+-- databases in place. `ADD VALUE IF NOT EXISTS` is idempotent and
+-- additive — existing rows are untouched, and the extra p1_turn /
+-- p2_turn values are harmless leftovers no code reads.
+--
+-- Postgres < 12 disallows ADD VALUE inside a transaction block, so
+-- this runs as a bare statement (drizzle applies each statement
+-- outside a transaction).
+ALTER TYPE memory_grid_status ADD VALUE IF NOT EXISTS 'active';
