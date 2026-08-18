@@ -20,7 +20,6 @@ import Img17 from "../../images/pool.svg";
 import Img18 from "../../images/hex-duel.svg";
 import Img21 from "../../images/odds.svg";
 import Img19 from "../../images/dice-flush.svg";
-import Img20 from "../../images/farkle.svg";
 import Img22 from "../../images/precision.svg";
 import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
 import ImgMinesPvp from "../../images/mines-pvp.svg";
@@ -185,14 +184,6 @@ function MainComponent() {
       popular: true,
     },
     {
-      name: "Farkle",
-      href: "/casino/farkle",
-      leaderboardKey: "farkle",
-      image: Img20,
-      descriptionKey: "games.farkle_desc",
-      popular: true,
-    },
-    {
       name: "Precision",
       href: "/casino/precision",
       leaderboardKey: "precision",
@@ -225,7 +216,6 @@ function MainComponent() {
     "pool-masters",
     "hex-duel",
     "yahtzee",
-    "farkle",
     "precision",
   ]);
 
@@ -233,7 +223,6 @@ function MainComponent() {
     "mines-pvp",
     "dots-and-boxes",
     "precision",
-    "farkle",
     "yahtzee",
     "hex-duel",
     "pool-masters",

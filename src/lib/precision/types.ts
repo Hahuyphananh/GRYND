@@ -14,10 +14,11 @@ export type PrecisionPhase =
   | "starting"     // both seats are filled, game initialising
   | "ready_up"     // both players matched — each must click Ready before
                    // the server flips the match to "active"
-  | "arming"       // server has scheduled a random-delay timer before
-                   // the round opens for stops. The client NEVER learns
-                   // the planned delay end — it only sees the phase
-                   // transition to "active" when the server fires it.
+  | "arming"       // server is running the fixed 5-second pre-round
+                   // countdown before the round opens for stops. Both
+                   // clients render it from the server-stamped
+                   // `countdownEndsAt` and see the phase transition to
+                   // "active" when the server's timer fires.
   | "active"       // match in progress (stops accepted)
   | "finished";    // match ended (winner declared or resigned)
 
@@ -123,6 +124,14 @@ export interface PrecisionState {
    *  use this only to render an "X ms since arming started" indicator
    *  if desired. null when not arming. */
   armingStartedAt: number | null;
+  /** Server-stamped timestamp (ms) when the current `arming` countdown
+   *  ENDS — `armingStartedAt + ROUND_COUNTDOWN_MS` (fixed 5s). Both
+   *  clients render the live countdown from this absolute instant so
+   *  they stay in sync, and the server's own timer fires at the same
+   *  moment to flip `phase` → "active" (stamping `roundGoInstant`).
+   *  Display-only — the client never influences when the timer starts.
+   *  null when not arming. */
+  countdownEndsAt: number | null;
   /** Server-stamped instant (ms epoch) when the current round's
    *  `arming → active` transition fired — the source-of-truth GO
    *  instant. Server-authoritative; clients NEVER supply their own.

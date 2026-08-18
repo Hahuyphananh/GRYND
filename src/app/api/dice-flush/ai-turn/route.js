@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
 import { calculateScore, rollDice } from "../../../../../game-engine/diceFlushEngine";
-import { appendAction, db, eq, loadRoom, nextTurn, requireUser, settleIfEnded, validateMove, diceFlushRooms } from "../_lib";
+import { appendAction, db, eq, loadRoom, nextTurn, requireUser, resolveExpiredTurn, settleIfEnded, validateMove, diceFlushRooms } from "../_lib";
 
-const ALL_CATEGORIES = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","fiveKind","chance"];
+const ALL_CATEGORIES = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","fiveKind"];
 
+// AI picks from the SHARED sheet — only categories nobody has claimed yet.
 function pickAiCategory(state) {
-  const aiPlayer = state.players.find(p => p.isAI && p.userId === state.currentTurn);
-  if (!aiPlayer) return null;
-  const used = state.scorecards[aiPlayer.userId] ?? {};
   const options = ALL_CATEGORIES
-    .filter((c) => used[c] === undefined)
+    .filter((c) => state.scorecards[c] === undefined)
     .map((category) => ({ category, score: calculateScore(state.dice, category) }));
+  if (options.length === 0) return null;
   options.sort((a,b)=>b.score-a.score);
   return options[Math.min(options.length - 1, Math.floor(Math.random() < 0.15 ? Math.random() * Math.min(options.length, 3) : 0))].category;
 }
@@ -25,10 +24,25 @@ export async function POST(req) {
       const room = await loadRoom(roomId, tx);
       let state = room.gameState;
 
+      // Shot clock: resolve a stalled turn (e.g. the human's previous turn
+      // expired while the client was still animating) before proceeding.
+      const resolved = await resolveExpiredTurn(tx, room, state);
+      state = resolved.state;
+
       // Only process if it's actually an AI's turn
       const aiPlayer = state.players.find(p => p.isAI && p.userId === state.currentTurn);
       if (!aiPlayer) throw new Error("Not an AI turn");
       if (state.state !== "playing") throw new Error("Game not active");
+
+      // Skill layer — the AI also "calls" a random open category before its
+      // first roll, so the call bonus is symmetric (and occasionally lands).
+      if (state.currentCall === null) {
+        const open = ALL_CATEGORIES.filter(c => state.scorecards[c] === undefined);
+        if (open.length > 0) {
+          state.currentCall = open[Math.floor(Math.random() * open.length)];
+          await appendAction(tx, roomId, aiPlayer.userId, "call_category", { category: state.currentCall });
+        }
+      }
 
       // Roll dice up to 3 times, collecting step data for animation
       const rollSteps = [];
@@ -38,8 +52,9 @@ export async function POST(req) {
         await appendAction(tx, roomId, aiPlayer.userId, "roll", {});
       }
 
-      // Pick best category
+      // Pick best category from the shared sheet
       const category = pickAiCategory(state);
+      if (!category) throw new Error("No categories left");
       const score = calculateScore(state.dice, category);
       state = nextTurn(state, aiPlayer.userId, category);
       await appendAction(tx, roomId, aiPlayer.userId, "choose_category", { category, score });

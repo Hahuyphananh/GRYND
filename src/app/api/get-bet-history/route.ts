@@ -22,8 +22,6 @@ import {
   hexDuelGames,
   oddsGames,
   pokerGames,
-  farkleRooms,
-  farklePlayers,
   diceFlushRooms,
   diceFlushPlayers,
   minesPvpMatches,
@@ -71,7 +69,6 @@ export async function GET() {
       hexDuelRows,
       oddsRows,
       pokerRows,
-      farkleRows,
       diceFlushRows,
       minesPvpRows,
       laneRushDuelRows,
@@ -179,12 +176,6 @@ export async function GET() {
             where elem->>'clerkId' = ${clerkId}
           )`,
         ),
-      //  Farkle (join players → rooms)
-      db
-        .select()
-        .from(farklePlayers)
-        .innerJoin(farkleRooms, eq(farklePlayers.roomId, farkleRooms.id))
-        .where(eq(farklePlayers.userId, clerkId)),
       //  Dice Flush (join players → rooms)
       db
         .select()
@@ -402,33 +393,6 @@ export async function GET() {
         };
       });
 
-    //  Farkle — joined rows: farkle_players + farkle_rooms
-    const farkleFormatted = farkleRows
-      .filter((row) => row.farkle_rooms?.status === "finished")
-      .map((row) => {
-        const room = row.farkle_rooms;
-        const amount = Number(room.wager ?? 0);
-        const gameState =
-          room.gameState && typeof room.gameState === "object"
-            ? (room.gameState as Record<string, unknown>)
-            : {};
-        const winnerId = gameState.winnerId as string | undefined;
-        const result = winnerId
-          ? winnerId === clerkId
-            ? "won"
-            : "lost"
-          : "completed";
-        const payout = result === "won" ? Number(room.pot ?? amount * 2) : 0;
-        return {
-          type: "Farkle",
-          date: room.createdAt || new Date().toISOString(),
-          amount,
-          payout,
-          result,
-          tokenDiff: result === "won" ? payout - amount : -amount,
-        };
-      });
-
     //  Dice Flush — joined rows: dice_flush_players + dice_flush_rooms
     const diceFlushFormatted = diceFlushRows
       .filter((row) => row.dice_flush_rooms?.status === "finished")
@@ -577,7 +541,6 @@ export async function GET() {
       ...hexDuelFormatted,
       ...oddsFormatted,
       ...pokerFormatted,
-      ...farkleFormatted,
       ...diceFlushFormatted,
       ...minesPvpFormatted,
       ...laneRushDuelFormatted,

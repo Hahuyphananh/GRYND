@@ -12,7 +12,7 @@
 // `runtime = "edge"` API routes. Only import from regular `runtime`
 // API route handlers under `src/app/api/precision/**`.
 
-import { LOBBY_TTL_MS, MATCH_FINISHED_TTL_MS, MAX_DELAY_MS, MAX_STOP_MS, MIN_DELAY_MS, MIN_STOP_MS, MAX_TARGET_MS, MIN_TARGET_MS, TARGET_WINS } from "./constants";
+import { LOBBY_TTL_MS, MATCH_FINISHED_TTL_MS, MAX_STOP_MS, MIN_STOP_MS, MAX_TARGET_MS, MIN_TARGET_MS, ROUND_COUNTDOWN_MS, TARGET_WINS } from "./constants";
 import {
   clearAnomalyLedgerForMatch,
   flushLedgerForMatch,
@@ -207,22 +207,23 @@ function rollRandomTarget(): number {
 }
 
 /** Transition a match into the `arming` phase with a server-side
- *  `setTimeout` for a random delay in `[MIN_DELAY_MS, MAX_DELAY_MS]`.
+ *  `setTimeout` for a FIXED 5-second countdown (`ROUND_COUNTDOWN_MS`).
  *  Cancels any prior timer for the same match before scheduling the
  *  new one (idempotent re-arm). Returns `true` if armed, `false` if
  *  the match is missing or already finished.
  *
  *  Server behavior:
- *  - Public state exposes ONLY `armingStartedAt` and a new random
- *    target (held privately). The planned end of the delay is
- *    intentionally never exposed so a client cannot pre-click the
- *    submit button.
+ *  - Public state exposes `armingStartedAt` and `countdownEndsAt`
+ *    (when the countdown ends) plus a new random target (held
+ *    privately). Both clients render the countdown from the same
+ *    absolute `countdownEndsAt` instant, so the timer + target appear
+ *    simultaneously on both screens when the server fires.
  *  - At arm-start, a fresh random target in `[MIN_TARGET_MS,
  *    MAX_TARGET_MS]` is rolled and stored ONLY in
  *    `precisionRoundTargets` (server-only).
- *  - When the arming timer fires, the rolled target is REVEALED onto
- *    `match.targetMs` so both polling clients see the same value at
- *    the same moment. The private entry is then dropped. */
+ *  - When the countdown timer fires, the rolled target is REVEALED
+ *    onto `match.targetMs` so both polling clients see the same value
+ *    at the same moment. The private entry is then dropped. */
 export function armMatchRound(matchId: string): boolean {
   const match = precisionMatchStore.get(matchId);
   if (!match) return false;
@@ -234,11 +235,10 @@ export function armMatchRound(matchId: string): boolean {
   // a value from a previous arm. `cancelArming` already drops the
   // private target entry, so no separate clearRoundTarget call here.
   cancelArming(matchId);
-  // Inclusive random in [MIN_DELAY_MS, MAX_DELAY_MS]. Math.random() is
-  // sufficient for fairness; the gameplay engine can swap it for a
-  // cryptographically-strong RNG if the regulatory bar rises.
-  const range = MAX_DELAY_MS - MIN_DELAY_MS + 1;
-  const delay = MIN_DELAY_MS + Math.floor(Math.random() * range);
+  // Fixed 5-second countdown — the warning before the timer starts.
+  // The per-round target (revealed only at active) defeats anticipatory
+  // clicking, so the countdown itself needs no randomness.
+  const delay = ROUND_COUNTDOWN_MS;
   // Roll the round target NOW and stash it in the server-only map.
   // The public `match.targetMs` stays `null` until the timer fires so
   // a client cannot pre-read it during the arming phase.
@@ -246,6 +246,9 @@ export function armMatchRound(matchId: string): boolean {
   precisionRoundTargets.set(matchId, targetMs);
   match.phase = "arming";
   match.armingStartedAt = Date.now();
+  // Stamp the absolute instant the countdown ends — clients render the
+  // live 5…4…3…2…1 from this value so both screens stay in sync.
+  match.countdownEndsAt = match.armingStartedAt + ROUND_COUNTDOWN_MS;
   // Public target stays hidden — server-only map holds the live value.
   match.targetMs = null;
   // ── Replay-attack protection ─────────────────────────────────────
@@ -295,6 +298,7 @@ export function armMatchRound(matchId: string): boolean {
     }
     m.phase = "active";
     m.armingStartedAt = null;
+    m.countdownEndsAt = null;
     // Authoritative GO instant for this round — stamped server-side
     // so client clocks never participate in scoring. The pending-stops
     // bucket for this round is also reset so the per-round telemetry
@@ -422,10 +426,10 @@ export function markPlayerReady(
   const allReady =
     match.players.length >= 2 && match.players.every((p) => p.isReady);
   if (allReady) {
-    // Both players ready → arm the FIRST round. The server picks a
-    // random delay in [MIN_DELAY_MS, MAX_DELAY_MS] and transitions the
-    // match through `arming` → `active` automatically. The client never
-    // learns the planned end time.
+    // Both players ready → arm the FIRST round. The server runs the
+    // fixed 5-second countdown (`ROUND_COUNTDOWN_MS`) and transitions
+    // the match through `arming` → `active` automatically. Clients
+    // render the countdown from the server-stamped `countdownEndsAt`.
     armMatchRound(matchId);
   } else if (touched) {
     // Bump the version on a single Ready so the opponent's polling sees

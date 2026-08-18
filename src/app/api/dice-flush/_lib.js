@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "../../../db/client";
 import { users, diceFlushActions, diceFlushPlayers, diceFlushRooms } from "../../../db/schema";
-import { checkGameEnd, holdDice, nextTurn, rollDice, validateMove } from "../../../../game-engine/diceFlushEngine";
+import { autoBankIfExpired, checkGameEnd, holdDice, nextTurn, rollDice, validateMove } from "../../../../game-engine/diceFlushEngine";
 import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
 
 export function initialState(roomId, creatorId, creatorName, wager) {
@@ -19,8 +19,26 @@ export function initialState(roomId, creatorId, creatorName, wager) {
     rollsThisTurn: 0,
     dice: [1, 1, 1, 1, 1],
     heldDice: [false, false, false, false, false],
-    scorecards: { [creatorId]: {} },
+    // Shared scorecard — both players fill the same 12 categories.
+    scorecards: {},
+    scorecardOwner: {},
+    currentCall: null,
+    turnDeadline: null,
   };
+}
+
+/** Resolve a stalled turn (shot clock) inside a transaction. If the current
+ *  turn has exceeded its deadline, auto-bank the best legal category and
+ *  persist the advanced state. Call at the top of every move handler BEFORE
+ *  validating the incoming move — a stale move from the timed-out player is
+ *  then naturally rejected by `validateMove` ("Not your turn"). Returns the
+ *  resolved state plus whether a timeout occurred and who was timed out. */
+export async function resolveExpiredTurn(tx, roomRow, state) {
+  const { state: resolved, didTimeout } = autoBankIfExpired(state);
+  if (!didTimeout) return { state: resolved, didTimeout, resolvedByUserId: null };
+  await tx.update(diceFlushRooms).set({ gameState: resolved }).where(eq(diceFlushRooms.id, roomRow.id));
+  await appendAction(tx, roomRow.id, state.currentTurn, "auto_bank_timeout", {});
+  return { state: resolved, didTimeout: true, resolvedByUserId: state.currentTurn };
 }
 
 export async function requireUser() {

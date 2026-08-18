@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
       winnerSeat: null,
       lastRoundWinnerSeat: null,
       armingStartedAt: null,
+      countdownEndsAt: null,
       roundGoInstant: null,
       lastRoundStops: null,
       version: 0,

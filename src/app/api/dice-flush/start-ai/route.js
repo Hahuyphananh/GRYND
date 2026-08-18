@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { TURN_TIME_LIMIT_MS } from "../../../../../game-engine/diceFlushEngine";
 import { db, getDisplayName, initialState, requireUser, diceFlushPlayers, diceFlushRooms } from "../_lib";
 
 export async function POST(req) {
@@ -17,8 +18,12 @@ export async function POST(req) {
       const aiId = `ai:${difficulty}`;
       state.ai = true;
       state.players.push({ userId: aiId, name: `AI (${difficulty})`, isAI: true, difficulty });
-      state.scorecards[aiId] = {};
       state.state = "playing";
+      // Shared sheet: random 50/50 starter. Each side claims exactly 6 of
+      // the 12 categories — starter has first pick, other has last pick.
+      state.currentTurn = Math.random() < 0.5 ? userId : aiId;
+      // Shot clock: stamp the first turn's deadline now that play begins.
+      state.turnDeadline = Date.now() + TURN_TIME_LIMIT_MS;
       // Free play: record the requested wager for display, but the pot must
       // remain 0 so `settleIfEnded` does not credit any tokens to either side.
       state.wager = amount;

@@ -39,7 +39,6 @@ export async function GET() {
           COALESCE((SELECT COUNT(*) FROM hex_duel_games     WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM dice_matches       WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM odds_games         WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
-          COALESCE((SELECT COUNT(*) FROM farkle_rooms       WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM dice_flush_rooms   WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM poker_games        WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM pool_matches       WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +

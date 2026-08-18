@@ -168,6 +168,10 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   const [timerMs, setTimerMs] = useState(0);
   const timerRafRef = useRef<number | null>(null);
   const localGoInstantRef = useRef<number | null>(null);
+  // Live 5-second pre-round countdown (display-only). Driven by the
+  // server-stamped `countdownEndsAt` so BOTH clients count down from the
+  // same absolute instant. null while not in the arming phase.
+  const [countdownMs, setCountdownMs] = useState<number | null>(null);
 
   // Start / stop helpers for the local timer rAF loop.
   const stopTimer = useCallback(() => {
@@ -674,6 +678,26 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     return () => stopTimer();
   }, [state?.phase, startTimer, stopTimer]);
 
+  // ── 5-second pre-round countdown ticker ─────────────────────────
+  // During `arming`, the server stamps `countdownEndsAt`
+  // (`armingStartedAt + ROUND_COUNTDOWN_MS`). We tick every 100ms and
+  // display ceil(remaining/1000) so both clients show the same
+  // 5…4…3…2…1 from the same server timestamp. The server's own timer
+  // fires at that exact instant and flips the phase to "active" (the
+  // `precision:roundArmStart` broadcast), so the countdown is
+  // display-only — all round timing remains server-authoritative.
+  useEffect(() => {
+    const endsAt = state?.countdownEndsAt;
+    if (state?.phase !== "arming" || typeof endsAt !== "number") {
+      setCountdownMs(null);
+      return;
+    }
+    const tick = () => setCountdownMs(Math.max(0, endsAt - Date.now()));
+    tick();
+    const id = setInterval(tick, 100);
+    return () => clearInterval(id);
+  }, [state?.phase, state?.countdownEndsAt]);
+
   // Cancel the auto-dismiss timer on unmount so a stale timer can't
   // call setState on a torn-down React tree.
   useEffect(() => {
@@ -1092,6 +1116,21 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                   <h2 className="mt-4 text-2xl font-black text-yellow-300 sm:text-3xl">
                     {t("games.precision.round_get_ready", { round: currentRound })}
                   </h2>
+                  {/* ── 5-second countdown before the timer starts ──
+                      Both clients count down from the server-stamped
+                      `countdownEndsAt` so they stay in sync; the server
+                      flips to "active" (timer + target) the instant it
+                      hits zero. `Math.max(1, …)` keeps the display on
+                      "1" during the final tick instead of flashing 0. */}
+                  <p className="mt-4 text-xs uppercase tracking-[0.35em] text-yellow-200/70">
+                    {t("games.precision.countdown_label")}
+                  </p>
+                  <p
+                    data-testid="precision-round-countdown"
+                    className="mt-1 font-mono text-8xl font-black tabular-nums text-yellow-300 sm:text-9xl"
+                  >
+                    {countdownMs !== null ? Math.max(1, Math.ceil(countdownMs / 1000)) : "…"}
+                  </p>
                   <p className="mt-3 max-w-md text-sm text-cyan-100/90 sm:text-base">
                     {t("games.precision.arming_hint")}
                   </p>

@@ -191,9 +191,19 @@ export default function PrecisionLobbyPage() {
             heading: "Stop on target",
             body: (
               <>
-                A target time is shown — stop the running timer as close
-                to it as you can. The smaller the miss, the better your
-                score.
+                A target time is shown next to a running timer — press
+                STOP as close to the target as you can. The smaller the
+                miss, the better your rank.
+              </>
+            ),
+          },
+          {
+            heading: "5-second countdown",
+            body: (
+              <>
+                Once both players are ready, a 5-second countdown runs
+                (5…4…3…2…1). The target appears and the timer starts the
+                moment it hits zero — no early clicks.
               </>
             ),
           },
@@ -201,8 +211,10 @@ export default function PrecisionLobbyPage() {
             heading: "1v1 duel",
             body: (
               <>
-                Face another player at the same wager; the more precise
-                stop wins the match and the pot (minus the house fee).
+                Face another player at the same wager. Both players stop
+                independently — the round goes to whoever stopped
+                closest to the target. First to 3 rounds wins the match
+                and the pot (minus the house fee).
               </>
             ),
           },

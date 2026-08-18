@@ -769,55 +769,6 @@ export const diceFlushActions = pgTable(
   }),
 );
 
-// FARKLE TABLES
-export const farkleRooms = pgTable(
-  "farkle_rooms",
-  {
-    id: varchar("id", { length: 120 }).primaryKey(),
-    status: varchar("status", { length: 20 }).notNull(),
-    wager: integer("wager").notNull(),
-    pot: integer("pot").notNull(),
-    gameState: jsonb("game_state").notNull().default(sql`'{}'::jsonb`),
-    createdAt: timestamp("created_at").defaultNow(),
-  },
-  (table) => ({
-    farkleRoomsStatusIdx: index("idx_farkle_rooms_status").on(table.status),
-  }),
-);
-
-export const farklePlayers = pgTable(
-  "farkle_players",
-  {
-    id: serial("id").primaryKey(),
-    roomId: varchar("room_id", { length: 120 }).references(() => farkleRooms.id),
-    userId: varchar("user_id", { length: 255 }).notNull(),
-    isAi: boolean("is_ai").default(false),
-    score: integer("score").default(0),
-    createdAt: timestamp("created_at").defaultNow(),
-  },
-  (table) => ({
-    farklePlayersRoomIdx: index("idx_farkle_players_room_id").on(table.roomId),
-  }),
-);
-
-export const farkleActions = pgTable(
-  "farkle_actions",
-  {
-    id: serial("id").primaryKey(),
-    roomId: varchar("room_id", { length: 120 }),
-    userId: varchar("user_id", { length: 255 }),
-    actionType: varchar("action_type", { length: 40 }),
-    payload: jsonb("payload"),
-    createdAt: timestamp("created_at").defaultNow(),
-  },
-  (table) => ({
-    farkleActionsRoomIdx: index("idx_farkle_actions_room_id").on(
-      table.roomId,
-      table.createdAt,
-    ),
-  }),
-);
-
 // CRASH ARENA TABLES
 // ==========================================================================
 

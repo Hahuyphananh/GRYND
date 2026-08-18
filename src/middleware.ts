@@ -47,7 +47,6 @@ const isPublicRoute = createRouteMatcher([
   "/casino/pool-masters(.*)",
   "/casino/hex-duel(.*)",
   "/casino/dice-flush(.*)",
-  "/casino/farkle(.*)",
   "/casino/odds(.*)",
   "/casino/precision(.*)",
   "/sentry-example-page",
