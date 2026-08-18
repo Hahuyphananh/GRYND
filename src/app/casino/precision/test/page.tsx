@@ -5,7 +5,8 @@
 // Mirrors the visual treatment of the PvP active phase but is fully
 // client-side:
 //   * No REST, no sockets, no wager, no opponent, no payout.
-//   * All timing is local — we roll our own arming delay and use
+//   * All timing is local — we run the same fixed 5-second pre-round
+//     countdown as the PvP match (`ROUND_COUNTDOWN_MS`) and use
 //     `performance.now()` for the GO→STOP elapsed measurement.
 //   * The user gets a 5-round stats run with avg / best / worst
 //     reaction time and a zone distribution grading their reactions
@@ -37,11 +38,10 @@ import NavigationBar from "../../../../components/navigation-bar";
 import { useTranslation } from "../../../../hooks/useTranslation";
 import Footer from "../../../../components/Footer";
 import {
-  MAX_DELAY_MS,
   MAX_ROUNDS,
   MAX_TARGET_MS,
-  MIN_DELAY_MS,
   MIN_TARGET_MS,
+  ROUND_COUNTDOWN_MS,
 } from "../../../../lib/precision/constants";
 import { fadeUp } from "../../../../lib/animations";
 import {
@@ -118,11 +118,6 @@ function isBetterRank(a: string, b: string): boolean {
   return idxA < idxB;
 }
 
-function rollArmingDelayMs(): number {
-  // Random integer in [MIN_DELAY_MS, MAX_DELAY_MS] (inclusive).
-  return Math.floor(MIN_DELAY_MS + Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS + 1));
-}
-
 function rollTargetMs(): number {
   // Random integer in [MIN_TARGET_MS, MAX_TARGET_MS] (inclusive).
   // This constant is "for show" only — the user already sees the GO
@@ -146,6 +141,12 @@ export default function PrecisionTestPage() {
   // active phase so the player sees a live counter of elapsed time.
   const [timerMs, setTimerMs] = useState(0);
   const timerRafRef = useRef<number | null>(null);
+  // Fixed 5-second pre-round countdown display (mirrors the PvP match
+  // page). `countdownEndsAtRef` is stamped when the round enters
+  // "arming" so the displayed countdown and the arming setTimeout share
+  // the same clock instant.
+  const [countdownMs, setCountdownMs] = useState<number | null>(null);
+  const countdownEndsAtRef = useRef<number | null>(null);
   const [history, setHistory] = useState<RoundStat[]>([]);
   // Personal best — loaded from localStorage on mount, updated when a
   // finished test produces a better best-rank than the stored value.
@@ -209,6 +210,26 @@ export default function PrecisionTestPage() {
     }
   }, []);
 
+  // ── 5-second pre-round countdown ticker ────────────────────────
+  // During the "arming" phase, tick every 100ms and display
+  // ceil(remaining/1000) so the user sees the same 5…4…3…2…1 as the
+  // PvP match page. `countdownEndsAtRef` is stamped in `beginRound` so
+  // the countdown and the arming setTimeout fire on the same instant.
+  useEffect(() => {
+    if (phase !== "arming") {
+      setCountdownMs(null);
+      return;
+    }
+    const tick = () => {
+      const endsAt = countdownEndsAtRef.current;
+      if (endsAt === null) return;
+      setCountdownMs(Math.max(0, endsAt - performance.now()));
+    };
+    tick();
+    const id = setInterval(tick, 100);
+    return () => clearInterval(id);
+  }, [phase]);
+
   const beginRound = useCallback((roundIndex: number) => {
     const session = sessionIdRef.current;
     stopTimer();
@@ -220,20 +241,23 @@ export default function PrecisionTestPage() {
     setTimerMs(0);
     stopLockedRef.current = false;
     goInstantRef.current = null;
+    // Stamp the end of the 5-second countdown so the ticker below and
+    // the arming setTimeout fire on the same instant.
+    countdownEndsAtRef.current = performance.now() + ROUND_COUNTDOWN_MS;
 
     if (armingTimerRef.current !== null) {
       clearTimeout(armingTimerRef.current);
     }
     armingTimerRef.current = setTimeout(() => {
       // Guard: if the user reset / abandoned / navigated away during
-      // the arming delay, our `session` ref will no longer match the
+      // the countdown, our `session` ref will no longer match the
       // active one and we should bail without flipping the state.
       if (sessionIdRef.current !== session) return;
       goInstantRef.current = performance.now();
       setTargetMs(rollTargetMs());
       setPhase("active");
       startTimer();
-    }, rollArmingDelayMs());
+    }, ROUND_COUNTDOWN_MS);
   }, [startTimer, stopTimer]);
 
   const handleStart = useCallback(() => {
@@ -410,7 +434,7 @@ useEffect(() => {
 
           {phase === "arming" && (
             <motion.div key="phase-arming" {...fadeUp}>
-              <ArmingPanel currentRound={currentRound} t={t} />
+              <ArmingPanel currentRound={currentRound} countdownMs={countdownMs} t={t} />
             </motion.div>
           )}
 
@@ -555,10 +579,10 @@ function IdleStartScreen({ onStart, personalBest, t }: { onStart: () => void; pe
   );
 }
 
-function ArmingPanel({ currentRound, t }: { currentRound: number; t: (key: string, params?: Record<string, string | number>) => string }) {
+function ArmingPanel({ currentRound, countdownMs, t }: { currentRound: number; countdownMs: number | null; t: (key: string, params?: Record<string, string | number>) => string }) {
   // The pulsing arming indicator intentionally mirrors the match
   // page's pre-round phase so the transitions feel consistent — the
-  // user sees the same "hold steady" beat before the green light.
+  // user sees the same 5…4…3…2…1 countdown before the timer starts.
   return (
     <motion.div
       animate={{ scale: [1, 1.02, 1], opacity: [0.92, 1, 0.92] }}
@@ -569,10 +593,20 @@ function ArmingPanel({ currentRound, t }: { currentRound: number; t: (key: strin
       <h2 className="mt-4 text-2xl font-black text-yellow-300 sm:text-3xl">
         {t("games.precision.round_get_ready", { round: currentRound })}
       </h2>
+      {/* ── 5-second countdown before the timer starts ──
+          Mirrors the PvP match page countdown. `Math.max(1, …)` keeps
+          the display on "1" during the final tick instead of flashing 0. */}
+      <p className="mt-4 text-xs uppercase tracking-[0.35em] text-yellow-200/70">
+        {t("games.precision.countdown_label")}
+      </p>
+      <p
+        data-testid="precision-test-countdown"
+        className="mt-1 font-mono text-8xl font-black tabular-nums text-yellow-300 sm:text-9xl"
+      >
+        {countdownMs !== null ? Math.max(1, Math.ceil(countdownMs / 1000)) : "…"}
+      </p>
       <p className="mt-3 max-w-md text-sm text-cyan-100/90 sm:text-base">
-        {t("games.precision.test_arming_description", {
-          defaultValue: "The round is arming. The target will appear at a random moment — hold steady and wait for it. Click STOP the instant it shows up.",
-        })}
+        {t("games.precision.test_arming_description")}
       </p>
     </motion.div>
   );

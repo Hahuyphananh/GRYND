@@ -22,6 +22,21 @@ test("poker update-hand enforces auth and authorization guard", () => {
   assert.match(file, /hostClerkId/, "route should allow host override only");
 });
 
+test("dice-flush stats enforces auth and participant authorization", () => {
+  const file = read("src/app/api/dice-flush/stats/route.js");
+  assert.match(file, /requireUser/, "route should require auth");
+  assert.match(
+    file,
+    /Not a participant/,
+    "route should reject non-participants from a match detail",
+  );
+  assert.match(
+    file,
+    /diceFlushPlayers/,
+    "route should verify room participation against diceFlushPlayers",
+  );
+});
+
 test("uno ai-turn enforces auth and game ownership authorization", () => {
   const file = read("src/app/api/uno/ai-turn/route.js");
   assert.match(file, /await\s+auth\(\)/, "route should require auth");

@@ -12,7 +12,6 @@ import {
   diceFlushRooms,
   diceMatches,
   dotsAndBoxesGames,
-  farkleRooms,
   hexDuelGames,
   keno_games,
   laneRunnerGames,
@@ -94,7 +93,6 @@ const GAME_PAGES: {
   { path: "/casino/neon-flush" }, // no dedicated table yet → static
   { path: "/casino/hex-duel", source: [hexDuelGames, hexDuelGames.createdAt] },
   { path: "/casino/uno", source: [unoGames, unoGames.createdAt] },
-  { path: "/casino/farkle", source: [farkleRooms, farkleRooms.createdAt] },
   { path: "/casino/lane-runner", source: [laneRunnerGames, laneRunnerGames.createdAt] },
   { path: "/casino/odds", source: [oddsGames, oddsGames.createdAt] },
 ];

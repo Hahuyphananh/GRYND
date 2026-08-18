@@ -28,8 +28,6 @@ import {
   hexDuelGames,
   oddsGames,
   pokerGames,
-  farkleRooms,
-  farklePlayers,
   diceFlushRooms,
   diceFlushPlayers,
 } from "../../../db/schema";
@@ -100,7 +98,6 @@ export async function GET() {
       hexDuelRows,
       oddsRows,
       pokerRows,
-      farkleRows,
       diceFlushRows,
       laneRushDuelRows,
     ] = await Promise.all([
@@ -218,14 +215,6 @@ export async function GET() {
               where elem->>'clerkId' = ${clerkId}
             )`,
           ),
-      ),
-      //  Farkle (join players → rooms)
-      safeQuery("farkle", () =>
-        db
-          .select()
-          .from(farklePlayers)
-          .innerJoin(farkleRooms, eq(farklePlayers.roomId, farkleRooms.id))
-          .where(eq(farklePlayers.userId, clerkId)),
       ),
       //  Dice Flush (join players → rooms)
       safeQuery("dice-flush", () =>
@@ -397,32 +386,6 @@ export async function GET() {
         };
       });
 
-    //  Farkle — joined rows, extract winner from gameState
-    const farkleNormalized = farkleRows
-      .filter((row) => row.farkle_rooms?.status === "finished")
-      .map((row) => {
-        const room = row.farkle_rooms;
-        const amount = Number(room.wager ?? 0);
-        const gameState =
-          room.gameState && typeof room.gameState === "object"
-            ? room.gameState
-            : {};
-        const winnerId = gameState.winnerId;
-        const result = winnerId
-          ? winnerId === clerkId
-            ? "won"
-            : "lost"
-          : "completed";
-        const payout = result === "won" ? Number(room.pot ?? amount * 2) : 0;
-        return {
-          type: "Farkle",
-          amount,
-          payout,
-          result,
-          tokenDiff: result === "won" ? payout - amount : -amount,
-        };
-      });
-
     //  Dice Flush — joined rows, extract winner from gameState
     const diceFlushNormalized = diceFlushRows
       .filter((row) => row.dice_flush_rooms?.status === "finished")
@@ -468,7 +431,6 @@ export async function GET() {
       ...hexDuelNormalized,
       ...oddsNormalized,
       ...pokerNormalized,
-      ...farkleNormalized,
       ...diceFlushNormalized,
     ];
 

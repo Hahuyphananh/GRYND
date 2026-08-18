@@ -108,10 +108,6 @@ export default function Footer() {
                 Dice Flush
               </Link>
 
-              <Link href="/casino/farkle" className={linkClass}>
-                Farkle
-              </Link>
-
               <Link href="/casino/precision" className={linkClass}>
                 Precision
               </Link>

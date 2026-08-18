@@ -55,6 +55,9 @@ export function makeInitialMatch(
     winnerSeat: null,
     lastRoundWinnerSeat: null,
     armingStartedAt: null,
+    // Fixed 5s countdown end stamped by `armMatchRound` when the
+    // round enters `arming`; null outside arming.
+    countdownEndsAt: null,
     // Server-stamped GO instant for the active round (null between
     // rounds / before the first round). Owns all round timing.
     roundGoInstant: null,

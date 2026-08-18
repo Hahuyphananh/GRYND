@@ -1,19 +1,6 @@
 import { NextResponse } from "next/server";
 import { db, eq, loadRoom, requireUser, diceFlushRooms } from "../_lib";
-
-const UPPER_CATS = ["ones","twos","threes","fours","fives","sixes"];
-
-function computeTotals(scorecards) {
-  return Object.fromEntries(
-    Object.entries(scorecards).map(([userId, card]) => {
-      const cardEntries = card || {};
-      const upper = UPPER_CATS.reduce((t, k) => t + ((cardEntries)[k] ?? 0), 0);
-      const bonus = upper >= 63 ? 35 : 0;
-      const raw = Object.values(cardEntries).reduce((a, b) => a + (b ?? 0), 0);
-      return [userId, { upper, bonus, raw, total: raw + bonus }];
-    })
-  );
-}
+import { playerTotals } from "../../../../../game-engine/diceFlushEngine";
 
 export async function GET(req) {
   try {
@@ -26,15 +13,17 @@ export async function GET(req) {
     const state = room.gameState;
     if (!state) throw new Error("No game state found");
 
-    const totals = computeTotals(state.scorecards || {});
-    const playerTotals = (state.players || []).map((p) => ({
+    // Shared sheet: totals are computed per player from the categories each
+    // one claimed (see playerTotals in the engine).
+    const totals = playerTotals(state);
+    const playerTotalsList = (state.players || []).map((p) => ({
       userId: p.userId,
       name: p.name,
       isAI: p.isAI || false,
       ...(totals[p.userId] || { upper: 0, bonus: 0, raw: 0, total: 0 }),
     }));
 
-    return NextResponse.json({ success: true, playerTotals });
+    return NextResponse.json({ success: true, playerTotals: playerTotalsList });
   } catch (e) {
     return NextResponse.json(
       { success: false, error: e.message || "Failed" },

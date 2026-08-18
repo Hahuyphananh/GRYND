@@ -181,11 +181,6 @@ for (const table of DIRECT_TABLES) {
 }
 
 // Tables queried via join (players table in from(), rooms table in innerJoin)
-test("queries farkle via players → rooms join", () => {
-  assert.match(source, /from\(farklePlayers\)/, "must use farklePlayers in from()");
-  assert.match(source, /innerJoin\(farkleRooms/, "must join farkleRooms");
-});
-
 test("queries diceFlush via players → rooms join", () => {
   assert.match(source, /from\(diceFlushPlayers\)/, "must use diceFlushPlayers in from()");
   assert.match(source, /innerJoin\(diceFlushRooms/, "must join diceFlushRooms");
@@ -258,11 +253,6 @@ test("odds formatter exists and is included in allBets", () => {
 test("poker formatter exists and is included in allBets", () => {
   assert.match(source, /pokerFormatted/, "must have poker formatter");
   assert.match(source, /\.\.\.pokerFormatted/, "must spread into allBets");
-});
-
-test("farkle formatter exists and is included in allBets", () => {
-  assert.match(source, /farkleFormatted/, "must have farkle formatter");
-  assert.match(source, /\.\.\.farkleFormatted/, "must spread into allBets");
 });
 
 test("diceFlush formatter exists and is included in allBets", () => {

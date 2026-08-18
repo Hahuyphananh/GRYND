@@ -11,6 +11,7 @@ import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
+import { TURN_TIME_LIMIT_MS } from "../../../../game-engine/diceFlushEngine";
 import {
   IconNotebook,
   IconDice,
@@ -39,21 +40,28 @@ type GameState = {
   rollsThisTurn: number;
   dice: number[];
   heldDice: boolean[];
-  scorecards: Record<string, Record<string, number>>;
+  /** Shared scorecard — both players fill the same 12 categories. */
+  scorecards: Record<string, number>;
+  /** Maps each filled category to the userId who claimed it. */
+  scorecardOwner?: Record<string, string>;
   state: string;
   turnNumber?: number;
+  /** Skill layer — the category the current player committed to before
+   *  their first roll. Banking it this turn earns +15 (CALL_BONUS). */
+  currentCall?: string | null;
+  /** Shot clock — server epoch (ms) by which the current turn must end. */
+  turnDeadline?: number | null;
 };
 
 const categories = [
   ["ones", "Ones"], ["twos", "Twos"], ["threes", "Threes"], ["fours", "Fours"], ["fives", "Fives"], ["sixes", "Sixes"],
-  ["threeOfKind", "3-Kind"], ["fourOfKind", "4-Kind"], ["fullHouse", "Full Hse"], ["smallStraight", "Sm Str"], ["largeStraight", "Lg Str"], ["fiveKind", "5-Kind"], ["chance", "Chance"],
+  ["threeOfKind", "3-Kind"], ["fourOfKind", "4-Kind"], ["fullHouse", "Full Hse"], ["smallStraight", "Sm Str"], ["largeStraight", "Lg Str"], ["fiveKind", "5-Kind"],
 ] as const;
 
 const sum = (d: number[]) => d.reduce((a, b) => a + b, 0);
 const scoreFor = (dice: number[], category: string) => {
   const c = new Map<number, number>(); dice.forEach((v) => c.set(v, (c.get(v) ?? 0) + 1));
   const f = [...c.values()].sort((a, b) => b - a); const u = [...new Set(dice)].sort((a, b) => a - b);
-  if (category === "chance") return sum(dice);
   if (["ones", "twos", "threes", "fours", "fives", "sixes"].includes(category)) { const n = ["ones", "twos", "threes", "fours", "fives", "sixes"].indexOf(category) + 1; return dice.filter((d) => d === n).length * n; }
   if (category === "threeOfKind") return f[0] >= 3 ? sum(dice) : 0;
   if (category === "fourOfKind") return f[0] >= 4 ? sum(dice) : 0;
@@ -276,6 +284,8 @@ function MoveHistoryPanel({ history, you, opponent }: { history: any[]; you: any
                         {a.action === "roll" ? <span className="inline-flex items-center gap-1"><IconDice size={12} /> Roll</span> :
                          a.action === "hold_dice" ? <span className="inline-flex items-center gap-1"><IconPin size={12} /> Hold</span> :
                          a.action === "choose_category" ? <span className="inline-flex items-center gap-1"><IconClipboardList size={12} /> Score</span> :
+                         a.action === "call_category" ? <span className="inline-flex items-center gap-1"><IconSparkles size={12} /> Call</span> :
+                         a.action === "auto_bank_timeout" ? <span className="inline-flex items-center gap-1"><IconHourglass size={12} /> Timeout</span> :
                          a.action === "game_start" ? <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Start</span> :
                          a.action === "resign" ? <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Resign</span> :
                          a.action || a.action}
@@ -340,6 +350,9 @@ export default function DiceFlushPage() {
   const [turnBanner, setTurnBanner] = useState<string | null>(null);
   const [exploding, setExploding] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  // Shot clock display + auto-bank-on-expiry (skill layer).
+  const [turnMsLeft, setTurnMsLeft] = useState<number | null>(null);
+  const autoBankAttemptedForRef = useRef<number | null>(null);
 
   const [gameOverType, setGameOverType] = useState<"win" | "lose" | null>(null);
   const [gameOverScores, setGameOverScores] = useState<{ mine: number; theirs: number } | null>(null);
@@ -364,12 +377,9 @@ export default function DiceFlushPage() {
   // Normalize old "yahtzee" scorecard keys → "fiveKind" for backward compat with pre-rebrand games
   const normalizeState = (gs: GameState | null): GameState | null => {
     if (!gs?.scorecards) return gs;
-    for (const uid of Object.keys(gs.scorecards)) {
-      const card = gs.scorecards[uid];
-      if (card && "yahtzee" in card && !("fiveKind" in card)) {
-        (card as any).fiveKind = (card as any).yahtzee;
-        delete (card as any).yahtzee;
-      }
+    if ("yahtzee" in gs.scorecards && !("fiveKind" in gs.scorecards)) {
+      (gs.scorecards as any).fiveKind = (gs.scorecards as any).yahtzee;
+      delete (gs.scorecards as any).yahtzee;
     }
     return gs;
   };
@@ -400,6 +410,48 @@ export default function DiceFlushPage() {
     const p = setInterval(poll, 5000);
     return () => clearInterval(p);
   }, [roomId]);
+
+  // ── Shot clock ticker ──────────────────────────────────────────
+  // Counts down from the server-stamped turnDeadline. Display-only — the
+  // server enforces the actual auto-bank.
+  useEffect(() => {
+    const deadline = game?.turnDeadline;
+    if (game?.state !== "playing" || typeof deadline !== "number") {
+      setTurnMsLeft(null);
+      return;
+    }
+    const tick = () => setTurnMsLeft(Math.max(0, deadline - Date.now()));
+    tick();
+    const id = setInterval(tick, 100);
+    return () => clearInterval(id);
+  }, [game?.state, game?.turnDeadline]);
+
+  // ── Auto-bank when the shot clock expires ──────────────────────
+  // The server is authoritative; this just makes the resolution instant
+  // instead of waiting for the next poll tick. Guarded per-deadline so
+  // the client only fires once per turn.
+  useEffect(() => {
+    if (turnMsLeft === null || turnMsLeft > 0) return;
+    const deadline = game?.turnDeadline;
+    if (typeof deadline !== "number") return;
+    if (autoBankAttemptedForRef.current === deadline) return;
+    autoBankAttemptedForRef.current = deadline;
+    if (!roomId) return;
+    void fetch("/api/dice-flush/auto-bank", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roomId }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.state) {
+          setGame(normalizeState(d.state));
+          emitRoomEvent();
+          fetchHistory(roomId);
+        }
+      })
+      .catch(() => {});
+  }, [turnMsLeft, game?.turnDeadline, roomId]);
 
   const you = useMemo(() => game?.players?.find((p) => p.userId === user?.id) || null, [game, user?.id]);
   const opponent = useMemo(() => game?.players?.find((p) => p.userId !== user?.id) || null, [game, user?.id]);
@@ -465,13 +517,24 @@ export default function DiceFlushPage() {
   const isYourTurn = Boolean(game && you && game.currentTurn === you.userId);
   const waitingForOpponent = Boolean(game && game.players.length < 2 && game.state === "waiting");
 
-  const sectionTotals = (pid?: string) => { const c = game?.scorecards?.[pid || ""] || {}; const upper = ["ones","twos","threes","fours","fives","sixes"].reduce((t, k) => t + (c[k] ?? 0), 0); const bonus = upper >= 63 ? 35 : 0; const total = Object.values(c).reduce((a, b) => a + (b || 0), 0) + bonus; return { upper, bonus, total }; };
-
-  // Category progress (out of 13)
-  const progress = (pid?: string) => {
-    const c = game?.scorecards?.[pid || ""] || {};
-    return Object.keys(c).filter(k => c[k] !== undefined).length;
+  // SHARED sheet: per-player totals are computed from the categories each
+  // player claimed (scorecardOwner) — not from separate per-player cards.
+  const ownerOf = (k: string) => game?.scorecardOwner?.[k];
+  const sectionTotals = (pid?: string) => {
+    const upper = ["ones","twos","threes","fours","fives","sixes"].reduce(
+      (t, k) => t + (ownerOf(k) === pid ? (game?.scorecards?.[k] ?? 0) : 0), 0);
+    const bonus = upper >= 63 ? 35 : 0;
+    const raw = categories.reduce(
+      (t, [k]) => t + (ownerOf(k) === pid ? (game?.scorecards?.[k] ?? 0) : 0), 0);
+    return { upper, bonus, raw, total: raw + bonus };
   };
+
+  // Category progress per player (out of 12 — each player claims exactly 6)
+  const progress = (pid?: string) =>
+    categories.filter(([k]) => ownerOf(k) === pid).length;
+
+  // Shared sheet fill (out of 12)
+  const sharedFilled = Object.keys(game?.scorecards ?? {}).length;
 
   // Extract last player and AI moves from history
   const lastMoves = useMemo(() => {
@@ -482,7 +545,66 @@ export default function DiceFlushPage() {
       ai: aiMoves.length > 0 ? aiMoves[aiMoves.length - 1] : null,
     };
   }, [moveHistory, user?.id]);
-  const preview = (key: string) => (!game || !isYourTurn || game.rollsThisTurn < 1 || !you || game.scorecards?.[you.userId]?.[key] !== undefined ? null : scoreFor(game.dice, key));
+  const preview = (key: string) => (!game || !isYourTurn || game.rollsThisTurn < 1 || !you || game.scorecards?.[key] !== undefined ? null : scoreFor(game.dice, key));
+
+  // Skill layer helpers — call-the-category (from the SHARED sheet).
+  const callLabel = (k: string) => categories.find(([key]) => key === k)?.[1] ?? k;
+  const openCategoriesForMe = useMemo(
+    () => (game && you ? categories.filter(([k]) => game.scorecards?.[k] === undefined) : []),
+    [game, you],
+  );
+
+  // ── Shared-sheet scorecard row ─────────────────────────────────────
+  // One row per category on the single sheet. Shows the score plus who
+  // claimed it (YOU / opponent). Clickable to bank when it's your turn.
+  const renderScorecardRow = (k: string, label: string) => {
+    const ownerId = ownerOf(k);
+    const value = game?.scorecards?.[k];
+    const isMine = !!ownerId && ownerId === you?.userId;
+    const isOpp = !!ownerId && ownerId === opponent?.userId;
+    const canPick = isYourTurn && value === undefined && game.rollsThisTurn > 0;
+    const isAiPick = aiCategoryHighlight === k;
+    return (
+      <motion.button
+        key={k}
+        whileHover={canPick ? { scale: 1.02, backgroundColor: "rgba(245,255,59,0.08)" } : {}}
+        onClick={() => canPick && setSelectedCategory(k)}
+        animate={isAiPick ? { backgroundColor: ["rgba(245,255,59,0)", "rgba(245,255,59,0.2)", "rgba(245,255,59,0)"], scale: [1, 1.06, 1] } : {}}
+        transition={isAiPick ? { duration: 0.8, ease: "easeInOut" } : {}}
+        className={`grid w-full grid-cols-3 border-t border-[#00e5ff]/8 p-2 text-left text-xs transition-colors ${
+          selectedCategory === k
+            ? "bg-[#f5ff3b]/10 ring-1 ring-[#f5ff3b]/30 shadow-[inset_0_0_15px_rgba(245,255,59,0.15)]"
+            : "hover:bg-white/3"
+        } ${isAiPick ? "z-10 ring-2 ring-[#f5ff3b]/50" : ""}`}
+      >
+        <div className="flex items-center gap-1.5 text-white/80">
+          {label}
+          {game.currentCall === k && (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-[#f5ff3b]/15 px-1.5 py-0.5 text-[9px] font-black text-[#f5ff3b]">
+              <IconSparkles size={9} /> CALLED
+            </span>
+          )}
+        </div>
+        <div className={`text-center font-bold ${
+          value !== undefined
+            ? isMine ? "text-[#34d399]" : isOpp ? "text-[#f87171]" : "text-white"
+            : preview(k) !== null ? "text-[#f5ff3b]/60 italic" : "text-white/25"
+        }`}>
+          {value !== undefined
+            ? value
+            : preview(k) !== null
+              ? `${(preview(k) ?? 0) + (game.currentCall === k ? 15 : 0)}${game.currentCall === k ? " +15" : ""}`
+              : "—"}
+        </div>
+        <div className="text-right text-[10px] font-black">
+          {isMine ? <span className="text-[#34d399]">YOU</span>
+            : isOpp ? <span className="text-[#f87171]">{opponent?.name || "OPP"}</span>
+            : canPick ? <span className="text-[#f5ff3b]/60">PICK</span>
+            : <span className="text-white/15">OPEN</span>}
+        </div>
+      </motion.button>
+    );
+  };
 
   // ── AI turn animation ───────────────────────────────────────────
   const runAiTurnAnimation = async (rId: string) => {
@@ -557,7 +679,12 @@ export default function DiceFlushPage() {
     if (!socket || !roomId) return;
     socket.emit("room_event", { roomId, event: "game_state_update" });
   };
-  const playAction = async (url: string, payload: Record<string, unknown>) => { if (!roomId || !isYourTurn) return; const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId, ...payload }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Action failed");
+  const playAction = async (url: string, payload: Record<string, unknown>) => { if (!roomId || !isYourTurn) return; const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId, ...payload }) }); const d = await res.json(); if (!res.ok || !d.success) {
+    // A rejected move (e.g. the shot clock expired mid-click) usually comes
+    // with the resolved state — refresh the board instead of leaving it stale.
+    if (d?.state) { setGame(normalizeState(d.state as GameState)); emitRoomEvent(); }
+    return alert(d.error || "Action failed");
+  }
     setGame(normalizeState((d.state || d.finalState) as GameState));
     emitRoomEvent();
     fetchHistory(roomId);
@@ -574,6 +701,7 @@ export default function DiceFlushPage() {
       });
       const d = await res.json();
       if (!res.ok || !d.success) {
+        if (d?.state) { setGame(normalizeState(d.state as GameState)); emitRoomEvent(); }
         alert(d.error || "Failed");
         return;
       }
@@ -648,12 +776,46 @@ export default function DiceFlushPage() {
               ),
             },
             {
-              heading: "Fill your scorecard",
+              heading: "Shared scorecard — 12 categories",
               body: (
                 <>
-                  Each turn must be scored into an unused category:
-                  three/four-of-a-kind, full house, straights, flush,
-                  chance, and more.
+                  Both players fill the SAME sheet of 12 categories
+                  (3/4/5-of-a-kind, full house, straights, and the top
+                  six). Each category can only be claimed once — so you
+                  can deny your opponent the category they want, or even
+                  scratch a zero into a big one as a poison pill.
+                </>
+              ),
+            },
+            {
+              heading: "Call a category (+15)",
+              body: (
+                <>
+                  Before your first roll each turn, you may call one
+                  unfilled category. If you bank that category this turn,
+                  you earn +15 bonus points on top of its score — the
+                  riskier the category, the bigger the payoff.
+                </>
+              ),
+            },
+            {
+              heading: "Shot clock",
+              body: (
+                <>
+                  Each turn runs on a 20-second clock. If it expires, the
+                  server auto-banks your best legal category, so make your
+                  holds and calls count under pressure.
+                </>
+              ),
+            },
+            {
+              heading: "Turn order",
+              body: (
+                <>
+                  The starter is chosen randomly (50/50) when the match
+                  begins — first pick of the sheet, but the other player
+                  gets the last pick. With 12 categories you each claim
+                  exactly 6.
                 </>
               ),
             },
@@ -661,9 +823,10 @@ export default function DiceFlushPage() {
               heading: "Win the match",
               body: (
                 <>
-                  After both players fill their scorecards, the higher
-                  total wins the pot (minus the house fee). Play vs AI
-                  free to practice.
+                  Once all 12 categories are filled, the player whose
+                  claimed categories total the most wins the pot (minus
+                  the house fee). Reach 63 in your own upper section for
+                  a +35 bonus. Play vs AI free to practice.
                 </>
               ),
             },
@@ -714,6 +877,7 @@ export default function DiceFlushPage() {
               {isYourTurn ? "Your turn" : `${opponent?.name || "Opponent"}'s turn`}
             </span>
             <span className="text-xs text-gray-400">Rolls {game.rollsThisTurn}/3</span>
+            <span className="rounded-full bg-[#00e5ff]/10 px-2 py-0.5 text-xs font-bold text-[#00e5ff]">Sheet {sharedFilled}/12</span>
           </div>
           <div className="flex items-center gap-2">
             {opponent && !opponent.isAI && (<button onClick={() => setShowReportModal(true)} className="rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-1 text-xs font-bold text-red-400 hover:bg-red-500/20 transition"><span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report</span></button>)}
@@ -724,6 +888,31 @@ export default function DiceFlushPage() {
 
         {/* ═══════ DICE FLUSH SCORECARD ═══════ */}
 <div className="mb-5 overflow-hidden rounded-[24px] border-2 border-[#00e5ff]/20 bg-gradient-to-b from-[#030817] to-[#0a1628] shadow-[0_0_40px_rgba(0,229,255,0.15)]">
+
+  {/* ─── SHOT CLOCK (skill layer) ─── */}
+  {game.state === "playing" && turnMsLeft !== null && (
+    <div className="border-b border-[#00e5ff]/10 bg-[#020812]/70 px-4 py-2">
+      <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-white/50">
+        <span className="flex items-center gap-1.5">
+          <IconHourglass size={12} />
+          Shot clock
+        </span>
+        <span className={turnMsLeft <= 5000 ? "text-red-400" : "text-[#00e5ff]"}>
+          {Math.ceil(turnMsLeft / 1000)}s
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+        <motion.div
+          animate={{ width: `${Math.max(0, (turnMsLeft / TURN_TIME_LIMIT_MS) * 100)}%` }}
+          transition={{ duration: 0.1 }}
+          className={`h-full rounded-full ${turnMsLeft <= 5000 ? "bg-red-500" : "bg-[#00e5ff]"}`}
+        />
+      </div>
+      <p className="mt-1 text-[10px] text-white/40">
+        {isYourTurn ? "Finish your turn before time runs out — it auto-banks your best category." : "Waiting for the opponent to finish their turn…"}
+      </p>
+    </div>
+  )}
 
   {/* ─── TOP: OPPONENT SECTION ─── */}
   <div className="border-b border-[#00e5ff]/10 bg-[#020812] px-4 py-3">
@@ -745,12 +934,12 @@ export default function DiceFlushPage() {
           <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/10">
             <motion.div
               layout
-              animate={{ width: `${(progress(opponent?.userId) / 13) * 100}%` }}
+              animate={{ width: `${(progress(opponent?.userId) / 6) * 100}%` }}
               transition={{ duration: 0.5, ease: "easeOut" }}
               className="h-full rounded-full bg-[#f87171]"
             />
           </div>
-          <span className="text-[10px] font-bold text-white/60">{progress(opponent?.userId)}/13</span>
+          <span className="text-[10px] font-bold text-white/60">{progress(opponent?.userId)}/6</span>
         </div>
       </div>
       <div className="rounded-xl bg-white/5 px-3 py-1 text-xs font-bold text-white/70">
@@ -819,48 +1008,21 @@ export default function DiceFlushPage() {
       {/* Header */}
       <div className="grid grid-cols-3 bg-[#00e5ff]/5 p-2 text-xs font-bold text-[#00e5ff]">
         <div>Category</div>
-        <div className="text-[#f5ff3b]">{you?.name || "You"}</div>
-        <div className="text-[#f87171]">{opponent?.name || "Opponent"}</div>
+        <div className="text-center">Score</div>
+        <div className="text-right">Claimed by</div>
       </div>
 
       {/* Upper section — 1–6 */}
-      {categories.slice(0, 6).map(([k, label]) => {
-        const myVal = you ? game.scorecards?.[you.userId]?.[k] : undefined;
-        const opVal = opponent ? game.scorecards?.[opponent.userId]?.[k] : undefined;
-        const canPick = isYourTurn && myVal === undefined && game.rollsThisTurn > 0;
-        const isAiPick = aiCategoryHighlight === k;
-        return (
-          <motion.button
-            key={k}
-            whileHover={canPick ? { scale: 1.02, backgroundColor: "rgba(245,255,59,0.08)" } : {}}
-            onClick={() => canPick && setSelectedCategory(k)}
-            animate={isAiPick ? { backgroundColor: ["rgba(245,255,59,0)", "rgba(245,255,59,0.2)", "rgba(245,255,59,0)"], scale: [1, 1.06, 1] } : {}}
-            transition={isAiPick ? { duration: 0.8, ease: "easeInOut" } : {}}
-            className={`grid w-full grid-cols-3 border-t border-[#00e5ff]/8 p-2 text-left text-xs transition-colors ${
-              selectedCategory === k
-                ? "bg-[#f5ff3b]/10 ring-1 ring-[#f5ff3b]/30 shadow-[inset_0_0_15px_rgba(245,255,59,0.15)]"
-                : "hover:bg-white/3"
-            } ${isAiPick ? "z-10 ring-2 ring-[#f5ff3b]/50" : ""}`}
-          >
-            <div className="text-white/80">{label}</div>
-            <div className={myVal === undefined && preview(k) !== null ? "text-[#f5ff3b]/60 italic" : "text-[#f5ff3b]"}>
-              {myVal !== undefined ? myVal : (preview(k) ?? "—")}
-            </div>
-            <div className="text-[#f87171]/80">
-              {opVal ?? "—"}
-            </div>
-          </motion.button>
-        );
-      })}
+      {categories.slice(0, 6).map(([k, label]) => renderScorecardRow(k, label))}
 
-      {/* Bonus row — 63-pt threshold */}
+      {/* Bonus row — 63-pt threshold (per player, from their claimed categories) */}
       <div className="grid grid-cols-3 border-t-2 border-[#f5ff3b]/30 bg-[#f5ff3b]/5 p-2 text-xs font-bold">
         <div className="text-[#f5ff3b]">Bonus (63+)</div>
         <motion.div
           key={`you-bonus-${sectionTotals(you?.userId).upper}`}
           animate={{ scale: [1, 1.1, 1] }}
           transition={{ duration: 0.4 }}
-          className="text-[#f5ff3b]"
+          className="text-center text-[#34d399]"
         >
           {sectionTotals(you?.userId).upper >= 63
             ? <span className="inline-flex items-center gap-1">+{sectionTotals(you?.userId).bonus} <IconCheck size={14} /></span>
@@ -870,7 +1032,7 @@ export default function DiceFlushPage() {
           key={`op-bonus-${sectionTotals(opponent?.userId).upper}`}
           animate={{ scale: [1, 1.1, 1] }}
           transition={{ duration: 0.4 }}
-          className="text-[#f87171]/80"
+          className="text-right text-[#f87171]"
         >
           {sectionTotals(opponent?.userId).upper >= 63
             ? <span className="inline-flex items-center gap-1">+{sectionTotals(opponent?.userId).bonus} <IconCheck size={14} /></span>
@@ -878,35 +1040,8 @@ export default function DiceFlushPage() {
         </motion.div>
       </div>
 
-      {/* Lower section — 3-Kind, 4-Kind, Full Hse, Sm Str, Lg Str, 5-Kind, Chance */}
-      {categories.slice(6).map(([k, label]) => {
-        const myVal = you ? game.scorecards?.[you.userId]?.[k] : undefined;
-        const opVal = opponent ? game.scorecards?.[opponent.userId]?.[k] : undefined;
-        const canPick = isYourTurn && myVal === undefined && game.rollsThisTurn > 0;
-        const isAiPick = aiCategoryHighlight === k;
-        return (
-          <motion.button
-            key={k}
-            whileHover={canPick ? { scale: 1.02, backgroundColor: "rgba(245,255,59,0.08)" } : {}}
-            onClick={() => canPick && setSelectedCategory(k)}
-            animate={isAiPick ? { backgroundColor: ["rgba(245,255,59,0)", "rgba(245,255,59,0.2)", "rgba(245,255,59,0)"], scale: [1, 1.06, 1] } : {}}
-            transition={isAiPick ? { duration: 0.8, ease: "easeInOut" } : {}}
-            className={`grid w-full grid-cols-3 border-t border-[#00e5ff]/8 p-2 text-left text-xs transition-colors ${
-              selectedCategory === k
-                ? "bg-[#f5ff3b]/10 ring-1 ring-[#f5ff3b]/30 shadow-[inset_0_0_15px_rgba(245,255,59,0.15)]"
-                : "hover:bg-white/3"
-            } ${isAiPick ? "z-10 ring-2 ring-[#f5ff3b]/50" : ""}`}
-          >
-            <div className="text-white/80">{label}</div>
-            <div className={myVal === undefined && preview(k) !== null ? "text-[#f5ff3b]/60 italic" : "text-[#f5ff3b]"}>
-              {myVal !== undefined ? myVal : (preview(k) ?? "—")}
-            </div>
-            <div className="text-[#f87171]/80">
-              {opVal ?? "—"}
-            </div>
-          </motion.button>
-        );
-      })}
+      {/* Lower section — 3-Kind, 4-Kind, Full Hse, Sm Str, Lg Str, 5-Kind */}
+      {categories.slice(6).map(([k, label]) => renderScorecardRow(k, label))}
 
       {/* Grand total row */}
       <div className="grid grid-cols-3 border-t-2 border-[#00e5ff]/30 bg-[#00e5ff]/5 p-2 text-sm font-black">
@@ -915,7 +1050,7 @@ export default function DiceFlushPage() {
           key={`you-total-${sectionTotals(you?.userId).total}`}
           animate={{ scale: [1, 1.15, 1] }}
           transition={{ duration: 0.4 }}
-          className="text-[#f5ff3b]"
+          className="text-center text-[#34d399]"
         >
           {sectionTotals(you?.userId).total}
         </motion.div>
@@ -923,11 +1058,47 @@ export default function DiceFlushPage() {
           key={`op-total-${sectionTotals(opponent?.userId).total}`}
           animate={{ scale: [1, 1.15, 1] }}
           transition={{ duration: 0.4 }}
-          className="text-[#f87171]"
+          className="text-right text-[#f87171]"
         >
           {sectionTotals(opponent?.userId).total}
         </motion.div>
       </div>
+    </div>
+
+    {/* ─── CALL THE CATEGORY (skill layer) ─── */}
+    <div className="mt-4 rounded-2xl border border-[#f5ff3b]/25 bg-[#f5ff3b]/5 px-4 py-3">
+      {game.state !== "playing" ? null : game.currentCall ? (
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm font-bold text-[#f5ff3b]">
+          <IconSparkles size={16} />
+          <span>
+            {isYourTurn ? "You called" : `${opponent?.name || "Opponent"} called`}{" "}
+            <span className="font-black underline decoration-dotted">{callLabel(game.currentCall)}</span>
+            {isYourTurn && " — bank it this turn for +15 pts!"}
+          </span>
+        </div>
+      ) : isYourTurn && game.rollsThisTurn === 0 ? (
+        <>
+          <p className="mb-2 text-center text-xs font-bold uppercase tracking-wider text-[#f5ff3b]/80">
+            Call a category before your first roll — bank it this turn for +15 pts
+          </p>
+          <div className="flex flex-wrap justify-center gap-1.5">
+            {openCategoriesForMe.map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => playAction("/api/dice-flush/call", { category: k })}
+                className="rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-xs font-bold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/25"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : isYourTurn ? (
+        <p className="text-center text-xs text-white/50">No call made this turn — you can still bank any category.</p>
+      ) : (
+        <p className="text-center text-xs text-white/50">The opponent is deciding on their call…</p>
+      )}
     </div>
 
     {/* ─── BUTTONS ─── */}
@@ -996,12 +1167,12 @@ export default function DiceFlushPage() {
           <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/10">
             <motion.div
               layout
-              animate={{ width: `${(progress(you?.userId) / 13) * 100}%` }}
+              animate={{ width: `${(progress(you?.userId) / 6) * 100}%` }}
               transition={{ duration: 0.5, ease: "easeOut" }}
               className="h-full rounded-full bg-[#34d399]"
             />
           </div>
-          <span className="text-[10px] font-bold text-white/60">{progress(you?.userId)}/13</span>
+          <span className="text-[10px] font-bold text-white/60">{progress(you?.userId)}/6</span>
         </div>
       </div>
       <div className="rounded-xl bg-white/5 px-3 py-1 text-xs font-bold text-white/60">

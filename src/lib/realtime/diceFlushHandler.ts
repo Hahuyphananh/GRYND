@@ -1,4 +1,4 @@
-import { checkGameEnd, holdDice, nextTurn, rollDice, validateMove, type DiceFlushCategory, type DiceFlushGameState } from "../../../game-engine/diceFlushEngine";
+import { checkGameEnd, holdDice, nextTurn, rollDice, validateMove, TURN_TIME_LIMIT_MS, type DiceFlushCategory, type DiceFlushGameState } from "../../../game-engine/diceFlushEngine";
 
 type SocketLike = { emit: (event: string, payload: any) => void; to?: (room: string) => { emit: (event:string, payload:any)=>void } };
 
@@ -10,10 +10,11 @@ export function registerGame(name: string, handler: any) {
 
 const rakeRate = 0.05;
 
-function pickAiCategory(state: DiceFlushGameState, aiId: string): DiceFlushCategory {
-  const used = state.scorecards[aiId] ?? {};
-  const open = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","fiveKind","chance"] as DiceFlushCategory[];
-  const options = open.filter((c) => used[c] === undefined).map((category) => ({ category, score: require("../../../game-engine/diceFlushEngine").calculateScore(state.dice, category) }));
+const OPEN_CATEGORIES = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","fiveKind"] as DiceFlushCategory[];
+
+// AI picks from the SHARED sheet — only categories nobody has claimed yet.
+function pickAiCategory(state: DiceFlushGameState): DiceFlushCategory {
+  const options = OPEN_CATEGORIES.filter((c) => state.scorecards[c] === undefined).map((category) => ({ category, score: require("../../../game-engine/diceFlushEngine").calculateScore(state.dice, category) }));
   options.sort((a,b)=>b.score-a.score);
   return options[Math.min(options.length - 1, Math.floor(Math.random() < 0.15 ? Math.random() * Math.min(options.length, 3) : 0))].category;
 }
@@ -25,7 +26,7 @@ export function diceFlushHandler(socket: SocketLike, ctx: { userId: string; user
     create_room: ({ wager }: { wager: number }) => {
       const id = `yahtzee:${Date.now()}`;
       ctx.wallet.lockWager(ctx.userId, wager);
-      const room: DiceFlushGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }], ai: false, wager, pot: wager, state: "waiting", currentTurn: ctx.userId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: { [ctx.userId]: {} } };
+      const room: DiceFlushGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }], ai: false, wager, pot: wager, state: "waiting", currentTurn: ctx.userId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: {}, scorecardOwner: {}, currentCall: null, turnDeadline: null };
       rooms.set(id, room);
       socket.emit("room_created", room);
     },
@@ -33,9 +34,12 @@ export function diceFlushHandler(socket: SocketLike, ctx: { userId: string; user
       const room = rooms.get(roomId);
       if (!room || room.state !== "waiting") return socket.emit("error", { message: "Room unavailable" });
       ctx.wallet.lockWager(ctx.userId, room.wager);
+      const creatorId = room.players[0].userId;
       room.players.push({ userId: ctx.userId, name: ctx.username });
-      room.scorecards[ctx.userId] = {};
       room.state = "playing";
+      // Shared sheet: random 50/50 starter, each player claims 6 categories.
+      room.currentTurn = Math.random() < 0.5 ? creatorId : ctx.userId;
+      room.turnDeadline = Date.now() + TURN_TIME_LIMIT_MS;
       room.pot += room.wager;
       socket.emit("room_updated", room);
       socket.emit("game_state_update", room);
@@ -46,7 +50,7 @@ export function diceFlushHandler(socket: SocketLike, ctx: { userId: string; user
       // keep `pot` at 0 so the eventual match_ended payout can't credit
       // the AI or the human on game end (mirrors the HTTP route fix).
       const id = `yahtzee:${Date.now()}`;
-      const room: DiceFlushGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }, { userId: aiId, name: `AI (${difficulty})`, isAI: true, difficulty }], ai: true, wager, pot: 0, state: "playing", currentTurn: ctx.userId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: { [ctx.userId]: {}, [aiId]: {} } };
+      const room: DiceFlushGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }, { userId: aiId, name: `AI (${difficulty})`, isAI: true, difficulty }], ai: true, wager, pot: 0, state: "playing", currentTurn: Math.random() < 0.5 ? ctx.userId : aiId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: {}, scorecardOwner: {}, currentCall: null, turnDeadline: Date.now() + TURN_TIME_LIMIT_MS };
       rooms.set(id, room);
       socket.emit("room_created", room);
     },
@@ -66,8 +70,13 @@ export function diceFlushHandler(socket: SocketLike, ctx: { userId: string; user
         const ai = next.players.find(p=>p.isAI);
         if (ai && next.currentTurn === ai.userId) {
           let aiState = next;
+          // Skill layer — the AI makes a random open category call too.
+          if (aiState.currentCall === null) {
+            const open = OPEN_CATEGORIES.filter((c) => aiState.scorecards[c] === undefined);
+            if (open.length > 0) aiState.currentCall = open[Math.floor(Math.random() * open.length)];
+          }
           for (let i=0;i<3;i++) aiState = rollDice(aiState);
-          const aiCategory = pickAiCategory(aiState, ai.userId);
+          const aiCategory = pickAiCategory(aiState);
           next = nextTurn(aiState, ai.userId, aiCategory);
           socket.emit("ai_action", { roomId, action: "choose_category", category: aiCategory });
         }

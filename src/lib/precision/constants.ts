@@ -119,20 +119,26 @@ export const PRECISION_VARIANCE_MIN_SAMPLES = 3;
  *  truncated. */
 export const PRECISION_ANOMALY_LEDGER_MAX_PER_MATCH = 64;
 
-// ── Random arming delay ─────────────────────────────────────────────────
+// ── Pre-round countdown (PvP + solo test) ────────────────────────────────
 //
 // Between rounds (and before the first round after ready-up), the server
-// places the match in phase `arming` for a randomly-chosen delay in
-// `[MIN_DELAY_MS, MAX_DELAY_MS]`. Only the server knows the delay —
-// `PrecisionState` exposes `armingStartedAt` (when arming BEGAN) but
-// never the planned end. The setTimeout fires server-side and
-// transitions the phase back to `active`.
+// places the match in phase `arming` for a FIXED 5-second countdown. The
+// client renders the live countdown from the server-stamped
+// `countdownEndsAt` (`armingStartedAt + ROUND_COUNTDOWN_MS`), so both
+// players see the same 5…4…3…2…1 and the timer + target appear at the
+// same moment on both screens. The setTimeout fires server-side and
+// transitions the phase back to `active` — the countdown display is
+// purely visual; all round timing remains server-authoritative.
 //
-// The range matches the user spec for the Precision reaction game:
-// randomised enough to defeat anticipatory clicking, short enough that
-// the game feels responsive.
-export const MIN_DELAY_MS = 2_500;
-export const MAX_DELAY_MS = 7_500;
+// The solo practice page (`/casino/precision/test`) mirrors this exact
+// 5-second countdown client-side so practice rounds feel identical to a
+// real PvP match.
+//
+// The target itself is only revealed when the phase flips to `active`
+// (see `armMatchRound`), so a predictable countdown start does not enable
+// anticipatory clicking — the per-round target in [MIN_TARGET_MS,
+// MAX_TARGET_MS] is still unknown until the timer starts.
+export const ROUND_COUNTDOWN_MS = 5_000;
 
 // Visual sizing for the eventual game board. The exact dimensions will
 // be tuned in a future change; this is the canonical reference so any
