@@ -32,17 +32,12 @@ Rotate these secrets on a regular cadence (recommended: every 90 days, and immed
    - Update secret values in deployment provider and local environment.
    - Validate sign-in, webhook delivery, and protected API access.
 
-2. **ODDS API key**
-   - Rotate `ODDS_API_KEY` in The Odds API dashboard.
-   - Update production/staging/local env values.
-   - Smoke test odds-dependent endpoints (`/api/sports/*`, `/api/get-events`, `/api/odds/fetch`).
-
-3. **Database credentials**
+2. **Database credentials**
    - Rotate `DATABASE_URL` credentials.
    - Ensure old credentials are revoked.
    - Run basic read/write health checks and migration connectivity checks.
 
-4. **Post-rotation checks**
+3. **Post-rotation checks**
    - Confirm no secrets are present in git history, client bundles, or API responses.
    - Monitor audit logs and error rates for at least 24h after rotation.
 

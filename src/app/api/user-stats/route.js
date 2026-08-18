@@ -16,7 +16,6 @@ import {
   plinkoGames,
   rpsGames,
   crashGames,
-  sportsBets,
   unoGames,
   chessGames,
   keno_games,
@@ -89,7 +88,6 @@ export async function GET() {
       rps,
       uno,
       chess,
-      sports,
       kenoPvpRows,
       kenoRows,
       diceRows,
@@ -119,7 +117,6 @@ export async function GET() {
             ),
           ),
       ),
-      safeQuery("sports", () => db.select().from(sportsBets).where(eq(sportsBets.userId, uid))),
       safeQuery("keno-pvp", () =>
         db
           .select()
@@ -421,7 +418,6 @@ export async function GET() {
       ...normalize(rps, "RPS"),
       ...normalize(uno, "UNO"),
       ...normalize(chess, "Chess"),
-      ...normalize(sports, "Sports"),
       ...kenoPvpNormalized,
       ...normalize(kenoRows, "Keno"),
       ...diceNormalized,

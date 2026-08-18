@@ -1,7 +1,7 @@
 # GoonBet
-> GoonBet is a skill-based multiplayer casino and sports betting platform. Players compete in skill games using virtual tokens — tokens have no real-world monetary value and are not redeemable for cash. GoonBet is 18+ only and promotes responsible play.
+> GoonBet is a skill-based multiplayer casino platform. Players compete in skill games using virtual tokens — tokens have no real-world monetary value and are not redeemable for cash. GoonBet is 18+ only and promotes responsible play.
 
-GoonBet covers esports and sports betting, plus dozens of arcade and table games playable against the house, AI, or other players in real time. Outcomes are determined primarily by player skill and strategy. The platform uses virtual tokens for all gameplay.
+GoonBet covers dozens of arcade and table games playable against the house, AI, or other players in real time. Outcomes are determined primarily by player skill and strategy. The platform uses virtual tokens for all gameplay.
 
 ## Casino Games
 - [Casino Hub](https://goonbet.dedyn.io/casino): Browse all casino games
@@ -29,9 +29,6 @@ GoonBet covers esports and sports betting, plus dozens of arcade and table games
 - [Farkle](https://goonbet.dedyn.io/casino/farkle): Classic dice-combination scoring game
 - [Lane Rush Duel](https://goonbet.dedyn.io/casino/lane-runner): PvP tower-climb duel — pick safe tiles to climb, hold to bank your score
 - [Odds](https://goonbet.dedyn.io/casino/odds): Odds-style betting games
-
-## Sports Betting
-- [Sports](https://goonbet.dedyn.io/sport): Odds and bets on esports and sports matches, including live match pages
 
 ## Platform
 - [Home](https://goonbet.dedyn.io/): Site overview and featured games

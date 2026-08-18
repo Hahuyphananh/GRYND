@@ -1,6 +1,6 @@
 # 🎰 GoonBet — The Next-Gen Online Casino
 
-Welcome to **GoonBet**, a modern online casino and sports betting platform where users can play with **tokens** in a fun, fair, and engaging way.
+Welcome to **GoonBet**, a modern skill-based online casino platform where users can play with **tokens** in a fun, fair, and engaging way.
 
 Our platform is designed to combine classic casino games with a smooth, interactive experience that works on desktop and mobile.
 
@@ -9,7 +9,6 @@ Our platform is designed to combine classic casino games with a smooth, interact
 ## 🚀 Features
 
 - 🎲 **Casino Games** — Blackjack, Poker, Roulette, Keno, rock paper scissors, crash, mines, uno and more (token-based)
-- 📊 **Sports Betting** — Soccer, Basketball, MMA, E-Sports, and more
 - 🏆 **Token System** — Play-for-fun mode so users can practice without losing real money
 - 🔑 **Clerk Authentication** — Secure user sign-up and login
 - 💰 **Wallet & Token Management** — Seamless token balance updates via secure API routes

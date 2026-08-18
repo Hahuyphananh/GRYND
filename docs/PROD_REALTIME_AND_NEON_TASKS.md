@@ -9,7 +9,7 @@ This file groups all high-priority production tasks into a single deployable pla
 3. Ensure `CLERK_SECRET_KEY` is set on Render realtime service.
 4. Verify `GET /health` returns `allowedOrigins`, `clerkConfigured: true`, and `wsPath: /socket.io`.
 
-## Sports 500 invalid connection string tasks
+## DB connection string tasks
 
 1. Standardize DB env usage in production routes.
 2. Remove runtime dotenv loading in deployed API/server code.
@@ -23,7 +23,7 @@ This file groups all high-priority production tasks into a single deployable pla
 1. Replace hot polling loops with websocket-driven updates where possible.
 2. Consolidate presence heartbeat writes and reduce write frequency.
 3. Deduplicate repeated balance/token fetches with shared client state.
-4. Add pagination and filtering defaults for heavy list endpoints (sports bets/history).
+4. Add pagination and filtering defaults for heavy list endpoints (game history).
 5. Reduce production console logging on frequently executed code paths.
 6. Standardize singleton DB clients for serverless handlers.
 

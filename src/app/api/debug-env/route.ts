@@ -151,7 +151,6 @@ export async function GET() {
     nodeEnv: process.env.NODE_ENV,
     hasClerkSecretKey: Boolean(process.env.CLERK_SECRET_KEY),
     hasClerkJWTKey: Boolean(process.env.CLERK_JWT_KEY),
-    hasOddsApiKey: Boolean(process.env.ODDS_API_KEY),
     // Presence doesn't guarantee validity — see dbPingStatus below.
     // Both env vars are consumed somewhere in the codebase:
     //   DATABASE_URL  → src/db/client.ts, src/db/index.ts

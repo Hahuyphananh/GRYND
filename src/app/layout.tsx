@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "GoonBet, skill-based betting platform",
   description:
-    "Skilled Based gambling platform for esports and sports betting. Bet on your skills and win big with GoonBet.",
+    "Skill-based gambling platform. Bet on your skills and win big with GoonBet.",
   // Explicit icon metadata so the browser tab uses our smalllogo.
   // (Next.js also auto-generates a <link rel="icon"> from
   // src/app/icon.png, but listing it here keeps the intent obvious

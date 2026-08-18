@@ -87,7 +87,7 @@ function PageShell({ children, maxWidth = "max-w-7xl" }: { children: ReactNode; 
 }
 
 /* ── Home (/) ──────────────────────────────────────────────────────────────
-   Hero → value props → stats row → game cards → sport preview. */
+   Hero → value props → stats row → game cards preview. */
 
 function HomeSkeleton() {
   return (
@@ -178,64 +178,6 @@ function CasinoSkeleton() {
             <Block className="mt-3 h-4 w-28" />
           </div>
         ))}
-      </div>
-    </PageShell>
-  );
-}
-
-/* ── Sport (/sport) ────────────────────────────────────────────────────────
-   Header banner → 3-column grid (leagues sidebar / events / bet slip). */
-
-function SportSkeleton() {
-  return (
-    <PageShell>
-      <div className="mb-6 flex flex-col gap-3 rounded-xl border border-[#00e5ff]/10 bg-[#040d24]/40 p-4 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-2">
-          <Block className="h-6 w-44" />
-          <Block className="h-3.5 w-64 max-w-full" />
-        </div>
-        <Block className="h-9 w-28 rounded-xl" />
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr_360px]">
-        <aside className="skeleton space-y-2 rounded-xl border border-[#00e5ff]/10 p-3">
-          <Block className="h-4 w-24" />
-          {Array.from({ length: 6 }, (_, i) => (
-            <Block key={i} className="h-10 w-full rounded-lg" />
-          ))}
-        </aside>
-
-        <section className="space-y-4">
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            {Array.from({ length: 4 }, (_, i) => (
-              <Block key={i} className="h-10 w-full rounded-lg" />
-            ))}
-          </div>
-          {Array.from({ length: 4 }, (_, i) => (
-            <div key={i} className="skeleton rounded-xl border border-[#00e5ff]/10 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <Block className="h-4 w-32" />
-                <Block className="h-6 w-16" />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {Array.from({ length: 3 }, (_, j) => (
-                  <Block key={j} className="h-10 w-full rounded-lg" />
-                ))}
-              </div>
-            </div>
-          ))}
-        </section>
-
-        <aside className="space-y-4">
-          <div className="skeleton rounded-xl border border-[#00e5ff]/10 p-5">
-            <Block className="mb-3 h-5 w-24" />
-            <Lines count={3} widths={["w-full", "w-2/3", "w-3/4"]} />
-            <Block className="mt-4 h-12 w-full rounded-xl" />
-          </div>
-          <div className="skeleton rounded-xl border border-[#00e5ff]/10 p-5">
-            <Lines count={2} widths={["w-1/2", "w-3/4"]} />
-          </div>
-        </aside>
       </div>
     </PageShell>
   );
@@ -404,7 +346,6 @@ export default function PageSkeleton() {
     if (pathname === "/") content = <HomeSkeleton />;
     else if (pathname === "/casino") content = <CasinoSkeleton />;
     else if (pathname.startsWith("/casino/")) content = <GameSkeleton />;
-    else if (pathname === "/sport" || pathname.startsWith("/sport/")) content = <SportSkeleton />;
     else if (pathname === "/classement" || pathname.startsWith("/classement/"))
       content = <ClassementSkeleton />;
     else if (pathname === "/profil" || pathname.startsWith("/profil/"))

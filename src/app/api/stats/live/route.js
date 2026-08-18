@@ -42,8 +42,7 @@ export async function GET() {
           COALESCE((SELECT COUNT(*) FROM dice_flush_rooms   WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM poker_games        WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM pool_matches       WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
-          COALESCE((SELECT COUNT(*) FROM precision_matches  WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
-          COALESCE((SELECT COUNT(*) FROM sports_bets        WHERE placed_at   >= CURRENT_DATE AND placed_at   < CURRENT_DATE + INTERVAL '1 day'), 0)
+          COALESCE((SELECT COUNT(*) FROM precision_matches  WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0)
         )::int AS count
       `,
     ]);
