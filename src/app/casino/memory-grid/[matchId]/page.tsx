@@ -595,16 +595,26 @@ export default function MemoryGridMatchPage({
   // scores /100, so a 5-round match totals up to 500), accumulated
   // server-side. `myScore`/`oppScore` remain the rounds-won tallies
   // (tiebreak + finished-screen breakdown).
-  const myScore = match?.viewerIsPlayer1 ? match.p1Score : match.p2Score;
-  const oppScore = match?.viewerIsPlayer1 ? match.p2Score : match.p1Score;
-  const myTotal = match?.viewerIsPlayer1 ? match.p1Total : match.p2Total;
-  const oppTotal = match?.viewerIsPlayer1 ? match.p2Total : match.p1Total;
+  //
+  // IMPORTANT: every value here is null-safe — `match` starts as
+  // `null` on the first render (before the status poll resolves), and
+  // these constants run BEFORE the `loading` guard below, so a raw
+  // `match.p2Score`-style read would throw a client-side TypeError and
+  // blank the page with the "Application error" overlay. Guard on
+  // `match` itself and only dereference when it exists.
+  const viewerIsPlayer1 = match?.viewerIsPlayer1 === true;
+  const myScore = match ? (viewerIsPlayer1 ? match.p1Score : match.p2Score) : 0;
+  const oppScore = match ? (viewerIsPlayer1 ? match.p2Score : match.p1Score) : 0;
+  const myTotal = match ? (viewerIsPlayer1 ? match.p1Total : match.p2Total) : 0;
+  const oppTotal = match ? (viewerIsPlayer1 ? match.p2Total : match.p1Total) : 0;
 
   // Player cards: the viewer is always "You"; the opponent renders
   // their real display name + avatar when available (server-enriched,
   // like the other PvP skill games), falling back to "Player 1/2".
-  const oppHead = match?.viewerIsPlayer1 ? match.players?.p2 : match.players?.p1;
-  const oppName = oppHead?.displayName || (match?.viewerIsPlayer1 ? "Player 2" : "Player 1");
+  // Also null-safe for the same first-render reason as the scores
+  // above.
+  const oppHead = match ? (viewerIsPlayer1 ? match.players?.p2 : match.players?.p1) : null;
+  const oppName = oppHead?.displayName || (match ? (viewerIsPlayer1 ? "Player 2" : "Player 1") : "Player 2");
   const oppAvatar = oppHead?.profileImageUrl || null;
 
   // Waiting state: the creator can cancel their own open lobby, and
@@ -841,7 +851,7 @@ export default function MemoryGridMatchPage({
             </p>
             <p className="mt-0.5 text-[10px] text-white/40">
               {myScore ?? 0} round win{myScore === 1 ? "" : "s"} ·{" "}
-              {match?.viewerIsPlayer1 ? match.p1RoundScore : match.p2RoundScore}{" "}
+              {match ? (viewerIsPlayer1 ? match.p1RoundScore : match.p2RoundScore) : 0}{" "}
               this round
             </p>
           </div>
@@ -872,7 +882,7 @@ export default function MemoryGridMatchPage({
             </p>
             <p className="mt-0.5 text-[10px] text-white/40">
               {oppScore ?? 0} round win{oppScore === 1 ? "" : "s"} ·{" "}
-              {match?.viewerIsPlayer1 ? match.p2RoundScore : match.p1RoundScore}{" "}
+              {match ? (viewerIsPlayer1 ? match.p2RoundScore : match.p1RoundScore) : 0}{" "}
               this round
             </p>
           </div>
