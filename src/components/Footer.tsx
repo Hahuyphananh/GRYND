@@ -59,10 +59,6 @@ export default function Footer() {
                 Home
               </Link>
 
-              <Link href="/sport" className={linkClass}>
-                Sports Betting
-              </Link>
-
               <Link href="/casino" className={linkClass}>
                 Casino
               </Link>

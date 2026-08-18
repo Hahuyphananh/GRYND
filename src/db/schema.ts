@@ -1037,42 +1037,6 @@ export const chessGamesRelations = relations(chessGames, ({ one }) => ({
   }),
 }));
 
-// SPORTS (football, basketball, etc.)
-export const sports = pgTable("sports", {
-  id: serial("id").primaryKey(),
-  name: varchar("name", { length: 100 }).notNull(),
-});
-
-// EVENTS (matches)
-export const events = pgTable("events", {
-  id: serial("id").primaryKey(),
-  sportId: integer("sport_id").notNull(),
-  teamA: varchar("team_a", { length: 100 }).notNull(),
-  teamB: varchar("team_b", { length: 100 }).notNull(),
-  startTime: timestamp("start_time").notNull(),
-  oddsA: numeric("odds_a", { precision: 5, scale: 2 }).notNull(),
-  oddsB: numeric("odds_b", { precision: 5, scale: 2 }).notNull(),
-  oddsDraw: numeric("odds_draw", { precision: 5, scale: 2 }), // optional
-  status: varchar("status", { length: 20 }).default("upcoming"), // upcoming, closed, finished
-});
-
-// BETS (user's bets on events)
-export const sportsBets = pgTable("sports_bets", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  eventId: integer("event_id"),
-  eventExternalId: varchar("event_external_id", { length: 255 }),
-  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-  choice: varchar("choice", { length: 100 }).notNull(),
-  odds: numeric("odds", { precision: 5, scale: 2 }).notNull(),
-  marketType: varchar("market_type", { length: 40 }),
-  lineValue: numeric("line_value", { precision: 8, scale: 2 }),
-  selectionMetadata: jsonb("selection_metadata").default(sql`'{}'::jsonb`),
-  payout: numeric("payout", { precision: 10, scale: 2 }),
-  result: varchar("result", { length: 20 }),
-  placedAt: timestamp("placed_at").defaultNow(),
-});
-
 export const emailEvents = pgTable("email_events", {
   id: serial("id").primaryKey(),
   clerkId: varchar("clerk_id", { length: 255 }),

@@ -24,7 +24,6 @@ import {
   rouletteGames,
   rpsPvpGames,
   kenoPvpMatches,
-  sportsBets,
   unoGames,
   userStats,
 } from "../db/schema";
@@ -116,7 +115,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const queries: Promise<void>[] = [
     record("/", latestOf(bigWins, bigWins.createdAt)),
-    record("/sport", latestOf(sportsBets, sportsBets.placedAt)),
     record("/classement", latestOf(userStats, userStats.updatedAt)),
   ];
 
@@ -151,7 +149,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   return [
     toEntry("/", "daily", 1),
     toEntry("/casino", "daily", 0.9),
-    toEntry("/sport", "daily", 0.9),
     toEntry("/classement", "weekly", 0.7),
     ...GAME_PAGES.map((p) => toEntry(p.path, "weekly", 0.8)),
     toEntry("/contact", "monthly", 0.5),

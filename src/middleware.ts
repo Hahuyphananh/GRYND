@@ -17,8 +17,6 @@ const isPublicRoute = createRouteMatcher([
 
   "/",
   "/casino",
-  "/sport",
-  "/sport/match/(.*)",
   "/sync",
   "/Classement",
   "/profil(.*)",

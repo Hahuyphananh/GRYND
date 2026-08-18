@@ -9,7 +9,6 @@ import {
   plinkoGames,
   rpsGames,
   crashGames,
-  sportsBets,
   unoGames,
   chessGames,
   keno_games,
@@ -111,7 +110,6 @@ export async function GET(req: NextRequest) {
       rps,
       uno,
       chess,
-      sports,
       kenoPvpRows,
       kenoRows,
       diceRows,
@@ -128,7 +126,6 @@ export async function GET(req: NextRequest) {
       db.select().from(chessGames).where(
         or(eq(chessGames.playerWhiteId, clerkId), eq(chessGames.playerBlackId, clerkId))
       ).limit(fetchLimit),
-      db.select().from(sportsBets).where(eq(sportsBets.userId, uid)).limit(fetchLimit),
       db.select().from(kenoPvpMatches).where(
         or(eq(kenoPvpMatches.player1Id, clerkId), eq(kenoPvpMatches.player2Id, clerkId))
       ).limit(fetchLimit),
@@ -216,7 +213,6 @@ export async function GET(req: NextRequest) {
   ...rps.map((b: any) => formatBet("Rock Paper Scissors", b)),
   ...uno.map((b: any) => formatBet("UNO", b)),
   ...chess.map((b: any) => formatBet("Chess", b)),
-  ...sports.map((b: any) => formatBet("Sports Bet", b)),
       ...kenoPvpFormatted,
       ...kenoFormatted,
       ...diceFormatted,

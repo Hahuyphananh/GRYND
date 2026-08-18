@@ -17,7 +17,6 @@ import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconMail, IconMenu, 
 
 const NAV_TRANSLATION_KEYS = {
   "/": "nav.home",
-  "/sport": "nav.sport",
   "/casino": "nav.casino",
   "/classement": "nav.leaderboard",
 };
@@ -271,7 +270,7 @@ function NavigationBar({ currentPath }) {
               animate="animate"
               className="hidden items-center space-x-4 md:flex"
             >
-              {["/", "/sport", "/casino", "/classement"].map((path) => (
+              {["/", "/casino", "/classement"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -521,7 +520,7 @@ function NavigationBar({ currentPath }) {
 
               {/* NAV LINKS */}
               <div className="space-y-2">
-                {["/", "/sport", "/casino", "/classement"].map((path) => (
+                {["/", "/casino", "/classement"].map((path) => (
                   <Link
                     key={path}
                     href={path}

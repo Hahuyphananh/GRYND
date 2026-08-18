@@ -148,7 +148,6 @@ function Die({ duration, delay, lift }: { duration: string; delay: string; lift:
 
 const QUICK_LINKS = [
   { label: "Casino", href: "/casino" },
-  { label: "Sports", href: "/sport" },
   { label: "Rankings", href: "/classement" },
   { label: "Profile", href: "/profil" },
 ];

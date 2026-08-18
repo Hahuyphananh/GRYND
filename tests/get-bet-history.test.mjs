@@ -157,7 +157,6 @@ const DIRECT_TABLES = [
   "rpsGames",
   "unoGames",
   "chessGames",
-  "sportsBets",
   "keno_games",
   "kenoPvpMatches",
   "diceMatches",

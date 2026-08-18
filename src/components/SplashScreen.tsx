@@ -26,7 +26,7 @@ export default function SplashScreen() {
           aria-label="Loading GoonBet"
         >
           {/* Page-mapped skeleton — mirrors the layout of whatever page
-              is being loaded (home, casino, sport, a game, profile, …) so
+              is being loaded (home, casino, a game, profile, …) so
               the splash doubles as a contextual loading state. Scrollable so
               short viewports (mobile) can see the full page shape. */}
           <div className="absolute inset-0 z-10 overflow-y-auto overscroll-contain">

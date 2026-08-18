@@ -14,7 +14,6 @@ import Img2 from "../images/blackjack.jpg";
 import Img3 from "../images/poker.jpg";
 import Img4 from "../images/plinko.svg";
 import HeroBg from "../images/casino-bg.png";
-import SportCard from "../components/sport-card";
 import {
   fadeIn,
   fadeUp,
@@ -32,27 +31,10 @@ import {
 } from "../components/uipro";
 import { useTranslation } from "../hooks/useTranslation";
 
-const MAIN_SPORT_GROUPS = [
-  "American Football",
-  "Basketball",
-  "Ice Hockey",
-  "Soccer",
-];
-
 function MainComponent() {
   const router = useRouter();
   const { isLoaded, isSignedIn, getToken, signOut } = useAuth();
   const { user } = useUser();
-  const [openGroup, setOpenGroup] = useState(null);
-  const [sportsLoaded, setSportsLoaded] = useState(false);
-  const [selectedBet, setSelectedBet] = useState(null);
-  const [selectedOdds, setSelectedOdds] = useState(null);
-  const [sports, setSports] = useState({});
-  const [events, setEvents] = useState([]);
-  const [loadingSports, setLoadingSports] = useState(true);
-  const [loadingEvents, setLoadingEvents] = useState(true);
-  const [errorSports, setErrorSports] = useState(null);
-  const [errorEvents, setErrorEvents] = useState(null);
   const [userTokens, setUserTokens] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -143,52 +125,6 @@ function MainComponent() {
         )}
       </div>
     );
-  };
-
-  const handleLoadSports = async () => {
-    try {
-      setLoadingSports(true);
-
-      const res = await fetch("/api/sports/list");
-      const data = await res.json();
-
-      const sportsArray = Array.isArray(data?.sports) ? data.sports : [];
-
-      const grouped = {};
-
-      sportsArray.forEach((sport) => {
-        console.log("SPORT FROM API:", {
-          key: sport.key,
-          group: sport.group,
-          title: sport.title,
-          active: sport.active,
-          has_outrights: sport.has_outrights,
-        });
-
-        // Only main sports
-        if (!MAIN_SPORT_GROUPS.includes(sport.group)) return;
-
-        // Only active leagues
-        if (!sport.active) return;
-
-        // Hide championship / winner markets
-        if (sport.has_outrights) return;
-
-        if (!grouped[sport.group]) {
-          grouped[sport.group] = [];
-        }
-
-        grouped[sport.group].push(sport);
-      });
-
-      setSports(grouped);
-      setSportsLoaded(true);
-    } catch (err) {
-      console.error(err);
-      setErrorSports(t("home.errors.load_sports"));
-    } finally {
-      setLoadingSports(false);
-    }
   };
 
   const fetchRewardStatus = async () => {
@@ -369,37 +305,6 @@ function MainComponent() {
     return () => clearInterval(interval);
   }, [nextRewardTime]);
 
-  const fetchEventsByLeague = async (leagueKey) => {
-    console.log("FETCHING EVENTS FOR LEAGUE:", leagueKey);
-
-    if (!leagueKey) return;
-
-    try {
-      setLoadingEvents(true);
-
-      const res = await fetch(`/api/sports/${leagueKey}`);
-      const data = await res.json();
-
-      console.log("API RESPONSE:", data);
-
-      if (data.success && Array.isArray(data.events)) {
-        setEvents(data.events);
-      } else {
-        setEvents([]);
-      }
-    } catch (err) {
-      setErrorEvents(t("home.errors.load_events"));
-      console.error(err);
-    } finally {
-      setLoadingEvents(false);
-    }
-  };
-
-  useEffect(() => {
-    handleLoadSports();
-  }, []);
-
-  // ── Live stats ticker fetch ──
   const fetchLiveStats = async () => {
     try {
       const res = await fetch("/api/stats/live");
@@ -418,38 +323,12 @@ function MainComponent() {
     return () => clearInterval(id);
   }, []);
 
-  // Default expand first sport group when sports load
-  useEffect(() => {
-    if (sportsLoaded && sports && Object.keys(sports).length > 0 && openGroup === null) {
-      setOpenGroup(Object.keys(sports)[0]);
-    }
-  }, [sports, sportsLoaded, openGroup]);
-
   useEffect(() => {
     if (!user) return;
     fetchFriendPresence();
     const id = setInterval(fetchFriendPresence, 30000);
     return () => clearInterval(id);
   }, [user]);
-
-  const handleLoadEvents = async () => {
-    try {
-      setLoadingEvents(true);
-      const res = await fetch("/api/get-events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) throw new Error(`Error fetching events: ${res.status}`);
-      const data = await res.json();
-      setEvents(data);
-    } catch (error) {
-      setErrorEvents(t("home.errors.load_events"));
-      console.error(error);
-    } finally {
-      setLoadingEvents(false);
-    }
-  };
 
   const fetchUserTokens = async () => {
     if (!user || !jwt) return;
@@ -534,7 +413,7 @@ function MainComponent() {
     }, deps);
   };
 
-  useRevealOnScroll([sports]);
+  useRevealOnScroll([]);
 
   const showNotification = (message, type = "info") => {
     setNotification({ message, type });
@@ -842,80 +721,6 @@ tracking-widest uppercase drop-shadow-[0_0_12px_rgba(255,79,216,0.18)]"
               className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-6 py-3 text-base font-semibold text-[#031026] transition-all glow-pulse more-hover cyber-glow-button shadow-[0_0_16px_rgba(245,255,59,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
             >
               {t("home.more_games")}
-            </a>
-          </div>
-        </section>
-
-        <section className="mb-16 reveal">
-          <div className="mb-3">
-            <h2 className="text-2xl font-bold text-[#00e5ff]">
-              {t("home.live_sports_title")}
-            </h2>
-            <p className="mt-1 text-sm text-[#7dd3fc]">{t("home.live_sports_subtitle")}</p>
-          </div>
-
-          {loadingSports ? (
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={`sport-skeleton-${i}`}
-                  className="rounded-lg border border-[#00e5ff]/15 bg-[#040d24]/40 px-4 py-4"
-                >
-                  <div className="h-5 w-40 animate-pulse rounded bg-[#06142f]/60" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {Object.keys(sports).map((groupKey) => (
-                <div
-                  key={groupKey}
-                  className="rounded-lg overflow-hidden border border-[#00e5ff]/30 reveal"
-                >
-                  <motion.button
-                    whileHover={
-                      shouldReduceMotion ? undefined : hoverScale.whileHover
-                    }
-                    transition={hoverScale.transition}
-                    onClick={() =>
-                      setOpenGroup(openGroup === groupKey ? null : groupKey)
-                    }
-                    aria-expanded={openGroup === groupKey}
-                    aria-controls={`sport-group-${groupKey}`}
-                    className="w-full flex justify-between items-center px-4 py-3
-                   bg-[#06142f] text-[#00e5ff] font-bold hover:bg-[#0b224f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050f24]"
-                  >
-                    <span>{groupKey}</span>
-                    <span>{openGroup === groupKey ? "▲" : "▼"}</span>
-                  </motion.button>
-
-                  {openGroup === groupKey && (
-                    <div id={`sport-group-${groupKey}`} className="grid grid-cols-2 gap-4 bg-[#050f24] p-4 md:grid-cols-3 lg:grid-cols-5 reveal-stagger">
-                      {Array.isArray(sports[groupKey]) &&
-                        sports[groupKey].map((league) => (
-                          <SportCard
-                            key={league.key}
-                            icon="fa-trophy"
-                            name={league.title}
-                            onClick={() => {
-                              // Navigate to /sport and pass league key
-                              router.push(`/sport?league=${league.key}`);
-                            }}
-                          />
-                        ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-          {/* Bouton {t("home.more_sports")} centré sous la grille */}
-          <div className="flex justify-center mt-8">
-            <a
-              href="/sport"
-              className="inline-block rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff] px-6 py-3 text-base font-semibold text-[#041125] transition-all glow-pulse more-hover cyber-glow-button shadow-[0_0_16px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
-            >
-              {t("home.more_sports")}
             </a>
           </div>
         </section>
