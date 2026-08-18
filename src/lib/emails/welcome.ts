@@ -1,4 +1,4 @@
-import { renderTemplate, sendEmailSafely } from "./base";
+import { escapeHtml, renderTemplate, sendEmailSafely } from "./base";
 
 // Tabler-style slot machine icon, inlined as SVG since email clients
 // don't run the app's icon components.
@@ -16,7 +16,7 @@ export async function sendWelcomeEmail(user: {
     subject: "Welcome to GoonBet",
     html: renderTemplate(
       "Welcome to GoonBet",
-      `${SLOT_MACHINE_ICON}<p>Hey ${user.username ?? "Player"}, your account is live and your casino wallet is ready.</p>`,
+      `${SLOT_MACHINE_ICON}<p>Hey ${escapeHtml(user.username ?? "Player")}, your account is live and your casino wallet is ready.</p>`,
       "Start Playing",
       `${process.env.NEXT_PUBLIC_APP_URL ?? "https://goonbet.dedyn.io"}`,
     ),

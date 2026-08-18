@@ -21,6 +21,7 @@ import {
   keno_games,
   kenoPvpMatches,
   laneRushDuelMatches,
+  memoryGridMatches,
   diceMatches,
   connectFourGames,
   laneRunnerGames,
@@ -98,6 +99,7 @@ export async function GET() {
       pokerRows,
       diceFlushRows,
       laneRushDuelRows,
+      memoryGridRows,
     ] = await Promise.all([
       safeQuery("roulette", () => db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid))),
       safeQuery("blackjack", () => db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid))),
@@ -161,6 +163,18 @@ export async function GET() {
             or(
               eq(laneRushDuelMatches.player1Id, clerkId),
               eq(laneRushDuelMatches.player2Id, clerkId),
+            ),
+          ),
+      ),
+      //  Memory Grid (PvP, clerkId-based)
+      safeQuery("memory-grid", () =>
+        db
+          .select()
+          .from(memoryGridMatches)
+          .where(
+            or(
+              eq(memoryGridMatches.player1Id, clerkId),
+              eq(memoryGridMatches.player2Id, clerkId),
             ),
           ),
       ),
@@ -303,6 +317,34 @@ export async function GET() {
 
     //  Lane Rush Duel (PvP) — finished matches only; winner
     //  determined by the match's winnerId (a draw refunds both).
+    // Memory Grid — winner takes 1.9×, loser 0, draw refunds both
+    const memoryGridNormalized = memoryGridRows
+      .map((game) => {
+        if (game.status !== "finished") return null;
+        const amount = Number(game.stakeAmount || 0);
+        const payout = Number(game.prizePaid || 0);
+        const isDraw = game.result === "draw" || !game.winnerId;
+        const outcome = isDraw
+          ? "draw"
+          : game.winnerId === clerkId
+            ? "won"
+            : "lost";
+        const tokenDiff =
+          outcome === "won"
+            ? payout - amount
+            : outcome === "lost"
+              ? -amount
+              : 0;
+        return {
+          type: "Memory Grid",
+          amount,
+          payout,
+          result: outcome,
+          tokenDiff,
+        };
+      })
+      .filter(Boolean);
+
     const laneRushDuelNormalized = laneRushDuelRows
       .map((game) => {
         if (game.status !== "finished") return null;
@@ -425,6 +467,7 @@ export async function GET() {
       ...laneRushDuelNormalized,
       ...laneRunnerNormalized,
       ...hexDuelNormalized,
+      ...memoryGridNormalized,
       ...oddsNormalized,
       ...pokerNormalized,
       ...diceFlushNormalized,

@@ -2,7 +2,10 @@ type Seen = { expiresAt: number };
 
 const seen = new Map<string, Seen>();
 
-function readIdempotencyKey(req: Request) {
+function readIdempotencyKey(req: Request, keyOverride?: string | null) {
+  if (keyOverride && keyOverride.trim().length >= 8 && keyOverride.trim().length <= 256) {
+    return keyOverride.trim();
+  }
   const key = req.headers.get("idempotency-key");
   if (!key) return null;
   const trimmed = key.trim();
@@ -46,8 +49,9 @@ export async function claimIdempotency(
   req: Request,
   scope: string,
   ttlSeconds = 120,
+  keyOverride?: string | null,
 ) {
-  const key = readIdempotencyKey(req);
+  const key = readIdempotencyKey(req, keyOverride);
   if (!key) return { enforced: false, allowed: true };
 
   const upstash = await setNxUpstash(scope, key, ttlSeconds);

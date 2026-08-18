@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../context/SocketProvider";
+import { isSafeProfilePictureUrl } from "../lib/security/media";
 import { IconCoin, IconConfetti, IconFlame, IconMessageCircle, IconX } from "@tabler/icons-react";
 
 const MINIMUM_BIG_WIN = 1000000; // 1 million tokens maximum
@@ -410,12 +411,11 @@ export default function ChatWidget() {
                       <div className="mb-1 flex items-center justify-between text-[11px] text-cyan-300/70">
                         <span className="flex items-center gap-3 font-medium text-fuchsia-300 drop-shadow-[0_0_6px_rgba(217,70,239,0.5)]">
                           {(() => {
-                            const avatarSrc =
-                              typeof msg.profileImageUrl === "string" &&
-                              (msg.profileImageUrl.startsWith("http") ||
-                                msg.profileImageUrl.startsWith("data:image/"))
-                                ? msg.profileImageUrl
-                                : "/default-avatar.png";
+                            const avatarSrc = isSafeProfilePictureUrl(
+                              msg.profileImageUrl,
+                            )
+                              ? msg.profileImageUrl
+                              : "/default-avatar.png";
 
                             return (
                               <img

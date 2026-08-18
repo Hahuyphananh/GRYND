@@ -4,6 +4,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useUser, useClerk } from "@clerk/nextjs";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
+import {
+  ALLOWED_IMAGE_MIME,
+  MAX_IMAGE_BYTES,
+  isSafeProfilePictureUrl,
+} from "../../lib/security/media";
 
 const statsCards = [
   { key: "totalBets", label: "Total Bets" },
@@ -26,7 +31,6 @@ export default function ProfilePage() {
   });
   const [bets, setBets] = useState([]);
   const [error, setError] = useState(null);
-  const [isResetting, setIsResetting] = useState(false);
 
   const [stats, setStats] = useState(null);
   const [statsError, setStatsError] = useState(null);
@@ -623,32 +627,6 @@ export default function ProfilePage() {
     return Number(stats.levelProgress.progressPercent || 0);
   }, [stats]);
 
-  const handleResetTokens = async () => {
-    const confirmed = window.confirm("Réinitialiser vos tokens à 1000 ?");
-    if (!confirmed) return;
-
-    setIsResetting(true);
-    setError(null);
-
-    try {
-      const response = await fetch("/api/reset-user-tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-
-      const data = await response.json();
-      if (!response.ok)
-        throw new Error(data.error || `Erreur ${response.status}`);
-      setUserTokens(Number(data.balance || 0));
-    } catch (err) {
-      console.error("[RESET_TOKENS_ERROR]", err);
-      setError(err.message || "Erreur inconnue");
-    } finally {
-      setIsResetting(false);
-    }
-  };
-
   const fallbackCopy = (text) => {
     const tempInput = document.createElement("textarea");
     tempInput.value = text;
@@ -800,12 +778,18 @@ export default function ProfilePage() {
     const file = event?.target?.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      setEditStatus("Please select a valid image file.");
+    // Raster-image allowlist ONLY — SVG (can carry <script>), HTML
+    // and every other MIME is rejected before it even reaches the
+    // FileReader. Mirrors the server-side allowlist in
+    // src/lib/security/media.js.
+    if (!ALLOWED_IMAGE_MIME.has(file.type)) {
+      setEditStatus(
+        "Please select a PNG, JPEG, WebP, GIF or AVIF image file.",
+      );
       return;
     }
 
-    const maxBytes = 2 * 1024 * 1024; // 2MB safety cap for DB text storage
+    const maxBytes = MAX_IMAGE_BYTES; // 2MB safety cap for DB text storage
     if (file.size > maxBytes) {
       setEditStatus("Image is too large. Please pick an image under 2MB.");
       return;
@@ -955,7 +939,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
               </button>
             </div>
             <div className="mb-3 flex items-center gap-3">
-              {profileInfo.profilePicture ? (
+              {isSafeProfilePictureUrl(profileInfo.profilePicture) ? (
                 <img
                   src={profileInfo.profilePicture}
                   alt="Profile"
@@ -1007,17 +991,6 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)] text-center"
           >
             <h2 className="text-xl text-[#00e5ff] mb-2">Solde de Tokens</h2>
             <p className="text-3xl font-bold">{userTokens ?? 0} tokens</p>
-            <button
-              onClick={handleResetTokens}
-              disabled={isResetting}
-              className="mt-2 rounded-lg px-4 py-2 font-semibold text-white 
-bg-gradient-to-r from-red-500 to-pink-500 
-shadow-[0_0_10px_rgba(255,0,100,0.6)] 
-hover:shadow-[0_0_20px_rgba(255,0,100,1)] 
-hover:scale-105 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
-            >
-              {isResetting ? "Réinitialisation..." : "Réinitialiser les tokens"}
-            </button>
             {error && <p className="mt-2 text-red-500">{error}</p>}
           </div>
         </div>
@@ -1877,7 +1850,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     Selected file: {selectedProfileImageName}
                   </p>
                 )}
-                {editForm.profilePicture && (
+                {isSafeProfilePictureUrl(editForm.profilePicture) && (
                   <div className="mt-3 flex items-center gap-3">
                     <img
                       src={editForm.profilePicture}

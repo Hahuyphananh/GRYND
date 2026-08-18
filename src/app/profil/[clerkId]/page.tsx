@@ -9,6 +9,7 @@ import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
 import { IconFlag } from "@tabler/icons-react";
 import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
+import { isSafeProfilePictureUrl } from "../../../lib/security/media";
 
 type PublicUser = {
   id: number;
@@ -159,7 +160,7 @@ export default function PublicProfilePage() {
           className="bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] mb-8"
         >
           <div className="flex items-center gap-4">
-            {profile.profilePicture ? (
+            {isSafeProfilePictureUrl(profile.profilePicture) ? (
               <img
                 src={profile.profilePicture}
                 alt={profile.name}

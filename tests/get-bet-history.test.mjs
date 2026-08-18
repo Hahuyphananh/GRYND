@@ -167,6 +167,7 @@ const DIRECT_TABLES = [
   "oddsGames",
   "pokerGames",
   "laneRushDuelMatches",
+  "memoryGridMatches",
 ];
 
 for (const table of DIRECT_TABLES) {

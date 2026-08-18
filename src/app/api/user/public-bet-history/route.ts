@@ -16,6 +16,7 @@ import {
   diceMatches,
   poolMatches,
   connectFourGames,
+  memoryGridMatches,
 } from "../../../../db/schema";
 import { consumeRateLimit } from "../../../../lib/security/rateLimit";
 
@@ -115,6 +116,7 @@ export async function GET(req: NextRequest) {
       diceRows,
       poolRows,
       connectFourRows,
+      memoryGridRows,
     ] = await Promise.all([
       db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)).limit(fetchLimit),
       db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid)).limit(fetchLimit),
@@ -138,6 +140,9 @@ export async function GET(req: NextRequest) {
       ).limit(fetchLimit),
       db.select().from(connectFourGames).where(
         or(eq(connectFourGames.hostClerkId, clerkId), eq(connectFourGames.guestClerkId, clerkId))
+      ).limit(fetchLimit),
+      db.select().from(memoryGridMatches).where(
+        or(eq(memoryGridMatches.player1Id, clerkId), eq(memoryGridMatches.player2Id, clerkId))
       ).limit(fetchLimit),
     ]);
 
@@ -192,6 +197,23 @@ export async function GET(req: NextRequest) {
         };
       });
 
+    const memoryGridFormatted = memoryGridRows
+      .filter((g: any) => g.status === "finished")
+      .map((game: any) => {
+        const amount = Number(game.stakeAmount ?? 0);
+        const payout = Number(game.prizePaid ?? 0);
+        const isDraw = game.result === "draw" || !game.winnerId;
+        const result = isDraw ? "draw" : game.winnerId === clerkId ? "won" : "lost";
+        return {
+          type: "Memory Grid",
+          date: game.endedAt || game.createdAt || new Date().toISOString(),
+          amount,
+          payout,
+          result,
+          tokenDiff: result === "won" ? payout - amount : result === "lost" ? -amount : 0,
+        };
+      });
+
     const connectFourFormatted = connectFourRows
       .filter((g: any) => g.winnerClerkId)
       .map((game: any) => {
@@ -218,6 +240,7 @@ export async function GET(req: NextRequest) {
       ...diceFormatted,
       ...poolFormatted,
       ...connectFourFormatted,
+      ...memoryGridFormatted,
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const hasMore = allBets.length > offset + limit;

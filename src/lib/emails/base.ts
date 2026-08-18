@@ -28,6 +28,22 @@ export function getFromAddress(): string {
 
 export const ADMIN_EMAIL = "phananhalbert@gmail.com";
 
+/**
+ * HTML-escape a value for safe interpolation into email templates.
+ * User-controlled fields (usernames, names, messages) must always be
+ * escaped before being embedded in HTML — otherwise a malicious
+ * value like `<img src=x onerror=...>` executes in the recipient's
+ * mail client.
+ */
+export function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 type UserRef = {
   id?: number;
   clerkId?: string;

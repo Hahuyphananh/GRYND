@@ -21,6 +21,7 @@ import {
   hexDuelGames,
   oddsGames,
   pokerGames,
+  memoryGridMatches,
   diceFlushRooms,
   diceFlushPlayers,
   minesPvpMatches,
@@ -67,6 +68,7 @@ export async function GET() {
       hexDuelRows,
       oddsRows,
       pokerRows,
+      memoryGridRows,
       diceFlushRows,
       minesPvpRows,
       laneRushDuelRows,
@@ -172,6 +174,16 @@ export async function GET() {
             ) elem
             where elem->>'clerkId' = ${clerkId}
           )`,
+        ),
+      //  Memory Grid (PvP, clerkId-based — finished-only)
+      db
+        .select()
+        .from(memoryGridMatches)
+        .where(
+          or(
+            eq(memoryGridMatches.player1Id, clerkId),
+            eq(memoryGridMatches.player2Id, clerkId),
+          ),
         ),
       //  Dice Flush (join players → rooms)
       db
@@ -426,6 +438,37 @@ export async function GET() {
     // `outcome` instead of `result` to avoid shadowing the server
     // row's `result` field in this scope (matches the style of
     // the dice/pool/connectFour formatters which don't shadow).
+    // Memory Grid — same shape as Mines Duel: winner's payout is
+    // `stake * 1.9`, a loser's is 0, and a draw refunds both stakes
+    // (payout = stake, tokenDiff = 0).
+    const memoryGridFormatted = memoryGridRows
+      .map((g) => {
+        if (g.status !== "finished") return null;
+        const amount = Number(g.stakeAmount ?? 0);
+        const payout = Number(g.prizePaid ?? 0);
+        const isDraw = g.result === "draw" || !g.winnerId;
+        const outcome = isDraw
+          ? "draw"
+          : g.winnerId === clerkId
+            ? "won"
+            : "lost";
+        const tokenDiff =
+          outcome === "won"
+            ? payout - amount
+            : outcome === "lost"
+              ? -amount
+              : 0;
+        return {
+          type: "Memory Grid",
+          date: g.endedAt || g.createdAt || new Date().toISOString(),
+          amount,
+          payout,
+          result: outcome,
+          tokenDiff,
+        };
+      })
+      .filter(Boolean);
+
     const minesPvpFormatted = minesPvpRows
       .map((g) => {
         if (g.status !== "finished") return null;
@@ -537,6 +580,7 @@ export async function GET() {
       ...hexDuelFormatted,
       ...oddsFormatted,
       ...pokerFormatted,
+      ...memoryGridFormatted,
       ...diceFlushFormatted,
       ...minesPvpFormatted,
       ...laneRushDuelFormatted,

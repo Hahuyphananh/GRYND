@@ -7,6 +7,7 @@ import NavigationBar from "../components/navigation-bar";
 import Footer from "../components/Footer";
 import AnimatedBgSvgs from "../components/AnimatedBgSvgs";
 import InteractiveCasinoBg from "../components/InteractiveCasinoBg";
+import { isSafeProfilePictureUrl } from "../lib/security/media";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
 import Img1 from "../images/roulette.png";
@@ -105,7 +106,7 @@ function MainComponent() {
         title={friends.map((f) => f.name).join(", ")}
       >
         {friends.slice(0, 4).map((friend) =>
-          friend.profilePicture ? (
+          isSafeProfilePictureUrl(friend.profilePicture) ? (
             <img
               key={`${friend.id}-${friend.name}`}
               src={friend.profilePicture}
