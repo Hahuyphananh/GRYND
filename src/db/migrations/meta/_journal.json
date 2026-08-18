@@ -43,6 +43,13 @@
       "when": 1786118400000,
       "tag": "0072_memory_grid_cumulative",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1787000000000,
+      "tag": "0073_memory_grid_status_active",
+      "breakpoints": true
     }
   ]
 }
