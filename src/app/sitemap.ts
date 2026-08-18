@@ -15,6 +15,7 @@ import {
   hexDuelGames,
   keno_games,
   laneRunnerGames,
+  memoryGridMatches,
   minesGames,
   oddsGames,
   plinkoGames,
@@ -94,6 +95,7 @@ const GAME_PAGES: {
   { path: "/casino/uno", source: [unoGames, unoGames.createdAt] },
   { path: "/casino/lane-runner", source: [laneRunnerGames, laneRunnerGames.createdAt] },
   { path: "/casino/odds", source: [oddsGames, oddsGames.createdAt] },
+  { path: "/casino/memory-grid", source: [memoryGridMatches, memoryGridMatches.createdAt] },
 ];
 
 const LEGAL_PAGES = ["/terms", "/privacy-policy", "/security-policy", "/fair-play", "/accessibility"];

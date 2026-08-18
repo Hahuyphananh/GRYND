@@ -1905,6 +1905,14 @@ export const minesPvpStatusEnum = pgEnum("mines_pvp_status", [
   "cancelled",
 ]);
 
+export const memoryGridStatusEnum = pgEnum("memory_grid_status", [
+  "waiting",
+  "ready",
+  "active",
+  "finished",
+  "cancelled",
+]);
+
 export const laneRushDuelStatusEnum = pgEnum("lane_rush_duel_status", [
   "waiting",
   "ready",
@@ -2084,6 +2092,224 @@ export const minesPvpRoundsRelations = relations(
     match: one(minesPvpMatches, {
       fields: [minesPvpRounds.matchId],
       references: [minesPvpMatches.id],
+    }),
+  }),
+);
+
+// ── MEMORY GRID ────────────────────────────────────────────────────────
+// Server-authoritative two-player "Memory Grid" — pure pattern
+// recall, best-of-5 rounds. Each round deals an N×N grid (3×3 → 5×5
+// across the 5 rounds) with a fixed number of active (lit) tiles.
+// Every round has exactly two phases, played by each player in turn
+// on the SAME server-generated pattern:
+//   PHASE 1 — MEMORIZE: the active tiles are revealed to the player
+//   whose turn it is for the round's memorize duration (2.5–4s).
+//   PHASE 2 — RECONSTRUCT: the pattern hides; the player taps the
+//   tiles they remember — ANY number, up to the full grid (there is
+//   no pick cap; over-selection is penalised by the full-grid
+//   scoring in src/lib/memory-grid/constants.js). Selection locks at
+//   submission (or the 15s deadline) and the server scores the
+//   player's ENTIRE reconstruction against the pattern.
+// After BOTH players complete their reconstruction the round is
+// resolved (higher round score wins the round), then the next round
+// is dealt. After 5 rounds the player with the higher TOTAL
+// cumulative round score wins the match; exactly equal totals →
+// DRAW (full refund — the existing PvP tie pattern).
+//
+// Match flow (mirrors mines_pvp_matches):
+//   waiting → ready → active (memorize → reconstruct → result, per
+//   round 1..5 — the result phase shows both players the round
+//   snapshot for RESULT_WINDOW_MS before the next round opens) →
+//   finished
+//   (waiting/ready/active → cancelled)
+//
+// Skill mechanic: the active-tile pattern is server-generated and
+// hidden from every client except its own memorize phase (per-viewer
+// reveal in the /status route). Payout mirrors Mines Duel: winner
+// takes 1.9× their stake (stake back + 90% of the loser's), house
+// keeps 0.1×; DRAW refunds both.
+export const memoryGridMatches = pgTable(
+  "memory_grid_matches",
+  {
+    id: serial("id").primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
+      .notNull(),
+    status: memoryGridStatusEnum("status").notNull().default("waiting"),
+    // Which phase of the CURRENT round is live. Combined with
+    // `status` (p1_turn/p2_turn = whose turn) it fully describes the
+    // game: 'memorize' (pattern revealed to the active player) or
+    // 'reconstruct' (pattern hidden, active player taps tiles). Null
+    // outside active play ({waiting, ready, finished, cancelled}).
+    phase: varchar("phase", { length: 20 }),
+    // ── Provably-fair seeds (mirrors lane_rush_duel_matches) ─────
+    // Shared SERVER seed (32 random hex bytes, crypto-generated at
+    // creation) + its committed SHA-256 hash. Every round's pattern
+    // derives deterministically from a SHA-256 digest of
+    // `${serverSeed}:${matchId}:round:${roundNumber}` → 32-bit seed
+    // (see src/lib/memory-grid/seeds.js), so BOTH players get the
+    // exact same grid per round and every pattern is independently
+    // verifiable. The hash is exposed pre-match and the raw seed is
+    // revealed post-match (lane-rush-duel convention).
+    serverSeed: varchar("server_seed", { length: 128 }).notNull(),
+    serverSeedHash: varchar("server_seed_hash", { length: 64 }).notNull(),
+    // The current round's server-authoritative pattern — server-only
+    // state. Shape:
+    //   { "size": 4, "total": 16, "active": [0, 5, 12, ...] }
+    // where `size` is the N×N grid dimension, `total` = size², and
+    // `active` holds `roundConfig(roundNumber).activeCount` distinct
+    // row-major tile indices (the lit tiles). Generated fresh each
+    // round (grid grows 3×3 → 5×5 across the 5 rounds). /status
+    // reveals `active` to BOTH players simultaneously during the
+    // round's memorize phase, and to both clients once finished.
+    board: jsonb("board")
+      .notNull()
+      .default(sql`'{"size":3,"total":9,"active":[]}'::jsonb`),
+    // Whether each seat has submitted (or been AFK auto-locked) for
+    // the CURRENT round. Mirrors plinko-pvp's p1_ready/p2_ready
+    // synchronized-commit pattern: the round resolves once BOTH are
+    // true. Reset to false each round.
+    p1Submitted: boolean("p1_submitted").notNull().default(false),
+    p2Submitted: boolean("p2_submitted").notNull().default(false),
+    // Reconstruction scores for the CURRENT round (correct active
+    // tiles picked by each player; null until that player submits).
+    // The round winner is decided by comparing these two, then the
+    // round is snapshotted into memory_grid_rounds and the next
+    // round's pattern is dealt.
+    p1RoundScore: integer("p1_round_score").notNull().default(0),
+    p2RoundScore: integer("p2_round_score").notNull().default(0),
+    // Rounds WON across the match (best-of-5) — a display tally +
+    // tiebreak indicator, kept in the scoreboard. A round win +1s
+    // the winner's counter; tied rounds award nobody. The MATCH
+    // winner is decided on TOTAL cumulative round scores
+    // (p1_total/p2_total); equal totals → draw refund.
+    p1Score: integer("p1_score").notNull().default(0),
+    p2Score: integer("p2_score").notNull().default(0),
+    // CUMULATIVE round-score points across the match (each round
+    // scores /100, so a 5-round match totals up to 500). Accumulated
+    // server-side in completeRound (p1_total += p1_round_score) and
+    // served to the compact in-match scoreboard so both players see
+    // the running totals (e.g. YOU 247 — OPPONENT 231) alongside
+    // rounds-won, matching the points-based PvP scoreboards
+    // (lane-rush-duel, keno-pvp).
+    p1Total: integer("p1_total").notNull().default(0),
+    p2Total: integer("p2_total").notNull().default(0),
+    // Current round number (1..ROUNDS_PER_MATCH). Starts at 1 when
+    // player2 joins; incremented by the server when a round
+    // completes (both players have submitted).
+    roundNumber: integer("round_number").notNull().default(1),
+    // Chronologically-ordered JSONB array of the CURRENT round's
+    // reconstruction submissions (one per player). Each entry shape:
+    //   { kind: "reconstruct", userId, seat: "player1"|"player2",
+    //     picks: [tileIdx, ...], score: int, autoLocked: bool,
+    //     submittedAt: ISO ts }
+    // Reset each round; completed rounds are snapshotted into
+    // memory_grid_rounds.
+    flips: jsonb("flips").notNull().default(sql`'[]'::jsonb`),
+    // Phase deadline (absolute). During 'memorize' it's the moment
+    // the pattern hides (now + memorizeMs); during 'reconstruct' it's
+    // the moment the player's selection locks (now +
+    // RECONSTRUCT_DEADLINE_MS). When it elapses and the active player
+    // hasn't acted, the server auto-advances via
+    // fetchMatchWithAutoResolve (reconstruct → auto-lock with score
+    // 0).
+    roundDeadline: timestamp("round_deadline"),
+    // Reconstruct-window length in seconds (15s default). Stored on
+    // the row for parity with mines_pvp_matches.round_timer_seconds
+    // and admin-tweakable without code changes. Memorize durations
+    // come from ROUND_CONFIGS (they vary per round).
+    roundTimerSeconds: integer("round_timer_seconds")
+      .notNull()
+      .default(15),
+    // Final match bookkeeping.
+    winnerId: varchar("winner_id", { length: 255 }),
+    result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Lobby listing — `status='waiting'` AND player2_id IS NULL.
+    statusIdx: index("memory_grid_status_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+    player1Idx: index("memory_grid_player1_idx").on(
+      table.player1Id,
+      table.createdAt,
+    ),
+    player2Idx: index("memory_grid_player2_idx").on(
+      table.player2Id,
+      table.createdAt,
+    ),
+    // Stake matchmaking — finding a waiting lobby whose stake
+    // matches the joiner's request.
+    stakeIdx: index("memory_grid_stake_open_idx").on(
+      table.stakeAmount,
+      table.status,
+    ),
+  }),
+);
+
+// Per-round final snapshot. Cascade-deleted with the parent match so
+// history stays tidy when a match is purged. `round_winner` mirrors
+// the round's winner (player1 | player2 | draw) and `board_snapshot`
+// + `flips` let post-match replays render every completed round
+// without re-walking the live match row (mirrors mines_pvp_rounds).
+export const memoryGridRounds = pgTable(
+  "memory_grid_rounds",
+  {
+    id: serial("id").primaryKey(),
+    matchId: integer("match_id")
+      .notNull()
+      .references(() => memoryGridMatches.id, { onDelete: "cascade" }),
+    roundNumber: integer("round_number").notNull().default(1),
+    // The round's pattern (grid size + active tile indices)
+    // snapshotted at completion so post-match replays can render the
+    // full layout.
+    boardSnapshot: jsonb("board_snapshot")
+      .notNull()
+      .default(sql`'{"size":3,"total":9,"active":[]}'::jsonb`),
+    // Full chronological reconstruction-submission list of the round
+    // (one entry per player), mirrored at completion for replay views.
+    flips: jsonb("flips").notNull().default(sql`'[]'::jsonb`),
+    p1RoundScore: integer("p1_round_score").notNull().default(0),
+    p2RoundScore: integer("p2_round_score").notNull().default(0),
+    // 'player1' | 'player2' | 'draw' | null
+    roundWinner: varchar("round_winner", { length: 10 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Lookup is always "all rounds of match X in order" so a
+    // composite index on (match_id, round_number) is the right
+    // shape.
+    matchRoundIdx: index("memory_grid_rounds_match_round_idx").on(
+      table.matchId,
+      table.roundNumber,
+    ),
+  }),
+);
+
+export const memoryGridMatchesRelations = relations(
+  memoryGridMatches,
+  ({ many }) => ({
+    rounds: many(memoryGridRounds),
+  }),
+);
+
+export const memoryGridRoundsRelations = relations(
+  memoryGridRounds,
+  ({ one }) => ({
+    match: one(memoryGridMatches, {
+      fields: [memoryGridRounds.matchId],
+      references: [memoryGridMatches.id],
     }),
   }),
 );

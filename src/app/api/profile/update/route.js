@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { auditLog } from "../../../../lib/security/auditLog";
+import { isSafeProfilePicture } from "../../../../lib/security/media";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_PROFILE_PICTURE_LENGTH = 3_000_000;
@@ -64,6 +65,24 @@ export async function POST(request) {
     const hasPassword =
       parsed.data.password !== null && parsed.data.password !== "";
     const hasProfilePicture = parsed.data.profilePicture !== null;
+
+    // File-upload hardening: the profile picture must be a real raster
+    // image (magic-byte verified data:image/png|jpeg|webp|gif|avif URL
+    // or an https:// URL). SVG, HTML, PHP/JSP polyglots, javascript:
+    // URLs and every other MIME are rejected before storage — a client
+    // can never store something that would execute when rendered.
+    if (hasProfilePicture) {
+      const picCheck = isSafeProfilePicture(parsed.data.profilePicture);
+      if (!picCheck.ok) {
+        return new Response(
+          JSON.stringify({ success: false, error: picCheck.error }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+    }
 
     if (!hasName && !hasEmail && !hasPassword && !hasProfilePicture) {
       return new Response(

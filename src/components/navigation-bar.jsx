@@ -14,6 +14,7 @@ import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
 import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconMail, IconMenu, IconSettings, IconX } from "@tabler/icons-react";
+import { isSafeProfilePictureUrl } from "../lib/security/media";
 
 const NAV_TRANSLATION_KEYS = {
   "/": "nav.home",
@@ -85,10 +86,6 @@ function NavigationBar({ currentPath }) {
     setTimeout(() => setLangClosing(false), 400);
   };
 
-  const isValidDataUrl = (url) => {
-    return typeof url === "string" && url.startsWith("data:image/");
-  };
-
   const isIOS = typeof window !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
 
   useEffect(() => {
@@ -110,13 +107,13 @@ function NavigationBar({ currentPath }) {
     };
   }, []);
 
-  const avatarSrc = isValidDataUrl(profile?.profilePicture)
+  // Server-validated profile pictures only — a legacy/stale stored
+  // value (e.g. data:image/svg+xml) falls back to the default avatar.
+  const avatarSrc = isSafeProfilePictureUrl(profile?.profilePicture)
     ? profile.profilePicture
-    : typeof profile?.profilePicture === "string" && profile.profilePicture.startsWith("http")
-      ? profile.profilePicture
-      : typeof user?.imageUrl === "string" && user.imageUrl.startsWith("http")
-        ? user.imageUrl
-        : "/default-avatar.png";
+    : isSafeProfilePictureUrl(user?.imageUrl)
+      ? user.imageUrl
+      : "/default-avatar.png";
 
   const fetchBalance = async ({ includeMeta = true } = {}) => {
     try {

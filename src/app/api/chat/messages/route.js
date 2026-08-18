@@ -5,6 +5,7 @@ import { db } from "../../../../db/client";
 import { chatMessages, specialTitles, users } from "../../../../db/schema";
 import { checkUnlocks } from "../../../../lib/specialTitles";
 import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
+import { sanitizeString } from "../../../../lib/security/validation";
 
 const ALLOWED_ROOM_TYPES = new Set(["global", "game"]);
 const MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -131,7 +132,11 @@ export async function POST(req) {
       return NextResponse.json({ error: room.error }, { status: 400 });
     }
 
-    const content = (body.content || "").trim();
+    // Sanitize before storing: strip control chars + normalize. React
+    // escapes on render (there is no dangerouslySetInnerHTML in the
+    // chat UI), this is defense-in-depth for any other consumer of
+    // the stored content.
+    const content = sanitizeString(body.content || "", { trim: true });
     if (!content) {
       return NextResponse.json(
         { error: "Message cannot be empty." },

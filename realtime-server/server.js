@@ -572,6 +572,44 @@ io.on("connection", (socket) => {
     console.log("[keno-pvp] participant left: matchId=", matchId, "userId=", userId);
   }
 
+  // ── Memory Grid room-participant tracking ──────────────────────
+  // Same pattern as keno-pvp so disconnect handling can forfeit
+  // abandoned memory-grid matches to the opponent (and a re-joining
+  // socket cancels the pending forfeit timer). Keyed by matchId.
+  const MEMORY_GRID_MATCH_ROOM_PREFIX = "memory-grid:match:";
+  if (!global.__memoryGridRoomParticipants) {
+    global.__memoryGridRoomParticipants = new Map();
+  }
+  const memoryGridRoomParticipants = global.__memoryGridRoomParticipants;
+
+  function trackMemoryGridJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(MEMORY_GRID_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(MEMORY_GRID_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!memoryGridRoomParticipants.has(matchId)) {
+      memoryGridRoomParticipants.set(matchId, new Set());
+    }
+    memoryGridRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again — cancel
+    // any pending disconnect forfeit timer for this match.
+    cancelDisconnectGraceTimer(`memory-grid:${matchId}:${userId}`);
+    console.log("[memory-grid] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackMemoryGridLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(MEMORY_GRID_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(MEMORY_GRID_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = memoryGridRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) memoryGridRoomParticipants.delete(matchId);
+    console.log("[memory-grid] participant left: matchId=", matchId, "userId=", userId);
+  }
+
   // ── Crash Arena room-participant tracking ───────────────────────
   // Mirrors the plinko/precision tracking pattern so the
   // `crashArena:updated` handler below can reject events from
@@ -614,6 +652,7 @@ io.on("connection", (socket) => {
     trackPrecisionJoin(String(roomId), socket.data.userId);
     trackPlinkoJoin(String(roomId), socket.data.userId);
     trackKenoPvpJoin(String(roomId), socket.data.userId);
+    trackMemoryGridJoin(String(roomId), socket.data.userId);
     trackCrashArenaJoin(String(roomId), socket.data.userId);
   });
 
@@ -623,6 +662,7 @@ io.on("connection", (socket) => {
     trackPrecisionLeave(String(roomId), socket.data.userId);
     trackPlinkoLeave(String(roomId), socket.data.userId);
     trackKenoPvpLeave(String(roomId), socket.data.userId);
+    trackMemoryGridLeave(String(roomId), socket.data.userId);
     trackCrashArenaLeave(String(roomId), socket.data.userId);
   });
 
@@ -1201,6 +1241,46 @@ io.on("connection", (socket) => {
         } catch (err) {
           console.warn(
             "[keno-pvp] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For Memory Grid: same pattern as keno-pvp — forfeit to the
+    // opponent via /api/memory-grid/disconnect-forfeit once the grace
+    // timer expires. A player who closes the tab / reloads the page
+    // mid-match (memorize, reconstruct, after submitting) or abandons
+    // the lobby is confirmed-gone after the grace window, and the
+    // match resolves as a win for the opponent instead of staying
+    // stuck forever.
+    const memoryGridMatchesForUser = [];
+    for (const [mid, set] of memoryGridRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) memoryGridMatchesForUser.push(mid);
+    }
+    for (const mid of memoryGridMatchesForUser) {
+      const roomId = `${MEMORY_GRID_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = memoryGridRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) memoryGridRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`memory-grid:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/memory-grid/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[memory-grid] disconnect forfeit failed:",
             err && err.message ? err.message : err,
           );
           return true; // transient — retry

@@ -4,6 +4,7 @@ import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useUser } from "@clerk/nextjs";
 import React, { useEffect, useState } from "react";
+import { isSafeProfilePictureUrl } from "../../lib/security/media";
 import Img1 from "../../images/roulette.png";
 import Img2 from "../../images/blackjack.jpg";
 import Img3 from "../../images/poker.jpg";
@@ -23,6 +24,7 @@ import Img19 from "../../images/dice-flush.svg";
 import Img22 from "../../images/precision.svg";
 import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
 import ImgMinesPvp from "../../images/mines-pvp.svg";
+import ImgMemoryGrid from "../../images/memory-grid.svg";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -72,6 +74,15 @@ function MainComponent() {
       image: ImgMinesPvp,
       descriptionKey: "games.mines_pvp_desc",
       nameKey: "games.mines_pvp_name",
+      popular: true,
+    },
+    {
+      name: "Memory Grid",
+      href: "/casino/memory-grid",
+      leaderboardKey: "memory-grid",
+      image: ImgMemoryGrid,
+      descriptionKey: "games.memory_grid_desc",
+      nameKey: "games.memory_grid_name",
       popular: true,
     },
 
@@ -217,9 +228,11 @@ function MainComponent() {
     "hex-duel",
     "yahtzee",
     "precision",
+    "memory-grid",
   ]);
 
   const newestOrder = [
+    "memory-grid",
     "mines-pvp",
     "dots-and-boxes",
     "precision",
@@ -301,7 +314,7 @@ function MainComponent() {
             title={friendPresenceByGame[game.leaderboardKey].map((f) => f.name).join(", ")}
           >
             {friendPresenceByGame[game.leaderboardKey].slice(0, 4).map((friend) =>
-              friend.profilePicture ? (
+              isSafeProfilePictureUrl(friend.profilePicture) ? (
                 <img
                   key={`${friend.id}-${friend.name}`}
                   src={friend.profilePicture}
