@@ -655,6 +655,16 @@ export const rpsPvpGames = pgTable(
     betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
     player1Choice: varchar("player1_choice", { length: 20 }),
     player2Choice: varchar("player2_choice", { length: 20 }),
+    // ── Best-of-7 match state ────────────────────────────────────────────
+    // Rounds won per player (first to 4 takes the match), the current
+    // round number (1-based), and the per-round history used to render
+    // the rounds sidebar: [{ round, player1Choice, player2Choice, winner }]
+    // where winner is 'player1' | 'player2' | 'tie'. Ties do NOT advance
+    // the round — the same round is replayed until someone wins it.
+    roundsWon1: integer("rounds_won_1").default(0).notNull(),
+    roundsWon2: integer("rounds_won_2").default(0).notNull(),
+    currentRound: integer("current_round").default(1).notNull(),
+    roundHistory: jsonb("round_history").default(sql`'[]'::jsonb`).notNull(),
     outcome: varchar("outcome", { length: 20 }),
     winnerId: varchar("winner_id", { length: 255 }),
     result: varchar("result", { length: 20 }).default("pending").notNull(),

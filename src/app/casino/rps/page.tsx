@@ -1,313 +1,92 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+
+// ── Rock Paper Scissors lobby ──────────────────────────────────────────
+// Mirrors the other casino PvP lobbies (shared PvpLobbyPage chrome):
+//   * Balance + wager picker + "Create PvP Game" (escrows the wager,
+//     routes to /casino/rps/game/[gameId] for the best-of-7 match).
+//   * "Play vs AI — Free" routes to /casino/rps/play-ai, a self-contained
+//     client-side best-of-7 sandbox (no wager, no server interaction).
+//   * Live list of open lobbies (polled every 3s + realtime nudge).
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { motion, AnimatePresence } from "framer-motion";
-import NavigationBar from "../../../components/navigation-bar";
-import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
+import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
-import ReportModal from "../../../components/ReportModal";
-import {
-  IconHandGrab,
-  IconHandStop,
-  IconScissors,
-  IconQuestionMark,
-  IconTrophy,
-  IconSkull,
-  IconBook,
-  IconNumber,
-  IconSwords,
-  IconFlame,
-  IconCoins,
-  IconRobot,
-  IconAlertTriangle,
-  IconFlag,
-} from "@tabler/icons-react";
+import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import { CoinIcon } from "../../../components/lobby/PvpLobby";
+import { RockFistIcon } from "../../../components/icons/CustomIcons";
 
+const BET_OPTIONS = [10, 25, 50, 100, 250];
 
-const PVP_CHOICES = ["rock", "paper", "scissors"];
-
-export default function RPSGame() {
+export default function RPSLobbyPage() {
+  const { isSignedIn, user } = useUser();
   const { socket } = useSocket();
-  const { user } = useUser();
-  const [tokens, setTokens] = useState(0);
+  const router = useRouter();
+  const posthog = usePostHog();
+
   const [betAmount, setBetAmount] = useState(10);
-  const [playerChoice, setPlayerChoice] = useState<string | null>(null);
-  const [aiChoice, setAiChoice] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
+  const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [showRpsRules, setShowRpsRules] = useState(false);
-  const [showRules, setShowRules] = useState(false);
-  const firstVisitRules = useFirstVisitRules("rps");
-  useEffect(() => {
-    if (firstVisitRules) setShowRules(true);
-  }, [firstVisitRules]);
+  const [availableGames, setAvailableGames] = useState<any[]>([]);
+  const [joiningId, setJoiningId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const [winStreak, setWinStreak] = useState(0);
-  const [multiplier, setMultiplier] = useState(1.0);
-  const [mode, setMode] = useState("pve"); // "pve" | "pvp"
-
-  const [autoBet, setAutoBet] = useState({
-    enabled: false,
-    mode: "finite" as "finite" | "infinite",
-    spinsLeft: 0,
-  });
-
-  // PvP state
-  const [pvpGames, setPvpGames] = useState<any[]>([]);
-  const [isLoadingPvpGames, setIsLoadingPvpGames] = useState(false);
-  const [pvpGameId, setPvpGameId] = useState<number | null>(null);
-  const [pvpStatus, setPvpStatus] = useState<string | null>(null);
-  const [pvpPlayer1Id, setPvpPlayer1Id] = useState<string | null>(null);
-  const [pvpPlayer2Id, setPvpPlayer2Id] = useState<string | null>(null);
-  const [pvpMyName, setPvpMyName] = useState<string>("You");
-  const [pvpOpponentName, setPvpOpponentName] = useState<string>("Opponent");
-  const [pvpMyChoice, setPvpMyChoice] = useState<string | null>(null);
-  const [pvpOpponentChoice, setPvpOpponentChoice] = useState<string | null>(null);
-  const [pvpOutcome, setPvpOutcome] = useState<string | null>(null);
-  const [pvpWinner, setPvpWinner] = useState<string | null>(null);
-  const [pvpWinnerPayout, setPvpWinnerPayout] = useState<number | null>(null);
-  const [pvpWinnerProfit, setPvpWinnerProfit] = useState<number | null>(null);
-  const [pvpHouseFee, setPvpHouseFee] = useState<number | null>(null);
-  const [pvpCountdown, setPvpCountdown] = useState<number | null>(null);
-  const [pvpMessage, setPvpMessage] = useState<string>("");
-  const [pvpActionLoading, setPvpActionLoading] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
-
-  const autoBetRef = useRef(autoBet);
-  autoBetRef.current = autoBet;
-
-  const choices = ["rock", "paper", "scissors"];
-
-  useEffect(() => {
-    fetch("/api/get-user-tokens", {
+  const fetchBalance = async () => {
+    if (!user) return;
+    const response = await fetch("/api/get-user-tokens", {
       method: "POST",
-      credentials: "include",
       headers: { "Content-Type": "application/json" },
-    })
-      .then((res) => res.json())
-      .then((data) => setTokens(data.data.balance))
-      .catch(() => setTokens(0));
-  }, []);
+      credentials: "include",
+    });
+    const data = await response.json();
+    if (data.success) setBalance(Number(data.data.balance || 0));
+  };
+
+  const fetchGames = async () => {
+    try {
+      const res = await fetch("/api/rps/pvp/available", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (data.success) setAvailableGames(data.data.games || []);
+    } catch {
+      // silent
+    }
+  };
 
   useEffect(() => {
-    if (mode === "pvp") {
-      fetchAvailablePvpGames();
-    }
-  }, [mode]);
+    if (isSignedIn && user) fetchBalance();
+    fetchGames();
+    const id = setInterval(() => {
+      if (isSignedIn && user) fetchBalance();
+      fetchGames();
+    }, 3000);
+    return () => clearInterval(id);
+  }, [isSignedIn, user]);
 
   useEffect(() => {
     if (!socket) return;
     const roomId = "lobby:rps";
-    const handleLobbyUpdate = () => {
-      if (mode === "pvp") fetchAvailablePvpGames();
-    };
+    const refresh = () => fetchGames();
+
     socket.emit("join_room", { roomId });
-    socket.on("lobby:updated", handleLobbyUpdate);
+    socket.on("lobby:updated", refresh);
+
     return () => {
       socket.emit("leave_room", { roomId });
-      socket.off("lobby:updated", handleLobbyUpdate);
+      socket.off("lobby:updated", refresh);
     };
-  }, [socket, mode]);
+  }, [socket]);
 
-  useEffect(() => {
-    if (!pvpGameId) return;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/rps/pvp/status?gameId=${pvpGameId}`);
-        const data = await res.json();
-        if (!data.success) return;
-
-        const game = data.data;
-        setPvpStatus(game.status);
-        setPvpPlayer1Id(game.player1Id || null);
-        setPvpPlayer2Id(game.player2Id || null);
-        setPvpMyName(game.myName || "You");
-        setPvpOpponentName(game.opponentName || "Opponent");
-        setPvpMyChoice(game.myChoice || null);
-        setPvpOpponentChoice(game.opponentChoice || null);
-        setPvpOutcome(game.outcome || null);
-        setPvpWinner(game.winner || null);
-        setPvpWinnerPayout(typeof game.winnerPayout === "number" ? game.winnerPayout : null);
-        setPvpWinnerProfit(typeof game.winnerProfit === "number" ? game.winnerProfit : null);
-        setPvpHouseFee(typeof game.houseFee === "number" ? game.houseFee : null);
-
-        if (game.status === "active") {
-          setPvpMessage("Waiting for opponent...");
-        } else if (game.status === "matched" && !game.myChoice) {
-          setPvpMessage("Opponent joined. Pick rock, paper, or scissors.");
-        } else if (game.status === "matched" && game.myChoice && !game.opponentChoice) {
-          setPvpMessage("Choice locked. Waiting for opponent choice...");
-        } else if (game.status === "finished") {
-          if (game.winner === "you") {
-            setPvpMessage("You won the PvP match!");
-          } else if (game.winner === "opponent") {
-            setPvpMessage("You lost the PvP match.");
-          } else {
-            setPvpMessage("It's a tie.");
-          }
-          if (typeof game.newBalance === "number") {
-            setTokens(game.newBalance);
-          }
-        } else if (game.status === "cancelled") {
-          setPvpMessage("Game cancelled.");
-          if (typeof game.newBalance === "number") {
-            setTokens(game.newBalance);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to poll RPS PvP status:", err);
-      }
-    };
-
-    poll();
-    const interval = setInterval(poll, 1500);
-    return () => clearInterval(interval);
-  }, [pvpGameId]);
-
-  useEffect(() => {
-    if (pvpStatus !== "matched") {
-      setPvpCountdown(null);
+  const createGame = async () => {
+    if (betAmount <= 0 || betAmount > balance) {
+      setError("Invalid bet amount");
       return;
     }
-
-    setPvpCountdown(10);
-    const countdownInterval = setInterval(() => {
-      setPvpCountdown((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(countdownInterval);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(countdownInterval);
-  }, [pvpStatus, pvpGameId]);
-
-  const calculateMultiplier = (streak: number) => {
-    if (streak <= 0) return 1.0;
-    return 1.9;
-  };
-
-  const winStreakRef = useRef(winStreak);
-  winStreakRef.current = winStreak;
-
-  const multiplierRef = useRef(multiplier);
-  multiplierRef.current = multiplier;
-
-  const formatOutcome = (outcome) => {
-    if (!outcome) return "";
-
-    const player1Name = pvpPlayer1Id && pvpPlayer1Id === user?.id ? pvpMyName : pvpOpponentName;
-
-    const player2Name = pvpPlayer2Id && pvpPlayer2Id === user?.id ? pvpMyName : pvpOpponentName;
-
-    return outcome.replace(/player1/g, player1Name).replace(/player2/g, player2Name);
-  };
-
-  const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-  const placeBet = async () => {
-    if (!playerChoice) {
-      alert("Please choose Rock, Paper, or Scissors first!");
-      if (autoBetRef.current.enabled) {
-        setAutoBet((prev) => ({ ...prev, enabled: false }));
-      }
-      return;
-    }
-    if (betAmount <= 0 || betAmount > tokens) {
-      alert("Invalid bet amount!");
-      if (autoBetRef.current.enabled) {
-        setAutoBet((prev) => ({ ...prev, enabled: false }));
-      }
-      return;
-    }
-
-    setTokens((prev) => prev - betAmount);
 
     setLoading(true);
-    setResult(null);
-    setAiChoice(null);
-
-    await delay(1000);
-
-    const res = await fetch("/api/rps/play", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        betAmount,
-        choice: playerChoice,
-        winStreak: winStreakRef.current,
-      }),
-    });
-
-    const data = await res.json();
-
-    setTokens(data.newBalance);
-    setAiChoice(data.aiChoice);
-    setResult(data.result);
-
-    if (data.result === "win") {
-      const newStreak = winStreakRef.current + 1;
-      setWinStreak(newStreak);
-      winStreakRef.current = newStreak;
-      const newMultiplier = calculateMultiplier(newStreak);
-      setMultiplier(newMultiplier);
-      multiplierRef.current = newMultiplier;
-    } else if (data.result === "lose") {
-      setWinStreak(0);
-      winStreakRef.current = 0;
-      setMultiplier(1.0);
-      multiplierRef.current = 1.0;
-    } else if (data.result === "tie") {
-      setWinStreak(0);
-      winStreakRef.current = 0;
-      setMultiplier(1.0);
-      multiplierRef.current = 1.0;
-    }
-
-    setLoading(false);
-
-    if (autoBetRef.current.enabled) {
-      if (autoBetRef.current.mode === "finite" && autoBetRef.current.spinsLeft <= 1) {
-        setAutoBet({ enabled: false, mode: "finite", spinsLeft: 0 });
-      } else {
-        if (autoBetRef.current.mode === "finite") {
-          setAutoBet((prev) => ({
-            ...prev,
-            spinsLeft: prev.spinsLeft - 1,
-          }));
-        }
-        setTimeout(() => {
-          placeBet();
-        }, 1500);
-      }
-    }
-  };
-
-  const fetchAvailablePvpGames = async () => {
-    setIsLoadingPvpGames(true);
-    try {
-      const res = await fetch("/api/rps/pvp/available");
-      const data = await res.json();
-      if (data.success) {
-        setPvpGames(data.data.games || []);
-      }
-    } catch (err) {
-      console.error("Failed to fetch available RPS PvP games:", err);
-    }
-    setIsLoadingPvpGames(false);
-  };
-
-  const createPvpGame = async () => {
-    if (betAmount <= 0 || betAmount > tokens) {
-      alert("Invalid bet amount!");
-      return;
-    }
-
-    setPvpActionLoading(true);
-    setPvpMessage("Creating game...");
+    setError(null);
     try {
       const res = await fetch("/api/rps/pvp/create", {
         method: "POST",
@@ -315,724 +94,164 @@ export default function RPSGame() {
         body: JSON.stringify({ betAmount }),
       });
       const data = await res.json();
-      if (!data.success) {
-        setPvpMessage(data.error || "Failed to create game");
-      } else {
-        setPvpGameId(data.data.gameId);
-        setPvpStatus("active");
-        setPvpPlayer1Id(data.data.player1Id);
-        setPvpPlayer2Id(null);
-        setPvpMyName("You");
-        setPvpOpponentName("Waiting...");
-        setPvpMyChoice(null);
-        setPvpOpponentChoice(null);
-        setPvpOutcome(null);
-        setPvpWinner(null);
-        setPvpWinnerPayout(null);
-        setPvpWinnerProfit(null);
-        setPvpHouseFee(null);
-        setTokens(data.data.newBalance);
-        setPvpMessage("Game created. Waiting for opponent...");
-        fetchAvailablePvpGames();
-        socket?.emit("room_event", {
-          roomId: "lobby:rps",
-          event: "lobby:updated",
-        });
+
+      if (!res.ok || !data.success) {
+        setError(data.error || "Unable to create game");
+        return;
       }
-    } catch (err) {
-      console.error("Failed to create RPS PvP game:", err);
-      setPvpMessage("Failed to create game");
+
+      socket?.emit("room_event", {
+        roomId: "lobby:rps",
+        event: "lobby:updated",
+      });
+      router.push(`/casino/rps/game/${data.data.gameId}`);
+      posthog?.capture("rps_game_started", {
+        mode: "create",
+        bet_amount: betAmount,
+        game_id: data.data.gameId,
+      });
+    } finally {
+      setLoading(false);
     }
-    setPvpActionLoading(false);
   };
 
-  const joinPvpGame = async (gameId: number) => {
-    setPvpActionLoading(true);
-    setPvpMessage("Joining game...");
+  const playVsAi = () => {
+    if (!isSignedIn) {
+      setError("Please sign in to play vs AI.");
+      return;
+    }
+    posthog?.capture("rps_game_started", { mode: "ai", bet_amount: 0 });
+    router.push("/casino/rps/play-ai");
+  };
+
+  const joinGame = async (gameId?: number) => {
+    setLoading(true);
+    setError(null);
+    if (gameId) setJoiningId(gameId);
+
     try {
       const res = await fetch("/api/rps/pvp/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId }),
+        body: JSON.stringify(gameId ? { gameId } : { quickJoin: true }),
       });
       const data = await res.json();
-      if (!data.success) {
-        setPvpMessage(data.error || "Failed to join game");
-      } else {
-        setPvpGameId(gameId);
-        setPvpStatus("matched");
-        setPvpPlayer1Id(data.data.player1Id);
-        setPvpPlayer2Id(data.data.player2Id);
-        setPvpMyName("You");
-        setPvpOpponentName("Opponent");
-        setPvpMyChoice(null);
-        setPvpOpponentChoice(null);
-        setPvpOutcome(null);
-        setPvpWinner(null);
-        setPvpWinnerPayout(null);
-        setPvpWinnerProfit(null);
-        setPvpHouseFee(null);
-        setTokens(data.data.newBalance);
-        setPvpMessage("Joined game. Pick your move.");
-        fetchAvailablePvpGames();
-        socket?.emit("room_event", {
-          roomId: "lobby:rps",
-          event: "lobby:updated",
-        });
-      }
-    } catch (err) {
-      console.error("Failed to join RPS PvP game:", err);
-      setPvpMessage("Failed to join game");
-    }
-    setPvpActionLoading(false);
-  };
 
-  const choosePvpMove = async (choice: string) => {
-    if (!pvpGameId || pvpStatus !== "matched" || pvpMyChoice) return;
-    setPvpActionLoading(true);
-    try {
-      const res = await fetch("/api/rps/pvp/choose", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId: pvpGameId, choice }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setPvpMessage(data.error || "Failed to save choice");
-      } else {
-        setPvpMyChoice(choice);
-        setPvpMessage("Choice locked. Waiting for opponent...");
+      if (!res.ok || !data.success) {
+        setError(data.error || "Unable to join game");
+        return;
       }
-    } catch (err) {
-      console.error("Failed to choose RPS PvP move:", err);
-      setPvpMessage("Failed to submit choice");
-    }
-    setPvpActionLoading(false);
-  };
 
-  const cancelPvpGame = async () => {
-    if (!pvpGameId || pvpStatus !== "active") return;
-    setPvpActionLoading(true);
-    try {
-      const res = await fetch("/api/rps/pvp/cancel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId: pvpGameId }),
+      socket?.emit("room_event", {
+        roomId: "lobby:rps",
+        event: "lobby:updated",
       });
-      const data = await res.json();
-      if (!data.success) {
-        setPvpMessage(data.error || "Failed to cancel game");
-      } else {
-        if (typeof data.data.newBalance === "number") {
-          setTokens(data.data.newBalance);
-        }
-        setPvpGameId(null);
-        setPvpStatus(null);
-        setPvpPlayer1Id(null);
-        setPvpPlayer2Id(null);
-        setPvpMyName("You");
-        setPvpOpponentName("Opponent");
-        setPvpMyChoice(null);
-        setPvpOpponentChoice(null);
-        setPvpOutcome(null);
-        setPvpWinner(null);
-        setPvpWinnerPayout(null);
-        setPvpWinnerProfit(null);
-        setPvpHouseFee(null);
-        setPvpCountdown(null);
-        setPvpMessage("Game cancelled");
-        fetchAvailablePvpGames();
-        socket?.emit("room_event", {
-          roomId: "lobby:rps",
-          event: "lobby:updated",
-        });
-      }
-    } catch (err) {
-      console.error("Failed to cancel RPS PvP game:", err);
-      setPvpMessage("Failed to cancel game");
+      router.push(`/casino/rps/game/${data.data.gameId}`);
+      posthog?.capture("rps_game_started", {
+        mode: gameId ? "join" : "quick_join",
+        game_id: data.data.gameId,
+      });
+    } finally {
+      setLoading(false);
+      setJoiningId(null);
     }
-    setPvpActionLoading(false);
   };
 
   return (
-    <div className="flex min-h-screen flex-col overflow-x-hidden bg-gradient-to-b from-[#0a0118] to-[#061b3d] pb-28 pt-16 text-white md:flex-row md:pb-8">
-      <NavigationBar currentPath="/casino" />
-
-      <div
-        className="w-[95%] sm:w-full max-w-[420px] md:max-w-[380px] 
-bg-black/40 backdrop-blur-xl border border-amber-700/60
-shadow-[0_0_25px_rgba(251,191,36,0.12),inset_0_0_25px_rgba(251,191,36,0.05)]
-rounded-2xl p-4 sm:p-6 flex flex-col gap-5
-mx-auto md:mx-0 mb-6 md:mb-0"
-      >
-        <h1
-          className="text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text 
-bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)] text-center mt-16 sm:mt-20 leading-tight"
-        >
-          Rock Paper Scissors
-        </h1>
-
-        {/* How to Play — rules modal at the top of the lobby */}
-        <div className="text-center">
-          <button
-            onClick={() => setShowRules(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 transition-all duration-300 hover:bg-amber-500/20 hover:scale-105 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
-          >
-            <IconBook size={15} /> How to Play
-          </button>
-        </div>
-        {showRules && (
-          <RulesModal
-            title="How to Play"
-            sections={[
-              {
-                heading: "Objective",
-                body: <>Beat your opponent by choosing Rock, Paper, or Scissors.</>,
-              },
-              {
-                heading: "Matchups",
-                body: (
-                  <>
-                    Rock beats Scissors · Scissors beats Paper · Paper
-                    beats Rock.
-                  </>
-                ),
-              },
-              {
-                heading: "Results",
-                body: (
-                  <>
-                    Win → payout based on your bet and streak · Lose →
-                    you lose your bet · Tie → your bet is returned.
-                  </>
-                ),
-              },
-              {
-                heading: "Win streak",
-                body: (
-                  <>
-                    Winning multiple rounds in a row raises your
-                    multiplier — higher streak, higher rewards.
-                  </>
-                ),
-              },
-            ]}
-            onClose={() => setShowRules(false)}
-          />
-        )}
-
-        <p
-          className="text-lg text-yellow-300 font-semibold 
-              drop-shadow-[0_0_10px_rgba(251,191,36,0.6)] text-center md:text-left"
-        >
-          Your Tokens: {tokens}
-        </p>
-
-        <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
-          <button
-            onClick={() => setMode("pve")}
-            className={`px-5 py-2 rounded-xl font-bold transition-all duration-300
-    ${
-      mode === "pve"
-        ? "border-b-4 border-amber-700 bg-amber-500 text-black shadow-[0_0_20px_rgba(251,191,36,0.4)]"
-        : "bg-gray-800/50 text-gray-400 border border-gray-600 hover:border-amber-600/50 hover:text-amber-200"
-    }
-  `}
-          >
-            PvE
-          </button>
-
-          <button
-            onClick={() => setMode("pvp")}
-            className={`px-5 py-2 rounded-xl font-bold transition-all duration-300
-    ${
-      mode === "pvp"
-        ? "border-b-4 border-cyan-700 bg-cyan-500 text-black shadow-[0_0_20px_rgba(34,211,238,0.4)]"
-        : "bg-gray-800/50 text-gray-400 border border-gray-600 hover:border-cyan-600/50 hover:text-cyan-200"
-    }
-  `}
-          >
-            PvP
-          </button>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <label
-            htmlFor="rps-bet-amount"
-            className="text-lg text-yellow-300 font-semibold 
-              drop-shadow-[0_0_10px_rgba(251,191,36,0.6)] text-center md:text-left"
-          >
-            Bet:
-          </label>
-          <input
-            id="rps-bet-amount"
-            type="number"
-            min={1}
-            max={tokens}
-            value={betAmount}
-            onChange={(e) => setBetAmount(Number(e.target.value))}
-            className="bg-[#020617] border border-amber-600/50 
-focus:border-amber-400 focus:shadow-[0_0_15px_rgba(251,191,36,0.5)]
-rounded-xl px-3 py-2 text-white outline-none text-center w-24"
-          />
-        </div>
-
-        {mode === "pve" && (
-          <>
-            <button
-              onClick={placeBet}
-              disabled={loading}
-              className={`py-3 rounded-xl font-bold text-lg transition-all duration-300 border-b-4
-  ${
-    loading
-      ? "bg-gray-800/50 text-gray-400 border border-gray-600"
-      : "border-amber-700 bg-amber-500 text-black shadow-[0_0_20px_rgba(251,191,36,0.5)] hover:brightness-110 hover:scale-105 active:translate-y-[2px]"
-  }
-`}
-            >
-              {loading ? "Betting..." : "Place Bet"}
-            </button>
-
-            <div
-              className="mt-4 bg-black/30 backdrop-blur-xl border border-amber-700/50 
-rounded-xl p-4 shadow-[0_0_16px_rgba(251,191,36,0.12)]"
-            >
-              <label className="flex items-center gap-2 font-semibold mb-2" htmlFor="rps-autobet-checkbox">
-                <input
-                  id="rps-autobet-checkbox"
-                  type="checkbox"
-                  checked={autoBet.enabled}
-                  onChange={(e) => {
-                    if (
-                      e.target.checked &&
-                      (!playerChoice || betAmount <= 0 || betAmount > tokens)
-                    ) {
-                      alert("Select a valid choice and bet amount before enabling AutoBet.");
-                      return;
-                    }
-                    setAutoBet((prev) => ({
-                      ...prev,
-                      enabled: e.target.checked,
-                    }));
-                  }}
-                />
-                Auto Bet
-              </label>
-
-              {autoBet.enabled && (
-                <>
-                  <label htmlFor="rps-autobet-mode" className="sr-only">Auto bet mode</label>
-                  <select
-                    id="rps-autobet-mode"
-                    value={autoBet.mode}
-                    onChange={(e) =>
-                      setAutoBet((prev) => ({
-                        ...prev,
-                        mode: e.target.value as "finite" | "infinite",
-                      }))
-                    }
-                    className="w-full rounded border border-amber-600/50 bg-[#020617] px-2 py-1 text-center text-white"
-                  >
-                    <option value="finite">Finite</option>
-                    <option value="infinite">Infinite</option>
-                  </select>
-
-                  {autoBet.mode === "finite" && (
-                    <>
-                      <label htmlFor="rps-autobet-spins" className="sr-only">Number of spins</label>
-                      <input
-                        id="rps-autobet-spins"
-                        type="number"
-                        min={1}
-                        value={autoBet.spinsLeft}
-                        onChange={(e) =>
-                          setAutoBet((prev) => ({
-                            ...prev,
-                            spinsLeft: Number(e.target.value),
-                          }))
-                        }
-                        className="w-full mt-2 rounded border border-amber-600/50 bg-[#020617] px-2 py-1 text-center text-white"
-                      />
-                    </>
-                  )}
-
-                  <button
-                    onClick={() =>
-                      setAutoBet({
-                        enabled: false,
-                        mode: "finite",
-                        spinsLeft: 0,
-                      })
-                    }
-                    className="mt-2 w-full bg-red-600 hover:bg-red-700 text-white font-bold rounded px-4 py-2"
-                  >
-                    Stop AutoBet
-                  </button>
-                </>
-              )}
-            </div>
-            {/* RPS Game Rules */}
-            <div className="mt-4 bg-black/30 p-4 rounded-lg border border-amber-700/50 shadow-[0_0_16px_rgba(251,191,36,0.12)]">
-              <button
-                onClick={() => setShowRpsRules(!showRpsRules)}
-                className="w-full text-left font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 flex justify-between items-center"
-              >
-                <span className="inline-flex items-center gap-2"><IconBook size={18} /> Game Rules</span>
-                <span>{showRpsRules ? "▲" : "▼"}</span>
-              </button>
-
-              {showRpsRules && (
-                <div className="mt-3 text-sm text-gray-200 space-y-3 leading-relaxed">
-                  <p className="flex items-start gap-2">
-                    <IconHandGrab size={18} className="mt-0.5 shrink-0" /> <span><strong>Objective:</strong> Beat the AI by choosing Rock, Paper, or Scissors.</span>
-                  </p>
-
-                  <p className="flex items-start gap-2">
-                    <IconNumber size={18} className="mt-0.5 shrink-0" /> <span><strong>How to Play:</strong>
-                    <br />• Select your move (Rock, Paper, Scissors) • Choose your bet
-                    amount • Click <strong>“Place Bet”</strong> to play</span>
-                  </p>
-
-                  <p className="flex items-start gap-2">
-                    <IconSwords size={18} className="mt-0.5 shrink-0" /> <span><strong>Rules:</strong>
-                    <br />• Rock beats Scissors • Scissors beats Paper • Paper beats Rock</span>
-                  </p>
-
-                  <p className="flex items-start gap-2">
-                    <IconTrophy size={18} className="mt-0.5 shrink-0" /> <span><strong>Results:</strong>
-                    <br />• Win → You earn a payout based on your bet and streak • Lose → You lose
-                    your bet • Tie → Your bet is returned</span>
-                  </p>
-
-                  <p className="flex items-start gap-2">
-                    <IconFlame size={18} className="mt-0.5 shrink-0" /> <span><strong>Win Streak:</strong>
-                    <br />• Winning multiple times in a row increases your multiplier • Higher
-                    streak = higher rewards</span>
-                  </p>
-
-                  <p className="flex items-start gap-2">
-                    <IconCoins size={18} className="mt-0.5 shrink-0" /> <span><strong>Multiplier(pve):</strong>
-                    <br />• Your winnings increase with your streak • Lose or tie → multiplier
-                    resets to 1.0</span>
-                  </p>
-
-                  <p className="flex items-start gap-2">
-                    <IconRobot size={18} className="mt-0.5 shrink-0" /> <span><strong>Auto Bet:</strong>
-                    <br />• Automatically plays for you • Can run for a set number of rounds or
-                    infinitely • Stops on invalid settings or when you disable it</span>
-                  </p>
-
-                  <p className="flex items-start gap-2">
-                    <IconAlertTriangle size={18} className="mt-0.5 shrink-0" /> <span><strong>Important:</strong>
-                    <br />• You must have enough tokens to bet • You must select a move before
-                    betting • The game is based on chance</span>
-                  </p>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {mode === "pvp" && (
-          <>
-            {!pvpGameId && (
-              <button
-                onClick={createPvpGame}
-                disabled={pvpActionLoading}
-                className="px-4 py-2 rounded-xl font-bold transition-all duration-300 border-b-4 border-amber-700
-           bg-amber-500 text-black
-           shadow-[0_0_20px_rgba(251,191,36,0.5)]
-           hover:brightness-110 hover:scale-105 active:translate-y-[2px]"
-              >
-                Create Game
-              </button>
-            )}
-
-            {pvpGameId && pvpStatus === "active" && (
-              <button
-                onClick={cancelPvpGame}
-                disabled={pvpActionLoading}
-                className="bg-red-600 hover:bg-red-700 px-6 py-3 rounded font-bold disabled:opacity-50"
-              >
-                Cancel Waiting Game
-              </button>
-            )}
-
-            <div className="bg-slate-900/80 p-4 rounded-lg border border-cyan-700/30">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-cyan-300">Available Games</h3>
-                <button
-                  onClick={fetchAvailablePvpGames}
-                  disabled={isLoadingPvpGames}
-                  className="bg-cyan-500 text-black hover:bg-cyan-400 px-3 py-1 rounded text-sm font-semibold disabled:opacity-50 transition"
-                >
-                  {isLoadingPvpGames ? "Refreshing..." : "Refresh"}
-                </button>
-              </div>
-              {pvpGames.length === 0 ? (
-                <p className="text-sm text-gray-300">No available games right now.</p>
-              ) : (
-                <ul className="space-y-2 max-h-48 overflow-auto pr-1">
-                  {pvpGames.map((game) => (
-                    <li
-                      key={game.id}
-                      className="bg-black/30 border border-cyan-700/30 rounded p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-cyan-500/50 transition"
-                    >
-                      <div className="text-sm">
-                        <p className="font-semibold">Host: {game.player1Name || "Unknown"}</p>
-                        <p>Bet: <span className="text-yellow-300 font-semibold">{game.betAmount}</span></p>
-                      </div>
-                      <button
-                        onClick={() => joinPvpGame(game.id)}
-                        disabled={pvpActionLoading || Boolean(pvpGameId)}
-                        className="w-full sm:w-auto px-4 py-2 rounded-xl font-bold transition-all duration-300
-           bg-cyan-500 text-black
-           hover:bg-cyan-400 hover:scale-105 disabled:opacity-50"
-                      >
-                        Join
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            {pvpMessage && <p className="text-sm text-yellow-200">{pvpMessage}</p>}
-          </>
-        )}
-      </div>
-
-      <motion.main
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
-        className="flex-1 flex flex-col items-center justify-start md:justify-center gap-6 md:gap-8 ml-0 md:ml-6 w-full px-3 sm:px-4 pb-10"
-      >
-        {mode === "pve" && (
-          <>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-5 sm:gap-10 w-full">
-              <motion.div
-                initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
-                animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 12 }}
-                className="bg-[#020617]/80 backdrop-blur-xl border border-[#00e5ff]/40 
-shadow-[0_0_20px_rgba(0,229,255,0.2)] 
-w-24 h-32 sm:w-32 sm:h-44
-flex items-center justify-center rounded-xl text-5xl sm:text-6xl"
-              >
-                {getChoiceIcon(playerChoice)}
-              </motion.div>
-
-              <motion.div
-                animate={{ scale: [1, 1.1, 1] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-                className="text-2xl sm:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8]"
-              >
-                VS
-              </motion.div>
-
-              <motion.div
-                initial={{ scale: 0.5, opacity: 0, rotate: 15 }}
-                animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.2 }}
-                className="bg-[#020617]/80 backdrop-blur-xl border border-[#00e5ff]/40 
-shadow-[0_0_20px_rgba(0,229,255,0.2)] 
-w-24 h-32 sm:w-32 sm:h-44
-flex items-center justify-center rounded-xl text-5xl sm:text-6xl"
-              >
-                {getChoiceIcon(aiChoice)}
-              </motion.div>
-            </div>
-
-            <AnimatePresence>
-              {result && (
-                <motion.div
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0, opacity: 0 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                  className={`text-2xl font-bold
-  ${
-    result === "win"
-      ? "text-[#00ffa6] drop-shadow-[0_0_15px_rgba(0,255,166,1)]"
-      : result === "lose"
-        ? "text-red-400"
-        : "text-gray-400"
-  }
-`}
-                >
-                  {result === "win" && <IconTrophy size={24} className="inline" />}{" "}
-                  {result.toUpperCase()}
-                  {result === "lose" && <span> <IconSkull size={20} className="inline" /></span>}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-[420px]">
-              {choices.map((choice) => (
-                <button
-                  key={choice}
-                  onClick={() => setPlayerChoice(choice)}
-                  className={`w-full px-4 py-3 rounded-xl font-bold text-sm sm:text-base transition-all duration-300
-  ${
-    playerChoice === choice
-      ? "bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-white shadow-[0_0_25px_#ff4fd8] scale-105"
-      : "bg-[#020617] border border-[#00e5ff]/30 text-white hover:border-[#00e5ff] hover:shadow-[0_0_15px_rgba(0,229,255,0.6)]"
-  }
-`}
-                >
-                  {choice}
-                </button>
-              ))}
-            </div>
-
-            <div className="text-center w-full max-w-[400px]">
-              <p className="text-xl">
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] font-bold">
-                  Win Streak:
-                </span>{" "}
-                {winStreak}
-              </p>
-              <p className="text-xl">
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] font-bold">
-                  Multiplier:
-                </span>{" "}
-                {multiplier.toFixed(2)}×
-              </p>
-            </div>
-          </>
-        )}
-
-        {mode === "pvp" && (
-          <div className="w-full max-w-2xl flex flex-col items-center gap-4">
-            <div className="w-full flex items-center justify-between sm:justify-center gap-4 sm:gap-10 text-xs sm:text-sm text-[#a8f4ff] font-semibold px-2">
-              <span>{pvpMyName}</span>
-              <span>{pvpOpponentName}</span>
-            </div>
-            <div className="flex items-center justify-center gap-4 sm:gap-8 flex-wrap">
-              <div
-                className="bg-[#0b224f] border border-[#00e5ff] 
-w-24 h-28 sm:w-28 sm:h-36
-flex items-center justify-center rounded-xl text-4xl sm:text-5xl"
-              >
-                {getChoiceIcon(pvpMyChoice)}
-              </div>
-              <div className="text-2xl sm:text-3xl font-bold text-[#7cefff]">VS</div>
-              <div className="bg-[#0b224f] border border-[#00e5ff] w-24 h-28 sm:w-28 sm:h-36 flex items-center justify-center rounded-xl text-4xl sm:text-5xl">
-                {pvpStatus === "finished" ? getChoiceIcon(pvpOpponentChoice) : <IconQuestionMark size={36} className="text-[#7cefff]" />}
-              </div>
-            </div>
-
-            {pvpGameId && <p className="text-sm text-gray-300">Game ID: {pvpGameId}</p>}
-
-            {pvpGameId && pvpPlayer2Id && (
-              <button
-                onClick={() => setShowReportModal(true)}
-                className="mt-2 text-xs text-slate-500 hover:text-red-400 transition underline underline-offset-4"
-              >
-                <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report Player</span>
-              </button>
-            )}
-
-            {pvpStatus === "matched" && !pvpMyChoice && (
+    <PvpLobbyPage
+      title="Rock Paper Scissors"
+      subtitle="Best-of-7 mind games against a live opponent — first to 4 rounds takes the pot. Or play the AI for free."
+      icon={<RockFistIcon className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
+      rulesKey="rps"
+      rules={{
+        title: "How to Play",
+        sections: [
+          {
+            heading: "Best of 7",
+            body: (
               <>
-                <p className="text-sm text-yellow-300 font-semibold">
-                  Choose your move within: {pvpCountdown ?? 10}s
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-[420px]">
-                  {PVP_CHOICES.map((choice) => (
-                    <button
-                      key={choice}
-                      onClick={() => choosePvpMove(choice)}
-                      disabled={pvpActionLoading}
-                      className="px-5 py-2 rounded-lg font-bold bg-[#f5ff3b] hover:bg-[#d9e332] disabled:opacity-50"
-                    >
-                      {choice}
-                    </button>
-                  ))}
-                </div>
+                You and your opponent throw Rock, Paper, or Scissors
+                simultaneously. <b>First to 4 round wins</b> takes the
+                match and the pot.
               </>
-            )}
-
-            {pvpStatus === "finished" && (
-              <div className="text-center">
-                <p className="text-xl font-bold text-yellow-300">
-                  Outcome:{" "}
-                  {pvpWinner === "you"
-                    ? `${pvpMyName} wins`
-                    : pvpWinner === "opponent"
-                      ? `${pvpOpponentName} wins`
-                      : "It's a tie"}
-                </p>
-                <p className="text-lg">
-                  Result:{" "}
-                  {pvpWinner === "you" ? "You win" : pvpWinner === "opponent" ? "You lose" : "Tie"}
-                </p>
-                {pvpWinner === "you" && (
-                  <p className="text-green-300">
-                    You won {pvpWinnerPayout ?? 0} tokens total
-                    {typeof pvpWinnerProfit === "number" ? ` (+${pvpWinnerProfit} profit)` : ""}.
-                  </p>
-                )}
-                {pvpWinner === "opponent" && (
-                  <p className="text-red-300">You won 0 tokens this round.</p>
-                )}
-                {typeof pvpHouseFee === "number" && pvpWinner !== "tie" && (
-                  <p className="text-xs text-gray-300">House fee (10%): {pvpHouseFee} tokens.</p>
-                )}
-                <button
-                  onClick={() => window.location.reload()}
-                  className="mt-3 bg-[#f5ff3b] hover:bg-[#d9e332] px-4 py-2 rounded font-semibold"
-                >
-                  Return
-                </button>
-              </div>
-            )}
-
-            {!pvpGameId && (
-              <p className="text-yellow-300 font-semibold">Create or join a game to start PvP.</p>
-            )}
-          </div>
-        )}
-      </motion.main>
-      {/* Report Modal */}
-      <ReportModal
-        isOpen={showReportModal}
-        onClose={() => setShowReportModal(false)}
-        onSubmit={async (reason, details) => {
-          const opponentId = pvpPlayer1Id && pvpPlayer2Id
-            ? (pvpPlayer1Id === user?.id ? pvpPlayer2Id : pvpPlayer1Id)
-            : "";
-          const res = await fetch("/api/reports/submit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              reportedClerkId: opponentId,
-              gameType: "rps",
-              gameId: pvpGameId ? String(pvpGameId) : undefined,
-              reason,
-              details: details || undefined,
-            }),
-          });
-          const data = await res.json();
-          if (!data.success) throw new Error(data.error || "Failed to submit report");
-        }}
-        reportedPlayerName={pvpOpponentName || "Opponent"}
-        gameType="Rock Paper Scissors"
-      />
-    </div>
+            ),
+          },
+          {
+            heading: "Matchups",
+            body: (
+              <>
+                Rock beats Scissors · Scissors beats Paper · Paper beats
+                Rock. Ties are replayed — they never count as a round.
+              </>
+            ),
+          },
+          {
+            heading: "Round tracker",
+            body: (
+              <>
+                The dots above the board show the score: <b>blue</b> for
+                rounds you won, <b>red</b> for rounds your opponent won.
+              </>
+            ),
+          },
+          {
+            heading: "Wager",
+            body: (
+              <>
+                Both players wager the same amount; the best-of-7 winner
+                takes the pot minus the house fee. Play vs AI for free to
+                practice.
+              </>
+            ),
+          },
+        ],
+      }}
+      balance={balance}
+      stake={betAmount}
+      onStakeChange={setBetAmount}
+      stakeOptions={BET_OPTIONS}
+      busy={loading}
+      onPlay={createGame}
+      playLabel="Create PvP Game"
+      playBusyLabel="Creating…"
+      vsAi={{
+        label: "Play vs AI — Free, no wager",
+        badge: "Free",
+        disabled: !isSignedIn,
+        busy: loading,
+        onClick: playVsAi,
+      }}
+      escrowNote="We pair you with another player of the exact same bet. If no one is waiting, your bet is escrowed in a private game until someone joins or you cancel."
+      extraActions={
+        <button
+          type="button"
+          onClick={() => joinGame()}
+          disabled={loading}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 py-2 text-sm font-bold text-amber-200 transition hover:bg-amber-500/20 disabled:opacity-50"
+        >
+          {loading ? "Joining…" : "Quick Join"}
+        </button>
+      }
+      lobbies={availableGames}
+      lobbyEmptyText="No open games right now. Be the first to create one."
+      lobbyKey={(l) => l.id}
+      lobbyTitle={(l) => <>Game #{l.id}</>}
+      lobbyMeta={(l) => (
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>Host: {l.player1Name || "Player"}</span>
+          <span>
+            Bet:{" "}
+            <span className="inline-flex items-center gap-1 font-semibold text-yellow-300">
+              {Number(l.betAmount).toFixed(2)}
+              <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
+            </span>
+          </span>
+        </span>
+      )}
+      onJoin={(l) => joinGame(l.id)}
+      joinBusyId={joiningId}
+      onRefresh={fetchGames}
+      error={error}
+    />
   );
-}
-
-function getChoiceIcon(choice: string | null) {
-  switch (choice) {
-    case "rock":
-      return <IconHandGrab size={44} className="text-[#a855f7]" />;
-    case "paper":
-      return <IconHandStop size={44} className="text-[#00e5ff]" />;
-    case "scissors":
-      return <IconScissors size={44} className="text-[#ff4fd8]" />;
-    default:
-      return <IconQuestionMark size={44} className="text-[#7cefff]" />;
-  }
 }
