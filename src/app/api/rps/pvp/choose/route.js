@@ -6,6 +6,10 @@ import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters
 import { eq, sql } from "drizzle-orm";
 
 const HOUSE_EDGE_PERCENT = 10;
+// Best-of-7 — first player to ROUNDS_TO_WIN decided rounds takes the match.
+const ROUNDS_TO_WIN = 4;
+
+const VALID_CHOICES = ["rock", "paper", "scissors"];
 
 function evaluateChoices(choice1, choice2) {
   if (choice1 === choice2) return "tie";
@@ -38,7 +42,7 @@ export async function POST(req) {
     );
   }
 
-  if (!["rock", "paper", "scissors"].includes(choice)) {
+  if (!VALID_CHOICES.includes(choice)) {
     return NextResponse.json(
       { success: false, error: "Invalid choice" },
       { status: 400 },
@@ -75,23 +79,69 @@ export async function POST(req) {
         .where(eq(rpsPvpGames.id, parsedGameId))
         .returning();
 
+      // Round not decided yet — the other player still has to choose.
       if (!(updatedGame.player1Choice && updatedGame.player2Choice)) {
         return updatedGame;
       }
 
-      const outcome = evaluateChoices(
+      // ── Round resolved: evaluate, tally, and either advance or finish ──
+      const roundOutcome = evaluateChoices(
         updatedGame.player1Choice,
         updatedGame.player2Choice,
       );
-      const pot = Number(updatedGame.betAmount) * 2;
-      const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
-      const winnerPayout = Number((pot - houseFee).toFixed(2));
 
-      let winnerId = null;
-      if (outcome === "player1") winnerId = updatedGame.player1Id;
-      if (outcome === "player2") winnerId = updatedGame.player2Id;
+      const roundsWon1 = Number(updatedGame.roundsWon1 || 0);
+      const roundsWon2 = Number(updatedGame.roundsWon2 || 0);
+      const currentRound = Number(updatedGame.currentRound || 1);
+      const history = Array.isArray(updatedGame.roundHistory)
+        ? updatedGame.roundHistory
+        : [];
 
-      if (winnerId) {
+      // Ties are replayed — they never consume a round or a dot.
+      if (roundOutcome === "tie") {
+        const [tiedGame] = await tx
+          .update(rpsPvpGames)
+          .set({
+            player1Choice: null,
+            player2Choice: null,
+            roundHistory: [
+              ...history,
+              {
+                round: currentRound,
+                player1Choice: updatedGame.player1Choice,
+                player2Choice: updatedGame.player2Choice,
+                winner: "tie",
+              },
+            ],
+          })
+          .where(eq(rpsPvpGames.id, parsedGameId))
+          .returning();
+        return tiedGame;
+      }
+
+      const nextWon1 = roundOutcome === "player1" ? roundsWon1 + 1 : roundsWon1;
+      const nextWon2 = roundOutcome === "player2" ? roundsWon2 + 1 : roundsWon2;
+      const matchOver = nextWon1 >= ROUNDS_TO_WIN || nextWon2 >= ROUNDS_TO_WIN;
+
+      const nextHistory = [
+        ...history,
+        {
+          round: currentRound,
+          player1Choice: updatedGame.player1Choice,
+          player2Choice: updatedGame.player2Choice,
+          winner: roundOutcome,
+        },
+      ];
+
+      if (matchOver) {
+        const pot = Number(updatedGame.betAmount) * 2;
+        const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
+        const winnerPayout = Number((pot - houseFee).toFixed(2));
+
+        const winnerId = nextWon1 >= ROUNDS_TO_WIN
+          ? updatedGame.player1Id
+          : updatedGame.player2Id;
+
         await applyLeaderboardCounters({
           clerkId: winnerId,
           game: "rps-pvp",
@@ -104,32 +154,41 @@ export async function POST(req) {
           .update(users)
           .set({ balance: sql`${users.balance} + ${winnerPayout}` })
           .where(eq(users.clerkId, winnerId));
-      } else {
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${updatedGame.betAmount}` })
-          .where(eq(users.clerkId, updatedGame.player1Id));
 
-        if (updatedGame.player2Id) {
-          await tx
-            .update(users)
-            .set({ balance: sql`${users.balance} + ${updatedGame.betAmount}` })
-            .where(eq(users.clerkId, updatedGame.player2Id));
-        }
+        const [finished] = await tx
+          .update(rpsPvpGames)
+          .set({
+            player1Choice: null,
+            player2Choice: null,
+            roundsWon1: nextWon1,
+            roundsWon2: nextWon2,
+            roundHistory: nextHistory,
+            outcome: roundOutcome,
+            winnerId,
+            result: roundOutcome,
+            status: "finished",
+          })
+          .where(eq(rpsPvpGames.id, parsedGameId))
+          .returning();
+
+        return finished;
       }
 
-      const [finished] = await tx
+      // Round decided, match continues — clear choices for the next round.
+      const [advanced] = await tx
         .update(rpsPvpGames)
         .set({
-          outcome,
-          winnerId,
-          result: outcome,
-          status: "finished",
+          player1Choice: null,
+          player2Choice: null,
+          roundsWon1: nextWon1,
+          roundsWon2: nextWon2,
+          currentRound: currentRound + 1,
+          roundHistory: nextHistory,
         })
         .where(eq(rpsPvpGames.id, parsedGameId))
         .returning();
 
-      return finished;
+      return advanced;
     });
 
     return NextResponse.json({ success: true, data: game });

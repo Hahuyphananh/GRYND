@@ -96,6 +96,11 @@ export async function GET(req) {
       winnerProfit,
       myChoice,
       opponentChoice,
+      // ── Best-of-7 match state ──────────────────────────────────────
+      roundsWon1: Number(game.roundsWon1 || 0),
+      roundsWon2: Number(game.roundsWon2 || 0),
+      currentRound: Number(game.currentRound || 1),
+      roundHistory: Array.isArray(game.roundHistory) ? game.roundHistory : [],
       outcome: game.outcome,
       winner:
         game.status === "finished"
