@@ -36,7 +36,10 @@ import {
   fetchMatchRounds,
   viewerPlayerState,
 } from "../../../../../lib/blackjack-pvp/serverStore";
-import { MATCH_STATUS } from "../../../../../lib/blackjack-pvp/constants";
+import {
+  MATCH_STATUS,
+  OVERTIME_DRAW_FEE_PCT,
+} from "../../../../../lib/blackjack-pvp/constants";
 
 function isTerminalStatus(status) {
   return status === MATCH_STATUS.FINISHED || status === MATCH_STATUS.CANCELLED;
@@ -172,6 +175,18 @@ export async function GET(req, { params }) {
               : 0,
           houseFee:
             viewerIsWinner && match.houseFee ? Number(match.houseFee) : 0,
+          // Present only on a finished DRAW (a tiebreak-round tie):
+          // both players get the same refundEach back — 95% of their
+          // stake (5% per-side rake) — so it is safe to show to both.
+          refundEach:
+            match.status === "finished" && match.result === "draw"
+              ? Number(
+                  (
+                    Number(match.stakeAmount) *
+                    (1 - OVERTIME_DRAW_FEE_PCT)
+                  ).toFixed(2),
+                )
+              : null,
           roundTimer: match.roundTimerSeconds ?? 20,
           startedAt: match.startedAt,
           endedAt: match.endedAt,

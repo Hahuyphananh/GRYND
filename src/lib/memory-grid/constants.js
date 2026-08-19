@@ -22,6 +22,12 @@
 //         Round 3: 4×4 grid,  7 active tiles, 3.0s memorize
 //         Round 4: 5×5 grid, 10 active tiles, 3.5s memorize
 //         Round 5: 5×5 grid, 14 active tiles, 4.0s memorize
+//   * If the 5 rounds end with EXACTLY equal TOTAL cumulative round
+//     scores, a SIXTH TIEBREAK round is dealt — a harder grid
+//     (6×6, 18 active tiles, 4.0s memorize) — and the match is
+//     decided by who scores higher on it. If that round is ALSO a
+//     tie, the match is a DRAW and each player is refunded 95% of
+//     their stake (5% rake per side — the tie-breaker fee).
 //   * Every round has exactly two phases, played by BOTH players
 //     SIMULTANEOUSLY (a competitive race — nobody takes turns, and
 //     the SAME server-generated pattern is used for both):
@@ -37,9 +43,12 @@
 //   * Round resolution: the higher round score wins the round (+1
 //     rounds-won — a display/tiebreak tally), a tie awards nobody.
 //     After round 5 the MATCH winner is the player with the higher
-//     TOTAL cumulative round score (each round scores /100); exactly
-//     equal totals → DRAW (full refund — the existing PvP tie
-//     pattern; no invented winner).
+//     TOTAL cumulative round score (each round scores /100). Exactly
+//     equal totals → the TIEBREAK round (round 6, harder grid) is
+//     dealt instead of finishing; whoever scores higher on it wins.
+//     A tiebreak round that ALSO ties → DRAW — each player refunded
+//     95% of their stake (5% rake per side; never an invented
+//     winner).
 //   * Round scoring (max 100 per round, accuracy-dominant):
 //         Final Score = Accuracy Score × Speed Multiplier, clamped to
 //         [0, 100]. Accuracy Score = % of grid cells reconstructed
@@ -56,7 +65,11 @@
 //   Winner: own stake back + 90% of loser's stake (1.9× total)
 //   Loser:  loses entire stake
 //   House:  10% rake on loser's stake only
-//   Draw:   both refunded, no rake
+//   Draw:   both refunded, no rake — EXCEPT a tiebreak-round draw
+//           (equal totals after the 6th round): each player is
+//           refunded 95% of their stake (5% rake per side → 10% of
+//           the pot total, matching the house take on a winner).
+//           Mirrors keno-pvp's OVERTIME_DRAW_FEE_PCT.
 
 // ── Round configuration ─────────────────────────────────────────────
 // A match is exactly 5 rounds. Index by (roundNumber - 1). The grid
@@ -75,13 +88,30 @@ export const ROUND_CONFIGS = [
   { roundNumber: 5, gridSize: 5, activeCount: 14, memorizeMs: 4000 },
 ];
 
-export const ROUNDS_PER_MATCH = ROUND_CONFIGS.length; // 5
+export const ROUNDS_PER_MATCH = ROUND_CONFIGS.length; // 5 regular rounds
 
-// Per-round config lookup. Falls back to the last config defensively
-// for out-of-range round numbers (should never happen — the match
-// resolves after ROUNDS_PER_MATCH).
+// The TIEBREAK round — the 6th round, dealt ONLY when the 5 regular
+// rounds end with exactly equal TOTAL cumulative scores. A harder
+// grid than round 5: 6×6 (36 tiles) with 18 lit and the same 4.0s
+// memorize window, so there is genuinely more to remember in the
+// same time. Whoever scores higher on it wins the match; a tie on
+// this round is a DRAW (95% refund each — see OVERTIME_DRAW_FEE_PCT).
+export const TIEBREAK_CONFIG = {
+  roundNumber: 6,
+  gridSize: 6,
+  activeCount: 18,
+  memorizeMs: 4000,
+};
+
+export const TIEBREAK_ROUND_NUMBER = TIEBREAK_CONFIG.roundNumber; // 6
+
+// Per-round config lookup. Returns the TIEBREAK_CONFIG for round 6
+// and clamps defensively to [1, TIEBREAK_ROUND_NUMBER] for any other
+// out-of-range round number (should never happen — the match
+// resolves after the tiebreak round).
 export function roundConfig(roundNumber) {
   const n = Number(roundNumber) || 1;
+  if (n >= TIEBREAK_ROUND_NUMBER) return TIEBREAK_CONFIG;
   return ROUND_CONFIGS[Math.min(Math.max(n, 1), ROUNDS_PER_MATCH) - 1];
 }
 
@@ -206,6 +236,15 @@ export const MAX_STAKE = 1000000;
 export const HOUSE_FEE_PCT = 0.1;
 export const WINNER_RATIO = 0.9; // 90% of the loser's stake
 export const HOUSE_RATIO = 0.1; // 10% of the loser's stake
+
+// ── Tiebreak-draw fee (mirrors keno-pvp's OVERTIME_DRAW_FEE_PCT) ────
+// Applied ONLY when the 6th tiebreak round ALSO ties (equal totals
+// after round 6): each player is refunded 95% of their stake (5%
+// taken from each side — 10% of the pot total, matching the house
+// take on a winner). Normal draws (which can no longer occur — the
+// tiebreak round always fires first) stay a full refund with no
+// rake.
+export const OVERTIME_DRAW_FEE_PCT = 0.05;
 
 // ── Status state machine ────────────────────────────────────────────
 // Five states (SIMULTANEOUS play — no turns). The host creates a
@@ -536,11 +575,16 @@ export function computeFinalRoundScore({
 // ── Payout calculator ───────────────────────────────────────────────
 // Returns the per-side settlement numbers for a resolved match:
 //
-//   { stake, winnerNet, loserNet, houseFee, prizePaid }
+//   { stake, winnerNet, loserNet, houseFee, prizePaid, refundEach }
 //
 // Rules (mirrors Mines Duel):
 //   DRAW:       both refunded. winnerNet = loserNet = null,
-//               houseFee = 0, prizePaid = 0.
+//               houseFee = 0, prizePaid = 0, refundEach = stake —
+//               UNLESS `drawFeePct` is passed (tiebreak-round ties):
+//               each player keeps (1 - drawFeePct) of their stake
+//               and the house takes 2 × that fee (e.g. 5% per side
+//               → 10% of the pot total, matching the house take on
+//               a winner). Mirrors keno-pvp's computePayout.
 //   PLAYER1:    player1 wins. player1 gets (stake + 0.9 * stake) =
 //               1.9x stake back; player2 loses stake. House rake
 //               = 0.1 * stake. prizePaid = 1.9 * stake.
@@ -548,7 +592,7 @@ export function computeFinalRoundScore({
 //
 // Returns NUMBER (rounded to 2dp via round2) so callers can persist
 // directly to numeric(10, 2) columns.
-export function computePayout({ stakeAmount, result }) {
+export function computePayout({ stakeAmount, result, drawFeePct = 0 }) {
   const stake = Number(stakeAmount);
   if (!Number.isFinite(stake) || stake < 0) {
     throw new RangeError(
@@ -560,13 +604,21 @@ export function computePayout({ stakeAmount, result }) {
       `computePayout: result must be one of player1|player2|draw, got ${result}`,
     );
   }
+  const feeRate = Number(drawFeePct);
+  if (!Number.isFinite(feeRate) || feeRate < 0 || feeRate > 1) {
+    throw new RangeError(
+      `computePayout: drawFeePct must be in [0, 1], got ${drawFeePct}`,
+    );
+  }
   if (result === RESULT.DRAW) {
+    const fee = round2(stake * feeRate);
     return {
       stake: round2(stake),
       winnerNet: null,
       loserNet: null,
-      houseFee: round2(0),
+      houseFee: round2(fee * 2),
       prizePaid: round2(0),
+      refundEach: round2(stake - fee),
     };
   }
   const winnerPrize = round2(stake * WINNER_RATIO); // 90% of loser's stake
@@ -581,6 +633,7 @@ export function computePayout({ stakeAmount, result }) {
     // prizePaid = the total payout to the winner (their stake back
     // + the 90% they won from the loser).
     prizePaid: round2(stake + winnerPrize),
+    refundEach: null,
   };
 }
 

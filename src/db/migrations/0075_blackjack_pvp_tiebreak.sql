@@ -1,0 +1,18 @@
+-- 0075_blackjack_pvp_tiebreak.sql
+-- Blackjack PvP: add the round_4 TIEBREAK status.
+--
+-- The best-of-3 match can end with tied round-wins (e.g. 1–1 with a
+-- tied deciding round, or 0–0 from all-tied rounds), which used to
+-- settle as a DRAW with a full refund. Now a tied best-of-3 deals ONE
+-- extra deciding round — round 4 — and whoever wins it takes the
+-- match. If round 4 is ALSO a tie, the match is a draw and each
+-- player is refunded 95% of their stake (5% rake per side — the same
+-- tie-breaker fee as memory-grid / keno-pvp overtime).
+--
+-- This adds the `round_4` value to the blackjack_pvp_status pgEnum so
+-- the server store can transition a tied match into the extra round.
+-- Postgres < 12 disallows ADD VALUE inside a transaction block, so
+-- this runs as a bare statement (drizzle applies each statement
+-- outside a transaction). Idempotent — no-ops on databases that
+-- already applied it.
+ALTER TYPE blackjack_pvp_status ADD VALUE IF NOT EXISTS 'round_4';

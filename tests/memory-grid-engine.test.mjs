@@ -16,9 +16,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  // Round configuration (best-of-5, growing difficulty)
+  // Round configuration (best-of-5, growing difficulty + a 6th
+  // harder TIEBREAK round dealt on equal totals)
   ROUND_CONFIGS,
   ROUNDS_PER_MATCH,
+  TIEBREAK_CONFIG,
+  TIEBREAK_ROUND_NUMBER,
   roundConfig,
   // Phases
   PHASES,
@@ -30,10 +33,11 @@ import {
   STAKE_PRESETS,
   MIN_STAKE,
   MAX_STAKE,
-  // House fee / payout split
+  // House fee / payout split (+ the tiebreak-draw fee)
   HOUSE_FEE_PCT,
   WINNER_RATIO,
   HOUSE_RATIO,
+  OVERTIME_DRAW_FEE_PCT,
   // State machine
   MATCH_STATUS,
   SUBMIT_STATES,
@@ -111,8 +115,28 @@ test("roundConfig returns the right config per round and clamps defensively", ()
   }
   // Out-of-range round numbers clamp to the nearest valid config.
   assert.equal(roundConfig(0).roundNumber, 1);
-  assert.equal(roundConfig(99).roundNumber, 5);
   assert.equal(roundConfig(undefined).roundNumber, 1);
+});
+
+test("TIEBREAK round — a 6th harder round dealt on equal totals", () => {
+  assert.equal(TIEBREAK_ROUND_NUMBER, 6);
+  // Harder than round 5 on both axes: bigger grid (6×6 vs 5×5) AND
+  // a denser pattern (18 of 36 lit vs 14 of 25) in the same 4s
+  // memorize window.
+  assert.equal(TIEBREAK_CONFIG.gridSize, 6);
+  assert.equal(TIEBREAK_CONFIG.activeCount, 18);
+  assert.equal(TIEBREAK_CONFIG.memorizeMs, 4000);
+  assert.ok(
+    TIEBREAK_CONFIG.activeCount < TIEBREAK_CONFIG.gridSize * TIEBREAK_CONFIG.gridSize,
+    "tiebreak active count fits inside its grid",
+  );
+  // roundConfig serves the tiebreak config for round 6 (and clamps
+  // anything above it there too — never falls back to round 1).
+  const cfg = roundConfig(6);
+  assert.equal(cfg.gridSize, 6);
+  assert.equal(cfg.activeCount, 18);
+  assert.equal(roundConfig(99).roundNumber, TIEBREAK_ROUND_NUMBER);
+  assert.equal(roundConfig(99).gridSize, 6);
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -605,6 +629,38 @@ test("computePayout — draw refunds both, no fee", () => {
   assert.equal(p.loserNet, null);
   assert.equal(p.houseFee, 0);
   assert.equal(p.prizePaid, 0);
+  assert.equal(p.refundEach, 100);
+});
+
+test("computePayout — TIEBREAK draw takes 5% of each player's wager", () => {
+  // Equal totals after the 6th round → each player keeps 95% of
+  // their stake; the house takes 5% per side (10% of the pot).
+  const p = computePayout({
+    stakeAmount: 100,
+    result: RESULT.DRAW,
+    drawFeePct: OVERTIME_DRAW_FEE_PCT,
+  });
+  assert.equal(p.refundEach, 95);
+  assert.equal(p.houseFee, 10);
+  assert.equal(p.winnerNet, null);
+  assert.equal(p.prizePaid, 0);
+  // Rounded to 2dp on odd stakes (mirrors keno-pvp's overtime fee).
+  const odd = computePayout({
+    stakeAmount: 40,
+    result: RESULT.DRAW,
+    drawFeePct: 0.05,
+  });
+  assert.equal(odd.refundEach, 38);
+  assert.equal(odd.houseFee, 4);
+  // Winning payouts ignore the draw fee entirely.
+  const win = computePayout({
+    stakeAmount: 100,
+    result: RESULT.PLAYER1,
+    drawFeePct: 0.05,
+  });
+  assert.equal(win.winnerNet, 190);
+  assert.equal(win.houseFee, 10);
+  assert.equal(win.refundEach, null);
 });
 
 test("computePayout — rounding to 2dp", () => {
@@ -619,6 +675,21 @@ test("computePayout rejects invalid inputs", () => {
   );
   assert.throws(() => computePayout({ stakeAmount: 10, result: "banana" }));
   assert.throws(() => computePayout({ stakeAmount: 10, result: null }));
+  // drawFeePct must be in [0, 1].
+  assert.throws(() =>
+    computePayout({
+      stakeAmount: 100,
+      result: RESULT.DRAW,
+      drawFeePct: 1.5,
+    }),
+  );
+  assert.throws(() =>
+    computePayout({
+      stakeAmount: 100,
+      result: RESULT.DRAW,
+      drawFeePct: -0.1,
+    }),
+  );
 });
 
 // ═══════════════════════════════════════════════════════════════════

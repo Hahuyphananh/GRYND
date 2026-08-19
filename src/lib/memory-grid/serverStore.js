@@ -19,10 +19,12 @@
 //       a submitter freezes their grid and waits for the opponent
 //     * reconstruct deadline auto-lock per seat (AFK → score 0)
 //     * round resolution when both seats are in → next round (grid
-//       grows 3×3 → 5×5) or match resolution after round 5
+//       grows 3×3 → 5×5, then a 6×6 TIEBREAK round when the 5 rounds
+//       end on equal TOTAL cumulative scores) or match resolution
 //     * end-state resolution on total cumulative round scores
-//       (higher total wins, equal → draw refund — the existing PvP
-//       tie pattern)
+//       (higher total wins; equal totals → round 6 tiebreak is
+//       dealt, and a round-6 tie is a DRAW refunding 95% per player
+//       — 5% rake per side)
 //     * 90/10 payout split (winner gets 1.9× stake, house keeps 0.1×)
 //     * tile pattern hidden from clients except during the memorize
 //       phase (and the post-match reveal)
@@ -32,8 +34,9 @@
 // State machine (both players are always in the same phase):
 //   waiting → ready → active { memorize → reconstruct → result }
 //   (round 1..5; a round resolves once both seats submit, the round
-//   snapshot is shown for RESULT_WINDOW_MS, then the next round opens
-//   or the match finishes after round 5) → finished
+//   snapshot is shown for RESULT_WINDOW_MS, then the next round opens,
+//   or the round-6 tiebreak is dealt on equal totals, or the match
+//   finishes) → finished
 //   (waiting/ready/active → cancelled)
 
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
@@ -55,6 +58,7 @@ import {
   MAX_STAKE,
   MEMORY_GRID_LOCK_NAMESPACE,
   MIN_STAKE,
+  OVERTIME_DRAW_FEE_PCT,
   PHASES,
   RECONSTRUCT_DEADLINE_MS,
   RESULT,
@@ -62,6 +66,7 @@ import {
   ROUNDS_PER_MATCH,
   READY_WINDOW_MS,
   SUBMIT_STATES,
+  TIEBREAK_ROUND_NUMBER,
   assessReconstruction,
   computeFinalRoundScore,
   computePayout,
@@ -644,9 +649,22 @@ async function advancePhaseOnPoll(tx, match) {
     const current = updated || match;
 
     if (Number(current.roundNumber) >= ROUNDS_PER_MATCH) {
-      // Final round's result shown → resolve the match on TOTAL
-      // cumulative scores (the finished screen replaces the round
-      // result).
+      const currentRound = Number(current.roundNumber || 1);
+      const p1Total = Number(current.p1Total || 0);
+      const p2Total = Number(current.p2Total || 0);
+      // Equal TOTAL cumulative scores after the 5 regular rounds →
+      // deal the harder TIEBREAK round (round 6) instead of
+      // finishing — whoever scores higher on it takes the match.
+      // (Guarded on currentRound < TIEBREAK_ROUND_NUMBER so a
+      // tiebreak round that ALSO ties resolves as a draw below
+      // instead of re-dealing round 6 forever.)
+      if (currentRound < TIEBREAK_ROUND_NUMBER && p1Total === p2Total) {
+        const next = await dealNextRound(tx, current, TIEBREAK_ROUND_NUMBER);
+        return await openMemorize(tx, next, TIEBREAK_ROUND_NUMBER);
+      }
+      // Non-tied totals (or a tied TIEBREAK round) → resolve the
+      // match on the cumulative scores (the finished screen replaces
+      // the round result).
       const resolved = await resolveMatch(tx, current);
       return resolved;
     }
@@ -654,38 +672,49 @@ async function advancePhaseOnPoll(tx, match) {
     // Non-final round → deal the next round and open its memorize
     // phase for both players.
     const nextRound = Number(current.roundNumber || 1) + 1;
-    await tx
-      .update(memoryGridMatches)
-      .set({
-        board: generatePattern(nextRound, {
-          seed: derivePatternSeed({
-            serverSeed: current.serverSeed,
-            matchId: current.id,
-            roundNumber: nextRound,
-          }),
-        }),
-        flips: [],
-        p1RoundScore: 0,
-        p2RoundScore: 0,
-        p1Submitted: false,
-        p2Submitted: false,
-        roundNumber: nextRound,
-      })
-      .where(
-        and(
-          eq(memoryGridMatches.id, current.id),
-          eq(memoryGridMatches.status, "active"),
-        ),
-      );
-    const [refreshed] = await tx
-      .select()
-      .from(memoryGridMatches)
-      .where(eq(memoryGridMatches.id, current.id));
-    const next = refreshed || current;
+    const next = await dealNextRound(tx, current, nextRound);
     return await openMemorize(tx, next, nextRound);
   }
 
   return match;
+}
+
+// Deal a fresh round: generate the round's server-authoritative
+// pattern deterministically from the match seed + round number,
+// reset the per-round state (submissions, round scores, flips) and
+// stamp the new round number on the row. Used for both the regular
+// round progression AND the round-6 tiebreak (the tiebreak pattern
+// derives from the same provably-fair seed derivation, so it is
+// equally verifiable post-match). Returns the refreshed row.
+async function dealNextRound(tx, match, nextRound) {
+  await tx
+    .update(memoryGridMatches)
+    .set({
+      board: generatePattern(nextRound, {
+        seed: derivePatternSeed({
+          serverSeed: match.serverSeed,
+          matchId: match.id,
+          roundNumber: nextRound,
+        }),
+      }),
+      flips: [],
+      p1RoundScore: 0,
+      p2RoundScore: 0,
+      p1Submitted: false,
+      p2Submitted: false,
+      roundNumber: nextRound,
+    })
+    .where(
+      and(
+        eq(memoryGridMatches.id, match.id),
+        eq(memoryGridMatches.status, "active"),
+      ),
+    );
+  const [refreshed] = await tx
+    .select()
+    .from(memoryGridMatches)
+    .where(eq(memoryGridMatches.id, match.id));
+  return refreshed || match;
 }
 
 // ── Apply a (validated) reconstruction submission for a seat ──────────
@@ -1036,15 +1065,18 @@ async function completeRound(tx, match) {
 
 // ── Resolve the match ─────────────────────────────────────────────────
 //
-// End-state machine: all ROUNDS_PER_MATCH rounds are complete, so
-// compare the players' TOTAL cumulative round scores
-// (`p1_total` / `p2_total` — each round scores /100, so a 5-round
-// match totals up to 500). The higher total wins (winner takes 1.9×
-// their stake, house keeps 0.1×); EXACTLY equal totals → DRAW, and
-// the settlement follows the existing PvP tie pattern (lane-rush-
-// duel / keno-pvp): full refund for both, no house fee — never a
-// random or invented winner. The client never supplies scores or the
-// winner: `p1_total`/`p2_total` are accumulated server-side in
+// End-state machine: the regular rounds AND (if needed) the tiebreak
+// round are complete, so compare the players' TOTAL cumulative round
+// scores (`p1_total` / `p2_total` — each round scores /100, so a
+// 5-round match totals up to 500, plus the tiebreak round's /100 if
+// it was played). The higher total wins (winner takes 1.9× their
+// stake, house keeps 0.1×). A DRAW is only reachable when the
+// TIEBREAK round ALSO ties (equal totals after round 5 deal round 6
+// instead of finishing — see advancePhaseOnPoll), so a draw here
+// refunds each player 95% of their stake (5% rake per side —
+// OVERTIME_DRAW_FEE_PCT, mirroring keno-pvp's overtime tie) — never
+// a random or invented winner. The client never supplies scores or
+// the winner: `p1_total`/`p2_total` are accumulated server-side in
 // completeRound, and this function is the single place that decides
 // the result and settles the wager. The comparison itself is the
 // shared pure helper matchWinnerFromTotals so tests cover it
@@ -1055,9 +1087,13 @@ async function resolveMatch(tx, match) {
     Number(match.p2Total || 0),
   );
 
+  // A DRAW is a tiebreak-round draw (equal totals after round 5 go
+  // to round 6, so any end-state draw is a round-6 tie): each player
+  // is refunded 95% of their stake, house keeps 5% per side.
   const payout = computePayout({
     stakeAmount: match.stakeAmount,
     result,
+    drawFeePct: result === RESULT.DRAW ? OVERTIME_DRAW_FEE_PCT : 0,
   });
 
   const winnerId =
@@ -1074,14 +1110,16 @@ async function resolveMatch(tx, match) {
       .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
       .where(eq(users.clerkId, winnerId));
   } else {
-    // DRAW — refund both players in full.
+    // DRAW — refund both players. On a tiebreak draw that is 95% of
+    // each player's stake (5% rake per side), per computePayout's
+    // refundEach.
     await tx
       .update(users)
-      .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
+      .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
       .where(eq(users.clerkId, match.player1Id));
     await tx
       .update(users)
-      .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
+      .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
       .where(eq(users.clerkId, match.player2Id));
   }
 

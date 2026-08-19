@@ -58,6 +58,7 @@ import {
   BETWEEN_ROUNDS_SECONDS,
   ROUND_TIMER_SECONDS,
   TOTAL_ROUNDS,
+  TIEBREAK_ROUND_NUMBER,
 } from "../../../../lib/blackjack-pvp/constants";
 import { useTranslation } from "../../../../hooks/useTranslation";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -104,6 +105,10 @@ type MatchState = {
   result: string | null;
   prizePaid: number;
   houseFee: number;
+  // Present only on a finished DRAW (a tiebreak-round tie): both
+  // players get the same refundEach back — 95% of their stake (5%
+  // per-side rake).
+  refundEach: number | null;
   roundTimer: number;
   startedAt: string | null;
   endedAt: string | null;
@@ -370,7 +375,8 @@ export default function BlackjackPvpMatchPage({
           prevStatus === "ready" &&
           (next.status === "round_1" ||
             next.status === "round_2" ||
-            next.status === "round_3") &&
+            next.status === "round_3" ||
+            next.status === "round_4") &&
           myHand.length === 0 &&
           next.player1Hand.length > 0
         ) {
@@ -437,7 +443,8 @@ export default function BlackjackPvpMatchPage({
       if (
         match.status !== "round_1" &&
         match.status !== "round_2" &&
-        match.status !== "round_3"
+        match.status !== "round_3" &&
+        match.status !== "round_4"
       )
         return;
       if (submitting) return;
@@ -629,7 +636,8 @@ export default function BlackjackPvpMatchPage({
   const isMyTurn =
     match?.status === "round_1" ||
     match?.status === "round_2" ||
-    match?.status === "round_3";
+    match?.status === "round_3" ||
+    match?.status === "round_4";
 
   const mySeatLabel = viewerIsPlayer1
     ? t("blackjackPvp.seat.player1", "Joueur 1")
@@ -716,6 +724,7 @@ export default function BlackjackPvpMatchPage({
       case "round_1":
       case "round_2":
       case "round_3":
+      case "round_4":
         return t("blackjackPvp.status.activePlay", "En jeu");
       case "finished":
         if (match.result === "draw")
@@ -842,7 +851,12 @@ export default function BlackjackPvpMatchPage({
                 ? match.roundNumber
                 : 1
             }
-            totalRounds={TOTAL_ROUNDS}
+            // During the round-4 TIEBREAK the chip reads "Round 4/4"
+            // (roundNumber exceeds the best-of-3 ceiling).
+            totalRounds={Math.max(
+              TOTAL_ROUNDS,
+              match?.roundNumber ?? 1,
+            )}
             myRounds={
               viewerIsPlayer1
                 ? Number(match?.roundsWonPlayer1 || 0)
@@ -896,8 +910,21 @@ export default function BlackjackPvpMatchPage({
             <BetweenRoundsScreen
               t={t}
               matchId={matchId}
-              nextRound={Number(match.roundNumber) + 1}
-              totalRounds={TOTAL_ROUNDS}
+              // The tiebreak transition holds roundNumber=4, which IS
+              // the upcoming round — cap the advertisement at round 4
+              // so it never reads "Round 5/4" (regular transitions
+              // keep the existing roundNumber+1 behaviour).
+              nextRound={
+                Number(match.roundNumber) + 1 > TIEBREAK_ROUND_NUMBER
+                  ? TIEBREAK_ROUND_NUMBER
+                  : Number(match.roundNumber) + 1
+              }
+              totalRounds={Math.max(
+                TOTAL_ROUNDS,
+                Number(match.roundNumber) + 1 > TIEBREAK_ROUND_NUMBER
+                  ? TIEBREAK_ROUND_NUMBER
+                  : Number(match.roundNumber) + 1,
+              )}
               roundsWonPlayer1={Number(match.roundsWonPlayer1) || 0}
               roundsWonPlayer2={Number(match.roundsWonPlayer2) || 0}
               onAfter={fetchStatus}
@@ -1147,6 +1174,7 @@ export default function BlackjackPvpMatchPage({
             stake={Number(match.stakeAmount)}
             prizePaid={Number(match.prizePaid)}
             houseFee={Number(match.houseFee)}
+            refundEach={match.refundEach ?? null}
             winner={match.winner}
             userId={user?.id ?? null}
             result={match.result}
@@ -2149,6 +2177,7 @@ function MatchEndModal({
   stake,
   prizePaid,
   houseFee,
+  refundEach,
   winner: winnerId,
   userId,
   result,
@@ -2158,6 +2187,9 @@ function MatchEndModal({
   stake: number;
   prizePaid: number;
   houseFee: number;
+  // Only set on a finished DRAW: what each player gets back (95% of
+  // their stake — 5% per-side rake on the tiebreak tie).
+  refundEach: number | null;
   // Prompt 9 schema refactor: caller passes `winner` so the prop
   // rename matches.
   winner: string | null;
@@ -2232,8 +2264,13 @@ function MatchEndModal({
             <>
               {t(
                 "blackjackPvp.matchDrawDetail",
-                "Manche décisive. Votre mise de {amount} tokens vous est remboursée.",
-              ).replace("{amount}", stake.toLocaleString())}
+                "Manche décisive. Votre mise de {amount} tokens vous est remboursée, moins une commission de 5 % — {refund} tokens.",
+              )
+                .replace("{amount}", stake.toLocaleString())
+                .replace(
+                  "{refund}",
+                  (refundEach ?? Math.round(stake * 0.95)).toLocaleString(),
+                )}
             </>
           )}
           {!won && !draw && (
