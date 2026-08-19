@@ -71,6 +71,7 @@ import {
   IconAlertTriangle,
   IconClock,
   IconSparkles,
+  IconHeartHandshake,
 } from "@tabler/icons-react";
 
 // ── Match payload types (from /api/memory-grid/match/[id]) ───────────
@@ -127,6 +128,9 @@ type MatchData = {
   winnerId: string | null;
   prizePaid: number;
   houseFee: number;
+  // Present only on a finished DRAW: the amount both players get
+  // back (95% of the stake — 5% per-side rake on the tiebreak tie).
+  refundEach: number | null;
   startedAt: string | null;
   endedAt: string | null;
   createdAt: string | null;
@@ -417,6 +421,12 @@ export default function MemoryGridMatchPage({
   const isCancelled = match?.status === MATCH_STATUS.CANCELLED;
   const playing = match?.status === MATCH_STATUS.ACTIVE;
 
+  // The round-6 TIEBREAK: dealt when the 5 regular rounds end on
+  // exactly equal TOTAL cumulative scores. Detected by the round
+  // number exceeding the best-of-5 ceiling.
+  const isTiebreak =
+    (match?.roundNumber ?? 1) > (match?.roundsPerMatch ?? 5);
+
   const gridSize = match?.roundConfig?.gridSize ?? 3;
   const activeCount = match?.roundConfig?.activeCount ?? 3;
   const totalTiles = gridSize * gridSize;
@@ -678,7 +688,9 @@ export default function MemoryGridMatchPage({
               Memory Grid
             </h1>
             <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-950/40 px-4 py-1.5 text-sm font-black text-emerald-300">
-              ROUND {roundResult.roundNumber}/{match?.roundsPerMatch ?? 5}
+              {roundResult.roundNumber > (match?.roundsPerMatch ?? 5)
+                ? `TIEBREAK ROUND ${roundResult.roundNumber}`
+                : `ROUND ${roundResult.roundNumber}/${match?.roundsPerMatch ?? 5}`}
             </div>
             <p className="mt-2 text-sm text-white/60">
               {msLeft !== null && msLeft > 0
@@ -811,9 +823,22 @@ export default function MemoryGridMatchPage({
           </h1>
           <div className="mt-2 flex items-center justify-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-xs font-black uppercase tracking-widest text-amber-300">
-              Round{" "}
-              <span className="text-yellow-300">{match?.roundNumber ?? 1}</span>
-              /{match?.roundsPerMatch ?? 5}
+              {isTiebreak ? (
+                <>
+                  Tiebreak{" "}
+                  <span className="text-yellow-300">
+                    {match?.roundNumber ?? 6}
+                  </span>
+                </>
+              ) : (
+                <>
+                  Round{" "}
+                  <span className="text-yellow-300">
+                    {match?.roundNumber ?? 1}
+                  </span>
+                  /{match?.roundsPerMatch ?? 5}
+                </>
+              )}
             </span>
             {!isFinished && (
               <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-bold text-white/60">
@@ -979,7 +1004,11 @@ export default function MemoryGridMatchPage({
             )}
             {isFinished && (
               <span className="font-black uppercase tracking-[0.25em] text-emerald-300">
-                {viewerWon ? "You win!" : viewerLost ? "You lose" : "Draw — refund"}
+                {viewerWon
+                  ? "You win!"
+                  : viewerLost
+                    ? "You lose"
+                    : "Draw — 95% refund"}
               </span>
             )}
             {isCancelled && <span className="text-white/60">Match cancelled</span>}
@@ -1210,7 +1239,13 @@ export default function MemoryGridMatchPage({
                 </p>
               )}
               {isDraw && (
-                <p className="text-white/70">Full refund — no house fee.</p>
+                <p className="text-white/70">
+                  Tiebreak tied — both players refunded{" "}
+                  <span className="font-bold text-yellow-300">
+                    {(match.refundEach ?? 0).toLocaleString()}
+                  </span>{" "}
+                  (95% — 5% house fee each).
+                </p>
               )}
               <p className="flex items-center justify-between text-xs text-white/40">
                 <span>Stake</span>
@@ -1228,6 +1263,66 @@ export default function MemoryGridMatchPage({
           </motion.div>
         )}
       </div>
+
+      {/* Tie popup — the round-6 tiebreak ALSO tied, so the match is
+          a draw: both players get their stake back minus the 5%
+          per-side house fee. Overlays the finished screen (both
+          players see the identical refund amount). */}
+      {isFinished && isDraw && match && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+        >
+          <motion.div
+            initial={{ scale: 0.85, y: 30 }}
+            animate={{ scale: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 18 }}
+            className="relative w-full max-w-md rounded-3xl border-4 border-cyan-400/70 bg-gradient-to-b from-[#0b1a33] to-[#08142f] p-6 text-center shadow-[0_0_60px_rgba(34,211,238,0.35)]"
+          >
+            <IconHeartHandshake className="mx-auto mb-3 h-14 w-14 text-cyan-300 drop-shadow-[0_0_14px_rgba(34,211,238,0.6)]" />
+            <h2 className="text-3xl font-black uppercase tracking-wide text-cyan-300">
+              It&apos;s a tie!
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/70">
+              Even the tiebreak round couldn&apos;t split you two. Both
+              players get their stake back minus a 5% house fee.
+            </p>
+            <div className="mx-auto mt-4 max-w-[230px] space-y-1.5 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
+              <p className="flex items-center justify-between text-white/60">
+                <span>Stake</span>
+                <span className="font-bold text-white">
+                  {Number(match.stakeAmount ?? 0).toLocaleString()}
+                </span>
+              </p>
+              <p className="flex items-center justify-between text-white/60">
+                <span>House fee (5%)</span>
+                <span className="font-bold text-red-300">
+                  −
+                  {Math.round(
+                    Number(match.stakeAmount ?? 0) * 0.05,
+                  ).toLocaleString()}
+                </span>
+              </p>
+              <p className="flex items-center justify-between border-t border-white/10 pt-1.5 text-white/60">
+                <span>Refunded</span>
+                <span className="inline-flex items-center gap-1 font-bold text-emerald-300">
+                  +{(match.refundEach ?? 0).toLocaleString()}
+                  <CoinIcon className="h-3.5 w-3.5" />
+                </span>
+              </p>
+            </div>
+            <button
+              onClick={() => router.push("/casino/memory-grid")}
+              disabled={!canLeave}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl border-b-4 border-cyan-700 bg-cyan-400 px-6 py-2.5 text-sm font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
+            >
+              <IconRefresh className="h-4 w-4" />
+              Back to Lobby
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
       <Footer />
     </div>
   );

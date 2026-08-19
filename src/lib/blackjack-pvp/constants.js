@@ -38,6 +38,10 @@ export const MATCH_STATUS = Object.freeze({
   ROUND_1: "round_1",
   ROUND_2: "round_2",
   ROUND_3: "round_3",
+  // TIEBREAK round — dealt only when the best-of-3 ends with tied
+  // round-wins (migration 0075). Whoever wins it takes the match; a
+  // tie on it is a draw refunding 95% per player.
+  ROUND_4: "round_4",
   BETWEEN_ROUNDS: "between_rounds",
   FINISHED: "finished",
   CANCELLED: "cancelled",
@@ -52,17 +56,20 @@ export const ACTIVE_STATES = new Set([
   MATCH_STATUS.ROUND_1,
   MATCH_STATUS.ROUND_2,
   MATCH_STATUS.ROUND_3,
+  MATCH_STATUS.ROUND_4,
   MATCH_STATUS.BETWEEN_ROUNDS,
 ]);
 
 // States where hit/stand/swap/hold actions are accepted. `ready` is
 // intentionally excluded — it's the brief post-pairing banner before
 // round_1 starts. `between_rounds` is excluded — no actions during
-// the transition screen, only Continue / auto-advance.
+// the transition screen, only Continue / auto-advance. round_4 is
+// the TIEBREAK round (actions work exactly like any other round).
 export const PLAYABLE_STATES = new Set([
   MATCH_STATUS.ROUND_1,
   MATCH_STATUS.ROUND_2,
   MATCH_STATUS.ROUND_3,
+  MATCH_STATUS.ROUND_4,
 ]);
 
 // Auto-transition window between resolved rounds, before the next
@@ -76,8 +83,21 @@ export const READY_WINDOW_MS = 3000;
 
 // Best-of-3 ceiling: match ends EARLY when one player reaches
 // `score_player = BEST_OF - 1` of 2 (already won 2 rounds). Total
-// rounds is up to `TOTAL_ROUNDS`.
+// regular rounds is up to `TOTAL_ROUNDS`.
 export const TOTAL_ROUNDS = 3;
+
+// The TIEBREAK round number — dealt only when the best-of-3 ends
+// with TIED round-wins (e.g. 1–1 with a tied deciding round). It is
+// a normal blackjack round (fresh shuffled shoe, same rules); whoever
+// wins it takes the match, and a tie on it is a DRAW refunding each
+// player 95% of their stake (5% rake per side).
+export const TIEBREAK_ROUND_NUMBER = 4;
+
+// Rake applied to a TIEBREAK-round draw ONLY: each player is
+// refunded 95% of their stake (5% taken from each side — 10% of the
+// pot total, matching the standard house take). Mirrors keno-pvp's
+// OVERTIME_DRAW_FEE_PCT and memory-grid's tiebreak fee.
+export const OVERTIME_DRAW_FEE_PCT = 0.05;
 
 // Seconds/numeric counter used by the transition screen UI to advertise
 // the next round. Mirrors `BETWEEN_ROUNDS_MS / 1000` (rounded).

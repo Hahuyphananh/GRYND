@@ -33,6 +33,7 @@ import {
   HOLD_LIMIT_PER_ROUND,
   HOUSE_FEE_PCT,
   MATCH_STATUS,
+  OVERTIME_DRAW_FEE_PCT,
   PEEK_LIMIT_PER_ROUND,
   PLAYABLE_STATES,
   PLAYER_STATE,
@@ -41,6 +42,7 @@ import {
   ROUND_DEADLINE_MS,
   ROUND_TIMER_SECONDS,
   SWAP_LIMIT_PER_ROUND,
+  TIEBREAK_ROUND_NUMBER,
   TOTAL_ROUNDS,
   USE_HELD_SUBACTIONS,
   buildDeck,
@@ -54,11 +56,18 @@ const ROUND_STATUS_BY_NUMBER = {
   1: MATCH_STATUS.ROUND_1,
   2: MATCH_STATUS.ROUND_2,
   3: MATCH_STATUS.ROUND_3,
+  // TIEBREAK round — dealt only when the best-of-3 ends tied.
+  4: MATCH_STATUS.ROUND_4,
 };
 
 // Map a 1-based `currentRound` to the canonical match.status enum.
+// Clamps to TIEBREAK_ROUND_NUMBER (round 4) so the tiebreak round
+// maps to round_4 instead of falling back to round_1.
 export function statusForRoundNumber(roundNumber) {
-  const clamped = Math.max(1, Math.min(TOTAL_ROUNDS, Number(roundNumber) || 1));
+  const clamped = Math.max(
+    1,
+    Math.min(TIEBREAK_ROUND_NUMBER, Number(roundNumber) || 1),
+  );
   return ROUND_STATUS_BY_NUMBER[clamped] ?? MATCH_STATUS.ROUND_1;
 }
 
@@ -1060,6 +1069,57 @@ async function resolveRound(tx, match) {
   const earlyFinish = newScoreP1 >= 2 || newScoreP2 >= 2;
 
   if (earlyFinish || slot >= TOTAL_ROUNDS) {
+    // ── TIEBREAK transition ─────────────────────────────────────
+    // The best-of-3 ended with TIED round-wins (e.g. 1–1 with a tied
+    // deciding round, or 0–0 from all-tied rounds) → deal the
+    // TIEBREAK round (round 4) instead of settling a draw. Reuses
+    // the between-rounds transition so a fresh shuffled shoe is
+    // dealt and the "Round 4 incoming" screen shows before it.
+    if (
+      !earlyFinish &&
+      newScoreP1 === newScoreP2 &&
+      slot < TIEBREAK_ROUND_NUMBER
+    ) {
+      nextStatus = MATCH_STATUS.BETWEEN_ROUNDS;
+      nextRound = TIEBREAK_ROUND_NUMBER;
+      nextDeadline = new Date(Date.now() + BETWEEN_ROUNDS_MS);
+
+      const tiebreakSetValues = {
+        status: nextStatus,
+        roundNumber: nextRound,
+        roundsWonPlayer1: newScoreP1,
+        roundsWonPlayer2: newScoreP2,
+        roundDeadline: nextDeadline,
+        // Preserve the just-resolved round's hand + state on the row
+        // until `advanceFromBetweenRounds` flips it to round_4.
+        player1Hand: match.player1Hand ?? [],
+        player2Hand: match.player2Hand ?? [],
+        player1State: match.player1State ?? PLAYER_STATE.STOOD,
+        player2State: match.player2State ?? PLAYER_STATE.STOOD,
+        // Stash the (now-consumed) deck; the tiebreak rebuilds.
+        deck: match.deck ?? [],
+        // Reset all per-round counters + frozen cards for round 4.
+        player1UsedSwap: 0,
+        player2UsedSwap: 0,
+        player1UsedFreeze: 0,
+        player2UsedFreeze: 0,
+        player1UsedPeek: 0,
+        player2UsedPeek: 0,
+        player1FrozenCard: null,
+        player2FrozenCard: null,
+        player1HeldResolved: null,
+        player2HeldResolved: null,
+      };
+
+      const [tiebreakUpdated] = await tx
+        .update(blackjackPvpMatches)
+        .set(tiebreakSetValues)
+        .where(eq(blackjackPvpMatches.id, match.id))
+        .returning();
+
+      return tiebreakUpdated || match;
+    }
+
     // ── Match end ───────────────────────────────────────────────
     nextStatus = MATCH_STATUS.FINISHED;
     nextRound = slot; // freeze round counter at the deciding slot
@@ -1077,19 +1137,23 @@ async function resolveRound(tx, match) {
       houseFee = credit.fee.toFixed(2);
       result = RESULT.PLAYER2;
     } else {
-      // Best-of-3 draw → refund both players in full, no house fee.
+      // TIEBREAK-round draw (round 4 also tied) → refund each player
+      // 95% of their stake (5% rake per side — the same tie-breaker
+      // fee as memory-grid / keno-pvp overtime). No winner.
+      const refundEach = Number(
+        (Number(match.stakeAmount) * (1 - OVERTIME_DRAW_FEE_PCT)).toFixed(2),
+      );
       await tx
         .update(users)
-        .set({
-          balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-        })
+        .set({ balance: sql`${users.balance} + ${refundEach}` })
         .where(eq(users.clerkId, match.player1Id));
       await tx
         .update(users)
-        .set({
-          balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-        })
+        .set({ balance: sql`${users.balance} + ${refundEach}` })
         .where(eq(users.clerkId, match.player2Id));
+      houseFee = Number(
+        (Number(match.stakeAmount) * OVERTIME_DRAW_FEE_PCT * 2).toFixed(2),
+      ).toFixed(2);
       result = RESULT.DRAW;
     }
   } else {
@@ -1247,9 +1311,11 @@ async function advanceFromBetweenRounds(tx, match) {
   // skipping round_2 entirely. Just use match.roundNumber as-is.
   // Defensive clamp mirrors `statusForRoundNumber` so a stale/legacy
   // row (e.g. pre-migration 0042) can't loop forever on round_1.
+  // Clamps to TIEBREAK_ROUND_NUMBER so the tiebreak round (round 4)
+  // can actually be dealt.
   const upcomingRound = Math.max(
     1,
-    Math.min(TOTAL_ROUNDS, Number(match.roundNumber) || 1),
+    Math.min(TIEBREAK_ROUND_NUMBER, Number(match.roundNumber) || 1),
   );
 
   // Build ONE fresh shuffled shoe and deal BOTH seats from it. This

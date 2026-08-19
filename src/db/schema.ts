@@ -1680,6 +1680,10 @@ export const blackjackPvpStatusEnum = pgEnum("blackjack_pvp_status", [
   "round_1",
   "round_2",
   "round_3",
+  // TIEBREAK round — dealt only when the best-of-3 ends with tied
+  // round-wins (migration 0075). Whoever wins it takes the match; a
+  // tie on it is a draw refunding 95% per player.
+  "round_4",
   "between_rounds",
   "finished",
   "cancelled",

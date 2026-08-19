@@ -45,6 +45,7 @@ import {
   enrichMatchesWithUsers,
 } from "../../../../../lib/memory-grid/serverStore";
 import {
+  OVERTIME_DRAW_FEE_PCT,
   PHASES,
   RECONSTRUCT_DEADLINE_MS,
   RESULT_WINDOW_MS,
@@ -139,7 +140,10 @@ function normaliseMatchForViewer(match, viewerUserId) {
     serverSeedHash: match.serverSeedHash ?? null,
     serverSeed: finished ? (match.serverSeed ?? null) : null,
     // Result + payout. Loser sees zero prize/fees (avoids leaking
-    // the winner's exact payout amount).
+    // the winner's exact payout amount). On a finished DRAW (only
+    // reachable when the round-6 tiebreak also ties) both players
+    // get the same refundEach back — 95% of their stake (5% per-
+    // side rake) — so it is safe to show to both.
     result: match.result ?? null,
     winnerId: match.winnerId ?? null,
     prizePaid:
@@ -150,6 +154,14 @@ function normaliseMatchForViewer(match, viewerUserId) {
       finished && match.winnerId === viewerUserId
         ? Number(match.houseFee) || 0
         : 0,
+    refundEach:
+      finished && match.result === "draw"
+        ? Number(
+            (Number(match.stakeAmount) * (1 - OVERTIME_DRAW_FEE_PCT)).toFixed(
+              2,
+            ),
+          ) || 0
+        : null,
     startedAt: match.startedAt,
     endedAt: match.endedAt,
     createdAt: match.createdAt,
