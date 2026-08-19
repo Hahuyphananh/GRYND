@@ -54,6 +54,7 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
+import RoundMarkers from "../../../../components/casino/RoundMarkers";
 // The casino's existing logo asset (GoonBet smiley) — reused as the
 // memorize-phase "active tile" marker so the grid reads as the
 // casino's own visual language (no emojis / unrelated symbols).
@@ -824,6 +825,18 @@ export default function MemoryGridMatchPage({
               </span>
             )}
           </div>
+        </div>
+
+        {/* Round tracker — blue = rounds you won, red = rounds the
+            opponent won (shared best-of marker, brawl-stars style). */}
+        <div className="mb-3 flex justify-center rounded-2xl border border-cyan-700/30 bg-black/30 px-4 py-3">
+          <RoundMarkers
+            total={match?.roundsPerMatch ?? 5}
+            myWins={myScore ?? 0}
+            oppWins={oppScore ?? 0}
+            myLabel="You"
+            oppLabel={oppName}
+          />
         </div>
 
         {/* Scoreboard — cumulative points (each round scores /100),

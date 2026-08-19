@@ -13,8 +13,8 @@
 
 import React from "react";
 import { motion } from "framer-motion";
+import RoundMarkers from "../casino/RoundMarkers";
 import { TARGET_WINS, MAX_ROUNDS } from "../../lib/precision/constants";
-import { scorePop } from "../../lib/animations";
 import { diffToRank } from "../../lib/precision/utils";
 import { PrecisionRankIcon } from "./PrecisionRankIcon";
 import type { PlayerSeat, PrecisionPlayer, PrecisionScore } from "../../lib/precision/types";
@@ -33,6 +33,10 @@ interface PrecisionScoreboardProps {
   players: PrecisionPlayer[];
   currentRound: number;
   lastRoundWinnerSeat: PlayerSeat | null;
+  /** The viewer's own seat (1 or 2) — used to render the blue/red
+   *  round markers from the viewer's perspective (blue = rounds I
+   *  won, red = rounds the opponent won). Defaults to seat 1. */
+  viewerSeat?: PlayerSeat;
   /** When true, the opponent's stop is still pending — hint at it visually. */
   awaitingOpponentStop?: boolean;
   /** Per-seat stop telemetry from the most recently decided round.
@@ -73,62 +77,26 @@ function RankBadge({
   );
 }
 
-interface SeatDotsProps {
-  seat: PlayerSeat;
-  wins: number;
-  filledColor: string;
-  emptyColor: string;
-  t: (key: string, params?: Record<string, string | number>) => string;
-}
-
-function SeatDots({ seat, wins, filledColor, emptyColor, t }: SeatDotsProps) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-300">
-        {seat === 1 ? t("games.precision.seat_alpha") : t("games.precision.seat_bravo")}
-      </span>
-      {Array.from({ length: TARGET_WINS }).map((_, i) => {
-        // Key includes `wins` so when a new win lands (e.g., wins: 1→2),
-        // the freshly-filled dot MOUNTS and runs `scorePop` (spring
-        // scale 0 → 1). Already-filled dots (i < prev-wins) keep their
-        // original mount and skip the animation — only the NEWLY lit
-        // dot pops. Animations re-key per-wins, NOT per-poll, so this
-        // does not regress the rAF/React.memo optimizations.
-        const filled = i < wins;
-        return (
-          <motion.span
-            key={`${seat}-${i}-${wins}-${filled ? "filled" : "empty"}`}
-            aria-label={
-              filled
-                ? `${seat === 1 ? t("games.precision.seat_alpha") : t("games.precision.seat_bravo")} win ${i + 1}`
-                : `${seat === 1 ? t("games.precision.seat_alpha") : t("games.precision.seat_bravo")} ${i + 1} pending`
-            }
-            className={`inline-block h-3 w-3 rounded-full border transition-shadow ${
-              filled ? filledColor : emptyColor
-            }`}
-            {...(filled && i === wins - 1 ? scorePop : {})}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
 function PrecisionScoreboardImpl({
   score,
   players,
   currentRound,
   lastRoundWinnerSeat,
+  viewerSeat = 1,
   awaitingOpponentStop = false,
   lastRoundStops,
 }: PrecisionScoreboardProps) {
-  // `t` is resolved INSIDE the component (never at module scope — a
-  // hook call at module scope crashes the page on import with "Invalid
-  // hook call" / "Cannot read properties of null (reading
-  // 'useContext')"). Passed down to SeatDots as a prop.
   const { t } = useTranslation();
   const seat1Player = players.find((p) => p.seat === 1);
   const seat2Player = players.find((p) => p.seat === 2);
+
+  // Unified round markers from the viewer's perspective: blue = rounds
+  // the viewer won, red = rounds the opponent won (brawl-stars style,
+  // shared with RPS / blackjack / memory grid).
+  const myWins = viewerSeat === 2 ? score.seat2 : score.seat1;
+  const oppWins = viewerSeat === 2 ? score.seat1 : score.seat2;
+  const myName = (viewerSeat === 2 ? seat2Player : seat1Player)?.name;
+  const oppName = (viewerSeat === 2 ? seat1Player : seat2Player)?.name;
 
   // Highlight the most recent round winner so both sides see who took it.
   const seat1Ring = lastRoundWinnerSeat === 1 ? RING_LAST_WINNER : "";
@@ -160,6 +128,18 @@ function PrecisionScoreboardImpl({
         <p className="text-xs font-bold uppercase tracking-[0.35em] text-yellow-200">
           {t("games.precision.round_n", { round: currentRound })}
         </p>
+      </div>
+
+      {/* Round tracker — blue = rounds you won, red = rounds the
+          opponent won (shared best-of marker, brawl-stars style). */}
+      <div className="mt-3 flex justify-center rounded-xl border border-cyan-400/20 bg-black/20 px-3 py-2">
+        <RoundMarkers
+          total={MAX_ROUNDS}
+          myWins={myWins}
+          oppWins={oppWins}
+          myLabel={myName ?? t("games.precision.seat_alpha")}
+          oppLabel={oppName ?? t("games.precision.seat_bravo")}
+        />
       </div>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -195,15 +175,6 @@ function PrecisionScoreboardImpl({
           transition={{ duration: 0.6, ease: "easeOut" }}
         >
           <p className="text-xs text-slate-300">{seat1Player?.name ?? t("games.precision.seat_alpha")}</p>
-          <div className="mt-2">
-            <SeatDots
-              seat={1}
-              wins={score.seat1}
-              filledColor="bg-fuchsia-400 border-fuchsia-200"
-              emptyColor="border-fuchsia-700/60 bg-fuchsia-950/30"
-              t={t}
-            />
-          </div>
           {lastRoundStops && (
             <RankBadge
               seat={1}
@@ -237,15 +208,6 @@ function PrecisionScoreboardImpl({
           transition={{ duration: 0.6, ease: "easeOut" }}
         >
           <p className="text-xs text-slate-300">{seat2Player?.name ?? t("games.precision.seat_bravo")}</p>
-          <div className="mt-2">
-            <SeatDots
-              seat={2}
-              wins={score.seat2}
-              filledColor="bg-cyan-300 border-cyan-100"
-              emptyColor="border-cyan-700/60 bg-cyan-950/30"
-              t={t}
-            />
-          </div>
           {lastRoundStops && (
             <RankBadge
               seat={2}

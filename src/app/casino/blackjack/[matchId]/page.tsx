@@ -33,6 +33,7 @@ import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../../components/navigation-bar";
 import BlackjackCardBack from "../../../../components/BlackjackCardBack";
 import ReportModal from "../../../../components/ReportModal";
+import RoundMarkers from "../../../../components/casino/RoundMarkers";
 import {
   playCardDraw,
   playVictory,
@@ -1766,6 +1767,19 @@ function GameTableCenter({
             {oppSeatLabel}
           </span>
         </div>
+      </div>
+
+      {/* Round tracker — blue = rounds you won, red = rounds the
+          opponent won (shared best-of marker, brawl-stars style). */}
+      <div className="mt-3 flex justify-center border-t border-[#FFD700]/15 pt-3">
+        <RoundMarkers
+          total={totalRounds}
+          myWins={myRounds}
+          oppWins={oppRounds}
+          myLabel={mySeatLabel}
+          oppLabel={oppSeatLabel}
+          compact
+        />
       </div>
     </motion.div>
   );

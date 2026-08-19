@@ -30,8 +30,10 @@ import {
   BALL_COUNT,
   GLOW_MS,
   KENO_POOL_SIZE,
+  MAX_ROUNDS,
   POINTS_TO_WIN,
 } from "../../../../lib/keno-pvp/constants";
+import RoundMarkers from "../../../../components/casino/RoundMarkers";
 import { ballSchedule, computeRoundStats } from "../../../../lib/keno-pvp/engine";
 import { KENO_MULTIPLIER_TABLE } from "../../../../lib/kenoMultipliers";
 import {
@@ -571,6 +573,18 @@ export default function KenoPvpMatchPage({ params }) {
                 }}
               />
               <div className="absolute inset-y-0 left-1/2 w-px bg-white/40" />
+            </div>
+            {/* Round tracker — blue = rounds you won, red = rounds the
+                opponent won (shared best-of marker, brawl-stars style). */}
+            <div className="mt-1.5 flex justify-center">
+              <RoundMarkers
+                total={MAX_ROUNDS}
+                myWins={myWins}
+                oppWins={oppWins}
+                myLabel="You"
+                oppLabel={oppName}
+                compact
+              />
             </div>
             <div className="mt-1 flex items-center justify-center gap-2 text-[11px] text-white/50">
               <span>{myWins}–{oppWins} round wins</span>
