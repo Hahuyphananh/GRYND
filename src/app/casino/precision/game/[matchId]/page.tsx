@@ -1110,6 +1110,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                   players={players}
                   currentRound={currentRound}
                   lastRoundWinnerSeat={lastRoundWinnerSeat}
+                  viewerSeat={localSeat}
                 />
                 <div className="flex flex-col items-center justify-center rounded-2xl border border-yellow-400/40 bg-[#1a120a]/80 p-8 text-center sm:p-10">
                   <p className="animate-pulse"><IconClock size={44} className="text-yellow-400" /></p>
@@ -1153,6 +1154,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                   players={players}
                   currentRound={currentRound}
                   lastRoundWinnerSeat={lastRoundWinnerSeat}
+                  viewerSeat={localSeat}
                   awaitingOpponentStop={awaitingOpponentStop}
                   lastRoundStops={
                     state.lastRoundStops

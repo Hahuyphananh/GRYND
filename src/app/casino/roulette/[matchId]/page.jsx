@@ -78,6 +78,7 @@ import {
   AlertIcon,
 } from "../../../../components/roulette-pvp/RouletteIcons";
 import { IconFlag } from "@tabler/icons-react";
+import RoundMarkers from "../../../../components/casino/RoundMarkers";
 
 const POLL_INTERVAL_MS = 1500;
 
@@ -1590,6 +1591,18 @@ export default function RoulettePvpGamePage({ params }) {
                       {scoreOppView}
                     </div>
                   </div>
+                </div>
+                {/* Round tracker — blue = rounds you won, red = rounds
+                    the opponent won (shared best-of marker). Draws leave
+                    a dot empty. */}
+                <div className="mt-2 flex justify-center">
+                  <RoundMarkers
+                    total={3}
+                    myWins={scoreYouView}
+                    oppWins={scoreOppView}
+                    myLabel="You"
+                    oppLabel="Opp"
+                  />
                 </div>
                 <div className="mt-2 text-[10px] text-center text-white/50">
                   Always 3 rounds. <b>Round wins</b> shown above are informational<br/>
