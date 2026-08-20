@@ -6,10 +6,10 @@ import { useUser } from "@clerk/nextjs";
 import React, { useEffect, useState } from "react";
 import { isSafeProfilePictureUrl } from "../../lib/security/media";
 import Img1 from "../../images/roulette.png";
-import Img2 from "../../images/blackjack.jpg";
-import Img3 from "../../images/poker.jpg";
-import Img4 from "../../images/plinko.svg";
-import Img6 from "../../images/crash.svg";
+import Img2 from "../../images/blackjack-div.png";
+import Img3 from "../../images/poker div image.png";
+import Img4 from "../../images/plinko-div.png";
+import Img6 from "../../images/crash div image.png";
 import Img7 from "../../images/chess.svg";
 import Img10 from "../../images/keno.svg";
 import Img11 from "../../images/uno.svg";
@@ -23,8 +23,8 @@ import Img21 from "../../images/odds.svg";
 import Img19 from "../../images/dice-flush.svg";
 import Img22 from "../../images/precision.svg";
 import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
-import ImgMinesPvp from "../../images/mines-pvp.svg";
-import ImgMemoryGrid from "../../images/memory-grid.svg";
+import ImgMinesPvp from "../../images/mines-div.png";
+import ImgMemoryGrid from "../../images/memory-grid-div.png";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -107,6 +107,7 @@ function MainComponent() {
       href: "/casino/crash-arena",
       leaderboardKey: "crash",
       image: Img6,
+      imageClassName: "object-center scale-[1.08]",
       descriptionKey: "games.crash_arena_desc",
     },
     {
@@ -283,7 +284,7 @@ function MainComponent() {
           <Image
             src={game.image}
             alt={game.nameKey ? t(game.nameKey) : game.name}
-            className="h-full w-full object-cover transition-transform group-hover:scale-110"
+            className={`h-full w-full object-cover object-center transition-transform group-hover:scale-110 ${game.imageClassName || ""}`}
           />
         </div>
 

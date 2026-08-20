@@ -11,9 +11,9 @@ import { isSafeProfilePictureUrl } from "../lib/security/media";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
 import Img1 from "../images/roulette.png";
-import Img2 from "../images/blackjack.jpg";
+import Img2 from "../images/blackjack-div.png";
 import Img3 from "../images/poker.jpg";
-import Img4 from "../images/plinko.svg";
+import Img4 from "../images/plinko-div.png";
 import HeroBg from "../images/casino-bg.png";
 import {
   fadeIn,
