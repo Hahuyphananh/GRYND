@@ -153,9 +153,13 @@ export default function Footer() {
             <div>© 2026 GoonBet. All rights reserved.</div>
 
             <div className="flex items-center gap-2">
-              <span>18+ only</span>
+              <Link href="/terms" className="transition-colors hover:text-[#f5ff3b]">
+                18+ only
+              </Link>
               <span>&bull;</span>
-              <span>Play responsibly</span>
+              <Link href="/fair-play" className="transition-colors hover:text-[#f5ff3b]">
+                Play responsibly
+              </Link>
             </div>
           </div>
         </div>

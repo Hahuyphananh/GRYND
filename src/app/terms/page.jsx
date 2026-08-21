@@ -49,22 +49,32 @@ const sections = [
   {
     title: "9. Limitation of Liability",
     content:
-      "GoonBet is provided 'as is' without warranties of any kind, either express or implied. We are not liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the platform. Our total liability to you for any claims arising from your use of GoonBet is limited to the amount of tokens in your account at the time of the claim.",
+      "To the maximum extent permitted by applicable law, in no event shall GoonBet, its affiliates, and their respective officers, directors, employees, agents, or licensors be liable for any indirect, incidental, special, consequential, exemplary, or punitive damages, or for any loss of profits, revenue, data, goodwill, or business opportunity, arising out of or in connection with your use of, or inability to use, the platform — including without limitation damages caused by bugs, errors, downtime, service interruptions, data loss, or platform crashes. Our total aggregate liability to you for all claims arising out of or relating to these Terms or your use of the platform, whether in contract, tort (including negligence), or otherwise, shall not exceed the amount of tokens in your account at the time the claim arises. Because tokens have no real-world monetary value and are not redeemable for cash, this cap reflects the limited nature of the services we provide. Some jurisdictions do not allow the exclusion or limitation of certain damages, so some of the above exclusions or limitations may not apply to you.",
   },
   {
-    title: "10. Termination",
+    title: "10. Disclaimer of Warranties",
     content:
-      "We reserve the right to suspend or terminate your account at any time, with or without cause, including for violation of these terms. Upon termination, your right to use the platform immediately ceases. We may delete your account data in accordance with our Privacy Policy. You may also delete your account at any time through your profile settings.",
+      "THE PLATFORM IS PROVIDED ON AN \"AS IS\" AND \"AS AVAILABLE\" BASIS, WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. WE DO NOT WARRANT THAT THE PLATFORM WILL BE UNINTERRUPTED, ERROR-FREE, SECURE, OR FREE OF VIRUSES OR OTHER HARMFUL COMPONENTS, NOR DO WE WARRANT THE ACCURACY, RELIABILITY, OR COMPLETENESS OF ANY CONTENT OR RESULTS OBTAINED THROUGH THE PLATFORM. ANY CONTENT YOU ACCESS OR DOWNLOAD FROM THE PLATFORM IS AT YOUR OWN RISK, AND YOU ARE SOLELY RESPONSIBLE FOR ANY DAMAGE TO YOUR DEVICE OR LOSS OF DATA RESULTING THEREFROM. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, WE DISCLAIM ALL WARRANTIES, EXPRESS OR IMPLIED. SOME JURISDICTIONS DO NOT ALLOW THE EXCLUSION OF CERTAIN WARRANTIES, SO SOME OF THE ABOVE EXCLUSIONS MAY NOT APPLY TO YOU.",
   },
   {
-    title: "11. Changes to Terms",
+    title: "11. Indemnification",
+    content:
+      "You agree to indemnify, defend, and hold harmless GoonBet, its affiliates, and their respective officers, directors, employees, agents, and licensors from and against any and all claims, demands, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising out of or in connection with: (a) your use of the platform; (b) your violation of these Terms; (c) your violation of any applicable law or regulation; or (d) your infringement of any third-party rights, including intellectual property or privacy rights. We reserve the right, at your expense, to assume the exclusive defense and control of any matter for which you are required to indemnify us, and you agree to cooperate with our defense of such claims.",
+  },
+  {
+    title: "12. Termination",
+    content:
+      "We reserve the right to suspend or terminate your account at any time, with or without cause, including for violation of these Terms. Upon termination, your right to use the platform immediately ceases. We may delete your account data in accordance with our Privacy Policy. You may also delete your account at any time through your profile settings. Sections that by their nature should survive termination — including Limitation of Liability, Disclaimer of Warranties, Indemnification, and Governing Law & Disputes — will survive termination of these Terms.",
+  },
+  {
+    title: "13. Changes to Terms",
     content:
       "We may modify these Terms & Conditions at any time. Material changes will be communicated via email or through a notice on our platform. Your continued use of GoonBet after changes take effect constitutes your acceptance of the new terms. If you do not agree with changes, you should stop using the platform and delete your account.",
   },
   {
-    title: "12. Governing Law",
+    title: "14. Governing Law & Disputes",
     content:
-      "These Terms & Conditions are governed by and construed in accordance with applicable laws. Any disputes arising from these terms or your use of GoonBet shall be resolved through binding arbitration. You agree to submit to the personal jurisdiction of the courts for the resolution of any disputes.",
+      "These Terms & Conditions and any dispute arising out of or relating to them, or to your use of the platform, shall be governed by and construed in accordance with the laws of the Province of Quebec and the federal laws of Canada applicable therein, without regard to conflict-of-laws principles. Any dispute, claim, or controversy arising out of or relating to these Terms or the platform shall first be resolved through good-faith negotiations between the parties. If the dispute is not resolved within thirty (30) days of the first notice, it shall be resolved by binding arbitration conducted in the Province of Quebec, Canada, under the applicable arbitration rules in effect at that time, and judgment on the arbitral award may be entered in any court of competent jurisdiction. You agree to submit to the personal jurisdiction of the courts of the Province of Quebec for any matters not subject to arbitration and for the enforcement of any arbitration award.",
   },
 ];
 
@@ -85,7 +95,7 @@ export default function TermsPage() {
             Terms & Conditions
           </h1>
           <p className="mb-8 text-lg text-[#9dd8ff]">
-            Last updated: May 24, 2026
+            Last updated: August 20, 2026
           </p>
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">
