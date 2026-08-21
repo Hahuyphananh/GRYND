@@ -10,8 +10,8 @@ import Img2 from "../../images/blackjack-div.png";
 import Img3 from "../../images/poker div image.png";
 import Img4 from "../../images/plinko-div.png";
 import Img6 from "../../images/crash div image.png";
-import Img7 from "../../images/chess.svg";
-import Img10 from "../../images/keno.svg";
+import Img7 from "../../images/chess game div.png";
+import Img10 from "../../images/Keno image div.png";
 import Img11 from "../../images/uno.svg";
 import Img12 from "../../images/rps.svg";
 import Img13 from "../../images/dice.svg";
@@ -123,6 +123,7 @@ function MainComponent() {
       href: "/casino/keno",
       leaderboardKey: "keno",
       image: Img10,
+      imageClassName: "object-center scale-[1.35] group-hover:scale-[1.55]",
       descriptionKey: "games.keno_desc",
     },
     {
