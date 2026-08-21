@@ -13,14 +13,14 @@
 //   10    | Streak Starter
 //   14    | Lucky Regular
 //   21    | Dedicated Roller
-//   30    | Monthly High Roller
-//   45    | Fortune Chaser
-//   60    | Casino Veteran
+//   30    | Monthly Champion
+//   45    | Prize Chaser
+//   60    | Veteran
 //   75    | Lucky Legend
 //   100   | Streak Master
 //   150   | Vault Elite
-//   200   | Jackpot Grinder
-//   365   | Casino King
+//   200   | Milestone Grinder
+//   365   | King
 
 const STREAK_TITLES = [
   { days: 1, title: "Daily Visitor" },
@@ -30,14 +30,14 @@ const STREAK_TITLES = [
   { days: 10, title: "Streak Starter" },
   { days: 14, title: "Lucky Regular" },
   { days: 21, title: "Dedicated Roller" },
-  { days: 30, title: "Monthly High Roller" },
-  { days: 45, title: "Fortune Chaser" },
-  { days: 60, title: "Casino Veteran" },
+  { days: 30, title: "Monthly Champion" },
+  { days: 45, title: "Prize Chaser" },
+  { days: 60, title: "Veteran" },
   { days: 75, title: "Lucky Legend" },
   { days: 100, title: "Streak Master" },
   { days: 150, title: "Vault Elite" },
-  { days: 200, title: "Jackpot Grinder" },
-  { days: 365, title: "Casino King" },
+  { days: 200, title: "Milestone Grinder" },
+  { days: 365, title: "King" },
 ].sort((a, b) => a.days - b.days);
 
 /**

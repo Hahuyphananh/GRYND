@@ -261,10 +261,10 @@ export default function NotFound() {
             Back to Home
           </Link>
           <Link
-            href="/casino"
+            href="/games"
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-7 py-3 font-bold text-[#00e5ff] transition-all duration-200 hover:bg-[#00e5ff]/20 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] active:scale-95 sm:w-auto"
           >
-            Explore the Casino
+            Explore the Games
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-5 w-5"

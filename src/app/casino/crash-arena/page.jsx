@@ -62,7 +62,7 @@ export default function CrashArenaPage() {
           href="/casino"
           className="inline-flex items-center gap-1 text-sm text-cyan-100/70 hover:text-amber-300 mb-3 transition-colors"
         >
-          ← Back to Casino
+          ← Back to Games
         </Link>
 
         <ArenaLobby

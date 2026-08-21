@@ -11,7 +11,7 @@ export async function sendInactivityEmail(user: {
     html: renderTemplate(
       "We miss you",
       `<p>Come back now for a comeback reward: <b>50 bonus tokens</b>.</p><p>Offer ends soon.</p>`,
-      "Return to Casino",
+      "Return to Games",
       `${process.env.NEXT_PUBLIC_APP_URL ?? "https://goonbet.dedyn.io"}`,
     ),
   });

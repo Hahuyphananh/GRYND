@@ -16,7 +16,7 @@ export async function sendWeeklySummaryEmail(
     user,
     type: "weekly_summary",
     dedupeKey: `summary:${user.clerkId}:${stats.periodKey}`,
-    subject: "Your weekly casino summary",
+    subject: "Your weekly game summary",
     html: renderTemplate(
       "Weekly Summary",
       `<p>Total wins: ${stats.totalWins}</p><p>Total losses: ${stats.totalLosses}</p><p><b>${msg}</b></p>`,

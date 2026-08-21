@@ -344,8 +344,13 @@ export default function PageSkeleton() {
   let content: ReactNode = <GenericSkeleton />;
   if (pathname) {
     if (pathname === "/") content = <HomeSkeleton />;
-    else if (pathname === "/casino") content = <CasinoSkeleton />;
-    else if (pathname.startsWith("/casino/")) content = <GameSkeleton />;
+    else if (pathname === "/casino" || pathname === "/games")
+      content = <CasinoSkeleton />;
+    else if (
+      pathname.startsWith("/casino/") ||
+      pathname.startsWith("/games/")
+    )
+      content = <GameSkeleton />;
     else if (pathname === "/classement" || pathname.startsWith("/classement/"))
       content = <ClassementSkeleton />;
     else if (pathname === "/profil" || pathname.startsWith("/profil/"))

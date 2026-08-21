@@ -142,7 +142,7 @@ export default function HexDuelMultiplayerPage() {
             href="/casino"
             className="rounded-lg border border-white/15 px-4 py-2 text-[11px] font-medium text-slate-400 hover:text-white hover:border-white/25 hover:bg-white/5 transition-all duration-200"
           >
-            ← Back to Casino
+            ← Back to Games
           </Link>
         </div>
 

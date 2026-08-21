@@ -44,7 +44,7 @@ export default function Footer() {
             </Link>
 
             <p className="mt-4 text-sm leading-relaxed text-[#7dd3fc]">
-              Skill-based multiplayer casino games and competitive entertainment platform.
+              Skill-based multiplayer games and competitive entertainment platform.
             </p>
           </div>
 
@@ -59,8 +59,8 @@ export default function Footer() {
                 Home
               </Link>
 
-              <Link href="/casino" className={linkClass}>
-                Casino
+              <Link href="/games" className={linkClass}>
+                Games
               </Link>
 
               <Link href="/classement" className={linkClass}>
@@ -84,32 +84,32 @@ export default function Footer() {
             </h3>
 
             <div className="space-y-2 text-sm">
-              <Link href="/casino/poker/multi" className={linkClass}>
+              <Link href="/games/poker/multi" className={linkClass}>
                 Poker
               </Link>
 
-              <Link href="/casino/neon-flush" className={linkClass}>
+              <Link href="/games/neon-flush" className={linkClass}>
                 Neon Flush
               </Link>
 
-              <Link href="/casino/chess" className={linkClass}>
+              <Link href="/games/chess" className={linkClass}>
                 Chess
               </Link>
 
-              <Link href="/casino/pool-masters" className={linkClass}>
+              <Link href="/games/pool-masters" className={linkClass}>
                 Pool Masters
               </Link>
 
-              <Link href="/casino/dice-flush" className={linkClass}>
+              <Link href="/games/dice-flush" className={linkClass}>
                 Dice Flush
               </Link>
 
-              <Link href="/casino/precision" className={linkClass}>
+              <Link href="/games/precision" className={linkClass}>
                 Precision
               </Link>
 
               <Link
-                href="/casino"
+                href="/games"
                 className="mt-3 inline-flex rounded-lg border border-[#00e5ff]/30 bg-[#00e5ff]/10 px-3 py-2 text-xs font-medium text-[#67f9ff] transition-all duration-200 hover:translate-x-1 hover:bg-[#00e5ff]/20 hover:shadow-[0_0_12px_rgba(0,229,255,0.3)]"
               >
                 View All Games

@@ -9,7 +9,7 @@ import SplashScreen from "../components/SplashScreen";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "GoonBet, skill-based betting platform",
+  title: "GoonBet, skill-based gaming",
   description:
     "Skill-based gambling platform. Bet on your skills and win big with GoonBet.",
   // Explicit icon metadata so the browser tab uses our smalllogo.

@@ -71,31 +71,31 @@ const GAME_PAGES: {
   path: string;
   source?: [AnyPgTable, AnyPgColumn];
 }[] = [
-  { path: "/casino/poker/multi", source: [pokerGames, pokerGames.createdAt] },
-  { path: "/casino/blackjack", source: [blackjackGames, blackjackGames.createdAt] },
-  { path: "/casino/roulette", source: [rouletteGames, rouletteGames.createdAt] },
-  { path: "/casino/plinko", source: [plinkoGames, plinkoGames.createdAt] },
-  { path: "/casino/mines-pvp", source: [minesGames, minesGames.createdAt] },
-  { path: "/casino/crash-arena", source: [crashArenaRounds, crashArenaRounds.createdAt] },
-  { path: "/casino/crash", source: [crashGames, crashGames.createdAt] },
-  { path: "/casino/dice-flush", source: [diceFlushRooms, diceFlushRooms.createdAt] },
-  { path: "/casino/dice-duel", source: [diceMatches, diceMatches.createdAt] },
-  { path: "/casino/keno", source: [kenoPvpMatches, kenoPvpMatches.createdAt] },
-  { path: "/casino/rps", source: [rpsPvpGames, rpsPvpGames.createdAt] },
-  { path: "/casino/chess", source: [chessGames, chessGames.createdAt] },
-  { path: "/casino/connect-four", source: [connectFourGames, connectFourGames.createdAt] },
+  { path: "/games/poker/multi", source: [pokerGames, pokerGames.createdAt] },
+  { path: "/games/blackjack", source: [blackjackGames, blackjackGames.createdAt] },
+  { path: "/games/roulette", source: [rouletteGames, rouletteGames.createdAt] },
+  { path: "/games/plinko", source: [plinkoGames, plinkoGames.createdAt] },
+  { path: "/games/mines-pvp", source: [minesGames, minesGames.createdAt] },
+  { path: "/games/crash-arena", source: [crashArenaRounds, crashArenaRounds.createdAt] },
+  { path: "/games/crash", source: [crashGames, crashGames.createdAt] },
+  { path: "/games/dice-flush", source: [diceFlushRooms, diceFlushRooms.createdAt] },
+  { path: "/games/dice-duel", source: [diceMatches, diceMatches.createdAt] },
+  { path: "/games/keno", source: [kenoPvpMatches, kenoPvpMatches.createdAt] },
+  { path: "/games/rps", source: [rpsPvpGames, rpsPvpGames.createdAt] },
+  { path: "/games/chess", source: [chessGames, chessGames.createdAt] },
+  { path: "/games/connect-four", source: [connectFourGames, connectFourGames.createdAt] },
   {
-    path: "/casino/dots-and-boxes",
+    path: "/games/dots-and-boxes",
     source: [dotsAndBoxesGames, dotsAndBoxesGames.createdAt],
   },
-  { path: "/casino/pool-masters", source: [poolMatches, poolMatches.createdAt] },
-  { path: "/casino/precision", source: [precisionMatches, precisionMatches.createdAt] },
-  { path: "/casino/neon-flush" }, // no dedicated table yet → static
-  { path: "/casino/hex-duel", source: [hexDuelGames, hexDuelGames.createdAt] },
-  { path: "/casino/uno", source: [unoGames, unoGames.createdAt] },
-  { path: "/casino/lane-runner", source: [laneRunnerGames, laneRunnerGames.createdAt] },
-  { path: "/casino/odds", source: [oddsGames, oddsGames.createdAt] },
-  { path: "/casino/memory-grid", source: [memoryGridMatches, memoryGridMatches.createdAt] },
+  { path: "/games/pool-masters", source: [poolMatches, poolMatches.createdAt] },
+  { path: "/games/precision", source: [precisionMatches, precisionMatches.createdAt] },
+  { path: "/games/neon-flush" }, // no dedicated table yet → static
+  { path: "/games/hex-duel", source: [hexDuelGames, hexDuelGames.createdAt] },
+  { path: "/games/uno", source: [unoGames, unoGames.createdAt] },
+  { path: "/games/lane-runner", source: [laneRunnerGames, laneRunnerGames.createdAt] },
+  { path: "/games/odds", source: [oddsGames, oddsGames.createdAt] },
+  { path: "/games/memory-grid", source: [memoryGridMatches, memoryGridMatches.createdAt] },
 ];
 
 const LEGAL_PAGES = ["/terms", "/privacy-policy", "/security-policy", "/fair-play", "/accessibility"];
@@ -128,12 +128,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   await Promise.all(queries);
 
-  // The /casino index changes whenever any game page does — computed only
+  // The /games index changes whenever any game page does — computed only
   // from real dates so an empty table can't force it to report "now".
   const gameTs = GAME_PAGES.map((p) => lastModified.get(p.path)?.getTime()).filter(
     (t): t is number => typeof t === "number",
   );
-  lastModified.set("/casino", gameTs.length ? new Date(Math.max(...gameTs)) : now);
+  lastModified.set("/games", gameTs.length ? new Date(Math.max(...gameTs)) : now);
 
   const toEntry = (path: string, changeFrequency: ChangeFrequency, priority: number) => {
     const entry: MetadataRoute.Sitemap[number] = {
@@ -142,7 +142,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority,
     };
     // lastmod is optional in the protocol — omit it when there's no real
-    // data instead of inventing a date. `/casino` always has one via the max.
+    // data instead of inventing a date. `/games` always has one via the max.
     const real = lastModified.get(path);
     if (real) entry.lastModified = real;
     return entry;
@@ -150,7 +150,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     toEntry("/", "daily", 1),
-    toEntry("/casino", "daily", 0.9),
+    toEntry("/games", "daily", 0.9),
     toEntry("/classement", "weekly", 0.7),
     ...GAME_PAGES.map((p) => toEntry(p.path, "weekly", 0.8)),
     toEntry("/contact", "monthly", 0.5),
