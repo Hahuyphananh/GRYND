@@ -47,6 +47,13 @@ export default function TawkProvider() {
         s1.async = true;
         s1.src = "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq";
         s1.charset = "UTF-8";
+        // Subresource Integrity — the loader is served over Tawk's CDN, so pin
+        // its exact bytes to prevent a compromised/ swapped script from running.
+        // Recompute if Tawk ever changes this loader:
+        //   curl -s https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq | openssl dgst -sha384 -binary | openssl base64 -A
+        s1.integrity =
+          "sha384-85iaQQWsN0Z1+J2zm9cVwOLh1BRLojg82hsrSqV9sygdywnYJcqnylqIgIt12gbX";
+        s1.crossOrigin = "anonymous";
 
         s0.parentNode?.insertBefore(s1, s0);
       })();
