@@ -37,14 +37,19 @@ const sections = [
       "You have the right to access, correct, or delete your personal data at any time through your account settings. You may also request a copy of your data, restrict processing, or object to certain data uses. To exercise these rights, please contact us at privacy@goonbet.com. We will respond to your request within 30 days.",
   },
   {
-    title: "Cookies & Tracking",
+    title: "Cookies & Consent",
     content:
-      "We use essential cookies and similar technologies to maintain your session, remember your preferences, and ensure the security of your account. We do not use third-party tracking cookies for advertising purposes. You can control cookie settings through your browser preferences, though disabling essential cookies may affect platform functionality.",
+      "GoonBet uses cookies and similar technologies to operate and secure the platform. We use strictly necessary cookies — such as those required for authentication, session management, security, and remembering your preferences — without which the platform cannot function. Where enabled, we may also use analytics cookies (for example, from our analytics provider PostHog) to understand how the platform is used and improve it; these are not used for advertising and are not used to track you across other websites. To the extent any non-essential cookies are used, we will obtain your consent before setting them where required by applicable law, including Quebec's Act respecting the protection of personal information in the private sector (Law 25). You can manage or delete cookies at any time through your browser settings; however, disabling essential cookies may prevent you from signing in or using core platform features. For questions about our use of cookies or to withdraw consent, contact us at contact@goonbet.dedyn.io.",
   },
   {
     title: "Changes to This Policy",
     content:
       "We may update this Privacy Policy from time to time to reflect changes in our practices or legal requirements. We will notify you of material changes via email or through a notice on our platform. Your continued use of GoonBet after such changes constitutes your acceptance of the updated policy.",
+  },
+  {
+    title: "Governing Law & Disputes",
+    content:
+      "This Privacy Policy and any dispute arising out of or relating to it, or to our collection, use, and protection of your personal information, shall be governed by and construed in accordance with the laws of the Province of Quebec and the federal laws of Canada applicable therein, without regard to conflict-of-laws principles. Any dispute, claim, or controversy arising out of or relating to this Privacy Policy shall first be resolved through good-faith negotiations between the parties. If the dispute is not resolved within thirty (30) days of the first notice, it shall be resolved by binding arbitration conducted in the Province of Quebec, Canada, under the applicable arbitration rules in effect at that time, and judgment on the arbitral award may be entered in any court of competent jurisdiction. You agree to submit to the personal jurisdiction of the courts of the Province of Quebec for any matters not subject to arbitration and for the enforcement of any arbitration award.",
   },
 ];
 
@@ -65,7 +70,7 @@ export default function PrivacyPolicyPage() {
             Privacy Policy
           </h1>
           <p className="mb-8 text-lg text-[#9dd8ff]">
-            Last updated: May 24, 2026
+            Last updated: August 20, 2026
           </p>
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">
