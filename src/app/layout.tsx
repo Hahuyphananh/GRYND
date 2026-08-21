@@ -1,6 +1,7 @@
 import "./globals.css";
 import { Providers } from "./providers";
 import ClerkSafeChatWidget from "../components/ClerkSafeChatWidget";
+import CookieConsentBanner from "../components/CookieConsentBanner";
 import DisableInspect from "../components/DisableInspect";
 import CsrfFetchGuard from "../components/CsrfFetchGuard";
 import TawkProvider from "../components/TawkProvider";
@@ -54,6 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <TawkProvider />
           <div className="pt-[68px] sm:pt-16">{children}</div>
           <ClerkSafeChatWidget />
+          <CookieConsentBanner />
         </Providers>
       </body>
     </html>
