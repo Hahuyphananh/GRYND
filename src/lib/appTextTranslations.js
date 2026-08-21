@@ -925,6 +925,13 @@ export const APP_TEXT_TRANSLATIONS = {
       min_max: "Minimum: $5.00 • Maximum: $500.00",
       try_again: "Please try again.",
     },
+    cookieBanner: {
+      title: "Cookies & privacy",
+      text: "We use essential cookies to keep the platform secure and working, plus analytics cookies to understand how it is used. By accepting, you agree to our use of cookies as described in our Privacy Policy.",
+      privacyLink: "Privacy Policy",
+      accept: "Accept",
+      decline: "Decline",
+    },
   },
   fr: {
     blackjackPvp: {
@@ -1503,6 +1510,13 @@ export const APP_TEXT_TRANSLATIONS = {
       min_max: "Minimum : 5,00$ • Maximum : 500,00$",
       try_again: "Veuillez réessayer.",
     },
+    cookieBanner: {
+      title: "Témoins et confidentialité",
+      text: "Nous utilisons des témoins (cookies) essentiels pour sécuriser et faire fonctionner la plateforme, ainsi que des témoins d'analyse pour comprendre son utilisation. En acceptant, vous consentez à notre utilisation des témoins telle que décrite dans notre Politique de confidentialité.",
+      privacyLink: "Politique de confidentialité",
+      accept: "Accepter",
+      decline: "Refuser",
+    },
   },
   es: {
     blackjackPvp: {
@@ -2079,6 +2093,13 @@ export const APP_TEXT_TRANSLATIONS = {
         "Transacción segura • Los fondos se agregarán inmediatamente a tu billetera de juego",
       min_max: "Mínimo: $5.00 • Máximo: $500.00",
       try_again: "Inténtalo de nuevo.",
+    },
+    cookieBanner: {
+      title: "Cookies y privacidad",
+      text: "Usamos cookies esenciales para mantener la plataforma segura y en funcionamiento, además de cookies de análisis para entender su uso. Al aceptar, consientes nuestro uso de cookies tal como se describe en nuestra Política de privacidad.",
+      privacyLink: "Política de privacidad",
+      accept: "Aceptar",
+      decline: "Rechazar",
     },
   },
 };

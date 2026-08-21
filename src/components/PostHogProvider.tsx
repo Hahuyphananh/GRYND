@@ -4,6 +4,7 @@ import posthog from "posthog-js";
 import { PostHogProvider as PHProvider } from "posthog-js/react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, Suspense } from "react";
+import { getCookieConsent } from "../lib/cookieConsent";
 
 // Initialize PostHog at module level so the client is ready before React renders.
 // This avoids the race condition where children mount with an uninitialized client.
@@ -17,6 +18,11 @@ if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_POSTHOG_KEY) {
     person_profiles: "identified_only",
     capture_pageview: false,
   });
+  // Analytics stay off until the visitor accepts the cookie-consent banner
+  // (Law 25 / GDPR best practice). Accepting later calls opt_in_capturing().
+  if (getCookieConsent() !== "accepted") {
+    posthog.opt_out_capturing();
+  }
 }
 
 function PostHogPageView() {
