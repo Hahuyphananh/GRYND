@@ -105,7 +105,7 @@ export const APP_TEXT_TRANSLATIONS = {
     
     nav: {
       home: "Home",
-      casino: "Casino",
+      casino: "Games",
       leaderboard: "Leaderboard",
       sign_out: "Sign Out",
       create_account: "Create account",
@@ -121,20 +121,20 @@ export const APP_TEXT_TRANSLATIONS = {
       level_short: "LVL",
     },
     home: {
-      title: "Online Casino",
+      title: "Game Lobby",
       subtitle: "Compete. Outplay. Win.",
       search_placeholder: "Search for a game...",
       popular_games: "Most popular games",
       all_games: "All games",
       play_now: "Play now",
       view_leaderboard: "See leaderboard for",
-      description: "Discover our casino games and test your luck or your skills!",
+      description: "Discover skill-based games where your ability decides the outcome!",
       more_games: "More games",
       landing: {
-        title: "Test your casino skills and win big",
+        title: "Test your skills and claim the prize pool",
         subtitle: "Skill games, live PvP duels, and exclusive rewards",
         start_betting: "Start Playing",
-        discover_casino: "Discover the Casino",
+        discover_casino: "Explore the Games",
       },
       game_cards: {
         roulette_alt: "Roulette table with chips",
@@ -251,7 +251,7 @@ export const APP_TEXT_TRANSLATIONS = {
       chess_desc: "Play strategic matches against other players",
       keno_desc: "1v1 Keno Catch Duel — both players chase the same 10-ball draw and time their taps in the perfect window. Best-of-5, out-catch your rival, take the pot.",
       uno_desc: "Challenge AI in this fast strategic game.",
-      rps_desc: "Bet your tokens in this fast strategic game.",
+      rps_desc: "Challenge a rival in this fast strategic game.",
       dice_duel_desc: "Turn-based 1v1 dice combat. Outroll your rival and claim the pot!",
       yahtzee_desc: "Server-authoritative Yahtzee with PvP wagering or instant AI battles.",
       dice_flush_desc: "Roll five dice, lock in combos, and outscore your rival in this strategic dice showdown.",
@@ -921,7 +921,7 @@ export const APP_TEXT_TRANSLATIONS = {
       processing: "Processing...",
       add_funds_action: "Add Funds",
       secure_transaction:
-        "Secure transaction • Funds will be added to your casino wallet immediately",
+        "Secure transaction • Funds will be added to your gaming wallet immediately",
       min_max: "Minimum: $5.00 • Maximum: $500.00",
       try_again: "Please try again.",
     },
@@ -1032,7 +1032,7 @@ export const APP_TEXT_TRANSLATIONS = {
     
     nav: {
       home: "Accueil",
-      casino: "Casino",
+      casino: "Jeux",
       leaderboard: "Classement",
       sign_out: "Déconnexion",
       create_account: "Créer un compte",
@@ -1048,21 +1048,21 @@ export const APP_TEXT_TRANSLATIONS = {
       level_short: "NIV",
     },
     home: {
-      title: "Casino en Ligne",
+      title: "Jeux d'habileté",
       subtitle: "Affrontez. Surpassez. Gagnez.",
       search_placeholder: "Rechercher un jeu...",
       popular_games: "Jeux les plus populaires",
       all_games: "Tous les jeux",
       play_now: "Jouer maintenant",
       view_leaderboard: "Voir le leaderboard de",
-      description: "Découvrez nos jeux de casino et tentez votre chance ou vos habilités!",
+      description: "Découvrez nos jeux d'habileté et mettez vos compétences à l'épreuve!",
       more_games: "Plus de jeux",
       landing: {
-        title: "Testez vos habilités au casino et gagnez gros",
+        title: "Testez vos habilités et gagnez gros",
         subtitle:
           "Des jeux d'habilités, des duels PvP en direct et des récompenses exclusives",
         start_betting: "Commencer à jouer",
-        discover_casino: "Découvrir le Casino",
+        discover_casino: "Explorer les jeux",
       },
       game_cards: {
         roulette_alt: "Table de roulette avec jetons",
@@ -1179,7 +1179,7 @@ export const APP_TEXT_TRANSLATIONS = {
       chess_desc: "Affrontez d'autres joueurs dans un match d'échecs",
       keno_desc: "Duel 1v1 Keno Catch — les deux joueurs poursuivent le même tirage de 10 boules et calent leur appui dans la fenêtre parfaite. Meilleur des 5, attrapez plus que votre rival et empochez le pot.",
       uno_desc: "Défie l’IA dans ce jeu rapide et stratégique.",
-      rps_desc: "Parie tes jetons dans ce jeu rapide et stratégique.",
+      rps_desc: "Affronte un rival dans ce jeu rapide et stratégique.",
       dice_duel_desc:
         "Combat 1v1 au dé en tour par tour. Surpasse ton rival et empoche la cagnotte !",
       yahtzee_desc:
@@ -1499,7 +1499,7 @@ export const APP_TEXT_TRANSLATIONS = {
       processing: "Traitement...",
       add_funds_action: "Ajouter des fonds",
       secure_transaction:
-        "Transaction sécurisée • Les fonds seront ajoutés immédiatement à votre portefeuille casino",
+        "Transaction sécurisée • Les fonds seront ajoutés immédiatement à votre portefeuille de jeu",
       min_max: "Minimum : 5,00$ • Maximum : 500,00$",
       try_again: "Veuillez réessayer.",
     },
@@ -1610,7 +1610,7 @@ export const APP_TEXT_TRANSLATIONS = {
     
     nav: {
       home: "Inicio",
-      casino: "Casino",
+      casino: "Juegos",
       leaderboard: "Clasificaciones",
       sign_out: "Cerrar sesión",
       create_account: "Crear cuenta",
@@ -1626,21 +1626,21 @@ export const APP_TEXT_TRANSLATIONS = {
       level_short: "NVL",
     },
     home: {
-      title: "Casino en línea",
+      title: "Juegos de habilidad",
       subtitle: "Compite. Supérate. Gana.",
       search_placeholder: "Buscar un juego...",
       popular_games: "Juegos más populares",
       all_games: "Todos los juegos",
       play_now: "Jugar ahora",
       view_leaderboard: "Ver clasificación de",
-      description: "Descubre nuestros juegos de casino y pon a prueba tu suerte o habilidad.",
+      description: "Descubre nuestros juegos de habilidad y pon a prueba tu destreza.",
       more_games: "Más juegos",
       landing: {
-        title: "Prueba tus habilidades en el casino y gana en grande",
+        title: "Prueba tus habilidades y gana en grande",
         subtitle:
           "Juegos de habilidad, duelos PvP en vivo y recompensas exclusivas",
         start_betting: "Comenzar a jugar",
-        discover_casino: "Descubrir el Casino",
+        discover_casino: "Explorar los juegos",
       },
       game_cards: {
         roulette_alt: "Mesa de ruleta con fichas",
@@ -1757,7 +1757,7 @@ export const APP_TEXT_TRANSLATIONS = {
       chess_desc: "Juega partidas estratégicas contra otros jugadores",
       keno_desc: "Duelo 1v1 de Keno Catch: ambos jugadores persiguen el mismo sorteo de 10 bolas y aciertan el momento perfecto. Mejor de 5, atrapa más que tu rival y llévate el premio.",
       uno_desc: "Desafía a la IA en este juego rápido y estratégico.",
-      rps_desc: "Apuesta tus fichas en este juego rápido y estratégico.",
+      rps_desc: "Enfréntate a un rival en este juego rápido y estratégico.",
       dice_duel_desc: "Duelo 1v1 por turnos con dados. Supera a tu rival y gana el bote.",
       yahtzee_desc:
         "Yahtzee autoritativo del servidor con apuestas JcJ o partidas instantáneas contra IA.",
@@ -2076,7 +2076,7 @@ export const APP_TEXT_TRANSLATIONS = {
       processing: "Procesando...",
       add_funds_action: "Agregar fondos",
       secure_transaction:
-        "Transacción segura • Los fondos se agregarán inmediatamente a tu billetera de casino",
+        "Transacción segura • Los fondos se agregarán inmediatamente a tu billetera de juego",
       min_max: "Mínimo: $5.00 • Máximo: $500.00",
       try_again: "Inténtalo de nuevo.",
     },

@@ -1634,7 +1634,7 @@ export default function PokerPage() {
               href="/casino"
               className="mb-4 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-cyan-200/70 transition-colors hover:text-amber-300"
             >
-              ← Back to Casino
+              ← Back to Games
             </a>
             <h1 className="text-3xl font-black uppercase tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#ffd700] via-amber-400 to-[#ffd700] drop-shadow-[0_0_18px_rgba(255,215,0,0.55)] sm:text-5xl">
               ♠ Poker Royale ♠

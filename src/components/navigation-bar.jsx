@@ -18,7 +18,7 @@ import { isSafeProfilePictureUrl } from "../lib/security/media";
 
 const NAV_TRANSLATION_KEYS = {
   "/": "nav.home",
-  "/casino": "nav.casino",
+  "/games": "nav.casino",
   "/classement": "nav.leaderboard",
 };
 
@@ -238,7 +238,8 @@ function NavigationBar({ currentPath }) {
     return () => clearInterval(interval);
   }, []);
 
-  const isCasinoPath = currentPath.startsWith("/casino");
+  const isCasinoPath =
+    currentPath.startsWith("/casino") || currentPath.startsWith("/games");
 
   return (
     <>
@@ -267,7 +268,7 @@ function NavigationBar({ currentPath }) {
               animate="animate"
               className="hidden items-center space-x-4 md:flex"
             >
-              {["/", "/casino", "/classement"].map((path) => (
+              {["/", "/games", "/classement"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -277,7 +278,7 @@ function NavigationBar({ currentPath }) {
                 >
                   <Link
                     href={path}
-                    className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path || (path === "/casino" && isCasinoPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                    className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path || (path === "/games" && isCasinoPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                   >
                     {t(NAV_TRANSLATION_KEYS[path])}
                   </Link>
@@ -517,7 +518,7 @@ function NavigationBar({ currentPath }) {
 
               {/* NAV LINKS */}
               <div className="space-y-2">
-                {["/", "/casino", "/classement"].map((path) => (
+                {["/", "/games", "/classement"].map((path) => (
                   <Link
                     key={path}
                     href={path}

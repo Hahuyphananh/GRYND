@@ -219,7 +219,7 @@ function WagerModal({
             href="/casino"
             className="text-[10px] text-slate-500 hover:text-slate-300 transition flex items-center gap-1"
           >
-            <span className="text-xs">←</span> Back to Casino
+            <span className="text-xs">←</span> Back to Games
           </a>
         </div>
         <h2 className="text-center text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-fuchsia-400 mb-1">

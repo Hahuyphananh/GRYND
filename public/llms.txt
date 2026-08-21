@@ -1,34 +1,34 @@
 # GoonBet
-> GoonBet is a skill-based multiplayer casino platform. Players compete in skill games using virtual tokens — tokens have no real-world monetary value and are not redeemable for cash. GoonBet is 18+ only and promotes responsible play.
+> GoonBet is a skill-based multiplayer gaming platform. Players compete in skill games using virtual tokens — tokens have no real-world monetary value and are not redeemable for cash. GoonBet is 18+ only and promotes responsible play.
 
-GoonBet covers dozens of arcade and table games playable against the house, AI, or other players in real time. Outcomes are determined primarily by player skill and strategy. The platform uses virtual tokens for all gameplay.
+GoonBet covers dozens of arcade and table games playable solo, against AI, or against other players in real time. Outcomes are determined primarily by player skill and strategy. The platform uses virtual tokens for all gameplay.
 
-## Casino Games
-- [Casino Hub](https://goonbet.dedyn.io/casino): Browse all casino games
-- [Poker](https://goonbet.dedyn.io/casino/poker/multi): Texas Hold'em against AI or other players
-- [Blackjack](https://goonbet.dedyn.io/casino/blackjack): Classic 21 against the dealer, solo or PvP
-- [Roulette](https://goonbet.dedyn.io/casino/roulette): Classic wheel game, solo or PvP
-- [Slots](https://goonbet.dedyn.io/casino/slots): Themed slot machines with bonus rounds
-- [Plinko](https://goonbet.dedyn.io/casino/plinko): Ball-drop payout game, solo or PvP
-- [Mines](https://goonbet.dedyn.io/casino/mines-pvp): Risk-based tile reveal game, solo or PvP
-- [Crash Arena](https://goonbet.dedyn.io/casino/crash-arena): Multiplayer cash-out racing game
-- [Crash](https://goonbet.dedyn.io/casino/crash): Classic crash multiplier game
-- [Dice Flush](https://goonbet.dedyn.io/casino/dice-flush): Dice-based skill game
-- [Dice Duel](https://goonbet.dedyn.io/casino/dice-duel): Player-vs-player dice game
-- [Coin Flip](https://goonbet.dedyn.io/casino/coin-flip): Fast coin-flip game, solo or PvP
-- [Keno](https://goonbet.dedyn.io/casino/keno): Number-draw payout game
-- [RPS](https://goonbet.dedyn.io/casino/rps): Rock-paper-scissors, solo or PvP
-- [Chess](https://goonbet.dedyn.io/casino/chess): Chess against AI or other players
-- [Connect Four](https://goonbet.dedyn.io/casino/connect-four): Connect Four, solo or PvP
-- [Dots & Boxes](https://goonbet.dedyn.io/casino/dots-and-boxes): Classic dots-and-boxes, solo or PvP
-- [Pool Masters](https://goonbet.dedyn.io/casino/pool-masters): Physics-based pool, solo or PvP
-- [Precision](https://goonbet.dedyn.io/casino/precision): Aim-and-accuracy skill game, solo or PvP
-- [Neon Flush](https://goonbet.dedyn.io/casino/neon-flush): Neon-themed card game
-- [Hex Duel](https://goonbet.dedyn.io/casino/hex-duel): Turn-based board duel, solo or PvP
-- [Uno](https://goonbet.dedyn.io/casino/uno): Uno against AI or online players
-- [Farkle](https://goonbet.dedyn.io/casino/farkle): Classic dice-combination scoring game
-- [Lane Rush Duel](https://goonbet.dedyn.io/casino/lane-runner): PvP tower-climb duel — pick safe tiles to climb, hold to bank your score
-- [Odds](https://goonbet.dedyn.io/casino/odds): Odds-style betting games
+## Skill Games
+- [Game Hub](https://goonbet.dedyn.io/games): Browse all skill games
+- [Poker](https://goonbet.dedyn.io/games/poker/multi): Texas Hold'em against AI or other players
+- [Blackjack](https://goonbet.dedyn.io/games/blackjack): Classic 21 against the dealer, solo or PvP
+- [Roulette](https://goonbet.dedyn.io/games/roulette): Classic wheel game, solo or PvP
+- [Slots](https://goonbet.dedyn.io/games/slots): Themed slot machines with bonus rounds
+- [Plinko](https://goonbet.dedyn.io/games/plinko): Ball-drop payout game, solo or PvP
+- [Mines](https://goonbet.dedyn.io/games/mines-pvp): Risk-based tile reveal game, solo or PvP
+- [Crash Arena](https://goonbet.dedyn.io/games/crash-arena): Multiplayer cash-out racing game
+- [Crash](https://goonbet.dedyn.io/games/crash): Classic crash multiplier game
+- [Dice Flush](https://goonbet.dedyn.io/games/dice-flush): Dice-based skill game
+- [Dice Duel](https://goonbet.dedyn.io/games/dice-duel): Player-vs-player dice game
+- [Coin Flip](https://goonbet.dedyn.io/games/coin-flip): Fast coin-flip game, solo or PvP
+- [Keno](https://goonbet.dedyn.io/games/keno): Number-draw payout game
+- [RPS](https://goonbet.dedyn.io/games/rps): Rock-paper-scissors, solo or PvP
+- [Chess](https://goonbet.dedyn.io/games/chess): Chess against AI or other players
+- [Connect Four](https://goonbet.dedyn.io/games/connect-four): Connect Four, solo or PvP
+- [Dots & Boxes](https://goonbet.dedyn.io/games/dots-and-boxes): Classic dots-and-boxes, solo or PvP
+- [Pool Masters](https://goonbet.dedyn.io/games/pool-masters): Physics-based pool, solo or PvP
+- [Precision](https://goonbet.dedyn.io/games/precision): Aim-and-accuracy skill game, solo or PvP
+- [Neon Flush](https://goonbet.dedyn.io/games/neon-flush): Neon-themed card game
+- [Hex Duel](https://goonbet.dedyn.io/games/hex-duel): Turn-based board duel, solo or PvP
+- [Uno](https://goonbet.dedyn.io/games/uno): Uno against AI or online players
+- [Farkle](https://goonbet.dedyn.io/games/farkle): Classic dice-combination scoring game
+- [Lane Rush Duel](https://goonbet.dedyn.io/games/lane-runner): PvP tower-climb duel — pick safe tiles to climb, hold to bank your score
+- [Odds](https://goonbet.dedyn.io/games/odds): Odds-style betting games
 
 ## Platform
 - [Home](https://goonbet.dedyn.io/): Site overview and featured games

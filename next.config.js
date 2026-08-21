@@ -29,19 +29,43 @@ const nextConfig = {
         source: "/ingest/:path*",
         destination: `${posthogHost}/:path*`,
       },
+      // /games/* is the canonical alias for the game hub. It rewrites to the
+      // existing /casino/* routes so the app code stays untouched while
+      // /games URLs serve the same pages (and stay in the address bar).
+      {
+        source: "/games/:path*",
+        destination: "/casino/:path*",
+      },
     ];
   },
 
   async redirects() {
     return [
+      // Legacy yahtzee URLs (both old and new prefix) land on Dice Flush.
       {
         source: "/casino/yahtzee",
-        destination: "/casino/dice-flush",
+        destination: "/games/dice-flush",
         permanent: true,
       },
       {
         source: "/casino/yahtzee/:path*",
-        destination: "/casino/dice-flush",
+        destination: "/games/dice-flush",
+        permanent: true,
+      },
+      {
+        source: "/games/yahtzee",
+        destination: "/games/dice-flush",
+        permanent: true,
+      },
+      {
+        source: "/games/yahtzee/:path*",
+        destination: "/games/dice-flush",
+        permanent: true,
+      },
+      // Old /casino/* links keep working — bounce them to the new /games/* URLs.
+      {
+        source: "/casino/:path*",
+        destination: "/games/:path*",
         permanent: true,
       },
     ];

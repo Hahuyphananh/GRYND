@@ -16,7 +16,7 @@ export async function sendWelcomeEmail(user: {
     subject: "Welcome to GoonBet",
     html: renderTemplate(
       "Welcome to GoonBet",
-      `${SLOT_MACHINE_ICON}<p>Hey ${escapeHtml(user.username ?? "Player")}, your account is live and your casino wallet is ready.</p>`,
+      `${SLOT_MACHINE_ICON}<p>Hey ${escapeHtml(user.username ?? "Player")}, your account is live and your gaming wallet is ready.</p>`,
       "Start Playing",
       `${process.env.NEXT_PUBLIC_APP_URL ?? "https://goonbet.dedyn.io"}`,
     ),

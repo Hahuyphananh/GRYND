@@ -38,14 +38,14 @@ INSERT INTO streak_titles (days, title) VALUES
   (10, 'Streak Starter'),
   (14, 'Lucky Regular'),
   (21, 'Dedicated Roller'),
-  (30, 'Monthly High Roller'),
-  (45, 'Fortune Chaser'),
-  (60, 'Casino Veteran'),
+  (30, 'Monthly Champion'),
+  (45, 'Prize Chaser'),
+  (60, 'Veteran'),
   (75, 'Lucky Legend'),
   (100, 'Streak Master'),
   (150, 'Vault Elite'),
-  (200, 'Jackpot Grinder'),
-  (365, 'Casino King')
+  (200, 'Milestone Grinder'),
+  (365, 'King')
 ON CONFLICT (days) DO NOTHING;
 
 -- Create index for leaderboard queries on user_stats

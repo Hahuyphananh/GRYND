@@ -9,7 +9,7 @@ import { IconCoin, IconConfetti, IconFlame, IconMessageCircle, IconX } from "@ta
 
 const MINIMUM_BIG_WIN = 1000000; // 1 million tokens maximum
 
-const GLOBAL_ROUTES = new Set(["/", "/casino", "/classement", "/rankings"]);
+const GLOBAL_ROUTES = new Set(["/", "/casino", "/games", "/classement", "/rankings"]);
 
 function formatParts(text) {
   const tokens = [];
@@ -135,11 +135,13 @@ export default function ChatWidget() {
       return { roomType: "global", roomId: "main-lobby", title: "Global chat" };
     }
 
-    if (pathname.startsWith("/casino/")) {
+    if (pathname.startsWith("/casino/") || pathname.startsWith("/games/")) {
       return {
         roomType: "game",
         roomId: pathname,
-        title: `Game chat: ${pathname.replace("/casino/", "").replaceAll("/", " › ")}`,
+        title: `Game chat: ${pathname
+          .replace(/^\/(casino|games)\//, "")
+          .replaceAll("/", " › ")}`,
       };
     }
 

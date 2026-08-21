@@ -1,14 +1,14 @@
-# 🎰 GoonBet — The Next-Gen Online Casino
+# 🎮 GoonBet — The Next-Gen Skill Gaming Platform
 
-Welcome to **GoonBet**, a modern skill-based online casino platform where users can play with **tokens** in a fun, fair, and engaging way.
+Welcome to **GoonBet**, a modern skill-based gaming platform where users can play with **tokens** in a fun, fair, and engaging way.
 
-Our platform is designed to combine classic casino games with a smooth, interactive experience that works on desktop and mobile.
+Our platform is designed to combine skill-based and classic arcade games with a smooth, interactive experience that works on desktop and mobile.
 
 ---
 
 ## 🚀 Features
 
-- 🎲 **Casino Games** — Blackjack, Poker, Roulette, Keno, rock paper scissors, crash, mines, uno and more (token-based)
+- 🎲 **Skill Games** — Blackjack, Poker, Roulette, Keno, rock paper scissors, crash, mines, uno and more (token-based)
 - 🏆 **Token System** — Play-for-fun mode so users can practice without losing real money
 - 🔑 **Clerk Authentication** — Secure user sign-up and login
 - 💰 **Wallet & Token Management** — Seamless token balance updates via secure API routes
@@ -19,7 +19,7 @@ Our platform is designed to combine classic casino games with a smooth, interact
 
 ## 🖼️ Preview
 
-![Casino Screenshot](./public/demo-preview.png)  
+![Game Lobby Screenshot](./public/demo-preview.png)  
 _A preview of the main lobby interface (Roulette + Blackjack shown)_
 
 ---

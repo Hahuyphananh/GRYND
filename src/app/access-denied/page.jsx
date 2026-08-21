@@ -17,8 +17,8 @@ export default function AccessDeniedPage() {
         <div className="mb-4 flex justify-center"><IconCircleX size={56} className="text-red-500" /></div>
         <h1 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h1>
         <p className="text-gray-700 mb-6">
-          You must be at least 18 years old to access this casino platform. This
-          restriction is in place to comply with gambling regulations.
+          You must be at least 18 years old to access this gaming platform. This
+          restriction is in place to comply with applicable regulations.
         </p>
         <div className="space-y-4">
           <SignOutButton>
