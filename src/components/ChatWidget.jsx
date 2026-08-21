@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../context/SocketProvider";
 import { isSafeProfilePictureUrl } from "../lib/security/media";
-import { IconCoin, IconConfetti, IconFlame, IconMessageCircle, IconX } from "@tabler/icons-react";
+import { IconCoin, IconConfetti, IconFlame, IconX } from "@tabler/icons-react";
 
 const MINIMUM_BIG_WIN = 1000000; // 1 million tokens maximum
 
@@ -325,10 +325,10 @@ export default function ChatWidget() {
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
-        className="relative h-14 w-14 touch-manipulation rounded-full bg-gradient-to-br from-cyan-400 via-fuchsia-500 to-purple-600 text-xl text-black shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(217,70,239,0.7)] active:scale-95 animate-neonButton sm:h-16 sm:w-16 sm:text-2xl"
+        className="relative h-14 w-14 touch-manipulation rounded-full bg-gradient-to-br from-cyan-400 via-fuchsia-500 to-purple-600 text-2xl text-black shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(217,70,239,0.7)] active:scale-95 animate-neonButton sm:h-16 sm:w-16 sm:text-3xl"
         aria-label="Toggle chat"
       >
-        <IconMessageCircle size={26} />
+        💬
         {/* pulsing ring */}
         <span className="absolute inset-0 rounded-full border border-cyan-300/40 animate-ping" />
       </button>
