@@ -476,8 +476,9 @@ tracking-widest uppercase drop-shadow-[0_0_12px_rgba(255,79,216,0.18)]"
             variants={stagger}
             initial="initial"
             animate="animate"
-            className="flex flex-col items-center space-y-5"
+            className="flex flex-col items-center gap-4"
           >
+            <div className="flex flex-col items-center gap-3 sm:flex-row sm:gap-4">
             <motion.div
               whileHover={
                 shouldReduceMotion ? undefined : hoverScale.whileHover
@@ -488,12 +489,11 @@ tracking-widest uppercase drop-shadow-[0_0_12px_rgba(255,79,216,0.18)]"
             >
               <UIPro06PrimaryButton
                 href="/sign-up"
-                className="inline-block w-full sm:w-auto rounded-lg border border-[#f5ff3b]/40 bg-gradient-to-r from-[#00ffff] via-[#00e5ff] to-[#00ff88] px-10 py-5 text-xl font-bold text-[#041125] transition-all shadow-[0_0_35px_rgba(0,255,166,0.55)] hover:shadow-[0_0_55px_rgba(0,255,166,0.75)] hover:scale-105 animate-primary-cta-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+                className="inline-block w-full sm:w-auto rounded-lg border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-8 py-4 text-lg font-bold text-[#1f1700] transition-all shadow-[0_0_35px_rgba(245,255,59,0.5)] hover:shadow-[0_0_55px_rgba(245,255,59,0.8)] hover:scale-105 animate-primary-cta-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
                 aria-label={t("home.landing.start_betting")}
               >
                 {t("home.landing.start_betting")}
               </UIPro06PrimaryButton>
-              <p className="mt-3 text-sm text-[#7dd3fc]/70">{t("home.push_intro")}</p>
             </motion.div>
             <motion.div
               initial={{ opacity: 0, y: 12 }}
@@ -512,6 +512,8 @@ tracking-widest uppercase drop-shadow-[0_0_12px_rgba(255,79,216,0.18)]"
                 {t("home.landing.discover_casino")}
               </UIPro07SecondaryButton>
             </motion.div>
+          </div>
+          <p className="text-sm text-[#7dd3fc]/70">{t("home.push_intro")}</p>
           </motion.div>
         </div>
       </motion.section>
