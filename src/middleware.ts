@@ -7,6 +7,7 @@ import {
 } from "./lib/security/rateLimit";
 import { auditLog } from "./lib/security/auditLog";
 import { isAdmin } from "./lib/auth/isAdmin";
+import { hasRecentMfa } from "./lib/auth/requireMfa";
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
@@ -300,7 +301,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     return applySecurityHeaders(NextResponse.next());
   }
 
-  const { userId, sessionClaims } = await auth();
+  const { userId, sessionClaims, factorVerificationAge } = await auth();
 
   if (!userId) {
     auditLog("auth_required_redirect", { ip, path: pathname });
@@ -362,6 +363,31 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
           NextResponse.redirect(new URL("/", req.url))
         );
       }
+    }
+  }
+
+  // MFA enforcement for all admin surfaces (defense in depth — the admin
+  // page component re-checks the same condition). The session must have
+  // verified a second factor recently; anything else fails closed.
+  // `/admin/mfa-required` itself is exempt so the gate page can render.
+  if (
+    (pathname.startsWith("/admin") && pathname !== "/admin/mfa-required") ||
+    pathname.startsWith("/api/admin")
+  ) {
+    if (!hasRecentMfa(factorVerificationAge)) {
+      if (pathname.startsWith("/api/admin")) {
+        auditLog("admin_mfa_required", { userId, ip, path: pathname });
+        return applySecurityHeaders(
+          NextResponse.json(
+            { success: false, error: "MFA required for admin access." },
+            { status: 403 }
+          )
+        );
+      }
+      auditLog("admin_mfa_required_redirect", { userId, ip, path: pathname });
+      return applySecurityHeaders(
+        NextResponse.redirect(new URL("/admin/mfa-required", req.url))
+      );
     }
   }
 
