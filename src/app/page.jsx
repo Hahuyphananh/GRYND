@@ -449,14 +449,8 @@ function MainComponent() {
             initial={fadeUpVariant.initial}
             animate={fadeUpVariant.animate}
             transition={fadeUpVariant.transition}
-            className="mb-4 text-3xl sm:text-5xl md:text-6xl font-black sm:font-extrabold text-transparent bg-clip-text
-bg-gradient-to-r from-[#ff4fd8] via-[#9be8ff] to-[#ff4fd8]
-tracking-widest uppercase drop-shadow-[0_0_12px_rgba(255,79,216,0.18)]"
-            style={{
-              backgroundSize: "200% auto",
-              textShadow:
-                "0 0 5px rgba(0,0,0,0.45), 0 0 1px rgba(255,255,255,0.5)",
-            }}
+            className="mb-4 text-3xl sm:text-5xl md:text-6xl font-black sm:font-extrabold text-[#f5ff3b] tracking-widest uppercase"
+            style={{ textShadow: "0 0 14px rgba(255,215,0,0.45)" }}
           >
             {t("home.landing.title")}
           </motion.h1>
