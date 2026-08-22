@@ -5,7 +5,7 @@ export const APP_TEXT_TRANSLATIONS = {
       claim: "Claim Free Tokens",
     },
     thankYou: {
-      title: "Welcome to GoonBet!",
+      title: "Welcome to GRYND!",
       subtitle: "Your account is ready",
       tokensTitle: "1,000 free tokens",
       tokensDesc: "We've credited your balance. Win games to grow it.",
@@ -17,7 +17,7 @@ export const APP_TEXT_TRANSLATIONS = {
       next: "Next",
       done: "Let's go!",
       welcomeTitle: "Welcome aboard!",
-      welcomeDesc: "You're now part of GoonBet — here's a quick tour of what you can do.",
+      welcomeDesc: "You're now part of GRYND — here's a quick tour of what you can do.",
       tokensTitle: "Your free tokens",
       tokensDesc: "You start with 1,000 tokens. Play skill-based games and win more.",
       playTitle: "Start playing",
@@ -289,7 +289,7 @@ export const APP_TEXT_TRANSLATIONS = {
       terms: {
         title: "Terms & Conditions",
         subtitle: "Please read and accept our terms to start playing",
-        welcome: "Welcome to GoonBet.",
+        welcome: "Welcome to GRYND.",
         intro_lead: "By accepting these terms, you agree to the following:",
         eligibility_label: "Eligibility:",
         eligibility_body: "You confirm that you are at least 18 years old and that your use of this platform complies with all applicable laws in your jurisdiction.",
@@ -312,7 +312,7 @@ export const APP_TEXT_TRANSLATIONS = {
         accessibility_policy: "Accessibility Policy",
         i_agree: "I Agree",
         i_disagree: "I Disagree",
-        must_accept: "You must accept the Terms & Conditions to use GoonBet.",
+        must_accept: "You must accept the Terms & Conditions to use GRYND.",
       },
       // ── Floating streak badge widget (post-login) ──────
       streak: {
@@ -1037,7 +1037,7 @@ export const APP_TEXT_TRANSLATIONS = {
       claim: "Réclame des jetons gratuits",
     },
     thankYou: {
-      title: "Bienvenue sur GoonBet !",
+      title: "Bienvenue sur GRYND !",
       subtitle: "Votre compte est prêt",
       tokensTitle: "1 000 jetons gratuits",
       tokensDesc: "Nous avons crédité votre solde. Gagnez des parties pour l'augmenter.",
@@ -1049,7 +1049,7 @@ export const APP_TEXT_TRANSLATIONS = {
       next: "Suivant",
       done: "C'est parti !",
       welcomeTitle: "Bienvenue !",
-      welcomeDesc: "Vous faites désormais partie de GoonBet — voici un rapide aperçu.",
+      welcomeDesc: "Vous faites désormais partie de GRYND — voici un rapide aperçu.",
       tokensTitle: "Vos jetons gratuits",
       tokensDesc: "Vous démarrez avec 1 000 jetons. Jouez à des jeux de compétence et gagnez-en plus.",
       playTitle: "Commencer à jouer",
@@ -1322,7 +1322,7 @@ export const APP_TEXT_TRANSLATIONS = {
       terms: {
         title: "Conditions Générales",
         subtitle: "Veuillez lire et accepter nos conditions pour commencer à jouer",
-        welcome: "Bienvenue sur GoonBet.",
+        welcome: "Bienvenue sur GRYND.",
         intro_lead: "En acceptant ces conditions, vous acceptez les points suivants :",
         eligibility_label: "Éligibilité :",
         eligibility_body: "Vous confirmez avoir au moins 18 ans et que votre utilisation de cette plateforme est conforme à toutes les lois applicables dans votre juridiction.",
@@ -1345,7 +1345,7 @@ export const APP_TEXT_TRANSLATIONS = {
         accessibility_policy: "Politique d'Accessibilité",
         i_agree: "J'accepte",
         i_disagree: "Je refuse",
-        must_accept: "Vous devez accepter les Conditions Générales pour utiliser GoonBet.",
+        must_accept: "Vous devez accepter les Conditions Générales pour utiliser GRYND.",
       },
       // ── Floating streak badge widget (post-login) ──────
       streak: {
@@ -1720,7 +1720,7 @@ export const APP_TEXT_TRANSLATIONS = {
       claim: "Reclama fichas gratis",
     },
     thankYou: {
-      title: "¡Bienvenido a GoonBet!",
+      title: "¡Bienvenido a GRYND!",
       subtitle: "Tu cuenta está lista",
       tokensTitle: "1.000 fichas gratis",
       tokensDesc: "Hemos acreditado tu saldo. Gana partidas para aumentarlo.",
@@ -1732,7 +1732,7 @@ export const APP_TEXT_TRANSLATIONS = {
       next: "Siguiente",
       done: "¡Vamos!",
       welcomeTitle: "¡Bienvenido!",
-      welcomeDesc: "Ya formas parte de GoonBet: aquí tienes un recorrido rápido.",
+      welcomeDesc: "Ya formas parte de GRYND: aquí tienes un recorrido rápido.",
       tokensTitle: "Tus fichas gratis",
       tokensDesc: "Empiezas con 1.000 fichas. Juega juegos de habilidad y gana más.",
       playTitle: "Empieza a jugar",
@@ -2005,7 +2005,7 @@ export const APP_TEXT_TRANSLATIONS = {
       terms: {
         title: "Términos y Condiciones",
         subtitle: "Lee y acepta nuestros términos para empezar a jugar",
-        welcome: "Bienvenido a GoonBet.",
+        welcome: "Bienvenido a GRYND.",
         intro_lead: "Al aceptar estos términos, aceptas lo siguiente:",
         eligibility_label: "Elegibilidad:",
         eligibility_body: "Confirmas que tienes al menos 18 años y que tu uso de esta plataforma cumple con todas las leyes aplicables en tu jurisdicción.",
@@ -2028,7 +2028,7 @@ export const APP_TEXT_TRANSLATIONS = {
         accessibility_policy: "Política de Accesibilidad",
         i_agree: "Acepto",
         i_disagree: "No acepto",
-        must_accept: "Debes aceptar los Términos y Condiciones para usar GoonBet.",
+        must_accept: "Debes aceptar los Términos y Condiciones para usar GRYND.",
       },
       // ── Floating streak badge widget (post-login) ──────
       streak: {

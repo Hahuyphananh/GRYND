@@ -222,7 +222,7 @@ function NavigationBar({ currentPath }) {
           const newVersion = response.headers.get("etag");
 
           if (window.__APP_ETAG && newVersion && window.__APP_ETAG !== newVersion) {
-            const shouldRefresh = confirm("A new version of GoonBet is available. Refresh now?");
+            const shouldRefresh = confirm("A new version of GRYND is available. Refresh now?");
 
             if (shouldRefresh) {
               window.location.reload();
@@ -255,7 +255,7 @@ function NavigationBar({ currentPath }) {
             <Link href="/" className="flex items-center space-x-2">
               <Image
                 src={LogoSmiley}
-                alt="GoonBet Logo"
+                alt="GRYND Logo"
                 width={150}
                 height={60}
                 className="h-auto w-[120px] rounded-lg object-contain drop-shadow-[0_0_10px_rgba(245,255,59,0.45)] sm:w-[150px]"

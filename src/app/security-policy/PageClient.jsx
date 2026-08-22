@@ -8,7 +8,7 @@ const sections = [
   {
     title: "Data Encryption",
     content:
-      "GoonBet employs industry-standard TLS 1.3 encryption for all data transmitted between your device and our servers. All sensitive user data, including financial transactions and personal information, is encrypted at rest using AES-256 encryption. We regularly audit our encryption practices to ensure compliance with the latest security standards.",
+      "GRYND employs industry-standard TLS 1.3 encryption for all data transmitted between your device and our servers. All sensitive user data, including financial transactions and personal information, is encrypted at rest using AES-256 encryption. We regularly audit our encryption practices to ensure compliance with the latest security standards.",
   },
   {
     title: "Account Security",
@@ -18,7 +18,7 @@ const sections = [
   {
     title: "Payment Security",
     content:
-      "All virtual token transactions on GoonBet are processed through secure, audited systems. We do not store raw payment instrument details on our servers. Financial data handled through integrated payment processors is governed by their respective security policies, all of which meet PCI DSS compliance standards.",
+      "All virtual token transactions on GRYND are processed through secure, audited systems. We do not store raw payment instrument details on our servers. Financial data handled through integrated payment processors is governed by their respective security policies, all of which meet PCI DSS compliance standards.",
   },
   {
     title: "Infrastructure Security",
@@ -38,7 +38,7 @@ const sections = [
   {
     title: "Incident Response",
     content:
-      "GoonBet maintains a comprehensive incident response plan to quickly detect, respond to, and recover from security incidents. Our security team is on-call 24/7 to respond to potential threats. In the event of a data breach, affected users will be notified in accordance with applicable laws and regulations.",
+      "GRYND maintains a comprehensive incident response plan to quickly detect, respond to, and recover from security incidents. Our security team is on-call 24/7 to respond to potential threats. In the event of a data breach, affected users will be notified in accordance with applicable laws and regulations.",
   },
   {
     title: "Third-Party Security",
@@ -67,7 +67,7 @@ export default function SecurityPolicyPage() {
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">
             <p className="leading-relaxed text-[#c9f7ff]">
-              At GoonBet, the security of your data and the integrity of our
+              At GRYND, the security of your data and the integrity of our
               platform are our highest priorities. This Security Policy outlines
               the measures we take to protect your information and maintain a
               secure gaming environment.
@@ -103,7 +103,7 @@ export default function SecurityPolicyPage() {
           <p className="text-sm text-[#c9f7ff]/70">
             If you have any security concerns or would like to report a
             vulnerability, please contact our security team at{" "}
-            <span className="text-[#f5ff3b]">contact@goonbet.dedyn.io</span>.
+            <span className="text-[#f5ff3b]">contact@grynd.dedyn.io</span>.
           </p>
         </motion.div>
       </div>

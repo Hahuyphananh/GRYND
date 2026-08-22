@@ -3,9 +3,9 @@ import { ogImageUrl } from "../../../lib/ogImages";
 import PageClient from "./PageClient";
 
 export const metadata: Metadata = {
-  title: "Blackjack PvP — GoonBet",
+  title: "Blackjack PvP — GRYND",
   description:
-    "Play Blackjack PvP on GoonBet — best-of-3 head-to-head duels against a real opponent. Pick a stake, match another player and win the pot.",
+    "Play Blackjack PvP on GRYND — best-of-3 head-to-head duels against a real opponent. Pick a stake, match another player and win the pot.",
   openGraph: { images: [ogImageUrl("/images/og/blackjack.jpg")] },
 };
 

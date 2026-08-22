@@ -134,7 +134,7 @@ export default function ContactPage() {
                   <IconMail size={18} className="text-[#f5ff3b] mt-0.5" />
                   <div>
                     <p className="font-medium text-white">Email</p>
-                    <p className="text-[#c9f7ff]/60">contact@goonbet.dedyn.io</p>
+                    <p className="text-[#c9f7ff]/60">contact@grynd.dedyn.io</p>
                   </div>
                 </li>
                 <li className="flex items-start gap-3">

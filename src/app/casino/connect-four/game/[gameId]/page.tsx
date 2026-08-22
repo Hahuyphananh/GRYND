@@ -9,8 +9,8 @@ export async function generateMetadata({
   const { gameId } = await params;
   const shortId = gameId.length > 10 ? gameId.slice(0, 8) : gameId;
   return {
-    title: `Connect Four Match #${shortId} — GoonBet`,
-    description: `Live Connect Four match #${shortId} on GoonBet — align four discs to beat your opponent and win the pot.`,
+    title: `Connect Four Match #${shortId} — GRYND`,
+    description: `Live Connect Four match #${shortId} on GRYND — align four discs to beat your opponent and win the pot.`,
   };
 }
 

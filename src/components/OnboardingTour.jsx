@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useTranslation } from "../hooks/useTranslation";
 
-export const TOUR_STORAGE_PREFIX = "goonbet_tour_";
+export const TOUR_STORAGE_PREFIX = "grynd_tour_";
 
 /** Per-user storage key so a tour shown to one account never blocks another. */
 export function getTourStorageKey(userId) {

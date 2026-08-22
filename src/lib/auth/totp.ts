@@ -80,8 +80,8 @@ export function verifyTotp(secret: string, token: string, window = 1): boolean {
 
 export function buildOtpauthUrl(
   secret: string,
-  label = "GoonBet Admin",
-  issuer = "GoonBet",
+  label = "GRYND Admin",
+  issuer = "GRYND",
 ): string {
   const encLabel = encodeURIComponent(label);
   const encIssuer = encodeURIComponent(issuer);

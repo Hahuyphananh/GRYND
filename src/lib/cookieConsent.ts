@@ -1,7 +1,7 @@
-export const COOKIE_CONSENT_KEY = "goonbet_cookie_consent";
+export const COOKIE_CONSENT_KEY = "grynd_cookie_consent";
 
 /** Fired on window whenever the visitor makes a consent choice. */
-export const COOKIE_CONSENT_EVENT = "goonbet_cookie_consent_change";
+export const COOKIE_CONSENT_EVENT = "grynd_cookie_consent_change";
 
 export type CookieConsent = "accepted" | "declined";
 

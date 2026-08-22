@@ -9,7 +9,7 @@ const sections = [
   {
     title: "Information We Collect",
     content:
-      "When you create an account on GoonBet, we collect personal information such as your name, email address, username, and date of birth (for age verification). We also collect profile pictures if you choose to upload one. Additionally, we collect game-related data including your game history, bet amounts, wins, losses, token balances, and gameplay statistics.",
+      "When you create an account on GRYND, we collect personal information such as your name, email address, username, and date of birth (for age verification). We also collect profile pictures if you choose to upload one. Additionally, we collect game-related data including your game history, bet amounts, wins, losses, token balances, and gameplay statistics.",
   },
   {
     title: "How We Use Your Information",
@@ -34,17 +34,17 @@ const sections = [
   {
     title: "Your Rights",
     content:
-      "You have the right to access, correct, or delete your personal data at any time through your account settings. You may also request a copy of your data, restrict processing, or object to certain data uses. To exercise these rights, please contact us at privacy@goonbet.com. We will respond to your request within 30 days.",
+      "You have the right to access, correct, or delete your personal data at any time through your account settings. You may also request a copy of your data, restrict processing, or object to certain data uses. To exercise these rights, please contact us at privacy@grynd.com. We will respond to your request within 30 days.",
   },
   {
     title: "Cookies & Consent",
     content:
-      "GoonBet uses cookies and similar technologies to operate and secure the platform. We use strictly necessary cookies — such as those required for authentication, session management, security, and remembering your preferences — without which the platform cannot function. Where enabled, we may also use analytics cookies (for example, from our analytics provider PostHog) to understand how the platform is used and improve it; these are not used for advertising and are not used to track you across other websites. To the extent any non-essential cookies are used, we will obtain your consent before setting them where required by applicable law, including Quebec's Act respecting the protection of personal information in the private sector (Law 25). You can manage or delete cookies at any time through your browser settings; however, disabling essential cookies may prevent you from signing in or using core platform features. For questions about our use of cookies or to withdraw consent, contact us at contact@goonbet.dedyn.io.",
+      "GRYND uses cookies and similar technologies to operate and secure the platform. We use strictly necessary cookies — such as those required for authentication, session management, security, and remembering your preferences — without which the platform cannot function. Where enabled, we may also use analytics cookies (for example, from our analytics provider PostHog) to understand how the platform is used and improve it; these are not used for advertising and are not used to track you across other websites. To the extent any non-essential cookies are used, we will obtain your consent before setting them where required by applicable law, including Quebec's Act respecting the protection of personal information in the private sector (Law 25). You can manage or delete cookies at any time through your browser settings; however, disabling essential cookies may prevent you from signing in or using core platform features. For questions about our use of cookies or to withdraw consent, contact us at contact@grynd.dedyn.io.",
   },
   {
     title: "Changes to This Policy",
     content:
-      "We may update this Privacy Policy from time to time to reflect changes in our practices or legal requirements. We will notify you of material changes via email or through a notice on our platform. Your continued use of GoonBet after such changes constitutes your acceptance of the updated policy.",
+      "We may update this Privacy Policy from time to time to reflect changes in our practices or legal requirements. We will notify you of material changes via email or through a notice on our platform. Your continued use of GRYND after such changes constitutes your acceptance of the updated policy.",
   },
   {
     title: "Governing Law & Disputes",
@@ -76,8 +76,8 @@ export default function PrivacyPolicyPage() {
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">
             <p className="leading-relaxed text-[#c9f7ff]">
               Your privacy matters to us. This Privacy Policy explains how
-              GoonBet collects, uses, stores, and protects your personal
-              information when you use our platform. By using GoonBet, you
+              GRYND collects, uses, stores, and protects your personal
+              information when you use our platform. By using GRYND, you
               consent to the practices described in this policy.
             </p>
           </div>
@@ -110,7 +110,7 @@ export default function PrivacyPolicyPage() {
         >
           <p className="text-sm text-[#c9f7ff]/70">
             For privacy-related inquiries, contact us at{" "}
-            <span className="text-[#f5ff3b]">contact@goonbet.dedyn.io</span>
+            <span className="text-[#f5ff3b]">contact@grynd.dedyn.io</span>
           </p>
         </motion.div>
       </div>

@@ -7,7 +7,7 @@ import { sendContactGmail } from "./gmail";
  * (src/app/privacy-policy/page.jsx and src/app/contact/page.jsx).
  * Can be overridden by the CONTACT_TO env var.
  */
-const CONTACT_FORM_RECIPIENT = "contact@goonbet.dedyn.io";
+const CONTACT_FORM_RECIPIENT = "contact@grynd.dedyn.io";
 
 /**
  * Sends a notification to the admin when a user submits the contact form.

@@ -55,7 +55,7 @@ import Image from "next/image";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import RoundMarkers from "../../../../components/casino/RoundMarkers";
-// The casino's existing logo asset (GoonBet smiley) — reused as the
+// The casino's existing logo asset (GRYND smiley) — reused as the
 // memorize-phase "active tile" marker so the grid reads as the
 // casino's own visual language (no emojis / unrelated symbols).
 import LogoSmiley from "../../../../images/logo1.png";

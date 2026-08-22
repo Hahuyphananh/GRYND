@@ -255,7 +255,7 @@ export default function AdminMfaRequiredPage() {
                     {totpSetup.qrDataUrl && (
                       <img
                         src={totpSetup.qrDataUrl}
-                        alt="Scan to add GoonBet to your authenticator app"
+                        alt="Scan to add GRYND to your authenticator app"
                         className="mx-auto mb-3 h-44 w-44 rounded-lg bg-white p-1"
                       />
                     )}

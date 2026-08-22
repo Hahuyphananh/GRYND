@@ -5,9 +5,9 @@ import type { CSSProperties } from "react";
 import LogoSmiley from "../images/logo1.png";
 
 export const metadata: Metadata = {
-  title: "Page Not Found — GoonBet",
+  title: "Page Not Found — GRYND",
   description:
-    "The page you're looking for doesn't exist. Head back to GoonBet and keep playing.",
+    "The page you're looking for doesn't exist. Head back to GRYND and keep playing.",
 };
 
 /* ── Slot reels ─────────────────────────────────────────────
@@ -207,7 +207,7 @@ export default function NotFound() {
         >
           <Image
             src={LogoSmiley}
-            alt="GoonBet"
+            alt="GRYND"
             width={150}
             height={60}
             className="mx-auto h-auto w-[150px] object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.3)]"

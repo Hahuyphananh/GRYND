@@ -9,12 +9,12 @@ const sections = [
   {
     title: "Our Commitment",
     content:
-      "GoonBet is committed to providing an inclusive and accessible experience for all users, including those with disabilities. We strive to meet WCAG 2.1 Level AA standards across our platform and continuously work to improve accessibility through regular audits, user feedback, and design iterations.",
+      "GRYND is committed to providing an inclusive and accessible experience for all users, including those with disabilities. We strive to meet WCAG 2.1 Level AA standards across our platform and continuously work to improve accessibility through regular audits, user feedback, and design iterations.",
   },
   {
     title: "Keyboard Navigation",
     content:
-      "All interactive elements on GoonBet are operable via keyboard alone. You can navigate using Tab and Shift+Tab to move between focusable elements, Enter or Space to activate buttons and links, Escape to close modals and overlays, and arrow keys to navigate within game interfaces. A \"Skip to main content\" link is available on every page for quick access to primary content.",
+      "All interactive elements on GRYND are operable via keyboard alone. You can navigate using Tab and Shift+Tab to move between focusable elements, Enter or Space to activate buttons and links, Escape to close modals and overlays, and arrow keys to navigate within game interfaces. A \"Skip to main content\" link is available on every page for quick access to primary content.",
   },
   {
     title: "Screen Reader Support",
@@ -29,7 +29,7 @@ const sections = [
   {
     title: "Focus Indicators",
     content:
-      "All interactive elements on GoonBet feature clearly visible focus indicators using a high-contrast neon cyan ring. When navigating by keyboard, you will always see which element is currently focused. Focus order follows a logical sequence matching the visual layout of each page.",
+      "All interactive elements on GRYND feature clearly visible focus indicators using a high-contrast neon cyan ring. When navigating by keyboard, you will always see which element is currently focused. Focus order follows a logical sequence matching the visual layout of each page.",
   },
   {
     title: "Text Sizing & Zoom",
@@ -39,12 +39,12 @@ const sections = [
   {
     title: "Reduced Motion",
     content:
-      "We respect your system-level motion preferences. If you have enabled \"Reduce motion\" in your operating system or browser settings, GoonBet will automatically disable non-essential animations, transitions, and parallax effects to create a more comfortable experience. All critical animations related to gameplay feedback remain functional but are shortened and simplified.",
+      "We respect your system-level motion preferences. If you have enabled \"Reduce motion\" in your operating system or browser settings, GRYND will automatically disable non-essential animations, transitions, and parallax effects to create a more comfortable experience. All critical animations related to gameplay feedback remain functional but are shortened and simplified.",
   },
   {
     title: "Feedback & Contact",
     content:
-      "We welcome feedback on accessibility. If you encounter any barriers while using GoonBet, or have suggestions for improvement, please contact us at accessibility@goonbet.com. We aim to respond to accessibility inquiries within 5 business days and will work with you to find a solution.",
+      "We welcome feedback on accessibility. If you encounter any barriers while using GRYND, or have suggestions for improvement, please contact us at accessibility@grynd.com. We aim to respond to accessibility inquiries within 5 business days and will work with you to find a solution.",
   },
 ];
 
@@ -70,7 +70,7 @@ export default function AccessibilityPage() {
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">
             <p className="leading-relaxed text-[#c9f7ff]">
-              Accessibility is a core design principle at GoonBet. We believe
+              Accessibility is a core design principle at GRYND. We believe
               everyone should be able to enjoy skill-based gaming, regardless
               of ability. This policy outlines the measures we have taken and
               the standards we uphold to ensure our platform is usable by the
@@ -106,7 +106,7 @@ export default function AccessibilityPage() {
         >
           <p className="text-sm text-[#c9f7ff]/70">
             For accessibility inquiries, contact us at{" "}
-            <span className="text-[#f5ff3b]">accessibility@goonbet.com</span>
+            <span className="text-[#f5ff3b]">accessibility@grynd.com</span>
           </p>
         </motion.div>
       </div>

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import PageClient from "./PageClient";
 
 export const metadata: Metadata = {
-  title: "Account Sync — GoonBet",
+  title: "Account Sync — GRYND",
   description:
-    "Syncing your GoonBet account. Please wait while we link your profile and balance.",
+    "Syncing your GRYND account. Please wait while we link your profile and balance.",
 };
 
 export default function Page() {

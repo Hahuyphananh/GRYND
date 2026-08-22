@@ -1,9 +1,9 @@
 import PageClient from "./PageClient";
 
 export const metadata = {
-  title: "Casino Games — GoonBet",
+  title: "Skill Games — GRYND",
   description:
-    "Browse all GoonBet casino games — Blackjack PvP, Poker, Roulette, Plinko, Mines Duel, Keno, Crash Arena and more. Skill-based multiplayer games where your ability decides the outcome.",
+    "Browse all GRYND skill games — Blackjack PvP, Poker, Roulette, Plinko, Mines Duel, Keno, Crash Arena and more. Competitive multiplayer games where your ability decides the outcome.",
 };
 
 export default function Page() {

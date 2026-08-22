@@ -1,5 +1,5 @@
 // Embeds the actual src/images/smalllogo.png as a base64 data URI inside
-// src/images/coin-flip.svg, replacing the prior mascot-disc + GOONBET
+// src/images/coin-flip.svg, replacing the prior mascot-disc + GRYND
 // subtitle approximation.
 const fs = require('fs');
 const path = require('path');
@@ -11,15 +11,15 @@ const png = fs.readFileSync(pngPath);
 const b64 = png.toString('base64');
 const originalSvg = fs.readFileSync(svgPath, 'utf8');
 
-// Anchor 1: the comment that opens the prior GOONBET LOGO block.
-const startMarker = '<!-- GOONBET LOGO';
+// Anchor 1: the comment that opens the prior GRYND LOGO block.
+const startMarker = '<!-- GRYND LOGO';
 const startIdx = originalSvg.indexOf(startMarker);
 if (startIdx < 0) {
   console.error('START_MARKER_NOT_FOUND');
   process.exit(1);
 }
 
-// Anchor 2: the GOON subtitle `<text>` element we want to fully replace through.
+// Anchor 2: the GRYND subtitle `<text>` element we want to fully replace through.
 const textPattern = '<text x="0" y="65"';
 const textIdx = originalSvg.indexOf(textPattern, startIdx);
 if (textIdx < 0) {
@@ -39,7 +39,7 @@ while (afterIdx < originalSvg.length && originalSvg[afterIdx] !== '\n') afterIdx
 if (afterIdx < originalSvg.length) afterIdx++;
 
 const replacement = [
-  '<!-- GoonBet brand mark from src/images/smalllogo.png, inlined as a base64',
+  '<!-- GRYND brand mark from src/images/smalllogo.png, inlined as a base64',
   '         data URI so it renders inside the coin without external lookup.',
   '         The PNG\'s intrinsic aspect ratio is preserved. -->',
   '    <image href="data:image/png;base64,' + b64 + '"',

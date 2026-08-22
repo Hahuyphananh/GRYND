@@ -4,7 +4,7 @@
 // Poker, detailed in the manner of blackjack-div.png: two upright 3D
 // playing cards (Ace of Spades overlapping King of Hearts slightly), each
 // with a realistic side-view poker chip stack in front, on the
-// goonbet-master-bg.jpg.
+// grynd-master-bg.jpg.
 //
 // Run: node scripts/render-poker-div.js
 
@@ -243,7 +243,7 @@ function buildSvg() {
 }
 
 (async () => {
-  const bg = sharp(path.join(SRC, "goonbet-master-bg.jpg")).resize(W, H, { fit: "fill" });
+  const bg = sharp(path.join(SRC, "grynd-master-bg.jpg")).resize(W, H, { fit: "fill" });
   const overlay = await sharp(Buffer.from(buildSvg())).png().toBuffer();
   await bg
     .composite([{ input: overlay, top: 0, left: 0 }])

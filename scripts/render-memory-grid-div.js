@@ -3,7 +3,7 @@
 // Generates src/images/memory-grid-div.png — a casino game-card thumbnail
 // for Memory Grid. Four 3D tiles (same tile model as the mines image:
 // extruded slab + cyan neon border) "fly" at random angles, scattered
-// around the center; every tile carries the goonbet logo face exactly
+// around the center; every tile carries the grynd logo face exactly
 // like the real memory-grid game. Blue/cyan neon throughout — no red.
 //
 // Run: node scripts/render-memory-grid-div.js
@@ -16,7 +16,7 @@ const ROOT = path.resolve(__dirname, "..");
 const SRC = path.join(ROOT, "src", "images");
 
 const W = 1536;
-const H = 864; // 16:9 — same aspect as goonbet-master-bg.jpg (1024x572)
+const H = 864; // 16:9 — same aspect as grynd-master-bg.jpg (1024x572)
 
 const S = 280; // tile size
 
@@ -30,7 +30,7 @@ const TILES = [
   { cx: 935, cy: 610, rot: -8 },
 ];
 
-// goonbet logo: crop out ONLY the G icon from logo1.png (cluster at
+// grynd logo: crop out ONLY the G icon from logo1.png (cluster at
 // x 94-223, y 132-274 — the wordmark strip x 231-519 is dropped).
 // Small pad so the icon's edges aren't squished.
 const LOGO_SRC = path.join(SRC, "logo1.png");
@@ -38,7 +38,7 @@ const ICON_CROP = { left: 90, top: 128, width: 138, height: 150 };
 
 // ── SVG building blocks ─────────────────────────────────────────
 
-// one flying tile: 3D extruded slab, cyan neon border, goonbet logo face
+// one flying tile: 3D extruded slab, cyan neon border, grynd logo face
 function tileGroup(t, logoB64) {
   const gid = `rt${Math.round(t.cx)}${Math.round(t.cy)}`;
   // G icon takes ~72% of the tile — big and readable, aspect preserved
@@ -70,7 +70,7 @@ function tileGroup(t, logoB64) {
     <rect x="${x + 11}" y="${y + 11}" width="${S - 22}" height="${(S - 22) * 0.42}" rx="13" fill="#ffffff" opacity="0.06" filter="url(#soft8)"/>
     <!-- warm amber light the logo casts onto the tile face (like the game's glow) -->
     <circle cx="${t.cx}" cy="${t.cy}" r="150" fill="#ffd54a" opacity="0.10" filter="url(#soft40)"/>
-    <!-- goonbet G icon face (wordmark removed, fills the tile) -->
+    <!-- grynd G icon face (wordmark removed, fills the tile) -->
     <image href="data:image/png;base64,${logoB64}" x="${lx}" y="${ly}" width="${lw}" height="${lh}" preserveAspectRatio="xMidYMid meet"/>
   </g>`;
 }
@@ -101,7 +101,7 @@ function buildSvg(logoB64) {
 }
 
 (async () => {
-  const bg = sharp(path.join(SRC, "goonbet-master-bg.jpg")).resize(W, H, {
+  const bg = sharp(path.join(SRC, "grynd-master-bg.jpg")).resize(W, H, {
     fit: "fill",
   });
   // crop the wordmark out of logo1.png → just the G icon, as base64

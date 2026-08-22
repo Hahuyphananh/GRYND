@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import PageClient from "./PageClient";
 
 export const metadata: Metadata = {
-  title: "Odds — GoonBet",
+  title: "Odds — GRYND",
   description:
-    "Play Odds on GoonBet — pick a hidden number, then predict the opponent's. Closest predictions earn points as the range shrinks from 100 to 3.",
+    "Play Odds on GRYND — pick a hidden number, then predict the opponent's. Closest predictions earn points as the range shrinks from 100 to 3.",
 };
 
 export default function Page() {

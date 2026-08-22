@@ -2,7 +2,7 @@
 //
 // Generates src/images/plinko-div.png — a casino game-card thumbnail for
 // Plinko. It composite-renders 6 chrome plinko pins plus a large glowing
-// ball (with motion streaks) over the provided goonbet-master-bg.jpg.
+// ball (with motion streaks) over the provided grynd-master-bg.jpg.
 //
 // The background image is used untouched (only resized to fill the frame),
 // matching the "master bg" look of blackjack-div.png / roulette div image.
@@ -16,7 +16,7 @@ const ROOT = path.resolve(__dirname, "..");
 const SRC = path.join(ROOT, "src", "images");
 
 const W = 1536;
-const H = 864; // 16:9 — same aspect as goonbet-master-bg.jpg (1024x572)
+const H = 864; // 16:9 — same aspect as grynd-master-bg.jpg (1024x572)
 
 // ── Scene layout ───────────────────────────────────────────────
 // The camera is zoomed in on the fall: the ball dominates the center,
@@ -146,7 +146,7 @@ const svg = `
 
 (async () => {
   // Background: scale 1024x572 → 1536x864 (exact 16:9, no cropping).
-  const bg = sharp(path.join(SRC, "goonbet-master-bg.jpg")).resize(W, H, {
+  const bg = sharp(path.join(SRC, "grynd-master-bg.jpg")).resize(W, H, {
     fit: "fill",
   });
 

@@ -8,9 +8,9 @@ import AdminDashboardClient from "./AdminDashboardClient";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Admin Dashboard — GoonBet",
+  title: "Admin Dashboard — GRYND",
   description:
-    "GoonBet admin dashboard for platform management, monitoring and operations.",
+    "GRYND admin dashboard for platform management, monitoring and operations.",
 };
 
 export default async function AdminPage() {

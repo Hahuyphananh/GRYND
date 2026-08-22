@@ -28,7 +28,7 @@ import {
 } from "../db/schema";
 
 // Same base-URL convention used by src/lib/emails/*.ts.
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://goonbet.dedyn.io";
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://grynd.dedyn.io";
 
 // ISR: the XML is prerendered at build time and served instantly from cache,
 // then regenerated in the background at most once per hour so the DB-backed

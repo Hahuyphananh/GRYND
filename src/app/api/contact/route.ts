@@ -31,7 +31,7 @@ export async function GET() {
 
 /**
  * POST /api/contact — User submits the contact form.
- * Sends the message via Gmail SMTP to contact@goonbet.dedyn.io (which the
+ * Sends the message via Gmail SMTP to contact@grynd.dedyn.io (which the
  * dedyn.io forwarder routes to the admin's Gmail inbox). The Reply-To
  * header is set to the form-submitter's email so the admin can reply
  * directly. No third-party transactional email service is used.

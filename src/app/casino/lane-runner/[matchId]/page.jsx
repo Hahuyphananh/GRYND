@@ -4,8 +4,8 @@ export async function generateMetadata({ params }) {
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
-    title: `Lane Rush Duel Match #${shortId} — GoonBet`,
-    description: `Live Lane Rush Duel match #${shortId} on GoonBet — climb your tower and beat your opponent to claim the pot.`,
+    title: `Lane Rush Duel Match #${shortId} — GRYND`,
+    description: `Live Lane Rush Duel match #${shortId} on GRYND — climb your tower and beat your opponent to claim the pot.`,
   };
 }
 

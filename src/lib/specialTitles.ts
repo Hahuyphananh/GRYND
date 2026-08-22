@@ -98,7 +98,7 @@ export async function checkUnlocks(
   if (actionType === "chat_message") {
     const message = String(metadata.message || "").toLowerCase();
     statsPatch.chatMessagesCount = Number(stats.chatMessagesCount || 0) + 1;
-    if (message.includes("goonbet"))
+    if (message.includes("grynd"))
       statsPatch.goonbetMentions = Number(stats.goonbetMentions || 0) + 1;
     if (message.includes("all in"))
       statsPatch.allInPhraseMentions =
@@ -160,14 +160,14 @@ export async function checkUnlocks(
   );
   await maybeUnlock(
     Number(stats.chatMessagesCount || 0) >= 1,
-    "talkative_goon",
+    "chatterbox",
   );
   await maybeUnlock(Number(stats.chatMessagesCount || 0) >= 100, "chat_addict");
   await maybeUnlock(
     Number(stats.chatMessagesCount || 0) >= 500,
     "keyboard_warrior",
   );
-  await maybeUnlock(Number(stats.goonbetMentions || 0) >= 10, "loyal_goon");
+  await maybeUnlock(Number(stats.goonbetMentions || 0) >= 10, "loyal_grinder");
   await maybeUnlock(
     Number(stats.allInPhraseMentions || 0) >= 25,
     "all_in_prophet",
@@ -193,7 +193,7 @@ export async function checkUnlocks(
   );
 
   await maybeUnlock(Number(stats.loginDays || 0) >= 30, "regular");
-  await maybeUnlock(Number(stats.loginDays || 0) >= 100, "resident_goon");
+  await maybeUnlock(Number(stats.loginDays || 0) >= 100, "resident_grinder");
   await maybeUnlock(actionType === "referral_invite", "recruiter");
 
   await maybeUnlock(
@@ -222,7 +222,7 @@ export async function checkUnlocks(
       .where(eq(userSpecialTitles.userId, appUser.id));
     await maybeUnlock(
       Number(finalCountRow[0]?.count || 0) >= totalTitles,
-      "goon_ascended",
+      "grynd_ascended",
     );
   }
 

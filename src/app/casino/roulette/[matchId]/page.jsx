@@ -4,8 +4,8 @@ export async function generateMetadata({ params }) {
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
-    title: `Roulette Match #${shortId} — GoonBet`,
-    description: `Live Roulette PvP match #${shortId} on GoonBet — spin the wheel and beat your opponent to the pot.`,
+    title: `Roulette Match #${shortId} — GRYND`,
+    description: `Live Roulette PvP match #${shortId} on GRYND — spin the wheel and beat your opponent to the pot.`,
   };
 }
 

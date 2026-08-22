@@ -1,6 +1,6 @@
-# 🎮 GoonBet — The Next-Gen Skill Gaming Platform
+# 🎮 GRYND — The Next-Gen Skill Gaming Platform
 
-Welcome to **GoonBet**, a modern skill-based gaming platform where users can play with **tokens** in a fun, fair, and engaging way.
+Welcome to **GRYND**, a modern skill-based gaming platform where users can play with **tokens** in a fun, fair, and engaging way.
 
 Our platform is designed to combine skill-based and classic arcade games with a smooth, interactive experience that works on desktop and mobile.
 
