@@ -1090,10 +1090,8 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                 Streak Titles <svg className="w-4 h-4 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg>
               </button>
               </div>
-            </div>
-          )}
 
-          {titlesView === "special" && (
+              {titlesView === "special" && (
             <div className="grid gap-3 md:grid-cols-2">
               {(specialTitles.titles || []).map((title) => {
                 const isUnlocked = !!title.unlocked;
@@ -1276,6 +1274,8 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                   </button>
                 );
               })}
+            </div>
+          )}
             </div>
           )}
         </div>
