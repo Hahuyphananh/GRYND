@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
+import bcrypt from "bcrypt";
+import crypto from "crypto";
 import { users, userAutomationState } from "../../../../db/schema";
 import { auditLog } from "../../../../lib/security/auditLog";
 import { sendWelcomeEmail } from "../../../../lib/emails/welcome";
@@ -29,11 +31,19 @@ export async function POST(req) {
       const { id, email_addresses, username, first_name, last_name } = evt.data;
       const email = email_addresses?.[0]?.email_address;
       if (email) {
+        // users.password is NOT NULL with no DB default — without a value
+        // here the insert throws, which breaks the welcome email + automation
+        // state below. Clerk owns authentication, so a random hash is fine.
+        const password = await bcrypt.hash(
+          crypto.randomBytes(32).toString("hex"),
+          12,
+        );
         await getDb()
           .insert(users)
           .values({
             clerkId: id,
             email,
+            password,
             name:
               username ||
               `${first_name || ""} ${last_name || ""}`.trim() ||

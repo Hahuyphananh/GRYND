@@ -1,11 +1,10 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 
 export default function SyncPage() {
-  const router = useRouter();
   const [status, setStatus] = useState("Syncing your account...");
+  const replacedRef = useRef(false);
 
   const { isLoaded, isSignedIn } = useUser();
 
@@ -14,7 +13,7 @@ export default function SyncPage() {
 
     let cancelled = false;
 
-    const syncUser = async () => {
+    const syncUser = async (attempt = 1) => {
       try {
         const res = await fetch("/api/sync-user", {
           method: "POST",
@@ -26,19 +25,31 @@ export default function SyncPage() {
         const data = await res.json();
 
         if (!res.ok) {
+          // Retry transient failures — Clerk eventual consistency right after
+          // sign-up and the occasional webhook/sync race both clear quickly.
+          if (attempt < 3 && (res.status === 409 || res.status === 500 || res.status === 400)) {
+            console.warn(" Sync transient failure, retrying...", res.status, attempt);
+            await new Promise((r) => setTimeout(r, 800 * attempt));
+            if (!cancelled) return syncUser(attempt + 1);
+          }
           console.error(" Sync failed:", res.status, data);
-          throw new Error("Sync failed");
+          throw new Error(data?.error || "Sync failed");
         }
 
         console.log(" Sync success:", data);
 
-        if (!cancelled) {
+        if (!cancelled && !replacedRef.current) {
+          replacedRef.current = true;
           const isNewUser = data?.message === "User synced successfully";
           setStatus("Redirecting...");
-          // IMPORTANT: replace, not push — so back/refresh can't resubmit.
-          // Brand-new players land on the thank-you page (welcome + tour),
-          // returning players go straight home as before.
-          router.replace(isNewUser ? "/thank-you" : "/");
+          // IMPORTANT: a full navigation (not router.replace) — so back/refresh
+          // can't resubmit, and the destination page gets a clean mount.
+          // Client-side replaces to /thank-you from here remount the page a
+          // moment later (killing the onboarding tour), which never happens on
+          // a full load. The ref guard keeps this single-fire: dev StrictMode
+          // double-invokes the effect.
+          const target = isNewUser ? "/thank-you" : "/";
+          window.location.replace(target);
         }
       } catch (err) {
         console.error(" Sync error:", err);
@@ -51,7 +62,7 @@ export default function SyncPage() {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, router]);
+  }, [isLoaded, isSignedIn]);
 
   return (
     <div

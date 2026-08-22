@@ -64,6 +64,13 @@
       "when": 1788200000000,
       "tag": "0075_blackjack_pvp_tiebreak",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1787412000000,
+      "tag": "0076_users_clerk_id_unique",
+      "breakpoints": true
     }
   ]
 }
