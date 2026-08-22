@@ -3,9 +3,9 @@ import { ogImageUrl } from "../../../lib/ogImages";
 import PageClient from "./PageClient";
 
 export const metadata: Metadata = {
-  title: "Memory Grid — GoonBet",
+  title: "Memory Grid — GRYND",
   description:
-    "Play Memory Grid on GoonBet — stake tokens and race another player on a shared 4×4 grid. Flip two cards to match pairs, winner takes 1.9×.",
+    "Play Memory Grid on GRYND — stake tokens and race another player on a shared 4×4 grid. Flip two cards to match pairs, winner takes 1.9×.",
   openGraph: { images: [ogImageUrl("/images/og/memory-grid.jpg")] },
 };
 

@@ -1,46 +1,46 @@
-# GoonBet
-> GoonBet is a skill-based multiplayer gaming platform. Players compete in skill games using virtual tokens — tokens have no real-world monetary value and are not redeemable for cash. GoonBet is 18+ only and promotes responsible play.
+# GRYND
+> GRYND is a skill-based multiplayer gaming platform. Players compete in skill games using virtual tokens — tokens have no real-world monetary value and are not redeemable for cash. GRYND is 18+ only and promotes responsible play.
 
-GoonBet covers dozens of arcade and table games playable solo, against AI, or against other players in real time. Outcomes are determined primarily by player skill and strategy. The platform uses virtual tokens for all gameplay.
+GRYND covers dozens of arcade and table games playable solo, against AI, or against other players in real time. Outcomes are determined primarily by player skill and strategy. The platform uses virtual tokens for all gameplay.
 
 ## Skill Games
-- [Game Hub](https://goonbet.dedyn.io/games): Browse all skill games
-- [Poker](https://goonbet.dedyn.io/games/poker/multi): Texas Hold'em against AI or other players
-- [Blackjack](https://goonbet.dedyn.io/games/blackjack): Classic 21 against the dealer, solo or PvP
-- [Roulette](https://goonbet.dedyn.io/games/roulette): Classic wheel game, solo or PvP
-- [Slots](https://goonbet.dedyn.io/games/slots): Themed slot machines with bonus rounds
-- [Plinko](https://goonbet.dedyn.io/games/plinko): Ball-drop payout game, solo or PvP
-- [Mines](https://goonbet.dedyn.io/games/mines-pvp): Risk-based tile reveal game, solo or PvP
-- [Crash Arena](https://goonbet.dedyn.io/games/crash-arena): Multiplayer cash-out racing game
-- [Crash](https://goonbet.dedyn.io/games/crash): Classic crash multiplier game
-- [Dice Flush](https://goonbet.dedyn.io/games/dice-flush): Dice-based skill game
-- [Dice Duel](https://goonbet.dedyn.io/games/dice-duel): Player-vs-player dice game
-- [Coin Flip](https://goonbet.dedyn.io/games/coin-flip): Fast coin-flip game, solo or PvP
-- [Keno](https://goonbet.dedyn.io/games/keno): Number-draw payout game
-- [RPS](https://goonbet.dedyn.io/games/rps): Rock-paper-scissors, solo or PvP
-- [Chess](https://goonbet.dedyn.io/games/chess): Chess against AI or other players
-- [Connect Four](https://goonbet.dedyn.io/games/connect-four): Connect Four, solo or PvP
-- [Dots & Boxes](https://goonbet.dedyn.io/games/dots-and-boxes): Classic dots-and-boxes, solo or PvP
-- [Pool Masters](https://goonbet.dedyn.io/games/pool-masters): Physics-based pool, solo or PvP
-- [Precision](https://goonbet.dedyn.io/games/precision): Aim-and-accuracy skill game, solo or PvP
-- [Neon Flush](https://goonbet.dedyn.io/games/neon-flush): Neon-themed card game
-- [Hex Duel](https://goonbet.dedyn.io/games/hex-duel): Turn-based board duel, solo or PvP
-- [Uno](https://goonbet.dedyn.io/games/uno): Uno against AI or online players
-- [Farkle](https://goonbet.dedyn.io/games/farkle): Classic dice-combination scoring game
-- [Lane Rush Duel](https://goonbet.dedyn.io/games/lane-runner): PvP tower-climb duel — pick safe tiles to climb, hold to bank your score
-- [Odds](https://goonbet.dedyn.io/games/odds): Odds-style betting games
+- [Game Hub](https://grynd.dedyn.io/games): Browse all skill games
+- [Poker](https://grynd.dedyn.io/games/poker/multi): Texas Hold'em against AI or other players
+- [Blackjack](https://grynd.dedyn.io/games/blackjack): Classic 21 against the dealer, solo or PvP
+- [Roulette](https://grynd.dedyn.io/games/roulette): Classic wheel game, solo or PvP
+- [Slots](https://grynd.dedyn.io/games/slots): Themed slot machines with bonus rounds
+- [Plinko](https://grynd.dedyn.io/games/plinko): Ball-drop payout game, solo or PvP
+- [Mines](https://grynd.dedyn.io/games/mines-pvp): Risk-based tile reveal game, solo or PvP
+- [Crash Arena](https://grynd.dedyn.io/games/crash-arena): Multiplayer cash-out racing game
+- [Crash](https://grynd.dedyn.io/games/crash): Classic crash multiplier game
+- [Dice Flush](https://grynd.dedyn.io/games/dice-flush): Dice-based skill game
+- [Dice Duel](https://grynd.dedyn.io/games/dice-duel): Player-vs-player dice game
+- [Coin Flip](https://grynd.dedyn.io/games/coin-flip): Fast coin-flip game, solo or PvP
+- [Keno](https://grynd.dedyn.io/games/keno): Number-draw payout game
+- [RPS](https://grynd.dedyn.io/games/rps): Rock-paper-scissors, solo or PvP
+- [Chess](https://grynd.dedyn.io/games/chess): Chess against AI or other players
+- [Connect Four](https://grynd.dedyn.io/games/connect-four): Connect Four, solo or PvP
+- [Dots & Boxes](https://grynd.dedyn.io/games/dots-and-boxes): Classic dots-and-boxes, solo or PvP
+- [Pool Masters](https://grynd.dedyn.io/games/pool-masters): Physics-based pool, solo or PvP
+- [Precision](https://grynd.dedyn.io/games/precision): Aim-and-accuracy skill game, solo or PvP
+- [Neon Flush](https://grynd.dedyn.io/games/neon-flush): Neon-themed card game
+- [Hex Duel](https://grynd.dedyn.io/games/hex-duel): Turn-based board duel, solo or PvP
+- [Uno](https://grynd.dedyn.io/games/uno): Uno against AI or online players
+- [Farkle](https://grynd.dedyn.io/games/farkle): Classic dice-combination scoring game
+- [Lane Rush Duel](https://grynd.dedyn.io/games/lane-runner): PvP tower-climb duel — pick safe tiles to climb, hold to bank your score
+- [Odds](https://grynd.dedyn.io/games/odds): Odds-style betting games
 
 ## Platform
-- [Home](https://goonbet.dedyn.io/): Site overview and featured games
-- [Rankings](https://goonbet.dedyn.io/classement): Leaderboards with weekly resets
-- [Profile](https://goonbet.dedyn.io/profil): Player stats, streaks, and token balance
-- [Sync](https://goonbet.dedyn.io/sync): Account sync and onboarding
-- [Contact](https://goonbet.dedyn.io/contact): Contact form for support
-- Support email: support@goonbet.com
+- [Home](https://grynd.dedyn.io/): Site overview and featured games
+- [Rankings](https://grynd.dedyn.io/classement): Leaderboards with weekly resets
+- [Profile](https://grynd.dedyn.io/profil): Player stats, streaks, and token balance
+- [Sync](https://grynd.dedyn.io/sync): Account sync and onboarding
+- [Contact](https://grynd.dedyn.io/contact): Contact form for support
+- Support email: support@grynd.com
 
 ## Optional
-- [Terms & Conditions](https://goonbet.dedyn.io/terms): Rules of use — virtual tokens, 18+, no real-money value
-- [Privacy Policy](https://goonbet.dedyn.io/privacy-policy): Data collection, usage, and protection
-- [Security Policy](https://goonbet.dedyn.io/security-policy): TLS 1.3, encryption, and incident response
-- [Fair Play](https://goonbet.dedyn.io/fair-play): Fairness, anti-cheat, and responsible gaming
-- [Accessibility](https://goonbet.dedyn.io/accessibility): WCAG 2.1 Level AA commitments
+- [Terms & Conditions](https://grynd.dedyn.io/terms): Rules of use — virtual tokens, 18+, no real-money value
+- [Privacy Policy](https://grynd.dedyn.io/privacy-policy): Data collection, usage, and protection
+- [Security Policy](https://grynd.dedyn.io/security-policy): TLS 1.3, encryption, and incident response
+- [Fair Play](https://grynd.dedyn.io/fair-play): Fairness, anti-cheat, and responsible gaming
+- [Accessibility](https://grynd.dedyn.io/accessibility): WCAG 2.1 Level AA commitments

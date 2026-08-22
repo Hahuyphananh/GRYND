@@ -1,7 +1,7 @@
 # DNS audit — dangling records
 
 The app previously ran on Vercel + Render (per `docs/PROD_REALTIME_AND_NEON_TASKS.md`)
-and now runs on Replit (`goonbet.dedyn.io`, see `.replit`). The old deployment
+and now runs on Replit (`grynd.dedyn.io`, see `.replit`). The old deployment
 hostnames are still referenced in docs and **still resolve** (checked
 2026-08-20), so any DNS record pointing at them is a candidate dangling record.
 
@@ -19,9 +19,9 @@ service — delete the DNS record either way.
 
 ## Where to look
 
-1. **dedyn.io console** — `goonbet.dedyn.io` is a dedyn.io dynamic-DNS host.
+1. **dedyn.io console** — `grynd.dedyn.io` is a dedyn.io dynamic-DNS host.
    Log in and inspect every record; delete any that target the old hosts.
-2. **DNS provider / registrar** — if a custom domain (e.g. `goonbet.com`) has
+2. **DNS provider / registrar** — if a custom domain (e.g. `grynd.com`) has
    records, check the whole zone. Also check **subdomains** like `socket.`,
    `api.`, `www.`, `app.`.
 3. **Env vars** — verify the running deployment no longer points at the old
@@ -37,9 +37,9 @@ service — delete the DNS record either way.
 
 ```bash
 # What does the zone actually point at?
-dig +short goonbet.dedyn.io
-dig +short socket.goonbet.dedyn.io
-dig +short www.goonbet.dedyn.io
+dig +short grynd.dedyn.io
+dig +short socket.grynd.dedyn.io
+dig +short www.grynd.dedyn.io
 
 # Does a record point at a deleted service? Check for 404/410 at the target:
 curl -sI https://casino-app-2wnk.onrender.com/health | head -3   # expect non-200 if deleted

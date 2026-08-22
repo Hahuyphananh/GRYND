@@ -1,5 +1,5 @@
-# GoonBet robots.txt
-# https://goonbet.dedyn.io/robots.txt
+# GRYND robots.txt
+# https://grynd.dedyn.io/robots.txt
 
 User-agent: *
 Allow: /
@@ -20,4 +20,4 @@ Disallow: /casino/poker/multi/
 Disallow: /casino/crash-arena/table/
 Disallow: /casino/chess/ai
 
-Sitemap: https://goonbet.dedyn.io/sitemap.xml
+Sitemap: https://grynd.dedyn.io/sitemap.xml

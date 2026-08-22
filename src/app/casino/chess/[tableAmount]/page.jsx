@@ -1,9 +1,9 @@
 import PageClient from "./PageClient";
 
 export const metadata = {
-  title: "Chess Table — GoonBet",
+  title: "Chess Table — GRYND",
   description:
-    "Join or create a chess table on GoonBet and face another player in a real-time chess duel.",
+    "Join or create a chess table on GRYND and face another player in a real-time chess duel.",
 };
 
 export default function Page() {

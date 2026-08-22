@@ -9,12 +9,12 @@ const sections = [
   {
     title: "1. Acceptance of Terms",
     content:
-      "By creating an account or using GoonBet in any way, you confirm that you have read, understood, and agree to be bound by these Terms & Conditions. If you do not agree with any part of these terms, you must not use our platform. These terms constitute a legally binding agreement between you and GoonBet.",
+      "By creating an account or using GRYND in any way, you confirm that you have read, understood, and agree to be bound by these Terms & Conditions. If you do not agree with any part of these terms, you must not use our platform. These terms constitute a legally binding agreement between you and GRYND.",
   },
   {
     title: "2. Eligibility",
     content:
-      "You must be at least 18 years old (or the legal age of majority in your jurisdiction) to use GoonBet. By using our platform, you represent and warrant that you meet this age requirement. It is your responsibility to ensure that your use of GoonBet complies with all applicable laws in your jurisdiction. We reserve the right to verify your age and suspend accounts that do not meet eligibility requirements.",
+      "You must be at least 18 years old (or the legal age of majority in your jurisdiction) to use GRYND. By using our platform, you represent and warrant that you meet this age requirement. It is your responsibility to ensure that your use of GRYND complies with all applicable laws in your jurisdiction. We reserve the right to verify your age and suspend accounts that do not meet eligibility requirements.",
   },
   {
     title: "3. Account Registration",
@@ -24,12 +24,12 @@ const sections = [
   {
     title: "4. Virtual Tokens & Transactions",
     content:
-      "GoonBet uses virtual tokens for gameplay. Tokens have no real-world monetary value and are not redeemable for cash or any other form of currency. We reserve the right to modify, suspend, or terminate the token system at any time. Token balances displayed in your account are final and binding. Any attempt to manipulate, exploit, or abuse the token system may result in account suspension.",
+      "GRYND uses virtual tokens for gameplay. Tokens have no real-world monetary value and are not redeemable for cash or any other form of currency. We reserve the right to modify, suspend, or terminate the token system at any time. Token balances displayed in your account are final and binding. Any attempt to manipulate, exploit, or abuse the token system may result in account suspension.",
   },
   {
     title: "5. Skill-Based Gaming",
     content:
-      "GoonBet offers skill-based games where outcomes are determined primarily by player skill, strategy, and decision-making rather than chance. Results are determined through fair and transparent game mechanics. We reserve the right to review game outcomes and investigate suspicious activity. In cases of technical errors or platform malfunctions, we may void games and refund tokens at our discretion.",
+      "GRYND offers skill-based games where outcomes are determined primarily by player skill, strategy, and decision-making rather than chance. Results are determined through fair and transparent game mechanics. We reserve the right to review game outcomes and investigate suspicious activity. In cases of technical errors or platform malfunctions, we may void games and refund tokens at our discretion.",
   },
   {
     title: "6. Prohibited Conduct",
@@ -44,12 +44,12 @@ const sections = [
   {
     title: "8. Intellectual Property",
     content:
-      "All content on GoonBet, including but not limited to logos, designs, text, graphics, software, and game mechanics, is the intellectual property of GoonBet or our licensors. You may not reproduce, distribute, modify, or create derivative works without our express written consent. The GoonBet name and logo are proprietary trademarks.",
+      "All content on GRYND, including but not limited to logos, designs, text, graphics, software, and game mechanics, is the intellectual property of GRYND or our licensors. You may not reproduce, distribute, modify, or create derivative works without our express written consent. The GRYND name and logo are proprietary trademarks.",
   },
   {
     title: "9. Limitation of Liability",
     content:
-      "To the maximum extent permitted by applicable law, in no event shall GoonBet, its affiliates, and their respective officers, directors, employees, agents, or licensors be liable for any indirect, incidental, special, consequential, exemplary, or punitive damages, or for any loss of profits, revenue, data, goodwill, or business opportunity, arising out of or in connection with your use of, or inability to use, the platform — including without limitation damages caused by bugs, errors, downtime, service interruptions, data loss, or platform crashes. Our total aggregate liability to you for all claims arising out of or relating to these Terms or your use of the platform, whether in contract, tort (including negligence), or otherwise, shall not exceed the amount of tokens in your account at the time the claim arises. Because tokens have no real-world monetary value and are not redeemable for cash, this cap reflects the limited nature of the services we provide. Some jurisdictions do not allow the exclusion or limitation of certain damages, so some of the above exclusions or limitations may not apply to you.",
+      "To the maximum extent permitted by applicable law, in no event shall GRYND, its affiliates, and their respective officers, directors, employees, agents, or licensors be liable for any indirect, incidental, special, consequential, exemplary, or punitive damages, or for any loss of profits, revenue, data, goodwill, or business opportunity, arising out of or in connection with your use of, or inability to use, the platform — including without limitation damages caused by bugs, errors, downtime, service interruptions, data loss, or platform crashes. Our total aggregate liability to you for all claims arising out of or relating to these Terms or your use of the platform, whether in contract, tort (including negligence), or otherwise, shall not exceed the amount of tokens in your account at the time the claim arises. Because tokens have no real-world monetary value and are not redeemable for cash, this cap reflects the limited nature of the services we provide. Some jurisdictions do not allow the exclusion or limitation of certain damages, so some of the above exclusions or limitations may not apply to you.",
   },
   {
     title: "10. Disclaimer of Warranties",
@@ -59,7 +59,7 @@ const sections = [
   {
     title: "11. Indemnification",
     content:
-      "You agree to indemnify, defend, and hold harmless GoonBet, its affiliates, and their respective officers, directors, employees, agents, and licensors from and against any and all claims, demands, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising out of or in connection with: (a) your use of the platform; (b) your violation of these Terms; (c) your violation of any applicable law or regulation; or (d) your infringement of any third-party rights, including intellectual property or privacy rights. We reserve the right, at your expense, to assume the exclusive defense and control of any matter for which you are required to indemnify us, and you agree to cooperate with our defense of such claims.",
+      "You agree to indemnify, defend, and hold harmless GRYND, its affiliates, and their respective officers, directors, employees, agents, and licensors from and against any and all claims, demands, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising out of or in connection with: (a) your use of the platform; (b) your violation of these Terms; (c) your violation of any applicable law or regulation; or (d) your infringement of any third-party rights, including intellectual property or privacy rights. We reserve the right, at your expense, to assume the exclusive defense and control of any matter for which you are required to indemnify us, and you agree to cooperate with our defense of such claims.",
   },
   {
     title: "12. Termination",
@@ -69,7 +69,7 @@ const sections = [
   {
     title: "13. Changes to Terms",
     content:
-      "We may modify these Terms & Conditions at any time. Material changes will be communicated via email or through a notice on our platform. Your continued use of GoonBet after changes take effect constitutes your acceptance of the new terms. If you do not agree with changes, you should stop using the platform and delete your account.",
+      "We may modify these Terms & Conditions at any time. Material changes will be communicated via email or through a notice on our platform. Your continued use of GRYND after changes take effect constitutes your acceptance of the new terms. If you do not agree with changes, you should stop using the platform and delete your account.",
   },
   {
     title: "14. Governing Law & Disputes",
@@ -100,7 +100,7 @@ export default function TermsPage() {
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">
             <p className="leading-relaxed text-[#c9f7ff]">
-              Welcome to GoonBet. These Terms & Conditions govern your use of
+              Welcome to GRYND. These Terms & Conditions govern your use of
               our skill-based gaming platform. Please read them carefully before
               creating an account or using any of our services.
             </p>
@@ -134,7 +134,7 @@ export default function TermsPage() {
         >
           <p className="text-sm text-[#c9f7ff]/70">
             For questions about these terms, contact us at{" "}
-            <span className="text-[#f5ff3b]">contact@goonbet.dedyn.io</span>
+            <span className="text-[#f5ff3b]">contact@grynd.dedyn.io</span>
           </p>
         </motion.div>
       </div>

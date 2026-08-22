@@ -37,7 +37,7 @@ export default function BlackjackCardBack() {
           {/*  Logo */}
           <Image
             src={smallLogo}
-            alt="GoonBet logo"
+            alt="GRYND logo"
             width={120}
             height={120}
             className="z-10 drop-shadow-[0_0_18px_rgba(0,229,255,1)]"

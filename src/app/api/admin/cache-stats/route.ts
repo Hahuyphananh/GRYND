@@ -110,7 +110,7 @@ export async function DELETE(req: NextRequest) {
     if (shouldFlush) {
       await invalidateAllLeaderboards();
       flushed.push("leaderboards");
-      await cacheDeletePattern("goonbet:user:stats:*");
+      await cacheDeletePattern("grynd:user:stats:*");
       flushed.push("user-stats");
       await invalidateRecentGames();
       flushed.push("recent-games");

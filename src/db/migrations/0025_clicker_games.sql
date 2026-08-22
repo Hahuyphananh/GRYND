@@ -1,4 +1,4 @@
--- Migration: Add clicker_games table to persist GoonBet Clicker round history
+-- Migration: Add clicker_games table to persist GRYND Clicker round history
 -- Used by get-bet-history and user-stats to show clicker games in bet history
 
 CREATE TABLE IF NOT EXISTS clicker_games (

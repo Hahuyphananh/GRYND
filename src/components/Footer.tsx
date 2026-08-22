@@ -36,7 +36,7 @@ export default function Footer() {
             <Link href="/" className="inline-block">
               <Image
                 src={LogoSmiley}
-                alt="GoonBet Logo"
+                alt="GRYND Logo"
                 width={150}
                 height={60}
                 className="w-[140px] object-contain drop-shadow-[0_0_10px_rgba(245,255,59,0.25)]"
@@ -150,7 +150,7 @@ export default function Footer() {
         {/* BOTTOM BAR */}
         <div className="mt-10 border-t border-[#00e5ff]/10 pt-6">
           <div className="flex flex-col items-center justify-between gap-3 text-xs text-[#6b91b3] md:flex-row">
-            <div>© 2026 GoonBet. All rights reserved.</div>
+            <div>© 2026 GRYND. All rights reserved.</div>
 
             <div className="flex items-center gap-2">
               <Link href="/terms" className="transition-colors hover:text-[#f5ff3b]">

@@ -23,7 +23,7 @@ export default function SplashScreen() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.4, ease: "easeInOut" }}
           role="status"
-          aria-label="Loading GoonBet"
+          aria-label="Loading GRYND"
         >
           {/* Page-mapped skeleton — mirrors the layout of whatever page
               is being loaded (home, casino, a game, profile, …) so

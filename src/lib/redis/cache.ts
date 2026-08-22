@@ -22,10 +22,10 @@ function _ensureDomain(domain: string): CacheStats {
 
 function _extractDomain(key: string): string {
   // Extract the second colon-separated segment as the domain.
-  // goonbet:lb:all-time:...  → "lb"
-  // goonbet:user:stats:...   → "user"
-  // goonbet:recent-games:... → "recent-games"
-  // goonbet:big-wins:...     → "big-wins"
+  // grynd:lb:all-time:...  → "lb"
+  // grynd:user:stats:...   → "user"
+  // grynd:recent-games:... → "recent-games"
+  // grynd:big-wins:...     → "big-wins"
   const parts = key.split(":");
   return parts.length >= 3 ? parts[1] : parts[0] || "unknown";
 }

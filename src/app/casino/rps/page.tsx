@@ -3,9 +3,9 @@ import { ogImageUrl } from "../../../lib/ogImages";
 import PageClient from "./PageClient";
 
 export const metadata: Metadata = {
-  title: "Rock-Paper-Scissors — GoonBet",
+  title: "Rock-Paper-Scissors — GRYND",
   description:
-    "Play Rock-Paper-Scissors on GoonBet — best-of-7 mind games against a live opponent, or play the AI for free.",
+    "Play Rock-Paper-Scissors on GRYND — best-of-7 mind games against a live opponent, or play the AI for free.",
   openGraph: { images: [ogImageUrl("/images/og/rps.jpg")] },
 };
 

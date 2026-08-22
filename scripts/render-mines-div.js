@@ -3,7 +3,7 @@
 // Generates src/images/mines-div.png — a casino game-card thumbnail for
 // Mines. A tilted 2x2 board of realistic 3D tiles (three with a gem in
 // the middle, one — tinted red — with a bomb) composite-rendered over
-// the provided goonbet-master-bg.jpg.
+// the provided grynd-master-bg.jpg.
 //
 // Run: node scripts/render-mines-div.js
 
@@ -14,7 +14,7 @@ const ROOT = path.resolve(__dirname, "..");
 const SRC = path.join(ROOT, "src", "images");
 
 const W = 1536;
-const H = 864; // 16:9 — same aspect as goonbet-master-bg.jpg (1024x572)
+const H = 864; // 16:9 — same aspect as grynd-master-bg.jpg (1024x572)
 
 // ── Board layout ────────────────────────────────────────────────
 const X0 = 455;
@@ -199,7 +199,7 @@ const svg = `
 </svg>`;
 
 (async () => {
-  const bg = sharp(path.join(SRC, "goonbet-master-bg.jpg")).resize(W, H, {
+  const bg = sharp(path.join(SRC, "grynd-master-bg.jpg")).resize(W, H, {
     fit: "fill",
   });
   const overlay = await sharp(Buffer.from(svg)).png().toBuffer();

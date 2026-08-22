@@ -9,8 +9,8 @@ export async function generateMetadata({
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
-    title: `Plinko Match #${shortId} — GoonBet`,
-    description: `Live Plinko PvP match #${shortId} on GoonBet — drop your chip and out-multiply your opponent.`,
+    title: `Plinko Match #${shortId} — GRYND`,
+    description: `Live Plinko PvP match #${shortId} on GRYND — drop your chip and out-multiply your opponent.`,
   };
 }
 

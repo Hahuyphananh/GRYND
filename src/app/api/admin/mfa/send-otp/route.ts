@@ -36,9 +36,9 @@ export async function POST(req: NextRequest) {
   const code = await issueOtp(userId);
   const result = await sendEmailSafely({
     user: { email, clerkId: userId },
-    subject: "Your GoonBet admin verification code",
+    subject: "Your GRYND admin verification code",
     html: `
-      <p>A one-time verification code was requested for admin access on GoonBet.</p>
+      <p>A one-time verification code was requested for admin access on GRYND.</p>
       <p style="font-size:28px;font-weight:700;letter-spacing:4px;color:#fbbf24;margin:16px 0">${code}</p>
       <p>This code expires in 5 minutes. If you didn't request it, you can ignore this email.</p>
     `,

@@ -9,8 +9,8 @@ export async function generateMetadata({
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
-    title: `Dice Duel Match #${shortId} — GoonBet`,
-    description: `Live Dice Duel match #${shortId} on GoonBet — outroll your opponent and win the wager.`,
+    title: `Dice Duel Match #${shortId} — GRYND`,
+    description: `Live Dice Duel match #${shortId} on GRYND — outroll your opponent and win the wager.`,
   };
 }
 

@@ -53,7 +53,7 @@ export default function Page() {
           <a
             target="_blank"
             rel="noopener"
-            href="https://goonbet.sentry.io/issues/?project=4511487533318144"
+            href="https://grynd.sentry.io/issues/?project=4511487533318144"
           >
             Issues Page
           </a>

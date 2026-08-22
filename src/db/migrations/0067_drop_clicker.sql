@@ -1,4 +1,4 @@
--- Migration 0067 — drop the dead GoonBet Clicker table.
+-- Migration 0067 — drop the dead GRYND Clicker table.
 --
 -- Clicker has been removed from the casino: the page, API routes
 -- (cashout/start/sync), component, lib and image are deleted. The

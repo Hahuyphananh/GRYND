@@ -40,10 +40,10 @@ CREATE TABLE IF NOT EXISTS user_secret_stats (
 INSERT INTO special_titles (key, name, description, rarity)
 VALUES
   ('huy', 'Huy', 'Type "huy" in chat.', 'Rare'),
-  ('talkative_goon', 'Talkative Goon', 'Send your first chat message.', 'Common'),
+  ('chatterbox', 'Chatterbox', 'Send your first chat message.', 'Common'),
   ('chat_addict', 'Chat Addict', 'Send 100 chat messages.', 'Uncommon'),
   ('keyboard_warrior', 'Keyboard Warrior', 'Send 500 chat messages.', 'Epic'),
-  ('loyal_goon', 'Loyal Goon', 'Type "goonbet" 10 times in chat.', 'Rare'),
+  ('loyal_grinder', 'Loyal Grinder', 'Type "grynd" 10 times in chat.', 'Rare'),
   ('all_in_prophet', 'All-In Prophet', 'Type "all in" 25 times in chat.', 'Epic'),
   ('hot_streak', 'Hot Streak', 'Win 3 games in a row.', 'Uncommon'),
   ('untouchable', 'Untouchable', 'Win 5 games in a row.', 'Rare'),
@@ -54,10 +54,10 @@ VALUES
   ('broke_again', 'Broke Again', 'Lose all your balance.', 'Rare'),
   ('certified_degenerate', 'Certified Degenerate', 'Lose 5 all-ins in a row.', 'Legendary'),
   ('regular', 'Regular', 'Claim login reward for 30 days.', 'Uncommon'),
-  ('resident_goon', 'Resident Goon', 'Claim login reward for 100 days.', 'Epic'),
+  ('resident_grinder', 'Resident Grinder', 'Claim login reward for 100 days.', 'Epic'),
   ('recruiter', 'Recruiter', 'Invite one friend.', 'Rare'),
   ('salt_lord', 'Salt Lord', 'Type "rigged" after losing.', 'Epic'),
   ('no_life', 'No Life', 'Play 1000 games.', 'Legendary'),
   ('collector', 'Collector', 'Unlock 10 secret titles.', 'Mythic'),
-  ('goon_ascended', 'GOON ASCENDED', 'Unlock all secret titles.', 'Mythic')
+  ('grynd_ascended', 'GRYND ASCENDED', 'Unlock all secret titles.', 'Mythic')
 ON CONFLICT (key) DO NOTHING;

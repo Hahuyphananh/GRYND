@@ -1,39 +1,39 @@
 /**
  * Redis Cache Key Prefixes
  *
- * All keys follow the pattern:   goonbet:<domain>:<identifier>
+ * All keys follow the pattern:   grynd:<domain>:<identifier>
  * This keeps keys namespaced and easy to evict by pattern.
  */
 
-const PREFIX = "goonbet";
+const PREFIX = "grynd";
 
 export const CacheKeys = {
   // ── Leaderboards ──────────────────────────────────────────────
   leaderboard: {
     /**
      * Pattern for all all-time leaderboard keys.
-     * goonbet:lb:all-time:{category}:{limit}:{offset}
+     * grynd:lb:all-time:{category}:{limit}:{offset}
      */
     allTime: (category: string, limit: number, offset: number) =>
       `${PREFIX}:lb:all-time:${category}:${limit}:${offset}`,
 
     /**
      * Pattern for all weekly leaderboard keys.
-     * goonbet:lb:weekly:{category}:{limit}:{offset}
+     * grynd:lb:weekly:{category}:{limit}:{offset}
      */
     weekly: (category: string, limit: number, offset: number) =>
       `${PREFIX}:lb:weekly:${category}:${limit}:${offset}`,
 
     /**
      * Pattern for wins leaderboard keys.
-     * goonbet:lb:wins:{limit}:{offset}
+     * grynd:lb:wins:{limit}:{offset}
      */
     wins: (limit: number, offset: number) =>
       `${PREFIX}:lb:wins:${limit}:${offset}`,
 
     /**
      * Pattern for daily streak leaderboard keys.
-     * goonbet:lb:daily-streak:{type}:{limit}:{offset}
+     * grynd:lb:daily-streak:{type}:{limit}:{offset}
      */
     dailyStreak: (type: string, limit: number, offset: number) =>
       `${PREFIX}:lb:daily-streak:${type}:${limit}:${offset}`,
@@ -62,7 +62,7 @@ export const CacheKeys = {
    * on the matching /api/hex-duel/end-game call so the server can
    * verify the `isAiGame` claim didn't come from a forged PvP request.
    *
-   * goonbet:hex-duel:ai-session:<sessionId>
+   * grynd:hex-duel:ai-session:<sessionId>
    */
   hexDuelAiSession: (sessionId: string) =>
     `${PREFIX}:hex-duel:ai-session:${sessionId}`,

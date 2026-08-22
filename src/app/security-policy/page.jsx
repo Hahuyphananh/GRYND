@@ -1,9 +1,9 @@
 import PageClient from "./PageClient";
 
 export const metadata = {
-  title: "Security Policy — GoonBet",
+  title: "Security Policy — GRYND",
   description:
-    "Discover how GoonBet protects your account and data — encryption, account security, payment security and vulnerability management.",
+    "Discover how GRYND protects your account and data — encryption, account security, payment security and vulnerability management.",
 };
 
 export default function Page() {

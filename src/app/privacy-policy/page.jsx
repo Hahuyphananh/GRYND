@@ -1,9 +1,9 @@
 import PageClient from "./PageClient";
 
 export const metadata = {
-  title: "Privacy Policy — GoonBet",
+  title: "Privacy Policy — GRYND",
   description:
-    "Learn how GoonBet collects, uses and protects your personal data — including cookies, retention, your rights and compliance.",
+    "Learn how GRYND collects, uses and protects your personal data — including cookies, retention, your rights and compliance.",
 };
 
 export default function Page() {

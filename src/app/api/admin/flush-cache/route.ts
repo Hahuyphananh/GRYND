@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     if (scope === "all" || scope === "user-stats") {
       // Flush all user-stats keys via pattern; there's no singular
       // "invalidateAllUserStats" helper, so use cacheDeletePattern directly.
-      await cacheDeletePattern("goonbet:user:stats:*");
+      await cacheDeletePattern("grynd:user:stats:*");
       flushed.push("user-stats");
     }
 

@@ -65,7 +65,7 @@ export default function UnoBack() {
           {/*  Logo */}
           <Image
             src={smallLogo}
-            alt="GoonBet logo"
+            alt="GRYND logo"
             width={90}
             height={90}
             className="z-10 drop-shadow-[0_0_12px_rgba(0,229,255,1)]"

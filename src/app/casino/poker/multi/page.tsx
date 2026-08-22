@@ -3,9 +3,9 @@ import { ogImageUrl } from "../../../../lib/ogImages";
 import PageClient from "./PageClient";
 
 export const metadata: Metadata = {
-  title: "Poker — GoonBet",
+  title: "Poker — GRYND",
   description:
-    "Play Texas Hold'em Poker on GoonBet — create or join multiplayer tables and compete against other players.",
+    "Play Texas Hold'em Poker on GRYND — create or join multiplayer tables and compete against other players.",
   openGraph: { images: [ogImageUrl("/images/og/poker.jpg")] },
 };
 

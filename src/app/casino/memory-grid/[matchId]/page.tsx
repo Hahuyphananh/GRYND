@@ -9,8 +9,8 @@ export async function generateMetadata({
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
-    title: `Memory Grid Match #${shortId} — GoonBet`,
-    description: `Live Memory Grid match #${shortId} on GoonBet — match pairs faster than your opponent to win the wager.`,
+    title: `Memory Grid Match #${shortId} — GRYND`,
+    description: `Live Memory Grid match #${shortId} on GRYND — match pairs faster than your opponent to win the wager.`,
   };
 }
 

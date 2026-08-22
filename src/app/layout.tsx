@@ -11,9 +11,9 @@ import { ogImageUrl } from "../lib/ogImages";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "GoonBet, skill-based gaming",
+  title: "GRYND — Competitive PvP Skill Gaming",
   description:
-    "Skill-based gambling platform. Bet on your skills and win big with GoonBet.",
+    "Compete head-to-head in skill-based PvP games, claim daily tokens and climb the global leaderboard. No real money — pure skill.",
   // Explicit icon metadata so the browser tab uses our smalllogo.
   // (Next.js also auto-generates a <link rel="icon"> from
   // src/app/icon.png, but listing it here keeps the intent obvious
@@ -30,11 +30,11 @@ export const metadata = {
   // Slack, Facebook, LinkedIn...). The default banner applies to every page;
   // individual game pages override the image with their own screenshot art.
   openGraph: {
-    title: "GoonBet, skill-based gaming",
+    title: "GRYND — Competitive PvP Skill Gaming",
     description:
-      "Skill-based gambling platform. Bet on your skills and win big with GoonBet.",
+      "Compete head-to-head in skill-based PvP games, claim daily tokens and climb the global leaderboard. No real money — pure skill.",
     url: ogImageUrl("/"),
-    siteName: "GoonBet",
+    siteName: "GRYND",
     locale: "en_US",
     type: "website",
     images: [
@@ -42,15 +42,15 @@ export const metadata = {
         url: ogImageUrl("/og-image.png"),
         width: 1200,
         height: 630,
-        alt: "GoonBet — Skill-Based Casino Games & PvP Duels",
+        alt: "GRYND — Competitive PvP Skill Gaming",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "GoonBet, skill-based gaming",
+    title: "GRYND — Competitive PvP Skill Gaming",
     description:
-      "Skill-based gambling platform. Bet on your skills and win big with GoonBet.",
+      "Compete head-to-head in skill-based PvP games, claim daily tokens and climb the global leaderboard. No real money — pure skill.",
     images: [ogImageUrl("/og-image.png")],
   },
 };

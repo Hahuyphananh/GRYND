@@ -9,7 +9,7 @@ const sections = [
   {
     title: "Our Commitment to Fair Play",
     content:
-      "GoonBet is built on the principle of fair competition. We are committed to providing a level playing field where all users can compete based on their skill, strategy, and decision-making abilities. We employ robust systems to detect and prevent unfair advantages, ensuring that every game is decided by merit alone.",
+      "GRYND is built on the principle of fair competition. We are committed to providing a level playing field where all users can compete based on their skill, strategy, and decision-making abilities. We employ robust systems to detect and prevent unfair advantages, ensuring that every game is decided by merit alone.",
   },
   {
     title: "Anti-Cheating Measures",
@@ -29,7 +29,7 @@ const sections = [
   {
     title: "Reporting Suspicious Activity",
     content:
-      "We encourage our community to help maintain fair play by reporting suspicious behavior. If you believe another user is cheating, exploiting, or violating these rules, please report them through the platform's reporting features or contact our support team at contact@goonbet.dedyn.io. All reports are investigated promptly and confidentially.",
+      "We encourage our community to help maintain fair play by reporting suspicious behavior. If you believe another user is cheating, exploiting, or violating these rules, please report them through the platform's reporting features or contact our support team at contact@grynd.dedyn.io. All reports are investigated promptly and confidentially.",
   },
   {
     title: "Game Integrity & Randomness",
@@ -39,7 +39,7 @@ const sections = [
   {
     title: "Responsible Gaming",
     content:
-      "GoonBet promotes responsible gaming. We encourage users to set limits on their play time and token usage, and to never chase losses. Our platform includes features to help you manage your gaming activity. If you feel that your gaming is becoming problematic, we provide resources and tools to help you stay in control, including self-exclusion options.",
+      "GRYND promotes responsible gaming. We encourage users to set limits on their play time and token usage, and to never chase losses. Our platform includes features to help you manage your gaming activity. If you feel that your gaming is becoming problematic, we provide resources and tools to help you stay in control, including self-exclusion options.",
   },
   {
     title: "Transparency & Accountability",
@@ -70,7 +70,7 @@ export default function FairPlayPage() {
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">
             <p className="leading-relaxed text-[#c9f7ff]">
-              Fair play is at the heart of the GoonBet experience. We are
+              Fair play is at the heart of the GRYND experience. We are
               dedicated to ensuring that every game on our platform is fair,
               transparent, and enjoyable for all users. This policy outlines our
               standards, monitoring practices, and the consequences of violating
@@ -106,7 +106,7 @@ export default function FairPlayPage() {
         >
           <p className="text-sm text-[#c9f7ff]/70">
             Play fair, have fun, and compete with honor. Together we make
-            GoonBet a great community.
+            GRYND a great community.
           </p>
         </motion.div>
       </div>

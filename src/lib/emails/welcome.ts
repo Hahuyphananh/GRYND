@@ -13,12 +13,12 @@ export async function sendWelcomeEmail(user: {
     user,
     type: "welcome",
     dedupeKey: `welcome:${user.clerkId}`,
-    subject: "Welcome to GoonBet",
+    subject: "Welcome to GRYND",
     html: renderTemplate(
-      "Welcome to GoonBet",
+      "Welcome to GRYND",
       `${SLOT_MACHINE_ICON}<p>Hey ${escapeHtml(user.username ?? "Player")}, your account is live and your gaming wallet is ready.</p>`,
       "Start Playing",
-      `${process.env.NEXT_PUBLIC_APP_URL ?? "https://goonbet.dedyn.io"}`,
+      `${process.env.NEXT_PUBLIC_APP_URL ?? "https://grynd.dedyn.io"}`,
     ),
   });
 }

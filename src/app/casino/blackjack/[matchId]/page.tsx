@@ -9,8 +9,8 @@ export async function generateMetadata({
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
-    title: `Blackjack PvP Match #${shortId} — GoonBet`,
-    description: `Live Blackjack PvP match #${shortId} on GoonBet — best-of-3 rounds, head-to-head. Freeze, swap and peek your way to the pot.`,
+    title: `Blackjack PvP Match #${shortId} — GRYND`,
+    description: `Live Blackjack PvP match #${shortId} on GRYND — best-of-3 rounds, head-to-head. Freeze, swap and peek your way to the pot.`,
   };
 }
 
