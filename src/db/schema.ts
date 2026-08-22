@@ -1261,6 +1261,45 @@ export const playerReports = pgTable(
   }),
 );
 
+// CONTACT MESSAGES — user-submitted contact form messages (admin inbox).
+// Filled by POST /api/contact; surfaced to admins in the admin dashboard's
+// Messages tab (GET /api/admin/contact-messages). No email is sent.
+export const contactMessages = pgTable(
+  "contact_messages",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 255 }),
+    email: varchar("email", { length: 255 }).notNull(),
+    message: text("message").notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("new"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at"),
+  },
+  (table) => ({
+    statusIdx: index("idx_contact_messages_status").on(table.status, table.createdAt),
+  }),
+);
+
+// CONTACT MESSAGE REPLIES — admin replies to contact form messages.
+// Filled by POST /api/admin/contact-messages; surfaced to the user in their
+// message history (GET /api/contact/messages) and to admins in the dashboard.
+export const contactMessageReplies = pgTable(
+  "contact_message_replies",
+  {
+    id: serial("id").primaryKey(),
+    messageId: integer("message_id")
+      .notNull()
+      .references(() => contactMessages.id, { onDelete: "cascade" }),
+    adminClerkId: varchar("admin_clerk_id", { length: 255 }).notNull(),
+    adminName: varchar("admin_name", { length: 255 }).notNull(),
+    reply: text("reply").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    messageIdx: index("idx_contact_message_replies_message").on(table.messageId),
+  }),
+);
+
 export const bigWins = pgTable(
   "big_wins",
   {

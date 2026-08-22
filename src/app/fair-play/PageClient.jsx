@@ -29,7 +29,7 @@ const sections = [
   {
     title: "Reporting Suspicious Activity",
     content:
-      "We encourage our community to help maintain fair play by reporting suspicious behavior. If you believe another user is cheating, exploiting, or violating these rules, please report them through the platform's reporting features or contact our support team at contact@grynd.dedyn.io. All reports are investigated promptly and confidentially.",
+      "We encourage our community to help maintain fair play by reporting suspicious behavior. If you believe another user is cheating, exploiting, or violating these rules, please report them through the platform's reporting features or contact our support team through our contact page. All reports are investigated promptly and confidentially.",
   },
   {
     title: "Game Integrity & Randomness",

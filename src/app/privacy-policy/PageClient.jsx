@@ -4,6 +4,7 @@ import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 const sections = [
   {
@@ -34,12 +35,12 @@ const sections = [
   {
     title: "Your Rights",
     content:
-      "You have the right to access, correct, or delete your personal data at any time through your account settings. You may also request a copy of your data, restrict processing, or object to certain data uses. To exercise these rights, please contact us at privacy@grynd.com. We will respond to your request within 30 days.",
+      "You have the right to access, correct, or delete your personal data at any time through your account settings. You may also request a copy of your data, restrict processing, or object to certain data uses. To exercise these rights, please contact us through our contact page. We will respond to your request within 30 days.",
   },
   {
     title: "Cookies & Consent",
     content:
-      "GRYND uses cookies and similar technologies to operate and secure the platform. We use strictly necessary cookies — such as those required for authentication, session management, security, and remembering your preferences — without which the platform cannot function. Where enabled, we may also use analytics cookies (for example, from our analytics provider PostHog) to understand how the platform is used and improve it; these are not used for advertising and are not used to track you across other websites. To the extent any non-essential cookies are used, we will obtain your consent before setting them where required by applicable law, including Quebec's Act respecting the protection of personal information in the private sector (Law 25). You can manage or delete cookies at any time through your browser settings; however, disabling essential cookies may prevent you from signing in or using core platform features. For questions about our use of cookies or to withdraw consent, contact us at contact@grynd.dedyn.io.",
+      "GRYND uses cookies and similar technologies to operate and secure the platform. We use strictly necessary cookies — such as those required for authentication, session management, security, and remembering your preferences — without which the platform cannot function. Where enabled, we may also use analytics cookies (for example, from our analytics provider PostHog) to understand how the platform is used and improve it; these are not used for advertising and are not used to track you across other websites. To the extent any non-essential cookies are used, we will obtain your consent before setting them where required by applicable law, including Quebec's Act respecting the protection of personal information in the private sector (Law 25). You can manage or delete cookies at any time through your browser settings; however, disabling essential cookies may prevent you from signing in or using core platform features. For questions about our use of cookies or to withdraw consent, contact us through our contact page.",
   },
   {
     title: "Changes to This Policy",
@@ -109,8 +110,14 @@ export default function PrivacyPolicyPage() {
           className="mt-10 rounded-lg border border-[#f5ff3b]/20 bg-[#f5ff3b]/5 p-6 text-center"
         >
           <p className="text-sm text-[#c9f7ff]/70">
-            For privacy-related inquiries, contact us at{" "}
-            <span className="text-[#f5ff3b]">contact@grynd.dedyn.io</span>
+            For privacy-related inquiries,{" "}
+            <Link
+              href="/contact"
+              className="text-[#f5ff3b] underline decoration-[#f5ff3b]/40 underline-offset-4 hover:text-[#f5ff3b]/80 transition-colors"
+            >
+              contact us
+            </Link>
+            .
           </p>
         </motion.div>
       </div>

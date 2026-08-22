@@ -13,6 +13,7 @@ import {
   IconCoins,
   IconX,
   IconRefresh,
+  IconMail,
 } from "@tabler/icons-react";
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -82,6 +83,26 @@ interface PlayerReport {
   reported_is_banned: boolean | null;
 }
 
+interface ContactMessageReply {
+  id: number;
+  message_id: number;
+  admin_clerk_id: string;
+  admin_name: string;
+  reply: string;
+  created_at: string;
+}
+
+interface ContactMessage {
+  id: number;
+  name: string | null;
+  email: string;
+  message: string;
+  status: string;
+  created_at: string;
+  resolved_at: string | null;
+  replies?: ContactMessageReply[];
+}
+
 // ── Component ─────────────────────────────────────────────────────
 
 interface AdminDashboardClientProps {
@@ -106,7 +127,9 @@ export default function AdminDashboardClient({
   const [searchedUsers, setSearchedUsers] = useState<AdminUser[]>([]);
   const [userSearchLoading, setUserSearchLoading] = useState(false);
   const [userToggleLoading, setUserToggleLoading] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"cache" | "users" | "audit" | "reports">("cache");
+  const [activeTab, setActiveTab] = useState<
+    "cache" | "users" | "audit" | "reports" | "messages"
+  >("cache");
   const [adminVerified, setAdminVerified] = useState(initialAdminVerified);
 
   // ── Audit log state ────────────────────────────────────────────
@@ -117,6 +140,14 @@ export default function AdminDashboardClient({
   const [reports, setReports] = useState<PlayerReport[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [banLoading, setBanLoading] = useState<string | null>(null);
+
+  // ── Contact messages state ─────────────────────────────────────
+  const [messages, setMessages] = useState<ContactMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messageActionLoading, setMessageActionLoading] = useState<string | null>(null);
+  const [replyTarget, setReplyTarget] = useState<ContactMessage | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [replySending, setReplySending] = useState(false);
 
   // ── Token reset state ──────────────────────────────────────────
   const [tokenResetTarget, setTokenResetTarget] = useState<AdminUser | null>(null);
@@ -384,6 +415,126 @@ export default function AdminDashboardClient({
       fetchReports();
     }
   }, [activeTab, reports.length, fetchReports]);
+
+  // ── Fetch contact messages ─────────────────────────────────────
+  const fetchMessages = useCallback(async () => {
+    setMessagesLoading(true);
+    try {
+      const res = await fetch("/api/admin/contact-messages?limit=100");
+      const data = await res.json();
+      if (data.success) {
+        setMessages(data.messages || []);
+      }
+    } catch {
+      setActionResult("Network error fetching messages");
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, []);
+
+  // Fetch messages when switching to messages tab
+  useEffect(() => {
+    if (activeTab === "messages" && messages.length === 0) {
+      fetchMessages();
+    }
+  }, [activeTab, messages.length, fetchMessages]);
+
+  // ── Mark message resolved / new handler ────────────────────────
+  async function handleSetMessageStatus(messageId: number, status: string) {
+    setMessageActionLoading(String(messageId));
+    setActionResult(null);
+    try {
+      const res = await fetch("/api/admin/contact-messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId, status }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionResult(
+          status === "resolved"
+            ? "Message " + messageId + " marked as resolved."
+            : "Message " + messageId + " marked as new.",
+        );
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, status } : m)),
+        );
+      } else {
+        setActionResult("Error: " + data.error);
+      }
+    } catch {
+      setActionResult("Network error updating message");
+    } finally {
+      setMessageActionLoading(null);
+    }
+  }
+
+  // ── Send reply handler ──────────────────────────────────────────
+  async function handleSendReply() {
+    if (!replyTarget || !replyText.trim()) return;
+    setReplySending(true);
+    setActionResult(null);
+    try {
+      const res = await fetch("/api/admin/contact-messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messageId: replyTarget.id,
+          reply: replyText.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionResult(
+          "Reply sent to " + (replyTarget.name || replyTarget.email) + ".",
+        );
+        setReplyTarget(null);
+        setReplyText("");
+        fetchMessages();
+      } else {
+        setActionResult("Error: " + data.error);
+      }
+    } catch {
+      setActionResult("Network error sending reply");
+    } finally {
+      setReplySending(false);
+    }
+  }
+
+  // ── Delete message handler ──────────────────────────────────────
+  async function handleDeleteMessage(m: ContactMessage) {
+    if (
+      !window.confirm(
+        "Delete message #" +
+          m.id +
+          " from " +
+          (m.name || m.email) +
+          "? This also deletes its replies.",
+      )
+    ) {
+      return;
+    }
+    setMessageActionLoading("delete-" + m.id);
+    setActionResult(null);
+    try {
+      const res = await fetch("/api/admin/contact-messages", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId: m.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionResult("Message #" + m.id + " deleted.");
+        setMessages((prev) => prev.filter((x) => x.id !== m.id));
+      } else {
+        setActionResult("Error: " + data.error);
+      }
+    } catch {
+      setActionResult("Network error deleting message");
+    } finally {
+      setMessageActionLoading(null);
+    }
+  }
 
   // ── Resolve report handler ──────────────────────────────────────
   async function handleResolveReport(reportId: number, status: string) {
@@ -655,7 +806,7 @@ export default function AdminDashboardClient({
 
       {/* Tab bar */}
       <div className="mb-6 flex gap-1 rounded-lg border border-white/10 bg-white/5 p-1 w-fit">
-        {(["cache", "users", "audit", "reports"] as const).map((tab) => (
+        {(["cache", "users", "audit", "reports", "messages"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -666,7 +817,7 @@ export default function AdminDashboardClient({
                 : "text-gray-400 hover:text-gray-200")
             }
           >
-            <span className="inline-flex items-center gap-1.5">{tab === "cache" ? <><IconChartBar size={14} /> Cache</> : tab === "users" ? <><IconUsers size={14} /> Users</> : tab === "audit" ? <><IconClipboardList size={14} /> Audit Logs</> : <><IconFlag size={14} /> Reports</>}</span>
+            <span className="inline-flex items-center gap-1.5">{tab === "cache" ? <><IconChartBar size={14} /> Cache</> : tab === "users" ? <><IconUsers size={14} /> Users</> : tab === "audit" ? <><IconClipboardList size={14} /> Audit Logs</> : tab === "reports" ? <><IconFlag size={14} /> Reports</> : <><IconMail size={14} /> Messages</>}</span>
           </button>
         ))}
       </div>
@@ -1034,6 +1185,228 @@ export default function AdminDashboardClient({
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Messages Tab ─────────────────────────────────────────── */}
+      {activeTab === "messages" && (
+        <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">
+              Contact Messages
+            </h2>
+            <button
+              onClick={fetchMessages}
+              disabled={messagesLoading}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+            >
+              {messagesLoading ? "Loading..." : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> Refresh</span>}
+            </button>
+          </div>
+
+          {messagesLoading && messages.length === 0 && (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-400 border-t-transparent" />
+            </div>
+          )}
+
+          {!messagesLoading && messages.length === 0 && (
+            <div className="py-16 text-center text-gray-500 text-sm">
+              No contact messages yet. Messages from the contact form will
+              appear here.
+            </div>
+          )}
+
+          {messages.map((m) => (
+            <div
+              key={m.id}
+              className="border-b border-white/5 hover:bg-white/5 transition-colors p-5"
+            >
+              {/* Header: id, from, status */}
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-gray-500 font-mono text-xs mt-1">
+                    #{m.id}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-gray-200 font-medium truncate">
+                      {m.name || "Anonymous"}
+                    </div>
+                    <a
+                      href={"mailto:" + m.email}
+                      className="text-[#c9f7ff]/60 text-[10px] hover:text-[#f5ff3b] transition-colors"
+                    >
+                      {m.email}
+                    </a>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-gray-500 text-xs font-mono">
+                    {formatTimestamp(m.created_at)}
+                  </span>
+                  {m.status === "new" ? (
+                    <span className="inline-flex items-center rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                      NEW
+                    </span>
+                  ) : m.status === "replied" ? (
+                    <span className="inline-flex items-center rounded-full bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 text-[11px] font-medium text-blue-300">
+                      REPLIED
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
+                      RESOLVED
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Message body */}
+              <p className="text-gray-300 text-sm whitespace-pre-wrap break-words">
+                {m.message}
+              </p>
+
+              {/* Replies */}
+              {m.replies && m.replies.length > 0 && (
+                <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Replies
+                  </p>
+                  {m.replies.map((r) => (
+                    <div
+                      key={r.id}
+                      className="bg-[#0e1f4d]/60 border border-white/10 rounded-lg p-3"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium text-[#f5ff3b]">
+                          {r.admin_name}
+                        </span>
+                        <AdminBadge />
+                        <span className="text-gray-500 text-[10px] font-mono">
+                          {formatTimestamp(r.created_at)}
+                        </span>
+                      </div>
+                      <p className="text-gray-200 text-sm whitespace-pre-wrap break-words">
+                        {r.reply}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="mt-4 flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setReplyTarget(m);
+                    setReplyText("");
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#f5ff3b]/10 hover:bg-[#f5ff3b]/20 text-[#f5ff3b] border border-[#f5ff3b]/30 transition-colors"
+                >
+                  <span className="inline-flex items-center gap-1.5"><IconMail size={12} /> Respond</span>
+                </button>
+                <button
+                  onClick={() => handleSetMessageStatus(m.id, "resolved")}
+                  disabled={messageActionLoading === String(m.id)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 transition-colors disabled:opacity-50"
+                >
+                  {messageActionLoading === String(m.id) ? "..." : "Mark Resolved"}
+                </button>
+                {m.status !== "new" && (
+                  <button
+                    onClick={() => handleSetMessageStatus(m.id, "new")}
+                    disabled={messageActionLoading === String(m.id)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 transition-colors disabled:opacity-50"
+                  >
+                    {messageActionLoading === String(m.id) ? "..." : "Reopen"}
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDeleteMessage(m)}
+                  disabled={messageActionLoading === "delete-" + m.id}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 transition-colors disabled:opacity-50 ml-auto"
+                >
+                  {messageActionLoading === "delete-" + m.id ? "..." : "Delete"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Reply modal ──────────────────────────────────────────── */}
+      {replyTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setReplyTarget(null)}
+        >
+          <div
+            className="w-full max-w-lg bg-[#0a0f1e] border border-white/15 rounded-xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-lg font-semibold text-white">
+                Reply to #{replyTarget.id}
+              </h3>
+              <button
+                onClick={() => setReplyTarget(null)}
+                className="text-gray-500 hover:text-gray-300"
+              >
+                <IconX size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-gray-400 mb-4">
+              From:{" "}
+              <span className="text-gray-200">
+                {replyTarget.name || "Anonymous"}
+              </span>{" "}
+              <a
+                href={"mailto:" + replyTarget.email}
+                className="text-[#c9f7ff]/60 hover:text-[#f5ff3b] transition-colors"
+              >
+                {replyTarget.email}
+              </a>
+            </p>
+            <div className="mb-4 rounded-lg bg-white/5 border border-white/10 p-3 text-sm text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+              {replyTarget.message}
+            </div>
+            <label htmlFor="admin-reply-text" className="sr-only">
+              Reply message
+            </label>
+            <textarea
+              id="admin-reply-text"
+              rows={5}
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder="Write your reply..."
+              maxLength={5000}
+              className="w-full rounded-lg border border-white/10 bg-[#0d1830] px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:border-[#f5ff3b]/50 resize-y mb-3"
+            />
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-gray-500">
+                Replying as{" "}
+                <span className="text-gray-300">
+                  {user?.fullName || user?.username || "Admin"}
+                </span>{" "}
+                <AdminBadge />
+              </span>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() => setReplyTarget(null)}
+                  disabled={replySending}
+                  className="px-4 py-2 rounded-lg text-sm text-gray-400 border border-white/10 hover:bg-white/5 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSendReply}
+                  disabled={replySending || !replyText.trim()}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-[#f5ff3b] text-[#0a0f1e] hover:bg-[#f5ff3b]/90 transition-colors disabled:opacity-50"
+                >
+                  {replySending ? "Sending..." : "Send Reply"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

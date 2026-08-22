@@ -4,6 +4,7 @@ import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 const sections = [
   {
@@ -44,7 +45,7 @@ const sections = [
   {
     title: "Feedback & Contact",
     content:
-      "We welcome feedback on accessibility. If you encounter any barriers while using GRYND, or have suggestions for improvement, please contact us at accessibility@grynd.com. We aim to respond to accessibility inquiries within 5 business days and will work with you to find a solution.",
+      "We welcome feedback on accessibility. If you encounter any barriers while using GRYND, or have suggestions for improvement, please contact us through our contact page. We aim to respond to accessibility inquiries within 5 business days and will work with you to find a solution.",
   },
 ];
 
@@ -105,8 +106,14 @@ export default function AccessibilityPage() {
           className="mt-10 rounded-lg border border-[#f5ff3b]/20 bg-[#f5ff3b]/5 p-6 text-center"
         >
           <p className="text-sm text-[#c9f7ff]/70">
-            For accessibility inquiries, contact us at{" "}
-            <span className="text-[#f5ff3b]">accessibility@grynd.com</span>
+            For accessibility inquiries,{" "}
+            <Link
+              href="/contact"
+              className="text-[#f5ff3b] underline decoration-[#f5ff3b]/40 underline-offset-4 hover:text-[#f5ff3b]/80 transition-colors"
+            >
+              contact us
+            </Link>
+            .
           </p>
         </motion.div>
       </div>

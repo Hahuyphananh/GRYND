@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 
 export async function POST() {
+  const sql = getNeonSql();
   try {
     const { userId } = await auth();
     if (!userId) {
