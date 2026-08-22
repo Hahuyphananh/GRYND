@@ -14,7 +14,7 @@ export default function ContactMessageHistory({ title = "Your Messages" }) {
   const { isLoaded, isSignedIn } = useUser();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
