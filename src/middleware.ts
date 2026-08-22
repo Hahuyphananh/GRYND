@@ -8,6 +8,7 @@ import {
 import { auditLog } from "./lib/security/auditLog";
 import { isAdmin } from "./lib/auth/isAdmin";
 import { hasRecentMfa } from "./lib/auth/requireMfa";
+import { ADMIN_MFA_COOKIE, verifyAdminMfaToken } from "./lib/auth/adminMfa";
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
@@ -374,7 +375,11 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     (pathname.startsWith("/admin") && pathname !== "/admin/mfa-required") ||
     pathname.startsWith("/api/admin")
   ) {
-    if (!hasRecentMfa(factorVerificationAge)) {
+    const adminMfaToken = req.cookies.get(ADMIN_MFA_COOKIE)?.value;
+    if (
+      !hasRecentMfa(factorVerificationAge) &&
+      !(await verifyAdminMfaToken(adminMfaToken, userId))
+    ) {
       if (pathname.startsWith("/api/admin")) {
         auditLog("admin_mfa_required", { userId, ip, path: pathname });
         return applySecurityHeaders(
