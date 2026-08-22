@@ -9,6 +9,9 @@ import { auditLog } from "./lib/security/auditLog";
 import { isAdmin } from "./lib/auth/isAdmin";
 import { hasRecentMfa } from "./lib/auth/requireMfa";
 import { ADMIN_MFA_COOKIE, verifyAdminMfaToken } from "./lib/auth/adminMfa";
+import { db } from "./db";
+import { users } from "./db/schema";
+import { eq } from "drizzle-orm";
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
@@ -21,6 +24,7 @@ const isPublicRoute = createRouteMatcher([
   "/casino",
   "/games",
   "/sync",
+  "/thank-you",
   "/Classement",
   "/profil(.*)",
   "/casino/blackjack(.*)",
@@ -318,7 +322,20 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     pathname.startsWith("/admin");
 
   if (!skipsAgeGate) {
-    const age = sessionClaims?.age;
+    // Prefer the session claim when a JWT template provides one, but fall
+    // back to the DB `users.age` value — that is what /api/update-birthdate
+    // actually writes, and no code path populates `sessionClaims.age`.
+    // Without the fallback the gate can never pass, so every user is stuck
+    // bouncing to /complete-profile.
+    let age = sessionClaims?.age;
+
+    if (age === undefined || age === null) {
+      const user = await db.query.users.findFirst({
+        where: eq(users.clerkId, userId),
+        columns: { age: true },
+      });
+      age = user?.age ?? null;
+    }
 
     if (!age) {
       auditLog("missing_age_claim", { userId, ip, path: pathname });

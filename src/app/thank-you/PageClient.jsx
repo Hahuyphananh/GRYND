@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
@@ -10,7 +9,6 @@ import { useTranslation } from "../../hooks/useTranslation";
 
 export default function ThankYouPage() {
   const { t } = useTranslation();
-  const router = useRouter();
   const { isLoaded, user } = useUser();
   const [tourVisible, setTourVisible] = useState(false);
 
@@ -44,7 +42,10 @@ export default function ThankYouPage() {
   const handleTourFinish = () => {
     if (storageKey) localStorage.setItem(storageKey, "casino");
     setTourVisible(false);
-    router.push("/casino");
+    // Full navigation, not router.push: client-side navigation to a page
+    // can remount it moments later (killing the phase-2 tour on the lobby).
+    // /games is the canonical lobby URL (/casino 308-redirects to it).
+    window.location.assign("/games");
   };
 
   const handleTourSkip = () => {
@@ -114,7 +115,7 @@ export default function ThankYouPage() {
       >
         <button
           type="button"
-          onClick={() => router.push("/casino")}
+          onClick={() => window.location.assign("/games")}
           className="rounded-2xl bg-gradient-to-r from-[#FFD700] to-[#FFB300] px-10 py-4 text-lg font-extrabold text-black shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all hover:brightness-110 active:scale-[0.98]"
         >
           {t("thankYou.play")} →

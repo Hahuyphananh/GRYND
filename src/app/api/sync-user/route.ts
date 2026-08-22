@@ -56,32 +56,6 @@ export async function POST(req: Request) {
 
     const profilePicture = clerkUser.imageUrl || null;
 
-    const existingByClerk = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.clerkId, clerkId))
-      .limit(1);
-
-    if (existingByClerk.length > 0) {
-      return NextResponse.json(
-        { message: "User already exists" },
-        { status: 200 },
-      );
-    }
-
-    const existingByEmail = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
-
-    if (existingByEmail.length > 0) {
-      return NextResponse.json(
-        { error: "An account with this email already exists in local DB" },
-        { status: 409 },
-      );
-    }
-
     let rawPassword = crypto.randomBytes(32).toString("hex");
 
     try {
@@ -101,34 +75,84 @@ export async function POST(req: Request) {
 
     const passwordHash = await bcrypt.hash(rawPassword, 12);
 
-    const inserted = await db
-      .insert(users)
-      .values({
-        clerkId,
-        name: preferredName,
-        email,
-        password: passwordHash,
-        profilePicture,
-      })
-      .returning();
+    // The Clerk `user.created` webhook usually creates the local row before
+    // the user reaches /sync, and concurrent requests (dev double-effects,
+    // retries) can race this route. A plain check-then-insert turns those
+    // races into 500s/409s and can misroute a brand-new player away from
+    // onboarding, so the insert is atomic: ON CONFLICT (clerk_id) DO NOTHING
+    // means exactly one racing request creates the row and the rest fall
+    // through to the existing-row lookup below.
+    let inserted;
+    try {
+      inserted = await db
+        .insert(users)
+        .values({
+          clerkId,
+          name: preferredName,
+          email,
+          password: passwordHash,
+          profilePicture,
+        })
+        .onConflictDoNothing({ target: users.clerkId })
+        .returning();
+    } catch (error) {
+      // Email belongs to a *different* account (not the webhook race, which
+      // is covered by the clerk_id conflict target above).
+      if ((error as { code?: string })?.code === "23505") {
+        return NextResponse.json(
+          { error: "An account with this email already exists in local DB" },
+          { status: 409 },
+        );
+      }
+      throw error;
+    }
 
-    const newUser = inserted[0];
+    const newUser = inserted?.[0];
 
-    await db.execute(sql`
-      INSERT INTO user_secret_stats (user_id, day_key, day_start_balance, last_known_balance)
-      VALUES (${newUser.id}, ${new Date().toISOString().slice(0, 10)}, ${newUser.balance ?? "1000.00"}, ${newUser.balance ?? "1000.00"})
-      ON CONFLICT (user_id) DO NOTHING
-    `);
+    if (newUser) {
+      await seedPlayerStats(newUser);
+      return NextResponse.json(
+        { message: "User synced successfully", user: newUser },
+        { status: 201 },
+      );
+    }
 
-    await db.execute(sql`
-      INSERT INTO user_stats (user_id)
-      VALUES (${newUser.id})
-      ON CONFLICT (user_id) DO NOTHING
-    `);
+    // Row already exists — created by the user.created webhook, a previous
+    // sync, or a concurrent request that won the insert race.
+    const existing = await db
+      .select({ id: users.id, balance: users.balance, createdAt: users.createdAt })
+      .from(users)
+      .where(eq(users.clerkId, clerkId))
+      .limit(1);
+
+    if (existing.length === 0) {
+      // No row under this clerk_id but the email is taken by someone else.
+      return NextResponse.json(
+        { error: "An account with this email already exists in local DB" },
+        { status: 409 },
+      );
+    }
+
+    const existingUser = existing[0];
+
+    // A brand-new player is one whose Clerk account was just created. The
+    // webhook can beat /sync to the insert, so "did this request insert the
+    // row" is not the right test for "is this a new user". Fresh accounts go
+    // to the thank-you page; everyone else goes straight home as before.
+    const isFreshAccount =
+      Date.now() - Number(clerkUser.createdAt) < 15 * 60 * 1000;
+
+    if (isFreshAccount) {
+      await seedPlayerStats(existingUser);
+      return NextResponse.json(
+        { message: "User synced successfully", user: existingUser },
+        { status: 200 },
+      );
+    }
 
     return NextResponse.json(
-      { message: "User synced successfully", user: newUser },
-      { status: 201 },
+      { message: "User already exists", user: existingUser },
+      { status: 200 },
     );
   } catch (error) {
     console.error(" Error in /api/sync-user:", error);
@@ -137,4 +161,18 @@ export async function POST(req: Request) {
       { status: 500 },
     );
   }
+}
+
+async function seedPlayerStats(user: { id: number; balance: string | null }) {
+  await db.execute(sql`
+    INSERT INTO user_secret_stats (user_id, day_key, day_start_balance, last_known_balance)
+    VALUES (${user.id}, ${new Date().toISOString().slice(0, 10)}, ${user.balance ?? "1000.00"}, ${user.balance ?? "1000.00"})
+    ON CONFLICT (user_id) DO NOTHING
+  `);
+
+  await db.execute(sql`
+    INSERT INTO user_stats (user_id)
+    VALUES (${user.id})
+    ON CONFLICT (user_id) DO NOTHING
+  `);
 }

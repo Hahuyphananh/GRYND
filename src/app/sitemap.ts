@@ -8,12 +8,10 @@ import {
   chessGames,
   connectFourGames,
   crashArenaRounds,
-  crashGames,
   diceFlushRooms,
   diceMatches,
   dotsAndBoxesGames,
   hexDuelGames,
-  keno_games,
   laneRunnerGames,
   memoryGridMatches,
   minesGames,
@@ -67,6 +65,12 @@ function latestOf(table: AnyPgTable, column: AnyPgColumn): Promise<Date | null> 
 // "this page last changed". Omit `source` for pages with no DB representation
 // (they fall back to the regeneration date).
 
+// Every path here is a real route under /games/* — the canonical location for
+// each game: /games/:path* rewrites to the /casino/:path* app routes and
+// stays in the address bar, while /casino/:path* 308-redirects to /games/*
+// (see next.config.js). Listing /casino URLs would send crawlers through a
+// redirect chain. `/games/crash` is intentionally omitted: it's a redirect to
+// `/games/crash-arena` (already listed) and shouldn't be indexed separately.
 const GAME_PAGES: {
   path: string;
   source?: [AnyPgTable, AnyPgColumn];
@@ -77,7 +81,6 @@ const GAME_PAGES: {
   { path: "/games/plinko", source: [plinkoGames, plinkoGames.createdAt] },
   { path: "/games/mines-pvp", source: [minesGames, minesGames.createdAt] },
   { path: "/games/crash-arena", source: [crashArenaRounds, crashArenaRounds.createdAt] },
-  { path: "/games/crash", source: [crashGames, crashGames.createdAt] },
   { path: "/games/dice-flush", source: [diceFlushRooms, diceFlushRooms.createdAt] },
   { path: "/games/dice-duel", source: [diceMatches, diceMatches.createdAt] },
   { path: "/games/keno", source: [kenoPvpMatches, kenoPvpMatches.createdAt] },
@@ -93,6 +96,7 @@ const GAME_PAGES: {
   { path: "/games/neon-flush" }, // no dedicated table yet → static
   { path: "/games/hex-duel", source: [hexDuelGames, hexDuelGames.createdAt] },
   { path: "/games/uno", source: [unoGames, unoGames.createdAt] },
+  { path: "/games/uno/multiplayer" }, // same game, no separate table
   { path: "/games/lane-runner", source: [laneRunnerGames, laneRunnerGames.createdAt] },
   { path: "/games/odds", source: [oddsGames, oddsGames.createdAt] },
   { path: "/games/memory-grid", source: [memoryGridMatches, memoryGridMatches.createdAt] },
@@ -142,7 +146,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority,
     };
     // lastmod is optional in the protocol — omit it when there's no real
-    // data instead of inventing a date. `/games` always has one via the max.
+    // data instead of inventing a date. `/casino` always has one via the max.
     const real = lastModified.get(path);
     if (real) entry.lastModified = real;
     return entry;
