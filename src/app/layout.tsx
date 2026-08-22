@@ -6,6 +6,7 @@ import DisableInspect from "../components/DisableInspect";
 import CsrfFetchGuard from "../components/CsrfFetchGuard";
 import TawkProvider from "../components/TawkProvider";
 import SplashScreen from "../components/SplashScreen";
+import { ogImageUrl } from "../lib/ogImages";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,33 @@ export const metadata = {
       { url: "/images/smalllogo.png", type: "image/png" },
     ],
     apple: "/icon-192.png",
+  },
+  // Rich preview cards for social platforms / chat apps (Discord, WhatsApp,
+  // Slack, Facebook, LinkedIn...). The default banner applies to every page;
+  // individual game pages override the image with their own screenshot art.
+  openGraph: {
+    title: "GoonBet, skill-based gaming",
+    description:
+      "Skill-based gambling platform. Bet on your skills and win big with GoonBet.",
+    url: ogImageUrl("/"),
+    siteName: "GoonBet",
+    locale: "en_US",
+    type: "website",
+    images: [
+      {
+        url: ogImageUrl("/og-image.png"),
+        width: 1200,
+        height: 630,
+        alt: "GoonBet — Skill-Based Casino Games & PvP Duels",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "GoonBet, skill-based gaming",
+    description:
+      "Skill-based gambling platform. Bet on your skills and win big with GoonBet.",
+    images: [ogImageUrl("/og-image.png")],
   },
 };
 export default function RootLayout({ children }: { children: React.ReactNode }) {

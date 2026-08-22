@@ -1,7 +1,14 @@
 import Link from "next/link";
 import Image from "next/image";
+import type { Metadata } from "next";
 import type { CSSProperties } from "react";
 import LogoSmiley from "../images/logo1.png";
+
+export const metadata: Metadata = {
+  title: "Page Not Found — GoonBet",
+  description:
+    "The page you're looking for doesn't exist. Head back to GoonBet and keep playing.",
+};
 
 /* ── Slot reels ─────────────────────────────────────────────
    Each reel is a vertical strip of digits that "rolls" down and

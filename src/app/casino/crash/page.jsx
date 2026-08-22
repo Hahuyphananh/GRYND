@@ -5,6 +5,12 @@ import { redirect } from "next/navigation";
  * Crash Arena (PVP). Keep this route alive as a redirect so old
  * bookmarks and links still land on the arena.
  */
+export const metadata = {
+  title: "Crash — GoonBet",
+  description:
+    "The classic Crash game is now Crash Arena on GoonBet — join a table, survive the crash and claim the pot.",
+};
+
 export default function CrashRedirectPage() {
   redirect("/casino/crash-arena");
 }
