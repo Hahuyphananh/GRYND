@@ -311,7 +311,14 @@ const MobileStaticBg = ({ variant, uid }) => {
   );
 };
 
-export default function InteractiveCasinoBg({ variant = "hero" }) {
+export default function InteractiveCasinoBg({
+  variant = "hero",
+  wheelPosition = "center", // "center" | "bottom" — where the deep wheel sits vertically
+  wheelSize = "min(150vh, 1300px)", // CSS size override, e.g. "min(95vh, 950px)"
+  wheelOffsetY = "0", // extra downward shift (CSS translateY) so the wheel clears page content
+  wheelOpacity = undefined, // optional opacity override for the roulette wireframe (defaults per variant)
+  cursorOrb = true, // set false to hide the cursor-following glow orb
+}) {
   const cfg = VARIANT_CONFIG[variant] ?? VARIANT_CONFIG.hero;
   const reduceMotion = useReducedMotion();
   const containerRef = useRef(null);
@@ -575,16 +582,17 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
       >
         {/* ── Layer 1 — Deep background : wireframe roulette + grid */}
         <motion.div
-          className="absolute inset-0 flex items-center justify-center"
+          className={`absolute inset-0 flex justify-center ${wheelPosition === "bottom" ? "items-end" : "items-center"}`}
           style={{
             x: parallaxWeakX,
             y: parallaxWeakY,
             opacity:
-              variant === "splash"
+              wheelOpacity ??
+              (variant === "splash"
                 ? 0.18
                 : variant === "subtle"
                   ? 0.32
-                  : 0.55,
+                  : 0.55),
           }}
         >
           <motion.div
@@ -601,7 +609,7 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
                     ease: "linear",
                   }
             }
-            style={{ width: "min(150vh, 1300px)", height: "min(150vh, 1300px)" }}
+            style={{ width: wheelSize, height: wheelSize, translateY: wheelOffsetY }}
           >
             <RouletteWireframe size="100%" uid={uid} />
           </motion.div>
@@ -615,7 +623,7 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
             the logo reads clearly on subtle-variant pages instead of fading
             into the dark hub background. */}
         <motion.div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          className={`absolute inset-0 flex justify-center pointer-events-none ${wheelPosition === "bottom" ? "items-end" : "items-center"}`}
           style={{
             x: parallaxWeakX,
             y: parallaxWeakY,
@@ -635,7 +643,7 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
                     ease: "linear",
                   }
             }
-            style={{ width: "min(150vh, 1300px)", height: "min(150vh, 1300px)" }}
+            style={{ width: wheelSize, height: wheelSize, translateY: wheelOffsetY }}
           >
             {/* Sized to 24% of the rotating wrapper so the visible 3:2 logo
                 content (~24% wide × 16% tall after `contain` letterbox) is
@@ -717,7 +725,7 @@ export default function InteractiveCasinoBg({ variant = "hero" }) {
         </div>
 
         {/* ── Layer 5 — Cursor-following magnetic orb (omitted on splash; hidden under reduced motion) */}
-        {!reduceMotion && variant !== "splash" && (
+        {cursorOrb && !reduceMotion && variant !== "splash" && (
           <motion.div
             className="pointer-events-none absolute left-0 top-0 rounded-full"
             aria-hidden="true"

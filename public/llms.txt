@@ -36,7 +36,6 @@ GRYND covers dozens of arcade and table games playable solo, against AI, or agai
 - [Profile](https://grynd.dedyn.io/profil): Player stats, streaks, and token balance
 - [Sync](https://grynd.dedyn.io/sync): Account sync and onboarding
 - [Contact](https://grynd.dedyn.io/contact): Contact form for support
-- Support email: support@grynd.com
 
 ## Optional
 - [Terms & Conditions](https://grynd.dedyn.io/terms): Rules of use — virtual tokens, 18+, no real-money value

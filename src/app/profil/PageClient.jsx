@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useUser, useClerk } from "@clerk/nextjs";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
+import ContactMessageHistory from "../../components/ContactMessageHistory";
 import {
   ALLOWED_IMAGE_MIME,
   MAX_IMAGE_BYTES,
@@ -54,6 +55,7 @@ export default function ProfilePage() {
   });
 
   const [titlesView, setTitlesView] = useState("special");
+  const [titlesOpen, setTitlesOpen] = useState(false); // collapsed by default so the profile stays compact
   const [vipTitles, setVipTitles] = useState(null);
   const loadVipTitles = async () => {
     const response = await fetch("/api/titles", { credentials: "include" });
@@ -1034,10 +1036,28 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
         </div>
 
         <div className="mt-8 rounded-xl border border-fuchsia-400/35 bg-[#0d0a28]/85 p-6 shadow-[0_0_24px_rgba(217,70,239,0.2)]">
-          <div className="flex items-center justify-between mb-4">
+          <button
+            type="button"
+            onClick={() => setTitlesOpen((o) => !o)}
+            className="flex w-full items-center justify-between text-left focus-visible:outline-none"
+            aria-expanded={titlesOpen}
+            aria-controls="titles-section-body"
+          >
             <h2 className="text-xl text-fuchsia-300">Titles</h2>
+            <svg
+              className={`w-5 h-5 text-fuchsia-300 transition-transform duration-200 ${titlesOpen ? "rotate-180" : ""}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
 
-            <div className="flex gap-2">
+          {titlesOpen && (
+            <div id="titles-section-body" className="mt-4">
+              <div className="flex gap-2 mb-4">
               <button
                 onClick={() => setTitlesView("special")}
                 className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
@@ -1069,8 +1089,9 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
               >
                 Streak Titles <svg className="w-4 h-4 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg>
               </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {titlesView === "special" && (
             <div className="grid gap-3 md:grid-cols-2">
@@ -1757,6 +1778,10 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
               </tbody>
             </table>
           </div>
+        </div>
+
+        <div className="mt-12">
+          <ContactMessageHistory />
         </div>
 
         <div

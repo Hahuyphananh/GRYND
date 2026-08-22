@@ -4,8 +4,9 @@ import { useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
+import NavigationBar from "../../components/navigation-bar";
+import ContactMessageHistory from "../../components/ContactMessageHistory";
 import {
-  IconMail,
   IconClock,
   IconLock,
   IconCircleCheck,
@@ -14,7 +15,10 @@ import {
   IconX,
 } from "@tabler/icons-react";
 
-const isValidEmail = (email) => email.includes("@") && email.includes(".") && email.indexOf("@") > 0 && email.lastIndexOf(".") > email.indexOf("@") + 1;
+// Strict real-email check: requires a local part, an @, and a dotted domain
+// (e.g. name@example.com). Same rule the server enforces before sending.
+const EMAIL_REGEX = /^[^\s@"<>]+@[^\s@"<>]+\.[^\s@"<>]+$/;
+const isValidEmail = (email) => EMAIL_REGEX.test(email.trim());
 
 export default function ContactPage() {
   const [email, setEmail] = useState("");
@@ -31,9 +35,9 @@ export default function ContactPage() {
       setErrorMsg("Email and message are required.");
       return;
     }
-    if (!isValidEmail(email.trim())) {
+    if (!isValidEmail(email)) {
       setErrorSeverity("info");
-      setErrorMsg("Please enter a valid email address.");
+      setErrorMsg("Please enter a valid email address (e.g. name@example.com).");
       return;
     }
     setStatus("sending");
@@ -80,22 +84,21 @@ export default function ContactPage() {
 
   return (
     <main className="relative min-h-screen bg-[#0a0f1e] text-white">
-      <InteractiveCasinoBg variant="subtle" />
+      <InteractiveCasinoBg
+        variant="subtle"
+        wheelPosition="bottom"
+        wheelSize="min(140vh, 1200px)"
+        wheelOffsetY="50%"
+        wheelOpacity={0.12}
+        cursorOrb={false}
+      />
 
-      {/* Back button */}
-      <div className="max-w-4xl mx-auto px-4 pt-6">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-white/20 bg-white/5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
-        >
-          ← Back to Home
-        </Link>
-      </div>
+      <NavigationBar currentPath="/contact" />
 
       {/* Hero header */}
       <div className="relative overflow-hidden border-b border-white/5">
         <div className="absolute inset-0 bg-gradient-to-b from-[#1a1f3e]/40 to-transparent pointer-events-none" />
-        <div className="max-w-4xl mx-auto px-4 py-16 sm:py-20">
+        <div className="max-w-4xl mx-auto px-4 pt-16 sm:pt-20 pb-8 sm:pb-12">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -111,12 +114,20 @@ export default function ContactPage() {
               Have a question, suggestion, or need support? Send us a message
               and we'll get back to you as soon as possible.
             </p>
+            <div className="mt-8">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-white/20 bg-white/5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
+              >
+                ← Back to Home
+              </Link>
+            </div>
           </motion.div>
         </div>
       </div>
 
       {/* Form section */}
-      <div className="max-w-4xl mx-auto px-4 py-12">
+      <div className="max-w-4xl mx-auto px-4 pt-6 pb-12">
         <div className="grid lg:grid-cols-5 gap-10">
           {/* Contact info sidebar */}
           <motion.div
@@ -125,18 +136,11 @@ export default function ContactPage() {
             transition={{ duration: 0.5, delay: 0.15 }}
             className="lg:col-span-2 space-y-6"
           >
-            <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+            <div className="bg-[#0e1f4d] border border-white/10 rounded-xl p-6">
               <h3 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
                 Reach Us
               </h3>
               <ul className="space-y-4 text-sm text-[#c9f7ff]/80">
-                <li className="flex items-start gap-3">
-                  <IconMail size={18} className="text-[#f5ff3b] mt-0.5" />
-                  <div>
-                    <p className="font-medium text-white">Email</p>
-                    <p className="text-[#c9f7ff]/60">contact@grynd.dedyn.io</p>
-                  </div>
-                </li>
                 <li className="flex items-start gap-3">
                   <IconClock size={18} className="text-[#f5ff3b] mt-0.5" />
                   <div>
@@ -156,7 +160,7 @@ export default function ContactPage() {
               </ul>
             </div>
 
-            <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+            <div className="bg-[#0e1f4d] border border-white/10 rounded-xl p-6">
               <h3 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
                 Quick Links
               </h3>
@@ -194,7 +198,7 @@ export default function ContactPage() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
-                  className="bg-white/5 border border-emerald-500/30 rounded-xl p-10 text-center"
+                  className="bg-[#0e1f4d] border border-emerald-500/30 rounded-xl p-10 text-center"
                 >
                   <div className="mb-4 flex justify-center"><IconCircleCheck size={48} className="text-emerald-400" /></div>
                   <h2 className="text-2xl font-bold text-white mb-2">
@@ -218,7 +222,7 @@ export default function ContactPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="bg-white/5 border border-white/10 rounded-xl p-6 sm:p-8 space-y-5"
+                  className="bg-[#0e1f4d] border border-white/10 rounded-xl p-6 sm:p-8 space-y-5"
                 >
                   {/* Name */}
                   <div>
@@ -235,7 +239,7 @@ export default function ContactPage() {
                       value={name}
                       onChange={(e) => handleFieldChange(setName, e.target.value)}
                       placeholder="John Doe"
-                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-none transition-all focus:border-[#f5ff3b]/50 focus:bg-white/[0.07] focus:ring-1 focus:ring-[#f5ff3b]/20"
+                      className="w-full rounded-lg border border-white/10 bg-[#0a0f1e] px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-none transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
                     />
                   </div>
 
@@ -254,7 +258,7 @@ export default function ContactPage() {
                       value={email}
                       onChange={(e) => handleFieldChange(setEmail, e.target.value)}
                       placeholder="you@example.com"
-                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-none transition-all focus:border-[#f5ff3b]/50 focus:bg-white/[0.07] focus:ring-1 focus:ring-[#f5ff3b]/20"
+                      className="w-full rounded-lg border border-white/10 bg-[#0a0f1e] px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-none transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
                     />
                   </div>
 
@@ -274,7 +278,7 @@ export default function ContactPage() {
                       onChange={(e) => handleFieldChange(setMessage, e.target.value)}
                       placeholder="Tell us how we can help..."
                       maxLength={5000}
-                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-none transition-all focus:border-[#f5ff3b]/50 focus:bg-white/[0.07] focus:ring-1 focus:ring-[#f5ff3b]/20 resize-y min-h-[120px]"
+                      className="w-full rounded-lg border border-white/10 bg-[#0a0f1e] px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-none transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20 resize-y min-h-[120px]"
                     />
                     <p className="text-xs text-[#c9f7ff]/40 mt-1 text-right">
                       {message.length}/5000
@@ -319,6 +323,11 @@ export default function ContactPage() {
             </AnimatePresence>
           </motion.div>
         </div>
+      </div>
+
+      {/* Message history */}
+      <div className="max-w-4xl mx-auto px-4 pb-16">
+        <ContactMessageHistory />
       </div>
     </main>
   );

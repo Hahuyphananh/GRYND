@@ -3,6 +3,7 @@
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 const sections = [
   {
@@ -102,8 +103,14 @@ export default function SecurityPolicyPage() {
         >
           <p className="text-sm text-[#c9f7ff]/70">
             If you have any security concerns or would like to report a
-            vulnerability, please contact our security team at{" "}
-            <span className="text-[#f5ff3b]">contact@grynd.dedyn.io</span>.
+            vulnerability, please contact our security team through our{" "}
+            <Link
+              href="/contact"
+              className="text-[#f5ff3b] underline decoration-[#f5ff3b]/40 underline-offset-4 hover:text-[#f5ff3b]/80 transition-colors"
+            >
+              contact page
+            </Link>
+            .
           </p>
         </motion.div>
       </div>

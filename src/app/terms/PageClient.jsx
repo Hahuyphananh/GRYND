@@ -4,6 +4,7 @@ import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 const sections = [
   {
@@ -133,8 +134,14 @@ export default function TermsPage() {
           className="mt-10 rounded-lg border border-[#f5ff3b]/20 bg-[#f5ff3b]/5 p-6 text-center"
         >
           <p className="text-sm text-[#c9f7ff]/70">
-            For questions about these terms, contact us at{" "}
-            <span className="text-[#f5ff3b]">contact@grynd.dedyn.io</span>
+            For questions about these terms,{" "}
+            <Link
+              href="/contact"
+              className="text-[#f5ff3b] underline decoration-[#f5ff3b]/40 underline-offset-4 hover:text-[#f5ff3b]/80 transition-colors"
+            >
+              contact us
+            </Link>
+            .
           </p>
         </motion.div>
       </div>
