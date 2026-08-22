@@ -1,26 +1,140 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
 
-// Clerk's hosted Account Portal — where users enable MFA in their security
-// settings. Computed from the publishable key, which embeds the instance
-// domain base64-encoded: pk_test_<base64("instance.clerk.accounts.dev")>.
-function getAccountPortalUrl(): string {
-  const key = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
-  const instance = key.split("_")[2];
-  if (!instance) {
-    return "https://clerk.com/docs/security/multi-factor-authentication";
-  }
-  try {
-    const decoded = Buffer.from(instance, "base64").toString("utf8");
-    if (decoded.includes(".")) return `https://${decoded}/user`;
-  } catch {
-    // fall through to the raw-instance fallback below
-  }
-  return `https://${instance}/user`;
-}
+type Method = "email" | "totp" | "passphrase";
+type Methods = Record<Method, boolean>;
+
+const METHOD_LABELS: Record<Method, string> = {
+  email: "Email code",
+  totp: "Authenticator app",
+  passphrase: "Passphrase",
+};
 
 export default function AdminMfaRequiredPage() {
-  const accountPortalUrl = getAccountPortalUrl();
+  const [methods, setMethods] = useState<Methods>({
+    email: true,
+    totp: false,
+    passphrase: false,
+  });
+  const [active, setActive] = useState<Method>("email");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{
+    kind: "info" | "error" | "success";
+    text: string;
+  } | null>(null);
+  const [otpSent, setOtpSent] = useState(false);
+  const [totpSetup, setTotpSetup] = useState<{
+    secret: string;
+    otpauthUrl: string;
+    qrDataUrl: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/mfa/status", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.success && d.methods) {
+          setMethods(d.methods);
+          const first: Method = d.methods.email
+            ? "email"
+            : d.methods.totp
+              ? "totp"
+              : "passphrase";
+          setActive(first);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  async function sendOtp() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/mfa/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setOtpSent(true);
+        setMessage({
+          kind: "success",
+          text: "Code sent to your email. It expires in 5 minutes.",
+        });
+      } else {
+        setMessage({ kind: "error", text: data.error || "Failed to send the code." });
+      }
+    } catch {
+      setMessage({ kind: "error", text: "Network error. Please try again." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verify(method: Method) {
+    if (code.trim().length === 0) {
+      setMessage({ kind: "error", text: "Enter the code first." });
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/mfa/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ method, code }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMessage({ kind: "success", text: "Verified. Redirecting…" });
+        window.location.href = "/admin";
+      } else {
+        setMessage({ kind: "error", text: data.error || "Verification failed." });
+      }
+    } catch {
+      setMessage({ kind: "error", text: "Network error. Please try again." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadTotpSetup() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/mfa/setup-totp", { credentials: "include" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTotpSetup({
+          secret: data.secret,
+          otpauthUrl: data.otpauthUrl,
+          qrDataUrl: data.qrDataUrl ?? null,
+        });
+      } else {
+        setMessage({
+          kind: "error",
+          text: data.error || "Authenticator app isn't configured.",
+        });
+      }
+    } catch {
+      setMessage({ kind: "error", text: "Network error. Please try again." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const messageClass =
+    message?.kind === "error"
+      ? "border-red-500/40 bg-red-500/10 text-red-300"
+      : message?.kind === "success"
+        ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+        : "border-[#00e5ff]/30 bg-[#00e5ff]/10 text-[#d8fbff]";
 
   return (
     <div className="relative flex min-h-screen items-center justify-center px-4 py-16">
@@ -30,47 +144,186 @@ export default function AdminMfaRequiredPage() {
           Multi-Factor Authentication Required
         </h1>
         <p className="mb-4 leading-relaxed text-[#c9f7ff]/90">
-          Admin access to GoonBet requires a recent multi-factor authentication
-          (MFA) step. This session has not verified a second factor, so the
-          admin dashboard is locked.
+          The admin dashboard is locked until you verify a second factor. Choose
+          any method below.
         </p>
-        <ol className="mb-6 list-decimal space-y-2 pl-5 text-sm text-[#c9f7ff]/80">
-          <li>
-            Enable MFA in your Clerk account security settings (button below).
-          </li>
-          <li>
-            Sign out, then sign back in — the new session will carry your MFA
-            verification.
-          </li>
-          <li>Return to the admin dashboard.</li>
-        </ol>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <a
-            href={accountPortalUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-lg border border-[#f5ff3b]/50 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-center text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)]"
-          >
-            Enable MFA in my account
-          </a>
-          <a
-            href="/sign-in"
-            className="rounded-lg border border-[#00e5ff]/40 px-5 py-2.5 text-center text-sm font-semibold text-[#d8fbff] transition-all hover:border-[#00e5ff]/70 hover:bg-[#00e5ff]/10"
-          >
-            Sign in again
-          </a>
+
+        {/* Method tabs */}
+        <div className="mb-5 flex flex-wrap gap-2">
+          {(Object.keys(METHOD_LABELS) as Method[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => {
+                setActive(m);
+                setMessage(null);
+              }}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] ${
+                active === m
+                  ? "bg-[#f5ff3b] text-[#1f1700]"
+                  : "border border-[#00e5ff]/30 bg-[#08142f] text-[#d8fbff] hover:bg-[#10234a]"
+              }`}
+            >
+              {METHOD_LABELS[m]}
+              {!methods[m] && (
+                <span className="ml-1 text-[10px] opacity-60">(off)</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Email method */}
+        {active === "email" && (
+          <div className="space-y-3">
+            {!otpSent ? (
+              <button
+                onClick={sendOtp}
+                disabled={busy}
+                className="w-full rounded-lg border border-[#f5ff3b]/50 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
+              >
+                {busy ? "Sending…" : "Send code to my email"}
+              </button>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  autoComplete="one-time-code"
+                  placeholder="6-digit code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-center text-lg tracking-[0.5em] text-[#ecf8ff] focus:outline-none focus:ring-2 focus:ring-[#00e5ff]"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => verify("email")}
+                    disabled={busy}
+                    className="flex-1 rounded-lg border border-[#f5ff3b]/50 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
+                  >
+                    {busy ? "Verifying…" : "Verify"}
+                  </button>
+                  <button
+                    onClick={sendOtp}
+                    disabled={busy}
+                    className="rounded-lg border border-[#00e5ff]/40 px-4 py-2.5 text-sm font-semibold text-[#d8fbff] transition-all hover:border-[#00e5ff]/70 hover:bg-[#00e5ff]/10 disabled:opacity-60"
+                  >
+                    Resend
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Authenticator app method */}
+        {active === "totp" && (
+          <div className="space-y-3">
+            {!methods.totp ? (
+              <p className="text-sm text-[#9dd8ff]/80">
+                The authenticator app isn't configured. Set the{" "}
+                <code className="text-[#f5ff3b]">ADMIN_TOTP_SECRET</code> env var
+                to a base32 secret to enable this method.
+              </p>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  autoComplete="one-time-code"
+                  placeholder="6-digit code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-center text-lg tracking-[0.5em] text-[#ecf8ff] focus:outline-none focus:ring-2 focus:ring-[#00e5ff]"
+                />
+                <button
+                  onClick={() => verify("totp")}
+                  disabled={busy}
+                  className="w-full rounded-lg border border-[#f5ff3b]/50 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
+                >
+                  {busy ? "Verifying…" : "Verify"}
+                </button>
+                <button
+                  onClick={loadTotpSetup}
+                  disabled={busy}
+                  className="w-full rounded-lg border border-[#00e5ff]/40 px-4 py-2 text-sm font-semibold text-[#d8fbff] transition-all hover:border-[#00e5ff]/70 hover:bg-[#00e5ff]/10 disabled:opacity-60"
+                >
+                  Show setup details
+                </button>
+                {totpSetup && (
+                  <div className="rounded-lg border border-[#00e5ff]/20 bg-black/30 p-3 text-xs text-[#c9f7ff]/90">
+                    {totpSetup.qrDataUrl && (
+                      <img
+                        src={totpSetup.qrDataUrl}
+                        alt="Scan to add GoonBet to your authenticator app"
+                        className="mx-auto mb-3 h-44 w-44 rounded-lg bg-white p-1"
+                      />
+                    )}
+                    <p className="mb-1">
+                      Scan the QR code, or add this secret manually:
+                    </p>
+                    <code className="block break-all rounded bg-black/40 px-2 py-1 text-[#f5ff3b]">
+                      {totpSetup.secret}
+                    </code>
+                    <p className="mt-2 mb-1">Or use this URI:</p>
+                    <code className="block break-all rounded bg-black/40 px-2 py-1 text-[#9dd8ff]">
+                      {totpSetup.otpauthUrl}
+                    </code>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Passphrase method */}
+        {active === "passphrase" && (
+          <div className="space-y-3">
+            {!methods.passphrase ? (
+              <p className="text-sm text-[#9dd8ff]/80">
+                The passphrase isn't configured. Set the{" "}
+                <code className="text-[#f5ff3b]">ADMIN_MFA_PASSPHRASE</code> env var
+                to enable this method.
+              </p>
+            ) : (
+              <>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder="Admin passphrase"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-[#ecf8ff] focus:outline-none focus:ring-2 focus:ring-[#00e5ff]"
+                />
+                <button
+                  onClick={() => verify("passphrase")}
+                  disabled={busy}
+                  className="w-full rounded-lg border border-[#f5ff3b]/50 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
+                >
+                  {busy ? "Verifying…" : "Verify"}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {message && (
+          <div className={`mt-4 rounded-lg border px-3 py-2 text-sm ${messageClass}`}>
+            {message.text}
+          </div>
+        )}
+
+        <div className="mt-6 flex items-center justify-between">
           <Link
             href="/"
-            className="rounded-lg border border-[#00e5ff]/40 px-5 py-2.5 text-center text-sm font-semibold text-[#d8fbff] transition-all hover:border-[#00e5ff]/70 hover:bg-[#00e5ff]/10"
+            className="rounded-lg border border-[#00e5ff]/40 px-4 py-2 text-sm font-semibold text-[#d8fbff] transition-all hover:border-[#00e5ff]/70 hover:bg-[#00e5ff]/10"
           >
             Back to home
           </Link>
+          <p className="text-xs text-[#9dd8ff]/70">
+            Verification lasts 24 hours.
+          </p>
         </div>
-        <p className="mt-6 text-xs text-[#9dd8ff]/70">
-          MFA must be completed within the last 24 hours to unlock the admin
-          dashboard. Contact the platform owner if you believe this is a
-          mistake.
-        </p>
       </div>
     </div>
   );
