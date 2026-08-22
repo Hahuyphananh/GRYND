@@ -1,0 +1,1329 @@
+"use client";
+
+// src/app/casino/memory-grid/[matchId]/page.tsx
+//
+// MATCH view for the Memory Grid system — pure pattern recall, no
+// symbols / questions / multiple-choice.
+//
+// A match is EXACTLY 5 rounds. Each round deals an N×N grid (3×3,
+// 4×4, 4×4, 5×5, 5×5) with a fixed number of active (lit) tiles and
+// a memorize window. Every round has exactly three phases, played by
+// BOTH players SIMULTANEOUSLY (a competitive race — no turns) on the
+// SAME server-generated pattern:
+//   PHASE 1 — MEMORIZE: the active tiles display the casino logo
+//   (the existing logo1.png asset) for the round's memorize duration
+//   (2.5–4s) — both players study the same grid at the same time —
+//   then the pattern hides: the logos vanish from every tile at the
+//   server deadline and the grids go dark.
+//   PHASE 2 — RECONSTRUCT: each player gets their OWN blank grid
+//   (same challenge, completely independent picks). Tapping a tile
+//   flips it to reveal the casino logo and selects it; tapping it
+//   again flips it back and deselects — freely editable until you
+//   press Submit. A player can submit as soon as they finish: their
+//   grid freezes and they see "Waiting for opponent" while the other
+//   player finishes. Correctness is NEVER shown mid-reconstruction:
+//   every selected tile looks identical, so you only learn your
+//   accuracy after submission.
+//   PHASE 3 — RESULT: once BOTH players have submitted (or been AFK
+//   auto-locked) the round resolves and the match enters a brief
+//   result phase. Both players see the correct pattern, both
+//   reconstructions, each player's accuracy / time / score, and the
+//   updated cumulative score — then the server auto-advances to the
+//   next round's memorize phase (or to the finished screen after
+//   round 5, where the higher TOTAL cumulative round score wins the
+//   match; exactly equal totals → draw refund). Nobody can modify
+//   their previous reconstruction: submissions lock the seat and the
+//   result phase accepts no further POSTs.
+//
+// Skill mechanic: the pattern is server-generated and revealed to
+// BOTH players during the memorize phase (during the round-result
+// phase, and again post-match); it is never visible during
+// reconstruction.
+//
+// Realtime: 1.5 s status polling (the source of truth for forward
+// progress, including the server's phase auto-advance / AFK
+// auto-lock) + a socket.io `lobby:updated` push on the per-match
+// room for near-instant opponent updates. A 100 ms tick drives the
+// phase countdown and hides the pattern at the server deadline.
+
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { usePostHog } from "posthog-js/react";
+import { useUser } from "@clerk/nextjs";
+import { motion } from "framer-motion";
+import Image from "next/image";
+import NavigationBar from "../../../../components/navigation-bar";
+import Footer from "../../../../components/Footer";
+import RoundMarkers from "../../../../components/casino/RoundMarkers";
+// The casino's existing logo asset (GoonBet smiley) — reused as the
+// memorize-phase "active tile" marker so the grid reads as the
+// casino's own visual language (no emojis / unrelated symbols).
+import LogoSmiley from "../../../../images/logo1.png";
+import { useSocket } from "../../../../context/SocketProvider";
+import {
+  MEMORY_GRID_MATCH_UPDATED,
+  memoryGridMatchRoom,
+} from "../../../../lib/memory-grid/rooms";
+import { MATCH_STATUS } from "../../../../lib/memory-grid/constants";
+import {
+  IconRefresh,
+  IconTrophy,
+  IconAlertTriangle,
+  IconClock,
+  IconSparkles,
+  IconHeartHandshake,
+} from "@tabler/icons-react";
+
+// ── Match payload types (from /api/memory-grid/match/[id]) ───────────
+type RoundConfigData = {
+  gridSize: number;
+  activeCount: number;
+  memorizeMs: number;
+};
+
+type PatternData = {
+  size: number;
+  total: number;
+  active: number[];
+};
+
+// Player heads (displayName + avatar) populated server-side by
+// enrichMatchesWithUsers — same shape as plinko-pvp / keno-pvp so
+// the match view renders real player cards.
+type PlayerHead = {
+  id: string;
+  displayName: string;
+  profileImageUrl: string | null;
+  missing?: boolean;
+};
+
+type MatchData = {
+  id: number;
+  player1Id: string | null;
+  player2Id: string | null;
+  stakeAmount: number;
+  status: string;
+  phase: string | null;
+  roundNumber: number;
+  roundsPerMatch: number;
+  roundConfig: RoundConfigData;
+  viewerIsPlayer1: boolean;
+  // Who has locked in their reconstruction this round.
+  p1Submitted: boolean;
+  p2Submitted: boolean;
+  // Authoritative absolute server timestamps (same for BOTH players —
+  // the countdown anchors to phaseDeadline, so client clocks never
+  // affect the official timing).
+  phaseStartedAt: string | null;
+  phaseDeadline: string | null;
+  p1Score: number;
+  p2Score: number;
+  p1Total: number;
+  p2Total: number;
+  p1RoundScore: number;
+  p2RoundScore: number;
+  players: { p1: PlayerHead | null; p2: PlayerHead | null } | null;
+  pattern: PatternData | null;
+  result: string | null;
+  winnerId: string | null;
+  prizePaid: number;
+  houseFee: number;
+  // Present only on a finished DRAW: the amount both players get
+  // back (95% of the stake — 5% per-side rake on the tiebreak tie).
+  refundEach: number | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  createdAt: string | null;
+};
+
+type RoundHistory = {
+  roundNumber: number;
+  p1RoundScore: number;
+  p2RoundScore: number;
+  roundWinner: string | null;
+};
+
+// A completed-round snapshot served during the round-result phase (and
+// on the finished screen): the correct pattern + both players'
+// reconstruction submissions (picks, score, accuracy, completion
+// time) so each client can render the result screen entirely from
+// server data.
+type FlipEntry = {
+  seat: "player1" | "player2";
+  picks: number[];
+  score: number;
+  accuracyPct: number;
+  completionTimeMs: number;
+  autoLocked?: boolean;
+};
+
+type RoundSnapshot = RoundHistory & {
+  boardSnapshot: PatternData | null;
+  flips: FlipEntry[];
+};
+
+// ── Inline SVG icons (kept in-file so this page doesn't pull in
+// other game-specific icon sets) ─────────────────────────────────────
+
+function CoinIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <ellipse cx="12" cy="6" rx="8" ry="2.5" />
+      <path d="M4 6 V18 a8 2.5 0 0 0 16 0 V6" />
+      <ellipse cx="12" cy="18" rx="8" ry="2.5" />
+    </svg>
+  );
+}
+
+const PHASE = {
+  MEMORIZE: "memorize",
+  RECONSTRUCT: "reconstruct",
+  RESULT: "result",
+} as const;
+
+// Speed-tier labels for the submission feedback (mirrors the server's
+// SPEED_TIER_MULTIPLIERS in src/lib/memory-grid/constants.js).
+const SPEED_TIER_LABEL: Record<string, string> = {
+  very_fast: "Very fast",
+  fast: "Fast",
+  average: "Average",
+  slow: "Slow",
+  very_slow: "Very slow",
+};
+
+// One grid of the round-result screen (correct pattern / your
+// reconstruction / opponent reconstruction). Rendered from the
+// server's round snapshot — the client never computes accuracy or
+// score. Tile states:
+//   pattern highlight — the answer key's active (lit) tiles in amber
+//   picks highlight   — correct picks in emerald, wrong picks in red,
+//                       unpicked tiles dark
+function RoundResultGrid({
+  title,
+  pattern,
+  picks,
+  highlight,
+  flip,
+  badge,
+}: {
+  title: string;
+  pattern: PatternData | null;
+  picks: number[];
+  highlight: "pattern" | "picks";
+  flip?: FlipEntry | null;
+  badge: string;
+}) {
+  const size = pattern?.size ?? 3;
+  const total = size * size;
+  const active = new Set(pattern?.active ?? []);
+  const picked = new Set(picks);
+  const pickedCount = picks.length;
+
+  return (
+    <div className="mb-5 rounded-2xl border border-white/10 bg-black/30 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-black uppercase tracking-widest text-white/70">
+          {title}
+        </h3>
+        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/40">
+          {badge}
+        </span>
+      </div>
+      <div
+        className="mx-auto grid max-w-[260px] gap-1.5"
+        style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}
+      >
+        {Array.from({ length: total }, (_, i) => {
+          const isActive = active.has(i);
+          const isPicked = picked.has(i);
+          let cls = "border-white/10 bg-[#08142f]";
+          if (highlight === "pattern") {
+            if (isActive) {
+              cls =
+                "border-amber-400/80 bg-gradient-to-br from-amber-400/80 to-yellow-500/70 shadow-[0_0_12px_rgba(251,191,36,0.45)]";
+            }
+          } else {
+            // Reconstruction: correct picks emerald, wrong picks red.
+            if (isPicked) {
+              cls = isActive
+                ? "border-emerald-400/70 bg-gradient-to-br from-emerald-500/60 to-teal-600/40 shadow-[0_0_10px_rgba(52,211,153,0.4)]"
+                : "border-red-400/70 bg-gradient-to-br from-red-500/60 to-rose-600/40 shadow-[0_0_10px_rgba(248,113,113,0.4)]";
+            } else if (isActive) {
+              // Missed active tile — faint amber outline (no face).
+              cls = "border-amber-500/40 bg-[#0b1a33]";
+            }
+          }
+          return (
+            <div
+              key={i}
+              className={`relative aspect-square overflow-hidden rounded-lg border ${cls}`}
+            >
+              {(highlight === "pattern" ? isActive : isPicked) && (
+                <Image
+                  src={LogoSmiley}
+                  alt=""
+                  width={36}
+                  height={36}
+                  className="absolute inset-0 h-full w-full object-contain p-1 drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]"
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {flip && (
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+              Accuracy
+            </p>
+            <p className="mt-0.5 font-black text-amber-300">
+              {Number(flip.accuracyPct ?? 0).toFixed(1)}%
+            </p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+              Time
+            </p>
+            <p className="mt-0.5 font-black text-amber-300">
+              {(Number(flip.completionTimeMs ?? 0) / 1000).toFixed(2)}s
+            </p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+              Score
+            </p>
+            <p className="mt-0.5 font-black text-amber-300">
+              {Number(flip.score ?? 0)}/100
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function MemoryGridMatchPage({
+  params,
+}: {
+  params: Promise<{ matchId: string }>;
+}) {
+  const router = useRouter();
+  const posthog = usePostHog();
+  const { user } = useUser();
+  const { socket } = useSocket();
+  const resolved = use(params);
+  const matchId = Number(resolved?.matchId);
+
+  const [match, setMatch] = useState<MatchData | null>(null);
+  const [rounds, setRounds] = useState<RoundSnapshot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // Reconstruct-phase picks (tile indices the viewer has tapped).
+  const [selected, setSelected] = useState<number[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  // Submitter-only feedback: the server's authoritative round
+  // assessment (final score = accuracy × speed + full-grid accuracy
+  // breakdown — the client never computes or supplies its own
+  // accuracy/score).
+  const [feedback, setFeedback] = useState<{
+    score: number;
+    total: number;
+    correct: number;
+    incorrect: number;
+    accuracyPct: number;
+    speedTier: string;
+    roundNumber: number;
+  } | null>(null);
+  const [canLeave, setCanLeave] = useState(false);
+  // Waiting state: cancelling an open lobby (creator only).
+  const [cancelling, setCancelling] = useState(false);
+  // Local clock: drives the phase countdown AND hides the pattern
+  // at the server's absolute deadline (never wait for the poll).
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  const lastRoundRef = useRef("");
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Status fetch (the source of truth) ────────────────────────────
+  const fetchStatus = useCallback(async () => {
+    if (!Number.isFinite(matchId)) return;
+    try {
+      const res = await fetch(`/api/memory-grid/match/${matchId}`, {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!data?.success) {
+        setError(data?.error || "Failed to load match");
+        return;
+      }
+      const next = data.data.match as MatchData;
+      setMatch(next);
+      setError(null);
+      if (Array.isArray(data.data.rounds)) {
+        setRounds(data.data.rounds as RoundSnapshot[]);
+      }
+    } catch {
+      // Silent — polling retries on the next tick.
+    } finally {
+      setLoading(false);
+    }
+  }, [matchId]);
+
+  useEffect(() => {
+    if (!Number.isFinite(matchId)) {
+      setError("Invalid match link.");
+      setLoading(false);
+      return;
+    }
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 1500);
+    return () => clearInterval(interval);
+  }, [matchId, fetchStatus]);
+
+  // ── Socket: join the per-match room for instant updates ───────────
+  useEffect(() => {
+    if (!socket || !Number.isFinite(matchId)) return;
+    socket.emit("join_room", { roomId: memoryGridMatchRoom(matchId) });
+    const refresh = () => fetchStatus();
+    socket.on(MEMORY_GRID_MATCH_UPDATED, refresh);
+    return () => {
+      socket.emit("leave_room", { roomId: memoryGridMatchRoom(matchId) });
+      socket.off(MEMORY_GRID_MATCH_UPDATED, refresh);
+    };
+  }, [socket, matchId, fetchStatus]);
+
+  // ── Local phase clock (100 ms tick) ───────────────────────────────
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 100);
+    return () => clearInterval(id);
+  }, []);
+
+  // Finished grace — allow returning to the lobby after a beat.
+  useEffect(() => {
+    if (match?.status !== MATCH_STATUS.FINISHED) return;
+    const t = setTimeout(() => setCanLeave(true), 2500);
+    return () => clearTimeout(t);
+  }, [match?.status]);
+
+  // ── Derived phase state (SIMULTANEOUS play — no turns) ───────────
+  const isFinished = match?.status === MATCH_STATUS.FINISHED;
+  const isCancelled = match?.status === MATCH_STATUS.CANCELLED;
+  const playing = match?.status === MATCH_STATUS.ACTIVE;
+
+  // The round-6 TIEBREAK: dealt when the 5 regular rounds end on
+  // exactly equal TOTAL cumulative scores. Detected by the round
+  // number exceeding the best-of-5 ceiling.
+  const isTiebreak =
+    (match?.roundNumber ?? 1) > (match?.roundsPerMatch ?? 5);
+
+  const gridSize = match?.roundConfig?.gridSize ?? 3;
+  const activeCount = match?.roundConfig?.activeCount ?? 3;
+  const totalTiles = gridSize * gridSize;
+
+  const deadlineMs = match?.phaseDeadline
+    ? new Date(match.phaseDeadline).getTime()
+    : null;
+  const msLeft = deadlineMs !== null ? Math.max(0, deadlineMs - nowMs) : null;
+
+  // The client-side phase. The pattern hides at the server's
+  // absolute deadline; from the viewer's perspective reconstruct
+  // starts AT that deadline even if the server hasn't advanced yet
+  // (it accepts submissions either way — see the reconstruct route).
+  // Without this, a viewer would be frozen for up to a poll tick
+  // after the pattern hides.
+  const serverPhase = match?.phase ?? null;
+  const phase =
+    msLeft !== null && msLeft === 0 && serverPhase === PHASE.MEMORIZE
+      ? PHASE.RECONSTRUCT
+      : serverPhase;
+  const isMemorize = phase === PHASE.MEMORIZE;
+  const isReconstruct = phase === PHASE.RECONSTRUCT;
+  // Round-result phase: both players submitted; the server shows the
+  // completed-round snapshot for RESULT_WINDOW_MS before advancing.
+  const isRoundResult =
+    playing && serverPhase === PHASE.RESULT && rounds.length > 0;
+
+  // The just-completed round snapshot (the LAST element — rounds are
+  // appended in completion order). Its roundNumber is the round the
+  // result screen is about, and the cumulative score display uses the
+  // match's already-awarded totals.
+  const roundResult = isRoundResult
+    ? rounds[rounds.length - 1]
+    : null;
+
+  // Whose reconstruction is whose, oriented to the viewer.
+  const viewerFlip = roundResult?.flips?.find(
+    (f) => f.seat === (match?.viewerIsPlayer1 ? "player1" : "player2"),
+  );
+  const opponentFlip = roundResult?.flips?.find(
+    (f) => f.seat === (match?.viewerIsPlayer1 ? "player2" : "player1"),
+  );
+
+  // The pattern is revealed to BOTH players during the round's
+  // memorize phase AND while the server's absolute deadline hasn't
+  // passed (the client hides it at the deadline without waiting for
+  // the poll).
+  const patternVisible =
+    playing && isMemorize && Boolean(match?.pattern) && msLeft !== null && msLeft > 0;
+
+  // Per-seat submission state — drives the frozen-grid "Waiting for
+  // opponent" flow.
+  const viewerSubmitted = match?.viewerIsPlayer1
+    ? Boolean(match?.p1Submitted)
+    : Boolean(match?.p2Submitted);
+  const opponentSubmitted = match?.viewerIsPlayer1
+    ? Boolean(match?.p2Submitted)
+    : Boolean(match?.p1Submitted);
+
+  const activeSet = useMemo(() => {
+    if (!match?.pattern?.active) return new Set<number>();
+    return new Set(match.pattern.active);
+  }, [match?.pattern]);
+
+  const viewerWon =
+    isFinished && !!match?.winnerId && match.winnerId === user?.id;
+  const viewerLost =
+    isFinished && !!match?.winnerId && match.winnerId !== user?.id;
+  const isDraw = isFinished && !match?.winnerId;
+
+  // ── Round / state-change reset ────────────────────────────────────
+  // When the server advances to a new round (or the match finishes),
+  // clear the viewer's local reconstruct picks + submission
+  // feedback. Keyed on roundNumber + finished so an AFK auto-lock
+  // that ends the round also resets the frozen grid.
+  const roundKey = `${match?.roundNumber ?? 1}:${isFinished ? "f" : "p"}`;
+  useEffect(() => {
+    if (!match) return;
+    if (roundKey !== lastRoundRef.current) {
+      if (lastRoundRef.current !== "") {
+        setSelected([]);
+        setFeedback(null);
+      }
+      lastRoundRef.current = roundKey;
+    }
+  }, [roundKey, match]);
+
+  // ── Reconstruct submission ────────────────────────────────────────
+  const submitPicks = useCallback(
+    async (picks: number[]) => {
+      if (submitting) return;
+      setSubmitting(true);
+      try {
+        const res = await fetch(
+          `/api/memory-grid/match/${matchId}/reconstruct`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ picks }),
+          },
+        );
+        const data = await res.json();
+        if (!data?.success) {
+          setError(data?.error || "Submission rejected");
+          setSelected([]);
+          return;
+        }
+        posthog?.capture("memory_grid_reconstruct", {
+          match_id: matchId,
+          round: data?.data?.roundNumber,
+          score: data?.data?.score,
+          accuracy: data?.data?.accuracyPct,
+        });
+        // Sync instantly from the response, then reconcile with a
+        // status poll.
+        if (data?.data?.match) setMatch(data.data.match);
+        setFeedback({
+          score: Number(data.data.score) || 0,
+          total: Number(data.data.total) || 0,
+          correct: Number(data.data.correct) || 0,
+          incorrect: Number(data.data.incorrect) || 0,
+          accuracyPct: Number(data.data.accuracyPct) || 0,
+          speedTier: data.data.speedTier ?? "very_slow",
+          roundNumber: Number(data.data.roundNumber) || 1,
+        });
+        if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+        feedbackTimerRef.current = setTimeout(() => {
+          setFeedback(null);
+        }, 4000);
+        // Keep `selected` — the submitted grid stays frozen (logo
+        // tiles visible, not clickable) while waiting for the
+        // opponent. The next round's reset clears it.
+        fetchStatus();
+      } catch {
+        setError("Failed to submit — retrying…");
+        setSelected([]);
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [matchId, posthog, submitting, fetchStatus],
+  );
+
+  // ── Tile interaction ──────────────────────────────────────────────
+  // The viewer can tap only while reconstructing AND hasn't already
+  // submitted (their seat locks the moment they submit — grid frozen,
+  // no further changes).
+  const canPick =
+    playing && isReconstruct && !viewerSubmitted && !submitting && !isFinished;
+
+  // Toggle-only selection: tapping a blank tile flips it to reveal
+  // the logo and selects it; tapping it again flips it back and
+  // deselects. The player can freely modify their reconstruction
+  // until they press Submit. There is NO pick limit — a player may
+  // select any number of tiles (even the whole grid); over-selection
+  // is penalised by the server's full-grid scoring (false positives
+  // count as errors), so spamming every tile can't score high. NO
+  // correctness feedback is shown — every selected tile looks
+  // identical regardless of whether it matches the pattern.
+  const handleTileClick = useCallback(
+    (tileIndex: number) => {
+      if (!canPick) return;
+      if (selected.includes(tileIndex)) {
+        // Flip back + unselect.
+        setSelected((prev) => prev.filter((i) => i !== tileIndex));
+        return;
+      }
+      // Flip to the logo + select.
+      setSelected((prev) => [...prev, tileIndex]);
+    },
+    [canPick, selected],
+  );
+
+  // Viewer-oriented cumulative scores. `myTotal`/`oppTotal` are the
+  // headline numbers — CUMULATIVE round-score points (each round
+  // scores /100, so a 5-round match totals up to 500), accumulated
+  // server-side. `myScore`/`oppScore` remain the rounds-won tallies
+  // (tiebreak + finished-screen breakdown).
+  //
+  // IMPORTANT: every value here is null-safe — `match` starts as
+  // `null` on the first render (before the status poll resolves), and
+  // these constants run BEFORE the `loading` guard below, so a raw
+  // `match.p2Score`-style read would throw a client-side TypeError and
+  // blank the page with the "Application error" overlay. Guard on
+  // `match` itself and only dereference when it exists.
+  const viewerIsPlayer1 = match?.viewerIsPlayer1 === true;
+  const myScore = match ? (viewerIsPlayer1 ? match.p1Score : match.p2Score) : 0;
+  const oppScore = match ? (viewerIsPlayer1 ? match.p2Score : match.p1Score) : 0;
+  const myTotal = match ? (viewerIsPlayer1 ? match.p1Total : match.p2Total) : 0;
+  const oppTotal = match ? (viewerIsPlayer1 ? match.p2Total : match.p1Total) : 0;
+
+  // Player cards: the viewer is always "You"; the opponent renders
+  // their real display name + avatar when available (server-enriched,
+  // like the other PvP skill games), falling back to "Player 1/2".
+  // Also null-safe for the same first-render reason as the scores
+  // above.
+  const oppHead = match ? (viewerIsPlayer1 ? match.players?.p2 : match.players?.p1) : null;
+  const oppName = oppHead?.displayName || (match ? (viewerIsPlayer1 ? "Player 2" : "Player 1") : "Player 2");
+  const oppAvatar = oppHead?.profileImageUrl || null;
+
+  // Waiting state: the creator can cancel their own open lobby, and
+  // anyone can copy the invite link (mirrors lane-runner's waiting
+  // card). `match` is read from a ref inside cancelLobby to keep the
+  // callback stable across polls.
+  const matchRef = useRef<MatchData | null>(null);
+  useEffect(() => {
+    matchRef.current = match;
+  }, [match]);
+  const viewerCanCancel =
+    match?.status === MATCH_STATUS.WAITING && Boolean(match?.player1Id === user?.id);
+  const cancelLobby = useCallback(async () => {
+    const current = matchRef.current;
+    if (!current) return;
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/memory-grid/match/${current.id}/cancel`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data?.error || "Unable to cancel lobby");
+      } else {
+        fetchStatus();
+      }
+    } catch {
+      setError("Failed to cancel lobby");
+    } finally {
+      setCancelling(false);
+    }
+  }, [fetchStatus]);
+  const copyInvite = useCallback(async () => {
+    try {
+      await navigator.clipboard?.writeText(window.location.href);
+      setError(null);
+    } catch {
+      // Clipboard unavailable — ignore.
+    }
+  }, []);
+
+  // ── Round-result screen (rendered when phase='result') ───────────
+  // Shown to BOTH players for the server's RESULT_WINDOW_MS after the
+  // round resolves: the correct pattern, each player's reconstruction
+  // (correct picks green, wrong picks red), their accuracy / time /
+  // score, and the updated cumulative rounds-won tally. The server
+  // auto-advances to the next round (or finished) when the window
+  // elapses — the client just renders; the deadline countdown comes
+  // from the same authoritative `phaseDeadline` as the other phases.
+  if (isRoundResult && roundResult) {
+    return (
+      <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+        <NavigationBar currentPath="/casino" />
+        <div className="mx-auto mt-4 max-w-3xl sm:mt-8">
+          {/* Round header */}
+          <div className="mb-5 text-center">
+            <h1 className="flex items-center justify-center gap-3 text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
+              Memory Grid
+            </h1>
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-950/40 px-4 py-1.5 text-sm font-black text-emerald-300">
+              {roundResult.roundNumber > (match?.roundsPerMatch ?? 5)
+                ? `TIEBREAK ROUND ${roundResult.roundNumber}`
+                : `ROUND ${roundResult.roundNumber}/${match?.roundsPerMatch ?? 5}`}
+            </div>
+            <p className="mt-2 text-sm text-white/60">
+              {msLeft !== null && msLeft > 0
+                ? roundResult.roundNumber >= (match?.roundsPerMatch ?? 5)
+                  ? `Final results in ${Math.ceil(msLeft / 1000)}s…`
+                  : `Next round in ${Math.ceil(msLeft / 1000)}s…`
+                : "…"}
+            </p>
+          </div>
+
+          {/* Cumulative score — headline numbers are the cumulative
+              round-score points (same compact PvP scoreboard style
+              as the in-match board), rounds-won as the secondary line. */}
+          <div className="mb-5 grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-amber-400/70 bg-amber-500/10 p-3 text-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+                You
+              </p>
+              <p className="mt-0.5 text-3xl font-black tabular-nums text-yellow-300">
+                {myTotal ?? 0}
+              </p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">pts</p>
+              <p className="mt-0.5 text-[10px] text-white/40">
+                {myScore ?? 0} round win{myScore === 1 ? "" : "s"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-cyan-400/70 bg-cyan-500/10 p-3 text-center">
+              <p className="flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50">
+                {oppAvatar && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={oppAvatar}
+                    alt=""
+                    className="h-3.5 w-3.5 rounded-full object-cover"
+                  />
+                )}
+                {oppName}
+              </p>
+              <p className="mt-0.5 text-3xl font-black tabular-nums text-cyan-300">
+                {oppTotal ?? 0}
+              </p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">pts</p>
+              <p className="mt-0.5 text-[10px] text-white/40">
+                {oppScore ?? 0} round win{oppScore === 1 ? "" : "s"}
+              </p>
+            </div>
+          </div>
+
+          {/* Correct pattern */}
+          <RoundResultGrid
+            title="Correct Pattern"
+            pattern={roundResult.boardSnapshot}
+            picks={roundResult.boardSnapshot?.active ?? []}
+            highlight="pattern"
+            badge="answer key"
+          />
+
+          {/* Your reconstruction */}
+          <RoundResultGrid
+            title="Your Reconstruction"
+            pattern={roundResult.boardSnapshot}
+            picks={viewerFlip?.picks ?? []}
+            highlight="picks"
+            flip={viewerFlip}
+            badge="you"
+          />
+
+          {/* Opponent reconstruction */}
+          <RoundResultGrid
+            title={`${oppName} — Reconstruction`}
+            pattern={roundResult.boardSnapshot}
+            picks={opponentFlip?.picks ?? []}
+            highlight="picks"
+            flip={opponentFlip}
+            badge="opponent"
+          />
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+
+  if (loading && !match) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#030817] text-white">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+          <p className="text-sm text-white/60">Loading match…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !match) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#030817] px-4 text-white">
+        <div className="max-w-md rounded-2xl border border-red-500/30 bg-red-950/20 p-6 text-center">
+          <IconAlertTriangle className="mx-auto mb-3 h-8 w-8 text-red-400" />
+          <h2 className="mb-2 text-lg font-bold">Match unavailable</h2>
+          <p className="mb-4 text-sm text-white/70">{error}</p>
+          <button
+            onClick={() => router.push("/casino/memory-grid")}
+            className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-black hover:bg-amber-400"
+          >
+            Back to Lobby
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const countdownLabel =
+    msLeft !== null
+      ? isMemorize
+        ? `${(msLeft / 1000).toFixed(1)}s`
+        : `${Math.ceil(msLeft / 1000)}s`
+      : null;
+
+  return (
+    <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <NavigationBar currentPath="/casino" />
+      <div className="mx-auto mt-4 max-w-3xl sm:mt-8">
+        {/* Header — game title (same amber gradient treatment as the
+            other casino games) + a compact stake line + the round
+            indicator (ROUND X/5). */}
+        <div className="mb-5 text-center">
+          <h1 className="flex items-center justify-center gap-3 text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
+            Memory Grid
+          </h1>
+          <div className="mt-2 flex items-center justify-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-xs font-black uppercase tracking-widest text-amber-300">
+              {isTiebreak ? (
+                <>
+                  Tiebreak{" "}
+                  <span className="text-yellow-300">
+                    {match?.roundNumber ?? 6}
+                  </span>
+                </>
+              ) : (
+                <>
+                  Round{" "}
+                  <span className="text-yellow-300">
+                    {match?.roundNumber ?? 1}
+                  </span>
+                  /{match?.roundsPerMatch ?? 5}
+                </>
+              )}
+            </span>
+            {!isFinished && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-bold text-white/60">
+                {gridSize}×{gridSize} · stake{" "}
+                <span className="inline-flex items-center gap-0.5 font-semibold text-yellow-300">
+                  {Number(match?.stakeAmount ?? 0).toLocaleString()}
+                  <CoinIcon className="h-3 w-3" />
+                </span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Round tracker — blue = rounds you won, red = rounds the
+            opponent won (shared best-of marker, brawl-stars style). */}
+        <div className="mb-3 flex justify-center rounded-2xl border border-cyan-700/30 bg-black/30 px-4 py-3">
+          <RoundMarkers
+            total={match?.roundsPerMatch ?? 5}
+            myWins={myScore ?? 0}
+            oppWins={oppScore ?? 0}
+            myLabel="You"
+            oppLabel={oppName}
+          />
+        </div>
+
+        {/* Scoreboard — cumulative points (each round scores /100),
+            compact style consistent with the other skill-based PvP
+            scoreboards (lane-rush-duel / keno-pvp): YOU | OPPONENT
+            with the running totals as the headline numbers and the
+            rounds-won tally as the secondary line. */}
+        <div className="mb-4 grid grid-cols-2 gap-3">
+          <div
+            className={`rounded-2xl border p-3 text-center transition ${
+              playing && !viewerSubmitted
+                ? "border-amber-400/70 bg-amber-500/10 shadow-[0_0_20px_rgba(251,191,36,0.15)]"
+                : "border-white/10 bg-black/30"
+            }`}
+          >
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+              You
+              {viewerSubmitted && <span className="ml-1.5 text-emerald-300">✓</span>}
+            </p>
+            <p className="mt-0.5 text-3xl font-black tabular-nums text-yellow-300">
+              {myTotal ?? 0}
+            </p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+              pts
+            </p>
+            <p className="mt-0.5 text-[10px] text-white/40">
+              {myScore ?? 0} round win{myScore === 1 ? "" : "s"} ·{" "}
+              {match ? (viewerIsPlayer1 ? match.p1RoundScore : match.p2RoundScore) : 0}{" "}
+              this round
+            </p>
+          </div>
+          <div
+            className={`rounded-2xl border p-3 text-center transition ${
+              opponentSubmitted
+                ? "border-cyan-400/70 bg-cyan-500/10 shadow-[0_0_20px_rgba(34,211,238,0.15)]"
+                : "border-white/10 bg-black/30"
+            }`}
+          >
+            <p className="flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50">
+              {oppAvatar && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={oppAvatar}
+                  alt=""
+                  className="h-3.5 w-3.5 rounded-full object-cover"
+                />
+              )}
+              {oppName}
+              {opponentSubmitted && <span className="ml-0.5 text-cyan-300">✓</span>}
+            </p>
+            <p className="mt-0.5 text-3xl font-black tabular-nums text-cyan-300">
+              {oppTotal ?? 0}
+            </p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+              pts
+            </p>
+            <p className="mt-0.5 text-[10px] text-white/40">
+              {oppScore ?? 0} round win{oppScore === 1 ? "" : "s"} ·{" "}
+              {match ? (viewerIsPlayer1 ? match.p2RoundScore : match.p1RoundScore) : 0}{" "}
+              this round
+            </p>
+          </div>
+        </div>
+
+        {/* Waiting-state card — open lobby: escrow notice + cancel /
+            copy-invite actions (mirrors the other PvP games' waiting
+            view, e.g. lane-runner). Once an opponent joins the server
+            flips to `ready` and the countdown below takes over. */}
+        {match?.status === MATCH_STATUS.WAITING && (
+          <div className="mb-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-center">
+            <div className="flex items-center justify-center gap-2 text-sm font-semibold text-white/70">
+              <span className="inline-block h-2.5 w-2.5 animate-ping rounded-full bg-amber-400" />
+              Waiting for an opponent…
+            </div>
+            <p className="mx-auto mt-1.5 max-w-md text-xs text-white/50">
+              Your stake is escrowed. Share the invite link to play a
+              friend of the same stake, or wait for matchmaking.
+            </p>
+            <div className="mt-4 flex items-center justify-center gap-3">
+              {viewerCanCancel && (
+                <button
+                  onClick={cancelLobby}
+                  disabled={cancelling}
+                  className="rounded-xl border border-red-400/40 bg-red-500/15 px-4 py-2 text-xs font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
+                >
+                  {cancelling ? "Cancelling…" : "Cancel lobby"}
+                </button>
+              )}
+              <button
+                onClick={copyInvite}
+                className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-200 transition hover:bg-amber-500/20"
+              >
+                Copy invite link
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Phase banner — the primary reading of the screen: a big
+            uppercase phase label (MEMORIZE / RECREATE THE PATTERN)
+            with the authoritative countdown on the right, in the same
+            amber-on-dark pill style as the casino's other phase
+            indicators. Contextual states (waiting for opponent, ready,
+            submitted) keep the banner so the layout never shifts. */}
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm">
+          <div className="flex min-w-0 items-center gap-2">
+            <IconSparkles className="h-4 w-4 flex-shrink-0 text-amber-300" />
+            {match?.status === MATCH_STATUS.WAITING && (
+              <span className="text-white/70">Waiting for opponent…</span>
+            )}
+            {match?.status === MATCH_STATUS.READY && (
+              <span className="font-black uppercase tracking-[0.3em] text-amber-300">
+                Get ready
+              </span>
+            )}
+            {playing && isMemorize && (
+              <span className="text-lg font-black uppercase tracking-[0.3em] text-amber-300 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]">
+                Memorize
+              </span>
+            )}
+            {playing && isReconstruct && !viewerSubmitted && !opponentSubmitted && (
+              <span className="text-lg font-black uppercase tracking-[0.25em] text-amber-300">
+                Recreate the pattern
+              </span>
+            )}
+            {playing && isReconstruct && viewerSubmitted && (
+              <span className="font-black uppercase tracking-[0.25em] text-white/60">
+                Submitted — waiting
+              </span>
+            )}
+            {playing && isReconstruct && !viewerSubmitted && opponentSubmitted && (
+              <span className="font-black uppercase tracking-[0.25em] text-cyan-300">
+                Finish your grid
+              </span>
+            )}
+            {playing && isRoundResult && (
+              <span className="font-black uppercase tracking-[0.25em] text-emerald-300">
+                Round {roundResult?.roundNumber ?? ""} result
+              </span>
+            )}
+            {isFinished && (
+              <span className="font-black uppercase tracking-[0.25em] text-emerald-300">
+                {viewerWon
+                  ? "You win!"
+                  : viewerLost
+                    ? "You lose"
+                    : "Draw — 95% refund"}
+              </span>
+            )}
+            {isCancelled && <span className="text-white/60">Match cancelled</span>}
+          </div>
+          {playing && msLeft !== null && !isFinished && (
+            <div
+              className={`flex items-center gap-1.5 font-mono text-lg font-bold ${
+                msLeft <= 5000 ? "text-red-400" : "text-amber-300"
+              }`}
+            >
+              <IconClock className="h-4 w-4" />
+              {countdownLabel}
+            </div>
+          )}
+        </div>
+
+        {error && match && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-2 text-sm text-red-200">
+            <IconAlertTriangle className="h-4 w-4 flex-shrink-0 text-red-300" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Submission feedback (submitter-only, transient) */}
+        {feedback && !isFinished && (
+          <div className="mb-4 rounded-xl border border-emerald-500/40 bg-emerald-950/40 px-4 py-3 text-center text-sm">
+            <span className="font-bold text-emerald-300">
+              Round score {feedback.score} · Accuracy {feedback.accuracyPct}%
+            </span>
+            <span className="ml-1 text-white/50">
+              ({feedback.correct} of {feedback.total} cells correct,{" "}
+              {feedback.incorrect} wrong ·{" "}
+              {SPEED_TIER_LABEL[feedback.speedTier] ?? "Very slow"} · round{" "}
+              {feedback.roundNumber})
+            </span>
+          </div>
+        )}
+
+        {/* Waiting-for-opponent / opponent-submitted panels */}
+        {playing && isReconstruct && viewerSubmitted && !opponentSubmitted && (
+          <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-950/30 px-4 py-3 text-center text-sm">
+            <span className="font-bold text-amber-300">Waiting for opponent…</span>
+            <span className="ml-1 text-white/50">your grid is locked</span>
+          </div>
+        )}
+        {playing && isReconstruct && !viewerSubmitted && opponentSubmitted && (
+          <div className="mb-4 rounded-xl border border-cyan-400/40 bg-cyan-950/30 px-4 py-3 text-center text-sm">
+            <span className="font-bold text-cyan-300">Opponent submitted</span>
+            <span className="ml-1 text-white/50">— finish your grid and press Submit</span>
+          </div>
+        )}
+
+        {/* The grid */}
+        <div
+          className="mx-auto grid max-w-md gap-2.5 sm:gap-3"
+          style={{
+            gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
+          }}
+        >
+          {Array.from({ length: totalTiles }, (_, tileIndex) => {
+            const isActive = activeSet.has(tileIndex);
+            const isSelected = selected.includes(tileIndex);
+            const faceUp = patternVisible && isActive;
+
+            // Reveal on the finished screen: the final round's
+            // pattern lights up for both players.
+            const revealActive = isFinished && activeSet.has(tileIndex);
+
+            const clickable = canPick && !isFinished;
+
+            // One "face" (the casino logo) is shown by all three
+            // states that display it: the memorize pattern, the
+            // player's OWN reconstruct picks, and the finished
+            // reveal. Selected tiles look IDENTICAL to each other —
+            // the game never reveals correctness mid-reconstruction.
+            const showFace = faceUp || isSelected || revealActive;
+
+            return (
+              <motion.button
+                key={tileIndex}
+                type="button"
+                onClick={() => handleTileClick(tileIndex)}
+                disabled={!clickable}
+                whileTap={clickable ? { scale: 0.92 } : undefined}
+                aria-label={`Tile ${tileIndex + 1}`}
+                className={`relative aspect-square select-none overflow-hidden rounded-xl border transition-colors [transform-style:preserve-3d] [perspective:600px] ${
+                  revealActive
+                    ? "border-emerald-400/60 bg-gradient-to-br from-emerald-500/50 to-teal-600/40 shadow-[0_0_16px_rgba(52,211,153,0.45)]"
+                    : faceUp
+                      ? "border-amber-400/80 bg-gradient-to-br from-amber-400/80 to-yellow-500/70 shadow-[0_0_18px_rgba(251,191,36,0.6)]"
+                      : isSelected
+                        ? "border-cyan-300 bg-cyan-500/25"
+                        : clickable
+                          ? "cursor-pointer border-cyan-600/40 bg-[#08142f] hover:border-cyan-400/70 hover:bg-[#0b224f]"
+                          : "border-white/10 bg-[#08142f]"
+                }`}
+              >
+                {/* Card-flip: one continuous 3D rotation (framer-motion,
+                    already in the project). The wrapper rotates the whole
+                    card Y-axis 0° → 180°; the logo face is pre-rotated
+                    180° so it's hidden until the flip lands, and
+                    backface-visibility hides whichever face is away. The
+                    flip is IDENTICAL for every tile — selected tiles all
+                    show the same casino logo, so the animation can never
+                    communicate whether a pick is correct. 0.18s + easeOut
+                    keeps it fast enough for rapid reconstruction. */}
+                <motion.div
+                  className="absolute inset-0 [transform-style:preserve-3d]"
+                  initial={false}
+                  animate={{ rotateY: showFace ? 180 : 0 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                >
+                  {/* Blank back (inactive) */}
+                  <span className="absolute inset-0 [backface-visibility:hidden]" />
+                  {/* Logo face (memorize pattern / your picks / reveal) */}
+                  <span className="absolute inset-0 flex items-center justify-center p-1 sm:p-1.5 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+                    <Image
+                      src={LogoSmiley}
+                      alt=""
+                      width={48}
+                      height={48}
+                      className="h-full w-full object-contain drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]"
+                    />
+                  </span>
+                </motion.div>
+              </motion.button>
+            );
+          })}
+        </div>
+
+        {/* Reconstruct controls — free modification + explicit Submit */}
+        {canPick && (
+          <div className="mx-auto mt-4 flex max-w-md items-center justify-between gap-3">
+            <button
+              onClick={() => setSelected([])}
+              disabled={selected.length === 0 || submitting}
+              className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-white/70 transition hover:bg-white/10 disabled:opacity-40"
+            >
+              Clear
+            </button>
+            <span className="text-center text-xs text-white/45">
+              {selected.length} selected — tap again to remove · {activeCount}{" "}
+              lit this round
+            </span>
+            <button
+              onClick={() => submitPicks(selected)}
+              disabled={submitting}
+              className="rounded-xl border-b-4 border-amber-700 bg-amber-500 px-6 py-2 text-sm font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
+            >
+              {submitting ? "Submitting…" : "Submit"}
+            </button>
+          </div>
+        )}
+
+        {/* Result panel */}
+        {isFinished && match && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-6 rounded-2xl border border-amber-700/60 bg-black/40 p-6 text-center shadow-[0_0_30px_rgba(251,191,36,0.15)] backdrop-blur-xl"
+          >
+            <div className="mb-2 flex items-center justify-center gap-2 text-2xl font-black">
+              <IconTrophy
+                className={`h-7 w-7 ${viewerWon ? "text-amber-300" : "text-white/30"}`}
+              />
+              {viewerWon ? "You Win!" : viewerLost ? "You Lose" : "Draw"}
+            </div>
+            <p className="mb-1 text-sm text-white/70">
+              You {myTotal ?? 0} — {oppTotal ?? 0} {oppName}
+              <span className="ml-1 text-white/40">
+                (points · {myScore ?? 0}–{oppScore ?? 0} rounds won)
+              </span>
+            </p>
+
+            {/* Per-round breakdown */}
+            {rounds.length > 0 && (
+              <div className="mx-auto mt-4 max-w-xs rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Round scores
+                </p>
+                <div className="space-y-1 text-xs">
+                  {rounds.map((r) => {
+                    const youWonRound = match.viewerIsPlayer1
+                      ? r.roundWinner === "player1"
+                      : r.roundWinner === "player2";
+                    const oppWonRound = match.viewerIsPlayer1
+                      ? r.roundWinner === "player2"
+                      : r.roundWinner === "player1";
+                    return (
+                      <div
+                        key={r.roundNumber}
+                        className="flex items-center justify-between"
+                      >
+                        <span className="text-white/50">Round {r.roundNumber}</span>
+                        <span
+                          className={
+                            youWonRound
+                              ? "font-bold text-emerald-300"
+                              : oppWonRound
+                                ? "font-bold text-red-300"
+                                : "text-white/60"
+                          }
+                        >
+                          {match.viewerIsPlayer1
+                            ? `${r.p1RoundScore} – ${r.p2RoundScore}`
+                            : `${r.p2RoundScore} – ${r.p1RoundScore}`}
+                          {youWonRound
+                            ? " ✓"
+                            : oppWonRound
+                              ? " ✗"
+                              : " —"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="mx-auto mt-3 max-w-xs rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
+              {viewerWon && (
+                <p className="flex items-center justify-between">
+                  <span className="text-white/60">Payout</span>
+                  <span className="inline-flex items-center gap-1 font-bold text-emerald-300">
+                    +{(match.prizePaid ?? 0).toLocaleString()}
+                    <CoinIcon className="h-3.5 w-3.5" />
+                  </span>
+                </p>
+              )}
+              {isDraw && (
+                <p className="text-white/70">
+                  Tiebreak tied — both players refunded{" "}
+                  <span className="font-bold text-yellow-300">
+                    {(match.refundEach ?? 0).toLocaleString()}
+                  </span>{" "}
+                  (95% — 5% house fee each).
+                </p>
+              )}
+              <p className="flex items-center justify-between text-xs text-white/40">
+                <span>Stake</span>
+                <span>{Number(match.stakeAmount ?? 0).toLocaleString()}</span>
+              </p>
+            </div>
+            <button
+              onClick={() => router.push("/casino/memory-grid")}
+              disabled={!canLeave}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl border-b-4 border-amber-700 bg-amber-500 px-6 py-3 text-sm font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
+            >
+              <IconRefresh className="h-4 w-4" />
+              Back to Lobby
+            </button>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Tie popup — the round-6 tiebreak ALSO tied, so the match is
+          a draw: both players get their stake back minus the 5%
+          per-side house fee. Overlays the finished screen (both
+          players see the identical refund amount). */}
+      {isFinished && isDraw && match && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+        >
+          <motion.div
+            initial={{ scale: 0.85, y: 30 }}
+            animate={{ scale: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 18 }}
+            className="relative w-full max-w-md rounded-3xl border-4 border-cyan-400/70 bg-gradient-to-b from-[#0b1a33] to-[#08142f] p-6 text-center shadow-[0_0_60px_rgba(34,211,238,0.35)]"
+          >
+            <IconHeartHandshake className="mx-auto mb-3 h-14 w-14 text-cyan-300 drop-shadow-[0_0_14px_rgba(34,211,238,0.6)]" />
+            <h2 className="text-3xl font-black uppercase tracking-wide text-cyan-300">
+              It&apos;s a tie!
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/70">
+              Even the tiebreak round couldn&apos;t split you two. Both
+              players get their stake back minus a 5% house fee.
+            </p>
+            <div className="mx-auto mt-4 max-w-[230px] space-y-1.5 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
+              <p className="flex items-center justify-between text-white/60">
+                <span>Stake</span>
+                <span className="font-bold text-white">
+                  {Number(match.stakeAmount ?? 0).toLocaleString()}
+                </span>
+              </p>
+              <p className="flex items-center justify-between text-white/60">
+                <span>House fee (5%)</span>
+                <span className="font-bold text-red-300">
+                  −
+                  {Math.round(
+                    Number(match.stakeAmount ?? 0) * 0.05,
+                  ).toLocaleString()}
+                </span>
+              </p>
+              <p className="flex items-center justify-between border-t border-white/10 pt-1.5 text-white/60">
+                <span>Refunded</span>
+                <span className="inline-flex items-center gap-1 font-bold text-emerald-300">
+                  +{(match.refundEach ?? 0).toLocaleString()}
+                  <CoinIcon className="h-3.5 w-3.5" />
+                </span>
+              </p>
+            </div>
+            <button
+              onClick={() => router.push("/casino/memory-grid")}
+              disabled={!canLeave}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl border-b-4 border-cyan-700 bg-cyan-400 px-6 py-2.5 text-sm font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
+            >
+              <IconRefresh className="h-4 w-4" />
+              Back to Lobby
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+      <Footer />
+    </div>
+  );
+}

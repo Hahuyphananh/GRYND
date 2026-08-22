@@ -5,6 +5,13 @@ import { isAdmin } from "../../lib/auth/isAdmin";
 import { hasRecentMfa } from "../../lib/auth/requireMfa";
 import { ADMIN_MFA_COOKIE, verifyAdminMfaToken } from "../../lib/auth/adminMfa";
 import AdminDashboardClient from "./AdminDashboardClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Admin Dashboard — GoonBet",
+  description:
+    "GoonBet admin dashboard for platform management, monitoring and operations.",
+};
 
 export default async function AdminPage() {
   const { userId, factorVerificationAge } = await auth();

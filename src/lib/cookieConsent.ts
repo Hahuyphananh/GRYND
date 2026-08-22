@@ -1,5 +1,8 @@
 export const COOKIE_CONSENT_KEY = "goonbet_cookie_consent";
 
+/** Fired on window whenever the visitor makes a consent choice. */
+export const COOKIE_CONSENT_EVENT = "goonbet_cookie_consent_change";
+
 export type CookieConsent = "accepted" | "declined";
 
 /** Returns the stored consent choice, or null if the visitor hasn't decided yet. */
@@ -22,4 +25,6 @@ export function setCookieConsent(value: CookieConsent): void {
   } catch {
     // Storage unavailable — the banner will simply reappear next visit.
   }
+  // Notify listeners (e.g. the sticky mobile CTA hides while the banner is up).
+  window.dispatchEvent(new Event(COOKIE_CONSENT_EVENT));
 }
