@@ -5,7 +5,7 @@ export async function generateMetadata({ params }) {
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
     title: `Lane Rush Duel Match #${shortId} | GRYND`,
-    description: `Live Lane Rush Duel match #${shortId} on GRYND. Climb your tower and beat your opponent to claim the pot.`,
+    description: `Live Lane Rush Duel match #${shortId} on GRYND. Both players climb the same tower — beat your opponent to claim the pot.`,
   };
 }
 

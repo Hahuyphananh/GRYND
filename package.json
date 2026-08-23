@@ -20,7 +20,7 @@
     "test:reports": "node --import tsx --test tests/report-submit.test.mjs",
     "test:keno-pvp": "node --import tsx --test tests/keno-pvp-engine.test.mjs",
     "test:odds": "node --import tsx --test tests/odds-engine.test.mjs",
-    "test:lane-rush-duel": "node --import tsx --test tests/lane-rush-duel-engine.test.mjs"
+    "test:lane-rush-duel": "node --import tsx --test tests/lane-rush-duel-engine.test.mjs tests/lane-rush-duel-flow.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.3",

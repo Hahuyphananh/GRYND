@@ -311,14 +311,16 @@ export default function LaneRushDuelLobbyPage() {
       title="Lane Rush Duel"
       subtitle={
         <>
-          You and your opponent each race your <b>own tower</b>. Same
-          difficulty, same provably-fair seed. On your turn pick a tile
-          in your current lane (<b className="text-emerald-300">safe</b>{" "}
+          You and your opponent race the <b>same tower</b> — one
+          provably-fair layout. Picks reveal together, so every safe
+          pick either of you makes narrows the odds for both. On your
+          turn          pick a tile (<b className="text-emerald-300">safe</b>{" "}
           earns points, <b className="text-rose-300">bad</b> busts you) or{" "}
-          <b className="text-amber-300">HOLD</b> to bank your points and
-          force your opponent to climb past them. The{" "}
-          <b>higher banked tower</b> takes the pot. 1.9× your stake,
-          house takes 0.1×.
+          <b className="text-amber-300">BANK</b> to lock your points —
+          you keep climbing, but every pick after a bank pays half. Two{" "}
+          private <b>peeks</b> per match can turn a coin flip into a sure
+          climb. <b>First to bank 1,000 points wins</b> — bust, and only
+          what you banked survives. 1.9× your stake, house takes 0.1×.
         </>
       }
       icon={
@@ -329,31 +331,54 @@ export default function LaneRushDuelLobbyPage() {
         title: "How to Play",
         sections: [
           {
-            heading: "Race your own tower",
+            heading: "Race the same tower",
             body: (
               <>
-                You and your opponent each race your <b>own tower</b>.
-                same difficulty, same provably-fair seed.
+                You and your opponent race the <b>same tower</b> — one
+                provably-fair layout, same difficulty. Every safe pick
+                either of you makes shows up on both boards and
+                eliminates a bad-tile candidate.
               </>
             ),
           },
           {
-            heading: "Climb or hold",
+            heading: "Climb or bank",
             body: (
               <>
                 On your turn pick a tile in your current lane.{" "}
                 <b className="text-emerald-300">safe</b> earns points,{" "}
                 <b className="text-rose-300">bad</b> busts you, or{" "}
-                <b className="text-amber-300">HOLD</b> to bank your points
-                and force your opponent to climb past them.
+                <b className="text-amber-300">BANK</b> to lock your
+                points as your banked score — the game continues, but
+                every pick after a bank pays half (stacking lower with
+                each extra bank), and only banked points survive a bust.
+                Your pick stays hidden until your opponent answers the
+                same level — both reveal together, so nobody can copy.
               </>
             ),
           },
           {
-            heading: "Win the pot",
+            heading: "Peek or flag",
             body: (
               <>
-                The <b>higher banked tower</b> takes the pot. 1.9× your
+                Each match gives you <b>2 private peeks</b> (learn if a
+                tile in your current lane is safe or bad before you pick
+                — without spending your turn) and <b>2 flags</b> (call
+                the bad tile: correct claims the row, wrong busts you).
+                Both budgets are scarce, so spending them at the right
+                moment is the skill.
+              </>
+            ),
+          },            {
+              heading: "Win the pot",
+              body: (
+                <>
+                  The match is a race: the <b>first player to bank
+                  1,000 points wins</b>. Banking locks your score and
+                  never ends your climb — you keep playing at a reduced
+                  rate, and the race continues until someone banks 1,000
+                  (or completes the tower). Bust before banking 1,000 and
+                  you lose everything you hadn&apos;t banked. 1.9× your
                 stake, house takes 0.1×.
               </>
             ),
@@ -362,9 +387,9 @@ export default function LaneRushDuelLobbyPage() {
             heading: "Provably fair",
             body: (
               <>
-                Every lane hides one bad tile. Towers derive from one
-                shared server seed (hash shown before the match) + each
-                player&apos;s own client seed, revealed after.
+                Every lane hides one bad tile. The tower derives from
+                one shared server seed (hash shown before the match) +
+                the host&apos;s client seed, both revealed after.
               </>
             ),
           },

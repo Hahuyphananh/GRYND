@@ -619,7 +619,7 @@ export const APP_TEXT_TRANSLATIONS = {
           "Cancel or forfeit this game? Tokens will be refunded or opponent credited.",
       },
       lane_runner_desc:
-        "Race your own tower against a rival. Pick safe tiles to climb, or hold to bank your score before the bad tile finds you.",
+        "Race a rival up the same tower — every safe pick either of you makes narrows the odds. Pick safe tiles to climb, or hold to bank your score before the bad tile finds you.",
       pool_masters_desc: "Compete in a strategic game of pool. Sink the 8-ball to win!",
       pool_masters_name: "Pool Masters",
       roulette_name: "Roulette",
