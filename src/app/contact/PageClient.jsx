@@ -12,6 +12,7 @@ import {
   IconCircleCheck,
   IconInfoCircle,
   IconAlertTriangle,
+  IconHelp,
   IconX,
 } from "@tabler/icons-react";
 
@@ -165,6 +166,14 @@ export default function ContactPage() {
                 Quick Links
               </h3>
               <ul className="space-y-2 text-sm">
+                <li>
+                  <Link
+                    href="/faq"
+                    className="inline-flex w-full items-center gap-2 rounded-lg border border-[#f5ff3b]/30 bg-[#f5ff3b]/10 px-3 py-2 text-[#f5ff3b] transition-all duration-200 hover:bg-[#f5ff3b]/20 hover:shadow-[0_0_12px_rgba(245,255,59,0.2)]"
+                  >
+                    <IconHelp size={16} /> Frequently Asked Questions
+                  </Link>
+                </li>
                 {[
                   { href: "/terms", label: "Terms of Service" },
                   { href: "/privacy-policy", label: "Privacy Policy" },
@@ -191,6 +200,17 @@ export default function ContactPage() {
             transition={{ duration: 0.5, delay: 0.25 }}
             className="lg:col-span-3"
           >
+            <div className="mb-4 rounded-lg border border-[#00e5ff]/20 bg-[#00e5ff]/5 px-4 py-3 text-sm text-[#c9f7ff]/80">
+              <IconHelp size={15} className="mb-0.5 mr-1.5 inline text-[#00e5ff]" />
+              Looking for a quick answer? Check the{" "}
+              <Link
+                href="/faq"
+                className="text-[#00e5ff] underline hover:text-[#f5ff3b] transition-colors"
+              >
+                FAQ
+              </Link>{" "}
+              first — many common questions are answered there.
+            </div>
             <AnimatePresence mode="wait">
               {status === "success" ? (
                 <motion.div
