@@ -34,9 +34,13 @@ const H = 864; // 16:9 — same aspect as grynd-master-bg.jpg (1376x768)
 // Cards with `restoreOriginalSize: true` keep their original canvas size.
 const CARDS = [
   // pool: table spans x 80..400, y 120..360 → center (240, 240), 320x240
-  { file: "pool.svg", center: [240, 240], scale: 1.65 },
+  { file: "pool.svg", center: [240, 240], scale: 1.95 },
   // hex-duel: cluster translate(200 102), hexes span x ±76, y 22..182
-  { file: "hex-duel.svg", center: [200, 102], scale: 2.7 },
+  { file: "hex-duel.svg", center: [200, 102], scale: 3.2 },
+  // lane-rush: twin towers span x 16..464, y 12..360 → center (240, 186)
+  { file: "lane-rush.svg", center: [240, 186], scale: 1.65 },
+  // odds: live-round duel spans x 14..386, y 8..210 → center (200, 112)
+  { file: "odds.svg", center: [200, 112], scale: 2.75 },
   // dice-flush: keep the original 400x300 canvas, only swap the backdrop
   { file: "dice-flush.svg", restoreOriginalSize: true, size: [400, 300] },
   // dots-and-boxes: keep the original 600x400 canvas, only swap the backdrop

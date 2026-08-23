@@ -16,7 +16,7 @@ import Img11 from "../../images/uno game div.webp";
 import Img12 from "../../images/rock paper scissors div casino.webp";
 import ImgDiceDuel from "../../images/dice-duel div image.jpg";
 import Img14 from "../../images/connect-4.svg";
-import Img15 from "../../images/towers.webp";
+import ImgLaneRush from "../../images/lane-rush.svg";
 import Img17 from "../../images/pool.svg";
 import Img18 from "../../images/hex-duel.svg";
 import Img21 from "../../images/odds.svg";
@@ -184,7 +184,9 @@ function MainComponent() {
       name: "Lane Rush Duel",
       href: "/casino/lane-runner",
       leaderboardKey: "lane-runner",
-      image: Img15,
+      image: ImgLaneRush,
+      // Gentler hover zoom so the twin towers stay fully visible.
+      imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.lane_runner_desc",
     },
     {
