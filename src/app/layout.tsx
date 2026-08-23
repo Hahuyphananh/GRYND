@@ -10,10 +10,8 @@ import { ogImageUrl } from "../lib/ogImages";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "GRYND — Competitive PvP Skill Gaming",
-  description:
-    "Compete head-to-head in skill-based PvP games, claim daily tokens and climb the global leaderboard. No real money — pure skill.",
+export const metadata = {title: "GRYND | Competitive PvP Skill Gaming",
+      description: "Compete head-to-head in skill-based PvP games, claim daily tokens and climb the global leaderboard. No real money. Pure skill.",
   // Explicit icon metadata so the browser tab uses our smalllogo.
   // (Next.js also auto-generates a <link rel="icon"> from
   // src/app/icon.png, but listing it here keeps the intent obvious
@@ -29,10 +27,8 @@ export const metadata = {
   // Rich preview cards for social platforms / chat apps (Discord, WhatsApp,
   // Slack, Facebook, LinkedIn...). The default banner applies to every page;
   // individual game pages override the image with their own screenshot art.
-  openGraph: {
-    title: "GRYND — Competitive PvP Skill Gaming",
-    description:
-      "Compete head-to-head in skill-based PvP games, claim daily tokens and climb the global leaderboard. No real money — pure skill.",
+  openGraph: {title: "GRYND | Competitive PvP Skill Gaming",
+      description: "Compete head-to-head in skill-based PvP games, claim daily tokens and climb the global leaderboard. No real money. Pure skill.",
     url: ogImageUrl("/"),
     siteName: "GRYND",
     locale: "en_US",
@@ -42,15 +38,13 @@ export const metadata = {
         url: ogImageUrl("/og-image.png"),
         width: 1200,
         height: 630,
-        alt: "GRYND — Competitive PvP Skill Gaming",
+        alt: "GRYND | Competitive PvP Skill Gaming",
       },
     ],
   },
   twitter: {
-    card: "summary_large_image",
-    title: "GRYND — Competitive PvP Skill Gaming",
-    description:
-      "Compete head-to-head in skill-based PvP games, claim daily tokens and climb the global leaderboard. No real money — pure skill.",
+    card: "summary_large_image",title: "GRYND | Competitive PvP Skill Gaming",
+      description: "Compete head-to-head in skill-based PvP games, claim daily tokens and climb the global leaderboard. No real money. Pure skill.",
     images: [ogImageUrl("/og-image.png")],
   },
 };

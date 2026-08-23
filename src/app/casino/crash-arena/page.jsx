@@ -2,9 +2,9 @@ import { ogImageUrl } from "../../../lib/ogImages";
 import PageClient from "./PageClient";
 
 export const metadata = {
-  title: "Crash Arena — GRYND",
+  title: "Crash Arena | GRYND",
   description:
-    "Join a Crash Arena table on GRYND — everyone antes up, watch the multiplier fly and cash out before the crash. Last survivor claims the pot.",
+    "Join a Crash Arena table on GRYND. Everyone antes up, watch the multiplier fly and cash out before the crash. Last survivor claims the pot.",
   openGraph: { images: [ogImageUrl("/images/og/crash-arena.jpg")] },
 };
 

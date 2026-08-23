@@ -10,7 +10,7 @@ export async function POST(req) {
       // Shot clock: resolve a stalled turn before processing the move.
       const resolved = await resolveExpiredTurn(tx, room, room.gameState);
       if (resolved.didTimeout) {
-        return { success: false, error: "Turn expired — best category auto-banked.", state: resolved.state, status: 409 };
+        return { success: false, error: "Turn expired. Best category auto-banked.", state: resolved.state, status: 409 };
       }
       validateMove(resolved.state, userId, "hold_dice", { heldDice });
       const updated = holdDice(resolved.state, heldDice);

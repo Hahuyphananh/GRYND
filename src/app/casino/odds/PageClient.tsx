@@ -70,7 +70,7 @@ export default function OddsPage() {
           <span className="inline-flex items-center gap-2"><IconDice size={28} /> Odds Game</span>
         </h1>
         <p className="mb-4 text-center text-sm text-white/60">
-          Pick your number and predict your opponent's — closest predictions win. Range halves each round.
+          Pick your number and predict your opponent's. Closest predictions win. Range halves each round.
         </p>
 
         {/* How to Play — rules modal at the top of the lobby */}
@@ -100,7 +100,7 @@ export default function OddsPage() {
                 body: (
                   <>
                     The closer your predictions, the more points you
-                    score — hitting the exact band pays the most.
+                    score. Hitting the exact band pays the most.
                   </>
                 ),
               },
@@ -109,7 +109,7 @@ export default function OddsPage() {
                 body: (
                   <>
                     The number range <b>halves each round</b> over 6
-                    rounds — later rounds are higher-stakes.
+                    rounds. Later rounds are higher-stakes.
                   </>
                 ),
               },
@@ -506,7 +506,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
               Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wager} <IconCoins size={12} className="inline" />
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
-              Choose a number from <span className="text-yellow-400 font-bold">1–{range}</span> — it stays
+              Choose a number from <span className="text-yellow-400 font-bold">1–{range}</span>. It stays
               hidden from the AI until reveal.
             </p>
 
@@ -611,7 +611,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
               Which number do you think they chose? Pick from{" "}
-              <span className="text-yellow-400 font-bold">1–{range}</span> — your
+              <span className="text-yellow-400 font-bold">1–{range}</span>. Your
               prediction stays hidden until the reveal.
             </p>
 
@@ -1488,7 +1488,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
               Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wagerLocked ?? wager} <IconCoins size={12} className="inline" />
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
-              Choose a number from <span className="text-yellow-400 font-bold">1–{range}</span> — it stays
+              Choose a number from <span className="text-yellow-400 font-bold">1–{range}</span>. It stays
               hidden from your opponent until both players lock in.
             </p>
 
@@ -1605,7 +1605,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
               Which number do you think they chose? Pick from{" "}
-              <span className="text-yellow-400 font-bold">1–{range}</span> — your
+              <span className="text-yellow-400 font-bold">1–{range}</span>. Your
               prediction stays hidden from your opponent until the reveal.
             </p>
 
@@ -2259,7 +2259,7 @@ function OddsGameDisplay({
                 className="text-sm text-white/50 mt-3"
               >
                 {userDrew
-                  ? "Stakes refunded — you tied."
+                  ? "Stakes refunded. You tied."
                   : userWon
                     ? <><span className="inline-flex items-center gap-1">Payout: {payout} <IconCoins size={14} /></span></>
                     : <><span className="inline-flex items-center gap-1">{oppLabel} wins the pot of {payout} <IconCoins size={14} /></span></>}

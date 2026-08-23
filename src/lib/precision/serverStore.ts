@@ -631,7 +631,7 @@ export function recordRoundStop(
       roundWinnerSeat: null,
       matchFinished: false,
       validationError: true,
-      error: "Round ID mismatch — stop packet from a previous round rejected.",
+      error: "Round ID mismatch. Stop packet from a previous round rejected.",
     };
   }
   // ── Replay-attack protection #2 (nonce) ──
@@ -666,7 +666,7 @@ export function recordRoundStop(
       roundWinnerSeat: null,
       matchFinished: false,
       validationError: true,
-      error: "Nonce mismatch — stop packet rejected (possible replay).",
+      error: "Nonce mismatch. Stop packet rejected (possible replay).",
     };
   }
   // Server-stamped STOP instant — this is the only clock source for

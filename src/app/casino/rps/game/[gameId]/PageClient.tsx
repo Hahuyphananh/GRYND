@@ -112,7 +112,7 @@ export default function RPSPvpGamePage() {
         } else if (game.status === "matched" && game.myChoice && !game.opponentChoice) {
           setMessage("Choice locked. Waiting for opponent choice…");
         } else if (game.status === "matched") {
-          setMessage(`Round ${game.currentRound || 1} — pick your throw.`);
+          setMessage(`Round ${game.currentRound || 1}. Pick your throw.`);
         } else if (game.status === "finished") {
           setMessage(
             game.winner === "you"
@@ -245,7 +245,7 @@ export default function RPSPvpGamePage() {
 
           {history.length === 0 ? (
             <p className="text-sm text-white/50">
-              No rounds played yet — the history of every throw will show
+              No rounds played yet. The history of every throw will show
               up here.
             </p>
           ) : (

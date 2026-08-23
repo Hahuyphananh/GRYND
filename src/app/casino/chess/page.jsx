@@ -2,9 +2,9 @@ import { ogImageUrl } from "../../../lib/ogImages";
 import PageClient from "./PageClient";
 
 export const metadata = {
-  title: "Chess — GRYND",
+  title: "Chess | GRYND",
   description:
-    "Play chess on GRYND — challenge players in multiplayer chess matches or sharpen your skills against the AI.",
+    "Play chess on GRYND. Challenge players in multiplayer chess matches or sharpen your skills against the AI.",
   openGraph: { images: [ogImageUrl("/images/og/chess.jpg")] },
 };
 

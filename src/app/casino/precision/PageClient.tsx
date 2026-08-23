@@ -191,7 +191,7 @@ export default function PrecisionLobbyPage() {
             heading: "Stop on target",
             body: (
               <>
-                A target time is shown next to a running timer — press
+                A target time is shown next to a running timer. Press
                 STOP as close to the target as you can. The smaller the
                 miss, the better your rank.
               </>
@@ -203,7 +203,7 @@ export default function PrecisionLobbyPage() {
               <>
                 Once both players are ready, a 5-second countdown runs
                 (5…4…3…2…1). The target appears and the timer starts the
-                moment it hits zero — no early clicks.
+                moment it hits zero. No early clicks.
               </>
             ),
           },
@@ -212,7 +212,7 @@ export default function PrecisionLobbyPage() {
             body: (
               <>
                 Face another player at the same wager. Both players stop
-                independently — the round goes to whoever stopped
+                independently. The round goes to whoever stopped
                 closest to the target. First to 3 rounds wins the match
                 and the pot (minus the house fee).
               </>

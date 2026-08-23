@@ -40,7 +40,7 @@ export default function RoundMarkers({
 
   return (
     <div className="flex flex-col items-center gap-1.5">
-      <div className="flex items-center gap-1.5" role="img" aria-label={`Best of ${total} — you won ${myWins}, opponent won ${oppWins}`}>
+      <div className="flex items-center gap-1.5" role="img" aria-label={`Best of ${total}. You won ${myWins}, opponent won ${oppWins}`}>
         {Array.from({ length: total }).map((_, i) => {
           const isMyWin = i < myWins;
           const isOppWin = !isMyWin && i < decided;

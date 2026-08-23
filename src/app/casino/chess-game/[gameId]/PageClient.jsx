@@ -357,7 +357,7 @@ export default function ChessGamePage() {
         }
       } else if (game.result === "opponent_left") {
         const iWon = game.winnerId === myId;
-        text = iWon ? "Opponent left — You win!" : "You left the game.";
+        text = iWon ? "Opponent left. You win!" : "You left the game.";
         if (iWon && game.payout) {
           payoutText = `+$${Number(game.payout).toFixed(2)}`;
         }
@@ -923,7 +923,7 @@ export default function ChessGamePage() {
                 {/* Draw Offer */}
                 {drawOffered ? (
                   <div className="mt-3 w-full text-center text-yellow-400 text-sm py-2 border border-yellow-400/30 rounded-lg bg-yellow-400/5">
-                    Draw offered — waiting...
+                    Draw offered. Waiting...
                   </div>
                 ) : (
                   <button

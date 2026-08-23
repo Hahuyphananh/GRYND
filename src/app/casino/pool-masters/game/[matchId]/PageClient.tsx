@@ -551,7 +551,7 @@ export default function Page() {
       setStatus(res.foulMessage);
       setLastFoul(res.foulMessage);
     } else {
-      setStatus(res.keepTurn ? "Nice shot — shoot again." : "Shot complete.");
+      setStatus(res.keepTurn ? "Nice shot. Shoot again." : "Shot complete.");
       setLastFoul(null);
     }
     turnRef.current = res.nextTurn;
@@ -1263,7 +1263,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         <div
           className={`mb-3 rounded-xl border px-4 py-3 text-center font-extrabold ${lastFoul ? "border-red-300 bg-red-700/85 text-white" : "border-white/10 bg-black/30 text-slate-100"}`}
         >
-          {lastFoul ? `FOUL — ${lastFoul.replace(/^Foul: /, "")}` : status}
+          {lastFoul ? `FOUL: ${lastFoul.replace(/^Foul: /, "")}` : status}
           {ballInHand ? " • Ball in hand" : ""}
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:gap-4">
@@ -1430,7 +1430,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
                         ? ` pocketed [${entry.pocketedNumbers.join(", ")}]`
                         : "";
                     const foulStr = entry.foul
-                      ? ` — FOUL${entry.foulMessage ? `: ${entry.foulMessage.replace(/^Foul: /, "")}` : ""}` + (entry.ballInHand ? ", ball in hand" : "")
+                      ? ` · FOUL${entry.foulMessage ? `: ${entry.foulMessage.replace(/^Foul: /, "")}` : ""}` + (entry.ballInHand ? ", ball in hand" : "")
                       : "";
                     const winStr = entry.winner ? " WIN" : "";
                     return (

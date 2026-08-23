@@ -608,14 +608,14 @@ function applyAction(match, action, seat, fields, payload) {
       if (currentState !== PLAYER_STATE.PLAYING) {
         return {
           ok: false,
-          error: `Seat already in '${currentState}' — no further action possible`,
+          error: `Seat already in '${currentState}'. No further action possible`,
           status: 409,
         };
       }
       if (currentDeck.length === 0) {
         return {
           ok: false,
-          error: "Shoe is empty — server cannot deal further cards",
+          error: "Shoe is empty. Server cannot deal further cards",
           status: 409,
         };
       }
@@ -652,7 +652,7 @@ function applyAction(match, action, seat, fields, payload) {
       ) {
         return {
           ok: false,
-          error: `Seat already in '${currentState}' — no further action possible`,
+          error: `Seat already in '${currentState}'. No further action possible`,
           status: 409,
         };
       }
@@ -669,7 +669,7 @@ function applyAction(match, action, seat, fields, payload) {
       if (currentState === PLAYER_STATE.STOOD) {
         return {
           ok: false,
-          error: `Seat already in '${currentState}' — no further action possible`,
+          error: `Seat already in '${currentState}'. No further action possible`,
           status: 409,
         };
       }
@@ -703,7 +703,7 @@ function applyAction(match, action, seat, fields, payload) {
       if (currentDeck.length === 0) {
         return {
           ok: false,
-          error: "Shoe is empty — server cannot deal further cards",
+          error: "Shoe is empty. Server cannot deal further cards",
           status: 409,
         };
       }
@@ -743,7 +743,7 @@ function applyAction(match, action, seat, fields, payload) {
       if (currentState === PLAYER_STATE.STOOD) {
         return {
           ok: false,
-          error: `Seat already in '${currentState}' — no further action possible`,
+          error: `Seat already in '${currentState}'. No further action possible`,
           status: 409,
         };
       }
@@ -758,7 +758,7 @@ function applyAction(match, action, seat, fields, payload) {
       if (currentDeck.length === 0) {
         return {
           ok: false,
-          error: "Shoe is empty — server cannot deal further cards",
+          error: "Shoe is empty. Server cannot deal further cards",
           status: 409,
         };
       }
@@ -780,7 +780,7 @@ function applyAction(match, action, seat, fields, payload) {
       if (currentState === PLAYER_STATE.STOOD) {
         return {
           ok: false,
-          error: `Seat already in '${currentState}' — no further action possible`,
+          error: `Seat already in '${currentState}'. No further action possible`,
           status: 409,
         };
       }
@@ -802,7 +802,7 @@ function applyAction(match, action, seat, fields, payload) {
       if (match[fields.heldCard]) {
         return {
           ok: false,
-          error: "You already have a card on hold — resolve it first",
+          error: "You already have a card on hold. Resolve it first",
           status: 409,
         };
       }
@@ -834,7 +834,7 @@ function applyAction(match, action, seat, fields, payload) {
       if (currentState === PLAYER_STATE.STOOD) {
         return {
           ok: false,
-          error: `Seat already in '${currentState}' — no further action possible`,
+          error: `Seat already in '${currentState}'. No further action possible`,
           status: 409,
         };
       }

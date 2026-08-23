@@ -1672,7 +1672,7 @@ export default function PokerPage() {
                     body: (
                       <>
                         Small and big blinds rotate around the table each
-                        hand — check, call, raise, or fold on your turn.
+                        hand. Check, call, raise, or fold on your turn.
                       </>
                     ),
                   },
@@ -1681,7 +1681,7 @@ export default function PokerPage() {
                     body: (
                       <>
                         Create a private table and share your invite code,
-                        or join a public game from the queue — up to 6
+                        or join a public game from the queue, up to 6
                         players per table.
                       </>
                     ),
@@ -2533,7 +2533,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               <span className="inline-flex items-center gap-1.5"><IconCoins size={18} /> Achat de jetons</span>
             </h2>
             <p className="text-[10px] text-white/50 text-center mb-4 uppercase tracking-widest">
-              Seat {selectedSeat} — Définissez votre mise initiale
+              Seat {selectedSeat}. Définissez votre mise initiale
             </p>
 
             {/* Balance display */}
@@ -2700,7 +2700,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               <span className="inline-flex items-center gap-1.5"><IconArrowUp size={18} /> Raise Amount</span>
             </h2>
             <p className="text-[10px] text-[#b0b0ff]/50 text-center mb-4 uppercase tracking-widest">
-              Set your raise — min {(() => { const h = Math.max(...(game?.players ?? []).map(p => p.currentBet || 0)); return Math.max(20, h * 2); })()}
+              Set your raise. Min {(() => { const h = Math.max(...(game?.players ?? []).map(p => p.currentBet || 0)); return Math.max(20, h * 2); })()}
             </p>
 
             {/* Number input */}

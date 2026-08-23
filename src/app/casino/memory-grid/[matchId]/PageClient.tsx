@@ -562,7 +562,7 @@ export default function MemoryGridMatchPage({
         // opponent. The next round's reset clears it.
         fetchStatus();
       } catch {
-        setError("Failed to submit — retrying…");
+        setError("Failed to submit. Retrying…");
         setSelected([]);
       } finally {
         setSubmitting(false);
@@ -760,7 +760,7 @@ export default function MemoryGridMatchPage({
 
           {/* Opponent reconstruction */}
           <RoundResultGrid
-            title={`${oppName} — Reconstruction`}
+            title={`${oppName}: Reconstruction`}
             pattern={roundResult.boardSnapshot}
             picks={opponentFlip?.picks ?? []}
             highlight="picks"
@@ -989,7 +989,7 @@ export default function MemoryGridMatchPage({
             )}
             {playing && isReconstruct && viewerSubmitted && (
               <span className="font-black uppercase tracking-[0.25em] text-white/60">
-                Submitted — waiting
+                Submitted. Waiting
               </span>
             )}
             {playing && isReconstruct && !viewerSubmitted && opponentSubmitted && (
@@ -1008,7 +1008,7 @@ export default function MemoryGridMatchPage({
                   ? "You win!"
                   : viewerLost
                     ? "You lose"
-                    : "Draw — 95% refund"}
+                    : "Draw. 95% refund"}
               </span>
             )}
             {isCancelled && <span className="text-white/60">Match cancelled</span>}
@@ -1057,7 +1057,7 @@ export default function MemoryGridMatchPage({
         {playing && isReconstruct && !viewerSubmitted && opponentSubmitted && (
           <div className="mb-4 rounded-xl border border-cyan-400/40 bg-cyan-950/30 px-4 py-3 text-center text-sm">
             <span className="font-bold text-cyan-300">Opponent submitted</span>
-            <span className="ml-1 text-white/50">— finish your grid and press Submit</span>
+            <span className="ml-1 text-white/50">Finish your grid and press Submit</span>
           </div>
         )}
 
@@ -1150,7 +1150,7 @@ export default function MemoryGridMatchPage({
               Clear
             </button>
             <span className="text-center text-xs text-white/45">
-              {selected.length} selected — tap again to remove · {activeCount}{" "}
+              {selected.length} selected. Tap again to remove · {activeCount}{" "}
               lit this round
             </span>
             <button
@@ -1177,7 +1177,7 @@ export default function MemoryGridMatchPage({
               {viewerWon ? "You Win!" : viewerLost ? "You Lose" : "Draw"}
             </div>
             <p className="mb-1 text-sm text-white/70">
-              You {myTotal ?? 0} — {oppTotal ?? 0} {oppName}
+              You {myTotal ?? 0} vs {oppTotal ?? 0} {oppName}
               <span className="ml-1 text-white/40">
                 (points · {myScore ?? 0}–{oppScore ?? 0} rounds won)
               </span>
@@ -1219,7 +1219,7 @@ export default function MemoryGridMatchPage({
                             ? " ✓"
                             : oppWonRound
                               ? " ✗"
-                              : " —"}
+                              : "-"}
                         </span>
                       </div>
                     );
@@ -1240,11 +1240,11 @@ export default function MemoryGridMatchPage({
               )}
               {isDraw && (
                 <p className="text-white/70">
-                  Tiebreak tied — both players refunded{" "}
+                  Tiebreak tied. Both players refunded{" "}
                   <span className="font-bold text-yellow-300">
                     {(match.refundEach ?? 0).toLocaleString()}
                   </span>{" "}
-                  (95% — 5% house fee each).
+                  (95%, 5% house fee each).
                 </p>
               )}
               <p className="flex items-center justify-between text-xs text-white/40">

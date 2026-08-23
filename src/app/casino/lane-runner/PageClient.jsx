@@ -311,13 +311,13 @@ export default function LaneRushDuelLobbyPage() {
       title="Lane Rush Duel"
       subtitle={
         <>
-          You and your opponent each race your <b>own tower</b> — same
+          You and your opponent each race your <b>own tower</b>. Same
           difficulty, same provably-fair seed. On your turn pick a tile
           in your current lane (<b className="text-emerald-300">safe</b>{" "}
           earns points, <b className="text-rose-300">bad</b> busts you) or{" "}
           <b className="text-amber-300">HOLD</b> to bank your points and
           force your opponent to climb past them. The{" "}
-          <b>higher banked tower</b> takes the pot — 1.9× your stake,
+          <b>higher banked tower</b> takes the pot. 1.9× your stake,
           house takes 0.1×.
         </>
       }
@@ -332,7 +332,7 @@ export default function LaneRushDuelLobbyPage() {
             heading: "Race your own tower",
             body: (
               <>
-                You and your opponent each race your <b>own tower</b> —
+                You and your opponent each race your <b>own tower</b>.
                 same difficulty, same provably-fair seed.
               </>
             ),
@@ -341,9 +341,9 @@ export default function LaneRushDuelLobbyPage() {
             heading: "Climb or hold",
             body: (
               <>
-                On your turn pick a tile in your current lane —{" "}
+                On your turn pick a tile in your current lane.{" "}
                 <b className="text-emerald-300">safe</b> earns points,{" "}
-                <b className="text-rose-300">bad</b> busts you — or{" "}
+                <b className="text-rose-300">bad</b> busts you, or{" "}
                 <b className="text-amber-300">HOLD</b> to bank your points
                 and force your opponent to climb past them.
               </>
@@ -353,7 +353,7 @@ export default function LaneRushDuelLobbyPage() {
             heading: "Win the pot",
             body: (
               <>
-                The <b>higher banked tower</b> takes the pot — 1.9× your
+                The <b>higher banked tower</b> takes the pot. 1.9× your
                 stake, house takes 0.1×.
               </>
             ),
@@ -491,7 +491,7 @@ export default function LaneRushDuelLobbyPage() {
             Skill duel.
           </p>
           <p>
-            Every lane hides one bad tile — each lane you pick your{" "}
+            Every lane hides one bad tile. Each lane you pick your{" "}
             <b>odds</b> (Safe / Balanced / Risky paths), choose when to
             risk another climb or bank your points, and track the{" "}
             bad-tile pattern to call it for a win. Once you HOLD, your

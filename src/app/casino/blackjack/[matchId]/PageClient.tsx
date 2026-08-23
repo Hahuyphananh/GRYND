@@ -730,7 +730,7 @@ export default function BlackjackPvpMatchPage({
         if (match.result === "draw")
           return t(
             "blackjackPvp.status.finishedDraw",
-            "Égalité — mise remboursée",
+            "Égalité. Mise remboursée",
           );
         if (match.winner === user?.id)
           return t("blackjackPvp.status.finishedWin", "Vous avez gagné !");
@@ -989,7 +989,7 @@ export default function BlackjackPvpMatchPage({
             <div className="mt-3 text-center text-xs text-white/55 italic">
               {t(
                 "blackjackPvp.lockedAfterStand",
-                "Hand locked — both hands reveal when the round ends.",
+                "Hand locked. Both hands reveal when the round ends.",
               )}
             </div>
           )}
@@ -1006,7 +1006,7 @@ export default function BlackjackPvpMatchPage({
               <span className="text-white/75">
                 {t(
                   "blackjackPvp.bustedRecoverHint",
-                  "— swap or freeze to recover.",
+                  "Swap or freeze to recover.",
                 )}
               </span>
             </div>
@@ -1091,7 +1091,7 @@ export default function BlackjackPvpMatchPage({
                     <span>
                       {t(
                         "blackjackPvp.historyRow",
-                        "Manche {n} — {me}: {myScore}{meTag} vs {opp}: {oppScore}{oppTag}",
+                        "Manche {n}, {me}: {myScore}{meTag} vs {opp}: {oppScore}{oppTag}",
                       )
                         .replace("{n}", String(r.roundNumber))
                         .replace("{me}", mySeatLabel)
@@ -1283,7 +1283,7 @@ function RoundTimerDisplay({
   const labelKey = urgent
     ? "blackjackPvp.roundTimerUrgent"
     : "blackjackPvp.roundTimer";
-  const fallback = urgent ? "{seconds}s — act now" : "{seconds}s";
+  const fallback = urgent ? "{seconds}s, act now" : "{seconds}s";
   const label = t(labelKey, fallback).replace(
     "{seconds}",
     String(secondsLeft),
@@ -1324,7 +1324,7 @@ function OpponentHand({
 }) {
   // By spec the opponent's cards, score, and state are NEVER shown.
   const placeholder = isMatchFinished
-    ? t("blackjackPvp.opponentDone", "Adversaire — main cachée")
+    ? t("blackjackPvp.opponentDone", "Adversaire. Main cachée")
     : t("blackjackPvp.opponentPlaying", "Adversaire joue…");
   return (
     <div>
@@ -1456,7 +1456,7 @@ function MyHand({
         <div className="text-center text-xs text-purple-200 mt-1 italic">
           {t(
             "blackjackPvp.swapChosenHint",
-            "Card #{n} marked — press Swap to draw a random replacement",
+            "Card #{n} marked. Press Swap to draw a random replacement",
           ).replace("{n}", String(swapTarget + 1))}
         </div>
       )}
@@ -1593,7 +1593,7 @@ function ActionPanel({
           disabled={!canPeek || submitting}
           title={t(
             "blackjackPvp.peekHint",
-            "Peek at the top of the shoe — the next card you'd HIT",
+            "Peek at the top of the shoe: the next card you'd HIT",
           )}
           className={`${baseBtn} border-indigo-400/45 bg-indigo-500/15 text-indigo-100 hover:bg-indigo-500/25 shadow-[0_0_10px_rgba(99,102,241,0.35)]`}
         >
@@ -1879,7 +1879,7 @@ function RoundResultModal({
   const headerSecondary = isDraw
     ? t(
         "blackjackPvp.roundResult.drawSubtitle",
-        "Aucune manche gagnée — score identique",
+        "Aucune manche gagnée. Score identique",
       )
     : t(
         "blackjackPvp.roundResult.scoreLine",
@@ -2264,7 +2264,7 @@ function MatchEndModal({
             <>
               {t(
                 "blackjackPvp.matchDrawDetail",
-                "Manche décisive. Votre mise de {amount} tokens vous est remboursée, moins une commission de 5 % — {refund} tokens.",
+                "Manche décisive. Votre mise de {amount} tokens vous est remboursée, moins une commission de 5 %, {refund} tokens.",
               )
                 .replace("{amount}", stake.toLocaleString())
                 .replace(
@@ -2374,7 +2374,7 @@ function ResignConfirmModal({
         <p className="mt-3 text-white/80 text-sm">
           {t(
             "blackjackPvp.resign.body",
-            "Vous perdrez votre mise de {amount} — votre adversaire remporte la partie.",
+            "Vous perdrez votre mise de {amount}. Votre adversaire remporte la partie.",
           ).replace(
             "{amount}",
             Number(stake || 0).toLocaleString(),

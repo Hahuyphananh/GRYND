@@ -29,6 +29,10 @@ import {
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 
+// Cap each table's contribution so history stays bounded — the response
+// is the newest entries across all games after the final sort.
+const HISTORY_LIMIT = 200;
+
 export async function GET() {
   try {
     const { userId } = await auth();
@@ -73,64 +77,206 @@ export async function GET() {
       minesPvpRows,
       laneRushDuelRows,
     ] = await Promise.all([
-      db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)),
-      db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid)),
-      db.select().from(minesGames).where(eq(minesGames.userId, uid)),
-      db.select().from(plinkoGames).where(eq(plinkoGames.userId, userId)),
-      db.select().from(crashGames).where(eq(crashGames.userId, uid)),
-      db.select().from(rpsGames).where(eq(rpsGames.userId, clerkId)),
-      db.select().from(unoGames).where(eq(unoGames.userId, uid)),
+      // Column projection + per-table LIMIT. The formatters below only
+      // read a handful of fields per row; full-row selects shipped every
+      // table's deck/hand/seed/state columns to the client. LIMIT caps
+      // unbounded history (oldest entries are dropped by the final sort).
       db
-        .select()
+        .select({
+          betAmount: rouletteGames.betAmount,
+          payout: rouletteGames.payout,
+          result: rouletteGames.result,
+          createdAt: rouletteGames.createdAt,
+        })
+        .from(rouletteGames)
+        .where(eq(rouletteGames.userId, uid))
+        .limit(HISTORY_LIMIT),
+      db
+        .select({
+          betAmount: blackjackGames.betAmount,
+          payout: blackjackGames.payout,
+          result: blackjackGames.result,
+          createdAt: blackjackGames.createdAt,
+        })
+        .from(blackjackGames)
+        .where(eq(blackjackGames.userId, uid))
+        .limit(HISTORY_LIMIT),
+      db
+        .select({
+          betAmount: minesGames.betAmount,
+          payout: minesGames.payout,
+          result: minesGames.result,
+          createdAt: minesGames.createdAt,
+        })
+        .from(minesGames)
+        .where(eq(minesGames.userId, uid))
+        .limit(HISTORY_LIMIT),
+      db
+        .select({
+          betAmount: plinkoGames.betAmount,
+          payout: plinkoGames.payout,
+          result: plinkoGames.result,
+          createdAt: plinkoGames.createdAt,
+        })
+        .from(plinkoGames)
+        .where(eq(plinkoGames.userId, userId))
+        .limit(HISTORY_LIMIT),
+      db
+        .select({
+          betAmount: crashGames.betAmount,
+          payout: crashGames.payout,
+          result: crashGames.result,
+          createdAt: crashGames.createdAt,
+        })
+        .from(crashGames)
+        .where(eq(crashGames.userId, uid))
+        .limit(HISTORY_LIMIT),
+      db
+        .select({
+          betAmount: rpsGames.betAmount,
+          payout: rpsGames.payout,
+          result: rpsGames.result,
+          createdAt: rpsGames.createdAt,
+        })
+        .from(rpsGames)
+        .where(eq(rpsGames.userId, clerkId))
+        .limit(HISTORY_LIMIT),
+      db
+        .select({
+          betAmount: unoGames.betAmount,
+          payout: unoGames.payout,
+          result: unoGames.result,
+          createdAt: unoGames.createdAt,
+        })
+        .from(unoGames)
+        .where(eq(unoGames.userId, uid))
+        .limit(HISTORY_LIMIT),
+      db
+        .select({
+          playerWhiteId: chessGames.playerWhiteId,
+          playerBlackId: chessGames.playerBlackId,
+          betAmount: chessGames.betAmount,
+          payout: chessGames.payout,
+          result: chessGames.result,
+          createdAt: chessGames.createdAt,
+        })
         .from(chessGames)
         .where(
           or(
             eq(chessGames.playerWhiteId, clerkId),
             eq(chessGames.playerBlackId, clerkId),
           ),
-        ),
+        )
+        .limit(HISTORY_LIMIT),
       db
-        .select()
+        .select({
+          player1Id: kenoPvpMatches.player1Id,
+          player2Id: kenoPvpMatches.player2Id,
+          stakeAmount: kenoPvpMatches.stakeAmount,
+          prizePaid: kenoPvpMatches.prizePaid,
+          winnerId: kenoPvpMatches.winnerId,
+          result: kenoPvpMatches.result,
+          status: kenoPvpMatches.status,
+          endedAt: kenoPvpMatches.endedAt,
+          createdAt: kenoPvpMatches.createdAt,
+        })
         .from(kenoPvpMatches)
         .where(
           or(
             eq(kenoPvpMatches.player1Id, clerkId),
             eq(kenoPvpMatches.player2Id, clerkId),
           ),
-        ),
-      db.select().from(keno_games).where(eq(keno_games.user_id, uid)),
+        )
+        .limit(HISTORY_LIMIT),
       db
-        .select()
+        .select({
+          bet_amount: keno_games.bet_amount,
+          payout: keno_games.payout,
+          created_at: keno_games.created_at,
+        })
+        .from(keno_games)
+        .where(eq(keno_games.user_id, uid))
+        .limit(HISTORY_LIMIT),
+      db
+        .select({
+          player1Id: diceMatches.player1Id,
+          player2Id: diceMatches.player2Id,
+          wager: diceMatches.wager,
+          prizePaid: diceMatches.prizePaid,
+          winnerId: diceMatches.winnerId,
+          endedAt: diceMatches.endedAt,
+          createdAt: diceMatches.createdAt,
+        })
         .from(diceMatches)
         .where(
           or(
             eq(diceMatches.player1Id, clerkId),
             eq(diceMatches.player2Id, clerkId),
           ),
-        ),
+        )
+        .limit(HISTORY_LIMIT),
       db
-        .select()
+        .select({
+          player1Id: poolMatches.player1Id,
+          player2Id: poolMatches.player2Id,
+          wager: poolMatches.wager,
+          prizePaid: poolMatches.prizePaid,
+          winnerId: poolMatches.winnerId,
+          endedAt: poolMatches.endedAt,
+          createdAt: poolMatches.createdAt,
+        })
         .from(poolMatches)
         .where(
           or(
             eq(poolMatches.player1Id, clerkId),
             eq(poolMatches.player2Id, clerkId),
           ),
-        ),
+        )
+        .limit(HISTORY_LIMIT),
       db
-        .select()
+        .select({
+          hostClerkId: connectFourGames.hostClerkId,
+          guestClerkId: connectFourGames.guestClerkId,
+          betAmount: connectFourGames.betAmount,
+          payout: connectFourGames.payout,
+          winnerClerkId: connectFourGames.winnerClerkId,
+          endedAt: connectFourGames.endedAt,
+          createdAt: connectFourGames.createdAt,
+        })
         .from(connectFourGames)
         .where(
           or(
             eq(connectFourGames.hostClerkId, clerkId),
             eq(connectFourGames.guestClerkId, clerkId),
           ),
-        ),
+        )
+        .limit(HISTORY_LIMIT),
       //  Lane Runner (solo game with integer userId)
-      db.select().from(laneRunnerGames).where(eq(laneRunnerGames.userId, uid)),
+      db
+        .select({
+          betAmount: laneRunnerGames.betAmount,
+          payout: laneRunnerGames.payout,
+          result: laneRunnerGames.result,
+          status: laneRunnerGames.status,
+          createdAt: laneRunnerGames.createdAt,
+        })
+        .from(laneRunnerGames)
+        .where(eq(laneRunnerGames.userId, uid))
+        .limit(HISTORY_LIMIT),
       //  Hex Duel (PvP + AI, clerkId-based, skip fun mode)
       db
-        .select()
+        .select({
+          player1Id: hexDuelGames.player1Id,
+          player2Id: hexDuelGames.player2Id,
+          wagerAmount: hexDuelGames.wagerAmount,
+          payout: hexDuelGames.payout,
+          winner: hexDuelGames.winner,
+          status: hexDuelGames.status,
+          isAiGame: hexDuelGames.isAiGame,
+          isFunMode: hexDuelGames.isFunMode,
+          endedAt: hexDuelGames.endedAt,
+          createdAt: hexDuelGames.createdAt,
+        })
         .from(hexDuelGames)
         .where(
           and(
@@ -140,17 +286,29 @@ export async function GET() {
             ),
             eq(hexDuelGames.isFunMode, false),
           ),
-        ),
+        )
+        .limit(HISTORY_LIMIT),
       //  Odds (PvP + AI, clerkId-based)
       db
-        .select()
+        .select({
+          player1Id: oddsGames.player1Id,
+          player2Id: oddsGames.player2Id,
+          wager: oddsGames.wager,
+          payout: oddsGames.payout,
+          winner: oddsGames.winner,
+          status: oddsGames.status,
+          isAi: oddsGames.isAi,
+          endedAt: oddsGames.endedAt,
+          createdAt: oddsGames.createdAt,
+        })
         .from(oddsGames)
         .where(
           or(
             eq(oddsGames.player1Id, clerkId),
             eq(oddsGames.player2Id, clerkId),
           ),
-        ),
+        )
+        .limit(HISTORY_LIMIT),
       //  Poker (multiplayer, jsonb players array)
       // Guard against legacy rows where `players` is null or a non-array
       // jsonb value; jsonb_array_elements on a non-array would throw
@@ -160,7 +318,14 @@ export async function GET() {
       // key in addition to `clerkId` — so it silently never returned any
       // rows even when the user had played poker.
       db
-        .select()
+        .select({
+          players: pokerGames.players,
+          winnings: pokerGames.winnings,
+          betAmount: pokerGames.betAmount,
+          payout: pokerGames.payout,
+          status: pokerGames.status,
+          createdAt: pokerGames.createdAt,
+        })
         .from(pokerGames)
         .where(
           sql`exists (
@@ -174,46 +339,88 @@ export async function GET() {
             ) elem
             where elem->>'clerkId' = ${clerkId}
           )`,
-        ),
+        )
+        .limit(HISTORY_LIMIT),
       //  Memory Grid (PvP, clerkId-based — finished-only)
       db
-        .select()
+        .select({
+          player1Id: memoryGridMatches.player1Id,
+          player2Id: memoryGridMatches.player2Id,
+          stakeAmount: memoryGridMatches.stakeAmount,
+          prizePaid: memoryGridMatches.prizePaid,
+          winnerId: memoryGridMatches.winnerId,
+          result: memoryGridMatches.result,
+          status: memoryGridMatches.status,
+          endedAt: memoryGridMatches.endedAt,
+          createdAt: memoryGridMatches.createdAt,
+        })
         .from(memoryGridMatches)
         .where(
           or(
             eq(memoryGridMatches.player1Id, clerkId),
             eq(memoryGridMatches.player2Id, clerkId),
           ),
-        ),
+        )
+        .limit(HISTORY_LIMIT),
       //  Dice Flush (join players → rooms)
       db
-        .select()
+        .select({
+          userId: diceFlushPlayers.userId,
+          roomWager: diceFlushRooms.wager,
+          roomPot: diceFlushRooms.pot,
+          roomStatus: diceFlushRooms.status,
+          roomGameState: diceFlushRooms.gameState,
+          roomCreatedAt: diceFlushRooms.createdAt,
+        })
         .from(diceFlushPlayers)
         .innerJoin(diceFlushRooms, eq(diceFlushPlayers.roomId, diceFlushRooms.id))
-        .where(eq(diceFlushPlayers.userId, clerkId)),
+        .where(eq(diceFlushPlayers.userId, clerkId))
+        .limit(HISTORY_LIMIT),
       //  Mines Duel (PvP, clerkId-based, best-of-1 — only finished
       // matches contribute a win/loss; cancelled / in-flight matches
       // are excluded so the history never shows a misleading entry).
       db
-        .select()
+        .select({
+          player1Id: minesPvpMatches.player1Id,
+          player2Id: minesPvpMatches.player2Id,
+          stakeAmount: minesPvpMatches.stakeAmount,
+          prizePaid: minesPvpMatches.prizePaid,
+          winnerId: minesPvpMatches.winnerId,
+          result: minesPvpMatches.result,
+          status: minesPvpMatches.status,
+          endedAt: minesPvpMatches.endedAt,
+          createdAt: minesPvpMatches.createdAt,
+        })
         .from(minesPvpMatches)
         .where(
           or(
             eq(minesPvpMatches.player1Id, clerkId),
             eq(minesPvpMatches.player2Id, clerkId),
           ),
-        ),
+        )
+        .limit(HISTORY_LIMIT),
       //  Lane Rush Duel (PvP tower race — same shape as Mines Duel:
       // finished-only, winnerId-based outcome, draw refunds).
       db
-        .select()
+        .select({
+          player1Id: laneRushDuelMatches.player1Id,
+          player2Id: laneRushDuelMatches.player2Id,
+          stakeAmount: laneRushDuelMatches.stakeAmount,
+          prizePaid: laneRushDuelMatches.prizePaid,
+          winnerId: laneRushDuelMatches.winnerId,
+          result: laneRushDuelMatches.result,
+          status: laneRushDuelMatches.status,
+          endedAt: laneRushDuelMatches.endedAt,
+          createdAt: laneRushDuelMatches.createdAt,
+        })
         .from(laneRushDuelMatches)
         .where(
           or(
             eq(laneRushDuelMatches.player1Id, clerkId),
             eq(laneRushDuelMatches.player2Id, clerkId),
           ),
-        ),
+        )
+        .limit(HISTORY_LIMIT),
     ]);
 
     const formatBet = (type, bet) => {
@@ -403,14 +610,14 @@ export async function GET() {
       });
 
     //  Dice Flush — joined rows: dice_flush_players + dice_flush_rooms
+    // (projection aliases the room columns as room*).
     const diceFlushFormatted = diceFlushRows
-      .filter((row) => row.dice_flush_rooms?.status === "finished")
+      .filter((row) => row.roomStatus === "finished")
       .map((row) => {
-        const room = row.dice_flush_rooms;
-        const amount = Number(room.wager ?? 0);
+        const amount = Number(row.roomWager ?? 0);
         const gameState =
-          room.gameState && typeof room.gameState === "object"
-            ? (room.gameState as Record<string, unknown>)
+          row.roomGameState && typeof row.roomGameState === "object"
+            ? (row.roomGameState as Record<string, unknown>)
             : {};
         const winnerId = gameState.winnerId as string | undefined;
         const result = winnerId
@@ -418,10 +625,10 @@ export async function GET() {
             ? "won"
             : "lost"
           : "completed";
-        const payout = result === "won" ? Number(room.pot ?? amount * 2) : 0;
+        const payout = result === "won" ? Number(row.roomPot ?? amount * 2) : 0;
         return {
           type: "Dice Flush",
-          date: room.createdAt || new Date().toISOString(),
+          date: row.roomCreatedAt || new Date().toISOString(),
           amount,
           payout,
           result,

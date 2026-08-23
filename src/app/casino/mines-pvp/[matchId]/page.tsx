@@ -9,8 +9,8 @@ export async function generateMetadata({
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
-    title: `Mines Duel Match #${shortId} — GRYND`,
-    description: `Live Mines Duel match #${shortId} on GRYND — avoid the mines and out-reveal your opponent to win the pot.`,
+    title: `Mines Duel Match #${shortId} | GRYND`,
+    description: `Live Mines Duel match #${shortId} on GRYND. Avoid the mines and out-reveal your opponent to win the pot.`,
   };
 }
 

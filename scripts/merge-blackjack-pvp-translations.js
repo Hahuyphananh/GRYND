@@ -45,7 +45,7 @@ const PAYLOAD = {
     resign: {
       button: "Resign & return to lobby",
       title: "Resign match?",
-      body: "You will forfeit your {amount} stake — your opponent wins the match.",
+      body: "You will forfeit your {amount} stake. Your opponent wins the match.",
       confirm: "Resign",
       cancel: "Keep playing",
       loading: "Resigning…",
@@ -118,7 +118,7 @@ const PAYLOAD = {
       roundsUnit: "rd",
     },
     // Prompt 7 / 8 — locked-hand + simultaneous reveal text.
-    lockedAfterStand: "Hand locked — both hands reveal when the round ends",
+    lockedAfterStand: "Hand locked. Both hands reveal when the round ends",
     revealTeaser: "Revealing hands\u2026",
     revealTeaserHint: "Both hands flip simultaneously",
     // Prompt 10 — 6-phase orchestrated round-end reveal: SKIP button
@@ -249,7 +249,7 @@ const PAYLOAD = {
     resign: {
       button: "Abandonar y volver al salón",
       title: "¿Abandonar la partida?",
-      body: "Perderás tu apuesta de {amount} — tu oponente gana la partida.",
+      body: "Perderás tu apuesta de {amount}. Tu oponente gana la partida.",
       confirm: "Abandonar",
       cancel: "Seguir jugando",
       loading: "Abandonando…",

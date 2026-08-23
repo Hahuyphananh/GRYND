@@ -40,7 +40,7 @@ export async function sendSystemNotificationEmail(params: {
     type: "system_notification",
     category: "transactional",
     from: getFromAddress(),
-    subject: `System Notification — ${label}`,
+    subject: `System Notification: ${label}`,
     html: renderTemplate("System Notification", body),
   });
 }

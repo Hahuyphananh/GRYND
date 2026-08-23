@@ -1203,7 +1203,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                   >
                     {state.targetMs !== null
                       ? `${state.targetMs.toLocaleString()} ${t("games.precision.ms_suffix")}`
-                      : "—"}
+                      : "-"}
                   </p>
 
                   {/* Live rank preview — shows what rank the player would

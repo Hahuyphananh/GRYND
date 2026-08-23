@@ -156,7 +156,7 @@ export async function POST(req: Request) {
           tableId,
           amount: rake.toFixed(2),
           type: "RAKE",
-          reason: `Platform fee (5%) — round #${round.id}`,
+          reason: `Platform fee (5%), round #${round.id}`,
         });
       }
     }

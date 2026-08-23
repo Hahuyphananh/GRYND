@@ -910,7 +910,7 @@ export default function UnoGamePage() {
               body: (
                 <>
                   Play a card matching the top card&apos;s color or number
-                  (or a Wild / action card) — first to empty their hand
+                  (or a Wild / action card). First to empty their hand
                   wins the round.
                 </>
               ),
@@ -930,7 +930,7 @@ export default function UnoGamePage() {
               body: (
                 <>
                   Play vs AI for free (no tokens wagered), or go 1v1
-                  online for a wagered match — winner takes the pot minus
+                  online for a wagered match. Winner takes the pot minus
                   the house fee.
                 </>
               ),
@@ -1192,7 +1192,7 @@ export default function UnoGamePage() {
                   {t("neonFlush.currentCard")}
                 </span>
                 <span className="text-xs font-black uppercase text-[#d8fbff]/85">
-                  {displayedCard ? historyLabel(displayedCard) : "—"}
+                  {displayedCard ? historyLabel(displayedCard) : "-"}
                 </span>
               </div>
             </div>

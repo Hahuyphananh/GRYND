@@ -187,7 +187,7 @@ export default function RoulettePvpLobbyPage() {
       subtitle={
         <>
           Pick a stake. We pair you with another player of the <b>exact
-          same</b> token amount. Always 3 rounds — the player with the
+          same</b> token amount. Always 3 rounds. The player with the
           most match points wins. Ties after Round 3 trigger sudden
           death. Single shared spin per round, but the wheel shrinks:
           Round 2 kills 13–24, Round 3 kills 13–36. Pay 10 match
@@ -209,7 +209,7 @@ export default function RoulettePvpLobbyPage() {
             heading: "Match format",
             body: (
               <>
-                Always <b>3 rounds</b> — the player with the most match
+                Always <b>3 rounds</b>. The player with the most match
                 points wins. Ties after Round 3 trigger sudden death.
               </>
             ),
@@ -229,7 +229,7 @@ export default function RoulettePvpLobbyPage() {
               <>
                 The wheel <b>shrinks every round</b>. Round 2: 13–24 are
                 dead. Round 3: 13–36 are dead (only 0–12 stay live). The
-                spin is drawn from the live numbers only — survivors
+                spin is drawn from the live numbers only. Survivors
                 become better bets as the pool shrinks.
               </>
             ),
@@ -239,7 +239,7 @@ export default function RoulettePvpLobbyPage() {
             body: (
               <>
                 Spend <b>10 match points</b> to remove <b>any</b> number
-                from the shared wheel for the round — visible to both
+                from the shared wheel for the round. Visible to both
                 players immediately, up to 6 removals per round. Removed
                 numbers can never be spun or bet on, so removals shape
                 the odds and deny your opponent&apos;s likely targets.
@@ -252,7 +252,7 @@ export default function RoulettePvpLobbyPage() {
               <>
                 When you lock in, optionally guess your opponent&apos;s
                 <b> biggest wager</b> (a number or colour). Guess right
-                and you steal <b>15 points</b> — both players can win
+                and you steal <b>15 points</b>. Both players can win
                 the call in the same round.
               </>
             ),

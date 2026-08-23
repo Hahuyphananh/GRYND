@@ -690,7 +690,7 @@ const prefersReducedMotion = useReducedMotion();
             <div className="mb-2 flex items-center justify-between gap-2 text-xs">
               <span className="text-white/50">{t("games.dots_and_boxes.host_label")}</span>
               <span className="font-semibold text-white">
-                {game?.hostName || "—"}
+                {game?.hostName || "-"}
               </span>
             </div>
             <div className="mb-2 flex items-center justify-between gap-2 text-xs">

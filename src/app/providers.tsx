@@ -9,6 +9,7 @@ import PresenceHeartbeat from "../components/PresenceHeartbeat";
 import RouteTransition from "../components/RouteTransition";
 import { PostHogProvider } from "../components/PostHogProvider";
 import { PostHogIdentify } from "../components/PostHogIdentify";
+import { FunnelTracker } from "../components/FunnelTracker";
 
 function AppProviders({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
@@ -46,6 +47,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           warning on pages that only use useUser()/useAuth(). */}
       <ClerkProvider publishableKey={publishableKey} dynamic>
         <PostHogIdentify />
+        <FunnelTracker />
         <AppProviders>{children}</AppProviders>
       </ClerkProvider>
     </PostHogProvider>

@@ -15,8 +15,27 @@ import {
   index,
   uuid,
   bigint,
+  primaryKey,
+  unique,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
+
+// APP SETTINGS — simple key/value store for runtime-toggleable platform
+// flags (e.g. maintenance_mode). Kept tiny on purpose; not for user data.
+export const appSettings = pgTable(
+  "app_settings",
+  {
+    key: varchar("key", { length: 100 }).notNull(),
+    value: text("value"),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.key] })],
+);
+
+// Maintenance-mode flag key, read by middleware + admin toggle.
+export const MAINTENANCE_MODE_KEY = "maintenance_mode";
+export const MAINTENANCE_MODE_OFF = "false";
+export const MAINTENANCE_MODE_ON = "true";
 
 // USERS TABLE
 export const users = pgTable("users", {
@@ -1277,6 +1296,35 @@ export const contactMessages = pgTable(
   },
   (table) => ({
     statusIdx: index("idx_contact_messages_status").on(table.status, table.createdAt),
+  }),
+);
+
+// PRODUCT REVIEWS — authenticated user reviews of the platform.
+// Public wall shows only `approved` rows (marketing social proof);
+// pending/rejected stay internal. One review per user (unique userId).
+export const productReviews = pgTable(
+  "product_reviews",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    rating: integer("rating").notNull(),
+    title: varchar("title", { length: 120 }),
+    body: text("body"),
+    game: varchar("game", { length: 50 }),
+    status: varchar("status", { length: 20 }).notNull().default("pending"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    moderatedAt: timestamp("moderated_at"),
+    moderatedByClerkId: varchar("moderated_by_clerk_id", { length: 255 }),
+  },
+  (table) => ({
+    reviewUserIdx: index("idx_product_reviews_user").on(table.userId),
+    reviewStatusIdx: index("idx_product_reviews_status").on(
+      table.status,
+      table.createdAt,
+    ),
+    reviewUserUnique: unique("product_reviews_user_id_unique").on(table.userId),
   }),
 );
 

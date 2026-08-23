@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
     if (!clerkId) {
       return NextResponse.json(
-        { success: false, error: "Unauthorized — please sign in" },
+        { success: false, error: "Unauthorized. Please sign in" },
         { status: 401 }
       );
     }
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
 
     if (winner !== "player1" && winner !== "player2") {
       return NextResponse.json(
-        { success: false, error: "Invalid winner — must be player1 or player2" },
+        { success: false, error: "Invalid winner. Must be player1 or player2" },
         { status: 400 }
       );
     }

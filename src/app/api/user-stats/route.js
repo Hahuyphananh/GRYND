@@ -32,6 +32,14 @@ import {
   diceFlushPlayers,
 } from "../../../db/schema";
 
+// Cap each table's contribution so the per-user fetch stays bounded. Unlike
+// the 200-row get-bet-history cap (a UI list), this route computes aggregate
+// stats, so it needs headroom to stay accurate for heavy players — 1000 rows
+// per game type covers even extreme play while bounding the response.
+// The route is Redis-cached (CacheTTL.userStats), so the recompute cost only
+// lands on cache misses.
+const HISTORY_LIMIT = 1000;
+
 export async function GET() {
   const { userId } = await auth();
 
@@ -101,87 +109,216 @@ export async function GET() {
       laneRushDuelRows,
       memoryGridRows,
     ] = await Promise.all([
-      safeQuery("roulette", () => db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid))),
-      safeQuery("blackjack", () => db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid))),
-      safeQuery("mines", () => db.select().from(minesGames).where(eq(minesGames.userId, uid))),
-      safeQuery("plinko", () => db.select().from(plinkoGames).where(eq(plinkoGames.userId, userId))),
-      safeQuery("crash", () => db.select().from(crashGames).where(eq(crashGames.userId, uid))),
-      safeQuery("rps", () => db.select().from(rpsGames).where(eq(rpsGames.userId, clerkId))),
-      safeQuery("uno", () => db.select().from(unoGames).where(eq(unoGames.userId, uid))),
+      // Column projection + per-table LIMIT. The formatters below only read
+      // a handful of fields per row; full-row selects shipped every table's
+      // deck/hand/seed/state columns across the wire. LIMIT caps pathological
+      // histories (a bot or heavy grinder) while staying accurate for real
+      // players — see HISTORY_LIMIT above.
+      safeQuery("roulette", () =>
+        db
+          .select({
+            betAmount: rouletteGames.betAmount,
+            payout: rouletteGames.payout,
+          })
+          .from(rouletteGames)
+          .where(eq(rouletteGames.userId, uid))
+          .limit(HISTORY_LIMIT),
+      ),
+      safeQuery("blackjack", () =>
+        db
+          .select({
+            betAmount: blackjackGames.betAmount,
+            payout: blackjackGames.payout,
+          })
+          .from(blackjackGames)
+          .where(eq(blackjackGames.userId, uid))
+          .limit(HISTORY_LIMIT),
+      ),
+      safeQuery("mines", () =>
+        db
+          .select({
+            betAmount: minesGames.betAmount,
+            payout: minesGames.payout,
+          })
+          .from(minesGames)
+          .where(eq(minesGames.userId, uid))
+          .limit(HISTORY_LIMIT),
+      ),
+      safeQuery("plinko", () =>
+        db
+          .select({
+            betAmount: plinkoGames.betAmount,
+            payout: plinkoGames.payout,
+          })
+          .from(plinkoGames)
+          .where(eq(plinkoGames.userId, userId))
+          .limit(HISTORY_LIMIT),
+      ),
+      safeQuery("crash", () =>
+        db
+          .select({
+            betAmount: crashGames.betAmount,
+            payout: crashGames.payout,
+          })
+          .from(crashGames)
+          .where(eq(crashGames.userId, uid))
+          .limit(HISTORY_LIMIT),
+      ),
+      safeQuery("rps", () =>
+        db
+          .select({
+            betAmount: rpsGames.betAmount,
+            payout: rpsGames.payout,
+          })
+          .from(rpsGames)
+          .where(eq(rpsGames.userId, clerkId))
+          .limit(HISTORY_LIMIT),
+      ),
+      safeQuery("uno", () =>
+        db
+          .select({
+            betAmount: unoGames.betAmount,
+            payout: unoGames.payout,
+          })
+          .from(unoGames)
+          .where(eq(unoGames.userId, uid))
+          .limit(HISTORY_LIMIT),
+      ),
       safeQuery("chess", () =>
         db
-          .select()
+          .select({
+            betAmount: chessGames.betAmount,
+            payout: chessGames.payout,
+          })
           .from(chessGames)
           .where(
             or(
               eq(chessGames.playerWhiteId, clerkId),
               eq(chessGames.playerBlackId, clerkId),
             ),
-          ),
+          )
+          .limit(HISTORY_LIMIT),
       ),
       safeQuery("keno-pvp", () =>
         db
-          .select()
+          .select({
+            status: kenoPvpMatches.status,
+            winnerId: kenoPvpMatches.winnerId,
+            stakeAmount: kenoPvpMatches.stakeAmount,
+            prizePaid: kenoPvpMatches.prizePaid,
+          })
           .from(kenoPvpMatches)
           .where(
             or(
               eq(kenoPvpMatches.player1Id, clerkId),
               eq(kenoPvpMatches.player2Id, clerkId),
             ),
-          ),
+          )
+          .limit(HISTORY_LIMIT),
       ),
-      safeQuery("keno", () => db.select().from(keno_games).where(eq(keno_games.user_id, uid))),
+      safeQuery("keno", () =>
+        db
+          .select({
+            bet_amount: keno_games.bet_amount,
+            payout: keno_games.payout,
+          })
+          .from(keno_games)
+          .where(eq(keno_games.user_id, uid))
+          .limit(HISTORY_LIMIT),
+      ),
       safeQuery("dice", () =>
         db
-          .select()
+          .select({
+            status: diceMatches.status,
+            winnerId: diceMatches.winnerId,
+            wager: diceMatches.wager,
+            prizePaid: diceMatches.prizePaid,
+          })
           .from(diceMatches)
           .where(
             or(
               eq(diceMatches.player1Id, clerkId),
               eq(diceMatches.player2Id, clerkId),
             ),
-          ),
+          )
+          .limit(HISTORY_LIMIT),
       ),
       safeQuery("connect-four", () =>
         db
-          .select()
+          .select({
+            winnerClerkId: connectFourGames.winnerClerkId,
+            betAmount: connectFourGames.betAmount,
+            payout: connectFourGames.payout,
+          })
           .from(connectFourGames)
           .where(
             or(
               eq(connectFourGames.hostClerkId, clerkId),
               eq(connectFourGames.guestClerkId, clerkId),
             ),
-          ),
+          )
+          .limit(HISTORY_LIMIT),
       ),
       //  Lane Runner (solo, integer userId)
-      safeQuery("lane-runner", () => db.select().from(laneRunnerGames).where(eq(laneRunnerGames.userId, uid))),
+      safeQuery("lane-runner", () =>
+        db
+          .select({
+            status: laneRunnerGames.status,
+            betAmount: laneRunnerGames.betAmount,
+            payout: laneRunnerGames.payout,
+          })
+          .from(laneRunnerGames)
+          .where(eq(laneRunnerGames.userId, uid))
+          .limit(HISTORY_LIMIT),
+      ),
       safeQuery("lane-rush-duel", () =>
         db
-          .select()
+          .select({
+            status: laneRushDuelMatches.status,
+            player2Id: laneRushDuelMatches.player2Id,
+            winnerId: laneRushDuelMatches.winnerId,
+            stakeAmount: laneRushDuelMatches.stakeAmount,
+            prizePaid: laneRushDuelMatches.prizePaid,
+          })
           .from(laneRushDuelMatches)
           .where(
             or(
               eq(laneRushDuelMatches.player1Id, clerkId),
               eq(laneRushDuelMatches.player2Id, clerkId),
             ),
-          ),
+          )
+          .limit(HISTORY_LIMIT),
       ),
       //  Memory Grid (PvP, clerkId-based)
       safeQuery("memory-grid", () =>
         db
-          .select()
+          .select({
+            status: memoryGridMatches.status,
+            result: memoryGridMatches.result,
+            winnerId: memoryGridMatches.winnerId,
+            stakeAmount: memoryGridMatches.stakeAmount,
+            prizePaid: memoryGridMatches.prizePaid,
+          })
           .from(memoryGridMatches)
           .where(
             or(
               eq(memoryGridMatches.player1Id, clerkId),
               eq(memoryGridMatches.player2Id, clerkId),
             ),
-          ),
+          )
+          .limit(HISTORY_LIMIT),
       ),
       //  Hex Duel (PvP + AI, clerkId-based, skip fun mode)
       safeQuery("hex-duel", () =>
         db
-          .select()
+          .select({
+            status: hexDuelGames.status,
+            wagerAmount: hexDuelGames.wagerAmount,
+            payout: hexDuelGames.payout,
+            player1Id: hexDuelGames.player1Id,
+            winner: hexDuelGames.winner,
+            isAiGame: hexDuelGames.isAiGame,
+          })
           .from(hexDuelGames)
           .where(
             and(
@@ -191,19 +328,28 @@ export async function GET() {
               ),
               eq(hexDuelGames.isFunMode, false),
             ),
-          ),
+          )
+          .limit(HISTORY_LIMIT),
       ),
       //  Odds (PvP + AI, clerkId-based)
       safeQuery("odds", () =>
         db
-          .select()
+          .select({
+            status: oddsGames.status,
+            wager: oddsGames.wager,
+            payout: oddsGames.payout,
+            player1Id: oddsGames.player1Id,
+            winner: oddsGames.winner,
+            isAi: oddsGames.isAi,
+          })
           .from(oddsGames)
           .where(
             or(
               eq(oddsGames.player1Id, clerkId),
               eq(oddsGames.player2Id, clerkId),
             ),
-          ),
+          )
+          .limit(HISTORY_LIMIT),
       ),
       //  Poker (multiplayer, jsonb players array)
       // Guard against legacy rows where `players` is null or a non-array
@@ -211,7 +357,13 @@ export async function GET() {
       // "cannot extract elements from a scalar/object" and 500 the route.
       safeQuery("poker", () =>
         db
-          .select()
+          .select({
+            players: pokerGames.players,
+            winnings: pokerGames.winnings,
+            betAmount: pokerGames.betAmount,
+            payout: pokerGames.payout,
+            status: pokerGames.status,
+          })
           .from(pokerGames)
           .where(
             drizzleSql`exists (
@@ -225,15 +377,23 @@ export async function GET() {
               ) elem
               where elem->>'clerkId' = ${clerkId}
             )`,
-          ),
+          )
+          .limit(HISTORY_LIMIT),
       ),
-      //  Dice Flush (join players → rooms)
+      //  Dice Flush (join players → rooms; room columns aliased as room*)
       safeQuery("dice-flush", () =>
         db
-          .select()
+          .select({
+            userId: diceFlushPlayers.userId,
+            roomWager: diceFlushRooms.wager,
+            roomPot: diceFlushRooms.pot,
+            roomStatus: diceFlushRooms.status,
+            roomGameState: diceFlushRooms.gameState,
+          })
           .from(diceFlushPlayers)
           .innerJoin(diceFlushRooms, eq(diceFlushPlayers.roomId, diceFlushRooms.id))
-          .where(eq(diceFlushPlayers.userId, clerkId)),
+          .where(eq(diceFlushPlayers.userId, clerkId))
+          .limit(HISTORY_LIMIT),
       ),
     ]);
 
@@ -426,14 +586,14 @@ export async function GET() {
       });
 
     //  Dice Flush — joined rows, extract winner from gameState
+    // (projection aliases the room columns as room*).
     const diceFlushNormalized = diceFlushRows
-      .filter((row) => row.dice_flush_rooms?.status === "finished")
+      .filter((row) => row.roomStatus === "finished")
       .map((row) => {
-        const room = row.dice_flush_rooms;
-        const amount = Number(room.wager ?? 0);
+        const amount = Number(row.roomWager ?? 0);
         const gameState =
-          room.gameState && typeof room.gameState === "object"
-            ? room.gameState
+          row.roomGameState && typeof row.roomGameState === "object"
+            ? row.roomGameState
             : {};
         const winnerId = gameState.winnerId;
         const result = winnerId
@@ -441,7 +601,7 @@ export async function GET() {
             ? "won"
             : "lost"
           : "completed";
-        const payout = result === "won" ? Number(room.pot ?? amount * 2) : 0;
+        const payout = result === "won" ? Number(row.roomPot ?? amount * 2) : 0;
         return {
           type: "Dice Flush",
           amount,

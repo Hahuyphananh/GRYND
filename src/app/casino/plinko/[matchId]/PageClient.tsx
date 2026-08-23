@@ -701,14 +701,14 @@ function RoundPopup({
         {/* Both fell out message */}
         {p1FellOut && p2FellOut && (
           <p className="text-center text-[12px] text-red-300/80 mt-4">
-            Both balls went out of bounds — better luck next time!
+            Both balls went out of bounds. Better luck next time!
           </p>
         )}
 
         {/* Single fell out message */}
         {((p1FellOut && !p2FellOut) || (!p1FellOut && p2FellOut)) && (
           <p className="text-center text-[12px] text-yellow-300/80 mt-4">
-            {p1FellOut ? p1Name : p2Name}&apos;s ball fell out — 0 points!
+            {p1FellOut ? p1Name : p2Name}&apos;s ball fell out. 0 points!
           </p>
         )}
 
@@ -888,7 +888,7 @@ function CommitPanel({
             </p>
           ) : (
             <p className="text-[11px] text-white/50">
-              Lock &quot;Ready&quot; — when both players are ready, both balls launch at once.
+              Lock &quot;Ready&quot;. When both players are ready, both balls launch at once.
             </p>
           )}
         </div>
@@ -994,7 +994,7 @@ function PlayerSidePanel({
   } else if (isFinished) {
     lockedHint = "Match finished";
   } else if (ready && isViewer) {
-    lockedHint = `You're ready — waiting for opponent`;
+    lockedHint = `You're ready. Waiting for opponent`;
   } else if (ready && !isViewer) {
     opponentHint = `Opponent ready`;
   } else if (!isViewer) {
@@ -2209,7 +2209,7 @@ export default function PlinkoPvpMatchPage({
       return (
         <div className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-4 py-3 text-cyan-200">
           <span className="font-bold text-base sm:text-lg">
-            Both players joined — starting in
+            Both players joined. Starting in
           </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-cyan-500/30 px-3 py-1 text-sm font-bold text-cyan-100">
             <ClockIcon className="w-4 h-4" />
@@ -2224,7 +2224,7 @@ export default function PlinkoPvpMatchPage({
         return (
           <div className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-emerald-400/50 bg-emerald-500/10 px-4 py-3 text-emerald-200 animate-pulse">
             <span className="font-bold text-base sm:text-lg">
-              Both ready — launching both balls!
+              Both ready. Launching both balls!
             </span>
           </div>
         );
@@ -2242,7 +2242,7 @@ export default function PlinkoPvpMatchPage({
             {match.viewerCanLaunch
               ? "Adjust your inputs and click Ready"
               : match.viewerHasCommitted
-                ? "You're ready — waiting for opponent"
+                ? "You're ready. Waiting for opponent"
                 : "Opponent is choosing inputs…"}
           </span>
           <span
@@ -2367,7 +2367,7 @@ export default function PlinkoPvpMatchPage({
             <p className="text-center text-xs text-white/60 mt-4">
               {match.houseFee > 0
                 ? `Each player refunded $${(Number(match.stakeAmount) * 0.95).toFixed(2)} (5% house fee)`
-                : "Both players refunded — no house fee"}
+                : "Both players refunded. No house fee"}
             </p>
           )}
 

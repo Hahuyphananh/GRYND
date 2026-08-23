@@ -486,7 +486,7 @@ export default function ConnectFourGamePage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-3xl font-extrabold text-yellow-300">
-              Connect Four — Match #{gameId}
+              Connect Four: Match #{gameId}
             </h1>
             {isSpectator && (
               <div className="mt-2 flex items-center gap-2">
@@ -669,7 +669,7 @@ export default function ConnectFourGamePage() {
                   ? "Green"
                   : game?.role === "guest"
                     ? "Red"
-                    : "—"}
+                    : "-"}
               </span>
             </div>
 

@@ -1,14 +1,20 @@
 "use client";
 
 import { SignIn } from "@clerk/nextjs";
+import { useSearchParams } from "next/navigation";
 import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
 
 export default function Page() {
+  const searchParams = useSearchParams();
+  // Allow flows (e.g. the review button) to send the user back to where
+  // they were after signing in. Falls back to /sync (account sync flow).
+  const redirectUrl = searchParams.get("redirect_url");
+
   return (
     <div className="relative min-h-screen flex items-center justify-center bg-[#001a33]">
       <InteractiveCasinoBg variant="subtle" />
       <SignIn
-        fallbackRedirectUrl="/sync"
+        fallbackRedirectUrl={redirectUrl && redirectUrl.startsWith("/") ? redirectUrl : "/sync"}
         appearance={{
           variables: {
             colorPrimary: "#00fff7",

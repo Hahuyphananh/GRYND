@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getNeonSql } from "../../../db/neon";
 import { ensureContactTables } from "../../../lib/contact/ensureTables";
+import { sendContactNotificationEmail } from "../../../lib/emails/contact";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,6 +63,16 @@ export async function POST(request: NextRequest) {
       INSERT INTO contact_messages (name, email, message)
       VALUES (${name?.trim() || null}, ${email.trim()}, ${message.trim()})
     `;
+
+    // Notify the admin inbox (best-effort — the message is already stored,
+    // so an email failure must not fail the user's submission).
+    sendContactNotificationEmail({
+      name: name?.trim() || null,
+      email: email.trim(),
+      message: message.trim(),
+    }).catch((err) => {
+      console.error("[api/contact] admin notification failed:", err);
+    });
 
     return NextResponse.json({ success: true });
   } catch (err) {

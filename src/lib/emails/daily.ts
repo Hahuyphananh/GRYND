@@ -12,7 +12,7 @@ export async function sendDailyRewardEmail(
       "Daily Bonus Ready",
       `<p>${escapeHtml(user.username ?? "Player")}, claim your <b>${rewardAmount} tokens</b> now.</p>`,
       "Claim Tokens",
-      `${process.env.NEXT_PUBLIC_APP_URL ?? "https://grynd.dedyn.io"}/daily`,
+      `${process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://grynd.mywire.org"}/daily`,
     ),
   });
 }

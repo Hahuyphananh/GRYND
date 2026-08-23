@@ -114,7 +114,7 @@ export default function DiceDuelLobbyPage() {
   return (
     <PvpLobbyPage
       title="Dice Duel Arena"
-      subtitle="Turn-based cyberpunk PvP with wagered tokens — or play the AI for free."
+      subtitle="Turn-based cyberpunk PvP with wagered tokens, or play the AI for free."
       icon={<IconDice className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
       rulesKey="dice-duel"
       rules={{

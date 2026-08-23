@@ -8,7 +8,7 @@ import AdminDashboardClient from "./AdminDashboardClient";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Admin Dashboard — GRYND",
+  title: "Admin Dashboard | GRYND",
   description:
     "GRYND admin dashboard for platform management, monitoring and operations.",
 };

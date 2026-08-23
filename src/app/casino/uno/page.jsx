@@ -2,9 +2,9 @@ import { ogImageUrl } from "../../../lib/ogImages";
 import PageClient from "./PageClient";
 
 export const metadata = {
-  title: "Uno — GRYND",
+  title: "Uno | GRYND",
   description:
-    "Play Uno on GRYND — match colors and numbers in a fast strategic card game against the AI or other players.",
+    "Play Uno on GRYND. Match colors and numbers in a fast strategic card game against the AI or other players.",
   openGraph: { images: [ogImageUrl("/images/og/neon-flush.jpg")] },
 };
 

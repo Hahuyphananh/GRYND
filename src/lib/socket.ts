@@ -52,7 +52,7 @@ export async function createSocketConnection(
 
   socketInstance.on("connect_error", (error) => {
     if (process.env.NODE_ENV !== "production") {
-      console.warn("[socket] connect_error:", error.message, "— retrying...");
+      console.warn("[socket] connect_error:", error.message, "- retrying...");
     }
   });
 

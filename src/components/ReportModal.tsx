@@ -53,7 +53,7 @@ const REASONS: { value: ReportReason; label: string; description: string; icon: 
   {
     value: "other",
     label: "Other",
-    description: "Any other issue — please provide details",
+    description: "Any other issue. Please provide details",
     icon: <IconEdit size={22} />,
   },
 ];

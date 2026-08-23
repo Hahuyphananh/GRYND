@@ -869,7 +869,15 @@ export default function ProfilePage() {
       }
 
       setDeleteStatus("Account deleted. Signing out...");
-      await signOut({ redirectUrl: "/" });
+      try {
+        await signOut({ redirectUrl: "/" });
+      } catch (signOutErr) {
+        // The Clerk user was already erased server-side, so the
+        // session is invalid and signOut may fail — still leave the
+        // app either way.
+        console.warn("[DELETE_ACCOUNT_SIGNOUT]", signOutErr);
+        window.location.href = "/";
+      }
     } catch (err) {
       console.error("[DELETE_ACCOUNT_ERROR]", err);
       setDeleteError(err.message || "Could not delete account");
@@ -1789,7 +1797,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
 shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
         >
           <h2 className="text-xl text-red-400 mb-2">
-            Danger Zone — Delete Account
+            Danger Zone: Delete Account
           </h2>
           <p className="text-red-200 mb-4">
             Warning: This action is permanent. Your account and data will be

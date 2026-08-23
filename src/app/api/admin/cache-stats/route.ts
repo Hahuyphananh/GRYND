@@ -30,7 +30,7 @@ export async function GET() {
       );
     if (!(await isAdmin(userId)))
       return NextResponse.json(
-        { success: false, error: "Forbidden — admin access required" },
+        { success: false, error: "Forbidden. Admin access required" },
         { status: 403 },
       );
 
@@ -98,7 +98,7 @@ export async function DELETE(req: NextRequest) {
       );
     if (!(await isAdmin(userId)))
       return NextResponse.json(
-        { success: false, error: "Forbidden — admin access required" },
+        { success: false, error: "Forbidden. Admin access required" },
         { status: 403 },
       );
 

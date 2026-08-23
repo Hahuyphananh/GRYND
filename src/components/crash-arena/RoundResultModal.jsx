@@ -101,7 +101,7 @@ export default function RoundResultModal({
               <IconBomb size={24} /> No winners!
             </p>
             <p className="text-sm text-[#9dd8ff] mt-1">
-              Everyone busted — ${carryOver.toLocaleString()} carries over to the next round.
+              Everyone busted. ${carryOver.toLocaleString()} carries over to the next round.
             </p>
           </div>
         )}

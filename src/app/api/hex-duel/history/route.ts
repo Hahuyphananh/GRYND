@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 
     if (!clerkId) {
       return NextResponse.json(
-        { success: false, error: "Unauthorized — please sign in" },
+        { success: false, error: "Unauthorized. Please sign in" },
         { status: 401 }
       );
     }

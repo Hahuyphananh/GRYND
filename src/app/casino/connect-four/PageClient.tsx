@@ -162,7 +162,7 @@ export default function ConnectFourLobbyPage() {
             heading: "Drop discs",
             body: (
               <>
-                Take turns dropping a disc into a 7×6 grid — it falls to
+                Take turns dropping a disc into a 7×6 grid. It falls to
                 the lowest free slot in the column you pick.
               </>
             ),
@@ -196,7 +196,7 @@ export default function ConnectFourLobbyPage() {
       playLabel="Create Game"
       playBusyLabel="Creating…"
       vsAi={{
-        label: "Play vs AI — Free, no wager",
+        label: "Play vs AI. Free, no wager",
         badge: "Free",
         disabled: !isSignedIn,
         busy: loading,

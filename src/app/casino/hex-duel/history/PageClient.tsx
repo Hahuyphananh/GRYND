@@ -54,7 +54,7 @@ function formatDuration(seconds: number): string {
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   return new Date(iso).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -91,7 +91,7 @@ export default function HexDuelHistoryPage() {
       setTotalPages(data.data.pagination.totalPages);
       setTotal(data.data.pagination.total);
     } catch {
-      setError("Network error — please try again");
+      setError("Network error. Please try again");
     } finally {
       setLoading(false);
     }
@@ -125,7 +125,7 @@ export default function HexDuelHistoryPage() {
         <div className="mb-6 text-center">
           <h1 className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-fuchsia-400"
             style={{ filter: "drop-shadow(0 0 12px rgba(34,211,238,0.3))" }}>
-            HEX DUEL — Match History
+            HEX DUEL: Match History
           </h1>
           <p className="mt-1 text-sm text-slate-400 uppercase tracking-[0.15em]">
             {total} game{total !== 1 ? "s" : ""} played
@@ -214,7 +214,7 @@ export default function HexDuelHistoryPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right text-xs text-slate-400 font-mono">
-                            {isFun ? "—" : Number(game.wagerAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            {isFun ? "-" : Number(game.wagerAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span className={`text-xs font-bold uppercase px-2.5 py-1 rounded-md ${
@@ -227,7 +227,7 @@ export default function HexDuelHistoryPage() {
                           </td>
                           <td className="px-4 py-3 text-right text-xs font-mono">
                             {isFun ? (
-                              <span className="text-slate-600">—</span>
+                              <span className="text-slate-600">-</span>
                             ) : isWin && game.payout ? (
                               <span className="text-green-400 font-bold">
                                 +{Number(game.payout).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

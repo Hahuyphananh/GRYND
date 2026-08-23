@@ -159,7 +159,7 @@ export default function RPSPlayAiPage() {
 
           {history.length === 0 ? (
             <p className="text-sm text-white/50">
-              No rounds played yet — every throw from you and the AI will
+              No rounds played yet. Every throw from you and the AI will
               show up here.
             </p>
           ) : (
