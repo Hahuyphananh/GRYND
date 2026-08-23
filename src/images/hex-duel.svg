@@ -10,7 +10,9 @@
 
 
 
-                        <defs>
+
+
+                            <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%"   stop-color="#030817"/>
       <stop offset="50%"  stop-color="#081a3d"/>
@@ -56,6 +58,7 @@
   
   
   
+  
     <radialGradient id="vignette" cx="50%" cy="50%" r="75%">
       <stop offset="0%" stop-color="#020617" stop-opacity="0"/>
       <stop offset="55%" stop-color="#020617" stop-opacity="0"/>
@@ -67,7 +70,7 @@
   <!-- Vignette over the backdrop, edges only. -->
   <rect width="1536" height="864" fill="url(#vignette)"/>
   <!-- Scene: scaled and centered so the whole subject is visible. -->
-  <g transform="translate(768 432) scale(2.7) translate(-200 -102)">
+  <g transform="translate(768 432) scale(3.2) translate(-200 -102)">
 <!-- HEX DUEL 5x5 game board. -->
   <!-- Board panel glow. -->
   <rect x="115" y="17" width="170" height="170" rx="14" fill="#22d3ee" fill-opacity="0.05" filter="url(#glow)"/>

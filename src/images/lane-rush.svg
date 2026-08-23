@@ -1,56 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1536 864" role="img" aria-label="Cyberpunk Pool Masters — neon pool table with standard 8-ball opening layout">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1536 864" fill="none">
 
 
-
-
-
-
-
-
-
-
-
-
-
-  <title>Pool Masters</title>
-                            <defs>
-    <filter id="neonGlow" x="-15%" y="-15%" width="130%" height="130%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="glow"/>
-      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+  <title>Lane Rush Duel</title>
+      <defs>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
     </filter>
-    <filter id="bigGlow" x="-25%" y="-25%" width="150%" height="150%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="glow"/>
-      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="1.2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
     </filter>
-    <filter id="hotGlow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="glow"/>
-      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-
-    <radialGradient id="bg" cx="50%" cy="50%" r="80%">
-      <stop offset="0%" stop-color="#261c5b"/>
-      <stop offset="100%" stop-color="#030817"/>
-    </radialGradient>
-
-    <pattern id="hexGrid" x="0" y="0" width="48" height="42" patternUnits="userSpaceOnUse">
-      <polygon points="24,1 47,12 47,30 24,41 1,30 1,12" fill="none" stroke="#ff4fd8" stroke-width="0.4" opacity="0.22"/>
-    </pattern>
-
-    <linearGradient id="feltCyber" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0a7c3a"/>
-      <stop offset="50%" stop-color="#054022"/>
-      <stop offset="100%" stop-color="#022814"/>
+    <linearGradient id="slateGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#475569"/>
+      <stop offset="100%" stop-color="#0f172a"/>
     </linearGradient>
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+    <linearGradient id="cyanGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+    <linearGradient id="roseGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fb7185"/>
+      <stop offset="100%" stop-color="#be123c"/>
+    </linearGradient>
+    <linearGradient id="emeraldGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="badGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e11d48"/>
+      <stop offset="100%" stop-color="#7f1d1d"/>
+    </linearGradient>
   
   
     <radialGradient id="vignette" cx="50%" cy="50%" r="75%">
@@ -64,136 +50,162 @@
   <!-- Vignette over the backdrop, edges only. -->
   <rect width="1536" height="864" fill="url(#vignette)"/>
   <!-- Scene: scaled and centered so the whole subject is visible. -->
-  <g transform="translate(768 432) scale(1.95) translate(-240 -240)">
-<!-- Plain marine blue backdrop. -->
-  
-
-  <!-- Pool table. -->
-  <g filter="url(#neonGlow)">
-    <rect x="80" y="120" width="320" height="240" rx="14" fill="#0a1428" stroke="#67e8f9" stroke-width="3"/>
-    <rect x="92" y="132" width="296" height="216" rx="6" fill="url(#feltCyber)"/>
-    <g fill="#0e7490" stroke="#67e8f9" stroke-width="0.6">
-      <circle cx="240" cy="132" r="2.2"/><circle cx="92" cy="132" r="2.2"/><circle cx="388" cy="132" r="2.2"/>
-      <circle cx="240" cy="348" r="2.2"/><circle cx="92" cy="348" r="2.2"/><circle cx="388" cy="348" r="2.2"/>
-      <circle cx="92" cy="240" r="2.2"/><circle cx="388" cy="240" r="2.2"/>
-    </g>
-    <g>
-      <circle cx="92" cy="132" r="9" fill="#000816" stroke="#5a6b80" stroke-width="0.8"/>
-      <circle cx="388" cy="132" r="9" fill="#000816" stroke="#5a6b80" stroke-width="0.8"/>
-      <circle cx="92" cy="348" r="9" fill="#000816" stroke="#5a6b80" stroke-width="0.8"/>
-      <circle cx="388" cy="348" r="9" fill="#000816" stroke="#5a6b80" stroke-width="0.8"/>
-      <circle cx="240" cy="132" r="7" fill="#000816" stroke="#5a6b80" stroke-width="0.8"/>
-      <circle cx="240" cy="348" r="7" fill="#000816" stroke="#5a6b80" stroke-width="0.8"/>
-    </g>
+  <g transform="translate(768 432) scale(1.65) translate(-240 -186)">
+<!-- Race divider: climb to the top. -->
+  <line x1="240" y1="52" x2="240" y2="348" stroke="#00e5ff" stroke-opacity="0.18" stroke-width="1"/>
+  <polygon points="236,130 244,130 240,123" fill="#00e5ff" fill-opacity="0.5"/>
+  <polygon points="236,250 244,250 240,243" fill="#00e5ff" fill-opacity="0.5"/>
+  <g filter="url(#glow)">
+    <circle cx="240" cy="190" r="21" fill="#040d24" fill-opacity="0.92" stroke="#00e5ff" stroke-opacity="0.55" stroke-width="1.5"/>
   </g>
+  <text x="240" y="196" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="800" fill="#22d3ee" text-anchor="middle">VS</text>
 
-  <!-- CUE BALL at HEAD SPOT (166, 240). -->
-  <g filter="url(#bigGlow)" transform="translate(166 240)">
-    <circle r="14" fill="#ffffff"/>
-    <circle r="14" fill="none" stroke="#67e8f9" stroke-width="1.6"/>
-    <ellipse cx="-4" cy="-5" rx="4" ry="2" fill="#cffafe" opacity="0.95"/>
-  </g>
+  <!-- ══════════════ LEFT TOWER — cyan, player is ahead ══════════════ -->
+  <!-- Tower panel -->
+  <rect x="16" y="48" width="204" height="312" rx="12" fill="#050a18" fill-opacity="0.92" stroke="#67e8f9" stroke-opacity="0.35" stroke-width="1.5"/>
+  <!-- Header: YOUR TOWER + level badge -->
+  <rect x="24" y="12" width="118" height="24" rx="12" fill="#22d3ee" fill-opacity="0.15" stroke="#67e8f9" stroke-opacity="0.5" stroke-width="1"/>
+  <text x="83" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" letter-spacing="0.5" fill="#a5f3fc" text-anchor="middle">YOUR TOWER</text>
+  <rect x="150" y="12" width="58" height="24" rx="12" fill="#000000" fill-opacity="0.4" stroke="#ffffff" stroke-opacity="0.15" stroke-width="1"/>
+  <text x="179" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#ffffff" text-anchor="middle">L7</text>
 
-  <!-- TRIANGLE RACK anchored at the foot spot with 1-BALL (yellow) at the apex (left side of rack).
-       Apex (closest to cue ball) at x=266, 8-ball (center of rack, on foot spot) at x=314,
-       base (5 balls) at x=362. Row spacing (long axis) = 24; in-row vertical spacing = 28.
-       Rack centered vertically on y=240. -->
-  <g filter="url(#neonGlow)">
-    <!-- Row 1: APEX (1 ball). 1-yellow solid at (266,240). -->
-    <g transform="translate(266 240)">
-      <circle r="14" fill="#fbbf24" stroke="#1f2937" stroke-width="1" filter="url(#bigGlow)"/>
-      <ellipse cx="-4" cy="-5" rx="4" ry="2" fill="#fff5cc" opacity="0.95"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">1</text>
-    </g>
-    <!-- Row 2 (2 balls) at x=290: 9-stripe at top (y=226), 2-blue solid at bottom (y=254). -->
-    <g transform="translate(290 226)">
-      <circle r="14" fill="#ffffff" stroke="#1f2937" stroke-width="1"/>
-      <path d="M -14,-3 A 14,14 0 0 1 14,-3 L 14,3 A 14,14 0 0 0 -14,3 Z" fill="#fbbf24"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">9</text>
-    </g>
-    <g transform="translate(290 254)">
-      <circle r="14" fill="#3b82f6" stroke="#1f2937" stroke-width="1"/>
-      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#a3c9ff" opacity="0.95"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">2</text>
-    </g>
-    <!-- Row 3 (3 balls) at x=314: 3-red at top (y=212), 8-black solid in CENTER (y=240), 14-green stripe at bottom (y=268). -->
-    <g transform="translate(314 212)">
-      <circle r="14" fill="#dc2626" stroke="#1f2937" stroke-width="1"/>
-      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#fca5a5" opacity="0.95"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">3</text>
-    </g>
-    <g transform="translate(314 240)">
-      <circle r="14" fill="#0a0a14" stroke="#67e8f9" stroke-width="1.6" filter="url(#bigGlow)"/>
-      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#5a6b80" opacity="0.7"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#0a0a14" text-anchor="middle">8</text>
-    </g>
-    <g transform="translate(314 268)">
-      <circle r="14" fill="#ffffff" stroke="#1f2937" stroke-width="1"/>
-      <path d="M -14,-3 A 14,14 0 0 1 14,-3 L 14,3 A 14,14 0 0 0 -14,3 Z" fill="#22c55e"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">14</text>
-    </g>
-    <!-- Row 4 (4 balls) at x=338: 4-purple (198), 10-blue stripe (226), 5-orange (254), 11-red stripe (282). -->
-    <g transform="translate(338 198)">
-      <circle r="14" fill="#9333ea" stroke="#1f2937" stroke-width="1"/>
-      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#d8b4fe" opacity="0.95"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">4</text>
-    </g>
-    <g transform="translate(338 226)">
-      <circle r="14" fill="#ffffff" stroke="#1f2937" stroke-width="1"/>
-      <path d="M -14,-3 A 14,14 0 0 1 14,-3 L 14,3 A 14,14 0 0 0 -14,3 Z" fill="#3b82f6"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">10</text>
-    </g>
-    <g transform="translate(338 254)">
-      <circle r="14" fill="#fb923c" stroke="#1f2937" stroke-width="1"/>
-      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#fbd9a8" opacity="0.95"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">5</text>
-    </g>
-    <g transform="translate(338 282)">
-      <circle r="14" fill="#ffffff" stroke="#1f2937" stroke-width="1"/>
-      <path d="M -14,-3 A 14,14 0 0 1 14,-3 L 14,3 A 14,14 0 0 0 -14,3 Z" fill="#dc2626"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">11</text>
-    </g>
-    <!-- Row 5 (5 balls, BASE) at x=362. -->
-    <g transform="translate(362 184)">
-      <circle r="14" fill="#22c55e" stroke="#1f2937" stroke-width="1"/>
-      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#a7f3d0" opacity="0.95"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">6</text>
-    </g>
-    <g transform="translate(362 212)">
-      <circle r="14" fill="#ffffff" stroke="#1f2937" stroke-width="1"/>
-      <path d="M -14,-3 A 14,14 0 0 1 14,-3 L 14,3 A 14,14 0 0 0 -14,3 Z" fill="#9333ea"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">12</text>
-    </g>
-    <g transform="translate(362 240)">
-      <circle r="14" fill="#7c3aed" stroke="#1f2937" stroke-width="1"/>
-      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#c4b5fd" opacity="0.95"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">7</text>
-    </g>
-    <g transform="translate(362 268)">
-      <circle r="14" fill="#ffffff" stroke="#1f2937" stroke-width="1"/>
-      <path d="M -14,-3 A 14,14 0 0 1 14,-3 L 14,3 A 14,14 0 0 0 -14,3 Z" fill="#fb923c"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">13</text>
-    </g>
-    <g transform="translate(362 296)">
-      <circle r="14" fill="#a16207" stroke="#1f2937" stroke-width="1"/>
-      <ellipse cx="-4" cy="-5" rx="3" ry="1.5" fill="#fde68a" opacity="0.95"/>
-      <circle cx="0" cy="0" r="7" fill="#ffffff"/>
-      <text x="0" y="4" font-family="serif, Georgia" font-size="11" font-weight="900" fill="#1f2937" text-anchor="middle">15</text>
-    </g>
-  </g>
+  <!-- Lane 8 (top) — future, risky 2-tile -->
+  <rect x="24" y="56" width="188" height="34" rx="6" fill="#000000" fill-opacity="0.2" stroke="#ffffff" stroke-opacity="0.1" stroke-width="1"/>
+  <rect x="26" y="62" width="89" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <text x="70.5" y="77" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#e2e8f0" fill-opacity="0.5" text-anchor="middle">?</text>
+  <rect x="120" y="62" width="89" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <text x="164.5" y="77" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#e2e8f0" fill-opacity="0.5" text-anchor="middle">?</text>
+
+  <!-- Lane 7 — CURRENT (climbing, risky 2-tile), +300 pts -->
+  <rect x="24" y="93" width="188" height="34" rx="6" fill="#22d3ee" fill-opacity="0.1" stroke="#67e8f9" stroke-opacity="0.65" stroke-width="1.6"/>
+  <rect x="26" y="99" width="89" height="22" rx="4" fill="url(#cyanGrad)" fill-opacity="0.55" stroke="#a5f3fc" stroke-opacity="0.4" stroke-width="0.8" filter="url(#softGlow)"/>
+  <text x="70.5" y="114" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#a5f3fc" text-anchor="middle">?</text>
+  <rect x="120" y="99" width="89" height="22" rx="4" fill="url(#cyanGrad)" fill-opacity="0.55" stroke="#a5f3fc" stroke-opacity="0.4" stroke-width="0.8" filter="url(#softGlow)"/>
+  <text x="164.5" y="114" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#a5f3fc" text-anchor="middle">?</text>
+  <text x="210" y="114" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="800" fill="#fbbf24" text-anchor="end">+300</text>
+
+  <!-- Lane 6 — completed, risky, picked idx 1 -->
+  <rect x="24" y="130" width="188" height="34" rx="6" fill="#10b981" fill-opacity="0.08" stroke="#34d399" stroke-opacity="0.35" stroke-width="1"/>
+  <rect x="26" y="136" width="89" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="120" y="136" width="89" height="22" rx="4" fill="url(#emeraldGrad)" stroke="#6ee7b7" stroke-opacity="0.7" stroke-width="0.8"/>
+  <text x="164.5" y="151" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle">✓</text>
+  <circle cx="207" cy="147" r="3" fill="#fb7185" opacity="0.9"/>
+
+  <!-- Lane 5 — completed, balanced, picked idx 2 -->
+  <rect x="24" y="167" width="188" height="34" rx="6" fill="#10b981" fill-opacity="0.08" stroke="#34d399" stroke-opacity="0.35" stroke-width="1"/>
+  <rect x="26" y="173" width="58" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="89" y="173" width="58" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="152" y="173" width="58" height="22" rx="4" fill="url(#emeraldGrad)" stroke="#6ee7b7" stroke-opacity="0.7" stroke-width="0.8"/>
+  <text x="181" y="188" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle">✓</text>
+  <circle cx="207" cy="184" r="3" fill="#fbbf24" opacity="0.9"/>
+
+  <!-- Lane 4 — completed, balanced, picked idx 0 -->
+  <rect x="24" y="204" width="188" height="34" rx="6" fill="#10b981" fill-opacity="0.08" stroke="#34d399" stroke-opacity="0.35" stroke-width="1"/>
+  <rect x="26" y="210" width="58" height="22" rx="4" fill="url(#emeraldGrad)" stroke="#6ee7b7" stroke-opacity="0.7" stroke-width="0.8"/>
+  <text x="55" y="225" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle">✓</text>
+  <rect x="89" y="210" width="58" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="152" y="210" width="58" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <circle cx="207" cy="221" r="3" fill="#fbbf24" opacity="0.9"/>
+
+  <!-- Lane 3 — completed, balanced, picked idx 1 -->
+  <rect x="24" y="241" width="188" height="34" rx="6" fill="#10b981" fill-opacity="0.08" stroke="#34d399" stroke-opacity="0.35" stroke-width="1"/>
+  <rect x="26" y="247" width="58" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="89" y="247" width="58" height="22" rx="4" fill="url(#emeraldGrad)" stroke="#6ee7b7" stroke-opacity="0.7" stroke-width="0.8"/>
+  <text x="118" y="262" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle">✓</text>
+  <rect x="152" y="247" width="58" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <circle cx="207" cy="258" r="3" fill="#fbbf24" opacity="0.9"/>
+
+  <!-- Lane 2 — completed, safe, picked idx 2 -->
+  <rect x="24" y="278" width="188" height="34" rx="6" fill="#10b981" fill-opacity="0.08" stroke="#34d399" stroke-opacity="0.35" stroke-width="1"/>
+  <rect x="26" y="284" width="42" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="73" y="284" width="42" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="120" y="284" width="42" height="22" rx="4" fill="url(#emeraldGrad)" stroke="#6ee7b7" stroke-opacity="0.7" stroke-width="0.8"/>
+  <text x="141" y="299" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle">✓</text>
+  <rect x="167" y="284" width="42" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <circle cx="207" cy="295" r="3" fill="#34d399" opacity="0.9"/>
+
+  <!-- Lane 1 (base) — completed, safe, picked idx 0 -->
+  <rect x="24" y="315" width="188" height="34" rx="6" fill="#10b981" fill-opacity="0.08" stroke="#34d399" stroke-opacity="0.35" stroke-width="1"/>
+  <rect x="26" y="321" width="42" height="22" rx="4" fill="url(#emeraldGrad)" stroke="#6ee7b7" stroke-opacity="0.7" stroke-width="0.8"/>
+  <text x="47" y="336" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle">✓</text>
+  <rect x="73" y="321" width="42" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="120" y="321" width="42" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="167" y="321" width="42" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <circle cx="207" cy="332" r="3" fill="#34d399" opacity="0.9"/>
+
+  <!-- ══════════════ RIGHT TOWER — rose, opponent is behind ══════════════ -->
+  <!-- Tower panel -->
+  <rect x="260" y="48" width="204" height="312" rx="12" fill="#050a18" fill-opacity="0.92" stroke="#fb7185" stroke-opacity="0.35" stroke-width="1.5"/>
+  <!-- Header: level badge + OPPONENT -->
+  <rect x="272" y="12" width="58" height="24" rx="12" fill="#000000" fill-opacity="0.4" stroke="#ffffff" stroke-opacity="0.15" stroke-width="1"/>
+  <text x="301" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#ffffff" text-anchor="middle">L5</text>
+  <rect x="338" y="12" width="118" height="24" rx="12" fill="#f43f5e" fill-opacity="0.15" stroke="#fb7185" stroke-opacity="0.5" stroke-width="1"/>
+  <text x="397" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" letter-spacing="0.5" fill="#fecdd3" text-anchor="middle">OPPONENT</text>
+
+  <!-- Lane 8 (top) — future, risky 2-tile -->
+  <rect x="268" y="56" width="188" height="34" rx="6" fill="#000000" fill-opacity="0.2" stroke="#ffffff" stroke-opacity="0.1" stroke-width="1"/>
+  <rect x="270" y="62" width="89" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <text x="314.5" y="77" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#e2e8f0" fill-opacity="0.5" text-anchor="middle">?</text>
+  <rect x="364" y="62" width="89" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <text x="408.5" y="77" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#e2e8f0" fill-opacity="0.5" text-anchor="middle">?</text>
+
+  <!-- Lane 7 — future, risky 2-tile -->
+  <rect x="268" y="93" width="188" height="34" rx="6" fill="#000000" fill-opacity="0.2" stroke="#ffffff" stroke-opacity="0.1" stroke-width="1"/>
+  <rect x="270" y="99" width="89" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <text x="314.5" y="114" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#e2e8f0" fill-opacity="0.5" text-anchor="middle">?</text>
+  <rect x="364" y="99" width="89" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <text x="408.5" y="114" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#e2e8f0" fill-opacity="0.5" text-anchor="middle">?</text>
+
+  <!-- Lane 6 — future, risky 2-tile -->
+  <rect x="268" y="130" width="188" height="34" rx="6" fill="#000000" fill-opacity="0.2" stroke="#ffffff" stroke-opacity="0.1" stroke-width="1"/>
+  <rect x="270" y="136" width="89" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <text x="314.5" y="151" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#e2e8f0" fill-opacity="0.5" text-anchor="middle">?</text>
+  <rect x="364" y="136" width="89" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <text x="408.5" y="151" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#e2e8f0" fill-opacity="0.5" text-anchor="middle">?</text>
+
+  <!-- Lane 5 — CURRENT (balanced 3-tile), +80 pts -->
+  <rect x="268" y="167" width="188" height="34" rx="6" fill="#f43f5e" fill-opacity="0.1" stroke="#fb7185" stroke-opacity="0.65" stroke-width="1.6"/>
+  <rect x="270" y="173" width="58" height="22" rx="4" fill="url(#roseGrad)" fill-opacity="0.55" stroke="#fecdd3" stroke-opacity="0.4" stroke-width="0.8" filter="url(#softGlow)"/>
+  <text x="299" y="188" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#fecdd3" text-anchor="middle">?</text>
+  <rect x="333" y="173" width="58" height="22" rx="4" fill="url(#roseGrad)" fill-opacity="0.55" stroke="#fecdd3" stroke-opacity="0.4" stroke-width="0.8" filter="url(#softGlow)"/>
+  <text x="362" y="188" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#fecdd3" text-anchor="middle">?</text>
+  <rect x="396" y="173" width="58" height="22" rx="4" fill="url(#roseGrad)" fill-opacity="0.55" stroke="#fecdd3" stroke-opacity="0.4" stroke-width="0.8" filter="url(#softGlow)"/>
+  <text x="425" y="188" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#fecdd3" text-anchor="middle">?</text>
+  <text x="454" y="188" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="800" fill="#fbbf24" text-anchor="end">+80</text>
+
+  <!-- Lane 4 — completed, balanced, picked idx 2 -->
+  <rect x="268" y="204" width="188" height="34" rx="6" fill="#10b981" fill-opacity="0.08" stroke="#34d399" stroke-opacity="0.35" stroke-width="1"/>
+  <rect x="270" y="210" width="58" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="333" y="210" width="58" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="396" y="210" width="58" height="22" rx="4" fill="url(#emeraldGrad)" stroke="#6ee7b7" stroke-opacity="0.7" stroke-width="0.8"/>
+  <text x="425" y="225" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle">✓</text>
+  <circle cx="451" cy="221" r="3" fill="#fbbf24" opacity="0.9"/>
+
+  <!-- Lane 3 — completed with REVEALED BAD TILE (dodged), picked idx 0, bad idx 1 -->
+  <rect x="268" y="241" width="188" height="34" rx="6" fill="#f43f5e" fill-opacity="0.06" stroke="#f43f5e" stroke-opacity="0.5" stroke-width="1"/>
+  <rect x="270" y="247" width="58" height="22" rx="4" fill="url(#emeraldGrad)" stroke="#6ee7b7" stroke-opacity="0.7" stroke-width="0.8"/>
+  <text x="299" y="262" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle">✓</text>
+  <rect x="333" y="247" width="58" height="22" rx="4" fill="url(#badGrad)" stroke="#fda4af" stroke-opacity="0.5" stroke-width="0.8"/>
+  <text x="362" y="262" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle">✕</text>
+  <rect x="396" y="247" width="58" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <circle cx="451" cy="258" r="3" fill="#fbbf24" opacity="0.9"/>
+
+  <!-- Lane 2 — completed, safe, picked idx 0 -->
+  <rect x="268" y="278" width="188" height="34" rx="6" fill="#10b981" fill-opacity="0.08" stroke="#34d399" stroke-opacity="0.35" stroke-width="1"/>
+  <rect x="270" y="284" width="42" height="22" rx="4" fill="url(#emeraldGrad)" stroke="#6ee7b7" stroke-opacity="0.7" stroke-width="0.8"/>
+  <text x="291" y="299" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle">✓</text>
+  <rect x="317" y="284" width="42" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="364" y="284" width="42" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="411" y="284" width="42" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <circle cx="451" cy="295" r="3" fill="#34d399" opacity="0.9"/>
+
+  <!-- Lane 1 (base) — completed, safe, picked idx 1 -->
+  <rect x="268" y="315" width="188" height="34" rx="6" fill="#10b981" fill-opacity="0.08" stroke="#34d399" stroke-opacity="0.35" stroke-width="1"/>
+  <rect x="270" y="321" width="42" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="317" y="321" width="42" height="22" rx="4" fill="url(#emeraldGrad)" stroke="#6ee7b7" stroke-opacity="0.7" stroke-width="0.8"/>
+  <text x="338" y="336" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle">✓</text>
+  <rect x="364" y="321" width="42" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <rect x="411" y="321" width="42" height="22" rx="4" fill="url(#slateGrad)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="0.8"/>
+  <circle cx="451" cy="332" r="3" fill="#34d399" opacity="0.9"/>
   </g>
 </svg>
