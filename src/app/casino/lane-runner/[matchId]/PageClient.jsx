@@ -2,24 +2,39 @@
 
 // src/app/casino/lane-runner/[matchId]/page.jsx
 //
-// MATCH view for the "Lane Rush Duel" system. Both players race
-// their OWN provably-fair tower (same difficulty), alternating
-// turns. The game is scored in POINTS.
+// MATCH view for the "Lane Rush Duel" system. Both players race the
+// SAME shared provably-fair tower (bad tile per lane per risk path),
+// alternating turns, scored in POINTS.
 //
 // Skill mechanics (the anti-luck package):
+//   • SHARED TOWER — both players climb one layout. Every safe pick
+//     either player makes is shown on BOTH boards, so each pick is
+//     a deduction you can use (eliminating a bad-tile candidate).
+//   • DEFERRED REVEAL — a pick parks until the opponent answers the
+//     same row; the two reveal together. Nobody can mirror the
+//     other's current-row pick — you can only deduce from rows
+//     already revealed to both.
 //   • RISK PATHS — every lane you choose your odds: Safe (4 tiles,
 //     75%), Balanced (3, 67%) or Risky (2, 50%), each paying more
 //     points per safe pick. Choosing which luck to buy is the skill.
-//   • BAD-TILE MEMORY — a bad tile can never repeat the previous
-//     lane's position (same path), so tracking history narrows your
-//     next guess and late-game tiles become deducible.
-//   • THE FLAG — instead of picking you may CALL a tile as the bad
-//     one: right = instant win, wrong = bust.
-//   • HOLD — bank your points and force the opponent to out-score
-//     you (the flag-to-win chicken move).
+//   • BAD-TILE MEMORY — safe/balanced bad tiles never repeat the
+//     previous lane's position on the same path, and a risky bad
+//     tile never sits in the previous lane's SAFE position when it's
+//     in range — so solving one path narrows the next row.
+//   • THE FLAG — call the bad tile (2 per match): a CORRECT flag
+//     claims the row + points and reveals the tile to both players,
+//     a WRONG flag busts you. No more free instant wins.
+//   • PEEK — spend one of 2 private peeks on your turn to instantly
+//     learn if a tile in your current lane is safe or bad, without
+//     consuming the turn. Only you see the answer; the opponent
+//     just sees that you peeked. Verifiable post-match.
+//   • HOLD — bank your points: they're locked (bust-proof) and the
+//     first player to BANK 1,000 takes the pot. Banking never ends
+//     the climb — you keep playing at a reduced rate, so the race
+//     continues until someone locks the target.
 //   • Provably fair — every path's bad tiles derive from a shared
-//     server seed + each player's own client seed; the full layout
-//     is revealed post-match so the memory rule is verifiable.
+//     server seed + the host's client seed; the full layout is
+//     revealed post-match so the memory rule is verifiable.
 
 import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { useRouter } from "next/navigation";
@@ -36,8 +51,12 @@ import {
 import {
   DIFFICULTIES,
   LANE_POINTS,
+  MAX_FLAGS,
   MAX_LANES,
+  MAX_PEEKS,
   RISK_PATHS,
+  WIN_BANKED_SCORE,
+  computeDeductions,
   pointsForSafePick,
   safePicksToReachScore,
   survivalOdds,
@@ -49,6 +68,7 @@ import {
   IconArrowLeft,
   IconShieldCheck,
   IconFlag,
+  IconEye,
   IconX,
 } from "@tabler/icons-react";
 
@@ -106,8 +126,13 @@ function DuelTower({
   clickable,
   selectedPath,
   flagMode,
+  peekMode,
+  myPeeks,
   pathByLane,
   pickedTileByLane,
+  intelPathByLane,
+  intelPickedByLane,
+  deductions,
   tower,
   difficulty,
   finished,
@@ -118,6 +143,11 @@ function DuelTower({
   const chip = isMine
     ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
     : "border-rose-300/40 bg-rose-500/15 text-rose-100";
+
+  // The tower is SHARED: the intel props carry the OTHER player's
+  // resolved picks (path + tile per row), drawn on this board as
+  // deduction markers — every safe pick narrows the same layout.
+  const intelLabel = isMine ? "Opp" : "You";
 
   const pointsFor = (laneIdx, pathKey) =>
     pointsForSafePick(laneIdx, pathKey, difficulty);
@@ -158,6 +188,21 @@ function DuelTower({
           const tiles = pathCfg.tiles;
 
           const pickedTile = pickedTileByLane[laneIdx];
+          const intelPath = intelPathByLane?.[laneIdx];
+          const intelTile = intelPickedByLane?.[laneIdx];
+          // Live deduction for the displayed path on this row: how
+          // many bad-tile candidates remain, and whether the bad tile
+          // is fully known (flag reveal or single-candidate solve).
+          const ded = deductions?.[laneIdx]?.[lanePath];
+          const knownBadTile =
+            ded && ded.solved && ded.badTile != null ? ded.badTile : null;
+          // Other paths on this row that are already solved — public
+          // knowledge, since the tower + deduction are shared.
+          const solvedOthers = deductions?.[laneIdx]
+            ? Object.entries(deductions[laneIdx]).filter(
+                ([p, d]) => p !== lanePath && d.solved && d.badTile != null,
+              )
+            : [];
           // Finished: reveal the bad tile of the path that was taken.
           const takenPath = pathByLane[laneIdx] || "balanced";
           const badTile =
@@ -192,6 +237,21 @@ function DuelTower({
                       {pathCfg.label}
                     </span>
                   )}
+                  {/* Live candidate count for the displayed path —
+                      how many tiles could still be the bad one. */}
+                  {ded && (ded.solved || ded.candidates < pathCfg.tiles) && (
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                        ded.solved
+                          ? "bg-emerald-500/20 text-emerald-200"
+                          : ded.candidates <= 2
+                            ? "bg-amber-400/20 text-amber-100"
+                            : "bg-black/40 text-white/70"
+                      }`}
+                    >
+                      {ded.solved ? "solved" : `${ded.candidates} left`}
+                    </span>
+                  )}
                   <span
                     className={`rounded-full px-1.5 py-0.5 font-bold ${
                       isBanked
@@ -212,6 +272,28 @@ function DuelTower({
                 </span>
               </div>
 
+              {/* Intel badge: the other player survived a DIFFERENT
+                  path on this row — their pick is still a deduction
+                  (that tile is safe on that path). */}
+              {intelTile !== undefined && intelPath !== lanePath && (
+                <div className="mb-1 flex justify-end">
+                  <span className="rounded border border-white/10 bg-black/30 px-1 py-0.5 text-[9px] font-semibold text-white/60">
+                    {intelLabel}: {RISK_PATHS[intelPath]?.label ?? "?"} @{" "}
+                    {intelTile + 1} ✓
+                  </span>
+                </div>
+              )}
+
+              {/* Solved-elsewhere badge: another path on this row is
+                  already deduced — its bad tile is public knowledge. */}
+              {solvedOthers.map(([p, d]) => (
+                <div key={p} className="mb-1 flex justify-end">
+                  <span className="rounded border border-rose-300/40 bg-rose-500/10 px-1 py-0.5 text-[9px] font-semibold text-rose-200/90">
+                    {RISK_PATHS[p]?.label ?? "?"} solved: @ {d.badTile + 1} ✕
+                  </span>
+                </div>
+              ))}
+
               <div
                 className="grid gap-1.5"
                 style={{
@@ -223,13 +305,34 @@ function DuelTower({
                     clickable && isCurrent && isActiveClimber && isViewerTurn;
                   const tileIsPicked = pickedTile === tileIdx;
                   const tileIsBad = finished && badTile === tileIdx;
+                  const tileIsRevealedBad = knownBadTile === tileIdx;
                   const tileIsSafePick = isCompleted && pickedTile === tileIdx;
+                  // The other player survived this tile on the shared
+                  // tower (same path, same row) — a live deduction.
+                  const tileIsIntel =
+                    intelTile === tileIdx && intelPath === lanePath;
+                  // The viewer's PRIVATE peek on this lane+path+ tile.
+                  const myPeek = myPeeks?.[laneIdx];
+                  const tilePeeked =
+                    myPeek &&
+                    myPeek.path === lanePath &&
+                    myPeek.tile === tileIdx;
 
                   let cls = "bg-gradient-to-br from-slate-700 to-slate-900 border-white/10 text-white/60";
                   let glyph = "?";
                   if (tileIsBad) {
                     cls = "bg-gradient-to-br from-rose-600 to-red-800 border-red-300/60 text-white";
                     glyph = "✕";
+                  } else if (tileIsRevealedBad) {
+                    cls = "bg-gradient-to-br from-rose-500 to-red-700 border-red-300/60 text-white";
+                    glyph = "✕";
+                  } else if (tilePeeked) {
+                    // Private knowledge — only this viewer sees it.
+                    cls =
+                      myPeek.result === "bad"
+                        ? "bg-gradient-to-br from-orange-500 to-amber-700 border-orange-300/80 text-white"
+                        : "bg-gradient-to-br from-emerald-600 to-green-800 border-emerald-300/60 text-white";
+                    glyph = myPeek.result === "bad" ? "✕" : "✓";
                   } else if (tileIsSafePick) {
                     cls = "bg-gradient-to-br from-emerald-500 to-green-700 border-emerald-300/70 text-white";
                     glyph = "✓";
@@ -238,10 +341,17 @@ function DuelTower({
                       ? "bg-gradient-to-br from-cyan-400 to-blue-600 border-cyan-100/70 text-white"
                       : "bg-gradient-to-br from-rose-400 to-pink-700 border-rose-100/70 text-white";
                     glyph = "●";
+                  } else if (tileIsIntel) {
+                    cls = isMine
+                      ? "bg-slate-800/90 border-2 border-dashed border-rose-300/70 text-rose-200"
+                      : "bg-slate-800/90 border-2 border-dashed border-cyan-300/70 text-cyan-200";
+                    glyph = "◉";
                   } else if (tileCanPick) {
                     cls = flagMode
                       ? "bg-gradient-to-br from-orange-700 to-red-900 border-orange-300/50 text-orange-100 hover:brightness-125 cursor-pointer"
-                      : PATH_STYLE[lanePath].tile + " hover:brightness-125 cursor-pointer";
+                      : peekMode
+                        ? "bg-gradient-to-br from-cyan-600 to-blue-800 border-cyan-200/60 text-white hover:brightness-125 cursor-pointer"
+                        : PATH_STYLE[lanePath].tile + " hover:brightness-125 cursor-pointer";
                     glyph = flagMode ? "⚑" : "?";
                   } else if (isBanked && isCurrent) {
                     cls = "bg-gradient-to-br from-amber-600/60 to-amber-900/60 border-amber-300/40 text-amber-100/70";
@@ -273,32 +383,77 @@ function DuelTower({
 // ── Risk-path picker ───────────────────────────────────────────────
 // Shown on your turn: choose the odds (and points) for the current
 // lane before picking or flagging a tile.
-function PathPicker({ lane, selectedPath, onSelect, flagMode, onToggleFlag, disabled }) {
+function PathPicker({
+  lane,
+  selectedPath,
+  onSelect,
+  flagMode,
+  onToggleFlag,
+  peekMode,
+  onTogglePeek,
+  disabled,
+  flagsLeft,
+  peeksLeft,
+  deductions,
+}) {
+  const flagDisabled = disabled || flagsLeft <= 0;
+  const peekDisabled = disabled || peeksLeft <= 0;
   return (
     <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="text-xs font-black uppercase tracking-wider text-white/70">
           Choose your odds. Level {Math.min(lane + 1, MAX_LANES)}
         </p>
-        <button
-          type="button"
-          onClick={onToggleFlag}
-          disabled={disabled}
-          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider transition ${
-            flagMode
-              ? "border-orange-300 bg-orange-500/25 text-orange-100"
-              : "border-white/15 bg-black/30 text-white/60 hover:text-white"
-          }`}
-        >
-          <IconFlag size={11} />
-          {flagMode ? "Flag mode ON. Tap a tile" : "Flag mode"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onTogglePeek}
+            disabled={peekDisabled}
+            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider transition ${
+              peekMode
+                ? "border-cyan-300 bg-cyan-500/25 text-cyan-100"
+                : peekDisabled
+                  ? "border-white/10 bg-black/20 text-white/35 cursor-not-allowed"
+                  : "border-white/15 bg-black/30 text-white/60 hover:text-white"
+            }`}
+          >
+            <IconEye size={11} />
+            {peekMode
+              ? "Peek mode ON. Tap a tile"
+              : peekDisabled
+                ? "No peeks left"
+                : `Peek (${peeksLeft} left)`}
+          </button>
+          <button
+            type="button"
+            onClick={onToggleFlag}
+            disabled={flagDisabled}
+            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider transition ${
+              flagMode
+                ? "border-orange-300 bg-orange-500/25 text-orange-100"
+                : flagDisabled
+                  ? "border-white/10 bg-black/20 text-white/35 cursor-not-allowed"
+                  : "border-white/15 bg-black/30 text-white/60 hover:text-white"
+            }`}
+          >
+            <IconFlag size={11} />
+            {flagMode
+              ? "Flag mode ON. Tap a tile"
+              : flagDisabled
+                ? "No flags left"
+                : `Flag mode (${flagsLeft} left)`}
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-3 gap-2">
         {Object.values(RISK_PATHS).map((path) => {
           const active = !flagMode && selectedPath === path.key;
           const pts = pointsForSafePick(lane, path.key, undefined);
           const odds = ((path.tiles - 1) / path.tiles) * 100;
+          // How many bad-tile candidates remain on this path for the
+          // current lane (safe picks, flags, and the memory rule).
+          const ded = deductions?.[lane]?.[path.key];
+          const candidates = ded ? ded.candidates : path.tiles;
           return (
             <button
               key={path.key}
@@ -309,10 +464,17 @@ function PathPicker({ lane, selectedPath, onSelect, flagMode, onToggleFlag, disa
                 active
                   ? PATH_STYLE[path.key].chipActive
                   : PATH_STYLE[path.key].chip
-              } ${disabled ? "opacity-50" : "hover:brightness-110"}`}
+              } ${ded?.solved ? "ring-1 ring-emerald-300/60" : ""} ${
+                disabled ? "opacity-50" : "hover:brightness-110"
+              }`}
             >
               <p className="text-[11px] font-black uppercase">{path.label}</p>
-              <p className="text-[9px] text-white/70">{odds}% safe</p>
+              <p className="text-[9px] text-white/70">
+                {odds}% safe ·{" "}
+                {ded?.solved
+                  ? "solved ✓"
+                  : `${candidates} ${candidates === 1 ? "candidate" : "candidates"} left`}
+              </p>
               <p className={`text-xs font-black ${PATH_STYLE[path.key].text}`}>
                 +{pts} pts
               </p>
@@ -321,150 +483,149 @@ function PathPicker({ lane, selectedPath, onSelect, flagMode, onToggleFlag, disa
         })}
       </div>
       <p className="mt-2 text-[10px] text-white/45">
-        {flagMode
-          ? "FLAG = call the bad tile. Right → instant win. Wrong → you bust. With the memory rule (bad tiles never repeat positions), late lanes are deducible."
-          : "Bad tiles never repeat the previous lane's position on the same path. Track what you see and you can narrow the next guess."}
+        {peekMode
+          ? "PEEK = spend one of 2 private calls to learn whether a tile on this level is SAFE or BAD — only you see the answer, and you can still pick after. Perfect for converting a coin-flip Risky row into a sure climb."
+          : flagMode
+            ? "FLAG = call the bad tile (2 per match). Right → you claim the row + points and reveal it to BOTH players. Wrong → you bust. Save flags for safe/balanced calls the memory rule has narrowed."
+            : "Both players climb the SAME tower: every safe pick either of you makes (visible on both boards) eliminates a bad-tile candidate. Bad tiles also never repeat the previous lane's position on the same path."}
       </p>
     </div>
   );
 }
 
-// ── Zugzwang pressure strip (points-based) ─────────────────────────
-// Shows the chicken-game math in points: how many points the player
-// who is behind must out-score, roughly how many safe picks that
-// implies on a given path, and the survival odds of pushing blind.
+// ── Race pressure strip (1,000-banked target) ──────────────────────
+// The win is the FIRST player to BANK WIN_BANKED_SCORE (1,000)
+// points — the strip shows each player's banked progress toward the
+// target, how many safe picks that implies, and the survival odds of
+// pushing blind. Banking never settles the match; the race continues
+// at reduced rates until someone locks 1,000.
 function PressureStrip({
   myScore,
   oppScore,
+  myBanked,
+  oppBanked,
   myHeld,
   oppHeld,
+  myRate,
+  oppRate,
   difficulty,
   isBotMatch,
 }) {
-  const oppName = isBotMatch ? "The bot" : "Your opponent";
-  const myPicksToWin = oppHeld
-    ? safePicksToReachScore(oppScore, myScore, "balanced", difficulty)
-    : 0;
-  const oppPicksToWin = myHeld
-    ? safePicksToReachScore(myScore, oppScore, "balanced", difficulty)
-    : 0;
+  const oppName = isBotMatch ? "the bot" : "your opponent";
+  // Picks needed to reach the 1,000 target from the current
+  // accumulated score (you still need to BANK it once you get there).
+  const myPicksToTarget = safePicksToReachScore(
+    WIN_BANKED_SCORE,
+    myScore,
+    "balanced",
+    difficulty,
+  );
+  const oppPicksToTarget = safePicksToReachScore(
+    WIN_BANKED_SCORE,
+    oppScore,
+    "balanced",
+    difficulty,
+  );
   const survival = (n) => survivalOdds(n, RISK_PATHS.balanced.tiles);
+  const ratePct = (r) => `${Math.round(r * 100)}%`;
+  const pct = (banked) =>
+    `${Math.min(100, Math.round((banked / WIN_BANKED_SCORE) * 100))}%`;
 
-  // ── Both banked (transient — the game resolves immediately) ─────
+  // ── Both banked: the race continues at reduced rates ─────────────
   if (myHeld && oppHeld) {
-    const ahead =
-      myScore > oppScore ? "you" : oppScore > myScore ? "them" : "neither";
     return (
       <div className="rounded-2xl border border-amber-300/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-        <span className="font-black uppercase tracking-wider">Both banked</span>
-        <span className="text-white/70">
-          {" "}
-          You're on {myScore.toLocaleString()} pts, them on{" "}
-          {oppScore.toLocaleString()}.{" "}
-          {ahead === "neither"
-            ? "Dead even. Draw."
-            : ahead === "you"
-              ? "You take the pot."
-              : "They take the pot."}
-        </span>
+        <p className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-amber-200">
+          <IconFlag size={13} className="text-amber-300" />
+          Both banked — the race to {WIN_BANKED_SCORE.toLocaleString()} continues
+        </p>
+        <p className="mt-1 text-sm">
+          You're locked at{" "}
+          <b className="text-white">{myBanked.toLocaleString()}</b>{" "}
+          ({pct(myBanked)} of target, picks pay {ratePct(myRate)});{" "}
+          {oppName} is at{" "}
+          <b className="text-white">{oppBanked.toLocaleString()}</b>{" "}
+          ({pct(oppBanked)}, {ratePct(oppRate)}). First to{" "}
+          <b className="text-white">{WIN_BANKED_SCORE.toLocaleString()}</b> banked
+          takes the pot.
+        </p>
       </div>
     );
   }
 
-  // ── I banked: the opponent must out-score me ────────────────────
+  // ── I banked: I'm ahead on locked points, but the win needs 1,000 ─
   if (myHeld) {
     return (
       <div className="rounded-2xl border border-amber-300/40 bg-amber-500/10 px-4 py-3">
         <p className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-amber-200">
           <IconFlag size={13} className="text-amber-300" />
-          Pressure. You banked {myScore.toLocaleString()} pts
+          You banked {myBanked.toLocaleString()}
+          <span className="font-normal normal-case text-amber-200/70">
+            ({pct(myBanked)} of {WIN_BANKED_SCORE.toLocaleString()} — picks now pay{" "}
+            {ratePct(myRate)})
+          </span>
         </p>
-        {oppPicksToWin > 0 ? (
-          <p className="mt-1 text-sm text-amber-100">
-            {oppName} needs{" "}
-            <b className="text-white">
-              {(oppScore < myScore ? myScore - oppScore : 0).toLocaleString()} pts
-            </b>, roughly{" "}
-            <b className="text-white">
-              {oppPicksToWin} balanced safe pick{oppPicksToWin === 1 ? "" : "s"}
-            </b>, only ~
-            <b className="text-white">
-              {(survival(oppPicksToWin) * 100).toFixed(0)}%
-            </b>{" "}
-            survival pushing blind.
-          </p>
-        ) : (
-          <p className="mt-1 text-sm text-amber-100">
-            {oppName} is already out-scoring you. They win if they bank
-            now. Your only hope is that they bust climbing.{" "}
-            <span className="font-bold text-white">Hold the line.</span>
-          </p>
-        )}
-        {oppPicksToWin > 0 && (
-          <SurvivalBar pct={survival(oppPicksToWin)} label="their survival odds" />
+        <p className="mt-1 text-sm text-amber-100">
+          You need <b className="text-white">{myPicksToTarget}</b> more balanced
+          safe pick{myPicksToTarget === 1 ? "" : "s"} to reach{" "}
+          <b className="text-white">{WIN_BANKED_SCORE.toLocaleString()}</b> and bank
+          the win (only ~
+          <b className="text-white">{(survival(myPicksToTarget) * 100).toFixed(0)}%</b>{" "}
+          survival pushing blind). {oppName} is at{" "}
+          <b className="text-white">{oppBanked.toLocaleString()}</b> banked
+          ({pct(oppBanked)}).
+        </p>
+        {myPicksToTarget > 0 && (
+          <SurvivalBar pct={survival(myPicksToTarget)} label="your survival odds" />
         )}
       </div>
     );
   }
 
-  // ── They banked: I must out-score them ──────────────────────────
+  // ── They banked: I'm behind on locked points ─────────────────────
   if (oppHeld) {
     return (
       <div className="rounded-2xl border border-cyan-300/40 bg-cyan-500/10 px-4 py-3">
         <p className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-cyan-200">
           <IconFlag size={13} className="text-cyan-300" />
-          Pressure. {isBotMatch ? "the bot" : "your opponent"} banked{" "}
-          {oppScore.toLocaleString()} pts
+          {isBotMatch ? "The bot" : "Your opponent"} banked{" "}
+          {oppBanked.toLocaleString()}
+          <span className="font-normal normal-case text-cyan-200/70">
+            ({pct(oppBanked)} of {WIN_BANKED_SCORE.toLocaleString()} — their picks
+            now pay {ratePct(oppRate)})
+          </span>
         </p>
-        {myPicksToWin > 0 ? (
-          <p className="mt-1 text-sm text-cyan-100">
-            You need{" "}
-            <b className="text-white">
-              {(myScore < oppScore ? oppScore - myScore : 0).toLocaleString()} pts
-            </b>, roughly{" "}
-            <b className="text-white">
-              {myPicksToWin} balanced safe pick{myPicksToWin === 1 ? "" : "s"}
-            </b>, only ~
-            <b className="text-white">
-              {(survival(myPicksToWin) * 100).toFixed(0)}%
-            </b>{" "}
-            survival pushing blind. Risky paths close the gap faster.
-          </p>
-        ) : (
-          <p className="mt-1 text-sm text-cyan-100">
-            You're already ahead of their bank. Bank now to lock in the
-            win, or push higher for more.
-          </p>
-        )}
-        {myPicksToWin > 0 && (
-          <SurvivalBar pct={survival(myPicksToWin)} label="your survival odds" />
+        <p className="mt-1 text-sm text-cyan-100">
+          You're at <b className="text-white">{myBanked.toLocaleString()}</b> banked
+          ({pct(myBanked)}). You need{" "}
+          <b className="text-white">{myPicksToTarget}</b> more balanced safe
+          pick{myPicksToTarget === 1 ? "" : "s"} to reach{" "}
+          <b className="text-white">{WIN_BANKED_SCORE.toLocaleString()}</b> and bank
+          the win (only ~
+          <b className="text-white">{(survival(myPicksToTarget) * 100).toFixed(0)}%</b>{" "}
+          survival pushing blind). First to{" "}
+          <b className="text-white">{WIN_BANKED_SCORE.toLocaleString()}</b> banked
+          takes the pot.
+        </p>
+        {myPicksToTarget > 0 && (
+          <SurvivalBar pct={survival(myPicksToTarget)} label="your survival odds" />
         )}
       </div>
     );
   }
 
-  // ── Nobody banked yet: the live race ─────────────────────────────
-  const diff = myScore - oppScore;
-  const leader =
-    diff > 0 ? "You" : diff < 0 ? (isBotMatch ? "The bot" : "Your opponent") : null;
+  // ── Nobody banked yet: the live race to 1,000 ────────────────────
   return (
     <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white/75">
-      {diff === 0 ? (
-        <p>
-          <b className="text-white">Dead even</b> at{" "}
-          <b className="text-white">{myScore.toLocaleString()}</b> pts.
-          Whoever banks first sets the target. Climb safe or hold now to
-          apply the pressure.
-        </p>
-      ) : (
-        <p>
-          <b className="text-white">{leader}</b>{" "}
-          {leader === "You" ? "lead" : "leads"} by{" "}
-          <b className="text-white">{Math.abs(diff).toLocaleString()} pts</b>.
-          A bank now forces the other side to close that gap against your
-          hold.
-        </p>
-      )}
+      <p>
+        <b className="text-white">First to bank {WIN_BANKED_SCORE.toLocaleString()}</b>{" "}
+        wins — you're at <b className="text-white">{myScore.toLocaleString()}</b>{" "}
+        accumulated (~{myPicksToTarget} more balanced safe picks), {oppName} at{" "}
+        <b className="text-white">{oppScore.toLocaleString()}</b>. Bank to lock
+        points (picks after banking pay half, stacking), but only a{" "}
+        <b className="text-white">{WIN_BANKED_SCORE.toLocaleString()}</b> banked
+        total takes the pot — and if you bust, only what you banked survives.
+      </p>
     </div>
   );
 }
@@ -525,6 +686,8 @@ export default function LaneRushDuelMatchPage({ params }) {
   const [now, setNow] = useState(Date.now());
   const [selectedPath, setSelectedPath] = useState("balanced");
   const [flagMode, setFlagMode] = useState(false);
+  const [peekMode, setPeekMode] = useState(false);
+  const [lastPeek, setLastPeek] = useState(null); // { path, tile, result }
 
   const pickedRef = useRef(false);
 
@@ -633,9 +796,26 @@ export default function LaneRushDuelMatchPage({ params }) {
   const oppHeld = Boolean(match?.oppHeld);
   const myScore = Number(match?.myScore) || 0;
   const oppScore = Number(match?.oppScore) || 0;
+  // Soft bank: locked totals, bank counts, live pick rates, and
+  // climb status (busted/completed = ended; banked ≠ ended).
+  const myBanked = Number(match?.myBanked) || 0;
+  const oppBanked = Number(match?.oppBanked) || 0;
+  const myBanks = Number(match?.myBanks) || 0;
+  const oppBanks = Number(match?.oppBanks) || 0;
+  const myRate = Number(match?.myRate) ?? 1;
+  const oppRate = Number(match?.oppRate) ?? 1;
+  const myEnded = Boolean(match?.myEnded);
+  const oppEnded = Boolean(match?.oppEnded);
 
-  const myDone = myHeld || myLane >= MAX_LANES;
-  const oppDone = oppHeld || oppLane >= MAX_LANES;
+  // Deferred reveal: myPending = my pick is parked awaiting the
+  // opponent's answer; oppPending = the opponent locked in first.
+  const myPending = Boolean(match?.myPending);
+  const oppPending = Boolean(match?.oppPending);
+
+  // Banking does NOT end your climb — only a bust or completing the
+  // tower does. Banked players keep playing at a reduced rate.
+  const myDone = myEnded;
+  const oppDone = oppEnded;
 
   const isMyTurn = Boolean(match?.isViewerTurn);
   const canAct =
@@ -644,26 +824,86 @@ export default function LaneRushDuelMatchPage({ params }) {
     isMyTurn &&
     !myDone &&
     !acting &&
+    !myPending &&
     (match?.status === "p1_turn" || match?.status === "p2_turn");
 
-  // Path + picked tile per lane from the actions history.
+  // Path + picked tile per lane from the actions history. `round`
+  // (the 0-based row) is authoritative for current matches; pre-
+  // upgrade matches only have the legacy `lane` field.
   const myHistory = useMemo(() => {
     const pathByLane = {};
     const pickedByLane = {};
     const oppPath = {};
     const oppPicked = {};
     (match?.actions || []).forEach((a) => {
-      if (a.action !== "pick" || a.safe === false) return;
+      if (!a || a.safe !== true) return;
+      const key =
+        a.round !== undefined && a.round !== null ? a.round : a.lane;
+      if (a.action === "flag") {
+        // Correct flags also set the row's path chip (the reveal
+        // itself is handled by the deductions tracker).
+        if (a.seat === mySeat) pathByLane[key] = a.path;
+        else if (a.seat === oppSeat) oppPath[key] = a.path;
+        return;
+      }
+      // pick
       if (a.seat === mySeat) {
-        pathByLane[a.lane] = a.path;
-        pickedByLane[a.lane] = a.tile;
+        pathByLane[key] = a.path;
+        pickedByLane[key] = a.tile;
       } else if (a.seat === oppSeat) {
-        oppPath[a.lane] = a.path;
-        oppPicked[a.lane] = a.tile;
+        oppPath[key] = a.path;
+        oppPicked[key] = a.tile;
       }
     });
     return { myPath: pathByLane, myPicked: pickedByLane, oppPath, oppPicked };
   }, [match?.actions, mySeat, oppSeat]);
+
+  // Live deduction: how many bad-tile candidates remain per lane +
+  // path, given every safe pick (either player's), correct flags, and
+  // the memory rule. Same for both players — the tower is shared.
+  const deductions = useMemo(
+    () => computeDeductions(match?.actions || []),
+    [match?.actions],
+  );
+
+  // Flag budget: how many calls the VIEWER has left this match.
+  const myFlagsUsed = (match?.actions || []).filter(
+    (a) => a.seat === mySeat && a.action === "flag",
+  ).length;
+  const flagsLeft = Math.max(0, MAX_FLAGS - myFlagsUsed);
+
+  // Peek budget + the viewer's own (PRIVATE) peek results — the
+  // opponent's peeks arrive stripped of path/tile/result, so only
+  // ours are visible here.
+  const myPeeksUsed = (match?.actions || []).filter(
+    (a) => a.seat === mySeat && a.action === "peek",
+  ).length;
+  const peeksLeft = Math.max(0, MAX_PEEKS - myPeeksUsed);
+  const myPeeks = useMemo(() => {
+    const map = {};
+    (match?.actions || []).forEach((a) => {
+      if (a && a.action === "peek" && a.seat === mySeat && a.peekResult) {
+        map[a.round ?? a.lane] = {
+          path: a.path,
+          tile: a.tile,
+          result: a.peekResult,
+        };
+      }
+    });
+    return map;
+  }, [match?.actions, mySeat]);
+
+  // Surface the most recent peek result once the status poll carries
+  // it back (peeks are instant and keep our turn).
+  useEffect(() => {
+    const peeks = (match?.actions || []).filter(
+      (a) => a && a.action === "peek" && a.seat === mySeat && a.peekResult,
+    );
+    if (peeks.length > 0) {
+      const last = peeks[peeks.length - 1];
+      setLastPeek({ path: last.path, tile: last.tile, result: last.peekResult });
+    }
+  }, [match?.actions, mySeat]);
 
   // Bad tile per lane per path (only available after finish).
   const myTower = Array.isArray(match?.myTower) ? match.myTower : [];
@@ -676,7 +916,9 @@ export default function LaneRushDuelMatchPage({ params }) {
     ? Math.max(0, Math.ceil((deadlineMs - now) / 1000))
     : null;
 
-  const canHold = canAct && myLane >= 1 && !myHeld && myLane < MAX_LANES;
+  // Soft bank: you can bank ANY number of times (each bank halves
+  // your future pick rate), as long as your climb isn't over.
+  const canHold = canAct && myLane >= 1 && myLane < MAX_LANES;
 
   // ── Actions ──────────────────────────────────────────────────────
   const doAction = useCallback(
@@ -713,6 +955,14 @@ export default function LaneRushDuelMatchPage({ params }) {
           event: LANE_RUSH_DUEL_MATCH_UPDATED,
         });
         await fetchStatus();
+        if (action === "peek") {
+          // A peek is instant + private and keeps our turn — unlock
+          // the picker right away and drop out of peek mode so the
+          // next tap is a real pick (the result shows in the banner
+          // and as a private marker on the board).
+          pickedRef.current = false;
+          setPeekMode(false);
+        }
       } catch (e) {
         setError("Network error. Retrying…");
         pickedRef.current = false;
@@ -852,7 +1102,7 @@ export default function LaneRushDuelMatchPage({ params }) {
             <p className="mt-2 max-w-md text-sm text-white/60">
               {match?.status === "waiting"
                 ? "Your stake is escrowed. Share this link to invite a player of the same stake, or wait for matchmaking."
-                : "The first player is rolled at random. Score points by climbing, bank them with HOLD, or call the bad tile with FLAG."}
+                : "You both climb the SAME tower. Picks reveal together, so watch what the other player survives — every safe pick narrows the odds. Bank with HOLD, or call a bad tile with FLAG (2 per match)."}
             </p>
             <div className="mt-6 flex items-center gap-3">
               {match?.status === "waiting" && match?.player1Id === user?.id && (
@@ -888,13 +1138,19 @@ export default function LaneRushDuelMatchPage({ params }) {
                     : "border-rose-300/30 bg-rose-500/10 text-rose-100"
                 }`}
               >
-                {isMyTurn
-                  ? myHeld || myLane >= MAX_LANES
-                    ? "You banked your points. Waiting for the opponent."
-                    : "Your turn. Pick a path, pick a tile, or FLAG the bad one."
-                  : oppHeld || oppLane >= MAX_LANES
-                    ? "Opponent banked. You must out-score them or bust trying."
-                    : "Opponent's turn. They're climbing."}
+                {myEnded
+                  ? "Your climb is over. Waiting for the opponent to finish."
+                  : isMyTurn
+                    ? myPending
+                      ? "Your pick is locked in. Waiting for the opponent to answer this level…"
+                      : oppPending
+                        ? "Your opponent has locked in. Your move — pick, flag, or bank."
+                        : "Your turn. Pick a path, pick a tile, FLAG the bad one, or BANK — first to bank 1,000 wins."
+                    : myPending
+                      ? "Your pick is locked in. Waiting for your opponent…"
+                      : oppEnded
+                        ? "Their climb is over — you're climbing alone now."
+                        : "Opponent's turn. They're climbing."}
               </div>
             )}
 
@@ -915,7 +1171,13 @@ export default function LaneRushDuelMatchPage({ params }) {
                   <span className="text-xs text-white/40">pts</span>
                 </p>
                 <p className="text-[10px] text-white/50">
-                  {myHeld ? "Banked" : myLane >= MAX_LANES ? "Completed" : `Level ${myLane + 1}`}
+                  {myLane >= MAX_LANES
+                    ? "Completed"
+                    : myEnded
+                      ? "Busted"
+                      : myHeld
+                        ? `Banked ${myBanked.toLocaleString()} / ${WIN_BANKED_SCORE.toLocaleString()} · ${Math.round(myRate * 100)}% rate`
+                        : `Level ${myLane + 1} · ${myScore.toLocaleString()} / ${WIN_BANKED_SCORE.toLocaleString()} to win`}
                 </p>
               </div>
               <div
@@ -933,7 +1195,13 @@ export default function LaneRushDuelMatchPage({ params }) {
                   <span className="text-xs text-white/40">pts</span>
                 </p>
                 <p className="text-[10px] text-white/50">
-                  {oppHeld ? "Banked" : oppLane >= MAX_LANES ? "Completed" : `Level ${oppLane + 1}`}
+                  {oppLane >= MAX_LANES
+                    ? "Completed"
+                    : oppEnded
+                      ? "Busted"
+                      : oppHeld
+                        ? `Banked ${oppBanked.toLocaleString()} / ${WIN_BANKED_SCORE.toLocaleString()} · ${Math.round(oppRate * 100)}% rate`
+                        : `Level ${oppLane + 1} · ${oppScore.toLocaleString()} / ${WIN_BANKED_SCORE.toLocaleString()} to win`}
                 </p>
               </div>
             </div>
@@ -942,32 +1210,70 @@ export default function LaneRushDuelMatchPage({ params }) {
             <PressureStrip
               myScore={myScore}
               oppScore={oppScore}
+              myBanked={myBanked}
+              oppBanked={oppBanked}
               myHeld={myHeld}
               oppHeld={oppHeld}
+              myRate={myRate}
+              oppRate={oppRate}
               difficulty={match?.difficulty}
               isBotMatch={isBotMatch}
             />
 
-            {/* Risk-path picker — your turn only */}
-            {canAct && !flagMode && (
+            {/* Risk-path picker — your turn only, while your pick is
+                not already parked for this row */}
+            {canAct && (
               <PathPicker
                 lane={myLane}
                 selectedPath={selectedPath}
                 onSelect={setSelectedPath}
                 flagMode={flagMode}
                 onToggleFlag={() => setFlagMode((f) => !f)}
+                peekMode={peekMode}
+                onTogglePeek={() => setPeekMode((p) => !p)}
                 disabled={acting}
+                flagsLeft={flagsLeft}
+                peeksLeft={peeksLeft}
+                deductions={deductions}
               />
             )}
-            {canAct && flagMode && (
-              <PathPicker
-                lane={myLane}
-                selectedPath={selectedPath}
-                onSelect={setSelectedPath}
-                flagMode={flagMode}
-                onToggleFlag={() => setFlagMode((f) => !f)}
-                disabled={acting}
-              />
+
+            {/* Private peek result — only the viewer sees this. */}
+            {lastPeek && !finished && !myPending && (
+              <div
+                className={`rounded-2xl border px-4 py-2.5 text-xs ${
+                  lastPeek.result === "bad"
+                    ? "border-orange-300/50 bg-orange-500/15 text-orange-100"
+                    : "border-emerald-300/50 bg-emerald-500/15 text-emerald-100"
+                }`}
+              >
+                <b className="uppercase">
+                  Peek: {RISK_PATHS[lastPeek.path]?.label ?? lastPeek.path} @{" "}
+                  {lastPeek.tile + 1}
+                </b>{" "}
+                is the{" "}
+                {lastPeek.result === "bad" ? (
+                  <b>BAD tile — avoid it.</b>
+                ) : (
+                  <b>SAFE tile — it's a guaranteed pick.</b>
+                )}
+                <span className="ml-1 text-white/50">
+                  (only you saw this)
+                </span>
+              </div>
+            )}
+
+            {/* Deferred reveal: your pick is parked — nothing else to
+                do until the opponent answers this row. */}
+            {myPending && !finished && (
+              <div className="flex items-center gap-3 rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                <span className="inline-block h-2.5 w-2.5 animate-ping rounded-full bg-cyan-400" />
+                <span>
+                  <b className="font-black uppercase tracking-wider">Pick locked in.</b>{" "}
+                  Waiting for your opponent to climb this level — both picks reveal
+                  together.
+                </span>
+              </div>
             )}
 
             {/* Towers */}
@@ -982,12 +1288,17 @@ export default function LaneRushDuelMatchPage({ params }) {
                 clickable={canAct}
                 selectedPath={selectedPath}
                 flagMode={flagMode}
+                peekMode={peekMode}
+                myPeeks={myPeeks}
                 pathByLane={myHistory.myPath}
                 pickedTileByLane={myHistory.myPicked}
+                intelPathByLane={myHistory.oppPath}
+                intelPickedByLane={myHistory.oppPicked}
+                deductions={deductions}
                 tower={myTower}
                 difficulty={match?.difficulty}
                 finished={finished}
-                onPick={(t) => doAction(flagMode ? "flag" : "pick", t)}
+                onPick={(t) => doAction(peekMode ? "peek" : flagMode ? "flag" : "pick", t)}
               />
               <DuelTower
                 label={isBotMatch ? "Bot's tower" : "Opponent's tower"}
@@ -999,8 +1310,13 @@ export default function LaneRushDuelMatchPage({ params }) {
                 clickable={false}
                 selectedPath={null}
                 flagMode={false}
+                peekMode={false}
+                myPeeks={undefined}
                 pathByLane={myHistory.oppPath}
                 pickedTileByLane={myHistory.oppPicked}
+                intelPathByLane={myHistory.myPath}
+                intelPickedByLane={myHistory.myPicked}
+                deductions={deductions}
                 tower={oppTower}
                 difficulty={match?.difficulty}
                 finished={finished}
@@ -1008,29 +1324,55 @@ export default function LaneRushDuelMatchPage({ params }) {
               />
             </div>
 
-            {/* Hold button */}
+            {/* Bank button — soft bank: locks your score, you keep
+                climbing at a reduced rate (×0.5 per bank). */}
             {!finished && (
-              <motion.button
-                type="button"
-                disabled={!canHold}
-                animate={canHold ? { scale: [1, 1.02, 1] } : undefined}
-                transition={{ repeat: canHold ? Infinity : 0, duration: 1.1 }}
-                onClick={() => doAction("hold")}
-                className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black uppercase tracking-wider transition ${
-                  canHold
-                    ? "bg-gradient-to-r from-amber-400 to-yellow-400 text-black shadow-[0_0_25px_rgba(251,191,36,0.5)] hover:brightness-110"
-                    : "bg-white/10 text-white/40"
-                }`}
-              >
-                <IconLock size={16} />
-                {myLane === 0
-                  ? "Hold (climb at least one level first)"
-                  : myHeld
-                    ? "Already banked"
+              <div className="space-y-1">
+                <motion.button
+                  type="button"
+                  disabled={!canHold}
+                  animate={canHold ? { scale: [1, 1.02, 1] } : undefined}
+                  transition={{ repeat: canHold ? Infinity : 0, duration: 1.1 }}
+                  onClick={() => doAction("hold")}
+                  className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black uppercase tracking-wider transition ${
+                    canHold
+                      ? "bg-gradient-to-r from-amber-400 to-yellow-400 text-black shadow-[0_0_25px_rgba(251,191,36,0.5)] hover:brightness-110"
+                      : "bg-white/10 text-white/40"
+                  }`}
+                >
+                  <IconLock size={16} />
+                  {myLane === 0
+                    ? "Bank (climb at least one level first)"
                     : acting
                       ? "Banking…"
-                      : `Hold & Bank ${myScore.toLocaleString()} pts`}
-              </motion.button>
+                      : myHeld
+                        ? `Re-bank ${myScore.toLocaleString()} pts (${myScore >= WIN_BANKED_SCORE ? "WINS" : "toward " + WIN_BANKED_SCORE.toLocaleString()})`
+                        : `Bank ${myScore.toLocaleString()} pts (first to ${WIN_BANKED_SCORE.toLocaleString()})`}
+                </motion.button>
+                {myEnded ? (
+                  <p className="text-center text-[10px] text-white/40">
+                    Your climb is over{myHeld ? ` — you keep ${myBanked.toLocaleString()} pts` : " — you banked nothing"}.
+                  </p>
+                ) : myLane === 0 ? (
+                  <p className="text-center text-[10px] text-white/40">
+                    Bank once you've climbed at least one level — first to{" "}
+                    {WIN_BANKED_SCORE.toLocaleString()} banked wins.
+                  </p>
+                ) : (
+                  <p className="text-center text-[10px] text-white/40">
+                    Locks {myScore.toLocaleString()} pts as your banked score{" "}
+                    {myHeld ? "(re-banking raises it)" : ""}. First to{" "}
+                    <b className="text-amber-200">
+                      {WIN_BANKED_SCORE.toLocaleString()}
+                    </b>{" "}
+                    banked wins; picks after banking pay{" "}
+                    <b className="text-amber-200">
+                      {Math.round(Math.pow(0.5, myBanks + 1) * 100)}%
+                    </b>
+                    .
+                  </p>
+                )}
+              </div>
             )}
 
             {/* Result reveal */}
@@ -1070,13 +1412,16 @@ export default function LaneRushDuelMatchPage({ params }) {
                   </h2>
                   <p className="mt-1 text-sm text-white/70">
                     {wonMatch
-                      ? `You take ${Number(match.prizePaid).toFixed(2)} tokens (stake back + 90% of the loser's).`
+                      ? `You took the race to ${WIN_BANKED_SCORE.toLocaleString()} banked — ${Number(match.prizePaid).toFixed(2)} tokens (stake back + 90% of the loser's).`
                       : drawMatch
-                        ? "Even points. Full refund, no house fee."
-                        : "Your tower busted before the opponent's."}
+                        ? "Even scores. Full refund, no house fee."
+                        : "You busted before banking 1,000 — only what you banked survived."}
                   </p>
                   <p className="mt-2 text-lg font-black text-white">
-                    {myScore.toLocaleString()} pts vs {oppScore.toLocaleString()} pts
+                    {myScore.toLocaleString()} pts vs {oppScore.toLocaleString()} pts{" "}
+                    <span className="text-xs font-normal text-white/50">
+                      (banked {myBanked.toLocaleString()} vs {oppBanked.toLocaleString()})
+                    </span>
                   </p>
                   {wonMatch && (
                     <p className="mt-1 text-2xl font-black text-emerald-200">
@@ -1105,20 +1450,14 @@ export default function LaneRushDuelMatchPage({ params }) {
                         </span>
                       </p>
                       <p>
-                        Your client seed:{" "}
+                        Client seed (shared tower):{" "}
                         <span className="font-mono text-[10px] break-all text-white/90">
-                          {isPlayer1 ? match.p1ClientSeed : match.p2ClientSeed}
-                        </span>
-                      </p>
-                      <p>
-                        Their client seed:{" "}
-                        <span className="font-mono text-[10px] break-all text-white/90">
-                          {isPlayer1 ? match.p2ClientSeed : match.p1ClientSeed}
+                          {match.p1ClientSeed}
                         </span>
                       </p>
                     </div>
                     <p className="mt-2 text-white/50">
-                      Bad tile per path per lane (your tower):
+                      Bad tile per path per lane (the shared tower):
                     </p>
                     <div className="mt-1 grid grid-cols-1 gap-0.5 font-mono text-[10px] text-rose-300/90">
                       {myTower.map((entry, i) => (
@@ -1130,9 +1469,10 @@ export default function LaneRushDuelMatchPage({ params }) {
                       ))}
                     </div>
                     <p className="mt-2 text-white/50">
-                      Note: on every path, each lane's bad tile never repeats
-                      the previous lane's position. The memory rule you can
-                      verify here.
+                      Note: on the safe/balanced paths, each lane's bad tile
+                      never repeats the previous lane's position; the risky
+                      path instead never repeats the previous lane's SAFE
+                      position. Both constraints are verifiable here.
                     </p>
                   </div>
 

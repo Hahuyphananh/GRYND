@@ -9,20 +9,27 @@
 //      turn OR resolve the match.
 //
 // Visibility model:
-//   • During active play the per-player towers (bad tile positions)
-//     and the server seed are HIDDEN (null). Only the server seed
-//     HASH is visible, so each player can verify fairness after the
-//     match without seeing the layout early.
-//   • The `actions` array is fully visible to both seats mid-match —
-//     it only ever contains safe picks + holds (a bust is terminal),
-//     which give away no bad-tile positions.
-//   • Once `finished`: full reveal — both towers, the server seed,
-//     and the full action history.
+//   • Both players climb the SAME shared tower (bad tile per lane per
+//     risk path). During active play the tower and the server seed
+//     are HIDDEN (null) — only the server seed HASH is visible, so
+//     each player can verify fairness after the match without seeing
+//     the layout early.
+//   • DEFERRED REVEAL: an action parks as `pending` until the
+//     opponent answers the same row. Pending entries are scrubbed to
+//     `{ action: "pending", seat, round }` — neither side learns the
+//     other's current-row pick (not even its type) before acting.
+//     `myPending` / `oppPending` tell the client who has locked in.
+//   • Once `finished`: full reveal — the shared tower, the server
+//     seed, and the full action history.
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { fetchMatchWithAutoResolve } from "../../../../../lib/lane-rush-duel/serverStore";
 import {
+  bankRateForSeat,
+  bankedScoreOf,
+  banksUsedBySeat,
+  climbEnded,
   RISK_PATHS,
   scoreFromActions,
 } from "../../../../../lib/lane-rush-duel/constants";
@@ -44,6 +51,23 @@ function normaliseMatchForViewer(match, viewerUserId) {
   const actions = Array.isArray(match.actions) ? match.actions : [];
   const myScore = scoreFromActions(actions, seat);
   const oppScore = scoreFromActions(actions, opponentSeat);
+  // Soft bank: locked totals, bank counts, live rates, and climb
+  // status (busted/completed) for both seats.
+  const myBanked = bankedScoreOf(match, seat);
+  const oppBanked = bankedScoreOf(match, opponentSeat);
+  const myBanks = banksUsedBySeat(match, seat);
+  const oppBanks = banksUsedBySeat(match, opponentSeat);
+  const myRate = bankRateForSeat(match, seat);
+  const oppRate = bankRateForSeat(match, opponentSeat);
+  const myEnded = climbEnded(match, seat);
+  const oppEnded = climbEnded(match, opponentSeat);
+  // Who has locked in an (unresolved) action for the current row.
+  const myPending = actions.some(
+    (a) => a && a.pending === true && a.seat === seat,
+  );
+  const oppPending = actions.some(
+    (a) => a && a.pending === true && a.seat === opponentSeat,
+  );
 
   return {
     id: match.id,
@@ -59,12 +83,22 @@ function normaliseMatchForViewer(match, viewerUserId) {
     roundTimerSeconds: match.roundTimerSeconds,
     viewerIsPlayer1,
     isViewerTurn: match.currentTurnUserId === viewerUserId,
+    myPending,
+    oppPending,
     myLane,
     myHeld,
     myScore,
+    myBanked,
+    myBanks,
+    myRate,
+    myEnded,
     oppLane,
     oppHeld,
     oppScore,
+    oppBanked,
+    oppBanks,
+    oppRate,
+    oppEnded,
     // Risk-path config so the client renders the path picker with
     // the exact same odds/points the server enforces.
     riskPaths: RISK_PATHS,

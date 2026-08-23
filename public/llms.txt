@@ -27,7 +27,7 @@ GRYND covers dozens of arcade and table games playable solo, against AI, or agai
 - [Hex Duel](https://grynd.mywire.org/games/hex-duel): Turn-based board duel, solo or PvP
 - [Uno](https://grynd.mywire.org/games/uno): Uno against AI or online players
 - [Farkle](https://grynd.mywire.org/games/farkle): Classic dice-combination scoring game
-- [Lane Rush Duel](https://grynd.mywire.org/games/lane-runner): PvP tower-climb duel. Pick safe tiles to climb, hold to bank your score
+- [Lane Rush Duel](https://grynd.mywire.org/games/lane-runner): PvP tower-climb duel on one shared tower — picks reveal together, so every safe pick by either player narrows the odds; first to BANK 1,000 points wins (banking locks your score and never ends your climb, so the race continues at reduced rates); 2 private peeks + 2 flags per match give each player a scarce hidden-information edge
 - [Odds](https://grynd.mywire.org/games/odds): Odds-style betting games
 
 ## Platform

@@ -1390,12 +1390,14 @@ export const oddsGames = pgTable(
 );
 
 // LANE RUNNER PvP MATCHES — "Lane Rush Duel"
-// Server-authoritative two-player race up independent provably-fair
-// towers. Each player climbs their own 8-lane tower (1 hidden bad
-// tile per lane, lane width by difficulty). Alternate turns picking
-// a tile in YOUR current lane; safe advances, bad busts. HOLD
-// freezes your lane (flag-to-win) and forces the opponent to climb
-// past it or bust. 20s pick clock, AFK auto-pick (may bust).
+// Server-authoritative two-player race up ONE shared provably-fair
+// tower (bad tile per lane per risk path, lane width by difficulty).
+// Alternate turns picking a tile in your current lane; safe
+// advances, bad busts. DEFERRED REVEAL: picks park until the
+// opponent answers the same row, then both reveal together — nobody
+// can mirror the other's current-row pick. HOLD freezes your score
+// (flag-to-win) and forces the opponent to climb past it or bust.
+// 20s pick clock, AFK auto-pick (may bust).
 // Status flow: waiting → ready → p1_turn → p2_turn → … → finished
 export const laneRunnerPvpStatusEnum = pgEnum("lane_runner_pvp_status", [
   "waiting",
@@ -2416,19 +2418,33 @@ export const memoryGridRoundsRelations = relations(
 );
 
 // LANE RUSH DUEL — server-authoritative two-player "Lane Rush Duel".
-// Each player races their OWN provably-fair tower (same difficulty),
-// alternating turns. On your turn you pick one tile in your current
-// lane (safe → advance, bad → bust and lose) or you HOLD (bank your
-// current lane as your final score — the flag-to-win chicken move).
+// Both players race the SAME shared provably-fair tower (bad tile
+// per lane per risk path), alternating turns. On your turn you pick
+// one tile in your current lane (safe → advance, bad → bust and
+// lose) or you BANK (HOLD) — locks your accumulated points as your
+// SAFE score and you KEEP climbing; every pick after your Nth bank
+// pays × 0.5^N, and only banked points survive a bust. Picks park
+// as pending and reveal together once both players have acted on
+// the row (deferred reveal), so neither side can copy the other's
+// current-row pick. Each player also gets 2 private PEEKS per match
+// (learn if a tile on your current lane is safe or bad, without
+// spending your turn) and 2 FLAGS (correct flag claims the row,
+// wrong flag busts you) — all budget counts are derived from the
+// action history, so no extra columns are needed.
 //
 // Match flow:
 //   waiting → ready → p1_turn / p2_turn → finished
 //   (waiting/ready/active → cancelled for AFK cancels)
 //
-// Resolution:
-//   * Bust (picked the bad tile)          → other player wins
+// Resolution (the 1,000-banked race):
+//   * WIN: first player to BANK WIN_BANKED_SCORE (1,000) points wins
+//     instantly — banking never settles the match, so the race
+//     continues at reduced rates until someone locks 1,000
+//   * Bust → climb ends; keeps only the banked total (0 if never
+//     banked) — unbanked points are lost
 //   * Completed all 8 lanes               → completer wins
-//   * Both players held                   → higher lane wins; equal → DRAW
+//   * Fallback when both climbs are over (nobody banked 1,000) →
+//     higher final wins; equal → DRAW
 //
 // Payout (90/10 split, mirrors mines-pvp / roulette-pvp):
 //   Winner: own stake back + 90% of loser's stake (1.9× net)
@@ -2436,10 +2452,11 @@ export const memoryGridRoundsRelations = relations(
 //   House:   10% rake on loser's stake only
 //   Draw:    both refunded, no rake
 //
-// Provably fair: each player's tower (the bad tile per lane) is
-// derived via SHA-256 from a SHARED server seed + that player's own
-// client seed + the match id as nonce. The server seed hash is
-// shown pre-match and the seed revealed post-match.
+// Provably fair: the ONE shared tower (the bad tile per lane) is
+// derived via SHA-256 from a SHARED server seed + the host's client
+// seed + the match id as nonce, and copied to both seats. The
+// server seed hash is shown pre-match and the seed revealed
+// post-match.
 export const laneRushDuelMatches = pgTable(
   "lane_rush_duel_matches",
   {
