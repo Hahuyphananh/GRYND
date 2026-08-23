@@ -14,7 +14,7 @@ import Img7 from "../../images/chess game div.webp";
 import Img10 from "../../images/Keno image div.webp";
 import Img11 from "../../images/uno game div.webp";
 import Img12 from "../../images/rock paper scissors div casino.webp";
-import Img13 from "../../images/dice.svg";
+import ImgDiceDuel from "../../images/dice-duel div image.jpg";
 import Img14 from "../../images/connect-4.svg";
 import Img15 from "../../images/towers.webp";
 import Img17 from "../../images/pool.svg";
@@ -167,7 +167,7 @@ function MainComponent() {
       name: "Dice Duel Arena",
       href: "/casino/dice-duel",
       leaderboardKey: "dice-duel",
-      image: Img13,
+      image: ImgDiceDuel,
       descriptionKey: "games.dice_duel_desc",
     },
     {
@@ -175,6 +175,8 @@ function MainComponent() {
       href: "/casino/connect-four",
       leaderboardKey: "connect-four",
       image: Img14,
+      // Bigger board + gentler hover zoom so the full board stays visible.
+      imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.connect_four_desc",
     },
 
