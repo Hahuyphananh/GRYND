@@ -154,7 +154,7 @@ export default function ArenaLobby({
           <IconRocket size={30} className="mb-1.5 mr-2 inline" /> Crash Arena
         </h1>
         <p className="mt-2 text-sm text-white/60">
-          Create a table or join an open one — survive the crash, claim the pot.
+          Create a table or join an open one. Survive the crash, claim the pot.
         </p>
         {/* Rules popup button */}
         <button

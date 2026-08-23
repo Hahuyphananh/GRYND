@@ -118,30 +118,112 @@ export async function GET(req: NextRequest) {
       connectFourRows,
       memoryGridRows,
     ] = await Promise.all([
-      db.select().from(rouletteGames).where(eq(rouletteGames.userId, uid)).limit(fetchLimit),
-      db.select().from(blackjackGames).where(eq(blackjackGames.userId, uid)).limit(fetchLimit),
-      db.select().from(minesGames).where(eq(minesGames.userId, uid)).limit(fetchLimit),
-      db.select().from(plinkoGames).where(eq(plinkoGames.userId, clerkId)).limit(fetchLimit),
-      db.select().from(crashGames).where(eq(crashGames.userId, uid)).limit(fetchLimit),
-      db.select().from(rpsGames).where(eq(rpsGames.userId, clerkId)).limit(fetchLimit),
-      db.select().from(unoGames).where(eq(unoGames.userId, uid)).limit(fetchLimit),
-      db.select().from(chessGames).where(
+      // Column projection: this is a PUBLIC endpoint (viewable by any user for
+      // any clerkId), so only the fields the formatters read leave the DB.
+      // Full-row selects shipped every table's deck/hand/seed/state columns
+      // to unauthenticated visitors. fetchLimit already caps pagination at 100.
+      db.select({
+        betAmount: rouletteGames.betAmount,
+        payout: rouletteGames.payout,
+        result: rouletteGames.result,
+        createdAt: rouletteGames.createdAt,
+      }).from(rouletteGames).where(eq(rouletteGames.userId, uid)).limit(fetchLimit),
+      db.select({
+        betAmount: blackjackGames.betAmount,
+        payout: blackjackGames.payout,
+        result: blackjackGames.result,
+        createdAt: blackjackGames.createdAt,
+      }).from(blackjackGames).where(eq(blackjackGames.userId, uid)).limit(fetchLimit),
+      db.select({
+        betAmount: minesGames.betAmount,
+        payout: minesGames.payout,
+        result: minesGames.result,
+        createdAt: minesGames.createdAt,
+      }).from(minesGames).where(eq(minesGames.userId, uid)).limit(fetchLimit),
+      db.select({
+        betAmount: plinkoGames.betAmount,
+        payout: plinkoGames.payout,
+        result: plinkoGames.result,
+        createdAt: plinkoGames.createdAt,
+      }).from(plinkoGames).where(eq(plinkoGames.userId, clerkId)).limit(fetchLimit),
+      db.select({
+        betAmount: crashGames.betAmount,
+        payout: crashGames.payout,
+        result: crashGames.result,
+        createdAt: crashGames.createdAt,
+      }).from(crashGames).where(eq(crashGames.userId, uid)).limit(fetchLimit),
+      db.select({
+        betAmount: rpsGames.betAmount,
+        payout: rpsGames.payout,
+        result: rpsGames.result,
+        createdAt: rpsGames.createdAt,
+      }).from(rpsGames).where(eq(rpsGames.userId, clerkId)).limit(fetchLimit),
+      db.select({
+        betAmount: unoGames.betAmount,
+        payout: unoGames.payout,
+        result: unoGames.result,
+        createdAt: unoGames.createdAt,
+      }).from(unoGames).where(eq(unoGames.userId, uid)).limit(fetchLimit),
+      db.select({
+        betAmount: chessGames.betAmount,
+        payout: chessGames.payout,
+        result: chessGames.result,
+        createdAt: chessGames.createdAt,
+      }).from(chessGames).where(
         or(eq(chessGames.playerWhiteId, clerkId), eq(chessGames.playerBlackId, clerkId))
       ).limit(fetchLimit),
-      db.select().from(kenoPvpMatches).where(
+      db.select({
+        status: kenoPvpMatches.status,
+        result: kenoPvpMatches.result,
+        winnerId: kenoPvpMatches.winnerId,
+        stakeAmount: kenoPvpMatches.stakeAmount,
+        prizePaid: kenoPvpMatches.prizePaid,
+        endedAt: kenoPvpMatches.endedAt,
+        createdAt: kenoPvpMatches.createdAt,
+      }).from(kenoPvpMatches).where(
         or(eq(kenoPvpMatches.player1Id, clerkId), eq(kenoPvpMatches.player2Id, clerkId))
       ).limit(fetchLimit),
-      db.select().from(keno_games).where(eq(keno_games.user_id, uid)).limit(fetchLimit),
-      db.select().from(diceMatches).where(
+      db.select({
+        bet_amount: keno_games.bet_amount,
+        payout: keno_games.payout,
+        created_at: keno_games.created_at,
+      }).from(keno_games).where(eq(keno_games.user_id, uid)).limit(fetchLimit),
+      db.select({
+        winnerId: diceMatches.winnerId,
+        wager: diceMatches.wager,
+        prizePaid: diceMatches.prizePaid,
+        endedAt: diceMatches.endedAt,
+        createdAt: diceMatches.createdAt,
+      }).from(diceMatches).where(
         or(eq(diceMatches.player1Id, clerkId), eq(diceMatches.player2Id, clerkId))
       ).limit(fetchLimit),
-      db.select().from(poolMatches).where(
+      db.select({
+        winnerId: poolMatches.winnerId,
+        wager: poolMatches.wager,
+        prizePaid: poolMatches.prizePaid,
+        endedAt: poolMatches.endedAt,
+        createdAt: poolMatches.createdAt,
+      }).from(poolMatches).where(
         or(eq(poolMatches.player1Id, clerkId), eq(poolMatches.player2Id, clerkId))
       ).limit(fetchLimit),
-      db.select().from(connectFourGames).where(
+      db.select({
+        winnerClerkId: connectFourGames.winnerClerkId,
+        betAmount: connectFourGames.betAmount,
+        payout: connectFourGames.payout,
+        endedAt: connectFourGames.endedAt,
+        createdAt: connectFourGames.createdAt,
+      }).from(connectFourGames).where(
         or(eq(connectFourGames.hostClerkId, clerkId), eq(connectFourGames.guestClerkId, clerkId))
       ).limit(fetchLimit),
-      db.select().from(memoryGridMatches).where(
+      db.select({
+        status: memoryGridMatches.status,
+        result: memoryGridMatches.result,
+        winnerId: memoryGridMatches.winnerId,
+        stakeAmount: memoryGridMatches.stakeAmount,
+        prizePaid: memoryGridMatches.prizePaid,
+        endedAt: memoryGridMatches.endedAt,
+        createdAt: memoryGridMatches.createdAt,
+      }).from(memoryGridMatches).where(
         or(eq(memoryGridMatches.player1Id, clerkId), eq(memoryGridMatches.player2Id, clerkId))
       ).limit(fetchLimit),
     ]);

@@ -238,7 +238,7 @@ function WagerModal({
         </div>
         {showRules && (
           <RulesModal
-            title="How to Play — Territory Conquest"
+            title="How to Play: Territory Conquest"
             sections={[
               {
                 heading: "Set up",
@@ -248,7 +248,7 @@ function WagerModal({
                 heading: "Attack",
                 body: (
                   <>
-                    Select Attack (1 AP) to conquer adjacent enemy tiles —
+                    Select Attack (1 AP) to conquer adjacent enemy tiles.
                     you need <b>1 more troop</b> than the defender to
                     conquer.
                   </>
@@ -341,7 +341,7 @@ function WagerModal({
               ))}
             </div>
             {!canAfford && wager > 0 && (
-              <p className="text-[10px] text-red-400 mt-2 font-medium">Insufficient balance — you need {wager} tokens</p>
+              <p className="text-[10px] text-red-400 mt-2 font-medium">Insufficient balance. You need {wager} tokens</p>
             )}
           </div>
         ))}
@@ -836,9 +836,9 @@ function ConnectionBanner({ status, onReconnect }: { status: ConnectionStatus; o
     >
       <span className="inline-block w-2.5 h-2.5 rounded-full bg-white animate-ping" />
       {isOpponent ? (
-        <><IconAlertTriangle size={16} /> Opponent disconnected — you win!</>
+        <><IconAlertTriangle size={16} /> Opponent disconnected. You win!</>
       ) : isOpponentReconnecting ? (
-        <><IconHourglass size={16} /> Opponent disconnected — holding the match, waiting to reconnect…</>
+        <><IconHourglass size={16} /> Opponent disconnected. Holding the match, waiting to reconnect…</>
       ) : (
         <>
           <IconAlertTriangle size={16} /> Connection lost
@@ -937,7 +937,7 @@ function StatusBar({
     message = "AI is thinking...";
     subMessage = "Choosing the best strategy";
   } else if (isAITurn) {
-    message = "AI's turn — auto-playing";
+    message = "AI's turn. Auto-playing";
     subMessage = "Attack (1 AP) or displace troops (1 AP)";
   } else if (currentAP < ATTACK_COST) {
     message = "No AP remaining";
@@ -1327,7 +1327,7 @@ export default function HexDuelPage() {
       }
       startedAtRef.current = new Date().toISOString();
       posthog?.capture("hex_duel_game_started", { mode: "real", bet_amount: amount, difficulty: aiDifficulty });
-    } catch { setWagerError("Network error — please try again"); }
+    } catch { setWagerError("Network error. Please try again"); }
     finally { setWagerLoading(false); }
   }, [aiDifficulty]);
 
@@ -1355,7 +1355,7 @@ export default function HexDuelPage() {
       }
       fetchMultiplayerGames();
     } catch {
-      setWagerError("Network error — please try again");
+      setWagerError("Network error. Please try again");
     }
   }, [fetchMultiplayerGames]);
 
@@ -1383,7 +1383,7 @@ export default function HexDuelPage() {
         multiplayerJoinedRef.current = false;
       }
     } catch {
-      setWagerError("Network error — please try again");
+      setWagerError("Network error. Please try again");
     }
   }, [fetchMultiplayerGames]);
 
@@ -2606,12 +2606,12 @@ export default function HexDuelPage() {
         return "Click an enemy tile to attack";
       }
       if (pendingActionPhase === "selectSource") {
-        return `Attack (${pendingTarget!.x},${pendingTarget!.y}) — click source tile`;
+        return `Attack (${pendingTarget!.x},${pendingTarget!.y}). Click source tile`;
       }
       if (pendingActionPhase === "inputTroops" && pendingSource && pendingTarget) {
         const sourceKey = `${pendingSource.x},${pendingSource.y}`;
         const maxSend = (tileTroops[sourceKey] ?? 1) - 1;
-        return `Attack from (${pendingSource.x},${pendingSource.y}) → (${pendingTarget.x},${pendingTarget.y}) — send ${pendingTroopCount} of ${maxSend} troops`;
+        return `Attack from (${pendingSource.x},${pendingSource.y}) → (${pendingTarget.x},${pendingTarget.y}). Send ${pendingTroopCount} of ${maxSend} troops`;
       }
     }
     if (selectedAction === "displace") {
@@ -2619,7 +2619,7 @@ export default function HexDuelPage() {
         return "Click a friendly tile to reinforce";
       }
       if (pendingActionPhase === "selectSource") {
-        return `Reinforce (${pendingTarget!.x},${pendingTarget!.y}) — click source with spare troops`;
+        return `Reinforce (${pendingTarget!.x},${pendingTarget!.y}). Click source with spare troops`;
       }
       if (pendingActionPhase === "inputTroops" && pendingSource && pendingTarget) {
         const sourceKey = `${pendingSource.x},${pendingSource.y}`;
@@ -2778,7 +2778,7 @@ export default function HexDuelPage() {
                     Waiting for Opponent
                   </h2>
                   <p className="text-sm text-slate-400 mb-4">
-                    Game #{multiplayerGameId} — {isPlayer1 ? "Player 1 (Host)" : "Player 2"}
+                    Game #{multiplayerGameId}: {isPlayer1 ? "Player 1 (Host)" : "Player 2"}
                   </p>
                   <p className="text-xs text-slate-500">
                     Another player needs to join before the match starts...
@@ -2844,7 +2844,7 @@ export default function HexDuelPage() {
               </div>
             )}
             {showGame && gameMode === "for-fun" && (
-              <p className="mt-2 flex items-center justify-center gap-1.5 text-[10px] font-medium text-purple-400/70"><IconDeviceGamepad2 size={12} /> Play-for-Fun mode — no real tokens</p>
+              <p className="mt-2 flex items-center justify-center gap-1.5 text-[10px] font-medium text-purple-400/70"><IconDeviceGamepad2 size={12} /> Play-for-Fun mode. No real tokens</p>
             )}
 
             {/* History link */}
@@ -3138,7 +3138,7 @@ export default function HexDuelPage() {
 
           {/* ── How to play ───────────────────────────────────────── */}
           <div className="mt-8 rounded-xl border border-white/[0.04] bg-[#050a18] p-4 text-center">
-            <p className="text-[10px] text-slate-600 uppercase tracking-[0.25em] mb-2">▦ How to Play — Territory Conquest</p>
+            <p className="text-[10px] text-slate-600 uppercase tracking-[0.25em] mb-2">▦ How to Play: Territory Conquest</p>
             <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-500">
               <span className="flex items-center gap-1"><span className="text-cyan-400">1.</span> Start with 5 troops on your <IconStar size={10} className="inline text-yellow-400" /> capital</span>
               <span className="text-slate-700">→</span>

@@ -195,6 +195,12 @@ const gameStatsUnion = TRACKED_GAMES.map((game) => game.selectSql).join(
   " UNION ALL ",
 );
 
+// Cap the leaderboards so the response stays bounded — the full table scans
+// are inherent to an all-time leaderboard, but shipping every player who has
+// ever played in both `users` and every per-game list bloats the JSON without
+// bound. Top 100 per leaderboard covers any realistic UI.
+const LEADERBOARD_LIMIT = 100;
+
 export async function GET() {
   try {
     const query = sql.raw(`
@@ -271,6 +277,7 @@ export async function GET() {
         };
       })
       .sort((a, b) => b.netGames - a.netGames)
+      .slice(0, LEADERBOARD_LIMIT)
       .map((user, index) => ({
         rank: index + 1,
         ...user,
@@ -315,6 +322,7 @@ export async function GET() {
             if (b.netGames !== a.netGames) return b.netGames - a.netGames;
             return b.totalProfit - a.totalProfit;
           })
+          .slice(0, LEADERBOARD_LIMIT)
           .map((player, index) => ({
             rank: index + 1,
             ...player,

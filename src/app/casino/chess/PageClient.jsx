@@ -217,7 +217,7 @@ export default function ChessLobby() {
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-center text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
       <h1 className="mb-4 mt-4 text-3xl font-bold text-[#FFD700] drop-shadow-[0_0_12px_rgba(255,215,0,0.55)] sm:text-4xl">
-        <span className="inline-flex items-center gap-2"><IconChess size={28} /> Chess Arena — Challenge Players</span>
+        <span className="inline-flex items-center gap-2"><IconChess size={28} /> Chess Arena: Challenge Players</span>
       </h1>
 
       {/* How to Play — rules modal at the top of the lobby */}
@@ -237,7 +237,7 @@ export default function ChessLobby() {
               heading: "Checkmate to win",
               body: (
                 <>
-                  Standard chess rules — checkmate your opponent&apos;s
+                  Standard chess rules. Checkmate your opponent&apos;s
                   king to win the match.
                 </>
               ),
@@ -340,7 +340,7 @@ export default function ChessLobby() {
             Play vs AI
           </h2>
           <p className="text-white/80 mb-4">
-            Challenge the computer for free — choose your difficulty.
+            Challenge the computer for free. Choose your difficulty.
           </p>
           <button
             onClick={() => setShowBetPopup(true)}
@@ -411,7 +411,7 @@ export default function ChessLobby() {
               Choose AI Difficulty
             </h2>
             <p className="text-white/60 text-xs text-center mb-4">
-              Free to play — no stakes!
+              Free to play, no stakes!
             </p>
 
             {/* Color selection */}
@@ -469,7 +469,7 @@ export default function ChessLobby() {
                 >
                   <span className="font-bold">{diff.label}</span>
                   <span className={`ml-2 text-xs ${aiDifficulty === diff.level ? "text-[#030817]/70" : "text-white/40"}`}>
-                    — {diff.desc}
+                    · {diff.desc}
                   </span>
                 </button>
               ))}

@@ -30,4 +30,4 @@ export function isMissingCrashArenaColumn(err: unknown): boolean {
 
 /** Human-readable hint for the migration the operator needs to run. */
 export const CRASH_ARENA_SCHEMA_HINT =
-  "Crash Arena database schema is out of date — please apply migration 0057_crash_arena_host.sql (adds crash_arena_tables.host_id).";
+  "Crash Arena database schema is out of date. Please apply migration 0057_crash_arena_host.sql (adds crash_arena_tables.host_id).";

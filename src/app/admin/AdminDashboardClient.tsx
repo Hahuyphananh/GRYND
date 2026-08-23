@@ -14,6 +14,7 @@ import {
   IconX,
   IconRefresh,
   IconMail,
+  IconStar,
 } from "@tabler/icons-react";
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -122,13 +123,17 @@ export default function AdminDashboardClient({
   const [actionResult, setActionResult] = useState<string | null>(null);
   const [flushScope, setFlushScope] = useState<FlushScope>("all");
 
+  // ── Maintenance-mode state ─────────────────────────────────────
+  const [maintenanceMode, setMaintenanceMode] = useState<boolean | null>(null);
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+
   // ── User management state ──────────────────────────────────────
   const [userSearch, setUserSearch] = useState("");
   const [searchedUsers, setSearchedUsers] = useState<AdminUser[]>([]);
   const [userSearchLoading, setUserSearchLoading] = useState(false);
   const [userToggleLoading, setUserToggleLoading] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "cache" | "users" | "audit" | "reports" | "messages"
+    "cache" | "users" | "audit" | "reports" | "messages" | "reviews"
   >("cache");
   const [adminVerified, setAdminVerified] = useState(initialAdminVerified);
 
@@ -148,6 +153,24 @@ export default function AdminDashboardClient({
   const [replyTarget, setReplyTarget] = useState<ContactMessage | null>(null);
   const [replyText, setReplyText] = useState("");
   const [replySending, setReplySending] = useState(false);
+
+  // ── Reviews state ──────────────────────────────────────────────
+  interface AdminReview {
+    id: number;
+    userId: number;
+    rating: number;
+    title: string | null;
+    body: string | null;
+    game: string | null;
+    status: string;
+    createdAt: string;
+    username: string;
+    email: string;
+  }
+  const [reviews, setReviews] = useState<AdminReview[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewFilter, setReviewFilter] = useState("pending");
+  const [reviewActionLoading, setReviewActionLoading] = useState<number | null>(null);
 
   // ── Token reset state ──────────────────────────────────────────
   const [tokenResetTarget, setTokenResetTarget] = useState<AdminUser | null>(null);
@@ -210,6 +233,41 @@ export default function AdminDashboardClient({
   useEffect(() => {
     if (isSignedIn && adminVerified) fetchStats();
   }, [isSignedIn, adminVerified, fetchStats]);
+
+  // Load current maintenance state
+  useEffect(() => {
+    if (!isSignedIn || !adminVerified) return;
+    fetch("/api/admin/maintenance")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) setMaintenanceMode(Boolean(data.maintenanceMode));
+      })
+      .catch(() => {});
+  }, [isSignedIn, adminVerified]);
+
+  // Toggle maintenance mode (runtime kill switch)
+  const handleToggleMaintenance = async () => {
+    setMaintenanceLoading(true);
+    setActionResult(null);
+    try {
+      const res = await fetch("/api/admin/maintenance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !maintenanceMode }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMaintenanceMode(Boolean(data.maintenanceMode));
+        setActionResult(data.message);
+      } else {
+        setActionResult("Error: " + data.error);
+      }
+    } catch {
+      setActionResult("Network error toggling maintenance");
+    } finally {
+      setMaintenanceLoading(false);
+    }
+  };
 
   // Flush cache
   const handleFlush = async () => {
@@ -438,6 +496,56 @@ export default function AdminDashboardClient({
       fetchMessages();
     }
   }, [activeTab, messages.length, fetchMessages]);
+
+  // ── Fetch reviews (moderation queue) ───────────────────────────
+  const fetchReviews = useCallback(async () => {
+    setReviewsLoading(true);
+    try {
+      const res = await fetch("/api/admin/reviews?status=" + reviewFilter);
+      const data = await res.json();
+      if (data.success) {
+        setReviews(data.reviews || []);
+      }
+    } catch {
+      setActionResult("Network error fetching reviews");
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, [reviewFilter]);
+
+  useEffect(() => {
+    if (activeTab === "reviews") fetchReviews();
+  }, [activeTab, fetchReviews]);
+
+  // ── Moderate review handler ────────────────────────────────────
+  async function handleModerateReview(reviewId: number, action: string) {
+    setReviewActionLoading(reviewId);
+    setActionResult(null);
+    try {
+      const res = await fetch("/api/admin/reviews", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          action === "delete" ? { id: reviewId, action } : { id: reviewId, status: action },
+        ),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionResult(
+          action === "delete"
+            ? "Review " + reviewId + " deleted."
+            : "Review " + reviewId + " " + action + ".",
+        );
+        setReviews((prev) => prev.filter((r) => r.id !== reviewId));
+      } else {
+        setActionResult("Error: " + data.error);
+      }
+    } catch {
+      setActionResult("Network error moderating review");
+    } finally {
+      setReviewActionLoading(null);
+    }
+  }
 
   // ── Mark message resolved / new handler ────────────────────────
   async function handleSetMessageStatus(messageId: number, status: string) {
@@ -734,7 +842,7 @@ export default function AdminDashboardClient({
                 {Object.entries(stats.domains).map(([domain, s]) => {
                   const total = s.hits + s.misses + s.forceFresh;
                   const rate =
-                    total > 0 ? ((s.hits / total) * 100).toFixed(0) + "%" : "—";
+                    total > 0 ? ((s.hits / total) * 100).toFixed(0) + "%" : "-";
                   return (
                     <tr
                       key={domain}
@@ -767,7 +875,7 @@ export default function AdminDashboardClient({
                       colSpan={6}
                       className="px-5 py-6 text-center text-gray-500"
                     >
-                      No domain data yet — make some cached requests first
+                      No domain data yet. Make some cached requests first
                     </td>
                   </tr>
                 )}
@@ -806,7 +914,7 @@ export default function AdminDashboardClient({
 
       {/* Tab bar */}
       <div className="mb-6 flex gap-1 rounded-lg border border-white/10 bg-white/5 p-1 w-fit">
-        {(["cache", "users", "audit", "reports", "messages"] as const).map((tab) => (
+        {(["cache", "users", "audit", "reports", "messages", "reviews"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -817,7 +925,7 @@ export default function AdminDashboardClient({
                 : "text-gray-400 hover:text-gray-200")
             }
           >
-            <span className="inline-flex items-center gap-1.5">{tab === "cache" ? <><IconChartBar size={14} /> Cache</> : tab === "users" ? <><IconUsers size={14} /> Users</> : tab === "audit" ? <><IconClipboardList size={14} /> Audit Logs</> : tab === "reports" ? <><IconFlag size={14} /> Reports</> : <><IconMail size={14} /> Messages</>}</span>
+            <span className="inline-flex items-center gap-1.5">{tab === "cache" ? <><IconChartBar size={14} /> Cache</> : tab === "users" ? <><IconUsers size={14} /> Users</> : tab === "audit" ? <><IconClipboardList size={14} /> Audit Logs</> : tab === "reports" ? <><IconFlag size={14} /> Reports</> : tab === "messages" ? <><IconMail size={14} /> Messages</> : <><IconStar size={14} /> Reviews</>}</span>
           </button>
         ))}
       </div>
@@ -828,6 +936,35 @@ export default function AdminDashboardClient({
           {/* Actions */}
           <div className="bg-white/5 border border-white/10 rounded-xl p-6 space-y-5">
             <h2 className="text-lg font-semibold text-white">Actions</h2>
+
+            {/* Maintenance-mode kill switch */}
+            <div className="border-b border-white/10 pb-4 mb-4">
+              <label className="block text-sm text-gray-400 mb-2">
+                Maintenance mode (kill switch)
+              </label>
+              {maintenanceMode ? (
+                <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+                  ⚠ Maintenance is ON — visitors are seeing the maintenance
+                  page. You can still access this dashboard.
+                </div>
+              ) : null}
+              <button
+                onClick={handleToggleMaintenance}
+                disabled={maintenanceLoading || actionLoading !== null || maintenanceMode === null}
+                className={
+                  "px-4 py-2 rounded-lg text-sm font-medium transition-colors border disabled:opacity-50 " +
+                  (maintenanceMode
+                    ? "bg-green-500/20 hover:bg-green-500/30 text-green-300 border-green-500/30"
+                    : "bg-red-500/20 hover:bg-red-500/30 text-red-300 border-red-500/30")
+                }
+              >
+                {maintenanceLoading
+                  ? "Updating..."
+                  : maintenanceMode
+                    ? "Turn Maintenance OFF (bring site live)"
+                    : "Turn Maintenance ON (kill switch)"}
+              </button>
+            </div>
 
             {/* Flush section */}
             <div>
@@ -1410,6 +1547,108 @@ export default function AdminDashboardClient({
         </div>
       )}
 
+      {/* ── Reviews Tab ──────────────────────────────────────────── */}
+      {activeTab === "reviews" && (
+        <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3 flex-wrap">
+            <h2 className="text-lg font-semibold text-white">
+              Product Reviews
+            </h2>
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+                {["pending", "approved", "rejected"].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setReviewFilter(s)}
+                    className={
+                      "px-3 py-1 rounded-md text-xs font-medium transition-colors capitalize " +
+                      (reviewFilter === s
+                        ? "bg-blue-500/30 text-blue-200"
+                        : "text-gray-400 hover:text-gray-200")
+                    }
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={fetchReviews}
+                disabled={reviewsLoading}
+                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+              >
+                {reviewsLoading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+          </div>
+
+          {reviewsLoading && reviews.length === 0 && (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-400 border-t-transparent" />
+            </div>
+          )}
+
+          {!reviewsLoading && reviews.length === 0 && (
+            <div className="py-16 text-center text-gray-500 text-sm">
+              No {reviewFilter} reviews.
+            </div>
+          )}
+
+          {reviews.map((r) => (
+            <div key={r.id} className="border-b border-white/5 hover:bg-white/5 transition-colors p-5">
+              <div className="flex items-start justify-between gap-4 mb-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-gray-500 font-mono text-xs mt-1">#{r.id}</span>
+                  <div className="min-w-0">
+                    <div className="text-gray-200 font-medium">
+                      {r.username || "Unknown"}{" "}
+                      <span className="text-[#f5ff3b]">{"★".repeat(r.rating)}</span>
+                      <span className="text-white/20">{"★".repeat(5 - r.rating)}</span>
+                    </div>
+                    <div className="text-[#c9f7ff]/50 text-[10px]">
+                      {r.email} · {r.game || "platform"} · {formatTimestamp(r.createdAt)}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {r.status === "pending" && (
+                    <>
+                      <button
+                        onClick={() => handleModerateReview(r.id, "approved")}
+                        disabled={reviewActionLoading !== null}
+                        className="px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 text-green-300 border border-green-500/30 rounded-lg text-xs font-medium disabled:opacity-50"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => handleModerateReview(r.id, "rejected")}
+                        disabled={reviewActionLoading !== null}
+                        className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 rounded-lg text-xs font-medium disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => handleModerateReview(r.id, "delete")}
+                    disabled={reviewActionLoading !== null}
+                    className="px-3 py-1.5 bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-300 border border-white/10 rounded-lg text-xs font-medium disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+              {r.title && <div className="text-gray-200 font-semibold mb-1">{r.title}</div>}
+              {r.body && <div className="text-gray-300 text-sm leading-relaxed">{r.body}</div>}
+              {r.status !== "pending" && (
+                <div className="mt-2 text-[11px] text-gray-500">
+                  Status: <span className="text-gray-300 capitalize">{r.status}</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Audit Logs Tab ────────────────────────────────────────── */}
       {activeTab === "audit" && (
         <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
@@ -1468,7 +1707,7 @@ export default function AdminDashboardClient({
                         {log.clerkId}
                       </td>
                       <td className="px-4 py-2.5 text-gray-400 text-xs font-mono truncate max-w-[120px]">
-                        {log.targetClerkId || "—"}
+                        {log.targetClerkId || "-"}
                       </td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs truncate max-w-[180px]">
                         {JSON.stringify(log.details)}

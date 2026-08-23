@@ -36,7 +36,6 @@ export default function CompleteProfilePage() {
     }
 
     try {
-      console.log("Before update:", user.publicMetadata);
       const response = await fetch("/api/update-birthdate", {
         method: "POST",
         headers: {
@@ -50,8 +49,6 @@ export default function CompleteProfilePage() {
       if (!result.success) {
         throw new Error(result.error || "Unknown error");
       }
-
-      console.log("Updated successfully.");
 
       router.push("/sync");
     } catch (err) {

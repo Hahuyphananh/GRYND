@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"; // add this at the top
 import Link from "next/link";
 import NavigationBar from "../components/navigation-bar";
 import Footer from "../components/Footer";
+import ReviewWall from "../components/reviews/ReviewWall";
 import AnimatedBgSvgs from "../components/AnimatedBgSvgs";
 import InteractiveCasinoBg from "../components/InteractiveCasinoBg";
 import { isSafeProfilePictureUrl } from "../lib/security/media";
@@ -580,7 +581,7 @@ function MainComponent() {
         <section className="mb-16 reveal">
           <div className="mb-3">
             <h2 className="text-2xl font-bold text-[#f5ff3b]">
-              {t("home.title")} — Pick Your Game
+              {t("home.title")}. Pick Your Game
             </h2>              <p className="mt-1 text-sm text-[#7dd3fc]">{t("home.pick_your_game_subtitle")}</p>
           </div>
 
@@ -721,6 +722,27 @@ function MainComponent() {
               {t("home.more_games")}
             </a>
           </div>
+        </section>
+
+        {/* Player reviews — social proof */}
+        <section className="mb-16 reveal">
+          <div className="mb-6 flex items-end justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-[#f5ff3b]">
+                Player Reviews
+              </h2>
+              <p className="mt-1 text-sm text-[#7dd3fc]">
+                What our community says about GRYND
+              </p>
+            </div>
+            <Link
+              href="/reviews"
+              className="hidden shrink-0 rounded-lg border border-[#00e5ff]/40 px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10 sm:inline-block"
+            >
+              See all reviews
+            </Link>
+          </div>
+          <ReviewWall limit={6} />
         </section>
       </div>
 

@@ -87,7 +87,7 @@ export async function POST(req: Request) {
       // ── Phase 2: player predicts the AI's number ──
       if (playerNumber !== undefined)
         throw Object.assign(
-          new Error("Your number is locked in — submit a prediction"),
+          new Error("Your number is locked in. Submit a prediction"),
           { status: 400 },
         );
       if (invalid(prediction))

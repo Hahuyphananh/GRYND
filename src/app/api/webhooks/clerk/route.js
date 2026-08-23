@@ -6,6 +6,7 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { users, userAutomationState } from "../../../../db/schema";
 import { auditLog } from "../../../../lib/security/auditLog";
+import { deleteUserLocalData } from "../../../../lib/security/deleteUserData";
 import { sendWelcomeEmail } from "../../../../lib/emails/welcome";
 
 let dbInstance = null;
@@ -90,6 +91,18 @@ export async function POST(req) {
           },
         });
       auditLog("webhook_session_created", { clerkId });
+    }
+
+    if (evt.type === "user.deleted") {
+      // Account removed on Clerk's side (admin action, or the user
+      // deleting via Clerk's own portal). Clean up the local rows so no
+      // orphaned personal data survives. This is the same purge the
+      // in-app delete-account route performs (shared helper).
+      const clerkId = evt.data.id;
+      if (clerkId) {
+        const removed = await deleteUserLocalData(clerkId);
+        auditLog("webhook_user_deleted", { clerkId, removed });
+      }
     }
 
     return NextResponse.json({ success: true });

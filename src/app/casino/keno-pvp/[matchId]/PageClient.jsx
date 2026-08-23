@@ -605,7 +605,7 @@ export default function KenoPvpMatchPage({ params }) {
             >
               Round {roundBanner.roundNumber}:{" "}
               {roundBanner.winnerIsYou === null
-                ? "draw — no round win."
+                ? "draw. No round win."
                 : roundBanner.winnerIsYou
                   ? "you won it!"
                   : "opponent won it."}
@@ -631,7 +631,7 @@ export default function KenoPvpMatchPage({ params }) {
             <h2 className="text-xl font-bold mb-2">Waiting for an opponent…</h2>
             <p className="text-sm text-white/60 mb-6">
               Your {match.stakeAmount.toLocaleString()} <IconCoins size={12} className="inline" /> stake is escrowed. Someone with the same
-              stake will join shortly — or you can cancel.
+              stake will join shortly, or you can cancel.
             </p>
             {match.viewerCanCancel && (
               <button
@@ -649,7 +649,7 @@ export default function KenoPvpMatchPage({ params }) {
           <div className="rounded-2xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-10 text-center">
             <h2 className="mb-2 flex items-center justify-center gap-2 text-2xl font-bold">Match found! <IconHeartHandshake size={24} /></h2>
             <p className="text-sm text-white/60">
-              {p1Name} vs {p2Name} — round 1 starts in a moment. Tap each tile while it glows!
+              {p1Name} vs {p2Name}. Round 1 starts in a moment. Tap each tile while it glows!
             </p>
           </div>
         )}
@@ -670,11 +670,11 @@ export default function KenoPvpMatchPage({ params }) {
               <div className="flex flex-col items-center gap-2">
                 {activeTile ? (
                   <p className="text-sm font-bold text-[#00e5ff] animate-pulse">
-                    Tap tile {activeTile.number} — it's glowing!
+                    Tap tile {activeTile.number}. It's glowing!
                   </p>
                 ) : fadingTile ? (
                   <p className="text-sm font-bold text-[#7cefff] animate-pulse">
-                    Hurry — tile {fadingTile.number} is fading!
+                    Hurry, tile {fadingTile.number} is fading!
                   </p>
                 ) : (
                   <p className="text-sm text-white/50 animate-pulse">
@@ -682,7 +682,7 @@ export default function KenoPvpMatchPage({ params }) {
                   </p>
                 )}
                 <p className="text-[11px] text-white/40">
-                  Each tile glows for {GLOW_MS / 1000}s — tap it while the ring is shrinking. Green = caught · Red = missed.
+                  Each tile glows for {GLOW_MS / 1000}s. Tap it while the ring is shrinking. Green = caught · Red = missed.
                 </p>
               </div>
 
@@ -781,7 +781,7 @@ export default function KenoPvpMatchPage({ params }) {
               <div className="mt-4 border-t border-[#00e5ff]/20 pt-3">
                 <div className="mb-1.5 flex items-center justify-between gap-2">
                   <h4 className="text-[11px] font-bold uppercase tracking-wider text-white/40">
-                    Points — tiles caught → score
+                    Points: tiles caught → score
                   </h4>
                   <span className="text-[11px] font-semibold text-[#00ffa6]">
                     {myStats.caught} caught · {myStats.score} pts
@@ -814,7 +814,7 @@ export default function KenoPvpMatchPage({ params }) {
               {oppRevealedNumbers.size > 0 && (
                 <p className="mt-3 text-[11px] text-white/40">
                   <span className="text-[#FFD700]">Gold</span> = numbers the opponent caught in
-                  resolved rounds — their live ticket stays hidden until each round ends.
+                  resolved rounds. Their live ticket stays hidden until each round ends.
                 </p>
               )}
             </div>
@@ -871,7 +871,7 @@ export default function KenoPvpMatchPage({ params }) {
               OVERTIME
             </h2>
             <p className="mt-2 text-sm text-white/70">
-              Nobody reached {POINTS_TO_WIN} pts in time — when the clock hits zero, the player
+              Nobody reached {POINTS_TO_WIN} pts in time. When the clock hits zero, the player
               with the most tiles wins.
             </p>
             <p className="mt-4 text-6xl font-black text-white tabular-nums">{roundTimeLeft}s</p>
@@ -972,7 +972,7 @@ function RulesModal({ onClose }) {
         <ul className="mb-5 space-y-1.5 text-xs text-white/70">
           <li>
             Each round, <span className="font-semibold text-white">10 tiles</span> from the 1–40 board
-            light up one at a time — both players chase the{" "}
+            light up one at a time. Both players chase the{" "}
             <span className="font-semibold text-white">same draw</span>.
           </li>
           <li>
@@ -981,14 +981,14 @@ function RulesModal({ onClose }) {
             <span className="font-semibold text-[#00ffa6]">caught (green)</span>.
           </li>
           <li>
-            Tap after the glow fades → <span className="font-semibold text-red-400">miss (red)</span> — no
+            Tap after the glow fades → <span className="font-semibold text-red-400">miss (red)</span>. No
             points.
           </li>
           <li>Catching is binary: you're in the 0.8s window or you're not.</li>
           <li className="flex items-center gap-1"><IconVolume size={12} /> A soft tick sounds the moment each tile lights up.</li>
         </ul>
 
-        <h3 className="mb-2 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-[#00ffa6]"><IconCoins size={15} /> Points — keno multiplier</h3>
+        <h3 className="mb-2 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-[#00ffa6]"><IconCoins size={15} /> Points: keno multiplier</h3>
         <div className="mb-2 grid grid-cols-5 gap-1.5">
           {POINTS_TABLE.map(([caught, pts]) => (
             <div
@@ -1001,21 +1001,21 @@ function RulesModal({ onClose }) {
           ))}
         </div>
         <p className="mb-5 text-[11px] text-white/50">
-          Tiles caught → points. The multiplier compounds: 5 tiles = 50 pts, all 10 = 5,000 pts —
-          the last tiles are worth the most.
+          Tiles caught → points. The multiplier compounds: 5 tiles = 50 pts, all 10 = 5,000 pts.
+          The last tiles are worth the most.
         </p>
 
         <h3 className="mb-2 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-[#00ffa6]"><IconTrophy size={15} /> Winning the match</h3>
         <ul className="space-y-1.5 text-xs text-white/70">
           <li>
             <span className="font-semibold text-white">First to {POINTS_TO_WIN} points</span> takes the
-            pot — your round scores accumulate until someone crosses the line.
+            pot. Your round scores accumulate until someone crosses the line.
           </li>
           <li>Higher round score wins the round; an exact tie is a draw (no round win).</li>
           <li>Both cross {POINTS_TO_WIN} in the same round? The higher total wins. Exact tie → full
             refund, no rake.</li>
           <li>
-            <IconClock size={12} className="inline" /> <span className="font-semibold text-white">3-minute match clock</span> — if nobody reaches{" "}
+            <IconClock size={12} className="inline" /> <span className="font-semibold text-white">3-minute match clock</span>. If nobody reaches{" "}
             {POINTS_TO_WIN} pts in ~3 minutes, a 30-second OVERTIME countdown starts; the player
             with the most tiles wins when it ends.
           </li>
@@ -1063,13 +1063,13 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
           </p>
           {tieFee > 0 && (
             <p className="mt-1 text-xs text-amber-300/90">
-              Overtime ended tied — no winner, 5% rake per player
+              Overtime ended tied. No winner, 5% rake per player
             </p>
           )}
           <p className={`mt-2 text-xl font-black ${drew ? (tieFee > 0 ? "text-amber-300" : "text-white/60") : iWon ? "text-[#00ffa6]" : "text-red-400"}`}>
             {drew
               ? tieFee > 0
-                ? <span className="inline-flex items-center gap-1">Tie — 95% refunded ({net < 0 ? "−" : "+"}{Math.abs(net).toLocaleString()} <IconCoins size={14} />)</span>
+                ? <span className="inline-flex items-center gap-1">Tie. 95% refunded ({net < 0 ? "−" : "+"}{Math.abs(net).toLocaleString()} <IconCoins size={14} />)</span>
                 : "Stake refunded"
               : <span className="inline-flex items-center gap-1">{iWon ? "+" : "−"}{Math.abs(net).toLocaleString()} <IconCoins size={14} /></span>}
           </p>

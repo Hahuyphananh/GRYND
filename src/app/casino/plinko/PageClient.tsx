@@ -310,7 +310,7 @@ export default function PlinkoPvpLobbyPage() {
         <>
           You and your opponent each launch <b>3 balls</b> through the
           same 19-row peg field. Pick your <b>start x / power / angle</b>
-          before each ball commits — the server runs the deterministic
+          before each ball commits. The server runs the deterministic
           physics simulation and tallies the scores. Highest aggregate
           takes <b>1.9× their stake</b>, house takes 0.1×. AFK balls
           auto-launch with safe mid-board inputs.
@@ -338,7 +338,7 @@ export default function PlinkoPvpLobbyPage() {
             body: (
               <>
                 The server runs the same deterministic physics
-                simulation for both players — the higher aggregate score
+                simulation for both players. The higher aggregate score
                 wins.
               </>
             ),

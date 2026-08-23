@@ -13,7 +13,7 @@ import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animation
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
-import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconMail, IconMenu, IconSettings, IconX } from "@tabler/icons-react";
+import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconHelp, IconMail, IconMenu, IconSettings, IconStar, IconX } from "@tabler/icons-react";
 import { isSafeProfilePictureUrl } from "../lib/security/media";
 
 const NAV_TRANSLATION_KEYS = {
@@ -298,6 +298,34 @@ function NavigationBar({ currentPath }) {
                   <IconMail size={15} className="mb-0.5 mr-1 inline" /> Contact
                 </Link>
               </motion.div>
+              <motion.div
+                key="/reviews"
+                initial={itemVariant.initial}
+                animate={itemVariant.animate}
+                transition={itemVariant.transition}
+                whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
+              >
+                <Link
+                  href="/reviews"
+                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/reviews" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                >
+                  <IconStar size={15} className="mb-0.5 mr-1 inline" /> Reviews
+                </Link>
+              </motion.div>
+              <motion.div
+                key="/faq"
+                initial={itemVariant.initial}
+                animate={itemVariant.animate}
+                transition={itemVariant.transition}
+                whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
+              >
+                <Link
+                  href="/faq"
+                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/faq" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                >
+                  <IconHelp size={15} className="mb-0.5 mr-1 inline" /> FAQ
+                </Link>
+              </motion.div>
               {isAdmin && isSignedIn && (
                 <motion.div
                   key="/admin"
@@ -534,6 +562,20 @@ function NavigationBar({ currentPath }) {
                     className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
                   >
                     <IconMail size={15} className="mb-0.5 mr-1 inline" /> Contact
+                  </Link>
+                  <Link
+                    href="/reviews"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
+                  >
+                    <IconStar size={15} className="mb-0.5 mr-1 inline" /> Reviews
+                  </Link>
+                  <Link
+                    href="/faq"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
+                  >
+                    <IconHelp size={15} className="mb-0.5 mr-1 inline" /> FAQ
                   </Link>
                 {isAdmin && isSignedIn && (
                 <Link

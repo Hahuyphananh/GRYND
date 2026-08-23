@@ -94,7 +94,7 @@ export default function HexDuelMultiplayerPage() {
       }
       if (data?.gameId) router.push(`/casino/hex-duel?gameId=${data.gameId}&host=1`);
     } catch {
-      setError("Network error — please try again");
+      setError("Network error. Please try again");
     } finally {
       setActionLoading(false);
     }
@@ -122,7 +122,7 @@ export default function HexDuelMultiplayerPage() {
       }
       if (data?.gameId) router.push(`/casino/hex-duel?gameId=${data.gameId}&host=0`);
     } catch {
-      setError("Network error — please try again");
+      setError("Network error. Please try again");
     } finally {
       setActionLoading(false);
     }

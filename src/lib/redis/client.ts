@@ -21,7 +21,7 @@ export function getRedis(): Redis | null {
   if (!url || !token) {
     console.warn(
       "[redis] Missing KV_REST_API_URL / KV_REST_API_TOKEN. " +
-        "Redis caching is disabled — queries will hit the database directly.",
+        "Redis caching is disabled. Queries will hit the database directly.",
     );
     return null;
   }

@@ -250,7 +250,7 @@ export default function TableRoomPage() {
             <span className="inline-flex items-center gap-1.5"><IconPlug size={14} /> Reconnecting…</span>
             {table?.amISeated && (
               <span className="font-normal text-amber-200/80">
-                Your seat may be held for a short time — don't close the tab.
+                Your seat may be held for a short time. Don't close the tab.
               </span>
             )}
           </div>

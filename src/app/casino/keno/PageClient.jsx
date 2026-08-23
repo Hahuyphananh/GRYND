@@ -226,7 +226,7 @@ export default function KenoLobbyPage() {
       subtitle={
         <>
           1v1 <b>Keno Catch Duel</b>. Both players face the <b>same</b>{" "}
-          10-ball draw — catch each ball as it drops (each tile glows for
+          10-ball draw. Catch each ball as it drops (each tile glows for
           <b>1 second</b>, so timing matters but isn't brutal). Catching
           more compounds (the classic keno multiplier table: 5 balls =
           50 pts, 10 balls = 5000 pts). <b>First to 10 points</b> takes
@@ -246,7 +246,7 @@ export default function KenoLobbyPage() {
             body: (
               <>
                 Each round <b>10 tiles</b> from the 1–40 board light up
-                one at a time — both players chase the <b>same draw</b>.
+                one at a time. Both players chase the <b>same draw</b>.
                 Tap a tile while it glows (<b>1 second</b> window) to
                 catch it; tap after the glow fades and it&apos;s a miss.
               </>
@@ -257,7 +257,7 @@ export default function KenoLobbyPage() {
             body: (
               <>
                 Tiles caught → points, compounding: 5 tiles = 50 pts, all
-                10 = 5,000 pts — the last tiles are worth the most.
+                10 = 5,000 pts. The last tiles are worth the most.
               </>
             ),
           },
@@ -265,7 +265,7 @@ export default function KenoLobbyPage() {
             heading: "Win the match",
             body: (
               <>
-                <b>First to 10 points</b> takes the pot — 1.9× their
+                <b>First to 10 points</b> takes the pot. 1.9× their
                 stake, house takes 0.1×. A 3-minute match clock with 30s
                 overtime settles close games; an overtime tie refunds both
                 players.
@@ -289,12 +289,12 @@ export default function KenoLobbyPage() {
           We pair you with another player of the <b>exact same</b> stake.
           If no one is waiting, your stake is escrowed in a private lobby
           until someone joins or you cancel. Both players catch the same
-          server-side ball stream — the server grades every tap.
+          server-side ball stream. The server grades every tap.
         </>
       }
       error={error}
       lobbies={availableMatches}
-      lobbyEmptyText="No open lobbies yet. Be the first to make one — pick a stake and hit Play."
+      lobbyEmptyText="No open lobbies yet. Be the first to make one. Pick a stake and hit Play."
       lobbyTitle={(m) => (
         <>
           Lobby #{m.id}

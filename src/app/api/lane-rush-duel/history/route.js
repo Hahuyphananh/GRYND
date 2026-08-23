@@ -30,7 +30,7 @@ export async function GET(req) {
     const { userId: clerkId } = await auth();
     if (!clerkId) {
       return NextResponse.json(
-        { success: false, error: "Unauthorized — please sign in" },
+        { success: false, error: "Unauthorized. Please sign in" },
         { status: 401 },
       );
     }

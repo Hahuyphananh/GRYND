@@ -9,8 +9,8 @@ export async function generateMetadata({
   const { gameId } = await params;
   const shortId = gameId.length > 10 ? gameId.slice(0, 8) : gameId;
   return {
-    title: `Rock-Paper-Scissors Match #${shortId} — GRYND`,
-    description: `Live Rock-Paper-Scissors match #${shortId} on GRYND — first to 4 rounds takes the pot.`,
+    title: `Rock-Paper-Scissors Match #${shortId} | GRYND`,
+    description: `Live Rock-Paper-Scissors match #${shortId} on GRYND. First to 4 rounds takes the pot.`,
   };
 }
 

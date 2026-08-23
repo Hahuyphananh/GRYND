@@ -924,7 +924,7 @@ export default function MinesPvpMatchPage({
         <div className="flex items-center justify-center gap-2 rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-4 py-3 text-cyan-200">
           <LoadingDotsIcon className="w-5 h-5 text-cyan-200 animate-pulse" />
           <span className="font-semibold">
-            Both players joined — starting in a few seconds…
+            Both players joined. Starting in a few seconds…
           </span>
         </div>
       );
@@ -940,7 +940,7 @@ export default function MinesPvpMatchPage({
           }`}
         >
           <span className="font-bold text-base sm:text-lg">
-            Your turn — pick a tile
+            Your turn. Pick a tile
           </span>
           <span
             className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${
@@ -996,8 +996,8 @@ export default function MinesPvpMatchPage({
     const headline = flagEntry
       ? iFlagged
         ? flagEntry.isMine
-          ? "Correct flag — you called the mine"
-          : "Wrong flag — the tile was safe"
+          ? "Correct flag. You called the mine"
+          : "Wrong flag. The tile was safe"
         : flagEntry.isMine
           ? "Opponent called your mine"
           : "Opponent's flag missed"
@@ -1095,15 +1095,15 @@ export default function MinesPvpMatchPage({
                   {myPickIsMine ? (
                     <span className="text-red-300 inline-flex items-center gap-1">
                       <CrossIcon className="w-3.5 h-3.5" />{" "}
-                      {myLastPick?.flag ? "Mine — correct" : "Mine"}
+                      {myLastPick?.flag ? "Mine: correct" : "Mine"}
                     </span>
                   ) : myPick !== null ? (
                     <span className="text-emerald-300 inline-flex items-center gap-1">
                       <CheckIcon className="w-3.5 h-3.5" />{" "}
-                      {myLastPick?.flag ? "Safe — wrong" : "Safe"}
+                      {myLastPick?.flag ? "Safe: wrong" : "Safe"}
                     </span>
                   ) : (
-                    "—"
+                    "-"
                   )}
                   {myAutoPicked && (
                     <span className="ml-1 rounded bg-yellow-300/20 px-1.5 py-0.5 text-[10px] font-bold text-yellow-200">
@@ -1120,15 +1120,15 @@ export default function MinesPvpMatchPage({
                   {opponentPickIsMine ? (
                     <span className="text-red-300 inline-flex items-center gap-1">
                       <CrossIcon className="w-3.5 h-3.5" />{" "}
-                      {opponentLastPick?.flag ? "Mine — correct" : "Mine"}
+                      {opponentLastPick?.flag ? "Mine: correct" : "Mine"}
                     </span>
                   ) : opponentPick !== null ? (
                     <span className="text-emerald-300 inline-flex items-center gap-1">
                       <CheckIcon className="w-3.5 h-3.5" />{" "}
-                      {opponentLastPick?.flag ? "Safe — wrong" : "Safe"}
+                      {opponentLastPick?.flag ? "Safe: wrong" : "Safe"}
                     </span>
                   ) : (
-                    "—"
+                    "-"
                   )}
                   {opponentAutoPicked && (
                     <span className="ml-1 rounded bg-yellow-300/20 px-1.5 py-0.5 text-[10px] font-bold text-yellow-200">
@@ -1259,7 +1259,7 @@ export default function MinesPvpMatchPage({
               amber when it's tight, red + pulse when the next forced
               mine is one pick away. */}
           <span
-            title="Safe (non-mine) tiles still unrevealed. When it hits 0, only mines are left — whoever must pick next loses by logic (zugzwang)."
+            title="Safe (non-mine) tiles still unrevealed. When it hits 0, only mines are left. Whoever must pick next loses by logic (zugzwang)."
             className={`inline-flex items-center gap-1 ${
               match.safeTilesRemaining <= 2
                 ? "animate-pulse"
@@ -1327,7 +1327,7 @@ export default function MinesPvpMatchPage({
               </div>
               {flagMode && (
                 <p className="text-[10px] uppercase tracking-widest text-red-300/80 font-bold">
-                  Click a tile you believe is a mine — correct = opponent
+                  Click a tile you believe is a mine. Correct = opponent
                   loses · wrong = you lose
                 </p>
               )}

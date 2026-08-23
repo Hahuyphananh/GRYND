@@ -9,8 +9,8 @@ export async function generateMetadata({
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
-    title: `Precision Match #${shortId} — GRYND`,
-    description: `Live Precision match #${shortId} on GRYND — race your reaction time against your opponent across multiple rounds.`,
+    title: `Precision Match #${shortId} | GRYND`,
+    description: `Live Precision match #${shortId} on GRYND. Race your reaction time against your opponent across multiple rounds.`,
   };
 }
 

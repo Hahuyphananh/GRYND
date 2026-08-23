@@ -345,16 +345,16 @@ export default function MinesPvpLobbyPage() {
   const noGuessDetail =
     minesCount <= 3
       ? "Every board at this mine count is verified to be fully solvable " +
-        "by deduction from the center opening — open center, read the " +
+        "by deduction from the center opening. Open center, read the " +
         "distance hints, and you'll never be forced to guess. The game " +
         "ends in zugzwang: whoever must pick when only mines remain loses."
       : minesCount <= 5
         ? "Boards at this mine count are solver-verified for the center " +
-          "opening in the vast majority of games — open center and the " +
+          "opening in the vast majority of games. Open center and the " +
           "distance hints give you a fully deducible game. A few late " +
           "pockets may still require a guess."
         : "At this mine count the board is too dense for a full no-guess " +
-          "guarantee — but your first pick is always safe and the center " +
+          "guarantee. But your first pick is always safe and the center " +
           "3×3 never contains a mine, so the opening is never a trap.";
 
   return (
@@ -365,11 +365,11 @@ export default function MinesPvpLobbyPage() {
           You and your opponent share the <b>same 5×5 board</b>. The host
           picks the mine count; the server rolls the layout. Every
           layout is generated for <b className="text-emerald-300">
-          pure-deduction play</b> — the center 3×3 is always mine-free,
+          pure-deduction play</b>. The center 3×3 is always mine-free,
           your first pick can never hit a mine, and the board is
           solver-verified so the center opening is fully solvable by
           deduction. Each player gets <b>20 seconds</b> to click one tile
-          — mine means you lose, safe means you keep your stake in play.
+          A mine means you lose, safe means you keep your stake in play.
           Both picks in → winner takes 1.9× their stake, house takes 0.1×.
         </>
       }
@@ -404,7 +404,7 @@ export default function MinesPvpLobbyPage() {
             heading: "Take turns clicking",
             body: (
               <>
-                Each player gets <b>20 seconds</b> to click one tile — a
+                Each player gets <b>20 seconds</b> to click one tile. A
                 mine means you lose, safe means your stake stays in play.
                 The game ends in zugzwang: whoever must pick when only
                 mines remain loses.

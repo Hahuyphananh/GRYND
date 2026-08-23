@@ -526,7 +526,7 @@ export async function buyElimination({ userId, matchId, number }) {
       .returning();
     if (!updated) {
       return {
-        error: "Round state changed during eliminate — please refresh",
+        error: "Round state changed during eliminate. Please refresh",
         status: 409,
       };
     }
@@ -768,7 +768,7 @@ export async function submitBets({ userId, matchId, bets, call }) {
       // Couldn't bucket the failure — surface it but don't lose the
       // deduction: refund the points by reversing the in-memory math.
       return {
-        error: "Betting window state changed during submit — please refresh",
+        error: "Betting window state changed during submit. Please refresh",
         status: 409,
       };
     }

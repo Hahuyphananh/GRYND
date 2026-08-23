@@ -285,13 +285,13 @@ export default function MemoryGridLobbyPage() {
       title="Memory Grid Lobby"
       subtitle={
         <>
-          A <b>best-of-5 rounds</b> pattern duel — pure memory, no
+          A <b>best-of-5 rounds</b> pattern duel. Pure memory, no
           symbols or tricks. Each round deals an <b>N×N grid</b>
           (growing 3×3 → 5×5) with a handful of <b>lit tiles</b>. You
           get a few seconds to memorize the pattern, then you
           reconstruct it from memory. More tiles right wins the
           round; after 5 rounds the higher <b>total score</b> wins
-          the pot — <b>1.9×</b>, house takes 0.1×. Equal → full
+          the pot. <b>1.9×</b>, house takes 0.1×. Equal → full
           refund.
         </>
       }
@@ -316,23 +316,23 @@ export default function MemoryGridLobbyPage() {
             ),
           },
           {
-            heading: "Phase 1 — Memorize",
+            heading: "Phase 1: Memorize",
             body: (
               <>
                 The grid deals face-down, then the round's tiles light
                 up for the memorize window (2.5s in round 1, up to
-                <b> 4 seconds</b> in round 5). Burn the pattern in —
+                <b> 4 seconds</b> in round 5). Burn the pattern in.
                 when the timer ends the tiles go dark. Both players
                 memorize the <b>exact same pattern</b> at the same time.
               </>
             ),
           },
           {
-            heading: "Phase 2 — Reconstruct",
+            heading: "Phase 2: Reconstruct",
             body: (
               <>
                 The pattern hides and you get your <b>own blank
-                grid</b>. Tap a tile to flip it and reveal the logo —
+                grid</b>. Tap a tile to flip it and reveal the logo.
                 tap it again to flip it back. Your picks are{" "}
                 <b>freely editable</b> and never show whether they're
                 right: press <b>Submit</b> when you're done (or let

@@ -58,7 +58,7 @@ const RULES = [
     body: (
       <>
         The multiplier climbs from 1.00x and keeps going up. The crash point is
-        decided by the server before the round starts — it&apos;s always between{" "}
+        decided by the server before the round starts. It&apos;s always between{" "}
         <strong className="text-white/90">1.20x and 9.20x</strong>, and its seed
         hash is shown in advance so every round is provably fair.
       </>
@@ -66,12 +66,12 @@ const RULES = [
   },
   {
     icon: <IconClock size={24} />,
-    title: "Cash out — or bust",
+    title: "Cash out, or bust",
     body: (
       <>
         Hit <strong className="text-emerald-300">Cash Out</strong> at any moment to
         survive at the current multiplier. The longer you wait, the higher the
-        number — but if the rocket crashes before you cash out, you{" "}
+        number. But if the rocket crashes before you cash out, you{" "}
         <strong className="text-red-400">lose your wager</strong>.
       </>
     ),
@@ -83,7 +83,7 @@ const RULES = [
       <>
         The player with the <strong className="text-white/90">highest successful cashout</strong>{" "}
         wins the <strong className="text-amber-300">entire pot</strong>, minus a 5%
-        platform fee. Cash out too early and someone can still out-multiply you —
+        platform fee. Cash out too early and someone can still out-multiply you.
         only the top number takes the pot.
       </>
     ),
@@ -93,7 +93,7 @@ const RULES = [
     title: "No winners? Pot carries over",
     body: (
       <>
-        If every player busts, nobody gets paid — the full pot{" "}
+        If every player busts, nobody gets paid. The full pot{" "}
         <strong className="text-white/90">carries over</strong> and is added on
         top of the next round&apos;s pot.
       </>
@@ -143,7 +143,7 @@ const EXAMPLE_STEPS = [
     title: "Dave cashes out",
     body: (
       <>
-        The multiplier hits 1.50x — Dave locks it in and survives. He&apos;s safe, but
+        The multiplier hits 1.50x. Dave locks it in and survives. He&apos;s safe, but
         his number can still be beaten.
       </>
     ),
@@ -155,7 +155,7 @@ const EXAMPLE_STEPS = [
     body: (
       <>
         Alice holds out a little longer and locks in{" "}
-        <strong className="text-emerald-300">2.10x</strong> — the new highest cashout.
+        <strong className="text-emerald-300">2.10x</strong>. The new highest cashout.
       </>
     ),
   },
@@ -177,7 +177,7 @@ const EXAMPLE_STEPS = [
     title: "Alice wins the pot",
     body: (
       <>
-        Alice&apos;s 2.10x is the highest cashout — she wins the whole pot, minus the
+        Alice&apos;s 2.10x is the highest cashout. She wins the whole pot, minus the
         platform fee.
       </>
     ),
@@ -245,7 +245,7 @@ export default function CrashArenaRulesModal({ onClose }) {
             <IconRocket size={24} className="mb-1 mr-2 inline" /> Crash Arena
           </h2>
           <p className="text-sm text-white/60 mt-1">
-            How the PvP rocket race works — every rule, plus a full example round.
+            How the PvP rocket race works. Every rule, plus a full example round.
           </p>
 
           {/* Tab switcher */}
@@ -303,7 +303,7 @@ export default function CrashArenaRulesModal({ onClose }) {
                 <ul className="text-sm text-gray-300 space-y-1.5 list-disc list-inside">
                   <li>Cash out before the crash to survive.</li>
                   <li>Highest cashout wins the <strong className="text-amber-300">whole pot</strong> minus 5%.</li>
-                  <li>Everyone else — even survivors — loses their wager.</li>
+                  <li>Everyone else, even survivors, loses their wager.</li>
                   <li>No cashouts at all? The pot carries over to the next round.</li>
                 </ul>
               </div>
@@ -313,7 +313,7 @@ export default function CrashArenaRulesModal({ onClose }) {
               {/* Round summary header */}
               <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-center">
                 <h3 className="text-sm font-black text-amber-300">
-                  <IconDeviceGamepad size={18} className="mb-1 mr-1.5 inline" /> Example Round — $10 Table, 4 Players
+                  <IconDeviceGamepad size={18} className="mb-1 mr-1.5 inline" /> Example Round: $10 Table, 4 Players
                 </h3>
                 <p className="text-xs text-white/60 mt-1">
                   Follow one full round from seats to settlement.
@@ -387,7 +387,7 @@ export default function CrashArenaRulesModal({ onClose }) {
             onClick={onClose}
             className="w-full py-3 rounded-xl font-bold text-sm bg-cyan-500 text-black border-b-4 border-cyan-700 shadow-[0_0_20px_rgba(34,211,238,0.35)] hover:shadow-[0_0_35px_rgba(34,211,238,0.6)] hover:scale-[1.02] transition-all duration-300"
           >
-            Got it — let&apos;s play <IconRocket size={16} className="mb-0.5 ml-1 inline" />
+            Got it. Let&apos;s play <IconRocket size={16} className="mb-0.5 ml-1 inline" />
           </button>
         </div>
       </motion.div>

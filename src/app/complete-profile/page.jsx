@@ -1,7 +1,7 @@
 import PageClient from "./PageClient";
 
 export const metadata = {
-  title: "Complete Your Profile — GRYND",
+  title: "Complete Your Profile | GRYND",
   description:
     "Finish setting up your GRYND profile to start playing skill-based casino games.",
 };

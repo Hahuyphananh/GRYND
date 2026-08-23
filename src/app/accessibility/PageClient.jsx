@@ -25,7 +25,7 @@ const sections = [
   {
     title: "Color & Contrast",
     content:
-      "Our cyberpunk-inspired dark theme is designed with sufficient color contrast ratios meeting WCAG AA requirements. All text elements maintain a minimum contrast ratio of 4.5:1 against their backgrounds, and interactive elements have visible focus indicators. We never rely solely on color to convey information — additional visual cues such as icons, patterns, and text labels are used throughout.",
+      "Our cyberpunk-inspired dark theme is designed with sufficient color contrast ratios meeting WCAG AA requirements. All text elements maintain a minimum contrast ratio of 4.5:1 against their backgrounds, and interactive elements have visible focus indicators. We never rely solely on color to convey information. Additional visual cues such as icons, patterns, and text labels are used throughout.",
   },
   {
     title: "Focus Indicators",

@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
+import posthog from "posthog-js";
+import { getAcquisitionParams } from "../../lib/analytics";
 
 export default function SyncPage() {
   const [status, setStatus] = useState("Syncing your account...");
@@ -41,6 +43,18 @@ export default function SyncPage() {
         if (!cancelled && !replacedRef.current) {
           replacedRef.current = true;
           const isNewUser = data?.message === "User synced successfully";
+
+          // Marketing funnel: a fresh signup completes at the sync handoff
+          // (the one place that knows the user is brand new). Attribution
+          // params ride along so signups are traceable to a channel.
+          if (isNewUser && process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+            try {
+              posthog.capture("sign_up_completed", getAcquisitionParams());
+            } catch (err) {
+              console.warn("[funnel] sign_up_completed failed:", err);
+            }
+          }
+
           setStatus("Redirecting...");
           // IMPORTANT: a full navigation (not router.replace) — so back/refresh
           // can't resubmit, and the destination page gets a clean mount.

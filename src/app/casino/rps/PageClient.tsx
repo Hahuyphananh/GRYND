@@ -160,7 +160,7 @@ export default function RPSLobbyPage() {
   return (
     <PvpLobbyPage
       title="Rock Paper Scissors"
-      subtitle="Best-of-7 mind games against a live opponent — first to 4 rounds takes the pot. Or play the AI for free."
+      subtitle="Best-of-7 mind games against a live opponent. First to 4 rounds takes the pot. Or play the AI for free."
       icon={<RockFistIcon className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
       rulesKey="rps"
       rules={{
@@ -181,7 +181,7 @@ export default function RPSLobbyPage() {
             body: (
               <>
                 Rock beats Scissors · Scissors beats Paper · Paper beats
-                Rock. Ties are replayed — they never count as a round.
+                Rock. Ties are replayed. They never count as a round.
               </>
             ),
           },
@@ -215,7 +215,7 @@ export default function RPSLobbyPage() {
       playLabel="Create PvP Game"
       playBusyLabel="Creating…"
       vsAi={{
-        label: "Play vs AI — Free, no wager",
+        label: "Play vs AI. Free, no wager",
         badge: "Free",
         disabled: !isSignedIn,
         busy: loading,

@@ -278,7 +278,7 @@ function PathPicker({ lane, selectedPath, onSelect, flagMode, onToggleFlag, disa
     <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="text-xs font-black uppercase tracking-wider text-white/70">
-          Choose your odds — Level {Math.min(lane + 1, MAX_LANES)}
+          Choose your odds. Level {Math.min(lane + 1, MAX_LANES)}
         </p>
         <button
           type="button"
@@ -291,7 +291,7 @@ function PathPicker({ lane, selectedPath, onSelect, flagMode, onToggleFlag, disa
           }`}
         >
           <IconFlag size={11} />
-          {flagMode ? "Flag mode ON — tap a tile" : "Flag mode"}
+          {flagMode ? "Flag mode ON. Tap a tile" : "Flag mode"}
         </button>
       </div>
       <div className="grid grid-cols-3 gap-2">
@@ -323,7 +323,7 @@ function PathPicker({ lane, selectedPath, onSelect, flagMode, onToggleFlag, disa
       <p className="mt-2 text-[10px] text-white/45">
         {flagMode
           ? "FLAG = call the bad tile. Right → instant win. Wrong → you bust. With the memory rule (bad tiles never repeat positions), late lanes are deducible."
-          : "Bad tiles never repeat the previous lane's position on the same path — track what you see and you can narrow the next guess."}
+          : "Bad tiles never repeat the previous lane's position on the same path. Track what you see and you can narrow the next guess."}
       </p>
     </div>
   );
@@ -359,10 +359,10 @@ function PressureStrip({
         <span className="font-black uppercase tracking-wider">Both banked</span>
         <span className="text-white/70">
           {" "}
-          — you on {myScore.toLocaleString()} pts, them on{" "}
+          You're on {myScore.toLocaleString()} pts, them on{" "}
           {oppScore.toLocaleString()}.{" "}
           {ahead === "neither"
-            ? "Dead even — draw."
+            ? "Dead even. Draw."
             : ahead === "you"
               ? "You take the pot."
               : "They take the pot."}
@@ -377,19 +377,17 @@ function PressureStrip({
       <div className="rounded-2xl border border-amber-300/40 bg-amber-500/10 px-4 py-3">
         <p className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-amber-200">
           <IconFlag size={13} className="text-amber-300" />
-          Pressure — you banked {myScore.toLocaleString()} pts
+          Pressure. You banked {myScore.toLocaleString()} pts
         </p>
         {oppPicksToWin > 0 ? (
           <p className="mt-1 text-sm text-amber-100">
             {oppName} needs{" "}
             <b className="text-white">
               {(oppScore < myScore ? myScore - oppScore : 0).toLocaleString()} pts
-            </b>{" "}
-            — roughly{" "}
+            </b>, roughly{" "}
             <b className="text-white">
               {oppPicksToWin} balanced safe pick{oppPicksToWin === 1 ? "" : "s"}
-            </b>{" "}
-            — only ~
+            </b>, only ~
             <b className="text-white">
               {(survival(oppPicksToWin) * 100).toFixed(0)}%
             </b>{" "}
@@ -397,7 +395,7 @@ function PressureStrip({
           </p>
         ) : (
           <p className="mt-1 text-sm text-amber-100">
-            {oppName} is already out-scoring you — they win if they bank
+            {oppName} is already out-scoring you. They win if they bank
             now. Your only hope is that they bust climbing.{" "}
             <span className="font-bold text-white">Hold the line.</span>
           </p>
@@ -415,7 +413,7 @@ function PressureStrip({
       <div className="rounded-2xl border border-cyan-300/40 bg-cyan-500/10 px-4 py-3">
         <p className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-cyan-200">
           <IconFlag size={13} className="text-cyan-300" />
-          Pressure — {isBotMatch ? "the bot" : "your opponent"} banked{" "}
+          Pressure. {isBotMatch ? "the bot" : "your opponent"} banked{" "}
           {oppScore.toLocaleString()} pts
         </p>
         {myPicksToWin > 0 ? (
@@ -423,12 +421,10 @@ function PressureStrip({
             You need{" "}
             <b className="text-white">
               {(myScore < oppScore ? oppScore - myScore : 0).toLocaleString()} pts
-            </b>{" "}
-            — roughly{" "}
+            </b>, roughly{" "}
             <b className="text-white">
               {myPicksToWin} balanced safe pick{myPicksToWin === 1 ? "" : "s"}
-            </b>{" "}
-            — ~
+            </b>, only ~
             <b className="text-white">
               {(survival(myPicksToWin) * 100).toFixed(0)}%
             </b>{" "}
@@ -436,7 +432,7 @@ function PressureStrip({
           </p>
         ) : (
           <p className="mt-1 text-sm text-cyan-100">
-            You're already ahead of their bank — bank now to lock in the
+            You're already ahead of their bank. Bank now to lock in the
             win, or push higher for more.
           </p>
         )}
@@ -456,8 +452,8 @@ function PressureStrip({
       {diff === 0 ? (
         <p>
           <b className="text-white">Dead even</b> at{" "}
-          <b className="text-white">{myScore.toLocaleString()}</b> pts —
-          whoever banks first sets the target. Climb safe or hold now to
+          <b className="text-white">{myScore.toLocaleString()}</b> pts.
+          Whoever banks first sets the target. Climb safe or hold now to
           apply the pressure.
         </p>
       ) : (
@@ -718,7 +714,7 @@ export default function LaneRushDuelMatchPage({ params }) {
         });
         await fetchStatus();
       } catch (e) {
-        setError("Network error — retrying…");
+        setError("Network error. Retrying…");
         pickedRef.current = false;
       } finally {
         setActing(false);
@@ -856,7 +852,7 @@ export default function LaneRushDuelMatchPage({ params }) {
             <p className="mt-2 max-w-md text-sm text-white/60">
               {match?.status === "waiting"
                 ? "Your stake is escrowed. Share this link to invite a player of the same stake, or wait for matchmaking."
-                : "The first player is rolled at random. Score points by climbing, bank them with HOLD — or call the bad tile with FLAG."}
+                : "The first player is rolled at random. Score points by climbing, bank them with HOLD, or call the bad tile with FLAG."}
             </p>
             <div className="mt-6 flex items-center gap-3">
               {match?.status === "waiting" && match?.player1Id === user?.id && (
@@ -894,11 +890,11 @@ export default function LaneRushDuelMatchPage({ params }) {
               >
                 {isMyTurn
                   ? myHeld || myLane >= MAX_LANES
-                    ? "You banked your points — waiting for the opponent."
-                    : "Your turn — pick a path, pick a tile — or FLAG the bad one."
+                    ? "You banked your points. Waiting for the opponent."
+                    : "Your turn. Pick a path, pick a tile, or FLAG the bad one."
                   : oppHeld || oppLane >= MAX_LANES
-                    ? "Opponent banked — you must out-score them or bust trying."
-                    : "Opponent's turn — they're climbing."}
+                    ? "Opponent banked. You must out-score them or bust trying."
+                    : "Opponent's turn. They're climbing."}
               </div>
             )}
 
@@ -1076,7 +1072,7 @@ export default function LaneRushDuelMatchPage({ params }) {
                     {wonMatch
                       ? `You take ${Number(match.prizePaid).toFixed(2)} tokens (stake back + 90% of the loser's).`
                       : drawMatch
-                        ? "Even points — full refund, no house fee."
+                        ? "Even points. Full refund, no house fee."
                         : "Your tower busted before the opponent's."}
                   </p>
                   <p className="mt-2 text-lg font-black text-white">
@@ -1093,7 +1089,7 @@ export default function LaneRushDuelMatchPage({ params }) {
                   <div className="mx-auto mt-5 max-w-lg rounded-2xl border border-white/10 bg-black/30 p-4 text-left text-xs">
                     <p className="mb-2 flex items-center gap-1.5 font-bold text-cyan-200">
                       <IconShieldCheck size={14} />
-                      Provably fair — verified
+                      Provably fair. Verified
                     </p>
                     <div className="grid grid-cols-1 gap-1.5 text-white/70 sm:grid-cols-2">
                       <p>
@@ -1135,7 +1131,7 @@ export default function LaneRushDuelMatchPage({ params }) {
                     </div>
                     <p className="mt-2 text-white/50">
                       Note: on every path, each lane's bad tile never repeats
-                      the previous lane's position — the memory rule you can
+                      the previous lane's position. The memory rule you can
                       verify here.
                     </p>
                   </div>

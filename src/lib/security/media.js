@@ -165,7 +165,7 @@ export function isSafeProfilePicture(value) {
     if (!ALLOWED_IMAGE_MIME.has(mime)) {
       return {
         ok: false,
-        error: `Unsupported image type "${mime}" — use png, jpeg, webp, gif or avif`,
+        error: `Unsupported image type "${mime}". Use png, jpeg, webp, gif or avif`,
       };
     }
     const bytes = base64ToBytes(match[2]);

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import PageClient from "./PageClient";
 
 export const metadata: Metadata = {
-  title: "Rock-Paper-Scissors vs AI — GRYND",
+  title: "Rock-Paper-Scissors vs AI | GRYND",
   description:
-    "Play Rock-Paper-Scissors against the AI on GRYND — practice your reads before facing real opponents.",
+    "Play Rock-Paper-Scissors against the AI on GRYND. Practice your reads before facing real opponents.",
 };
 
 export default function Page() {

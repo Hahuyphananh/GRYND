@@ -5,7 +5,7 @@ import type { CSSProperties } from "react";
 import LogoSmiley from "../images/logo1.png";
 
 export const metadata: Metadata = {
-  title: "Page Not Found — GRYND",
+  title: "Page Not Found | GRYND",
   description:
     "The page you're looking for doesn't exist. Head back to GRYND and keep playing.",
 };
@@ -238,14 +238,14 @@ export default function NotFound() {
         </div>
 
         <h1 className="mt-8 text-4xl font-extrabold tracking-tight sm:text-5xl">
-          <span className="sr-only">404 — </span>
+          <span className="sr-only">404 · </span>
           <span className="animate-shimmer-elegant bg-gradient-to-r from-[#00e5ff] via-[#f5ff3b] to-[#00e5ff] bg-clip-text text-transparent">
             Page Not Found
           </span>
         </h1>
 
         <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-[#9dd8ff] sm:text-lg">
-          The reels landed on 404 — this page has been dealt out of the deck. It may have
+          The reels landed on 404. This page has been dealt out of the deck. It may have
           been moved, renamed, or never existed at all.
         </p>
 

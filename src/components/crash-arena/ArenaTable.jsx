@@ -174,7 +174,7 @@ export default function ArenaTable({
             {seatedCount < 2
               ? "Waiting for another player…"
               : isFirstRound
-                ? `${readyCount}/${READY_VOTES_NEEDED} ready — press Start Round`
+                ? `${readyCount}/${READY_VOTES_NEEDED} ready. Press Start Round`
                 : "Waiting…"}
           </div>
         )}
@@ -261,7 +261,7 @@ export default function ArenaTable({
           {isWaitingPlayer && !isSeated && (
             <>
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-400">
-                <IconClock size={13} /> On wait list — you&apos;ll join after this round
+                <IconClock size={13} /> On wait list. You&apos;ll join after this round
               </span>
               <button
                 onClick={onExitToLobby}

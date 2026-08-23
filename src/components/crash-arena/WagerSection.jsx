@@ -74,7 +74,7 @@ export default function WagerSection({
             <span className="text-cyan-100/50 text-xs">Seated</span>
             <span className="text-white/90 font-semibold">
               {tables.length === 0
-                ? "—"
+                ? "-"
                 : `${totalPlayers}/${maxPlayers * tables.length}`}
             </span>
           </div>
@@ -110,7 +110,7 @@ export default function WagerSection({
               No open games right now.
             </p>
             <p className="text-xs text-white/40 mt-1">
-              Be the first — create a ${wager} table above!
+              Be the first. Create a ${wager} table above!
             </p>
           </div>
         ) : (

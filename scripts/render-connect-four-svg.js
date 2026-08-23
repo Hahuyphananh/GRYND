@@ -57,7 +57,7 @@ const SCALE = 1.5;
     </radialGradient>`;
 
   const newSvg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Connect Four — neon 7×6 board with red and yellow discs">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Connect Four. Neon 7×6 board with red and yellow discs">
   <title>Connect Four</title>
   ${defsBlock.replace("</defs>", `${vignette}\n  </defs>`)}
   <!-- grynd-master casino backdrop (embedded). -->

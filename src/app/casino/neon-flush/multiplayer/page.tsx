@@ -3,9 +3,9 @@ import NeonFlushMultiplayerPage from "../../uno/multiplayer/page";
 import { OG_BASE_URL } from "../../../../lib/ogImages";
 
 export const metadata: Metadata = {
-  title: "Neon Flush Multiplayer — GRYND",
+  title: "Neon Flush Multiplayer | GRYND",
   description:
-    "Play Neon Flush multiplayer on GRYND — challenge other players in real-time card duels.",
+    "Play Neon Flush multiplayer on GRYND. Challenge other players in real-time card duels.",
   alternates: {
     // Alias route — consolidate indexing on the canonical /games/uno/multiplayer
     // (/casino/uno/multiplayer 308-redirects to it; see next.config.js).

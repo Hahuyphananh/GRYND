@@ -593,8 +593,7 @@ export default function DiceFlushPage() {
           {value !== undefined
             ? value
             : preview(k) !== null
-              ? `${(preview(k) ?? 0) + (game.currentCall === k ? 15 : 0)}${game.currentCall === k ? " +15" : ""}`
-              : "—"}
+              ? `${(preview(k) ?? 0) + (game.currentCall === k ? 15 : 0)}${game.currentCall === k ? " +15" : ""}`                      : "-"}
         </div>
         <div className="text-right text-[10px] font-black">
           {isMine ? <span className="text-[#34d399]">YOU</span>
@@ -770,18 +769,18 @@ export default function DiceFlushPage() {
               heading: "Roll & hold",
               body: (
                 <>
-                  Roll 5 dice with up to 3 rolls per turn — hold the dice
+                  Roll 5 dice with up to 3 rolls per turn. Hold the dice
                   you want to keep between rolls.
                 </>
               ),
             },
             {
-              heading: "Shared scorecard — 12 categories",
+              heading: "Shared scorecard: 12 categories",
               body: (
                 <>
                   Both players fill the SAME sheet of 12 categories
                   (3/4/5-of-a-kind, full house, straights, and the top
-                  six). Each category can only be claimed once — so you
+                  six). Each category can only be claimed once, so you
                   can deny your opponent the category they want, or even
                   scratch a zero into a big one as a poison pill.
                 </>
@@ -793,7 +792,7 @@ export default function DiceFlushPage() {
                 <>
                   Before your first roll each turn, you may call one
                   unfilled category. If you bank that category this turn,
-                  you earn +15 bonus points on top of its score — the
+                  you earn +15 bonus points on top of its score. The
                   riskier the category, the bigger the payoff.
                 </>
               ),
@@ -813,7 +812,7 @@ export default function DiceFlushPage() {
               body: (
                 <>
                   The starter is chosen randomly (50/50) when the match
-                  begins — first pick of the sheet, but the other player
+                  begins. First pick of the sheet, but the other player
                   gets the last pick. With 12 categories you each claim
                   exactly 6.
                 </>
@@ -909,7 +908,7 @@ export default function DiceFlushPage() {
         />
       </div>
       <p className="mt-1 text-[10px] text-white/40">
-        {isYourTurn ? "Finish your turn before time runs out — it auto-banks your best category." : "Waiting for the opponent to finish their turn…"}
+        {isYourTurn ? "Finish your turn before time runs out. It auto-banks your best category." : "Waiting for the opponent to finish their turn…"}
       </p>
     </div>
   )}
@@ -1073,13 +1072,13 @@ export default function DiceFlushPage() {
           <span>
             {isYourTurn ? "You called" : `${opponent?.name || "Opponent"} called`}{" "}
             <span className="font-black underline decoration-dotted">{callLabel(game.currentCall)}</span>
-            {isYourTurn && " — bank it this turn for +15 pts!"}
+            {isYourTurn && " Bank it this turn for +15 pts!"}
           </span>
         </div>
       ) : isYourTurn && game.rollsThisTurn === 0 ? (
         <>
           <p className="mb-2 text-center text-xs font-bold uppercase tracking-wider text-[#f5ff3b]/80">
-            Call a category before your first roll — bank it this turn for +15 pts
+            Call a category before your first roll. Bank it this turn for +15 pts
           </p>
           <div className="flex flex-wrap justify-center gap-1.5">
             {openCategoriesForMe.map(([k, label]) => (
@@ -1095,7 +1094,7 @@ export default function DiceFlushPage() {
           </div>
         </>
       ) : isYourTurn ? (
-        <p className="text-center text-xs text-white/50">No call made this turn — you can still bank any category.</p>
+        <p className="text-center text-xs text-white/50">No call made this turn. You can still bank any category.</p>
       ) : (
         <p className="text-center text-xs text-white/50">The opponent is deciding on their call…</p>
       )}

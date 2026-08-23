@@ -7,6 +7,7 @@ import {
 } from "./lib/security/rateLimit";
 import { auditLog } from "./lib/security/auditLog";
 import { isAdmin } from "./lib/auth/isAdmin";
+import { isMaintenanceMode } from "./lib/security/maintenance";
 import { hasRecentMfa } from "./lib/auth/requireMfa";
 import { ADMIN_MFA_COOKIE, verifyAdminMfaToken } from "./lib/auth/adminMfa";
 import { db } from "./db";
@@ -19,6 +20,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/(.*)",
   "/ingest(.*)",
   "/monitoring",
+  "/health",
 
   "/",
   "/casino",
@@ -43,6 +45,7 @@ const isPublicRoute = createRouteMatcher([
   "/casino/rps(.*)",
   "/access-denied",
   "/complete-profile",
+  "/maintenance",
   "/casino/poker/multi(.*)",
   "/casino/dice-duel(.*)",
   "/casino/connect-four(.*)",
@@ -89,8 +92,10 @@ const isPublicRoute = createRouteMatcher([
   "/fair-play",
   "/accessibility",
 
-  // Public contact page
+  // Public pages
   "/contact",
+  "/reviews",
+  "/faq",
 ]);
 
 const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
@@ -222,6 +227,38 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   cleanupRateLimitStore();
   const pathname = req.nextUrl.pathname;
   const ip = getClientIp(req);
+
+  // ── Maintenance-mode kill switch ──────────────────────────────────────
+  // When the flag is on, everyone except admins is redirected to the
+  // maintenance page. /admin and /api/admin stay reachable so the admin
+  // can flip the flag back off without a redeploy. The check is skipped
+  // entirely when the flag is off (cached, one flag lookup per ~10s).
+  if (pathname !== "/maintenance" && (await isMaintenanceMode())) {
+    const isAdminPath =
+      pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
+    let allowed = isAdminPath;
+
+    if (!allowed) {
+      try {
+        const { userId } = await auth();
+        if (userId) {
+          const adminIds = (process.env.CHAT_ADMIN_CLERK_IDS || "")
+            .split(",")
+            .map((id) => id.trim())
+            .filter(Boolean);
+          allowed =
+            adminIds.length > 0 ? adminIds.includes(userId) : await isAdmin(userId);
+        }
+      } catch {
+        allowed = false;
+      }
+    }
+
+    if (!allowed) {
+      auditLog("maintenance_redirect", { ip, path: pathname });
+      return applySecurityHeaders(NextResponse.redirect(new URL("/maintenance", req.url)));
+    }
+  }
 
   if (pathname.startsWith("/api/")) {
     const limit = getLimitForPath(pathname);

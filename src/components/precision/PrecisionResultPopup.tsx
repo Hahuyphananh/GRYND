@@ -117,7 +117,7 @@ function PrecisionResultPopupImpl({
     ? popup.finalScore.seat1 === popup.finalScore.seat2
       ? `${popup.finalScore.seat1} – ${popup.finalScore.seat2} (drawn)`
       : `${popup.finalScore.seat1} – ${popup.finalScore.seat2}`
-    : "—";
+    : "-";
 
   const multiplier =
     typeof popup?.prizeMultiplier === "number" && popup.prizeMultiplier > 0
@@ -211,7 +211,7 @@ function PrecisionResultPopupImpl({
                     ? `+${formatTokens(payoutValue)} ${t("games.precision.tokens_suffix")}`
                     : popup?.result === "win"
                       ? t("games.precision.zero_tokens")
-                      : "—"
+                      : "-"
                 }
                 subValue={
                   payoutValue > 0 && wagerValue > 0

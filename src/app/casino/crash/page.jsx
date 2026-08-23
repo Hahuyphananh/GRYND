@@ -6,9 +6,9 @@ import { redirect } from "next/navigation";
  * bookmarks and links still land on the arena.
  */
 export const metadata = {
-  title: "Crash — GRYND",
+  title: "Crash | GRYND",
   description:
-    "The classic Crash game is now Crash Arena on GRYND — join a table, survive the crash and claim the pot.",
+    "The classic Crash game is now Crash Arena on GRYND. Join a table, survive the crash and claim the pot.",
 };
 
 export default function CrashRedirectPage() {

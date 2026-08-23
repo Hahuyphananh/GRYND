@@ -160,5 +160,5 @@ export function renderTemplate(
     ctaLabel && ctaUrl
       ? `<p style="margin-top:24px"><a href="${ctaUrl}" style="background:#10b981;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;">${ctaLabel}</a></p>`
       : "";
-  return `<div style="font-family:Inter,Arial,sans-serif;max-width:620px;margin:auto;background:#0f172a;color:#e2e8f0;padding:24px;border-radius:14px"><h1 style="color:#fbbf24">GRYND</h1><h2>${title}</h2><div>${body}</div>${cta}<p style="opacity:.75;margin-top:28px">— GRYND Team</p></div>`;
+  return `<div style="font-family:Inter,Arial,sans-serif;max-width:620px;margin:auto;background:#0f172a;color:#e2e8f0;padding:24px;border-radius:14px"><h1 style="color:#fbbf24">GRYND</h1><h2>${title}</h2><div>${body}</div>${cta}<p style="opacity:.75;margin-top:28px">- GRYND Team</p></div>`;
 }

@@ -24,7 +24,7 @@ import {
 const PAGE_SIZE = 15;
 
 function formatDate(iso) {
-  if (!iso) return "—";
+  if (!iso) return "-";
   return new Date(iso).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -69,7 +69,7 @@ export default function LaneRushDuelHistoryPage() {
       setTotalPages(data.data.pagination.totalPages);
       setTotal(data.data.pagination.total);
     } catch {
-      setError("Network error — please try again");
+      setError("Network error. Please try again");
     } finally {
       setLoading(false);
     }
@@ -105,7 +105,7 @@ export default function LaneRushDuelHistoryPage() {
             className="bg-clip-text text-3xl font-black text-transparent bg-gradient-to-r from-cyan-300 via-cyan-400 to-fuchsia-400 sm:text-4xl"
             style={{ filter: "drop-shadow(0 0 12px rgba(34,211,238,0.3))" }}
           >
-            LANE RUSH DUEL — Match History
+            LANE RUSH DUEL: Match History
           </h1>
           <p className="mt-1 text-sm uppercase tracking-[0.15em] text-slate-400">
             {total} match{total !== 1 ? "es" : ""} played
@@ -149,7 +149,7 @@ export default function LaneRushDuelHistoryPage() {
               No matches played yet
             </p>
             <p className="mt-1 text-sm text-slate-500">
-              Play a duel — or test the bot — and your history will appear
+              Play a duel, or test the bot, and your history will appear
               here
             </p>
             <button
@@ -216,7 +216,7 @@ export default function LaneRushDuelHistoryPage() {
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-xs text-slate-400">
                           {g.isBot ? (
-                            <span className="text-slate-600">—</span>
+                            <span className="text-slate-600">-</span>
                           ) : (
                             formatMoney(g.stakeAmount)
                           )}
@@ -250,7 +250,7 @@ export default function LaneRushDuelHistoryPage() {
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-xs">
                           {g.isBot ? (
-                            <span className="text-slate-600">—</span>
+                            <span className="text-slate-600">-</span>
                           ) : g.result === "win" ? (
                             <span className="font-bold text-green-400">
                               +{formatMoney(g.payout)}

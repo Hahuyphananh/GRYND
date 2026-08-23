@@ -1012,7 +1012,7 @@ export default function RoulettePvpGamePage({ params }) {
     if (changed) {
       setBets(next);
       setError(
-        "A number you bet on was eliminated from the wheel — removed that bet.",
+        "A number you bet on was eliminated from the wheel. Removed that bet.",
       );
     }
   }, [eliminatedKey, myBetsAreLocked]);
@@ -1606,7 +1606,7 @@ export default function RoulettePvpGamePage({ params }) {
                 </div>
                 <div className="mt-2 text-[10px] text-center text-white/50">
                   Always 3 rounds. <b>Round wins</b> shown above are informational<br/>
-                  only — most match points decides the winner.
+                  only. Most match points decides the winner.
                 </div>
               </div>
             )}          {/* Persistent match-points panel (Prompt 2) */}
@@ -1648,7 +1648,7 @@ export default function RoulettePvpGamePage({ params }) {
                     >
                       {Number.isFinite(myEffectivePoints)
                         ? myEffectivePoints.toFixed(0)
-                        : "—"}
+                        : "-"}
                     </div>
                     {(myCommittedBet > 0 || myTotalBet > 0) && (
                       <div
@@ -1661,7 +1661,7 @@ export default function RoulettePvpGamePage({ params }) {
                         {/* After the server commits the wager, the big
                             number above already reflects the deduction.
                             Prefix with the minus ONLY during staging
-                            (player hasn't locked in yet — they're
+                            (player hasn't locked in yet. They're
                             projecting how much of their balance will be
                             consumed). When locked, drop the minus so the
                             badge isn't read as "balance − locked = 0". */}
@@ -1702,7 +1702,7 @@ export default function RoulettePvpGamePage({ params }) {
                     >
                       {Number.isFinite(oppEffectivePoints)
                         ? oppEffectivePoints.toFixed(0)
-                        : "—"}
+                        : "-"}
                     </div>
                   </div>
                 </div>
@@ -1722,7 +1722,7 @@ export default function RoulettePvpGamePage({ params }) {
                     Round bet status
                   </span>
                   <span className="text-[11px] uppercase tracking-widest text-white/55">
-                    {timeLeft !== null ? `${timeLeft}s` : "—"}
+                    {timeLeft !== null ? `${timeLeft}s` : "-"}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -1782,7 +1782,7 @@ export default function RoulettePvpGamePage({ params }) {
             <div className="w-full bg-[#001933] p-3 rounded-lg border border-[#FFFF33]/20">
               <p className="text-[11px] uppercase tracking-widest text-white/55 mb-2 text-center">
                 Chip value · {pointsRemaining.toFixed(0)} remaining /{" "}
-                {Number.isFinite(myMatchPoints) ? myMatchPoints.toFixed(0) : "—"}
+                {Number.isFinite(myMatchPoints) ? myMatchPoints.toFixed(0) : "-"}
               </p>
               <div className="flex flex-wrap gap-1.5 justify-center">
                 {CHIP_VALUES.map((val) => (
@@ -1842,7 +1842,7 @@ export default function RoulettePvpGamePage({ params }) {
                 >
                   <SkullIcon className="w-4 h-4" title="Eliminate" />
                   {eliminateMode
-                    ? "Eliminate mode ON — tap a number"
+                    ? "Eliminate mode ON. Tap a number"
                     : `Eliminate (−${ELIMINATION_COST} pts)`}
                 </button>
                 <span className="text-[10px] text-white/50">
@@ -1852,7 +1852,7 @@ export default function RoulettePvpGamePage({ params }) {
               </div>
               {eliminateMode && (
                 <p className="mt-1.5 text-[10px] text-red-300/80 text-center">
-                  Tap any live number to remove it from the shared wheel — visible
+                  Tap any live number to remove it from the shared wheel. Visible
                   to both players. Removed numbers can never be spun or bet on.
                 </p>
               )}
@@ -2159,7 +2159,7 @@ export default function RoulettePvpGamePage({ params }) {
               ) : matchEndedBanner === "draw" ? (
                 <span className="inline-flex items-center justify-center gap-2">
                   <HandshakeIcon className="w-6 h-6 text-white/80" title="Draw" />
-                  <span>Mutual wipeout — match is a draw and stakes were refunded.</span>
+                  <span>Mutual wipeout. Match is a draw and stakes were refunded.</span>
                 </span>
               ) : (
                 "Match finished"
@@ -2223,14 +2223,14 @@ export default function RoulettePvpGamePage({ params }) {
                       <ClockIcon className="w-4 h-4 text-yellow-400" title="Timer" />
                       <span>Timer</span>
                     </h3>
-                    <p>Each round gives both players exactly 20 seconds to place bets. The timer starts simultaneously for both players — when it hits zero, betting locks and boards are saved server-side.</p>
+                    <p>Each round gives both players exactly 20 seconds to place bets. The timer starts simultaneously for both players. When it hits zero, betting locks and boards are saved server-side.</p>
                   </div>
                   <div>
                     <h3 className="text-yellow-400 font-semibold inline-flex items-center gap-1.5">
                       <TrophyIcon className="w-4 h-4 text-yellow-400" title="Match" />
                       <span>Match</span>
                     </h3>
-                    <p>Always 3 rounds — the player with the most match points wins. Ties after Round 3 trigger Sudden Death. 2.5% house fee.</p>
+                    <p>Always 3 rounds. The player with the most match points wins. Ties after Round 3 trigger Sudden Death. 2.5% house fee.</p>
                   </div>
                   <div>
                     <h3 className="text-yellow-400 font-semibold inline-flex items-center gap-1.5">

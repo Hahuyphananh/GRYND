@@ -28,7 +28,10 @@ import {
 } from "../db/schema";
 
 // Same base-URL convention used by src/lib/emails/*.ts.
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://grynd.dedyn.io";
+const BASE_URL =
+  process.env.NEXT_PUBLIC_BASE_URL ??
+  process.env.NEXT_PUBLIC_APP_URL ??
+  "https://grynd.mywire.org";
 
 // ISR: the XML is prerendered at build time and served instantly from cache,
 // then regenerated in the background at most once per hour so the DB-backed
@@ -102,7 +105,7 @@ const GAME_PAGES: {
   { path: "/games/memory-grid", source: [memoryGridMatches, memoryGridMatches.createdAt] },
 ];
 
-const LEGAL_PAGES = ["/terms", "/privacy-policy", "/security-policy", "/fair-play", "/accessibility"];
+const LEGAL_PAGES = ["/terms", "/privacy-policy", "/security-policy", "/fair-play", "/accessibility", "/faq"];
 
 type ChangeFrequency = MetadataRoute.Sitemap[number]["changeFrequency"];
 
