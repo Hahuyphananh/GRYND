@@ -25,6 +25,26 @@ import {
 // debited/credited from the player's match points directly. Players
 // can never exceed their current match balance when betting.
 export const STARTING_POINTS = 100;
+export const ROULETTE_AI_PLAYER_ID = "roulette_ai_bot";
+
+export function isFreeAiMatch(match) {
+  return Boolean(match?.isAi);
+}
+
+export function calculateMatchSettlement(match, roundWinner) {
+  const winnerId =
+    roundWinner === "player1" ? match?.player1Id : match?.player2Id;
+  if (isFreeAiMatch(match)) {
+    return { winnerId, fee: 0, payout: 0 };
+  }
+  const totalPot = Number(match?.stakeAmount || 0) * 2;
+  const fee = Number((totalPot * HOUSE_FEE_PCT).toFixed(2));
+  return {
+    winnerId,
+    fee,
+    payout: Number((totalPot - fee).toFixed(2)),
+  };
+}
 
 // ── House fee (Prompt 10: 2.5% per the math in the spec) ─────────────────
 // NOTE: this constant is Roulette-PvP-specific. coin_flip PvP still uses
@@ -275,6 +295,65 @@ export function resolveCalls(calls, player1Bets, player2Bets) {
     out.player2.transfer = CALL_BONUS;
   }
   return out;
+}
+
+// Choose a valid server-side wager for the Roulette AI. The strategy is
+// intentionally modest and varied: it selects one or two live targets,
+// never exceeds the bot's current match-point balance, and may call the
+// human's biggest wager after the human has locked in.
+export function chooseAiBets(match, random = Math.random) {
+  const points = Number(match?.playerTwoPoints);
+  if (!Number.isFinite(points) || points <= 0) {
+    return { bets: {}, call: null };
+  }
+
+  const dead = new Set([
+    ...(Array.isArray(match?.serverEliminated)
+      ? match.serverEliminated.map(String)
+      : []),
+    ...Object.keys(match?.eliminations || {}),
+  ]);
+  const named = [
+    "red",
+    "black",
+    "green",
+    "even",
+    "odd",
+    "1-12",
+    "13-24",
+    "25-36",
+    "1-18",
+    "19-36",
+  ].filter((key) => isBetKeyLive(key, dead));
+  const singles = ROULETTE_NUMBERS
+    .filter((number) => !dead.has(String(number)))
+    .map(String);
+  const candidates = [...named, ...singles];
+  if (candidates.length === 0) return { bets: {}, call: null };
+
+  const first = candidates[Math.floor(random() * candidates.length)];
+  const bets = {};
+  const firstAmount = Math.max(
+    1,
+    Math.min(points, Math.floor(points * (0.15 + random() * 0.25))),
+  );
+  bets[first] = firstAmount;
+
+  if (points - firstAmount >= 2 && random() > 0.55) {
+    const second = candidates[Math.floor(random() * candidates.length)];
+    if (second !== first) {
+      bets[second] = Math.min(
+        points - firstAmount,
+        Math.max(1, Math.floor((points - firstAmount) * 0.35)),
+      );
+    }
+  }
+
+  const humanKeys = biggestWagerKeys(match?.player1Bets || {});
+  const call = humanKeys.length > 0 && random() > 0.35
+    ? humanKeys[Math.floor(random() * humanKeys.length)]
+    : null;
+  return { bets, call };
 }
 
 // ── Per-round resolution helpers ──────────────────────────────────────

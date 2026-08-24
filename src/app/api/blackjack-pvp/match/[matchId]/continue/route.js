@@ -17,6 +17,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import {
   continueMatch,
+  playAiTurn,
   viewerPlayerState,
 } from "../../../../../../lib/blackjack-pvp/serverStore";
 import { MATCH_STATUS } from "../../../../../../lib/blackjack-pvp/constants";
@@ -63,7 +64,15 @@ export async function POST(req, { params }) {
       );
     }
 
-    const match = result.match;
+    let match = result.match;
+    if (match.isAi && match.player1Id === userId) {
+      try {
+        const aiResult = await playAiTurn({ userId, matchId });
+        if (!aiResult.error && aiResult.match) match = aiResult.match;
+      } catch (error) {
+        console.error("[blackjack-pvp/continue] AI turn failed:", error);
+      }
+    }
     const viewerIsPlayer1 = match.player1Id === userId;
 
     // Re-scrub to be safe — if the advance succeeded but for any
@@ -83,6 +92,7 @@ export async function POST(req, { params }) {
           id: match.id,
           player1Id: match.player1Id,
           player2Id: match.player2Id,
+          isAi: Boolean(match.isAi),
           stakeAmount: Number(match.stakeAmount),
           status: match.status,
           roundNumber: match.roundNumber,

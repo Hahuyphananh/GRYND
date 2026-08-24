@@ -110,6 +110,18 @@ export async function POST(req, { params }) {
       justResolved: true,
     });
 
+    // Server-side AI trigger: if the match is a free AI game and the
+    // human just flagged, trigger the bot's response. Flags are
+    // terminal so this is best-effort only.
+    if (result.match?.isAi && result.match?.status !== "finished") {
+      try {
+        const { playAiTurn } = await import("../../../../../../lib/mines-pvp/serverStore");
+        await playAiTurn({ userId: result.match.player1Id, matchId });
+      } catch (aiErr) {
+        console.error("[mines-pvp/flag] AI turn trigger failed:", aiErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {

@@ -242,6 +242,7 @@ type MatchRow = {
   id: number;
   player1Id: string;
   player2Id: string | null;
+  isAi: boolean;
   stakeAmount: string;
   status: string;
   minesCount: number;
@@ -587,11 +588,15 @@ export default function MinesPvpMatchPage({
     return match.player1Id === myUserId || match.player2Id === myUserId;
   }, [match, myUserId]);
   const isPlayer1 = match?.player1Id === myUserId;
+  const isAi = Boolean(match?.isAi);
   // The opponent is whoever occupies the seat we don't hold. Only
-  // reportable once a real opponent has joined (player2Id set).
-  const opponentClerkId = isPlayer1
-    ? match?.player2Id ?? null
-    : match?.player1Id ?? null;
+  // reportable once a real human opponent has joined. Never reportable
+  // in AI matches.
+  const opponentClerkId = isAi
+    ? null
+    : isPlayer1
+      ? match?.player2Id ?? null
+      : match?.player1Id ?? null;
   const isMyTurn =
     match?.status === MATCH_STATUS.P1_TURN
       ? isPlayer1
@@ -672,6 +677,21 @@ export default function MinesPvpMatchPage({
           cell_index: cellIndex,
           auto: false,
         });
+        // Server-side AI trigger: if this is a free AI match and the
+        // human just picked, trigger the bot's response so it plays
+        // immediately rather than waiting for the status poll.
+        if (match?.isAi) {
+          try {
+            await fetch(`/api/mines-pvp/match/${matchId}/ai-turn`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({}),
+            });
+          } catch {
+            // Best-effort: status polling will recover if this fails.
+          }
+        }
         await fetchStatus();
       } finally {
         setBusy(false);
@@ -960,7 +980,7 @@ export default function MinesPvpMatchPage({
         className={`flex flex-wrap items-center justify-center gap-3 rounded-xl border border-fuchsia-300/40 bg-fuchsia-500/10 px-4 py-3 text-fuchsia-200`}
       >
         <span className="font-bold text-base sm:text-lg">
-          Opponent is picking…
+          {isAi ? "GRYND AI is picking…" : "Opponent is picking…"}
         </span>
         <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-500/30 px-3 py-1 text-sm font-bold text-fuchsia-100">
           <ClockIcon className="w-4 h-4" />
@@ -993,16 +1013,17 @@ export default function MinesPvpMatchPage({
     const iFlagged = Boolean(
       flagEntry && myUserId && flagEntry.userId === myUserId,
     );
+    const opponentLabel = isAi ? "GRYND AI" : "Opponent";
     const headline = flagEntry
       ? iFlagged
         ? flagEntry.isMine
           ? "Correct flag. You called the mine"
           : "Wrong flag. The tile was safe"
         : flagEntry.isMine
-          ? "Opponent called your mine"
-          : "Opponent's flag missed"
+          ? `${opponentLabel} called your mine`
+          : `${opponentLabel}'s flag missed`
       : iWon
-        ? "Opponent hit a mine - you take the pot"
+        ? `${opponentLabel} hit a mine - you take the pot`
         : iLost
           ? "You hit a mine"
           : "Match complete";
@@ -1058,11 +1079,17 @@ export default function MinesPvpMatchPage({
               {headline}
             </h2>
             <p className="mt-1 text-sm text-white/70">
-              {iWon
-                ? `You took home ${prizePaid.toFixed(2)} tokens (your stake + 90% of opponent's).`
-                : iLost
-                  ? `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`
-                  : "Result recorded."}
+              {isAi
+                ? iWon
+                  ? "You beat the GRYND AI!"
+                  : iLost
+                    ? "The GRYND AI won this round."
+                    : "Result recorded."
+                : iWon
+                  ? `You took home ${prizePaid.toFixed(2)} tokens (your stake + 90% of opponent's).`
+                  : iLost
+                    ? `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`
+                    : "Result recorded."}
             </p>
 
             {/* Payout breakdown */}
@@ -1114,7 +1141,7 @@ export default function MinesPvpMatchPage({
               </div>
               <div className="rounded-lg border border-fuchsia-300/20 bg-fuchsia-500/5 p-3">
                 <p className="text-[10px] uppercase tracking-wider text-fuchsia-200/70">
-                  Opponent {opponentLastPick?.flag ? "flagged" : "picked"} cell #{opponentPick ?? "?"}
+                  {opponentLabel} {opponentLastPick?.flag ? "flagged" : "picked"} cell #{opponentPick ?? "?"}
                 </p>
                 <p className="mt-1 inline-flex items-center gap-1 font-semibold">
                   {opponentPickIsMine ? (
@@ -1239,11 +1266,18 @@ export default function MinesPvpMatchPage({
         {/* Match info strip */}
         <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs text-white/60">
           <span className="inline-flex items-center gap-1">
-            Stake:
-            <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
-              {stake.toLocaleString()}
-              <CoinIcon className="w-3.5 h-3.5 text-yellow-300" />
-            </span>
+            {isAi ? "Free vs AI" : "Stake:"}
+            {!isAi && (
+              <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
+                {stake.toLocaleString()}
+                <CoinIcon className="w-3.5 w-3.5 text-yellow-300" />
+              </span>
+            )}
+            {isAi && (
+              <span className="text-emerald-300 font-semibold">
+                No tokens at stake
+              </span>
+            )}
           </span>
           <span className="inline-flex items-center gap-1">
             Mines:

@@ -78,6 +78,27 @@
       "when": 1788000000000,
       "tag": "0077_rebrand_titles",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1788200000000,
+      "tag": "0082_roulette_pvp_ai",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1788300000000,
+      "tag": "0083_blackjack_pvp_ai",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1788400000000,
+      "tag": "0084_mines_pvp_ai",
+      "breakpoints": true
     }
   ]
 }

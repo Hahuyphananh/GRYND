@@ -726,6 +726,63 @@ export function rowColToCellIndex(row, col) {
   return r * GRID_SIZE + c;
 }
 
+// Stable internal seat identity for free human-vs-AI matches. This is
+// never a Clerk user and must never be used for balance/stat updates.
+export const MINES_AI_PLAYER_ID = "mines_ai_bot";
+
+export function isFreeAiMatch(match) {
+  return Boolean(match?.isAi);
+}
+
+// Pure settlement contract used by the server store and tests. AI
+// matches remain free even if a legacy row contains a non-zero stake.
+export function calculateAiSettlement(match) {
+  if (isFreeAiMatch(match)) {
+    return { winnerId: match?.player1Id, fee: 0, payout: 0 };
+  }
+  // Paid matches use the normal computePayout path.
+  return null;
+}
+
+// ── AI cell-selection strategy ────────────────────────────────────────
+// The bot picks a cell for its turn. Strategy:
+//   1. If only mines remain (safeTilesRemaining <= 0), the bot
+//      must lose — it picks a random unpicked cell (which is a mine).
+//   2. Otherwise pick a random unpicked cell that avoids the
+//      center block when possible (the center block is guaranteed
+//      mine-free, so a random non-center pick slightly increases
+//      the chance the bot hits a mine — which is acceptable for a
+//      free AI match that doesn't affect token balances).
+//   3. Optionally attempt a FLAG when the bot can deduce a mine
+//      (currently deferred to keep the implementation simple).
+// Returns `{ cellIndex }` with a valid unpicked cell.
+export function chooseAiCell(match) {
+  const picks = Array.isArray(match?.picks) ? match.picks : [];
+  const exclude = new Set(
+    picks.map((p) => Number(p?.cell)).filter((c) => Number.isInteger(c)),
+  );
+  const available = [];
+  const centerBlock = new Set([6, 7, 8, 11, 12, 13, 16, 17, 18]);
+  const nonCenter = [];
+  for (let i = 0; i < GRID_CELLS; i += 1) {
+    if (!exclude.has(i)) {
+      available.push(i);
+      if (!centerBlock.has(i)) nonCenter.push(i);
+    }
+  }
+  if (available.length === 0) {
+    // Every cell picked — shouldn't happen (match should have
+    // resolved), but pick cell 0 as a safe fallback.
+    return { cellIndex: 0 };
+  }
+  // Prefer non-center cells to slightly increase mine-hit chance
+  // in a free match (the bot doesn't lose anything).
+  const pool = nonCenter.length > 0 ? nonCenter : available;
+  return {
+    cellIndex: pool[Math.floor(Math.random() * pool.length)],
+  };
+}
+
 // ── Re-exports so the lobby + match UI can mirror the same
 // constants without re-declaring them in the client.
 export { GRID_SIZE as MINES_PVP_GRID_SIZE };

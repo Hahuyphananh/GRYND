@@ -47,6 +47,7 @@ import {
   MAX_STAKE,
   MIN_MINES,
   MIN_STAKE,
+  MINES_AI_PLAYER_ID,
   MINES_PVP_LOCK_NAMESPACE,
   PICKABLE_STATES,
   READY_WINDOW_MS,
@@ -54,9 +55,11 @@ import {
   ROUND_PICK_DEADLINE_MS,
   ROUND_TIMER_SECONDS,
   activePickerForMatch,
+  chooseAiCell,
   computePayout,
   decideOutcome,
   generateSolvableBoard,
+  isFreeAiMatch,
   isMine,
   nearestMineDistance,
   pickRandomCell,
@@ -145,6 +148,97 @@ export async function listOpenMatches({ limit = 30 } = {}) {
     )
     .orderBy(sql`${minesPvpMatches.createdAt} DESC`)
     .limit(limit);
+}
+
+// ── Create a free human-vs-AI match ─────────────────────────────────
+//
+// The bot occupies player2 seat. No stake is escrowed, no user
+// balance is touched. The match starts immediately in `ready`
+// state so the human sees the 3-second "Get ready" banner, then
+// the AI will play when its turn arrives via the odds formula.
+//
+// The minesCount is required (host picks it). The board is
+// generated server-side just like a normal match.
+export async function createAiMatch({ userId, minesCount }) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+
+  const count = Number(minesCount);
+  if (!Number.isInteger(count) || count < MIN_MINES || count > MAX_MINES) {
+    return {
+      error: `Mines count must be an integer in [${MIN_MINES}, ${MAX_MINES}]`,
+      status: 400,
+    };
+  }
+
+  // Server randomises the first player. In AI matches the human
+  // always goes first so they get a meaningful opening; the AI
+  // responds after the human's pick.
+  const firstPlayerId = userId;
+  const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
+
+  const [match] = await db
+    .insert(minesPvpMatches)
+    .values({
+      player1Id: userId,
+      player2Id: MINES_AI_PLAYER_ID,
+      stakeAmount: "0.00",
+      minesCount: count,
+      status: MATCH_STATUS.READY,
+      isAi: true,
+      firstPlayerId,
+      board: generateSolvableBoard(count),
+      roundTimerSeconds: ROUND_TIMER_SECONDS,
+      roundDeadline: readyDeadline,
+      startedAt: new Date(),
+    })
+    .returning();
+
+  return { match, joined: true };
+}
+
+// Let the authenticated human request the bot's pick. The bot
+// submits through the same `pickTile` / `applyPick` pipeline so
+// it receives the same validation, row lock, and resolution as a
+// human player. A duplicate call is idempotent: if the bot already
+// picked (or the match finished), it returns the current state.
+export async function playAiTurn({ userId, matchId }) {
+  const match = await fetchMatch(matchId);
+  if (!match) return { error: "Match not found", status: 404 };
+  if (!isFreeAiMatch(match) || match.player1Id !== userId) {
+    return { error: "Forbidden", status: 403 };
+  }
+  if (match.status === MATCH_STATUS.FINISHED || match.status === MATCH_STATUS.CANCELLED) {
+    return { match, justResolved: false, alreadyPlayed: true };
+  }
+  if (match.status === MATCH_STATUS.WAITING || match.status === MATCH_STATUS.READY) {
+    return { error: "Match has not started yet", status: 400 };
+  }
+
+  // Check if the AI is actually the active picker
+  const expectedPicker = activePickerForMatch(match);
+  if (!expectedPicker || expectedPicker !== match.player2Id) {
+    // Not the AI's turn yet
+    return { match, justResolved: false, alreadyPlayed: true };
+  }
+
+  // Check if the AI already picked (idempotency)
+  const historyCells = pickHistoryCells(match);
+  if (historyCells.includes(match.p2Pick) && match.status !== MATCH_STATUS.P2_TURN) {
+    return { match, justResolved: false, alreadyPlayed: true };
+  }
+
+  // Choose a cell for the bot
+  const { cellIndex } = chooseAiCell(match);
+
+  // Submit through pickTile using the bot's identity. The bot IS
+  // player2, so this passes the participant check.
+  const result = await pickTile({
+    userId: MINES_AI_PLAYER_ID,
+    matchId,
+    cellIndex,
+  });
+
+  return { match: result.match, justResolved: Boolean(result.justResolved), alreadyPlayed: false };
 }
 
 // ── Create / Join matchmaking ─────────────────────────────────────────
@@ -922,10 +1016,11 @@ async function resolveMatch(tx, match, loserId) {
     player2Id: match.player2Id,
   });
 
-  const payout = computePayout({
-    stakeAmount: match.stakeAmount,
-    result,
-  });
+  // AI matches are always free: no token settlement, no stat updates.
+  const isAi = isFreeAiMatch(match);
+  const payout = isAi
+    ? { stake: 0, winnerNet: 0, loserNet: 0, houseFee: 0, prizePaid: 0 }
+    : computePayout({ stakeAmount: match.stakeAmount, result });
 
   // Pick the FIRST pick from each seat for the legacy single-pick
   // columns on `mines_pvp_rounds`. The full chronological history
@@ -952,14 +1047,17 @@ async function resolveMatch(tx, match, loserId) {
     roundWinner: result,
   });
 
-  // Apply balance changes. Only two outcomes in the new flow
-  // (PLAYER1 or PLAYER2); never a DRAW.
   const winnerId =
     result === RESULT.PLAYER1 ? match.player1Id : match.player2Id;
-  await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-    .where(eq(users.clerkId, winnerId));
+
+  // Apply balance changes only for paid PvP matches. AI matches
+  // never touch user token balances.
+  if (!isAi) {
+    await tx
+      .update(users)
+      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
+      .where(eq(users.clerkId, winnerId));
+  }
 
   // Stamp the match as finished. The `board` column stays on the
   // row so the post-match reveal screen can render the full mine
@@ -983,7 +1081,11 @@ async function resolveMatch(tx, match, loserId) {
   const finalRow = updated || match;
 
   // Best-effort stat side-effects (failures don't roll the match).
-  await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
+  // Skipped for AI matches since bot results should not affect
+  // real user leaderboards or statistics.
+  if (!isAi) {
+    await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
+  }
 
   return finalRow;
 }
@@ -1038,7 +1140,7 @@ async function recordPvPResult(tx, match, winnerId, result) {
 // for the post-match reveal.
 export async function fetchMatchWithAutoResolve(userId, matchId) {
   const result = await db.transaction(async (tx) => {
-    const match = await fetchMatchForUpdate(tx, matchId);
+    let match = await fetchMatchForUpdate(tx, matchId);
     if (!match) return { error: "Match not found", status: 404 };
     if (!isParticipant(match, userId)) {
       return { error: "Forbidden", status: 403 };
@@ -1051,8 +1153,7 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       match.roundDeadline &&
       new Date(match.roundDeadline).getTime() <= Date.now()
     ) {
-      const advanced = await advanceFromReady(tx, match);
-      return { match: advanced };
+      match = await advanceFromReady(tx, match);
     }
 
     // 2) AFK auto-pick on the current turn's deadline. Covers both
@@ -1064,8 +1165,62 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       match.roundDeadline &&
       new Date(match.roundDeadline).getTime() <= Date.now()
     ) {
-      const advanced = await forcePick(tx, match);
-      return { match: advanced };
+      match = await forcePick(tx, match);
+    }
+
+    // 3) Server-side AI turn: if this is a free AI match and it's
+    //    the bot's turn, play the bot's pick immediately so the
+    //    human doesn't have to wait for the full deadline. This is
+    //    done inside the same transaction to avoid race conditions.
+    if (
+      PICKABLE_STATES.has(match.status) &&
+      isFreeAiMatch(match)
+    ) {
+      const expectedPicker = activePickerForMatch(match);
+      if (expectedPicker && expectedPicker === match.player2Id) {
+        // It's the bot's turn. Make its pick inline.
+        const { cellIndex } = chooseAiCell(match);
+        const idx = Number(cellIndex);
+        if (
+          Number.isInteger(idx) && idx >= 0 && idx < GRID_CELLS
+        ) {
+          let board = match.board;
+          let mercyUsed = false;
+          // First-pick mercy still applies to the bot
+          if (match.picks.length === 0 && isMine(board, idx)) {
+            board = relocateMine(board, idx);
+            mercyUsed = true;
+            await tx
+              .update(minesPvpMatches)
+              .set({ board })
+              .where(eq(minesPvpMatches.id, match.id));
+          }
+          const pickIsMine = isMine(board, idx);
+          const newPick = {
+            userId: MINES_AI_PLAYER_ID,
+            seat: "player2",
+            cell: idx,
+            isMine: pickIsMine,
+            hint: pickIsMine
+              ? null
+              : nearestMineDistance(board, idx),
+            mercy: mercyUsed,
+            autoPicked: false,
+            pickedAt: new Date().toISOString(),
+          };
+          const pickResult = await applyPick(
+            tx,
+            { ...match, board },
+            newPick,
+          );
+          if (pickResult?.match) {
+            match = pickResult.match;
+          } else if (pickResult) {
+            // applyPick may return the match directly on resolve
+            match = pickResult;
+          }
+        }
+      }
     }
 
     return { match };

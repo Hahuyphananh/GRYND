@@ -78,7 +78,6 @@ import {
   AlertIcon,
 } from "../../../../components/roulette-pvp/RouletteIcons";
 import { IconFlag } from "@tabler/icons-react";
-import RoundMarkers from "../../../../components/casino/RoundMarkers";
 
 const POLL_INTERVAL_MS = 1500;
 
@@ -327,6 +326,7 @@ export default function RoulettePvpGamePage({ params }) {
   const [rounds, setRounds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [aiTurning, setAiTurning] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [timeLeft, setTimeLeft] = useState(null);
   const [roundResultBanner, setRoundResultBanner] = useState(null);
@@ -380,6 +380,7 @@ export default function RoulettePvpGamePage({ params }) {
   // `setRoundResultBanner(...)` after `spinWheel(...)` resolves, so
   // the popup and the wheel settle at the same time.
   const pendingBannerRef = useRef(null);
+  const aiTurnInFlightRef = useRef(false);
   // Mirror `winningNumber` into a ref so `drawWheel` — and therefore
   // `spinWheel` — can read its current value WITHOUT listing
   // `winningNumber` in the `useCallback` dependency arrays.
@@ -493,10 +494,10 @@ export default function RoulettePvpGamePage({ params }) {
         !data.data.match.winnerId ||
         data.data.match.result === "draw";
       let endKind;
+      const meWon = data.data.match.winnerId === user?.id;
       if (isDraw) {
         endKind = "draw";
       } else {
-        const meWon = data.data.match.winnerId === user?.id;
         endKind = meWon ? "you" : "opponent";
       }
       setMatchEndedBanner(endKind);
@@ -756,12 +757,19 @@ export default function RoulettePvpGamePage({ params }) {
     winningNumberRef.current = winningNumber;
   }, [winningNumber]);
 
+  // The first render shows the loading state, so the canvas does not
+  // exist when the initial effect runs. Redraw when the match becomes
+  // available, which is when the canvas is actually mounted.
   useEffect(() => {
-    drawWheel();
-    const onResize = () => drawWheel();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [drawWheel]);
+    if (!match) return;
+    const drawWhenMounted = () => drawWheel();
+    const frame = requestAnimationFrame(drawWhenMounted);
+    window.addEventListener("resize", drawWhenMounted);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", drawWhenMounted);
+    };
+  }, [drawWheel, Boolean(match)]);
 
   // ── Server-driven spin animation (replaces solo's `handleSpin`) ──
   const normAngle = (a) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
@@ -1253,6 +1261,43 @@ export default function RoulettePvpGamePage({ params }) {
   };
 
   // ── Submit bets for current round (replaces solo `handleSpin`) ─
+  const playAiTurn = useCallback(async () => {
+    if (!match?.isAi || !isPlayer1 || !matchId || aiTurnInFlightRef.current) {
+      return;
+    }
+    if (!match.player1Bets || match.player2Bets || !BETTABLE.has(match.status)) {
+      return;
+    }
+    aiTurnInFlightRef.current = true;
+    setAiTurning(true);
+    try {
+      const res = await fetch(
+        `/api/roulette-pvp/match/${matchId}/ai-turn`,
+        { method: "POST", credentials: "include" },
+      );
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        if (data?.error !== "Bets already locked for this round") {
+          setError(data?.error || "Unable to make the AI turn");
+        }
+      }
+      await fetchStatus();
+    } catch {
+      setError("Network error while the AI was playing");
+    } finally {
+      aiTurnInFlightRef.current = false;
+      setAiTurning(false);
+    }
+  }, [match, isPlayer1, matchId, fetchStatus]);
+
+  useEffect(() => {
+    if (!match?.isAi || !isPlayer1 || !match?.player1Bets || match?.player2Bets) {
+      return;
+    }
+    if (!BETTABLE.has(match.status) || aiTurnInFlightRef.current) return;
+    playAiTurn();
+  }, [match?.isAi, isPlayer1, match?.player1Bets, match?.player2Bets, match?.status, playAiTurn]);
+
   const submitBets = async () => {
     if (!match) return;
     if (myBetsAreLocked) return;
@@ -1296,6 +1341,7 @@ export default function RoulettePvpGamePage({ params }) {
         event: ROULETTE_PVP_MATCH_UPDATED,
       });
       await fetchStatus();
+      if (match.isAi) await playAiTurn();
     } catch {
       setError("Network error while submitting bets");
     } finally {
@@ -1495,11 +1541,11 @@ export default function RoulettePvpGamePage({ params }) {
 
   const stake = Number(match.stakeAmount);
   const totalPot = stake * 2;
-  const scoreP1 = match.scorePlayer1 ?? 0;
-  const scoreP2 = match.scorePlayer2 ?? 0;
-  const scoreYouView = isPlayer1 ? scoreP1 : scoreP2;
-  const scoreOppView = isPlayer1 ? scoreP2 : scoreP1;
-  const draws = (rounds || []).filter((r) => !r.roundWinner).length;
+  const roundNumber = Math.max(1, Number(match.currentRound) || 1);
+  const roundLabel =
+    match.status === MATCH_STATUS.SUDDEN_DEATH
+      ? `Sudden Death · Round ${roundNumber}`
+      : `Round ${roundNumber}`;
   const statusLabel =
     ROUND_STATUS_LABELS[match.status] ?? match.status ?? "";
 
@@ -1539,20 +1585,20 @@ export default function RoulettePvpGamePage({ params }) {
               className="w-7 h-7 sm:w-8 sm:h-8 text-[#FFFF33]"
               title="Roulette wheel"
             />
-            <span>Roulette PvP</span>
+            <span>{match.isAi ? "Roulette vs AI" : "Roulette PvP"}</span>
           </h1>
 
           <div className="flex w-full flex-wrap items-center justify-center gap-2">
             {renderStatusPill()}
             <span className="px-3 py-1 rounded-full bg-[#FFFF33]/15 border border-[#FFFF33]/40 text-yellow-200 text-xs font-bold inline-flex items-center gap-1.5">
-              <span>Stake: {stake.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              <CoinIcon className="w-3.5 h-3.5 text-yellow-200" title="Tokens" />
+              <span>{match.isAi ? "Free AI match" : `Stake: ${stake.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
+              {!match.isAi && <CoinIcon className="w-3.5 h-3.5 text-yellow-200" title="Tokens" />}
             </span>
             <span className="px-3 py-1 rounded-full bg-[#00e5ff]/15 border border-[#00e5ff]/40 text-cyan-200 text-xs font-bold inline-flex items-center gap-1.5">
-              <span>Pot: {totalPot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              <CoinIcon className="w-3.5 h-3.5 text-cyan-200" title="Tokens" />
+              <span>{match.isAi ? "No tokens" : `Pot: ${totalPot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
+              {!match.isAi && <CoinIcon className="w-3.5 h-3.5 text-cyan-200" title="Tokens" />}
             </span>
-            {opponentClerkId && (
+            {!match.isAi && opponentClerkId && (
               <button
                 onClick={() => setShowReportModal(true)}
                 className="px-3 py-1 rounded-full border border-red-500/30 bg-red-500/10 text-xs font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)] inline-flex items-center gap-1.5"
@@ -1562,51 +1608,19 @@ export default function RoulettePvpGamePage({ params }) {
             )}
           </div>
 
-          {/* Score panel (round-win counter) */}
+          {/* Current round indicator. Match points decide the winner;
+              round-win counters are intentionally not shown. */}
           {match.status !== MATCH_STATUS.WAITING &&
             match.status !== MATCH_STATUS.CANCELLED && (
-              <div className="w-full bg-[#001933] border border-[#FFFF33]/30 rounded-xl p-3">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] uppercase tracking-widest text-white/55">
-                    Score
-                  </span>
-                  <span className="text-[11px] uppercase tracking-widest text-white/55">
-                    Draw {draws}
-                  </span>
+              <div className="w-full rounded-xl border border-cyan-400/30 bg-[#001933] p-3 text-center">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-white/50">
+                  Current round
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-center">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-yellow-200">
-                      You
-                    </div>
-                    <div className="text-2xl font-extrabold text-yellow-300">
-                      {scoreYouView}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-cyan-200">
-                      Opp
-                    </div>
-                    <div className="text-2xl font-extrabold text-cyan-300">
-                      {scoreOppView}
-                    </div>
-                  </div>
+                <div className="mt-1 text-xl font-extrabold text-cyan-200">
+                  {roundLabel}
                 </div>
-                {/* Round tracker — blue = rounds you won, red = rounds
-                    the opponent won (shared best-of marker). Draws leave
-                    a dot empty. */}
-                <div className="mt-2 flex justify-center">
-                  <RoundMarkers
-                    total={3}
-                    myWins={scoreYouView}
-                    oppWins={scoreOppView}
-                    myLabel="You"
-                    oppLabel="Opp"
-                  />
-                </div>
-                <div className="mt-2 text-[10px] text-center text-white/50">
-                  Always 3 rounds. <b>Round wins</b> shown above are informational<br/>
-                  only. Most match points decides the winner.
+                <div className="mt-1 text-[10px] text-white/45">
+                  Match points decide the winner
                 </div>
               </div>
             )}          {/* Persistent match-points panel (Prompt 2) */}
@@ -1618,7 +1632,7 @@ export default function RoulettePvpGamePage({ params }) {
                     Match points
                   </span>
                   <span className="text-[10px] uppercase tracking-widest text-white/35">
-                    seed {STARTING_POINTS}
+                    {match.isAi ? "free match" : `seed ${STARTING_POINTS}`}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-center">
@@ -1944,7 +1958,9 @@ export default function RoulettePvpGamePage({ params }) {
             match.status !== MATCH_STATUS.CANCELLED &&
             match.status !== MATCH_STATUS.WAITING && (
               <div className="w-full rounded-xl border border-green-400/30 bg-green-500/10 px-3 py-2 text-center text-sm font-semibold text-green-200">
-                Bets locked. Waiting for opponent…
+                {match.isAi && aiTurning
+                  ? "AI is choosing its bets…"
+                  : "Bets locked. Waiting for opponent…"}
                 {myCall && (
                   <span className="ml-2 text-xs font-bold text-purple-200">
                     Your call: {myCall}
@@ -2142,29 +2158,33 @@ export default function RoulettePvpGamePage({ params }) {
                 <span className="inline-flex items-center justify-center gap-2 flex-wrap">
                   <TrophyIcon className="w-6 h-6 text-green-300" title="You won" />
                   <span>
-                    You won {Number(match.prizePaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {match.isAi
+                      ? "You won the free AI match"
+                      : `You won ${Number(match.prizePaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   </span>
-                  <CoinIcon className="w-5 h-5 text-green-300" title="Tokens" />
+                  {!match.isAi && <CoinIcon className="w-5 h-5 text-green-300" title="Tokens" />}
                   <span>!</span>
                 </span>
               ) : matchEndedBanner === "opponent" ? (
                 <span className="inline-flex items-center justify-center gap-2 flex-wrap">
                   <SkullIcon className="w-6 h-6 text-red-300" title="You lost" />
                   <span>
-                    You lost. Opponent took {Number(match.prizePaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {match.isAi
+                      ? "The AI won this free match"
+                      : `You lost. Opponent took ${Number(match.prizePaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   </span>
-                  <CoinIcon className="w-5 h-5 text-red-300" title="Tokens" />
+                  {!match.isAi && <CoinIcon className="w-5 h-5 text-red-300" title="Tokens" />}
                   <span>.</span>
                 </span>
               ) : matchEndedBanner === "draw" ? (
                 <span className="inline-flex items-center justify-center gap-2">
                   <HandshakeIcon className="w-6 h-6 text-white/80" title="Draw" />
-                  <span>Mutual wipeout. Match is a draw and stakes were refunded.</span>
+                  <span>{match.isAi ? "Free AI match ended in a draw." : "Mutual wipeout. Match is a draw and stakes were refunded."}</span>
                 </span>
               ) : (
                 "Match finished"
               )}
-              {Number(match.prizePaid) > 0 && (
+              {!match.isAi && Number(match.prizePaid) > 0 && (
                 <span className="block mt-1 text-xs text-white/60 inline-flex items-center gap-1">
                   <span>(house fee: {Number(match.houseFee || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   <CoinIcon className="w-3 h-3 text-white/60" title="Tokens" />

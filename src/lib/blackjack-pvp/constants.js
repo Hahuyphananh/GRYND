@@ -110,6 +110,34 @@ export const BETWEEN_ROUNDS_SECONDS = Math.round(BETWEEN_ROUNDS_MS / 1000);
 // P=0x50, V=0x56 packed into the upper 28 bits.
 export const BLACKJACK_PVP_LOCK_NAMESPACE = 0x424a5056 & 0x7fffffff;
 
+// Stable internal seat identity for free human-vs-AI matches. This is
+// never a Clerk user and must never be used for balance/stat updates.
+export const BLACKJACK_AI_PLAYER_ID = "blackjack_ai_bot";
+
+export function isFreeAiMatch(match) {
+  return Boolean(match?.isAi);
+}
+
+// Pure settlement contract used by the server store and tests. AI
+// matches remain free even if a legacy row contains a non-zero stake.
+export function calculateMatchSettlement(match, result) {
+  const winnerId =
+    result === RESULT.PLAYER1 ? match?.player1Id : match?.player2Id;
+  if (isFreeAiMatch(match)) {
+    return { winnerId, fee: 0, payout: 0, refundEach: 0 };
+  }
+  const totalPot = Number(match?.stakeAmount || 0) * 2;
+  const fee = Number((totalPot * HOUSE_FEE_PCT).toFixed(2));
+  return {
+    winnerId,
+    fee,
+    payout: Number((totalPot - fee).toFixed(2)),
+    refundEach: Number(
+      (Number(match?.stakeAmount || 0) * (1 - OVERTIME_DRAW_FEE_PCT)).toFixed(2),
+    ),
+  };
+}
+
 // ── Per-seat round state ──────────────────────────────────────────────
 export const PLAYER_STATE = Object.freeze({
   PLAYING: "playing",
@@ -228,6 +256,58 @@ export function calcHandValue(cards) {
 export function effectiveHandScore(cards, state) {
   if (state === PLAYER_STATE.BUSTED) return BUSTED_SCORE_SENTINEL;
   return calcHandValue(cards);
+}
+
+// Pure, deliberately conservative server-AI policy. The bot follows
+// the same action vocabulary as a human, but never chooses PEEK or
+// HOLD unless a future strategy explicitly opts into those mechanics.
+// Recovery actions are still handled so a busted bot can finish a round
+// without waiting for the deadline.
+export function chooseAiAction(match) {
+  const hand = Array.isArray(match?.player2Hand) ? match.player2Hand : [];
+  const state = match?.player2State || PLAYER_STATE.PLAYING;
+  const score = calcHandValue(hand);
+  const swapsUsed = Number(match?.player2UsedSwap) || 0;
+  const heldCard = match?.player2FrozenCard || null;
+  const heldResolved = match?.player2HeldResolved || null;
+
+  if (state === PLAYER_STATE.STOOD) return null;
+
+  if (heldCard && !heldResolved) {
+    const heldScore = calcHandValue([...hand, heldCard]);
+    return {
+      action: ACTION_TYPE.USE_HELD,
+      payload: {
+        subaction:
+          heldScore <= 21
+            ? USE_HELD_SUBACTIONS.ADD
+            : USE_HELD_SUBACTIONS.DISCARD,
+      },
+    };
+  }
+
+  if (state === PLAYER_STATE.BUSTED) {
+    if (swapsUsed < SWAP_LIMIT_PER_ROUND && hand.length > 0) {
+      const swapIndex = hand.reduce(
+        (best, card, index) =>
+          cardValueForAi(card) > cardValueForAi(hand[best]) ? index : best,
+        0,
+      );
+      return { action: ACTION_TYPE.SWAP, payload: { swapIndex } };
+    }
+    return { action: ACTION_TYPE.STAND, payload: {} };
+  }
+
+  if (score < 17) return { action: ACTION_TYPE.HIT, payload: {} };
+  return { action: ACTION_TYPE.STAND, payload: {} };
+}
+
+function cardValueForAi(card) {
+  if (!card || typeof card !== "object") return 0;
+  if (card.value === "A") return 11;
+  if (["K", "Q", "J"].includes(card.value)) return 10;
+  const value = parseInt(card.value, 10);
+  return Number.isFinite(value) ? value : 0;
 }
 
 // ── Round-winner decision (closer to 21, no bust) ────────────────────

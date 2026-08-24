@@ -22,6 +22,8 @@ import {
   biggestWagerKeys,
   isBetKeyLive,
   resolveCalls,
+  chooseAiBets,
+  calculateMatchSettlement,
   CALL_BONUS,
 } from "../src/lib/roulette-pvp/constants.js";
 import { ROULETTE_NUMBERS } from "../src/lib/rouletteConfig.js";
@@ -141,4 +143,51 @@ test("resolveCalls: ties count as correct for any tied key", () => {
 test("resolveCalls: a call against a no-bet opponent always misses", () => {
   const result = resolveCalls({ player1: "red" }, {}, {});
   assert.equal(result.player1.correct, false);
+});
+
+test("chooseAiBets: stays within points and avoids eliminated targets", () => {
+  const match = {
+    player1Bets: { black: 20 },
+    playerTwoPoints: 40,
+    serverEliminated: [13, 14, 15],
+    eliminations: { "17": "player1" },
+  };
+  const values = [0.01, 0.7, 0.8, 0.2, 0.4, 0.1];
+  let index = 0;
+  const { bets, call } = chooseAiBets(match, () => values[index++ % values.length]);
+  const total = Object.values(bets).reduce((sum, value) => sum + Number(value), 0);
+  assert.ok(total > 0);
+  assert.ok(total <= 40);
+  assert.equal(call, "black");
+  assert.equal(bets[13], undefined);
+  assert.equal(bets[14], undefined);
+  assert.equal(bets[15], undefined);
+  assert.equal(bets[17], undefined);
+});
+
+test("chooseAiBets: returns an empty legal turn when the bot is out of points", () => {
+  assert.deepEqual(
+    chooseAiBets({ playerTwoPoints: 0, player1Bets: { red: 10 } }, () => 0.5),
+    { bets: {}, call: null },
+  );
+});
+
+test("calculateMatchSettlement: free AI matches never pay tokens", () => {
+  assert.deepEqual(
+    calculateMatchSettlement(
+      { isAi: true, player1Id: "human", player2Id: "roulette_ai_bot", stakeAmount: 500 },
+      "player1",
+    ),
+    { winnerId: "human", fee: 0, payout: 0 },
+  );
+});
+
+test("calculateMatchSettlement: paid PvP keeps the existing pot math", () => {
+  const settlement = calculateMatchSettlement(
+    { isAi: false, player1Id: "human", player2Id: "other", stakeAmount: 100 },
+    "player2",
+  );
+  assert.equal(settlement.winnerId, "other");
+  assert.equal(settlement.fee, 5);
+  assert.equal(settlement.payout, 195);
 });

@@ -49,6 +49,7 @@ export default function RoulettePvpLobbyPage() {
   const [availableMatches, setAvailableMatches] = useState([]);
   const [balance, setBalance] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const [joiningId, setJoiningId] = useState(null);
   const [error, setError] = useState(null);
 
@@ -140,6 +141,39 @@ export default function RoulettePvpLobbyPage() {
       router.push(`/casino/roulette/${data.data.match.id}`);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const playVsAi = async () => {
+    setAiBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/roulette-pvp/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setError(data?.error || "Unable to start free AI match");
+        return;
+      }
+      const matchId = data?.data?.match?.id;
+      if (!matchId) {
+        setError("AI match did not return a match id");
+        return;
+      }
+      socket?.emit("room_event", {
+        roomId: roulettePvpMatchRoom(matchId),
+        event: ROULETTE_PVP_MATCH_UPDATED,
+      });
+      posthog?.capture("roulette_pvp_ai_started", { match_id: matchId });
+      router.push(`/casino/roulette/${matchId}`);
+    } catch {
+      setError("Network error while starting free AI match");
+    } finally {
+      setAiBusy(false);
     }
   };
 
@@ -269,7 +303,14 @@ export default function RoulettePvpLobbyPage() {
       stakeOptions={STAKE_PRESETS}
       busy={busy}
       onPlay={() => createOrJoin(stake)}
-      canPlay={isSignedIn && (balance === null || balance >= stake) && !busy}
+      canPlay={isSignedIn && (balance === null || balance >= stake) && !busy && !aiBusy}
+      vsAi={{
+        label: "Play Free vs AI",
+        badge: "No tokens",
+        onClick: playVsAi,
+        disabled: !isSignedIn || busy || aiBusy,
+        busy: aiBusy,
+      }}
       escrowNote={
         <>
           We pair you with another player of the <b>exact same</b> stake.

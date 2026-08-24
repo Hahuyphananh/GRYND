@@ -155,6 +155,7 @@ function normaliseMatchForViewer(match, viewerUserId) {
     id: match.id,
     player1Id: match.player1Id,
     player2Id: match.player2Id,
+    isAi: Boolean(match.isAi),
     stakeAmount: Number(match.stakeAmount),
     minesCount: match.minesCount,
     safeTilesRemaining: Math.max(0, safeTilesTotal - safePicksMade),

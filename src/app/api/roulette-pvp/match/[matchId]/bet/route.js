@@ -11,7 +11,10 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { submitBets } from "../../../../../../lib/roulette-pvp/serverStore";
+import {
+  playAiTurn,
+  submitBets,
+} from "../../../../../../lib/roulette-pvp/serverStore";
 
 function normaliseMatch(match, viewerId) {
   if (!match) return null;
@@ -20,6 +23,7 @@ function normaliseMatch(match, viewerId) {
     id: match.id,
     player1Id: match.player1Id,
     player2Id: match.player2Id,
+    isAi: Boolean(match.isAi),
     stakeAmount: Number(match.stakeAmount),
     status: match.status,
     currentRound: match.currentRound,
@@ -114,11 +118,32 @@ export async function POST(req, { params }) {
       );
     }
 
+    // For AI matches, the server immediately plays the bot seat after
+    // the human locks in. The client also retries this endpoint as an
+    // idempotent fallback, but gameplay must not depend on the browser
+    // remaining mounted after the human's POST succeeds.
+    let finalMatch = result.match;
+    let aiJustResolved = false;
+    if (
+      result.match?.isAi &&
+      result.match.player1Id === userId &&
+      result.match.player1Bets &&
+      !result.match.player2Bets
+    ) {
+      const aiResult = await playAiTurn({ userId, matchId });
+      if (aiResult.error) {
+        console.error("[roulette-pvp/match/bet] AI turn error:", aiResult.error);
+      } else {
+        finalMatch = aiResult.match || finalMatch;
+        aiJustResolved = Boolean(aiResult.justResolved);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatch(result.match, userId),
-        justResolved: Boolean(result.justResolved),
+        match: normaliseMatch(finalMatch, userId),
+        justResolved: Boolean(result.justResolved || aiJustResolved),
       },
     });
   } catch (error) {

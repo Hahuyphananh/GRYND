@@ -114,6 +114,20 @@ export async function POST(req, { params }) {
       justResolved: Boolean(result.justResolved),
     });
 
+    // Server-side AI trigger: if the match is a free AI game and the
+    // human just picked, trigger the bot's response so it plays
+    // immediately rather than waiting for the next status poll.
+    if (result.match?.isAi && !result.justResolved) {
+      try {
+        const { playAiTurn } = await import("../../../../../../lib/mines-pvp/serverStore");
+        await playAiTurn({ userId: result.match.player1Id, matchId });
+      } catch (aiErr) {
+        // Best-effort: if the AI turn fails, the status poll will
+        // retry. Never let a bot error break the human's pick.
+        console.error("[mines-pvp/pick] AI turn trigger failed:", aiErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
