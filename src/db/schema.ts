@@ -1518,6 +1518,9 @@ export const roulettePvpMatches = pgTable(
     player2Id: varchar("player2_id", { length: 255 }),
     stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
     status: roulettePvpStatusEnum("status").notNull().default("waiting"),
+    // True for free human-vs-server matches. The AI occupies player 2,
+    // but never participates in user-balance or payout accounting.
+    isAi: boolean("is_ai").notNull().default(false),
     currentRound: integer("current_round").notNull().default(1),
     // Round wins (best of 3 + sudden death). Each round contributes 0
     // (draw), +1 to player1, or +1 to player2.
@@ -1791,6 +1794,9 @@ export const blackjackPvpMatches = pgTable(
     player2Id: varchar("player2_id", { length: 255 }),
     stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
     status: blackjackPvpStatusEnum("status").notNull().default("waiting"),
+    // True for free human-vs-server matches. The bot occupies seat 2
+    // but never participates in user-balance or payout accounting.
+    isAi: boolean("is_ai").notNull().default(false),
     roundNumber: integer("round_number").notNull().default(1),
     roundsWonPlayer1: integer("rounds_won_player1").notNull().default(0),
     roundsWonPlayer2: integer("rounds_won_player2").notNull().default(0),
@@ -2106,6 +2112,7 @@ export const minesPvpMatches = pgTable(
     prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
       .notNull()
       .default("0.00"),
+    isAi: boolean("is_ai").notNull().default(false),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),

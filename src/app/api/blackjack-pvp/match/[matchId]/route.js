@@ -34,6 +34,7 @@ import { auth } from "@clerk/nextjs/server";
 import {
   fetchMatchWithAutoResolve,
   fetchMatchRounds,
+  playAiTurn,
   viewerPlayerState,
 } from "../../../../../lib/blackjack-pvp/serverStore";
 import {
@@ -90,12 +91,23 @@ export async function GET(req, { params }) {
         { status: result.status || 400 },
       );
     }
-    const match = result.match;
+    let match = result.match;
     if (!match) {
       return NextResponse.json(
         { success: false, error: "Match not found" },
         { status: 404 },
       );
+    }
+
+    // Polling is also the recovery path for AI matches. If the human
+    // navigates away after an action, the bot still advances server-side.
+    if (match.isAi && match.player1Id === userId) {
+      try {
+        const aiResult = await playAiTurn({ userId, matchId });
+        if (!aiResult.error && aiResult.match) match = aiResult.match;
+      } catch (error) {
+        console.error("[blackjack-pvp/match] AI turn failed:", error);
+      }
     }
 
     const viewerIsPlayer1 = match.player1Id === userId;
@@ -146,6 +158,7 @@ export async function GET(req, { params }) {
           id: match.id,
           player1Id: match.player1Id,
           player2Id: match.player2Id,
+          isAi: Boolean(match.isAi),
           stakeAmount: Number(match.stakeAmount),
           status: match.status,
           roundNumber: match.roundNumber,

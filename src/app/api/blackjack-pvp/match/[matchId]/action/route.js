@@ -39,6 +39,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import {
+  playAiTurn,
   recordAction,
   viewerPlayerState,
 } from "../../../../../../lib/blackjack-pvp/serverStore";
@@ -75,6 +76,7 @@ function normaliseMatchForViewer(match, viewerUserId) {
     id: match.id,
     player1Id: match.player1Id,
     player2Id: match.player2Id,
+    isAi: Boolean(match.isAi),
     stakeAmount: Number(match.stakeAmount),
     status: match.status,
     roundNumber: match.roundNumber,
@@ -249,19 +251,39 @@ export async function POST(req, { params }) {
         { status: result.status || 400 },
       );
     }
+
+    // Server-side recovery path: the bot responds after every human
+    // action, even if the browser closes before its fallback request.
+    let finalResult = result;
+    if (result.match?.isAi) {
+      try {
+        const aiResult = await playAiTurn({ userId, matchId });
+        if (!aiResult.error && aiResult.match) {
+          finalResult = {
+            ...result,
+            match: aiResult.match,
+            aiActions: aiResult.actions,
+          };
+        }
+      } catch (error) {
+        console.error("[blackjack-pvp/action] AI turn failed:", error);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatchForViewer(result.match, userId),
-        justResolved: Boolean(result.justResolved),
-        forceAdvanced: Boolean(result.forceAdvanced),
-        raced: Boolean(result.raced),
+        match: normaliseMatchForViewer(finalResult.match, userId),
+        justResolved: Boolean(finalResult.justResolved),
+        forceAdvanced: Boolean(finalResult.forceAdvanced),
+        raced: Boolean(finalResult.raced),
+        aiActions: Number(finalResult.aiActions || 0),
         // Per-action `effect` is currently only populated by PEEK
         // (returns `{ peekedCard }` so the client can render the
         // preview div without an extra GET). For non-peek verbs the
         // route handler reports `null` so the client can branch on
         // truthiness rather than `.effect.peekedCard` access.
-        effect: result.effect ?? null,
+        effect: finalResult.effect ?? null,
       },
     });
   } catch (error) {

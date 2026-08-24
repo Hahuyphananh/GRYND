@@ -40,7 +40,10 @@ import {
   ROUND_BET_DEADLINE_MS,
   ROUND_TIMER_SECONDS,
   STARTING_POINTS,
+  ROULETTE_AI_PLAYER_ID,
+  calculateMatchSettlement,
   calculatePayout,
+  chooseAiBets,
   generateSpinFromPool,
   isBetKeyLive,
   isValidCallKey,
@@ -164,6 +167,68 @@ export async function createOrJoin({ userId, stakeAmount }) {
     // 2) No open match — create a fresh waiting match.
     return await createWaitingMatch(tx, userId, stakeAmount);
   });
+}
+
+// Create a free human-vs-AI match. The bot is a server-only second seat;
+// no user balance is escrowed and the first round opens immediately.
+export async function createAiMatch({ userId }) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+
+  const starting = STARTING_POINTS.toFixed(2);
+  const [match] = await db
+    .insert(roulettePvpMatches)
+    .values({
+      player1Id: userId,
+      player2Id: ROULETTE_AI_PLAYER_ID,
+      stakeAmount: "0.00",
+      status: MATCH_STATUS.ROUND_1,
+      isAi: true,
+      currentRound: 1,
+      startingPoints: starting,
+      playerOnePoints: starting,
+      playerTwoPoints: starting,
+      roundTimerSeconds: ROUND_TIMER_SECONDS,
+      roundDeadline: new Date(Date.now() + ROUND_BET_DEADLINE_MS),
+      serverEliminated: [],
+      eliminations: {},
+      calls: null,
+      suddenDeath: false,
+      startedAt: new Date(),
+    })
+    .returning();
+
+  return { match, joined: true };
+}
+
+// Let the authenticated human request the bot's turn. The actual bot
+// submission is sent through submitBets with the internal bot identity,
+// so it receives the same validation, row lock, and resolveRound path as
+// a real second player. A duplicate request is harmless and rejected by
+// submitBets' one-lock-in-per-round guard.
+export async function playAiTurn({ userId, matchId }) {
+  const match = await fetchMatch(matchId);
+  if (!match) return { error: "Match not found", status: 404 };
+  if (!match.isAi || match.player1Id !== userId) {
+    return { error: "Forbidden", status: 403 };
+  }
+  if (!BETTABLE_STATES.has(match.status)) {
+    return { error: "Match is not in an active round", status: 400 };
+  }
+  if (!match.player1Bets) {
+    return { error: "Human player must lock in first", status: 409 };
+  }
+  if (match.player2Bets) {
+    return { match, justResolved: false, alreadyPlayed: true };
+  }
+
+  const { bets, call } = chooseAiBets(match);
+  const result = await submitBets({
+    userId: ROULETTE_AI_PLAYER_ID,
+    matchId,
+    bets,
+    call,
+  });
+  return result;
 }
 
 // Stable deterministic hash from numeric stake to a signed 32-bit int.
@@ -1086,18 +1151,21 @@ export async function resolveRound(tx, match) {
 // the updated winner user row + the fee + payout numbers so the caller
 // can persist them on the match row.
 async function creditWinner(tx, match, roundWinner) {
-  const totalPot = Number(match.stakeAmount) * 2;
-  const fee = Number((totalPot * HOUSE_FEE_PCT).toFixed(2));
-  const payout = Number((totalPot - fee).toFixed(2));
-  const winnerId =
-    roundWinner === "player1" ? match.player1Id : match.player2Id;
+  const settlement = calculateMatchSettlement(match, roundWinner);
+  if (settlement.payout <= 0) {
+    return { winner: { winnerId: settlement.winnerId }, fee: 0, payout: 0 };
+  }
 
   await tx
     .update(users)
-    .set({ balance: sql`${users.balance} + ${payout}` })
-    .where(eq(users.clerkId, winnerId));
+    .set({ balance: sql`${users.balance} + ${settlement.payout}` })
+    .where(eq(users.clerkId, settlement.winnerId));
 
-  return { winner: { winnerId }, fee, payout };
+  return {
+    winner: { winnerId: settlement.winnerId },
+    fee: settlement.fee,
+    payout: settlement.payout,
+  };
 }
 
 // ── Status fetch with auto-resolve ─────────────────────────────────────

@@ -194,6 +194,31 @@ export default function MinesPvpLobbyPage() {
   // When CREATING, minesCount is included; when JOINING, the host's
   // mine count is used (minesCount is ignored by the server in the
   // join path).
+  // Play Free vs AI — creates a zero-stake match against the bot.
+  const playVsAi = useCallback(
+    async (chosenMines: number) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/mines-pvp/create-ai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ minesCount: chosenMines }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setError(data?.error || "Unable to start AI match");
+          return;
+        }
+        router.push(`/casino/mines-pvp/${data.data.match.id}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [router],
+  );
+
   const createOrJoin = useCallback(
     async (stakeAmount: number, chosenMines: number) => {
       setBusy(true);
@@ -334,6 +359,7 @@ export default function MinesPvpLobbyPage() {
     Number.isInteger(minesCount) && minesCount >= MIN_MINES && minesCount <= MAX_MINES;
   const stakeValid = stake > 0 && (balance === null || balance >= stake);
   const canCreate = isSignedIn && !busy && minesCountValid && stakeValid && myOpenMatchId === null;
+  const canPlayAi = isSignedIn && !busy && minesCountValid;
 
   // ── No-guess guarantee copy (honest per mine count) ───────────────
   // The generator guarantees EVERY board keeps the 3×3 center block
@@ -540,16 +566,24 @@ export default function MinesPvpLobbyPage() {
         </div>
       }
       after={
-        /* No-guess guarantee — the always-on rules (safe center +
-            first-pick mercy) plus the per-mine-count solvability
-            story, kept honest for high-mine-count games. */
-        <div className="mt-6 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs leading-relaxed text-amber-200/80">
-          <p className="mb-1 flex items-center gap-1.5 font-bold text-amber-300">
-            <ShieldCheckIcon className="h-4 w-4 text-emerald-300" />
-            No-guess boards.
-          </p>
-          <p>{noGuessDetail}</p>
-        </div>
+        <>
+          <div className="mt-4 flex justify-center">
+            <button
+              onClick={() => playVsAi(minesCount)}
+              disabled={!canPlayAi}
+              className="px-5 py-2.5 rounded-xl border border-emerald-400/40 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 hover:shadow-[0_0_18px_rgba(72,209,154,0.3)] text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Play Free vs AI
+            </button>
+          </div>
+          <div className="mt-6 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs leading-relaxed text-amber-200/80">
+            <p className="mb-1 flex items-center gap-1.5 font-bold text-amber-300">
+              <ShieldCheckIcon className="h-4 w-4 text-emerald-300" />
+              No-guess boards.
+            </p>
+            <p>{noGuessDetail}</p>
+          </div>
+        </>
       }
     />
   );

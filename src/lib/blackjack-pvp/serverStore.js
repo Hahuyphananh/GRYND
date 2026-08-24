@@ -27,6 +27,7 @@ import { sendSystemNotificationEmail } from "../emails/system";
 import {
   ACTION_TYPE,
   BETWEEN_ROUNDS_MS,
+  BLACKJACK_AI_PLAYER_ID,
   BLACKJACK_PVP_LOCK_NAMESPACE,
   BUSTED_SCORE_SENTINEL,
   HELD_RESOLUTION,
@@ -46,6 +47,9 @@ import {
   TOTAL_ROUNDS,
   USE_HELD_SUBACTIONS,
   buildDeck,
+  calculateMatchSettlement,
+  chooseAiAction,
+  isFreeAiMatch,
   calcHandValue,
   decideRoundWinner,
   drawCards,
@@ -223,6 +227,42 @@ export async function createOrJoin({ userId, stakeAmount }) {
     // 2) No open match — create a fresh waiting match.
     return await createWaitingMatch(tx, userId, stakeAmount);
   });
+}
+
+// Create a free human-vs-AI match. The bot is a server-only second
+// seat and the first round is dealt immediately, so the human never
+// waits for matchmaking or spends tokens.
+export async function createAiMatch({ userId }) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+
+  const deck = buildDeck();
+  const player1Hand = drawCards(deck, 2);
+  const player2Hand = drawCards(deck, 2);
+  const [match] = await db
+    .insert(blackjackPvpMatches)
+    .values({
+      player1Id: userId,
+      player2Id: BLACKJACK_AI_PLAYER_ID,
+      stakeAmount: "0.00",
+      status: MATCH_STATUS.ROUND_1,
+      isAi: true,
+      roundNumber: 1,
+      roundTimerSeconds: ROUND_TIMER_SECONDS,
+      roundDeadline: new Date(Date.now() + roundDeadlineMs({
+        roundTimerSeconds: ROUND_TIMER_SECONDS,
+      })),
+      player1Hand,
+      player2Hand,
+      player1OriginalCards: [...player1Hand],
+      player2OriginalCards: [...player2Hand],
+      player1State: PLAYER_STATE.PLAYING,
+      player2State: PLAYER_STATE.PLAYING,
+      deck,
+      startedAt: new Date(),
+    })
+    .returning();
+
+  return { match, joined: true };
 }
 
 async function createWaitingMatch(tx, userId, stakeAmount) {
@@ -590,6 +630,115 @@ export async function recordAction({ userId, matchId, action, payload }) {
       effect: mutation.effect || null,
     };
   });
+}
+
+// Execute one server-controlled player-2 action through the same pure
+// validator and resolution gate used by human actions. Each call owns
+// its transaction and row lock, so retries from polling or sockets are
+// harmless.
+async function recordAiAction({ matchId, action, payload, expected }) {
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isFreeAiMatch(match) || match.player2Id !== BLACKJACK_AI_PLAYER_ID) {
+      return { error: "Not an AI match", status: 409 };
+    }
+    if (
+      expected &&
+      (match.player2State !== expected.player2State ||
+        JSON.stringify(match.player2Hand || []) !==
+          JSON.stringify(expected.player2Hand || []) ||
+        Number(match.player2UsedSwap) !== Number(expected.player2UsedSwap) ||
+        Number(match.player2UsedFreeze) !== Number(expected.player2UsedFreeze) ||
+        JSON.stringify(match.player2FrozenCard || null) !==
+          JSON.stringify(expected.player2FrozenCard || null) ||
+        match.player2HeldResolved !== expected.player2HeldResolved)
+    ) {
+      return { match, stale: true };
+    }
+    if (!PLAYABLE_STATES.has(match.status)) {
+      return { match, alreadyComplete: true };
+    }
+
+    if (
+      match.roundDeadline &&
+      new Date(match.roundDeadline).getTime() <= Date.now()
+    ) {
+      const forced = await forceDeadlineAdvance(tx, match);
+      return { match: forced, forceAdvanced: true };
+    }
+
+    const mutation = applyAction(
+      match,
+      action,
+      "player2",
+      SEAT_FIELDS.player2,
+      payload,
+    );
+    if (!mutation.ok) return { error: mutation.error, status: mutation.status };
+
+    const [updated] = await tx
+      .update(blackjackPvpMatches)
+      .set(mutation.setValues)
+      .where(
+        and(
+          eq(blackjackPvpMatches.id, matchId),
+          eq(blackjackPvpMatches.status, match.status),
+        ),
+      )
+      .returning();
+
+    if (!updated) return { raced: true };
+
+    const bothLocked = bothSeatsLocked(updated);
+    const resolved = bothLocked ? await resolveRound(tx, updated) : updated;
+    return {
+      match: resolved,
+      justResolved: bothLocked,
+      effect: mutation.effect || null,
+    };
+  });
+}
+
+// Run the AI until it has no legal remaining action or the match leaves
+// the active round. The cap is a defense-in-depth guard against future
+// strategy changes creating an accidental action loop.
+export async function playAiTurn({ userId, matchId }) {
+  const initial = await fetchMatch(matchId);
+  if (!initial) return { error: "Match not found", status: 404 };
+  if (!isFreeAiMatch(initial) || initial.player1Id !== userId) {
+    return { error: "Forbidden", status: 403 };
+  }
+
+  let latest = initial;
+  let actions = 0;
+  while (actions < 16) {
+    if (!latest || !PLAYABLE_STATES.has(latest.status)) break;
+    const decision = chooseAiAction(latest);
+    if (!decision) break;
+    const result = await recordAiAction({
+      matchId,
+      action: decision.action,
+      payload: decision.payload,
+      expected: {
+        player2State: latest.player2State,
+        player2Hand: latest.player2Hand,
+        player2UsedSwap: latest.player2UsedSwap,
+        player2UsedFreeze: latest.player2UsedFreeze,
+        player2FrozenCard: latest.player2FrozenCard,
+        player2HeldResolved: latest.player2HeldResolved,
+      },
+    });
+    if (result.error) return result;
+    if (result.match) latest = result.match;
+    actions += 1;
+    if (result.justResolved || result.alreadyComplete) break;
+    if (result.stale || result.raced) {
+      latest = (await fetchMatch(matchId)) || latest;
+    }
+  }
+
+  return { match: latest, actions };
 }
 
 // ── Action validators + mutators ─────────────────────────────────────
@@ -1138,22 +1287,23 @@ async function resolveRound(tx, match) {
       result = RESULT.PLAYER2;
     } else {
       // TIEBREAK-round draw (round 4 also tied) → refund each player
-      // 95% of their stake (5% rake per side — the same tie-breaker
-      // fee as memory-grid / keno-pvp overtime). No winner.
-      const refundEach = Number(
-        (Number(match.stakeAmount) * (1 - OVERTIME_DRAW_FEE_PCT)).toFixed(2),
-      );
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${refundEach}` })
-        .where(eq(users.clerkId, match.player1Id));
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${refundEach}` })
-        .where(eq(users.clerkId, match.player2Id));
-      houseFee = Number(
-        (Number(match.stakeAmount) * OVERTIME_DRAW_FEE_PCT * 2).toFixed(2),
-      ).toFixed(2);
+      // in paid PvP. Free AI matches never escrow or refund tokens.
+      if (!isFreeAiMatch(match)) {
+        const refundEach = Number(
+          (Number(match.stakeAmount) * (1 - OVERTIME_DRAW_FEE_PCT)).toFixed(2),
+        );
+        await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} + ${refundEach}` })
+          .where(eq(users.clerkId, match.player1Id));
+        await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} + ${refundEach}` })
+          .where(eq(users.clerkId, match.player2Id));
+        houseFee = Number(
+          (Number(match.stakeAmount) * OVERTIME_DRAW_FEE_PCT * 2).toFixed(2),
+        ).toFixed(2);
+      }
       result = RESULT.DRAW;
     }
   } else {
@@ -1243,24 +1393,22 @@ async function resolveRound(tx, match) {
 }
 
 async function creditWinner(tx, match, roundWinner) {
-  const totalPot = Number(match.stakeAmount) * 2;
-  const fee = Number((totalPot * HOUSE_FEE_PCT).toFixed(2));
-  const payout = Number((totalPot - fee).toFixed(2));
-  const winnerId =
-    roundWinner === RESULT.PLAYER1 ? match.player1Id : match.player2Id;
+  const settlement = calculateMatchSettlement(match, roundWinner);
+  if (isFreeAiMatch(match)) return settlement;
 
   await tx
     .update(users)
-    .set({ balance: sql`${users.balance} + ${payout}` })
-    .where(eq(users.clerkId, winnerId));
+    .set({ balance: sql`${users.balance} + ${settlement.payout}` })
+    .where(eq(users.clerkId, settlement.winnerId));
 
-  return { winnerId, fee, payout };
+  return settlement;
 }
 
 // Best-effort stat side-effect — bumps pvpWins / pvpGamesPlayed on the
 // `users` row so the global PvP leaderboards stay fresh without
 // re-running the historical aggregate queries on every match.
 async function recordPvPResult(tx, match, winnerId, result) {
+  if (isFreeAiMatch(match)) return;
   const loserId =
     result === RESULT.PLAYER1 ? match.player2Id : match.player1Id;
   if (!winnerId || !loserId) return;

@@ -82,6 +82,7 @@ type MatchState = {
   id: number;
   player1Id: string;
   player2Id: string | null;
+  isAi: boolean;
   stakeAmount: number;
   status: string;
   roundNumber: number;
@@ -287,9 +288,11 @@ export default function BlackjackPvpMatchPage({
   const viewerIsPlayer1 = Boolean(match?.viewerIsPlayer1);
   // The opponent is whoever occupies the seat we don't hold. Only
   // reportable once a real opponent has joined (player2Id set).
-  const opponentClerkId = viewerIsPlayer1
-    ? match?.player2Id ?? null
-    : match?.player1Id ?? null;
+  const opponentClerkId = match?.isAi
+    ? null
+    : viewerIsPlayer1
+      ? match?.player2Id ?? null
+      : match?.player1Id ?? null;
   const myHand = useMemo<Card[]>(() => {
     if (!match) return [];
     return viewerIsPlayer1 ? match.player1Hand : match.player2Hand;
@@ -519,7 +522,9 @@ export default function BlackjackPvpMatchPage({
         `/api/blackjack-pvp/match/${matchId}/resign`,
         {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
+          body: JSON.stringify({}),
         },
       );
       const data = await res.json();
@@ -642,8 +647,8 @@ export default function BlackjackPvpMatchPage({
   const mySeatLabel = viewerIsPlayer1
     ? t("blackjackPvp.seat.player1", "Joueur 1")
     : t("blackjackPvp.seat.player2", "Joueur 2");
-  const oppSeatLabel = viewerIsPlayer1
-    ? t("blackjackPvp.seat.opponent", "Adversaire")
+  const oppSeatLabel = match?.isAi
+    ? t("blackjackPvp.seat.ai", "GRYND AI")
     : t("blackjackPvp.seat.opponent", "Adversaire");
 
   // Action gates (mirrors serverStore.applyAction):
@@ -793,12 +798,14 @@ export default function BlackjackPvpMatchPage({
             <span className="inline-flex items-center gap-2"><IconCards size={26} className="text-[#FFD700]" /> {t("blackjackPvp.title", "Blackjack PvP")}</span>
           </h1>
           <span className="px-4 py-1.5 bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#fffec7] rounded-full font-extrabold text-sm shadow-[0_0_10px_rgba(255,215,0,0.3)]">
-            {t("blackjackPvp.stake", "Mise : {amount}").replace(
-              "{amount}",
-              Number(match?.stakeAmount ?? 0).toLocaleString(),
-            )}
+            {match?.isAi
+              ? t("blackjackPvp.freeMatch", "Free AI match")
+              : t("blackjackPvp.stake", "Mise : {amount}").replace(
+                  "{amount}",
+                  Number(match?.stakeAmount ?? 0).toLocaleString(),
+                )}
           </span>
-          {opponentClerkId && (
+          {!match?.isAi && opponentClerkId && (
             <button
               onClick={() => setShowReportModal(true)}
               className="px-3 py-1.5 rounded-full border border-red-500/30 bg-red-500/10 text-xs font-extrabold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
@@ -836,6 +843,7 @@ export default function BlackjackPvpMatchPage({
             label={oppSeatLabel}
             hand={oppHand}
             isMatchFinished={match?.status === "finished"}
+            isAi={Boolean(match?.isAi)}
           />
 
           {/* ▶ MIDDLE SECTION — Game table
@@ -1043,7 +1051,8 @@ export default function BlackjackPvpMatchPage({
           {match &&
             match.status !== "waiting" &&
             match.status !== "finished" &&
-            match.status !== "cancelled" && (
+            match.status !== "cancelled" &&
+            !match.isAi && (
               <div className="mt-6 border-t border-white/10 pt-4 text-center">
                 <button
                   onClick={() => setShowResignConfirm(true)}
@@ -1154,6 +1163,7 @@ export default function BlackjackPvpMatchPage({
                 viewerIsPlayer1={viewerIsPlayer1}
                 mySeatLabel={mySeatLabel}
                 oppSeatLabel={oppSeatLabel}
+                isAi={Boolean(match.isAi)}
                 roundsWonPlayer1={Number(match.roundsWonPlayer1) || 0}
                 roundsWonPlayer2={Number(match.roundsWonPlayer2) || 0}
                 onDismiss={() => setRoundResultShownFor(null)}
@@ -1171,6 +1181,7 @@ export default function BlackjackPvpMatchPage({
         {match?.status === "finished" && roundResultShownFor === null && (
           <MatchEndModal
             t={t}
+            isAi={Boolean(match.isAi)}
             stake={Number(match.stakeAmount)}
             prizePaid={Number(match.prizePaid)}
             houseFee={Number(match.houseFee)}
@@ -1316,16 +1327,20 @@ function OpponentHand({
   label,
   hand,
   isMatchFinished,
+  isAi,
 }: {
   t: TFn;
   label: string;
   hand: Card[];
   isMatchFinished: boolean;
+  isAi: boolean;
 }) {
   // By spec the opponent's cards, score, and state are NEVER shown.
-  const placeholder = isMatchFinished
-    ? t("blackjackPvp.opponentDone", "Adversaire. Main cachée")
-    : t("blackjackPvp.opponentPlaying", "Adversaire joue…");
+  const placeholder = isAi
+    ? t("blackjackPvp.aiPlaying", "GRYND AI is playing…")
+    : isMatchFinished
+      ? t("blackjackPvp.opponentDone", "Adversaire. Main cachée")
+      : t("blackjackPvp.opponentPlaying", "Adversaire joue…");
   return (
     <div>
       <div className="text-center mb-2">
@@ -1819,6 +1834,7 @@ function RoundResultModal({
   viewerIsPlayer1,
   mySeatLabel,
   oppSeatLabel,
+  isAi,
   roundsWonPlayer1,
   roundsWonPlayer2,
   onDismiss,
@@ -1828,6 +1844,7 @@ function RoundResultModal({
   viewerIsPlayer1: boolean;
   mySeatLabel: string;
   oppSeatLabel: string;
+  isAi: boolean;
   // Match-level round-win counters AFTER this round has been
   // resolved (the server increments these in the same transaction
   // as the round-row insert, so they always reflect the post-round
@@ -1853,7 +1870,9 @@ function RoundResultModal({
   const oppRounds = viewerIsPlayer1 ? roundsWonPlayer2 : roundsWonPlayer1;
 
   const player1Label = t("blackjackPvp.seat.player1", "Joueur 1");
-  const player2Label = t("blackjackPvp.seat.player2", "Joueur 2");
+  const player2Label = isAi
+    ? t("blackjackPvp.seat.ai", "GRYND AI")
+    : t("blackjackPvp.seat.player2", "Joueur 2");
   const winnerSeatLabel = !isDraw
     ? player1Won
       ? player1Label
@@ -1911,7 +1930,7 @@ function RoundResultModal({
   const oppBusted = viewerIsPlayer1 ? p2Busted : p1Busted;
   const iWonSeat = !isDraw && viewerWon;
   const oppWonSeat = !isDraw && !viewerWon;
-  const oppSubLabel = viewerIsPlayer1 ? player2Label : player1Label;
+  const oppSubLabel = viewerIsPlayer1 ? oppSeatLabel : player1Label;
 
   // ── 5-second auto-dismiss ────────────────────────────────────
   // One-shot timer + ticking countdown so the popup stays visible
@@ -2181,6 +2200,7 @@ function MatchEndModal({
   winner: winnerId,
   userId,
   result,
+  isAi,
   onBackToLobby,
 }: {
   t: TFn;
@@ -2195,6 +2215,7 @@ function MatchEndModal({
   winner: string | null;
   userId: string | null;
   result: string | null;
+  isAi: boolean;
   onBackToLobby: () => void;
 }) {
   const won = Boolean(winnerId) && userId === winnerId;
@@ -2244,11 +2265,18 @@ function MatchEndModal({
             : draw
             ? t("blackjackPvp.matchDraw", "Égalité")
             : t("blackjackPvp.matchLose", "Défaite")}
-        </h2>
-        <p className="mt-2 text-white/80 text-sm leading-relaxed">
-          {won && (
+        </h2>        <p className="mt-2 text-white/80 text-sm leading-relaxed">
+          {isAi && (
             <>
-              {t("blackjackPvp.matchWinDetail", "Vous remportez")}{" "}
+              {t(
+                "blackjackPvp.freeMatchResult",
+                "Free match complete. No tokens were wagered or awarded.",
+              )}
+            </>
+          )}
+          {!isAi && won && (
+            <>
+              {t("blackjackPvp.matchWinDetail", "Vous remportez")} {" "}
               <span className="text-amber-300 font-bold">
                 {prizePaid.toLocaleString()}
               </span>{" "}
@@ -2260,7 +2288,7 @@ function MatchEndModal({
                 .replace("{fee}", houseFee.toLocaleString())}
             </>
           )}
-          {draw && (
+          {!isAi && draw && (
             <>
               {t(
                 "blackjackPvp.matchDrawDetail",
@@ -2273,7 +2301,7 @@ function MatchEndModal({
                 )}
             </>
           )}
-          {!won && !draw && (
+          {!isAi && !won && !draw && (
             <>
               {t(
                 "blackjackPvp.matchLoseDetail",
@@ -2462,7 +2490,9 @@ function BetweenRoundsScreen({
         `/api/blackjack-pvp/match/${matchId}/continue`,
         {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
+          body: JSON.stringify({}),
         },
       );
       const data = await res.json();

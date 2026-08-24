@@ -315,6 +315,37 @@ export default function BlackjackPvpLobbyPage() {
     [posthog, router, socket, t],
   );
 
+  const playFreeVsAi = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/blackjack-pvp/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(
+          data?.error ||
+            t("blackjackPvp.lobby.errorStartAi", "Unable to start free AI match"),
+        );
+        return;
+      }
+      const matchId = data?.data?.match?.id;
+      if (matchId) {
+        socket?.emit("room_event", {
+          roomId: blackjackPvpMatchRoom(matchId),
+          event: BLACKJACK_PVP_MATCH_UPDATED,
+        });
+        router.push(`/casino/blackjack/${matchId}`);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [router, socket, t]);
+
   const joinSpecific = useCallback(
     async (matchId: number) => {
       setJoiningId(matchId);
@@ -609,6 +640,17 @@ export default function BlackjackPvpLobbyPage() {
                 "stake. If no one is waiting, your stake is escrowed in a private lobby until someone joins or you cancel.",
               )}
             </div>
+          </div>
+
+          <div className="mt-4 flex justify-center">
+            <button
+              onClick={playFreeVsAi}
+              disabled={busy || !isSignedIn || myOpenMatchId !== null}
+              className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/45 bg-cyan-400/15 px-5 py-2.5 text-sm font-extrabold text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.25)] transition hover:bg-cyan-400/25 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <TargetIcon className="h-4 w-4" />
+              {t("blackjackPvp.lobby.playFreeAi", "Play Free vs AI")}
+            </button>
           </div>
 
           {error && (
