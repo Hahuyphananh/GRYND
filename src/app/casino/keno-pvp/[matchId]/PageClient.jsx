@@ -455,11 +455,21 @@ export default function KenoPvpMatchPage({ params }) {
           event: KENO_PVP_MATCH_UPDATED,
         });
         setTimeout(() => setLastQuality(null), 900);
+        // Best-effort AI trigger after a human catch. The server also
+        // runs this from status polling, so a failed trigger is safe.
+        if (match?.isAi) {
+          void fetch(`/api/keno-pvp/match/${matchId}/ai-turn`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({}),
+          }).catch(() => {});
+        }
       } catch {
         // Silent — the poll will reconcile.
       }
     },
-    [matchId, schedule, serverNow, posthog, socket],
+    [match?.isAi, matchId, schedule, serverNow, posthog, socket],
   );
 
   const goToLobby = useCallback(() => {
@@ -515,7 +525,9 @@ export default function KenoPvpMatchPage({ params }) {
   const oppPts = match.viewerIsPlayer1 ? match.p2Score : match.p1Score;
 
   const p1Name = match.players?.p1?.displayName || match.player1Id?.slice(0, 6) || "P1";
-  const p2Name = match.players?.p2?.displayName || match.player2Id?.slice(0, 6) || "P2";
+  const p2Name = match.isAi
+    ? "GRYND AI"
+    : match.players?.p2?.displayName || match.player2Id?.slice(0, 6) || "P2";
   const oppName = me === "player1" ? p2Name : p1Name;
 
   return (

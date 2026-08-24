@@ -109,6 +109,27 @@ export default function DotsAndBoxesLobbyPage() {
     }
   };
 
+  const playAi = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/dots-and-boxes/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.error || "Unable to start AI game");
+        return;
+      }
+      router.push(`/casino/dots-and-boxes/game/${data.gameId}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const joinGame = async (gameId?: number) => {
     setLoading(true);
     setError(null);
@@ -191,14 +212,24 @@ export default function DotsAndBoxesLobbyPage() {
       playBusyLabel={t("games.dots_and_boxes.creating")}
       escrowNote={t("games.dots_and_boxes.lobby_tagline")}
       extraActions={
-        <button
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={playAi}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-400/10 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-400/20 disabled:opacity-50"
+          >
+            Play Free vs AI
+          </button>
+          <button
           type="button"
           onClick={() => joinGame()}
           disabled={loading}
           className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 py-2 text-sm font-bold text-amber-200 transition hover:bg-amber-500/20 disabled:opacity-50"
         >
           {loading ? t("games.dots_and_boxes.joining") : t("games.dots_and_boxes.quick_join_button")}
-        </button>
+          </button>
+        </div>
       }
       lobbies={availableGames}
       lobbyEmptyText={t("games.dots_and_boxes.no_open_games")}

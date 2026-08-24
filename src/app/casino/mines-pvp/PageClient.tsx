@@ -461,6 +461,11 @@ export default function MinesPvpLobbyPage() {
         createOrJoin(stake, minesCount);
       }}
       canPlay={canCreate}
+      vsAi={{
+        label: "Play Free vs AI",
+        onClick: () => playVsAi(minesCount),
+        disabled: !canPlayAi,
+      }}
       escrowNote={
         <>
           We pair you with another player of the <b>exact same</b> stake.
@@ -566,24 +571,13 @@ export default function MinesPvpLobbyPage() {
         </div>
       }
       after={
-        <>
-          <div className="mt-4 flex justify-center">
-            <button
-              onClick={() => playVsAi(minesCount)}
-              disabled={!canPlayAi}
-              className="px-5 py-2.5 rounded-xl border border-emerald-400/40 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 hover:shadow-[0_0_18px_rgba(72,209,154,0.3)] text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Play Free vs AI
-            </button>
-          </div>
-          <div className="mt-6 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs leading-relaxed text-amber-200/80">
-            <p className="mb-1 flex items-center gap-1.5 font-bold text-amber-300">
-              <ShieldCheckIcon className="h-4 w-4 text-emerald-300" />
-              No-guess boards.
-            </p>
-            <p>{noGuessDetail}</p>
-          </div>
-        </>
+        <div className="mt-6 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs leading-relaxed text-amber-200/80">
+          <p className="mb-1 flex items-center gap-1.5 font-bold text-amber-300">
+            <ShieldCheckIcon className="h-4 w-4 text-emerald-300" />
+            No-guess boards.
+          </p>
+          <p>{noGuessDetail}</p>
+        </div>
       }
     />
   );

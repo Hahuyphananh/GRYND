@@ -161,15 +161,16 @@ test("pointsForSafePick: invalid inputs return 0", () => {
   assert.equal(pointsForSafePick(NaN, "safe"), 0);
 });
 
-test("scoreFromActions sums only the seat's safe picks", () => {
+test("scoreFromActions tracks each seat's current unbanked run", () => {
   const actions = [
     { action: "pick", safe: true, seat: "player1", points: 10 },
     { action: "pick", safe: true, seat: "player1", points: 16 },
     { action: "pick", safe: false, seat: "player1", points: 0 },
+    { action: "pick", safe: true, seat: "player1", points: 8 },
     { action: "pick", safe: true, seat: "player2", points: 80 },
     { action: "hold", seat: "player1" },
   ];
-  assert.equal(scoreFromActions(actions, "player1"), 26);
+  assert.equal(scoreFromActions(actions, "player1"), 8);
   assert.equal(scoreFromActions(actions, "player2"), 80);
   assert.equal(scoreFromActions(null, "player1"), 0);
   assert.equal(scoreFromActions([], "player1"), 0);
@@ -302,7 +303,7 @@ test("pickPointsForSeat: applies the bank-rate decay to a pick", () => {
   );
 });
 
-test("hasBusted / climbEnded: a bust ends the climb, banking does not", () => {
+test("hasBusted records history but a bust never ends the climb", () => {
   const match = {
     p1Lane: 3,
     p2Lane: 3,
@@ -310,10 +311,10 @@ test("hasBusted / climbEnded: a bust ends the climb, banking does not", () => {
   };
   assert.equal(hasBusted(match, "player1"), true);
   assert.equal(hasBusted(match, "player2"), false);
-  assert.equal(climbEnded(match, "player1"), true);
+  assert.equal(climbEnded(match, "player1"), false);
   assert.equal(climbEnded(match, "player2"), false);
   // Completed tower ends the climb too.
-  assert.equal(climbEnded({ p1Lane: MAX_LANES, actions: [] }, "player1"), true);
+  assert.equal(climbEnded({ p1Lane: MAX_LANES, actions: [] }, "player1"), false);
   // A banked-but-active player is NOT ended.
   const banked = {
     p1Lane: 2,
@@ -325,7 +326,7 @@ test("hasBusted / climbEnded: a bust ends the climb, banking does not", () => {
   assert.equal(climbEnded(banked, "player1"), false);
 });
 
-test("bothEnded: both climbs over", () => {
+test("bothEnded is always false in simultaneous play", () => {
   const p1Busted = { p1Lane: 1, p2Lane: 1, actions: [{ action: "pick", safe: false, seat: "player1" }] };
   assert.equal(bothEnded(p1Busted), false);
   const bothBusted = {
@@ -336,10 +337,10 @@ test("bothEnded: both climbs over", () => {
       { action: "pick", safe: false, seat: "player2" },
     ],
   };
-  assert.equal(bothEnded(bothBusted), true);
+  assert.equal(bothEnded(bothBusted), false);
 });
 
-test("finalScoreOf: bust keeps banked insurance, completion keeps everything, active keeps banked", () => {
+test("finalScoreOf reports the current run after bust reset", () => {
   // Busted WITH a bank → keeps the banked total.
   const busted = {
     actions: [
@@ -374,7 +375,7 @@ test("finalScoreOf: bust keeps banked insurance, completion keeps everything, ac
       },
       "player1",
     ),
-    16,
+    76,
   );
   // Active without a bank when the opponent busts → accumulated.
   assert.equal(
@@ -727,10 +728,9 @@ test("decideBotAction: null when it is not the bot's turn", () => {
   assert.equal(decideBotAction(null), null);
 });
 
-test("decideBotAction: null when the bot's climb is over (busted/completed)", () => {
-  assert.equal(decideBotAction(botMatch({ p2Busted: true })), null);
-  assert.equal(decideBotAction(botMatch({ p2Lane: MAX_LANES })), null);
-  // A banked bot is NOT done — banking never ends the climb.
+test("decideBotAction remains available after a bot bust or lane cycle", () => {
+  assert.notEqual(decideBotAction(botMatch({ p2Busted: true })), null);
+  assert.notEqual(decideBotAction(botMatch({ p2Lane: MAX_LANES })), null);
   assert.notEqual(decideBotAction(botMatch({ p2Held: true, p2Points: 200 })), null);
 });
 
@@ -760,11 +760,11 @@ test("decideBotAction: player climbing, bot ahead at target → hold", () => {
   assert.deepEqual(decision, { action: "hold" });
 });
 
-test("decideBotAction: player busted and the bot hasn't banked → bank the win", () => {
+test("decideBotAction: a player bust does not stop the bot from playing", () => {
   const decision = decideBotAction(
     botMatch({ p1Busted: true, p1Points: 0, p2Points: 80 }),
   );
-  assert.deepEqual(decision, { action: "hold" });
+  assert.equal(decision.action, "pick");
 });
 
 test("decideBotAction: already banked and materially ahead of its floor → re-bank", () => {

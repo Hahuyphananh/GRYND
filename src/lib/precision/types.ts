@@ -66,6 +66,8 @@ export interface PrecisionState {
   matchId: string;
   phase: PrecisionPhase;
   wager: number;
+  /** Free practice match against the server-controlled AI. */
+  isAiGame?: boolean;
   players: PrecisionPlayer[];
   turn: PlayerSeat;
   // ── Best-of-5 win condition (server-authoritative) ─────────────────

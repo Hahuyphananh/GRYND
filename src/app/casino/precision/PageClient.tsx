@@ -148,6 +148,28 @@ export default function PrecisionLobbyPage() {
   // See `src/app/casino/precision/test/page.tsx` for the solo sandbox.
   // We capture analytics on click so the funnel / "test_to_pvp"
   // conversion ratio can be measured without leaning on hover-tracking.
+  const handlePlayAi = async () => {
+    setCreating(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/precision/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.matchId) {
+        setError(data.error ?? "Unable to start AI match");
+        return;
+      }
+      persistLocalSeat(1);
+      router.push(`/casino/precision/game/${data.matchId}`);
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const handleTestClick = () => {
     posthog?.capture("precision_test_clicked", { source: "lobby" });
   };
@@ -238,7 +260,16 @@ export default function PrecisionLobbyPage() {
       playLabel={t("games.precision.create_pvp_game")}
       playBusyLabel={t("games.precision.creating")}
       extraActions={
-        <Link
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={handlePlayAi}
+            disabled={!isSignedIn || creating}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 py-2 text-sm font-bold text-fuchsia-200 transition hover:bg-fuchsia-500/20 disabled:opacity-50"
+          >
+            Play Free vs AI
+          </button>
+          <Link
           href="/casino/precision/test"
           data-testid="precision-test-link"
           onClick={handleTestClick}
@@ -247,7 +278,8 @@ export default function PrecisionLobbyPage() {
           <IconTarget size={16} />
           {t("games.precision.test_solo_label")} (
           {t("games.precision.no_wager_label").toLowerCase()})
-        </Link>
+          </Link>
+        </div>
       }
       escrowNote={t(
         "games.precision.escrow_note",

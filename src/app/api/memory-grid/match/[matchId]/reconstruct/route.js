@@ -68,6 +68,7 @@ function normaliseMatchForSubmitter(match, viewerUserId) {
   return {
     id: match.id,
     status: match.status,
+    isAi: Boolean(match.isAi),
     phase: match.phase ?? null,
     roundNumber: Number(match.roundNumber || 1),
     roundsPerMatch: ROUNDS_PER_MATCH,

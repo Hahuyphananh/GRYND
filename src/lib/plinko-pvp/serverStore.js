@@ -49,7 +49,10 @@ import {
   MAX_STAKE,
   MIN_STAKE,
   PLINKO_PVP_LOCK_NAMESPACE,
+  PLINKO_AI_PLAYER_ID,
   READY_WINDOW_MS,
+  chooseAiLaunchInputs,
+  isFreeAiMatch,
   REQUIRED_BALLS,
   RESULT,
   ROUND_DEADLINE_MS,
@@ -261,8 +264,23 @@ export async function enrichMatchesWithUsers(matchOrMatches) {
     return {
       ...m,
       players: {
-        p1: p1 || (m.player1Id ? { id: m.player1Id, displayName: m.player1Id, missing: true } : null),
-        p2: p2 || (m.player2Id ? { id: m.player2Id, displayName: m.player2Id, missing: true } : null),
+        p1:
+          p1 ||
+          (m.player1Id
+            ? { id: m.player1Id, displayName: m.player1Id, missing: true }
+            : null),
+        p2:
+          p2 ||
+          (m.player2Id
+            ? {
+                id: m.player2Id,
+                displayName:
+                  m.player2Id === PLINKO_AI_PLAYER_ID
+                    ? "Plinko AI"
+                    : m.player2Id,
+                missing: true,
+              }
+            : null),
       },
     };
   };
@@ -453,6 +471,68 @@ export async function listMyWaitingMatch({ userId }) {
 //   2. `FOR UPDATE` + re-fetch + conditional UPDATE filtering on
 //      `status='waiting' AND player2_id IS NULL` catches the
 //      "creator cancelled in parallel" race.
+// Create a free human-vs-AI match. The bot is inserted as player 2 and
+// starts in the normal READY state, so every subsequent ball still uses
+// the same authoritative launch and collision-resolution path.
+export async function createAiMatch({ userId }) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+
+  return await db.transaction(async (tx) => {
+    const [match] = await tx
+      .insert(plinkoPvpMatches)
+      .values({
+        player1Id: userId,
+        player2Id: PLINKO_AI_PLAYER_ID,
+        isAi: true,
+        stakeAmount: "0.00",
+        status: MATCH_STATUS.READY,
+        currentBall: 1,
+        p1Score: 0,
+        p2Score: 0,
+        p1CurrentInputs: null,
+        p2CurrentInputs: null,
+        p1Ready: false,
+        p2Ready: false,
+        roundTimerSeconds: ROUND_TIMER_SECONDS,
+        roundDeadline: new Date(Date.now() + READY_WINDOW_MS),
+        houseFee: "0.00",
+        prizePaid: "0.00",
+        startedAt: new Date(),
+      })
+      .returning();
+    return { match, joined: true };
+  });
+}
+
+// Submit one deterministic bot launch through the exact same locked launch
+// engine used by a human. The explicit `asAi` option prevents this internal
+// call from being mistaken for a user request while preserving all physics,
+// validation, collision, and round-history behavior.
+export async function playAiTurn({ userId, matchId }) {
+  const match = await fetchMatch(matchId);
+  if (!match) return { error: "Match not found", status: 404 };
+  if (!isFreeAiMatch(match) || match.player1Id !== userId) {
+    return { error: "Forbidden", status: 403 };
+  }
+  if (!LAUNCHABLE_STATES.has(match.status)) {
+    return { match, alreadyPlayed: true };
+  }
+  if (match.p2CurrentInputs) {
+    return { match, alreadyPlayed: true };
+  }
+
+  const inputs = chooseAiLaunchInputs({
+    matchId,
+    ballNumber: Number(match.currentBall) || 1,
+  });
+  return await launchBall({
+    userId: PLINKO_AI_PLAYER_ID,
+    matchId,
+    ...inputs,
+    asAi: true,
+  });
+}
+
 export async function createOrJoin({ userId, stakeAmount }) {
   const validation = validateMatchParams({ stakeAmount });
   if (!validation.ok) {
@@ -735,11 +815,14 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       p2Score: loserIsP1 ? 1 : 0,
     });
 
-    // Credit the winner: their stake back + 90% of the forfeiter's.
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-      .where(eq(users.clerkId, winnerUserId));
+    // Paid matches credit the winner. AI matches are free and the bot is
+    // not a users-table row, so disconnects must never touch balances.
+    if (!isFreeAiMatch(match)) {
+      await tx
+        .update(users)
+        .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
+        .where(eq(users.clerkId, winnerUserId));
+    }
 
     const setValues = {
       status: MATCH_STATUS.FINISHED,
@@ -762,7 +845,7 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       .returning();
 
     const finalRow = updated || match;
-    if (payout.result === RESULT.PLAYER1 || payout.result === RESULT.PLAYER2) {
+    if (!isFreeAiMatch(match) && (payout.result === RESULT.PLAYER1 || payout.result === RESULT.PLAYER2)) {
       await recordPvPResult(tx, finalRow, winnerUserId, payout.result).catch(
         () => {},
       );
@@ -935,7 +1018,7 @@ async function resolveBall(tx, match) {
 // resubmitting returns 409. This matches roulette-pvp's anti-cheat
 // pattern (a player cannot rewrite their bets at the last
 // millisecond to scrub the result) and is the secure default.
-export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
+export async function launchBall({ userId, matchId, startX, power, angleDeg, asAi = false }) {
   const validation = validateLaunchInputs({ startX, power, angleDeg });
   if (!validation.ok) {
     return { error: validation.error, status: validation.status };
@@ -961,6 +1044,9 @@ export async function launchBall({ userId, matchId, startX, power, angleDeg }) {
 
     if (!match) return { error: "Match not found", status: 404 };
     if (!isParticipant(match, userId)) {
+      return { error: "Forbidden", status: 403 };
+    }
+    if (asAi && (!isFreeAiMatch(match) || userId !== PLINKO_AI_PLAYER_ID)) {
       return { error: "Forbidden", status: 403 };
     }
     if (!LAUNCHABLE_STATES.has(match.status)) {
@@ -1414,32 +1500,47 @@ async function resolveMatch(tx, match) {
   const p1Score = Number(match.p1Score) || 0;
   const p2Score = Number(match.p2Score) || 0;
   const isTiebreaker = Boolean(match.isTiebreaker);
-
-  const payout = computePayout({
-    stakeAmount: match.stakeAmount,
-    p1Score,
-    p2Score,
-    tieFeePct: isTiebreaker ? TIE_FEE_PCT : 0,
-  });
+  const payout = isFreeAiMatch(match)
+      ? {
+          winnerNet: 0,
+          houseFee: 0,
+          prizePaid: 0,
+          tiebreakerRefund: 0,
+          result:
+            p1Score === p2Score
+              ? RESULT.TIE
+              : p1Score > p2Score
+                ? RESULT.PLAYER1
+                : RESULT.PLAYER2,
+        }
+      : computePayout({
+          stakeAmount: match.stakeAmount,
+          p1Score,
+          p2Score,
+          tieFeePct: isTiebreaker ? TIE_FEE_PCT : 0,
+        });
 
   // Apply balance changes per the payout math. Ties refund both
   // players in full (no fee). Winner gets (stake + 0.9 × stake) =
   // 1.9× their stake back. Loser loses their stake (handled by the
   // deduction at lobby create/join time — we don't double-deduct).
-  let winnerUserId = null;
-  if (payout.result === RESULT.PLAYER1) {
-    winnerUserId = match.player1Id;
+  const winnerUserId =
+    payout.result === RESULT.PLAYER1
+      ? match.player1Id
+      : payout.result === RESULT.PLAYER2
+        ? match.player2Id
+        : null;
+  if (!isFreeAiMatch(match) && payout.result === RESULT.PLAYER1) {
     await tx
       .update(users)
       .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
       .where(eq(users.clerkId, match.player1Id));
-  } else if (payout.result === RESULT.PLAYER2) {
-    winnerUserId = match.player2Id;
+  } else if (!isFreeAiMatch(match) && payout.result === RESULT.PLAYER2) {
     await tx
       .update(users)
       .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
       .where(eq(users.clerkId, match.player2Id));
-  } else {
+  } else if (!isFreeAiMatch(match)) {
     // TIE — refund both players. For normal ties (should no longer
     // occur with the tiebreaker logic) both get full stake back.
     // For tiebreaker ties (still tied after ball 4), each player
@@ -1498,7 +1599,7 @@ async function resolveMatch(tx, match) {
   // Bumps pvpWins / gamesWon / totalWon / biggestWin on the winner
   // and gamesLost / totalWagered on the loser. Mirrors mines-pvp's
   // `recordPvPResult` so the global PvP leaderboards stay fresh.
-  if (payout.result === RESULT.PLAYER1 || payout.result === RESULT.PLAYER2) {
+  if (!isFreeAiMatch(match) && (payout.result === RESULT.PLAYER1 || payout.result === RESULT.PLAYER2)) {
     await recordPvPResult(tx, finalRow, winnerUserId, payout.result).catch(
       () => {},
     );

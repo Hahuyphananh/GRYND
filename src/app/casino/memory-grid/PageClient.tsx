@@ -90,6 +90,7 @@ export default function MemoryGridLobbyPage() {
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
 
   // ── Fetch helpers ────────────────────────────────────────────────
   const fetchAvailable = useCallback(async () => {
@@ -273,6 +274,37 @@ export default function MemoryGridLobbyPage() {
     [fetchAvailable, socket, posthog],
   );
 
+  const playVsAi = useCallback(async () => {
+    setAiBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/memory-grid/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data?.error || "Unable to start free AI match");
+        return;
+      }
+      const matchId = data?.data?.match?.id;
+      if (matchId) {
+        posthog?.capture("memory_grid_ai_match_created", { match_id: matchId });
+        socket?.emit("room_event", {
+          roomId: memoryGridMatchRoom(matchId),
+          event: MEMORY_GRID_MATCH_UPDATED,
+        });
+        router.push(`/casino/memory-grid/${matchId}`);
+      }
+    } catch {
+      setError("Unable to start free AI match");
+    } finally {
+      setAiBusy(false);
+    }
+  }, [posthog, router, socket]);
+
   // Derived from `myOpenMatch` so it's reactive to the polled lobby list.
   const myOpenMatchId = myOpenMatch?.id ?? null;
 
@@ -364,7 +396,14 @@ export default function MemoryGridLobbyPage() {
         posthog?.capture("memory_grid_lobby_create_clicked", { stake });
         createOrJoin(stake);
       }}
-      canPlay={canCreate}
+      canPlay={canCreate && !aiBusy}
+      vsAi={{
+        label: "Play Free vs AI",
+        badge: "No tokens",
+        onClick: playVsAi,
+        disabled: !isSignedIn || busy || aiBusy,
+        busy: aiBusy,
+      }}
       escrowNote={
         <>
           We pair you with another player of the <b>exact same</b> stake.

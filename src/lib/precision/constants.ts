@@ -195,6 +195,7 @@ export const SOCKET_NAMESPACE = {
 // Centralised so the lobby / match pages and stub API routes agree.
 export const API_ROUTES = {
   createLobby: "/api/precision/create-lobby",
+  createAi: "/api/precision/create-ai",
   joinLobby: "/api/precision/join-lobby",
   lobbies: "/api/precision/lobbies",
   getMatch: "/api/precision/get-match",

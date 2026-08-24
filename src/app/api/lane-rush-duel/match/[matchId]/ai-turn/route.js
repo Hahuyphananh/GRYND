@@ -31,7 +31,7 @@ export async function POST(req, { params }) {
   }
 
   try {
-    const result = await botAct({ matchId });
+    const result = await botAct({ matchId, requesterId: userId });
 
     if (result.error) {
       // 409 = not the bot's turn / window expired — benign races the

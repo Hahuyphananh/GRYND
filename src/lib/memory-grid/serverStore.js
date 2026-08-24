@@ -56,6 +56,7 @@ import {
   ACTIVE_STATES,
   MATCH_STATUS,
   MAX_STAKE,
+  MEMORY_GRID_AI_PLAYER_ID,
   MEMORY_GRID_LOCK_NAMESPACE,
   MIN_STAKE,
   OVERTIME_DRAW_FEE_PCT,
@@ -68,9 +69,12 @@ import {
   SUBMIT_STATES,
   TIEBREAK_ROUND_NUMBER,
   assessReconstruction,
+  aiSubmissionDelayMs,
+  chooseAiReconstruction,
   computeFinalRoundScore,
   computePayout,
   generatePattern,
+  isFreeAiMatch,
   matchWinnerFromTotals,
   reconstructDeadlineFromStart,
   reconstructionStarted,
@@ -128,7 +132,7 @@ export function seatForUser(match, userId) {
   return null;
 }
 
-export function isParticipant(match, userId) {
+export function    isParticipant(match, userId) {
   return seatForUser(match, userId) !== null;
 }
 
@@ -171,6 +175,122 @@ export async function listOpenMatches({ limit = 30 } = {}) {
     )
     .orderBy(sql`${memoryGridMatches.createdAt} DESC`)
     .limit(limit);
+}
+
+// ── Create a free human-vs-AI match ───────────────────────────────────
+//
+// The bot occupies player2. No stake is escrowed and the normal Memory
+// Grid phase/scoring flow is reused; the server submits the bot's
+// reconstruction once its calibrated delay has elapsed.
+export async function createAiMatch({ userId }) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+
+  const serverSeed = randomHex(32);
+  const serverSeedHash = getServerSeedHash(serverSeed);
+  const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
+
+  return await db.transaction(async (tx) => {
+    const [match] = await tx
+      .insert(memoryGridMatches)
+      .values({
+        player1Id: userId,
+        player2Id: MEMORY_GRID_AI_PLAYER_ID,
+        stakeAmount: "0.00",
+        status: MATCH_STATUS.READY,
+        isAi: true,
+        serverSeed,
+        serverSeedHash,
+        phase: null,
+        roundTimerSeconds: 15,
+        roundNumber: 1,
+        roundDeadline: readyDeadline,
+        startedAt: new Date(),
+      })
+      .returning();
+
+    // The serial match id is part of the provably-fair pattern seed, so
+    // the first board is filled immediately after the insert.
+    const [withBoard] = await tx
+      .update(memoryGridMatches)
+      .set({
+        board: generatePattern(1, {
+          seed: derivePatternSeed({
+            serverSeed,
+            matchId: match.id,
+            roundNumber: 1,
+          }),
+        }),
+      })
+      .where(eq(memoryGridMatches.id, match.id))
+      .returning();
+
+    return { match: withBoard || match, joined: true };
+  });
+}
+
+// Run one server-authoritative AI reconstruction when it is due. This
+// helper is used both by the polling path and the explicit recovery
+// endpoint, and always writes through applySubmission so scoring,
+// locking, round snapshots, and resolution stay identical to PvP.
+async function playAiTurnInTransaction(tx, match) {
+  if (!match || !isFreeAiMatch(match)) {
+    return { match, alreadyPlayed: true };
+  }
+  if (match.player2Id !== MEMORY_GRID_AI_PLAYER_ID) {
+    return { match, alreadyPlayed: true };
+  }
+  if (match.status !== MATCH_STATUS.ACTIVE || match.phase !== PHASES.RECONSTRUCT) {
+    return { match, alreadyPlayed: true };
+  }
+  if (match.p2Submitted) {
+    return { match, alreadyPlayed: true };
+  }
+
+  const deadline = match.roundDeadline
+    ? new Date(match.roundDeadline).getTime()
+    : Number.NaN;
+  const windowMs = reconstructWindowMs(match);
+  const reconstructStartedAt = deadline - windowMs;
+  const delay = aiSubmissionDelayMs({
+    matchId: match.id,
+    roundNumber: match.roundNumber,
+  });
+  if (!Number.isFinite(reconstructStartedAt) || Date.now() < reconstructStartedAt + delay) {
+    return { match, alreadyPlayed: false, waiting: true };
+  }
+
+  const picks = chooseAiReconstruction({
+    pattern: match.board,
+    roundNumber: match.roundNumber,
+    seed: `${match.id}:${match.serverSeed}`,
+  });
+  const outcome = await applySubmission(
+    tx,
+    match,
+    "player2",
+    picks,
+    false,
+    MEMORY_GRID_AI_PLAYER_ID,
+  );
+  return {
+    ...outcome,
+    alreadyPlayed: false,
+    aiPicks: picks,
+  };
+}
+
+// Explicit, authenticated recovery endpoint for the client. Normal
+// progress also happens from fetchMatchWithAutoResolve polling, so a
+// failed trigger cannot leave an AI match stuck.
+export async function playAiTurn({ userId, matchId }) {
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isFreeAiMatch(match) || match.player1Id !== userId) {
+      return { error: "Forbidden", status: 403 };
+    }
+    return await playAiTurnInTransaction(tx, match);
+  });
 }
 
 // ── Create / Join matchmaking ─────────────────────────────────────────
@@ -413,16 +533,22 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
     const loserIsP1 = match.player1Id === loserClerkId;
     const winnerUserId = loserIsP1 ? match.player2Id : match.player1Id;
     const result = loserIsP1 ? RESULT.PLAYER2 : RESULT.PLAYER1;
-    const payout = computePayout({
-      stakeAmount: match.stakeAmount,
-      result,
-    });
+    const isAi = isFreeAiMatch(match);
+    const payout = isAi
+      ? { winnerNet: 0, houseFee: 0, prizePaid: 0 }
+      : computePayout({
+          stakeAmount: match.stakeAmount,
+          result,
+        });
 
-    // Credit the winner: their stake back + 90% of the forfeiter's.
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-      .where(eq(users.clerkId, winnerUserId));
+    // Credit the winner only for paid PvP. The AI seat is not a user
+    // account and free matches never alter token balances.
+    if (!isAi) {
+      await tx
+        .update(users)
+        .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
+        .where(eq(users.clerkId, winnerUserId));
+    }
 
     const [updated] = await tx
       .update(memoryGridMatches)
@@ -450,7 +576,7 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
 
     // Best-effort stat side-effect (failures don't roll the match),
     // mirroring resolveMatch / keno-pvp forfeit.
-    if (updated && winnerUserId) {
+    if (updated && winnerUserId && !isAi) {
       await recordPvPResult(tx, finalRow, winnerUserId, result).catch(() => {});
     }
 
@@ -747,13 +873,11 @@ async function applySubmission(
   const windowMs = reconstructWindowMs(match);
   const { tier: speedTier, multiplier: speedMultiplier } =
     speedMultiplierFromCompletion(completionTimeMs, windowMs);
-  // Final round score = Accuracy Score × Speed Multiplier, clamped to
-  // [0, 100] (accuracy-dominant — see computeFinalRoundScore). An
-  // empty reconstruction (AFK) scores 0 via the pickedCount guard.
+  // Final round score is the exact full-grid accuracy percentage,
+  // clamped to [0, 100]. An empty reconstruction (AFK) scores 0 via
+  // the pickedCount guard; speed is recorded but does not change points.
   const finalScore = computeFinalRoundScore({
     accuracy: assessment.accuracy,
-    completionTimeMs,
-    windowMs,
     pickedCount: picks.length,
   });
 
@@ -1090,11 +1214,19 @@ async function resolveMatch(tx, match) {
   // A DRAW is a tiebreak-round draw (equal totals after round 5 go
   // to round 6, so any end-state draw is a round-6 tie): each player
   // is refunded 95% of their stake, house keeps 5% per side.
-  const payout = computePayout({
-    stakeAmount: match.stakeAmount,
-    result,
-    drawFeePct: result === RESULT.DRAW ? OVERTIME_DRAW_FEE_PCT : 0,
-  });
+  const isAi = isFreeAiMatch(match);
+  const payout = isAi
+    ? {
+        winnerNet: 0,
+        houseFee: 0,
+        prizePaid: 0,
+        refundEach: 0,
+      }
+    : computePayout({
+        stakeAmount: match.stakeAmount,
+        result,
+        drawFeePct: result === RESULT.DRAW ? OVERTIME_DRAW_FEE_PCT : 0,
+      });
 
   const winnerId =
     result === RESULT.PLAYER1
@@ -1103,13 +1235,13 @@ async function resolveMatch(tx, match) {
         ? match.player2Id
         : null;
 
-  if (winnerId) {
+  if (!isAi && winnerId) {
     // Winner gets their stake back + 90% of the loser's stake.
     await tx
       .update(users)
       .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
       .where(eq(users.clerkId, winnerId));
-  } else {
+  } else if (!isAi) {
     // DRAW — refund both players. On a tiebreak draw that is 95% of
     // each player's stake (5% rake per side), per computePayout's
     // refundEach.
@@ -1145,7 +1277,7 @@ async function resolveMatch(tx, match) {
 
   // Best-effort stat side-effects (failures don't roll the match).
   // Draws are skipped — no winner/loser to bump.
-  if (winnerId) {
+  if (winnerId && !isAi) {
     await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
   }
 
@@ -1213,7 +1345,14 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
 
     // Auto-advance phase deadlines (memorize → reconstruct → AFK
     // auto-lock → round resolution / next round / finished).
-    const advanced = await advancePhaseOnPoll(tx, match);
+    let advanced = await advancePhaseOnPoll(tx, match);
+
+    // Free AI matches use the same reconstruct phase as PvP, but the
+    // bot submits automatically after its calibrated human-like delay.
+    if (advanced?.status === MATCH_STATUS.ACTIVE && advanced?.phase === PHASES.RECONSTRUCT) {
+      const aiResult = await playAiTurnInTransaction(tx, advanced);
+      advanced = aiResult.match || advanced;
+    }
     return { match: advanced };
   });
 }

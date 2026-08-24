@@ -743,47 +743,74 @@ export default function LaneRushDuelMatchPage({ params }) {
   const finished = match?.status === "finished";
   const cancelled = match?.status === "cancelled";
 
-  // ── Test vs Bot: auto-trigger the bot's turn ────────────────────
+  // ── Test vs Bot: auto-trigger the bot's turn ─────────────────────
   const isBotMatch = match?.player2Id === "AI_BOT";
-  const botTurnFiredRef = useRef(false);
+  const botTurnFiredRef = useRef(null);
+  const [botRetry, setBotRetry] = useState(0);
 
   useEffect(() => {
-    if (!isBotMatch) return;
-    const inTurn =
-      match?.status === "p1_turn" || match?.status === "p2_turn";
-    const isBotTurn = match?.currentTurnUserId === "AI_BOT";
-    if (!inTurn || !isBotTurn) {
-      botTurnFiredRef.current = false;
+    const isActive =
+      match?.status === "active" ||
+      match?.status === "p1_turn" ||
+      match?.status === "p2_turn";
+    if (!isBotMatch || !matchId || !isActive) {
+      botTurnFiredRef.current = null;
       return;
     }
-    const timerSec = Number(match?.roundTimerSeconds) || 20;
-    const deadline = match?.roundDeadline
-      ? new Date(match.roundDeadline).getTime()
-      : null;
-    const elapsed = deadline ? timerSec * 1000 - (deadline - now) : 0;
-    if (elapsed >= 1500 && !botTurnFiredRef.current) {
-      botTurnFiredRef.current = true;
-      fetch(`/api/lane-rush-duel/match/${matchId}/ai-turn`, {
-        method: "POST",
-        credentials: "include",
-      })
-        .then((r) => r.json())
-        .then((json) => {
-          if (json?.success) {
-            socket?.emit("room_event", {
-              roomId: laneRushDuelMatchRoom(matchId),
-              event: LANE_RUSH_DUEL_MATCH_UPDATED,
-            });
-            fetchStatus();
-          } else {
-            botTurnFiredRef.current = false;
-          }
-        })
-        .catch(() => {
-          botTurnFiredRef.current = false;
-        });
-    }
-  }, [isBotMatch, match, now, matchId, socket, fetchStatus]);
+
+    // Key each bot turn by the server state, not by the local clock. This
+    // prevents duplicate requests while still retriggering after the human
+    // answers and the action history advances.
+    const turnKey = [
+      matchId,
+      Array.isArray(match.actions) ? match.actions.length : 0,
+      match.p2Lane,
+      match.p2Held,
+    ].join(":");
+    if (botTurnFiredRef.current === turnKey) return;
+
+    const timer = setTimeout(async () => {
+      if (botTurnFiredRef.current === turnKey) return;
+      botTurnFiredRef.current = turnKey;
+      try {
+        const response = await fetch(
+          `/api/lane-rush-duel/match/${matchId}/ai-turn`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({}),
+          },
+        );
+        const json = await response.json();
+        if (json?.success) {
+          socket?.emit("room_event", {
+            roomId: laneRushDuelMatchRoom(matchId),
+            event: LANE_RUSH_DUEL_MATCH_UPDATED,
+          });
+          await fetchStatus();
+        } else {
+          botTurnFiredRef.current = null;
+          setBotRetry((value) => value + 1);
+        }
+      } catch {
+        botTurnFiredRef.current = null;
+        setBotRetry((value) => value + 1);
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [
+    botRetry,
+    isBotMatch,
+    matchId,
+    match?.status,
+    match?.p2Lane,
+    match?.p2Held,
+    match?.actions?.length,
+    socket,
+    fetchStatus,
+  ]);
 
   // ── Derived state ────────────────────────────────────────────────
   const isPlayer1 = match?.viewerIsPlayer1;
@@ -817,15 +844,8 @@ export default function LaneRushDuelMatchPage({ params }) {
   const myDone = myEnded;
   const oppDone = oppEnded;
 
-  const isMyTurn = Boolean(match?.isViewerTurn);
-  const canAct =
-    !finished &&
-    !cancelled &&
-    isMyTurn &&
-    !myDone &&
-    !acting &&
-    !myPending &&
-    (match?.status === "p1_turn" || match?.status === "p2_turn");
+  const isMyTurn = match?.status === "active";
+  const canAct = !finished && !cancelled && !acting && isMyTurn && !myEnded;
 
   // Path + picked tile per lane from the actions history. `round`
   // (the 0-based row) is authoritative for current matches; pre-
@@ -907,7 +927,6 @@ export default function LaneRushDuelMatchPage({ params }) {
 
   // Bad tile per lane per path (only available after finish).
   const myTower = Array.isArray(match?.myTower) ? match.myTower : [];
-  const oppTower = Array.isArray(match?.oppTower) ? match.oppTower : [];
 
   const deadlineMs = match?.roundDeadline
     ? new Date(match.roundDeadline).getTime()
@@ -918,7 +937,7 @@ export default function LaneRushDuelMatchPage({ params }) {
 
   // Soft bank: you can bank ANY number of times (each bank halves
   // your future pick rate), as long as your climb isn't over.
-  const canHold = canAct && myLane >= 1 && myLane < MAX_LANES;
+  const canHold = canAct && myScore > 0;
 
   // ── Actions ──────────────────────────────────────────────────────
   const doAction = useCallback(
@@ -1016,9 +1035,7 @@ export default function LaneRushDuelMatchPage({ params }) {
           : "bg-rose-500/25 text-rose-200",
     };
   } else if (isMyTurn) {
-    statusChip = { text: "Your turn", cls: "bg-cyan-400/25 text-cyan-100" };
-  } else {
-    statusChip = { text: "Opponent's turn", cls: "bg-rose-500/20 text-rose-100" };
+    statusChip = { text: "Play anytime", cls: "bg-cyan-400/25 text-cyan-100" };
   }
 
   // ── Result panel ─────────────────────────────────────────────────
@@ -1026,8 +1043,38 @@ export default function LaneRushDuelMatchPage({ params }) {
   const lostMatch = finished && match.winnerId && match.winnerId !== user?.id;
   const drawMatch = finished && match.result === "draw";
 
+  const matchEndPopup = finished ? (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="w-full max-w-md rounded-3xl border border-white/15 bg-slate-950 p-6 text-center shadow-2xl"
+        >
+          <IconTrophy className={`mx-auto mb-3 ${wonMatch ? "text-amber-300" : drawMatch ? "text-amber-200" : "text-rose-300"}`} size={42} />
+          <h2 className="text-3xl font-black">{wonMatch ? "YOU WIN" : drawMatch ? "DRAW" : "YOU LOSE"}</h2>
+          <p className="mt-2 text-sm text-white/60">
+            {drawMatch ? "Both players receive their stake back." : wonMatch ? "You won the Lane Rush race." : "Your opponent won the Lane Rush race."}
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push("/casino/lane-runner")}
+            className="mt-6 w-full rounded-xl bg-cyan-400 px-5 py-3 font-black text-black transition hover:bg-cyan-300"
+          >
+            Back to Lane Rush
+          </button>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  ) : null;
+
   return (
     <div className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top,#1b2150_0%,#080b1f_35%,#03040d_100%)] pb-24 pt-20 text-white md:pb-8">
+      {matchEndPopup}
       <NavigationBar currentPath="/casino/lane-runner" />
 
       <div className="mx-auto mt-4 max-w-5xl px-3 sm:px-4">
@@ -1127,86 +1174,27 @@ export default function LaneRushDuelMatchPage({ params }) {
         )}
 
         {/* ── Active game ────────────────────────────────────────── */}
-        {(match?.status === "p1_turn" || match?.status === "p2_turn" || finished) && (
+        {(match?.status === "active" || finished) && (
           <div className="space-y-4">
-            {/* Turn banner */}
-            {!finished && (
-              <div
-                className={`rounded-2xl border px-4 py-3 text-sm ${
-                  isMyTurn
-                    ? "border-cyan-300/40 bg-cyan-400/10 text-cyan-100"
-                    : "border-rose-300/30 bg-rose-500/10 text-rose-100"
-                }`}
-              >
-                {myEnded
-                  ? "Your climb is over. Waiting for the opponent to finish."
-                  : isMyTurn
-                    ? myPending
-                      ? "Your pick is locked in. Waiting for the opponent to answer this level…"
-                      : oppPending
-                        ? "Your opponent has locked in. Your move — pick, flag, or bank."
-                        : "Your turn. Pick a path, pick a tile, FLAG the bad one, or BANK — first to bank 1,000 wins."
-                    : myPending
-                      ? "Your pick is locked in. Waiting for your opponent…"
-                      : oppEnded
-                        ? "Their climb is over — you're climbing alone now."
-                        : "Opponent's turn. They're climbing."}
-              </div>
-            )}
+            {matchEndPopup}
+            <div className="rounded-2xl border border-cyan-300/40 bg-cyan-400/10 p-3 text-sm text-cyan-100">
+              Both players can act at the same time.
+            </div>
 
             {/* Scoreboard — points + the zugzwang chip */}
             <div className="grid grid-cols-2 gap-3">
-              <div
-                className={`rounded-2xl border p-3 text-center ${
-                  isMyTurn && !finished
-                    ? "border-cyan-300/50 bg-cyan-500/10"
-                    : "border-white/10 bg-black/30"
-                }`}
-              >
-                <p className="text-[10px] uppercase tracking-wider text-white/50">
-                  You
-                </p>
-                <p className="text-2xl font-black text-cyan-200">
-                  {myScore.toLocaleString()}{" "}
-                  <span className="text-xs text-white/40">pts</span>
-                </p>
-                <p className="text-[10px] text-white/50">
-                  {myLane >= MAX_LANES
-                    ? "Completed"
-                    : myEnded
-                      ? "Busted"
-                      : myHeld
-                        ? `Banked ${myBanked.toLocaleString()} / ${WIN_BANKED_SCORE.toLocaleString()} · ${Math.round(myRate * 100)}% rate`
-                        : `Level ${myLane + 1} · ${myScore.toLocaleString()} / ${WIN_BANKED_SCORE.toLocaleString()} to win`}
-                </p>
+              <div className="rounded-2xl border border-cyan-300/50 bg-cyan-500/10 p-3 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-white/50">You</p>
+                <p className="text-2xl font-black text-cyan-200">{myScore} <span className="text-xs text-white/40">pts</span></p>
+                <p className="text-[10px] text-white/50">Race score · banked {myBanked}</p>
               </div>
-              <div
-                className={`rounded-2xl border p-3 text-center ${
-                  !isMyTurn && !finished
-                    ? "border-rose-300/50 bg-rose-500/10"
-                    : "border-white/10 bg-black/30"
-                }`}
-              >
-                <p className="text-[10px] uppercase tracking-wider text-white/50">
-                  {isBotMatch ? "Bot" : "Opponent"}
-                </p>
-                <p className="text-2xl font-black text-rose-200">
-                  {oppScore.toLocaleString()}{" "}
-                  <span className="text-xs text-white/40">pts</span>
-                </p>
-                <p className="text-[10px] text-white/50">
-                  {oppLane >= MAX_LANES
-                    ? "Completed"
-                    : oppEnded
-                      ? "Busted"
-                      : oppHeld
-                        ? `Banked ${oppBanked.toLocaleString()} / ${WIN_BANKED_SCORE.toLocaleString()} · ${Math.round(oppRate * 100)}% rate`
-                        : `Level ${oppLane + 1} · ${oppScore.toLocaleString()} / ${WIN_BANKED_SCORE.toLocaleString()} to win`}
-                </p>
+              <div className="rounded-2xl border border-rose-300/40 bg-rose-500/10 p-3 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-white/50">Opponent</p>
+                <p className="text-2xl font-black text-rose-200">{oppScore} <span className="text-xs text-white/40">pts</span></p>
+                <p className="text-[10px] text-white/50">Race score · banked {oppBanked}</p>
               </div>
             </div>
 
-            {/* Zugzwang pressure strip */}
             <PressureStrip
               myScore={myScore}
               oppScore={oppScore}
@@ -1220,8 +1208,7 @@ export default function LaneRushDuelMatchPage({ params }) {
               isBotMatch={isBotMatch}
             />
 
-            {/* Risk-path picker — your turn only, while your pick is
-                not already parked for this row */}
+            {/* Risk-path picker — always available while the match is active. */}
             {canAct && (
               <PathPicker
                 lane={myLane}
@@ -1238,8 +1225,7 @@ export default function LaneRushDuelMatchPage({ params }) {
               />
             )}
 
-            {/* Private peek result — only the viewer sees this. */}
-            {lastPeek && !finished && !myPending && (
+            {lastPeek && !finished && (
               <div
                 className={`rounded-2xl border px-4 py-2.5 text-xs ${
                   lastPeek.result === "bad"
@@ -1257,34 +1243,19 @@ export default function LaneRushDuelMatchPage({ params }) {
                 ) : (
                   <b>SAFE tile — it's a guaranteed pick.</b>
                 )}
-                <span className="ml-1 text-white/50">
-                  (only you saw this)
-                </span>
+                <span className="ml-1 text-white/50">(only you saw this)</span>
               </div>
             )}
 
-            {/* Deferred reveal: your pick is parked — nothing else to
-                do until the opponent answers this row. */}
-            {myPending && !finished && (
-              <div className="flex items-center gap-3 rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
-                <span className="inline-block h-2.5 w-2.5 animate-ping rounded-full bg-cyan-400" />
-                <span>
-                  <b className="font-black uppercase tracking-wider">Pick locked in.</b>{" "}
-                  Waiting for your opponent to climb this level — both picks reveal
-                  together.
-                </span>
-              </div>
-            )}
-
-            {/* Towers */}
-            <div className="flex flex-col gap-3 lg:flex-row">
+            {/* Your tower — the opponent has an independent hidden board. */}
+            <div className="flex flex-col gap-3">
               <DuelTower
                 label="Your tower"
                 tone="cyan"
                 lane={myLane}
                 held={myHeld}
-                isActiveClimber={!myDone}
-                isViewerTurn={isMyTurn}
+                isActiveClimber={true}
+                isViewerTurn={true}
                 clickable={canAct}
                 selectedPath={selectedPath}
                 flagMode={flagMode}
@@ -1292,40 +1263,16 @@ export default function LaneRushDuelMatchPage({ params }) {
                 myPeeks={myPeeks}
                 pathByLane={myHistory.myPath}
                 pickedTileByLane={myHistory.myPicked}
-                intelPathByLane={myHistory.oppPath}
-                intelPickedByLane={myHistory.oppPicked}
+                intelPathByLane={undefined}
+                intelPickedByLane={undefined}
                 deductions={deductions}
                 tower={myTower}
                 difficulty={match?.difficulty}
                 finished={finished}
                 onPick={(t) => doAction(peekMode ? "peek" : flagMode ? "flag" : "pick", t)}
               />
-              <DuelTower
-                label={isBotMatch ? "Bot's tower" : "Opponent's tower"}
-                tone="rose"
-                lane={oppLane}
-                held={oppHeld}
-                isActiveClimber={!oppDone}
-                isViewerTurn={false}
-                clickable={false}
-                selectedPath={null}
-                flagMode={false}
-                peekMode={false}
-                myPeeks={undefined}
-                pathByLane={myHistory.oppPath}
-                pickedTileByLane={myHistory.oppPicked}
-                intelPathByLane={myHistory.myPath}
-                intelPickedByLane={myHistory.myPicked}
-                deductions={deductions}
-                tower={oppTower}
-                difficulty={match?.difficulty}
-                finished={finished}
-                onPick={() => {}}
-              />
             </div>
 
-            {/* Bank button — soft bank: locks your score, you keep
-                climbing at a reduced rate (×0.5 per bank). */}
             {!finished && (
               <div className="space-y-1">
                 <motion.button
@@ -1334,157 +1281,18 @@ export default function LaneRushDuelMatchPage({ params }) {
                   animate={canHold ? { scale: [1, 1.02, 1] } : undefined}
                   transition={{ repeat: canHold ? Infinity : 0, duration: 1.1 }}
                   onClick={() => doAction("hold")}
-                  className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black uppercase tracking-wider transition ${
-                    canHold
-                      ? "bg-gradient-to-r from-amber-400 to-yellow-400 text-black shadow-[0_0_25px_rgba(251,191,36,0.5)] hover:brightness-110"
-                      : "bg-white/10 text-white/40"
-                  }`}
+                  className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black uppercase tracking-wider transition ${canHold ? "bg-gradient-to-r from-amber-400 to-yellow-400 text-black" : "bg-white/10 text-white/40"}`}
                 >
                   <IconLock size={16} />
-                  {myLane === 0
-                    ? "Bank (climb at least one level first)"
-                    : acting
-                      ? "Banking…"
-                      : myHeld
-                        ? `Re-bank ${myScore.toLocaleString()} pts (${myScore >= WIN_BANKED_SCORE ? "WINS" : "toward " + WIN_BANKED_SCORE.toLocaleString()})`
-                        : `Bank ${myScore.toLocaleString()} pts (first to ${WIN_BANKED_SCORE.toLocaleString()})`}
+                  {myHeld ? `Re-bank ${myScore.toLocaleString()} pts` : `Bank ${myScore.toLocaleString()} pts`}
                 </motion.button>
-                {myEnded ? (
-                  <p className="text-center text-[10px] text-white/40">
-                    Your climb is over{myHeld ? ` — you keep ${myBanked.toLocaleString()} pts` : " — you banked nothing"}.
-                  </p>
-                ) : myLane === 0 ? (
-                  <p className="text-center text-[10px] text-white/40">
-                    Bank once you've climbed at least one level — first to{" "}
-                    {WIN_BANKED_SCORE.toLocaleString()} banked wins.
-                  </p>
-                ) : (
-                  <p className="text-center text-[10px] text-white/40">
-                    Locks {myScore.toLocaleString()} pts as your banked score{" "}
-                    {myHeld ? "(re-banking raises it)" : ""}. First to{" "}
-                    <b className="text-amber-200">
-                      {WIN_BANKED_SCORE.toLocaleString()}
-                    </b>{" "}
-                    banked wins; picks after banking pay{" "}
-                    <b className="text-amber-200">
-                      {Math.round(Math.pow(0.5, myBanks + 1) * 100)}%
-                    </b>
-                    .
-                  </p>
-                )}
+                <p className="text-center text-[10px] text-white/40">
+                  Busts reset only unbanked points. First to {WIN_BANKED_SCORE.toLocaleString()} banked wins.
+                </p>
               </div>
             )}
 
-            {/* Result reveal */}
-            <AnimatePresence>
-              {(wonMatch || lostMatch || drawMatch) && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`rounded-3xl border p-6 text-center ${
-                    wonMatch
-                      ? "border-emerald-300/40 bg-emerald-500/10"
-                      : drawMatch
-                        ? "border-amber-300/40 bg-amber-500/10"
-                        : "border-rose-300/40 bg-rose-500/10"
-                  }`}
-                >
-                  <IconTrophy
-                    size={40}
-                    className={`mx-auto ${
-                      wonMatch
-                        ? "text-emerald-300"
-                        : drawMatch
-                          ? "text-amber-300"
-                          : "text-rose-300"
-                    }`}
-                  />
-                  <h2
-                    className={`mt-2 text-3xl font-black tracking-wide ${
-                      wonMatch
-                        ? "text-emerald-200"
-                        : drawMatch
-                          ? "text-amber-200"
-                          : "text-rose-200"
-                    }`}
-                  >
-                    {wonMatch ? "VICTORY" : drawMatch ? "DRAW" : "DEFEAT"}
-                  </h2>
-                  <p className="mt-1 text-sm text-white/70">
-                    {wonMatch
-                      ? `You took the race to ${WIN_BANKED_SCORE.toLocaleString()} banked — ${Number(match.prizePaid).toFixed(2)} tokens (stake back + 90% of the loser's).`
-                      : drawMatch
-                        ? "Even scores. Full refund, no house fee."
-                        : "You busted before banking 1,000 — only what you banked survived."}
-                  </p>
-                  <p className="mt-2 text-lg font-black text-white">
-                    {myScore.toLocaleString()} pts vs {oppScore.toLocaleString()} pts{" "}
-                    <span className="text-xs font-normal text-white/50">
-                      (banked {myBanked.toLocaleString()} vs {oppBanked.toLocaleString()})
-                    </span>
-                  </p>
-                  {wonMatch && (
-                    <p className="mt-1 text-2xl font-black text-emerald-200">
-                      +{Number(match.prizePaid).toFixed(2)}{" "}
-                      <CoinIcon className="inline w-5 h-5 text-yellow-300" />
-                    </p>
-                  )}
-
-                  {/* Provably-fair reveal */}
-                  <div className="mx-auto mt-5 max-w-lg rounded-2xl border border-white/10 bg-black/30 p-4 text-left text-xs">
-                    <p className="mb-2 flex items-center gap-1.5 font-bold text-cyan-200">
-                      <IconShieldCheck size={14} />
-                      Provably fair. Verified
-                    </p>
-                    <div className="grid grid-cols-1 gap-1.5 text-white/70 sm:grid-cols-2">
-                      <p>
-                        Server seed:{" "}
-                        <span className="font-mono text-[10px] break-all text-white/90">
-                          {match.serverSeed}
-                        </span>
-                      </p>
-                      <p>
-                        Seed hash:{" "}
-                        <span className="font-mono text-[10px] break-all text-white/90">
-                          {match.serverSeedHash}
-                        </span>
-                      </p>
-                      <p>
-                        Client seed (shared tower):{" "}
-                        <span className="font-mono text-[10px] break-all text-white/90">
-                          {match.p1ClientSeed}
-                        </span>
-                      </p>
-                    </div>
-                    <p className="mt-2 text-white/50">
-                      Bad tile per path per lane (the shared tower):
-                    </p>
-                    <div className="mt-1 grid grid-cols-1 gap-0.5 font-mono text-[10px] text-rose-300/90">
-                      {myTower.map((entry, i) => (
-                        <p key={i}>
-                          L{i + 1} · safe <b>{entry?.safe ?? "?"}</b> · balanced{" "}
-                          <b>{entry?.balanced ?? "?"}</b> · risky{" "}
-                          <b>{entry?.risky ?? "?"}</b>
-                        </p>
-                      ))}
-                    </div>
-                    <p className="mt-2 text-white/50">
-                      Note: on the safe/balanced paths, each lane's bad tile
-                      never repeats the previous lane's position; the risky
-                      path instead never repeats the previous lane's SAFE
-                      position. Both constraints are verifiable here.
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() => router.push("/casino/lane-runner")}
-                    className="mt-5 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 px-6 py-2.5 text-sm font-bold text-black transition hover:brightness-110"
-                  >
-                    Back to Lobby
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* Match results are rendered in the fixed popup above. */}
           </div>
         )}
 

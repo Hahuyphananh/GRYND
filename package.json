@@ -18,9 +18,13 @@
     "test:mines-pvp": "node --test tests/mines-pvp-engine.test.mjs tests/mines-pvp-flow.test.mjs",
     "test:memory-grid": "node --test tests/memory-grid-engine.test.mjs",
     "test:reports": "node --import tsx --test tests/report-submit.test.mjs",
-    "test:keno-pvp": "node --import tsx --test tests/keno-pvp-engine.test.mjs",
+    "test:keno-pvp": "node --import tsx --test tests/keno-pvp-engine.test.mjs tests/keno-pvp-ai.test.mjs",
     "test:odds": "node --import tsx --test tests/odds-engine.test.mjs",
-    "test:lane-rush-duel": "node --import tsx --test tests/lane-rush-duel-engine.test.mjs tests/lane-rush-duel-flow.test.mjs"
+    "test:lane-rush-duel": "node --import tsx --test tests/lane-rush-duel-engine.test.mjs tests/lane-rush-duel-flow.test.mjs",
+    "test:dots-and-boxes-ai": "node --import tsx --test tests/dots-and-boxes-ai.test.mjs",
+    "test:connect-four-ai": "node --import tsx --test tests/connect-four-ai.test.mjs",
+    "test:precision-ai": "node --import tsx --test tests/precision-ai.test.mjs",
+    "test:plinko-pvp-ai": "node --import tsx --test tests/plinko-pvp-ai.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.3",

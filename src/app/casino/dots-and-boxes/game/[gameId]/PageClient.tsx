@@ -174,6 +174,26 @@ const prefersReducedMotion = useReducedMotion();
   // recompute, and so the Set/Array references are stable across
   // renders (which the memoed board relies on for skip-render).
   const gameState = game?.gameState ?? null;
+
+  // ─── AI opponent progression ───────────────────────────────────────
+  const aiFiredForEdges = useRef<number | null>(null);
+  useEffect(() => {
+    if (!game?.isAiGame || game.status !== "in_progress" || gameState?.currentTurn !== "guest") return;
+    const edgeCount = Array.isArray(gameState.edges) ? gameState.edges.length : 0;
+    if (aiFiredForEdges.current === edgeCount) return;
+    const timer = setTimeout(async () => {
+      aiFiredForEdges.current = edgeCount;
+      const res = await fetch("/api/dots-and-boxes/ai-turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameId: Number(gameId) }),
+      });
+      if (!res.ok) aiFiredForEdges.current = null;
+      await fetchState();
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [game?.isAiGame, game?.status, gameState?.currentTurn, gameState?.edges?.length, gameId, fetchState]);
   const edgesKey = useMemo(() => {
     if (!gameState || !Array.isArray(gameState.edges)) return "";
     // Hash content order doesn't matter; canonicalize so equal sets

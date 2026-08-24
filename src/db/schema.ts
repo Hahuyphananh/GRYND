@@ -1722,6 +1722,7 @@ export const dotsAndBoxesGames = pgTable(
     payout: numeric("payout", { precision: 10, scale: 2 }),
     moveDeadlineAt: timestamp("move_deadline_at"),
     timerSeconds: integer("timer_seconds").notNull().default(20),
+    isAiGame: boolean("is_ai_game").notNull().default(false),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -2025,6 +2026,7 @@ export const memoryGridStatusEnum = pgEnum("memory_grid_status", [
 export const laneRushDuelStatusEnum = pgEnum("lane_rush_duel_status", [
   "waiting",
   "ready",
+  "active",
   "p1_turn",
   "p2_turn",
   "finished",
@@ -2247,6 +2249,9 @@ export const memoryGridMatches = pgTable(
     stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
       .notNull(),
     status: memoryGridStatusEnum("status").notNull().default("waiting"),
+    // True for free human-vs-AI matches. The bot occupies player2Id
+    // but is not a real user and must never receive token/stat updates.
+    isAi: boolean("is_ai").notNull().default(false),
     // Which phase of the CURRENT round is live. Combined with
     // `status` (p1_turn/p2_turn = whose turn) it fully describes the
     // game: 'memorize' (pattern revealed to the active player) or
@@ -2626,6 +2631,9 @@ export const plinkoPvpMatches = pgTable(
     player1Id: varchar("player1_id", { length: 255 }).notNull(),
     player2Id: varchar("player2_id", { length: 255 }),
     stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
+    // Free practice match against the reserved AI seat. AI matches never
+    // escrow tokens, pay out, or update PvP statistics.
+    isAi: boolean("is_ai").notNull().default(false),
     status: plinkoPvpStatusEnum("status").notNull().default("waiting"),
     // 1 / 2 / 3 — which ball the match is collecting inputs for
     // right now. Stamped at match creation and advance+stamp at
@@ -2834,6 +2842,9 @@ export const kenoPvpMatches = pgTable(
     player2Id: varchar("player2_id", { length: 255 }),
     stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
     status: kenoPvpStatusEnum("status").notNull().default("waiting"),
+    // True for free human-vs-AI matches. The bot occupies player2Id
+    // but is not a real user and must never receive token/stat updates.
+    isAi: boolean("is_ai").notNull().default(false),
     // 1 / 2 / 3 / 4 / 5 — which round the match is collecting catches
     // for right now. Stamped at match creation and advanced at each
     // round resolution.
